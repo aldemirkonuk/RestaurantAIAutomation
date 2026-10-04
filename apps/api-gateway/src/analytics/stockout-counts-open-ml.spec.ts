@@ -542,7 +542,7 @@ describe("the restock export says why a risk is missing (ADR 0299)", () => {
       "5 wines are below their reorder point",
     );
     expect(doc.tables[0].note).toContain(
-      "measured risk first, then fewest days of cover",
+      "highest measured risk first, then the fewest days of cover",
     );
   });
 });

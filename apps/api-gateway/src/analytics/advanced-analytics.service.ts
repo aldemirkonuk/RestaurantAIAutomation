@@ -63,7 +63,7 @@ export class AdvancedAnalyticsService {
         // unknown column 42703s the whole PostgREST query, and allSettled
         // swallows it into an empty inventory.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, bottle_size_ml, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
@@ -72,8 +72,9 @@ export class AdvancedAnalyticsService {
         .select(
           // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
           // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+          // covers a single invoiced bottle in twenty-one. open_ml is the
+          // open bottle a glass pour draws from (ADR 0299).
+          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, open_ml",
         )
         .eq("restaurant_id", restaurantId),
     ]);
@@ -100,6 +101,12 @@ export class AdvancedAnalyticsService {
         name: i.wine_name || i.master_wine_id || i.id,
         type: i.master_wine_library?.primary_type || "unknown",
         qty: lot?.live_qty ?? i.stock_live ?? 0,
+        // Sealed plus the open bottle, in bottles — what runs out (ADR 0299).
+        bottles: E.bottlesOnHand(
+          lot?.live_qty ?? i.stock_live ?? 0,
+          lot?.open_ml,
+          i.bottle_size_ml,
+        ),
         unitCost,
         costBasis,
         unitPrice,
@@ -666,7 +673,15 @@ export class AdvancedAnalyticsService {
       mine.map((c) => ({ date: c.date, value: c.qty })),
       90,
     );
-    const profile = E.demandProfile(daily);
+    // The same reading as the reorder register (ADR 0299): on hand counts
+    // the open bottle, and a series with fewer than MIN_DEMAND_DAYS days with
+    // a sale states its mean and cover but no swing, reorder point or risk.
+    const reading = E.restockReading({
+      onHand: item?.bottles ?? 0,
+      dailyDemand: daily,
+      leadTime: 7,
+      serviceLevel: 0.95,
+    });
     const totals = new Map<string, number>();
     for (const c of consumption)
       if (c.wineId) totals.set(c.wineId, (totals.get(c.wineId) || 0) + c.qty);
@@ -675,16 +690,6 @@ export class AdvancedAnalyticsService {
     );
     const standing = standings.find((s) => s.entity === masterWineId);
 
-    const rop =
-      profile && profile.mean > 0
-        ? E.reorderPoint({
-            serviceLevel: 0.95,
-            avgDemandPerPeriod: profile.mean,
-            demandStdev: profile.stdev,
-            avgLeadTime: 7,
-          })
-        : null;
-
     return {
       masterWineId,
       name: item?.name ?? masterWineId,
@@ -692,32 +697,32 @@ export class AdvancedAnalyticsService {
       // way to tell an invoiced number from the 0.6 × menu price fabrication.
       basis: {
         demand: "wine_consumption_log units/day over 90d",
+        onHand:
+          "sealed bottles plus inventory_lot_rollup.open_ml over bottle_size_ml (750 ml where unstated, as record_glass_pour pours)",
+        risk: `stockoutProbability, reorderPoint and safetyStock at service level 0.95 and a 7-day lead time; null for a wine sold on fewer than ${E.MIN_DEMAND_DAYS} days in the window, whose swing is not measured (ADR 0299)`,
         unitCost: item
           ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — unitCost and marginPerBottle are null (ADR 0051)" : ""}`
           : "wine not found in active inventory",
         unitPrice: "restaurant_inventory.menu_price_current",
       },
-      onHand: item?.qty ?? null,
+      onHand: item ? E.bottlesToHundredth(item.bottles) : null,
       unitPrice: item?.unitPrice ?? null,
       unitCost: item?.unitCost ?? null,
       costBasis: item?.costBasis ?? null,
       marginPerBottle: item?.marginPerBottle ?? null,
-      demand: profile,
-      daysOfCover:
-        item && profile && profile.mean > 0
-          ? E.daysOfCover(item.qty, profile.mean)
-          : null,
-      stockoutProbability:
-        item && profile
-          ? E.stockoutProbability({
-              onHand: item.qty,
-              avgDemandPerPeriod: profile.mean,
-              demandStdev: profile.stdev,
-              leadTime: 7,
-            })
-          : null,
-      reorderPoint: rop?.reorderPoint ?? null,
-      safetyStock: rop?.safetyStock ?? null,
+      demand: {
+        mean: reading.mean,
+        stdev: reading.stdev,
+        cv: reading.cv,
+        demandDays: reading.demandDays,
+        measured: reading.measured,
+      },
+      daysOfCover: item ? reading.daysOfCover : null,
+      stockoutProbability: item ? reading.stockoutProbability : null,
+      // A reorder point with no swing behind it was printed for a one-day
+      // series too: mean lead-time demand plus 1.645 × an import artefact.
+      reorderPoint: reading.reorderPoint,
+      safetyStock: reading.safetyStock,
       rankByVolume: standing?.rank ?? null,
       peerCount: standings.length,
       forecast14d: forecast.totalForecastDemand,

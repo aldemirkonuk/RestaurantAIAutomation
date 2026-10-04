@@ -301,7 +301,12 @@ describe("A ranking or a pairing is printed only when the data can tell it apart
   });
 
   describe("the stockout #1", () => {
-    /** One wine whose 90 days of demand all landed on one import day. */
+    /**
+     * One wine whose demand landed evenly on 14 days — the fewest a stockout
+     * risk needs (ADR 0299). [ADR 0272 wrote these on one import day; ADR
+     * 0299 gives such a series no risk, so the shape moved, not the
+     * assertions.]
+     */
     function wine(i: number, sold: number, onHand: number) {
       const id = `w${i}`;
       return {
@@ -311,11 +316,11 @@ describe("A ranking or a pairing is printed only when the data can tell it apart
           stock_live: onHand,
           master_wine_id: id,
         },
-        rows: Array.from({ length: 5 }, () => ({
+        rows: Array.from({ length: 14 }, (_, d) => ({
           inventory_id: `inv-${i}`,
-          quantity: sold / 5,
+          quantity: sold / 14,
           volume_ml: null,
-          created_at: `${dayBack(30)}T12:00:00.000Z`,
+          created_at: `${dayBack(20 + d)}T12:00:00.000Z`,
           restaurant_inventory: { master_wine_id: id },
         })),
       };
@@ -326,8 +331,9 @@ describe("A ranking or a pairing is printed only when the data can tell it apart
     });
 
     it("prints no #1 out of an eight-way tie, and no z of 2", async () => {
-      // Eight wines out of stock, each with all its demand on one day: the
-      // same 61% risk, which floating point returns in three bit patterns.
+      // Eight wines out of stock, each with its demand on the same 14 days:
+      // the same risk (about 87%), which floating point returns in more than
+      // one bit pattern. [Was 61%, on one import day, before ADR 0299.]
       const sold = [5, 7, 10, 11, 17, 29, 31, 37];
       const ws = [
         ...sold.map((s, i) => wine(i, s, 0)),
@@ -340,8 +346,8 @@ describe("A ranking or a pairing is printed only when the data can tell it apart
 
     it("prints a #1 that stands alone, with no fabricated z and the wines really ranked", async () => {
       const ws = [
-        wine(0, 10, 0), // 61%
-        ...[5, 7, 11, 17, 29, 31].map((s, i) => wine(i + 1, s, s / 4)), // 27%
+        wine(0, 10, 0), // about 87%
+        ...[5, 7, 11, 17, 29, 31].map((s, i) => wine(i + 1, s, s * 0.12)), // about 27%
       ];
       const xs = await fire({
         ...rowsOf(ws),

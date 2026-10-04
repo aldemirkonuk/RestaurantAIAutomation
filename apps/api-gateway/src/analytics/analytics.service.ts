@@ -118,7 +118,7 @@ export class AnalyticsService {
         // the reorder trigger is `threshold_min`, and the varietal/type
         // lives on master_wine_library.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, bottle_size_ml, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
@@ -127,8 +127,9 @@ export class AnalyticsService {
         .select(
           // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
           // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+          // covers a single invoiced bottle in twenty-one. open_ml is the
+          // open bottle a glass pour draws from (ADR 0299).
+          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, open_ml",
         )
         .eq("restaurant_id", restaurantId),
     ]);
@@ -161,7 +162,11 @@ export class AnalyticsService {
         id: i.id,
         name: i.wine_name || i.master_wine_id || i.id,
         type: i.master_wine_library?.primary_type || "unknown",
+        // Sealed bottles: what is costed, valued and ABC-ranked.
         qty,
+        // Sealed plus the open bottle, in bottles: what runs out (ADR 0299).
+        // Pierre Ferrand held 950 of 1,000 ml and `qty` read it as 0.
+        bottles: E.inventory.bottlesOnHand(qty, lot?.open_ml, i.bottle_size_ml),
         unitCost,
         costBasis,
         unitPrice,
@@ -594,25 +599,18 @@ export class AnalyticsService {
     const skus = inventory.map((i) => {
       const rows = demandByWine.get(i.masterWineId || "") || [];
       const { values } = this.toDailySeries(rows, sinceDays);
-      const profile = E.inventory.demandProfile(values) || {
-        mean: 0,
-        stdev: 0,
-        cv: null,
-      };
-      const rop = E.inventory.reorderPoint({
-        serviceLevel,
-        avgDemandPerPeriod: profile.mean,
-        demandStdev: profile.stdev,
-        avgLeadTime: leadTime,
-      });
-      const stockoutProb = E.inventory.stockoutProbability({
-        onHand: i.qty,
-        avgDemandPerPeriod: profile.mean,
-        demandStdev: profile.stdev,
+      // One reading for cover, reorder point and risk (ADR 0299): on hand
+      // counts the open bottle, and a series with fewer than MIN_DEMAND_DAYS
+      // days with a sale gets no swing — so no safety stock, reorder point or
+      // stockout probability. Eight Tuzlu wines sold on one import day all
+      // read 61% here, Pierre Ferrand first with 45 true days of cover (AW29).
+      const reading = E.inventory.restockReading({
+        onHand: i.bottles,
+        dailyDemand: values,
         leadTime,
+        serviceLevel,
       });
-      const doc = E.inventory.daysOfCover(i.qty, profile.mean);
-      const annualDemand = profile.mean * 365;
+      const annualDemand = reading.mean * 365;
       const orderingCost = 25; // fixed cost per PO (assumption; configurable)
       // EOQ's holding term is a fraction of unit cost. With no cost there is
       // no holding cost and therefore no order quantity to state.
@@ -626,16 +624,19 @@ export class AnalyticsService {
       return {
         id: i.id,
         name: i.name,
-        onHand: i.qty,
-        avgDailyDemand: profile.mean,
-        demandCv: profile.cv,
-        xyzClass: E.inventory.xyzClassify(profile.cv),
-        daysOfCover: doc,
-        reorderPoint: rop?.reorderPoint ?? null,
-        safetyStock: rop?.safetyStock ?? null,
-        stockoutProbability: stockoutProb,
+        // Bottles, open one included, to the hundredth: 250 of 750 ml prints
+        // 0.33, not 0.3333333333333333.
+        onHand: E.inventory.bottlesToHundredth(i.bottles),
+        avgDailyDemand: reading.mean,
+        demandDays: reading.demandDays,
+        demandCv: reading.cv,
+        xyzClass: E.inventory.xyzClassify(reading.cv),
+        daysOfCover: reading.daysOfCover,
+        reorderPoint: reading.reorderPoint,
+        safetyStock: reading.safetyStock,
+        stockoutProbability: reading.stockoutProbability,
         eoq: eoq?.eoq ?? null,
-        needsReorder: rop ? i.qty <= rop.reorderPoint : false,
+        needsReorder: reading.needsReorder,
         unitCost: i.unitCost,
         costBasis: i.costBasis,
         inventoryValue: i.inventoryValue,
@@ -673,12 +674,13 @@ export class AnalyticsService {
         serviceLevel,
         leadTimeDays: leadTime,
         demandWindowDays: sinceDays,
+        minDemandDays: E.inventory.MIN_DEMAND_DAYS,
       },
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `wine_consumption_log units/day over ${sinceDays}d`,
-        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
+        demand: `wine_consumption_log units/day over ${sinceDays}d; on hand is sealed bottles plus inventory_lot_rollup.open_ml over bottle_size_ml (750 ml where unstated, as record_glass_pour pours)`,
+        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost. A wine sold on fewer than ${E.inventory.MIN_DEMAND_DAYS} days in the window has no measured swing, so its stockoutProbability, reorderPoint, safetyStock and demandCv are null; it is listed when on hand does not cover its mean lead-time demand (ADR 0299)`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
           "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",

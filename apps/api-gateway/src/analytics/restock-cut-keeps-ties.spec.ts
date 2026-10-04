@@ -22,23 +22,28 @@ interface Sku {
 }
 
 /**
- * Thirty wines below their reorder point, each with all its demand on one
- * day (Tuzlu's import-day shape, so risk is a function of cover alone):
- * 22 at distinct covers, then FIVE at 22.5 days — one risk, which floating
- * point returns in more than one bit pattern — then three at lower risk.
+ * Thirty wines below their reorder point, each with its demand spread evenly
+ * over the 14 days a risk needs (ADR 0299), so risk is a function of cover
+ * alone: 22 at distinct covers, then FIVE at 9 days — one risk, about 37%,
+ * which floating point returns in more than one bit pattern — then three at
+ * lower risk. Every cover is below the 17.2 days the reorder point covers.
+ *
+ * (ADR 0272 wrote these on Tuzlu's one-import-day shape, covers 2.5× these;
+ * ADR 0299 gives such a series no risk at all, so the shape moved, not the
+ * assertions.)
  */
 function cellar(): Sku[] {
   const distinct = Array.from({ length: 22 }, (_, i) => ({
     id: `d${String(i).padStart(2, "0")}`,
     sold: 9,
-    cover: i,
+    cover: i * 0.4,
   }));
   const tied = [5, 7, 10, 11, 17].map((sold, i) => ({
     id: `tie${i}`,
     sold,
-    cover: 22.5,
+    cover: 9,
   }));
-  const lower = [30, 35, 40].map((cover, i) => ({
+  const lower = [12, 14, 16].map((cover, i) => ({
     id: `low${i}`,
     sold: 9,
     cover,
@@ -54,6 +59,7 @@ async function reorderList(skus: Sku[]) {
       name: `Wine ${s.id}`,
       type: "red",
       qty: (s.cover * s.sold) / 90,
+      bottles: (s.cover * s.sold) / 90,
       unitCost: 10,
       costBasis: "invoiced_lot",
       unitPrice: 30,
@@ -64,15 +70,18 @@ async function reorderList(skus: Sku[]) {
     })),
   );
   jest.spyOn(service as any, "loadConsumption").mockResolvedValue(
-    // A wine that sold nothing has no consumption row at all.
+    // A wine that sold nothing has no consumption row at all. The rest sold
+    // on 14 days, the fewest a measured risk needs (ADR 0299).
     skus
       .filter((s) => s.sold > 0)
-      .map((s) => ({
-        masterWineId: `m-${s.id}`,
-        inventoryId: s.id,
-        qty: s.sold,
-        date: dayBack(30),
-      })),
+      .flatMap((s) =>
+        Array.from({ length: 14 }, (_, d) => ({
+          masterWineId: `m-${s.id}`,
+          inventoryId: s.id,
+          qty: s.sold / 14,
+          date: dayBack(20 + d),
+        })),
+      ),
   );
   return service.getInventoryScience("r1");
 }
@@ -107,11 +116,14 @@ describe("the restock cut keeps its ties (A-070, ADR 0272)", () => {
     // The lane verifier's probe: 5 wines with demand below their reorder
     // point, and 40 that sold nothing and hold nothing, "below" a reorder
     // point of 0 at exactly 0% risk. Extending the cut through that tie
-    // listed all 45; the code before ADR 0272 listed 25.
+    // listed all 45; the code before ADR 0272 listed 25. [ADR 0299: a wine
+    // with no sale in the window has no measured swing, so the 40 now carry
+    // no risk (null) rather than 0% — still a group the cut does not extend
+    // through, and still listed after every wine with a risk.]
     const withDemand = [0, 1, 2, 3, 4].map((cover, i) => ({
       id: `d${i}`,
       sold: 9,
-      cover,
+      cover: cover * 0.4,
     }));
     const none = Array.from({ length: 40 }, (_, i) => ({
       id: `z${String(i).padStart(2, "0")}`,
@@ -131,16 +143,16 @@ describe("the restock cut keeps its ties (A-070, ADR 0272)", () => {
   });
 
   it("does not call two risks that merely print alike a tie (control: passes before ADR 0272 too)", async () => {
-    // 24 distinct risks, then two wines whose risks differ in the fourth
-    // decimal and print as the same whole percent, straddling row 25.
+    // 24 distinct risks, then two wines whose risks differ in the third
+    // decimal and print as the same whole percent (34%), straddling row 25.
     const distinct = Array.from({ length: 24 }, (_, i) => ({
       id: `d${String(i).padStart(2, "0")}`,
       sold: 9,
-      cover: i,
+      cover: i * 0.4,
     }));
     const near = [
-      { id: "pa", sold: 9, cover: 24 },
-      { id: "pb", sold: 9, cover: 24.05 },
+      { id: "pa", sold: 9, cover: 9.6 },
+      { id: "pb", sold: 9, cover: 9.62 },
     ];
     const out = await reorderList([...distinct, ...near]);
     const risk = (id: string) =>

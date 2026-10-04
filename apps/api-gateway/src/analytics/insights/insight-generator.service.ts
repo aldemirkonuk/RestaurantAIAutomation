@@ -179,8 +179,18 @@ export const BASKET_MIN_LIFT = 1.3;
  *       test corrected over every pair; a tied stockout #1 is withheld and no
  *       longer carries a hard-coded z of 2. A version-3 row may hold any of
  *       those sentences, so it is recomputed, not served.
+ *   5 — lane rec's (ADR 0291, PR #607); 6 — lane cap's (ADR 0292). Each lands
+ *       its own history line; neither is on this branch.
+ *   7 — 2026-10-04 (ADR 0299): the stockout #1 counts the open bottle in on
+ *       hand, and ranks only wines sold on at least MIN_DEMAND_DAYS days in
+ *       the window. "Jameson Irish Whiskey ranks #1 of 134 by stockout risk
+ *       (61.0%). Only 0 bottles on hand" was a one-day import series read as
+ *       a swing, about a wine whose open bottle was not counted. A row below 7
+ *       may hold that sentence, so it is recomputed, not served. Numbered
+ *       after rec (5) and cap (6); whichever of the three merges later takes
+ *       one past the version on main at its merge, by later-truth.
  */
-export const INSIGHT_GENERATOR_VERSION = 4;
+export const INSIGHT_GENERATOR_VERSION = 7;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -612,10 +622,47 @@ export class InsightGeneratorService {
   // Data bundle
   // ==========================================================================
 
+  /**
+   * Open-bottle ml per inventory row (ADR 0299). The stockout #1 read sealed
+   * bottles alone and ranked Pierre Ferrand — 950 of 1,000 ml open — as the
+   * likeliest wine to run out. A failed read returns null and says so in the
+   * log: the family is then silent rather than wrong. Never rejects, so it can
+   * be started before the reads it runs alongside.
+   */
+  private async readOpenMl(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+  ): Promise<Map<string, number> | null> {
+    try {
+      const { data, error } = await client
+        .from("inventory_lot_rollup")
+        .select("inventory_id, open_ml")
+        .eq("restaurant_id", restaurantId);
+      if (error) {
+        this.logger.error(
+          `insight bundle query on inventory_lot_rollup failed — the stockout ` +
+            `#1 will be silent rather than wrong: ${error.code ?? "?"} ${error.message ?? error}`,
+        );
+        return null;
+      }
+      const byInventory = new Map<string, number>();
+      for (const r of data || [])
+        byInventory.set(r.inventory_id, Number(r.open_ml) || 0);
+      return byInventory;
+    } catch (err: any) {
+      this.logger.error(
+        `insight bundle query on inventory_lot_rollup rejected: ${err?.message ?? err}`,
+      );
+      return null;
+    }
+  }
+
   private async loadBundle(restaurantId: string): Promise<Bundle> {
     const client = this.dbService.getClient();
     const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
     const since180 = new Date(Date.now() - 180 * 86400000).toISOString();
+    // Started now so it runs alongside the reads below (ADR 0299).
+    const openMlRead = this.readOpenMl(client, restaurantId);
 
     // The manager's own exclusions — closures, buyouts, outages. Loaded with
     // the data, not after it, because every daily series below is built
@@ -648,7 +695,7 @@ export class InsightGeneratorService {
         client
           .from("restaurant_inventory")
           .select(
-            "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+            "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, bottle_size_ml, master_wine_library(primary_type)",
           )
           .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
@@ -738,6 +785,7 @@ export class InsightGeneratorService {
       availability: new Set<DataRequirement>(),
       excludedDates: exclusions.dates,
       exclusionsReadable: exclusions.readable,
+      openMlByInventory: await openMlRead,
     };
 
     if (bundle.consumption.length) bundle.availability.add("consumption");
@@ -1017,6 +1065,11 @@ export class InsightGeneratorService {
       !bundle.availability.has("consumption")
     )
       return;
+    // On hand counts the open bottle (ADR 0299). When that read failed there
+    // is no on-hand figure to rank by — the sealed count alone is the reading
+    // that put Pierre Ferrand, 950 of 1,000 ml open, at "0 bottles".
+    const openMl = bundle.openMlByInventory;
+    if (!openMl) return;
 
     const byWine = new Map<string, number[]>();
     for (const c of bundle.consumption) {
@@ -1043,28 +1096,34 @@ export class InsightGeneratorService {
       const qtys = byWine.get(item.master_wine_id) || [];
       if (qtys.length < 5) continue;
       const dailyMean = qtys.reduce((a: number, b: number) => a + b, 0) / 90;
-      const profile = E.demandProfile(
-        this.toDaily(
+      const onHand = E.bottlesOnHand(
+        item.stock_live || 0,
+        openMl.get(item.id),
+        item.bottle_size_ml,
+      );
+      // The same reading as the reorder register (ADR 0299). A wine sold on
+      // fewer than MIN_DEMAND_DAYS days has no measured swing and so no risk:
+      // every Tuzlu wine sold on one import day read 61%, and alone — no tie
+      // to withhold it — one of them printed as "#1 by stockout risk".
+      const reading = E.restockReading({
+        onHand,
+        dailyDemand: this.toDaily(
           bundle.consumption
             .filter((c) => c.wineId === item.master_wine_id)
             .map((c) => ({ date: c.date, value: c.qty })),
           90,
         ).values,
-      );
-      if (!profile || profile.mean <= 0) continue;
-      const prob = E.stockoutProbability({
-        onHand: item.stock_live || 0,
-        avgDemandPerPeriod: profile.mean,
-        demandStdev: profile.stdev,
         leadTime: 7,
+        serviceLevel: 0.95,
       });
+      if (!reading.measured || reading.mean <= 0) continue;
+      const prob = reading.stockoutProbability;
       if (prob !== null && dailyMean > 0.05) {
-        const onHand = item.stock_live || 0;
         ranked.push({
           id: String(item.id ?? item.master_wine_id),
           name: item.wine_name || item.master_wine_id,
           stockoutProbability: prob,
-          daysOfCover: E.daysOfCover(onHand, profile.mean),
+          daysOfCover: reading.daysOfCover,
           onHand,
           rows: qtys.length,
         });
@@ -1085,7 +1144,8 @@ export class InsightGeneratorService {
         // The wines actually ranked — not every active inventory row, most of
         // which had too little demand to be given a risk at all.
         peerCount: ranked.length,
-        attributeReading: `Only ${worst.onHand} bottles on hand vs its demand pattern — reorder before the next delivery window.`,
+        // To the tenth: 300 of 750 ml open reads "0.4", not 0.4000000000000001.
+        attributeReading: `Only ${Math.round(worst.onHand * 10) / 10} bottles on hand vs its demand pattern — reorder before the next delivery window.`,
       };
       push(
         this.record("wine.stockout_risk.peer_rank", "risk", "peer", ev, {
@@ -1892,4 +1952,10 @@ interface Bundle {
   excludedDates: Set<string>;
   /** False when that list could not be read — never the same as "empty". */
   exclusionsReadable: boolean;
+  /**
+   * Open-bottle ml per inventory row, from `inventory_lot_rollup.open_ml`.
+   * Null when the read failed: a stockout risk would then rank sealed counts
+   * as if no bottle were open, so the stockout #1 stays silent (ADR 0299).
+   */
+  openMlByInventory: Map<string, number> | null;
 }

@@ -240,6 +240,137 @@ export function daysOfCover(
   return onHand / avgDailyDemand;
 }
 
+// ---------------------------------------------------------------------------
+// What a restock reading may say (ADR 0299)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bottles on hand: the sealed count plus the open bottle, in bottles.
+ *
+ * A spirit poured by the glass spends most of its life in an OPEN bottle —
+ * `inventory_lot_rollup.open_ml`, the sum of `open_bottle_ml` over live lots.
+ * Counting sealed bottles alone read Pierre Ferrand at 0 bottles while it held
+ * 950 of 1,000 ml, and ranked it the likeliest wine to run out (AW29). The size
+ * an open bottle is read back at is the size the writer poured it from:
+ * `record_glass_pour` takes `COALESCE(bottle_size_ml, 750)`, so a row with no
+ * stated size is read at 750 ml too. A size of 0 or less is one the writer
+ * refuses (ADR 0285), so it converts nothing rather than dividing by it.
+ */
+export function bottlesOnHand(
+  sealed: number,
+  openMl: number | null | undefined,
+  bottleSizeMl: number | null | undefined,
+): number {
+  const size = bottleSizeMl ?? 750;
+  const open = Number(openMl) || 0;
+  if (!(size > 0) || !(open > 0)) return sealed;
+  return sealed + open / size;
+}
+
+/** Bottles on hand to the hundredth, for display (250 of 750 ml → 0.33). */
+export function bottlesToHundredth(bottles: number): number {
+  return Number(bottles.toFixed(2));
+}
+
+/**
+ * The days with a sale a demand series needs before its swing — standard
+ * deviation, CV, safety stock, reorder point and stockout probability — is
+ * stated. The same floor as `MIN_TREND_OBSERVED` (insight-generator.service.ts):
+ * two weeks of observed days before a pattern is called one.
+ *
+ * Below it the swing is an artefact of how the sales were RECORDED, not how
+ * the wine sells: every Tuzlu series held one import day (F-129), so every
+ * series had CV = √90 and every wine with nothing sealed read the same 61%.
+ */
+export const MIN_DEMAND_DAYS = 14;
+
+export interface RestockReading {
+  /** Mean units per day over the window, zero-filled. Always stated. */
+  mean: number;
+  /** Null until the series is measured. */
+  stdev: number | null;
+  cv: number | null;
+  /** Days in the window with a sale (value > 0). */
+  demandDays: number;
+  /** `demandDays >= MIN_DEMAND_DAYS`: the swing is the wine's, not the import's. */
+  measured: boolean;
+  /** onHand / mean; null when nothing sold in the window. */
+  daysOfCover: number | null;
+  /** mean × lead time — needs only the mean. */
+  leadTimeDemand: number;
+  reorderPoint: number | null;
+  safetyStock: number | null;
+  stockoutProbability: number | null;
+  /**
+   * Measured: on hand at or below the reorder point (unchanged). Unmeasured:
+   * on hand at or below the mean lead-time demand, and only where that is
+   * PROVABLY below the reorder point — at a service level of 0.5 or more the
+   * safety stock is never negative, so ROP ≥ mean × lead time whatever the
+   * swing turns out to be. Below 0.5 nothing can be shown, so it is false.
+   */
+  needsReorder: boolean;
+}
+
+/**
+ * One reading of a wine's restock position, at every site that states one —
+ * the reorder register, Wine-360 and the stockout #1 insight — so the three
+ * cannot disagree about what a series supports (ADR 0299).
+ */
+export function restockReading(params: {
+  onHand: number;
+  dailyDemand: number[];
+  leadTime: number;
+  serviceLevel: number;
+}): RestockReading {
+  const { onHand, dailyDemand, leadTime, serviceLevel } = params;
+  const profile = demandProfile(dailyDemand);
+  const m = profile?.mean ?? 0;
+  const demandDays = dailyDemand.filter((v) => v > 0).length;
+  const measured = profile !== null && demandDays >= MIN_DEMAND_DAYS;
+  const leadTimeDemand = m * leadTime;
+  const cover = daysOfCover(onHand, m);
+  if (!measured || profile === null) {
+    const z = serviceLevelZ(serviceLevel);
+    return {
+      mean: m,
+      stdev: null,
+      cv: null,
+      demandDays,
+      measured: false,
+      daysOfCover: cover,
+      leadTimeDemand,
+      reorderPoint: null,
+      safetyStock: null,
+      stockoutProbability: null,
+      needsReorder: z !== null && z >= 0 && onHand <= leadTimeDemand,
+    };
+  }
+  const rop = reorderPoint({
+    serviceLevel,
+    avgDemandPerPeriod: profile.mean,
+    demandStdev: profile.stdev,
+    avgLeadTime: leadTime,
+  });
+  return {
+    mean: profile.mean,
+    stdev: profile.stdev,
+    cv: profile.cv,
+    demandDays,
+    measured: true,
+    daysOfCover: cover,
+    leadTimeDemand,
+    reorderPoint: rop?.reorderPoint ?? null,
+    safetyStock: rop?.safetyStock ?? null,
+    stockoutProbability: stockoutProbability({
+      onHand,
+      avgDemandPerPeriod: profile.mean,
+      demandStdev: profile.stdev,
+      leadTime,
+    }),
+    needsReorder: rop ? onHand <= rop.reorderPoint : false,
+  };
+}
+
 /**
  * Fill rate (Type-2 service level): expected fraction of demand met from
  * stock. Uses the standard normal loss function

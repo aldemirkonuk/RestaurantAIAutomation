@@ -1,0 +1,60 @@
+# 0299 — A stockout risk counts the open bottle and needs a measured history
+
+- **Status:** Proposed 2026-10-04. This is a technical-approach choice made under the locked [[0020-no-fabricated-answers]]. The 14-day floor, the bottle-size rule and the rule for listing an unmeasured wine are the build's picks, **not founder answers**. The two founder answers below are about the list's order and its 0% group. Both are answered, and both are built on a follow-up branch, not here.
+- **Date:** 2026-10-04
+- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Keywords:** stockout probability, stockout risk, restock, reorder point, safety stock, days of cover, open bottle, open_ml, open_bottle_ml, bottle_size_ml, inventory_lot_rollup, demand history, MIN_DEMAND_DAYS, restockReading, bottlesOnHand, one-day series, import day, F-129, CV, XYZ, Wine-360, stockout #1, INSIGHT_GENERATOR_VERSION, AW29, A-025, Tuzlu Rüzgar
+- **Links:** [[0020-no-fabricated-answers]]; [[0051-rebuilt-pages-show-live-data-only]] and [[0053-analytics-cost-unknown-not-invented]] (an unknown is null, and the basis says why); [[0011-pos-sale-volume-contract]] (glass pours are stored in ml); [[0124-a-bottle-has-one-identity-and-every-price-names-it]] (`:91-93`: most rows state no bottle size); [[0272-a-ranking-or-a-pairing-is-printed-only-when-the-data-can-tell-it-apart]] (its order and cuts are kept, and Decision 4's prose is bracketed); [[0285-a-short-pour-opens-the-next-bottle]] (the writer's 750 ml fallback and its refusal of a size of 0 or less); ADR 0281 (lane postime, unmerged: POS sales dated at sale time); `claims.d/fix-stockout-counts-open-ml.jsonl`; `tech-debt.d/2026-10-04-fix-stockout-counts-open-ml.md`; the lane brief `p4-scratch/sim-run/fixes/briefs/stockout.md` and the plan `p4-scratch/sim-run/fixes/cont/stockout-plan.json` (both outside the repo)
+
+## Context
+
+The analytics walk on Tuzlu Rüzgar (2026-10-03, read-only) read *"Jameson Irish Whiskey ranks #1 of 134 by stockout risk (61.0%). Only 0 bottles on hand"*. "What to buy back" listed eight wines at exactly 61%. Pierre Ferrand came first, though it had 45 days of cover (A-025, cluster AW29; `raw/sl-stockout-tie.digest.json`: 8 rows at 0.6098340419302315). There were two causes, and either one alone produces wrong rows.
+
+1. **On hand counted sealed bottles only.** A spirit poured by the glass sits in an open bottle. `inventory_lot_rollup.open_ml` already sums `open_bottle_ml` over live lots (`supabase/migrations/20260902150000_lot_cost_truth.sql:499`). The register never read it. Its rollup select was `"inventory_id, live_qty, wac, has_invoice_cost, wac_qty"`, and it set on hand to `lot?.live_qty ?? i.stock_live ?? 0`. Pierre Ferrand held 950 of 1,000 ml and read 0 bottles. Wine-360 (`advanced-analytics.service.ts`, `getWine360`) and the stockout #1 insight (`insight-generator.service.ts`, `computeInventoryFamily`, `item.stock_live || 0`) had the same gap.
+2. **Every demand series held one day.** The sales were imported on a single day (F-129), so each series had all its demand on one date. Zero-filled over 90 days, that gives CV = √90 = 9.4868 for every wine (all 103 demand rows in the digest). With nothing sealed, P = 1 − Φ(−√(7/90)) = 0.6098 at a 7-day lead time, whatever the volume. The swing was an artefact of how the sales were recorded, not of how the wine sells. No site required any history before stating a risk, a safety stock or a reorder point.
+
+The fix for the tie itself (a tied #1 is withheld, a cut keeps its ties) is ADR 0272's and is on `main` (#602). It does not touch either cause: a single wine with a one-day series still printed "#1 by stockout risk (61.0%)".
+
+## Options considered
+
+1. **Count the open bottle, and give a risk only to a series with 14 days with a sale (chosen).** See the Decision.
+2. **Cap the risk at a sanity ceiling (for example 61%).** It hides the number, and the list stays wrong: the eight rows still tie, and Pierre Ferrand still reads 0 bottles. Rejected (AW05 names the pattern).
+3. **Wait for lane postime alone (ADR 0281: sales dated at sale time).** That re-dates new sales only. It leaves the open-ml gap, the legacy one-day rows (its F2 re-dating is the founder's open call), and spikes of 2 to 13 days. Rejected as the whole fix; it is a precondition for wines to earn a risk again.
+4. **Reuse the insight's existing 5-row floor.** It counts consumption rows, not days, so a one-day series passes it whenever the import wrote five lines that day. Jameson's did, and printed as #1. Rejected.
+5. **A CV ceiling at √N.** It catches only the exact one-day shape. A two-day spike has CV about 6.6 and ties again. Rejected.
+6. **An intermittent-demand model (Syntetos–Boylan classes, Croston, a compound-Poisson lead-time demand).** This is the right model for slow sellers, but it is a model change, not a fix. Left for a follow-up (Consequences).
+7. **Keep the σ-based reorder point for an unmeasured wine.** Its safety stock is 1.645 × an import artefact. On the walk's digests it lists Malagousia at 8 bottles and 45 days of cover (the plan's figure, not re-measured here). Rejected.
+8. **Print mean × lead time as "Reorder at" for an unmeasured wine.** It understates the reorder point, which always includes a safety stock at a 95% service level. Rejected: the cell is a dash with a reason.
+9. **Read `restaurant_inventory.current_volume_ml`.** Where it was measured it read 0 on all 27 rows while `inventory_lots.open_bottle_ml` held the real 1,650 ml (`.planning/v3.0-TECH-DEBT.md:3133-3135`). Rejected.
+10. **Embed `inventory_lots` in the inventory select.** That is an untested PostgREST path, and the rollup view already carries `open_ml`. Rejected.
+11. **The size fallback in `inventory.service.ts:80-82` (the row's size, then the master library's, then 750).** It disagrees with the writer, which pours from `COALESCE(restaurant_inventory.bottle_size_ml, 750)` and never reads the library. Rejected; the disagreement is filed in tech debt.
+12. **Do nothing.** Every house that imports history, or sells by the glass, gets risks that rank how its data was loaded.
+
+## Decision
+
+A stockout risk is stated only for a wine sold on at least 14 days in the window, and on hand always counts the open bottle. The rules:
+
+1. **On hand = sealed + open ml ÷ bottle size** (`engine/inventory-science.ts`, `bottlesOnHand`). The size is the size the writer poured from: `COALESCE(restaurant_inventory.bottle_size_ml, 750)` (`supabase/migrations/20261217112500_a_short_pour_opens_the_next_bottle.sql:102`). A size of 0 or less, which the writer refuses (`:117`), converts nothing. Sealed counts still drive cost, inventory value and ABC; open bottles are not valued.
+2. **A measured history is 14 days with a sale** (`MIN_DEMAND_DAYS = 14`), counted as days with a value above 0 in the zero-filled 90-day window. It is the same two-week floor as `MIN_TREND_OBSERVED` (`insight-generator.service.ts:115`). Below it, the standard deviation, CV, XYZ class, safety stock, reorder point and stockout probability are null, and the basis says why. The mean, days of cover and mean lead-time demand need only the mean, so they stay.
+3. **An unmeasured wine is listed when its bottles do not cover its mean lead-time demand** (on hand ≤ mean × lead time). This is provable without the swing whenever the safety stock cannot be negative, so the reorder point is at least mean × lead time. That holds at a service level of 0.5 or more (z ≥ 0). Below 0.5 nothing is provable, so it is not listed. A wine with no sale in the window has a mean of 0, so it is listed only at nothing on hand, as before. Its risk is now null rather than 0%.
+4. **One engine reading for every site** (`restockReading`). The reorder register, Wine-360 and the stockout #1 insight all take their risk from it, and a CLAIMS sweep fails on a direct `stockoutProbability({` call anywhere else in the gateway's non-spec code. The insight ranks only measured wines. When the open-ml read fails, the insight is silent and logs the failure: ranking sealed counts would repeat the defect. `INSIGHT_GENERATOR_VERSION` becomes 7.
+5. **No ordering change.** ADR 0272's comparator, its 25-row cut and the 14 bars are byte-identical. With unmeasured rows, its order reads "highest measured risk first, then the fewest days of cover". The page and the export now say that order when a listed row has no risk. They give the reason for each dash, and draw no bars when no listed wine has a risk (`rp-view.ts` contract 2).
+
+**Founder answers, both for the follow-up branch (verbatim picks, AskUserQuestion; quoted from the lane brief):**
+
+- **The list's order** (2026-10-04 ~20:50Z): *"Soonest to run out (Recommended)"* — days of cover for every row, percentage breaks ties; built on a follow-up branch stacked on this one (~5 files) amending ADR 0272 Decision 4 and its claims rows with brackets. This lane's own PR changes no ordering rule. [The plan recorded this fork as open; it was answered before the build, and this record carries it as answered (a).]
+- **ADR 0272 fork 3** (2026-10-04 ~21:30Z): *"Out of both, say a count"*: the 0% group (no measured demand in the window, nothing on hand) leaves BOTH the restock table and the 14 bars; one line carries them: "N more below their reorder point have no demand to judge." Build it on the stockout follow-up branch that amends ADR 0272 D4 ("Soonest to run out"), server list cut (analytics.service.ts ~:694) and web bars/table (rp-registers-house.tsx). Under this record that group carries a null risk, not 0%; the follow-up keys it by "no sale in the window and nothing on hand".
+
+## Consequences
+
+- **What the walk's eight rows become** (fixture arithmetic from the digests, not re-measured on production). Once open ml is counted and the one-day risk is withheld, Pierre Ferrand (0.95 bottles against a mean lead-time demand of 0.31), Beefeater (0.6 against 0.31) and Metaxa (0.6 against 0.23) leave the list. The walk's truth gave them 45, 18.5 and 17.9 days of cover. Sonoma, Tekirdağ and Yeni Rakı (0 bottles), Jameson (0.05 bottles, 0.9 days) and Efe Black (0.33 bottles, 2.3 days) stay, in order of days of cover. None of them carries a percentage. The stockout #1 is silent on Tuzlu until a wine has 14 dated sale days.
+- **Given up.** A slow seller with fewer than 14 sale days in 90 shows no percentage, and no reorder point or safety stock, though its days of cover are kept. A series that mixes legacy one-day rows with newly dated sales passes the floor distorted until postime's F2 re-dating runs. Open bottles are not valued. Jameson's true on hand is about 0.78 bottles in stranded lots (AW08, ADR 0285's repair, unrun).
+- **Harder.** Wine-360's `demand` field changes shape, from the engine's `{mean, stdev, cv}` or null to `{mean, stdev, cv, demandDays, measured}`. No client reads it today (its only caller is `analytics.controller.ts:1025`). The register's `onHand` is now a decimal to the hundredth.
+- **Merge order.** Lane postime first, then sig (#602, merged), cap and rec in either order, then this lane. `INSIGHT_GENERATOR_VERSION` conflicts textually with rec (5) and cap (6). The later of the three takes one past the version on `main` at its merge, by later-truth, and keeps every history line. Lane units (ADR 0297, unbuilt) plans an ml-to-bottles helper; whichever lands second folds `bottlesOnHand` into it.
+- **Revisit when** a house has 14 or more dated sale days on most wines and slow sellers still show no risk. That is the signal for Option 6, a lead-time demand model for intermittent sellers.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-04 | — | Created by lane stockout (wave 3 of the analytics-walk fixes), on `fix/stockout-counts-open-ml` |
