@@ -13,10 +13,12 @@ import {
   FiringPeriod,
   SuppressionScope,
   buildSuppressionKey,
+  dateOfGrain,
   effectiveScope,
   suppressionKeys,
   withFiring,
 } from "./insights/suppression";
+import { WEEKDAY_NAMES } from "./engine";
 import {
   MarginAdviceService,
   type HouseAdvice,
@@ -39,6 +41,101 @@ export function firingPeriodOf(urgency: Recommendation["urgency"]): FiringPeriod
   if (urgency === "now") return "day";
   if (urgency === "this_month") return "month";
   return "week";
+}
+
+/**
+ * When a sales dip is for, read from the age of the day it is about
+ * (ADR 0291).
+ *
+ * The dip rule restates `*.vs_same_weekday`, which compares the NEWEST day the
+ * series observed with the same weekday's history — and walks back as far as
+ * 90 days to find one (`insight-generator.service.ts`, `timeSeriesInsights`).
+ * The rule used to stamp every such entry "Tonight", so on 2026-10-03 the page
+ * said "Tonight" about Saturday 2026-08-15. "Tonight" is a claim that the day
+ * is recent; it is earned only by a day that is.
+ *
+ *   - age 0–1 → `now`: the newest day the series can hold (`toDaily` ends at
+ *     yesterday, UTC), so tonight is the next shift after it;
+ *   - age 2–7 → `this_week`: the same weekday comes round within the week;
+ *   - age over 7, or an age that cannot be read → `this_month`: by then the
+ *     same weekday has come round again with nothing on record for it, which
+ *     is the rule's own comparator saying the read is stale. An unknown age
+ *     never earns `now`.
+ *
+ * The age is counted in whole UTC days — the clock `toDaily` cuts its series
+ * on — so "yesterday" here is the same day the generator calls yesterday.
+ */
+export interface SalesDipWhen {
+  urgency: Recommendation["urgency"];
+  /** The day the dip is about ("2026-08-15"), when the period key names one. */
+  date: string | null;
+  /** Whole UTC days from that day to today. Null when it cannot be read. */
+  ageDays: number | null;
+}
+
+/** Past this many days the same weekday has come round again unrecorded. */
+export const SALES_DIP_WEEK_DAYS = 7;
+
+export function salesDipWhen(
+  periodKey: string | null | undefined,
+  now: Date = new Date(),
+): SalesDipWhen {
+  const unread: SalesDipWhen = {
+    urgency: "this_month",
+    date: null,
+    ageDays: null,
+  };
+  // Only a day grain names a day. A window or trend grain ("p7:", "t28:")
+  // names the END of a span, which is not the day the dip is about.
+  const date = periodKey?.startsWith("d:") ? dateOfGrain(periodKey) : null;
+  if (!date) return unread;
+  const dayMs = Date.parse(`${date}T00:00:00Z`);
+  // "d:2026-02-31" matches the pattern but names no calendar day.
+  if (
+    Number.isNaN(dayMs) ||
+    new Date(dayMs).toISOString().slice(0, 10) !== date
+  )
+    return unread;
+  const todayMs = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  const ageDays = Math.round((todayMs - dayMs) / 86400000);
+  // A day after today is not an age; it is a clock or data fault.
+  if (ageDays < 0) return unread;
+  if (ageDays <= 1) return { urgency: "now", date, ageDays };
+  if (ageDays <= SALES_DIP_WEEK_DAYS)
+    return { urgency: "this_week", date, ageDays };
+  return { urgency: "this_month", date, ageDays };
+}
+
+const SALES_DIP_LEVERS =
+  "brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.";
+
+/**
+ * The dip entry's prescription for its band. `now` keeps the words it always
+ * had; any other band opens on the weekday it is for and states how old the
+ * day is, and never says "Tonight".
+ */
+export function salesDipAdvice(
+  when: SalesDipWhen,
+  subject: string | null | undefined,
+): string {
+  if (when.urgency === "now") return `Tonight: ${SALES_DIP_LEVERS}`;
+  const levers =
+    SALES_DIP_LEVERS.charAt(0).toUpperCase() + SALES_DIP_LEVERS.slice(1);
+  const weekday = when.date
+    ? WEEKDAY_NAMES[new Date(`${when.date}T00:00:00Z`).getUTCDay()]
+    : subject || null;
+  const opener = weekday
+    ? `Before the next ${weekday}:`
+    : "Before that weekday comes round again:";
+  const age =
+    when.date && when.ageDays !== null
+      ? `the newest day this comparison could read is ${weekday} ${when.date}, ${when.ageDays} days ago.`
+      : "the day this comparison read carries no date, so how old it is cannot be said.";
+  return `${opener} ${age} ${levers}`;
 }
 
 export interface Recommendation {
@@ -265,19 +362,29 @@ export class RecommendationsService {
     const pct = (v: number) => `${Math.abs(v * 100).toFixed(0)}%`;
 
     // ---- Sales / demand rules --------------------------------------------
+    // A SALES dip only (ADR 0291): `overall.purchase_spend.vs_same_weekday`
+    // (category purchasing) also carries the comparator's name, and a soft
+    // purchasing day must not raise "brief the floor". What can fire here is
+    // whole-check sales from the till (`overall.revenue`) or, in a house with
+    // only the cellar log, bottles sold (`overall.bottles`).
     const salesBaseline = ctx.insights.find(
       (i: any) =>
         i.candidateKey?.includes("vs_same_weekday") &&
+        i.category === "sales" &&
         (i.effectPct ?? 0) < -0.08,
     );
+    // Urgent only when the day is recent: the comparison reads the newest day
+    // it observed, which can be weeks old (ADR 0291).
+    const salesDip = salesBaseline
+      ? salesDipWhen(salesBaseline.periodKey ?? null)
+      : null;
     rule("sales_below_weekday_baseline", !!salesBaseline, () => ({
       observation: salesBaseline!.sentence,
-      recommendation:
-        "Tonight: brief the floor on top-margin picks, run one by-the-glass feature, and pair your strongest server with the weakest section. A soft day is a staffing-and-suggestion problem before it's a demand problem.",
+      recommendation: salesDipAdvice(salesDip!, salesBaseline!.subject),
       rationale:
         "Same-weekday baselines remove day-of-week mix, so the gap is execution or traffic — the levers you control same-day are selling behavior and features.",
       category: "sales",
-      urgency: "now",
+      urgency: salesDip!.urgency,
       score: 3,
       // Carried from the insight this rule restates, so a dismissal can be
       // scoped to THIS Wednesday, to every Wednesday, or to the rule — see
