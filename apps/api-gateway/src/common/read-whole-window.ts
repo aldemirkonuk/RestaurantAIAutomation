@@ -29,8 +29,8 @@ import { Logger, ServiceUnavailableException } from "@nestjs/common";
  *     `select` must project `id` and ask for `{ count: "exact" }`, and it must
  *     not order, limit or range: this file owns all three, and a reader's own
  *     `.order()` would sort AHEAD of `id`, so the cursor would skip rows.
- *     `scripts/check_window_reads_are_whole.py` checks all of it at every call
- *     site.
+ *     ADR 0292's guard, `scripts/check_window_reads_are_whole.py`, checks all
+ *     of it at every call site; it ships in its own PR, after this helper.
  *   * The exact count is what proves the read whole. Page 0's count is the
  *     window's size. A later page's count is what is left past the cursor, so
  *     it must equal the size minus the rows already read; when it does not, a
@@ -52,8 +52,8 @@ import { Logger, ServiceUnavailableException } from "@nestjs/common";
  *
  * WHAT IT CANNOT SEE
  * ------------------
- *   * With NO count reported (test doubles only: the guard forces the literal
- *     at every call site), a short page ends the read. A server cap lowered
+ *   * With NO count reported (test doubles only: every reader asks for
+ *     `count: "exact"`), a short page ends the read. A server cap lowered
  *     below the page size AND a count dropped from the response together would
  *     pass unseen.
  *   * The read is not one snapshot. A row changed behind the cursor after it
