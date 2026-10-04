@@ -1,0 +1,199 @@
+-- A-046 / A-018 (analytics walk, 2026-10-03): "Cost of goods (365d)" summed
+-- delivered purchase orders, "revenue" was menu price x bottles on hand, and
+-- the revenue Gini read the same shelf value. Migration
+-- cost_of_goods_reads_what_sold (ADR 0298) adds public.pos_item_sales, the
+-- one read of what the till sold per stock item and the bottles the POS moved.
+--
+-- Self-asserting: every block raises on a failure (assert -> P0004, or a
+-- RAISE naming the test), so `psql -v ON_ERROR_STOP=1 -f` stops at the first
+-- one. Run it on a database built from supabase/migrations. Synthetic
+-- fixtures only, one transaction, rolled back.
+--
+-- On a build WITHOUT that migration every block from T1 on FAILS: the function
+-- and the index do not exist.
+
+begin;
+
+create function pg_temp.cg_read(p_house uuid, p_days int default 365) returns jsonb language sql as $$
+  select public.pos_item_sales(p_house, now() - make_interval(days => p_days))
+$$;
+create function pg_temp.cg_item(r jsonb, p uuid) returns jsonb language sql as $$
+  select e from jsonb_array_elements(r -> 'items') e where (e ->> 'inventory_id')::uuid = p
+$$;
+
+do $$
+declare
+  h1 uuid := 'c0980000-0000-4000-8000-000000000001';
+  h2 uuid := 'c0980000-0000-4000-8000-000000000002';
+  a uuid := 'c0980000-0000-4000-8000-0000000002a0';
+  b uuid := 'c0980000-0000-4000-8000-0000000002b0';
+  c uuid := 'c0980000-0000-4000-8000-0000000002c0';
+  d uuid := 'c0980000-0000-4000-8000-0000000002d0';
+  e uuid := 'c0980000-0000-4000-8000-0000000002e0';
+begin
+  insert into public.restaurants (id, name, slug) values
+    (h1, 'CG test house 1', 'cg-test-house-1'),
+    (h2, 'CG test house 2', 'cg-test-house-2');
+  insert into public.master_wine_library (id, wine_id, name, primary_type) values
+    ('c0980000-0000-4000-8000-0000000001a0', 'CG-TEST-A', 'CG test wine A', 'red'),
+    ('c0980000-0000-4000-8000-0000000001b0', 'CG-TEST-B', 'CG test wine B', 'red'),
+    ('c0980000-0000-4000-8000-0000000001c0', 'CG-TEST-C', 'CG test wine C', 'red'),
+    ('c0980000-0000-4000-8000-0000000001d0', 'CG-TEST-D', 'CG test wine D', 'red'),
+    ('c0980000-0000-4000-8000-0000000001e0', 'CG-TEST-E', 'CG test wine E', 'red');
+  insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml) values
+    (a, h1, 'c0980000-0000-4000-8000-0000000001a0', 750, 150),
+    (b, h1, 'c0980000-0000-4000-8000-0000000001b0', 750, 150),
+    (c, h1, 'c0980000-0000-4000-8000-0000000001c0', 750, 150),
+    (d, h2, 'c0980000-0000-4000-8000-0000000001d0', 750, 150),
+    (e, h1, 'c0980000-0000-4000-8000-0000000001e0', 750, 150);
+
+  -- Stock in, through the real write path (a purchase is not a sale).
+  perform public.apply_stock_movement(a, 'live', 10, 'purchase', 'order', null, 'cg test', 10, null, null, 'cg-test:in-a', 'invoice');
+  perform public.apply_stock_movement(b, 'live', 10, 'purchase', 'order', null, 'cg test', 10, null, null, 'cg-test:in-b', 'invoice');
+  perform public.apply_stock_movement(c, 'live', 10, 'purchase', 'order', null, 'cg test', 10, null, null, 'cg-test:in-c', 'invoice');
+  perform public.apply_stock_movement(d, 'live', 10, 'purchase', 'order', null, 'cg test', 10, null, null, 'cg-test:in-d', 'invoice');
+  perform public.apply_stock_movement(b, 'shadow', 2, 'purchase', 'order', null, 'cg test', 10, null, null, 'cg-test:in-b-shadow', 'invoice');
+
+  -- Counted: POS sales and a POS void, in the window.
+  perform public.apply_stock_movement(a, 'live', -2, 'sale', 'pos', null, 'cg test', null, null, null, 'cg-test:sale-a');
+  perform public.apply_stock_movement(a, 'live', -1, 'sale', 'pos', null, 'cg test', null, null, null, 'cg-test:sale-a2');
+  perform public.apply_stock_movement(a, 'live', 1, 'return', 'pos', null, 'cg test', null, null, null, 'cg-test:sale-a2:void');
+  perform public.apply_stock_movement(b, 'live', -1, 'sale', 'pos', null, 'cg test', null, null, null, 'cg-test:sale-b');
+  -- A POS void with no sale in the window (ADR 0011 B19's shape): net negative.
+  perform public.apply_stock_movement(e, 'live', 3, 'return', 'pos', null, 'cg test', null, null, null, 'cg-test:void-e');
+  -- An older POS sale of A, five days ago, written directly: it sets first_sale_at.
+  insert into public.inventory_transactions
+    (restaurant_id, inventory_id, transaction_type, source, quantity_change, quantity_before, quantity_after, stock_type, transaction_date)
+  values (h1, a, 'sale', 'pos', -1, 9, 8, 'live', now() - interval '5 days');
+
+  -- Not counted: a manual sale, a POS-sourced waste, a shadow POS sale, a POS
+  -- sale before the window, and the other house's POS sale.
+  perform public.apply_stock_movement(c, 'live', -4, 'sale', 'manual', null, 'cg test', null, null, null, 'cg-test:manual-c');
+  perform public.apply_stock_movement(b, 'live', -2, 'waste', 'pos', null, 'cg test', null, null, null, 'cg-test:waste-b');
+  perform public.apply_stock_movement(b, 'shadow', -1, 'sale', 'pos', null, 'cg test', null, null, null, 'cg-test:shadow-b');
+  insert into public.inventory_transactions
+    (restaurant_id, inventory_id, transaction_type, source, quantity_change, quantity_before, quantity_after, stock_type, transaction_date)
+  values (h1, c, 'sale', 'pos', -3, 9, 6, 'live', now() - interval '400 days');
+  perform public.apply_stock_movement(d, 'live', -4, 'sale', 'pos', null, 'cg test', null, null, null, 'cg-test:sale-d');
+
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, closed_at, voided, items) values
+    -- k1: two mapped lines, an unmapped line, and a line naming A whose qty is unreadable.
+    (h1, 'cg_test', 'k1', now() - interval '1 day 1 hour', now() - interval '1 day', false,
+     jsonb_build_array(
+       jsonb_build_object('name', 'A', 'inventory_id', a, 'qty', 2, 'price', 12),
+       jsonb_build_object('name', 'B', 'inventory_id', b, 'qty', 1, 'price', 40),
+       jsonb_build_object('name', 'Tea', 'inventory_id', null, 'qty', 3, 'price', 3),
+       jsonb_build_object('name', 'A bad', 'inventory_id', a, 'qty', 'x', 'price', 12))),
+    -- k2: numbers sent as strings, a line with no inventory_id key, a bad id, a non-object line.
+    (h1, 'cg_test', 'k2', now() - interval '2 days 1 hour', now() - interval '2 days', false,
+     jsonb_build_array(
+       jsonb_build_object('name', 'B', 'inventory_id', b::text, 'qty', '1', 'price', '40.50'),
+       jsonb_build_object('name', 'Food', 'qty', 1, 'price', 20),
+       jsonb_build_object('name', 'Bad id', 'inventory_id', 'not-a-uuid', 'qty', 1, 'price', 5),
+       to_jsonb('a string line'::text))),
+    -- k3 voided, k4 still open, k5 closed before the window: none counts.
+    (h1, 'cg_test', 'k3', now() - interval '1 day 1 hour', now() - interval '1 day', true,
+     jsonb_build_array(jsonb_build_object('name', 'A', 'inventory_id', a, 'qty', 5, 'price', 12))),
+    (h1, 'cg_test', 'k4', now() - interval '1 hour', null, false,
+     jsonb_build_array(jsonb_build_object('name', 'A', 'inventory_id', a, 'qty', 7, 'price', 12))),
+    (h1, 'cg_test', 'k5', now() - interval '400 days 1 hour', now() - interval '400 days', false,
+     jsonb_build_array(jsonb_build_object('name', 'C', 'inventory_id', c, 'qty', 9, 'price', 12))),
+    -- k6: the other house.
+    (h2, 'cg_test', 'k6', now() - interval '1 day 1 hour', now() - interval '1 day', false,
+     jsonb_build_array(jsonb_build_object('name', 'D', 'inventory_id', d, 'qty', 4, 'price', 10))),
+    -- k7: a closed check whose items is not an array. A check, no lines, no raise.
+    (h1, 'cg_test', 'k7', now() - interval '3 days 1 hour', now() - interval '3 days', false, '{}'::jsonb);
+end $$;
+
+-- T1 mapped lines: sales = price x qty, units and lines per stock item.
+do $$
+declare
+  r jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+  ia jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002a0');
+  ib jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002b0');
+begin
+  assert ia is not null, format('T1 FAIL item A missing from %s', r);
+  assert (ia ->> 'sales')::numeric = 24 and (ia ->> 'units')::numeric = 2 and (ia ->> 'lines')::int = 1,
+    format('T1 FAIL item A is %s, expected sales 24, units 2, lines 1', ia);
+  assert (ib ->> 'sales')::numeric = 80.5 and (ib ->> 'units')::numeric = 2 and (ib ->> 'lines')::int = 2,
+    format('T1 FAIL item B is %s, expected sales 80.5, units 2, lines 2 (string numbers read)', ib);
+end $$;
+
+-- T2 a voided check and an open check add nothing; T3 nor do a check closed
+-- before the window or the other house's check.
+do $$
+declare
+  r jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+begin
+  assert (r ->> 'checks')::int = 3, format('T2 FAIL checks %s, expected 3 (k1, k2, k7)', r ->> 'checks');
+  assert pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002c0') is null,
+    format('T3 FAIL item C (a check before the window, a manual sale) appears: %s', r);
+  assert pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002d0') is null,
+    format('T3 FAIL the other house''s item appears: %s', r);
+end $$;
+
+-- T4 unmapped and unreadable lines are counted, never raised.
+do $$
+declare
+  r jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+begin
+  assert (r ->> 'lines')::int = 8, format('T4 FAIL lines %s, expected 8', r ->> 'lines');
+  assert (r ->> 'unmapped_lines')::int = 2, format('T4 FAIL unmapped_lines %s, expected 2', r ->> 'unmapped_lines');
+  assert (r ->> 'unmapped_sales')::numeric = 29, format('T4 FAIL unmapped_sales %s, expected 29', r ->> 'unmapped_sales');
+  assert (r ->> 'unreadable_lines')::int = 3, format('T4 FAIL unreadable_lines %s, expected 3', r ->> 'unreadable_lines');
+end $$;
+
+-- T5 the ledger: POS sale and return rows net per item; manual, waste,
+-- shadow, pre-window and other-house rows are not the till's movement.
+do $$
+declare
+  r jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+  ia jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002a0');
+  ib jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002b0');
+  ie jsonb := pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002e0');
+begin
+  assert (ia ->> 'bottles_out')::numeric = 3, format('T5 FAIL A bottles_out %s, expected 3 (2 + 1 - 1 + 1)', ia ->> 'bottles_out');
+  assert (ib ->> 'bottles_out')::numeric = 1, format('T5 FAIL B bottles_out %s, expected 1 (waste and shadow excluded)', ib ->> 'bottles_out');
+  -- A void with no sale in the window is reported as it is, not clamped here.
+  assert ie is not null and (ie ->> 'bottles_out')::numeric = -3 and (ie ->> 'sales')::numeric = 0,
+    format('T5 FAIL item E is %s, expected bottles_out -3 and sales 0', ie);
+  assert jsonb_array_length(r -> 'items') = 3, format('T5 FAIL %s items, expected A, B and E', jsonb_array_length(r -> 'items'));
+end $$;
+
+-- T6 first_sale_at is the earliest closed check or POS ledger row in the
+-- window (here the direct ledger row five days back), and a house with
+-- nothing in the window reads zero checks, no items and no date.
+do $$
+declare
+  r jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+  z jsonb := public.pos_item_sales('c0980000-0000-4000-8000-000000000002', now() + interval '1 day');
+begin
+  assert (r ->> 'first_sale_at')::timestamptz = now() - interval '5 days',
+    format('T6 FAIL first_sale_at %s, expected %s', r ->> 'first_sale_at', now() - interval '5 days');
+  assert (z ->> 'checks')::int = 0 and z -> 'items' = '[]'::jsonb and z -> 'first_sale_at' = 'null'::jsonb,
+    format('T6 FAIL an empty window reads %s', z);
+  assert (pg_temp.cg_read('c0980000-0000-4000-8000-000000000001', 4) ->> 'first_sale_at')::timestamptz = now() - interval '3 days',
+    'T6 FAIL a 4-day window should start at the 3-day-old check';
+end $$;
+
+-- T7 the function is SECURITY INVOKER and only service_role may run it.
+do $$
+declare
+  f oid := 'public.pos_item_sales(uuid, timestamptz)'::regprocedure;
+begin
+  assert not (select prosecdef from pg_proc where oid = f), 'T7 FAIL pos_item_sales is SECURITY DEFINER';
+  assert (select provolatile from pg_proc where oid = f) = 's', 'T7 FAIL pos_item_sales is not STABLE';
+  assert not has_function_privilege('anon', f, 'EXECUTE'), 'T7 FAIL anon may execute pos_item_sales';
+  assert not has_function_privilege('authenticated', f, 'EXECUTE'), 'T7 FAIL authenticated may execute pos_item_sales';
+  assert has_function_privilege('service_role', f, 'EXECUTE'), 'T7 FAIL service_role may not execute pos_item_sales';
+end $$;
+
+-- T8 the closed-check window has its index.
+do $$
+begin
+  assert exists (select 1 from pg_indexes where schemaname = 'public' and tablename = 'pos_checks'
+                  and indexname = 'idx_pos_checks_restaurant_closed'),
+    'T8 FAIL idx_pos_checks_restaurant_closed is missing';
+end $$;
+
+rollback;

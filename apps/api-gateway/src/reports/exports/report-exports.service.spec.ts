@@ -121,7 +121,9 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(typeof row.html).toBe("string");
     expect(row.csv_bytes).toBe(Buffer.byteLength(row.csv as string, "utf8"));
     expect(row.html_bytes).toBe(Buffer.byteLength(row.html as string, "utf8"));
-    expect(row.withheld_count).toBe(8);
+    // The shared ledger fixture predates ADR 0298 and carries no
+    // shelfValueAtMenuPrice, so the sell-price valuation is withheld too.
+    expect(row.withheld_count).toBe(9);
     expect(row.finished_at).not.toBeNull();
     expect(analytics.getFinancialSummary).toHaveBeenCalledWith(HOUSE_A, 0);
   });
@@ -133,12 +135,12 @@ describe("ReportExportsService — a report export is written, or says why not (
 
     const cogs = csv.split("\r\n").find((l) => l.startsWith("Cost of goods (365d),"));
     expect(cogs).toBe(
-      "Cost of goods (365d),withheld,TRY,No delivered order came back for the window — which is either no buying or a read that failed",
+      "Cost of goods (365d),withheld,TRY,\"Not every item that sold carries a recorded cost, or the POS recorded no sale, or the read failed\"",
     );
     expect(csv).not.toMatch(/^Cost of goods \(365d\),0,/m);
     expect(csv).toContain("House,Meyhouse");
     expect(html).toContain(`<dt>Cost of goods (365d)</dt><dd><span class="withheld">withheld</span>`);
-    expect(html).toContain("8 figures marked &quot;withheld&quot; are one the engine could not compute");
+    expect(html).toContain("9 figures marked &quot;withheld&quot; are one the engine could not compute");
   });
 
   it("a house with no stated currency gets no invented one", async () => {

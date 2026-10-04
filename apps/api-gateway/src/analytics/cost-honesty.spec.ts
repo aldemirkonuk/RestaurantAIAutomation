@@ -1,6 +1,9 @@
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { resolveUnitCost, summarizeCostBasis } from "./inventory-cost";
+import { METRIC_REGISTRY } from "./metric-registry";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 /**
  * Regression guard — analytics never invents what a bottle cost.
@@ -25,7 +28,10 @@ import { resolveUnitCost, summarizeCostBasis } from "./inventory-cost";
 
 type Rows = Record<string, any[]>;
 
-function makeClient(rowsByTable: Rows) {
+/** What `.rpc("pos_item_sales")` answers; unset reads as a failed read. */
+type Rpc = { data?: unknown; error?: unknown };
+
+function makeClient(rowsByTable: Rows, rpc: Rpc = {}) {
   const passthrough = [
     "select",
     "eq",
@@ -55,6 +61,9 @@ function makeClient(rowsByTable: Rows) {
         );
       return builder;
     }),
+    rpc: jest.fn(() =>
+      Promise.resolve({ data: rpc.data ?? null, error: rpc.error ?? null }),
+    ),
   };
 }
 
@@ -83,8 +92,27 @@ const RECORDED = {
   master_wine_id: "mw-recorded",
 };
 
-const analytics = (rows: Rows) =>
-  new AnalyticsService({ getClient: () => makeClient(rows) } as any);
+const analytics = (rows: Rows, rpc?: Rpc) =>
+  new AnalyticsService({ getClient: () => makeClient(rows, rpc) } as any);
+
+/** A pos_item_sales payload: per item [bottles out, sales], 60 days of till. */
+const till = (sold: Record<string, [number, number]>) => ({
+  data: {
+    items: Object.entries(sold).map(([id, [bottles, sales]]) => ({
+      inventory_id: id,
+      sales,
+      units: bottles,
+      lines: 1,
+      bottles_out: bottles,
+    })),
+    checks: 4,
+    lines: Object.keys(sold).length,
+    unmapped_lines: 0,
+    unmapped_sales: 0,
+    unreadable_lines: 0,
+    first_sale_at: new Date(Date.now() - 60 * 86400000).toISOString(),
+  },
+});
 
 const advanced = (rows: Rows) =>
   new AdvancedAnalyticsService(
@@ -172,32 +200,49 @@ describe("resolveUnitCost never invents a number", () => {
 // ---------------------------------------------------------------------------
 
 describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
-  const build = (inventoryRows: any[]) =>
-    analytics({
-      restaurant_inventory: inventoryRows,
-      wine_consumption_log: [
-        {
-          inventory_id: RECORDED.id,
-          quantity: 3,
-          created_at: recently,
-          restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
-        },
-      ],
-    });
+  /** By default the till sold 3 bottles of RECORDED, the costed wine, for 180. */
+  const build = (
+    inventoryRows: any[],
+    rpc: Rpc = till({ [RECORDED.id]: [3, 180] }),
+  ) =>
+    analytics(
+      {
+        restaurant_inventory: inventoryRows,
+        wine_consumption_log: [
+          {
+            inventory_id: RECORDED.id,
+            quantity: 3,
+            created_at: recently,
+            restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
+          },
+        ],
+      },
+      rpc,
+    );
 
-  it("nulls every cost-derived field when an on-hand row has no cost", async () => {
+  it("nulls the capital ratios when an on-hand row has no cost", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
     );
-
+    // Turns, DIO and GMROI divide by today's inventory at cost.
     expect(out.inventoryValue).toBeNull();
-    expect(out.grossMarginDollars).toBeNull();
-    expect(out.grossMargin).toBeNull();
-    expect(out.cogsRatio).toBeNull();
-    expect(out.primeCostRatio).toBeNull();
     expect(out.inventoryTurnover).toBeNull();
     expect(out.daysInventoryOutstanding).toBeNull();
     expect(out.gmroi).toBeNull();
+  });
+
+  it("keeps the margin ratios, which need only what sold and its cost", async () => {
+    // Only RECORDED sold, and it carries a cost: 3 × 20 = 60 against 180.
+    // An uncosted bottle still on the shelf did not sell, so it is in
+    // neither side of these (ADR 0298).
+    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
+      RESTAURANT,
+    );
+    expect(out.cogs).toBe(60);
+    expect(out.revenue).toBe(180);
+    expect(out.grossMarginDollars).toBe(120);
+    expect(out.cogsRatio).toBeCloseTo(1 / 3, 10);
+    expect(out.grossMargin).toBeCloseTo(2 / 3, 10);
   });
 
   it("does not let the null become a zero anywhere in the payload", async () => {
@@ -207,8 +252,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     // The pre-fix payload reported a fabricated $600 + $100 valuation here.
     for (const field of [
       "inventoryValue",
-      "grossMarginDollars",
       "inventoryTurnover",
+      "daysInventoryOutstanding",
       "gmroi",
     ] as const) {
       expect(out[field]).not.toBe(0);
@@ -216,25 +261,84 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     }
   });
 
-  it("keeps revenue, which does not depend on unit cost", async () => {
-    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
-      RESTAURANT,
-    );
-    // 10 × 100 + 5 × 60 — menu price is recorded for both rows.
-    expect(out.revenue).toBe(1300);
-    expect(out.basis.revenue).toContain("2 inventory rows valued");
+  it("keeps sales, which do not depend on unit cost", async () => {
+    const out = await build(
+      [UNPRICED, RECORDED],
+      till({ [UNPRICED.id]: [2, 200], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT);
+    // What the till took for both, whatever either cost.
+    expect(out.revenue).toBe(380);
+    expect(out.basis.revenue).toContain("4 checks");
   });
 
-  it("withholds COGS when no delivered order came back at all", async () => {
-    // This assertion used to read `expect(out.cogs).toBe(0)`. There is no
-    // procurement_orders fixture here, so the loader returned [] — and it
-    // returns [] for a FAILED query too. $0 claimed "this restaurant bought
-    // nothing in a year" on the strength of an empty array (fixed 2026-09-03).
-    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
-      RESTAURANT,
-    );
+  it("withholds COGS when an item that sold has no recorded cost (fork a)", async () => {
+    // Founder fork 2026-10-04: "Withhold, say N of M (Recommended)". Summing
+    // the costed part (3 × 20 = 60) would be a floor wearing a total's label.
+    // UNPRICED is sold out here, so the on-hand valuation is complete and is
+    // NOT what withholds this: the cost of what sold is.
+    const out = await build(
+      [{ ...UNPRICED, stock_live: 0 }, RECORDED],
+      till({ [UNPRICED.id]: [2, 200], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.inventoryValue).toBe(100);
     expect(out.cogs).toBeNull();
-    expect(out.cogs).not.toBe(0);
+    expect(out.cogs).not.toBe(60);
+    expect(out.cogsCoverage).toMatchObject({
+      total: 2,
+      priced: 1,
+      unpriced: 1,
+      complete: false,
+      bottlesSold: 5,
+      bottlesCosted: 3,
+    });
+    expect(out.basis.cogs).toContain(
+      "1 of 2 items that sold carry a recorded cost",
+    );
+    for (const field of [
+      "grossMarginDollars",
+      "grossMargin",
+      "cogsRatio",
+      "primeCostRatio",
+      "inventoryTurnover",
+      "daysInventoryOutstanding",
+      "gmroi",
+    ] as const) {
+      expect(out[field]).toBeNull();
+    }
+  });
+
+  it("counts an item that sold but is no longer stocked as uncosted", async () => {
+    const out = await build(
+      [RECORDED],
+      till({ "inv-retired": [1, 90], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBeNull();
+    expect(out.cogsCoverage.unpriced).toBe(1);
+  });
+
+  it("withholds COGS when the till cannot say, delivered orders or not", async () => {
+    // This assertion once read `expect(out.cogs).toBe(0)`, then summed the
+    // delivered orders. Neither is what sold (A-046, ADR 0298).
+    const out = await analytics(
+      {
+        restaurant_inventory: [RECORDED],
+        procurement_orders: [
+          {
+            id: "po-1",
+            provider_id: "prov-1",
+            total_cost: 480,
+            bottles_total: 12,
+            status: "DELIVERED",
+            delivered_at: recently,
+            created_at: recently,
+          },
+        ],
+      },
+      { error: { message: "timeout" } },
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBeNull();
+    expect(out.cogs).not.toBe(480);
+    expect(out.deliveredPurchases).toBe(480);
     expect(out.basis.cogs).toContain("null");
   });
 
@@ -451,5 +555,170 @@ describe("getWine360", () => {
     expect(out.unitCost).toBe(20);
     expect(out.marginPerBottle).toBe(40);
     expect(out.basis.unitCost).toContain("last_purchase_price");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// METRIC_REGISTRY claims only what a served field computes (AW16)
+// ---------------------------------------------------------------------------
+
+/**
+ * The registry is the vocabulary the consultant and the metric pages read, so
+ * a `computed: true` it cannot back is a claim made to the founder. It said
+ * true for all 33 entries, seven of which no served field computes
+ * (year-on-year growth, an early-payment APR, a newsvendor order, price
+ * elasticity, an optimal markup, a CUSUM break, a drawdown that is 0 by
+ * construction), and it named the Gini, the COGS ratio, turnover, DIO and
+ * GMROI after a revenue and a cost of goods they did not read. Every `true` below must map to a field a real service call returns,
+ * or, for the three lenses that need a whole other service stood up, to the
+ * source line that computes it. A new `true` without an entry here fails.
+ */
+describe("METRIC_REGISTRY claims only what a served field computes", () => {
+  type Lens =
+    | "financial"
+    | "science"
+    | "risk"
+    | "forecast"
+    | "seasonality"
+    | "menu"
+    | "cashflow";
+  const SERVED: Record<
+    string,
+    { lens: Lens; path: string } | { file: string; pattern: RegExp }
+  > = {
+    wine_cogs_ratio: { lens: "financial", path: "cogsRatio" },
+    prime_cost_ratio: { lens: "financial", path: "primeCostRatio" },
+    gross_margin_by_tier: { lens: "financial", path: "grossMargin" },
+    inventory_turnover: { lens: "financial", path: "inventoryTurnover" },
+    days_inventory_outstanding: {
+      lens: "financial",
+      path: "daysInventoryOutstanding",
+    },
+    gmroi: { lens: "financial", path: "gmroi" },
+    dead_stock_capital: { lens: "financial", path: "deadStockCapital" },
+    eoq: { lens: "science", path: "skus.0.eoq" },
+    safety_stock: { lens: "science", path: "skus.0.safetyStock" },
+    reorder_point: { lens: "science", path: "skus.0.reorderPoint" },
+    stockout_probability: {
+      lens: "science",
+      path: "skus.0.stockoutProbability",
+    },
+    abc_xyz_classification: { lens: "science", path: "skus.0.abcClass" },
+    vendor_concentration_hhi: { lens: "risk", path: "vendorConcentration.hhi" },
+    revenue_gini: { lens: "risk", path: "revenueConcentration.gini" },
+    demand_var: { lens: "risk", path: "demandRisk.historicalVar95" },
+    revenue_sharpe: { lens: "risk", path: "demandRisk.sharpe" },
+    demand_forecast: { lens: "forecast", path: "totalForecastDemand" },
+    seasonal_decomposition: {
+      lens: "seasonality",
+      path: "weeklySeasonalFactors",
+    },
+    weekday_seasonality: { lens: "seasonality", path: "weekdayProfile" },
+    menu_engineering: { lens: "menu", path: "items.0.quadrant" },
+    spend_pacing: { lens: "cashflow", path: "paceDeltaPct" },
+    vendor_lead_time: {
+      file: "advanced-analytics.service.ts",
+      pattern: /leadTimeDays: \{[^}]*stdev: E\.stdev\(/,
+    },
+    vendor_price_trend: {
+      file: "advanced-analytics.service.ts",
+      pattern: /trendPerOrderPct: E\.trendPerPeriodPct\(/,
+    },
+    sales_correlation: {
+      file: "table-analytics.service.ts",
+      pattern: /E\.pearson\(/,
+    },
+    anomaly_zscore: {
+      file: "insights/insight-generator.service.ts",
+      pattern: /E\.robustZScore\(/,
+    },
+    recommendations: {
+      file: "recommendations.service.ts",
+      pattern: /async getRecommendations\(/,
+    },
+  };
+
+  const pick = (o: unknown, path: string) =>
+    path.split(".").reduce<any>((v, k) => (v == null ? undefined : v[k]), o);
+
+  it("has an entry here for every `computed: true`, and for nothing else", () => {
+    const claimed = METRIC_REGISTRY.filter((m) => m.computed)
+      .map((m) => m.key)
+      .sort();
+    expect(claimed).toEqual(Object.keys(SERVED).sort());
+  });
+
+  it("finds every claimed field on a real service call", async () => {
+    const consumed = [
+      {
+        inventory_id: RECORDED.id,
+        quantity: 3,
+        created_at: recently,
+        restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
+      },
+    ];
+    const rows = {
+      restaurant_inventory: [RECORDED],
+      wine_consumption_log: consumed,
+    };
+    const svc = analytics(rows, till({ [RECORDED.id]: [3, 180] }));
+    const out: Record<Lens, unknown> = {
+      financial: await svc.getFinancialSummary(RESTAURANT),
+      science: await svc.getInventoryScience(RESTAURANT),
+      risk: await svc.getRiskProfile(RESTAURANT),
+      forecast: await svc.getDemandForecast(RESTAURANT),
+      seasonality: await advanced(rows).getSeasonality(RESTAURANT),
+      menu: await advanced(rows).getMenuEngineering(RESTAURANT),
+      cashflow: await advanced(rows).getCashflow(RESTAURANT),
+    };
+    const missing: string[] = [];
+    for (const [key, where] of Object.entries(SERVED)) {
+      if ("lens" in where) {
+        if (pick(out[where.lens], where.path) === undefined)
+          missing.push(`${key} → ${where.lens}.${where.path}`);
+      } else {
+        const src = readFileSync(join(__dirname, where.file), "utf8");
+        if (!where.pattern.test(src)) missing.push(`${key} → ${where.file}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("says false for what nothing serves", () => {
+    const off = METRIC_REGISTRY.filter((m) => !m.computed)
+      .map((m) => m.key)
+      .sort();
+    expect(off).toEqual(
+      [
+        "early_payment_apr",
+        "newsvendor_event_order",
+        "optimal_markup",
+        "price_elasticity",
+        "revenue_max_drawdown",
+        "structural_break_cusum",
+        "yoy_growth",
+      ].sort(),
+    );
+  });
+
+  it("describes the till where a measure reads the till (A-018, A-046)", () => {
+    const text = (key: string) => {
+      const m = METRIC_REGISTRY.find((x) => x.key === key)!;
+      return `${m.name} ${m.description} ${m.formula}`;
+    };
+    expect(text("revenue_gini")).toContain("POS");
+    expect(text("revenue_gini")).not.toMatch(/on[- ]hand|stock value/i);
+    for (const key of [
+      "wine_cogs_ratio",
+      "inventory_turnover",
+      "days_inventory_outstanding",
+      "gmroi",
+    ]) {
+      expect(text(key)).toContain("POS");
+      expect(text(key)).not.toMatch(/purchas/i);
+    }
+    // Labour is the caller's figure; the text must not imply a feed.
+    expect(text("prime_cost_ratio")).toMatch(/labou?r/i);
+    expect(text("prime_cost_ratio")).toContain("?labor=");
   });
 });

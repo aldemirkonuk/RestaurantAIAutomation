@@ -414,14 +414,17 @@ function base() {
       }),
       ledger: ok({
         basis: {
-          revenue: 'unit_price × on-hand qty',
-          cogs: 'delivered procurement_orders (trailing 365d) — 4 orders summed',
+          revenue: 'POS line price × qty for lines naming a stock item — 120 checks',
+          cogs: 'POS bottles out × recorded unit cost — null: 3 of 5 items that sold carry a recorded cost',
           inventoryValue: 'on-hand qty × unit cost',
         },
         costCoverage: { total: 10, priced: 4, unpriced: 6, complete: false },
+        cogsCoverage: { total: 5, priced: 3, unpriced: 2, complete: false },
+        salesCoverage: { unmappedLines: 0, itemsSoldWithoutStockMove: 0 },
         inventoryValue: null,
-        cogs: 8400,
+        cogs: null,
         revenue: 21000,
+        shelfValueAtMenuPrice: 30000,
         grossMargin: null,
         cogsRatio: null,
         inventoryTurnover: null,
@@ -596,7 +599,7 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
     expect(weekTypes).not.toContain('scatter');
     expect(within(week).getByText(/No heat map: seasonality returns one dimension/)).toBeInTheDocument();
 
-    // Eight figures in four different units cannot share one axis.
+    // Ten figures in four different units cannot share one axis.
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
     const ledgerTypes = Array.from(
       (within(ledger).getByLabelText('Draw Figures of record as') as HTMLSelectElement).options,
@@ -821,12 +824,15 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
       'ledger',
       ok({
         basis: {
-          cogs: 'delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window',
+          cogs: 'POS bottles out × recorded unit cost — null: the POS sales read failed, and $0 would claim nothing sold',
         },
         costCoverage: { total: 0, priced: 0, unpriced: 0, complete: false },
+        cogsCoverage: { total: 0, priced: 0, unpriced: 0, complete: false },
+        salesCoverage: null,
         inventoryValue: null,
         cogs: null,
         revenue: null,
+        shelfValueAtMenuPrice: null,
         grossMargin: null,
         cogsRatio: null,
         inventoryTurnover: null,
@@ -840,9 +846,46 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     expect(within(ledger).queryByText('$0')).not.toBeInTheDocument();
     const cogs = within(ledger).getByText('Cost of goods (365d)').closest('.rp-fig');
     expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
+    const sales = within(ledger).getByText('Sales of stocked items, net (365d)').closest('.rp-fig');
+    expect(within(sales as HTMLElement).getByText('—')).toBeInTheDocument();
     // …and the server's own reason is one click away.
     fireEvent.click(within(ledger).getByText('Show the working'));
-    expect(within(ledger).getByText(/no delivered order was returned/)).toBeInTheDocument();
+    expect(within(ledger).getByText(/the POS sales read failed/)).toBeInTheDocument();
+  });
+
+  it('prints cost of goods and sales from the till when both are whole (ADR 0298)', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {
+          cogs: 'POS bottles out × recorded unit cost — 5 items, 240 bottles out',
+          revenue: 'POS line price × qty for lines naming a stock item — 120 checks',
+        },
+        costCoverage: { total: 10, priced: 10, unpriced: 0, complete: true },
+        cogsCoverage: { total: 5, priced: 5, unpriced: 0, complete: true },
+        salesCoverage: { unmappedLines: 7, itemsSoldWithoutStockMove: 1 },
+        inventoryValue: 12000,
+        cogs: 8400,
+        revenue: 21000,
+        shelfValueAtMenuPrice: 30000,
+        grossMargin: 0.6,
+        cogsRatio: 0.4,
+        inventoryTurnover: 0.7,
+        daysInventoryOutstanding: 521.4,
+        gmroi: 1.05,
+        deadStockCapital: null,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    const at = (label: string) => within(ledger).getByText(label).closest('.rp-fig') as HTMLElement;
+    expect(within(at('Cost of goods (365d)')).getByText(/8,400/)).toBeInTheDocument();
+    expect(within(at('Sales of stocked items, net (365d)')).getByText(/21,000/)).toBeInTheDocument();
+    expect(within(at('Sell-price valuation')).getByText(/30,000/)).toBeInTheDocument();
+    expect(within(at('COGS ratio')).getByText(/40/)).toBeInTheDocument();
+    expect(within(ledger).queryByText(/items that sold carry a recorded cost/)).not.toBeInTheDocument();
+    expect(within(ledger).getByText(/7 POS lines name no stock item/)).toBeInTheDocument();
+    expect(within(ledger).getByText(/1 item sold at the till but moved no stock/)).toBeInTheDocument();
   });
 
   it('claims no forecast total when the server reports no model fitted', () => {
@@ -898,12 +941,16 @@ describe('ReportsNext — honesty', () => {
   it('renders an unknown as an em dash, never as a zero', () => {
     paint();
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
-    // Nine figures, six of which the engine returned as null.
-    expect(within(ledger).getAllByText('—').length).toBeGreaterThanOrEqual(6);
+    // Ten figures, eight of which the engine returned as null.
+    expect(within(ledger).getAllByText('—').length).toBeGreaterThanOrEqual(8);
     expect(within(ledger).queryByText('$0')).not.toBeInTheDocument();
-    // …and it says WHY they are dashes, in the engine's own coverage numbers.
+    // …and it says WHY they are dashes, in the engine's own coverage numbers:
+    // the fork's "N of M" for what sold, and the on-hand count for the rest.
     expect(
-      within(ledger).getByText(/4 of 10 on-hand wines carry a recorded cost/),
+      within(ledger).getByText(/3 of 5 items that sold carry a recorded cost, so cost of goods/),
+    ).toBeInTheDocument();
+    expect(
+      within(ledger).getByText(/4 of 10 on-hand items carry a recorded cost/),
     ).toBeInTheDocument();
   });
 

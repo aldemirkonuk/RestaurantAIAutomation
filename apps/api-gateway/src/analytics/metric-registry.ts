@@ -53,7 +53,11 @@ export interface MetricDefinition {
   catalogIds: number[];
   /** "Good" direction for dashboards. */
   goodDirection?: "up" | "down" | "target";
-  /** Whether the analytics service currently computes it from live data. */
+  /**
+   * True only where a served field computes it from live data, and the text
+   * above says what that field computes (ADR 0298). cost-honesty.spec.ts pins
+   * every `true` to the field that serves it, so a flip without one fails.
+   */
   computed: boolean;
 }
 
@@ -61,10 +65,12 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
   // ---- Financial / P&L -------------------------------------------------
   {
     key: "wine_cogs_ratio",
-    name: "Wine COGS % of Revenue",
+    name: "COGS % of Sales",
     domain: "financial",
-    description: "Beverage cost as a share of wine revenue.",
-    formula: "COGS ÷ Revenue",
+    description:
+      "Cost of the stock items the till sold, as a share of what the till took for them (365d, net of tax and surcharge).",
+    formula:
+      "Σ(POS bottles out × recorded unit cost) ÷ Σ(POS line price × qty); null unless every item that sold carries a recorded cost",
     unit: "percent",
     engineFns: ["finance.cogsRatio"],
     personas: ["manager", "private_equity"],
@@ -77,8 +83,8 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Prime Cost Ratio",
     domain: "financial",
     description:
-      "COGS + labor over revenue — the #1 restaurant health metric (target ≤ 0.65).",
-    formula: "(COGS + Labor) ÷ Revenue",
+      "Cost of goods plus labour over sales (target ≤ 0.65). Labour is the caller's input (?labor= on /analytics/financial); there is no labour feed, so without it the figure equals the COGS ratio.",
+    formula: "(POS COGS + labour supplied by the caller) ÷ POS sales",
     unit: "percent",
     engineFns: ["finance.primeCostRatio"],
     personas: ["manager", "private_equity"],
@@ -90,10 +96,11 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     key: "gross_margin_by_tier",
     name: "Gross Margin",
     domain: "financial",
-    description: "Margin captured per dollar of sale, decomposable by tier.",
-    formula: "(Price − Cost) ÷ Price",
+    description:
+      "Margin captured per dollar the till took for stock items, house-wide (no tier split is computed).",
+    formula: "(POS sales − POS COGS) ÷ POS sales",
     unit: "percent",
-    engineFns: ["finance.grossMargin", "finance.markupToMargin"],
+    engineFns: ["finance.grossMargin"],
     personas: ["manager", "private_equity"],
     catalogIds: [152, 156],
     goodDirection: "up",
@@ -111,7 +118,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     personas: ["private_equity", "manager"],
     catalogIds: [210, 352],
     goodDirection: "up",
-    computed: true,
+    computed: false,
   },
   {
     key: "early_payment_apr",
@@ -126,15 +133,17 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     personas: ["private_equity", "trader", "manager"],
     catalogIds: [176, 162],
     goodDirection: "up",
-    computed: true,
+    computed: false,
   },
   // ---- Inventory science ----------------------------------------------
   {
     key: "inventory_turnover",
     name: "Inventory Turnover",
     domain: "inventory",
-    description: "How many times the cellar's value sells through per year.",
-    formula: "COGS ÷ Average Inventory Value",
+    description:
+      "How many times today's cellar value sells through per year, from the cost of what the till sold.",
+    formula:
+      "POS COGS annualised from the observed span (≥ 28 days) ÷ current inventory value at cost (not an average)",
     unit: "ratio",
     engineFns: ["inventory.inventoryTurnover"],
     personas: ["private_equity", "operations", "manager"],
@@ -146,8 +155,10 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     key: "days_inventory_outstanding",
     name: "Days Inventory Outstanding",
     domain: "inventory",
-    description: "Average days a bottle sits before it sells.",
-    formula: "365 ÷ Turnover",
+    description:
+      "Days today's stock lasts at the rate the till has been selling it.",
+    formula:
+      "observed days × current inventory value ÷ POS COGS over those days (= 365 ÷ turnover)",
     unit: "days",
     engineFns: ["inventory.daysInventoryOutstanding"],
     personas: ["private_equity", "operations"],
@@ -160,8 +171,9 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "GMROI",
     domain: "inventory",
     description:
-      "Gross-margin return on inventory investment — $ margin per $ of stock.",
-    formula: "Gross Margin $ ÷ Average Inventory Cost",
+      "Gross-margin return on inventory investment — $ of till margin per year per $ of stock.",
+    formula:
+      "(POS sales − POS COGS) annualised from the observed span ÷ current inventory value at cost (not an average)",
     theorem: "Merchandising GMROI",
     unit: "ratio",
     engineFns: ["inventory.gmroi"],
@@ -174,7 +186,8 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     key: "eoq",
     name: "Economic Order Quantity",
     domain: "inventory",
-    description: "Order size that minimizes ordering + holding cost.",
+    description:
+      "Order size that minimizes ordering + holding cost. S is an assumed 25 per order and H is 26%/yr of the recorded unit cost; null for an uncosted item.",
     formula: "√(2·D·S ÷ H)",
     theorem: "Wilson EOQ",
     unit: "units",
@@ -189,8 +202,8 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Dynamic Safety Stock",
     domain: "inventory",
     description:
-      "Buffer covering demand AND lead-time variance at a target service level.",
-    formula: "z · √(LT·σ_d² + d̄²·σ_LT²)",
+      "Buffer for demand variance at a target service level. Lead-time variance is not fed (σ_LT = 0), so the buffer covers demand variance only.",
+    formula: "z · √(LT·σ_d² + d̄²·σ_LT²), served with σ_LT = 0",
     theorem: "King safety-stock formula",
     unit: "units",
     engineFns: ["inventory.safetyStock", "stats.serviceLevelZ"],
@@ -239,7 +252,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     personas: ["economist", "operations"],
     catalogIds: [269, 270, 73],
     goodDirection: "target",
-    computed: true,
+    computed: false,
   },
   {
     key: "abc_xyz_classification",
@@ -259,10 +272,12 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     key: "dead_stock_capital",
     name: "Dead Stock Capital Lock",
     domain: "financial",
-    description: "$ tied up in zero-velocity inventory held 60+ days.",
-    formula: "Σ (qty × landed cost) over non-movers",
+    description:
+      "$ tied up in on-hand stock with no consumption in 90 days; null when any idle row has no recorded cost.",
+    formula:
+      "Σ (on-hand qty × recorded unit cost) over rows with no movement in 90d",
     unit: "currency",
-    engineFns: ["finance.weightedAverageCost"],
+    engineFns: ["stats.sum"],
     personas: ["private_equity", "manager"],
     catalogIds: [70, 251, 160],
     goodDirection: "down",
@@ -289,8 +304,9 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Revenue Concentration (Gini)",
     domain: "risk",
     description:
-      "Inequality of revenue across SKUs — how few wines carry sales.",
-    formula: "Gini coefficient of per-SKU revenue",
+      "Inequality of POS sales across stock items over 90 days — how few items carry the till.",
+    formula:
+      "Gini of POS line sales per stock item, 90d, every active item included (0 when it sold nothing)",
     theorem: "Gini coefficient",
     unit: "index",
     engineFns: ["risk.giniCoefficient"],
@@ -304,7 +320,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Demand Value-at-Risk",
     domain: "risk",
     description:
-      "Worst plausible daily revenue drop at 95% confidence (historical & parametric).",
+      "Worst plausible day-on-day drop in bottles out at 95% confidence (historical & parametric), 90d of consumption.",
     formula: "VaR = −quantile_{1−c}(returns); CVaR = E[loss | loss ≥ VaR]",
     theorem: "Value at Risk / Expected Shortfall",
     unit: "percent",
@@ -320,10 +336,10 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
   },
   {
     key: "revenue_sharpe",
-    name: "Revenue Sharpe Ratio",
+    name: "Demand Sharpe Ratio",
     domain: "risk",
     description:
-      "Risk-adjusted consistency of daily wine revenue growth (return ÷ volatility).",
+      "Consistency of day-on-day change in bottles out (mean change ÷ volatility), 90d of consumption; not money.",
     formula: "(mean return − rf) ÷ stdev(return)",
     theorem: "Sharpe ratio",
     unit: "ratio",
@@ -337,7 +353,8 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     key: "revenue_max_drawdown",
     name: "Revenue Max Drawdown",
     domain: "risk",
-    description: "Largest peak-to-trough decline in cumulative revenue.",
+    description:
+      "Largest peak-to-trough decline in cumulative revenue. Not computed: the served demandRisk.maxDrawdown runs over a cumulative sum of non-negative daily demand, which never falls, so it is 0 by construction (v3.0-TECH-DEBT.md defect 4).",
     formula: "max_t (peak − level_t) ÷ peak",
     theorem: "Maximum drawdown",
     unit: "percent",
@@ -345,7 +362,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     personas: ["trader", "private_equity"],
     catalogIds: [186],
     goodDirection: "down",
-    computed: true,
+    computed: false,
   },
   // ---- Econometrics / pricing -----------------------------------------
   {
@@ -363,7 +380,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     ],
     personas: ["economist", "manager"],
     catalogIds: [41, 81, 181],
-    computed: true,
+    computed: false,
   },
   {
     key: "optimal_markup",
@@ -376,18 +393,18 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     engineFns: ["finance.optimalPriceFromElasticity"],
     personas: ["economist", "trader"],
     catalogIds: [177, 40],
-    computed: true,
+    computed: false,
   },
   {
     key: "sales_correlation",
     name: "Driver Correlation",
     domain: "causal",
     description:
-      "Pearson/Spearman association between a driver (weather, critic score) and sales.",
-    formula: "Pearson r, Spearman ρ",
+      "Pearson association between a table's attributes (seats and the like) and its sales measures, with a partial on seats; no weather or critic-score driver is read.",
+    formula: "Pearson r",
     theorem: "Correlation coefficients",
     unit: "ratio",
-    engineFns: ["stats.pearson", "stats.spearman"],
+    engineFns: ["stats.pearson"],
     personas: ["statistician", "economist"],
     catalogIds: [17, 67, 94],
     computed: true,
@@ -401,7 +418,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     formula: "z = (x − median) ÷ MAD·1.4826",
     theorem: "Robust z-score (Hampel)",
     unit: "score",
-    engineFns: ["stats.robustZScore", "stats.zScore"],
+    engineFns: ["stats.robustZScore"],
     personas: ["statistician", "operations"],
     catalogIds: [4, 113, 273],
     computed: true,
@@ -417,14 +434,14 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     engineFns: ["stats.cusum"],
     personas: ["statistician", "operations"],
     catalogIds: [93],
-    computed: true,
+    computed: false,
   },
   {
     key: "demand_forecast",
     name: "Demand Forecast",
     domain: "forecasting",
     description:
-      "7/30-day per-SKU demand via exponential smoothing with weekly seasonality.",
+      "Daily demand over a horizon (14 days by default), house-wide or for one wine, by exponential smoothing with weekly seasonality, fitted on 120 days.",
     formula: "Holt-Winters additive (level+trend+seasonal)",
     theorem: "Holt-Winters exponential smoothing",
     unit: "units",
@@ -441,8 +458,10 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     key: "seasonal_decomposition",
     name: "Seasonal Decomposition",
     domain: "forecasting",
-    description: "Split a SKU's series into trend + seasonality + residual.",
-    formula: "Y = Trend + Seasonal + Residual (centered MA)",
+    description:
+      "Weekly seasonal factors of the house's daily demand; the trend and residual components are not served.",
+    formula:
+      "Seasonal factors of Y = Trend + Seasonal + Residual (centered MA, period 7)",
     theorem: "Classical time-series decomposition",
     unit: "units",
     engineFns: ["forecast.seasonalDecompose"],
@@ -470,7 +489,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Vendor Lead-Time Distribution",
     domain: "vendor",
     description:
-      "Mean/median/p90/σ of order→delivery days per vendor; σ feeds safety stock.",
+      "Mean/median/p90/σ of order→delivery days per vendor; σ is reported, and safety stock does not read it yet.",
     formula: "distribution(delivered_at − created_at)",
     unit: "days",
     engineFns: ["mean", "median", "percentile", "stdev"],
