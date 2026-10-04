@@ -30,7 +30,8 @@ select v, 'SYNTHETIC postime house', 'syn-postime-' || left(replace(v::text, '-'
   from t_fx where k in ('house', 'other_house');
 
 insert into public.master_wine_library (id, wine_id, name, primary_type)
-select v, 'SYN-PT-' || left(replace(v::text, '-', ''), 12), 'SYNTHETIC Kalecik Karası', 'red'
+select v, 'SYN-PT-' || left(replace(v::text, '-', ''), 12),
+       case k when 'wine' then 'SYNTHETIC Kalecik Karası' else 'SYNTHETIC Öküzgözü' end, 'red'
   from t_fx where k in ('wine', 'wine2');
 
 insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml)
