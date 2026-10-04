@@ -67,6 +67,9 @@ export function comparisonClassLabel(cls: ComparisonClass): string {
   return `Unrecognised source (${raw})`
 }
 
+/** ADR 0273 — `own-paper-sighting.ts` `SightingDateBasis`. */
+export type SightingDateBasis = 'invoice_issue_date' | 'invoice_issue_date_corrected' | 'verified_at'
+
 /**
  * One row behind a rung — the "show your working" panel, and (since ADR 0160
  * §112) the sighting sheet's source. Every field here is additive on the
@@ -75,9 +78,6 @@ export function comparisonClassLabel(cls: ComparisonClass): string {
  * legacy `/vendor-prices` page never reads `observations` at all, so nothing
  * here can break it.
  */
-/** ADR 0273 — `own-paper-sighting.ts` `SightingDateBasis`. */
-export type SightingDateBasis = 'invoice_issue_date' | 'invoice_issue_date_corrected' | 'verified_at'
-
 export interface VendorObservationRow {
   id: string
   vendorName: string | null

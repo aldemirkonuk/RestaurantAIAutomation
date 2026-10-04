@@ -2814,7 +2814,9 @@ export class ProcurementService {
         invoice: null,
         liveInvoices: null,
         issueDateCorrection: null,
-        readFailure: `${what}: ${message}`,
+        // `what` only: the database's own error text stays in the log line
+        // above and never reaches a stored row or the sighting sheet.
+        readFailure: what,
       };
     };
 
@@ -2906,7 +2908,8 @@ export class ProcurementService {
       return {
         ...paper,
         issueDateCorrection: null,
-        readFailure: `the invoice's issue-date corrections: ${error.message}`,
+        // The error text is in the log line above, not on the row.
+        readFailure: "the invoice's issue-date corrections",
       };
     }
     const latest = (

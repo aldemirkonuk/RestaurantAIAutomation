@@ -1329,11 +1329,16 @@ describe("ADR 0273: a verified receipt is dated by its invoice's issue date", ()
   });
 
   it.each([
-    ["the paper", "procurement_documents", null],
-    ["the paper's correction", "document_corrections", DOC],
+    ["paper", "procurement_documents", null, "the order's documents"],
+    [
+      "issue-date correction",
+      "document_corrections",
+      DOC,
+      "the invoice's issue-date corrections",
+    ],
   ])(
     "calls an unreadable %s a failed read, dated when checked — never 'no date'",
-    async (_what, failTable, documentId) => {
+    async (_label, failTable, documentId, what) => {
       const { db, calls } = onePaper({ failTable });
 
       await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
@@ -1345,9 +1350,12 @@ describe("ADR 0273: a verified receipt is dated by its invoice's issue date", ()
       expect(row.document_id).toBe(documentId);
       expect(row.observed_at).toBe(CHECKED);
       expect(row.raw.dateBasis).toBe("verified_at");
-      expect(row.raw.dateSentence).toMatch(
-        /^The invoice's issue date could not be read when this price was checked \(.+ unreachable\)\. That is a failed read, not an invoice without a date\./,
+      expect(row.raw.dateSentence).toBe(
+        `The invoice's issue date could not be read when this price was checked (${what}). That is a failed read, not an invoice without a date.`,
       );
+      // The database's error text stays in the log, never on a stored row
+      // that the sighting sheet shows to staff.
+      expect(row.raw.dateSentence).not.toContain("unreachable");
     },
   );
 
@@ -1409,10 +1417,12 @@ describe("ADR 0273: a verified receipt is dated by its invoice's issue date", ()
   });
 
   it("an invoice issued 60 days before its check is outside the 30-day box (A-038)", async () => {
-    // The mechanism the analytics walk measured: the 30-, 95- and 365-day
-    // boxes all counted the same sightings, because each was dated when it
-    // was checked. The REAL sweep, over the REAL writer's row, with the
-    // window applied the way PostgREST applies `.gte("observed_at", from)`.
+    // The analytics walk measured the 30-, 95- and 365-day boxes counting
+    // the same sightings (A-038). This is one mechanism that does that — a
+    // row dated by its check stays in every box — not a claim about which
+    // source wrote the measured rows. The REAL sweep, over the REAL writer's
+    // row, with the window applied the way PostgREST applies
+    // `.gte("observed_at", from)`.
     const { db, calls } = onePaper({
       documents: [{ ...invoice, doc_date: "2026-07-05" }],
     });
@@ -1601,12 +1611,12 @@ describe("dateReceiptSighting", () => {
     const d = dateReceiptSighting({
       verifiedAt: CHECKED,
       paper: paper(),
-      readFailure: "the order's documents: timeout",
+      readFailure: "the order's documents",
     });
     expect(d.basis).toBe("verified_at");
     expect(d.issueDate).toBeNull();
     expect(d.sentence).toMatch(
-      /\(the order's documents: timeout\)\. That is a failed read, not an invoice without a date\./,
+      /\(the order's documents\)\. That is a failed read, not an invoice without a date\./,
     );
   });
 

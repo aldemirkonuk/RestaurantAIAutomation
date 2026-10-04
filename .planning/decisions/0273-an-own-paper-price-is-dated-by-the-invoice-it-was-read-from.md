@@ -12,7 +12,7 @@ A verified receipt writes an own-paper (class A) price sighting. At `8c673db4b` 
 
 The code's own rule for class A says otherwise as well. `observed_at` is "the event's own date, never `now()`" (`own-paper-sighting.ts:40`), and a sighting "must carry the date its own paper carries" (`own-paper-sighting.ts:357-358` @8c673db4b). ADR 0117:264-265 requires the row to name "when they published it".
 
-Every price window reads `observed_at`: `belowTrailingAverage` (`vendor-comparison.service.ts:651`, `.gte("observed_at", from)` at :669), the outlier re-judge (`outlier-rejudge.service.ts:137`), the market-price producer (`market-price.producer.ts:358`) and promotions (`promotions.service.ts:497`). So a July invoice checked in September counted as September's price. A-038 measured the result on the sim house: the below-average box counted the same 25 sightings in its 30, 95 and 365-day windows.
+Every price window reads `observed_at`: `belowTrailingAverage` (`vendor-comparison.service.ts:651`, `.gte("observed_at", from)` at :669), the outlier re-judge (`outlier-rejudge.service.ts:137`), the market-price producer (`market-price.producer.ts:358`) and promotions (`promotions.service.ts:497`). So a July invoice checked in September counted as September's price. A-038 measured the below-average box on the sim house: it counted the same 25 sightings in its 30, 95 and 365-day windows. That measurement gives only their class: `byClass: {"quoted": 25}` (`p4-scratch/sim-run/analytics/raw/vp-below-default.json`), and the quoted class pools `invoice`, `quote`, `api_catalog`, `chat`, `social` and `manual` rows (`price-below-average.ts:121-133`). Which source wrote them was not measured, so it is not shown that they came through `verifyReceipt` at all.
 
 ## Options considered
 
@@ -27,7 +27,7 @@ Every price window reads `observed_at`: `belowTrailingAverage` (`vendor-comparis
 
 A verified receipt's price is dated by the issue date of the one live invoice that `pickReceiptPaper` names. The issue date is that invoice's `doc_date` with the latest `kind = 'correction'` row on `issueDate` laid over it. The price is dated by the check time only when no usable issue date exists, and the row says why.
 
-- **The issue date and how it is placed.** `observed_at` is the issue date at 12:00 UTC, but never later than the check: `min(issue 12:00Z, verifiedAt)`. `effective_date` is the issue date itself (`dateReceiptSighting`, `own-paper-sighting.ts:693`). Noon keeps the calendar day the same from UTC−12 to UTC+11.
+- **The issue date and how it is placed.** `observed_at` is the issue date at 12:00 UTC, but never later than the check: `min(issue 12:00Z, verifiedAt)`. `effective_date` is the issue date itself (`dateReceiptSighting`, `own-paper-sighting.ts:694`). Noon keeps the calendar day the same from UTC−12 to UTC+11.
 - **When the check time is used.** Each case writes its own sentence:
   - no invoice is named (none attached, or several and none named);
   - the invoice has no date on record, or a person corrected the date to none;
@@ -35,7 +35,7 @@ A verified receipt's price is dated by the issue date of the one live invoice th
   - the date is more than one calendar day after the UTC day of the check (`ISSUE_DATE_FUTURE_TOLERANCE_DAYS = 1`; the day after is tolerated for time-zone skew);
   - the documents or corrections read failed. This sentence says it was a failed read, not an invoice without a date.
 - **What the row records.** `raw.dateBasis` (`invoice_issue_date` | `invoice_issue_date_corrected` | `verified_at`), `raw.dateSentence`, `raw.verifiedAt` (our clock, always kept) and `raw.issueDate`.
-- **The content hash** is keyed on the dated day, not the day of the check. Re-checking the same paper on another day is not a new sighting.
+- **The content hash** is keyed on the dated day, not the day of the check. For an issue-dated row, re-checking the same paper on another day at the same price, pack and currency is therefore not a new sighting. A row dated by its check is hashed on its check day, so re-checking it on a later day still writes a second row; every door check with no invoice named is in that case.
 - **`price_history.effective_date`** takes the same date (`procurement.service.ts:1866`). The two registers then agree on which day a price belongs to.
 - **The compare DTO** maps `dateBasis`, `dateSentence`, `issueDate` and `verifiedAt` from `raw` (`observationDating`, `vendor-comparison.service.ts:1134`). It accepts only the three known bases; anything else maps to null. The web sighting sheet says which date was used: "dated 15 Jul 2026, the invoice's issue date (checked 3 Sept 2026)", or "dated when it was checked, …: <reason>" (`whenWords`, `vp-register.ts:276`).
 
@@ -43,23 +43,24 @@ What carried it: the column exists and the code's own class-A rule already deman
 
 ## Consequences
 
-- **Easier.** Windows, trends, charts and the market producer read the paper's date. An invoice checked late is no longer "news" in a 30-day box. The spec `own-paper-sighting.spec.ts` runs the real `belowTrailingAverage` over the writer's own row: a 2026-07-15 invoice checked on 2026-09-03 drops out of 30 days and is inside 95.
-- **The A-038 numbers in the sim house do not move.** Its door checks file no invoice, so every one of its sightings falls back to the check time, and now says so (fork F1).
+- **Easier.** Windows, trends, charts and the market producer read the paper's date. An invoice checked late is no longer "news" in a 30-day box. The spec `own-paper-sighting.spec.ts` runs the real `belowTrailingAverage` over the writer's own row: an invoice issued 2026-07-05 and checked on 2026-09-03, 60 days later, drops out of 30 days and is inside 95.
+- **A-038 is not fixed for the house it was measured in, and stays open.** That house holds no document (`GET /procurement/documents` returned `items: []`, `p4-scratch/sim-run/analytics/raw/docs-paper.json`). Its 25 rows already written are not re-dated (F2): they carry no `dateBasis`, so the page keeps its plain "seen" wording for them, and its 30, 95 and 365-day counts do not move. From this change on, a door check there with no invoice filed is dated by its check time and says so; F1 asks whether it should be dated otherwise. The fix shown here is for a house that files its invoices.
 - **No lower bound.** An issue date misread into a past year dates the row into that past. The remedy is the correction door, not a guess.
 - **A second row on re-check.** An old receipt re-verified after this change hashes on its issue day rather than its check day. It therefore writes a second, correctly dated row beside the old one, instead of being deduplicated against it.
 - **Not re-dated:** a correction made after the check, and rows written before this change (fork F2). Those carry no `dateBasis`, and the page keeps its plain "seen" wording for them.
 - **Unchanged:** the `order_confirmed` sighting is still dated at confirmation, and the AW03 `delivered_at` half is not touched here.
+- **The "Seen" label now carries the paper's date on an issue-dated row.** The sighting sheet's row label (`SightingSheet.tsx:81`) and the register table's "Seen" column (`VendorPricesNext.tsx:415`, `ageWords(observedAt)`) are unchanged. On an issue-dated row both now show the invoice's day, so the table's age counts from the invoice's day (it can read "2 months ago" for paper checked yesterday); the sheet's own words say which date it is ("dated …, the invoice's issue date (checked …)"). The labels are not renamed here: what `observed_at` means for class A is F3, and the copy follows that answer. `SightingSheet.test.tsx` renders the sheet's "Seen" row for an issue-dated and a fallback row and reads the words beside the label; the page itself was not looked at in the Browser pane.
 - **Revisit when:** the founder answers F1, F2 or F3; C02 rules on how old a capture time may be trusted; or an issue date older than a year shows up on a fresh check (that is the signal for a lower bound).
 
 ## Forks
 
-- **F1 — A door check with no invoice filed: date it by the delivery's capture time instead of the check time? OPEN.** (a) Keep the check time, with `raw.dateSentence` saying why. This is what ships. (b) Use the receipt event's `client_captured_at` within the C02 trust limit. (c) Use `delivered_at` once AW03 stops stamping `now()`. Recommendation: (a) now, and (b) after C02.
-- **F2 — Re-date own-paper rows already on the register? OPEN.** (a) Forward only; this is what ships. (b) A migration over rows with `raw.origin = 'own_paper'` and a `document_id` whose date is set. That would be a production data write that runs on merge, so it needs the founder's word. Recommendation: (a). The sim house names no paper, so (b) would change nothing there.
+- **F1 — A door check with no invoice filed: date it by the delivery's capture time instead of the check time? OPEN.** Whether this is the sim house's case is not shown: its 25 sightings were not split by source (Context). (a) Keep the check time, with `raw.dateSentence` saying why. This is what ships. (b) Use the receipt event's `client_captured_at` within the C02 trust limit. (c) Use `delivered_at` once AW03 stops stamping `now()`. Recommendation: (a) now, and (b) after C02.
+- **F2 — Re-date own-paper rows already on the register? OPEN.** (a) Forward only; this is what ships. (b) A migration over rows with `raw.origin = 'own_paper'` and a `document_id` whose date is set. That would be a production data write that runs on merge, so it needs the founder's word. Recommendation: (a). The sim house holds no document, so (b) would change nothing there.
 - **F3 — Does a class-A row's `observed_at` hold the paper's date? Proposed (a), OPEN for the founder.**
   - (a) Yes. `observed_at` and `effective_date` both take it, and `raw.verifiedAt` keeps our clock.
   - (b) The class-C pattern (option 2). The strongest evidence for (b) is on record and is not hidden here:
     - the `observed_at` column comment reads "When we saw it vs when the price applies" (`20260805154027_vendor_price_observations.sql:75-77`);
-    - ADR 0117's provenance table maps `fetched_at -> observed_at` (:420).
+    - ADR 0117's provenance table maps `issued_at -> effective_date` (:419) and `fetched_at -> observed_at` (:420), and the class-C passage cites that pairing as already settled (:130). "When they published it" (:264-265) is `issued_at`, which that table puts in `effective_date`, not `observed_at`. This is the strongest evidence for (b). The same row marks that mapping **wrong shape**: `effective_date` "means the vendor's effective date, not the file's issuance" (:419). So the table says where an issue date was put, not that `effective_date` fits it.
   - If he picks (b), this lane shrinks to writing `effective_date` and the basis, and the A-038 window fix moves to the readers.
 
 These are recorded here, not as new OPEN-DECISIONS rows (ADR 0240 F3).
@@ -70,4 +71,6 @@ These are recorded here, not as new OPEN-DECISIONS rows (ADR 0240 F3).
 
 | Date | Reviewer | Outcome |
 |---|---|---|
-| 2026-10-03 | — | Created (Proposed) with the build on `fix/price-sighting-dated-by-issue`; numbered 0273 because 0271 (logs lane) and 0272 (sig lane) were taken at build time |
+| 2026-10-03 | — | Created (Proposed) with the build on `fix/price-sighting-dated-by-issue`; numbered 0273 because 0271 and 0272 were held in other worktrees at build time (re-swept in fix round 1: 0271 is the add-wine photo ADR in `zen-lehmann-f23b49`, 0272 the sig lane; the logs lane has moved to 0277; no other worktree holds 0273) |
+| 2026-10-03 | independent verifier, fix round 1 | Narrowed: the sim-house consequence (A-038 stays open there; the source split of its 25 rows was not measured), the content-hash sentence (issue-dated rows only), the spec date (2026-07-05), the F3 (b) evidence (:419, :130), the "Seen" label consequence. A failed read's row sentence now names only what failed; the database error stays in the log |
+| 2026-10-04 | build lane, resumed | Re-verified at `8c673db4b`: the 11 service-level cases in `own-paper-sighting.spec.ts` fail against the base `procurement.service.ts` and pass with the fix; `next_free()` saw 0273 on this branch only (1652 refs, and no other `wt-*` worktree holds it). Corrected the `dateReceiptSighting` cite (:694), added the "wrong shape" verdict to the F3 (b) evidence, and moved the web type so `VendorObservationRow` keeps its own doc comment. Settled the same day: the sheet's "Seen" row is now render-tested (both cases fail against the base `vp-register.ts`), and the claim row says A-038 stays open. The first commit's body said the sim house's numbers "do not move until F1 is answered"; that is narrowed by the Consequences above, not amended in history |

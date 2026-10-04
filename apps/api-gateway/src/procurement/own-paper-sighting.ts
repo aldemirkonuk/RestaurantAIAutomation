@@ -669,8 +669,9 @@ function addCalendarDays(day: string, days: number): string {
  * `procurement_documents` carries no issue-date column. It does
  * (`doc_date`, `baseline_from_production.sql:4433`), and intake writes it.
  * Dated by the check, an invoice issued in July and checked in September is
- * "news" in every 30-day box — the analytics walk measured the same 25
- * sightings in the 30-, 95- and 365-day windows (A-038).
+ * "news" in every 30-day box. The analytics walk measured the same 25
+ * sightings in the 30-, 95- and 365-day windows (A-038); which source wrote
+ * those 25 was not measured, and rows already written are not re-dated.
  *
  * THE RULE.
  *   * The date is read ONLY from the one live invoice `pickReceiptPaper`
