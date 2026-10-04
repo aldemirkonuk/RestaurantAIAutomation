@@ -73,12 +73,22 @@ export interface StakeFiling {
  *
  * The register's promise is "what acting on an entry would change". The
  * engine's category is a different fact — which family of analysis found the
- * entry — and for two rules the two disagree. Both are `efficiency` in
- * `recommendations.service.ts`, and the category once filed both under The
- * floor, so with Money pressed "Price it" left out a price change (AW28). The
- * founder, 2026-10-04: "Money / Stock (Recommended)" — the price change under
- * Money, the bottle moved under Stock. Each `why` quotes the rule's own
- * `recommendation` sentence, the way `rec-docket.ts` `RULE_ACT` does for acts.
+ * entry — and for four rules the two disagree. The founder ruled on each:
+ *
+ *  - `plowhorse_repricing` and `puzzle_activation` are `efficiency` in
+ *    `recommendations.service.ts`, and the category once filed both under The
+ *    floor, so with Money pressed "Price it" left out a price change (AW28).
+ *    2026-10-04: "Money / Stock (Recommended)" — the price change under Money,
+ *    the bottle moved under Stock.
+ *  - `revenue_concentration` is `risk`, which files under Vendors, but it
+ *    changes how deep the top sellers' stock runs. 2026-10-04:
+ *    "Stock (Recommended)".
+ *  - `weekday_gap` is `sales`, which files under Money, but it leads with
+ *    putting staff training, deliveries and counts on a named day. 2026-10-04:
+ *    "The floor (Recommended)" — filed by its leading clause, as its act is.
+ *
+ * Each `why` quotes the rule's own `recommendation` sentence, the way
+ * `rec-docket.ts` `RULE_ACT` does for acts.
  *
  * The category is NOT changed in the engine: it feeds the goal levers
  * (`rec-daybook.ts`), the insight scheduler and the reports pill.
@@ -86,18 +96,27 @@ export interface StakeFiling {
 const RULE_STAKE: Record<string, { stake: StakeId; why: string }> = {
   plowhorse_repricing: {
     stake: 'money',
-    why: 'The rule says “Raise those prices 5–8% or renegotiate cost on the next PO”. A price change moves the money taken across the pass. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+    why: 'The rule says “Raise those prices 5–8% or renegotiate cost on the next PO”. A price change moves what each bottle and glass brings in. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
   },
   puzzle_activation: {
     stake: 'stock',
     why: 'The rule says “Put one puzzle wine by-the-glass this week”. It moves a bottle that is standing still on the shelf. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
   },
+  revenue_concentration: {
+    stake: 'stock',
+    why: 'The rule says “Protect the top sellers’ stock first (raise their service level to 98%)”. It changes how deep the stock runs on the wines the room actually drinks, not which vendor is paid. The engine calls the rule risk; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+  },
+  weekday_gap: {
+    stake: 'floor',
+    why: 'The rule leads with “Move staff training, deliveries, and inventory counts to <weakest day>”. Putting the team’s work on a named day changes how the floor runs its week. Its second half, a day-only offer, would change money; it is filed by the clause it leads with, as its act is. The engine calls the rule sales; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+  },
 };
 
 /**
- * Category → stake, for every rule not filed by name. The categories the rule
- * engine emits (`analytics/recommendations.service.ts`: sales · inventory ·
- * pricing · risk · purchasing · staff · basket · goals) filed by consequence.
+ * Category → stake, for every rule not filed by name. The rule engine
+ * (`analytics/recommendations.service.ts`) emits nine categories: sales ·
+ * inventory · pricing · risk · purchasing · staff · basket · goals ·
+ * efficiency. The first eight are filed here by consequence.
  *
  * `efficiency` is deliberately absent. Both of its rules are filed by name
  * above, and a NEW efficiency rule must land in `unfiled` rather than be

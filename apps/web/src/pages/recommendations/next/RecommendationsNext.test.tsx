@@ -360,6 +360,28 @@ describe('RecommendationsNext — the standing book', () => {
     expect(screen.queryAllByTestId('rc-act-elsewhere')).toHaveLength(0);
   });
 
+  it('files the top sellers’ buffer under Stock beside the stockout, and the weekday move under The floor', () => {
+    // The founder, 2026-10-04: "Stock (Recommended)" and "The floor (Recommended)".
+    mockData.current = {
+      ...base,
+      entries: [
+        entry({ ruleKey: 'stockout_imminent', category: 'inventory' }),
+        entry({ ruleKey: 'revenue_concentration', category: 'risk' }),
+        entry({ ruleKey: 'spend_acceleration', category: 'purchasing' }),
+        entry({ ruleKey: 'weekday_gap', category: 'sales' }),
+      ],
+    };
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: /^Stock\s*\d+$/ }));
+    expect(within(headOf('Order it')).getByText('2 entries')).toBeInTheDocument();
+    expect(within(headOf('Order it')).getByTestId('rc-act-elsewhere')).toHaveTextContent(
+      '· 1 more filed under Vendors',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^The floor\s*\d+$/ }));
+    expect(within(headOf('Schedule it')).getByText('1 entry')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Order it' })).toBeNull();
+  });
+
   it('says in the working why an entry would change what it says, from the rule’s own words', () => {
     mockData.current = {
       ...base,

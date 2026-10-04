@@ -122,7 +122,9 @@ describe('heldBy — whose hand, for the person looking (founder item 87, OD-176
  * change". The engine's category is a different fact, and for its two
  * `efficiency` rules it filed a price change and a bottle moved under The
  * floor — so with Money pressed, "Price it" left out a price change. The
- * founder, 2026-10-04: "Money / Stock (Recommended)".
+ * founder, 2026-10-04: "Money / Stock (Recommended)"; and for the two rules
+ * the lane asked about next, revenue_concentration "Stock (Recommended)" and
+ * weekday_gap "The floor (Recommended)".
  */
 describe('the register — filed by what acting on it changes (ADR 0288)', () => {
   /**
@@ -156,6 +158,23 @@ describe('the register — filed by what acting on it changes (ADR 0288)', () =>
   it('files the price change under Money and the bottle moved under Stock, not The floor', () => {
     expect(stakeOf('plowhorse_repricing', 'efficiency')).toBe('money');
     expect(stakeOf('puzzle_activation', 'efficiency')).toBe('stock');
+  });
+
+  it('files the top sellers’ buffer under Stock and the weekday move under The floor, by name', () => {
+    // The founder, 2026-10-04: "Stock (Recommended)" and "The floor (Recommended)".
+    expect(stakeOf('revenue_concentration', 'risk')).toBe('stock');
+    expect(stakeOf('weekday_gap', 'sales')).toBe('floor');
+    expect(stakeOf('weekday_gap#*#fire:week:2026-W40', null)).toBe('floor');
+    const buffer = stakeFilingOf('revenue_concentration', 'risk');
+    expect(buffer.by).toBe('rule');
+    expect(buffer.why).toMatch(/Protect the top sellers’ stock first/);
+    const gap = stakeFilingOf('weekday_gap', 'sales');
+    expect(gap.by).toBe('rule');
+    expect(gap.why).toMatch(/leads with “Move staff training, deliveries, and inventory counts/);
+    // their categories still file every other rule as before
+    expect(stakeOf('vendor_concentration', 'risk')).toBe('vendors');
+    expect(stakeOf('sales_below_weekday_baseline', 'sales')).toBe('money');
+    expect(stakeOf('weekly_demand_slide', 'sales')).toBe('money');
   });
 
   it('reads the rule out of a composite stored key, so the leaves file as the book does', () => {
