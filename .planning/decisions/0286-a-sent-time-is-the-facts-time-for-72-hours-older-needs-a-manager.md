@@ -12,7 +12,9 @@ The door works offline: the tap succeeds on the phone and the receipt syncs when
 
 The owner-quarter sim (2026-10-02, findings A-008, A-010 and A-011) measured this. The 100 newest of its 549 door deliveries read 2 October, 31-44 days after the tap times their phones sent; that all 549 do is inferred. The vendor scorecard, which reads `delivered_at`, read 0 of 548 on time. `/reports` pacing put $39,302.50 of spend in the last 30 days against $0 before. A real house hits the same code whenever the outbox sends a receipt late.
 
-How old a sent time the server may trust was the C02 fork. The founder answered it on 2026-10-04: a sent time within 72 hours is kept as the fact's time. An older one is kept only from an owner or a manager and is marked back-dated. The ruling applies to door receipts, counts and orders. The read-side as-of control (choosing the date a report reads by) was not asked and stays open.
+How old a sent time the server may trust was the C02 fork. The founder answered it on 2026-10-04 (~00:15Z, AskUserQuestion). His pick, verbatim: *"72 h; older needs a manager (Recommended)"*. The option he picked, verbatim: *"A sent time within 72 hours is kept as the fact's time. An older one is kept only from an owner or manager and is marked back-dated. Applies to door receipts, counts and orders."* The read-side as-of control (choosing the date a report reads by) was not asked and stays open.
+
+Of the three kinds of fact the ruling names, only the door receipt is built here. Counts: the door-count route accepts a `countedAt` and is follow-up 1. Orders: no order write accepts a sent time today (`POST orders/:id/deliver` takes none), so the server's time is already the ruling's answer there.
 
 ## Options considered
 
@@ -52,7 +54,7 @@ What carried it: the founder's threshold, applied where every existing reader al
 
 - **Easier.** A receipt that syncs late lands on its real day, in the scorecard, `/reports` and the counter, with no change to those readers. What the phone said is always on the row. Which clock dated the row is a column, and a check can query it.
 - **Harder / given up.** Rows written before this rule are not re-dated (see the backfill fork below). The sim house's scorecard (0 of 548), pacing and sales chart stay wrong until the house is re-run or a backfill is chosen. A receipt older than 72 hours from staff is dated by the server even when the phone was right; that is the ruling's price, and the evidence is kept.
-- **Order of landing.** The `events` lane rewrites the same order-update block in `recordDoorReceipt`. It should rebase on this change and close its calendar event at the door's `delivered_at` (the fact's time), not at now.
+- **Order of landing.** The `events` lane (ADR 0284, not yet on main) moves a delivery's calendar event by a trigger `AFTER UPDATE OF status, delivered_at` on `procurement_orders`, and does not edit `recordDoorReceipt`. The door's two writes each fire it. The status write closes the event while `delivered_at` may still be empty, and the `delivered_at` write then moves it to the fact's time. Either order of merging converges on the fact's time. The `postime` lane (ADR 0281, not yet on main) adds `p_occurred_at` to `apply_stock_movement`; follow-up 2 passes the door's time through it.
 - **Revisit when:** a house shows receipts routinely refused as `too_old` by staff (the window is wrong for it), or the read-side as-of control is decided.
 
 ### Follow-ups (each tracked; none is done here)
@@ -69,3 +71,4 @@ What carried it: the founder's threshold, applied where every existing reader al
 |---|---|---|
 | 2026-10-04 | founder (AskUserQuestion, C02) | Ruling: "72 h; older needs a manager (Recommended)" |
 | 2026-10-04 | — | Created, lane `doortime`, branch `fix/door-keeps-the-arrival-time` |
+| 2026-10-04 | — | Settled: merged main at e2cbe426a (#592, #599, #600, #601; none touches this lane's code). The migration moved to this lane's version slot, cited by slug. The index row moved to the Proposed table, where 0285 sits with the same Locked-ruling / Proposed-method split. The ruling's option text is now quoted verbatim. |
