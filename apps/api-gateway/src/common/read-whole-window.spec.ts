@@ -1,0 +1,787 @@
+import { ServiceUnavailableException } from "@nestjs/common";
+import {
+  WHOLE_READ_PAGE,
+  WholeReadError,
+  readWholeWindow,
+} from "./read-whole-window";
+import { GoalsService } from "../analytics/goals.service";
+import { TableAnalyticsService } from "../analytics/table-analytics.service";
+import { AdvancedAnalyticsService } from "../analytics/advanced-analytics.service";
+import { AnalyticsService } from "../analytics/analytics.service";
+import { InsightGeneratorService } from "../analytics/insights/insight-generator.service";
+import { DashboardService } from "../dashboard/dashboard.service";
+import { RecordedDaysService } from "../calendar/recorded-days.service";
+
+/**
+ * ADR 0292 — analytics reads the whole window, page by page, or refuses.
+ *
+ * PostgREST stops every response at `max_rows` (1000, supabase/config.toml:18)
+ * and says nothing. The double below does the same: every response is cut at
+ * the server cap whatever was asked, which is the one property the old reads
+ * never met. Every service case here was measured RED against origin/main
+ * 8c673db4b (the read returned 1,000 rows) before the fix.
+ *
+ * The double honours eq / neq / gte / lte / lt / gt / in, `order`, `limit`,
+ * `maybeSingle` / `single` and `select(…, { count: "exact" })`, whose count
+ * is the size of the FILTERED set before the limit — a later page's count is
+ * what lies past its cursor, exactly as PostgREST reports it.
+ */
+
+type Row = Record<string, any>;
+type Filter = { op: string; col: string; val: any };
+
+interface Behaviour {
+  /** The server's max_rows. Defaults to 1000. */
+  cap?: number;
+  /** 1-based request numbers (per table) that answer with an error. */
+  failOn?: number[];
+  /** Added to the reported count on the given 1-based request numbers. */
+  driftOn?: Record<number, number>;
+  /** Never report a count, whatever the select asked for. */
+  noCount?: boolean;
+  /** A server that ignores the `.gt("id", …)` cursor. */
+  ignoreCursor?: boolean;
+  /** Rows come back with no `id`. */
+  stripIds?: boolean;
+}
+
+interface Request {
+  table: string;
+  n: number;
+  select?: string;
+  count?: string;
+  order?: string;
+  gt?: string;
+  limit?: number;
+}
+
+function asTime(v: unknown): number | null {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(v)) return null;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+}
+
+function compare(a: unknown, b: unknown): number {
+  const ta = asTime(a);
+  const tb = asTime(b);
+  if (ta !== null && tb !== null) return ta - tb;
+  const sa = String(a);
+  const sb = String(b);
+  return sa < sb ? -1 : sa > sb ? 1 : 0;
+}
+
+function matches(row: Row, f: Filter): boolean {
+  const v = row[f.col];
+  switch (f.op) {
+    case "eq":
+      return String(v) === String(f.val);
+    case "neq":
+      return String(v) !== String(f.val);
+    case "in":
+      return (f.val as unknown[]).map(String).includes(String(v));
+    case "gte":
+      return v != null && compare(v, f.val) >= 0;
+    case "gt":
+      return v != null && compare(v, f.val) > 0;
+    case "lte":
+      return v != null && compare(v, f.val) <= 0;
+    case "lt":
+      return v != null && compare(v, f.val) < 0;
+    default:
+      throw new Error(`the double does not know .${f.op}()`);
+  }
+}
+
+function cappedDb(
+  tables: Record<string, Row[]>,
+  behaviour: Record<string, Behaviour> = {},
+) {
+  const requests: Request[] = [];
+  const writes: Array<{ table: string; op: string; payload: unknown }> = [];
+  const perTable = new Map<string, number>();
+
+  const client = {
+    from(table: string) {
+      const filters: Filter[] = [];
+      const req: Partial<Request> & { write?: boolean } = { table };
+      let single: "maybe" | "one" | null = null;
+      const b: any = {};
+      b.select = (cols: string, opts?: { count?: string }) => {
+        req.select = cols;
+        req.count = opts?.count;
+        return b;
+      };
+      for (const op of ["eq", "neq", "gte", "lte", "lt", "in"]) {
+        b[op] = (col: string, val: unknown) => {
+          filters.push({ op, col, val });
+          return b;
+        };
+      }
+      b.gt = (col: string, val: string) => {
+        if (col === "id") req.gt = val;
+        else filters.push({ op: "gt", col, val });
+        return b;
+      };
+      b.order = (col: string) => {
+        req.order = col;
+        return b;
+      };
+      b.limit = (n: number) => {
+        req.limit = n;
+        return b;
+      };
+      b.maybeSingle = () => {
+        single = "maybe";
+        return b;
+      };
+      b.single = () => {
+        single = "one";
+        return b;
+      };
+      for (const op of ["update", "insert", "upsert", "delete"]) {
+        b[op] = (payload: unknown) => {
+          req.write = true;
+          writes.push({ table, op, payload });
+          return b;
+        };
+      }
+      const answer = () => {
+        if (req.write) return { data: null, error: null };
+        const n = (perTable.get(table) ?? 0) + 1;
+        perTable.set(table, n);
+        requests.push({ ...(req as Request), n });
+        const be = behaviour[table] ?? {};
+        if (be.failOn?.includes(n)) {
+          return {
+            data: null,
+            error: {
+              message: "canceling statement due to statement timeout",
+              code: "57014",
+            },
+            count: null,
+          };
+        }
+        let rows = (tables[table] ?? []).filter((r) =>
+          filters.every((f) => matches(r, f)),
+        );
+        if (req.gt !== undefined && !be.ignoreCursor)
+          rows = rows.filter((r) => String(r.id) > String(req.gt));
+        if (req.order) {
+          const col = req.order;
+          rows = [...rows].sort((x, y) => compare(x[col], y[col]));
+        }
+        const count = rows.length + (be.driftOn?.[n] ?? 0);
+        let out = rows.slice(
+          0,
+          Math.min(be.cap ?? 1000, req.limit ?? Infinity),
+        );
+        if (be.stripIds) out = out.map(({ id: _id, ...rest }) => rest);
+        if (single) return { data: out[0] ?? null, error: null };
+        return {
+          data: out,
+          error: null,
+          count: req.count === "exact" && !be.noCount ? count : null,
+        };
+      };
+      b.then = (resolve: any, reject: any) =>
+        Promise.resolve().then(answer).then(resolve, reject);
+      return b;
+    },
+  };
+  const db = { getClient: () => client, supabase: client } as any;
+  return { client, db, requests, writes };
+}
+
+/** An id whose order is NOT the rows' time order, as a uuid's is not. */
+function scrambledId(i: number): string {
+  const h = (i * 2654435761) % 4294967296;
+  return `${h.toString(16).padStart(8, "0")}-${String(i).padStart(6, "0")}`;
+}
+
+/** `daysAgo` days before today (UTC), at 10:00Z plus `minute` minutes. */
+function at(daysAgo: number, minute = 0): string {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  return new Date(d.getTime() + (600 + minute) * 60000).toISOString();
+}
+
+/** `n` rows spread over days `first..last` ago, OLDEST FIRST in storage. */
+function spread(
+  n: number,
+  first: number,
+  last: number,
+  make: (i: number, daysAgo: number, minute: number) => Row,
+): Row[] {
+  const days = first - last + 1;
+  const rows: Row[] = [];
+  for (let i = 0; i < n; i++) {
+    const daysAgo = first - Math.floor((i * days) / n);
+    rows.push({ id: scrambledId(i), ...make(i, daysAgo, i % 240) });
+  }
+  return rows;
+}
+
+function checks(n: number, first = 56, last = 0): Row[] {
+  return spread(n, first, last, (i, daysAgo, minute) => ({
+    restaurant_id: "r1",
+    voided: false,
+    opened_at: at(daysAgo, minute),
+    closed_at: at(daysAgo, minute + 30),
+    total: 100 + (i % 7),
+    covers: 2,
+    tip: 10,
+    items: [],
+  }));
+}
+
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+
+const build =
+  (client: any, table = "pos_checks") =>
+  () =>
+    client
+      .from(table)
+      .select("id, total", { count: "exact" })
+      .eq("restaurant_id", "r1");
+
+// ===========================================================================
+// The helper
+// ===========================================================================
+
+describe("readWholeWindow — the window whole, or a refusal (ADR 0292)", () => {
+  const rows = checks(3313);
+
+  it("reads 3,313 rows whole, in id order, in 4 requests", async () => {
+    const { client, requests } = cappedDb({ pos_checks: rows });
+    const got = await readWholeWindow<Row>("the checks", build(client));
+    expect(got).toHaveLength(3313);
+    expect(new Set(got.map((r) => r.id)).size).toBe(3313);
+    const ids = got.map((r) => String(r.id));
+    expect(ids).toEqual([...ids].sort());
+    expect(requests).toHaveLength(4);
+    expect(requests.every((r) => r.order === "id" && r.limit === 1000)).toBe(
+      true,
+    );
+    expect(WHOLE_READ_PAGE).toBe(1000);
+  });
+
+  it("issues no .gt on page 0 and the last id as the cursor after", async () => {
+    const { client, requests } = cappedDb({ pos_checks: rows });
+    const got = await readWholeWindow<Row>("the checks", build(client));
+    expect(requests[0].gt).toBeUndefined();
+    expect(requests[1].gt).toBe(String(got[999].id));
+    expect(requests[3].gt).toBe(String(got[2999].id));
+  });
+
+  it("adopts a server cap lower than its page (500)", async () => {
+    const { client, requests } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { cap: 500 } },
+    );
+    const got = await readWholeWindow<Row>("the checks", build(client));
+    expect(got).toHaveLength(3313);
+    expect(requests[0].limit).toBe(1000);
+    expect(requests.slice(1).every((r) => r.limit === 500)).toBe(true);
+    expect(requests).toHaveLength(7);
+  });
+
+  it("refuses with read_failed on an error on page 3, never 2,000 rows", async () => {
+    const { client } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { failOn: [3] } },
+    );
+    const err = await readWholeWindow("the checks", build(client)).catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(err.getStatus()).toBe(503);
+    expect(err.reason).toBe("read_failed");
+    expect(err.rowsRead).toBe(2000);
+    expect(err.count).toBe(3313);
+    expect(err.message).toMatch(/could not be read whole/);
+  });
+
+  it("re-reads once when the count drifts, and returns the whole window", async () => {
+    // A check lands between page 1 and page 2 of the first attempt only.
+    const { client, requests } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { driftOn: { 2: 1 } } },
+    );
+    const got = await readWholeWindow<Row>("the checks", build(client));
+    expect(got).toHaveLength(3313);
+    // 2 requests of the refused attempt, then 4 of the whole one.
+    expect(requests).toHaveLength(6);
+  });
+
+  it("refuses as unstable when the count drifts on both attempts", async () => {
+    const { client, requests } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { driftOn: { 2: 1, 4: -1 } } },
+    );
+    const err = await readWholeWindow("the checks", build(client)).catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.reason).toBe("unstable");
+    expect(requests).toHaveLength(4);
+  });
+
+  it("refuses a count over the ceiling before asking for page 1", async () => {
+    const { client, requests } = cappedDb({ pos_checks: rows });
+    const err = await readWholeWindow("the checks", build(client), {
+      ceiling: 3000,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.reason).toBe("row_ceiling");
+    expect(requests).toHaveLength(1);
+  });
+
+  it("refuses a full page whose rows carry no id", async () => {
+    const { client } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { stripIds: true, noCount: true } },
+    );
+    const err = await readWholeWindow("the checks", build(client)).catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.reason).toBe("malformed_page");
+  });
+
+  it("refuses rows with no id while a count is to be met", async () => {
+    const { client } = cappedDb(
+      { pos_checks: rows.slice(0, 10) },
+      { pos_checks: { stripIds: true } },
+    );
+    const err = await readWholeWindow("the checks", build(client)).catch(
+      (e) => e,
+    );
+    expect(err.reason).toBe("malformed_page");
+  });
+
+  it("refuses a cursor the server does not honour: the count says so first", async () => {
+    // Page 2 counts the whole window again instead of what lies past page 1.
+    const { client } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { ignoreCursor: true } },
+    );
+    const err = await readWholeWindow("the checks", build(client)).catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.reason).toBe("unstable");
+  });
+
+  it("refuses a cursor the server does not honour, with no count, on the repeated id", async () => {
+    const { client } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { ignoreCursor: true, noCount: true } },
+    );
+    const err = await readWholeWindow("the checks", build(client)).catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.reason).toBe("cursor_stalled");
+    expect(err.rowsRead).toBe(1000);
+  });
+
+  it("with no count reported, stops at a short page (the test-double path)", async () => {
+    const { client, requests } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { noCount: true } },
+    );
+    const got = await readWholeWindow<Row>("the checks", build(client));
+    expect(got).toHaveLength(3313);
+    expect(requests).toHaveLength(4);
+  });
+
+  it("answers an empty window with no rows and one request", async () => {
+    const { client, requests } = cappedDb({ pos_checks: [] });
+    await expect(readWholeWindow("the checks", build(client))).resolves.toEqual(
+      [],
+    );
+    expect(requests).toHaveLength(1);
+  });
+
+  it("reads a window of exactly 2,000 rows in 2 requests", async () => {
+    const { client, requests } = cappedDb({ pos_checks: rows.slice(0, 2000) });
+    const got = await readWholeWindow<Row>("the checks", build(client));
+    expect(got).toHaveLength(2000);
+    expect(requests).toHaveLength(2);
+  });
+});
+
+// ===========================================================================
+// The readers. Each case FAILED at origin/main (1,000 rows) and passes now.
+// ===========================================================================
+
+function goalsOver(db: any): GoalsService {
+  return new GoalsService(
+    db,
+    { getStored: async () => [] } as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    { getFinancialSummary: async () => ({}) } as any,
+  );
+}
+
+describe("GoalsService — the till and goal progress read the whole window", () => {
+  const rows = checks(3313, 56, 0);
+
+  it("getPosRevenueWindow(90) counts 3,313 checks, the full sum and the newest day", async () => {
+    const { db } = cappedDb({ pos_checks: rows });
+    const w = await goalsOver(db).getPosRevenueWindow("r1", 90);
+    expect(w.checkCount).toBe(3313);
+    expect(w.revenue).toBe(sum(rows.map((r) => r.total)));
+    const newest = [...rows.map((r) => r.closed_at.slice(0, 10))].sort().pop();
+    expect(w.dailySeries[w.dailySeries.length - 1].date).toBe(newest);
+  });
+
+  it("asks for `items` only for the metrics that read them", async () => {
+    const { db, requests } = cappedDb({ pos_checks: rows });
+    await goalsOver(db).getPosRevenueWindow("r1", 90);
+    const window = requests.filter((r) => r.order === "id");
+    expect(window.length).toBeGreaterThan(0);
+    for (const r of window) {
+      expect(r.select).toBe("id, total, opened_at, closed_at");
+      expect(r.count).toBe("exact");
+    }
+    const { db: db2, requests: req2 } = cappedDb({ pos_checks: rows });
+    await (goalsOver(db2) as any).computeMetricWithSeries(
+      "r1",
+      "wine_revenue",
+      at(80).slice(0, 10),
+    );
+    expect(req2.filter((r) => r.order === "id")[0].select).toBe(
+      "id, total, opened_at, closed_at, items",
+    );
+  });
+
+  it("bottles_sold sums 1,500 consumption lines, not 1,000", async () => {
+    const lines = spread(1500, 40, 1, (_i, daysAgo) => ({
+      restaurant_id: "r1",
+      quantity: 2,
+      volume_ml: null,
+      created_at: at(daysAgo),
+    }));
+    const { db } = cappedDb({ wine_consumption_log: lines });
+    const out = await (goalsOver(db) as any).computeMetricWithSeries(
+      "r1",
+      "bottles_sold",
+      at(60).slice(0, 10),
+    );
+    expect(out.rowCount).toBe(1500);
+    expect(out.current).toBe(3000);
+  });
+
+  it("a page-2 error throws WholeReadError instead of a partial revenue", async () => {
+    // Request 1 is the "ever had a check" probe; 2 is page 0; 3 is page 1.
+    const { db } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { failOn: [3] } },
+    );
+    const err = await goalsOver(db)
+      .getPosRevenueWindow("r1", 90)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.reason).toBe("read_failed");
+  });
+
+  const goal = {
+    id: "g1",
+    restaurant_id: "r1",
+    metric_key: "checks",
+    target_value: 5000,
+    created_at: at(60),
+    period: "custom",
+    direction: "at_least",
+    deadline: null,
+  };
+
+  it("getGoalProgress stores the whole window's count as current_value", async () => {
+    const { db, writes } = cappedDb({
+      pos_checks: rows,
+      analytics_goals: [goal],
+    });
+    const out: any = await goalsOver(db).getGoalProgress("r1", "g1");
+    expect(out.current).toBe(3313);
+    const stored = writes.filter((w) => w.table === "analytics_goals");
+    expect(stored).toHaveLength(1);
+    expect((stored[0].payload as any).current_value).toBe(3313);
+  });
+
+  it("getGoalProgress writes no current_value from a refused read", async () => {
+    // Request 1 is the "ever had a check" probe; request 2 is page 0.
+    const { db, writes } = cappedDb(
+      { pos_checks: rows, analytics_goals: [goal] },
+      { pos_checks: { failOn: [2] } },
+    );
+    const err = await goalsOver(db)
+      .getGoalProgress("r1", "g1")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(writes.filter((w) => w.table === "analytics_goals")).toEqual([]);
+  });
+});
+
+describe("TableAnalyticsService — 'Who served it' ranks on every check", () => {
+  // Maya's checks are stored first and are the smallest: the first 1,000 rows
+  // a capped, unordered read returned put her FIRST by takings (A-006).
+  const names = ["Maya", "Kerem", "Priya", "Deniz", "Lucas"];
+  const perWaiter = [655, 671, 682, 673, 660];
+  const rows: Row[] = [];
+  names.forEach((name, w) => {
+    for (let k = 0; k < perWaiter[w]; k++) {
+      const i = rows.length;
+      rows.push({
+        id: scrambledId(i),
+        restaurant_id: "r1",
+        voided: false,
+        server_name: name,
+        server_external_id: null,
+        table_id: null,
+        opened_at: at(1 + (k % 50), k % 200),
+        closed_at: at(1 + (k % 50), (k % 200) + 30),
+        covers: 2,
+        total: name === "Maya" ? 180 : 200,
+        tip: null,
+        items: [],
+      });
+    }
+  });
+
+  it("reads all 3,341 checks and puts Maya last", async () => {
+    const { db } = cappedDb({ pos_checks: rows });
+    const out: any = await new TableAnalyticsService(db).getWaiterPerformance(
+      "r1",
+      90,
+    );
+    expect(sum(out.waiters.map((w: any) => w.checks))).toBe(3341);
+    expect(out.waiters[out.waiters.length - 1].name).toBe("Maya");
+    expect(out.waiters[0].revenue).toBe(682 * 200);
+  });
+
+  it("a refused read is a 503, not an empty floor", async () => {
+    const { db } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { failOn: [2] } },
+    );
+    const err = await new TableAnalyticsService(db)
+      .getWaiterPerformance("r1", 90)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(err.getStatus()).toBe(503);
+    expect(err.message).toBe(
+      "The POS checks could not be read, so nothing about them is claimed.",
+    );
+  });
+});
+
+describe("AdvancedAnalyticsService — menu engineering and seasonality count every unit", () => {
+  const wines = ["M1", "M2", "M3", "M4", "M5"];
+  const inventory = wines.map((m, i) => ({
+    id: `inv-${i}`,
+    restaurant_id: "r1",
+    is_active: true,
+    wine_name: `Wine ${m}`,
+    stock_live: 10,
+    menu_price_current: 50 + i,
+    last_purchase_price: 20,
+    master_wine_id: m,
+    master_wine_library: { primary_type: "red" },
+  }));
+  const lines = spread(8445, 60, 1, (i, daysAgo) => ({
+    restaurant_id: "r1",
+    inventory_id: `inv-${i % 5}`,
+    quantity: 1,
+    volume_ml: null,
+    created_at: at(daysAgo, i % 300),
+    restaurant_inventory: { master_wine_id: wines[i % 5] },
+  }));
+
+  const svc = (db: any) =>
+    new AdvancedAnalyticsService(db, {} as any, {} as any, {} as any);
+
+  it("getMenuEngineering classifies on 8,445 units", async () => {
+    const { db } = cappedDb({
+      restaurant_inventory: inventory,
+      wine_consumption_log: lines,
+    });
+    const out: any = await svc(db).getMenuEngineering("r1", 90);
+    const units = sum(out.items.map((i: any) => i.velocityPerDay * 90));
+    expect(Math.round(units)).toBe(8445);
+  });
+
+  it("getSeasonality's weekday profile sums to 8,445 units", async () => {
+    const { db } = cappedDb({
+      restaurant_inventory: inventory,
+      wine_consumption_log: lines,
+    });
+    const out: any = await svc(db).getSeasonality("r1", 90);
+    const units = sum(out.weekdayProfile.map((d: any) => d.mean * d.n));
+    expect(Math.round(units)).toBe(8445);
+  });
+
+  it("a refused consumption read reaches the caller instead of an empty menu", async () => {
+    const { db } = cappedDb(
+      { restaurant_inventory: inventory, wine_consumption_log: lines },
+      { wine_consumption_log: { failOn: [2] } },
+    );
+    const err = await svc(db)
+      .getMenuEngineering("r1", 90)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(WholeReadError);
+  });
+});
+
+describe("AnalyticsService — the till list sums every consumption line", () => {
+  it("getPosConsumptionBreakdown over 1,500 lines", async () => {
+    const lines = spread(1500, 20, 1, (i, daysAgo) => ({
+      restaurant_id: "r1",
+      inventory_id: `inv-${i % 3}`,
+      wine_name: `Wine ${i % 3}`,
+      consumption_type: "bottle",
+      quantity: 1,
+      volume_ml: 750,
+      total_revenue: 40,
+      created_at: at(daysAgo),
+      restaurant_inventory: {
+        wine_name: `Wine ${i % 3}`,
+        last_purchase_price: 15,
+      },
+    }));
+    const { db } = cappedDb({ wine_consumption_log: lines });
+    const from = at(30).slice(0, 10);
+    const to = at(0).slice(0, 10);
+    const out = await new AnalyticsService(db).getPosConsumptionBreakdown(
+      "r1",
+      from,
+      to,
+    );
+    expect(sum(out.map((r) => r.bottlesSold))).toBe(1500);
+    expect(sum(out.map((r) => r.bottleRevenue ?? 0))).toBe(1500 * 40);
+  });
+});
+
+describe("RecordedDaysService — a /calendar month reads every check", () => {
+  it("windowFor over 2,121 checks draws every trading day", async () => {
+    const from = at(40).slice(0, 10);
+    const to = at(10).slice(0, 10);
+    const rows = spread(2121, 40, 10, (i, daysAgo, minute) => ({
+      restaurant_id: "r1",
+      voided: false,
+      opened_at: at(daysAgo, minute),
+      closed_at: at(daysAgo, minute + 30),
+      total: 90,
+      covers: 3,
+    }));
+    const { db } = cappedDb({ pos_checks: rows, analytics_day_exclusions: [] });
+    const out = await new RecordedDaysService(db).windowFor("r1", from, to);
+    expect(out.refusal).toBeNull();
+    expect(out.days).toHaveLength(31);
+    expect(sum(out.days.map((d) => d.checkCount))).toBe(2121);
+    expect(sum(out.days.map((d) => d.covers ?? 0))).toBe(2121 * 3);
+  });
+
+  it("a register read only in part returns the refusal, never days", async () => {
+    const rows = checks(2121, 40, 10);
+    const { db } = cappedDb(
+      { pos_checks: rows },
+      { pos_checks: { ignoreCursor: true } },
+    );
+    const out = await new RecordedDaysService(db).windowFor(
+      "r1",
+      at(40).slice(0, 10),
+      at(10).slice(0, 10),
+    );
+    expect(out.days).toEqual([]);
+    expect(out.refusal).toMatch(/could not be read whole/);
+  });
+
+  it("a failed page keeps the existing refusal sentence", async () => {
+    const { db } = cappedDb(
+      { pos_checks: checks(2121, 40, 10) },
+      { pos_checks: { failOn: [2] } },
+    );
+    const out = await new RecordedDaysService(db).windowFor(
+      "r1",
+      at(40).slice(0, 10),
+      at(10).slice(0, 10),
+    );
+    expect(out.days).toEqual([]);
+    expect(out.refusal).toBe("The sales register could not be read.");
+  });
+});
+
+describe("InsightGeneratorService — the bundle holds every check", () => {
+  it("loadBundle reads 3,313 checks and 1,500 consumption lines", async () => {
+    const lines = spread(1500, 40, 1, (_i, daysAgo) => ({
+      restaurant_id: "r1",
+      inventory_id: "inv-1",
+      quantity: 1,
+      volume_ml: null,
+      created_at: at(daysAgo),
+      restaurant_inventory: { master_wine_id: "M1" },
+    }));
+    const { db } = cappedDb({
+      pos_checks: checks(3313, 56, 1),
+      wine_consumption_log: lines,
+    });
+    const svc = new InsightGeneratorService(
+      db,
+      {
+        load: async () => ({ dates: new Set<string>(), readable: true }),
+      } as any,
+      {} as any,
+    );
+    const bundle = await (svc as any).loadBundle("r1");
+    expect(bundle.checks).toHaveLength(3313);
+    expect(bundle.consumption).toHaveLength(1500);
+    expect(bundle.availability.has("checks")).toBe(true);
+  });
+
+  it("a refused bundle read leaves that family silent, not partial", async () => {
+    const { db } = cappedDb(
+      { pos_checks: checks(3313, 56, 1) },
+      { pos_checks: { failOn: [2] } },
+    );
+    const svc = new InsightGeneratorService(
+      db,
+      {
+        load: async () => ({ dates: new Set<string>(), readable: true }),
+      } as any,
+      {} as any,
+    );
+    const bundle = await (svc as any).loadBundle("r1");
+    expect(bundle.checks).toEqual([]);
+    expect(bundle.availability.has("checks")).toBe(false);
+  });
+});
+
+describe("DashboardService — the sales chart counts every glass", () => {
+  it("getSalesChart('month') sums 1,500 consumption lines", async () => {
+    const lines = spread(1500, 20, 1, (_i, daysAgo) => ({
+      restaurant_id: "r1",
+      volume_ml: 150,
+      quantity: 1,
+      created_at: at(daysAgo),
+    }));
+    const { db } = cappedDb({ wine_consumption_log: lines });
+    const points = await new DashboardService(db).getSalesChart("r1", "month");
+    expect(sum(points.map((p) => p.glasses))).toBe(1500);
+  });
+
+  it("a refused consumption read is thrown, not drawn as glasses = 0", async () => {
+    const { db } = cappedDb(
+      { wine_consumption_log: [] },
+      { wine_consumption_log: { failOn: [1] } },
+    );
+    const err = await new DashboardService(db)
+      .getSalesChart("r1", "month")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(WholeReadError);
+  });
+});

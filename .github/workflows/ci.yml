@@ -779,6 +779,18 @@ jobs:
         run: |
           echo "::notice::Wrap the read: scopePriceRegisterRead(client.from(\"<table>\").select(...), \"<table>\", { kind: ... }). The .from() must sit INSIDE the first argument. A read that must genuinely cross houses says so: { kind: 'everyHouse', because: '<sentence>' }. Exit 2 is CANNOT CHECK -- the enforcement point is gone or renamed, the migration's CHECK no longer names the third visibility state, or an ALLOWLIST entry no longer describes its file. That is a failure, not a skip."
 
+      # ADR 0292: PostgREST stops every response at max_rows (1000) and says
+      # nothing, so an unranged select over pos_checks or wine_consumption_log
+      # was a sample named as a total -- the 90-day till counted 1,000 of 3,313
+      # checks. Analytics reads those tables whole through readWholeWindow
+      # (keyset pages + an exact count, or a WholeReadError), or bounded at the
+      # cap; the rest are a shrink-only baseline.
+      - name: Every read of the sales register is whole, bounded, or recorded
+        run: python3 scripts/check_window_reads_are_whole.py
+
+      - name: ...and that guard's own failure path fires
+        run: python3 scripts/check_window_reads_are_whole.py --self-test
+
       # The same question one layer up. The guard above asks whether a column a
       # READ names exists in the database; this asks whether a KEY a web or
       # mobile type declares exists on the gateway DTO it mirrors. `Order`

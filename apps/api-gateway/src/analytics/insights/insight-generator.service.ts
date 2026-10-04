@@ -17,6 +17,7 @@ import {
   InsightEvidence,
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
+import { readWholeWindow } from "../../common/read-whole-window";
 import { DayExclusionsService } from "./day-exclusions.service";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import {
@@ -595,16 +596,26 @@ export class InsightGeneratorService {
     // through `toDaily` and every one of them must honour the same list.
     const exclusions = await this.dayExclusions.load(restaurantId);
 
+    // The two window reads go through `readWholeWindow` (ADR 0292). Unranged,
+    // they stopped at PostgREST's 1,000 rows: the sales-dip rule then read
+    // Saturday Aug 15 as $274 against a $10.8k average, "97% lower", over a
+    // day the feed puts about 15% down (A-004). The whole rows are put back
+    // into the `{ data, error }` shape `ok()` reads; a refusal REJECTS, which
+    // the loop below logs, and the family stays silent rather than wrong.
+    const whole = (rows: unknown[]) => ({ data: rows, error: null });
     const [cons, ords, inv, checks, tables, venue, goals] =
       await Promise.allSettled([
-        client
-          .from("wine_consumption_log")
-          // No master_wine_id column — resolve via the inventory FK.
-          .select(
-            "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
-          )
-          .eq("restaurant_id", restaurantId)
-          .gte("created_at", since90),
+        readWholeWindow("The insight bundle's consumption lines", () =>
+          client
+            .from("wine_consumption_log")
+            // No master_wine_id column — resolve via the inventory FK.
+            .select(
+              "id, inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("created_at", since90),
+        ).then(whole),
         client
           .from("procurement_orders")
           // NO provider_name column on procurement_orders (see
@@ -625,15 +636,18 @@ export class InsightGeneratorService {
           )
           .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
-        client
-          .from("pos_checks")
-          .select(
-            "id, source, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
-          )
-          .eq("restaurant_id", restaurantId)
-          // Voided checks are not revenue — see pos_checks.voided.
-          .eq("voided", false)
-          .gte("opened_at", since90),
+        readWholeWindow("The insight bundle's POS checks", () =>
+          client
+            .from("pos_checks")
+            .select(
+              "id, source, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            // Voided checks are not revenue — see pos_checks.voided.
+            .eq("voided", false)
+            .gte("opened_at", since90),
+        ).then(whole),
         client
           .from("restaurant_tables")
           .select(

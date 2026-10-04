@@ -196,6 +196,7 @@
 | [0180](0180-house-mail-is-a-composition-grammar.md) | House mail is a typed composition grammar (amends 0173 D2) | 2026-09-20 |
 | [0181](0181-guests-are-reserved-in-the-tree-not-built.md) | Guests / reservations / waitlist are reserved in the tree, not built; U10 first | 2026-09-20 |
 | [0265](0265-a-google-place-id-is-text-bounded-in-bytes.md) | **A Google place id is text, bounded in bytes below what its index can hold** (Proposed 2026-10-02; the 2048-byte bound is the coordinator's pick and fork F1 waits on the founder). F-006: a measured 128-character address id overflowed `restaurants.google_place_id varchar(100)`. The column becomes `text` with CHECK `octet_length <= 2048`, under the unique index's 2704-byte btree limit | 2026-10-02 |
+| [0292](0292-analytics-reads-the-whole-window-or-refuses.md) | **Analytics reads the whole window, page by page, or refuses** (Proposed 2026-10-03). F-131 / C15: PostgREST's 1000-row cap made every unranged read of `pos_checks` and `wine_consumption_log` a sample named as a total (the 90-day till counted 1,000 of 3,313 checks). `readWholeWindow` pages on `id` with an exact count, or throws `WholeReadError`; `check_window_reads_are_whole.py` keeps it so | 2026-10-03 |
 
 ## Locked — recorded elsewhere (pre-log)
 
