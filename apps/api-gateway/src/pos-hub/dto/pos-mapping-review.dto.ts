@@ -19,27 +19,16 @@ import {
  *
  * The review write path deliberately accepts only "glass" or "bottle" — NOT
  * null — even though `pos_item_mappings.sale_unit` is nullable and
- * `PosHubService.upsertItemMapping` accepts null. Null is the state this
- * surface exists to clear: it is what makes `applyStockEffects` fall through
- * to its documented `?? "bottle"` default. A route whose purpose is "a human
+ * `PosHubService.upsertItemMapping` accepts null. A null unit on a row with no
+ * `sale_volume_ml` is the state this surface exists to clear: since ADR 0011
+ * removed the `?? "bottle"` default, `applyStockEffects` moves no stock for it
+ * and queues the line as `no_sale_volume`. A route whose purpose is "a human
  * answers the question" should not offer "un-answer it" as one of the
  * answers. The generic `POST /pos-hub/mappings/:restaurantId` still writes
  * null for callers that genuinely need to.
  */
 export const SALE_UNITS = ["glass", "bottle"] as const;
 export type SaleUnit = (typeof SALE_UNITS)[number];
-
-/**
- * What `applyStockEffects` does with a mapping whose `sale_unit` is null.
- *
- * It was `"bottle"` — the `?? "bottle"` default of decision B36 — until ADR
- * 0011 replaced that default with a fail-closed queue on 2026-08-25. The
- * constant survived the ADR and kept telling the review screen that 107 wines
- * were about to over-deplete, when what actually happens is that they deplete
- * nothing and their lines pile up in `pos_unresolved_lines`. Measured on Sim
- * Meyhouse 2026-09-03: an unanswered mapping depleted 0 ml.
- */
-export const EFFECT_IF_UNANSWERED = "depletes_nothing" as const;
 
 /**
  * `@Type(() => Boolean)` is wrong for a query string: `Boolean("false")` is

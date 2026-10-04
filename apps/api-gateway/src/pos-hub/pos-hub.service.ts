@@ -31,10 +31,259 @@ const MIN_PLAUSIBLE_SALE_ML = 10;
 const MAX_PLAUSIBLE_SALE_ML = 30000;
 
 /** The inventory facts a depletion needs. Nulls are real: see ADR 0011. */
-interface InventoryVolumes {
+export interface InventoryVolumes {
   bottleMl: number | null;
   pourMl: number | null;
   menuPrice: number | null;
+}
+
+/**
+ * The one rule for reading an inventory row's sizes: a size that is not a
+ * finite positive number is no size at all (null), so `resolveSaleVolume`
+ * queues rather than pouring from a 0ml or negative bottle. Exported so the
+ * sale-unit review reads the row exactly as the import does (ADR 0281).
+ */
+export function inventoryVolumesFromRow(row: {
+  bottle_size_ml?: unknown;
+  pour_size_ml?: unknown;
+  menu_price_current?: unknown;
+}): InventoryVolumes {
+  const positive = (v: unknown) => {
+    // Number(null) is 0 and Number("") is 0, which this rule already refuses.
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  return {
+    bottleMl: positive(row?.bottle_size_ml),
+    pourMl: positive(row?.pour_size_ml),
+    menuPrice: positive(row?.menu_price_current),
+  };
+}
+
+/**
+ * A sale older than this when it reaches the hub is counted as back-dated in
+ * the import result (`stock.backdatedOver72h`). It is still dated by its
+ * check: whether a POS check older than this needs a manager, as C02 rules
+ * for door receipts, counts and orders, is founder fork F1 in ADR 0281.
+ */
+export const BACKDATED_AFTER_MS = 72 * 60 * 60 * 1000;
+
+/** When one closed check's stock and consumption are dated (ADR 0281). */
+export interface SaleInstant {
+  /**
+   * What `p_occurred_at`, `recorded_at` and `created_at` receive. When the
+   * check's closed_at reads and is not in the future, this is that string as
+   * the till sent it, so Postgres reads it exactly as it read
+   * `pos_checks.closed_at`, and a sale's stock and its revenue cannot land on
+   * different days. Otherwise it is import time, as an ISO string.
+   */
+  at: string;
+  /** closed_at could not be read, so `at` is import time. Never silent: the import says so. */
+  fellBack: boolean;
+  /** closed_at was later than now, so `at` is now. */
+  clamped: boolean;
+  /** closed_at is more than BACKDATED_AFTER_MS before now (exactly 72h is not). */
+  backdatedOver72h: boolean;
+}
+
+/**
+ * Date a closed check's stock by when it closed, not by when it arrived.
+ *
+ * Pure, so the boundaries are tested without a database. `nowMs` is the
+ * import's clock, read once per check.
+ */
+export function saleInstant(closedAt: unknown, nowMs: number): SaleInstant {
+  const raw = typeof closedAt === "string" ? closedAt.trim() : "";
+  const parsed = raw ? Date.parse(raw) : NaN;
+  if (!Number.isFinite(parsed)) {
+    return {
+      at: new Date(nowMs).toISOString(),
+      fellBack: true,
+      clamped: false,
+      backdatedOver72h: false,
+    };
+  }
+  if (parsed > nowMs) {
+    return {
+      at: new Date(nowMs).toISOString(),
+      fellBack: false,
+      clamped: true,
+      backdatedOver72h: false,
+    };
+  }
+  return {
+    at: raw,
+    fellBack: false,
+    clamped: false,
+    backdatedOver72h: nowMs - parsed > BACKDATED_AFTER_MS,
+  };
+}
+
+/**
+ * What one import did to stock, line by line (ADR 0281). The counters
+ * partition `lines`: every line on a closed check lands in exactly one of
+ * notStock, booked, alreadyBooked, queued.* or failed.
+ * `consumptionNotWritten`, `backdatedOver72h` and `datedAtImportTime` are
+ * sub-counts of the lines that moved stock.
+ */
+export interface StockTally {
+  /** Every line on the closed checks of this import. */
+  lines: number;
+  /**
+   * Lines with nothing to move by design: not a stock line (kept on
+   * pos_checks.items for the analytics that read it), or a quantity that
+   * rounds to zero.
+   */
+  notStock: number;
+  /**
+   * Stock moved by this import: a sale depleted, or a void returned. A void
+   * replayed is counted here too: apply_stock_movement answers a known key
+   * with the existing transaction, exactly as it answers a new one.
+   */
+  booked: number;
+  /** A replay: an earlier import already moved this line's stock. */
+  alreadyBooked: number;
+  /** Lines in pos_unresolved_lines, by the reason written there. */
+  queued: { unmapped: number; no_sale_volume: number };
+  /**
+   * Moved no stock AND are not in the review queue: the stock write was
+   * refused or threw, or the queue insert failed. errors[] names them.
+   */
+  failed: number;
+  /** Stock moved, but its wine_consumption_log row did not land. */
+  consumptionNotWritten: number;
+  /** Lines this import booked whose check closed more than 72 hours ago. */
+  backdatedOver72h: number;
+  /** Lines this import booked at import time because closed_at could not be read. */
+  datedAtImportTime: number;
+}
+
+type StockFailureKind = "stock" | "queue" | "consumption" | "closed_at";
+
+/**
+ * The import report a check's stock effects count into (ADR 0281), keyed by
+ * the check object, so two imports running at once never share one. Module
+ * scope rather than an instance field, so a service built without its
+ * constructor (as several specs build it) still has it.
+ */
+const STOCK_REPORTS = new WeakMap<object, StockReport>();
+
+/** Lines that reached an outcome; the rest of a check's lines are notStock. */
+function decidedLines(t: StockTally): number {
+  return (
+    t.booked +
+    t.alreadyBooked +
+    t.queued.unmapped +
+    t.queued.no_sale_volume +
+    t.failed
+  );
+}
+
+/** At most this many grouped stock lines reach errors[]; the rest are summed into one. */
+const MAX_STOCK_ERROR_GROUPS = 50;
+const MAX_STOCK_ERROR_MESSAGE = 300;
+
+/**
+ * Accumulates the stock half of one import: the tally, and the failures
+ * grouped by (kind, item) so errors[] carries one line per group rather than
+ * one per line — a back-fill with 800 refused pours of one wine is one line
+ * with a count, not 800 (ADR 0281).
+ */
+export class StockReport {
+  readonly tally: StockTally = {
+    lines: 0,
+    notStock: 0,
+    booked: 0,
+    alreadyBooked: 0,
+    queued: { unmapped: 0, no_sale_volume: 0 },
+    failed: 0,
+    consumptionNotWritten: 0,
+    backdatedOver72h: 0,
+    datedAtImportTime: 0,
+  };
+
+  private readonly groups = new Map<
+    string,
+    {
+      kind: StockFailureKind;
+      label: string;
+      count: number;
+      message: string;
+      checkId: string;
+    }
+  >();
+  private overflowLines = 0;
+  private readonly overflowKeys = new Set<string>();
+
+  noteFailure(
+    kind: StockFailureKind,
+    label: string,
+    message: string | null | undefined,
+    checkId: string,
+  ): void {
+    const key = `${kind}\u0000${label}`;
+    const group = this.groups.get(key);
+    if (group) {
+      group.count++;
+      return;
+    }
+    if (this.groups.size >= MAX_STOCK_ERROR_GROUPS) {
+      this.overflowLines++;
+      this.overflowKeys.add(key);
+      return;
+    }
+    const text = String(message ?? "no message")
+      .replace(/\s+/g, " ")
+      .trim();
+    this.groups.set(key, {
+      kind,
+      label,
+      count: 1,
+      message:
+        text.length > MAX_STOCK_ERROR_MESSAGE
+          ? `${text.slice(0, MAX_STOCK_ERROR_MESSAGE)}…`
+          : text,
+      checkId,
+    });
+  }
+
+  /** One sentence per group, in the order the groups were first seen. */
+  errorLines(): string[] {
+    const out: string[] = [];
+    for (const g of this.groups.values()) {
+      const lines = `${g.count} line${g.count === 1 ? "" : "s"}`;
+      switch (g.kind) {
+        case "stock":
+          out.push(
+            `stock: "${g.label}" moved no stock on ${lines} and is not in the review queue: ${g.message} (first on check ${g.checkId})`,
+          );
+          break;
+        case "queue":
+          out.push(
+            `stock: "${g.label}" moved no stock on ${lines} and could not be queued for review: ${g.message} (first on check ${g.checkId})`,
+          );
+          break;
+        case "consumption":
+          out.push(
+            `stock: "${g.label}" moved stock on ${lines} but its consumption log row was not written: ${g.message} (first on check ${g.checkId})`,
+          );
+          break;
+        case "closed_at": {
+          const checks = `${g.count} check${g.count === 1 ? "" : "s"}`;
+          out.push(
+            `stock: ${checks} carried a closed_at that could not be read (${g.message}), so their stock was dated at import time (first: check ${g.checkId})`,
+          );
+          break;
+        }
+      }
+    }
+    if (this.overflowLines > 0) {
+      out.push(
+        `stock: ${this.overflowLines} more failure${this.overflowLines === 1 ? "" : "s"} across ${this.overflowKeys.size} more item${this.overflowKeys.size === 1 ? "" : "s"} are counted in stock but not listed here`,
+      );
+    }
+    return out;
+  }
 }
 
 /**
@@ -445,6 +694,12 @@ export class PosHubService {
     upserted: number;
     wineItemsDetected: number;
     errors: string[];
+    /**
+     * What the import did to stock (ADR 0281). Before this, a refused or
+     * skipped stock write was only logged and the result read as a clean
+     * import: 811 back-filled pours moved nothing with no word here (A-029).
+     */
+    stock: StockTally;
   }> {
     const provider = PROVIDER_BY_KEY[providerKey];
     if (!provider) throw new Error(`Unknown POS provider '${providerKey}'`);
@@ -456,6 +711,7 @@ export class PosHubService {
 
     const checks = adapter.normalize(payload);
     const errors: string[] = [];
+    const stock = new StockReport();
     if (!checks.length)
       return {
         provider: providerKey,
@@ -463,6 +719,7 @@ export class PosHubService {
         upserted: 0,
         wineItemsDetected: 0,
         errors: ["No recognizable checks in payload"],
+        stock: stock.tally,
       };
 
     const [mappingLookup, tableLookup] = await Promise.all([
@@ -541,6 +798,7 @@ export class PosHubService {
               providerKey,
               check,
               items,
+              stock,
             );
           }
         }
@@ -549,8 +807,12 @@ export class PosHubService {
       }
     }
 
+    // Grouped, bounded: one line per (failure kind, item), not one per line.
+    errors.push(...stock.errorLines());
+    const t = stock.tally;
     this.logger.log(
-      `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${wineItems} wine items`,
+      `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${wineItems} wine items; ` +
+        `stock booked ${t.booked}, already ${t.alreadyBooked}, queued ${t.queued.unmapped + t.queued.no_sale_volume}, failed ${t.failed}`,
     );
     return {
       provider: providerKey,
@@ -558,6 +820,7 @@ export class PosHubService {
       upserted,
       wineItemsDetected: wineItems,
       errors,
+      stock: t,
     };
   }
 
@@ -636,15 +899,7 @@ export class PosHubService {
           `rather than deplete by a guessed volume: ${error.message}`,
       );
     for (const row of data || []) {
-      const positive = (v: unknown) => {
-        const n = Number(v);
-        return Number.isFinite(n) && n > 0 ? n : null;
-      };
-      out.set(row.id, {
-        bottleMl: positive(row.bottle_size_ml),
-        pourMl: positive(row.pour_size_ml),
-        menuPrice: positive(row.menu_price_current),
-      });
+      out.set(row.id, inventoryVolumesFromRow(row));
     }
     return { volumes: out, error: error ? error.message : null };
   }
@@ -725,10 +980,35 @@ export class PosHubService {
       sale_unit: string | null;
       sale_volume_ml: number | null;
     }>,
-  ): Promise<void> {
+    report: StockReport = new StockReport(),
+  ): Promise<StockTally> {
     const db = this.dbService.getClient();
     const isVoid = check.voided === true;
     const affected = new Set<string>();
+    const tally = report.tally;
+
+    // ADR 0281: the stock and the consumption of this check are dated by when
+    // it closed, not by when it reached the hub. A sale void is dated by the
+    // same closed_at. An unreadable closed_at falls back to import time and is
+    // reported, never silent.
+    const when = saleInstant(check.closedAt, Date.now());
+    let fallbackNoted = false;
+    const booked = () => {
+      tally.booked++;
+      if (when.backdatedOver72h) tally.backdatedOver72h++;
+      if (when.fellBack) {
+        tally.datedAtImportTime++;
+        if (!fallbackNoted) {
+          fallbackNoted = true;
+          report.noteFailure(
+            "closed_at",
+            "closed_at",
+            `closed_at ${JSON.stringify(check.closedAt ?? null)}`,
+            check.externalCheckId,
+          );
+        }
+      }
+    };
 
     // One read for the whole check (ADR 0011): resolving a sale volume needs
     // the inventory row's bottle/pour sizes before any RPC is issued.
@@ -740,6 +1020,11 @@ export class PosHubService {
       ),
     ]);
     const inventories = inventoryRead.volumes;
+    // queueUnresolvedLine counts its own outcome into this check's report, so
+    // the three queue call sites below stay exactly as they were.
+    STOCK_REPORTS.set(check, report);
+    tally.lines += items.length;
+    const decidedBefore = decidedLines(tally);
 
     for (let lineNo = 0; lineNo < items.length; lineNo++) {
       const it = items[lineNo];
@@ -833,6 +1118,8 @@ export class PosHubService {
             p_source: "pos",
             p_reason: `POS sale (${label}): ${it.name}`,
             p_idempotency_key: idem,
+            // ADR 0281: dated by the check, not by its arrival.
+            p_occurred_at: when.at,
           }));
         } else {
           // Whole-bottle sales, and every void.
@@ -874,6 +1161,9 @@ export class PosHubService {
             // here, and a mis-seeded mapping used to move another house's
             // shelf on every sale.
             p_restaurant_id: restaurantId,
+            // ADR 0281: a sale and its void are both dated by the check's
+            // closed_at, so a void lands on the day of the sale it cancels.
+            p_occurred_at: when.at,
           }));
         }
 
@@ -881,25 +1171,61 @@ export class PosHubService {
           this.logger.warn(
             `Stock effect failed for ${it.name} (${label}) on check ${check.externalCheckId}: ${rpcError.message}`,
           );
+          tally.failed++;
+          report.noteFailure(
+            "stock",
+            it.name,
+            rpcError.message,
+            check.externalCheckId,
+          );
         } else {
           affected.add(it.inventory_id);
           if (!isVoid) {
-            await this.recordConsumption(
+            const consumption = await this.recordConsumption(
               restaurantId,
               it,
               resolved,
               inv,
               qty,
               idem,
+              when.at,
             );
+            if (consumption === "already") {
+              // The consumption row under this key exists, so an earlier
+              // import booked this line; the RPC answered with that booking.
+              tally.alreadyBooked++;
+            } else {
+              booked();
+              if (consumption === "failed") {
+                tally.consumptionNotWritten++;
+                report.noteFailure(
+                  "consumption",
+                  it.name,
+                  "the stock moved; see the gateway log for the database error",
+                  check.externalCheckId,
+                );
+              }
+            }
+          } else {
+            booked();
           }
         }
       } catch (err: any) {
         this.logger.warn(
           `Stock effect threw for ${it.name} on check ${check.externalCheckId}: ${err?.message}`,
         );
+        tally.failed++;
+        report.noteFailure(
+          "stock",
+          it.name,
+          err?.message ?? String(err),
+          check.externalCheckId,
+        );
       }
     }
+    // Every line that reached no outcome above was skipped by design.
+    tally.notStock += items.length - (decidedLines(tally) - decidedBefore);
+    STOCK_REPORTS.delete(check);
 
     if (affected.size > 0) {
       this.logger.debug(
@@ -917,6 +1243,7 @@ export class PosHubService {
           .catch(() => undefined);
       }
     }
+    return tally;
   }
 
   /**
@@ -933,6 +1260,11 @@ export class PosHubService {
    * partial unique index on (restaurant_id, source, external_check_id,
    * external_item_id, reason) WHERE NOT resolved means a 23505 here just means
    * it is already queued and open — not a real failure.
+   *
+   * ADR 0281: the outcome is returned, and counted into the import report of
+   * the check when applyStockEffects is running one. A line that moved no
+   * stock and also failed to queue is lost from every list a person reads, so
+   * it is counted as failed, never as queued.
    */
   private async queueUnresolvedLine(
     restaurantId: string,
@@ -949,7 +1281,7 @@ export class PosHubService {
       mappedInventoryId: string | null;
       detail: string;
     },
-  ): Promise<void> {
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
     const { error } = await this.dbService
       .getClient()
       .from("pos_unresolved_lines")
@@ -965,11 +1297,24 @@ export class PosHubService {
         mapped_inventory_id: opts.mappedInventoryId,
         raw: { ...it, unresolved_detail: opts.detail },
       });
+    const report = STOCK_REPORTS.get(check);
     if (error && error.code !== "23505") {
       this.logger.warn(
         `Failed to queue unresolved line ${it.name} (${opts.reason}): ${error.message}`,
       );
+      if (report) {
+        report.tally.failed++;
+        report.noteFailure(
+          "queue",
+          it.name,
+          error.message,
+          check.externalCheckId,
+        );
+      }
+      return { ok: false, message: error.message ?? "no message" };
     }
+    if (report) report.tally.queued[opts.reason]++;
+    return { ok: true };
   }
 
   /**
@@ -1002,8 +1347,9 @@ export class PosHubService {
     inv: InventoryVolumes | null,
     qty: number,
     idempotencyKey: string,
-  ): Promise<void> {
-    if (!item.inventory_id) return;
+    occurredAt: string,
+  ): Promise<"logged" | "already" | "failed"> {
+    if (!item.inventory_id) return "failed";
     try {
       const db = this.dbService.getClient();
 
@@ -1063,10 +1409,15 @@ export class PosHubService {
         total_revenue: unitPrice != null ? unitPrice * qty : null,
         source: "pos",
         notes: idempotencyKey,
+        // ADR 0281: the sale's instant, not the import's. Both columns, because
+        // the readers of this series filter on created_at today and moving them
+        // to recorded_at is another lane's change.
+        recorded_at: occurredAt,
+        created_at: occurredAt,
       });
       if (error?.code === "23505") {
         // Already mirrored under this key — a webhook replay. Nothing to add.
-        return;
+        return "already";
       }
 
       // This result used to be discarded, which made the comment above a claim
@@ -1087,11 +1438,14 @@ export class PosHubService {
             `[${error.code ?? "no-code"}] — the demand series is now short one ` +
             `event and nothing else records that.`,
         );
+        return "failed";
       }
+      return "logged";
     } catch (err: any) {
       this.logger.warn(
         `Consumption log write failed for ${item.name}: ${err?.message}`,
       );
+      return "failed";
     }
   }
 

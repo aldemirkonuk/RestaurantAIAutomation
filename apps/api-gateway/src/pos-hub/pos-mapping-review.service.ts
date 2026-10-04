@@ -1,11 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { PosHubService } from "./pos-hub.service";
 import {
-  EFFECT_IF_UNANSWERED,
-  SaleUnit,
-  SaleUnitAnswerDto,
-} from "./dto/pos-mapping-review.dto";
+  inventoryVolumesFromRow,
+  PosHubService,
+  resolveSaleVolume,
+} from "./pos-hub.service";
+import { SaleUnit, SaleUnitAnswerDto } from "./dto/pos-mapping-review.dto";
 
 /**
  * Sale-unit review surface — read the evidence, a human writes the answer.
@@ -16,9 +16,11 @@ import {
  * written before it carries null. ADR 0011 then removed the `?? "bottle"`
  * default that had resolved those nulls: `PosHubService.applyStockEffects`
  * now fails closed, so a sale on an unanswered mapping depletes NOTHING and
- * the line queues in `pos_unresolved_lines` as `no_sale_volume`
- * (`pos-hub.service.ts:766-780`). Unanswered stock therefore reads HIGH, not
- * low. The column cannot be backfilled by this service or any other:
+ * the line queues in `pos_unresolved_lines` as `no_sale_volume`. Unanswered
+ * stock therefore reads HIGH, not low. "Unanswered" means what the import
+ * means by it (ADR 0281): `resolveSaleVolume` reads `sale_volume_ml` first,
+ * so a row with a volume and no unit label is answered, and a row labelled
+ * 'glass' whose inventory carries no pour size is not. The column cannot be backfilled by this service or any other:
  * "BORDEAUX BLEND" and "NERELLO MASCALESE MORETTO" do not say glass or
  * bottle, and B36 exists precisely because guessing from the name is worse
  * than an honest queue — a wrong unit looks answered.
@@ -35,9 +37,9 @@ import {
  * price as SEPARATE, RAW fields. It computes no ratio, emits no suggestion,
  * and ranks no candidate — turning the two numbers into a verdict is the
  * human's job, and a "suggested_unit" field would be an inferred unit wearing
- * a different name. `effect_if_unanswered` is not a suggestion either: it is a
- * statement of what the existing code will do to this row on the next sale if
- * nobody answers — which, since ADR 0011, is nothing at all.
+ * a different name. `next_sale` is not a suggestion either: it is what the
+ * import will do to this row on its next sale, computed by the import's own
+ * `resolveSaleVolume` over the same columns (ADR 0281).
  *
  * Evidence is reported as absent rather than omitted. A row with no observed
  * line and no reachable inventory row returns explicit zero/null fields and an
@@ -56,6 +58,25 @@ import {
  */
 
 export type InventoryLink = "ok" | "unmapped" | "dangling";
+
+/**
+ * What the import does to stock on this mapping's next sale (ADR 0281). Read
+ * from the same columns, by the same function, as `applyStockEffects`, so the
+ * review cannot say "depletes nothing" about a button that takes stock out.
+ * Discriminated on `kind`, not a boolean: strictNullChecks is off here.
+ */
+export type NextSaleEffect =
+  | { kind: "whole_bottle" }
+  | { kind: "volume"; ml: number }
+  | {
+      kind: "depletes_nothing";
+      reason: string;
+      /**
+       * The `pos_unresolved_lines.reason` the sale is queued under, or null
+       * when the line is not a stock line at all and is not queued.
+       */
+      queued_as: "unmapped" | "no_sale_volume" | null;
+    };
 
 export interface ObservedPrice {
   /**
@@ -90,6 +111,11 @@ export interface SaleUnitReviewRow {
   category: string | null;
   is_wine: boolean;
   sale_unit: SaleUnit | null;
+  /**
+   * The volume one sale removes, which the import reads BEFORE `sale_unit`
+   * (ADR 0011). A row with this set and no unit is answered.
+   */
+  sale_volume_ml: number | null;
   updated_at: string | null;
   /**
    * True when this row reaches the unit branch of `applyStockEffects` at all
@@ -98,14 +124,12 @@ export interface SaleUnitReviewRow {
    */
   depletes_stock: boolean;
   /**
-   * What the current code DOES to this row if `sale_unit` stays null. Not
-   * advice, and no longer a unit: ADR 0011 removed the `?? "bottle"` default,
-   * so an unanswered mapping books no volume at all and the line is queued in
-   * `pos_unresolved_lines` with reason `no_sale_volume`
-   * (`pos-hub.service.ts:766-780`). The old `unit_if_unanswered: "bottle"`
-   * described code that has not existed since 2026-08-25.
+   * What the import DOES to stock on this row's next sale, as it stands now.
+   * Not advice. Replaced `effect_if_unanswered: "depletes_nothing"`, which was
+   * hard-coded on every row and so told the house that 57 glass, single and
+   * carafe buttons deplete nothing while their sales took stock out (A-041).
    */
-  effect_if_unanswered: "depletes_nothing";
+  next_sale: NextSaleEffect;
   inventory_link: InventoryLink;
   inventory: InventoryEvidence | null;
   observed_price: ObservedPrice;
@@ -117,16 +141,23 @@ export interface SaleUnitReviewResponse {
   checks_window: { from: string | null; to: string | null };
   summary: {
     total_mappings: number;
+    /**
+     * Mappings whose sale volume the import cannot resolve from what is known
+     * now (`resolveSaleVolume` returns unresolved): no usable
+     * `sale_volume_ml`, and no unit the inventory row can turn into one.
+     */
     needing_unit: number;
     returned: number;
     with_observed_price: number;
     with_inventory: number;
     dangling_inventory: number;
     /**
-     * Rows that reach the depletion branch with no unit — every one of which
-     * will deplete NOTHING and queue as `no_sale_volume` on its next sale.
+     * Mappings, of all of them, whose next sale moves no stock and lands in
+     * `pos_unresolved_lines` (`next_sale.queued_as` set): as `no_sale_volume`,
+     * or as `unmapped` when the mapping names no inventory row of this house.
      * Named `deplete_on_next_sale` until 2026-09-05, which said the opposite
-     * of what happens.
+     * of what happens; until ADR 0281 it counted every unlabelled row, which
+     * included the buttons whose volume the import does read.
      */
     queue_on_next_sale: number;
   };
@@ -208,6 +239,59 @@ function toNumberOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** The evidence row read the way the import reads it: the positive() rule. */
+function volumesOf(inventory: InventoryEvidence | null) {
+  return inventory ? inventoryVolumesFromRow(inventory) : null;
+}
+
+/**
+ * What `PosHubService.applyStockEffects` does with this mapping's next sale,
+ * branch for branch: not a stock line → skipped; no inventory id → queued
+ * `unmapped`; an id this house's scoped read does not return → queued
+ * `unmapped`; then `resolveSaleVolume` decides (ADR 0011, ADR 0281).
+ */
+function nextSaleFor(
+  m: any,
+  inventory: InventoryEvidence | null,
+): NextSaleEffect {
+  if (m.is_wine !== true) {
+    return {
+      kind: "depletes_nothing",
+      reason: "not a stock line: the sale is kept on the check, no stock moves",
+      queued_as: null,
+    };
+  }
+  if (!m.inventory_id) {
+    return {
+      kind: "depletes_nothing",
+      reason: "the mapping names no inventory item",
+      queued_as: "unmapped",
+    };
+  }
+  if (!inventory) {
+    return {
+      kind: "depletes_nothing",
+      reason: `inventory item ${m.inventory_id} is not one of this restaurant's`,
+      queued_as: "unmapped",
+    };
+  }
+  const resolved = resolveSaleVolume(
+    toNumberOrNull(m.sale_volume_ml),
+    m.sale_unit,
+    volumesOf(inventory),
+  );
+  if (resolved.mode === "unresolved") {
+    return {
+      kind: "depletes_nothing",
+      reason: resolved.reason,
+      queued_as: "no_sale_volume",
+    };
+  }
+  return resolved.mode === "volume"
+    ? { kind: "volume", ml: resolved.ml }
+    : { kind: "whole_bottle" };
+}
+
 @Injectable()
 export class PosMappingReviewService {
   private readonly logger = new Logger(PosMappingReviewService.name);
@@ -235,24 +319,39 @@ export class PosMappingReviewService {
     const { data: mappingRows, error: mappingError } = await db
       .from("pos_item_mappings")
       .select(
-        "id, source, external_item_id, item_name, category, is_wine, inventory_id, sale_unit, updated_at",
+        "id, source, external_item_id, item_name, category, is_wine, inventory_id, sale_unit, sale_volume_ml, updated_at",
       )
       .eq("restaurant_id", restaurantId);
     if (mappingError) throw new Error(mappingError.message);
 
     const allMappings = mappingRows || [];
-    const needingUnit = allMappings.filter((m: any) => m.sale_unit == null);
-    const selected = opts.includeAnswered ? allMappings : needingUnit;
 
+    // Every mapping's inventory is read, not only the returned rows': whether
+    // a row is answered, and what its next sale does, both depend on it, and
+    // the summary counts are over all mappings (ADR 0281).
     const [inventoryById, priceIndex] = await Promise.all([
-      this.loadInventory(restaurantId, selected),
+      this.loadInventory(restaurantId, allMappings),
       this.loadObservedPrices(restaurantId, checkLimit),
     ]);
 
+    const inventoryOf = (m: any): InventoryEvidence | null =>
+      m.inventory_id ? (inventoryById.get(m.inventory_id) ?? null) : null;
+    const nextSaleOf = (m: any): NextSaleEffect =>
+      nextSaleFor(m, inventoryOf(m));
+    // The unit question is answered when the import can resolve a volume
+    // from the row and the inventory it reaches.
+    const needingUnit = allMappings.filter(
+      (m: any) =>
+        resolveSaleVolume(
+          toNumberOrNull(m.sale_volume_ml),
+          m.sale_unit,
+          volumesOf(inventoryOf(m)),
+        ).mode === "unresolved",
+    );
+    const selected = opts.includeAnswered ? allMappings : needingUnit;
+
     const items: SaleUnitReviewRow[] = selected.map((m: any) => {
-      const inventory = m.inventory_id
-        ? (inventoryById.get(m.inventory_id) ?? null)
-        : null;
+      const inventory = inventoryOf(m);
       const inventory_link: InventoryLink = !m.inventory_id
         ? "unmapped"
         : inventory
@@ -267,9 +366,10 @@ export class PosMappingReviewService {
         category: m.category ?? null,
         is_wine: m.is_wine === true,
         sale_unit: (m.sale_unit as SaleUnit | null) ?? null,
+        sale_volume_ml: toNumberOrNull(m.sale_volume_ml),
         updated_at: m.updated_at ?? null,
         depletes_stock: m.is_wine === true && !!m.inventory_id,
-        effect_if_unanswered: EFFECT_IF_UNANSWERED,
+        next_sale: nextSaleOf(m),
         inventory_link,
         inventory,
         observed_price: this.observedPriceFor(m, priceIndex),
@@ -300,9 +400,10 @@ export class PosMappingReviewService {
         with_inventory: items.filter((r) => r.inventory_link === "ok").length,
         dangling_inventory: items.filter((r) => r.inventory_link === "dangling")
           .length,
-        queue_on_next_sale: items.filter(
-          (r) => r.depletes_stock && r.sale_unit == null,
-        ).length,
+        queue_on_next_sale: allMappings.filter((m: any) => {
+          const effect = nextSaleOf(m);
+          return effect.kind === "depletes_nothing" && effect.queued_as != null;
+        }).length,
       },
       items,
     };
@@ -496,6 +597,10 @@ export class PosMappingReviewService {
       master_wine_id: existing.master_wine_id,
       inventory_id: existing.inventory_id,
       sale_unit: saleUnit,
+      // ADR 0281: upsertItemMapping writes sale_volume_ml from what it is
+      // handed, so leaving it out wiped the volume the import reads first:
+      // answering "glass" on a 150ml button made its next sale queue.
+      sale_volume_ml: existing.sale_volume_ml ?? null,
     });
 
     return {
