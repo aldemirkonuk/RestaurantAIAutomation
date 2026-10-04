@@ -16,7 +16,8 @@
  * Rows the screen caps for space (40 wines, 14 bars) are written whole: an
  * export is where a reader goes for the rest. Dates are ISO, money is a bare
  * number under a header that names the house's reporting currency (or says it
- * is not recorded), and ratios are the engine's 0–1 values.
+ * is not recorded), ratios are the engine's 0–1 values, and a signed change
+ * (pace, trend — also 0–1 in the engine) is written in percent (`pctOf`).
  *
  * DRIFT
  * -----
@@ -99,6 +100,42 @@ const f = (label: string, value: Cell, unit: Unit): ExportFigure => ({
 
 const nounCount = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
+
+/**
+ * A signed change the engine returns as a 0–1 fraction, in percent: 0.3333 →
+ * 33.33, written under the `percent` unit ("already in percent").
+ *
+ * `paceDeltaPct` is (current − previous) ÷ |previous| (engine/comparisons.ts
+ * periodOverPeriod) and `trendPerDayPct` is OLS slope ÷ |mean|
+ * (engine/statistics.ts trendPerPeriodPct) — fractions, despite the names.
+ * Until 2026-10-03 they were tagged `percent` as they came, so +20.7% a day
+ * was written as 0.2 and printed "0.2%" (analytics walk, A-020). Not `ratio`:
+ * that unit reads "share, 0–1", and a change is not a share of anything.
+ */
+const pctOf = (v: unknown): number | null => {
+  const n = num(v);
+  return n === null ? null : n * 100;
+};
+
+/** A timestamptz's UTC calendar day, said as one — the export has no house clock. */
+const utcDay = (v: string): string => {
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? v : `${new Date(t).toISOString().slice(0, 10)} (UTC)`;
+};
+
+/**
+ * `rp-registers-house.tsx` emptyWindowLine, for the two POS registers: the
+ * sentence for a window that holds NO check, or null when it holds some (or
+ * the gateway did not say). Only a `checksInWindow > 0` branch may blame a
+ * missing field — there are checks, and none of them carries it.
+ */
+function emptyWindowLine(s: Record<string, unknown>, sinceDays: number): string | null {
+  if (num(s.checksInWindow) !== 0) return null;
+  const latest = typeof s.latestCheckAt === "string" && s.latestCheckAt ? s.latestCheckAt : null;
+  return latest
+    ? `No POS check was opened in the last ${sinceDays} days — the latest this house has was opened ${utcDay(latest)}. The window is empty; no field is missing.`
+    : "No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.";
+}
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
 
@@ -250,7 +287,7 @@ function writePacing(payload: unknown): ExportDoc {
     figures: [
       f("Paid out, the last 30 days", figure(last, "the cashflow register returned no figure"), "money"),
       f("Paid out, the 30 days before", figure(prev, "the cashflow register returned no figure"), "money"),
-      f("Pace", figure(c.paceDeltaPct, "Needs two comparable 30-day windows"), "percent"),
+      f("Pace", figure(pctOf(c.paceDeltaPct), "Needs two comparable 30-day windows"), "percent"),
       f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
     ],
@@ -322,7 +359,7 @@ function writeWeek(payload: unknown): ExportDoc {
     figures: [
       f("Busiest day", ranked && best ? best : withheld("More than one weekday shares the highest mean"), "text"),
       f("Quietest day", ranked && worst ? worst : withheld("More than one weekday shares the lowest mean"), "text"),
-      f("28-day trend, per day", figure(w.trendPerDayPct, "the seasonality register returned no trend"), "percent"),
+      f("28-day trend, per day", figure(pctOf(w.trendPerDayPct), "the seasonality register returned no trend"), "percent"),
     ],
     tables: [
       {
@@ -552,11 +589,22 @@ function writeSeats(payload: unknown): ExportDoc {
     });
   const served = tables.filter((t) => t.checks > 0);
   const noCheck = "no check attributed to this table";
+  const mapped = `${nounCount(tables.length, "table is", "tables are")} mapped`;
+  const empty = emptyWindowLine(s, sinceDays);
+  const n = num(s.checksInWindow);
+  const none =
+    n === 1
+      ? `the one check in the last ${sinceDays} days was not`
+      : `not one of the ${nounCount(n ?? 0, "check", "checks")} in the last ${sinceDays} days was`;
   return doc({
     say:
-      served.length === 0
-        ? `${nounCount(tables.length, "table is", "tables are")} mapped, and not one check in the last ${sinceDays} days was attributed to any of them — an absent attribution, not an empty room.`
-        : null,
+      served.length > 0
+        ? null
+        : empty
+          ? `${mapped}. ${empty}`
+          : n !== null && n > 0
+            ? `${mapped}, and ${none} attributed to any of them — an absent attribution, not an empty room.`
+            : `${mapped}, and no check in the last ${sinceDays} days was attributed to any of them. This register does not say whether the window held any check, so an empty window and checks that name no table cannot be told apart here.`,
     figures: [
       f("Tables in the room", tables.length, "count"),
       f("Tables that took a check", served.length, "count"),
@@ -612,12 +660,22 @@ function writeService(payload: unknown): ExportDoc {
     f("Servers with a check", waiters.length, "count"),
     f("Table-adjusted fit (R²)", figure(adj ? adj.r2 : null, "Needs 10 checks across at least two tables before a server can be separated from their section"), "ratio"),
   ];
-  if (waiters.length === 0)
+  if (waiters.length === 0) {
+    const n = num(s.checksInWindow);
+    const none =
+      n === 1
+        ? `The one check in the last ${sinceDays} days carries no`
+        : `None of the ${nounCount(n ?? 0, "check", "checks")} in the last ${sinceDays} days carries a`;
     return doc({
-      say: "No check in the window carries a server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.",
+      say:
+        emptyWindowLine(s, sinceDays) ??
+        (n !== null && n > 0
+          ? `${none} server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.`
+          : `No check in the last ${sinceDays} days names a server. This register does not say whether the window held any check, so an empty window and checks that carry no server name cannot be told apart here.`),
       figures,
       basis,
     });
+  }
   const none = "the register returned no figure for this server";
   return doc({
     figures,
@@ -744,13 +802,13 @@ function writeBench(payload: unknown): ExportDoc {
       "Buying, the last 30 days against the 30 before",
       typed(last, "money", cfWhy),
       typed(prev, "money", cfWhy),
-      typed(cf.paceDeltaPct, "percent", cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"),
+      typed(pctOf(cf.paceDeltaPct), "percent", cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"),
     ],
     [
-      "The week's own extremes (busiest, quietest, trend)",
+      "The week's own extremes (busiest, quietest, trend per day)",
       seasonalityMissing ? withheld(seMissing) : tie ? withheld("shared — more than one weekday holds the extreme") : typeof se.bestDay === "string" ? se.bestDay : withheld("no weekday is separable"),
       seasonalityMissing ? withheld(seMissing) : tie ? withheld("shared — more than one weekday holds the extreme") : typeof se.worstDay === "string" ? se.worstDay : withheld("no weekday is separable"),
-      typed(se.trendPerDayPct, "percent", seasonalityMissing ? seMissing : "the seasonality register returned no trend"),
+      typed(pctOf(se.trendPerDayPct), "percent", seasonalityMissing ? seMissing : "the seasonality register returned no trend"),
     ],
     ...arr(se.weekdayProfile).map((w): Cell[] => [
       `${str(w.day)}, mean per service`,
@@ -774,9 +832,9 @@ function writeBench(payload: unknown): ExportDoc {
     figures: [
       f("Bought, the last 30 days", figure(last, cfWhy), "money"),
       f("Bought, the 30 before", figure(prev, cfWhy), "money"),
-      f("Pace against last month", figure(cf.paceDeltaPct, cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
+      f("Pace against last month", figure(pctOf(cf.paceDeltaPct), cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
       f("Committed, not yet delivered", figure(cf.committedOpenOrders, cfWhy), "money"),
-      f("The week's trend", figure(se.trendPerDayPct, seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
+      f("Trend per day, last 28 days", figure(pctOf(se.trendPerDayPct), seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
       f("Goals running", goals.length, "count"),
     ],
     tables: [
