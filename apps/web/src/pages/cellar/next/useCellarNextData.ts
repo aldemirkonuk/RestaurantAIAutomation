@@ -278,7 +278,16 @@ export interface BuildingVM {
    * measures. Null while unknown.
    */
   parUnset: number | null;
-  /** Rows whose wine is not in the 500 titles this read returned. */
+  /**
+   * This house's rows with no wine-library link (`master_wine_id` null).
+   * Counted from the inventory alone, so it does not move as more library
+   * pages load: `restaurant_inventory_master_wine_id_fkey` (RESTRICT) means
+   * every linked row's wine IS in the library, and `GET /wines` filters
+   * nothing out, so "not in the whole library" is exactly "no link". It used
+   * to be judged against only the library pages loaded so far, and read 119
+   * of 134 on a first load for a house whose every row is linked (A-053).
+   * Null while the inventory is unread.
+   */
   offBook: number | null;
 }
 
@@ -1375,15 +1384,17 @@ export function useCellarNextData() {
       // neither "below" nor "healthy" — it is unmeasured.
       if (min === null) unset += 1;
     }
-    const known = bottles === null ? null : new Set(bottles.map((b) => b.id));
     return {
       titles: rows.length,
       bottles: bottleCount,
       belowPar: below,
       parUnset: unset,
-      offBook: known === null ? null : rows.filter((r) => !known.has(r.wineId)).length,
+      // From the inventory alone, never from the library pages loaded so far
+      // (A-053): a linked row's wine is in the library by its foreign key, so
+      // the only rows off the library are the ones with no link at all.
+      offBook: rows.filter((r) => !r.wineId).length,
     };
-  }, [inventoryQ.data, bottles]);
+  }, [inventoryQ.data]);
 
   // True while a full page has been read and there may be more the reader
   // has not asked for yet; false once a page shorter than the limit came
