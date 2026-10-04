@@ -9,7 +9,9 @@
  * call through the same gateway service, with the same parameters. The `write`
  * function below SELECTS fields from that payload; it does not recompute them.
  * The one derivation it performs is the one the page performs — the till's
- * average check, revenue ÷ checks when both are known — cited where it is done.
+ * average check, net sales ÷ the checks that carried a net figure (ADR 0295),
+ * or revenue ÷ checks on a payload that does not say it is net — cited where
+ * it is done.
  *
  * WHAT IT WRITES THAT THE SCREEN ABBREVIATES
  * -----------------------------------------
@@ -45,6 +47,7 @@ import {
   type ExportTable,
   type Unit,
 } from "./report-export-doc";
+import { NET_SALES_BASIS } from "../../analytics/net-sales";
 
 export const EXPORTABLE_CUTTINGS = [
   "reading",
@@ -137,6 +140,42 @@ function emptyWindowLine(s: Record<string, unknown>, sinceDays: number): string 
     : "No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.";
 }
 
+/**
+ * The sales words a POS register is written in (ADR 0295). A payload that
+ * says `basis: "net"` carries net sales and is labelled so; one that does not
+ * keeps the words it always had, because nothing in it says it is net.
+ */
+function salesWords(payload: Record<string, unknown>) {
+  const net = payload.basis === "net";
+  return {
+    net,
+    taken: net ? "Taken (net)" : "Taken",
+    avg: net ? "Average check (net)" : "Average check",
+    tip: net ? "Tip rate (on net)" : "Tip",
+  };
+}
+
+/**
+ * ADR 0295 rule 2, said once for a register's rows: which of them took their
+ * net sales from only some of their checks. Null when every row's figure is
+ * whole, or the payload does not count them.
+ */
+function partialRowsNote(
+  rows: Array<{
+    name: string;
+    checks: number | null;
+    netChecks: number | null;
+  }>,
+): string | null {
+  const partial = rows.filter(
+    (r) => r.checks != null && r.netChecks != null && r.netChecks < r.checks,
+  );
+  if (partial.length === 0) return null;
+  return `Net sales are counted only from checks that carried a net figure (the subtotal before tax and tips); none is filled in from a check's total. ${partial
+    .map((r) => `${r.name}: from ${r.netChecks} of ${r.checks} checks`)
+    .join("; ")}.`;
+}
+
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
 
 function writeReading(payload: unknown): ExportDoc {
@@ -203,6 +242,7 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
   const from = str(d.from);
   const to = str(d.to);
   const days = num(d.days) ?? ctx.days;
+  const w = salesWords(d);
   const noFeed =
     "No POS check has ever landed for this restaurant — an absent feed, not a day of zero";
 
@@ -210,23 +250,32 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
     return doc({
       say: "No POS check has ever landed for this restaurant, so there is no sales revenue to read. That is an absent feed, not a day of zero — nothing is written as a figure here.",
       figures: [
-        f("Taken", withheld(noFeed), "money"),
+        f(w.taken, withheld(noFeed), "money"),
         f("Checks", withheld(noFeed), "count"),
-        f("Average check", withheld(noFeed), "money"),
+        f(w.avg, withheld(noFeed), "money"),
       ],
       basis: [`Window ${from || "—"} to ${to || "—"}.`],
     });
 
   const revenue = num(d.revenue);
   const checks = num(d.checkCount);
+  // Net (ADR 0295): divided by the checks that carried a net figure.
+  const netChecks = w.net ? num(d.netCheckCount) : checks;
   // The page's own derivation, rp-registers-trade.tsx `till.view`: an average
   // needs both operands and a non-zero count, or it is not an average.
   const avg =
-    revenue != null && checks != null && checks > 0 ? revenue / checks : null;
+    revenue != null && netChecks != null && netChecks > 0
+      ? revenue / netChecks
+      : null;
   const series = arr(d.dailySeries).map((r) => ({
     date: str(r.date),
     revenue: num(r.revenue),
+    checks: num(r.checks),
+    netChecks: num(r.netChecks),
   }));
+  const partialDays = series.filter(
+    (r) => r.checks != null && r.netChecks != null && r.netChecks < r.checks,
+  );
 
   return doc({
     say:
@@ -234,11 +283,25 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
         ? "The till answered, and no check fell inside this window."
         : null,
     figures: [
-      f("Taken", figure(revenue, "No POS revenue recorded"), "money"),
+      f(
+        w.taken,
+        figure(
+          revenue,
+          w.net && checks
+            ? "Not recorded: none of the window's checks carried a net figure"
+            : "No POS revenue recorded",
+        ),
+        "money",
+      ),
       f("Checks", figure(checks, "No POS check count recorded"), "count"),
       f(
-        "Average check",
-        figure(avg, "Needs both revenue and a check count"),
+        w.avg,
+        figure(
+          avg,
+          w.net
+            ? "Needs net sales and a check that carried one"
+            : "Needs both revenue and a check count",
+        ),
         "money",
       ),
     ],
@@ -247,23 +310,40 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
         ? []
         : [
             {
-              title: "Taken, day by day",
+              title: `${w.taken}, day by day`,
               columns: [
                 { label: "Day", unit: "text" },
-                { label: "Taken", unit: "money" },
+                { label: w.taken, unit: "money" },
               ],
               rows: series.map((s) => [
                 s.date,
-                figure(s.revenue, "the till returned no total for this day"),
+                figure(
+                  s.revenue,
+                  w.net
+                    ? `not recorded: none of this day's ${nounCount(s.checks ?? 0, "check", "checks")} carried a net figure`
+                    : "the till returned no total for this day",
+                ),
               ]),
               note:
-                days != null && series.length < days
-                  ? `${series.length} of the ${days} days in the window rang up a check; the rest are absent rather than zero.`
-                  : undefined,
+                sentences(
+                  days != null && series.length < days
+                    ? `${series.length} of the ${days} days in the window rang up a check; the rest are absent rather than zero.`
+                    : null,
+                  partialDays.length > 0
+                    ? `${partialDays.map((r) => `${r.date} is from ${r.netChecks} of ${r.checks} checks`).join("; ")}: the others carried no net figure, and none is filled in from its total.`
+                    : null,
+                ).join(" ") || undefined,
             },
           ],
+    notes: [
+      w.net && checks != null && netChecks != null && netChecks < checks
+        ? `${w.taken} is from ${netChecks} of ${checks} checks: the other ${checks - netChecks} carried no net figure (the subtotal before tax and tips), and none is filled in from its total. The average divides by the ${netChecks}.`
+        : "",
+    ],
     basis: [
-      `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}.`,
+      w.net
+        ? `${NET_SALES_BASIS} Between ${from || "—"} and ${to || "—"}.`
+        : `Check totals as the till rang them, tax included, between ${from || "—"} and ${to || "—"}; voided checks left out.`,
       "The series is sparse on purpose: a day with no check is absent, not written as zero.",
     ],
   });
@@ -569,8 +649,10 @@ function writeLedger(payload: unknown): ExportDoc {
 function writeSeats(payload: unknown): ExportDoc {
   const s = obj(payload);
   const sinceDays = num(s.sinceDays) ?? 90;
+  const w = salesWords(s);
   const basis = sentences(
-    `Non-voided pos_checks attributed to a table over the last ${sinceDays} days.`,
+    `Checks attributed to a table over the last ${sinceDays} days; voided checks left out.`,
+    w.net ? NET_SALES_BASIS : null,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
   );
   const tables = arr(s.tables).map((t) => ({
@@ -578,6 +660,7 @@ function writeSeats(payload: unknown): ExportDoc {
     zone: typeof t.zone === "string" ? t.zone : null,
     seats: num(t.seats),
     checks: num(t.checks) ?? 0,
+    netChecks: num(t.netChecks),
     revenue: num(t.revenue),
     avgCheck: num(t.avgCheck),
     wineAttach: num(t.wineAttachRate),
@@ -589,6 +672,10 @@ function writeSeats(payload: unknown): ExportDoc {
     });
   const served = tables.filter((t) => t.checks > 0);
   const noCheck = "no check attributed to this table";
+  const noNet =
+    "not recorded: none of this table's checks carried a net figure";
+  const why = (t: { checks: number }) =>
+    w.net && t.checks > 0 ? noNet : noCheck;
   const mapped = `${nounCount(tables.length, "table is", "tables are")} mapped`;
   const empty = emptyWindowLine(s, sinceDays);
   const n = num(s.checksInWindow);
@@ -618,8 +705,8 @@ function writeSeats(payload: unknown): ExportDoc {
           { label: "Zone", unit: "text" },
           { label: "Seats", unit: "count" },
           { label: "Checks", unit: "count" },
-          { label: "Taken", unit: "money" },
-          { label: "Average check", unit: "money" },
+          { label: w.taken, unit: "money" },
+          { label: w.avg, unit: "money" },
           { label: "Wine attach", unit: "ratio" },
         ],
         rows: tables.map((t) => [
@@ -627,10 +714,18 @@ function writeSeats(payload: unknown): ExportDoc {
           t.zone,
           figure(t.seats, "seats not recorded for this table"),
           t.checks,
-          figure(t.revenue, noCheck),
-          figure(t.avgCheck, noCheck),
+          figure(t.revenue, why(t)),
+          figure(t.avgCheck, why(t)),
           figure(t.wineAttach, noCheck),
         ]),
+        note:
+          partialRowsNote(
+            tables.map((t) => ({
+              name: t.label,
+              checks: t.checks,
+              netChecks: t.netChecks,
+            })),
+          ) ?? undefined,
       },
     ],
     basis,
@@ -643,14 +738,19 @@ function writeService(payload: unknown): ExportDoc {
   const s = obj(payload);
   const sinceDays = num(s.sinceDays) ?? 90;
   const adj = s.adjusted == null ? null : obj(s.adjusted);
+  const words = salesWords(s);
   const basis = sentences(
-    `Non-voided pos_checks grouped by server name over the last ${sinceDays} days.`,
+    `Checks grouped by server name over the last ${sinceDays} days; voided checks left out.`,
+    words.net
+      ? `${NET_SALES_BASIS} The tip rate is tips over the net sales of the checks that recorded a tip.`
+      : null,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
     adj ? adj.method : null,
   );
   const waiters = arr(s.waiters).map((w) => ({
     name: str(w.name),
     checks: num(w.checks),
+    netChecks: num(w.netChecks),
     revenue: num(w.revenue),
     avgCheck: num(w.avgCheck),
     wineAttach: num(w.wineAttachRate),
@@ -685,19 +785,30 @@ function writeService(payload: unknown): ExportDoc {
         columns: [
           { label: "Server", unit: "text" },
           { label: "Checks", unit: "count" },
-          { label: "Taken", unit: "money" },
-          { label: "Average check", unit: "money" },
+          { label: words.taken, unit: "money" },
+          { label: words.avg, unit: "money" },
           { label: "Wine attach", unit: "ratio" },
-          { label: "Tip", unit: "ratio" },
+          { label: words.tip, unit: "ratio" },
         ],
         rows: waiters.map((w) => [
           w.name,
           figure(w.checks, none),
-          figure(w.revenue, none),
-          figure(w.avgCheck, none),
+          figure(
+            w.revenue,
+            words.net && w.checks
+              ? "not recorded: none of this server's checks carried a net figure"
+              : none,
+          ),
+          figure(
+            w.avgCheck,
+            words.net && w.checks
+              ? "not recorded: none of this server's checks carried a net figure"
+              : none,
+          ),
           figure(w.wineAttach, none),
           figure(w.tip, "no tip recorded on this server's checks"),
         ]),
+        note: partialRowsNote(waiters) ?? undefined,
       },
     ],
     notes: [

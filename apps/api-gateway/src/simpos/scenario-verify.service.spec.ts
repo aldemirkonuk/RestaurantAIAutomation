@@ -286,9 +286,13 @@ function build(
         to: TODAY,
         days: 1,
         posConnected: true,
-        revenue: 100,
+        basis: "net",
+        // Net sales (ADR 0295): the expected check's subtotal, 96 — not its
+        // total of 100.
+        revenue: 96,
         checkCount: 1,
-        dailySeries: [{ date: TODAY, revenue: 100 }],
+        netCheckCount: 1,
+        dailySeries: [{ date: TODAY, revenue: 96, checks: 1, netChecks: 1 }],
       },
     ),
   };
@@ -359,6 +363,85 @@ describe("ScenarioVerifyService.verify — a clean replay", () => {
     // check" rather than "one verdict went missing".
     expect(r.checks).toHaveLength(20);
     expect(new Set(r.checks.map((c: Row) => c.id)).size).toBe(20);
+  });
+
+  /**
+   * ADR 0295: the endpoint reads net sales, so the yardstick is the sum of
+   * the posted, non-voided expected checks' subtotals. `totals.revenue` is
+   * the gross total plus the tip (scenarios.py _totals) and would fail a
+   * correct net reading.
+   */
+  const runExpecting = (checks: any[]) => {
+    const base = happyResults();
+    return happyResults({
+      sim_scenario_runs: {
+        ...base.sim_scenario_runs,
+        data: {
+          ...base.sim_scenario_runs.data,
+          expected: baseExpectation({
+            checks,
+            totals: { ...baseExpectation().totals, revenue: 140 },
+          }),
+        },
+      },
+    });
+  };
+  const expected = (over: Record<string, unknown>) => ({
+    ...baseExpectation().checks![0],
+    ...over,
+  });
+  const windowSaying = (revenue: number | null) => ({
+    restaurantId: "r-sim",
+    from: TODAY,
+    to: TODAY,
+    days: 1,
+    posConnected: true,
+    basis: "net",
+    revenue,
+    checkCount: 2,
+    netCheckCount: 1,
+    dailySeries: [{ date: TODAY, revenue, checks: 2, netChecks: 1 }],
+  });
+
+  it("g13: pos revenue is verified against the expected checks' subtotals, not totals.revenue", async () => {
+    const checks = [
+      expected({ subtotal: 100, tip: 20, total: 120 }),
+      // Neither a dropped nor a voided check is net sales.
+      expected({ external_check_id: "chk-2", subtotal: 50, posted: false }),
+      expected({ external_check_id: "chk-3", subtotal: 70, voided: true }),
+    ];
+    const pass = build(runExpecting(checks), {
+      revenueWindow: windowSaying(100),
+    });
+    const ok = byId(
+      await pass.service.verify("r-sim", "run-1"),
+      "analytics.pos_revenue",
+    );
+    expect([ok.status, ok.expected]).toEqual(["pass", 100]);
+    const gross = build(runExpecting(checks), {
+      revenueWindow: windowSaying(120),
+    });
+    const bad = byId(
+      await gross.service.verify("r-sim", "run-1"),
+      "analytics.pos_revenue",
+    );
+    expect([bad.status, bad.expected, bad.actual]).toEqual(["fail", 100, 120]);
+  });
+
+  it("g14: expected checks that carry no subtotal cannot be verified, and say why", async () => {
+    const checks = [
+      expected({ subtotal: undefined }),
+      expected({ external_check_id: "chk-2", subtotal: null }),
+    ];
+    const { service } = build(runExpecting(checks), {
+      revenueWindow: windowSaying(100),
+    });
+    const row = byId(
+      await service.verify("r-sim", "run-1"),
+      "analytics.pos_revenue",
+    );
+    expect(row.status).toBe("unverifiable");
+    expect(row.detail).toContain("carries a subtotal");
   });
 
   it("states the table-performance comparison as a floor, not a per-day total", async () => {

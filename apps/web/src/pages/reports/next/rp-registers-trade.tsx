@@ -105,14 +105,36 @@ const reading = analysis<ReadingRow[]>({
 
 export interface TillWindow {
   posConnected: boolean;
-  /** null — never 0 — when no POS has ever landed a check. */
+  /**
+   * True when the gateway says `basis: 'net'` (ADR 0295): `revenue` is net
+   * sales, the subtotal before tax, surcharge and tips. An older gateway
+   * sends no basis and its figure is the gross total, so it keeps the old
+   * labels — the web and the gateway deploy separately.
+   */
+  net: boolean;
+  /**
+   * null — never 0 — when no POS has ever landed a check, or (net) when the
+   * window held checks and none carried a net figure: not recorded.
+   */
   revenue: number | null;
   checkCount: number | null;
+  /** Of `checkCount`, the checks that carried a net figure (net only). */
+  netCheckCount: number | null;
   from: string;
   to: string;
   days: number;
-  dailySeries: Array<{ date: string; revenue: number }>;
+  /** `revenue` null: none of that day's `checks` carried a net figure. */
+  dailySeries: Array<{
+    date: string;
+    revenue: number | null;
+    checks: number | null;
+    netChecks: number | null;
+  }>;
 }
+
+/** The one sentence for a figure from only some checks (ADR 0295 rule 2). */
+const fromSome = (n: number | null, of: number | null): string | null =>
+  n != null && of != null && n < of ? `from ${n} of ${of} checks` : null;
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
  *  column rather than a week that quietly does not exist. */
@@ -134,7 +156,7 @@ function weekColumns(from: string, to: string): string[] {
 const till = analysis<TillWindow>({
   title: 'Through the till',
   register: 'till register',
-  answers: 'What guests actually paid, day by day',
+  answers: 'What the house sold, day by day, before tax and tips',
   window: (ctx) => `the last ${ctx.days} days of POS checks`,
   path: (rid, ctx) => `/analytics/pos-revenue/${rid}?days=${ctx.days}`,
   graphs: ['area', 'line', 'bars', 'heatmap', 'table', 'figure'],
@@ -143,16 +165,23 @@ const till = analysis<TillWindow>({
   takesWindow: true,
   select: (raw) => {
     const d = obj(raw);
+    const net = d.basis === 'net';
     return {
       posConnected: d.posConnected === true,
+      net,
       revenue: num(d.revenue),
       checkCount: num(d.checkCount),
+      netCheckCount: net ? num(d.netCheckCount) : null,
       from: str(d.from),
       to: str(d.to),
       days: num(d.days) ?? 0,
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),
-        revenue: num(r.revenue) ?? 0,
+        // A net day none of whose checks carried a figure stays null: not
+        // recorded, never $0. A gross payload's day was always a number.
+        revenue: net ? num(r.revenue) : (num(r.revenue) ?? 0),
+        checks: num(r.checks),
+        netChecks: num(r.netChecks),
       })),
     };
   },
@@ -172,40 +201,56 @@ const till = analysis<TillWindow>({
         notes: [],
         basis: [],
       };
+    // Net (ADR 0295): divided by the checks that carried a net figure.
+    const counted = w.net ? w.netCheckCount : w.checkCount;
     const avg =
-      w.revenue != null && w.checkCount != null && w.checkCount > 0
-        ? w.revenue / w.checkCount
-        : null;
+      w.revenue != null && counted != null && counted > 0 ? w.revenue / counted : null;
+    const taken = w.net ? 'Taken (net)' : 'Taken';
+    const partial = w.net ? fromSome(w.netCheckCount, w.checkCount) : null;
     const figures = [
-      { label: 'Taken', value: money(w.revenue), note: 'No POS revenue recorded' },
+      {
+        label: taken,
+        value: money(w.revenue),
+        note: w.net && w.checkCount ? 'Not recorded: none of these checks carried a net figure' : 'No POS revenue recorded',
+      },
       { label: 'Checks', value: figure(w.checkCount) },
       {
-        label: 'Average check',
+        label: w.net ? 'Average check (net)' : 'Average check',
         value: money(avg, 'table'),
-        note: 'Needs both revenue and a check count',
+        note: w.net ? 'Needs net sales and a check that carried one' : 'Needs both revenue and a check count',
       },
     ];
+    const notes = partial
+      ? [
+          `${taken} is ${partial}: the other ${(w.checkCount ?? 0) - (w.netCheckCount ?? 0)} carried no net figure, and none is filled in from its total. The average divides by the ${w.netCheckCount}.`,
+        ]
+      : [];
     const basis = [
-      `Non-voided pos_checks.total between ${w.from || EM} and ${w.to || EM}.`,
+      w.net
+        ? `Net sales: what the checks came to after discounts, before tax, surcharge and tips, between ${w.from || EM} and ${w.to || EM}. Voided checks are left out.`
+        : `Check totals as the till rang them, tax included, between ${w.from || EM} and ${w.to || EM}. Voided checks are left out.`,
       'The series is sparse on purpose: a day with no check is absent, not plotted at zero.',
     ];
     if (w.dailySeries.length === 0)
       return {
         say: 'The till answered, and no check fell inside this window.',
         figures,
-        notes: [],
+        notes,
         basis,
       };
+    const dayWords = (d: TillWindow['dailySeries'][number]) =>
+      d.revenue == null ? 'not recorded' : (fromSome(d.netChecks, d.checks) ?? null);
 
     const cols = weekColumns(w.from, w.to);
-    const byDate = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
     const cells: Cell[] = [];
-    for (const [date, revenue] of byDate) {
+    // One cell per date: the gateway keys its series by day.
+    for (const d of new Map(w.dailySeries.map((x) => [x.date, x])).values()) {
+      const words = dayWords(d);
       cells.push({
-        row: WEEKDAY_SHORT[weekdayIndex(date)],
-        col: weekLabel(weekStart(date)),
-        value: revenue,
-        title: shortDay(date),
+        row: WEEKDAY_SHORT[weekdayIndex(d.date)],
+        col: weekLabel(weekStart(d.date)),
+        value: d.revenue,
+        title: words ? `${shortDay(d.date)}, ${words}` : shortDay(d.date),
       });
     }
     return {
@@ -213,11 +258,11 @@ const till = analysis<TillWindow>({
         data: w.dailySeries.map((d) => ({
           label: shortDay(d.date),
           value: d.revenue,
-          full: shortDay(d.date),
+          full: dayWords(d) ? `${shortDay(d.date)}, ${dayWords(d)}` : shortDay(d.date),
         })),
         xLabel: 'day',
-        yLabel: 'taken',
-        unit: 'taken',
+        yLabel: w.net ? 'taken (net)' : 'taken',
+        unit: w.net ? 'taken (net)' : 'taken',
         format: (v) => money(v, 'compact'),
       },
       matrix: {
@@ -226,25 +271,35 @@ const till = analysis<TillWindow>({
         cells,
         xLabel: 'week beginning',
         yLabel: 'weekday',
-        unit: 'taken',
+        unit: w.net ? 'taken (net)' : 'taken',
         format: (v) => money(v, 'compact'),
       },
       table: {
         cols: [
           { key: 'day', label: 'Day' },
-          { key: 'taken', label: 'Taken', numeric: true },
+          { key: 'taken', label: taken, numeric: true },
         ],
-        rows: w.dailySeries.map((d) => ({
-          key: d.date,
-          cells: [shortDay(d.date), money(d.revenue, 'table')],
-        })),
+        rows: w.dailySeries.map((d) => {
+          const words = dayWords(d);
+          return {
+            key: d.date,
+            cells: [
+              shortDay(d.date),
+              d.revenue == null
+                ? 'not recorded'
+                : words
+                  ? `${money(d.revenue, 'table')} (${words})`
+                  : money(d.revenue, 'table'),
+            ],
+          };
+        }),
         more:
           w.dailySeries.length < w.days
             ? `${w.dailySeries.length} of the ${w.days} days in the window rang up a check; the rest are absent rather than zero.`
             : undefined,
       },
       figures,
-      notes: [],
+      notes,
       basis,
     };
   },

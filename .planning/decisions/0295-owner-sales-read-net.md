@@ -1,0 +1,80 @@
+# 0295 — Owner sales figures read net sales
+
+- **Status:** Locked for the ruling and for the two rules the founder picked (AW17, F1, F2; each quoted verbatim below). Proposed for the method: the fold, the wire contract and the labels are lane netsales's build, for his review. F3 (how far the POS adapters can be trusted) was the orchestrator's go-ahead on the plan's recommendation, not a founder pick.
+- **Date:** 2026-10-04
+- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Keywords:** net sales, subtotal, pos_checks.subtotal, pos_checks.total, gross, sales tax, surcharge, tip rate, average check, avg_check, Taken, revenue per cover, foldNetSales, netCheckCount, netChecks, basis, partial subtotals, count and say, A-019, A-047, AW17, F-135, Tuzlu Rüzgar
+- **Links:** `apps/api-gateway/src/analytics/net-sales.ts` (the one fold); `claims.d/fix-owner-sales-read-net.jsonl`; [[0020-no-fabricated-answers]]; [[0086-a-count-confesses-what-it-could-not-count]]; [[0105-a-pos-connection-is-a-row-not-an-env-var]] (D4, the fixture rule PR-3 works under); ADR 0287 (`fix/calendar-day-panel-takings`), ADR 0290 (`fix/dashboard-tells-the-day-true`) and ADR 0292 (`fix/analytics-reads-past-row-cap`), all unmerged; the lane brief `p4-scratch/sim-run/fixes/briefs/netsales.md` and plan `p4-scratch/sim-run/fixes/cont/netsales-plan.json` (both outside the repo)
+
+## Context
+
+The owner-quarter sim's analytics walk on Tuzlu Rüzgar (2026-10-03, read-only) found every owner sales figure reading the gross check total. The /reports till register, *Through the till*, printed 'Taken' $23,680.47 and 'Average check' $180.77 over 35 days. The house's net sales over the same 131 checks were $21,025, or $160.50 a check (A-019). The server table's tip column read 12.75%, where tips are about 14.4% of net sales (A-047). Tuzlu's generator writes `total = subtotal × 1.0863 + subtotal × 0.04`: 8.63% sales tax and a 4% surcharge, 12.63% over net on every check. It holds the tip outside the total.
+
+Every cite below is at `f5f658934` unless it names this branch. `pos_checks.subtotal` exists (`supabase/migrations/20260805000000_baseline_from_production.sql:4203`), and the POS hub writes it at ingest (`apps/api-gateway/src/pos-hub/pos-hub.service.ts:516`). No analytics reader selected it. The till window summed `total` (`apps/api-gateway/src/analytics/goals.service.ts`, the `pos_revenue` and `avg_check` branches of `computeMetricWithSeries`). The table and server registers did too, and they divided tips by `total` (`apps/api-gateway/src/analytics/table-analytics.service.ts`, `loadChecks` and the per-table and per-server tallies). Meanwhile /team already reads `server_sales.net_sales` (`apps/api-gateway/src/team/performance.service.ts:211`, `:225`). So one product showed two sales figures for the same server, about 11% apart, and neither page said which was which. The till's basis line printed the column name `pos_checks.total` (F-135).
+
+## The rulings, verbatim
+
+- **AW17, the basis.** AskUserQuestion, 2026-10-04 ~00:15Z. Verbatim pick: *"Net sales (Recommended)"*. The option text read: *'Use the subtotal before tax and surcharge, as /team already does and as restaurant P&Ls do. The tip rate is on net. Every figure is labelled net.'*
+- **F1, partial subtotals.** AskUserQuestion, 2026-10-04 ~20:50Z. Verbatim pick: *"Count and say (Recommended)"*. As briefed: sum the checks that carried a subtotal; say "from N of M checks" when N < M and "not recorded" when none did; averages divide by counted checks only; this applies on every surface and supersedes ADR 0290 rule 2.
+- **F2, average-check goals made before the switch.** Same question set. Verbatim pick: *"Read net, say why (Recommended)"*. As briefed: no stored value changes, and the card says "set on totals with tax; now measured net". It is built in PR-2.
+- **F3, adapter fidelity.** An orchestrator fork, not a founder pick. It proceeds on the plan's recommendation (a): PR-3, on its own branch `fix/pos-subtotal-means-net`, after this ADR merges.
+
+## Options considered
+
+1. **Net sales from the stored subtotal (chosen, the founder's pick).** One definition, already written at ingest and already what /team reads. It needs a partial rule, because not every adapter writes a subtotal (see *Limits*).
+2. **Keep the gross total and relabel it 'with tax'.** It is honest but it is not what a restaurant P&L reads, and the tip rate stays wrong. The founder chose net.
+3. **Compute net at read time as `total − tax − tip`, per adapter.** It is a second definition beside the stored subtotal, and it needs per-vendor tax knowledge the readers do not have.
+4. **Fall back to `total` when `subtotal` is null.** It prints a gross number under a net label, which is a fabricated figure (ADR 0020).
+5. **Rename the wire key `revenue` to `netSales`.** During the deploy skew between gateway and web, the deployed web would read nothing. `basis: 'net'` carries the same fact with no break.
+6. **All or nothing per day (ADR 0290 rule 2).** One check without a subtotal blanks the day and the month. A Clover house would see no sales at all. Superseded by F1.
+7. *(Do nothing.)* The owner keeps reading sales 12.63% high on Tuzlu and a tip rate 1.7 points low, against /team's net figure for the same people.
+
+## Decision
+
+Every owner sales figure reads net sales, from `pos_checks.subtotal`, folded through one function. The method, proposed for review:
+
+1. **Net sales is the subtotal.** After discounts, before tax, surcharge and tip. It never falls back to `total`. One check's net is `netSalesOf` (`apps/api-gateway/src/analytics/net-sales.ts`, this branch): a missing, empty or non-numeric subtotal is `null`, never 0.
+2. **Count and say (F1).** `foldNetSales` sums the subtotals that were stated (`netSales`). It counts those checks (`netChecks`) beside every check it was given (`checks`). It is `null` when there were checks and none stated one, and `0` only when there were no checks. A reader says "from N of M checks" when N < M and "not recorded" when the figure is null. This supersedes ADR 0290 rule 2 (its line 32 on its branch) and adopts ADR 0287 rule 3 (its line 43 on its branch) house-wide.
+3. **Averages divide by the checks that carried net.** Average check is `netSales / netChecks`. Revenue per cover divides the net of the checks that stated both a subtotal and covers by those checks' covers. Revenue per seat divides a table's net by its seats. A table or server enters the standings only with at least three checks that carried net.
+4. **Tip rate is on net.** It is tips over the net of the checks that stated both a tip and a net above zero.
+5. **Labels and basis in the owner's words.** Net figures are labelled 'Taken (net)', 'Average check (net)' and 'Tip rate (on net)'. The basis line is `NET_SALES_BASIS`: *"Net sales: what the checks came to after discounts, before tax, surcharge and tips. Voided checks are left out."* No column name reaches the page (F-135).
+6. **The wire contract.** `GET /analytics/pos-revenue` keeps the key `revenue`, now net, and adds `basis: 'net'` and `netCheckCount`. Each `dailySeries` row becomes `{date, revenue | null, checks, netChecks}`. `/analytics/tables`, `/analytics/waiters` and the hot-tables read add `basis: 'net'`, and their rows add `netChecks`. The web and the export writer draw net labels **only** when `basis === 'net'`. So a new web on an old gateway prints the old labels over the gross figures, which is true. An old web on a new gateway prints net figures under its old labels and its old basis line, which names the total. That lasts only until the web deploys, so the web should deploy with or soon after the gateway.
+7. **The live pace reads net.** The hot-tables fit uses closed checks' net. An open check's spend so far is its stated net, and with none stated its pace is null and it is left out of the fit.
+8. **The goal metric `avg_check` reads net from the deploy.** When the window has checks and none stated a subtotal, the reading refuses: *"None of the N checks in this window carried a net figure (the subtotal before tax and tips), so the average check (net) is not recorded."* `pos_revenue` is not a goal metric (`SUPPORTED_METRICS`), so it needs no refusal. Existing goals follow F2, in PR-2.
+9. **The scenario verifier's yardstick is net.** `analytics.pos_revenue` compares the window's net with the sum of the expected posted, non-voided checks' subtotals. With no expected subtotal it is unverifiable, never compared with a gross total.
+10. **A ratio over sales takes net.** Food cost over sales is a P&L ratio on net. No reader divides by the till's `revenue` today (the controller's `consumption` key is a per-wine breakdown, not a ratio), so this is a rule for the next one.
+11. **What stays gross, and why.** `dev-truth.service.ts` is dev-only and 404s in production. The scenario verifier's per-check comparison of the stored `total` with the expected `total` is a field check on ingest, not a sales figure.
+
+What carried it: the founder's ruling sets the basis. The method keeps the wire key and every existing reader working, makes the change visible only where the gateway says it happened, and puts the definition in one function so /calendar and /dashboard can converge on it.
+
+## Limits: what the adapters' subtotals mean
+
+The subtotal is only as good as the adapter that writes it (`apps/api-gateway/src/pos-hub/pos-adapters.ts`, at `f5f658934`):
+
+- **Generic CSV / Tuzlu** (`:65`, `num(r.subtotal)`): the house's own pre-tax figure. Tuzlu's is net.
+- **Square** (`:113`, `net_amounts.total_money`): Square documents this as including tax. Unmeasured here; see `v3.0-TECH-DEBT.md:2786`.
+- **Clover** (`:159`): writes `subtotal: null`, so a Clover house reads "not recorded" under F1.
+- **Toast** (`:203`, `num(c.amount)`): unmeasured.
+- **SimPOS** (`apps/api-gateway/src/simpos/simpos.service.ts:663-682`): the subtotal is the sum of lines **before** discounts, and the total is after them, so a SimPOS house with discounts reads net higher than it took.
+
+PR-3 (`fix/pos-subtotal-means-net`, F3) makes each adapter's subtotal mean net, under ADR 0105 D4's rule that adapter fixtures are vendor evidence.
+
+## Scope of PR-1 and what follows
+
+PR-1 (`fix/owner-sales-read-net`) switches the till window, the `avg_check` goal metric, the table, server and hot-table registers, the scenario verifier's yardstick, the three /reports registers and their exports. PR-2 switches the readers it leaves: the insight generator's sales lines (and ADR 0272's `sumSq` beside them), the daily sale-record producer, the recommendations ribbon, the till catalogue's *answers* line and the goal card note for F2. A convergence follow-up, after 0287 and 0290 merge, points `calendar/recorded-days.service.ts` and the dashboard at `foldNetSales`.
+
+## Consequences
+
+- **Easier.** /reports and /team now agree on what a server sold. Tuzlu's 'Taken' and 'Average check' read ×1/1.1263 of before ($21,025 and $160.50 over the 35-day window), and the tip rate reads the true ~14.4%. A house whose till omits some subtotals sees what is known and how much of it, instead of a blank or a gross number.
+- **Harder, until PR-2.** The insights and the daily sale record still read gross, so for that window the till and an insight about the same days disagree by the tax rate. On a day where checks exist and none stated a subtotal (Clover), the recommendations ribbon reads `revenue: null` as $0 (`useRecommendationsNextData.ts`, `num(row?.revenue) ?? 0`); Tuzlu has no such day. An `avg_check` goal set on gross reads about 11% lower on a taxed house, with no note until PR-2 builds F2.
+- **SimPOS houses** can read higher than they took when lines carry discounts, until PR-3.
+- **Merge order.** Lane cap (ADR 0292) rewrites the same select lines in `goals.service.ts` and `table-analytics.service.ts`. Cap merges first, and this branch rebases and adds `subtotal` to cap's select strings. The other in-flight lanes resolve by later-truth.
+- **Revisit when** PR-3 measures an adapter whose subtotal cannot be made net, or when a goal metric for whole-check sales is built (it would be net sales, per AW17).
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-04 | Aldemir | Ruled AW17: *"Net sales (Recommended)"* |
+| 2026-10-04 | Aldemir | Ruled F1 *"Count and say (Recommended)"* and F2 *"Read net, say why (Recommended)"* |
+| 2026-10-04 | Claude (lane netsales) | Built PR-1. With the touched sources reset to `f5f658934` (the new `net-sales.ts` left in place), 15 of the 79 tests in the four gateway specs and 4 of the 81 in `ReportsNext.test.tsx` fail; with the change, all pass. g5 (the fold's own unit test) and g6 (a source guard) pass on both. No SQL changed, so no Postgres harness run |

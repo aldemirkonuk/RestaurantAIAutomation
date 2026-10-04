@@ -1686,3 +1686,118 @@ describe('ReportsNext — an empty POS window is not an absent field (A-040)', (
     expect(old).not.toMatch(/absent/);
   });
 });
+
+/* ══ ADR 0295 — owner sales read net (AW17, A-019, A-047) ═════════════════ */
+
+describe('ReportsNext — sales are net once the gateway says so (ADR 0295)', () => {
+  const NET_TILL = {
+    ...TILL,
+    basis: 'net',
+    revenue: 300,
+    checkCount: 5,
+    netCheckCount: 4,
+    dailySeries: [
+      { date: '2026-08-04', revenue: 200, checks: 3, netChecks: 2 },
+      { date: '2026-08-11', revenue: 100, checks: 1, netChecks: 1 },
+      { date: '2026-08-18', revenue: null, checks: 1, netChecks: 0 },
+    ],
+  };
+  const tillView = (raw: unknown) => CATALOGUE.till.view(CATALOGUE.till.select(raw), { days: 30 });
+  const flat = (xs: unknown[]) => xs.filter((x): x is string => typeof x === 'string').join(' ');
+
+  it('w1: the till says net, divides by the checks that carried it, and names no till field', () => {
+    const v = tillView(NET_TILL);
+    expect(v.figures.map((f) => f.label)).toEqual(['Taken (net)', 'Checks', 'Average check (net)']);
+    // 300 over the 4 checks with a net figure, not over all 5.
+    expect(v.figures[2].value).toBe('$75.00');
+    expect(flat(v.basis)).toContain('before tax, surcharge and tips');
+    expect(flat(v.basis)).not.toMatch(/pos_checks|subtotal/);
+    expect(flat(v.notes)).toContain('from 4 of 5 checks');
+    expect(CATALOGUE.till.answers).toBe('What the house sold, day by day, before tax and tips');
+
+    hook.current = {
+      ...alone('till', { x: 0, y: 0, w: 6, h: 8 }, 'table'),
+      registers: { ...base().registers, till: ok(CATALOGUE.till.select(NET_TILL)) },
+    };
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).getByRole('columnheader', { name: 'Taken (net)' })).toBeInTheDocument();
+  });
+
+  it('w2: a day none of whose checks carried a net figure is not recorded, never $0', () => {
+    const v = tillView(NET_TILL);
+    const rows = v.table!.rows.map((r) => r.cells[1]);
+    expect(rows[2]).toBe('not recorded');
+    expect(rows).not.toContain('$0.00');
+    expect(rows[0]).toContain('from 2 of 3 checks');
+    expect(v.cats!.data[2].value).toBeNull();
+    expect(v.matrix!.cells.find((c) => c.value === null)?.title).toContain('not recorded');
+
+    hook.current = {
+      ...alone('till', { x: 0, y: 0, w: 6, h: 8 }, 'table'),
+      registers: { ...base().registers, till: ok(CATALOGUE.till.select(NET_TILL)) },
+    };
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).getByText('not recorded')).toBeInTheDocument();
+    expect(within(till).queryByText('$0')).not.toBeInTheDocument();
+  });
+
+  it('w3: a gateway that sends no basis keeps the old words (the two deploy separately)', () => {
+    const v = tillView(TILL);
+    expect(v.figures.map((f) => f.label)).toEqual(['Taken', 'Checks', 'Average check']);
+    expect(v.table!.cols.map((c) => c.label)).toEqual(['Day', 'Taken']);
+    expect(flat(v.basis)).not.toMatch(/pos_checks|Net sales/);
+    expect(flat(v.basis)).toContain('tax included');
+  });
+
+  it('w4: the house register says net, and the tip rate is on net', () => {
+    const service = CATALOGUE.service.view(
+      CATALOGUE.service.select({
+        sinceDays: 90,
+        basis: 'net',
+        dataStatus: 'live',
+        adjusted: null,
+        checksInWindow: 3,
+        waiters: [
+          { name: 'Maya', checks: 3, netChecks: 2, revenue: 200, avgCheck: 100, wineAttachRate: 0, tipPct: 0.2 },
+        ],
+      }),
+      { days: 30 },
+    );
+    const cols = service.table!.cols.map((c) => c.label);
+    expect(cols).toContain('Avg check (net)');
+    expect(cols).toContain('Tip rate (on net)');
+    expect(service.table!.rows[0].cells[4]).toBe('20.0%');
+    expect(flat(service.notes)).toContain('Maya: from 2 of 3 checks');
+    expect(flat(service.basis)).not.toMatch(/pos_checks/);
+
+    const seats = CATALOGUE.seats.view(
+      CATALOGUE.seats.select({
+        sinceDays: 90,
+        basis: 'net',
+        dataStatus: 'live',
+        checksInWindow: 2,
+        tables: [
+          { tableId: 't1', label: 'T1', zone: null, seats: 4, checks: 1, netChecks: 1, revenue: 100, covers: 2, avgCheck: 100, wineAttachRate: 0 },
+          { tableId: 't2', label: 'T2', zone: null, seats: 2, checks: 1, netChecks: 0, revenue: null, covers: 2, avgCheck: null, wineAttachRate: 0 },
+        ],
+      }),
+      { days: 30 },
+    );
+    const seatCols = seats.table!.cols.map((c) => c.label);
+    expect(seatCols).toContain('Taken (net)');
+    expect(seatCols).toContain('Avg check (net)');
+    expect(seats.table!.rows[1].cells[2]).toBe('not recorded');
+    expect(flat(seats.basis)).toContain('before tax, surcharge and tips');
+    expect(flat(seats.basis)).not.toMatch(/pos_checks/);
+
+    // Without a basis the house register keeps its old columns.
+    const old = CATALOGUE.service.view(
+      CATALOGUE.service.select({ sinceDays: 90, dataStatus: 'live', adjusted: null, waiters: [{ name: 'Maya', checks: 3, revenue: 200, avgCheck: 66, tipPct: 0.1 }] }),
+      { days: 30 },
+    );
+    expect(old.table!.cols.map((c) => c.label)).toContain('Tip');
+    expect(old.table!.cols.map((c) => c.label)).not.toContain('Tip rate (on net)');
+  });
+});
