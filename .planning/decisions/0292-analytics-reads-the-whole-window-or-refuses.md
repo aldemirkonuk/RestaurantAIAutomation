@@ -103,3 +103,4 @@ Every analytics read of `pos_checks` or `wine_consumption_log` returns the whole
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-03 | — | Created (lane `cap`, Proposed; forks 1–4 recorded as the plan's recommendations, not as rulings) |
+| 2026-10-04 | lane settle round (no independent verify finished) | No decision changed; still Proposed, and the lane brief carries no founder answer for forks 1–4. `getSalesChart` now tests `status !== "fulfilled"`, because `check_order_status_literals.py` read the `"rejected"` literal as an order status and failed CI. The tech-debt line on the /reports refusal state is corrected: the page prints axios's status line, not this ADR's sentence. Lane fmt's `loadChecks` (branch `fix/reports-fractions-and-empty-register` at f74f156f2) throws the same 503 sentence as this branch, so the two merge on wording |
