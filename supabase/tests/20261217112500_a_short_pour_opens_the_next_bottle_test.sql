@@ -11,8 +11,8 @@
 -- supabase/migrations. Synthetic fixtures only, one transaction, rolled back.
 --
 -- On a build WITHOUT that migration, T1, T2, T3, T4, T5 and T12 FAIL. T5n, T6,
--- T7, T8, T9, T10 and T11 pass on both builds: they pin what the migration
--- keeps.
+-- T7, T8, T9 and T10 pass on both builds: they pin what the migration keeps.
+-- T11 pins the signature a_pos_sale_is_dated_by_its_check left (see T11).
 
 begin;
 
@@ -297,8 +297,10 @@ begin
   assert pg_temp.aw08_sales(it) = before_sales, 'T10 FAIL a replay wrote a ledger row';
 end $$;
 
--- T11 structural: exactly one overload, the same identity arguments, jsonb,
--- SECURITY INVOKER.
+-- T11 structural: exactly one overload, the identity arguments, jsonb,
+-- SECURITY INVOKER. Since a_pos_sale_is_dated_by_its_check (ADR 0281, fork F3:
+-- it owns p_occurred_at and merged after this file) the one overload takes a
+-- 9th argument, so on a build with only this migration T11 fails by design.
 do $$
 declare
   n int;
@@ -309,7 +311,7 @@ begin
    where s.nspname = 'public' and p.proname = 'record_glass_pour';
   assert n = 1, format('T11 FAIL %s overloads of public.record_glass_pour', n);
   assert pg_get_function_identity_arguments(o) =
-    'p_inventory_id uuid, p_pours integer, p_pour_ml integer, p_location_id uuid, p_source text, p_performed_by uuid, p_reason text, p_idempotency_key text',
+    'p_inventory_id uuid, p_pours integer, p_pour_ml integer, p_location_id uuid, p_source text, p_performed_by uuid, p_reason text, p_idempotency_key text, p_occurred_at timestamp with time zone',
     format('T11 FAIL identity arguments are %s', pg_get_function_identity_arguments(o));
   assert (select prorettype from pg_proc where oid = o) = 'jsonb'::regtype, 'T11 FAIL it no longer returns jsonb';
   assert not (select prosecdef from pg_proc where oid = o), 'T11 FAIL it became SECURITY DEFINER';
