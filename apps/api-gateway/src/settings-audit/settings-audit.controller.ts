@@ -50,6 +50,7 @@ export const REGISTERS: SettingsRegister[] = [
   "data-terms",
   "target-margin",
   "ask-training",
+  "state-and-country",
 ];
 
 /**
