@@ -3,9 +3,10 @@
  *
  * House honesty rule: an unknown is an em dash, never a zero and never a
  * guess. Nothing in this file invents a figure — the two mappings below
- * (category → stake, rule → hand) are CLASSIFICATIONS of a rule that already
- * fired, not measurements, and both keep an explicit "unfiled" branch so an
- * unrecognised category is visible rather than silently binned.
+ * (rule, then category → stake; rule → hand) are CLASSIFICATIONS of a rule
+ * that already fired, not measurements, and both keep an explicit fallback so
+ * an unrecognised rule is visible rather than silently binned. The stake
+ * says which of the two filed it (ADR 0288).
  */
 
 import { roleAllows, roomFor, type ShellRole } from '@/lib/mudavym/rooms';
@@ -54,15 +55,54 @@ export const STAKE_BLURB: Record<StakeId, string> = {
   stock: 'bottles at risk on the shelf',
   vendors: 'what you pay and who you pay it to',
   floor: 'how the shift is run',
-  unfiled: 'a rule category this page has no register for',
+  unfiled: 'a rule this page has no register for',
+};
+
+/** Where an entry is filed in the register, and the sentence it was read from. */
+export interface StakeFiling {
+  stake: StakeId;
+  /** Why it is filed there — the rule's own words, or the category it fell back on. */
+  why: string;
+  /** Which of the two filed it, or neither. */
+  by: 'rule' | 'category' | 'unfiled';
+}
+
+/**
+ * Rule → stake, for the rules whose category does not say what acting on them
+ * would change (ADR 0288).
+ *
+ * The register's promise is "what acting on an entry would change". The
+ * engine's category is a different fact — which family of analysis found the
+ * entry — and for two rules the two disagree. Both are `efficiency` in
+ * `recommendations.service.ts`, and the category once filed both under The
+ * floor, so with Money pressed "Price it" left out a price change (AW28). The
+ * founder, 2026-10-04: "Money / Stock (Recommended)" — the price change under
+ * Money, the bottle moved under Stock. Each `why` quotes the rule's own
+ * `recommendation` sentence, the way `rec-docket.ts` `RULE_ACT` does for acts.
+ *
+ * The category is NOT changed in the engine: it feeds the goal levers
+ * (`rec-daybook.ts`), the insight scheduler and the reports pill.
+ */
+const RULE_STAKE: Record<string, { stake: StakeId; why: string }> = {
+  plowhorse_repricing: {
+    stake: 'money',
+    why: 'The rule says “Raise those prices 5–8% or renegotiate cost on the next PO”. A price change moves the money taken across the pass. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+  },
+  puzzle_activation: {
+    stake: 'stock',
+    why: 'The rule says “Put one puzzle wine by-the-glass this week”. It moves a bottle that is standing still on the shelf. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+  },
 };
 
 /**
- * Category → stake. The eight categories the rule engine emits
- * (`analytics/recommendations.service.ts`: sales · inventory · efficiency ·
- * risk · purchasing · staff · basket · goals) filed by consequence. Anything
- * else lands in `unfiled` ON PURPOSE: a new rule category must show up as
- * unfiled rather than be absorbed into a register it was never sorted into.
+ * Category → stake, for every rule not filed by name. The categories the rule
+ * engine emits (`analytics/recommendations.service.ts`: sales · inventory ·
+ * pricing · risk · purchasing · staff · basket · goals) filed by consequence.
+ *
+ * `efficiency` is deliberately absent. Both of its rules are filed by name
+ * above, and a NEW efficiency rule must land in `unfiled` rather than be
+ * absorbed into a register nobody sorted it into — which is exactly how AW28
+ * happened. Anything else unknown lands in `unfiled` ON PURPOSE too.
  */
 const CATEGORY_STAKE: Record<string, StakeId> = {
   sales: 'money',
@@ -72,14 +112,44 @@ const CATEGORY_STAKE: Record<string, StakeId> = {
   purchasing: 'vendors',
   risk: 'vendors',
   staff: 'floor',
-  efficiency: 'floor',
   // ADR 0193: price advice toward the house's target margin moves money.
   pricing: 'money',
 };
 
-export function stakeOf(category: string | null | undefined): StakeId {
-  if (!category) return 'unfiled';
-  return CATEGORY_STAKE[category] ?? 'unfiled';
+/**
+ * Where the register files an entry, and why. The rule is read from the key
+ * with `readKey`, so a row on the Snoozed, Dismissed or History leaves —
+ * whose stored key may be the composite `rule#subject#grain` (ADR 0191) —
+ * files exactly as the standing entry does.
+ */
+export function stakeFilingOf(
+  ruleKey: string | null | undefined,
+  category: string | null | undefined,
+): StakeFiling {
+  const ruleId = readKey(ruleKey ?? '').ruleId;
+  const named = RULE_STAKE[ruleId];
+  if (named) return { stake: named.stake, why: named.why, by: 'rule' };
+  const byCategory = category ? CATEGORY_STAKE[category] : undefined;
+  if (category && byCategory)
+    return {
+      stake: byCategory,
+      why: `Filed from the rule’s category, ${category}, which this page reads as ${STAKE_BLURB[byCategory]}. No register is written for this rule by name.`,
+      by: 'category',
+    };
+  return {
+    stake: 'unfiled',
+    why: category
+      ? `This page has no register for the rule ${ruleId || EM} or for its category, ${category}. It is shown under Unfiled rather than sorted by guesswork.`
+      : `This page has no register for the rule ${ruleId || EM}, and it carried no category to file it by. It is shown under Unfiled rather than sorted by guesswork.`,
+    by: 'unfiled',
+  };
+}
+
+export function stakeOf(
+  ruleKey: string | null | undefined,
+  category: string | null | undefined,
+): StakeId {
+  return stakeFilingOf(ruleKey, category).stake;
 }
 
 /* ── Axis 2: urgency — the engine's own word, said plainly ───────────────── */

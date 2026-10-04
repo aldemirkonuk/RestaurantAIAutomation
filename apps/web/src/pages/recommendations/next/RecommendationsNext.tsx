@@ -11,10 +11,12 @@
  * The other way: THE STANDING BOOK. The legacy page is a flat feed of cards
  * ranked by a hidden score and filtered by coloured chips. This page is ruled
  * by CONSEQUENCE instead — every entry is filed under what acting on it would
- * change (money · stock · vendors · the floor), and every entry states the
- * same three facts in the same place: what it would change, whose hand does it
- * and where the work lands, and how long it has stood. Urgency stays the
- * engine's own word; the score stops being the page's organising principle.
+ * change (money · stock · vendors · the floor): by the rule where its
+ * prescription says so, otherwise by its category (ADR 0288, `stakeFilingOf`).
+ * Every entry states the same three facts in the same place: what it would
+ * change, whose hand does it and where the work lands, and how long it has
+ * stood. Urgency stays the engine's own word; the score stops being the
+ * page's organising principle.
  *
  * Two things the feed never did, kept here because they are the honest ones:
  *  - the head prints the DENOMINATOR — "17 rules were read, 4 stand" — so an
@@ -319,6 +321,24 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   }, [dayScoped, stake]);
 
   const shown = useMemo(() => ACT_ORDER.flatMap((a) => byAct.get(a) ?? []), [byAct]);
+
+  /**
+   * Each act's entries, counted by register, on the same day-scoped book the
+   * rail counts — so a section head and the rail cannot disagree. With a
+   * register pressed, a head says how many of its act's entries are filed
+   * under the others (ADR 0288, AW28): "Order it · 1 entry · 1 more filed
+   * under Stock" rather than a count that reads as the whole act.
+   */
+  const actStakes = useMemo(() => {
+    const m = new Map<ActId, Map<StakeId, number>>();
+    for (const e of dayScoped) {
+      const act = actOf(e.ruleKey).act;
+      const byStake = m.get(act) ?? new Map<StakeId, number>();
+      byStake.set(e.stake, (byStake.get(e.stake) ?? 0) + 1);
+      m.set(act, byStake);
+    }
+    return m;
+  }, [dayScoped]);
 
   /**
    * The docket re-lays out on `tuck` when the ribbon or the register changes
@@ -752,7 +772,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           <aside>
             <div className="rc-micro">The register</div>
             <p className="rc-reg-note">
-              What acting on an entry would change. Filed from the rule’s own category.
+              What acting on an entry would change. Filed by the rule where its prescription
+              says so, otherwise by its category; the working says which.
             </p>
             <div className="rc-reg-list">
               <RegisterRow
@@ -895,15 +916,22 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               ACT_ORDER.filter((a) => (byAct.get(a)?.length ?? 0) > 0).map((a) => {
                 const list = byAct.get(a) ?? [];
                 const Icon = ACT_ICON[a];
+                const elsewhere = stake === 'all' ? null : filedElsewhere(actStakes.get(a), stake);
                 return (
                   <div key={a} className="rc-section" data-testid="rc-act-section">
-                    <div className="rc-section-head">
+                    <div className="rc-section-head" data-elsewhere={elsewhere ? '' : undefined}>
                       <span className="rc-act-ic" aria-hidden="true">
                         <Icon size={17} />
                       </span>
                       <h2 className="rc-serif">{ACT_LABEL[a]}</h2>
                       <span className="rc-num">
                         {list.length} {list.length === 1 ? 'entry' : 'entries'}
+                        {elsewhere && (
+                          <span data-testid="rc-act-elsewhere">
+                            {' '}
+                            · {elsewhere.count} more filed under {elsewhere.under}
+                          </span>
+                        )}
                       </span>
                       <span className="rc-num rc-amt" title={MONEY_WITHHELD_WHY}>
                         {MONEY_WITHHELD}
@@ -1108,6 +1136,25 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
       </div>
     </div>
   );
+}
+
+/**
+ * The entries of one act that the pressed register leaves out, and the
+ * registers they are filed under, in rail order ("Stock", "Stock and
+ * Vendors", "Stock, Vendors and The floor"). Null when there are none.
+ */
+function filedElsewhere(
+  byStake: Map<StakeId, number> | undefined,
+  pressed: StakeId,
+): { count: number; under: string } | null {
+  if (!byStake) return null;
+  const others = STAKE_ORDER.filter((s) => s !== pressed && (byStake.get(s) ?? 0) > 0);
+  if (others.length === 0) return null;
+  const count = others.reduce((n, s) => n + (byStake.get(s) ?? 0), 0);
+  const names = others.map((s) => STAKE_LABEL[s]);
+  const under =
+    names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return { count, under };
 }
 
 function RegisterRow({

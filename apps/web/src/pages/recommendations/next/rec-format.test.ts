@@ -12,7 +12,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { handOf, heldBy, receiptFor } from './rec-format';
+import { handOf, heldBy, receiptFor, stakeFilingOf, stakeOf } from './rec-format';
+import { actOf } from './rec-docket';
 
 function entry(over: Partial<Parameters<typeof receiptFor>[0]> = {}) {
   return {
@@ -113,5 +114,83 @@ describe('heldBy — whose hand, for the person looking (founder item 87, OD-176
     for (const h of hands.filter((x) => x.where !== 'Promotions')) {
       expect(heldBy(h, 'staff')).toEqual({ yours: true, words: `Yours, in ${h.where}`, opens: null });
     }
+  });
+});
+
+/**
+ * ADR 0288 (AW28). The register promises "what acting on an entry would
+ * change". The engine's category is a different fact, and for its two
+ * `efficiency` rules it filed a price change and a bottle moved under The
+ * floor — so with Money pressed, "Price it" left out a price change. The
+ * founder, 2026-10-04: "Money / Stock (Recommended)".
+ */
+describe('the register — filed by what acting on it changes (ADR 0288)', () => {
+  /**
+   * Every rule the engine names, with the category it emits, read from
+   * `apps/api-gateway/src/analytics/recommendations.service.ts` (`rule(…)`
+   * and its `category:`), plus one of the goal-behind family. The claim row
+   * ADR-0288-PRICE-AND-STOCK-FILED-BY-WHAT-THEY-CHANGE re-reads the engine
+   * itself, so a new rule with an unmapped category fails CI, not only here.
+   */
+  const ENGINE_RULES: Array<[string, string]> = [
+    ['sales_below_weekday_baseline', 'sales'],
+    ['weekly_demand_slide', 'sales'],
+    ['stockout_imminent', 'inventory'],
+    ['dead_stock_capital', 'inventory'],
+    ['plowhorse_repricing', 'efficiency'],
+    ['puzzle_activation', 'efficiency'],
+    ['margin_target_unset', 'pricing'],
+    ['margin_to_target', 'pricing'],
+    ['pour_size_unconfirmed', 'pricing'],
+    ['price_locks_to_review', 'pricing'],
+    ['margin_advice_blind', 'pricing'],
+    ['vendor_concentration', 'risk'],
+    ['revenue_concentration', 'risk'],
+    ['weekday_gap', 'sales'],
+    ['spend_acceleration', 'purchasing'],
+    ['staff_spread', 'staff'],
+    ['pairing_promotion', 'basket'],
+    ['goal_behind_x', 'goals'],
+  ];
+
+  it('files the price change under Money and the bottle moved under Stock, not The floor', () => {
+    expect(stakeOf('plowhorse_repricing', 'efficiency')).toBe('money');
+    expect(stakeOf('puzzle_activation', 'efficiency')).toBe('stock');
+  });
+
+  it('reads the rule out of a composite stored key, so the leaves file as the book does', () => {
+    // A row on Snoozed / Dismissed / History carries the stored key (ADR 0191).
+    expect(stakeOf('plowhorse_repricing#*#fire:week:2026-W40', 'efficiency')).toBe('money');
+    expect(stakeOf('plowhorse_repricing#*#fire:week:2026-W40', '')).toBe('money');
+    expect(stakeOf('puzzle_activation#*#fire:week:2026-W40', null)).toBe('stock');
+  });
+
+  it('a new efficiency rule lands in Unfiled, never in a register nobody sorted it into', () => {
+    expect(stakeOf('a_new_efficiency_rule', 'efficiency')).toBe('unfiled');
+    expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').by).toBe('unfiled');
+    expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').why).toMatch(/no register for the rule a_new_efficiency_rule/);
+  });
+
+  it('no engine rule is unfiled; every Price it rule is Money and every Move stock rule is Stock', () => {
+    const priced = ENGINE_RULES.filter(([k]) => actOf(k).act === 'price');
+    const moved = ENGINE_RULES.filter(([k]) => actOf(k).act === 'stock');
+    // not vacuous: the two rules the founder ruled on are in the two sets
+    expect(priced.map(([k]) => k)).toContain('plowhorse_repricing');
+    expect(moved.map(([k]) => k)).toContain('puzzle_activation');
+    for (const [k, c] of ENGINE_RULES) expect([k, stakeOf(k, c)]).not.toEqual([k, 'unfiled']);
+    for (const [k, c] of priced) expect([k, stakeOf(k, c)]).toEqual([k, 'money']);
+    for (const [k, c] of moved) expect([k, stakeOf(k, c)]).toEqual([k, 'stock']);
+  });
+
+  it('says why: the rule’s own sentence when filed by name, the category when it fell back', () => {
+    const plow = stakeFilingOf('plowhorse_repricing', 'efficiency');
+    expect(plow.by).toBe('rule');
+    expect(plow.why).toMatch(/Raise those prices/);
+    const puzzle = stakeFilingOf('puzzle_activation', 'efficiency');
+    expect(puzzle.by).toBe('rule');
+    expect(puzzle.why).toMatch(/by-the-glass/);
+    const stockout = stakeFilingOf('stockout_imminent', 'inventory');
+    expect(stockout).toMatchObject({ stake: 'stock', by: 'category' });
+    expect(stockout.why).toMatch(/category, inventory/);
   });
 });

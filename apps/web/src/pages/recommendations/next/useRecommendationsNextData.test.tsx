@@ -81,6 +81,23 @@ describe('useRecommendationsNextData transport', () => {
     fetchSpy.mockRestore();
   });
 
+  it('files a price change under Money by its rule, not by its efficiency category (ADR 0288)', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+      if (url.includes('/exclusions')) return { data: { items: [], readable: true, problem: null } };
+      return {
+        data: {
+          ...FEED,
+          recommendations: [{ ...FEED.recommendations[0], ruleKey: 'plowhorse_repricing', category: 'efficiency' }],
+        },
+      };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.entries[0].category).toBe('efficiency');
+    expect(result.current.entries[0].stake).toBe('money');
+  });
+
   it('reads the exclusion store through apiClient, keyed by tenant', async () => {
     const { result } = renderHook(() => useRecommendationsNextData());
     await waitFor(() => expect(result.current.exclusions).toBeDefined());

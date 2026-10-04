@@ -271,8 +271,8 @@ the same three facts in the same place — **would change · whose hand (and whe
 lands) · standing** — which are exactly the three axes the founder named and the three
 the legacy feed never showed. Urgency stays the engine's own word ("Tonight" / "This
 week" / "This month") and the score stops being the page's organising principle.
-`unfiled` exists on purpose: a rule category this page has no register for shows up as
-unfiled rather than being absorbed into a bucket it was never sorted into.
+`unfiled` exists on purpose: a rule this page has no register for shows up as unfiled rather than being absorbed into a bucket it was never sorted into. **Filing ([ADR 0288](../decisions/0288-a-recommendation-is-filed-by-what-acting-on-it-changes.md), 2026-10-04):** an entry is filed by its rule where the rule's own sentence says what it changes, otherwise by the engine's category, and the working says which (`rec-format.ts` `stakeFilingOf`).
+Two rules are filed by name: `plowhorse_repricing` → Money and `puzzle_activation` → Stock (the founder: *"Money / Stock (Recommended)"*). Their category, `efficiency`, filed both under The floor and hid a price change from Money (AW28); `efficiency` has no category register now, so a new efficiency rule lands in Unfiled. With a register pressed, a docket section's head names its entries filed under other registers ("1 more filed under Stock").
 
 **Uniqueness, and where it comes from.** Three things exist on no other surface: the
 **denominator in the opening line** ("17 rules were read. 4 entries stand — the rest did
@@ -582,7 +582,7 @@ categorized classified section in order for people to understand what to do as a
 
 | axis | question it answers | where it lives |
 |---|---|---|
-| the register (`stakeOf`) | what acting on it would CHANGE | now the ordering inside a section, and the rail |
+| the register (`stakeOf`; by rule, else category — ADR 0288) | what acting on it would CHANGE | now the ordering inside a section, and the rail; a pressed register's section head names what it leaves out |
 | the hand (`handOf`) | which SURFACE the work lands on | unchanged, on every entry |
 | **the act** (`rec-docket.ts`) | **what the person DOES** | **the docket's sections** |
 
