@@ -18,7 +18,6 @@ import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import {
   HOUSE_DAY_LOOKBACK_MS,
   HOUSE_ZONE_UNSET,
-  checkInstant,
   houseDayBounds,
   houseDayOf,
   houseToday,
@@ -226,16 +225,23 @@ describe("house-day — the one rule (ADR 0296)", () => {
   });
 
   it("files a check by when it closed, else when it opened", () => {
+    // Opened 23:30 LA on Jul 1, closed 00:20 LA on Jul 2: the next day's sale.
     expect(
-      checkInstant({
-        opened_at: "2026-07-01T23:00:00Z",
-        closed_at: "2026-07-02T06:45:00Z",
-      }),
-    ).toBe("2026-07-02T06:45:00Z");
+      houseDayOf(
+        {
+          opened_at: "2026-07-02T06:30:00Z",
+          closed_at: "2026-07-02T07:20:00Z",
+        },
+        LA,
+      ),
+    ).toBe("2026-07-02");
+    // Still open: filed by when it opened.
     expect(
-      checkInstant({ opened_at: "2026-07-01T23:00:00Z", closed_at: null }),
-    ).toBe("2026-07-01T23:00:00Z");
-    expect(checkInstant({ opened_at: null, closed_at: null })).toBeNull();
+      houseDayOf({ opened_at: "2026-07-02T06:30:00Z", closed_at: null }, LA),
+    ).toBe("2026-07-01");
+    expect(houseDayOf({ opened_at: null, closed_at: null }, LA)).toBeNull();
+    // An instant and a Date are filed by themselves, not read as a check.
+    expect(houseDayOf(new Date("2026-07-02T06:30:00Z"), LA)).toBe("2026-07-01");
   });
 
   it("bounds a 23-hour and a 25-hour day by their own midnights", () => {
@@ -449,6 +455,22 @@ describe("GoalsService.getPosRevenueWindow", () => {
     const result = await service.getPosRevenueWindow("r1", 30);
 
     expect(seriesOf(result)).toEqual({ "2026-08-22": 4201.1 });
+  });
+
+  it("(c2) files a check that crosses the house's midnight on the day it closed, not the day it opened", async () => {
+    // Opened 23:30 LA on Aug 20, closed 00:20 LA on Aug 21: the goals fold
+    // hands `houseDayOf` the whole check, so the close decides the day.
+    const late = {
+      total: 180,
+      opened_at: "2026-08-21T06:30:00Z",
+      closed_at: "2026-08-21T07:20:00Z",
+      items: [],
+    };
+    const { service } = makeGoals({ pos_checks: probeThen([late]) });
+
+    const result = await service.getPosRevenueWindow("r1", 30);
+
+    expect(seriesOf(result)).toEqual({ "2026-08-21": 180 });
   });
 
   it("(d) drops a check the lookback read whose house day precedes the window — so a day reads the same in every window", async () => {

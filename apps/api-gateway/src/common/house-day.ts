@@ -6,9 +6,13 @@
  * The founder, 2026-10-04, asked where a house's business day ends:
  * *"Midnight, by close (Recommended)"*. So a check is filed on the date its
  * house's own clock read when it CLOSED, else when it opened, and the day ends
- * at midnight on that clock. `houseDayOf` holds the rule; a reader that files a
- * check on a day calls it and nothing else, so a later change (a 04:00
- * close-out, the house's service windows) is a change to this file.
+ * at midnight on that clock. `houseDayOf` holds both halves of that rule: a
+ * reader files a check by handing it the CHECK (`houseDayOf(row, zone)`),
+ * never one of its timestamps, and files any other row (an order's delivery, a
+ * consumption line, a goal's creation) by handing it that row's instant. The
+ * closed-else-opened choice is not exported on its own, so no reader can file
+ * a check by the other half. A later change (a 04:00 close-out, the house's
+ * service windows) is a change to this one function.
  *
  * Until this file, every POS reader cut the day on the UTC prefix of a
  * timestamp (`(closed_at || opened_at).substring(0, 10)`). For a house in Los
@@ -114,38 +118,46 @@ function formatterFor(zone: string): Intl.DateTimeFormat {
   return f;
 }
 
-/**
- * The house date (`YYYY-MM-DD`) an instant falls on, or null when the instant
- * is missing or does not parse. Throws `RangeError` for a zone this runtime
- * does not know — `readHouseZone` only ever hands out zones it resolved.
- */
-export function houseDayOf(
-  instant: string | Date | null | undefined,
-  zone: string,
-): string | null {
-  if (instant === null || instant === undefined || instant === "") return null;
-  const t = instant instanceof Date ? instant : new Date(instant);
-  if (Number.isNaN(t.getTime())) return null;
-  return formatterFor(zone).format(t);
+/** The two times a POS check carries. */
+export interface CheckTimes {
+  closed_at?: string | null;
+  opened_at?: string | null;
 }
 
 /**
  * The instant a check is filed by: when it closed, else when it opened
- * (founder, 2026-10-04: "Midnight, by close").
+ * (founder, 2026-10-04: "Midnight, by close"). Not exported: a reader files a
+ * check through `houseDayOf`, so the choice lives in one function.
  */
-export function checkInstant(row: {
-  closed_at?: string | null;
-  opened_at?: string | null;
-}): string | null {
+function checkInstant(row: CheckTimes): string | null {
   return row.closed_at || row.opened_at || null;
 }
 
-/** The house day a check is filed on, or null when it carries no usable time. */
-export function houseDayOfCheck(
-  row: { closed_at?: string | null; opened_at?: string | null },
+/**
+ * The house date (`YYYY-MM-DD`) a sale falls on — THE rule (ADR 0296).
+ *
+ * - Given a check (`{ closed_at, opened_at }`), it is filed by when it
+ *   closed, else when it opened.
+ * - Given an instant, it is filed by that instant.
+ *
+ * Either way the day ends at midnight on the house's clock. Null when there is
+ * no usable time. Throws `RangeError` for a zone this runtime does not know —
+ * `readHouseZone` only ever hands out zones it resolved.
+ */
+export function houseDayOf(
+  subject: string | Date | CheckTimes | null | undefined,
   zone: string,
 ): string | null {
-  return houseDayOf(checkInstant(row), zone);
+  const instant =
+    subject !== null &&
+    typeof subject === "object" &&
+    !(subject instanceof Date)
+      ? checkInstant(subject)
+      : subject;
+  if (instant === null || instant === undefined || instant === "") return null;
+  const t = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(t.getTime())) return null;
+  return formatterFor(zone).format(t);
 }
 
 /** Today on the house's clock. */

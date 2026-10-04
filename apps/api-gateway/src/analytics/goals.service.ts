@@ -7,7 +7,6 @@ import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import {
   HOUSE_ZONE_UNSET,
-  checkInstant,
   houseDayBounds,
   houseDayOf,
   houseToday,
@@ -925,16 +924,18 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       ? new Date(Date.parse(bounds.endIso) - 1).toISOString()
       : null;
 
-    // A row is filed on its house day, and a row whose day falls outside the
-    // window is dropped — so one day's figure is the same in every window that
-    // holds it (A-027).
+    // A row is filed on its house day by `houseDayOf` (the one rule), and a
+    // row whose day falls outside the window is dropped — so one day's figure
+    // is the same in every window that holds it (A-027). `subjectOf` hands
+    // `houseDayOf` what it files: a check is handed whole, so the rule picks
+    // its instant; any other row is handed its own instant.
     const fileByHouseDay = <T>(
       rows: T[],
-      instantOf: (row: T) => string | null | undefined,
+      subjectOf: (row: T) => Parameters<typeof houseDayOf>[0],
     ): Array<{ row: T; day: string }> => {
       const out: Array<{ row: T; day: string }> = [];
       for (const row of rows) {
-        const day = houseDayOf(instantOf(row), zone);
+        const day = houseDayOf(subjectOf(row), zone);
         if (day === null || day < sinceDate) continue;
         if (untilDate !== undefined && day > untilDate) continue;
         out.push({ row, day });
@@ -997,8 +998,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           .gte("opened_at", sinceIso);
         if (untilIso) q = q.lte("opened_at", untilIso);
         const { data } = await q;
-        // Filed by when it closed, else when it opened (`checkInstant`).
-        const checks = fileByHouseDay((data || []) as any[], checkInstant);
+        // Each check is handed whole, so `houseDayOf` files it by when it
+        // closed, else when it opened.
+        const checks = fileByHouseDay((data || []) as any[], (c) => c);
         rowCount = checks.length;
         if (metricKey === "pos_revenue") {
           // The whole check total — the tender the restaurant actually booked,
