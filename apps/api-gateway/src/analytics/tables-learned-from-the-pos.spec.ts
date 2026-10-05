@@ -24,7 +24,7 @@ import { TableAnalyticsService } from "./table-analytics.service";
  *
  * After: the database reads the word out of `raw` into pos_checks.table_ref
  * and learns the table from a word with a digit in it, and from no other
- * (founder 2026-10-05, "Only words with a number"; supabase/tests/20261220110000_tables_learned_
+ * (founder 2026-10-05, "Only words with a number"; supabase/tests/20261222160000_tables_learned_
  * from_the_pos_test.sql), so pos-hub writes no new column; checks without a
  * table and checks at hidden tables are counted; hidden tables leave the room,
  * its export and the hot list (the insight generator's part is owed, ADR 0303
