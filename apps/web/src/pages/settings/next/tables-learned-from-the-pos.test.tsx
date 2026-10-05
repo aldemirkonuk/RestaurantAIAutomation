@@ -40,6 +40,14 @@ describe('the room register (ADR 0303)', () => {
     );
   });
 
+  it('with every table hidden and no check, says the tables are hidden, not that the till named none', () => {
+    const say = room({ checksWithoutTable: 0, checksAtHiddenTables: 0, hiddenTablesInHouse: 3 }).say as string;
+    expect(say).toBe(
+      'Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.',
+    );
+    expect(say).not.toMatch(/has not named/);
+  });
+
   it('counts the checks the till sent without a table', () => {
     expect(room({ checksWithoutTable: 12 }).say).toBe(
       '12 checks in this window came from the till without a table, so none can be attributed to a seat. They are in takings.',

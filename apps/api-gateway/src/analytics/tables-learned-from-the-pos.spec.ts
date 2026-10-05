@@ -287,6 +287,93 @@ describe("table performance counts checks it cannot place, and leaves hidden tab
   });
 });
 
+describe("a room with every table hidden and no check says so (ADR 0303)", () => {
+  it("counts the hidden tables, and the export does not say the till named none", async () => {
+    const { service } = makeDb({
+      restaurant_tables: [
+        ok([
+          table({
+            id: "th1",
+            label: "T1",
+            hidden_at: "2026-10-04T09:00:00.000Z",
+          }),
+          table({
+            id: "th2",
+            label: "T2",
+            hidden_at: "2026-10-04T09:00:00.000Z",
+          }),
+        ]),
+      ],
+      pos_checks: [ok([])],
+    });
+    const r = (await service.getTablePerformance("r-1", 90)) as any;
+    expect(r.tables).toEqual([]);
+    expect(r.checksWithoutTable).toBe(0);
+    expect(r.checksAtHiddenTables).toBe(0);
+    expect(r.hiddenTablesInHouse).toBe(2);
+    const d = EXPORT_CUTTINGS.seats.write(r, { days: null });
+    expect(d.say).toBe(
+      "Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.",
+    );
+    expect(d.say).not.toMatch(/has not named/);
+  });
+
+  it("counts no hidden table when none is hidden", async () => {
+    const { service } = makeDb({
+      restaurant_tables: [ok([table()])],
+      pos_checks: [ok([check()])],
+    });
+    const r = (await service.getTablePerformance("r-1", 90)) as any;
+    expect(r.hiddenTablesInHouse).toBe(0);
+  });
+});
+
+/* ── the waiter adjustment's table control keeps hidden tables ─────────── */
+
+describe("the waiter adjustment keeps a hidden table's checks in its table control (founder, 2026-10-05)", () => {
+  // Founder, 2026-10-05T01:39Z, verbatim: "Keep them in the control
+  // (Recommended)". F2 takes hidden tables out of table figures; the control
+  // is not a table figure, so it keeps their checks.
+  it("fits the table control over the checks at a hidden table too", async () => {
+    const checks = [
+      ...[0, 1, 2, 3, 4, 5].map((i) =>
+        check({
+          table_id: "t1",
+          server_name: i % 2 ? "Maya" : "Ali",
+          total: 80 + 10 * i,
+        }),
+      ),
+      ...[0, 1, 2, 3, 4, 5].map((i) =>
+        check({
+          table_id: "th",
+          server_name: i % 2 ? "Maya" : "Ali",
+          total: 120 + 10 * i,
+        }),
+      ),
+    ];
+    const { service } = makeDb({
+      restaurant_tables: [
+        ok([
+          table(),
+          table({
+            id: "th",
+            label: "Staff",
+            hidden_at: "2026-10-04T09:00:00.000Z",
+          }),
+        ]),
+      ],
+      pos_checks: [ok(checks)],
+    });
+    const r = (await service.getWaiterPerformance("r-1", 90)) as any;
+    // Without the hidden table's six checks there would be one table level
+    // and no adjusted model at all.
+    expect(r.adjusted).not.toBeNull();
+    expect(r.adjusted.effects.reduce((s: number, e: any) => s + e.n, 0)).toBe(
+      12,
+    );
+  });
+});
+
 describe("the live watchlist leaves hidden tables out (ADR 0303)", () => {
   it("counts an open check at a hidden table instead of watching it", async () => {
     const opened = new Date(Date.now() - 30 * 60000).toISOString();
@@ -450,6 +537,17 @@ describe("the room export (ADR 0303)", () => {
     expect(d.say).not.toMatch(/drawn/);
     expect(d.say).toBe(
       "The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.",
+    );
+  });
+
+  it("with every table hidden and no check, says the tables are hidden, not that the till named none", () => {
+    const d = seats({
+      checksWithoutTable: 0,
+      checksAtHiddenTables: 0,
+      hiddenTablesInHouse: 3,
+    });
+    expect(d.say).toBe(
+      "Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.",
     );
   });
 

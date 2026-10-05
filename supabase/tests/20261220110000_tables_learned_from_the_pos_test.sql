@@ -405,4 +405,59 @@ begin
     'T18 FAIL: a writer''s own word went when raw, naming none, was written again';
 end $$;
 
+-- T19: a re-link never moves a link: the immediate re-link, after a person
+-- adds or renames a table. "table 7" lands on the hand-added "7" by the
+-- "table <label>" rule. A table labelled "Table 7" then outranks that rule for
+-- the same word, so the word now resolves to it, yet the check stays on "7":
+-- a re-link fills only unlinked checks. The same for a rename into "Table 8".
+-- (T14 cannot see this: there the pos ref keeps the word on Alpha.)
+do $$
+declare
+  seven uuid;
+  table7 uuid;
+  eight uuid;
+  lounge uuid;
+begin
+  insert into public.restaurant_tables (restaurant_id, label, seats)
+  values (pg_temp.tl_house(), '7', 4) returning id into seven;
+  assert pg_temp.tl_check('c19a', 'table 7') = seven, 'T19 FAIL: setup: "table 7" did not land on "7"';
+  insert into public.restaurant_tables (restaurant_id, label, seats)
+  values (pg_temp.tl_house(), 'Table 7', 4) returning id into table7;
+  assert public.pos_table_for_ref(pg_temp.tl_house(), 'csv_import', 'table 7') = table7,
+    'T19 FAIL: setup: "table 7" does not resolve to the added "Table 7", so the case proves nothing';
+  assert pg_temp.tl_link('c19a') = seven, 'T19 FAIL: adding "Table 7" moved a linked check off "7"';
+
+  insert into public.restaurant_tables (restaurant_id, label, seats)
+  values (pg_temp.tl_house(), '8', 4) returning id into eight;
+  insert into public.restaurant_tables (restaurant_id, label, seats)
+  values (pg_temp.tl_house(), 'Lounge', 4) returning id into lounge;
+  assert pg_temp.tl_check('c19b', 'table 8') = eight, 'T19 FAIL: setup: "table 8" did not land on "8"';
+  update public.restaurant_tables set label = 'Table 8' where id = lounge;
+  assert public.pos_table_for_ref(pg_temp.tl_house(), 'csv_import', 'table 8') = lounge,
+    'T19 FAIL: setup: "table 8" does not resolve to the renamed "Table 8", so the case proves nothing';
+  assert pg_temp.tl_link('c19b') = eight, 'T19 FAIL: renaming "Lounge" to "Table 8" moved a linked check off "8"';
+end $$;
+
+-- T20: a re-link never moves a link: the deferred re-link after learning. A
+-- check written with its own table_id beside the word "Zed" stays on that
+-- table when a later check learns "Zed" and the re-link runs at commit.
+do $$
+declare
+  five uuid := pg_temp.tl_id('5');
+  zed uuid;
+begin
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref, table_id)
+  values (pg_temp.tl_house(), 'csv_import', 'c20a', now(), 'Zed', five);
+  assert pg_temp.tl_link('c20a') = five and pg_temp.tl_tables('Zed') = 0,
+    'T20 FAIL: setup: the check did not keep the table its writer gave, or "Zed" exists already';
+  zed := pg_temp.tl_check('c20b', 'Zed');
+  assert zed is not null and zed = pg_temp.tl_id('Zed') and pg_temp.tl_tables('Zed') = 1,
+    'T20 FAIL: setup: "Zed" was not learned once';
+  set constraints public.restaurant_tables_relink_on_learn immediate;
+  assert pg_temp.tl_link('c20a') = five,
+    'T20 FAIL: the re-link after learning "Zed" moved a linked check off "5"';
+  assert pg_temp.tl_link('c20b') = zed, 'T20 FAIL: the check that learned "Zed" left it';
+  set constraints public.restaurant_tables_relink_on_learn deferred;
+end $$;
+
 rollback;

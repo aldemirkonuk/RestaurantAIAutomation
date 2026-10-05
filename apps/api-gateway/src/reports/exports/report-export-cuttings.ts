@@ -587,6 +587,7 @@ function writeSeats(payload: unknown): ExportDoc {
   // takings and in no table's figure; the register says how many.
   const withoutTable = num(s.checksWithoutTable) ?? 0;
   const atHidden = num(s.checksAtHiddenTables) ?? 0;
+  const hiddenInHouse = num(s.hiddenTablesInHouse) ?? 0;
   const hiddenNote =
     atHidden > 0
       ? `${nounCount(atHidden, "check was", "checks were")} at ${nounCount(num(s.hiddenTables) ?? 0, "hidden table", "hidden tables")}: counted in takings, not shown here.`
@@ -598,7 +599,9 @@ function writeSeats(payload: unknown): ExportDoc {
           ? `${nounCount(withoutTable, "check", "checks")} in this window came from the till without a table, so none can be attributed to a seat. They are in takings.`
           : atHidden > 0
             ? "No shown table took a check in this window; show a table again under Settings → Point of sale."
-            : "The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.",
+            : hiddenInHouse > 0
+              ? "Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale."
+              : "The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.",
       notes: [hiddenNote],
       basis,
     });

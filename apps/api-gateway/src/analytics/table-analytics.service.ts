@@ -540,6 +540,12 @@ export class TableAnalyticsService {
       checksAtHiddenTables,
       /** How many hidden (or retired) tables those checks were at. */
       hiddenTables: hiddenWithChecks.size,
+      /**
+       * The house's tables that are hidden now, whatever the window held. With
+       * no shown table and no check, it tells "every table is hidden" from
+       * "the till has not named a table yet".
+       */
+      hiddenTablesInHouse: tables.length - shown.length,
       /** Shown tables learned from the till (ADR 0303), as against added by hand. */
       learnedTables: shown.filter((t: any) => t.learned_at != null).length,
       /** Shown tables with at least one distance recorded. */

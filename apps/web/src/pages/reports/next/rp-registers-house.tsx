@@ -312,6 +312,8 @@ export interface SeatsRegister extends PosWindow {
   checksAtHiddenTables: number | null;
   /** How many hidden (or retired) tables those checks were at. */
   hiddenTables: number | null;
+  /** The house's tables hidden now, whatever the window held; null from an older gateway. */
+  hiddenTablesInHouse: number | null;
   tables: Array<{
     tableId: string;
     label: string;
@@ -344,6 +346,7 @@ const seats = analysis<SeatsRegister>({
       checksWithoutTable: num(d.checksWithoutTable),
       checksAtHiddenTables: num(d.checksAtHiddenTables),
       hiddenTables: num(d.hiddenTables),
+      hiddenTablesInHouse: num(d.hiddenTablesInHouse),
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
         label: str(t.label),
@@ -369,6 +372,7 @@ const seats = analysis<SeatsRegister>({
     // takings and in no table's figure; the register says how many.
     const withoutTable = s.checksWithoutTable ?? 0;
     const atHidden = s.checksAtHiddenTables ?? 0;
+    const hiddenInHouse = s.hiddenTablesInHouse ?? 0;
     const hiddenNote =
       atHidden > 0
         ? `${countOf(atHidden, 'check was', 'checks were')} at ${countOf(s.hiddenTables ?? 0, 'hidden table', 'hidden tables')}: counted in takings, not shown here.`
@@ -380,7 +384,9 @@ const seats = analysis<SeatsRegister>({
             ? `${countOf(withoutTable, 'check', 'checks')} in this window came from the till without a table, so none can be attributed to a seat. They are in takings.`
             : atHidden > 0
               ? 'No shown table took a check in this window; show a table again under Settings → Point of sale.'
-              : 'The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.',
+              : hiddenInHouse > 0
+                ? 'Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.'
+                : 'The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.',
         figures: [],
         notes: hiddenNote ? [hiddenNote] : [],
         basis,
