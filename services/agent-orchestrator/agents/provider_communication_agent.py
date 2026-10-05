@@ -55,6 +55,14 @@ EMAIL_TYPE_PROMO_INQUIRY = "PROMO_INQUIRY"
 EMAIL_TYPE_WINE_INQUIRY = "WINE_INQUIRY"
 
 
+def _ordinal(n: int) -> str:
+    """50 -> "50th", 1 -> "1st", 12 -> "12th", 22 -> "22nd"."""
+    if 10 <= n % 100 <= 20:
+        return f"{n}th"
+    suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Agent
 # ──────────────────────────────────────────────────────────────────────────────
@@ -415,18 +423,7 @@ class ProviderCommunicationAgent(BaseAgent):
         if await self._check_and_increment_rate_limit(
             rate_key, self.settings.negotiation_draft_daily_cap
         ):
-            await self._notify(
-                restaurant_id=restaurant_id,
-                notification_type="rate_limit_reached",
-                title="Draft limit reached",
-                message=(
-                    f"Daily AI draft limit ({self.settings.negotiation_draft_daily_cap}) reached. "
-                    "Drafts frozen until tomorrow."
-                ),
-                priority="high",
-                action_url="/orders",
-                metadata={"order_id": order_id},
-            )
+            await self._notify_cap_reached_once(restaurant_id, rate_key)
             return
 
         # Step 2: Email type selection (D-32-02)
@@ -861,6 +858,60 @@ class ProviderCommunicationAgent(BaseAgent):
             self.logger.warning(f"Rate limit check failed (fail open): {exc}")
             return False
 
+    async def _notify_cap_reached_once(self, restaurant_id: str, rate_key: str) -> None:
+        """
+        One "pre-drafts paused" notice per pause, not one per order (sim F-126).
+
+        Every order over the cap used to post its own HIGH notice, which pushed
+        real alerts off the bell, and its words were wrong twice: the pause is
+        not "until tomorrow", and an approved order still gets its vendor letter
+        from the approval-time writer. The cap itself is unchanged here; it waits
+        on the houses' F-084/F-089 change (share-out O1).
+
+        The cap branch is reached only after Redis answered, so the fence is
+        Redis too: SET NX on a per-house key that lives as long as the pause.
+        The pause ends when rate_key expires, and once the cap is reached nothing
+        renews it, so the fence copies its TTL (+60 s, so it cannot re-arm just
+        before the counter clears). A TTL Redis cannot give (no key, no expiry)
+        holds the fence a day. A failed read or SET sends nothing: a missed
+        notice beats a flood. A notice that does not land (no member to tell,
+        or the insert failed) lifts the fence again, so the next order over the
+        cap retries it instead of the pause passing in silence.
+        """
+        cap = self.settings.negotiation_draft_daily_cap
+        fence_key = f"prov_comm:cap_notice:{restaurant_id}"
+        try:
+            ttl = await self.redis.ttl(rate_key)
+            ex = int(ttl) + 60 if ttl is not None and int(ttl) > 0 else 86400
+            first = await self.redis.set(fence_key, "1", nx=True, ex=ex)
+        except Exception as exc:
+            self.logger.error(f"Cap notice fence failed, notice not sent: {exc}")
+            return
+        if not first:
+            return
+        # Words ruled by the founder, 2026-10-03 (ADR 0260, follow-up rulings).
+        delivered = await self._notify(
+            restaurant_id=restaurant_id,
+            notification_type="rate_limit_reached",
+            title="AI pre-drafts paused",
+            message=(
+                f"This house reached its limit of {cap} AI pre-drafts. "
+                f"They resume 24 hours after the {_ordinal(cap)}. "
+                "Orders you approve still get a vendor letter to review."
+            ),
+            priority="high",
+            action_url="/orders",
+            group_key="rate_limit_reached",
+        )
+        if delivered:
+            return
+        try:
+            await self.redis.delete(fence_key)
+        except Exception as exc:
+            self.logger.error(
+                f"Cap notice did not land and its fence was not lifted: {exc}"
+            )
+
     async def _acquire_draft_lock(self, key: str, px: int = 30_000) -> bool:
         """
         SET NX PX — returns True if lock acquired, False if already held.
@@ -969,15 +1020,17 @@ class ProviderCommunicationAgent(BaseAgent):
         priority: str = "medium",
         action_url: str = "/orders",
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> None:
+        group_key: Optional[str] = None,
+    ) -> bool:
         """
         Insert in-app notification directly to Supabase notifications table (D-03).
         Uses status='unread' (VERIFIED_NOTIFICATION_FIELD from Plan 32-01).
         NOT an HTTP call to NestJS — direct DB insert per RESEARCH.md Q2.
         user_id is resolved from user_restaurant_access so the bell icon picks it up.
+        Returns whether any row landed, so a caller holding a fence can lift it.
         """
         if not restaurant_id:
-            return
+            return False
 
         # Routed through core.notifications so both runtimes write the same shape.
         # This insert previously omitted recipient_id, notification_type and
@@ -993,6 +1046,7 @@ class ProviderCommunicationAgent(BaseAgent):
             message,
             priority=priority,
             action_url=action_url,
+            group_key=group_key,
             metadata=metadata,
         )
         if not inserted:
@@ -1000,6 +1054,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 "provider notification not delivered",
                 extra={"restaurant_id": restaurant_id, "type": notification_type},
             )
+        return bool(inserted)
 
     # =========================================================================
     # DYNAMIC PROFILE EXTRACTION (D-32-10 / PROVINT-03)
