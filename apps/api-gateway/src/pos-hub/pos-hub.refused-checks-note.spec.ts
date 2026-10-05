@@ -1312,6 +1312,57 @@ describe('a check sent again is counted once: "Count each check once (Recommende
       "this till's open note could not be read (it carries no note id, count or check list), so a new note was written",
     ]);
   });
+
+  it("an import that adds no check brings a row behind up to the note as it was, without counting itself in", async () => {
+    // The lead row has been counted into once already (2 imports); the row
+    // behind was written before that and still says 2.
+    const [first, second] = seededNote({
+      refused: 3,
+      checkIds: ["c-1", "c-2", "c-3"],
+      createdAt: minutesAgo(5),
+    });
+    const lead = {
+      ...first,
+      metadata: { ...first.metadata, imports: 2, lastAddedAt: minutesAgo(3) },
+    };
+    const behind = {
+      ...second,
+      status: "read",
+      read_at: minutesAgo(2),
+      title: "2 checks not imported: date not readable",
+      metadata: {
+        ...second.metadata,
+        ...stateMeta(2, ["c-1", "c-2"]),
+        imports: 1,
+      },
+    };
+    const { service, calls, table } = makeService({ notes: [lead, behind] });
+    const leadBefore = structuredClone(table.find((r) => r.id === "seed-0"));
+
+    // Checks the note already counts: it does not grow.
+    const res = await ingest(service, [
+      check("c-1", "03.10.2026"),
+      check("c-3", "03.10.2026"),
+    ]);
+
+    expect(calls.persist).toHaveLength(0);
+    // Only the row behind is written; the lead rows are left as they were.
+    expect(calls.noteUpdates).toHaveLength(1);
+    expect(calls.noteUpdates[0].in.id).toEqual(["seed-1"]);
+    expect(table.find((r) => r.id === "seed-0")).toEqual(leadBefore);
+    // The row behind now says what the lead says, word for word and field
+    // for field: this import is not counted as one that changed the note
+    // (`imports` stays 2, `lastAddedAt` is not stamped again).
+    const caught = table.find((r) => r.id === "seed-1")!;
+    expect(caught.title).toBe("3 checks not imported: date not readable");
+    expect(caught.metadata).toEqual(leadBefore!.metadata);
+    expect(caught.metadata.imports).toBe(2);
+    // Its reader had seen 2; 3 is news to them, so the row is unread again.
+    expect(caught.status).toBe("unread");
+    expect(res.bellNote).toEqual(
+      filedNew({ addedToOpenNote: true, recipients: 1 }),
+    );
+  });
 });
 
 describe('an archived row is brought back: "Bring it back (Recommended)"', () => {
@@ -1411,6 +1462,72 @@ describe('an archived row is brought back: "Bring it back (Recommended)"', () =>
     expect(
       table.filter((r) => r.id.startsWith("seed-")).map((r) => r.status),
     ).toEqual(["dismissed", "dismissed"]);
+  });
+});
+
+describe("a row deleted from the bell", () => {
+  // Deleting removes the row (`NotificationsService.deleteNotification`,
+  // `deleteBulk`, `deleteAllRead`), so here a delete is the row leaving the
+  // in-memory table.
+  const deleteRowOf = (table: Row[], userId: string) => {
+    const at = table.findIndex((r) => r.user_id === userId);
+    expect(at).toBeGreaterThanOrEqual(0);
+    table.splice(at, 1);
+  };
+
+  it('one recipient deleted it, another still holds it: it stays deleted, and the other row takes the new count ("Stays deleted (Recommended)")', async () => {
+    const { service, calls, table } = makeService();
+    await ingest(service, [
+      check("c-1", "03.10.2026"),
+      check("c-2", "03.10.2026"),
+      check("c-3", "03.10.2026"),
+    ]);
+    expect(calls.persist).toHaveLength(1);
+    deleteRowOf(table, "u-owner");
+
+    const res = await ingest(service, [check("c-4", "03.10.2026")]);
+
+    // Counted into the note through the row still held: nothing written for
+    // the owner who deleted it, and nothing pushed to anyone.
+    expect(calls.persist).toHaveLength(1);
+    expect(table.map((r) => r.user_id)).toEqual(["u-manager"]);
+    expect(table[0].title).toBe("4 checks not imported: date not readable");
+    expect(res.bellNote).toEqual(
+      filedNew({ addedToOpenNote: true, recipients: 1 }),
+    );
+  });
+
+  it("every recipient deleted it: nothing is left to find, so the next refusal inside the hour writes a new note and pushes it to all of them (as built; a fork left to the founder)", async () => {
+    // ADR 0281, "Forks deferred": fork 2's option text said "The next hour's
+    // note still reaches them"; when no row of the note is left, the next
+    // note comes at once. This pins what is built until he answers.
+    const { service, calls, table } = makeService();
+    await ingest(service, [
+      check("c-1", "03.10.2026"),
+      check("c-2", "03.10.2026"),
+      check("c-3", "03.10.2026"),
+    ]);
+    const firstNoteId = calls.persist[0].payload.metadata.noteId;
+    deleteRowOf(table, "u-owner");
+    deleteRowOf(table, "u-manager");
+    expect(table).toHaveLength(0);
+
+    // Minutes later, inside the first note's hour.
+    const res = await ingest(service, [check("c-4", "03.10.2026")]);
+
+    expect(calls.noteUpdates).toHaveLength(0);
+    expect(calls.persist).toHaveLength(2);
+    const { payload, opts } = calls.persist[1];
+    // A new note, with only this import's check: not the deleted note back.
+    expect(payload.metadata.noteId).not.toBe(firstNoteId);
+    expect(payload.title).toBe("1 check not imported: date not readable");
+    expect(payload.message).toContain("Check: c-4.");
+    expect(payload.message).not.toContain("c-1");
+    // Pushed, to those who deleted the first note too.
+    expect(payload.priority).toBe("high");
+    expect(opts.broadcast).toBe(true);
+    expect([...opts.onlyUserIds].sort()).toEqual(["u-manager", "u-owner"]);
+    expect(res.bellNote).toEqual(filedNew());
   });
 });
 

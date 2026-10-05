@@ -38,7 +38,16 @@
  *   merged with another: each one is counted every time it is refused, and
  *   the note says so (`withoutId`). An import that adds no check the note
  *   had not counted changes nothing in it, so nothing is written and no row
- *   turns unread or comes back from the archive.
+ *   turns unread or comes back from the archive (a reading of the founder's
+ *   words, left to him as a fork in ADR 0281).
+ * - A ROW DELETED FROM THE BELL is gone (`deleteNotification` removes it), so
+ *   it is neither read nor brought back: while another recipient still holds
+ *   a row of the note, the one who deleted it hears nothing more of that note
+ *   ("Stays deleted (Recommended)"). When every row of the note is deleted,
+ *   nothing is left to find, so the next refusal inside the same hour writes
+ *   a new note, with only its own checks, and pushes it to every owner and
+ *   manager. That case is a fork left to the founder (ADR 0281, "Forks
+ *   deferred"); this is how it is built until he answers.
  * - THE IMPORT ANSWERS ON TIME. The import waits at most `NOTE_DEADLINE_MS`
  *   for its note, then answers without it, says so, and logs it; the note
  *   goes on being filed. One filing that never answers holds the next one for
@@ -124,9 +133,13 @@ export const MAX_NOTE_CHECK_IDS = 10;
  * count can only be a floor ("at least"). Why 500 and not the 10 it names: a
  * till that sends one check per webhook (F5's own case) brings one new id per
  * import, and with 10 kept its note would read "At least 11" for the rest of
- * the hour however many more were refused; 500 holds an hour of such a till
- * and a day's export run twice, at 16 characters a key (about 9 KB on each
- * recipient's row at the bound).
+ * the hour however many more were refused. 500 is a chosen figure, not a
+ * measured one: fifty times the ids named, meant to leave room for such a
+ * till's hour and for an export sent twice, at a size every recipient's row
+ * can carry (16 characters a key, about 9 KB at the bound). No till's hourly
+ * refusals were counted, Tuzlu's included. A house that refuses more distinct
+ * checks than that in an hour can read "At least N": a floor, never more than
+ * the note can prove.
  */
 export const MAX_NOTE_KEPT_CHECKS = 500;
 
@@ -837,6 +850,10 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
  * once (Recommended)"), the note did not grow: its lead rows are left as they
  * are (no new count, so not news: no row turns unread or comes back from the
  * archive), and only rows behind it are brought up to it.
+ *
+ * A note whose every row was deleted from the bell is no open note: the read
+ * finds nothing, so the caller writes a new one (see the header; a fork left
+ * to the founder in ADR 0281).
  */
 async function addToOpenNote(
   deps: Deps,
