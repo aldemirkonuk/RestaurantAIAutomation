@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -208,23 +209,38 @@ export class AnalyticsService {
     // column, so selecting one 42703s the whole query and silently yields an
     // empty demand series (zero velocity, zero forecast, no reorder points).
     // Resolve the wine through the inventory FK instead.
-    const { data, error } = await client
-      .from("wine_consumption_log")
-      .select(
-        "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
-    // getFinancialSummary's dead-stock join now depends on this series, and an
-    // empty one is deliberately read as "no movement signal" rather than "no
-    // movement" — so a failure here must at least be loud in the logs.
-    if (error)
+    //
+    // Read whole or refused (ADR 0292): unranged, this stopped at PostgREST's
+    // 1,000 rows and every demand series below was built from a slice.
+    let data: any[] = [];
+    try {
+      data = await readWholeWindow<any>(
+        "The consumption lines in this window",
+        () =>
+          client
+            .from("wine_consumption_log")
+            .select(
+              "id, inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("created_at", since),
+      );
+    } catch (err: any) {
+      // getFinancialSummary's dead-stock join now depends on this series, and
+      // an empty one is deliberately read as "no movement signal" rather than
+      // "no movement" — so a failure here must at least be loud in the logs.
+      // A refused whole-window read degrades the same way (documented residual,
+      // ADR 0292): one consumption lens must not take /reports' financial
+      // summary down with it.
       this.logger.error(
         `analytics query on wine_consumption_log failed — demand, reorder ` +
           `science and dead stock will report empty rather than wrong: ` +
-          `${error.code ?? "?"} ${error.message ?? error}`,
+          `${err?.message ?? err}`,
       );
-    return (data || []).map((c: any) => ({
+      data = [];
+    }
+    return data.map((c: any) => ({
       masterWineId: c.restaurant_inventory?.master_wine_id ?? null,
       inventoryId: c.inventory_id,
       qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
@@ -282,15 +298,23 @@ export class AnalyticsService {
     const client = this.dbService.getClient();
     // `created_at` (not `recorded_at`) is what pos-hub writes through and what
     // loadConsumption above already filters on — keep the two consistent.
-    const { data, error } = await client
-      .from("wine_consumption_log")
-      .select(
-        "inventory_id, wine_name, consumption_type, quantity, volume_ml, total_revenue, restaurant_inventory(wine_name, last_purchase_price)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", `${fromDate}T00:00:00Z`)
-      .lte("created_at", `${toDate}T23:59:59.999Z`);
-    if (error) throw new Error(error.message);
+    //
+    // Read whole or refused (ADR 0292). Unranged, this stopped at PostgREST's
+    // 1,000 rows and the till list summed a slice of the window (A-033). A
+    // refusal throws, as a failed read already did.
+    const data = await readWholeWindow<any>(
+      "The consumption lines in this window",
+      () =>
+        client
+          .from("wine_consumption_log")
+          .select(
+            "id, inventory_id, wine_name, consumption_type, quantity, volume_ml, total_revenue, restaurant_inventory(wine_name, last_purchase_price)",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("created_at", `${fromDate}T00:00:00Z`)
+          .lte("created_at", `${toDate}T23:59:59.999Z`),
+    );
 
     type Acc = PosConsumptionRow & {
       bottleRevenueRows: number;

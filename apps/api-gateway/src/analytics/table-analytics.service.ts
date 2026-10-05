@@ -4,6 +4,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
 
 /**
@@ -100,33 +101,42 @@ export class TableAnalyticsService {
   // ==========================================================================
 
   /**
-   * Non-voided checks opened in the last `sinceDays` days.
+   * Non-voided checks opened in the last `sinceDays` days, read WHOLE or not
+   * at all (ADR 0292).
    *
-   * A failed read THROWS (ADR 0067). It used to log and return `[]`, and every
-   * caller then reported the failure as an empty feed: the waiter and table
-   * registers said "pos_checks is empty" over a read that never answered.
+   * The unranged select this replaces stopped at PostgREST's 1,000 rows, so
+   * "Who served it" ranked the floor on 1,000 of 3,341 checks (29.6% of the
+   * takings) under "the last 90 days" and put last place first (A-006). A
+   * failed or partial read now THROWS (ADR 0067): it used to log and return
+   * `[]`, and every caller then reported the failure as an empty feed: the
+   * waiter and table registers said "pos_checks is empty" over a read that
+   * never answered.
    */
   private async loadChecks(restaurantId: string, sinceDays = 90) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("pos_checks")
-      .select(
-        "id, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
-      )
-      .eq("restaurant_id", restaurantId)
-      // A voided check is not revenue. Its stock is reversed at ingest, but its
-      // `total` used to keep counting here forever — every table and waiter
-      // figure inherited it.
-      .eq("voided", false)
-      .gte("opened_at", since);
-    if (error) {
-      this.logger.warn(`loadChecks failed: ${error.message}`);
+    const client = this.dbService.getClient();
+    try {
+      return await readWholeWindow<any>("The POS checks in this window", () =>
+        client
+          .from("pos_checks")
+          .select(
+            "id, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          // A voided check is not revenue. Its stock is reversed at ingest, but
+          // its `total` used to keep counting here forever — every table and
+          // waiter figure inherited it.
+          .eq("voided", false)
+          .gte("opened_at", since),
+      );
+    } catch (err: any) {
+      if (!(err instanceof WholeReadError)) throw err;
+      this.logger.warn(`loadChecks failed: ${err.message}`);
       throw new ServiceUnavailableException(
         "The POS checks could not be read, so nothing about them is claimed.",
       );
     }
-    return data || [];
   }
 
   /**
