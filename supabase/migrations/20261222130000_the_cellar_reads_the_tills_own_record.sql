@@ -42,7 +42,8 @@
 --      whose name has the same beverage_house_key (the same words, in any
 --      order), which is how a cocktail or a cola on the menu gets its Sold
 --      and Taken. A till name that no other book names becomes a ledger row
---      only when the queue ever held it, main's own boundary, and only while
+--      only when the queue ever held it, resolved or not (main read the open
+--      queue only, and nothing in the code sets `resolved`), and only while
 --      house_till_lines still holds a line of it: a line on a check that is
 --      not voided, or a queued line with no check behind it (an orphan). A
 --      name whose every line sat on voided checks leaves with them, because
@@ -427,8 +428,10 @@ keys AS (
   UNION SELECT k FROM ord_agg
   UNION SELECT k FROM quo_agg
   -- CHANGED the_cellar_reads_the_tills_own_record: a name only the till
-  -- knows is a row when the queue ever held it, as it was on main when the
-  -- pour read the queue alone. A key the other books name gets the till lines
+  -- knows is a row when the queue ever held it, resolved or not (main's pour
+  -- read the open queue alone; nothing in the code sets `resolved`), and only
+  -- while `till` holds a line of that exact name (`pour` starts from `till`;
+  -- T2). A key the other books name gets the till lines
   -- of the same key below either way. [CHANGED 2026-10-05: no longer also
   -- when a line of it is flagged is_wine; the header, item 3.]
   UNION SELECT k FROM pour_agg WHERE admit
