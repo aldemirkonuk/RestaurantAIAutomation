@@ -185,6 +185,7 @@ type Day = {
   order_count: number | null;
   net_sales: number | null;
   checks: number | null;
+  net_checks?: number | null;
   events: unknown[];
 };
 
@@ -471,11 +472,116 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     mount();
 
     const note = await screen.findByTestId('dn-figures-note');
-    expect(note).toHaveTextContent('Net sales add up the subtotal on each register check');
+    expect(note).toHaveTextContent('Net sales add up the subtotals register checks carry');
+    expect(note).toHaveTextContent('A check that carries none is counted, never guessed.');
     // The basis is the adapter's (Square maps net_amounts.total_money, Clover
     // writes null), so the note never states "before tax" unconditionally.
     expect(note).toHaveTextContent('before tax and surcharge when the register sends it that way');
     expect(note).not.toHaveTextContent(/subtotals before tax and surcharge;/);
     expect(screen.queryByText(/Figures on this page are procurement/)).not.toBeInTheDocument();
+  });
+});
+
+/* ── Count and say (netsales F1) and the month's N of M days (2026-10-05) ── */
+
+describe('DashboardNext — the month counts and says (ADR 0290 §2, §4)', () => {
+  it("says 'from N of M checks' under a day whose checks did not all carry a subtotal", async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        days: { '2026-10-02': { ...TRADING_DAY['2026-10-02'], net_checks: 10 } },
+        monthly_net_sales: 800,
+        monthly_checks: 12,
+        monthly_net_checks: 10,
+      }),
+    );
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('$800'));
+    expect(dayCell('2026-10-02').querySelector('.dn-cell-from')?.textContent).toBe('from 10 of 12 checks');
+    expect(dayCell('2026-10-02')).toHaveAttribute(
+      'aria-label',
+      '2026-10-02: net sales $800 from 10 of 12 checks, paid to vendors $500, 0 events',
+    );
+    // A day whose every check carried one says nothing more.
+    expect(dayCell('2026-10-01').querySelector('.dn-cell-from')).toBeNull();
+    expect(screen.getByTestId('dn-month-totals').textContent).toMatch(
+      /net sales\s*\$800 · from 10 of 12 checks · paid to vendors/,
+    );
+
+    fireEvent.click(dayCell('2026-10-02'));
+    const net = await screen.findByText('Net sales');
+    expect(net.previousElementSibling?.textContent).toBe('$800');
+    expect(net.nextElementSibling?.textContent).toBe('from 10 of 12 checks');
+  });
+
+  it("reads 'not recorded', never $0 or a dash, on a day whose checks carried no subtotal", async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        days: { '2026-10-02': { net_sales: null, checks: 7, net_checks: 0 } },
+        monthly_net_sales: null,
+        monthly_checks: 7,
+        monthly_net_checks: 0,
+      }),
+    );
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('not recorded'));
+    expect(dayCell('2026-10-02').getAttribute('aria-label')).toMatch(/^2026-10-02: net sales not recorded, /);
+    expect(screen.getByTestId('dn-month-totals').textContent).toMatch(/net sales\s*not recorded · paid to vendors/);
+
+    fireEvent.click(dayCell('2026-10-02'));
+    const net = await screen.findByText('Net sales');
+    expect(net.previousElementSibling?.textContent).toBe('not recorded');
+    expect(screen.getByText('Checks').previousElementSibling?.textContent).toBe('7');
+  });
+
+  it("sums the month over the days the register counted and says 'from N of M days'", async () => {
+    // The founder's own example, 2026-10-05: '$61,240 · from 29 of 31 days'.
+    browserAt('2026-10-31T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        today: '2026-10-31',
+        days: {
+          '2026-10-02': TRADING_DAY['2026-10-02'],
+          '2026-10-30': { net_sales: null, checks: null, net_checks: null },
+          '2026-10-31': { net_sales: null, checks: null, net_checks: null },
+        },
+        monthly_net_sales: 61240,
+        monthly_checks: 1500,
+        monthly_net_checks: 1500,
+        monthly_days_counted: 29,
+        monthly_days_begun: 31,
+      }),
+    );
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('$800'));
+    const totals = screen.getByTestId('dn-month-totals').textContent ?? '';
+    expect(totals).toMatch(/net sales\s*\$61,240 · from 29 of 31 days · paid to vendors/);
+    // The two days after the register's last check read the dash, not $0.
+    expect(cellFig('2026-10-31')).toBe('—');
+    expect(dayCell('2026-10-31').getAttribute('aria-label')).toMatch(/^2026-10-31: net sales unknown, /);
+  });
+
+  it('draws the dash for a month with no counted day, never $0', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        dayDefault: { net_sales: null, checks: null, net_checks: null },
+        monthly_net_sales: null,
+        monthly_checks: null,
+        monthly_net_checks: null,
+        monthly_days_counted: 0,
+        monthly_days_begun: 3,
+      }),
+    );
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('—'));
+    const totals = screen.getByTestId('dn-month-totals').textContent ?? '';
+    expect(totals).toMatch(/net sales\s*— · paid to vendors/);
+    expect(screen.queryByTestId('dn-month-from')).not.toBeInTheDocument();
   });
 });

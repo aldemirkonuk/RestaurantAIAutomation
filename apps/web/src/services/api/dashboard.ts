@@ -244,9 +244,16 @@ export interface CalendarMonthDay {
   /** Bottles DELIVERED by vendors (frozen misnomer). Null: not known. */
   bottles_sold: number | null;
   order_count: number | null;
-  /** Sum of the day's check subtotals, voided left out. Null: not known or not shown. */
+  /**
+   * Sum of the subtotals the day's checks carried, voided left out. Null: not
+   * known, not shown, or checks came and none carried a subtotal (then
+   * `checks > 0` and `net_checks` is 0: "not recorded").
+   */
   net_sales?: number | null;
+  /** Every check on the day. */
   checks?: number | null;
+  /** The checks that carried a subtotal ("from net_checks of checks"). */
+  net_checks?: number | null;
   events: Array<{
     id?: string;
     title?: string | null;
@@ -265,10 +272,16 @@ export interface CalendarMonthDay {
  *    delivered `procurement_orders` — vendor SPEND, never sales; `bottles_sold`
  *    counts bottles DELIVERED by vendors, for the same reason.
  *  - `net_sales` / `monthly_net_sales` are the register's takings: the sum of
- *    `pos_checks.subtotal` (before tax and surcharge where the POS adapter
- *    sends it so; Square maps net_amounts.total_money), voided checks left
- *    out. Only an owner or manager gets them; for anyone else
- *    `sales_withheld` is true and they are null.
+ *    the `pos_checks.subtotal`s the checks carried (before tax and surcharge
+ *    where the POS adapter sends it so; Square maps net_amounts.total_money),
+ *    voided checks left out. `net_checks` of `checks` carried one, so a page
+ *    says "from N of M checks"; with checks and none carrying one, the figure
+ *    is null, "not recorded" (netsales F1, "Count and say"). Only an owner or
+ *    manager gets them; for anyone else `sales_withheld` is true and they are
+ *    null.
+ *  - The month's figure sums the begun days the register counted:
+ *    `monthly_days_counted` of `monthly_days_begun` (the founder, 2026-10-05,
+ *    "Sum, say N of M days").
  *  - Every day is the HOUSE's day, in `timezone`. With no zone set,
  *    `zone_unset` is true and every day figure is null — never a UTC guess.
  *  - Null is "not known", never zero. A quiet day between the register's
@@ -291,6 +304,9 @@ export async function getCalendarRevenue(
   monthly_bottles: number | null;
   monthly_net_sales?: number | null;
   monthly_checks?: number | null;
+  monthly_net_checks?: number | null;
+  monthly_days_counted?: number | null;
+  monthly_days_begun?: number | null;
   timezone?: string | null;
   zone_unset?: boolean;
   today?: string | null;

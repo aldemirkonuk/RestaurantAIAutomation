@@ -67,7 +67,9 @@ export interface RawDayEvent {
  * One house day. Every figure is `number | null`: null is "not known" (no
  * zone set, no register, a day before the register's first check or after
  * its latest, a figure withheld) and renders as the em dash — never as 0. A
- * real 0 is a measured quiet day.
+ * real 0 is a measured quiet day. One null is not "unknown": `net_sales` is
+ * null with `checks > 0` when not one check carried a subtotal, which reads
+ * "not recorded" (netsales F1, "Count and say").
  */
 export interface DayLedger {
   date: string; // YYYY-MM-DD, the HOUSE's date
@@ -75,9 +77,12 @@ export interface DayLedger {
   bottles_sold: number | null; // bottles DELIVERED by vendors (frozen misnomer)
   events: RawDayEvent[];
   order_count: number | null;
-  /** Sum of the day's check subtotals, voided left out (AW17: net). */
+  /** Sum of the subtotals the day's checks carried, voided left out (AW17: net). */
   net_sales: number | null;
+  /** Every check on the day. */
   checks: number | null;
+  /** The checks that carried a subtotal: "from net_checks of checks". */
+  net_checks: number | null;
 }
 
 /**
@@ -95,8 +100,13 @@ export interface MonthLedger {
   daily: DayLedger[];
   monthlySpend: number | null;
   monthlyBottles: number | null;
+  /** The begun days the register counted, summed (founder 2026-10-05: "Sum, say N of M days"). */
   monthlyNetSales: number | null;
   monthlyChecks: number | null;
+  monthlyNetChecks: number | null;
+  /** Begun days the register counted, of `monthlyDaysBegun`. */
+  monthlyDaysCounted: number | null;
+  monthlyDaysBegun: number | null;
   /** The zone the days are filed in; null = the house has none; undefined = not said. */
   timezone: string | null | undefined;
   zoneUnset: boolean;
@@ -107,6 +117,41 @@ export interface MonthLedger {
 
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/** What a net figure reads when checks came and not one carried a subtotal. */
+export const NOT_RECORDED = "not recorded";
+
+const count = (n: number) => n.toLocaleString("en-US");
+
+/**
+ * "from N of M checks" when only some of the checks carried a subtotal, so
+ * the net figure beside it is short of what the checks came to (netsales F1,
+ * "Count and say"). Null when every check carried one, when none did (that
+ * reads NOT_RECORDED), and when either count is not known.
+ */
+export function fromChecks(
+  netChecks: number | null | undefined,
+  checks: number | null | undefined,
+): string | null {
+  if (netChecks == null || checks == null) return null;
+  if (netChecks <= 0 || netChecks >= checks) return null;
+  return `from ${count(netChecks)} of ${count(checks)} checks`;
+}
+
+/**
+ * "from N of M days" when the month's figure sums only some of its begun days
+ * — a day before the register began or after its latest check is not known
+ * (the founder, 2026-10-05: "Sum, say N of M days"). Null when every begun day
+ * is counted, when none is, and when either count is not known.
+ */
+export function fromDays(
+  counted: number | null | undefined,
+  begun: number | null | undefined,
+): string | null {
+  if (counted == null || begun == null) return null;
+  if (counted <= 0 || counted >= begun) return null;
+  return `from ${count(counted)} of ${count(begun)} days`;
+}
 
 /**
  * The house-local YYYY-MM-DD of an instant, or null when it cannot be read.
@@ -280,6 +325,7 @@ export function useMonthLedger(
             order_count: num(raw.order_count),
             net_sales: num(raw.net_sales),
             checks: num(raw.checks),
+            net_checks: num(raw.net_checks),
           };
         });
         const legacyTotals = res as unknown as { monthly_total?: number };
@@ -299,6 +345,9 @@ export function useMonthLedger(
           monthlyBottles: num(res.monthly_bottles),
           monthlyNetSales: num(res.monthly_net_sales),
           monthlyChecks: num(res.monthly_checks),
+          monthlyNetChecks: num(res.monthly_net_checks),
+          monthlyDaysCounted: num(res.monthly_days_counted),
+          monthlyDaysBegun: num(res.monthly_days_begun),
           timezone: res.timezone,
           zoneUnset: res.zone_unset === true,
           today: res.today,

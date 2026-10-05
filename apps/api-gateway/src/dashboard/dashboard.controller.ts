@@ -146,7 +146,7 @@ export class DashboardController {
     summary:
       "Get per-day net sales, vendor spend and calendar events for a month",
     description:
-      "Returns, per house day: `net_sales` and `checks` (sum of `pos_checks.subtotal` over checks not voided; only for roles that see sales), vendor SPEND (`procurement_spend`, delivered procurement orders — money out, not sales), and calendar events. Days are filed in `restaurants.timezone`; a house with none gets null day figures and `zone_unset: true`. The `calendar-revenue` path name is a legacy misnomer kept for compatibility.",
+      "Returns, per house day: `net_sales`, `checks` and `net_checks` (the sum of the `pos_checks.subtotal` values stated by checks not voided, every check, and the checks that stated one; net is null when none did; only for roles that see sales), vendor SPEND (`procurement_spend`, delivered procurement orders — money out, not sales), and calendar events. The month sums the days the register counted and states `monthly_days_counted` of `monthly_days_begun`. Days are filed in the house's zone (`restaurants.timezone`, else its country's only zone); a house with neither gets null day figures and `zone_unset: true`. The `calendar-revenue` path name is a legacy misnomer kept for compatibility.",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
   @ApiQuery({

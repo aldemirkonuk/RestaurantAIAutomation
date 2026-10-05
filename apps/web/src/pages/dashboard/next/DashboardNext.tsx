@@ -183,10 +183,13 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
                 subtotal is the adapter's, not ours: generic/CSV pass it
                 through, Square maps net_amounts.total_money, Toast `amount`,
                 Clover writes null (pos-adapters.ts). So "before tax and
-                surcharge" is said only as far as the register sends it so. */}
+                surcharge" is said only as far as the register sends it so.
+                A check that carries no subtotal is counted, never filled
+                from its total (netsales F1, "Count and say"). */}
             <p className="text-[11px] text-inkm-3" data-testid="dn-figures-note">
-              Paid to vendors is money out, not sales. Net sales add up the subtotal on each register
-              check, voided checks left out — before tax and surcharge when the register sends it that way.
+              Paid to vendors is money out, not sales. Net sales add up the subtotals register checks
+              carry, voided checks left out — before tax and surcharge when the register sends it that
+              way. A check that carries none is counted, never guessed.
             </p>
           </div>
           {/* The note-control experiment's standing count.

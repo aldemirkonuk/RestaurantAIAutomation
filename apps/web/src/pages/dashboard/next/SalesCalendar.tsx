@@ -13,7 +13,12 @@
  *    voided left out (before tax and surcharge where the POS adapter sends
  *    it so; ADR 0290 §8) — and is shaded by them; the delivery mark
  *    stays. Otherwise the cell carries money paid to vendors, labelled so.
- *    The cell layout is fork F2 in ADR 0290, built on its recommendation.
+ *    The cell is the founder's F2, "Sales in the cell (Recommended)".
+ *  - Count and say (netsales F1): a day where only some checks carried a
+ *    subtotal says "from N of M checks" under its figure; a day whose checks
+ *    carried none reads "not recorded", never $0. The month line sums the
+ *    days the register counted and says "from N of M days" when that is
+ *    short of the days begun (the founder, 2026-10-05).
  *  - A quiet day is a quiet blank ('·'), not "$0 of results"; an unknown day
  *    is the em dash; a FUTURE day carries no figure at all.
  *  - A house with no time zone gets em dashes and one line saying so, with
@@ -30,7 +35,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { animate, settle } from '@/lib/mudavym';
 import type { ActivityItem, AlertItem } from './useDashboardNextData';
-import { useDayOrders, useMonthLedger, type DayLedger } from './useDashboardNextData';
+import {
+  NOT_RECORDED,
+  fromChecks,
+  fromDays,
+  useDayOrders,
+  useMonthLedger,
+  type DayLedger,
+  type MonthLedger,
+} from './useDashboardNextData';
 import { DASH, figure, localDateStr, money, monthName } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
@@ -44,16 +57,56 @@ export interface SalesCalendarProps {
 }
 
 const MONO_FIG = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' } as const;
+const NOT_RECORDED_FIG = {
+  fontFamily: 'inherit',
+  fontSize: '9px',
+  fontStyle: 'italic',
+  fontWeight: 400,
+  lineHeight: 1.15,
+  color: 'var(--ink-3, #7C7365)',
+} as const;
 
 /** What a cell says. `salesShown` picks the headline (F2, ADR 0290). */
 function cellFigure(day: DayLedger | undefined, salesShown: boolean, zoneUnset: boolean): string {
   if (!day || zoneUnset) return DASH;
   if (salesShown) {
+    if (day.checks == null) return DASH;
     if (day.checks === 0) return '·';
-    return day.net_sales == null ? DASH : money(day.net_sales, 'compact');
+    return day.net_sales == null ? NOT_RECORDED : money(day.net_sales, 'compact');
   }
   if (day.procurement_spend == null) return DASH;
   return day.procurement_spend > 0 ? money(day.procurement_spend, 'compact') : '·';
+}
+
+/** A day's net sales in words, for its label (count and say, netsales F1). */
+function salesSaid(day: DayLedger): string {
+  if (day.checks == null) return 'net sales unknown';
+  if (day.checks === 0) return 'no sales';
+  if (day.net_sales == null) return `net sales ${NOT_RECORDED}`;
+  const from = fromChecks(day.net_checks, day.checks);
+  return `net sales ${money(day.net_sales)}${from ? ` ${from}` : ''}`;
+}
+
+/**
+ * The month's net sales in words: the figure, then how much of the month it
+ * covers. "not recorded" when the counted days' checks carried no subtotal.
+ */
+function monthSalesSaid(ledger: MonthLedger | null): { figure: string; from: string[] } {
+  if (!ledger) return { figure: DASH, from: [] };
+  if (
+    ledger.monthlyNetSales == null &&
+    ledger.monthlyChecks != null &&
+    ledger.monthlyChecks > 0 &&
+    ledger.monthlyNetChecks === 0
+  ) {
+    return { figure: NOT_RECORDED, from: [] };
+  }
+  if (ledger.monthlyNetSales == null) return { figure: DASH, from: [] };
+  const from = [
+    fromDays(ledger.monthlyDaysCounted, ledger.monthlyDaysBegun),
+    fromChecks(ledger.monthlyNetChecks, ledger.monthlyChecks),
+  ].filter((x): x is string => x !== null);
+  return { figure: money(ledger.monthlyNetSales), from };
 }
 
 function cellLabel(dateStr: string, day: DayLedger | undefined, salesShown: boolean, zoneUnset: boolean): string {
@@ -61,9 +114,7 @@ function cellLabel(dateStr: string, day: DayLedger | undefined, salesShown: bool
   const parts: string[] = [];
   if (zoneUnset) parts.push('figures unknown, the house time zone is not set');
   else {
-    if (salesShown) {
-      parts.push(day.checks === 0 ? 'no sales' : `net sales ${money(day.net_sales)}`);
-    }
+    if (salesShown) parts.push(salesSaid(day));
     parts.push(
       day.procurement_spend == null
         ? 'paid to vendors unknown'
@@ -113,6 +164,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
   const daily: DayLedger[] = useMemo(() => ledger?.daily ?? [], [ledger]);
   const salesShown = ledger?.sales === 'shown';
   const zoneUnset = ledger?.zoneUnset === true;
+  const monthSales = monthSalesSaid(ledger);
   const headline = (d: DayLedger | undefined): number | null =>
     d ? (salesShown ? d.net_sales : d.procurement_spend) : null;
   const maxHead = useMemo(
@@ -192,9 +244,15 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
           {salesShown && (
             <>
               net sales{' '}
-              <span className="text-inkm-1" style={MONO_FIG}>
-                {money(ledger?.monthlyNetSales)}
+              <span className="text-inkm-1" style={monthSales.figure === NOT_RECORDED ? undefined : MONO_FIG}>
+                {monthSales.figure}
               </span>
+              {monthSales.from.map((f) => (
+                <span key={f} data-testid="dn-month-from">
+                  {' · '}
+                  {f}
+                </span>
+              ))}
               {' · '}
             </>
           )}
@@ -244,6 +302,9 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
           const isToday = todayMark !== null && dateStr === todayMark;
           const head = zoneUnset ? null : headline(day);
           const heat = head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead) : 0;
+          const fig = cellFigure(day, salesShown, zoneUnset);
+          // Count and say: a figure short of its day's checks says so here.
+          const from = salesShown && !zoneUnset && day ? fromChecks(day.net_checks, day.checks) : null;
           return (
             <button
               key={dateStr}
@@ -276,8 +337,18 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
               {month.state === 'loading' && !isFuture ? (
                 <span className="dn-skel h-3 w-8" aria-hidden />
               ) : (
-                <span className="dn-cell-fig">
-                  {isFuture ? '' : cellFigure(day, salesShown, zoneUnset)}
+                <span
+                  className="dn-cell-fig"
+                  // "not recorded" is words, not a figure: set small, in the
+                  // text face, free to wrap inside a narrow cell.
+                  style={!isFuture && fig === NOT_RECORDED ? NOT_RECORDED_FIG : undefined}
+                >
+                  {isFuture ? '' : fig}
+                </span>
+              )}
+              {!isFuture && month.state !== 'loading' && from && (
+                <span className="dn-cell-from text-[9px] leading-tight text-inkm-3" aria-hidden>
+                  {from}
                 </span>
               )}
             </button>

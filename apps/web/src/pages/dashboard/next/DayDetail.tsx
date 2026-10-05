@@ -17,6 +17,8 @@ import { Link } from 'react-router-dom';
 import { formatNumber } from '@/lib/utils';
 import { vendorLine } from '@/lib/mudavym/vendor';
 import {
+  NOT_RECORDED,
+  fromChecks,
   houseDateOf,
   type ActivityItem,
   type AlertItem,
@@ -123,18 +125,35 @@ function EmptyLine({ children }: { children: ReactNode }) {
   return <p className="text-[12px] italic text-inkm-3">{children}</p>;
 }
 
-function MiniFig({ label, value }: { label: string; value: string }) {
+function MiniFig({ label, value, note }: { label: string; value: string; note?: string | null }) {
+  // "not recorded" is words, not a figure: the text face, smaller, muted.
+  const words = value === NOT_RECORDED;
   return (
     <div>
       <p
-        className="text-[19px] font-medium leading-tight text-inkm-1"
-        style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}
+        className={
+          words
+            ? 'text-[14px] italic leading-tight text-inkm-3'
+            : 'text-[19px] font-medium leading-tight text-inkm-1'
+        }
+        style={words ? undefined : { fontFamily: MONO, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}
       >
         {value}
       </p>
       <p className="text-[10px] uppercase tracking-[0.1em] text-inkm-3">{label}</p>
+      {note && <p className="text-[11px] text-inkm-3">{note}</p>}
     </div>
   );
+}
+
+/**
+ * The day's net sales, counted and said (netsales F1, "Count and say"): the
+ * subtotals the checks carried, "not recorded" when checks came and none
+ * carried one, the dash when the day is not known.
+ */
+function netSalesValue(day: DayLedger): string {
+  if (day.checks != null && day.checks > 0 && day.net_sales == null) return NOT_RECORDED;
+  return money(day.net_sales);
 }
 
 /* ── the panel ──────────────────────────────────────────────────────────── */
@@ -204,14 +223,17 @@ export function DayDetail({
       />
 
       {/* Figures snap with the tape head — per-day samples, never interpolated.
-          Net sales add up each check's stated subtotal, voided left out
-          (AW17); it is before tax and surcharge only where the POS adapter
-          sends it so (Square maps net_amounts.total_money, Clover writes
+          Net sales add up the subtotals the checks carried, voided left out
+          (AW17), and say "from N of M checks" when some carried none
+          (netsales F1); it is before tax and surcharge only where the POS
+          adapter sends it so (Square maps net_amounts.total_money, Clover writes
           null; pos-adapters.ts). Vendor money is money out, never sales. */}
       <div
         className={`mt-1 grid grid-cols-2 gap-4 ${salesShown ? 'sm:grid-cols-3 lg:grid-cols-6' : 'sm:grid-cols-4'}`}
       >
-        {salesShown && <MiniFig label="Net sales" value={money(day.net_sales)} />}
+        {salesShown && (
+          <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
+        )}
         {salesShown && <MiniFig label="Checks" value={figure(day.checks)} />}
         <MiniFig label="Paid to vendors" value={money(day.procurement_spend)} />
         <MiniFig label="Deliveries" value={figure(day.order_count)} />

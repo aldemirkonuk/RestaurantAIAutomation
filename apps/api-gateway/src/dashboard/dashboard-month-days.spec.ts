@@ -16,6 +16,17 @@ import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
  *   AW21  the "sales calendar" had no sales source at all.
  *   F-086 days were cut on the UTC date, not the house's.
  *
+ * The founder's later rulings this file also pins:
+ *   netsales F1 "Count and say (Recommended)" (2026-10-04): sum the checks
+ *         that carried a subtotal and count them beside every check; "not
+ *         recorded" (null) when none did. It supersedes ADR 0290's first
+ *         rule 2, where one unstated subtotal blanked the day.
+ *   2026-10-05 "Sum, say N of M days (Recommended)": the month sums the
+ *         begun days the register counted and says how many those are; one
+ *         unknown day no longer blanks it.
+ *   2026-10-05 "Dash after last check (Recommended)": a day after the
+ *         register's latest check reads unknown, never $0.
+ *
  * The fake below behaves like PostgREST where these defects live: it refuses
  * a select naming a column the table does not have, caps every response at
  * 1,000 rows, and honours the filters, the order and the limit, so a read
@@ -27,7 +38,7 @@ const HOUSE = "house-1";
 const LA = "America/Los_Angeles";
 
 const COLUMNS: Record<string, string[]> = {
-  restaurants: ["id", "timezone"],
+  restaurants: ["id", "timezone", "country"],
   procurement_orders: [
     "id",
     "restaurant_id",
@@ -178,8 +189,8 @@ function fakeDb(
 const id = (prefix: string, n: number) =>
   `${prefix}-${String(n).padStart(6, "0")}`;
 
-function house(timezone: string | null) {
-  return [{ id: HOUSE, timezone }];
+function house(timezone: string | null, country: string | null = null) {
+  return [{ id: HOUSE, timezone, country }];
 }
 
 function order(
@@ -346,7 +357,11 @@ describe("AW21 — net sales on the house's day", () => {
 
     expect(month.pos_connected).toBe(true);
     expect(month.monthly_checks).toBe(2500);
+    expect(month.monthly_net_checks).toBe(2500);
     expect(month.monthly_net_sales).toBe(25000);
+    expect([month.monthly_days_counted, month.monthly_days_begun]).toEqual([
+      31, 31,
+    ]);
     expect(day(month, "2026-10-05")).toMatchObject({
       checks: 100,
       net_sales: 1000,
@@ -402,28 +417,70 @@ describe("AW21 — net sales on the house's day", () => {
     expect(month.monthly_net_sales).toBe(120);
   });
 
-  it("reads a day with a check that states no subtotal as unknown, not as the rest", async () => {
+  it("sums the checks that carried a subtotal and counts them beside every check (count and say)", async () => {
     const db = fakeDb({
       restaurants: house(LA),
       pos_checks: [
         // The register was already sending in August, so every October day
         // is one it was there for.
         check(0, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
+        // Oct 6: one check states 50, one states nothing.
         check(1, "2026-10-06T20:00:00Z", "2026-10-06T21:00:00Z", 50),
         check(2, "2026-10-06T22:00:00Z", "2026-10-06T23:00:00Z", null),
-        // ...and was still sending in November.
-        check(3, "2026-11-03T20:00:00Z", "2026-11-03T21:00:00Z", 20),
+        // Oct 7: the only check states nothing — "not recorded", never $0.
+        check(3, "2026-10-07T20:00:00Z", "2026-10-07T21:00:00Z", null),
+        // ...and it was still sending in November.
+        check(4, "2026-11-03T20:00:00Z", "2026-11-03T21:00:00Z", 20),
       ],
     });
     const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
       withSales: true,
     });
+    // "from 1 of 2 checks": the stated subtotal, never blanked by the other.
     expect(day(month, "2026-10-06")).toMatchObject({
       checks: 2,
+      net_checks: 1,
+      net_sales: 50,
+    });
+    expect(day(month, "2026-10-07")).toMatchObject({
+      checks: 1,
+      net_checks: 0,
       net_sales: null,
+    });
+    // A quiet counted day: no checks, a measured zero.
+    expect(day(month, "2026-10-08")).toMatchObject({
+      checks: 0,
+      net_checks: 0,
+      net_sales: 0,
+    });
+    // The month counts and says the same way: from 1 of 3 checks.
+    expect(month.monthly_net_sales).toBe(50);
+    expect(month.monthly_checks).toBe(3);
+    expect(month.monthly_net_checks).toBe(1);
+  });
+
+  it("reads a month whose checks all lack a subtotal as not recorded, with its checks counted", async () => {
+    // A Clover house's shape: its adapter writes subtotal null.
+    const db = fakeDb({
+      restaurants: house(LA),
+      pos_checks: [
+        check(1, "2026-09-20T20:00:00Z", "2026-09-20T21:00:00Z", null),
+        check(2, "2026-10-06T20:00:00Z", "2026-10-06T21:00:00Z", null),
+        check(3, "2026-10-09T20:00:00Z", "2026-10-09T21:00:00Z", null),
+        check(4, "2026-11-03T20:00:00Z", "2026-11-03T21:00:00Z", null),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
     });
     expect(month.monthly_net_sales).toBeNull();
     expect(month.monthly_checks).toBe(2);
+    expect(month.monthly_net_checks).toBe(0);
+    expect(day(month, "2026-10-09")).toMatchObject({
+      checks: 1,
+      net_checks: 0,
+      net_sales: null,
+    });
   });
 
   it("says 'no register' when the house has never sent a check, never zero", async () => {
@@ -454,6 +511,10 @@ describe("AW21 — net sales on the house's day", () => {
     expect(month.pos_connected).toBe(true);
     expect(month.monthly_net_sales).toBe(0);
     expect(month.monthly_checks).toBe(0);
+    expect(month.monthly_net_checks).toBe(0);
+    expect([month.monthly_days_counted, month.monthly_days_begun]).toEqual([
+      31, 31,
+    ]);
     expect(day(month, "2026-10-15")).toMatchObject({ checks: 0, net_sales: 0 });
   });
 
@@ -489,13 +550,21 @@ describe("AW21 — net sales on the house's day", () => {
     expect(day(august, "2026-08-31")).toMatchObject({
       net_sales: null,
       checks: null,
+      net_checks: null,
     });
-    expect(august.monthly_net_sales).toBeNull();
-    expect(august.monthly_checks).toBeNull();
+    // The founder, 2026-10-05, "Sum, say N of M days": August is the sum of
+    // the 30 days the register counted, said as 30 of 31 — not blanked by
+    // Aug 31.
+    expect(august.monthly_net_sales).toBe(80);
+    expect(august.monthly_checks).toBe(1);
+    expect([august.monthly_days_counted, august.monthly_days_begun]).toEqual([
+      30, 31,
+    ]);
 
-    for (const [y, m] of [
-      [2026, 9],
-      [2026, 10],
+    for (const [y, m, begun] of [
+      [2026, 9, 30],
+      // 10:00 on Oct 3 in Los Angeles: three days of October have begun.
+      [2026, 10, 3],
     ]) {
       const later = await service.getCalendarRevenue(HOUSE, y, m, {
         withSales: true,
@@ -504,8 +573,13 @@ describe("AW21 — net sales on the house's day", () => {
       expect(
         later.daily.every((d) => d.net_sales === null && d.checks === null),
       ).toBe(true);
+      // No begun day is counted: nothing to sum, so no figure — never $0.
       expect(later.monthly_net_sales).toBeNull();
       expect(later.monthly_checks).toBeNull();
+      expect([later.monthly_days_counted, later.monthly_days_begun]).toEqual([
+        0,
+        begun,
+      ]);
     }
 
     // July lies wholly between the first and the last check: it is known.
@@ -514,6 +588,9 @@ describe("AW21 — net sales on the house's day", () => {
     });
     expect(july.monthly_net_sales).toBe(150);
     expect(july.monthly_checks).toBe(2);
+    expect([july.monthly_days_counted, july.monthly_days_begun]).toEqual([
+      31, 31,
+    ]);
 
     // The latest check is asked of every check the house ever sent, newest
     // first, voided or not.
@@ -551,9 +628,12 @@ describe("AW21 — net sales on the house's day", () => {
     // The days ahead have not happened; the month so far is Oct 1-14.
     expect(month.monthly_net_sales).toBe(75);
     expect(month.monthly_checks).toBe(2);
+    expect([month.monthly_days_counted, month.monthly_days_begun]).toEqual([
+      14, 14,
+    ]);
   });
 
-  it("reads today as unknown until its first check lands, and the month with it", async () => {
+  it("reads today as unknown until its first check lands, and says the month is short of it", async () => {
     // 09:00 on Oct 14 in Los Angeles; the last check closed last night.
     jest.useFakeTimers().setSystemTime(new Date("2026-10-14T16:00:00Z"));
     const db = fakeDb({
@@ -571,13 +651,17 @@ describe("AW21 — net sales on the house's day", () => {
       checks: 1,
     });
     // No heartbeat says the register is up, so "no sales yet" would be a
-    // guess; the cost of not guessing is that the month waits for today.
+    // guess (the founder, 2026-10-05: "Dash after last check").
     expect(day(month, "2026-10-14")).toMatchObject({
       net_sales: null,
       checks: null,
     });
-    expect(month.monthly_net_sales).toBeNull();
-    expect(month.monthly_checks).toBeNull();
+    // The month sums the 13 counted days and says it is 13 of 14.
+    expect(month.monthly_net_sales).toBe(30);
+    expect(month.monthly_checks).toBe(1);
+    expect([month.monthly_days_counted, month.monthly_days_begun]).toEqual([
+      13, 14,
+    ]);
   });
 
   it("counts a day a month's check closed on, even past the latest-opened check's day", async () => {
@@ -635,9 +719,13 @@ describe("AW21 — net sales on the house's day", () => {
       net_sales: 40,
       checks: 1,
     });
-    // Nine unknown days leave the month unknown, never the sum of the rest.
-    expect(month.monthly_net_sales).toBeNull();
-    expect(month.monthly_checks).toBeNull();
+    // Oct 1-9 are before the register; Oct 13-31 after its latest check.
+    // The month sums the three days it counted and says they are 3 of 31.
+    expect(month.monthly_net_sales).toBe(100);
+    expect(month.monthly_checks).toBe(2);
+    expect([month.monthly_days_counted, month.monthly_days_begun]).toEqual([
+      3, 31,
+    ]);
 
     // A whole month before the register began is unknown on every day.
     const september = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 9, {
@@ -648,6 +736,7 @@ describe("AW21 — net sales on the house's day", () => {
       september.daily.every((d) => d.net_sales === null && d.checks === null),
     ).toBe(true);
     expect(september.monthly_net_sales).toBeNull();
+    expect(september.monthly_days_counted).toBe(0);
 
     // The first check is asked of every check the house ever sent, in order.
     const probe = db.calls.find(isFirstProbe);
@@ -701,7 +790,7 @@ describe("AW21 — net sales on the house's day", () => {
     },
   );
 
-  it("folds subtotal per house day and ignores total and tip", () => {
+  it("folds subtotal per house day, counts the checks that stated one, and ignores total and tip", () => {
     const days = netSalesByHouseDay(
       [
         {
@@ -720,7 +809,42 @@ describe("AW21 — net sales on the house's day", () => {
       ],
       LA,
     );
-    expect(days.get("2026-10-03")).toEqual({ checks: 2, net_sales: 12.5 });
+    expect(days.get("2026-10-03")).toEqual({
+      checks: 2,
+      net_checks: 2,
+      net_sales: 12.5,
+    });
+  });
+
+  it("folds a missing, blank or non-numeric subtotal as unstated, never as 0 or the total", () => {
+    const at = (m: number) => `2026-10-04T05:${String(m).padStart(2, "0")}:00Z`;
+    const days = netSalesByHouseDay(
+      [
+        { subtotal: 40, total: 999, opened_at: at(1), closed_at: null },
+        { subtotal: null, total: 999, opened_at: at(2), closed_at: null },
+        { subtotal: "", total: 999, opened_at: at(3), closed_at: null },
+        { subtotal: "n/a", total: 999, opened_at: at(4), closed_at: null },
+        { total: 999, opened_at: at(5), closed_at: null },
+        // Only unstated checks on the next day: not recorded, never $0.
+        {
+          subtotal: null,
+          total: 999,
+          opened_at: "2026-10-05T05:00:00Z",
+          closed_at: null,
+        },
+      ],
+      LA,
+    );
+    expect(days.get("2026-10-03")).toEqual({
+      checks: 5,
+      net_checks: 1,
+      net_sales: 40,
+    });
+    expect(days.get("2026-10-04")).toEqual({
+      checks: 1,
+      net_checks: 0,
+      net_sales: null,
+    });
   });
 });
 
@@ -757,6 +881,9 @@ describe("DASH-G2 — a house with no time zone", () => {
         monthly_bottles: null,
         monthly_net_sales: null,
         monthly_checks: null,
+        monthly_net_checks: null,
+        monthly_days_counted: null,
+        monthly_days_begun: null,
         pos_connected: null,
       });
       expect(month.daily).toHaveLength(31);
@@ -767,6 +894,7 @@ describe("DASH-G2 — a house with no time zone", () => {
           order_count: null,
           net_sales: null,
           checks: null,
+          net_checks: null,
         });
       }
       expect(day(month, "2026-10-09").events).toHaveLength(1);
@@ -775,6 +903,43 @@ describe("DASH-G2 — a house with no time zone", () => {
       expect(tables).not.toContain("pos_checks");
     },
   );
+
+  it.each([
+    [null, "TR"],
+    ["Mars/Olympus", "Türkiye"],
+  ])(
+    "files the month in the country's only zone when the house states none it can read (zone %p, country %p)",
+    async (zone, country) => {
+      jest.useFakeTimers().setSystemTime(AFTER_OCTOBER);
+      const db = fakeDb({
+        restaurants: house(zone, country),
+        // 23:30 on Oct 2 in Istanbul (UTC+3); Oct 2 in UTC too.
+        procurement_orders: [order(1, "2026-10-02T20:30:00Z", 10, 1)],
+        // 00:30 on Oct 3 in Istanbul; Oct 2 by the UTC date.
+        pos_checks: [
+          check(1, "2026-10-02T21:00:00Z", "2026-10-02T21:30:00Z", 40),
+        ],
+      });
+      const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+        withSales: true,
+      });
+      expect(month).toMatchObject({
+        timezone: "Europe/Istanbul",
+        zone_unset: false,
+      });
+      expect(day(month, "2026-10-03")).toMatchObject({
+        net_sales: 40,
+        checks: 1,
+      });
+      expect(day(month, "2026-10-02")).toMatchObject({ procurement_spend: 10 });
+    },
+  );
+
+  it("names no zone for a country that keeps several, never UTC", async () => {
+    const db = fakeDb({ restaurants: house(null, "US") });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10);
+    expect(month).toMatchObject({ timezone: null, zone_unset: true });
+  });
 
   it("fails when the house's zone cannot be read", async () => {
     const db = fakeDb({}, { restaurants: "JWT expired" });
