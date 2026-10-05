@@ -175,7 +175,7 @@ The POS writer never writes such a line, because it fails closed on an explicit 
 
 1. **The dashboard sales chart.**
    - `apps/api-gateway/src/dashboard/dashboard.service.ts:893` (`existing.glasses += c.quantity || 0`) counts every line, bottle lines included, as glasses. Its select has no `consumption_type`.
-   - No page calls GET /dashboard/sales-chart; only `apps/web/src/services/api/dashboard.ts:111` exports it.
+   - No page calls GET /dashboard/sales-chart. Its client, `getSalesChartData` (`apps/web/src/services/api/dashboard.ts:111`), is only re-exported (`apps/web/src/services/api/index.ts:82`), never called.
    - Open claim AW02-DASH-CHART-GLASSES.
 2. **The weekly email's Sold column.**
    - `apps/api-gateway/src/communications/scheduled-tasks.service.ts:1285` adds glasses and bottles into one figure.
