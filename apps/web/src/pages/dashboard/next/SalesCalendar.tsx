@@ -107,8 +107,8 @@ const CELL_WORDS: CSSProperties = {
   lineHeight: 1.15,
   overflowWrap: 'anywhere',
 };
-// "recorded" is wider than a cell under ~44 px at any legible size, so there
-// it still breaks inside the word ("record" / "ed"). A shorter cell form would
+// "recorded" breaks inside the word ("record" / "ed") in every cell measured up
+// to 49.4 px wide and reads whole from 59.7 px. A shorter cell form would
 // change the founder's words; that is his call (ADR 0290 §9, PR forks).
 const NOT_RECORDED_FIG: CSSProperties = {
   ...CELL_WORDS,
