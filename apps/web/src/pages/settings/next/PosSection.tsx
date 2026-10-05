@@ -28,10 +28,10 @@
  * ConsentPanel precedent), keeps loading, a failed read and an empty read
  * apart, and offers Rename and Hide to an owner or a manager only — the
  * PATCH route refuses anyone else (founder fork F1). A hidden table still
- * catches its checks; they stay in takings and leave the room register and
- * its export (founder fork F2; the insights' part is owed, ADR 0303 residual
- * 1, so the copy names only what leaves today). No seat count or position is
- * asked for here.
+ * catches its checks; they stay in takings and in the servers' figures, and
+ * leave every table figure: the room register, its export and the table
+ * insights (founder fork F2, ADR 0303 amendment 2026-10-05). No seat count
+ * or position is asked for here.
  */
 
 import { useState } from 'react';
@@ -232,8 +232,8 @@ export function TillTables({ data }: { data: SettingsNextData }) {
     <>
       <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-2)', margin: '0 0 6px' }}>
         Each table name the till sends on a check becomes a table here, and past checks find it again when it is
-        renamed. Nothing is drawn. A hidden table still catches its checks: they stay in takings and leave the room
-        register in Reports.
+        renamed. Nothing is drawn. A hidden table still catches its checks: they stay in takings and in each server’s
+        figures, and leave every table figure, the insights included.
       </p>
       {tables.length === 0 ? (
         <Note role="status">
@@ -250,7 +250,7 @@ export function TillTables({ data }: { data: SettingsNextData }) {
               consequence={
                 <>
                   {words ? <>The till calls it <span style={{ fontFamily: MONO, fontSize: 11 }}>{words}</span>.</> : 'No till word is recorded for it yet.'}
-                  {t.hidden_at ? ' Hidden: its checks are in takings, not in the room register.' : ''}
+                  {t.hidden_at ? ' Hidden: its checks are in takings, not in any table figure.' : ''}
                 </>
               }
               control={

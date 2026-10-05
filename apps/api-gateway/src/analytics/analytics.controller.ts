@@ -623,7 +623,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Rename or hide a table",
     description:
-      "Body: { label?: string (1-60 characters), hidden?: boolean }. 400 on a bad body, 404 for a table that is not this house's, 409 when another table of the house already has the name. A hidden table still catches its checks, and they stay in takings; the room (table-performance), its export and hot-tables leave it out and count those checks. The insight generator does not read hidden_at yet (ADR 0303 residual 1).",
+      "Body: { label?: string (1-60 characters), hidden?: boolean }. 400 on a bad body, 404 for a table that is not this house's, 409 when another table of the house already has the name. A hidden table still catches its checks, and they stay in takings; the room (table-performance), its export and hot-tables leave it out and count those checks, and every table insight leaves it out. Its checks stay in the servers' figures and in the waiter adjustment's table control (ADR 0303).",
   })
   async renameOrHideTable(
     @Param("restaurantId") restaurantId: string,

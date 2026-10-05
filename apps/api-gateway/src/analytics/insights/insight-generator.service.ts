@@ -179,8 +179,16 @@ export const BASKET_MIN_LIFT = 1.3;
  *       test corrected over every pair; a tied stockout #1 is withheld and no
  *       longer carries a hard-coded z of 2. A version-3 row may hold any of
  *       those sentences, so it is recomputed, not served.
+ *   5, 6, 7 — lanes rec (ADR 0291, PR #607), cap (ADR 0292, PR #609) and
+ *       stockout (ADR 0299, PR #619). Each lands before 8.
+ *   8 — 2026-10-05 (ADR 0303): a hidden table leaves every table insight
+ *       (rank, correlation, drivers, live surge), and so does a retired one
+ *       or a check with no table; the driver fit reads only recorded seat
+ *       counts, distances and outdoor flags, never a NULL as 0. A row below
+ *       8 may rank a hidden table or fit an unrecorded 0, so it is
+ *       recomputed, not served.
  */
-export const INSIGHT_GENERATOR_VERSION = 4;
+export const INSIGHT_GENERATOR_VERSION = 8;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -664,7 +672,7 @@ export class InsightGeneratorService {
         client
           .from("restaurant_tables")
           .select(
-            "id, label, seats, zone, is_outdoor, distance_to_kitchen_m, distance_to_bar_m, distance_to_pool_m",
+            "id, label, seats, zone, is_outdoor, distance_to_kitchen_m, distance_to_bar_m, distance_to_pool_m, hidden_at",
           )
           .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
@@ -1131,6 +1139,15 @@ export class InsightGeneratorService {
     });
 
     const tableById = new Map(bundle.tables.map((t: any) => [t.id, t]));
+    // A hidden table leaves every table figure, these insights included
+    // (ADR 0303, founder fork F2: "Out of every figure (Recommended)"). Only
+    // a table the house shows is ranked, correlated, fitted or watched. A
+    // check at a hidden or retired table, or with no table, stays in sales,
+    // in its server's figures and in the waiter adjustment's table control
+    // (founder, 2026-10-05: "Keep them in the control (Recommended)").
+    const shownTableIds = new Set(
+      bundle.tables.filter((t: any) => !t.hidden_at).map((t: any) => t.id),
+    );
 
     // ---- per-table aggregates --------------------------------------------
     // `sumSq` is the sum of squared check totals: with `revenue` and
@@ -1173,7 +1190,7 @@ export class InsightGeneratorService {
         .filter(Boolean) as string[];
       if (itemNames.length >= 2) transactions.push(itemNames);
 
-      if (c.table_id) {
+      if (c.table_id && shownTableIds.has(c.table_id)) {
         const t = byTable.get(c.table_id) || {
           revenue: 0,
           sumSq: 0,
@@ -1207,6 +1224,8 @@ export class InsightGeneratorService {
         w.wineChecks += hasWine ? 1 : 0;
         w.tips += c.tip || 0;
         byWaiter.set(server, w);
+        // The control is every check with a table, hidden or not: a hidden
+        // table still shapes what its servers took (ADR 0303).
         if (c.table_id) {
           waiterObs.y.push(c.total || 0);
           waiterObs.waiter.push(server);
@@ -1295,29 +1314,36 @@ export class InsightGeneratorService {
             );
           }
 
-          // Driver weights via ridge on table attributes.
-          const X: number[][] = [];
-          const y: number[] = [];
-          for (const x of withAttrs) {
-            const row = [
-              Number(x.t.distance_to_kitchen_m ?? 0),
-              Number(x.t.distance_to_bar_m ?? 0),
-              Number(x.t.seats ?? 0),
-              x.t.is_outdoor ? 1 : 0,
-            ];
-            X.push(row);
-            y.push(x.v);
-          }
-          const reg = E.multipleRegression(X, y, { ridgeLambda: 0.1 });
+          // Driver weights via ridge on table attributes. An unknown is not
+          // a zero (ADR 0051, ADR 0053): a table learned from the till has no
+          // seat count, distance or outdoor flag (ADR 0303), and this step
+          // used to fit `?? 0` and "not outdoor" as if they were measured.
+          // The room register's rule now holds here too: an attribute enters
+          // only when it is recorded, and not the same, on at least
+          // DRIVER_MIN_RECORDED ranked tables, and the fit runs over the
+          // tables that carry every attribute kept. With none kept, no fit.
+          const kept = TABLE_DRIVERS.filter((f) => {
+            const values = withAttrs
+              .map((x) => f.of(x.t))
+              .filter((v) => Number.isFinite(v));
+            return (
+              values.length >= DRIVER_MIN_RECORDED && new Set(values).size > 1
+            );
+          });
+          const fitRows = withAttrs
+            .map((x) => ({ x: kept.map((f) => f.of(x.t)), y: x.v }))
+            .filter((r) => r.x.every((v) => Number.isFinite(v)));
+          const reg =
+            kept.length > 0 && fitRows.length >= DRIVER_MIN_RECORDED
+              ? E.multipleRegression(
+                  fitRows.map((r) => r.x),
+                  fitRows.map((r) => r.y),
+                  { ridgeLambda: 0.1 },
+                )
+              : null;
           if (reg && reg.r2 > 0.15) {
-            const names = [
-              "kitchen distance",
-              "bar distance",
-              "seats",
-              "outdoor",
-            ];
             const drivers = reg.standardizedBetas
-              .map((w, i) => ({ attribute: names[i], weight: w }))
+              .map((w, i) => ({ attribute: kept[i].name, weight: w }))
               .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
             const evd: InsightEvidence = {
               measureLabel: "average check",
@@ -1332,7 +1358,7 @@ export class InsightGeneratorService {
                 evd,
                 {
                   effectPct: reg.r2,
-                  n: withAttrs.length,
+                  n: fitRows.length,
                 },
               ),
             );
@@ -1460,9 +1486,15 @@ export class InsightGeneratorService {
 
     // Hot tables — live surge detection on OPEN checks (no closed_at).
     const now = Date.now();
-    const open = checks.filter((c: any) => !c.closed_at && c.opened_at);
+    // Only an open check at a table the house shows is watched (ADR 0303):
+    // one at a hidden or retired table, or with no table, is no table's
+    // surge. The last used to be paced against every table-less check and
+    // printed as "A table".
+    const open = checks.filter(
+      (c: any) => !c.closed_at && c.opened_at && shownTableIds.has(c.table_id),
+    );
     for (const c of open) {
-      const t: any = c.table_id ? tableById.get(c.table_id) : null;
+      const t: any = tableById.get(c.table_id);
       const minutes = Math.max(
         5,
         (now - new Date(c.opened_at).getTime()) / 60000,
@@ -1844,6 +1876,35 @@ function zOfUpperTail(p: number): number {
   const z = E.normalInv(Math.min(p, 0.5));
   return z === null ? Z_CAP : Math.min(Z_CAP, -z);
 }
+
+/**
+ * The fewest ranked tables an attribute must be recorded on before the table
+ * driver fit may use it, and the fewest tables that fit runs over: the room
+ * register's number (`getTablePerformance`, ADR 0303).
+ */
+export const DRIVER_MIN_RECORDED = 5;
+
+/** A recorded number, or NaN: `Number(null)` is 0, a measurement nobody took. */
+function recordedNumber(v: unknown): number {
+  if (v === null || v === undefined || v === "") return NaN;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** The table attributes the driver fit may weigh; NaN where none was recorded. */
+const TABLE_DRIVERS: Array<{ name: string; of: (t: any) => number }> = [
+  {
+    name: "kitchen distance",
+    of: (t) => recordedNumber(t.distance_to_kitchen_m),
+  },
+  { name: "bar distance", of: (t) => recordedNumber(t.distance_to_bar_m) },
+  { name: "seats", of: (t) => recordedNumber(t.seats) },
+  {
+    name: "outdoor",
+    of: (t) =>
+      typeof t.is_outdoor === "boolean" ? (t.is_outdoor ? 1 : 0) : NaN,
+  },
+];
 
 export interface InsightRecord {
   candidateKey: string;
