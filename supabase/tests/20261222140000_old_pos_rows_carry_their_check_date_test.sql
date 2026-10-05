@@ -667,11 +667,13 @@ begin
   if (v ->> 'changed')::bigint <> 2 then
     bad := bad || format('run 3 changed %s rows, expected L2 and C2', v ->> 'changed');
   end if;
+  -- L19's target is the new close (its created_at is later); C15's is its
+  -- created_at, the old close. Each date sits at or before its target.
   select count(*) into n from t_cls3 y
-   where (y.row_id = l19 and y.outcome = 'already' and y.target = '2026-09-10T18:00:00Z')
+   where (y.row_id = l19 and y.outcome = 'already' and y.target = '2026-09-10T20:00:00Z')
       or (y.row_id = c15 and y.outcome = 'already' and y.target = '2026-09-10T18:00:00Z');
   if n <> 2 then
-    bad := bad || format('after the later re-send, %s of L19 and C15 read already at 2026-09-10T18:00Z', n);
+    bad := bad || format('after the later re-send, %s of L19 (target 20:00Z) and C15 (target 18:00Z) read already', n);
   end if;
   if (pg_temp.row_j('it', l19) ->> 'transaction_date')::timestamptz <> '2026-09-10T18:00:00Z' then
     bad := bad || format('L19 moved to %s on a later re-send', pg_temp.row_j('it', l19) ->> 'transaction_date');
