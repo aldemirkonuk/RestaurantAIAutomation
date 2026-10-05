@@ -1,3 +1,4 @@
+import { performance } from "perf_hooks";
 import { htmlToText } from "./html-to-text";
 
 /**
@@ -69,18 +70,26 @@ describe("htmlToText", () => {
     it("stays linear on many '<style' prefixes", () => {
       // The old /<style[^>]*>[\s\S]*?<\/style>/ rescanned to end-of-input from
       // every '<style'. Assert the growth curve, not absolute time, so this is
-      // not a machine-speed benchmark.
-      const time = (n: number) => {
-        const input = "<style".repeat(n);
-        const start = Date.now();
-        htmlToText(input);
-        return Date.now() - start;
-      };
-      const small = time(20000);
-      const large = time(80000);
-      // 4x input. Quadratic would be ~16x. Floor of 50ms absorbs timer noise
-      // on a fast machine where both readings round to 0.
-      expect(large).toBeLessThan(Math.max(small * 8, 50));
+      // not a machine-speed benchmark: 16x the input costs a linear scan ~16x
+      // and the old regex ~256x, and the bound sits 4x from each.
+      //
+      // Noise only ever adds time, so each size keeps its best of 20 runs,
+      // interleaved so a slow stretch hits both sizes. Each run is short
+      // (well under a scheduler timeslice, even at CI speed) so some run
+      // escapes preemption. One Date.now() reading per size flaked on CI —
+      // why each choice is what it is: ADR 0100, 2026-10-05 review row.
+      const inputs = [250, 4000].map((n) => "<style".repeat(n));
+      htmlToText(inputs[1]); // warm the JIT before anything is timed
+      const best = [Infinity, Infinity];
+      for (let round = 0; round < 20; round++) {
+        inputs.forEach((input, k) => {
+          const start = performance.now();
+          htmlToText(input);
+          best[k] = Math.min(best[k], performance.now() - start);
+        });
+      }
+      const [small, large] = best;
+      expect(large).toBeLessThan(small * 64);
     });
 
     it("terminates on an unterminated style element", () => {
