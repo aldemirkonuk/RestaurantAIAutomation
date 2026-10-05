@@ -306,7 +306,7 @@ export function emptyWindowLine(w: PosWindow): string | null {
 
 export interface SeatsRegister extends PosWindow {
   dataStatus: string;
-  /** Checks in the window the till sent without a table (ADR 0303); null from an older gateway. */
+  /** Checks in the window with no table: the till named none, or a word no table answers (ADR 0303); null from an older gateway. */
   checksWithoutTable: number | null;
   /** Checks in the window at a hidden (or retired) table; null from an older gateway. */
   checksAtHiddenTables: number | null;
@@ -381,19 +381,19 @@ const seats = analysis<SeatsRegister>({
       return {
         say:
           withoutTable > 0
-            ? `${countOf(withoutTable, 'check', 'checks')} in this window came from the till without a table, so none can be attributed to a seat. They are in takings.`
+            ? `${countOf(withoutTable, 'check in this window has', 'checks in this window have')} no table, so none can be attributed to a seat. They are in takings. A till word with no number in it, such as Booth or a name, makes no table.`
             : atHidden > 0
               ? 'No shown table took a check in this window; show a table again under Settings → Point of sale.'
               : hiddenInHouse > 0
                 ? 'Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.'
-                : 'The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.',
+                : 'This house has no table yet, so no check can be attributed to a seat. A table is learned when a check arrives naming one with a number in it, such as T12, 12 or Patio 3; rename or hide it under Settings → Point of sale.',
         figures: [],
         notes: hiddenNote ? [hiddenNote] : [],
         basis,
       };
     const roomNotes = [
       withoutTable > 0
-        ? `${countOf(withoutTable, 'check', 'checks')} came from the till without a table: counted in takings, not in the room.`
+        ? `${countOf(withoutTable, 'check has', 'checks have')} no table: counted in takings, not in the room.`
         : null,
       hiddenNote,
     ].filter((n): n is string => n !== null);

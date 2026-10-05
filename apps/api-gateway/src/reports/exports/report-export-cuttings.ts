@@ -596,12 +596,12 @@ function writeSeats(payload: unknown): ExportDoc {
     return doc({
       say:
         withoutTable > 0
-          ? `${nounCount(withoutTable, "check", "checks")} in this window came from the till without a table, so none can be attributed to a seat. They are in takings.`
+          ? `${nounCount(withoutTable, "check in this window has", "checks in this window have")} no table, so none can be attributed to a seat. They are in takings. A till word with no number in it, such as Booth or a name, makes no table.`
           : atHidden > 0
             ? "No shown table took a check in this window; show a table again under Settings → Point of sale."
             : hiddenInHouse > 0
               ? "Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale."
-              : "The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.",
+              : "This house has no table yet, so no check can be attributed to a seat. A table is learned when a check arrives naming one with a number in it, such as T12, 12 or Patio 3; rename or hide it under Settings → Point of sale.",
       notes: [hiddenNote],
       basis,
     });
@@ -655,7 +655,7 @@ function writeSeats(payload: unknown): ExportDoc {
     ],
     notes: [
       withoutTable > 0
-        ? `${nounCount(withoutTable, "check", "checks")} came from the till without a table: counted in takings, not in the room.`
+        ? `${nounCount(withoutTable, "check has", "checks have")} no table: counted in takings, not in the room.`
         : "",
       hiddenNote,
     ],

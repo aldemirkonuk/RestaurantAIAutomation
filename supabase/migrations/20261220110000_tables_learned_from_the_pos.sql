@@ -19,7 +19,13 @@
 -- THE RULING. The founder, 2026-10-04 ~00:30Z, verbatim pick "Learn from the
 -- POS (Recommended)": every POS table ref becomes a table the owner can rename
 -- or hide; past checks re-link from the stored ref when a table is added or
--- renamed; no drawing.
+-- renamed; no drawing. Narrowed 2026-10-05 ~14:15Z, after the production dry
+-- run found a 'booth' table and six people's names among the words, verbatim
+-- pick "Only words with a number (Recommended)": a word becomes a NEW table
+-- only when it has an ASCII digit 0-9 in it ('T12', '12', 'Patio 3'). A word
+-- with none ('booth', 'Ayla') stays on the check as its table_ref, links to a
+-- table that already answers it, and never makes one; such a table is added
+-- by hand once. The rule holds for the backfill and for new checks alike.
 --
 -- THE METHOD (the lane's proposal under that ruling, in ADR 0303):
 --  1. pos_checks.table_ref keeps the till's own word for where the check was,
@@ -42,8 +48,10 @@
 --     resolves the word to a table with the same precedence as resolveTable
 --     (pos ref of that source, then the label, then "table <label>"),
 --     case- and space-insensitive, over active
---     tables, hidden ones included. When nothing answers and no RETIRED
---     (is_active = false) table answers either, it LEARNS the table. Learning
+--     tables, hidden ones included. When nothing answers, the word has an
+--     ASCII digit in it, and no RETIRED (is_active = false) table answers
+--     either, it LEARNS the table. A word with no digit is kept as table_ref
+--     and left without a table until one answers it. Learning
 --     runs inside its own exception block: a failure is a WARNING and the
 --     check is stored without a table. A sale is never refused for this.
 --     A re-sent check whose word has not changed keeps the table it had when
@@ -62,15 +70,19 @@
 --     never moves an existing link.
 --  6. Backfill: every stored check whose raw carries a table word gets
 --     table_ref, which runs (3) row by row, so history learns and links in
---     this one statement.
+--     this one statement, by the same digit rule as a new check.
 --
 -- PRODUCTION EFFECT ON MERGE (migrations auto-apply). Step 6 writes
--- restaurant_tables rows, and pos_checks.table_ref and table_id, for every
--- house whose stored raw carries a table word. For Tuzlu Rüzgar that is
--- expected to be about 26 tables (T1-T24, BOOTH, EVENT, per the sim
--- generator) over about 3,593 checks. Neither count was measured on
--- production: this lane reads no production data. ADR 0303 carries the
--- read-only dry-run query for the coordinator.
+-- pos_checks.table_ref on every check whose stored raw carries a table word,
+-- and restaurant_tables rows and pos_checks.table_id for the words with a
+-- digit. The coordinator's read-only production dry run (2026-10-05 ~14:07Z,
+-- before the digit rule) counted 3,656 checks with a word, 3,635 to link and
+-- 47 tables to learn: Tuzlu Rüzgar's words are t1-t24 and booth, and a Sim
+-- Meyhouse's are 16 t-words and six first names. By those word lists the
+-- digit rule learns 40 (Tuzlu 24, the Sim Meyhouse 16), and the booth and
+-- name checks keep their word with no table. How many checks those are was
+-- not counted. This lane reads no production data. ADR 0303 carries the
+-- read-only dry-run query, which now models the rule.
 --
 -- SECURITY. Every function is SECURITY INVOKER with no search_path setting,
 -- like a_short_pour_opens_the_next_bottle. The only pos_checks writer today is
@@ -229,8 +241,12 @@ BEGIN
     v_id := OLD.table_id;
   END IF;
 
-  -- A retired table that answers is the owner's earlier answer: no duplicate.
+  -- Only a word with an ASCII digit in it makes a table (founder, 2026-10-05:
+  -- "Only words with a number"). A word with none keeps its table_ref and
+  -- waits for a table that answers it. A retired table that answers is the
+  -- owner's earlier answer: no duplicate.
   IF v_id IS NULL
+     AND v_ref ~ '[0123456789]'
      AND public.pos_table_for_ref(NEW.restaurant_id, NEW.source, v_ref, true) IS NULL THEN
     BEGIN
       INSERT INTO public.restaurant_tables
@@ -254,7 +270,7 @@ BEGIN
 END
 $$;
 COMMENT ON FUNCTION public.pos_checks_find_or_learn_table() IS
-  'BEFORE trigger on pos_checks (ADR 0303): reads table_ref out of raw, then resolves it to a table, or learns one. Never refuses a check.';
+  'BEFORE trigger on pos_checks (ADR 0303): reads table_ref out of raw, then resolves it to a table, or learns one when the word has an ASCII digit in it. Never refuses a check.';
 
 DROP TRIGGER IF EXISTS pos_checks_find_or_learn_table ON public.pos_checks;
 -- No WHEN clause: the word is read from raw inside the function, after a

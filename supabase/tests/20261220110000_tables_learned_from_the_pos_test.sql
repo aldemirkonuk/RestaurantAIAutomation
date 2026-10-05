@@ -3,8 +3,10 @@
 -- unattributed and the till's word was lost inside `raw`. Migration
 -- tables_learned_from_the_pos (ADR 0303) reads the word out of `raw` into
 -- pos_checks.table_ref (so pos-hub writes no new column), learns a table the
--- first time the till names it, re-links past checks when a table is added or
--- changed, and backfills history.
+-- first time the till names it with a word that has a digit in it (founder,
+-- 2026-10-05: "Only words with a number"), re-links past checks when a table
+-- is added or changed, and backfills history. Words with no digit ('booth',
+-- 'Ayla') keep their table_ref and make no table: T21-T23.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or a
 -- RAISE naming the test), so `psql -v ON_ERROR_STOP=1 -f` stops at the first
@@ -62,7 +64,7 @@ begin
     (h, 'b2', 2, now() - interval '9 days'),
     (h, 'T12', 4, now() - interval '9 days');
   insert into public.restaurant_tables (restaurant_id, label, seats, hidden_at) values (h, 'H1', 2, now());
-  insert into public.restaurant_tables (restaurant_id, label, seats, is_active) values (h, 'Bar', 6, false);
+  insert into public.restaurant_tables (restaurant_id, label, seats, is_active) values (h, 'Bar 9', 6, false);
   insert into public.restaurant_tables (restaurant_id, label, seats, pos_refs) values
     (h, 'Alpha', 4, '{"csv_import": "P1"}'), (h, 'Beta', 4, '{}');
 end $$;
@@ -187,33 +189,34 @@ begin
 end $$;
 
 -- T10: a retired table blocks learning; re-activating it links the check.
+-- (The word has a digit, so only the retired table stops it being learned.)
 do $$
 declare
-  v uuid := pg_temp.tl_id('Bar');
+  v uuid := pg_temp.tl_id('Bar 9');
 begin
-  assert pg_temp.tl_check('c10', 'bar') is null, 'T10 FAIL: a retired table caught a check';
-  assert pg_temp.tl_tables('bar') = 1, 'T10 FAIL: a retired table''s word learned a duplicate';
+  assert pg_temp.tl_check('c10', 'bar 9') is null, 'T10 FAIL: a retired table caught a check';
+  assert pg_temp.tl_tables('bar 9') = 1, 'T10 FAIL: a retired table''s word learned a duplicate';
   update public.restaurant_tables set is_active = true where id = v;
-  assert pg_temp.tl_link('c10') = v, 'T10 FAIL: re-activating "Bar" did not link its check';
+  assert pg_temp.tl_link('c10') = v, 'T10 FAIL: re-activating "Bar 9" did not link its check';
 end $$;
 
--- T11: one INSERT ... ON CONFLICT DO UPDATE batch carrying a new Deck check
--- (it learns Deck) and then a re-import of a stored unlinked Deck check. An
+-- T11: one INSERT ... ON CONFLICT DO UPDATE batch carrying a new "Deck 2"
+-- check (it learns Deck 2) and then a re-import of a stored unlinked one. An
 -- immediate re-link on the learned insert would touch the second row inside
 -- the same command and abort the whole import ("ON CONFLICT DO UPDATE command
 -- cannot affect row a second time": measured by removing the migration's
 -- learned_at condition on restaurant_tables_relink_on_add).
 do $$
 begin
-  perform pg_temp.tl_history('c11a', 'Deck');
+  perform pg_temp.tl_history('c11a', 'Deck 2');
   insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref)
-  values (pg_temp.tl_house(), 'csv_import', 'c11b', now(), 'Deck'),
-         (pg_temp.tl_house(), 'csv_import', 'c11a', now(), 'Deck')
+  values (pg_temp.tl_house(), 'csv_import', 'c11b', now(), 'Deck 2'),
+         (pg_temp.tl_house(), 'csv_import', 'c11a', now(), 'Deck 2')
   on conflict (restaurant_id, source, external_check_id)
   do update set table_ref = excluded.table_ref, table_id = excluded.table_id;
-  assert pg_temp.tl_tables('Deck') = 1, 'T11 FAIL: Deck was not learned exactly once';
-  assert pg_temp.tl_link('c11a') = pg_temp.tl_id('Deck') and pg_temp.tl_link('c11b') = pg_temp.tl_id('Deck'),
-    'T11 FAIL: both Deck checks are not on the one Deck';
+  assert pg_temp.tl_tables('Deck 2') = 1, 'T11 FAIL: Deck 2 was not learned exactly once';
+  assert pg_temp.tl_link('c11a') = pg_temp.tl_id('Deck 2') and pg_temp.tl_link('c11b') = pg_temp.tl_id('Deck 2'),
+    'T11 FAIL: both Deck 2 checks are not on the one Deck 2';
 end $$;
 
 -- T12: a learning failure stores the check without a table; it is not refused.
@@ -225,12 +228,12 @@ create trigger tl_refuse before insert on public.restaurant_tables
   for each row execute function pg_temp.tl_refuse();
 do $$
 begin
-  assert pg_temp.tl_check('c12', 'Loft') is null, 'T12 FAIL: the check got a table while learning failed';
+  assert pg_temp.tl_check('c12', 'Loft 1') is null, 'T12 FAIL: the check got a table while learning failed';
   assert exists (select 1 from public.pos_checks
                   where restaurant_id = pg_temp.tl_house() and external_check_id = 'c12'
-                    and table_ref = 'Loft'),
+                    and table_ref = 'Loft 1'),
     'T12 FAIL: the check was not stored';
-  assert pg_temp.tl_tables('Loft') = 0, 'T12 FAIL: a Loft table exists';
+  assert pg_temp.tl_tables('Loft 1') = 0, 'T12 FAIL: a Loft 1 table exists';
 end $$;
 drop trigger tl_refuse on public.restaurant_tables;
 
@@ -256,8 +259,8 @@ begin
   assert public.pos_table_ref_from_raw('csv_import', '[1]') is null, 'T13 FAIL: a non-object raw';
   assert public.pos_table_ref_from_raw('csv_import', null) is null, 'T13 FAIL: a NULL raw';
 
-  perform pg_temp.tl_history('h13a', null, '{"tableRef": "Garden"}');
-  perform pg_temp.tl_history('h13b', null, '{"table": "garden "}');
+  perform pg_temp.tl_history('h13a', null, '{"tableRef": "Garden 4"}');
+  perform pg_temp.tl_history('h13b', null, '{"table": "garden 4 "}');
   perform pg_temp.tl_history('h13c', null, '{"tableRef": null}');
   perform pg_temp.tl_history('h13d', null, '{"orderType": {"label": "Dine In"}}', 'clover');
 
@@ -268,12 +271,12 @@ begin
      AND raw IS NOT NULL
      AND public.pos_table_ref_from_raw(source, raw) IS NOT NULL;
 
-  assert pg_temp.tl_tables('garden') = 1, 'T13 FAIL: the backfill did not learn Garden exactly once';
+  assert pg_temp.tl_tables('garden 4') = 1, 'T13 FAIL: the backfill did not learn Garden 4 exactly once';
   assert (select learned_at is not null and seats is null from public.restaurant_tables
-           where restaurant_id = pg_temp.tl_house() and lower(label) = 'garden'),
+           where restaurant_id = pg_temp.tl_house() and lower(label) = 'garden 4'),
     'T13 FAIL: the backfilled table is not a learned one';
   assert pg_temp.tl_link('h13a') is not null and pg_temp.tl_link('h13a') = pg_temp.tl_link('h13b'),
-    'T13 FAIL: the backfill did not link both Garden checks to one table';
+    'T13 FAIL: the backfill did not link both Garden 4 checks to one table';
   assert (select table_ref is null and table_id is null from public.pos_checks
            where restaurant_id = pg_temp.tl_house() and external_check_id = 'h13c'),
     'T13 FAIL: a check with no word was touched';
@@ -317,12 +320,12 @@ do $$
 declare
   v uuid;
 begin
-  perform pg_temp.tl_history('c16a', 'Mezz');
-  v := pg_temp.tl_check('c16b', 'Mezz');
-  assert v is not null, 'T16 FAIL: Mezz was not learned';
+  perform pg_temp.tl_history('c16a', 'Mezz 1');
+  v := pg_temp.tl_check('c16b', 'Mezz 1');
+  assert v is not null, 'T16 FAIL: Mezz 1 was not learned';
   assert pg_temp.tl_link('c16a') is null, 'T16 FAIL: the learned insert re-linked inside the command';
   set constraints public.restaurant_tables_relink_on_learn immediate;
-  assert pg_temp.tl_link('c16a') = v, 'T16 FAIL: the deferred re-link did not reach the earlier Mezz check';
+  assert pg_temp.tl_link('c16a') = v, 'T16 FAIL: the deferred re-link did not reach the earlier Mezz 1 check';
   set constraints public.restaurant_tables_relink_on_learn deferred;
 end $$;
 
@@ -349,12 +352,12 @@ do $$
 declare
   n bigint;
 begin
-  assert pg_temp.tl_hub('c17a', '{"tableRef": " Terrace "}') = pg_temp.tl_id('Terrace'),
-    'T17 FAIL: a check written as pos-hub writes it did not learn Terrace from raw';
-  assert pg_temp.tl_ref('c17a') = 'Terrace',
+  assert pg_temp.tl_hub('c17a', '{"tableRef": " Terrace 1 "}') = pg_temp.tl_id('Terrace 1'),
+    'T17 FAIL: a check written as pos-hub writes it did not learn Terrace 1 from raw';
+  assert pg_temp.tl_ref('c17a') = 'Terrace 1',
     'T17 FAIL: table_ref was not read from raw: ' || coalesce(pg_temp.tl_ref('c17a'), 'NULL');
-  assert pg_temp.tl_hub('c17b', '{"table": "terrace"}') = pg_temp.tl_id('Terrace'),
-    'T17 FAIL: the same word under another key did not reach Terrace';
+  assert pg_temp.tl_hub('c17b', '{"table": "terrace 1"}') = pg_temp.tl_id('Terrace 1'),
+    'T17 FAIL: the same word under another key did not reach Terrace 1';
   assert pg_temp.tl_hub('c17e', '{"tableRef": "table 5"}', 'csv_import', pg_temp.tl_id('5')) = pg_temp.tl_id('5')
      and pg_temp.tl_ref('c17e') = 'table 5',
     'T17 FAIL: the word was not kept beside the gateway''s own resolve';
@@ -364,44 +367,44 @@ begin
   assert pg_temp.tl_ref('c17c') is null, 'T17 FAIL: a Clover order type became a table word';
   assert pg_temp.tl_tables() = n, 'T17 FAIL: a Clover order type learned a table';
   insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref, raw)
-  values (pg_temp.tl_house(), 'csv_import', 'c17d', now(), 'Nook', '{"tableRef": "Terrace"}');
-  assert pg_temp.tl_ref('c17d') = 'Terrace' and pg_temp.tl_link('c17d') = pg_temp.tl_id('Terrace'),
+  values (pg_temp.tl_house(), 'csv_import', 'c17d', now(), 'Nook 1', '{"tableRef": "Terrace 1"}');
+  assert pg_temp.tl_ref('c17d') = 'Terrace 1' and pg_temp.tl_link('c17d') = pg_temp.tl_id('Terrace 1'),
     'T17 FAIL: a given table_ref beat the word raw carries';
-  assert pg_temp.tl_tables('Nook') = 0, 'T17 FAIL: the overridden word learned a table';
+  assert pg_temp.tl_tables('Nook 1') = 0, 'T17 FAIL: the overridden word learned a table';
 end $$;
 
 -- T18: the word follows the till on a re-send. The same payload keeps word and
--- link; a payload naming Snug moves both; a payload naming no table clears
+-- link; a payload naming Snug 1 moves both; a payload naming no table clears
 -- both; an update writing only raw re-resolves a changed word; and a word a
 -- writer set itself stands when raw, carrying none, is written again.
 do $$
 declare
-  terrace uuid := pg_temp.tl_id('Terrace');
+  terrace uuid := pg_temp.tl_id('Terrace 1');
   n bigint := pg_temp.tl_tables();
 begin
-  assert pg_temp.tl_hub('c17a', '{"tableRef": " Terrace "}') = terrace and pg_temp.tl_ref('c17a') = 'Terrace',
+  assert pg_temp.tl_hub('c17a', '{"tableRef": " Terrace 1 "}') = terrace and pg_temp.tl_ref('c17a') = 'Terrace 1',
     'T18 FAIL: an unchanged re-send moved the check or its word';
   assert pg_temp.tl_tables() = n, 'T18 FAIL: an unchanged re-send learned a table';
 
-  assert pg_temp.tl_hub('c17a', '{"tableRef": "Snug", "closed": true}') = pg_temp.tl_id('Snug'),
-    'T18 FAIL: a re-send naming Snug did not move the check there';
-  assert pg_temp.tl_ref('c17a') = 'Snug', 'T18 FAIL: table_ref did not follow raw to Snug';
+  assert pg_temp.tl_hub('c17a', '{"tableRef": "Snug 1", "closed": true}') = pg_temp.tl_id('Snug 1'),
+    'T18 FAIL: a re-send naming Snug 1 did not move the check there';
+  assert pg_temp.tl_ref('c17a') = 'Snug 1', 'T18 FAIL: table_ref did not follow raw to Snug 1';
 
   assert pg_temp.tl_hub('c17a', '{"closed": true}') is null,
     'T18 FAIL: a re-send naming no table kept a table';
   assert pg_temp.tl_ref('c17a') is null,
     'T18 FAIL: a re-send naming no table kept the old word ' || coalesce(pg_temp.tl_ref('c17a'), '');
 
-  update public.pos_checks set raw = '{"tableRef": "Snug"}'
+  update public.pos_checks set raw = '{"tableRef": "Snug 1"}'
    where restaurant_id = pg_temp.tl_house() and external_check_id = 'c17b';
-  assert pg_temp.tl_ref('c17b') = 'Snug' and pg_temp.tl_link('c17b') = pg_temp.tl_id('Snug'),
+  assert pg_temp.tl_ref('c17b') = 'Snug 1' and pg_temp.tl_link('c17b') = pg_temp.tl_id('Snug 1'),
     'T18 FAIL: an update writing only raw left the link on the old word''s table';
 
   insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref, raw)
-  values (pg_temp.tl_house(), 'csv_import', 'c18', now(), 'Terrace', '{"note": 1}');
+  values (pg_temp.tl_house(), 'csv_import', 'c18', now(), 'Terrace 1', '{"note": 1}');
   update public.pos_checks set raw = '{"note": 2}'
    where restaurant_id = pg_temp.tl_house() and external_check_id = 'c18';
-  assert pg_temp.tl_ref('c18') = 'Terrace' and pg_temp.tl_link('c18') = terrace,
+  assert pg_temp.tl_ref('c18') = 'Terrace 1' and pg_temp.tl_link('c18') = terrace,
     'T18 FAIL: a writer''s own word went when raw, naming none, was written again';
 end $$;
 
@@ -439,25 +442,148 @@ begin
 end $$;
 
 -- T20: a re-link never moves a link: the deferred re-link after learning. A
--- check written with its own table_id beside the word "Zed" stays on that
--- table when a later check learns "Zed" and the re-link runs at commit.
+-- check written with its own table_id beside the word "Zed 1" stays on that
+-- table when a later check learns "Zed 1" and the re-link runs at commit.
 do $$
 declare
   five uuid := pg_temp.tl_id('5');
   zed uuid;
 begin
   insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref, table_id)
-  values (pg_temp.tl_house(), 'csv_import', 'c20a', now(), 'Zed', five);
-  assert pg_temp.tl_link('c20a') = five and pg_temp.tl_tables('Zed') = 0,
-    'T20 FAIL: setup: the check did not keep the table its writer gave, or "Zed" exists already';
-  zed := pg_temp.tl_check('c20b', 'Zed');
-  assert zed is not null and zed = pg_temp.tl_id('Zed') and pg_temp.tl_tables('Zed') = 1,
-    'T20 FAIL: setup: "Zed" was not learned once';
+  values (pg_temp.tl_house(), 'csv_import', 'c20a', now(), 'Zed 1', five);
+  assert pg_temp.tl_link('c20a') = five and pg_temp.tl_tables('Zed 1') = 0,
+    'T20 FAIL: setup: the check did not keep the table its writer gave, or "Zed 1" exists already';
+  zed := pg_temp.tl_check('c20b', 'Zed 1');
+  assert zed is not null and zed = pg_temp.tl_id('Zed 1') and pg_temp.tl_tables('Zed 1') = 1,
+    'T20 FAIL: setup: "Zed 1" was not learned once';
   set constraints public.restaurant_tables_relink_on_learn immediate;
   assert pg_temp.tl_link('c20a') = five,
-    'T20 FAIL: the re-link after learning "Zed" moved a linked check off "5"';
-  assert pg_temp.tl_link('c20b') = zed, 'T20 FAIL: the check that learned "Zed" left it';
+    'T20 FAIL: the re-link after learning "Zed 1" moved a linked check off "5"';
+  assert pg_temp.tl_link('c20b') = zed, 'T20 FAIL: the check that learned "Zed 1" left it';
   set constraints public.restaurant_tables_relink_on_learn deferred;
+end $$;
+
+-- T21-T23: the founder's 2026-10-05 answer, verbatim pick "Only words with a
+-- number (Recommended)": a till word makes a NEW table only when it has an
+-- ASCII digit in it. A word with none stays on the check as its table_ref and
+-- links only to a table that already answers it. A second house with no
+-- table, so no hand-added row of the first house answers these words.
+create function pg_temp.tl_house2() returns uuid language sql immutable as $$
+  select 'a0303000-0000-4000-8000-000000000002'::uuid
+$$;
+create function pg_temp.tl2_check(p_ext text, p_ref text, p_raw jsonb default null, p_source text default 'csv_import')
+returns uuid language sql as $$
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref, raw)
+  values (pg_temp.tl_house2(), p_source, p_ext, now(), p_ref, p_raw)
+  returning table_id
+$$;
+create function pg_temp.tl2_row(p_ext text) returns public.pos_checks language sql as $$
+  select * from public.pos_checks
+   where restaurant_id = pg_temp.tl_house2() and external_check_id = p_ext
+$$;
+create function pg_temp.tl2_tables(p_word text default null) returns bigint language sql as $$
+  select count(*) from public.restaurant_tables
+   where restaurant_id = pg_temp.tl_house2()
+     and (p_word is null or lower(label) = lower(p_word))
+$$;
+create function pg_temp.tl2_id(p_label text) returns uuid language sql as $$
+  select id from public.restaurant_tables
+   where restaurant_id = pg_temp.tl_house2() and lower(label) = lower(p_label)
+$$;
+insert into public.restaurants (id, name, slug)
+values ('a0303000-0000-4000-8000-000000000002', 'ADR 0303 test house 2', 'adr-0303-test-house-2');
+
+-- T21: new checks. 'booth', 'ayla' and Square's ticket name 'Ayla' make no
+-- table and keep their word; 't12', '12', 'patio 3', 'table 7' and the number
+-- 14 are each learned once, as learned rows, with the check on them.
+do $$
+declare
+  w text;
+  v uuid;
+begin
+  foreach w in array array['booth', 'ayla'] loop
+    assert pg_temp.tl2_check('c21-' || w, w) is null, 'T21 FAIL: the word "' || w || '" got a table';
+    assert (pg_temp.tl2_row('c21-' || w)).table_ref = w, 'T21 FAIL: the word "' || w || '" was not kept on its check';
+    assert pg_temp.tl2_tables(w) = 0, 'T21 FAIL: the word "' || w || '" with no digit made a table';
+  end loop;
+  assert pg_temp.tl2_check('c21-sq', null, '{"ticket_name": "Ayla"}', 'square') is null,
+    'T21 FAIL: Square''s ticket name "Ayla" got a table';
+  assert (pg_temp.tl2_row('c21-sq')).table_ref = 'Ayla', 'T21 FAIL: Square''s ticket name was not kept as the word';
+  assert pg_temp.tl2_tables() = 0, 'T21 FAIL: a word with no digit made a table';
+
+  foreach w in array array['t12', '12', 'patio 3', 'table 7'] loop
+    v := pg_temp.tl2_check('c21-' || w, w);
+    assert pg_temp.tl2_tables(w) = 1, 'T21 FAIL: the word "' || w || '" was not learned exactly once';
+    assert v = pg_temp.tl2_id(w), 'T21 FAIL: the "' || w || '" check is not on its learned table';
+    assert (select learned_at is not null from public.restaurant_tables where id = v),
+      'T21 FAIL: "' || w || '" is not a learned table';
+  end loop;
+  assert pg_temp.tl2_check('c21-14', null, '{"tableRef": 14}', 'generic_webhook') = pg_temp.tl2_id('14'),
+    'T21 FAIL: the number 14 was not learned';
+  assert pg_temp.tl2_tables() = 5, 'T21 FAIL: house 2 should hold 5 learned tables, holds ' || pg_temp.tl2_tables();
+end $$;
+
+-- T22: the backfill keeps the same rule. History stored before the migration
+-- (no trigger run) with BOOTH, Square's 'Ayla', T5 and 'Patio 6' in raw: the
+-- backfill writes every word, learns T5 and Patio 6, and makes no table for
+-- BOOTH or Ayla.
+do $$
+begin
+  perform set_config('session_replication_role', 'replica', true);
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, raw) values
+    (pg_temp.tl_house2(), 'csv_import', 'h22a', now() - interval '30 days', '{"tableRef": "BOOTH"}'),
+    (pg_temp.tl_house2(), 'square', 'h22b', now() - interval '30 days', '{"ticket_name": "Ayla"}'),
+    (pg_temp.tl_house2(), 'csv_import', 'h22c', now() - interval '30 days', '{"tableRef": "T5"}'),
+    (pg_temp.tl_house2(), 'csv_import', 'h22d', now() - interval '30 days', '{"table": "Patio 6"}');
+  perform set_config('session_replication_role', 'origin', true);
+
+  -- Verbatim from the migration, step 6.
+  UPDATE public.pos_checks
+     SET table_ref = public.pos_table_ref_from_raw(source, raw)
+   WHERE table_ref IS NULL
+     AND raw IS NOT NULL
+     AND public.pos_table_ref_from_raw(source, raw) IS NOT NULL;
+
+  assert (pg_temp.tl2_row('h22a')).table_ref = 'BOOTH' and (pg_temp.tl2_row('h22a')).table_id is null,
+    'T22 FAIL: the backfill did not keep BOOTH as a word with no table';
+  assert (pg_temp.tl2_row('h22b')).table_ref = 'Ayla' and (pg_temp.tl2_row('h22b')).table_id is null,
+    'T22 FAIL: the backfill did not keep Ayla as a word with no table';
+  assert pg_temp.tl2_tables('booth') = 0 and pg_temp.tl2_tables('ayla') = 0,
+    'T22 FAIL: the backfill made a table for a word with no digit';
+  assert (pg_temp.tl2_row('h22c')).table_id = pg_temp.tl2_id('T5') and pg_temp.tl2_tables('T5') = 1,
+    'T22 FAIL: the backfill did not learn T5 and link its check';
+  assert (pg_temp.tl2_row('h22d')).table_id = pg_temp.tl2_id('Patio 6') and pg_temp.tl2_tables('Patio 6') = 1,
+    'T22 FAIL: the backfill did not learn Patio 6 and link its check';
+end $$;
+
+-- T23: an owner-added 'Bar' links past and new 'bar' checks; a table renamed
+-- to 'Window' links the 'window' checks. A word with no digit still links to
+-- a table that answers it: it only never makes one.
+do $$
+declare
+  bar uuid;
+  room uuid;
+begin
+  perform set_config('session_replication_role', 'replica', true);
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref) values
+    (pg_temp.tl_house2(), 'csv_import', 'h23a', now() - interval '30 days', 'bar');
+  perform set_config('session_replication_role', 'origin', true);
+  assert pg_temp.tl2_check('c23b', 'Bar') is null, 'T23 FAIL: setup: "Bar" got a table before one was added';
+  assert pg_temp.tl2_tables('bar') = 0, 'T23 FAIL: the word "Bar" made a table';
+
+  insert into public.restaurant_tables (restaurant_id, label, seats) values (pg_temp.tl_house2(), 'Bar', 6)
+  returning id into bar;
+  assert (pg_temp.tl2_row('h23a')).table_id = bar, 'T23 FAIL: adding "Bar" did not link the past "bar" check';
+  assert (pg_temp.tl2_row('c23b')).table_id = bar, 'T23 FAIL: adding "Bar" did not link the earlier "Bar" check';
+  assert pg_temp.tl2_check('c23c', 'BAR ') = bar, 'T23 FAIL: a new "BAR " check did not reach the added "Bar"';
+  assert pg_temp.tl2_tables('bar') = 1, 'T23 FAIL: a second bar table exists';
+
+  insert into public.restaurant_tables (restaurant_id, label, seats) values (pg_temp.tl_house2(), 'Room', 4)
+  returning id into room;
+  assert pg_temp.tl2_check('c23d', 'window') is null, 'T23 FAIL: setup: "window" got a table';
+  update public.restaurant_tables set label = 'Window' where id = room;
+  assert (pg_temp.tl2_row('c23d')).table_id = room, 'T23 FAIL: renaming a table to "Window" did not link the "window" check';
+  assert pg_temp.tl2_check('c23e', 'Window') = room, 'T23 FAIL: a new "Window" check did not reach the renamed table';
 end $$;
 
 rollback;

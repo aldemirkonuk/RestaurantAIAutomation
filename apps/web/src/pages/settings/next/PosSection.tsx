@@ -22,8 +22,11 @@
  *
  * TABLES THE TILL HAS NAMED (ADR 0303, 2026-10-04)
  * ------------------------------------------------
- * Founder ruling "Learn from the POS": every table word the till sends on a
- * check becomes a table the owner can rename or hide, and nothing is drawn.
+ * Founder rulings "Learn from the POS" and, 2026-10-05, "Only words with a
+ * number": a table word the till sends on a check becomes a table the owner
+ * can rename or hide when it has a digit in it ('T12', '12', 'Patio 3'); a
+ * word with none ('Booth', a name) stays on its check and makes no table.
+ * Nothing is drawn.
  * The list reads `GET /analytics/tables/:rid` only once it is opened (the
  * ConsentPanel precedent), keeps loading, a failed read and an empty read
  * apart, and offers Rename and Hide to an owner or a manager only — the
@@ -231,13 +234,16 @@ export function TillTables({ data }: { data: SettingsNextData }) {
   return (
     <>
       <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-2)', margin: '0 0 6px' }}>
-        Each table name the till sends on a check becomes a table here, and past checks find it again when it is
+        A table name the till sends on a check becomes a table here when it has a number in it (T12, 12, Patio 3). A
+        word with no number, such as Booth or a name, stays on its check and makes no table. Past checks find a table
+        again when it is
         renamed. Nothing is drawn. A hidden table still catches its checks: they stay in takings and leave the room
         register in Reports.
       </p>
       {tables.length === 0 ? (
         <Note role="status">
-          The till has not named a table yet. A table appears here the first time a check arrives with one on it.
+          This house has no table yet. One appears here the first time a check arrives naming a table with a number in
+          it, such as T12, 12 or Patio 3.
         </Note>
       ) : (
         tables.map((t) => {
