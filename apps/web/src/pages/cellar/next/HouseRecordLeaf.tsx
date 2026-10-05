@@ -27,6 +27,8 @@ import { AlertTriangle, BookOpen, Lock, X } from 'lucide-react';
 import {
   BOOK_LABEL,
   BOOK_SOURCE,
+  DOOR_CHECKED_LABEL,
+  DOOR_CHECKED_SOURCE,
   EM,
   count,
   matchNote,
@@ -35,6 +37,7 @@ import {
   shortDate,
   volume,
 } from './cellar-format';
+import { doorCheckedMark } from './registerCells';
 import type { RegisterRowVM } from './useCellarNextData';
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
@@ -48,20 +51,55 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
 
 function Book({
   id,
+  heading,
+  sources,
+  testId,
   children,
 }: {
   id: keyof typeof BOOK_LABEL;
+  /** Overrides the book's own label — the bought block when only the door names it. */
+  heading?: string;
+  /** Overrides the book's own source, when a block reads more than one table. */
+  sources?: string[];
+  testId?: string;
   children: React.ReactNode;
 }) {
+  const read = sources ?? [BOOK_SOURCE[id]];
   return (
-    <section className="cl-book">
-      <h4 className="cl-sec" style={{ margin: '0 0 6px' }}>{BOOK_LABEL[id]}</h4>
+    <section className="cl-book" data-testid={testId}>
+      <h4 className="cl-sec" style={{ margin: '0 0 6px' }}>{heading ?? BOOK_LABEL[id]}</h4>
       <div style={{ display: 'grid', gap: 4 }}>{children}</div>
       <p className="cl-note" style={{ marginTop: 7, fontSize: 10.5 }}>
-        Read from <code>{BOOK_SOURCE[id]}</code>.
+        Read from{' '}
+        {read.map((src, i) => (
+          <span key={src}>
+            {i > 0 ? '; and ' : null}
+            <code>{src}</code>
+          </span>
+        ))}
+        .
       </p>
     </section>
   );
+}
+
+/**
+ * What the bought block is headed and read from (ADR 0301 §2). Invoice lines
+ * keep the "invoiced" heading and mark each figure a door check filled; a block
+ * only the door fills is headed "door-checked" instead, so no fact in it needs
+ * its own mark.
+ */
+function boughtBook(b: NonNullable<NonNullable<RegisterRowVM['house']>['bought']>) {
+  const door = (b.doorChecked ?? 0) > 0;
+  const paper = b.lines > 0;
+  const mark = (on: boolean | undefined) => (paper && on ? doorCheckedMark() : null);
+  return {
+    heading: paper ? BOOK_LABEL.invoice : DOOR_CHECKED_LABEL,
+    sources: [...(paper ? [BOOK_SOURCE.invoice] : []), ...(door ? [DOOR_CHECKED_SOURCE] : [])],
+    first: mark(b.firstDoorChecked),
+    last: mark(b.lastDoorChecked),
+    sums: mark(door),
+  };
 }
 
 export default function HouseRecordLeaf({
@@ -130,14 +168,19 @@ export default function HouseRecordLeaf({
             ) : null}
 
             {h.bought ? (
-              <Book id="invoice">
-                <Fact label="First bought" value={shortDate(h.bought.first)} />
-                <Fact label="Last bought" value={shortDate(h.bought.last)} />
-                <Fact label="Bottles" value={count(h.bought.bottles)} />
-                <Fact label="Paid, in total" value={money(h.bought.paidTotal)} />
-                <Fact label="Last unit price" value={money(h.bought.lastUnitPrice)} />
-                <Fact label="From" value={h.bought.lastFrom ?? EM} />
-              </Book>
+              (() => {
+                const bb = boughtBook(h.bought);
+                return (
+                  <Book id="invoice" heading={bb.heading} sources={bb.sources} testId="bought-book">
+                    <Fact label="First bought" value={<>{shortDate(h.bought.first)}{bb.first}</>} />
+                    <Fact label="Last bought" value={<>{shortDate(h.bought.last)}{bb.last}</>} />
+                    <Fact label="Bottles" value={<>{count(h.bought.bottles)}{bb.sums}</>} />
+                    <Fact label="Paid, in total" value={<>{money(h.bought.paidTotal)}{bb.sums}</>} />
+                    <Fact label="Last unit price" value={<>{money(h.bought.lastUnitPrice)}{bb.last}</>} />
+                    <Fact label="From" value={<>{h.bought.lastFrom ?? EM}{bb.last}</>} />
+                  </Book>
+                );
+              })()
             ) : null}
 
             {h.ordered ? (

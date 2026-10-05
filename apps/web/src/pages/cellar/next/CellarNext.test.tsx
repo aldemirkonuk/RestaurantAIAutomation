@@ -719,6 +719,106 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(leaf).not.toHaveTextContent(/quoted/i);
   });
 
+  // ADR 0301 §2 (AW14), his pick: "Door-checked, labelled (Recommended)". A
+  // house that files no paper still has a checked price for what it bought; the
+  // row and the stand show it, and say every time that it came from the door.
+  it('labels a price checked at the door, in the row and on the stand', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({
+        rows: [
+          houseRow({
+            house: {
+              ...houseRow().house,
+              books: ['order'],
+              bought: {
+                lines: 0,
+                doorChecked: 1,
+                first: '2026-08-03',
+                firstDoorChecked: true,
+                last: '2026-08-03',
+                lastDoorChecked: true,
+                bottles: 10,
+                paidTotal: 265,
+                lastUnitPrice: 26.5,
+                lastFrom: 'Zqdc Door Vendor',
+              },
+              poured: null,
+            },
+          }),
+        ],
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).getByText('3 Aug 2026')).toBeInTheDocument();
+    expect(within(row).getByText('$265.00')).toBeInTheDocument();
+    // One mark on First bought, one on Paid.
+    expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(2);
+
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const leaf = screen.getByTestId('house-leaf');
+    const book = within(leaf).getByTestId('bought-book');
+    // No invoice names it, so the block is not headed "invoiced".
+    expect(within(book).getByRole('heading')).toHaveTextContent('door-checked');
+    expect(book).not.toHaveTextContent(/invoiced/);
+    expect(book).toHaveTextContent(/match_verified_at/);
+    expect(book).toHaveTextContent(/receipt_verified/);
+    expect(book).not.toHaveTextContent(/procurement_document_lines/);
+    expect(within(book).getByText('Zqdc Door Vendor')).toBeInTheDocument();
+  });
+
+  it('marks only the figures the door gave when an invoice is filed too', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({
+        rows: [
+          houseRow({
+            house: {
+              ...houseRow().house,
+              bought: {
+                ...houseRow().house.bought,
+                doorChecked: 1,
+                firstDoorChecked: false,
+                lastDoorChecked: true,
+              },
+            },
+          }),
+        ],
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    // First bought came from an invoice; Paid holds a door-checked order.
+    expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(1);
+
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
+    expect(within(book).getByRole('heading')).toHaveTextContent('invoiced');
+    // Last bought, Bottles, Paid, Last unit price and From; not First bought.
+    expect(within(book).getAllByTestId('door-checked-mark')).toHaveLength(5);
+    const first = within(book).getByText('First bought').parentElement!;
+    expect(within(first).queryByTestId('door-checked-mark')).toBeNull();
+    expect(book).toHaveTextContent(/procurement_document_lines/);
+    expect(book).toHaveTextContent(/receipt_verified/);
+  });
+
+  it('carries no door mark on a record the invoices alone fill', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).queryByTestId('door-checked-mark')).toBeNull();
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
+    expect(within(book).queryByTestId('door-checked-mark')).toBeNull();
+    expect(book).not.toHaveTextContent(/receipt_verified/);
+  });
+
   it('renders add-to-inventory disabled, with the OD-113 sentence beside it', () => {
     mock.current = { ...base, registers: readout() };
     mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };

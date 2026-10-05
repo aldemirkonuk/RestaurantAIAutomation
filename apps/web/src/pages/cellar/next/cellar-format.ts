@@ -624,6 +624,21 @@ export const BOOK_SOURCE: Record<HouseBookId, string> = {
 };
 
 /**
+ * ADR 0301 §2 (AW14), the founder's pick: "Door-checked, labelled". An order
+ * whose price was checked against the delivery at the door, and for which no
+ * invoice has been filed, counts toward First bought and Paid — and every
+ * figure it fills says so. The `invoice` book above stays the paper's alone:
+ * a door check is not an invoice, so it never lights the "invoiced" mark.
+ */
+export const DOOR_CHECKED_LABEL = 'door-checked';
+
+export const DOOR_CHECKED_SOURCE =
+  'procurement_orders.match_verified_at + price_history (source receipt_verified, per bottle) × the bottles accepted, on orders with no invoice filed';
+
+export const DOOR_CHECKED_NOTE =
+  'Checked against the delivery at the door. No invoice has been filed for this order yet; when one is, the invoice takes over.';
+
+/**
  * `vendor_price_observations.source_type`, in the vocabulary `/vendor-prices`
  * already uses. An unrecognised value is shown verbatim rather than bucketed:
  * the column has no CHECK constraint, and renaming a value we do not know

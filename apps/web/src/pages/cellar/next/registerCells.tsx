@@ -16,7 +16,17 @@
  */
 
 import type { ReactNode } from 'react';
-import { BOOK_LABEL, BOOK_ORDER, EM, count, money, shortDate, type HouseBookId } from './cellar-format';
+import {
+  BOOK_LABEL,
+  BOOK_ORDER,
+  DOOR_CHECKED_LABEL,
+  DOOR_CHECKED_NOTE,
+  EM,
+  count,
+  money,
+  shortDate,
+  type HouseBookId,
+} from './cellar-format';
 import type { RegisterRowVM } from './useCellarNextData';
 
 /**
@@ -50,6 +60,26 @@ function dim(v: string): ReactNode {
   return <span className="cl-dim">{v}</span>;
 }
 
+/**
+ * ADR 0301 §2 (AW14), his pick: "Door-checked, labelled". The mark beside any
+ * figure a door check filled — a price checked against the delivery, on an
+ * order no invoice has been filed for. Words, not a colour, and the reason on
+ * hover. The record's stand draws the same mark, so it is exported from here.
+ */
+export function doorCheckedMark(): ReactNode {
+  return (
+    <span
+      className="cl-dim"
+      data-testid="door-checked-mark"
+      title={DOOR_CHECKED_NOTE}
+      style={{ fontSize: 10, whiteSpace: 'nowrap' }}
+    >
+      {' '}
+      {DOOR_CHECKED_LABEL}
+    </span>
+  );
+}
+
 export function cellFor(r: RegisterRowVM, id: string): ReactNode {
   const h = r.house;
   const c = r.catalogue;
@@ -81,9 +111,23 @@ export function cellFor(r: RegisterRowVM, id: string): ReactNode {
       );
     }
     case 'first':
-      return h?.bought?.first ? shortDate(h.bought.first) : dim(EM);
-    case 'paid':
-      return money(h?.bought?.paidTotal);
+      if (!h?.bought?.first) return dim(EM);
+      return (
+        <>
+          {shortDate(h.bought.first)}
+          {h.bought.firstDoorChecked ? doorCheckedMark() : null}
+        </>
+      );
+    case 'paid': {
+      const paid = h?.bought?.paidTotal ?? null;
+      if (paid === null) return money(paid);
+      return (
+        <>
+          {money(paid)}
+          {(h?.bought?.doorChecked ?? 0) > 0 ? doorCheckedMark() : null}
+        </>
+      );
+    }
     case 'sold':
       return count(h?.poured?.qty ?? null);
     case 'charged':

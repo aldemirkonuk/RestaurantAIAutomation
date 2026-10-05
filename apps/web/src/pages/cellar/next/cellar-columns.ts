@@ -214,9 +214,10 @@ const FIRST: CellarColumn = {
   label: 'First bought',
   kind: 'figure',
   side: 'house',
-  source: 'procurement_document_lines, on documents of type invoice',
+  source:
+    'procurement_document_lines, on documents of type invoice; else the door check (procurement_orders.match_verified_at, price_history receipt_verified)',
   meaning:
-    'The date of the earliest invoice line naming it. An order is what we asked for; an invoice is what we were charged, and only the invoice supports the word "bought".',
+    'The date of the earliest invoice line naming it, or of a price checked at the door on an order no invoice has been filed for, marked door-checked. An order is what we asked for; an invoice, or a price checked against the delivery, is what we were charged, and only those support the word "bought".',
   fill: null,
   on: true,
   why: '',
@@ -228,9 +229,10 @@ const PAID: CellarColumn = {
   label: 'Paid',
   kind: 'figure',
   side: 'house',
-  source: 'procurement_document_lines.line_total, summed over invoice lines',
+  source:
+    'procurement_document_lines.line_total, summed over invoice lines; plus price_history receipt_verified × the bottles accepted, on door-checked orders with no invoice filed',
   meaning:
-    'Everything this house has been charged for it, across every invoice. Open the cell for the ledger those lines make — what was bought, when, from whom, at what.',
+    'Everything this house has been charged for it, across every invoice, plus each order whose price was checked at the door and has no invoice filed yet, marked door-checked. Open the cell for the ledger those lines make — what was bought, when, from whom, at what. That ledger lists the invoice lines; a door-checked order shows there as its order, not yet as a purchase.',
   fill: null,
   on: true,
   why: '',

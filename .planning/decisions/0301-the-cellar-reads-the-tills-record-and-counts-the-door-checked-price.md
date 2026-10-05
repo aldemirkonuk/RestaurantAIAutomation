@@ -4,7 +4,7 @@
 - **Date:** 2026-10-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** cellar, house_beverage_ledger, house_till_lines, house_till_names, pos_checks.items, pos_unresolved_lines, Sold, Taken, pour, till book, row record, readTillLines, POS_CHECK_SCAN_LIMIT, keyset paging, First bought, Paid, door-checked, match_verified_at, receipt_verified, price_history, AW10, AW14, A-015, A-016, A-045, Q9, Tuzlu Rüzgar
-- **Links:** amends [[0108-a-register-is-the-houses-own-books-first]] (its books table, two rows); [[0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes]] item 7 / Q9; [[0115-the-house-item-is-the-ledgers-key]] and OD-113 (food and non-wine identity); ADR 0286 (C02, a sent time is the fact's time for 72 hours; on branch `fix/door-keeps-the-arrival-time`, not on main yet) and ADR 0296 (a sale belongs to the house's day; on branch `fix/sales-belong-to-the-house-day`); OD-125 (a document per door check); migration `the_cellar_reads_the_tills_own_record` and its `supabase/tests` file of the same slug (cited by slug, [[0235-a-migration-is-numbered-at-merge-and-cited-by-its-slug]]); `claims.d/fix-cellar-till-and-door-checked-cost.jsonl`; CLAIMS row `ADR-0160-Q9-NON-ALCOHOLIC-HEATMAP-LIVE-SALES` (corrected in place); the lane brief `p4-scratch/sim-run/fixes/briefs/cellarledger.md` (outside the repo)
+- **Links:** amends [[0108-a-register-is-the-houses-own-books-first]] (its books table, two rows); [[0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes]] item 7 / Q9; [[0115-the-house-item-is-the-ledgers-key]] and OD-113 (food and non-wine identity); ADR 0286 (C02, a sent time is the fact's time for 72 hours; on branch `fix/door-keeps-the-arrival-time`, not on main yet) and ADR 0296 (a sale belongs to the house's day; on branch `fix/sales-belong-to-the-house-day`); OD-125 (a document per door check); migrations `the_cellar_reads_the_tills_own_record` and `the_cellar_counts_the_door_checked_price` and their `supabase/tests` files of the same slugs (cited by slug, [[0235-a-migration-is-numbered-at-merge-and-cited-by-its-slug]]); `claims.d/fix-cellar-till-and-door-checked-cost.jsonl` and `claims.d/fix-cellar-door-checked-cost.jsonl`; CLAIMS row `ADR-0160-Q9-NON-ALCOHOLIC-HEATMAP-LIVE-SALES` (corrected in place); the lane brief `p4-scratch/sim-run/fixes/briefs/cellarledger.md` (outside the repo)
 
 ## Context
 
@@ -64,16 +64,36 @@ Two departures from the lane plan:
 
 ### §2 (AW14): the door-checked price, labelled
 
-His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and 'Paid' count the price checked at the door, marked 'door-checked', until a filed invoice for that order takes over. The method the lane plan proposes is built on the stacked branch `fix/cellar-door-checked-cost`, which records it here as built:
-- The door book is one row per order with `match_verified_at` set and no filed invoice.
-- Its price is that order's `price_history` row with source `receipt_verified`, unit bottle.
-- Its bottles are the accepted count.
-- 'First bought' takes `match_verified_at`, a wall-clock stamp of when someone checked the paper. ADR 0286 (C02) dates the door receipt by its fact time; whether a door check's date follows it is for that branch's build to settle.
-- The ledger says which dates and lines came from the door.
+His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and 'Paid' count the price checked at the door, marked 'door-checked', until a filed invoice for that order takes over. Built on the stacked branch `fix/cellar-door-checked-cost` by migration `the_cellar_counts_the_door_checked_price`.
+
+- **`house_door_checked(p_restaurant_id)`** (`LANGUAGE sql STABLE`, service_role only, like §1's functions) returns one row per door-checked order. An order counts when all of these hold:
+  - `procurement_orders.match_verified_at` is set.
+  - It has exactly one order line, and that line names a wine. `verifyReceipt` checks one agreed line per order, so the price cannot be told apart between two lines.
+  - It has a `price_history` row with source `receipt_verified` and unit `bottle`. That is the price `verifyReceipt` writes only when the bill was in hand: the invoice's quantity × unit price plus allocated charges, divided by the bottles accepted. A check that saw no bill has no checked price, so it does not count.
+  - The latest `reconciled` receipt event that carries the bill's quantity accepted more than 0 bottles. A later counts-only confirmation re-counts the shelf, not the bill, so it does not move the bottles.
+  - No filed invoice speaks for it: no invoice document is linked to the order, and no invoice line is paired with its line.
+- Its **price** is the latest such row, its **bottles** are that event's accepted count, and its **paid** is price × bottles, which is what the bill charged. Its currency is carried but not converted.
+- It is **dated** `match_verified_at::date`, the moment someone checked the paper. ADR 0286 (C02) and ADR 0296 (the house's day) may re-date it once they land.
+- **`house_beverage_ledger`** folds these rows into its bought block next to the invoice lines. 'First bought', 'Last bought', bottles, 'Paid', the last unit price and the last vendor read both. On the same day, an invoice line wins the date's mark.
+  - `invoice_lines`, the 'invoice' book and the row's label stay the paper's alone. A door check is not an invoice, so it never lights the "invoiced" mark.
+  - Three columns are **appended**, so the first 31 keep their places: `door_checked_lines`, `first_bought_door_checked` and `last_bought_door_checked`. The signature grows, so the migration drops and recreates the function and re-applies its grants. No row changes.
+- The **gateway** (`toHouseRecord`) keeps a bought block that only door checks fill, and carries `doorChecked`, `firstDoorChecked` and `lastDoorChecked`.
+- The **web register** marks 'First bought' and 'Paid' with 'door-checked' wherever a door check filled them.
+  - On the record's stand, a block with invoice lines is headed 'invoiced' and marks each figure a door check filled.
+  - A block only the door fills is headed 'door-checked'.
+  - Either way, the block names both tables it was read from.
+
+Measured on a local build: §1's seed (about 59,000 till lines) plus 400 door-checked orders, 100 of them invoiced. The ledger took 330-434 ms, against 262-296 ms on §1 alone (about 1.27× by the median). `house_door_checked` took 36-48 ms. It reads `price_history` and the receipt events once each per call, keeping the latest row per order, and does not probe once per order. This was not measured on production.
+
+Four departures from the lane plan:
+- **Bottles come from the latest reconciled event that carries the bill's quantity,** not the latest reconciled event. A later counts-only confirmation would otherwise pair a re-count with a price set against the bill.
+- **A door row needs the `receipt_verified` price row** and more than 0 accepted bottles, and it needs exactly one order line.
+- **The 'invoice' book stays invoice-only.** The plan widened the book's source line; the stand names the door's tables beside it instead.
+- **The new columns are appended,** not placed beside the bought block, so a reader that indexes the first 31 is unchanged.
 
 ## Relations
 
-- **Amends ADR 0108's books table** (Proposed), on two rows. *What we actually sold* is now `pos_checks.items`, every line of every check not voided, plus the `pos_unresolved_lines` rows no check holds, through `house_till_lines`. It is no longer `pos_unresolved_lines` alone. 0108's line that the queue "is the sales ledger" for non-wine was never true for a mapped line, and is not true for pos-hub at all, which skips non-wine lines before the queue. *What we were invoiced* also counts the door-checked price, labelled, once §2 is built.
+- **Amends ADR 0108's books table** (Proposed), on two rows. *What we actually sold* is now `pos_checks.items`, every line of every check not voided, plus the `pos_unresolved_lines` rows no check holds, through `house_till_lines`. It is no longer `pos_unresolved_lines` alone. 0108's line that the queue "is the sales ledger" for non-wine was never true for a mapped line, and is not true for pos-hub at all, which skips non-wine lines before the queue. *What we were invoiced* is still the invoice lines. 'First bought' and 'Paid' also count the door-checked price, labelled, through `house_door_checked` (§2).
 - **Corrects the CLAIMS row for Q9** (`ADR-0160-Q9-NON-ALCOHOLIC-HEATMAP-LIVE-SALES`) in place. Its "is_wine left to the unresolved queue" half was the A-016 defect.
 
 ## Deferred
@@ -84,13 +104,21 @@ His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and
 - The house-day date of a sale (ADR 0296) and the fact time of a door check (ADR 0286, C02).
 - One stale comment that still names the queue as the sales record: `apps/web/src/pages/cellar/next/CatalogueRegister.tsx:18-19`. It was left out to keep this PR at 14 files. `registerShapes.ts`, `cellar-format.ts` and `row-record.ts` are corrected here.
 - Production `price_history` `receipt_verified` rows were never counted, so "at least 50 of 80" is the walk's estimate.
+- The ledger's row order (most books first) does not count a door check as a book, so a door-only row sorts by its order book alone.
+
+### Forks deferred (the founder's call)
+
+- A door check that saw no bill has no checked price, so it does not count as bought. Whether it should count, as bottles with no price, is his to say.
+- Whether a door check should lift a row in the ledger's order the way an invoice does.
 
 ## Consequences
 
 - **Easier.** Every register's Sold and Taken come from the till's own checks, and a row's record and its cell read the same lines. The ledger got faster on the local measure above, not slower.
 - **Harder / given up.**
   - Sold and Taken now include a wine's mapped sales, so they rise on every mapped wine. That is the truth, but a reader who compared against the old blank will see a jump.
-  - Two more functions sit behind a tenancy boundary, and both stay service_role only.
+  - Two more functions sit behind a tenancy boundary, and both stay service_role only. §2 adds a third, `house_door_checked`, also service_role only.
+  - A house that files no paper now sees a First bought and a Paid on rows that were blank, each marked 'door-checked'. When the invoice is filed, the figure can move to the invoice's.
+  - The ledger's signature grew by three appended columns, so §2's migration drops and recreates it. Between that migration and the gateway that reads the new columns, the door figures show without their mark.
 - **Revisit when:**
   - OD-113 gives non-wine products an identity: the till names could then key by product, not by name.
   - Toast writes `pos_checks`: then its orphans stop and its mapped sales count.
@@ -101,3 +129,4 @@ His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-04 | fix lane `cellarledger` | Created: §1 built on `fix/cellar-till-and-door-checked-cost`; §2 ruling recorded, method to be built on `fix/cellar-door-checked-cost` |
+| 2026-10-05 | fix lane `cellarledger` | §2 built on `fix/cellar-door-checked-cost`: `house_door_checked`, three appended ledger columns, the gateway's door fields and the web's door-checked marks |
