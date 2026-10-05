@@ -77,10 +77,10 @@ export interface SaleInstant {
   /**
    * What `pos_checks.closed_at` receives. When `readClosedAt` reads the till's
    * closed_at, this is that reading as an ISO-8601 UTC string, not clamped: a
-   * close time in the future stays on the check. When it does not (or the
-   * check is open), it is the value exactly as the till sent it, or null when
-   * there is none, so Postgres reads it or refuses it as it did before
-   * ADR 0281.
+   * close time in the future stays on the check. When it does not, it is the
+   * value exactly as the till sent it, or null when there is none. ingest()
+   * stores only the null: it refuses a check whose closed_at is present and
+   * not read, so no such value reaches Postgres (ADR 0281, founder ruling F4).
    */
   closedAt: unknown;
   /**
@@ -94,9 +94,12 @@ export interface SaleInstant {
    */
   at: string;
   /**
-   * `readClosedAt` did not read closed_at, so `at` is import time while
-   * `closedAt` keeps the till's value. Never silent: the import says so. Never
-   * back-dated either: `backdatedOver72h` is false whenever this is true.
+   * `readClosedAt` did not read closed_at (or there is none), so `at` is
+   * import time while `closedAt` keeps the till's value. `backdatedOver72h` is
+   * false whenever this is true. In ingest() it covers two cases only, and
+   * neither dates anything at import time: an open check (closed_at null or
+   * absent), which moves no stock, and a present closed_at that is not read,
+   * whose check is refused before it is stored.
    */
   fellBack: boolean;
   /** closed_at was later than now, so `at` is now and `closedAt` is not. */
@@ -140,7 +143,8 @@ const MAX_OFFSET_MS = 14 * 60 * 60 * 1000;
  *   own zone, kept only when it lies within 14 hours of the written wall
  *   clock.
  *
- * Anything else is NaN, and saleInstant falls back.
+ * Anything else is NaN: saleInstant falls back, and ingest() refuses the
+ * check.
  */
 function readClosedAt(raw: string): number {
   const m = ISO_CLOSED_AT.exec(raw);
@@ -196,11 +200,12 @@ function readClosedAt(raw: string): number {
  * string when the gateway's zone and the database session's differ; measured
  * in the ADR 0090 audit of PR #603 at 01ac04eaa) the ledger, the consumption
  * row and the check could land on different days. So a zone-less string is
- * read in the gateway's own zone for all of them. A string readClosedAt does
- * not read (a two-digit year such as "1/1/50", a POSIX-looking "UTC+3", RFC
- * 2822, "12", "2026-02-30") falls back: its check keeps the till's value for
- * Postgres to read or refuse, as before ADR 0281, its stock and consumption
- * are dated at import time, and the import says so.
+ * read in the gateway's own zone for all of them. A value readClosedAt does
+ * not read (a dotted or slashed date such as "03.10.2026" or
+ * "10/03/2026 3:00 PM", a two-digit year such as "1/1/50", a POSIX-looking
+ * "UTC+3", RFC 2822, "12", "2026-02-30", a number) falls back here, and
+ * ingest() refuses its check: the founder ruled that such a date is not
+ * imported rather than guessed at (ADR 0281, F4).
  *
  * Pure, so the boundaries are tested without a database. `nowMs` is the
  * import's clock, read once per check.
@@ -238,18 +243,39 @@ export function saleInstant(closedAt: unknown, nowMs: number): SaleInstant {
 }
 
 /**
+ * What errors[] says about a check refused for its closed_at, worded as the
+ * option the founder picked in ADR 0281's fork F4 ("Refuse, say why").
+ */
+const CLOSED_AT_NOT_READABLE =
+  "date not readable — write it as 2026-10-03 21:00";
+
+/**
+ * At most this many refused checks are named in errors[]; the rest are one
+ * line that counts them. An export written in one such format is refused
+ * check by check, so 800 of its checks are said in 51 lines, not 800.
+ */
+const MAX_REFUSED_CHECK_LINES = 50;
+
+/** The till's closed_at as errors[] quotes it: JSON, cut at 80 characters. */
+function quoteClosedAt(value: unknown): string {
+  const text = JSON.stringify(value) ?? String(value);
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+}
+
+/**
  * What one import did to stock, line by line (ADR 0281). The counters
  * partition `lines`: every line counted there lands in exactly one of
  * notStock, booked, alreadyBooked, queued.* or failed.
- * `consumptionNotWritten`, `backdatedOver72h` and `datedAtImportTime` are
- * sub-counts of the lines that moved stock.
+ * `consumptionNotWritten` and `backdatedOver72h` are sub-counts of the lines
+ * that moved stock.
  */
 export interface StockTally {
   /**
    * Every line on a closed check this import stored. A check whose
    * pos_checks upsert failed (or whose stock step threw before reading its
    * lines) moves no stock and is not counted here; its own errors[] line
-   * names it.
+   * names it. Nor is a check refused for its closed_at, which is never
+   * stored (`refusedUnreadableDate` counts it).
    */
   lines: number;
   /**
@@ -277,11 +303,9 @@ export interface StockTally {
   consumptionNotWritten: number;
   /** Lines this import booked whose check closed more than 72 hours ago. */
   backdatedOver72h: number;
-  /** Lines this import booked at import time because readClosedAt did not read closed_at. */
-  datedAtImportTime: number;
 }
 
-type StockFailureKind = "stock" | "queue" | "consumption" | "closed_at";
+type StockFailureKind = "stock" | "queue" | "consumption";
 
 /**
  * The import report a check's stock effects count into (ADR 0281), keyed by
@@ -322,7 +346,6 @@ export class StockReport {
     failed: 0,
     consumptionNotWritten: 0,
     backdatedOver72h: 0,
-    datedAtImportTime: 0,
   };
 
   private readonly groups = new Map<
@@ -391,13 +414,6 @@ export class StockReport {
             `stock: "${g.label}" moved stock on ${lines} but its consumption log row was not written: ${g.message} (first on check ${g.checkId})`,
           );
           break;
-        case "closed_at": {
-          const checks = `${g.count} check${g.count === 1 ? "" : "s"}`;
-          out.push(
-            `stock: ${checks} carried a closed_at that is not an ISO-8601 date the import reads (${g.message}), so their stock was dated at import time (first: check ${g.checkId})`,
-          );
-          break;
-        }
       }
     }
     if (this.overflowLines > 0) {
@@ -816,6 +832,14 @@ export class PosHubService {
     received: number;
     upserted: number;
     wineItemsDetected: number;
+    /**
+     * Checks not imported because their closed_at was present and not read
+     * (ADR 0281, founder ruling F4): no pos_checks row, no stock, no
+     * consumption, and not counted in `upserted`, `wineItemsDetected` or
+     * `stock`. errors[] names the first 50 and counts the rest. Every other
+     * check received is upserted or named in errors[] as not stored.
+     */
+    refusedUnreadableDate: number;
     errors: string[];
     /**
      * What the import did to stock (ADR 0281). Before this, a refused or
@@ -841,6 +865,7 @@ export class PosHubService {
         received: 0,
         upserted: 0,
         wineItemsDetected: 0,
+        refusedUnreadableDate: 0,
         errors: ["No recognizable checks in payload"],
         stock: stock.tally,
       };
@@ -860,15 +885,33 @@ export class PosHubService {
 
     let upserted = 0;
     let wineItems = 0;
+    let refusedUnreadableDate = 0;
     const client = this.dbService.getClient();
 
     for (const check of checks) {
       try {
         // ADR 0281: the one reading of this check's closed_at, taken before
         // the check is stored. The check row and every stock and consumption
-        // row below are dated from it (see SaleInstant); only a closed_at it
-        // cannot read reaches pos_checks as the till sent it.
+        // row below are dated from it (see SaleInstant).
         const when = saleInstant(check.closedAt, Date.now());
+        // ADR 0281, founder ruling F4 ("Refuse, say why"): a closed_at that is
+        // present but not read is not imported, so it is never guessed at,
+        // here or by Postgres. The check is refused before anything is
+        // written for it. An open check (closed_at null or absent) is stored
+        // as before and moves no stock.
+        if (
+          when.fellBack &&
+          check.closedAt !== null &&
+          check.closedAt !== undefined
+        ) {
+          refusedUnreadableDate++;
+          if (refusedUnreadableDate <= MAX_REFUSED_CHECK_LINES) {
+            errors.push(
+              `${check.externalCheckId}: not imported, ${CLOSED_AT_NOT_READABLE} (closed_at was ${quoteClosedAt(check.closedAt)})`,
+            );
+          }
+          continue;
+        }
         const items = check.items.map((it) => {
           const mapped = this.resolveWine(it.name, it.externalItemId, mappings);
           const is_wine =
@@ -936,11 +979,17 @@ export class PosHubService {
       }
     }
 
+    if (refusedUnreadableDate > MAX_REFUSED_CHECK_LINES) {
+      const more = refusedUnreadableDate - MAX_REFUSED_CHECK_LINES;
+      errors.push(
+        `${more} more check${more === 1 ? " was" : "s were"} not imported, ${CLOSED_AT_NOT_READABLE}; counted in refusedUnreadableDate, not named here`,
+      );
+    }
     // Grouped, bounded: one line per (failure kind, item), not one per line.
     errors.push(...stock.errorLines());
     const t = stock.tally;
     this.logger.log(
-      `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${wineItems} wine items; ` +
+      `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${refusedUnreadableDate} refused for an unreadable closed_at, ${wineItems} wine items; ` +
         `stock booked ${t.booked}, already ${t.alreadyBooked}, queued ${t.queued.unmapped + t.queued.no_sale_volume}, failed ${t.failed}`,
     );
     return {
@@ -948,6 +997,7 @@ export class PosHubService {
       received: checks.length,
       upserted,
       wineItemsDetected: wineItems,
+      refusedUnreadableDate,
       errors,
       stock: t,
     };
@@ -1115,6 +1165,14 @@ export class PosHubService {
     // instant. The default serves the specs that call this method directly.
     when: SaleInstant = saleInstant(check.closedAt, Date.now()),
   ): Promise<StockTally> {
+    // ADR 0281, F4: stock is dated only by a closed_at that was read. ingest()
+    // never calls this for one that was not; a direct caller is refused here
+    // rather than dated at import time.
+    if (when.fellBack) {
+      throw new Error(
+        `closed_at ${quoteClosedAt(check.closedAt ?? null)} was not read, so check ${check.externalCheckId} moves no stock (ADR 0281)`,
+      );
+    }
     const db = this.dbService.getClient();
     const isVoid = check.voided === true;
     const affected = new Set<string>();
@@ -1124,24 +1182,9 @@ export class PosHubService {
     // it closed, not by when it reached the hub. A void is dated by the
     // closed_at the voided check carries: the sale's own instant only when
     // the till re-sends it, a later one when the till stamps the void itself.
-    // An unreadable closed_at falls back to import time and is reported,
-    // never silent.
-    let fallbackNoted = false;
     const booked = () => {
       tally.booked++;
       if (when.backdatedOver72h) tally.backdatedOver72h++;
-      if (when.fellBack) {
-        tally.datedAtImportTime++;
-        if (!fallbackNoted) {
-          fallbackNoted = true;
-          report.noteFailure(
-            "closed_at",
-            "closed_at",
-            `closed_at ${JSON.stringify(check.closedAt ?? null)}`,
-            check.externalCheckId,
-          );
-        }
-      }
     };
 
     // One read for the whole check (ADR 0011): resolving a sale volume needs

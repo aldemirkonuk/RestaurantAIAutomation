@@ -10,24 +10,30 @@
  * - A-029: a refused or skipped stock write was only logged. `ingest()`
  *   returned a clean result over 811 pours that moved no stock.
  *
- * Every test here but one fails on the code before ADR 0281 (measured
- * against origin/main 1aa4dcb8c, 2026-10-04, and again against origin/main
- * 28d32de36 once the cases for the audit at 1a7a4137d were added: 54 of 55
- * fail): `saleInstant` and `inventoryVolumesFromRow` did not exist, no RPC
- * carried `p_occurred_at`, the consumption row carried no date, and
- * `ingest()` returned no `stock` block. The exception is the open-check case,
- * which pins behaviour that did not change. The zone-less and future cases in
- * the "one reading" block also fail on PR #603 at 01ac04eaa, which read
- * closed_at with JavaScript but handed the till's own string on for Postgres
- * to read again (the ADR 0090 audit's BLOCK).
+ * Every test here but two fails on the code before ADR 0281 (measured
+ * against origin/main 28d32de36 with this file's 67 cases: 65 fail):
+ * `saleInstant` and `inventoryVolumesFromRow` did not exist, no RPC carried
+ * `p_occurred_at`, the consumption row carried no date, `ingest()` returned
+ * no `stock` block, and it stored any closed_at as the till sent it. The
+ * exceptions are the two open-check cases, which pin behaviour that did not
+ * change. The zone-less and future cases in the "one reading" block also
+ * fail on PR #603 at 01ac04eaa, which read closed_at with JavaScript but
+ * handed the till's own string on for Postgres to read again (the ADR 0090
+ * audit's BLOCK).
  *
  * PR #603 at 1a7a4137d read closed_at with V8's lenient `Date.parse`, so a
  * string Postgres refuses ("12", "0", "2026-02-30", "2026-09-31T21:00:00Z")
  * dated a sale on an instant the till never sent (the ADR 0090 audit's
- * BLOCK there). Run against that head's service, 22 of the 55 cases here
+ * BLOCK there). Run against that head's service, 34 of the 67 cases here
  * fail, among them each of those strings in the saleInstant block and in the
- * refusal case of the A-029 block; the other 33 pass there too and pin
- * behaviour the strict read keeps.
+ * F4 block.
+ *
+ * At 4bef334b4 a closed_at the strict read did not read still went to
+ * pos_checks as the till sent it, for Postgres to read or refuse, and its
+ * stock was dated at import time. The founder ruled (ADR 0281, F4) that such
+ * a check is refused and the import says why. Run against that head's
+ * service, 20 of the 67 cases fail: every case in the F4 block, and the
+ * A-029 partition case, whose tally no longer has `datedAtImportTime`.
  * Fixtures are synthetic.
  */
 import { execFileSync } from "child_process";
@@ -49,8 +55,6 @@ interface DbOpts {
   rpc?: (fn: string, args: Row) => Result;
   consumption?: (row: Row) => Result;
   queue?: (row: Row) => Result;
-  /** What the pos_checks upsert answers; accepted when absent. */
-  checkUpsert?: (row: Row) => Result;
 }
 
 function makeDb(opts: DbOpts = {}) {
@@ -67,10 +71,7 @@ function makeDb(opts: DbOpts = {}) {
         eq: () => q,
         in: async () => ({ data: [], error: null }),
         upsert: async (row: Row) => {
-          if (table === "pos_checks") {
-            calls.checks.push(row);
-            if (opts.checkUpsert) return opts.checkUpsert(row);
-          }
+          if (table === "pos_checks") calls.checks.push(row);
           return { error: null };
         },
         insert: async (row: Row) => {
@@ -206,7 +207,9 @@ describe("saleInstant — when one closed check's stock is dated", () => {
       expect(got.at).toBe("2026-10-03T12:00:00.000Z");
       expect(got.fellBack).toBe(true);
       expect(got.backdatedOver72h).toBe(false);
-      // The check keeps what the till sent; only the stock falls back.
+      // saleInstant keeps what the till sent. ingest() stores a check this way
+      // only when there is no closed_at; it refuses every other value that
+      // falls back (the F4 block below).
       expect(got.closedAt).toBe(closedAt ?? null);
     },
   );
@@ -403,10 +406,10 @@ describe("one reading of closed_at dates the check, its stock and its consumptio
   // the consumption row kept its reading, and a sale's stock and revenue could
   // land on different days. Now every row is handed the gateway's one reading
   // as a UTC string, which Postgres reads the same in any zone. Since the
-  // audit at 1a7a4137d the gateway reads only a strict ISO-8601 instant; a
-  // string the two parsers read apart in other ways is not read, so it stays
-  // on the check for Postgres, and the stock and consumption are dated at
-  // import time and said.
+  // audit at 1a7a4137d the gateway reads only a strict ISO-8601 instant, and
+  // since the founder's ruling F4 a check whose closed_at it does not read is
+  // refused (the F4 block below), so no string the two parsers read apart
+  // reaches Postgres.
   const NOW = Date.parse("2026-10-05T00:00:00Z");
 
   beforeEach(() => {
@@ -439,33 +442,6 @@ describe("one reading of closed_at dates the check, its stock and its consumptio
     ...calls.rpc.map((c) => c.args.p_occurred_at),
     ...calls.consumption.flatMap((r) => [r.recorded_at, r.created_at]),
   ];
-
-  it.each([
-    // A two-digit year: V8 reads 1950, Postgres 2050.
-    ["1/1/50"],
-    // A POSIX-looking zone: V8 reads +3 as ahead of UTC (12:00Z), Postgres
-    // with POSIX's sign (18:00Z).
-    ["2026-10-04 15:00:00 UTC+3"],
-  ])(
-    "%p is not read: the check keeps it, and its stock and consumption are dated at import time and said",
-    async (closedAt) => {
-      const { calls, res } = await ingestBoth(closedAt);
-      expect(calls.checks[0].closed_at).toBe(closedAt);
-      expect(datesWritten(calls).slice(1)).toEqual(
-        Array(6).fill(new Date(NOW).toISOString()),
-      );
-      expect(res.stock).toMatchObject({
-        booked: 2,
-        datedAtImportTime: 2,
-        backdatedOver72h: 0,
-      });
-      expect(res.errors).toEqual([
-        expect.stringContaining(
-          "closed_at that is not an ISO-8601 date the import reads",
-        ),
-      ]);
-    },
-  );
 
   it("a zone-less string on a gateway in Europe/Istanbul is that gateway's reading everywhere", async () => {
     // Setting process.env.TZ inside a jest test does not reach the Date the
@@ -506,15 +482,22 @@ describe("one reading of closed_at dates the check, its stock and its consumptio
     );
   });
 
-  it("an open check is stored with no closed_at and moves no stock", async () => {
-    const { service, calls } = makeDb({
-      mappings: [BOTTLE],
-      inventory: INVENTORY,
-    });
-    await ingest(service, [check("c-open", null, [line(BOTTLE)])]);
-    expect(calls.checks[0].closed_at).toBeNull();
-    expect(calls.rpc).toHaveLength(0);
-  });
+  it.each([[null], [undefined]])(
+    "an open check (closed_at %p) is stored with no closed_at and moves no stock",
+    async (closedAt) => {
+      const { service, calls } = makeDb({
+        mappings: [BOTTLE],
+        inventory: INVENTORY,
+      });
+      const res = await ingest(service, [
+        check("c-open", closedAt, [line(BOTTLE)]),
+      ]);
+      expect(calls.checks[0].closed_at).toBeNull();
+      expect(calls.rpc).toHaveLength(0);
+      expect(res.upserted).toBe(1);
+      expect(res.errors).toEqual([]);
+    },
+  );
 });
 
 describe("ingest says what it did to stock (A-029)", () => {
@@ -541,7 +524,6 @@ describe("ingest says what it did to stock (A-029)", () => {
       failed: 0,
       consumptionNotWritten: 0,
       backdatedOver72h: 0,
-      datedAtImportTime: 0,
     });
     expect(res.errors).toEqual([]);
   });
@@ -653,72 +635,6 @@ describe("ingest says what it did to stock (A-029)", () => {
     expect(error).toHaveBeenCalledTimes(1);
   });
 
-  it("an unreadable closed_at dates at import time and is counted and said", async () => {
-    const { service, calls } = makeDb({
-      mappings: [BOTTLE],
-      inventory: INVENTORY,
-    });
-    const before = Date.now();
-    const res = await ingest(service, [
-      check("c-50", "sometime on Tuesday", [line(BOTTLE)]),
-    ]);
-
-    const at = Date.parse(calls.rpc[0].args.p_occurred_at);
-    expect(at).toBeGreaterThanOrEqual(before);
-    expect(at).toBeLessThanOrEqual(Date.now());
-    // The check keeps the till's string: only its stock is dated at import
-    // time, and errors[] says so.
-    expect(calls.checks[0].closed_at).toBe("sometime on Tuesday");
-    expect(res.stock).toMatchObject({ booked: 1, datedAtImportTime: 1 });
-    expect(res.errors).toEqual([
-      expect.stringContaining(
-        "closed_at that is not an ISO-8601 date the import reads",
-      ),
-    ]);
-  });
-
-  it.each([
-    ["12"],
-    ["Table 12"],
-    ["0"],
-    ["2026-02-30"],
-    ["2026-09-31T21:00:00Z"],
-  ])(
-    "a closed_at Postgres refuses (%p) reaches it as sent: the check is not stored, moves no stock, and errors[] says so",
-    async (closedAt) => {
-      // The upsert refuses the till's own string, as Postgres 17.11 does
-      // (603-closed-at-casts.txt; the message is a stand-in), and accepts
-      // anything else, so a reading of the string would be stored.
-      const { service, calls } = makeDb({
-        mappings: [BOTTLE, GLASS],
-        inventory: INVENTORY,
-        checkUpsert: (row) =>
-          row.closed_at === closedAt
-            ? {
-                error: {
-                  message: `Postgres refused "${closedAt}"`,
-                },
-              }
-            : { error: null },
-      });
-      const res = await ingest(service, [
-        check("c-bad", closedAt, [line(BOTTLE), line(GLASS)]),
-      ]);
-
-      expect(calls.checks[0].closed_at).toBe(closedAt);
-      expect(res.upserted).toBe(0);
-      expect(calls.rpc).toHaveLength(0);
-      expect(calls.consumption).toHaveLength(0);
-      expect(res.stock).toMatchObject({
-        lines: 0,
-        booked: 0,
-        backdatedOver72h: 0,
-        datedAtImportTime: 0,
-      });
-      expect(res.errors).toEqual([`c-bad: Postgres refused "${closedAt}"`]);
-    },
-  );
-
   it("bounds errors[]: fifty groups, then one line that counts the rest", async () => {
     const mappings = Array.from({ length: 60 }, (_, i) => ({
       ...BOTTLE,
@@ -744,5 +660,188 @@ describe("ingest says what it did to stock (A-029)", () => {
       "stock: 10 more failures across 10 more items are counted in stock but not listed here",
     );
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+describe("a closed_at the import does not read is refused, not imported (ADR 0281, F4)", () => {
+  // The founder's ruling F4, 2026-10-05: "Refuse, say why". A check whose
+  // closed_at is present and is not a strict ISO-8601 instant is not
+  // imported, and errors[] says how to write it. At 4bef334b4 such a check
+  // was stored with the till's string for Postgres to read or refuse, and
+  // its stock was dated at import time. With DateStyle ISO, MDY, PostgreSQL
+  // 17.11 reads "03.10.2026" as 10 March (casts-ruling.txt and
+  // 603-closed-at-casts.txt, p4-scratch/sim-run/fixes, outside the repo).
+  const MESSAGE = "date not readable — write it as 2026-10-03 21:00";
+  const ZERO_STOCK = {
+    lines: 0,
+    notStock: 0,
+    booked: 0,
+    alreadyBooked: 0,
+    queued: { unmapped: 0, no_sale_volume: 0 },
+    failed: 0,
+    consumptionNotWritten: 0,
+    backdatedOver72h: 0,
+  };
+
+  /** One check with a bottle and a glass line, so both RPCs would run. */
+  const refuse = async (closedAt: unknown) => {
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE, GLASS],
+      inventory: INVENTORY,
+    });
+    const res = await ingest(service, [
+      check("c-bad", closedAt, [line(BOTTLE), line(GLASS)]),
+    ]);
+    return { calls, res };
+  };
+
+  const expectRefused = (
+    { calls, res }: Awaited<ReturnType<typeof refuse>>,
+    closedAt: unknown,
+  ) => {
+    // Nothing is written for the check: no pos_checks row, no ledger row,
+    // no consumption row, no queue row.
+    expect(calls.checks).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.consumption).toHaveLength(0);
+    expect(calls.queued).toHaveLength(0);
+    // Counted once, as refused, and in nothing else.
+    expect(res.received).toBe(1);
+    expect(res.upserted).toBe(0);
+    expect(res.refusedUnreadableDate).toBe(1);
+    expect(res.wineItemsDetected).toBe(0);
+    expect(res.stock).toEqual(ZERO_STOCK);
+    expect(res.errors).toEqual([
+      `c-bad: not imported, ${MESSAGE} (closed_at was ${JSON.stringify(closedAt)})`,
+    ]);
+  };
+
+  it.each([
+    // Day first, as a Turkish till writes it. Postgres reads 10 March.
+    ["03.10.2026"],
+    // Month first, as a US till writes it. Postgres reads 3 October here;
+    // the same digits mean 10 March to a day-first reader.
+    ["10/03/2026 3:00 PM"],
+    // V8 reads 1 December 2001; Postgres refuses it.
+    ["12"],
+    // No such day. V8 reads 2 March; Postgres refuses it.
+    ["2026-02-30"],
+    // RFC 2822. V8 and Postgres both read 19:00 UTC; it is not ISO-8601.
+    ["Sat, 03 Oct 2026 22:00:00 +0300"],
+  ])("refuses %p and says why", async (closedAt) => {
+    expectRefused(await refuse(closedAt), closedAt);
+  });
+
+  it.each([
+    // A two-digit year: V8 reads 1950, Postgres 2050.
+    ["1/1/50"],
+    // A POSIX-looking zone: V8 reads +3 as ahead of UTC (12:00Z), Postgres
+    // with POSIX's sign (18:00Z).
+    ["2026-10-04 15:00:00 UTC+3"],
+    ["Table 12"],
+    ["0"],
+    ["2026-09-31T21:00:00Z"],
+    ["sometime on Tuesday"],
+    // Present but empty: not an open check, which is null or absent.
+    [""],
+    ["   "],
+  ])("refuses %p too", async (closedAt) => {
+    expectRefused(await refuse(closedAt), closedAt);
+  });
+
+  it.each([
+    // Epoch milliseconds and epoch seconds: a number does not say which.
+    [1791061200000],
+    [1791061200],
+    [false],
+  ])("refuses a closed_at that is not a string (%p)", async (closedAt) => {
+    expectRefused(await refuse(closedAt), closedAt);
+  });
+
+  it("refuses only the unreadable check: the others in the same import are stored and counted once", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-05T00:00:00Z"));
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE, GLASS],
+      inventory: INVENTORY,
+    });
+    const res = await ingest(service, [
+      check("c-old", "2026-07-14 21:30:00Z", [line(BOTTLE)]),
+      check("c-bad", "03.10.2026", [line(BOTTLE), line(GLASS)]),
+      check("c-open", null, [line(GLASS)]),
+    ]);
+
+    expect(calls.checks.map((r) => r.external_check_id)).toEqual([
+      "c-old",
+      "c-open",
+    ]);
+    expect(res).toMatchObject({
+      received: 3,
+      upserted: 2,
+      refusedUnreadableDate: 1,
+      wineItemsDetected: 2,
+    });
+    // Only c-old's line moved stock; the refused check's lines are in no
+    // count, and c-old is the only back-dated one.
+    expect(res.stock).toEqual({
+      ...ZERO_STOCK,
+      lines: 1,
+      booked: 1,
+      backdatedOver72h: 1,
+    });
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.consumption).toHaveLength(1);
+    expect(res.errors).toEqual([
+      `c-bad: not imported, ${MESSAGE} (closed_at was "03.10.2026")`,
+    ]);
+  });
+
+  it("names the first 50 refused checks, then one line that counts the rest", async () => {
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
+    const res = await ingest(
+      service,
+      Array.from({ length: 53 }, (_, i) =>
+        check(`c-${i}`, "03.10.2026", [line(BOTTLE)]),
+      ),
+    );
+
+    expect(calls.checks).toHaveLength(0);
+    expect(res.refusedUnreadableDate).toBe(53);
+    expect(res.errors).toHaveLength(51);
+    expect(res.errors[49]).toBe(
+      `c-49: not imported, ${MESSAGE} (closed_at was "03.10.2026")`,
+    );
+    expect(res.errors[50]).toBe(
+      `3 more checks were not imported, ${MESSAGE}; counted in refusedUnreadableDate, not named here`,
+    );
+  });
+
+  it("a stock step handed an unread closed_at refuses it rather than dating it at import time", async () => {
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+    });
+    const items = [
+      {
+        ...line(BOTTLE),
+        external_item_id: BOTTLE.external_item_id,
+        is_wine: true,
+        inventory_id: "inv-1",
+        sale_unit: "bottle",
+        sale_volume_ml: null,
+      },
+    ];
+    await expect(
+      (service as any).applyStockEffects(
+        "r-1",
+        "generic_webhook",
+        check("c-direct", "03.10.2026", []),
+        items,
+      ),
+    ).rejects.toThrow('closed_at "03.10.2026" was not read');
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.consumption).toHaveLength(0);
   });
 });
