@@ -560,24 +560,25 @@ export class AnalyticsController {
     return this.tableAnalytics.listTables(restaurantId);
   }
 
+  /**
+   * Add a table by hand (ADR 0303, amendment 2026-10-05). Owner or manager
+   * only, as for rename and hide (founder fork F1); RolesGuard is exact, so
+   * admin is not admitted (ADR 0164). It never overwrites: a name the house
+   * already answers to is a 409.
+   */
   @Post("tables/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Create/update a floor table",
+    summary: "Add a table by hand",
     description:
-      "Body: { label, seats, zone?, is_outdoor?, distance_to_kitchen_m?, distance_to_bar_m?, distance_to_pool_m?, x_pos?, y_pos? }. Upserts on (restaurant, label).",
+      "Body: { label: string (1-60 characters), seats?, is_outdoor?, zone?, distance_to_kitchen_m?, distance_to_bar_m?, distance_to_pool_m?, x_pos?, y_pos? }. A value not given is stored as NULL, never a default. 400 on a bad body; 409 when a table of the house (shown, hidden or no longer used) already has the name in any case, or another table already catches that till word. The house's waiting checks whose till word answers to the new table join it; checksLinked says how many (null when they could not be counted).",
   })
-  async upsertTable(
+  async addTable(
     @Param("restaurantId") restaurantId: string,
-    @Body() body: any,
+    @Body() body: unknown,
   ) {
-    try {
-      return await this.tableAnalytics.upsertTable(restaurantId, body || {});
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to upsert table",
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    return this.tableAnalytics.addTable(restaurantId, body);
   }
 
   @Get("venue/:restaurantId")

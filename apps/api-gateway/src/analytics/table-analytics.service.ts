@@ -50,29 +50,140 @@ export class TableAnalyticsService {
     return data || [];
   }
 
-  async upsertTable(restaurantId: string, table: any) {
-    const client = this.dbService.getClient();
+  /**
+   * Add a table by hand (ADR 0303, amendment 2026-10-05 "adding a table by
+   * hand"; founder, verbatim "Follow-up: 'Add a table' (Recommended)"). The
+   * route admits an owner or a manager and pins :restaurantId to the caller's
+   * house.
+   *
+   * It only ever adds. A name that a table of the house already answers to,
+   * in any case and after trimming, is a 409 with a sentence that says which
+   * table, never an overwrite: a shown, hidden or retired table with that
+   * label, or a till word another table already catches (it would leave the
+   * new table empty). A value the body does not give is NULL, never a guess:
+   * no seat count, no outdoor flag (ADR 0020).
+   *
+   * The insert carries no `learned_at`, so the database's
+   * `restaurant_tables_relink_on_add` trigger (migration
+   * tables_learned_from_the_pos) links, in the same statement, the house's
+   * waiting checks whose till word now answers to the new table; no link is
+   * moved. `checksLinked` counts the checks the new table holds, or is null
+   * when that count could not be read.
+   */
+  async addTable(restaurantId: string, body: unknown) {
+    const b =
+      body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    if (typeof b.label !== "string")
+      throw new BadRequestException("A table's name is text.");
+    const label = b.label.trim();
+    if (label.length < 1 || label.length > 60)
+      throw new BadRequestException("A table's name is 1 to 60 characters.");
+    const given = (key: string) => b[key] !== undefined && b[key] !== null;
+    const figure = (key: string, min: number, below: number) => {
+      if (!given(key)) return null;
+      const v = b[key];
+      if (typeof v !== "number" || !Number.isFinite(v) || v < min || v >= below)
+        throw new BadRequestException(
+          `${key} is a number from ${min} up to ${below}.`,
+        );
+      return v;
+    };
+    const seats = figure("seats", 1, 1000);
+    if (seats !== null && !Number.isInteger(seats))
+      throw new BadRequestException("seats is a whole number.");
+    if (given("is_outdoor") && typeof b.is_outdoor !== "boolean")
+      throw new BadRequestException("is_outdoor is true or false.");
+    if (
+      given("zone") &&
+      (typeof b.zone !== "string" || b.zone.trim().length > 60)
+    )
+      throw new BadRequestException("zone is text of up to 60 characters.");
+    const zone = given("zone") ? String(b.zone).trim() : "";
     const row = {
       restaurant_id: restaurantId,
-      label: String(table.label ?? "").trim(),
-      seats: Number(table.seats) || 2,
-      zone: table.zone ?? null,
-      is_outdoor: Boolean(table.is_outdoor),
-      distance_to_kitchen_m: table.distance_to_kitchen_m ?? null,
-      distance_to_bar_m: table.distance_to_bar_m ?? null,
-      distance_to_pool_m: table.distance_to_pool_m ?? null,
-      x_pos: table.x_pos ?? null,
-      y_pos: table.y_pos ?? null,
-      updated_at: new Date().toISOString(),
+      label,
+      seats,
+      is_outdoor: given("is_outdoor") ? (b.is_outdoor as boolean) : null,
+      zone: zone || null,
+      distance_to_kitchen_m: figure("distance_to_kitchen_m", 0, 10000),
+      distance_to_bar_m: figure("distance_to_bar_m", 0, 10000),
+      distance_to_pool_m: figure("distance_to_pool_m", 0, 10000),
+      x_pos: figure("x_pos", -1000000, 1000000),
+      y_pos: figure("y_pos", -1000000, 1000000),
     };
-    if (!row.label) throw new Error("Table label is required");
+
+    const client = this.dbService.getClient();
+    const { data: house, error: readError } = await client
+      .from("restaurant_tables")
+      .select("id, label, hidden_at, is_active, pos_refs")
+      .eq("restaurant_id", restaurantId);
+    if (readError) {
+      this.logger.warn(`addTable read failed: ${readError.message}`);
+      throw new ServiceUnavailableException(
+        "The house's tables could not be read, so nothing was added.",
+      );
+    }
+    const wanted = label.toLowerCase();
+    const said = (v: unknown) =>
+      String(v ?? "")
+        .trim()
+        .toLowerCase();
+    const tables = (house ?? []) as Array<{
+      label: string;
+      hidden_at: string | null;
+      is_active: boolean;
+      pos_refs: Record<string, unknown> | null;
+    }>;
+    const named = tables.find((t) => said(t.label) === wanted);
+    if (named)
+      throw new ConflictException(
+        !named.is_active
+          ? `A table this house no longer uses is already called "${named.label}", so the name cannot be added again.`
+          : named.hidden_at
+            ? `This house already has a table called "${named.label}". It is hidden: show it again instead of adding it.`
+            : `This house already has a table called "${named.label}".`,
+      );
+    for (const t of tables) {
+      if (!t.is_active || !t.pos_refs || typeof t.pos_refs !== "object")
+        continue;
+      const caught = Object.values(t.pos_refs).find(
+        (w) =>
+          (typeof w === "string" || typeof w === "number") &&
+          said(w) === wanted,
+      );
+      if (caught !== undefined)
+        throw new ConflictException(
+          `The till's word "${String(caught)}" already goes to the table "${t.label}", so a new table by that name would catch no check.`,
+        );
+    }
+
     const { data, error } = await client
       .from("restaurant_tables")
-      .upsert(row, { onConflict: "restaurant_id,label" })
+      .insert(row)
       .select()
       .single();
-    if (error) throw new Error(error.message);
-    return data;
+    if (error) {
+      if ((error as { code?: string }).code === "23505")
+        throw new ConflictException(
+          `This house already has a table called "${label}".`,
+        );
+      this.logger.error(`addTable write failed: ${error.message}`);
+      throw new InternalServerErrorException("The table could not be added.");
+    }
+    const added = data as { id: string } & Record<string, unknown>;
+    const { count, error: countError } = await client
+      .from("pos_checks")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("table_id", added.id);
+    if (countError)
+      this.logger.warn(
+        `addTable: the checks the new table took could not be counted: ${countError.message}`,
+      );
+    return {
+      ...added,
+      checksLinked: countError || typeof count !== "number" ? null : count,
+    };
   }
 
   /**

@@ -14,7 +14,10 @@
   "GET /analytics/insight-prefs/:restaurantId (AnalyticsController.getInsightPrefs)": "open",
   "PUT /analytics/insight-prefs/:restaurantId/:category (AnalyticsController.setInsightPref)": "open",
   "GET /analytics/tables/:restaurantId (AnalyticsController.listTables)": "open",
-  "POST /analytics/tables/:restaurantId (AnalyticsController.upsertTable)": "open",
+  "POST /analytics/tables/:restaurantId (AnalyticsController.addTable)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/venue/:restaurantId (AnalyticsController.getVenue)": "open",
   "PUT /analytics/venue/:restaurantId (AnalyticsController.setVenue)": "open",
   "PATCH /analytics/tables/:restaurantId/:tableId (AnalyticsController.renameOrHideTable)": [

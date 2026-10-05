@@ -211,6 +211,7 @@ export function TillTables({ data }: { data: SettingsNextData }) {
   });
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [added, setAdded] = useState<AddedTable | null>(null);
 
   if (!restaurantId) return <Note role="status">No house is open, so no table is read.</Note>;
   if (q.isPending) return <Note role="status">Opening the tables the till has named…</Note>;
@@ -280,6 +281,7 @@ export function TillTables({ data }: { data: SettingsNextData }) {
                 {t.learned_at ? `Learned from the till ${fmtWhen(t.learned_at)}.` : 'Added by hand.'}
                 {t.hidden_at ? ` Hidden ${fmtWhen(t.hidden_at)}.` : ''}
               </p>
+              {added && added.id === t.id && <p style={quiet} role="status">{tookSentence(added.checksLinked)}</p>}
               {canManage && renaming === t.id && (
                 <form
                   onSubmit={(e) => {
@@ -304,11 +306,95 @@ export function TillTables({ data }: { data: SettingsNextData }) {
           );
         })
       )}
-      {tables.length > 0 && !canManage && (
-        <p style={quiet}>Only the owner or a manager can rename or hide a table.</p>
+      {canManage ? (
+        <AddTillTable restaurantId={restaurantId} writer={writer} onAdded={setAdded} />
+      ) : (
+        <p style={quiet}>
+          {tables.length > 0
+            ? 'Only the owner or a manager can rename or hide a table. Adding one by hand is theirs too.'
+            : 'Only the owner or a manager can add a table by hand.'}
+        </p>
       )}
       <SaveFailure failed={failed} what="The tables above are still the server’s." />
     </>
+  );
+}
+
+/* ── Add a table by hand ──────────────────────────────────────────────────── */
+
+/** The table an add just made, and the waiting checks it took (null: not counted). */
+interface AddedTable {
+  id: string;
+  checksLinked: number | null;
+}
+
+/** What the new row says about the checks it took. Null is said, never shown as 0. */
+function tookSentence(n: number | null): string {
+  if (n === null) return 'Added just now. How many waiting checks it took could not be counted.';
+  if (n === 0) return 'Added just now. No check was waiting with its name.';
+  return n === 1
+    ? 'Added just now. It took 1 check that was waiting with its name.'
+    : `Added just now. It took ${n} checks that were waiting with its name.`;
+}
+
+/**
+ * "Add a table" (ADR 0303, amendment 2026-10-05; the founder, verbatim
+ * "Follow-up: 'Add a table' (Recommended)"). The till never makes a table from
+ * a word with no number in it (Bar, Window), so an owner or a manager adds it
+ * here once; the POST route refuses anyone else. It asks for a name only:
+ * no seat count, no position. A name the house already answers to is refused
+ * by the gateway (409) with a sentence that says which table, shown with the
+ * tables' other failures. The checks already waiting with that word join the
+ * new table in the database; the gateway says how many, and the new row says it.
+ */
+function AddTillTable({ restaurantId, writer, onAdded }: {
+  restaurantId: string;
+  writer: SettingsNextData['writer'];
+  onAdded: (added: AddedTable) => void;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const busy = writer.busy === 'table:add';
+
+  if (!open)
+    return (
+      <div style={{ margin: '12px 0 0' }}>
+        <Action onClick={() => { setOpen(true); setName(''); writer.clear(); }}>Add a table</Action>
+        <p style={quiet}>
+          For a table whose name has no number in it, such as Bar or Window: the till never makes one. Checks already
+          waiting with its name join it.
+        </p>
+      </div>
+    );
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void writer
+          .run('table:add', async () => {
+            const { data } = await apiClient.post<unknown>(`/analytics/tables/${restaurantId}`, { label: name });
+            const row = (data ?? {}) as { id?: unknown; checksLinked?: unknown };
+            if (typeof row.id === 'string')
+              onAdded({ id: row.id, checksLinked: typeof row.checksLinked === 'number' ? row.checksLinked : null });
+            await qc.invalidateQueries({ queryKey: ['till-tables', restaurantId] });
+          })
+          .then((ok) => { if (ok) { setOpen(false); setName(''); } });
+      }}
+      style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0 0', flexWrap: 'wrap' }}
+    >
+      <input
+        aria-label="Name of the new table"
+        value={name}
+        maxLength={60}
+        onChange={(e) => setName(e.target.value)}
+        className="st-focus"
+        style={{ ...fieldStyle, maxWidth: 200 }}
+      />
+      <Action type="submit" disabled={busy || name.trim() === ''}>{busy ? 'Adding…' : 'Add'}</Action>
+      <Action tone="quiet" onClick={() => setOpen(false)}>Cancel</Action>
+    </form>
   );
 }
 
