@@ -103,15 +103,22 @@ export const KIND_BY_TYPE: Readonly<Record<string, string>> = {
   // notifications/producers/grant-suspended.producer.ts
   grant_suspended: 'Connections',
   mcp_tool_added: 'Connections',
+  // Two mail notes whose link opens /connections ("Reconnect", "Connections"):
+  // notifications/producers/mail-grant-absent.producer.ts and
+  // communications/retention/raw-mail-retention.service.ts. They fell to
+  // *Other* until 2026-10-05. Founder, asked which group they join: "Connections".
+  mail_grant_absent: 'Connections',
+  mail_retention_deleted: 'Connections',
   // A till's import refused checks whose closing time it could not read:
   // api-gateway pos-hub/refused-checks-note.ts (ADR 0281, amended 2026-10-05
   // on fix/pos-import-refusals-ring-the-bell). Founder, F7: "Own group, small
   // web PR (Recommended)". So it has a register of its own, not a seat in
-  // Connections beside grant_suspended and mcp_tool_added. "Till" is the
-  // note's own word (its message names the till, its metadata key is `till`)
-  // and the Connections page's name for that section (`#till`). The note's
-  // link still opens /connections; the register says what the line is about.
-  pos_import_refused: 'Till',
+  // Connections beside grant_suspended and mcp_tool_added. Its name: the
+  // founder answered "do the most user like answer", and the coordinator chose
+  // "Point of sale" under that delegation. It is the title of the row the
+  // note's link opens on the Connections page (`ConnectionsNext.tsx`), and the
+  // founder's own word for it elsewhere is "POS".
+  pos_import_refused: 'Point of sale',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   vendor_reply: 'Vendor mail',
@@ -168,9 +175,9 @@ const ICON_BY_KIND: Record<string, LucideIcon> = {
   // falling to *Other* in `KIND_BY_TYPE`.
   Connections: Plug,
   // A till's refused checks (ADR 0281, F7). `Store` is the mark the
-  // Connections page draws beside the till (`ConnectionsNext.tsx`, the
-  // "Point of sale" row), so the line and the page its link opens agree.
-  Till: Store,
+  // Connections page draws on its "Point of sale" row (`ConnectionsNext.tsx`),
+  // so the line, its register's name and the row its link opens all agree.
+  'Point of sale': Store,
   System: Settings,
   Other: Inbox,
 };
@@ -251,7 +258,7 @@ export const KIND_ORDER = [
   'Goals',
   'Market',
   'Connections',
-  'Till',
+  'Point of sale',
   'System',
   'Other',
 ] as const;

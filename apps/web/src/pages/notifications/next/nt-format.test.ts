@@ -199,8 +199,11 @@ describe('a till’s refused checks have a register of their own (ADR 0281, foun
   // "a real producer writes" list above because, when this row was added, that
   // producer was not on main yet. Founder, F7: "Own group, small web PR
   // (Recommended)" — a group of its own, so not a seat in a shared register.
-  it('files the note under Till, not under Other and not under a shared register', () => {
-    expect(kindOf('pos_import_refused')).toBe('Till');
+  // Its name: the founder answered "do the most user like answer", and the
+  // coordinator chose "Point of sale", the title of the Connections row the
+  // note's link opens.
+  it('files the note under Point of sale, not under Other and not under a shared register', () => {
+    expect(kindOf('pos_import_refused')).toBe('Point of sale');
     for (const shared of ['Other', 'Connections', 'Sales', 'System']) {
       expect(kindOf('pos_import_refused')).not.toBe(shared);
     }
@@ -209,18 +212,39 @@ describe('a till’s refused checks have a register of their own (ADR 0281, foun
     expect(kindOf('mcp_tool_added')).toBe('Connections');
   });
 
-  it('draws the till’s own mark, not the Other inbox and not the Connections plug', () => {
-    expect(iconForType('pos_import_refused')).toBe(iconForKind('Till'));
+  it('draws the register’s own mark, not the Other inbox and not the Connections plug', () => {
+    expect(iconForType('pos_import_refused')).toBe(iconForKind('Point of sale'));
     for (const other of ['Other', 'Connections', 'Sales', 'System']) {
-      expect(iconForType('pos_import_refused'), `Till must not draw ${other}’s mark`).not.toBe(
-        iconForKind(other),
-      );
+      expect(
+        iconForType('pos_import_refused'),
+        `Point of sale must not draw ${other}’s mark`,
+      ).not.toBe(iconForKind(other));
     }
   });
 
   it('is counted on the rail', () => {
-    expect(KIND_ORDER as readonly string[]).toContain('Till');
+    expect(KIND_ORDER as readonly string[]).toContain('Point of sale');
   });
+});
+
+describe('two mail notes that open Connections are filed there (founder, 2026-10-05)', () => {
+  // `mail_grant_absent` (notifications/producers/mail-grant-absent.producer.ts)
+  // and `mail_retention_deleted` (communications/retention/
+  // raw-mail-retention.service.ts) both link to /connections and fell to
+  // *Other*. Asked which group they join (Connections, where the link goes, or
+  // Vendor mail, what they are about), the founder answered: "Connections".
+  for (const type of ['mail_grant_absent', 'mail_retention_deleted']) {
+    it(`files ${type} under Connections, not Other and not Vendor mail`, () => {
+      expect(kindOf(type)).toBe('Connections');
+      expect(kindOf(type)).not.toBe('Other');
+      expect(kindOf(type)).not.toBe('Vendor mail');
+    });
+
+    it(`draws the Connections plug for ${type}, not the Other inbox`, () => {
+      expect(iconForType(type)).toBe(iconForKind('Connections'));
+      expect(iconForType(type)).not.toBe(iconForKind('Other'));
+    });
+  }
 });
 
 describe('the rail counts every register a line can land in', () => {
@@ -234,7 +258,7 @@ describe('the rail counts every register a line can land in', () => {
   it('reads a non-empty map, so the loops below cannot pass by doing nothing', () => {
     expect(registers.length).toBeGreaterThan(1);
     expect(registers).toContain('Connections');
-    expect(registers).toContain('Till');
+    expect(registers).toContain('Point of sale');
   });
 
   it('has a place in KIND_ORDER for every register KIND_BY_TYPE names', () => {

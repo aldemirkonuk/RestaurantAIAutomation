@@ -147,7 +147,7 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   with *Read further back* paging at the gateway's `@Max(100)`. The legacy client
   threw the `{ total, hasMore }` envelope away (`services/api/notifications.ts:104-106`).
 - **Per-register tally in the rail** (Stock · Orders · Vendor mail · Calendar ·
-  Reports · Advice · Payments · System · Other), open/total, on the `tally` spring. [Corrected 2026-10-05: the rail counts the registers listed in `KIND_ORDER` (`notifications/next/nt-format.ts`) and no others. Since branch `fix/bell-files-refused-checks` they are Stock · Orders · Deliveries · Invoices · Vendor mail · Calendar · Reports · Advice · Payments · Sales · Goals · Market · Connections · Till · System · Other.]
+  Reports · Advice · Payments · System · Other), open/total, on the `tally` spring. [Corrected 2026-10-05: the rail counts the registers listed in `KIND_ORDER` (`notifications/next/nt-format.ts`) and no others. Since branch `fix/bell-files-refused-checks` they are Stock · Orders · Deliveries · Invoices · Vendor mail · Calendar · Reports · Advice · Payments · Sales · Goals · Market · Connections · Point of sale · System · Other.]
 - **Live-read contract stated on the page**: re-read every 10s while open, plus the
   `notification_sent` / `ws:dashboard-invalidate` nudges; "last read HH:MM:SS".
 - **Digest stacking preserved** — `lib/notificationStack.ts`, with the folded count
@@ -299,7 +299,7 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   holding only *Connections* lines said "The book is open and empty." Branch
   `fix/bell-files-refused-checks` added it, and `nt-format.test.ts` now
   requires every register `KIND_BY_TYPE` names to be in `KIND_ORDER`.]
-- **A register for a till's refused checks, 2026-10-05: *Till*
+- **A register for a till's refused checks, 2026-10-05: *Point of sale*
   (`pos_import_refused`).** When a till's import refuses checks whose closing
   time it cannot read, the gateway files one bell note for the house's owners
   and managers (ADR 0281, amended 2026-10-05 on branch
@@ -307,13 +307,26 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   imported: date not readable" and linking to `/connections`. With no row in
   `KIND_BY_TYPE` it would fall to *Other*. The founder's answer (F7,
   2026-10-05): *"Own group, small web PR (Recommended)"*. So it files under
-  *Till*, a register of its own (not a seat in *Connections*), drawn with
-  `Store` (the mark the Connections page draws on its "Point of sale" row) and
-  counted on the rail, between *Connections* and *System* in `KIND_ORDER`. The
-  name is the builder's choice, not the founder's: the note's message names
-  the till and its metadata key is `till`. No filter pill yet: nothing on
-  `main` writes the type until the gateway branch merges. Pinned in
+  *Point of sale*, a register of its own (not a seat in *Connections*), drawn
+  with `Store` (the mark the Connections page draws on its "Point of sale"
+  row) and counted on the rail, between *Connections* and *System* in
+  `KIND_ORDER`. **The name**: asked what the group should be called (options
+  "Till", "Point of sale", "Till imports"), the founder typed, verbatim, *"do
+  the most user like answer"*. Under that delegation the coordinator chose
+  *Point of sale*: it is the title of the row the note's link opens on the
+  Connections page (`ConnectionsNext.tsx`), and the founder's own word for it
+  elsewhere is "POS" ("Learn from the POS", "Own row, POS field": the
+  options he picked on 2026-10-03 for AW25+AW30 and AW24, each marked
+  Recommended; not yet in an ADR). No filter pill yet: nothing on `main`
+  writes the type until the gateway branch (#644) merges. Pinned in
   `nt-format.test.ts` and `NotificationsNext.test.tsx`.
+- **Two mail notes join *Connections*, 2026-10-05 (`mail_grant_absent`,
+  `mail_retention_deleted`).** Both link to `/connections` ("Reconnect",
+  "Connections") and had no row in `KIND_BY_TYPE`, so they fell to *Other*
+  (`tech-debt.d/2026-10-05-fix-bell-files-refused-checks.md`). Asked which
+  group they join, the founder answered, verbatim: *"Connections"*. Both now
+  file there, draw the plug and are counted on the rail's *Connections* row.
+  Pinned in `nt-format.test.ts` and `NotificationsNext.test.tsx`.
 - **A ninth producer, 2026-09-05: `experiment_ended_unnamed`** — the only one that
   is NOT a tenant sweep. It writes one notice when a UX experiment's window closes
   with no winner named (ADR 0127's second addendum; founder, batch 53: *"A

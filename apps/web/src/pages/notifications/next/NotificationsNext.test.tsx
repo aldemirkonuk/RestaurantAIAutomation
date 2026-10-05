@@ -843,10 +843,12 @@ describe('NotificationsNext — the held low-stock queue (founder, 2026-09-26, r
 describe('NotificationsNext — a till’s refused checks (ADR 0281, founder F7)', () => {
   // The note api-gateway `pos-hub/refused-checks-note.ts` writes (branch
   // fix/pos-import-refusals-ring-the-bell), in its own words. Founder, F7:
-  // "Own group, small web PR (Recommended)". The web's `NotificationType`
-  // union (services/api/notifications.ts) lists neither this type nor
-  // `grant_suspended`; the gateway writes both, and the page receives the
-  // string as written, so the rows below are cast the way the network hands
+  // "Own group, small web PR (Recommended)". The register's name, "Point of
+  // sale", is the coordinator's pick under the founder's "do the most user
+  // like answer": the title of the Connections row the note's link opens.
+  // The web's `NotificationType` union (services/api/notifications.ts) lists
+  // none of the types below; the gateway writes them, and the page receives
+  // the string as written, so the rows are cast the way the network hands
   // them over.
   const refused = () =>
     row({
@@ -862,26 +864,26 @@ describe('NotificationsNext — a till’s refused checks (ADR 0281, founder F7)
       metadata: { till: 'Square', refused: 3, reason: 'date_not_readable' },
     });
 
-  it('files the line under Till and counts it on the rail, so the book never reads empty', () => {
+  it('files the line under Point of sale and counts it on the rail, so the book never reads empty', () => {
     mockData.current = base([refused()]);
     draw();
 
     const rail = screen.getByRole('region', { name: 'On this page' });
-    const tally = within(rail).getByText('Till').closest('div') as HTMLElement;
-    expect(tally.textContent).toMatch(/^Till\s*1\s*\/\s*1$/);
+    const tally = within(rail).getByText('Point of sale').closest('div') as HTMLElement;
+    expect(tally.textContent).toMatch(/^Point of sale\s*1\s*\/\s*1$/);
     expect(within(rail).queryByText('Other')).not.toBeInTheDocument();
     expect(within(rail).queryByText('Connections')).not.toBeInTheDocument();
     expect(screen.queryByText(/open and empty/)).not.toBeInTheDocument();
   });
 
-  it('draws the till mark on the line and on the rail, never the Other inbox or the plug', () => {
+  it('draws the Point of sale mark on the line and on the rail, never the Other inbox or the plug', () => {
     mockData.current = base([refused()]);
     draw();
 
-    // The line's chip and the rail's tally row. There is no Till filter pill:
-    // nothing on main writes this type yet (nt-book.test.ts, "does not offer a
-    // filter for a type nothing writes").
-    const marks = screen.getAllByText('Till');
+    // The line's chip and the rail's tally row. There is no Point of sale
+    // filter pill: nothing on main writes this type yet (nt-book.test.ts,
+    // "does not offer a filter for a type nothing writes").
+    const marks = screen.getAllByText('Point of sale');
     expect(marks).toHaveLength(2);
     for (const el of marks) {
       expect(el.querySelector('svg.lucide-store')).not.toBeNull();
@@ -904,5 +906,34 @@ describe('NotificationsNext — a till’s refused checks (ADR 0281, founder F7)
     const tally = within(rail).getByText('Connections').closest('div') as HTMLElement;
     expect(tally.textContent).toMatch(/^Connections\s*1\s*\/\s*1$/);
     expect(screen.queryByText(/open and empty/)).not.toBeInTheDocument();
+  });
+
+  it('counts the two mail notes that open Connections under Connections, not Other (founder, 2026-10-05)', () => {
+    // Founder, asked which group `mail_grant_absent` and
+    // `mail_retention_deleted` join: "Connections". Titles as the gateway
+    // writes them (mail-grant-absent.producer.ts, raw-mail-retention.service.ts).
+    mockData.current = base([
+      row({
+        id: 'mga1',
+        type: 'mail_grant_absent' as Notification['type'],
+        title: "The house's mail reading is on, and nothing is backing it",
+        actionUrl: '/connections',
+        actionLabel: 'Reconnect',
+      }),
+      row({
+        id: 'mrd1',
+        type: 'mail_retention_deleted' as Notification['type'],
+        title: 'Mirrored mail deleted',
+        actionUrl: '/connections',
+        actionLabel: 'Connections',
+      }),
+    ]);
+    draw();
+
+    const rail = screen.getByRole('region', { name: 'On this page' });
+    const tally = within(rail).getByText('Connections').closest('div') as HTMLElement;
+    expect(tally.textContent).toMatch(/^Connections\s*2\s*\/\s*2$/);
+    expect(within(rail).queryByText('Other')).not.toBeInTheDocument();
+    expect(within(rail).queryByText('Vendor mail')).not.toBeInTheDocument();
   });
 });
