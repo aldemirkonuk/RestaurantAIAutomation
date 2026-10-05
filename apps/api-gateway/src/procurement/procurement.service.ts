@@ -85,6 +85,10 @@ import {
   OwnPaperProvenance,
   PaperCandidate,
   PaperLineCandidate,
+  ReceiptPaper,
+  ReceiptPaperRead,
+  SightingDate,
+  dateReceiptSighting,
   decideOwnPaperSighting,
   isOutlierAgainstPriors,
   isOwnPaperSource,
@@ -1739,6 +1743,13 @@ export class ProcurementService {
       unitVolumeMl?: number | null;
       observedAt?: string | null;
       currency?: string | null;
+      /**
+       * ADR 0273: the date this price is dated by and why
+       * (`dateReceiptSighting`). Given on the receipt path only; it dates the
+       * sighting AND this event's `price_history` row, so the two records of
+       * one event name one day.
+       */
+      dating?: SightingDate | null;
     };
     /**
      * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
@@ -1859,7 +1870,15 @@ export class ProcurementService {
           // The key is named explicitly even when the value is null so the
           // capture-contract guard can read what this write claims.
           currency: seriesCurrency.code,
-          effective_date: new Date().toISOString().slice(0, 10),
+          // ADR 0273: the sighting's `effective_date` — the invoice's issue
+          // date when one was read, the check's UTC day otherwise — so this
+          // row and the sighting name one day for one event. A build-lane
+          // pick, not a founder answer: it moves what the two price_history
+          // readers return (ADR 0273, Consequences). A confirmed order passes
+          // no dating and keeps today, which is the day it was confirmed.
+          effective_date:
+            args.sighting?.dating?.effectiveDate ??
+            new Date().toISOString().slice(0, 10),
           source: args.source,
           order_id: args.orderId,
           notes,
@@ -2068,6 +2087,13 @@ export class ProcurementService {
       unitVolumeMl?: number | null;
       observedAt?: string | null;
       currency?: string | null;
+      /**
+       * ADR 0273: the date this price is dated by and why
+       * (`dateReceiptSighting`). Given on the receipt path only; it dates the
+       * sighting AND this event's `price_history` row, so the two records of
+       * one event name one day.
+       */
+      dating?: SightingDate | null;
     };
     /**
      * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
@@ -2113,6 +2139,7 @@ export class ProcurementService {
       packSize: s.packSize,
       unitVolumeMl: s.unitVolumeMl,
       observedAt: s.observedAt,
+      dating: s.dating ?? null,
       currency: s.currency ?? null,
       notes: args.notes ?? null,
       provenance: args.provenance ?? null,
@@ -2191,6 +2218,7 @@ export class ProcurementService {
           packSize: s.packSize,
           unitVolumeMl: s.unitVolumeMl,
           observedAt: s.observedAt,
+          dating: s.dating ?? null,
           currency: s.currency ?? null,
           notes: args.notes ?? null,
           provenance: args.provenance ?? null,
@@ -2778,13 +2806,18 @@ export class ProcurementService {
    * attached": that sentence would be a claim about the order the read could
    * not make. Best-effort like the sighting it rides on — a delivery that has
    * been counted is not failed over provenance.
+   *
+   * ADR 0273: it also reads what dates the price — the named invoice's
+   * `doc_date` and its latest `issueDate` correction — off the SAME paper it
+   * names, and says what it could not read (`readFailure`), so a failed read
+   * dates the price by its check in words that say so.
    */
   private async receiptPaperFor(
     restaurantId: string,
     orderId: string,
     orderLineId: string | null,
-  ): Promise<OwnPaperProvenance> {
-    const failed = (what: string, message: string): OwnPaperProvenance => {
+  ): Promise<ReceiptPaperRead> {
+    const failed = (what: string, message: string): ReceiptPaperRead => {
       this.logger.warn(
         `Price provenance for order ${orderId}: ${what} could not be read (${message}); the sighting names no paper.`,
       );
@@ -2792,6 +2825,12 @@ export class ProcurementService {
         documentId: null,
         documentLineId: null,
         sentence: `The paper for order ${orderId} could not be read when this price was recorded (${what}), so none is named. That is a failed read, not an order without paper.`,
+        invoice: null,
+        liveInvoices: null,
+        issueDateCorrection: null,
+        // `what` only: the database's own error text stays in the log line
+        // above and never reaches a stored row or the sighting sheet.
+        readFailure: what,
       };
     };
 
@@ -2811,7 +2850,7 @@ export class ProcurementService {
     if (ids.length) {
       const { data: docs, error: docError } = await this.databaseService.supabase
         .from("procurement_documents")
-        .select("id, doc_type, doc_number, status")
+        .select("id, doc_type, doc_number, doc_date, status")
         .eq("restaurant_id", restaurantId)
         .in("id", ids);
       if (docError) return failed("the order's documents", docError.message);
@@ -2837,15 +2876,69 @@ export class ProcurementService {
         this.logger.warn(
           `Price provenance for order ${orderId}: the invoice's lines could not be read (${lineError.message}); the paper is named without a line.`,
         );
-        return {
+        return this.withIssueDateCorrection(orderId, {
           ...paper,
           sentence: `${paper.documentId ? "Read from the invoice attached to this order." : paper.sentence} Its lines could not be read when this price was recorded, so no line is named — a failed read, not an unpaired line.`,
-        };
+        });
       }
       lines = (lineRows ?? []) as PaperLineCandidate[];
     }
 
-    return pickReceiptPaper({ orderId, orderLineId, documents, lines });
+    return this.withIssueDateCorrection(
+      orderId,
+      pickReceiptPaper({ orderId, orderLineId, documents, lines }),
+    );
+  }
+
+  /**
+   * ADR 0273: the latest `correction` on the named invoice's `issueDate`,
+   * which wins over the extracted `doc_date` (ADR 0104 D5, the same overlay
+   * `CanonicalDocumentService` applies). One bounded read, made only when an
+   * invoice is named, on the `document_corrections_document` index; the
+   * document id was read house-scoped above, and this table has no house
+   * column of its own.
+   *
+   * A failed read keeps the paper named — only its date could not be read —
+   * and says so, rather than reading as an invoice nobody corrected.
+   */
+  private async withIssueDateCorrection(
+    orderId: string,
+    paper: ReceiptPaper,
+  ): Promise<ReceiptPaperRead> {
+    if (!paper.documentId || !paper.invoice)
+      return { ...paper, issueDateCorrection: null, readFailure: null };
+    const { data, error } = await this.databaseService.supabase
+      .from("document_corrections")
+      .select("revision, kind, after")
+      .eq("document_id", paper.documentId)
+      .eq("field_path", "issueDate")
+      .eq("kind", "correction")
+      .order("revision", { ascending: false })
+      .limit(1);
+    if (error) {
+      this.logger.warn(
+        `Price date for order ${orderId}: the invoice's issue-date corrections could not be read (${error.message}); the price is dated when it was checked.`,
+      );
+      return {
+        ...paper,
+        issueDateCorrection: null,
+        // The error text is in the log line above, not on the row.
+        readFailure: "the invoice's issue-date corrections",
+      };
+    }
+    const latest = (
+      (data ?? []) as Array<{ revision?: number | null; after?: any }>
+    )[0];
+    return {
+      ...paper,
+      issueDateCorrection: latest
+        ? {
+            revision: latest.revision ?? null,
+            value: latest.after?.value ?? null,
+          }
+        : null,
+      readFailure: null,
+    };
   }
 
   /**
@@ -6719,6 +6812,16 @@ export class ProcurementService {
         orderId,
         agreedLine.id,
       );
+      // ADR 0273: the price is dated by the issue date of the invoice named
+      // just above — never by paper the row does not name — and by the
+      // moment it was checked only when no such date can be read, with the
+      // reason written on the row.
+      const receiptDate = dateReceiptSighting({
+        verifiedAt: update.match_verified_at ?? new Date().toISOString(),
+        paper: receiptPaper,
+        issueDateCorrection: receiptPaper.issueDateCorrection,
+        readFailure: receiptPaper.readFailure,
+      });
       await this.recordPriceHistory({
         restaurantId,
         orderId,
@@ -6776,11 +6879,14 @@ export class ProcurementService {
           // it — never `restaurants.currency`, which is what the house REPORTS
           // in (ADR 0117 Q25).
           currency: body.invoiceCurrency ?? null,
-          // The receipt's own moment. `procurement_documents` carries no
-          // issued-date column this path can read, so the date recorded is the
-          // one this event actually has: when a person checked the paper. It is
-          // an event date, never `now()` stamped onto an undated number.
-          observedAt: update.match_verified_at ?? new Date().toISOString(),
+          // ADR 0273. The invoice's issue date — `doc_date` with its latest
+          // correction laid over it — when the one invoice named above states
+          // one; the moment a person checked the paper otherwise. This used
+          // to say `procurement_documents` carries no issued-date column; it
+          // does (`baseline_from_production.sql:4433`), and every window was
+          // counting a July invoice checked in September as September's.
+          observedAt: receiptDate.observedAt,
+          dating: receiptDate,
         },
       });
     }
