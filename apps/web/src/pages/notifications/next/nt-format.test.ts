@@ -21,7 +21,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { hasEmoji, iconForKind, iconForType, kindOf, plainText } from './nt-format';
+import {
+  KIND_BY_TYPE,
+  KIND_ORDER,
+  hasEmoji,
+  iconForKind,
+  iconForType,
+  kindOf,
+  plainText,
+} from './nt-format';
 
 /** The exact literals production stores today (measured 2026-09-03). */
 const SIREN = '\u{1F6A8}';
@@ -182,5 +190,51 @@ describe('the mark drawn in the emoji’s place', () => {
     expect(iconForType('inventory_low_stock')).toBe(iconForKind('Stock'));
     expect(iconForType('draft_ready')).toBe(iconForKind('Vendor mail'));
     expect(iconForType('report')).toBe(iconForKind('Reports'));
+  });
+});
+
+describe('a till’s refused checks have a register (ADR 0281, founder F7)', () => {
+  // `pos_import_refused` is the type api-gateway `pos-hub/refused-checks-note.ts`
+  // writes (branch fix/pos-import-refusals-ring-the-bell). It is kept out of the
+  // "a real producer writes" list above because, when this row was added, that
+  // producer was not on main yet. The note's one act is "Open Connections".
+  it('files the note under Connections, not under Other', () => {
+    expect(kindOf('pos_import_refused')).toBe('Connections');
+  });
+
+  it('draws the Connections mark for it, not the Other inbox', () => {
+    expect(iconForType('pos_import_refused')).toBe(iconForKind('Connections'));
+    expect(iconForType('pos_import_refused')).not.toBe(iconForKind('Other'));
+  });
+});
+
+describe('the rail counts every register a line can land in', () => {
+  // The rail's "On this page" tally walks KIND_ORDER and nothing else
+  // (`registerTally` in NotificationsNext.tsx). Connections was missing from
+  // it until 2026-10-05, so a Connections line was drawn with its chip but
+  // never counted, and a book holding only such lines said "The book is open
+  // and empty."
+  const registers = [...new Set(Object.values(KIND_BY_TYPE))];
+
+  it('reads a non-empty map, so the loops below cannot pass by doing nothing', () => {
+    expect(registers.length).toBeGreaterThan(1);
+    expect(registers).toContain('Connections');
+  });
+
+  it('has a place in KIND_ORDER for every register KIND_BY_TYPE names', () => {
+    for (const register of registers) {
+      expect(KIND_ORDER as readonly string[], `${register} must be counted on the rail`).toContain(
+        register,
+      );
+    }
+    expect(KIND_ORDER as readonly string[]).toContain('Other');
+  });
+
+  it('gives every register KIND_BY_TYPE names its own mark, not the Other inbox', () => {
+    for (const register of registers) {
+      expect(iconForKind(register), `${register} must draw its own mark`).not.toBe(
+        iconForKind('Other'),
+      );
+    }
   });
 });

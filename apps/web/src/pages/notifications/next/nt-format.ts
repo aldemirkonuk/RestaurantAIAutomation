@@ -77,7 +77,7 @@ export function stampOf(iso: string | null | undefined): string {
  * `type` column and nothing more — it does not claim which service wrote the
  * row (that mapping lives in the page note §11 and is not derivable here).
  */
-const KIND_BY_TYPE: Record<string, string> = {
+export const KIND_BY_TYPE: Readonly<Record<string, string>> = {
   inventory_low_stock: 'Stock',
   low_stock: 'Stock',
   order_pending: 'Orders',
@@ -102,6 +102,12 @@ const KIND_BY_TYPE: Record<string, string> = {
   // notifications/producers/grant-suspended.producer.ts
   grant_suspended: 'Connections',
   mcp_tool_added: 'Connections',
+  // A till's import refused checks whose closing time it could not read:
+  // api-gateway pos-hub/refused-checks-note.ts (ADR 0281, amended 2026-10-05
+  // on fix/pos-import-refusals-ring-the-bell). Founder, F7: "Own group, small
+  // web PR (Recommended)". Filed under Connections because the note's one act
+  // is "Open Connections" (/connections), where the till is connected.
+  pos_import_refused: 'Connections',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   vendor_reply: 'Vendor mail',
@@ -216,7 +222,13 @@ export function hasEmoji(s: string | null | undefined): boolean {
   return EMOJI_RE.test(s);
 }
 
-/** The registers, in book order. Used for the rail's tally. */
+/**
+ * The registers, in book order. Used for the rail's tally, which counts ONLY
+ * the registers listed here: a register missing from this list is a register
+ * whose lines are drawn but never counted, and a book holding only such lines
+ * says it is empty. Every register `KIND_BY_TYPE` names must be here
+ * (pinned in `nt-format.test.ts`).
+ */
 export const KIND_ORDER = [
   'Stock',
   'Orders',
@@ -230,6 +242,7 @@ export const KIND_ORDER = [
   'Sales',
   'Goals',
   'Market',
+  'Connections',
   'System',
   'Other',
 ] as const;
