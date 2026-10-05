@@ -839,3 +839,70 @@ describe('NotificationsNext — the held low-stock queue (founder, 2026-09-26, r
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('NotificationsNext — a till’s refused checks (ADR 0281, founder F7)', () => {
+  // The note api-gateway `pos-hub/refused-checks-note.ts` writes (branch
+  // fix/pos-import-refusals-ring-the-bell), in its own words. Founder, F7:
+  // "Own group, small web PR (Recommended)". The web's `NotificationType`
+  // union (services/api/notifications.ts) lists neither this type nor
+  // `grant_suspended`; the gateway writes both, and the page receives the
+  // string as written, so the rows below are cast the way the network hands
+  // them over.
+  const refused = () =>
+    row({
+      id: 'pir1',
+      type: 'pos_import_refused' as Notification['type'],
+      title: '3 checks not imported: date not readable',
+      message:
+        '3 checks from Square were not imported because their closing time could not be read ' +
+        '(the first was written as "03.10.2026 21:00"). Their sales and stock are not recorded. ' +
+        'Checks: c-101, c-102, c-103. Send them again with the closing time written as 2026-10-03 21:00.',
+      actionUrl: '/connections',
+      actionLabel: 'Open Connections',
+      metadata: { till: 'Square', refused: 3, reason: 'date_not_readable' },
+    });
+
+  it('files the line under Till and counts it on the rail, so the book never reads empty', () => {
+    mockData.current = base([refused()]);
+    draw();
+
+    const rail = screen.getByRole('region', { name: 'On this page' });
+    const tally = within(rail).getByText('Till').closest('div') as HTMLElement;
+    expect(tally.textContent).toMatch(/^Till\s*1\s*\/\s*1$/);
+    expect(within(rail).queryByText('Other')).not.toBeInTheDocument();
+    expect(within(rail).queryByText('Connections')).not.toBeInTheDocument();
+    expect(screen.queryByText(/open and empty/)).not.toBeInTheDocument();
+  });
+
+  it('draws the till mark on the line and on the rail, never the Other inbox or the plug', () => {
+    mockData.current = base([refused()]);
+    draw();
+
+    // The line's chip and the rail's tally row. There is no Till filter pill:
+    // nothing on main writes this type yet (nt-book.test.ts, "does not offer a
+    // filter for a type nothing writes").
+    const marks = screen.getAllByText('Till');
+    expect(marks).toHaveLength(2);
+    for (const el of marks) {
+      expect(el.querySelector('svg.lucide-store')).not.toBeNull();
+      expect(el.querySelector('svg.lucide-inbox')).toBeNull();
+      expect(el.querySelector('svg.lucide-plug')).toBeNull();
+    }
+  });
+
+  it('keeps Connections counted for the notes it still holds', () => {
+    mockData.current = base([
+      row({
+        id: 'gs1',
+        type: 'grant_suspended' as Notification['type'],
+        title: 'A tool grant was suspended',
+      }),
+    ]);
+    draw();
+
+    const rail = screen.getByRole('region', { name: 'On this page' });
+    const tally = within(rail).getByText('Connections').closest('div') as HTMLElement;
+    expect(tally.textContent).toMatch(/^Connections\s*1\s*\/\s*1$/);
+    expect(screen.queryByText(/open and empty/)).not.toBeInTheDocument();
+  });
+});

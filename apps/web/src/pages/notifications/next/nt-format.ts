@@ -19,6 +19,7 @@ import {
   Plug,
   Receipt,
   Settings,
+  Store,
   Tag,
   Target,
   Truck,
@@ -105,9 +106,12 @@ export const KIND_BY_TYPE: Readonly<Record<string, string>> = {
   // A till's import refused checks whose closing time it could not read:
   // api-gateway pos-hub/refused-checks-note.ts (ADR 0281, amended 2026-10-05
   // on fix/pos-import-refusals-ring-the-bell). Founder, F7: "Own group, small
-  // web PR (Recommended)". Filed under Connections because the note's one act
-  // is "Open Connections" (/connections), where the till is connected.
-  pos_import_refused: 'Connections',
+  // web PR (Recommended)". So it has a register of its own, not a seat in
+  // Connections beside grant_suspended and mcp_tool_added. "Till" is the
+  // note's own word (its message names the till, its metadata key is `till`)
+  // and the Connections page's name for that section (`#till`). The note's
+  // link still opens /connections; the register says what the line is about.
+  pos_import_refused: 'Till',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   vendor_reply: 'Vendor mail',
@@ -163,6 +167,10 @@ const ICON_BY_KIND: Record<string, LucideIcon> = {
   // draw the *Other* inbox mark, which is the same absence-as-health shape as
   // falling to *Other* in `KIND_BY_TYPE`.
   Connections: Plug,
+  // A till's refused checks (ADR 0281, F7). `Store` is the mark the
+  // Connections page draws beside the till (`ConnectionsNext.tsx`, the
+  // "Point of sale" row), so the line and the page its link opens agree.
+  Till: Store,
   System: Settings,
   Other: Inbox,
 };
@@ -243,6 +251,7 @@ export const KIND_ORDER = [
   'Goals',
   'Market',
   'Connections',
+  'Till',
   'System',
   'Other',
 ] as const;

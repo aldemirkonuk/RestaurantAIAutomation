@@ -193,18 +193,33 @@ describe('the mark drawn in the emoji’s place', () => {
   });
 });
 
-describe('a till’s refused checks have a register (ADR 0281, founder F7)', () => {
+describe('a till’s refused checks have a register of their own (ADR 0281, founder F7)', () => {
   // `pos_import_refused` is the type api-gateway `pos-hub/refused-checks-note.ts`
   // writes (branch fix/pos-import-refusals-ring-the-bell). It is kept out of the
   // "a real producer writes" list above because, when this row was added, that
-  // producer was not on main yet. The note's one act is "Open Connections".
-  it('files the note under Connections, not under Other', () => {
-    expect(kindOf('pos_import_refused')).toBe('Connections');
+  // producer was not on main yet. Founder, F7: "Own group, small web PR
+  // (Recommended)" — a group of its own, so not a seat in a shared register.
+  it('files the note under Till, not under Other and not under a shared register', () => {
+    expect(kindOf('pos_import_refused')).toBe('Till');
+    for (const shared of ['Other', 'Connections', 'Sales', 'System']) {
+      expect(kindOf('pos_import_refused')).not.toBe(shared);
+    }
+    // Connections keeps the two notes it already held.
+    expect(kindOf('grant_suspended')).toBe('Connections');
+    expect(kindOf('mcp_tool_added')).toBe('Connections');
   });
 
-  it('draws the Connections mark for it, not the Other inbox', () => {
-    expect(iconForType('pos_import_refused')).toBe(iconForKind('Connections'));
-    expect(iconForType('pos_import_refused')).not.toBe(iconForKind('Other'));
+  it('draws the till’s own mark, not the Other inbox and not the Connections plug', () => {
+    expect(iconForType('pos_import_refused')).toBe(iconForKind('Till'));
+    for (const other of ['Other', 'Connections', 'Sales', 'System']) {
+      expect(iconForType('pos_import_refused'), `Till must not draw ${other}’s mark`).not.toBe(
+        iconForKind(other),
+      );
+    }
+  });
+
+  it('is counted on the rail', () => {
+    expect(KIND_ORDER as readonly string[]).toContain('Till');
   });
 });
 
@@ -219,6 +234,7 @@ describe('the rail counts every register a line can land in', () => {
   it('reads a non-empty map, so the loops below cannot pass by doing nothing', () => {
     expect(registers.length).toBeGreaterThan(1);
     expect(registers).toContain('Connections');
+    expect(registers).toContain('Till');
   });
 
   it('has a place in KIND_ORDER for every register KIND_BY_TYPE names', () => {
@@ -236,5 +252,17 @@ describe('the rail counts every register a line can land in', () => {
         iconForKind('Other'),
       );
     }
+  });
+
+  it('draws no two registers on the rail with the same mark', () => {
+    // A register that borrows a neighbour's mark reads as that neighbour at a
+    // glance, which is the same failure as sharing its name.
+    const seen = new Map<unknown, string>();
+    for (const register of KIND_ORDER) {
+      const mark = iconForKind(register);
+      expect(seen.get(mark), `${register} draws the same mark as ${seen.get(mark)}`).toBeUndefined();
+      seen.set(mark, register);
+    }
+    expect(seen.size).toBe(KIND_ORDER.length);
   });
 });
