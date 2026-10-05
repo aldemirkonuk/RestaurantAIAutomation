@@ -153,10 +153,12 @@ describe('useCellarNextData — the book never asks for more than BOOK_READ_LIMI
 });
 
 /**
- * A-053 (2026-10-03 analytics walk): the "Carried but off this read" tile
- * judged the house's rows against only the library pages loaded so far, so a
- * house whose every row is linked read 119 of 134 on a first load. It now
- * counts the rows with no library link, from the inventory alone.
+ * A-053 (2026-10-03 analytics walk): the tile then labelled "Carried but off
+ * this read" judged the house's rows against only the library pages loaded so
+ * far, so a house whose every row is linked would read 119 of 134 on a first
+ * load (worked out from the code). It now counts the rows with no library
+ * link, from the inventory alone, as "Carried, not in the wine library"
+ * (ADR 0293).
  */
 describe('useCellarNextData — the off-the-library count does not depend on how much of the library is loaded', () => {
   it('counts only the row with no library link, before AND after the next page loads', async () => {

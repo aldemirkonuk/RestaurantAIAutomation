@@ -58,7 +58,9 @@ const MEASURE_LABEL: Record<GazetteerMeasureId, string> = {
   bottles: 'Bottles on hand',
   titles: 'Titles carried',
   par: 'At or under their own par',
-  offbook: 'Carried but off this read',
+  // ADR 0293: the figure counts rows with no wine-library link (A-053), so
+  // the label says that, not "off this read". The id `offbook` is unchanged.
+  offbook: 'Carried, not in the wine library',
   parUnset: 'No par recorded',
   registers: 'Registers carried',
 };
@@ -74,7 +76,7 @@ const MEASURE_SOURCE: Record<GazetteerMeasureId, string> = {
   bottles: 'this house’s wine rows',
   titles: 'this house’s wine rows',
   par: 'this house’s wine rows, against each item’s own par',
-  offbook: 'this house’s wine rows vs the wine library',
+  offbook: 'this house’s wine rows with no wine-library link',
   parUnset: 'this house’s wine rows, against each item’s own par',
   registers: 'restaurant_cellar_registers',
 };

@@ -486,6 +486,34 @@ describe('CellarNext — "In the building tonight" (ADR 0160 sec110 item 2)', ()
     expect(within(section).getAllByText(/this house.s wine rows|restaurant_cellar_registers/).length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByTestId('gazetteer-measures-none')).not.toBeInTheDocument();
   });
+
+  it('names the off-library tile for what it counts — rows with no wine-library link (ADR 0293)', () => {
+    // A-053's fix (#606) made `offBook` count this house's rows with no
+    // wine-library link, so "off this read" no longer described it. The
+    // founder, 2026-10-05: "Rename, small follow-up (Recommended)". The id
+    // `offbook`, and every house's stored choice of tiles, stay as they were.
+    mock.current = {
+      ...base,
+      registers: readout(),
+      building: { titles: 9, bottles: 40, belowPar: 2, offBook: 3, parUnset: 1 },
+    };
+    mock.settings = {
+      ...mock.settings,
+      loading: false,
+      data: {
+        ...(mock.settings.data as Record<string, unknown>),
+        gazetteerMeasures: ['bottles', 'titles', 'par', 'offbook'],
+        gazetteerMeasuresConfigured: false,
+        readable: true,
+      },
+    };
+    draw();
+    const section = screen.getByText('In the building tonight').closest('section')!;
+    const tile = within(section).getByText('Carried, not in the wine library').closest('.cl-tile')!;
+    expect(tile).toHaveTextContent('this house’s wine rows with no wine-library link');
+    expect(within(section).queryByText('Carried but off this read')).not.toBeInTheDocument();
+    expect(within(section).queryByText(/vs the wine library/)).not.toBeInTheDocument();
+  });
 });
 
 describe('CellarNext — the wine register', () => {
