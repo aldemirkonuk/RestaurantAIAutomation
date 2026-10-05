@@ -18,11 +18,11 @@ The owner-quarter sim's analytics walk on Tuzlu Rüzgar (2026-10-03, read-only) 
 
 ### §1, AW10: what Sold and Taken read
 
-1. **The till's own record: every line of every check not voided, plus the queued lines no check holds (chosen).** One SQL function serves both the ledger and the row record, so a register cell and its record cannot disagree about which lines were sold. It counts each line once: a queued line whose check exists is already counted from the check.
+1. **The till's own record: every line of every check not voided, plus the queued lines no check holds (chosen).** One SQL function serves both the ledger and the row record, so a register cell and its record cannot disagree about which lines were sold. [CORRECTED 2026-10-05: too broad. The record and its cell read the same till record, but they group names by different rules (`matchLine` against `beverage_house_key`, `row-record.ts:147`), so a row's lines can differ; see *Stated behaviours* under §1.] It counts each line once: a queued line whose check exists is already counted from the check.
 2. **Widen the queue read to resolved lines too.** Rejected: a mapped line is never queued, so Yeni Rakı stays blank, and so does every non-wine sale pos-hub skips.
 3. **Raise the 200-check (and 400-line) sample limits.** Rejected: it is still a sample, it drifts as volume grows, and an unordered sample is not even the newest checks.
 4. **Read inventory consumption instead.** Rejected: consumption sees only mapped stock lines, so cocktails and unmapped soft drinks stay blank. It also counts depletions, not sales: what was poured, not what was charged.
-5. **Match row names in SQL with ILIKE.** Rejected: it would be a second matcher next to `row-record.ts` `matchLine`, with a different case fold (the Turkish dotted İ under the C locale), so the record and its cell could disagree.
+5. **Match row names in SQL with ILIKE.** Rejected: it would be a second matcher next to `row-record.ts` `matchLine`, with a different case fold (the Turkish dotted İ under the C locale), so the record and its cell could disagree. [CORRECTED 2026-10-05: that reason assumed the record and its cell share one matcher today, and they do not (option 1's correction). The reason that stands: every book of the row record (menu, invoice, order, quote and till) picks its lines with `matchLine` in the gateway, so an ILIKE for the till book alone would give one book of the same record a different case fold from the other four.]
 6. **Do nothing.** Every non-wine register keeps a blank Sold and Taken, and any mapped wine reads as never sold.
 
 ### §2, AW14: what 'First bought' and 'Paid' count
@@ -40,12 +40,12 @@ The owner-quarter sim's analytics walk on Tuzlu Rüzgar (2026-10-03, read-only) 
 Migration `the_cellar_reads_the_tills_own_record` adds two functions. Both are `LANGUAGE sql STABLE`. Both are revoked from PUBLIC, anon and authenticated, and granted to service_role only, because `p_restaurant_id` is a parameter and EXECUTE is therefore a tenancy boundary.
 
 - **`house_till_lines(p_restaurant_id, p_names text[] DEFAULT NULL)`** returns one row per line, with a unique `id` (check id:ordinal, or `q:` queue id), name, qty, unit price, sold-at, `is_wine`, `from_queue`, source and external check id. It is the union of two parts:
-  - **Every item of every `pos_checks` row that is not voided.** Each line is dated `closed_at`, else `opened_at`, the rule the other check readers use. A qty or price that is not a number comes back NULL. It is never a cast error that would take the ledger down, and never 1.
+  - **Every item of every `pos_checks` row that is not voided.** Each line is dated `closed_at`, else `opened_at`, the rule the other check readers use. A qty or price that is not a number comes back NULL. It is never a cast error that would take the ledger down, and never 1. [CORRECTED 2026-10-05: "never 1" holds for `house_till_lines`' own output only. The ledger's Taken then counts a NULL qty as 1; see *Stated behaviours* below.]
   - **The `pos_unresolved_lines` rows with no check behind them,** resolved or not, anti-joined on the check's unique key `(restaurant_id, source, external_check_id)`. These are the orphans: the Toast direct path queues a line without writing a check. A queued line whose check exists is counted once, from the check. A voided check's queued line goes out with its check. Nothing in the code sets `resolved`, and dropping a resolved orphan would lose a sale.
   - `p_names` narrows the result to exact trimmed names.
 - **`house_till_names(p_restaurant_id)`** returns the distinct names, with a count of lines for each.
 - **`house_beverage_ledger`'s `pour`** reads `house_till_lines`, grouped by name first. That way `beverage_house_key` runs once per distinct name, not once per line.
-  - A till name that no other book names becomes a row only when one of its lines is flagged `is_wine`, or when the queue ever held it. So every name that was a row before stays one. Food the house never queued stays out, which keeps the old boundary; ADR 0115 and OD-113 own food.
+  - A till name that no other book names becomes a row only when one of its lines is flagged `is_wine`, or when the queue ever held it. So every name that was a row before stays one. [CORRECTED 2026-10-05: too broad. Every name the open queue held on a check that is not voided (and still lists that line), or on no check at all, stays a row; a name whose only queued lines sit on voided checks leaves with them, because a voided check is not a sale. See *Stated behaviours* below; the test's T2 pins it.] Food the house never queued stays out, which keeps the old boundary; ADR 0115 and OD-113 own food.
   - A product any other book already names gets its till lines either way. That is how a cocktail or a cola on the menu gets its Sold and Taken.
   - Sold is still `sum(coalesce(qty, 0))`, and Taken is still `sum(coalesce(price, 0) × coalesce(qty, 1))`, the old CTE's own rules.
   - The ledger's signature, columns and grants do not change, and the cellar lane's menu CTE is carried verbatim.
@@ -55,6 +55,13 @@ Migration `the_cellar_reads_the_tills_own_record` adds two functions. Both are `
   3. It reads `house_till_lines` for the matched names only.
 
   Both reads are keyset-paged on their unique column, 1,000 rows at a time (PostgREST's default response cap), until a short page. Nothing is sampled or capped. A failed read leaves the book unreadable, never zero, and a missing function names this migration.
+
+**Stated behaviours (added 2026-10-05).** Each follows from the code above; none of them changes it.
+
+- **A voided check is not a sale, so a name queued only on voided checks leaves with them.** Main's `pour` read every open queue line whether or not its check was voided (`git show origin/main:supabase/migrations/20261222120000_the_ledger_lists_only_the_current_menu.sql`, lines 135-143). `house_till_lines` drops a queued line whose check exists, and drops every line of a voided check. So a name the open queue held, and no other book names, stays a row while the till's record still holds a line of it: queued on a check that is not voided and still lists that line (pos-hub queues each line from the items it has already written to the check, as its comment at `pos-hub.service.ts:1208-1210` says), or queued on no check at all. A name whose only queued lines sit on voided checks stops being a row. The migration's test pins this (T2, 'Zqtl Voided Wine').
+- **"Stays a row" means stays one of the ledger's keys.** The `p_limit` cut is unchanged, but it orders rows by their line counts, which now include till lines, so a row's place in that order can move. The register says when the cut is reached (`ledgerTruncated`, `beverages.service.ts:441`).
+- **The record and its cell group names by different rules.** Both read `house_till_lines`. The cell groups lines by `beverage_house_key` in SQL. The record picks names with `matchLine` in the gateway (the same words, or the row's label contained in a longer name, for a label of four characters or more), the weaker rule `ROW_RECORD_MATCH_RULE` states (`row-record.ts:147`). So a row's lines can differ between the two: 'Cola Zqtl' has the same key as 'Zqtl Cola', so it counts in that cell but not in its record; 'Zqtl Cola Zero' has a key of its own, so it counts in another cell but appears as 'contains' in the record of 'Zqtl Cola'. Neither matcher changed here: main's record already used `matchLine`, and main's cell `beverage_house_key`.
+- **A qty that is not a number.** `house_till_lines` returns it NULL. Sold counts it as 0 (`coalesce(qty, 0)`) and Taken as qty 1 (`coalesce(price, 0) × coalesce(qty, 1)`), while the row record shows that line's qty and total as null (`readTillLines`, `beverages.service.ts:1096`). These rules are main's, unchanged, and main already split a queue line with a NULL qty this way; what this PR adds is that the ledger now reads check lines, so a check line whose qty is not a number reaches them too. It is inherited, not a regression. T13 pins the ledger's side: three cola lines, one with qty 'abc', read Sold 3 and Taken 16.
 
 Measured on a local build (main_tpl at `28d32de36`, plus the cellar lane, with 15,000 synthetic checks, about 59,000 lines, 150 menu drinks and 2,000 queue rows): the ledger took 162-176 ms, against 562-681 ms before. It got faster because the key function now runs per name, not per line. `house_till_names` took about 27 ms, and `house_till_lines` for a few names about 9-36 ms. This was not measured on production.
 
@@ -87,7 +94,7 @@ His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and
 
 ## Consequences
 
-- **Easier.** Every register's Sold and Taken come from the till's own checks, and a row's record and its cell read the same lines. The ledger got faster on the local measure above, not slower.
+- **Easier.** Every register's Sold and Taken come from the till's own checks, and a row's record and its cell read the same lines. [CORRECTED 2026-10-05: the same till record, not always the same lines: they group names by different rules (*Stated behaviours* under §1).] The ledger got faster on the local measure above, not slower.
 - **Harder / given up.**
   - Sold and Taken now include a wine's mapped sales, so they rise on every mapped wine. That is the truth, but a reader who compared against the old blank will see a jump.
   - Two more functions sit behind a tenancy boundary, and both stay service_role only.
@@ -101,3 +108,4 @@ His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-04 | fix lane `cellarledger` | Created: §1 built on `fix/cellar-till-and-door-checked-cost`; §2 ruling recorded, method to be built on `fix/cellar-door-checked-cost` |
+| 2026-10-05 | fix lane `cellarledger` | §1 wording narrowed in place, no code changed: "every name that was a row before stays one" and "record and cell cannot disagree" were broader than the code; *Stated behaviours* added (voided checks, the two matchers, a qty that is not a number) |

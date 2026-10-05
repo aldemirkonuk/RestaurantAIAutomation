@@ -33,13 +33,21 @@
 --      food). A product any other book already names attaches its till lines
 --      either way, which is how a cocktail or a cola on the menu gets its
 --      Sold and Taken.
+--      [CORRECTED 2026-10-05: "every name that was a row before stays one"
+--      was too broad. A name the open queue held stays a row while the till's
+--      record still holds a line of it: queued on a check that is not voided
+--      and still lists that line, or queued on no check at all (an orphan). A
+--      name whose only queued lines sit on voided checks leaves with them,
+--      because a voided check is not a sale (ADR 0301 §1, "Stated
+--      behaviours"; this migration's test, T2).]
 --
 -- The ledger's signature and return shape do not change: CREATE OR REPLACE,
 -- so its grants stay as they are and callers need no change. Its body is the
 -- cellar lane's (the_ledger_lists_only_the_current_menu) verbatim, menu CTE
 -- included, except the `pour` section and the `keys` line marked CHANGED
--- below, and the COMMENT. No applied migration is edited. Reads only; this
--- migration changes no row.
+-- below, and the COMMENT. [CORRECTED 2026-10-05: and the `pour_agg` columns,
+-- now marked CHANGED below as well.] No applied migration is edited. Reads
+-- only; this migration changes no row.
 
 -- ---------------------------------------------------------------------------
 -- 1. The till's own record, one row per line.
@@ -296,6 +304,11 @@ till AS MATERIALIZED (
 -- the queue, so each of these names was a row before this migration and stays
 -- one. pos-hub queues wine lines only; the Toast direct path queues every line
 -- it cannot map.
+-- [CORRECTED 2026-10-05: too broad twice. The old pour read only the OPEN
+-- queue (resolved = false), so a name only resolved lines held was not a row
+-- before. And a queued name is admitted only through `till` below, so only
+-- while house_till_lines still holds a line of it; a name whose only queued
+-- lines sit on voided checks has none there, and leaves with them.]
 queued AS (
   SELECT DISTINCT btrim(u.item_name) AS item_name
   FROM public.pos_unresolved_lines u
@@ -356,6 +369,12 @@ quo_agg AS (
          (array_agg(label ORDER BY length(label) DESC))[1]                 AS label
   FROM quo WHERE k IS NOT NULL GROUP BY k
 ),
+-- CHANGED the_cellar_reads_the_tills_own_record (ADR 0301 §1): `pour` now
+-- arrives one row per till name, already summed in `till`, so these columns
+-- sum and bound those per-name fields (lines, qty, revenue, first_at,
+-- last_at) where they used to count and date raw queue lines (count(*),
+-- created_at). Sold and Taken keep the old per-line rules, applied in `till`.
+-- bool_or(admit) is new, and feeds the keys line below.
 pour_agg AS (
   SELECT k,
          sum(lines)::integer                                AS lines,

@@ -141,6 +141,14 @@ const QUOTE_COLUMNS =
  * are in migration the_cellar_reads_the_tills_own_record and are the same
  * record `house_beverage_ledger`'s Sold and Taken sum, so a row's record and
  * its register cell cannot disagree about which lines were sold.
+ * [CORRECTED 2026-10-05: too broad. The record and its cell read the same
+ * till record, but they group names by different rules: the cell by
+ * `beverage_house_key` in SQL, the record by `matchLine` below, the weaker
+ * rule ROW_RECORD_MATCH_RULE states (row-record.ts:147). So a row's lines can
+ * differ between the two. A line whose qty is not a number differs in amount
+ * too: Taken counts it as qty 1 (the ledger's coalesce(qty, 1)) while this
+ * record's total for it is null. Both rules are inherited from main (ADR 0301
+ * §1, "Stated behaviours").]
  *
  * Q9 (founder 2026-09-22) wired live non-wine sales into the cellar heat map
  * by mining `pos_checks.items` here. That read sampled 200 unordered checks
