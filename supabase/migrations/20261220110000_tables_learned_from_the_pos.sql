@@ -75,14 +75,13 @@
 -- PRODUCTION EFFECT ON MERGE (migrations auto-apply). Step 6 writes
 -- pos_checks.table_ref on every check whose stored raw carries a table word,
 -- and restaurant_tables rows and pos_checks.table_id for the words with a
--- digit. The coordinator's read-only production dry run (2026-10-05 ~14:07Z,
--- before the digit rule) counted 3,656 checks with a word, 3,635 to link and
--- 47 tables to learn: Tuzlu Rüzgar's words are t1-t24 and booth, and a Sim
--- Meyhouse's are 16 t-words and six first names. By those word lists the
--- digit rule learns 40 (Tuzlu 24, the Sim Meyhouse 16), and the booth and
--- name checks keep their word with no table. How many checks those are was
--- not counted. This lane reads no production data. ADR 0303 carries the
--- read-only dry-run query, which now models the rule.
+-- digit. The coordinator's read-only production dry run under the digit rule
+-- (2026-10-05 ~16:10Z) counted 3,656 checks with a word: 21 already linked
+-- and kept, 3,621 to link (none to an existing table), 14 that keep their
+-- word with no table (Tuzlu Rüzgar's 2 "booth" checks and a Sim Meyhouse's
+-- 12 first-name checks), 0 blocked by a retired table, and 40 tables to
+-- learn (Tuzlu 24, the Sim Meyhouse 16). This lane reads no production data.
+-- ADR 0303 names the read-only dry-run query and records its counts.
 --
 -- SECURITY. Every function is SECURITY INVOKER with no search_path setting,
 -- like a_short_pour_opens_the_next_bottle. The only pos_checks writer today is
