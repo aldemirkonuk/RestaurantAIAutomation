@@ -10,9 +10,11 @@
 -- harness stops at the first one. Run it on a database built from
 -- supabase/migrations. Synthetic fixtures only, one transaction, rolled back.
 --
--- On a build WITHOUT that migration, T1, T2, T3, T4, T5 and T12 FAIL. T5n, T6,
--- T7, T8, T9 and T10 pass on both builds: they pin what the migration keeps.
--- T11 pins the signature a_pos_sale_is_dated_by_its_check left (see T11).
+-- On a build WITHOUT that migration and without a_pos_sale_is_dated_by_its_check
+-- (ADR 0281, which re-creates the function on this migration's body), T1, T2,
+-- T3, T4, T5 and T12 FAIL. T5n, T6, T7, T8, T9 and T10 pass on both builds:
+-- they pin what the migration keeps. T11 pins the signature
+-- a_pos_sale_is_dated_by_its_check left (see T11).
 
 begin;
 
