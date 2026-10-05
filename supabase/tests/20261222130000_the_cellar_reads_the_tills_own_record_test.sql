@@ -1,10 +1,11 @@
 -- AW10 (2026-10-03 analytics walk, A-015 / A-016): house_beverage_ledger's
--- pour read only the OPEN pos_unresolved_lines queue, which holds the wine
--- lines the bridge could not map. A mapped rakı and every non-wine sale
--- (cocktails, soft drinks) never reached Sold or Taken. Migration
--- the_cellar_reads_the_tills_own_record (ADR 0301 §1) reads the till's own
--- record instead: every line of every check not voided, plus the queue lines
--- with no check behind them.
+-- pour read only the OPEN pos_unresolved_lines queue, which holds the lines
+-- the bridge could not book against this house's stock. A mapped rakı whose
+-- sale volume resolved never entered it, and pos-hub skips every non-wine
+-- line (cocktails, soft drinks) before it, so neither reached Sold or Taken.
+-- Migration the_cellar_reads_the_tills_own_record (ADR 0301 §1) reads the
+-- till's own record instead: every line of every check not voided, plus the
+-- queue lines with no check behind them.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` stops at the first one. Run
@@ -12,8 +13,8 @@
 -- one transaction, rolled back: it leaves nothing behind. Every product name
 -- starts with "Zqtl", so rows already in a populated database cannot match.
 --
--- On a build WITHOUT the migration, T1, T2, T3, T5, T6, T7, T8, T9, T11 and
--- T13 FAIL (T10 fails too on a build without the_ledger_lists_only_the_current_menu,
+-- On a build WITHOUT the migration, T1, T2, T3, T5, T6, T7, T8, T9, T11, T13
+-- and T14 FAIL (T10 fails too on a build without the_ledger_lists_only_the_current_menu,
 -- which it pins). T4 and T12 pass on both builds: they pin what the migration
 -- keeps (food stays out; the ledger's signature and shape).
 
@@ -35,9 +36,10 @@ insert into public.menu_items (menu_id, restaurant_id, name, producer, category,
   ('a3010000-0000-4000-8000-0000000000a2', 'a3010000-0000-4000-8000-000000000001', 'Zqtl Archived Gin', null, 'Spirits', 40, 'approved');
 
 insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, closed_at, voided, items) values
-  -- C1: a closed check. A mapped rakı (is_wine true, inventory_id set: never
-  -- queued), a cocktail and a cola (not wine: never queued), food, and two
-  -- lines whose names are off the current menu.
+  -- C1: a closed check. A mapped rakı (is_wine true, inventory_id set; no
+  -- queue row, as when its sale volume resolves), a cocktail and a cola (not
+  -- wine: pos-hub never queues them), food, and two lines whose names are off
+  -- the current menu.
   ('a3010000-0000-4000-8000-000000000001', 'simpos', 'zqtl-c1',
    '2026-08-07 19:00+00', '2026-08-07 20:30+00', false,
    '[{"name": "Zqtl Yeni Raki", "qty": 2, "price": 9, "is_wine": true, "inventory_id": "a3010000-0000-4000-8000-0000000000f1"},
@@ -62,7 +64,15 @@ insert into public.pos_checks (restaurant_id, source, external_check_id, opened_
    '2026-08-09 18:00+00', null, false,
    '[{"name": "Zqtl Cola", "qty": "abc", "price": 4},
      {"name": "  Zqtl Cola ", "qty": "2", "price": "4.00"},
-     {"name": "Zqtl Cola Zero", "qty": 1, "price": 4}]'::jsonb);
+     {"name": "Zqtl Cola Zero", "qty": 1, "price": 4}]'::jsonb),
+  -- C5 (T14): one name three ways: plain, with a tab at its end, and with a
+  -- no-break space (U+00A0) at its end. btrim strips spaces only, so the
+  -- till lists three names.
+  ('a3010000-0000-4000-8000-000000000001', 'simpos', 'zqtl-c5',
+   '2026-08-10 19:00+00', '2026-08-10 19:30+00', false,
+   '[{"name": "Zqtl Ayran", "qty": 1, "price": 3},
+     {"name": "Zqtl Ayran\t", "qty": 2, "price": 3},
+     {"name": "Zqtl Ayran\u00a0", "qty": 3, "price": 3}]'::jsonb);
 
 insert into public.pos_unresolved_lines
   (restaurant_id, source, external_check_id, external_item_id, item_name, qty, price, resolved, created_at) values
@@ -261,6 +271,27 @@ begin
     format('T13 FAIL the cola was first sold %s, expected when C1 closed', r.first_poured);
   assert r.last_poured = '2026-08-09 18:00+00'::timestamptz,
     format('T13 FAIL the cola was last sold %s, expected when the open C4 opened', r.last_poured);
+end $$;
+
+-- T14 every name house_till_names lists, passed back to house_till_lines
+-- exactly as listed, returns exactly that name's lines: a tab or a no-break
+-- space at its edge included. The row record's till book relies on this
+-- (readTillLines sends the listed names back untrimmed, ADR 0301 §1).
+do $$
+declare tab_lines bigint; nbsp_lines bigint; bad integer;
+begin
+  select t.lines into tab_lines from public.house_till_names('a3010000-0000-4000-8000-000000000001'::uuid) t
+   where t.item_name = 'Zqtl Ayran' || E'\t';
+  select t.lines into nbsp_lines from public.house_till_names('a3010000-0000-4000-8000-000000000001'::uuid) t
+   where t.item_name = 'Zqtl Ayran' || chr(160);
+  assert tab_lines = 1, format('T14 FAIL the name with a tab at its end lists %s lines, expected 1', tab_lines);
+  assert nbsp_lines = 1, format('T14 FAIL the name with a no-break space at its end lists %s lines, expected 1', nbsp_lines);
+  select count(*) into bad
+    from public.house_till_names('a3010000-0000-4000-8000-000000000001'::uuid) n
+   where n.lines <> (select count(*)
+                       from public.house_till_lines('a3010000-0000-4000-8000-000000000001'::uuid, array[n.item_name]) t
+                      where t.item_name = n.item_name);
+  assert bad = 0, format('T14 FAIL %s listed names do not return their own lines when passed back as listed', bad);
 end $$;
 
 rollback;

@@ -8,7 +8,19 @@
 -- read only `pos_unresolved_lines WHERE resolved = false`: the review queue of
 -- lines the bridge could not map. A mapped line never enters that queue, and
 -- pos-hub skips every `!is_wine` line before it (only the Toast direct path
--- queues a non-wine line, and only an unmapped one). So a mapped Yeni Rakı
+-- queues a non-wine line, and only an unmapped one).
+-- [CORRECTED 2026-10-05: too broad. The queue also holds mapped lines the
+-- bridge could not book against this house's stock. pos-hub queues a mapped
+-- wine line whose mapping names another house's item, or whose read of the
+-- house's items failed, and one whose sale volume does not resolve (reason
+-- no_sale_volume) (PosHubService.applyStockEffects). A mapped line whose
+-- sale volume resolves against this house's own item never enters it. The
+-- Toast direct path queues a line, wine or not, that nothing maps, and also
+-- one whose mapping names another house's item (ToastService
+-- .applyOrderSaleEffects). house_till_lines reads a queued line from the
+-- queue only when no check is behind it; when its check exists, the check's
+-- own lines stand for it, and a voided check's lines count as nothing.]
+-- So a mapped Yeni Rakı
 -- (436 singles and 67 bottles rung in Jul-Aug) read "the till never rang it",
 -- and the six non-wine registers read Sold and Taken blank on every row:
 -- about 2,152 cocktails (about $36.8K) and about 1,090 soft drinks.
@@ -287,7 +299,14 @@ quo AS (
 -- every check not voided, plus the queue lines with no check behind them. It
 -- used to be the open unresolved-lines queue alone, which holds only the wine
 -- lines the bridge could not map, so a mapped rakı and every non-wine sale
--- never reached Sold or Taken. Grouped by name first, so beverage_house_key
+-- never reached Sold or Taken.
+-- [CORRECTED 2026-10-05: too broad, as the header's correction says: the queue
+-- also holds mapped wine lines pos-hub could not book, and the Toast direct
+-- path's lines, wine or not, that nothing maps or whose mapping names another
+-- house's item. What never reached Sold or Taken was a mapped line whose sale
+-- volume resolved against this house's own item, like the rakı, and every
+-- non-wine line on the pos-hub path, which skips them before the queue.]
+-- Grouped by name first, so beverage_house_key
 -- runs once per distinct name rather than once per line.
 till AS MATERIALIZED (
   SELECT t.item_name,
@@ -304,12 +323,14 @@ till AS MATERIALIZED (
 -- the queue, so each of these names was a row before this migration and stays
 -- one. pos-hub queues wine lines only; the Toast direct path queues every line
 -- it cannot map.
--- [CORRECTED 2026-10-05: too broad twice. The old pour read only the OPEN
--- queue (resolved = false), so a name only resolved lines held was not a row
--- before. And `pour` below starts from `till` and only joins these names to
--- it, so a queued name is admitted only while house_till_lines still holds a
--- line of it; a name whose every line sat on voided checks has none there,
--- and leaves with them.]
+-- [CORRECTED 2026-10-05: too broad three times. The old pour read only the
+-- OPEN queue (resolved = false), so a name only resolved lines held was not a
+-- row before. And `pour` below starts from `till` and only joins these names
+-- to it, so a queued name is admitted only while house_till_lines still holds
+-- a line of it; a name whose every line sat on voided checks has none there,
+-- and leaves with them. And the Toast direct path queues a line that has a
+-- menu guid and a quantity above 0 when nothing maps it or its mapping names
+-- another house's item; a line without a guid or a quantity it skips.]
 queued AS (
   SELECT DISTINCT btrim(u.item_name) AS item_name
   FROM public.pos_unresolved_lines u
