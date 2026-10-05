@@ -63,6 +63,26 @@ describe('UnplacedMenuLines — the count', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
+  it('says a house with no current menu has none — not an empty menu (ADR 0193)', () => {
+    draw({ read: 0, placed: 0, notPlaced: 0, currentMenus: 0 });
+    expect(screen.getByTestId('menu-lines-no-current')).toHaveTextContent(
+      /No menu is current at this house, so the reader had nothing to place/,
+    );
+    expect(screen.getByTestId('menu-lines-no-current')).toHaveTextContent(
+      /read but not made current is kept/,
+    );
+    expect(screen.queryByTestId('menu-lines-empty')).toBeNull();
+    expect(screen.queryByTestId('menu-lines-all-placed')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(api.get).not.toHaveBeenCalled();
+  });
+
+  it('still says an empty CURRENT menu is empty', () => {
+    draw({ read: 0, placed: 0, notPlaced: 0, currentMenus: 1 });
+    expect(screen.getByTestId('menu-lines-empty')).toHaveTextContent(/no lines yet/);
+    expect(screen.queryByTestId('menu-lines-no-current')).toBeNull();
+  });
+
   it('says every line was placed, with no control, when none are left over', () => {
     draw({ read: 12, placed: 12, notPlaced: 0 });
     expect(screen.getByTestId('menu-lines-all-placed')).toHaveTextContent(
