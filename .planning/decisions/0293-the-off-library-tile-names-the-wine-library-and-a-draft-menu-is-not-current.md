@@ -1,9 +1,9 @@
 # 0293 — The cellar's off-library tile names the wine library, and a draft menu is not the current menu
 
-- **Status:** Decision 1 is Locked on the founder's pick. AskUserQuestion, 2026-10-05 ~07:30Z, verbatim: *"Rename, small follow-up (Recommended)"*. Decision 2 is Proposed. It records what PR #606 built (merged at `8fdb819b4`) for a house whose only menu is a draft, and it changes no code. It applies ADR 0193 item 7's locked definition of the current menu. One question it raises (F1 below) goes to the founder and is not decided here. [2026-10-05: decision 1's source line is now Locked on the founder's F2 answer, *"Say 'items', count all (Recommended)"* (AskUserQuestion, ~20:30Z), recorded under "F2" below. It replaced the source line his first pick had set.]
+- **Status:** Decision 1 is Locked on the founder's pick. AskUserQuestion, 2026-10-05 ~07:30Z, verbatim: *"Rename, small follow-up (Recommended)"*. Decision 2 is Proposed. It records what PR #606 built (merged at `8fdb819b4`) for a house whose only menu is a draft, and it changes no code. It applies ADR 0193 item 7's locked definition of the current menu. One question it raises (F1 below) goes to the founder and is not decided here. [2026-10-05: decision 1's source line is now Locked on the founder's F2 answer, *"Say 'items', count all (Recommended)"* (AskUserQuestion, ~20:30Z), recorded under "F2" below. It replaced the source line his first pick had set.] [2026-10-05: the four sibling tiles' source lines (bottles, titles, par, par not set) now say "items" too, on the founder's F3 answer, *"Say 'items' on all four (Recommended)"* (AskUserQuestion, ~21:29Z), recorded under "F3" below.]
 - **Date:** 2026-10-05
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
-- **Keywords:** cellar, In the building tonight, gazetteer measures, offbook, offBook, Carried but off this read, Carried, not in the wine library, wine-library link, master_wine_id, MEASURE_LABEL, MEASURE_SOURCE, current menu, draft menu, restaurant_menus.status, readCurrentMenuLines, currentMenus, onMenu, carried inference, house_beverage_ledger, arrival, A-053, A-028, AW27, F-148, F2, items, non-wine items, beer, spirits, count all
+- **Keywords:** cellar, In the building tonight, gazetteer measures, offbook, offBook, Carried but off this read, Carried, not in the wine library, wine-library link, master_wine_id, MEASURE_LABEL, MEASURE_SOURCE, current menu, draft menu, restaurant_menus.status, readCurrentMenuLines, currentMenus, onMenu, carried inference, house_beverage_ledger, arrival, A-053, A-028, AW27, F-148, F2, items, non-wine items, beer, spirits, count all, F3, Say 'items' on all four, bottles, titles, par, parUnset, No par recorded, Bottles on hand, Titles carried, At or under their own par, sibling source lines
 - **Links:** [[0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes]] (sec110 item 2: the tiles are the house's to choose, and each names what it was counted from); [[0193-a-house-price-follows-its-menu-and-its-manager-and-advice-aims-at-its-own-margin]] (round 2, item 7: menu versions; every read lands as a draft and becomes current only through `make_menu_current`); [[0020-no-fabricated-answers]]; [[0051-rebuilt-pages-show-live-data-only]]; [[0067-a-failed-read-is-never-an-empty-one]]; PR #606 (fix lane `cellar`, merged `8fdb819b4`); migration `the_ledger_lists_only_the_current_menu` (cited by slug, [[0235-a-migration-is-numbered-at-merge-and-cited-by-its-slug]]); `claims.d/fix-offbook-tile-names-the-library.jsonl`; `claims.d/fix-cellar-invoice-book-and-menu-copy.jsonl:3`; [[0115-the-house-item-is-the-ledgers-key]] (beer, spirits and other non-wine items are rows of the same `restaurant_inventory` table); migration `the_house_item_is_the_ledgers_key` (its comment on `restaurant_inventory.master_wine_id`: the link is NULL on every row that is not a wine)
 
 ## Context
@@ -77,7 +77,42 @@ So in a house that carries more than wine, the source line decision 1 first set,
 - `CellarNext.test.tsx`, "names the off-library tile for what it counts", pins the new source line and that the tile no longer says "wine rows". It fails on `3a8090041`.
 - The claims row `CELLAR-OFFBOOK-TILE-NAMES-THE-LIBRARY` pins the new string. It quotes the label and the source line as strings.
 
-**Not changed by F2.** The other tiles' source lines (`bottles`, `titles`, `par`, `parUnset`) still say "this house’s wine rows", although they are counted from the same whole inventory read. F2 asked about this tile only. Those lines are listed as owed in the PR that records F2, and nothing is decided about them here.
+**Not changed by F2.** The other tiles' source lines (`bottles`, `titles`, `par`, `parUnset`) still say "this house’s wine rows", although they are counted from the same whole inventory read. F2 asked about this tile only. Those lines are listed as owed in the PR that records F2, and nothing is decided about them here. [superseded 2026-10-05 by F3, below: the founder answered *"Say 'items' on all four (Recommended)"*, and the four lines now say "items".]
+
+## F3 — the four sibling source lines say "items" too (answered 2026-10-05)
+
+**Why it was asked.** F2 changed the off-library tile's source line only. The four sibling tiles still said "this house’s wine rows" (`MEASURE_SOURCE` in `apps/web/src/pages/cellar/next/Registers.tsx` at `88d1b4939`). Each of their figures is counted over the same whole inventory read as `offBook` (`apps/web/src/pages/cellar/next/useCellarNextData.ts`, the `building` memo):
+
+- `titles` is `rows.length`, every active item;
+- `bottles` is the sum of `stockLive` over every item;
+- `belowPar` counts the items that record a `thresholdMin` and stand at or under it (`min !== null && stock <= min`);
+- `parUnset` counts the items that record no `thresholdMin`.
+
+So in a house that carries more than wine, each of those lines called beers and spirits "wine rows", the defect F2 fixed on the off-library tile.
+
+**The question** (AskUserQuestion, 2026-10-05 ~21:29Z), verbatim: *"Cellar page: four other tiles (bottles, titles, par, par not set) also say \"this house's wine rows\" but count every item the house carries, like the off-library tile you just fixed. Change them to \"items\" too?"*
+
+**His answer**, verbatim: *"Say 'items' on all four (Recommended)"*. The option text, verbatim: *"Same fix as the off-library tile, in the same PR: one page file, its test and an ADR note. Matches your all-beverages rule (wine-only wording is a defect)."*
+
+**Rejected**, verbatim: *"Keep the words for now"*, with the option text *"Only the off-library tile changes; the four stay 'wine rows' and go on the owed list."*
+
+**Built:**
+
+- `MEASURE_SOURCE` in `Registers.tsx` now reads, with the typographic apostrophe (’) the page's source lines already use:
+  - `bottles`: *"this house’s items"*
+  - `titles`: *"this house’s items"*
+  - `par`: *"this house’s items with a par recorded, against each item’s own par"*
+  - `parUnset`: *"this house’s items with no par recorded"*
+- "items" is the founder's answer. The rest of the two par lines is the fix lane's wording, not option text. It makes each line true of its figure: the `par` figure looks only at items with a par recorded, and the old `parUnset` line, "against each item’s own par", described items that have no par.
+- The doc comment above `MEASURE_SOURCE` said the first four tiles were counted off "this page's own wine read". It now says every tile but `registers` is counted off the house's whole inventory read.
+- These are unchanged: every tile's label, every figure, the measure ids, and every house's stored `gazetteerMeasures`.
+- `CellarNext.test.tsx`, "the %s tile names the items it was counted from", pins each of the four lines, one case per line. Each case fails on `Registers.tsx` at `88d1b4939`. The existing test "draws the house's configured tiles, each naming the source it was counted from" matched "wine rows" and now matches "items".
+- The claims row `CELLAR-TILE-SOURCES-SAY-ITEMS` pins the four strings.
+
+**Not changed by F3:**
+
+- The label *"Bottles on hand"* sums `stockLive` over every item, whatever its unit (`restaurant_inventory.uom`, added by migration `the_house_item_is_the_ledgers_key`). F3 asked about source lines, not labels.
+- The note under the tiles still says that `restaurant_inventory` is keyed on the wine library and that beer, spirits and cocktails cannot yet be counted as stock (`Registers.tsx`, the note after the tile grid). The column comment on `restaurant_inventory.master_wine_id` calls the link an attribute, not the key. That note is not a "wine rows" line and F3 did not ask about it, so it is listed as owed in the PR that records F3.
 
 ## Consequences
 
@@ -95,7 +130,8 @@ So in a house that carries more than wine, the source line decision 1 first set,
 
 - `apps/web/src/pages/cellar/next/CellarNext.test.tsx`, "names the off-library tile for what it counts". The tile reads the new label and source line, and the old words are gone. It fails on the source as it stood at `8fdb819b4`, and it fails when only the source line is put back. [2026-10-05, F2: it now pins *"this house’s items with no wine-library link"* and that the tile does not say "wine rows". It fails on `Registers.tsx` as it stood at `3a8090041`.]
 - `apps/web/src/pages/settings/next/SettingsNext.test.tsx`, "names the off-library measure as the cellar tile does". The Settings switch is named by the new label. It fails at `8fdb819b4`.
-- `claims.d/fix-offbook-tile-names-the-library.jsonl` holds two rows:
+- `CellarNext.test.tsx`, "the %s tile names the items it was counted from" (F3). It pins the four sibling source lines, one case per line, and each case fails on `Registers.tsx` at `88d1b4939`.
+- `claims.d/fix-offbook-tile-names-the-library.jsonl` holds two rows: [2026-10-05, F3: three rows. The third, `CELLAR-TILE-SOURCES-SAY-ITEMS`, pins the four sibling source lines and that no `MEASURE_SOURCE` line says "wine rows".]
   - one pins both strings, the unchanged id, and no old words left in non-test web source;
   - one pins decision 2's anchors in the six files above. [corrected 2026-10-05: in seven files. They are `current-menu-lines.ts`, `cellar-registers.service.ts`, `cellar-registers.ts`, `beverages.service.ts`, `house-record.ts`, `arrival.service.ts` and `UnplacedMenuLines.tsx`.]
 - `claims.d/fix-cellar-invoice-book-and-menu-copy.jsonl:3` changes its prose only. It names the new label and drops "the tile's label is unchanged". Its verify is unchanged.
@@ -108,3 +144,5 @@ So in a house that carries more than wine, the source line decision 1 first set,
 | 2026-10-05 | Fix lane `offbook` | Created: decision 1 built, decision 2 recorded as #606 built it, F1 put to the founder |
 | 2026-10-05 | Founder (AskUserQuestion, ~20:30Z), F2 | *"Say 'items', count all (Recommended)"* |
 | 2026-10-05 | Fix lane `offbook` | F2 built: the source line says "items". The record now says the figure counts every item with no wine-library link, and the decision 2 heading names the three menu readers |
+| 2026-10-05 | Founder (AskUserQuestion, ~21:29Z), F3 | *"Say 'items' on all four (Recommended)"* |
+| 2026-10-05 | Fix lane `offbook` | F3 built: the bottles, titles, par and par-not-set source lines say "items" |

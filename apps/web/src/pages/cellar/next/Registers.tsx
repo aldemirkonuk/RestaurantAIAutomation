@@ -68,18 +68,24 @@ const MEASURE_LABEL: Record<GazetteerMeasureId, string> = {
 /**
  * Where each tile's figure was counted from — ADR 0160 sec110's own rule
  * ("every tile names the table it was counted from"), which the first pass
- * of `parUnset`/`registers` did not carry. The first four are all counted off
- * this page's own wine read (`data.building`, from the rows `WineRegister`
- * fetches); `registers` is the separate carried-registers readout.
+ * of `parUnset`/`registers` did not carry. Every tile but `registers` is
+ * counted off this house's whole inventory read (`data.building`, every
+ * active `restaurant_inventory` row, wine or not), so those lines say
+ * "items", not "wine rows" (ADR 0293 F2 and F3), and a figure that looks only
+ * at items with a par says so. `registers` is the separate carried-registers
+ * readout.
  */
 const MEASURE_SOURCE: Record<GazetteerMeasureId, string> = {
-  bottles: 'this house’s wine rows',
-  titles: 'this house’s wine rows',
-  par: 'this house’s wine rows, against each item’s own par',
+  // ADR 0293 F3: "items" on these four too. Each figure is counted over
+  // every item, beer and spirits included; `par` looks only at items with a
+  // par recorded, and `parUnset` counts the items with none.
+  bottles: 'this house’s items',
+  titles: 'this house’s items',
+  par: 'this house’s items with a par recorded, against each item’s own par',
   // ADR 0293 F2: "items", not "wine rows". The figure counts every item with
   // no wine-library link, and a beer or a spirit never gets one.
   offbook: 'this house’s items with no wine-library link',
-  parUnset: 'this house’s wine rows, against each item’s own par',
+  parUnset: 'this house’s items with no par recorded',
   registers: 'restaurant_cellar_registers',
 };
 
