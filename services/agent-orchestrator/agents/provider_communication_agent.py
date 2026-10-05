@@ -29,6 +29,7 @@ from services.fuzzy_matcher import (
     get_fuzzy_matcher,
 )  # noqa: F401 — available for invoice matching
 from services.model_clients import get_haiku_client, get_haiku_semaphore
+from services.order_letter_door import OrderLetterDoorMissing, stage_order_letter
 from services.spend_logger import get_spend_logger
 
 logger = logging.getLogger(__name__)
@@ -666,40 +667,60 @@ class ProviderCommunicationAgent(BaseAgent):
         auto_send = await self._check_auto_send_gate(restaurant_id, provider_id)
         final_status = "AUTO_SENT" if auto_send else "PENDING_APPROVAL"
 
-        # Step 10: INSERT procurement_conversations
+        # Step 10: stage the order's letter through the one door (ADR 0266,
+        # F-106). If the approval-time letter got there first, this order
+        # already has its letter: write nothing, notify nobody, send nothing.
         conversation_id = None
+        letter_row = {
+            "order_id": order_id,
+            "provider_id": provider_id,
+            "restaurant_id": restaurant_id,
+            "direction": "outbound",
+            "channel": "email",
+            # message_text is NOT NULL — must always be present
+            "message_text": full_draft,
+            # content is the nullable alias read by NestJS getPendingDraft
+            "content": full_draft,
+            "ai_generated": True,
+            "status": final_status,
+            "outbound_email_type": email_type,
+            "round_count": 0,
+            "disclaimer_appended": True,
+            "constraint_flags": constraint_flags,
+            "rolling_summary": None,
+        }
         try:
-            conv_result = (
-                self.database.supabase.table("procurement_conversations")
-                .insert(
-                    {
-                        "order_id": order_id,
-                        "provider_id": provider_id,
-                        "restaurant_id": restaurant_id,
-                        "direction": "outbound",
-                        "channel": "email",
-                        # message_text is NOT NULL — must always be present
-                        "message_text": full_draft,
-                        # content is the nullable alias read by NestJS getPendingDraft
-                        "content": full_draft,
-                        "ai_generated": True,
-                        "status": final_status,
-                        "outbound_email_type": email_type,
-                        "round_count": 0,
-                        "disclaimer_appended": True,
-                        "constraint_flags": constraint_flags,
-                        "rolling_summary": None,
-                    }
+            try:
+                conversation_id, staged = stage_order_letter(
+                    self.database.supabase, letter_row
                 )
-                .execute()
-            )
-            if conv_result.data:
-                conversation_id = conv_result.data[0].get("id")
+            except OrderLetterDoorMissing as exc:
+                # Only between this code deploying and its migration applying:
+                # write the letter the old way rather than lose it.
+                self.logger.error(
+                    f"stage_order_letter is not deployed yet ({exc}); inserting "
+                    f"order {order_id}'s letter without the one-letter fence."
+                )
+                conv_result = (
+                    self.database.supabase.table("procurement_conversations")
+                    .insert(letter_row)
+                    .execute()
+                )
+                conversation_id = (
+                    conv_result.data[0].get("id") if conv_result.data else None
+                )
+                staged = True
         except Exception as exc:
             self.logger.error(
                 f"Failed to insert procurement_conversation for order {order_id}: {exc}"
             )
             raise
+        if not staged:
+            self.logger.info(
+                f"Order {order_id} already has its vendor letter ({conversation_id}); "
+                "the create-time draft was not staged (ADR 0266)."
+            )
+            return
 
         # Step 11: Post-insert action
         provider_name = payload.get("provider_name") or "Provider"
