@@ -125,8 +125,9 @@
  * that the import result carries as `bellNote`, so "not filed" is said, with
  * its reason, rather than read as "told" (ADR 0067's "a failed read is never
  * an empty one", in spirit). The reason is a fixed phrase; a database's own
- * message goes to the log only. A webhook caller is told `filed` and nothing
- * else (`bellNoteForTill`).
+ * message goes to the log only. Neither route returns more than `filed`
+ * (`bellNoteForTill`): a webhook caller and the file import's caller alike
+ * learn whether the bell was rung, and the reasons and counts stay in the log.
  *
  * NO EMOJI: `notification-text-is-plain.spec.ts` scans every gateway file that
  * names a notification funnel, and this one does.
@@ -244,15 +245,17 @@ export interface RefusedChecksNote {
 }
 
 /**
- * What a webhook caller is told about the note: whether it was filed, and
- * nothing about who hears it, who is Away, quiet or has push switched off, or
- * why it was not filed.
+ * What a caller of either import route is told about the note: whether it was
+ * filed, and nothing about who hears it, who is Away, quiet or has push
+ * switched off, or why it was not filed.
  * A webhook secret need not be the house's own (the legacy one signs the body
- * alone), so its holder learns no more than that.
+ * alone), so its holder learns no more than that. The file import is open to
+ * any member of the house, staff included, so it is told the same (ADR 0281,
+ * founder 2026-10-05: "Only 'the bell was rung' (Recommended)").
  */
 export type RefusedChecksNoteForTill = Pick<RefusedChecksNote, "filed">;
 
-/** `bellNote` as the webhook route returns it; null when no note was due. */
+/** `bellNote` as both import routes return it; null when no note was due. */
 export function bellNoteForTill(
   note: RefusedChecksNote | null | undefined,
 ): RefusedChecksNoteForTill | null {

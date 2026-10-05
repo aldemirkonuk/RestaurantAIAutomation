@@ -168,10 +168,43 @@ describe("PosHubController — sale-unit review routes", () => {
       expect(res.bellNote).toBeNull();
     });
 
-    it("the signed-in import keeps the whole note", async () => {
+    // ADR 0281, the founder's answer to the import-reply fork (2026-10-05):
+    // "Only 'the bell was rung' (Recommended)". Any member of the house,
+    // staff included, can run the file import, so its answer says whether the
+    // owners and managers were told and nothing about who is Away, in quiet
+    // hours or has push switched off.
+    it("tells the file import only whether its refused checks reached the bell", async () => {
       posHub.ingest.mockResolvedValue(refusing(note));
+
       const res: any = await controller.importChecks("rest-1", []);
-      expect(res.bellNote).toEqual(note);
+
+      expect(posHub.ingest).toHaveBeenCalledWith("rest-1", "csv_import", []);
+      expect(res.bellNote).toEqual({ filed: true });
+      expect(Object.keys(res.bellNote)).toEqual(["filed"]);
+      expect(JSON.stringify(res)).not.toMatch(
+        /recipients|heldAway|quietHours|pushSwitchedOff|caveats|notFiledBecause|addedToOpenNote/,
+      );
+      // The import's own answer is unchanged.
+      expect(res).toMatchObject({ upserted: 1, refusedUnreadableDate: 1 });
+    });
+
+    it("tells the file import a note that was not filed as not filed", async () => {
+      posHub.ingest.mockResolvedValue(
+        refusing({
+          ...note,
+          filed: false,
+          recipients: 0,
+          notFiledBecause: "the bell write failed",
+        }),
+      );
+      const res: any = await controller.importChecks("rest-1", []);
+      expect(res.bellNote).toEqual({ filed: false });
+    });
+
+    it("says no note to the file import when nothing was refused", async () => {
+      posHub.ingest.mockResolvedValue(refusing(null));
+      const res: any = await controller.importChecks("rest-1", []);
+      expect(res.bellNote).toBeNull();
     });
   });
 

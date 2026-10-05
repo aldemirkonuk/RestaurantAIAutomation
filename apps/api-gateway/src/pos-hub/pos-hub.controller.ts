@@ -137,7 +137,14 @@ export class PosHubController {
     @Body() payload: unknown,
   ) {
     try {
-      return await this.posHub.ingest(restaurantId, "csv_import", payload);
+      const result = await this.posHub.ingest(
+        restaurantId,
+        "csv_import",
+        payload,
+      );
+      // ADR 0281, founder 2026-10-05: "Only 'the bell was rung'". Any member
+      // of the house can run this import, so it is told what the till is told.
+      return { ...result, bellNote: bellNoteForTill(result.bellNote) };
     } catch (error) {
       throw new HttpException(
         error.message || "Import failed",
