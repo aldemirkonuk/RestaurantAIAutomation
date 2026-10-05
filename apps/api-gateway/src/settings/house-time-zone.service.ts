@@ -17,15 +17,21 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  * midnight at the end of its expected day ON THE HOUSE'S CLOCK (question 6,
  * "House's local midnight"), from `restaurants.timezone`. That column had no
  * writer a person could reach: the real tenant's value was cleared with the
- * old `America/New_York` default (`20260903170000`), so its on-time line reads
- * the no-zone span — a landing within a day of midnight is listed, not counted
- * — with no control anywhere that could settle it.
+ * old `America/Los_Angeles` default (`20260903170000`, :189), so its on-time
+ * line reads the no-zone span — a landing within a day of midnight is listed,
+ * not counted — with no control anywhere that could settle it.
  *
  * THE RULES, the currency's (`house-currency.service.ts`), for the same reasons:
- *   1. **Explicit, never silent.** Written only from a zone that arrived in the
- *      request body. Never derived from the country, never defaulted, never
- *      written on a read. The span rule (`procurement/delivery-deadline.ts`)
- *      stays for every house that has not stated one.
+ *   1. **Attributable, never silent.** A zone is written by a person here
+ *      (source `stated`), or once, when the house is created, from its address
+ *      or its owner's device (ADR 0304), always with its source. It is never
+ *      defaulted and never written on a read. The source counts only while
+ *      `timezone_source_zone` equals the zone (`boundSource`); a writer that
+ *      rewrites `timezone` alone leaves it unbound, read as "not recorded".
+ *      Until ADR 0304's PR-2 lands, sign-up still saves the browser's zone
+ *      with no source (ADR 0213 item 62), and this register says so. The span
+ *      rule (`procurement/delivery-deadline.ts`) stays for every house with
+ *      no zone.
  *   2. **Membership checked here.** The zone must be a canonical IANA name
  *      this server's `Intl` lists (`Intl.supportedValuesOf("timeZone")`, plus
  *      `UTC`) AND resolve (`calendar/zoned-time.ts` `resolveZone`). A browser
@@ -33,10 +39,16 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  *      `Mars/Olympus` are refused with a sentence, and the value written is
  *      exactly the one sent.
  *   3. **Audited, or the caller is told it was not.** Every accepted change
- *      files a `system_audit_log` row naming the actor and both zones; the
+ *      of the zone OR of its source files a `system_audit_log` row naming the
+ *      actor and both zones (and both sources when the source moved); the
  *      receipt travels back as `audited` / `auditReason`.
  *   4. **A failed read is never an empty one.** `readable: false` with the
- *      reason; `zone: null` means nobody has stated one.
+ *      reason; `zone: null` means no zone is recorded.
+ *   5. **A person is named only as the witness of the zone the house keeps
+ *      now** (ADR 0304): the newest audit row must say `to` = that zone, and
+ *      a zone bound to `address` or `device` names nobody. An audit write can
+ *      fail (`recorded: false`), so an older row may name someone who never
+ *      stated the current zone; that row is not read as its witness.
  *
  * No clear-to-null: un-answering the question every on-time verdict depends
  * on is not the same kind of act as answering it.
@@ -46,6 +58,39 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  */
 
 export const TIME_ZONE_AUDIT_ACTION = "house_time_zone_changed" as const;
+
+/**
+ * Who or what gave a house its zone (ADR 0304, `restaurants.timezone_source`):
+ * worked out from its address, the device it was created on, or stated by a
+ * person here. Not `house-frame.ts`'s read-time `ZoneSource`.
+ */
+export type TimeZoneSource = "address" | "device" | "stated";
+const TIME_ZONE_SOURCES: ReadonlySet<string> = new Set<TimeZoneSource>([
+  "address",
+  "device",
+  "stated",
+]);
+
+/**
+ * The row's recorded source, only while it vouches for the zone the row holds
+ * now (`timezone_source_zone === timezone`). Anything else — no source, a
+ * value outside the three, or a zone rewritten by a writer that does not know
+ * these columns — is null: not recorded.
+ */
+export function boundSource(
+  row: {
+    timezone: string | null;
+    timezone_source?: string | null;
+    timezone_source_zone?: string | null;
+  } | null,
+): TimeZoneSource | null {
+  if (!row || row.timezone === null || row.timezone === undefined) return null;
+  if ((row.timezone_source_zone ?? null) !== row.timezone) return null;
+  const source = row.timezone_source ?? null;
+  return source !== null && TIME_ZONE_SOURCES.has(source)
+    ? (source as TimeZoneSource)
+    : null;
+}
 
 let canonical: Set<string> | null = null;
 
@@ -76,8 +121,14 @@ export function notAZoneBecause(zone: unknown): string | null {
 
 export interface HouseTimeZoneReadout {
   restaurantId: string;
-  /** The stated IANA zone, or null when nobody has stated one. */
+  /** The recorded IANA zone, or null when none is recorded. */
   zone: string | null;
+  /**
+   * Where `zone` came from (ADR 0304): `address`, `device` or `stated`, read
+   * only while the row's source vouches for this zone; null when the source
+   * was never recorded or no longer matches. Shown in Settings → Time zone.
+   */
+  source: TimeZoneSource | null;
   /**
    * A value in the column that this server cannot resolve — kept verbatim so
    * the page can say so, never read as a zone.
@@ -87,6 +138,10 @@ export interface HouseTimeZoneReadout {
   country: string | null;
   readable: boolean;
   reason: string | null;
+  /**
+   * When and by whom the CURRENT zone was stated: the newest audit row, only
+   * when its `to` is this zone. Null for a zone bound to `address`/`device`.
+   */
   statedAt: string | null;
   statedBy: { userId: string | null; name: string | null } | null;
   audited?: boolean;
@@ -96,7 +151,11 @@ export interface HouseTimeZoneReadout {
 interface HouseRow {
   timezone: string | null;
   country: string | null;
+  timezone_source: string | null;
+  timezone_source_zone: string | null;
 }
+
+const NO_WITNESS = { at: null, by: null } as const;
 
 @Injectable()
 export class HouseTimeZoneService {
@@ -113,6 +172,7 @@ export class HouseTimeZoneService {
       return {
         restaurantId,
         zone: null,
+        source: null,
         unreadZone: null,
         country: null,
         readable: false,
@@ -123,10 +183,16 @@ export class HouseTimeZoneService {
     }
     const recorded = house.row?.timezone?.trim() || null;
     const zone = recorded && resolveZone(recorded) ? recorded : null;
-    const stated = await this.lastStated(restaurantId);
+    const source = zone ? boundSource(house.row) : null;
+    // A zone the address or the device gave names no person (ADR 0304).
+    const stated =
+      zone === null || source === "address" || source === "device"
+        ? NO_WITNESS
+        : await this.lastStated(restaurantId, house.row?.timezone ?? null);
     return {
       restaurantId,
       zone,
+      source,
       unreadZone: recorded && !zone ? recorded : null,
       country: house.row?.country ?? null,
       readable: true,
@@ -154,10 +220,17 @@ export class HouseTimeZoneService {
       );
     }
     const previous = before.row?.timezone ?? null;
+    const previousSource = boundSource(before.row);
 
+    // Three explicit keys: the zone, and the person's word as its source,
+    // bound to the zone it vouches for (ADR 0304).
     const { error } = await this.databaseService.client
       .from("restaurants")
-      .update({ timezone: next })
+      .update({
+        timezone: next,
+        timezone_source: "stated",
+        timezone_source_zone: next,
+      })
       .eq("id", restaurantId);
     if (error) {
       this.logger.error(
@@ -168,8 +241,12 @@ export class HouseTimeZoneService {
       );
     }
 
+    // A move of the zone or of its source is filed; `timezone` is always in
+    // the row, so the witness rule reads one key. Re-stating a zone that is
+    // already the person's word moves neither and files nothing.
+    const sourceMoved = previousSource !== "stated";
     const receipt =
-      previous === next
+      previous === next && !sourceMoved
         ? { recorded: false, reason: "nothing changed" }
         : await this.audit.record({
             restaurantId,
@@ -179,7 +256,12 @@ export class HouseTimeZoneService {
             entityType: "restaurant",
             entityId: restaurantId,
             subject: "time zone",
-            fields: { timezone: { from: previous, to: next } },
+            fields: sourceMoved
+              ? {
+                  timezone: { from: previous, to: next },
+                  timezone_source: { from: previousSource, to: "stated" },
+                }
+              : { timezone: { from: previous, to: next } },
           });
 
     const after = await this.read(restaurantId);
@@ -191,7 +273,7 @@ export class HouseTimeZoneService {
   ): Promise<{ row: HouseRow | null; error: string | null }> {
     const { data, error } = await this.databaseService.client
       .from("restaurants")
-      .select("timezone, country")
+      .select("timezone, country, timezone_source, timezone_source_zone")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
@@ -203,14 +285,22 @@ export class HouseTimeZoneService {
     return { row: (data as HouseRow | null) ?? null, error: null };
   }
 
-  /** Who last stated it, from `system_audit_log`. Best-effort, like the currency's. */
-  private async lastStated(restaurantId: string): Promise<{
+  /**
+   * Who stated the zone the house keeps NOW, from `system_audit_log`.
+   * Best-effort, like the currency's. Only the newest row is read, and it is
+   * the witness only when its `to` is `zone`: an older row, or a row for a
+   * zone since rewritten, names someone who did not choose this one (ADR 0304).
+   */
+  private async lastStated(
+    restaurantId: string,
+    zone: string | null,
+  ): Promise<{
     at: string | null;
     by: { userId: string | null; name: string | null } | null;
   }> {
     const { data, error } = await this.databaseService.client
       .from("system_audit_log")
-      .select("actor_id, created_at")
+      .select("actor_id, created_at, changes")
       .eq("restaurant_id", restaurantId)
       .eq("action", TIME_ZONE_AUDIT_ACTION)
       .order("created_at", { ascending: false })
@@ -220,12 +310,17 @@ export class HouseTimeZoneService {
         this.logger.warn(
           `The time zone's own trail could not be read for ${restaurantId}: ${error.message}`,
         );
-      return { at: null, by: null };
+      return NO_WITNESS;
     }
     const row = data[0] as {
       actor_id: string | null;
       created_at: string | null;
+      changes: {
+        fields?: { timezone?: { to?: unknown } | null } | null;
+      } | null;
     };
+    if (zone === null || row.changes?.fields?.timezone?.to !== zone)
+      return NO_WITNESS;
     let name: string | null = null;
     if (row.actor_id) {
       const who = await this.databaseService.client

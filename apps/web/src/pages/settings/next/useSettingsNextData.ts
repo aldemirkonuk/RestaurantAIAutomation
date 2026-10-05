@@ -475,11 +475,15 @@ export interface SetDigestBody {
  * 0207, round 3; the founder, 2026-09-21: "Add it to Settings"). Mirrors
  * `HouseTimeZoneReadout`. `zone: null` is an unanswered question; `readable:
  * false` a failed read; `unreadZone` a value the server cannot resolve, kept
- * verbatim and never read as a zone.
+ * verbatim and never read as a zone. `source` says where the zone came from
+ * (ADR 0304) — `address`, `device` or `stated` — and is null when that was
+ * never recorded; `statedBy`/`statedAt` name only the witness of THIS zone.
  */
 export interface HouseTimeZoneRegister {
   restaurantId: string;
   zone: string | null;
+  /** Optional on the wire only while a gateway older than ADR 0304 answers. */
+  source?: 'address' | 'device' | 'stated' | null;
   unreadZone: string | null;
   country: string | null;
   readable: boolean;
@@ -995,8 +999,11 @@ export function useSettingsNextData() {
         if (data) houseTimeZone.set(data);
         else houseTimeZone.reload();
         ledger.reload();
+        // The Hours register prints the same column and tags it from this
+        // register (ADR 0304, `hoursTimezoneCert`); re-read it so the two agree.
+        hours.reload();
       }),
-    [writer, houseTimeZone, ledger],
+    [writer, houseTimeZone, ledger, hours],
   );
 
   /** Turn Jev's reading of vendor mail on or off — a person's press, never a default. */
