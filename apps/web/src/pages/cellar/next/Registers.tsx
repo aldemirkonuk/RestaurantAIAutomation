@@ -76,7 +76,9 @@ const MEASURE_SOURCE: Record<GazetteerMeasureId, string> = {
   bottles: 'this house’s wine rows',
   titles: 'this house’s wine rows',
   par: 'this house’s wine rows, against each item’s own par',
-  offbook: 'this house’s wine rows with no wine-library link',
+  // ADR 0293 F2: "items", not "wine rows". The figure counts every item with
+  // no wine-library link, and a beer or a spirit never gets one.
+  offbook: 'this house’s items with no wine-library link',
   parUnset: 'this house’s wine rows, against each item’s own par',
   registers: 'restaurant_cellar_registers',
 };

@@ -492,6 +492,9 @@ describe('CellarNext — "In the building tonight" (ADR 0160 sec110 item 2)', ()
     // wine-library link, so "off this read" no longer described it. The
     // founder, 2026-10-05: "Rename, small follow-up (Recommended)". The id
     // `offbook`, and every house's stored choice of tiles, stay as they were.
+    // F2, the founder, 2026-10-05: "Say 'items', count all (Recommended)".
+    // The figure counts every item with no link, beers and spirits included,
+    // so the source line says "items", not "wine rows".
     mock.current = {
       ...base,
       registers: readout(),
@@ -510,7 +513,8 @@ describe('CellarNext — "In the building tonight" (ADR 0160 sec110 item 2)', ()
     draw();
     const section = screen.getByText('In the building tonight').closest('section')!;
     const tile = within(section).getByText('Carried, not in the wine library').closest('.cl-tile')!;
-    expect(tile).toHaveTextContent('this house’s wine rows with no wine-library link');
+    expect(tile).toHaveTextContent('this house’s items with no wine-library link');
+    expect(tile).not.toHaveTextContent(/wine rows/);
     expect(within(section).queryByText('Carried but off this read')).not.toBeInTheDocument();
     expect(within(section).queryByText(/vs the wine library/)).not.toBeInTheDocument();
   });
