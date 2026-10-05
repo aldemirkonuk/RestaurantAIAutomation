@@ -26,7 +26,12 @@ import { DatabaseService } from "../database/database.service";
 interface Rows {
   orgMembers?: { organization_id: string }[];
   restaurant?: Record<string, unknown> | null;
-  access?: { role: string } | null;
+  /**
+   * The person's access row here. `is_active` is part of it: the lookup reads
+   * the row whether or not it is active, and only a live row gives its role
+   * (ADR 0248).
+   */
+  access?: { role: string; is_active: boolean } | null;
   user?: { role: string; restaurant_id: string } | null;
 }
 
@@ -91,7 +96,7 @@ describe("OrganizationsService.getLocation", () => {
     const { service } = makeService({
       orgMembers: [{ organization_id: "o1" }],
       restaurant: RESTAURANT,
-      access: { role: "staff" },
+      access: { role: "staff", is_active: true },
     });
 
     await expect(service.getLocation("u-staff", "r1")).rejects.toBeInstanceOf(
@@ -103,7 +108,7 @@ describe("OrganizationsService.getLocation", () => {
     const { service } = makeService({
       orgMembers: [{ organization_id: "o1" }],
       restaurant: RESTAURANT,
-      access: { role: "staff" },
+      access: { role: "staff", is_active: true },
     });
 
     await expect(service.getLocation("u-staff", "r1")).rejects.toThrow(
@@ -128,7 +133,7 @@ describe("OrganizationsService.getLocation", () => {
     const { service, probe } = makeService({
       orgMembers: [{ organization_id: "o1" }],
       restaurant: RESTAURANT,
-      access: { role: "manager" },
+      access: { role: "manager", is_active: true },
     });
 
     const location = await service.getLocation("u-mgr", "r1");
@@ -157,7 +162,7 @@ describe("OrganizationsService.getLocation", () => {
     const { service } = makeService({
       orgMembers: [{ organization_id: "o1" }],
       restaurant: { ...RESTAURANT, subscription_tier: null },
-      access: { role: "owner" },
+      access: { role: "owner", is_active: true },
     });
 
     await expect(service.getLocation("u-owner", "r1")).resolves.toMatchObject({
@@ -169,7 +174,7 @@ describe("OrganizationsService.getLocation", () => {
     const { service } = makeService({
       orgMembers: [{ organization_id: "o1" }],
       restaurant: null,
-      access: { role: "owner" },
+      access: { role: "owner", is_active: true },
     });
 
     await expect(service.getLocation("u-owner", "other")).rejects.toBeInstanceOf(

@@ -12,15 +12,42 @@ import {
 import { ORG_OWNER } from "./org-role";
 import { DatabaseService } from "../database/database.service";
 import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
+import {
+  isLiveMembership,
+  type MembershipWindow,
+} from "../common/tenant/live-membership";
 
 /**
  * What this person is at this restaurant — the ONE implementation of the
  * two-step lookup (`user_restaurant_access`, then the legacy `users.role`).
  *
  * `readError` is set whenever a read the answer depends on failed: the access
- * row (whose absence is what sends us to the legacy home, so an unreadable one
- * leaves the answer unknown even when the legacy row names a role), or the
- * legacy row when it was needed.
+ * row, or the legacy row when it was needed.
+ *
+ * AN UNREADABLE ACCESS REGISTER IS NOT AN EMPTY ONE (founder, 2026-10-01:
+ * "Next PR: error means no role (Recommended)", ADR 0248). When the access
+ * read errors, the answer is `role: null` with `readError` set, and the
+ * legacy row is not read at all. Before this change the legacy role was
+ * returned on an access-read error. `registerAccount` writes
+ * `users.role = 'owner'` and `acceptHeldMembership` later sets only
+ * `users.restaurant_id`, so an account made by `registerAccount` that joined a
+ * house as staff that way read as the house's owner whenever this read failed,
+ * and passed its manager checks here. Over HTTP the JWT step
+ * (`AuthService.validateJwtPayload`) reads the token's house's row first and
+ * answers 503 or 401, so a caller reaches this path when its house is not the
+ * token's, when that read succeeded and this one failed, or when it has no
+ * JWT step (ADR 0248, "Reachability end to end").
+ *
+ * A ROW THAT EXISTS DECIDES ALONE (founder, 2026-10-01: "Close both in #561",
+ * ADR 0248). Only an access read that SUCCEEDED and found NO row for this
+ * person here, active or not, sends us to `users.role`. A row that exists
+ * gives its role only while `isLiveMembership` holds (`is_active` exactly
+ * true, `valid_from` no more than `VALID_FROM_CLOCK_TOLERANCE_MS`, 120 s,
+ * ahead of the gateway's clock, `valid_until` null or later than that
+ * clock); otherwise the answer is `role: null`. Before this change the
+ * lookup read only active rows and ignored the window, so an inactive row
+ * sent it to `users.role`, and a row whose `valid_from` was ahead of the
+ * clock or whose `valid_until` had passed gave its role.
  *
  * Module-level so the vendor-send authority (`vendor-send-authority.service.ts`,
  * ADR 0175 D10) can use the same rule without importing this whole service and
@@ -37,17 +64,41 @@ export async function lookupRestaurantRole(
   userId: string,
   restaurantId: string,
 ): Promise<{ role: string | null; readError: string | null }> {
+  // Every row for this person here, live or not: `(user_id, restaurant_id)` is
+  // UNIQUE (baseline `user_restaurant_access_user_id_restaurant_id_key`), so
+  // there is at most one. The three window columns are selected because
+  // `isLiveMembership` reads them.
   const { data: access, error: accessError } = await supabase
     .from("user_restaurant_access")
-    .select("role")
+    .select("role, is_active, valid_from, valid_until")
     .eq("user_id", userId)
     .eq("restaurant_id", restaurantId)
-    .eq("is_active", true)
     .maybeSingle();
 
-  const fromAccess = (access as { role?: string } | null)?.role;
-  if (fromAccess) return { role: fromAccess, readError: null };
+  // An errored read decides nothing, and it does not send us to the legacy
+  // row either: see the header.
+  if (accessError) {
+    return {
+      role: null,
+      readError: `this house's access register could not be read (${accessError.message})`,
+    };
+  }
 
+  // A row exists, so it decides alone (founder, 2026-10-01: "Close both in
+  // #561", ADR 0248). A row that is inactive, whose `valid_from` is more than
+  // 120 s ahead of the gateway's clock, or whose `valid_until` has passed
+  // gives no role, and the legacy row is not read: `isLiveMembership` is the
+  // same test every other "is this a member now" reader applies.
+  if (access) {
+    const row = access as MembershipWindow & { role?: string | null };
+    return {
+      role: isLiveMembership(row) && row.role ? row.role : null,
+      readError: null,
+    };
+  }
+
+  // The access read succeeded and found NO row for this person here: the
+  // legacy home decides, unchanged.
   const { data: user, error: userError } = await supabase
     .from("users")
     .select("role, restaurant_id")
@@ -56,11 +107,9 @@ export async function lookupRestaurantRole(
   const legacy = user as { role?: string; restaurant_id?: string } | null;
   const role =
     legacy?.restaurant_id === restaurantId ? (legacy.role ?? null) : null;
-  const readError = accessError
-    ? `this house's access register could not be read (${accessError.message})`
-    : userError
-      ? `the person's home house could not be read (${userError.message})`
-      : null;
+  const readError = userError
+    ? `the person's home house could not be read (${userError.message})`
+    : null;
   return { role, readError };
 }
 
