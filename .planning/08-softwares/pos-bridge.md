@@ -244,7 +244,7 @@ Seams:
 > the constant is gone; each review row now carries `next_sale`, read by the import's own
 > `resolveSaleVolume`. The same ADR dates a POS sale's stock and consumption by one reading of the check's
 > `closed_at`, the one `pos_checks` stores, instead of the import time (never later than now;
-> import time, counted and said, when the string cannot be read).]
+> import time, counted and said, when the string is not a strict ISO-8601 instant).]
 >
 > **Also closed 2026-09-05 (#310):** every SimPOS line arriving as wine, and the
 > Square day's `covers: null → 0`. The covers cause was a coercion, not the column:

@@ -11,14 +11,23 @@
  *   returned a clean result over 811 pours that moved no stock.
  *
  * Every test here but one fails on the code before ADR 0281 (measured
- * against origin/main 1aa4dcb8c, 2026-10-04): `saleInstant` and
- * `inventoryVolumesFromRow` did not exist, no RPC carried `p_occurred_at`, the
- * consumption row carried no date, and `ingest()` returned no `stock` block.
- * The exception is the open-check case, which pins behaviour that did not
- * change. Four of the five cases in the "one reading" block also fail on
- * PR #603 at 01ac04eaa, which read closed_at with JavaScript but handed the
- * till's own string on for Postgres to read again (the ADR 0090 audit's
- * BLOCK); the open-check case is the fifth.
+ * against origin/main 1aa4dcb8c, 2026-10-04, and again against origin/main
+ * 28d32de36 once the cases for the audit at 1a7a4137d were added: 54 of 55
+ * fail): `saleInstant` and `inventoryVolumesFromRow` did not exist, no RPC
+ * carried `p_occurred_at`, the consumption row carried no date, and
+ * `ingest()` returned no `stock` block. The exception is the open-check case,
+ * which pins behaviour that did not change. The zone-less and future cases in
+ * the "one reading" block also fail on PR #603 at 01ac04eaa, which read
+ * closed_at with JavaScript but handed the till's own string on for Postgres
+ * to read again (the ADR 0090 audit's BLOCK).
+ *
+ * PR #603 at 1a7a4137d read closed_at with V8's lenient `Date.parse`, so a
+ * string Postgres refuses ("12", "0", "2026-02-30", "2026-09-31T21:00:00Z")
+ * dated a sale on an instant the till never sent (the ADR 0090 audit's
+ * BLOCK there). Run against that head's service, 22 of the 55 cases here
+ * fail, among them each of those strings in the saleInstant block and in the
+ * refusal case of the A-029 block; the other 33 pass there too and pin
+ * behaviour the strict read keeps.
  * Fixtures are synthetic.
  */
 import { execFileSync } from "child_process";
@@ -40,6 +49,8 @@ interface DbOpts {
   rpc?: (fn: string, args: Row) => Result;
   consumption?: (row: Row) => Result;
   queue?: (row: Row) => Result;
+  /** What the pos_checks upsert answers; accepted when absent. */
+  checkUpsert?: (row: Row) => Result;
 }
 
 function makeDb(opts: DbOpts = {}) {
@@ -56,7 +67,10 @@ function makeDb(opts: DbOpts = {}) {
         eq: () => q,
         in: async () => ({ data: [], error: null }),
         upsert: async (row: Row) => {
-          if (table === "pos_checks") calls.checks.push(row);
+          if (table === "pos_checks") {
+            calls.checks.push(row);
+            if (opts.checkUpsert) return opts.checkUpsert(row);
+          }
           return { error: null };
         },
         insert: async (row: Row) => {
@@ -197,6 +211,95 @@ describe("saleInstant — when one closed check's stock is dated", () => {
     },
   );
 
+  // The ADR 0090 audit of PR #603 at 1a7a4137d. V8's Date.parse reads each of
+  // these as a real day ("12" and "Table 12" as 2001-12-01, "0" as
+  // 2000-01-01, "2026-02-30" as 2 March, "2026-09-31" as 1 October), and
+  // Postgres refuses every one (read-only casts in PostgreSQL 17.11, recorded
+  // in p4-scratch/sim-run/fixes/audits/603-closed-at-casts.txt). Read by
+  // Date.parse, each dated a sale on an instant the till never sent.
+  it.each([
+    ["12"],
+    ["Table 12"],
+    ["0"],
+    ["2026-02-30"],
+    ["2026-02-30T10:00:00Z"],
+    ["2026-09-31T21:00:00Z"],
+  ])(
+    "does not read %p, which Postgres refuses: it falls back, never counted as back-dated",
+    (closedAt) => {
+      expect(saleInstant(closedAt, NOW)).toEqual({
+        closedAt,
+        at: "2026-10-03T12:00:00.000Z",
+        fellBack: true,
+        clamped: false,
+        backdatedOver72h: false,
+      });
+    },
+  );
+
+  // Postgres reads these, but they are outside the strict read, so each falls
+  // back: 24:00 and a leap second fail the round trip, +15:00 is wider than any
+  // real offset and :60 is no minute, and the rest are not the ISO-8601 shape
+  // read here (RFC 2822, a two-digit year, a POSIX-looking zone, lower-case z,
+  // the basic format).
+  it.each([
+    ["2026-10-01T24:00:00Z"],
+    ["2026-10-01T23:59:60Z"],
+    ["2026-10-01T22:00:00+15:00"],
+    ["2026-10-01T22:00:00+03:60"],
+    ["Thu, 01 Oct 2026 22:00:00 +0300"],
+    ["1/1/50"],
+    ["2026-10-01 15:00:00 UTC+3"],
+    ["2026-10-01T22:00:00z"],
+    ["20261001T220000Z"],
+  ])("falls back on %p, which is not a strict ISO-8601 instant", (closedAt) => {
+    const got = saleInstant(closedAt, NOW);
+    expect(got).toMatchObject({ closedAt, fellBack: true });
+    expect(got.at).toBe("2026-10-03T12:00:00.000Z");
+  });
+
+  it.each([
+    // An offset in hours alone: V8's Date.parse gives NaN, Postgres +03:00.
+    ["2026-07-14T21:30:00+03", "2026-07-14T18:30:00.000Z"],
+    ["2026-07-14T21:30:00+0300", "2026-07-14T18:30:00.000Z"],
+    ["2026-07-14T21:30:00-02:30", "2026-07-15T00:00:00.000Z"],
+    ["2026-07-14T21:30Z", "2026-07-14T21:30:00.000Z"],
+    // A space for T, and a fraction kept to the millisecond.
+    ["2026-07-14 21:30:00.123456Z", "2026-07-14T21:30:00.123Z"],
+    // A date alone is UTC midnight, as ECMAScript reads a date-only form.
+    ["2026-07-14", "2026-07-14T00:00:00.000Z"],
+    // A leap day; a year below 100, which Date.UTC would move to 19xx.
+    ["2024-02-29T12:00:00Z", "2024-02-29T12:00:00.000Z"],
+    ["0050-01-01T00:00:00Z", "0050-01-01T00:00:00.000Z"],
+    ["  2026-07-14T21:30:00Z  ", "2026-07-14T21:30:00.000Z"],
+  ])("reads %p as %p", (closedAt, read) => {
+    expect(saleInstant(closedAt, NOW)).toMatchObject({
+      closedAt: read,
+      at: read,
+      fellBack: false,
+    });
+  });
+
+  it("keeps a zone-less reading only within 14 hours of the written wall clock", () => {
+    // The gateway's zone is injected through Date.parse, as in the Istanbul
+    // case below; only a zone-less string reaches Date.parse.
+    const ZONELESS = "2026-07-14 21:30:00";
+    const wall = Date.parse("2026-07-14T21:30:00Z");
+    const realParse = Date.parse;
+    const parse = jest.spyOn(Date, "parse");
+    parse.mockImplementation((s: string) =>
+      s === ZONELESS ? wall - 14 * 3600 * 1000 : realParse(s),
+    );
+    expect(saleInstant(ZONELESS, NOW)).toMatchObject({
+      at: "2026-07-14T07:30:00.000Z",
+      fellBack: false,
+    });
+    parse.mockImplementation((s: string) =>
+      s === ZONELESS ? wall - 14 * 3600 * 1000 - 1 : realParse(s),
+    );
+    expect(saleInstant(ZONELESS, NOW).fellBack).toBe(true);
+  });
+
   it("counts as back-dated only strictly past 72 hours", () => {
     const exactly = new Date(NOW - BACKDATED_AFTER_MS).toISOString();
     const past = new Date(NOW - BACKDATED_AFTER_MS - 1000).toISOString();
@@ -298,10 +401,13 @@ describe("one reading of closed_at dates the check, its stock and its consumptio
   // future with JavaScript and handed the till's string on, so Postgres read
   // it again: the ledger took LEAST(its reading, now()), while pos_checks and
   // the consumption row kept its reading, and a sale's stock and revenue could
-  // land on different days. Now every row is handed the one JavaScript
-  // reading as a UTC string, which Postgres reads the same in any zone.
+  // land on different days. Now every row is handed the gateway's one reading
+  // as a UTC string, which Postgres reads the same in any zone. Since the
+  // audit at 1a7a4137d the gateway reads only a strict ISO-8601 instant; a
+  // string the two parsers read apart in other ways is not read, so it stays
+  // on the check for Postgres, and the stock and consumption are dated at
+  // import time and said.
   const NOW = Date.parse("2026-10-05T00:00:00Z");
-  const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
   beforeEach(() => {
     jest.spyOn(Date, "now").mockReturnValue(NOW);
@@ -313,7 +419,7 @@ describe("one reading of closed_at dates the check, its stock and its consumptio
       mappings: [BOTTLE, GLASS],
       inventory: INVENTORY,
     });
-    await ingest(service, [
+    const res = await ingest(service, [
       check("c-one", closedAt, [line(BOTTLE), line(GLASS)]),
     ]);
     expect(calls.checks).toHaveLength(1);
@@ -322,34 +428,44 @@ describe("one reading of closed_at dates the check, its stock and its consumptio
       "record_glass_pour",
     ]);
     expect(calls.consumption).toHaveLength(2);
-    return calls;
+    return { calls, res };
   };
 
   /** Every date the import wrote for the check, in one list. */
-  const datesWritten = (calls: Awaited<ReturnType<typeof ingestBoth>>) => [
+  const datesWritten = (
+    calls: Awaited<ReturnType<typeof ingestBoth>>["calls"],
+  ) => [
     calls.checks[0].closed_at,
     ...calls.rpc.map((c) => c.args.p_occurred_at),
     ...calls.consumption.flatMap((r) => [r.recorded_at, r.created_at]),
   ];
 
-  it('a two-digit year: "1/1/50" is 1950 on the check, both RPCs and the consumption rows', async () => {
-    // Postgres reads "1/1/50" as 2050, so handing it the string clamped the
-    // ledger to now and left the check and the consumption row in 2050.
-    const calls = await ingestBoth("1/1/50");
-    const read = new Date(Date.parse("1/1/50")).toISOString();
-    expect(new Date(read).getFullYear()).toBe(1950);
-    expect(read).toMatch(ISO_UTC);
-    expect(datesWritten(calls)).toEqual(Array(7).fill(read));
-  });
-
-  it('a POSIX-looking zone: "2026-10-04 15:00:00 UTC+3" is 12:00Z everywhere', async () => {
-    // JavaScript reads +3 as three hours ahead of UTC (12:00Z); Postgres reads
-    // it with POSIX's sign (18:00Z).
-    const calls = await ingestBoth("2026-10-04 15:00:00 UTC+3");
-    expect(datesWritten(calls)).toEqual(
-      Array(7).fill("2026-10-04T12:00:00.000Z"),
-    );
-  });
+  it.each([
+    // A two-digit year: V8 reads 1950, Postgres 2050.
+    ["1/1/50"],
+    // A POSIX-looking zone: V8 reads +3 as ahead of UTC (12:00Z), Postgres
+    // with POSIX's sign (18:00Z).
+    ["2026-10-04 15:00:00 UTC+3"],
+  ])(
+    "%p is not read: the check keeps it, and its stock and consumption are dated at import time and said",
+    async (closedAt) => {
+      const { calls, res } = await ingestBoth(closedAt);
+      expect(calls.checks[0].closed_at).toBe(closedAt);
+      expect(datesWritten(calls).slice(1)).toEqual(
+        Array(6).fill(new Date(NOW).toISOString()),
+      );
+      expect(res.stock).toMatchObject({
+        booked: 2,
+        datedAtImportTime: 2,
+        backdatedOver72h: 0,
+      });
+      expect(res.errors).toEqual([
+        expect.stringContaining(
+          "closed_at that is not an ISO-8601 date the import reads",
+        ),
+      ]);
+    },
+  );
 
   it("a zone-less string on a gateway in Europe/Istanbul is that gateway's reading everywhere", async () => {
     // Setting process.env.TZ inside a jest test does not reach the Date the
@@ -376,14 +492,14 @@ describe("one reading of closed_at dates the check, its stock and its consumptio
         s === ZONELESS ? istanbul : realParse(s),
       );
 
-    const calls = await ingestBoth(ZONELESS);
+    const { calls } = await ingestBoth(ZONELESS);
     expect(datesWritten(calls)).toEqual(
       Array(7).fill("2026-10-04T12:00:00.000Z"),
     );
   });
 
   it("a future closed_at stays on the check, and its stock and consumption are clamped to now", async () => {
-    const calls = await ingestBoth("2026-10-06T09:00:00+03:00");
+    const { calls } = await ingestBoth("2026-10-06T09:00:00+03:00");
     expect(calls.checks[0].closed_at).toBe("2026-10-06T06:00:00.000Z");
     expect(datesWritten(calls).slice(1)).toEqual(
       Array(6).fill(new Date(NOW).toISOString()),
@@ -555,9 +671,53 @@ describe("ingest says what it did to stock (A-029)", () => {
     expect(calls.checks[0].closed_at).toBe("sometime on Tuesday");
     expect(res.stock).toMatchObject({ booked: 1, datedAtImportTime: 1 });
     expect(res.errors).toEqual([
-      expect.stringContaining("closed_at that could not be read"),
+      expect.stringContaining(
+        "closed_at that is not an ISO-8601 date the import reads",
+      ),
     ]);
   });
+
+  it.each([
+    ["12"],
+    ["Table 12"],
+    ["0"],
+    ["2026-02-30"],
+    ["2026-09-31T21:00:00Z"],
+  ])(
+    "a closed_at Postgres refuses (%p) reaches it as sent: the check is not stored, moves no stock, and errors[] says so",
+    async (closedAt) => {
+      // The upsert refuses the till's own string, as Postgres 17.11 does
+      // (603-closed-at-casts.txt; the message is a stand-in), and accepts
+      // anything else, so a reading of the string would be stored.
+      const { service, calls } = makeDb({
+        mappings: [BOTTLE, GLASS],
+        inventory: INVENTORY,
+        checkUpsert: (row) =>
+          row.closed_at === closedAt
+            ? {
+                error: {
+                  message: `Postgres refused "${closedAt}"`,
+                },
+              }
+            : { error: null },
+      });
+      const res = await ingest(service, [
+        check("c-bad", closedAt, [line(BOTTLE), line(GLASS)]),
+      ]);
+
+      expect(calls.checks[0].closed_at).toBe(closedAt);
+      expect(res.upserted).toBe(0);
+      expect(calls.rpc).toHaveLength(0);
+      expect(calls.consumption).toHaveLength(0);
+      expect(res.stock).toMatchObject({
+        lines: 0,
+        booked: 0,
+        backdatedOver72h: 0,
+        datedAtImportTime: 0,
+      });
+      expect(res.errors).toEqual([`c-bad: Postgres refused "${closedAt}"`]);
+    },
+  );
 
   it("bounds errors[]: fifty groups, then one line that counts the rest", async () => {
     const mappings = Array.from({ length: 60 }, (_, i) => ({

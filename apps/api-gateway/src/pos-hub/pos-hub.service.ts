@@ -75,11 +75,12 @@ export const BACKDATED_AFTER_MS = 72 * 60 * 60 * 1000;
  */
 export interface SaleInstant {
   /**
-   * What `pos_checks.closed_at` receives. When JavaScript's `Date.parse` reads
-   * the till's closed_at, this is that reading as an ISO-8601 UTC string, not
-   * clamped: a close time in the future stays on the check. When it cannot
-   * (or the check is open), it is the value exactly as the till sent it, or
-   * null when there is none.
+   * What `pos_checks.closed_at` receives. When `readClosedAt` reads the till's
+   * closed_at, this is that reading as an ISO-8601 UTC string, not clamped: a
+   * close time in the future stays on the check. When it does not (or the
+   * check is open), it is the value exactly as the till sent it, or null when
+   * there is none, so Postgres reads it or refuses it as it did before
+   * ADR 0281.
    */
   closedAt: unknown;
   /**
@@ -93,8 +94,9 @@ export interface SaleInstant {
    */
   at: string;
   /**
-   * closed_at could not be read, so `at` is import time while `closedAt`
-   * keeps the till's value. Never silent: the import says so.
+   * `readClosedAt` did not read closed_at, so `at` is import time while
+   * `closedAt` keeps the till's value. Never silent: the import says so. Never
+   * back-dated either: `backdatedOver72h` is false whenever this is true.
    */
   fellBack: boolean;
   /** closed_at was later than now, so `at` is now and `closedAt` is not. */
@@ -104,23 +106,108 @@ export interface SaleInstant {
 }
 
 /**
+ * The one closed_at shape the import reads (ADR 0281): an ISO-8601 calendar
+ * date in extended form (`YYYY-MM-DD`), optionally followed by `T` or one
+ * space and a time `hh:mm`, `hh:mm:ss` or `hh:mm:ss.f` (1 to 9 fraction
+ * digits, kept to the millisecond), optionally followed by `Z` or a numeric
+ * offset `±hh`, `±hhmm` or `±hh:mm`. A zone needs a time. RFC 2822 is not in
+ * it (ADR 0281 says why).
+ */
+const ISO_CLOSED_AT =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}(?::?\d{2})?)?)?$/;
+
+/** The widest real UTC offset, +14:00; an offset or a zone reading beyond it is refused. */
+const MAX_OFFSET_MS = 14 * 60 * 60 * 1000;
+
+/**
+ * Read a till's closed_at strictly, as epoch milliseconds, or NaN.
+ *
+ * V8's `Date.parse` reads almost anything: "12" and "Table 12" as
+ * 2001-12-01, "0" as 2000-01-01, "2026-02-30" as 2 March. Postgres refused
+ * all of those, so on main such a check failed loudly; read leniently, it
+ * would date revenue, stock and consumption on an instant the till never
+ * sent (the ADR 0090 audit of PR #603 at 1a7a4137d). So a string is read
+ * only when it matches ISO_CLOSED_AT and its written date and time survive a
+ * round trip through the UTC calendar unchanged: year, month and day, and
+ * hour, minute and second where written. "2026-09-31", 24:00 and a leap
+ * second :60 fail it. Then:
+ *
+ * - with `Z` or an offset, the instant is the written wall clock minus the
+ *   offset, computed here; no `Date.parse`;
+ * - a date alone is UTC midnight, which is how ECMAScript reads a date-only
+ *   form;
+ * - a date and time with no zone is `Date.parse`'s reading in the gateway's
+ *   own zone, kept only when it lies within 14 hours of the written wall
+ *   clock.
+ *
+ * Anything else is NaN, and saleInstant falls back.
+ */
+function readClosedAt(raw: string): number {
+  const m = ISO_CLOSED_AT.exec(raw);
+  if (!m) return NaN;
+  const [, yy, mo, dd, hh, mi, ss, frac, zone] = m;
+  const year = Number(yy);
+  const month = Number(mo);
+  const day = Number(dd);
+  const hour = hh === undefined ? 0 : Number(hh);
+  const minute = mi === undefined ? 0 : Number(mi);
+  const second = ss === undefined ? 0 : Number(ss);
+  const millis =
+    frac === undefined ? 0 : Number(frac.slice(0, 3).padEnd(3, "0"));
+  // setUTCFullYear, not Date.UTC: Date.UTC reads a year from 0 to 99 as 19xx.
+  const wall = new Date(0);
+  wall.setUTCFullYear(year, month - 1, day);
+  wall.setUTCHours(hour, minute, second, millis);
+  if (
+    wall.getUTCFullYear() !== year ||
+    wall.getUTCMonth() !== month - 1 ||
+    wall.getUTCDate() !== day ||
+    wall.getUTCHours() !== hour ||
+    wall.getUTCMinutes() !== minute ||
+    wall.getUTCSeconds() !== second
+  ) {
+    return NaN;
+  }
+  const wallMs = wall.getTime();
+  if (hh === undefined || zone === "Z") return wallMs;
+  if (zone !== undefined) {
+    const digits = zone.slice(1).replace(":", "");
+    const offsetMs =
+      (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2) || "0")) *
+      60 *
+      1000;
+    if (Number(digits.slice(2) || "0") > 59 || offsetMs > MAX_OFFSET_MS) {
+      return NaN;
+    }
+    return zone[0] === "-" ? wallMs + offsetMs : wallMs - offsetMs;
+  }
+  const local = Date.parse(raw);
+  return Number.isFinite(local) && Math.abs(wallMs - local) <= MAX_OFFSET_MS
+    ? local
+    : NaN;
+}
+
+/**
  * Date a closed check's stock by when it closed, not by when it arrived.
  *
- * The string is parsed once, here, and only the result travels. Handing the
- * till's string to Postgres instead would have it read a second time, and
- * where the two readings differ (a zone-less string when the gateway's zone
- * and the database session's differ, POSIX `UTC+3`, a two-digit year from 50
- * to 69; measured in the ADR 0090 audit of PR #603) the ledger, the
- * consumption row and the check could land on different days. So an ambiguous string is read JavaScript's way for all
- * of them: a zone-less one in the gateway's own zone, "1/1/50" as 1950, and
- * "UTC+3" as three hours ahead of UTC (ISO's sign, not POSIX's).
+ * The string is read once, here, by readClosedAt, and only the result
+ * travels. Handing a string the gateway has read to Postgres as well would
+ * have it read a second time, and where the two readings differ (a zone-less
+ * string when the gateway's zone and the database session's differ; measured
+ * in the ADR 0090 audit of PR #603 at 01ac04eaa) the ledger, the consumption
+ * row and the check could land on different days. So a zone-less string is
+ * read in the gateway's own zone for all of them. A string readClosedAt does
+ * not read (a two-digit year such as "1/1/50", a POSIX-looking "UTC+3", RFC
+ * 2822, "12", "2026-02-30") falls back: its check keeps the till's value for
+ * Postgres to read or refuse, as before ADR 0281, its stock and consumption
+ * are dated at import time, and the import says so.
  *
  * Pure, so the boundaries are tested without a database. `nowMs` is the
  * import's clock, read once per check.
  */
 export function saleInstant(closedAt: unknown, nowMs: number): SaleInstant {
   const raw = typeof closedAt === "string" ? closedAt.trim() : "";
-  const parsed = raw ? Date.parse(raw) : NaN;
+  const parsed = raw ? readClosedAt(raw) : NaN;
   const importTime = new Date(nowMs).toISOString();
   if (!Number.isFinite(parsed)) {
     return {
@@ -190,7 +277,7 @@ export interface StockTally {
   consumptionNotWritten: number;
   /** Lines this import booked whose check closed more than 72 hours ago. */
   backdatedOver72h: number;
-  /** Lines this import booked at import time because closed_at could not be read. */
+  /** Lines this import booked at import time because readClosedAt did not read closed_at. */
   datedAtImportTime: number;
 }
 
@@ -307,7 +394,7 @@ export class StockReport {
         case "closed_at": {
           const checks = `${g.count} check${g.count === 1 ? "" : "s"}`;
           out.push(
-            `stock: ${checks} carried a closed_at that could not be read (${g.message}), so their stock was dated at import time (first: check ${g.checkId})`,
+            `stock: ${checks} carried a closed_at that is not an ISO-8601 date the import reads (${g.message}), so their stock was dated at import time (first: check ${g.checkId})`,
           );
           break;
         }
