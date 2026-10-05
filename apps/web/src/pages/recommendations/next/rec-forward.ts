@@ -128,19 +128,24 @@ interface RuleGoal {
  * inventing a metric for them would be the fake button the house forbids.
  */
 const RULE_GOAL: Record<string, RuleGoal> = {
+  // ADR 0291: these two rules fire on whole-check sales or on bottles, never
+  // on wine revenue, so the basis says what fired and why the goal sits on
+  // wine revenue anyway (the prescription moves it), and the default name no
+  // longer claims wine revenue is what fell. Same reading as ADR 0120's
+  // scenario book, which pairs both rules with wine-revenue scenarios.
   sales_below_weekday_baseline: {
     metricKey: 'wine_revenue',
     direction: 'at_least',
-    name: (s) => (s ? `${s} wine revenue back to baseline` : 'Wine revenue back to baseline'),
+    name: (s) => (s ? `${s} wine revenue, after a soft ${s}` : 'Wine revenue, after a soft day'),
     basis:
-      'The rule compares a day’s wine sales with the same weekday’s baseline, so wine revenue is the figure that records the recovery.',
+      'The rule fires when one day’s sales fall below the same weekday’s baseline: whole-check sales through the till (every item on the check, not only wine), or bottles sold from the cellar log, in any house that keeps one. The entry’s own sentence says which. A goal cannot be held on whole-check sales, so this one is held on wine revenue, the figure the prescription (top-margin picks, one by-the-glass feature) moves. It records part of what fell, not all of it.',
   },
   weekly_demand_slide: {
     metricKey: 'wine_revenue',
     direction: 'at_least',
-    name: () => 'Wine revenue back to last week’s level',
+    name: () => 'Wine revenue, after a soft week',
     basis:
-      'The rule reads a week-over-week fall in sales; wine revenue is the same quantity at a longer grain.',
+      'The rule fires on a week-over-week fall in whole-check sales through the till, in bottles sold, or in one wine’s bottles. The entry’s own sentence says which. A goal cannot be held on whole-check sales, so this one is held on wine revenue, the figure the prescription (a staff tasting on high-margin slow movers, a pairing prompt) moves. It records part of what fell, not all of it.',
   },
   weekday_gap: {
     metricKey: 'wine_revenue',

@@ -179,8 +179,15 @@ export const BASKET_MIN_LIFT = 1.3;
  *       test corrected over every pair; a tied stockout #1 is withheld and no
  *       longer carries a hard-coded z of 2. A version-3 row may hold any of
  *       those sentences, so it is recomputed, not served.
+ *   5 — 2026-10-04 (ADR 0291): vendor concentration is recorded under
+ *       `purchasing`, the category the catalogue files it under, not `risk`.
+ *       A version-4 or older row still sits under `risk`, where the
+ *       catalogue's narrowed read never looks and the purchasing+risk rails
+ *       would show it twice once the new row lands; it is refused and
+ *       recomputed. (Drafted as 4 on 2026-10-03; #602 took 4 first, so this
+ *       change is 5 — no ADR 0291 row was ever written at 4.)
  */
-export const INSIGHT_GENERATOR_VERSION = 4;
+export const INSIGHT_GENERATOR_VERSION = 5;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -991,10 +998,13 @@ export class InsightGeneratorService {
         topCount: 1,
         hhi,
       };
+      // Filed where the catalogue files it (ADR 0291): `categorize()` sorts
+      // every vendor dimension into purchasing, and a type recorded under any
+      // other category is one the catalogue's narrowed read cannot find.
       push(
         this.record(
           "vendor.purchase_spend.concentration",
-          "risk",
+          "purchasing",
           "concentration",
           ev,
           {
