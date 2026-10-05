@@ -38,20 +38,29 @@
 --      till has rung, with how many lines each.
 --   3. house_beverage_ledger's `pour` CTE reads house_till_lines, grouped by
 --      name first so beverage_house_key runs once per distinct name, not once
---      per line. A till name that no other book names becomes a ledger row
---      only when a line of it is flagged is_wine, or the queue ever held it
---      (so every name that was a row before stays one). Food the house never
---      queued stays out, which keeps today's boundary (ADR 0115 and OD-113 own
---      food). A product any other book already names attaches its till lines
---      either way, which is how a cocktail or a cola on the menu gets its
---      Sold and Taken.
---      [CORRECTED 2026-10-05: "every name that was a row before stays one"
---      was too broad. A name the open queue held, and no other book names,
---      stays a row only while house_till_lines still holds a line of it: a
---      line on a check that is not voided, or a queued line with no check
---      behind it (an orphan). A name whose every line sat on voided checks
---      leaves with them, because a voided check is not a sale (ADR 0301 §1,
---      "Stated behaviours"; this migration's test, T2).]
+--      per line. A product any other book already names gets the till lines
+--      whose name has the same beverage_house_key (the same words, in any
+--      order), which is how a cocktail or a cola on the menu gets its Sold
+--      and Taken. A till name that no other book names becomes a ledger row
+--      only when the queue ever held it, main's own boundary, and only while
+--      house_till_lines still holds a line of it: a line on a check that is
+--      not voided, or a queued line with no check behind it (an orphan). A
+--      name whose every line sat on voided checks leaves with them, because
+--      a voided check is not a sale (ADR 0301 §1, "Stated behaviours"; this
+--      migration's test, T2). Food the house never queued stays out (ADR 0115
+--      and OD-113 own food).
+--      [CHANGED 2026-10-05: the first build also made a row of a till-only
+--      name when a line of it was flagged is_wine. Tuzlu Rüzgar's mappings
+--      flag every mapped name so (152 of 152 in the 2026-10-03 walk's read),
+--      so that added a row for each mapped name with a serve size in it, e.g.
+--      'Yeni Rakı (single 50ml)' beside the menu's 'Yeni Rakı': a choice of
+--      what the register shows that was never asked. Dropped.]
+--      A till name with a serve size in it ('Yeni Rakı (single 50ml)', 'Efes
+--      Pilsen (draft 400ml)', 'Fords Gin (50ml)') has a key of its own, so its
+--      lines reach neither its menu row's Sold and Taken nor a row of their
+--      own; they reach that row's record only (row-record.ts matchLine). How
+--      such a name should join its row is the founder's call (ADR 0301,
+--      "Fork deferred"); this migration's test, T15, pins today's answer.
 --
 -- The ledger's signature and return shape do not change: CREATE OR REPLACE,
 -- so its grants stay as they are and callers need no change. Its body is the
@@ -314,8 +323,7 @@ till AS MATERIALIZED (
          sum(coalesce(t.qty, 0))                              AS qty,
          sum(coalesce(t.price, 0) * coalesce(t.qty, 1))       AS revenue,
          min(t.sold_at)                                       AS first_at,
-         max(t.sold_at)                                       AS last_at,
-         bool_or(coalesce(t.is_wine, false) OR t.from_queue)  AS admit
+         max(t.sold_at)                                       AS last_at
   FROM public.house_till_lines(p_restaurant_id) t
   GROUP BY t.item_name
 ),
@@ -331,6 +339,9 @@ till AS MATERIALIZED (
 -- and leaves with them. And the Toast direct path queues a line that has a
 -- menu guid and a quantity above 0 when nothing maps it or its mapping names
 -- another house's item; a line without a guid or a quantity it skips.]
+-- [CHANGED 2026-10-05: these names are now the only way a till name that no
+-- other book names becomes a row. The first build also admitted a name when a
+-- line of it was flagged is_wine; that is dropped (the header, item 3).]
 queued AS (
   SELECT DISTINCT btrim(u.item_name) AS item_name
   FROM public.pos_unresolved_lines u
@@ -341,7 +352,7 @@ pour AS (
   SELECT public.beverage_house_key(NULL, t.item_name) AS k,
          t.item_name                                  AS label,
          t.lines, t.qty, t.revenue, t.first_at, t.last_at,
-         (t.admit OR q.item_name IS NOT NULL)         AS admit
+         (q.item_name IS NOT NULL)                    AS admit
   FROM till t
   LEFT JOIN queued q ON q.item_name = t.item_name
 ),
@@ -416,9 +427,10 @@ keys AS (
   UNION SELECT k FROM ord_agg
   UNION SELECT k FROM quo_agg
   -- CHANGED the_cellar_reads_the_tills_own_record: a name only the till
-  -- knows is a row when a line of it is flagged is_wine or the queue ever
-  -- held it. A key the other books name attaches its till lines below either
-  -- way.
+  -- knows is a row when the queue ever held it, as it was on main when the
+  -- pour read the queue alone. A key the other books name gets the till lines
+  -- of the same key below either way. [CHANGED 2026-10-05: no longer also
+  -- when a line of it is flagged is_wine; the header, item 3.]
   UNION SELECT k FROM pour_agg WHERE admit
 ),
 
@@ -536,5 +548,5 @@ COMMENT ON FUNCTION public.house_beverage_ledger IS
   '= ''active'', ADR 0193) and excludes status = ''discarded'' lines. '
   'The pos book is the till''s own record, house_till_lines: every line of '
   'every pos_checks row not voided, plus pos_unresolved_lines with no check '
-  'behind them; a name only the till knows is a row when a line of it is '
-  'flagged is_wine or the queue ever held it (ADR 0301).';
+  'behind them, summed by house_key; a name only the till knows is a row '
+  'when the queue ever held it (ADR 0301).';

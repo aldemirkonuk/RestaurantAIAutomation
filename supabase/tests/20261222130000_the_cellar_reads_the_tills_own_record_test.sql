@@ -13,10 +13,12 @@
 -- one transaction, rolled back: it leaves nothing behind. Every product name
 -- starts with "Zqtl", so rows already in a populated database cannot match.
 --
--- On a build WITHOUT the migration, T1, T2, T3, T5, T6, T7, T8, T9, T11, T13
--- and T14 FAIL (T10 fails too on a build without the_ledger_lists_only_the_current_menu,
+-- On a build WITHOUT the migration, T1, T2, T3, T5, T6, T7, T8, T9, T11, T13,
+-- T14 and T15 FAIL (T10 fails too on a build without the_ledger_lists_only_the_current_menu,
 -- which it pins). T4 and T12 pass on both builds: they pin what the migration
--- keeps (food stays out; the ledger's signature and shape).
+-- keeps (food stays out; the ledger's signature and shape). T15 also fails on
+-- this migration's first build, which made a row of every till-only name
+-- flagged is_wine (added 2026-10-05).
 
 begin;
 
@@ -31,6 +33,9 @@ insert into public.menu_items (menu_id, restaurant_id, name, producer, category,
   ('a3010000-0000-4000-8000-0000000000a1', 'a3010000-0000-4000-8000-000000000001', 'Zqtl Lions Milk', null, 'Cocktails', 17, 'approved'),
   ('a3010000-0000-4000-8000-0000000000a1', 'a3010000-0000-4000-8000-000000000001', 'Zqtl Cola', null, 'Soft drinks', 4, 'approved'),
   ('a3010000-0000-4000-8000-0000000000a1', 'a3010000-0000-4000-8000-000000000001', 'Zqtl Yeni Raki', null, 'Rakı', 90, 'approved'),
+  -- T15: a beer the till rings under its own name (bottled) and with a serve
+  -- size added (draft), as Tuzlu Rüzgar's till does.
+  ('a3010000-0000-4000-8000-0000000000a1', 'a3010000-0000-4000-8000-000000000001', 'Zqtl Efes Pilsen', null, 'Beer', 8, 'approved'),
   -- T10: a line discarded from the current menu, and one only on the archived menu.
   ('a3010000-0000-4000-8000-0000000000a1', 'a3010000-0000-4000-8000-000000000001', 'Zqtl Discarded Tonic', null, 'Soft drinks', 3, 'discarded'),
   ('a3010000-0000-4000-8000-0000000000a2', 'a3010000-0000-4000-8000-000000000001', 'Zqtl Archived Gin', null, 'Spirits', 40, 'approved');
@@ -72,7 +77,17 @@ insert into public.pos_checks (restaurant_id, source, external_check_id, opened_
    '2026-08-10 19:00+00', '2026-08-10 19:30+00', false,
    '[{"name": "Zqtl Ayran", "qty": 1, "price": 3},
      {"name": "Zqtl Ayran\t", "qty": 2, "price": 3},
-     {"name": "Zqtl Ayran\u00a0", "qty": 3, "price": 3}]'::jsonb);
+     {"name": "Zqtl Ayran\u00a0", "qty": 3, "price": 3}]'::jsonb),
+  -- C6 (T15): Tuzlu Rüzgar's own naming (sim feed, rebuild/run/feed/pos-*.json).
+  -- The till adds the serve size to the menu's name: 'Yeni Rakı (single
+  -- 50ml)', 'Yeni Rakı 70cl bottle', 'Efes Pilsen (draft 400ml)'. Every line
+  -- is mapped and flagged is_wine, as Tuzlu's mappings are, and none is queued.
+  ('a3010000-0000-4000-8000-000000000001', 'simpos', 'zqtl-c6',
+   '2026-08-11 19:00+00', '2026-08-11 20:00+00', false,
+   '[{"name": "Zqtl Yeni Raki (single 50ml)", "qty": 4, "price": 14, "is_wine": true, "inventory_id": "a3010000-0000-4000-8000-0000000000f1"},
+     {"name": "Zqtl Yeni Raki 70cl bottle", "qty": 1, "price": 80, "is_wine": true, "inventory_id": "a3010000-0000-4000-8000-0000000000f1"},
+     {"name": "Zqtl Efes Pilsen", "qty": 2, "price": 8, "is_wine": true, "inventory_id": "a3010000-0000-4000-8000-0000000000f2"},
+     {"name": "Zqtl Efes Pilsen (draft 400ml)", "qty": 3, "price": 10, "is_wine": true, "inventory_id": "a3010000-0000-4000-8000-0000000000f3"}]'::jsonb);
 
 insert into public.pos_unresolved_lines
   (restaurant_id, source, external_check_id, external_item_id, item_name, qty, price, resolved, created_at) values
@@ -292,6 +307,33 @@ begin
                        from public.house_till_lines('a3010000-0000-4000-8000-000000000001'::uuid, array[n.item_name]) t
                       where t.item_name = n.item_name);
   assert bad = 0, format('T14 FAIL %s listed names do not return their own lines when passed back as listed', bad);
+end $$;
+
+-- T15 (added 2026-10-05) a till name with a serve size added has a key of its
+-- own. Its lines reach neither the menu row's Sold and Taken (the cell joins
+-- names by beverage_house_key, and 'Zqtl Yeni Raki (single 50ml)' keys apart
+-- from 'Zqtl Yeni Raki'), nor a row of their own (a till-only name is a row
+-- only when the queue held it; the first build also admitted it when a line
+-- was flagged is_wine). They stay in the till's record, where the row record
+-- reads them. How such a name should join its row is the founder's fork (ADR
+-- 0301, "Fork deferred"); an answer that joins them changes this test.
+do $$
+declare r record; n integer;
+begin
+  select * into r from pg_temp.aw10_row('Zqtl Yeni Raki');
+  assert r.pos_lines = 1 and r.poured_qty = 2,
+    format('T15 FAIL the rakı reads pos_lines %s, Sold %s; expected 1 and 2 (only the line under its own name, C1)', r.pos_lines, r.poured_qty);
+  select * into r from pg_temp.aw10_row('Zqtl Efes Pilsen');
+  assert r.pos_lines = 1 and r.poured_qty = 2 and r.poured_revenue = 16,
+    format('T15 FAIL the beer reads pos_lines %s, Sold %s, Taken %s; expected 1, 2 and 16 (the bottled line only)', r.pos_lines, r.poured_qty, r.poured_revenue);
+  select count(*) into n
+    from public.house_beverage_ledger('a3010000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label in ('Zqtl Yeni Raki (single 50ml)', 'Zqtl Yeni Raki 70cl bottle', 'Zqtl Efes Pilsen (draft 400ml)');
+  assert n = 0, format('T15 FAIL %s till-only names with a serve size read as ledger rows of their own, expected 0', n);
+  select count(*) into n
+    from public.house_till_lines('a3010000-0000-4000-8000-000000000001'::uuid,
+           array['Zqtl Yeni Raki (single 50ml)', 'Zqtl Yeni Raki 70cl bottle', 'Zqtl Efes Pilsen (draft 400ml)']) t;
+  assert n = 3, format('T15 FAIL the till''s record holds %s of the three serve-size lines, expected 3', n);
 end $$;
 
 rollback;

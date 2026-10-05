@@ -580,6 +580,46 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
     ]);
   });
 
+  it("finds Tuzlu Rüzgar's own till names, which add a serve size to the menu's name (A-016)", async () => {
+    // The names are the sim feed's own (p4-scratch/sim-run/rebuild/run/feed).
+    // Each carries a size, so none has its menu row's beverage_house_key and
+    // none reaches that row's Sold cell (ADR 0301, Fork deferred; SQL T15).
+    // The record finds them with matchLine, as 'contains'. That rule is
+    // main's and inherited: 'Yeni Rakı Âlâ' contains 'Yeni Rakı', so its lines
+    // show in Yeni Rakı's record too (ADR 0301, Stated behaviours).
+    const lines = [
+      tillLine(1, "Yeni Rakı (single 50ml)", 4, 14),
+      tillLine(2, "Yeni Rakı 70cl bottle", 1, 80),
+      tillLine(3, "Yeni Rakı 100cl bottle", 1, 110),
+      tillLine(4, "Yeni Rakı Âlâ (single 50ml)", 2, 16),
+      tillLine(5, "Kulüp Rakı (single 50ml)", 3, 12),
+      tillLine(6, "Efes Pilsen", 2, 8),
+      tillLine(7, "Efes Pilsen (draft 400ml)", 3, 10),
+      tillLine(8, "Tito's Handmade Vodka (50ml)", 1, 12),
+    ];
+    const read = async (label: string) => {
+      const { service } = await tillService(lines);
+      const out = await service.readRowRecord(RID, label);
+      const pos = out.books.find((b) => b.book === "pos");
+      expect(pos?.readable).toBe(true);
+      return pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort();
+    };
+
+    expect(await read("Yeni Rakı")).toEqual([
+      ["Yeni Rakı (single 50ml)", 4, "contains"],
+      ["Yeni Rakı 100cl bottle", 1, "contains"],
+      ["Yeni Rakı 70cl bottle", 1, "contains"],
+      ["Yeni Rakı Âlâ (single 50ml)", 2, "contains"],
+    ]);
+    expect(await read("Efes Pilsen")).toEqual([
+      ["Efes Pilsen (draft 400ml)", 3, "contains"],
+      ["Efes Pilsen", 2, "exact"],
+    ]);
+    expect(await read("Tito's Handmade Vodka")).toEqual([
+      ["Tito's Handmade Vodka (50ml)", 1, "contains"],
+    ]);
+  });
+
   it("reads all 2,152 lines of a row across three pages, with no sample cap (A-015)", async () => {
     const lines = Array.from({ length: 2152 }, (_, i) => tillLine(i + 1, "Lions Milk", 1, 17));
     const { service, calls } = await tillService(lines);
