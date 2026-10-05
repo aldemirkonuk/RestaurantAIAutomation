@@ -12,7 +12,7 @@
  * (Recommended)", then F5 "One note per till per hour (Recommended)" and F6
  * "Push outside quiet hours (Recommended)", then "Bring it back
  * (Recommended)", "One push per hour, re-flagged (Recommended)" and "Quiet
- * means quiet (Recommended)".
+ * means quiet (Recommended)", then "Count each check once (Recommended)".
  *
  * WHAT IT DOES
  * ------------
@@ -20,11 +20,25 @@
  *   per import, after its loop, and only when something was refused. When this
  *   house's note for this till (group key `pos_import_refused:<till>`) was
  *   first written less than `OPEN_NOTE_WINDOW_MINUTES` ago, the refusals are
- *   COUNTED INTO IT: every recipient's row of that note, archived ones too
- *   ("Bring it back"), gets the new count, title and words, the named ids stay
- *   at most `MAX_NOTE_CHECK_IDS` in total, and the row returns to unread. No
- *   row is written and nothing is pushed. Otherwise a new note is written. A
- *   file import is one call, so it is still one note.
+ *   COUNTED INTO IT: when that raises its count (below), every recipient's
+ *   row of that note, archived ones too ("Bring it back"), gets the new
+ *   count, title and words, the named ids stay at most `MAX_NOTE_CHECK_IDS`
+ *   in total, and the row returns to unread. No row is written and nothing
+ *   is pushed. Otherwise a new note is written. A file import is one call,
+ *   so it is still one note.
+ * - EACH CHECK COUNTED ONCE ("Count each check once"). The note counts the
+ *   distinct check ids refused in its hour: a check the till sends again,
+ *   in the same import or a later one, is not counted or named again. The
+ *   note keeps the ids it counted, at most `MAX_NOTE_KEPT_CHECKS`, each as a
+ *   key (`checkKey`, a digest of the id as the till sent it), and names the
+ *   first `MAX_NOTE_CHECK_IDS` of them. Once it has counted more ids than it
+ *   keeps, an id it does not keep may be one it counted, so a later import
+ *   that brings such an id makes the count a floor, said as "At least N"
+ *   (`atLeast`), never more than it can prove. A check with no id is never
+ *   merged with another: each one is counted every time it is refused, and
+ *   the note says so (`withoutId`). An import that adds no check the note
+ *   had not counted changes nothing in it, so nothing is written and no row
+ *   turns unread or comes back from the archive.
  * - THE IMPORT ANSWERS ON TIME. The import waits at most `NOTE_DEADLINE_MS`
  *   for its note, then answers without it, says so, and logs it; the note
  *   goes on being filed. One filing that never answers holds the next one for
@@ -52,7 +66,8 @@
  * - The note names at most `MAX_NOTE_CHECK_IDS` check ids and counts the
  *   rest, each id cut at `MAX_NOTE_ID_CHARS`. It carries the till's name, the
  *   count, and the first unreadable value the till sent, cut at 40
- *   characters. Nothing else from the payload, and no secret. The phone
+ *   characters. Nothing else from the payload, and no secret; the kept keys
+ *   are digests of the ids it counted, not the ids. The phone
  *   push's `data` carries only the note's id and count (`pushData`), with the
  *   type and link the funnel adds, never the till's text; the push's title and
  *   body are the note's own, so its body still names the ids and the value.
@@ -70,8 +85,11 @@
  * writes a new note rather than drop its refusals. A note's pushed and quiet
  * rows are written by two calls, so an update from another process can land
  * between them; the rows written second then hold the older count until the
- * next update brings them up, and only rows still holding a count it read,
- * lower than the one it writes, so an older count never lands over a newer one.
+ * next import counted into the note brings them up (one that adds no check
+ * too), and only rows still holding a count it read, lower than the one it
+ * writes, so an older count never lands over a newer one. "Lower" orders the
+ * count first, then an exact count below "at least" the same count
+ * (`noteRank`); every write raises it, so the title is a version.
  *
  * NEVER THROWS
  * ------------
@@ -86,7 +104,7 @@
  * NO EMOJI: `notification-text-is-plain.spec.ts` scans every gateway file that
  * names a notification funnel, and this one does.
  */
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { Logger } from "@nestjs/common";
 import type { AreaRoutingService } from "../areas/area-routing.service";
 import { isWithinQuietHours } from "../calendar/reminder-window";
@@ -99,6 +117,18 @@ export const REFUSED_CHECKS_NOTE_TYPE = "pos_import_refused";
 
 /** At most this many refused check ids are named in a note; the rest are counted. */
 export const MAX_NOTE_CHECK_IDS = 10;
+
+/**
+ * "Count each check once": a note keeps at most this many of the check ids it
+ * counted, as keys, to tell a check sent again from a new one; past it the
+ * count can only be a floor ("at least"). Why 500 and not the 10 it names: a
+ * till that sends one check per webhook (F5's own case) brings one new id per
+ * import, and with 10 kept its note would read "At least 11" for the rest of
+ * the hour however many more were refused; 500 holds an hour of such a till
+ * and a day's export run twice, at 16 characters a key (about 9 KB on each
+ * recipient's row at the bound).
+ */
+export const MAX_NOTE_KEPT_CHECKS = 500;
 
 /** A check id longer than this is cut, so one id cannot fill a phone screen. */
 export const MAX_NOTE_ID_CHARS = 40;
@@ -142,10 +172,16 @@ export interface RefusedChecksNote {
   filed: boolean;
   /**
    * True when they were counted into this till's note from the last hour
-   * (F5): rows updated, none written, nothing pushed.
+   * (F5): rows updated, none written, nothing pushed. Also true when that
+   * note had already counted every one of them ("Count each check once"):
+   * nothing in it changed.
    */
   addedToOpenNote: boolean;
-  /** How many bells were written to, or updated. */
+  /**
+   * How many bells were written to, or updated; 0 when the open note had
+   * already counted every check this import refused and no row of it was
+   * behind, so nothing was written.
+   */
   recipients: number;
   /** Owners and managers set aside because they are Away today (ADR 0218). */
   heldAway: number;
@@ -189,13 +225,33 @@ export interface RefusedCheck {
 
 /** What a note says, as every one of its rows' metadata carries it. */
 export interface NoteState {
-  /** Checks refused into this note, over every import counted into it. */
+  /**
+   * The checks this note counts: the distinct check ids refused in its hour,
+   * plus every refusal that came with no id. Exact, or a floor when
+   * `atLeast`.
+   */
   refused: number;
-  /** The ids named, at most `MAX_NOTE_CHECK_IDS`, in the order refused. */
+  /**
+   * True once the count can no longer be proven exact: the note counted more
+   * ids than it keeps, and a later import brought an id it does not keep,
+   * which may be one it counted. Never turns false again.
+   */
+  atLeast: boolean;
+  /**
+   * The ids named: the first `MAX_NOTE_CHECK_IDS` of the ids kept, as shown,
+   * in the order first refused.
+   */
   checkIds: string[];
+  /**
+   * The ids kept, as `checkKey`s, at most `MAX_NOTE_KEPT_CHECKS`, in the
+   * order first refused: how a check sent again is told from a new one.
+   */
+  checkKeys: string[];
+  /** Refusals that came with no check id, each counted (never merged). */
+  withoutId: number;
   /** The first unreadable value the till sent, as quoted. */
   firstSent: string;
-  /** How many imports were counted into this note. */
+  /** How many imports changed this note: its first, and each that added to it. */
   imports: number;
 }
 
@@ -231,39 +287,117 @@ export function tillName(providerKey: string): string {
   return PROVIDER_BY_KEY[providerKey]?.name ?? providerKey;
 }
 
+/**
+ * The key a refused check is counted by: the first 16 hex characters (64
+ * bits) of the SHA-256 of its id exactly as the till sent it, so an id of any
+ * length is kept in 16 characters, and two ids that differ anywhere are two
+ * checks (the import's own `pos_checks` row is keyed on the same exact id).
+ * Two different ids share a key with a chance below 1 in 10^13 among 500.
+ * Null for a check with no id (blank, or only spaces): it cannot be told from
+ * another, so it is never merged with one.
+ */
+export function checkKey(id: unknown): string | null {
+  const text = String(id ?? "");
+  if (text.trim() === "") return null;
+  return createHash("sha256").update(text, "utf8").digest("hex").slice(0, 16);
+}
+
+/** A note before any import: what `freshState` adds the first import to. */
+const EMPTY_STATE: NoteState = {
+  refused: 0,
+  atLeast: false,
+  checkIds: [],
+  checkKeys: [],
+  withoutId: 0,
+  firstSent: "",
+  imports: 0,
+};
+
 /** One import's refusals, as a new note holds them. */
 export function freshState(refused: ReadonlyArray<RefusedCheck>): NoteState {
-  return {
-    refused: refused.length,
-    checkIds: refused
-      .slice(0, MAX_NOTE_CHECK_IDS)
-      .map((c) => sayCheckId(c.externalCheckId)),
-    firstSent: refused.length > 0 ? sayValue(refused[0].closedAt) : "",
-    imports: 1,
-  };
+  return addToState(EMPTY_STATE, refused);
 }
 
 /**
- * F5: a later import's refusals counted into an open note. The count adds up;
- * the named ids stay at most `MAX_NOTE_CHECK_IDS` in total, the earliest kept.
- * Every refusal counts, so a check the till sends again and is refused again
- * is counted, and named, again.
+ * An import's refusals counted into a note ("Count each check once
+ * (Recommended)"). Pure.
+ *
+ * - An id is counted once: one this import repeats, or one the note keeps
+ *   (`checkKeys`), is not counted or named again.
+ * - While every id the note counted is one it keeps, an id it does not keep
+ *   is a new check: it is counted, and kept while there is room (at most
+ *   `MAX_NOTE_KEPT_CHECKS`), and named while fewer than `MAX_NOTE_CHECK_IDS`
+ *   are; the count stays exact.
+ * - Once the note has counted more ids than it keeps, an id it does not keep
+ *   may be one of those it counted and no longer knows. The ids are then
+ *   counted at the floor the note can prove: the larger of what it counted
+ *   and the ids it keeps plus this import's ids it does not keep. If this
+ *   import brought such an id, the count becomes "at least" (`atLeast`);
+ *   an import that brings only kept ids leaves it as it was.
+ * - A check with no id is counted every time it is refused, never merged.
  */
 export function addToState(
   prev: NoteState,
   refused: ReadonlyArray<RefusedCheck>,
 ): NoteState {
-  const room = Math.max(0, MAX_NOTE_CHECK_IDS - prev.checkIds.length);
+  const known = new Set(prev.checkKeys);
+  const seen = new Set<string>();
+  const fresh: Array<{ key: string; shown: string }> = [];
+  let withoutId = 0;
+  for (const c of refused) {
+    const key = checkKey(c.externalCheckId);
+    if (key === null) {
+      withoutId++;
+      continue;
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!known.has(key))
+      fresh.push({ key, shown: sayCheckId(c.externalCheckId) });
+  }
+  const allKept =
+    !prev.atLeast && prev.refused - prev.withoutId === prev.checkKeys.length;
+  const room = allKept
+    ? Math.max(0, MAX_NOTE_KEPT_CHECKS - prev.checkKeys.length)
+    : 0;
+  const kept = fresh.slice(0, room);
+  const namedRoom = Math.max(0, MAX_NOTE_CHECK_IDS - prev.checkIds.length);
+  const idsCounted = allKept
+    ? prev.checkKeys.length + fresh.length
+    : Math.max(
+        prev.refused - prev.withoutId,
+        prev.checkKeys.length + fresh.length,
+      );
+  const atLeast = allKept ? false : prev.atLeast || fresh.length > 0;
   return {
-    refused: prev.refused + refused.length,
+    refused: idsCounted + prev.withoutId + withoutId,
+    atLeast,
     checkIds: [
       ...prev.checkIds,
-      ...refused.slice(0, room).map((c) => sayCheckId(c.externalCheckId)),
-    ].slice(0, MAX_NOTE_CHECK_IDS),
-    firstSent: prev.firstSent,
+      ...kept.slice(0, namedRoom).map((k) => k.shown),
+    ],
+    checkKeys: [...prev.checkKeys, ...kept.map((k) => k.key)],
+    withoutId: prev.withoutId + withoutId,
+    firstSent:
+      prev.imports === 0
+        ? refused.length > 0
+          ? sayValue(refused[0].closedAt)
+          : ""
+        : prev.firstSent,
     imports: prev.imports + 1,
   };
 }
+
+/**
+ * A note's standing: its count, then an exact count below "at least" the
+ * same count. Every write to a note raises it, and the title says it, so a
+ * title is a version (the compare-and-sets in `addToOpenNote`).
+ */
+export function noteRank(s: NoteState): number {
+  return s.refused * 2 + (s.atLeast ? 1 : 0);
+}
+
+const KEY_SHAPE = /^[0-9a-f]{16}$/;
 
 /** A note's state read back from a row's metadata; null when it does not read. */
 function readState(metadata: unknown): NoteState | null {
@@ -278,22 +412,54 @@ function readState(metadata: unknown): NoteState | null {
     m.imports >= 1
       ? m.imports
       : 1;
+  const withoutId = m.withoutId ?? 0;
+  if (
+    typeof withoutId !== "number" ||
+    !Number.isInteger(withoutId) ||
+    withoutId < 0
+  )
+    return null;
+  const atLeast = m.atLeast ?? false;
+  if (typeof atLeast !== "boolean") return null;
+  // The ids named are the first of the ids kept: a row whose two do not
+  // line up, or whose keys are not keys, cannot say which checks it counted.
+  const checkIds = m.checkIds;
+  const checkKeys = m.checkKeys;
+  if (
+    !Array.isArray(checkIds) ||
+    !Array.isArray(checkKeys) ||
+    checkIds.length !== Math.min(checkKeys.length, MAX_NOTE_CHECK_IDS) ||
+    checkKeys.length > MAX_NOTE_KEPT_CHECKS ||
+    !checkIds.every((x) => typeof x === "string") ||
+    !checkKeys.every((x) => typeof x === "string" && KEY_SHAPE.test(x)) ||
+    checkKeys.length + withoutId > refused
+  )
+    return null;
   return {
     refused,
-    checkIds: (Array.isArray(m.checkIds) ? m.checkIds : [])
-      .filter((x): x is string => typeof x === "string")
-      .slice(0, MAX_NOTE_CHECK_IDS),
+    atLeast,
+    checkIds: checkIds as string[],
+    checkKeys: checkKeys as string[],
+    withoutId,
     firstSent: typeof m.firstSent === "string" ? m.firstSent : "",
     imports,
   };
+}
+
+/** Ids counted but not named: past the first `MAX_NOTE_CHECK_IDS`. */
+function idsNotNamed(s: NoteState): number {
+  return Math.max(0, s.refused - s.withoutId - s.checkIds.length);
 }
 
 /** The metadata fields a note's state is kept in. */
 function stateMetadata(s: NoteState): Record<string, unknown> {
   return {
     refused: s.refused,
+    atLeast: s.atLeast,
     checkIds: s.checkIds,
-    checkIdsNotNamed: Math.max(0, s.refused - s.checkIds.length),
+    checkKeys: s.checkKeys,
+    checkIdsNotNamed: idsNotNamed(s),
+    withoutId: s.withoutId,
     firstSent: s.firstSent,
     imports: s.imports,
   };
@@ -301,7 +467,8 @@ function stateMetadata(s: NoteState): Record<string, unknown> {
 
 /**
  * The note's words for a state. Pure. The title is the founder's own example
- * ("3 checks not imported: date not readable"); no internal field name
+ * ("3 checks not imported: date not readable"), led by "At least" when the
+ * count is a floor ("Past a cap it says 'at least'"); no internal field name
  * appears in it.
  */
 export function noteWords(
@@ -310,17 +477,34 @@ export function noteWords(
 ): { title: string; message: string; notNamed: number } {
   const n = s.refused;
   const one = n === 1;
-  const notNamed = Math.max(0, n - s.checkIds.length);
-  const title = `${n} check${one ? "" : "s"} not imported: date not readable`;
+  const count = `${s.atLeast ? "At least " : ""}${n}`;
+  const notNamed = idsNotNamed(s);
+  const w = s.withoutId;
+  const title = `${count} check${one ? "" : "s"} not imported: date not readable`;
   const sent = s.firstSent
     ? ` (${one ? "it was" : "the first was"} written as ${s.firstSent})`
     : "";
+  const named =
+    s.checkIds.length > 0
+      ? `${one ? "Check" : "Checks"}: ${s.checkIds.join(", ")}` +
+        `${notNamed > 0 ? `, and ${s.atLeast ? "at least " : ""}${notNamed} more` : ""}. `
+      : "";
+  const noId =
+    w > 0
+      ? `${w === n ? (one ? "It" : "They") : `${w} of them`} came with no check id, ` +
+        `so ${w === 1 ? "it is" : "each is"} counted every time it is sent. `
+      : "";
+  const floor = s.atLeast
+    ? `This note keeps the first ${MAX_NOTE_KEPT_CHECKS} check ids, so past those a check sent again cannot be told from a new one. `
+    : "";
   const message =
-    `${n} check${one ? "" : "s"} from ${tillName(providerKey)} ` +
+    `${count} check${one ? "" : "s"} from ${tillName(providerKey)} ` +
     `${one ? "was" : "were"} not imported because ${one ? "its" : "their"} closing time could not be read` +
     `${sent}. ` +
     `${one ? "Its sale and its stock are" : "Their sales and stock are"} not recorded. ` +
-    `${one ? "Check" : "Checks"}: ${s.checkIds.join(", ")}${notNamed > 0 ? `, and ${notNamed} more` : ""}. ` +
+    named +
+    noId +
+    floor +
     `Send ${one ? "it" : "them"} again with the closing time written as 2026-10-03 21:00.`;
   return { title, message, notNamed };
 }
@@ -520,7 +704,7 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
     if (added !== null) {
       deps.logger.log(
         `POS_REFUSED_CHECKS_NOTE_ADDED restaurant=${restaurantId} source=${providerKey} ` +
-          `refused=${refused.length} total=${added.total} rows=${added.rows}`,
+          `refused=${refused.length} total=${added.total} atLeast=${added.atLeast} grew=${added.grew} rows=${added.rows}`,
       );
       return said({
         filed: true,
@@ -636,16 +820,23 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
 
 /**
  * F5: count these refusals into this till's note from the last hour. Returns
- * the rows updated and the new total, or null when there is no open note or
- * it could not be read or updated; in the last two cases a caveat says so and
- * the caller writes a new note, so the refusals are never dropped.
+ * the rows updated, the note's count and whether it grew, or null when there
+ * is no open note or it could not be read or updated; in the last two cases a
+ * caveat says so and the caller writes a new note, so the refusals are never
+ * dropped.
  *
  * Every row of the note is read and updated whatever its status in
  * `NOTE_STATUSES`, so an archived row returns to unread with the new count
  * (the founder: "Bring it back (Recommended)"). Both updates are
  * compare-and-sets on the title, which carries the count: a row is changed
- * only while it still holds a count this import read, and every such count is
- * lower than the one written, so an older count never lands over a newer one.
+ * only while it still holds a count this import read, and every such count
+ * ranks lower than the one written (`noteRank`), so an older count never
+ * lands over a newer one.
+ *
+ * When this import adds no check the note had not counted ("Count each check
+ * once (Recommended)"), the note did not grow: its lead rows are left as they
+ * are (no new count, so not news: no row turns unread or comes back from the
+ * archive), and only rows behind it are brought up to it.
  */
 async function addToOpenNote(
   deps: Deps,
@@ -657,7 +848,12 @@ async function addToOpenNote(
     now: Date;
   },
   caveats: string[],
-): Promise<{ rows: number; total: number } | null> {
+): Promise<{
+  rows: number;
+  total: number;
+  atLeast: boolean;
+  grew: boolean;
+} | null> {
   // `caveat` is a fixed phrase, returned to the caller; `detail` (a
   // database's own message) goes to the log only.
   const fellBack = (caveat: string, detail?: string) => {
@@ -695,7 +891,7 @@ async function addToOpenNote(
     }>;
     if (rows.length === 0) return null;
 
-    // The newest note's rows, and the one of them with the highest count.
+    // The newest note's rows, and the one of them that ranks highest.
     const noteId = rows[0]?.metadata?.noteId;
     let lead: { title: string; metadata: any; state: NoteState } | null = null;
     for (const r of rows) {
@@ -705,14 +901,14 @@ async function addToOpenNote(
       if (
         state &&
         typeof r.title === "string" &&
-        (!lead || state.refused > lead.state.refused)
+        (!lead || noteRank(state) > noteRank(lead.state))
       ) {
         lead = { title: r.title, metadata: r.metadata, state };
       }
     }
     if (!lead) {
       fellBack(
-        "this till's open note could not be read (it carries no note id or count), so a new note was written",
+        "this till's open note could not be read (it carries no note id, count or check list), so a new note was written",
       );
       return null;
     }
@@ -726,7 +922,11 @@ async function addToOpenNote(
       )
       .map((r) => r.id as string);
 
-    const next = addToState(lead.state, a.refused);
+    const grown = addToState(lead.state, a.refused);
+    // "Count each check once": an import that adds no check the note had
+    // not counted leaves it as it was, so `next` is the note as read.
+    const grew = noteRank(grown) > noteRank(lead.state);
+    const next = grew ? grown : lead.state;
     const words = noteWords(a.providerKey, next);
     const patch = {
       title: words.title,
@@ -739,33 +939,37 @@ async function addToOpenNote(
       metadata: {
         ...lead.metadata,
         ...stateMetadata(next),
-        lastAddedAt: a.now.toISOString(),
+        ...(grew ? { lastAddedAt: a.now.toISOString() } : {}),
       },
     };
-    const { data: updated, error: updateError } = await deps.client
-      .from("notifications")
-      .update(patch)
-      .in("id", ids)
-      // Only rows still saying what was read: another process that counted
-      // into this note first has changed the title, and this matches nothing.
-      .eq("title", leadTitle)
-      .in("status", NOTE_STATUSES)
-      .select("id");
-    if (updateError) {
-      fellBack(
-        "this till's open note could not be updated, so a new note was written",
-        updateError.message,
-      );
-      return null;
+    let n = 0;
+    if (grew) {
+      const { data: updated, error: updateError } = await deps.client
+        .from("notifications")
+        .update(patch)
+        .in("id", ids)
+        // Only rows still saying what was read: another process that counted
+        // into this note first has changed the title, and this matches nothing.
+        .eq("title", leadTitle)
+        .in("status", NOTE_STATUSES)
+        .select("id");
+      if (updateError) {
+        fellBack(
+          "this till's open note could not be updated, so a new note was written",
+          updateError.message,
+        );
+        return null;
+      }
+      n = ((updated ?? []) as unknown[]).length;
+      if (n === 0) continue;
     }
-    const n = ((updated ?? []) as unknown[]).length;
-    if (n === 0) continue;
 
     // Rows of this note that hold an older count: another process counted
     // into the note while it was still writing them. They are brought up to
-    // the new count too, so every recipient's row says the same, but only
-    // rows whose count was read and is lower than the new one, and only while
-    // they still hold it: a row another process has since moved on is left.
+    // the note's count too, whether or not this import grew it, so every
+    // recipient's row says the same, but only rows whose count was read and
+    // ranks lower, and only while they still hold it: a row another process
+    // has since moved on is left.
     const older = rows.filter((r) => {
       if (
         r?.metadata?.noteId !== noteId ||
@@ -775,7 +979,7 @@ async function addToOpenNote(
       )
         return false;
       const state = readState(r.metadata);
-      return state !== null && state.refused < next.refused;
+      return state !== null && noteRank(state) < noteRank(next);
     });
     const behind = older.map((r) => r.id as string);
     const behindTitles = [...new Set(older.map((r) => r.title as string))];
@@ -797,7 +1001,12 @@ async function addToOpenNote(
         caught = ((behindRows ?? []) as unknown[]).length;
       }
     }
-    return { rows: n + caught, total: next.refused };
+    return {
+      rows: n + caught,
+      total: next.refused,
+      atLeast: next.atLeast,
+      grew,
+    };
   }
   fellBack(
     "this till's open note changed while it was being counted into, so a new note was written",

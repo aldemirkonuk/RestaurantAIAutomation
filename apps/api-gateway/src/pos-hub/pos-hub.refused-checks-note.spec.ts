@@ -26,7 +26,16 @@
  * count landed over a newer one, a hung bell write held the import and every
  * later one for that till, the push's data carried the till's text, and a
  * database's own words reached the caller.
+ *
+ * Then, after the founder's answer "Count each check once (Recommended)"
+ * (2026-10-05, ~19:10Z): run against c84faf084's `refused-checks-note.ts`,
+ * the cases under "a check sent again is counted once" fail: a re-sent check
+ * was counted, and named, again, the note kept no keys, and it never said
+ * "at least". The seeded notes carry the keys this file computes itself
+ * (`keyOf`, 16 hex of the SHA-256 of the id), so no case needs an export
+ * the older file lacks.
  */
+import { createHash } from "crypto";
 import { Logger } from "@nestjs/common";
 import { PosHubService } from "./pos-hub.service";
 import {
@@ -37,6 +46,7 @@ import {
   refusedChecksNoteCopy,
   sayCheckId,
 } from "./refused-checks-note";
+import * as noteModule from "./refused-checks-note";
 import { DatabaseService } from "../database/database.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import type { AreaRoutingService } from "../areas/area-routing.service";
@@ -128,6 +138,20 @@ interface Opts {
 const minutesAgo = (m: number) =>
   new Date(Date.now() - m * 60_000).toISOString();
 
+/** A check id's key as the note keeps it: 16 hex of the SHA-256 of the id. */
+const keyOf = (id: string) =>
+  createHash("sha256").update(id, "utf8").digest("hex").slice(0, 16);
+
+/** A note's state fields, as this file writes them, for an exact count. */
+const stateMeta = (refused: number, checkIds: string[]) => ({
+  refused,
+  atLeast: false,
+  checkIds,
+  checkKeys: checkIds.map(keyOf),
+  checkIdsNotNamed: refused - checkIds.length,
+  withoutId: 0,
+});
+
 /** An open note's rows, as this file writes them, for owner and manager. */
 function seededNote(over: {
   refused: number;
@@ -153,9 +177,7 @@ function seededNote(over: {
     metadata: {
       source: "csv_import",
       ...(over.noteId === null ? {} : { noteId: over.noteId ?? "note-seed" }),
-      refused: n,
-      checkIds: over.checkIds,
-      checkIdsNotNamed: n - over.checkIds.length,
+      ...stateMeta(n, over.checkIds),
       firstSent: '"03.10.2026"',
       imports: 1,
       reason: "date_not_readable",
@@ -750,7 +772,7 @@ describe("F5: one note per till per hour", () => {
     const { service, calls } = makeService({
       notes: seededNote({
         refused: 3,
-        checkIds: ["c-1"],
+        checkIds: ["c-1", "c-2", "c-3"],
         createdAt: minutesAgo(5),
       }),
       notesReadError: { message: "statement timeout" },
@@ -778,7 +800,7 @@ describe("F5: one note per till per hour", () => {
     const { service, calls } = makeService({
       notes: seededNote({
         refused: 3,
-        checkIds: ["c-1"],
+        checkIds: ["c-1", "c-2", "c-3"],
         createdAt: minutesAgo(5),
         noteId: null,
       }),
@@ -787,7 +809,7 @@ describe("F5: one note per till per hour", () => {
     expect(calls.noteUpdates).toHaveLength(0);
     expect(calls.persist).toHaveLength(1);
     expect(res.bellNote.caveats).toEqual([
-      "this till's open note could not be read (it carries no note id or count), so a new note was written",
+      "this till's open note could not be read (it carries no note id, count or check list), so a new note was written",
     ]);
   });
 
@@ -795,7 +817,7 @@ describe("F5: one note per till per hour", () => {
     const { service, calls } = makeService({
       notes: seededNote({
         refused: 3,
-        checkIds: ["c-1"],
+        checkIds: ["c-1", "c-2", "c-3"],
         createdAt: minutesAgo(5),
       }),
       beforeUpdate: () => ({
@@ -832,8 +854,7 @@ describe("F5: one note per till per hour", () => {
           r.title = "4 checks not imported: date not readable";
           r.metadata = {
             ...r.metadata,
-            refused: 4,
-            checkIds: ["c-1", "c-2", "c-3", "p-1"],
+            ...stateMeta(4, ["c-1", "c-2", "c-3", "p-1"]),
             imports: 2,
           };
         }
@@ -864,7 +885,7 @@ describe("F5: one note per till per hour", () => {
     const { service, calls } = makeService({
       notes: seededNote({
         refused: 3,
-        checkIds: ["c-1"],
+        checkIds: ["c-1", "c-2", "c-3"],
         createdAt: minutesAgo(5),
       }),
       beforeUpdate: () => ({ data: [], error: null }),
@@ -888,7 +909,7 @@ describe("F5: one note per till per hour", () => {
     const behind = {
       ...second,
       title: "2 checks not imported: date not readable",
-      metadata: { ...second.metadata, refused: 2, checkIds: ["c-1", "c-2"] },
+      metadata: { ...second.metadata, ...stateMeta(2, ["c-1", "c-2"]) },
     };
     const { service, calls, table } = makeService({ notes: [first, behind] });
     const res = await ingest(service, [check("c-4", "03.10.2026")]);
@@ -930,7 +951,7 @@ describe("F5: one note per till per hour", () => {
     const behind = {
       ...second,
       title: "2 checks not imported: date not readable",
-      metadata: { ...second.metadata, refused: 2, checkIds: ["c-1", "c-2"] },
+      metadata: { ...second.metadata, ...stateMeta(2, ["c-1", "c-2"]) },
     };
     let updates = 0;
     const { service, calls, table } = makeService({
@@ -979,6 +1000,317 @@ describe("F5: one note per till per hour", () => {
     await ingest(service, [check("c-4", "03.10.2026")]);
     expect(calls.noteUpdates).toHaveLength(1);
     expect(table.find((r) => r.id === "seed-1")!.title).toBe("something else");
+  });
+});
+
+describe('a check sent again is counted once: "Count each check once (Recommended)"', () => {
+  // The founder (2026-10-05): "The note counts distinct checks in its hour:
+  // re-running a CSV with 3 bad checks still reads '3 checks not imported',
+  // not 6. Past a cap it says 'at least'."
+  const KEPT = 500;
+  const ids = (prefix: string, n: number) =>
+    Array.from({ length: n }, (_, i) => `${prefix}-${i}`);
+  const refusedOf = (list: string[]) =>
+    list.map((externalCheckId) => ({
+      externalCheckId,
+      closedAt: "03.10.2026",
+    }));
+  const named = (message: string, id: string) =>
+    message.split(/[\s,.:]+/).filter((w) => w === id).length;
+
+  it("the same three checks sent again within the hour leave the note at 3, not 6, and name each once", async () => {
+    const { service, calls, table } = makeService();
+    const first = await ingest(service, [
+      check("c-1", "03.10.2026"),
+      check("c-2", "03.10.2026"),
+      check("c-3", "03.10.2026"),
+    ]);
+    expect(first.bellNote).toEqual(filedNew());
+    // One reader read it, the other archived it.
+    table[0].status = "read";
+    table[0].read_at = minutesAgo(1);
+    table[1].status = "archived";
+    table[1].archived_at = minutesAgo(1);
+    const before = structuredClone(table);
+
+    // The same CSV run again, one row twice.
+    const again = await ingest(service, [
+      check("c-1", "03.10.2026"),
+      check("c-2", "03.10.2026"),
+      check("c-3", "03.10.2026"),
+      check("c-1", "03.10.2026"),
+    ]);
+
+    // The import still says what it refused; the note counts checks.
+    expect(again.refusedUnreadableDate).toBe(4);
+    expect(calls.persist).toHaveLength(1);
+    // Nothing the note had not counted, so nothing is written: no row turns
+    // unread, none comes back from the archive.
+    expect(calls.noteUpdates).toHaveLength(0);
+    expect(table).toEqual(before);
+    for (const row of table) {
+      expect(row.title).toBe("3 checks not imported: date not readable");
+      expect(row.message).toContain("Checks: c-1, c-2, c-3. ");
+      for (const id of ["c-1", "c-2", "c-3"]) {
+        expect(named(row.message, id)).toBe(1);
+      }
+      expect(row.metadata).toMatchObject({
+        refused: 3,
+        atLeast: false,
+        checkIds: ["c-1", "c-2", "c-3"],
+        checkKeys: ["c-1", "c-2", "c-3"].map(keyOf),
+        withoutId: 0,
+        imports: 1,
+      });
+    }
+    expect(table.map((r) => r.status)).toEqual(["read", "archived"]);
+    expect(again.bellNote).toEqual(
+      filedNew({ addedToOpenNote: true, recipients: 0 }),
+    );
+  });
+
+  it("a check named twice in one import is one check", async () => {
+    const { service, calls } = makeService();
+    await ingest(service, [
+      check("c-1", "03.10.2026"),
+      check("c-1", "03.10.2026"),
+      check("c-2", "03.10.2026"),
+    ]);
+    const { payload } = calls.persist[0];
+    expect(payload.title).toBe("2 checks not imported: date not readable");
+    expect(payload.message).toContain("Checks: c-1, c-2. ");
+    expect(named(payload.message, "c-1")).toBe(1);
+    expect(payload.metadata).toMatchObject({
+      refused: 2,
+      checkIds: ["c-1", "c-2"],
+      checkKeys: [keyOf("c-1"), keyOf("c-2")],
+    });
+  });
+
+  it("a re-send with two new ids and one old moves the count from 3 to 5, and the note grows as news", async () => {
+    const { service, calls, table } = makeService({
+      notes: seededNote({
+        refused: 3,
+        checkIds: ["c-1", "c-2", "c-3"],
+        createdAt: minutesAgo(20),
+      }),
+    });
+    const res = await ingest(service, [
+      check("c-4", "03.10.2026"),
+      check("c-2", "03.10.2026"),
+      check("c-5", "03.10.2026"),
+    ]);
+
+    expect(calls.persist).toHaveLength(0);
+    expect(table).toHaveLength(2);
+    for (const row of table) {
+      expect(row.title).toBe("5 checks not imported: date not readable");
+      expect(row.message).toContain("Checks: c-1, c-2, c-3, c-4, c-5. ");
+      for (const id of ["c-1", "c-2", "c-3", "c-4", "c-5"]) {
+        expect(named(row.message, id)).toBe(1);
+      }
+      expect(row.metadata).toMatchObject({
+        refused: 5,
+        atLeast: false,
+        checkIds: ["c-1", "c-2", "c-3", "c-4", "c-5"],
+        checkKeys: ["c-1", "c-2", "c-3", "c-4", "c-5"].map(keyOf),
+        checkIdsNotNamed: 0,
+        imports: 2,
+      });
+      expect(row.status).toBe("unread");
+    }
+    expect(res.bellNote).toEqual(
+      filedNew({ addedToOpenNote: true, recipients: 2 }),
+    );
+  });
+
+  it("past the ids it keeps, the note says 'at least' with the count it can prove", async () => {
+    const { calls, table, deps } = makeService();
+    const file = (list: string[]) =>
+      fileRefusedChecksNote(deps, {
+        restaurantId: HOUSE,
+        providerKey: "csv_import",
+        refused: refusedOf(list),
+      });
+    const k = ids("k", KEPT + 3);
+
+    // 503 distinct checks, two of them sent twice: counted exactly.
+    expect(await file([...k, "k-0", "k-1"])).toEqual(filedNew());
+    for (const row of table) {
+      expect(row.title).toBe("503 checks not imported: date not readable");
+      expect(row.message).toContain(
+        `Checks: ${k.slice(0, MAX_NOTE_CHECK_IDS).join(", ")}, and 493 more. `,
+      );
+      expect(row.message).not.toContain("At least");
+      expect(row.metadata).toMatchObject({ refused: 503, atLeast: false });
+    }
+
+    // The same 503 again: the three past the kept ids may be checks it
+    // counted, or new ones, so the count is a floor: at least 503.
+    expect(await file(k)).toEqual(
+      filedNew({ addedToOpenNote: true, recipients: 2 }),
+    );
+    for (const row of table) {
+      expect(row.title).toBe(
+        "At least 503 checks not imported: date not readable",
+      );
+      expect(row.message).toContain("At least 503 checks from CSV");
+      expect(row.message).toContain(", and at least 493 more. ");
+      expect(row.message).toContain(
+        `This note keeps the first ${KEPT} check ids, so past those a check sent again cannot be told from a new one. `,
+      );
+      expect(row.metadata).toMatchObject({
+        refused: 503,
+        atLeast: true,
+        checkIdsNotNamed: 493,
+      });
+      expect(row.status).toBe("unread");
+    }
+
+    // Ten ids it never kept: at least the 500 kept and these 10.
+    await file(ids("n", 10));
+    for (const row of table) {
+      expect(row.title).toBe(
+        "At least 510 checks not imported: date not readable",
+      );
+      expect(row.metadata).toMatchObject({ refused: 510, atLeast: true });
+    }
+
+    // Only ids it keeps: it learns nothing, so nothing is written.
+    const updates = calls.noteUpdates.length;
+    expect(await file(k.slice(0, 20))).toEqual(
+      filedNew({ addedToOpenNote: true, recipients: 0 }),
+    );
+    expect(calls.noteUpdates).toHaveLength(updates);
+    for (const row of table) {
+      expect(row.title).toBe(
+        "At least 510 checks not imported: date not readable",
+      );
+    }
+    expect(calls.persist).toHaveLength(1);
+  });
+
+  it("the ids kept never pass the bound, across imports, and a count it can prove stays exact past it", async () => {
+    const { calls, table, deps } = makeService();
+    const file = (list: string[]) =>
+      fileRefusedChecksNote(deps, {
+        restaurantId: HOUSE,
+        providerKey: "csv_import",
+        refused: refusedOf(list),
+      });
+    const a = ids("a", 300);
+    const b = ids("b", 300);
+    await file(a);
+    // 300 more, every one new to a note that keeps all it counted: 600, exact.
+    await file(b);
+    for (const row of table) {
+      expect(row.title).toBe("600 checks not imported: date not readable");
+      expect(row.metadata.atLeast).toBe(false);
+      expect(row.metadata.checkKeys).toHaveLength(KEPT);
+      expect(row.metadata.checkKeys).toEqual(
+        [...a, ...b].slice(0, KEPT).map(keyOf),
+      );
+      expect(row.metadata.checkIds).toEqual(a.slice(0, MAX_NOTE_CHECK_IDS));
+    }
+    // The 100 it counted but did not keep, sent again: at least 600.
+    await file(b.slice(200));
+    for (const row of table) {
+      expect(row.title).toBe(
+        "At least 600 checks not imported: date not readable",
+      );
+      expect(row.metadata.checkKeys).toHaveLength(KEPT);
+    }
+    expect(calls.persist).toHaveLength(1);
+    // Every row the funnel or an update wrote holds at most the bound.
+    for (const p of calls.persist) {
+      expect(p.payload.metadata.checkKeys.length).toBeLessThanOrEqual(KEPT);
+    }
+    for (const u of calls.noteUpdates) {
+      expect(u.patch.metadata.checkKeys.length).toBeLessThanOrEqual(KEPT);
+      expect(u.patch.metadata.checkIds.length).toBeLessThanOrEqual(
+        MAX_NOTE_CHECK_IDS,
+      );
+    }
+    expect((noteModule as Record<string, unknown>).MAX_NOTE_KEPT_CHECKS).toBe(
+      KEPT,
+    );
+  });
+
+  it("a check with no id is never merged with another: each is counted every time it is sent, and the note says so", async () => {
+    const { table, deps } = makeService();
+    const file = (refused: Array<{ externalCheckId: unknown }>) =>
+      fileRefusedChecksNote(deps, {
+        restaurantId: HOUSE,
+        providerKey: "csv_import",
+        refused: refused.map((r) => ({ ...r, closedAt: "03.10.2026" })),
+      });
+    const sent = [
+      { externalCheckId: "" },
+      { externalCheckId: "  " },
+      { externalCheckId: "c-1" },
+    ];
+    await file(sent);
+    for (const row of table) {
+      expect(row.title).toBe("3 checks not imported: date not readable");
+      expect(row.message).toContain("Checks: c-1. ");
+      expect(row.message).not.toContain("(no id)");
+      expect(row.message).toContain(
+        "2 of them came with no check id, so each is counted every time it is sent. ",
+      );
+      expect(row.metadata).toMatchObject({
+        refused: 3,
+        checkIds: ["c-1"],
+        checkKeys: [keyOf("c-1")],
+        withoutId: 2,
+      });
+    }
+    // Sent again: c-1 is known, the two with no id are counted again.
+    await file(sent);
+    for (const row of table) {
+      expect(row.title).toBe("5 checks not imported: date not readable");
+      expect(row.message).toContain("Checks: c-1. ");
+      expect(row.message).toContain(
+        "4 of them came with no check id, so each is counted every time it is sent. ",
+      );
+      expect(row.metadata).toMatchObject({ refused: 5, withoutId: 4 });
+    }
+  });
+
+  it("one check with no id: no ids named, and it says it is counted every time", async () => {
+    const { calls, deps } = makeService();
+    await fileRefusedChecksNote(deps, {
+      restaurantId: HOUSE,
+      providerKey: "csv_import",
+      refused: [{ externalCheckId: null, closedAt: "03.10.2026" }],
+    });
+    const { payload } = calls.persist[0];
+    expect(payload.title).toBe("1 check not imported: date not readable");
+    expect(payload.message).not.toContain("Check:");
+    expect(payload.message).toContain(
+      "It came with no check id, so it is counted every time it is sent. ",
+    );
+  });
+
+  it("a note written before checks were kept is not guessed at: a new note is written, and the result says so", async () => {
+    const old = seededNote({
+      refused: 3,
+      checkIds: ["c-1", "c-2", "c-3"],
+      createdAt: minutesAgo(10),
+    }).map((r) => {
+      // As c84faf084 wrote it: no kept keys, no "at least", no id-less count.
+      const metadata = { ...r.metadata };
+      delete metadata.checkKeys;
+      delete metadata.atLeast;
+      delete metadata.withoutId;
+      return { ...r, metadata };
+    });
+    const { service, calls } = makeService({ notes: old });
+    const res = await ingest(service, [check("c-1", "03.10.2026")]);
+    expect(calls.noteUpdates).toHaveLength(0);
+    expect(calls.persist).toHaveLength(1);
+    expect(res.bellNote.caveats).toEqual([
+      "this till's open note could not be read (it carries no note id, count or check list), so a new note was written",
+    ]);
   });
 });
 
