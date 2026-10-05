@@ -79,16 +79,20 @@ export class TableAnalyticsService {
     if (label.length < 1 || label.length > 60)
       throw new BadRequestException("A table's name is 1 to 60 characters.");
     const given = (key: string) => b[key] !== undefined && b[key] !== null;
-    const figure = (key: string, min: number, below: number) => {
+    // min and max are both allowed, and are what the column holds: distances
+    // are numeric(6,2), so 0 to 9999.99, and positions numeric(8,2), so
+    // -999999.99 to 999999.99. A value past max would round past it in
+    // Postgres (9999.999 to 10000.00) and fail as a 500, not a 400.
+    const figure = (key: string, min: number, max: number) => {
       if (!given(key)) return null;
       const v = b[key];
-      if (typeof v !== "number" || !Number.isFinite(v) || v < min || v >= below)
+      if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max)
         throw new BadRequestException(
-          `${key} is a number from ${min} up to ${below}.`,
+          `${key} is a number from ${min} to ${max}.`,
         );
       return v;
     };
-    const seats = figure("seats", 1, 1000);
+    const seats = figure("seats", 1, 999);
     if (seats !== null && !Number.isInteger(seats))
       throw new BadRequestException("seats is a whole number.");
     if (given("is_outdoor") && typeof b.is_outdoor !== "boolean")
@@ -105,11 +109,11 @@ export class TableAnalyticsService {
       seats,
       is_outdoor: given("is_outdoor") ? (b.is_outdoor as boolean) : null,
       zone: zone || null,
-      distance_to_kitchen_m: figure("distance_to_kitchen_m", 0, 10000),
-      distance_to_bar_m: figure("distance_to_bar_m", 0, 10000),
-      distance_to_pool_m: figure("distance_to_pool_m", 0, 10000),
-      x_pos: figure("x_pos", -1000000, 1000000),
-      y_pos: figure("y_pos", -1000000, 1000000),
+      distance_to_kitchen_m: figure("distance_to_kitchen_m", 0, 9999.99),
+      distance_to_bar_m: figure("distance_to_bar_m", 0, 9999.99),
+      distance_to_pool_m: figure("distance_to_pool_m", 0, 9999.99),
+      x_pos: figure("x_pos", -999999.99, 999999.99),
+      y_pos: figure("y_pos", -999999.99, 999999.99),
     };
 
     const client = this.dbService.getClient();

@@ -144,10 +144,23 @@ describe('adding a table', () => {
     await typeName('t7');
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('This house already has a table called "T7".');
-    expect(alert.textContent).toContain('still the server’s');
+    expect(alert.textContent).toBe(
+      'That did not go through — This house already has a table called "T7". No table was added.',
+    );
     expect(screen.getByLabelText('Name of the new table')).toBeTruthy();
     expect(http.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('a refused rename keeps its own clause, with one full stop after the gateway’s sentence', async () => {
+    http.patch.mockRejectedValue(new Error('This house already has a table called "Bar".'));
+    draw(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
+    fireEvent.change(screen.getByLabelText('New name for T7'), { target: { value: 'bar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(
+      'That did not go through — This house already has a table called "Bar". The tables above are still the server’s.',
+    );
   });
 
   it('a blank name cannot be sent, and Cancel closes the form', async () => {

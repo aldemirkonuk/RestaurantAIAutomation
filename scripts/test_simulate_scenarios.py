@@ -24,6 +24,7 @@ would be to discover later:
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -880,7 +881,7 @@ def test_the_only_non_product_write_is_the_run_row():
     """Every other write goes through the gateway. Asserted so it stays that way."""
     source = (REPO_ROOT / "scripts" / "simulate" / "scenario_apply.py").read_text()
     writes = re.findall(r'method="POST"', source)
-    # login, upsert_tables, persist_run — and nothing else.
+    # login, ensure_tables, persist_run — and nothing else.
     assert len(writes) == 3
     assert "/rest/v1/sim_scenario_runs" in source
     # Three: the read-only inventory snapshot, the read-only prior-runs lookup
@@ -897,6 +898,11 @@ def test_the_only_non_product_write_is_the_run_row():
 # only ever exercised against a live gateway is an apply path whose NameErrors
 # are found by the integrator.
 # ---------------------------------------------------------------------------
+
+
+def _said(value) -> str:
+    """A table name as the gateway compares it: trimmed, in any case."""
+    return str("" if value is None else value).strip().lower()
 
 
 class _FakeResponse:
@@ -917,10 +923,16 @@ class _FakeResponse:
 class _Transport:
     """Records every request and answers each route the run touches."""
 
-    def __init__(self, fail_checks: bool = False, prior_runs=None) -> None:
+    def __init__(
+        self, fail_checks: bool = False, prior_runs=None, tables=None, retired=()
+    ) -> None:
         self.prior_runs = list(prior_runs or [])
         self.requests: list[tuple[str, str, dict, bytes]] = []
         self.fail_checks = fail_checks
+        # The house's active tables, as GET /analytics/tables/:id returns them,
+        # and the names of tables it no longer uses (GET does not list those).
+        self.tables = [dict(t) for t in (tables or [])]
+        self.retired = {_said(name) for name in retired}
 
     def __call__(
         self, request, timeout=None, **_urlopen_kwargs
@@ -950,7 +962,7 @@ class _Transport:
                 return _FakeResponse(json.dumps(self.prior_runs).encode())
             return _FakeResponse(b'[{"id":"run-1"}]')
         if "/analytics/tables/" in url:
-            return _FakeResponse(b'{"ok":true}')
+            return self._tables(request, url, body)
         if "/pos-hub/mappings/" in url:
             return _FakeResponse(b'{"ok":true}')
         if "/pos-hub/webhook/" in url:
@@ -958,6 +970,38 @@ class _Transport:
                 raise apply_mod.urllib.error.HTTPError(url, 500, "boom", None, None)
             return _FakeResponse(b'{"upserted":1}')
         raise AssertionError(f"unexpected request to {url}")
+
+    def _tables(self, request, url: str, body: bytes):
+        """The table route as ADR 0303's amendment left it: GET lists, POST only adds."""
+        if request.get_method() == "GET":
+            return _FakeResponse(json.dumps(self.tables).encode())
+        sent = json.loads(body)
+        wanted = _said(sent["label"])
+        taken = wanted in self.retired or any(
+            _said(t["label"]) == wanted
+            or wanted in {_said(w) for w in (t.get("pos_refs") or {}).values()}
+            for t in self.tables
+        )
+        if taken:
+            sentence = f'This house already has a table called "{sent["label"]}".'
+            raise apply_mod.urllib.error.HTTPError(
+                url,
+                409,
+                "Conflict",
+                None,
+                io.BytesIO(
+                    json.dumps({"statusCode": 409, "message": sentence}).encode()
+                ),
+            )
+        row = {
+            "id": f"tab-{len(self.tables) + 1}",
+            "label": sent["label"].strip(),
+            "seats": sent.get("seats"),
+            "pos_refs": {},
+            "hidden_at": None,
+        }
+        self.tables.append(row)
+        return _FakeResponse(json.dumps({**row, "checksLinked": 0}).encode())
 
     def _inventory_rows(self) -> list[dict]:
         from scripts.synth.seed import sim_inventory_id
@@ -1404,6 +1448,99 @@ def test_replay_of_an_identical_plan_proceeds(monkeypatch, capsys):
     assert cli_mod.main(_apply_argv("--replay")) == 0
     assert "replay of run run-0" in capsys.readouterr().out
     assert len(second.urls("/pos-hub/webhook/")) == len(first.urls("/pos-hub/webhook/"))
+
+
+# ---------------------------------------------------------------------------
+# Tables: POST /analytics/tables/:id only adds (ADR 0303, amendment 2026-10-05)
+#
+# It answers a name the house already has with 409 instead of overwriting it,
+# so a run against a house that already has its tables must post none of them.
+# ---------------------------------------------------------------------------
+
+
+def test_a_replay_against_a_house_that_has_its_tables_posts_none_and_passes(
+    monkeypatch, capsys
+):
+    from scripts.simulate import cli as cli_mod
+
+    first = _Transport()
+    _wire(monkeypatch, first)
+    assert cli_mod.main(_apply_argv()) == 0
+    labels = {t["label"] for t in first.tables}
+    assert labels, "the first run adds the tables the day seats guests at"
+    stored = [
+        json.loads(body)
+        for _m, url, _h, body in first.requests
+        if "/sim_scenario_runs" in url and _m == "POST"
+    ][0]["expected"]
+    capsys.readouterr()
+    second = _Transport(
+        prior_runs=[{"id": "run-0", "expected": stored}], tables=first.tables
+    )
+    _wire(monkeypatch, second)
+    assert cli_mod.main(_apply_argv("--replay")) == 0
+    out = capsys.readouterr().out
+    assert f"tables: 0 added, {len(labels)} already there" in out
+    table_calls = [
+        (m, url) for m, url, _h, _b in second.requests if "/analytics/tables/" in url
+    ]
+    assert table_calls and all(m == "GET" for m, _u in table_calls)
+    assert second.tables == first.tables
+
+
+def test_ensure_tables_posts_only_the_names_no_table_of_the_house_answers_to(
+    monkeypatch,
+):
+    house = [
+        {"id": "a", "label": " 3 ", "pos_refs": {}},
+        {"id": "b", "label": "Garden", "pos_refs": {"generic_webhook": "5"}},
+        {"id": "c", "label": "7", "pos_refs": None, "hidden_at": "2026-10-01"},
+        {"id": "d", "label": "Bar", "pos_refs": {"square": 9}},
+    ]
+    transport = _Transport(tables=house)
+    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", transport)
+    wanted = [{"label": str(n), "seats": 2} for n in (1, 3, 5, 7, 9, 11)]
+    added, present = apply_mod.ensure_tables(
+        "http://localhost:3001", "r1", "tok", wanted
+    )
+    assert (added, present) == (2, 4)
+    methods = [
+        m for m, url, _h, _b in transport.requests if "/analytics/tables/" in url
+    ]
+    assert methods[0] == "GET", "the house's tables are read before any add"
+    posted = [
+        json.loads(body)
+        for m, url, _h, body in transport.requests
+        if "/analytics/tables/" in url and m == "POST"
+    ]
+    assert posted == [{"label": "1", "seats": 2}, {"label": "11", "seats": 2}]
+
+
+def test_a_name_a_table_the_house_no_longer_uses_has_fails_with_the_gateways_sentence(
+    monkeypatch,
+):
+    """GET lists active tables only; the 409 that follows is a failure, not "there"."""
+    transport = _Transport(retired=["4"])
+    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", transport)
+    with pytest.raises(apply_mod.ScenarioApplyError) as exc:
+        apply_mod.ensure_tables(
+            "http://localhost:3001", "r1", "tok", [{"label": "4", "seats": 2}]
+        )
+    assert "HTTP 409" in str(exc.value)
+    assert 'already has a table called \\"4\\"' in str(exc.value)
+
+
+def test_a_table_list_that_is_not_a_list_raises_and_adds_nothing(monkeypatch):
+    def answer(request, timeout=None, **_kwargs):  # noqa: ARG001
+        assert request.get_method() == "GET", "nothing may be added"
+        return _FakeResponse(b'{"ok":true}')
+
+    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", answer)
+    with pytest.raises(apply_mod.ScenarioApplyError) as exc:
+        apply_mod.ensure_tables(
+            "http://localhost:3001", "r1", "tok", [{"label": "4", "seats": 2}]
+        )
+    assert "expected the house's tables as a list" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

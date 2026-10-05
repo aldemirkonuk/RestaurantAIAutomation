@@ -66,9 +66,13 @@ export const fieldStyle: CSSProperties = {
  * more importantly, a failed write must never be swallowed into a toast that
  * scrolls away, and a shared component is what stops one register quietly
  * forgetting to render `writer.failed`.
+ *
+ * A gateway sentence already ends in a full stop ("… called "T7"."); that one
+ * is dropped so the stop this line adds is not doubled.
  */
 export function SaveFailure({ failed, what }: { failed: { message: string } | null; what: string }) {
   if (!failed) return null;
+  const said = failed.message.trim().replace(/\.$/, '');
   return (
     <p
       role="alert"
@@ -77,7 +81,7 @@ export function SaveFailure({ failed, what }: { failed: { message: string } | nu
         background: 'var(--paper-2)', borderRadius: 8, padding: '8px 11px', margin: '10px 0 0',
       }}
     >
-      That did not go through — {failed.message}. {what}
+      That did not go through — {said}. {what}
     </p>
   );
 }

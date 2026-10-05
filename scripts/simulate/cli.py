@@ -680,9 +680,9 @@ def _apply_scenario(
 
     from scripts.simulate.scenario_apply import (
         ScenarioApplyError,
+        ensure_tables,
         fetch_runs,
         persist_run,
-        upsert_tables,
     )
 
     # Refuse to write anything teardown cannot take back — the same gate cmd_run
@@ -761,13 +761,15 @@ def _apply_scenario(
             )
         print(f"replay of run {prior[0].get('id')}: plan identical, re-posting")
 
-    # 1. Tables, before any check: the hub resolves `tableRef` at ingest, so a
-    #    table that arrives later does not retroactively attach to the check.
+    # 1. Tables, before any check, so each check links to its table at ingest
+    #    and the run does not lean on the database re-linking waiting checks
+    #    when a table is added later (ADR 0303). Only the missing ones are
+    #    added: the route answers a name the house has with 409.
     try:
-        seeded = upsert_tables(
+        added, present = ensure_tables(
             args.analytics_base, restaurant_id, bearer, expected["tables"]
         )
-        print(f"\ntables upserted: {seeded}")
+        print(f"\ntables: {added} added, {present} already there")
     except ScenarioApplyError as exc:
         failures.append(f"tables: {exc}")
         print(f"\ntables FAILED: {exc}")

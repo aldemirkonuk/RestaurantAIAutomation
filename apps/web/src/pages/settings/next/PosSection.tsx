@@ -315,7 +315,10 @@ export function TillTables({ data }: { data: SettingsNextData }) {
             : 'Only the owner or a manager can add a table by hand.'}
         </p>
       )}
-      <SaveFailure failed={failed} what="The tables above are still the server’s." />
+      <SaveFailure
+        failed={failed}
+        what={failed?.key === 'table:add' ? 'No table was added.' : 'The tables above are still the server’s.'}
+      />
     </>
   );
 }

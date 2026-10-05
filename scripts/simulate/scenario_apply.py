@@ -1,8 +1,8 @@
 """The product's own doors, used by the ADR 0093 scenario runner.
 
 Every write a scenario run makes goes through the API a person would use — log
-in, read the venue's hours, upsert the tables the scenario seats guests at, upsert
-the item mappings, post the checks as signed webhooks. That is deliberate: a
+in, read the venue's hours, add the tables the scenario seats guests at that the
+house lacks, upsert the item mappings, post the checks as signed webhooks. That is deliberate: a
 harness that seeds its preconditions with direct SQL proves the database can hold
 the data, not that the product can put it there.
 
@@ -158,26 +158,65 @@ def fetch_operating_hours(
     return (dict(hours) if isinstance(hours, Mapping) else None, tz)
 
 
-def upsert_tables(
+def _said(value: Any) -> str:
+    """A table name as the gateway compares it: trimmed, in any case."""
+    return str("" if value is None else value).strip().lower()
+
+
+def ensure_tables(
     analytics_base: str,
     restaurant_id: str,
     bearer: str,
     tables: list[Mapping[str, Any]],
     *,
     timeout: float = 20.0,
-) -> int:
-    """`POST /analytics/tables/:id` per table — `upsertTable`'s own door.
+) -> tuple[int, int]:
+    """Add the scenario's tables the house lacks. Returns `(added, already_there)`.
 
     The scenarios seat guests at labelled tables and the hub resolves
     `tableRef` against `restaurant_tables`; a check whose table does not exist
     still ingests, but lands with `table_id: null` and drops out of every
-    table-level analytic. Upserting first is what makes the table half of the
-    expectation checkable at all.
+    table-level analytic. Making the tables exist first is what makes the
+    table half of the expectation checkable at all.
+
+    `POST /analytics/tables/:id` only adds (ADR 0303, amendment 2026-10-05): a
+    name the house already answers to is a 409, never an overwrite, and the
+    route admits an owner or a manager. So a second `--apply` (a `--replay`, or
+    another day) against a house that has the tables would fail on its first
+    POST. The house's tables are read first (`GET`, active ones, hidden
+    included), and only a label none of them answers to is posted: not by its
+    label, and not by a till word in its `pos_refs`, compared trimmed and in
+    any case as the gateway compares. A table already there keeps its seats;
+    nothing in the expectation reads them. A 409 that still comes back (a
+    table the house no longer uses has that name, or another writer added it
+    meanwhile) raises with the gateway's sentence: the run's checks would land
+    with no table, and that is a failure, not a table that is "there".
     """
     url = analytics_base.rstrip("/") + TABLES_PATH.format(restaurant_id=restaurant_id)
     headers = {"Authorization": f"Bearer {bearer}"}
-    count = 0
+    rows = _request(url, headers=headers, timeout=timeout)
+    if not isinstance(rows, list):
+        raise ScenarioApplyError(
+            f"GET {url} returned {type(rows).__name__}, expected the house's tables as a list"
+        )
+    answered: set[str] = set()
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        answered.add(_said(row.get("label")))
+        refs = row.get("pos_refs")
+        if isinstance(refs, Mapping):
+            answered.update(
+                _said(word)
+                for word in refs.values()
+                if isinstance(word, (str, int, float)) and not isinstance(word, bool)
+            )
+    answered.discard("")
+    added = present = 0
     for table in tables:
+        if _said(table["label"]) in answered:
+            present += 1
+            continue
         _request(
             url,
             method="POST",
@@ -185,8 +224,9 @@ def upsert_tables(
             headers=headers,
             timeout=timeout,
         )
-        count += 1
-    return count
+        answered.add(_said(table["label"]))
+        added += 1
+    return added, present
 
 
 # ---------------------------------------------------------------------------
@@ -315,9 +355,9 @@ def persist_run(
 __all__ = [
     "INVENTORY_SELECT",
     "ScenarioApplyError",
+    "ensure_tables",
     "fetch_inventory",
     "fetch_operating_hours",
     "login",
     "persist_run",
-    "upsert_tables",
 ]

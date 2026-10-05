@@ -184,6 +184,15 @@ describe("addTable refuses a bad body with 400 and writes nothing", () => {
       { label: "Bar", distance_to_bar_m: 10000 },
       "a distance the column cannot hold",
     ],
+    [
+      { label: "Bar", distance_to_pool_m: 9999.999 },
+      "a distance that numeric(6,2) would round to 10000.00",
+    ],
+    [{ label: "Bar", x_pos: -1000000 }, "a position the column cannot hold"],
+    [
+      { label: "Bar", y_pos: 999999.995 },
+      "a position that numeric(8,2) would round to 1000000.00",
+    ],
     [{ label: "Bar", x_pos: Number.NaN }, "a position that is not a number"],
   ])("%j (%s)", async (body) => {
     const { result, calls } = add(body);
@@ -285,6 +294,23 @@ describe("addTable adds, and writes no answer nobody gave", () => {
       zone: "Garden",
       distance_to_bar_m: 12.5,
       distance_to_kitchen_m: null,
+    });
+  });
+
+  it("keeps the largest values the columns hold", async () => {
+    const { result, calls } = add({
+      label: "Far",
+      seats: 999,
+      distance_to_kitchen_m: 9999.99,
+      x_pos: -999999.99,
+      y_pos: 999999.99,
+    });
+    await result;
+    expect(inserted(calls)).toMatchObject({
+      seats: 999,
+      distance_to_kitchen_m: 9999.99,
+      x_pos: -999999.99,
+      y_pos: 999999.99,
     });
   });
 
