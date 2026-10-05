@@ -521,7 +521,7 @@ describe('CellarNext — "In the building tonight" (ADR 0160 sec110 item 2)', ()
 
   // F3, the founder, 2026-10-05: "Say 'items' on all four (Recommended)". The
   // four sibling tiles are counted off the same whole inventory read as the
-  // off-library one (every item, beer and spirits included), so their source
+  // off-library one (every item, wine or not), so their source
   // lines say "items", not "wine rows"; the par tiles also name the items
   // their figure looks at. Labels and figures are unchanged. One case per line.
   it.each([
