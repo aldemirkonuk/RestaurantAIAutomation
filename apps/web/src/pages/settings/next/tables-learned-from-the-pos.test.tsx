@@ -64,7 +64,7 @@ describe('the room register (ADR 0303)', () => {
       hiddenTables: 2,
       checksInWindow: 20,
       tables: [
-        { tableId: 't1', label: 'T1', zone: null, seats: null, checks: 12, revenue: 900, covers: 20, avgCheck: 75, wineAttachRate: 0.5 },
+        { tableId: 't1', label: 'T1', zone: null, seats: 4, checks: 12, revenue: 900, covers: 20, avgCheck: 75, wineAttachRate: 0.5 },
       ],
     });
     expect(v.notes).toEqual([
@@ -72,6 +72,24 @@ describe('the room register (ADR 0303)', () => {
       '5 checks were at 2 hidden tables: counted in takings, not shown here.',
     ]);
     expect((v.basis ?? []).join(' ')).toContain('the till attributed to a shown table');
+  });
+
+  it('a learned table has no seat count: the seats note sits before both counts, and the scatter is not drawn', () => {
+    const v = room({
+      checksWithoutTable: 3,
+      checksAtHiddenTables: 5,
+      hiddenTables: 2,
+      checksInWindow: 20,
+      tables: [
+        { tableId: 't1', label: 'T1', zone: null, seats: null, checks: 12, revenue: 900, covers: 20, avgCheck: 75, wineAttachRate: 0.5 },
+      ],
+    });
+    expect(v.notes).toEqual([
+      'Seat counts are not recorded yet for any table that took a check, so the scatter has no seats to set against average check and plots nothing. Per-seat figures are withheld for the same reason, not read as zero.',
+      '3 checks have no table: counted in takings, not in the room.',
+      '5 checks were at 2 hidden tables: counted in takings, not shown here.',
+    ]);
+    expect(v.points).toBeUndefined();
   });
 });
 
