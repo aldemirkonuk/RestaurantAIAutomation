@@ -120,7 +120,7 @@ So in a house that carries more than wine, each of those lines called beers and 
 - A reader of the draft-only behaviour now finds it stated with cites. A claims row pins its text anchors: removing or rewording one of them fails `scripts/check_decision_claims.sh`. A behaviour change that keeps every anchor does not fail that check.
 - Still owed, not built here:
   - The register basis and the readout's `sources.menu` should name "no current menu" when `currentMenus` is 0, rather than "nothing on this menu" (`cellar-registers.ts:568-578`).
-  - The row record's menu book pages the whole current menu with no cap (`beverages.service.ts:793-817`). That is fine at Tuzlu Rüzgar's 134 lines, and it should be watched on a very large menu.
+  - The row record's menu book pages the whole current menu with no cap: its reader (`beverages.service.ts:793-817`) calls `readCurrentMenuLines`, which keyset-pages every line through `readAll` (`apps/api-gateway/src/menus/current-menu-lines.ts:67-79`). That is fine at Tuzlu Rüzgar's 134 lines, and it should be watched on a very large menu.
 - Revisit when:
   - the founder answers F1;
   - a house is seen on a draft-only menu in production with registers it plainly carries reading "not carried";
