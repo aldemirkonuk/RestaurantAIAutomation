@@ -16,6 +16,7 @@
  *   • leaderTest         — whether a #1 can be told apart from the rest
  *                          (ADR 0272), before any "ranks #1" is printed
  *   • cutKeepingTies     — a top-N cut that never splits a tie group
+ *   • byStockoutRisk / bySoonestOut — the two orders of a restock row
  */
 
 import { mean, stdev, median, zScore, normalCdf } from "./statistics";
@@ -289,29 +290,24 @@ export function sameValue(
  * (A-070). Trimming the tie group off instead would return nothing at all when
  * the top group is larger than the cut, so the cut grows instead.
  *
- * `extendOnlyAbove` bounds that growth. A tie at or below it is not a ranking
- * the cut could split — the restock cut passes 0, because a 0% stockout risk
- * is no risk at all: every wine with no demand in the window and nothing on
- * hand sits "below" a reorder point of 0 at exactly 0%, and extending through
- * that group listed the whole of it (5 wines with demand and 40 without gave
- * 45 rows; 11 and 400 gave 411). Above the floor the group is bounded by the
- * wines that share the edge's risk, each of which sold in the window.
+ * A null edge is never extended. A null key is a row with nothing measured to
+ * rank it by — on the restock list, a wine with no days of cover — so the rows
+ * that share it are not a tie the cut could split, and extending through them
+ * listed every one (ADR 0272 fork 3's probe: 5 wines with demand and 40
+ * without gave 45 rows; 11 and 400 gave 411). Any other value extends: the
+ * restock cut is keyed on days of cover (ADR 0272 D4, 2026-10-04), and a tie
+ * at 0 days is every wine that sold in the window and now holds nothing, each
+ * one a wine to buy back.
  */
 export function cutKeepingTies<R>(
   rows: R[],
   n: number,
   key: (row: R) => number | null | undefined,
-  opts: { extendOnlyAbove?: number } = {},
 ): R[] {
   if (n <= 0) return [];
   if (rows.length <= n) return rows.slice();
   const edge = key(rows[n - 1]);
-  const floor = opts.extendOnlyAbove;
-  if (
-    floor != null &&
-    !(edge != null && edge > floor && !sameValue(edge, floor))
-  )
-    return rows.slice(0, n);
+  if (edge == null) return rows.slice(0, n);
   let end = n;
   while (end < rows.length && sameValue(key(rows[end]), edge)) end++;
   return rows.slice(0, end);
@@ -320,34 +316,50 @@ export function cutKeepingTies<R>(
 const byCodeUnits = (a: string, b: string): number =>
   a < b ? -1 : a > b ? 1 : 0;
 
+/** The fields a restock row is ordered by. */
+export interface RestockRow {
+  stockoutProbability: number | null;
+  daysOfCover: number | null;
+  onHand: number;
+  name: string;
+  id: string;
+}
+
 /**
- * The one order of "at risk of running out" rows: highest stockout
+ * The order of "at risk of running out" rows when the question is the risk
+ * itself — the stockout #1 insight and the "Tonight" card: highest stockout
  * probability first; within a tie, the fewest days of cover (unmeasured last),
  * then the fewest bottles, then the name and the id. The database's row order
  * never decides — it decided which two of Tuzlu's five tied wines were listed.
  */
-export function byStockoutRisk(
-  a: {
-    stockoutProbability: number | null;
-    daysOfCover: number | null;
-    onHand: number;
-    name: string;
-    id: string;
-  },
-  b: {
-    stockoutProbability: number | null;
-    daysOfCover: number | null;
-    onHand: number;
-    name: string;
-    id: string;
-  },
-): number {
+export function byStockoutRisk(a: RestockRow, b: RestockRow): number {
   const pa = a.stockoutProbability;
   const pb = b.stockoutProbability;
   if (!sameValue(pa, pb)) return pa == null ? 1 : pb == null ? -1 : pb - pa;
   const ca = a.daysOfCover;
   const cb = b.daysOfCover;
   if (!sameValue(ca, cb)) return ca == null ? 1 : cb == null ? -1 : ca - cb;
+  if (!sameValue(a.onHand, b.onHand)) return a.onHand - b.onHand;
+  return byCodeUnits(a.name, b.name) || byCodeUnits(a.id, b.id);
+}
+
+/**
+ * The order of "What to buy back" (ADR 0272 Decision 4, amended 2026-10-04 by
+ * the founder's "Soonest to run out (Recommended)"): the fewest days of cover
+ * first, for every row (none last); within a tie, the highest stockout
+ * probability (unmeasured last); then the fewest bottles, the name and the id.
+ *
+ * Highest risk first put every measured risk above every wine with none: a
+ * slow seller already empty sat behind a measured 6%, and fell off the cut
+ * once 25 measured wines were below their reorder point.
+ */
+export function bySoonestOut(a: RestockRow, b: RestockRow): number {
+  const ca = a.daysOfCover;
+  const cb = b.daysOfCover;
+  if (!sameValue(ca, cb)) return ca == null ? 1 : cb == null ? -1 : ca - cb;
+  const pa = a.stockoutProbability;
+  const pb = b.stockoutProbability;
+  if (!sameValue(pa, pb)) return pa == null ? 1 : pb == null ? -1 : pb - pa;
   if (!sameValue(a.onHand, b.onHand)) return a.onHand - b.onHand;
   return byCodeUnits(a.name, b.name) || byCodeUnits(a.id, b.id);
 }

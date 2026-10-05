@@ -575,6 +575,11 @@ export interface RestockRegister {
   basis?: Record<string, string>;
   skuCount: number;
   reorderCount: number;
+  /**
+   * Below their reorder point with no sale in the window and nothing on hand:
+   * counted, never listed or drawn (ADR 0272 fork 3, "Out of both, say a count").
+   */
+  noDemandCount: number;
   reorderList: Array<{
     id: string;
     name: string;
@@ -587,27 +592,36 @@ export interface RestockRegister {
 }
 
 /**
- * The first `n` bars, extended through every row tied with bar `n` (ADR 0272).
+ * The first `n` bars, highest risk first, extended through every row tied
+ * with bar `n` (ADR 0272).
  *
- * The register arrives highest risk first, and a plain `slice(0, 14)` drew
- * some wines of a tie and dropped the rest by row order — a ranking the data
- * did not make. A tie is the same computed risk, to within floating-point
- * noise (one part in a billion, the gateway's own `sameValue`); two risks that
- * merely PRINT alike (26.8% and 26.9%, both "27%") are not tied.
+ * The register arrives soonest to run out first (ADR 0272 D4, 2026-10-04), so
+ * the bars rank the same rows by risk on their own. The sort is stable and
+ * calls two risks within the tie tolerance equal, so inside a tie the
+ * register's order (days of cover, bottles, name) stands, never float noise.
  *
- * A tie at 0% is never extended, as on the gateway's cut: it is the wines with
- * no demand and nothing on hand, a group with no risk to rank and no height to
- * draw, and extending through it drew every one of them.
+ * A plain `slice(0, 14)` drew some wines of a tie and dropped the rest by row
+ * order — a ranking the data did not make. A tie is the same computed risk, to
+ * within floating-point noise (one part in a billion, the gateway's own
+ * `sameValue`); two risks that merely PRINT alike (26.8% and 26.9%, both
+ * "27%") are not tied. A tie at 0% or at no risk is never extended: it has no
+ * risk to rank and no height to draw.
  */
 function barsKeepingTies(
-  rows: RestockRegister['reorderList'],
+  listed: RestockRegister['reorderList'],
   n: number,
 ): RestockRegister['reorderList'] {
-  if (rows.length <= n) return rows;
   const same = (a: number | null, b: number | null) =>
     a == null || b == null
       ? a == null && b == null
       : Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+  const rows = [...listed].sort((a, b) => {
+    const pa = a.stockoutProbability;
+    const pb = b.stockoutProbability;
+    if (same(pa, pb)) return 0;
+    return pa == null ? 1 : pb == null ? -1 : pb - pa;
+  });
+  if (rows.length <= n) return rows;
   const edge = rows[n - 1].stockoutProbability;
   if (edge == null || edge <= 0 || same(edge, 0)) return rows.slice(0, n);
   let end = n;
@@ -637,6 +651,7 @@ const restock = analysis<RestockRegister>({
       basis: d.basis as Record<string, string>,
       skuCount: num(d.skuCount) ?? 0,
       reorderCount: num(d.reorderCount) ?? 0,
+      noDemandCount: num(d.noDemandCount) ?? 0,
       reorderList: arr(d.reorderList).map((s) => ({
         id: str(s.id),
         name: str(s.name),
@@ -663,9 +678,19 @@ const restock = analysis<RestockRegister>({
         notes: [],
         basis,
       };
+    // Below their reorder point with no sale and nothing on hand: out of the
+    // table and the bars, and one line carries them (ADR 0272 fork 3, the
+    // founder's "Out of both, say a count").
+    const noDemandLine =
+      r.noDemandCount === 1
+        ? '1 more below its reorder point has no demand to judge.'
+        : `${figure(r.noDemandCount)} more below their reorder point have no demand to judge.`;
     if (r.reorderList.length === 0)
       return {
-        say: `Nothing is below its reorder point. That is a real answer about ${countOf(r.skuCount, 'wine', 'wines')}, not an empty register.`,
+        say:
+          r.noDemandCount > 0
+            ? `No wine with demand to judge is below its reorder point. ${noDemandLine}`
+            : `Nothing is below its reorder point. That is a real answer about ${countOf(r.skuCount, 'wine', 'wines')}, not an empty register.`,
         figures,
         notes: [],
         basis,
@@ -673,6 +698,9 @@ const restock = analysis<RestockRegister>({
     // A wine sold on too few days has cover but no risk (ADR 0299): it is a
     // gap among the bars, and with no risk anywhere there is nothing to draw.
     const unswung = r.reorderList.filter((s) => s.stockoutProbability == null);
+    // Soonest to run out first (ADR 0272 D4, 2026-10-04): the wines listed
+    // are the ones that run out soonest of those with demand to judge.
+    const judged = r.reorderCount - r.noDemandCount;
     const tooFew =
       r.params.minDemandDays == null ? 'on too few days' : `on fewer than ${figure(r.params.minDemandDays)} days`;
     return {
@@ -706,15 +734,16 @@ const restock = analysis<RestockRegister>({
           ],
         })),
         more:
-          r.reorderCount > r.reorderList.length
-            ? unswung.length > 0
-              ? `${figure(r.reorderCount)} wines are below their reorder point; the first ${figure(r.reorderList.length)}, highest measured risk first, then the fewest days of cover, are listed.`
-              : `${figure(r.reorderCount)} wines are below their reorder point; the ${figure(r.reorderList.length)} at the highest risk are listed.`
+          judged > r.reorderList.length
+            ? `${figure(judged)} wines are below their reorder point; the ${figure(r.reorderList.length)} that run out soonest are listed.`
             : undefined,
       },
       figures,
       notes: [
-        'A days-of-cover em dash means the wine has no measured demand — it cannot run out on a rate nobody has observed.',
+        ...(r.noDemandCount > 0 ? [noDemandLine] : []),
+        ...(r.reorderList.some((s) => s.daysOfCover == null)
+          ? ['A days-of-cover em dash means the wine has no measured demand — it cannot run out on a rate nobody has observed.']
+          : []),
         ...(unswung.some((s) => s.daysOfCover != null)
           ? [
               `A risk or reorder-at em dash beside a days-of-cover figure means the wine sold ${tooFew} in the window: its average is known, its swing is not, and a chance of running out needs both. It is listed because its bottles do not cover the lead time at that average.`,

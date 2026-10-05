@@ -715,6 +715,14 @@ function writeRestock(payload: unknown): ExportDoc {
   const b = obj(r.basis);
   const skuCount = num(r.skuCount) ?? 0;
   const reorderCount = num(r.reorderCount) ?? 0;
+  // Below their reorder point with no sale in the window and nothing on hand:
+  // counted, never listed (ADR 0272 fork 3 — the founder's "Out of both, say
+  // a count"). One line carries them.
+  const noDemandCount = num(r.noDemandCount) ?? 0;
+  const noDemandLine =
+    noDemandCount === 1
+      ? "1 more below its reorder point has no demand to judge."
+      : `${noDemandCount} more below their reorder point have no demand to judge.`;
   const list = arr(r.reorderList).map((x) => ({
     name: str(x.name),
     onHand: num(x.onHand),
@@ -738,7 +746,10 @@ function writeRestock(payload: unknown): ExportDoc {
     });
   if (list.length === 0)
     return doc({
-      say: `Nothing is below its reorder point. That is a real answer about ${nounCount(skuCount, "wine", "wines")}, not an empty register.`,
+      say:
+        noDemandCount > 0
+          ? `No wine with demand to judge is below its reorder point. ${noDemandLine}`
+          : `Nothing is below its reorder point. That is a real answer about ${nounCount(skuCount, "wine", "wines")}, not an empty register.`,
       figures,
       basis,
     });
@@ -749,16 +760,14 @@ function writeRestock(payload: unknown): ExportDoc {
   const minDays = num(p.minDemandDays);
   const unswung = `sold on ${minDays == null ? "too few days" : `fewer than ${minDays} days`} in the window; its swing is not measured`;
   const why = (cover: number | null) => (cover == null ? unmeasured : unswung);
-  // The register lists measured risks first, then the rest by days of cover.
-  const mixed = list.some((x) => x.risk == null);
-  const order = mixed
-    ? "highest measured risk first, then the fewest days of cover"
-    : "highest risk first";
+  // The register lists soonest to run out first: days of cover for every
+  // row, the risk only breaking a tie (ADR 0272 D4, 2026-10-04).
+  const judged = reorderCount - noDemandCount;
   return doc({
     figures,
     tables: [
       {
-        title: `Below the reorder point, ${order}`,
+        title: "Below the reorder point, soonest to run out first",
         columns: [
           { label: "Wine", unit: "text" },
           { label: "On hand", unit: "bottles" },
@@ -776,13 +785,12 @@ function writeRestock(payload: unknown): ExportDoc {
           figure(x.risk, why(x.cover)),
         ]),
         note:
-          reorderCount > list.length
-            ? mixed
-              ? `${reorderCount} wines are below their reorder point; the first ${list.length}, ${order}, are listed, as the register returns them.`
-              : `${reorderCount} wines are below their reorder point; the ${list.length} at the highest risk are listed, as the register returns them.`
+          judged > list.length
+            ? `${judged} wines are below their reorder point; the ${list.length} that run out soonest are listed, as the register returns them.`
             : undefined,
       },
     ],
+    notes: noDemandCount > 0 ? [noDemandLine] : [],
     basis,
   });
 }

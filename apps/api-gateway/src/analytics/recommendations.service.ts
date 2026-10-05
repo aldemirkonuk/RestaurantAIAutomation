@@ -307,7 +307,13 @@ export class RecommendationsService {
     }));
 
     // ---- Inventory rules --------------------------------------------------
-    const reorderTop = ctx.invSci?.reorderList?.[0];
+    // The card speaks of a chance of running out, so it reads the wine most
+    // likely to (`mostAtRisk`, the register's pick by `byStockoutRisk` over
+    // every wine below its reorder point). It read row 1 of the list, which
+    // was that wine while the list ran highest risk first; the list now runs
+    // soonest out first (ADR 0272 D4, 2026-10-04), so row 1 is often a wine
+    // with no measured risk, and the riskiest wine can sit past the cut.
+    const reorderTop = ctx.invSci?.mostAtRisk ?? null;
     rule(
       "stockout_imminent",
       (reorderTop?.stockoutProbability ?? 0) > 0.4,

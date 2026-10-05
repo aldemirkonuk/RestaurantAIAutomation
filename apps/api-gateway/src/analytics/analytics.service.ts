@@ -661,13 +661,21 @@ export class AnalyticsService {
       for (const s of skus) s.abcClass = abcByItem.get(s.id) || "C";
     }
 
-    // Highest risk first, and within a tie the order is the data's, never the
-    // database's: sorted by probability alone, a tie kept whatever order
-    // loadInventory returned, so the cut below listed two of Tuzlu's five
-    // wines tied at 27% under "the 25 at the highest risk" (A-070, ADR 0272).
-    const reorderList = skus
-      .filter((s) => s.needsReorder)
-      .sort(E.byStockoutRisk);
+    // Soonest to run out first (ADR 0272 D4, amended 2026-10-04 — the
+    // founder's "Soonest to run out (Recommended)"): days of cover for every
+    // row, the risk only breaking a tie, and within a tie the order is the
+    // data's, never the database's (A-070). A wine with no sale in the window
+    // and nothing on hand has no rate to run out at, so it is not a row: the
+    // founder's "Out of both, say a count" (fork 3) leaves it out of the list
+    // and the bars, and `noDemandCount` carries it. Under ADR 0299 its risk is
+    // null, as is that of a wine sold on too few days, so the group is keyed
+    // on what defines it — no sale, nothing on hand — not on the risk.
+    const belowReorder = skus.filter((s) => s.needsReorder);
+    const noDemand = (s: (typeof skus)[number]) =>
+      s.demandDays === 0 && s.onHand <= 0;
+    const reorderList = belowReorder
+      .filter((s) => !noDemand(s))
+      .sort(E.bySoonestOut);
 
     return {
       params: {
@@ -687,18 +695,19 @@ export class AnalyticsService {
       },
       costCoverage,
       skuCount: skus.length,
-      reorderCount: reorderList.length,
-      // 25, extended through any tie at row 25 — "the N at the highest risk"
-      // is only true when no row tied with the last one listed was left out.
-      // Never through a tie at 0%: that group is every wine with no demand
-      // and nothing on hand, it carries no risk to rank, and extending
-      // through it listed all of them (ADR 0272, fork 3 bound).
-      reorderList: E.cutKeepingTies(
-        reorderList,
-        25,
-        (s) => s.stockoutProbability,
-        { extendOnlyAbove: 0 },
-      ),
+      // Every wine below its reorder point, the ones with no demand to judge
+      // included; they are counted here and in `noDemandCount`, never listed.
+      reorderCount: belowReorder.length,
+      noDemandCount: belowReorder.length - reorderList.length,
+      // 25, extended through any tie in days of cover at row 25 — "the N that
+      // run out soonest" is only true when no wine that runs out as soon as
+      // the last one listed was left out. A null edge is not extended.
+      reorderList: E.cutKeepingTies(reorderList, 25, (s) => s.daysOfCover),
+      // The wine below its reorder point most likely to run out, for the
+      // "Tonight" card (`stockout_imminent`, recommendations.service.ts).
+      // Soonest out first, it can sit past row 25 behind wines with no
+      // measured risk, so it is picked from every row, not from the cut.
+      mostAtRisk: [...reorderList].sort(E.byStockoutRisk)[0] ?? null,
       skus: skus
         // Unpriced rows sort last instead of turning the comparator into NaN.
         .sort((a, b) =>

@@ -375,7 +375,7 @@ describe("getInventoryScience counts open ml and withholds an unmeasured risk (A
     expect(cover("Efe Black Raki")).toBeCloseTo((250 / 750) * (90 / 13), 9);
   });
 
-  it("keeps the engine's risk for a wine sold on 20 days, lists it first, and counts its open ml (fails before)", async () => {
+  it("keeps the engine's risk for a wine sold on 20 days, lists it by its days of cover, and counts its open ml (fails before)", async () => {
     const malbec: Wine = {
       name: "Measured Malbec",
       sealed: 1,
@@ -400,7 +400,18 @@ describe("getInventoryScience counts open ml and withholds an unmeasured risk (A
     );
     expect(row.demandCv).toBeCloseTo(p.cv!, 12);
     expect(row.xyzClass).toBe(E.xyzClassify(p.cv));
-    expect(out.reorderList[0].name).toBe("Measured Malbec");
+    // [ADR 0272 D4, amended 2026-10-04 ("Soonest to run out"): a measured
+    // risk no longer heads the list. 1.5 bottles at 20/90 a day is 6.75 days
+    // of cover, the longest of the six, so the Malbec is listed last.]
+    expect(row.daysOfCover).toBeCloseTo(1.5 / (20 / 90), 9);
+    expect(out.reorderList.map((s: any) => s.name)).toEqual([
+      "Sonoma Chardonnay",
+      "Tekirdag Raki",
+      "Yeni Raki",
+      "Jameson Irish Whiskey",
+      "Efe Black Raki",
+      "Measured Malbec",
+    ]);
   });
 
   it("leaves on hand at the sealed count when the rollup carries no open ml (control: passes before too)", async () => {
@@ -541,8 +552,12 @@ describe("the restock export says why a risk is missing (ADR 0299)", () => {
     expect(doc.tables[0].note).toContain(
       "5 wines are below their reorder point",
     );
+    // [ADR 0272 D4, amended 2026-10-04: one order, soonest to run out first.]
     expect(doc.tables[0].note).toContain(
-      "highest measured risk first, then the fewest days of cover",
+      "the 2 that run out soonest are listed",
+    );
+    expect(doc.tables[0].title).toBe(
+      "Below the reorder point, soonest to run out first",
     );
   });
 });
