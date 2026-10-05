@@ -149,10 +149,10 @@ Built on `feat/add-a-table-by-hand` by Claude (lane `addtable`), stacked on this
   - `checksLinked`, and its null;
   - 503 and 500.
 
-  All 32 fail against #621's sources (`0863ae2d2`). Each of these mutations fails the spec: `seats ?? 2`, the name clash removed, the `pos_refs` clash removed, `@Roles` removed, admin admitted, and `count ?? 0`. With it, `route-access.spec.ts` and `tables-learned-from-the-pos.spec.ts` pass: 66 of 66 across the three.
-- **Web.** `apps/web/src/pages/settings/next/add-a-table-by-hand.test.tsx`, 10 cases [11 after fix round 1, below]. All fail against #621's sources. Offering the add to everyone fails 2, and dropping the re-read fails 4. #621's own Settings test passes beside it (23 of 23).
+  All 32 fail against #621's sources (`0863ae2d2`) [all 36 after fix round 1]. Each of these mutations fails the spec: `seats ?? 2`, the name clash removed, the `pos_refs` clash removed, `@Roles` removed, admin admitted, and `count ?? 0`. With it, `route-access.spec.ts` and `tables-learned-from-the-pos.spec.ts` pass: 66 of 66 across the three [70 of 70 after fix round 1].
+- **Web.** `apps/web/src/pages/settings/next/add-a-table-by-hand.test.tsx`, 10 cases [11 after fix round 1, below]. All fail against #621's sources. Offering the add to everyone fails 2, and dropping the re-read fails 4. #621's own Settings test passes beside it (23 of 23) [24 of 24 after fix round 1; all 11 fail against #621's sources].
 - **SQL.** No SQL changed, so no SQL test was added. The trigger it relies on, and its T23, are #621's.
-- **Claims.** `claims.d/feat-add-a-table-by-hand.jsonl`, row `ADR-0303-AN-OWNER-OR-MANAGER-ADDS-A-TABLE`. It holds on the lane, and fails all eight of its checks on #621's sources. Each of these mutations fails it:
+- **Claims.** `claims.d/feat-add-a-table-by-hand.jsonl`, row `ADR-0303-AN-OWNER-OR-MANAGER-ADDS-A-TABLE`. It holds on the lane, and fails all eight of its checks on #621's sources [nine checks after fix round 1, all nine failing on `0863ae2d2` and on `f5cbccdd4`]. Each of these mutations fails it:
   - `@Roles` removed;
   - the fixture row back to open;
   - `.upsert(` back;
