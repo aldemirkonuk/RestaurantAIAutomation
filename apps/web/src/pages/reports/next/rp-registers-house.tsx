@@ -408,7 +408,9 @@ const seats = analysis<SeatsRegister>({
       },
     ];
     if (served.length === 0) {
-      const mapped = `${countOf(s.tables.length, 'table is', 'tables are')} mapped`;
+      // ADR 0303: a table is learned from the till or added by hand. No page
+      // draws a room, so no sentence here says one was.
+      const inRoom = `The room has ${countOf(s.tables.length, 'table', 'tables')}`;
       const empty = emptyWindowLine(s);
       const n = s.checksInWindow;
       const none =
@@ -417,18 +419,30 @@ const seats = analysis<SeatsRegister>({
           : `not one of the ${countOf(n, 'check', 'checks')} in the last ${s.sinceDays} days was`;
       return {
         say: empty
-          ? `${mapped}. ${empty}`
+          ? `${inRoom}. ${empty}`
           : n !== null && n > 0
             ? atHidden > 0
-              ? `${mapped}, and ${none} attributed to any of them.`
-              : `${mapped}, and ${none} attributed to any of them — that is an absent attribution, not an empty room.`
-            : `${mapped}, and no check in the last ${s.sinceDays} days was attributed to any of them. This register does not say whether the window held any check, so an empty window and checks that name no table cannot be told apart here.`,
+              ? `${inRoom}, and ${none} attributed to any of them.`
+              : `${inRoom}, and ${none} attributed to any of them — that is an absent attribution, not an empty room.`
+            : `${inRoom}, and no check in the last ${s.sinceDays} days was attributed to any of them. This register does not say whether the window held any check, so an empty window and checks that name no table cannot be told apart here.`,
         figures,
         notes: roomNotes,
         basis,
       };
     }
     const withCheck = served.filter((t) => t.avgCheck != null && t.seats != null);
+    // ADR 0303, seatsnote: a table learned from the till has no seat count and
+    // no screen asks for one, so it has no point on the scatter. With no point
+    // at all there is no scatter (Cutting says it cannot be drawn, never an
+    // empty frame), and either way a note says why. The gateway withholds the
+    // per-seat figures (null, never 0) for the same reason.
+    const unseated = served.filter((t) => t.seats == null).length;
+    const seatsNote =
+      unseated === 0
+        ? null
+        : unseated === served.length
+          ? 'Seat counts are not recorded yet for any table that took a check, so the scatter has no seats to set against average check and plots nothing. Per-seat figures are withheld for the same reason, not read as zero.'
+          : `${countOf(unseated, 'table that took a check is', 'tables that took a check are')} left off the scatter because ${unseated === 1 ? 'its seat count is' : 'their seat counts are'} not recorded yet; ${unseated === 1 ? 'its' : 'their'} per-seat figures are withheld, not read as zero.`;
     return {
       cats: {
         data: served.slice(0, 14).map((t) => ({
@@ -441,19 +455,22 @@ const seats = analysis<SeatsRegister>({
         unit: 'taken',
         format: (v) => money(v, 'compact'),
       },
-      points: {
-        data: withCheck.map((t) => ({
-          x: t.seats as number,
-          y: Number((t.avgCheck as number).toFixed(2)),
-          name: t.label,
-        })),
-        xLabel: 'seats',
-        yLabel: 'average check',
-        formatX: (v) => figure(v),
-        formatY: (v) => money(v, 'compact'),
-        refX: null,
-        refY: null,
-      },
+      points:
+        withCheck.length > 0
+          ? {
+              data: withCheck.map((t) => ({
+                x: t.seats as number,
+                y: Number((t.avgCheck as number).toFixed(2)),
+                name: t.label,
+              })),
+              xLabel: 'seats',
+              yLabel: 'average check',
+              formatX: (v) => figure(v),
+              formatY: (v) => money(v, 'compact'),
+              refX: null,
+              refY: null,
+            }
+          : undefined,
       table: {
         cols: [
           { key: 't', label: 'Table' },
@@ -477,9 +494,10 @@ const seats = analysis<SeatsRegister>({
       notes: [
         ...(s.tables.length > served.length
           ? [
-              `${countOf(s.tables.length - served.length, 'mapped table', 'mapped tables')} took no check in the window, and is drawn at no height rather than left off the chart.`,
+              `${countOf(s.tables.length - served.length, 'table in the room', 'tables in the room')} took no check in the window, so ${s.tables.length - served.length === 1 ? 'it has' : 'they have'} no bar and no point.`,
             ]
           : []),
+        ...(seatsNote ? [seatsNote] : []),
         ...roomNotes,
       ],
       basis,

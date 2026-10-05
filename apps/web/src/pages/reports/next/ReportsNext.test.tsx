@@ -1673,16 +1673,136 @@ describe('ReportsNext — an empty POS window is not an absent field (A-040)', (
 
   it('the room: the same three facts, and "absent attribution" only when checks exist', () => {
     expect(seats({ checksInWindow: 0, latestCheckAt: latest }).say).toBe(
-      '1 table is mapped. No POS check was opened in the last 90 days — the latest this house has is from Aug 30, 2026. The window is empty; no field is missing.',
+      'The room has 1 table. No POS check was opened in the last 90 days — the latest this house has is from Aug 30, 2026. The window is empty; no field is missing.',
     );
     expect(seats({ checksInWindow: 0, latestCheckAt: null }).say).toContain(
       'No POS check has reached Mudavym',
     );
     expect(seats({ checksInWindow: 5, latestCheckAt: latest }).say).toBe(
-      '1 table is mapped, and not one of the 5 checks in the last 90 days was attributed to any of them — that is an absent attribution, not an empty room.',
+      'The room has 1 table, and not one of the 5 checks in the last 90 days was attributed to any of them — that is an absent attribution, not an empty room.',
     );
     const old = seats({}).say as string;
     expect(old).toContain('does not say whether the window held any check');
     expect(old).not.toMatch(/absent/);
+  });
+});
+
+/**
+ * ADR 0303, lane seatsnote. A table learned from the till has no seat count,
+ * and no screen asks for one, so the room's scatter (seats against average
+ * check) had no point to draw for a house whose tables are all learned, and
+ * drew an empty frame with no word of why. The founder, 2026-10-05: "Explain
+ * the empty chart now (Recommended)". The same register still called such
+ * tables "mapped".
+ */
+describe('ReportsNext — the room says why its scatter is empty (ADR 0303)', () => {
+  const payload = (tables: Array<{ seats: number | null; checks?: number }>) => ({
+    sinceDays: 90,
+    dataStatus: 'x',
+    checksInWindow: 12,
+    latestCheckAt: '2026-08-30T12:00:00.000Z',
+    tables: tables.map((t, i) => {
+      const checks = t.checks ?? 3;
+      return {
+        tableId: `t${i + 1}`,
+        label: `T${i + 1}`,
+        zone: null,
+        seats: t.seats,
+        checks,
+        revenue: checks * 100,
+        covers: checks * 2,
+        avgCheck: checks > 0 ? 100 : null,
+        revenuePerSeat: null,
+        seatUtilization: null,
+      };
+    }),
+  });
+  const room = (tables: Array<{ seats: number | null; checks?: number }>) =>
+    CATALOGUE.seats.view(CATALOGUE.seats.select(payload(tables)), { days: 30 });
+  const ALL =
+    'Seat counts are not recorded yet for any table that took a check, so the scatter has no seats to set against average check and plots nothing. Per-seat figures are withheld for the same reason, not read as zero.';
+
+  it('no table that took a check has a seat count: no scatter series, and the note says why', () => {
+    const view = room([{ seats: null }, { seats: null }, { seats: null }]);
+    // A missing series, not an empty one (rp-view rule 2): the scatter is not drawn.
+    expect(view.points).toBeUndefined();
+    expect(view.notes).toContain(ALL);
+    // The bars and the table are still true of the data, so they stay.
+    expect(view.say).toBeUndefined();
+    expect(view.cats?.data).toHaveLength(3);
+    expect(view.table?.rows).toHaveLength(3);
+  });
+
+  it('some tables have no seat count: the scatter draws the rest and counts the ones left off', () => {
+    const two = room([{ seats: 4 }, { seats: null }, { seats: null }]);
+    expect(two.points?.data).toEqual([{ x: 4, y: 100, name: 'T1' }]);
+    expect(two.notes).toContain(
+      '2 tables that took a check are left off the scatter because their seat counts are not recorded yet; their per-seat figures are withheld, not read as zero.',
+    );
+    expect(two.notes).not.toContain(ALL);
+
+    const one = room([{ seats: 4 }, { seats: 2 }, { seats: null }]);
+    expect(one.points?.data).toHaveLength(2);
+    expect(one.notes).toContain(
+      '1 table that took a check is left off the scatter because its seat count is not recorded yet; its per-seat figures are withheld, not read as zero.',
+    );
+  });
+
+  it('a table with no seat count that took no check is not counted as left off the scatter', () => {
+    const view = room([{ seats: 4 }, { seats: null, checks: 0 }]);
+    expect(view.points?.data).toEqual([{ x: 4, y: 100, name: 'T1' }]);
+    expect(view.notes.join(' ')).not.toMatch(/seat count/i);
+  });
+
+  it('every table has a seat count: the scatter is as it was, and no seats note', () => {
+    const view = room([{ seats: 4 }, { seats: 2 }]);
+    expect(view.points?.data).toEqual([
+      { x: 4, y: 100, name: 'T1' },
+      { x: 2, y: 100, name: 'T2' },
+    ]);
+    expect(view.points?.xLabel).toBe('seats');
+    expect(view.points?.yLabel).toBe('average check');
+    expect(view.notes.join(' ')).not.toMatch(/seat count/i);
+  });
+
+  it('a table that took no check has no bar and no point, and no table is "mapped"', () => {
+    const view = room([{ seats: 4 }, { seats: 2, checks: 0 }]);
+    expect(view.notes).toContain('1 table in the room took no check in the window, so it has no bar and no point.');
+    // The bars draw only the tables that took a check: the old note said such a
+    // table was "drawn at no height rather than left off the chart".
+    expect(view.cats?.data.map((c) => c.label)).toEqual(['T1']);
+    expect(room([{ seats: 4 }, { seats: 2, checks: 0 }, { seats: 2, checks: 0 }]).notes).toContain(
+      '2 tables in the room took no check in the window, so they have no bar and no point.',
+    );
+    const quiet = CATALOGUE.seats.view(
+      CATALOGUE.seats.select({ ...payload([{ seats: null, checks: 0 }]), checksInWindow: 5 }),
+      { days: 30 },
+    );
+    expect(quiet.say).toBe(
+      'The room has 1 table, and not one of the 5 checks in the last 90 days was attributed to any of them — that is an absent attribution, not an empty room.',
+    );
+    for (const v of [view, quiet]) {
+      expect(JSON.stringify([v.say, v.notes, v.basis, v.figures])).not.toMatch(/mapped|drawn at no height/);
+    }
+  });
+
+  it('drawn as a scatter on the sheet, the room says it cannot be drawn, not an empty frame', () => {
+    hook.current = withRegister(
+      'seats',
+      ok(CATALOGUE.seats.select(payload([{ seats: null }, { seats: null }]))),
+    );
+    paint();
+    arrange();
+    const quad = screen.getByRole('region', { name: 'Margin against movement' });
+    fireEvent.change(within(quad).getByLabelText('Show instead of Margin against movement'), {
+      target: { value: 'seats' },
+    });
+    const roomCutting = screen.getByRole('region', { name: 'The room' });
+    fireEvent.change(within(roomCutting).getByLabelText('Draw The room as'), {
+      target: { value: 'scatter' },
+    });
+    expect(roomCutting.querySelector('.rp-plot')).toBeNull();
+    expect(within(roomCutting).getByText(/cannot be drawn as scatter/)).toBeInTheDocument();
+    expect(within(roomCutting).getByText(ALL)).toBeInTheDocument();
   });
 });
