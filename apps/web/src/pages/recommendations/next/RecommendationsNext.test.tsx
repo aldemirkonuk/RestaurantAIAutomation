@@ -840,7 +840,7 @@ describe('RecommendationsNext — the two forward doors', () => {
       direction: 'at_least',
       period: 'week',
     });
-    expect(sent.name).toBe('Wednesday wine revenue back to baseline');
+    expect(sent.name).toBe('Wednesday wine revenue, after a soft Wednesday');
     expect(sent.deadline).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     // an actor id is never sent from the client — the JWT is the only witness
     expect(sent).not.toHaveProperty('createdBy');
@@ -1885,7 +1885,7 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     mockData.current = { ...base, entries: [weekdayEntry()], goals: [] };
     draw();
     const suggest = screen.getByTestId('rc-mgoal-suggest');
-    expect(within(suggest).getByText('Wednesday wine revenue back to baseline')).toBeInTheDocument();
+    expect(within(suggest).getByText('Wednesday wine revenue, after a soft Wednesday')).toBeInTheDocument();
     fireEvent.click(within(suggest).getByText('Set a goal →'));
     const sheet = screen.getByRole('group', { name: 'Make this a goal' });
     expect(within(sheet).getByLabelText('Target in $')).toHaveValue(null);
