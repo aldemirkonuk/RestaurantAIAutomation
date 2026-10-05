@@ -75,7 +75,7 @@ AW02 is neither the 1000-row cap (ADR 0292) nor sale-time dating (F-129), and fi
 - (b) Bottle-equivalents through this record's converter.
 - (c) Rename the column "Servings".
 
-**A line with no bottle figure** has no mode, or is a glass line with no positive millilitres. Counting it as 1 is the defect itself. Counting it as 0 drops a real sale without a word. Either one breaks ADR 0020 and ADR 0086.
+**A line with no bottle figure** has no mode, is a glass line with no positive millilitres, or is a bottle line with a negative quantity. Counting it as 1 is the defect itself. Counting it as 0 drops a real sale without a word. Either one breaks ADR 0020 and ADR 0086.
 
 ## Founder answers, verbatim
 
@@ -100,7 +100,7 @@ AW02 is neither the 1000-row cap (ADR 0292) nor sale-time dating (F-129), and fi
   - a `basis` sentence on the analytics endpoints;
   - `units` on the insight bundle, on each of its records and on each Bottles sold goal;
   - the report exports that write those figures (see *Exports* below).
-- A line with no mode, or a glass line with no positive `volume_ml`, has **no bottle figure**: never 1, never 0.
+- A line with no mode, a glass line with no positive `volume_ml`, or a bottle line with a negative `quantity` has **no bottle figure**: never 1, never 0.
 
 `quantity` keeps its ADR 0011 meaning. `master_wine_library.bottle_size_ml` is never read.
 
@@ -131,9 +131,9 @@ AW02 is neither the 1000-row cap (ADR 0292) nor sale-time dating (F-129), and fi
   - Every record built on consumption carries `evidence.units`: the counts of the lines it was built from, the lines and items on the stand-in among them, and the sentence. The series records and the forecast gap count the 90-day series; a mover counts its own wine over the two weeks it compares; concentration counts the lines it shares out; the stockout #1 counts its own wine. `evidence` is stored, so a cached row carries the label too.
   - The bundle's response carries `units` over every line it read.
   - The line's `qty` is null.
-  - Days holding such a line leave the daily series.
+  - A day holding such a line is unobserved in the daily series, as a day the manager excluded is. Its counted lines stay in the dense values.
   - Per-item movers skip such items.
-  - Concentration and the Holt-Winters forecast gap are withheld while any such line is in the window.
+  - Concentration is withheld while any wine in the bundle holds such a line. The Holt-Winters forecast gap is withheld while any dated line in the bundle is one.
 - **Bottles sold goal:**
   - Each goal's progress carries `units`: the lines and items in its window resting on the stand-in. It is null for every other metric.
   - A window holding a line with no bottle figure throws `UncountedConsumptionError`, and the goal reads as "could not be scored" rather than summing short.
@@ -146,7 +146,7 @@ AW02 is neither the 1000-row cap (ADR 0292) nor sale-time dating (F-129), and fi
   - The reading export counts the sentences that rest in part on the stand-in. Each sentence's own counts stay in the stored feed's `evidence.units`, not in the export.
 - **Dead stock:** "moved" stays a line with servings or millilitres above 0, which is the earlier test.
 
-The POS writer never writes such a line, because it fails closed on an explicit volume below `MIN_PLAUSIBLE_SALE_ML` (`pos-hub.service.ts:78-85`) and on a derived glass with no positive pour size (`:111-118`, `:645`). Such lines can come only from `manual` or `ai_agent` rows.
+The POS writer never writes such a line, because it fails closed on an explicit volume below `MIN_PLAUSIBLE_SALE_ML` (`pos-hub.service.ts:78-85`) and on a derived glass with no positive pour size (`:111-118`, `:645`), and it skips a line whose quantity rounds to 0 or less (`:755-756`). Such lines can come only from `manual` or `ai_agent` rows.
 
 ## Consequences
 
@@ -192,8 +192,9 @@ The POS writer never writes such a line, because it fails closed on an explicit 
      - `:133` prints it.
    - It does not read `counts.unmeasured`.
    - The fix and its test are owed as a follow-up PR; this change is at its file limit.
-   - Until it lands, an item whose sales include a line with no bottle figure plots at 0 bottles a day on /reports, and its "No quadrant" tile counts only `counts.unclassified`. That can happen only through a `manual` or `ai_agent` glass line with no millilitres.
-   - How many wines that touches is unmeasured. The read-only count is `SELECT restaurant_id, count(*) FROM wine_consumption_log WHERE consumption_type = 'glass' AND volume_ml <= 0 GROUP BY 1`.
+   - Until it lands, an item whose sales include a line with no bottle figure plots at 0 bottles a day on /reports, and its "No quadrant" tile counts only `counts.unclassified`. That can happen only through a `manual` or `ai_agent` line: a glass line with no millilitres or a bottle line with a negative quantity.
+   - The restock register's empty answer (`:661`, "Nothing is below its reorder point. That is a real answer about N wines") does not read `unassessed`. With an unassessed wine it counts that wine among the ones the answer covers; `basis.demand`, shown beside it, names the unassessed rows.
+   - How many wines that touches is unmeasured. The read-only count is `SELECT restaurant_id, count(*) FROM wine_consumption_log WHERE (consumption_type = 'glass' AND (volume_ml <= 0 OR volume_ml = 'NaN'::float8 OR volume_ml = 'Infinity'::float8)) OR (consumption_type = 'bottle' AND quantity < 0) GROUP BY 1`.
 
 ## Review trail
 
