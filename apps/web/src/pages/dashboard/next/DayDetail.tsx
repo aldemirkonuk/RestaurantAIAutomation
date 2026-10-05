@@ -156,6 +156,28 @@ function netSalesValue(day: DayLedger): string {
   return money(day.net_sales);
 }
 
+/*
+ * The panel's grids are sized by the PANEL, never the viewport (ADR 0290 §9).
+ * Inside the app shell the panel is about 282 px wide at a 1280 px window (the
+ * rooms rail and the open counter take 552 px), so the viewport's
+ * `lg:grid-cols-6` gave each figure 34 px and "$39,302.5" ran into its
+ * neighbours. A track never narrows below what its content needs; the `- 1px`
+ * keeps sub-pixel rounding from dropping a column.
+ */
+
+/**
+ * The figure row: a track is never narrower than 8rem (an eleven-character
+ * figure at 19 px), and a row holds at most half the figures, so six read
+ * 3 + 3 or 2 + 2 + 2 and four read 2 + 2 — never a lone figure on a row.
+ */
+export function figureColumns(count: number): string {
+  const most = Math.max(1, Math.ceil(count / 2));
+  return `repeat(auto-fill, minmax(max(8rem, calc((100% - ${most - 1}rem) / ${most} - 1px)), 1fr))`;
+}
+
+/** The four lists below: side by side only where each gets 16rem. */
+export const SECTION_COLUMNS = 'repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))';
+
 /* ── the panel ──────────────────────────────────────────────────────────── */
 
 export interface DayDetailProps {
@@ -229,7 +251,9 @@ export function DayDetail({
           adapter sends it so (Square maps net_amounts.total_money, Clover writes
           null; pos-adapters.ts). Vendor money is money out, never sales. */}
       <div
-        className={`mt-1 grid grid-cols-2 gap-4 ${salesShown ? 'sm:grid-cols-3 lg:grid-cols-6' : 'sm:grid-cols-4'}`}
+        className="mt-1 grid gap-4"
+        data-testid="dn-day-figures"
+        style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : 4) }}
       >
         {salesShown && (
           <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
@@ -246,7 +270,7 @@ export function DayDetail({
         </p>
       )}
 
-      <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="mt-4 grid gap-5" data-testid="dn-day-sections" style={{ gridTemplateColumns: SECTION_COLUMNS }}>
         <Section title="Deliveries">
           {dayOrders.state === 'loading' && (
             <>

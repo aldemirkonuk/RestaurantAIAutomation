@@ -31,7 +31,7 @@
  * All of it collapses under prefers-reduced-motion via lib/mudavym.animate.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { animate, settle } from '@/lib/mudavym';
 import type { ActivityItem, AlertItem } from './useDashboardNextData';
@@ -57,17 +57,66 @@ export interface SalesCalendarProps {
 }
 
 const MONO_FIG = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' } as const;
-const NOT_RECORDED_FIG = {
+
+/*
+ * A cell sizes what it holds by its OWN width, never the viewport's (ADR 0290
+ * §9). Inside the app shell the rooms rail (232 px) and the open counter
+ * (320 px from a 1280 px window) leave a cell 36.9 px wide at 1280 px —
+ * narrower than on a phone — so `dashboard-next.css`'s 720 px breakpoint
+ * never sees it, and a 12 px "$4.2K" drew as "$4.2". So the cell is a size
+ * container; its side padding narrows from 7 px to 3 px with it (a grid
+ * item's percentage padding reads its own track), and its figure and words
+ * are sized in `cqi`, hundredths of the cell's inner width.
+ */
+export const CELL_SIDE = 'clamp(3px, calc(25% - 6px), 7px)';
+const CELL_BOX = { containerType: 'inline-size', paddingLeft: CELL_SIDE, paddingRight: CELL_SIDE } as const;
+
+/** JetBrains Mono advances 0.6 em a character; the cell sets -0.01 em. */
+const MONO_ADVANCE_EM = 0.59;
+
+/**
+ * The cell headline's size: 12 px where it fits, else the size at which the
+ * month's longest headline exactly fills the cell's inner width. One size for
+ * the whole month, so a figure's size never stands in for its magnitude.
+ */
+export function cellFigureSize(longest: number): string {
+  if (longest <= 1) return '12px';
+  const cqi = Math.floor((100 / (MONO_ADVANCE_EM * longest)) * 100) / 100;
+  return `min(12px, ${cqi}cqi)`;
+}
+
+/**
+ * The cell's words ("from N of M checks", "not recorded", "N orders"): 9 px
+ * where the longest of their words fits, else the size at which "checks"
+ * (3.45 em in the text face) fills the cell. They wrap between words, and a
+ * word wider than the cell still breaks rather than run off its edge.
+ */
+export const CELL_WORDS_SIZE = 'min(9px, 28.5cqi)';
+
+/**
+ * A size, carried as `--dn-cell-size` and read back as the font size: the
+ * custom property keeps the `cqi` value inspectable where a CSS parser does
+ * not know the unit (jsdom drops it from `font-size`).
+ */
+function cellSized(size: string): CSSProperties {
+  return { ['--dn-cell-size' as string]: size, fontSize: 'var(--dn-cell-size)' };
+}
+
+const CELL_WORDS: CSSProperties = {
+  ...cellSized(CELL_WORDS_SIZE),
+  lineHeight: 1.15,
+  overflowWrap: 'anywhere',
+};
+// "recorded" is wider than a cell under ~44 px at any legible size, so there
+// it still breaks inside the word ("record" / "ed"). A shorter cell form would
+// change the founder's words; that is his call (ADR 0290 §9, PR forks).
+const NOT_RECORDED_FIG: CSSProperties = {
+  ...CELL_WORDS,
   fontFamily: 'inherit',
-  fontSize: '9px',
   fontStyle: 'italic',
   fontWeight: 400,
-  lineHeight: 1.15,
   color: 'var(--ink-3, #7C7365)',
-  // A phone-width cell is narrower than "recorded": break inside the word
-  // rather than clip it.
-  overflowWrap: 'anywhere',
-} as const;
+};
 
 /** What a cell says. `salesShown` picks the headline (F2, ADR 0290). */
 function cellFigure(day: DayLedger | undefined, salesShown: boolean, zoneUnset: boolean): string {
@@ -173,6 +222,20 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
   const maxHead = useMemo(
     () => Math.max(1, ...daily.map((d) => (salesShown ? d.net_sales : d.procurement_spend) ?? 0)),
     [daily, salesShown],
+  );
+  // The month's longest headline sets the one figure size every cell uses.
+  const figSize = useMemo(
+    () =>
+      cellFigureSize(
+        Math.max(
+          0,
+          ...daily.map((d) => {
+            const f = cellFigure(d, salesShown, zoneUnset);
+            return f === NOT_RECORDED ? 0 : f.length;
+          }),
+        ),
+      ),
+    [daily, salesShown, zoneUnset],
   );
 
   // Monday-first leading blanks.
@@ -324,15 +387,15 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
               // browsers without color-mix quietly keep the paper-1 ground.
               style={
                 heat > 0
-                  ? { backgroundColor: `color-mix(in srgb, var(--seal) ${Math.round(heat * 100)}%, transparent)` }
-                  : undefined
+                  ? { ...CELL_BOX, backgroundColor: `color-mix(in srgb, var(--seal) ${Math.round(heat * 100)}%, transparent)` }
+                  : CELL_BOX
               }
             >
               <span className="dn-cell-num">{dayNum}</span>
-              <span className="dn-cell-marks">
+              <span className="dn-cell-marks" style={{ flexWrap: 'wrap' }}>
                 {day && day.events.length > 0 && <span className="dn-dot" aria-hidden />}
                 {day && day.order_count != null && day.order_count > 0 && (
-                  <span className="text-[9px] text-inkm-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <span className="dn-cell-orders text-inkm-3" style={{ ...CELL_WORDS, fontVariantNumeric: 'tabular-nums' }}>
                     {day.order_count} {day.order_count === 1 ? 'order' : 'orders'}
                   </span>
                 )}
@@ -342,15 +405,15 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
               ) : (
                 <span
                   className="dn-cell-fig"
-                  // "not recorded" is words, not a figure: set small, in the
-                  // text face, free to wrap inside a narrow cell.
-                  style={!isFuture && fig === NOT_RECORDED ? NOT_RECORDED_FIG : undefined}
+                  // "not recorded" is words, not a figure: the text face, the
+                  // cell's word size, free to wrap inside a narrow cell.
+                  style={!isFuture && fig === NOT_RECORDED ? NOT_RECORDED_FIG : cellSized(figSize)}
                 >
                   {isFuture ? '' : fig}
                 </span>
               )}
               {!isFuture && month.state !== 'loading' && from && (
-                <span className="dn-cell-from text-[9px] leading-tight text-inkm-3" style={{ overflowWrap: 'anywhere' }} aria-hidden>
+                <span className="dn-cell-from text-inkm-3" style={CELL_WORDS} aria-hidden>
                   {from}
                 </span>
               )}

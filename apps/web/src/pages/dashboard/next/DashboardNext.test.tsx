@@ -57,6 +57,8 @@ vi.mock('@/contexts/AuthContext', async () => {
 });
 
 import DashboardNext from './DashboardNext';
+import { CELL_SIDE, CELL_WORDS_SIZE, cellFigureSize } from './SalesCalendar';
+import { SECTION_COLUMNS, figureColumns } from './DayDetail';
 
 /** A real month's worth of days — the shape `getCalendarRevenue` promises on success. */
 function monthLedger() {
@@ -499,7 +501,7 @@ describe('DashboardNext — the month counts and says (ADR 0290 §2, §4)', () =
 
     await waitFor(() => expect(cellFig('2026-10-02')).toBe('$800'));
     expect(dayCell('2026-10-02').querySelector('.dn-cell-from')?.textContent).toBe('from 10 of 12 checks');
-    // A phone-width cell is narrower than the words: they wrap, never clip.
+    // A cell inside the shell is narrower than the words: they wrap, never clip.
     expect((dayCell('2026-10-02').querySelector('.dn-cell-from') as HTMLElement).style.overflowWrap).toBe('anywhere');
     expect(dayCell('2026-10-02')).toHaveAttribute(
       'aria-label',
@@ -531,6 +533,10 @@ describe('DashboardNext — the month counts and says (ADR 0290 §2, §4)', () =
 
     await waitFor(() => expect(cellFig('2026-10-02')).toBe('not recorded'));
     expect((dayCell('2026-10-02').querySelector('.dn-cell-fig') as HTMLElement).style.overflowWrap).toBe('anywhere');
+    // Words, at the cell's word size, not the 12 px figure size.
+    expect((dayCell('2026-10-02').querySelector('.dn-cell-fig') as HTMLElement).style.getPropertyValue('--dn-cell-size')).toBe(
+      CELL_WORDS_SIZE,
+    );
     expect(dayCell('2026-10-02').getAttribute('aria-label')).toMatch(/^2026-10-02: net sales not recorded, /);
     expect(screen.getByTestId('dn-month-totals').textContent).toMatch(/net sales\s*not recorded · paid to vendors/);
 
@@ -586,5 +592,83 @@ describe('DashboardNext — the month counts and says (ADR 0290 §2, §4)', () =
     const totals = screen.getByTestId('dn-month-totals').textContent ?? '';
     expect(totals).toMatch(/net sales\s*— · paid to vendors/);
     expect(screen.queryByTestId('dn-month-from')).not.toBeInTheDocument();
+  });
+});
+
+/* ── Sized by the cell and the panel, not the viewport (ADR 0290 §9) ───────── */
+
+// Inside the app shell (rooms rail 232 px, counter 320 px open from 1280 px)
+// a calendar cell is 36.9 px wide at a 1280 px window and the day panel about
+// 282 px; viewport breakpoints cannot see either. jsdom does no layout, so
+// these pin the sizing rules the browser check measured (fix round 2).
+describe('DashboardNext — the calendar fits the shell (ADR 0290 §9)', () => {
+  it('sizes every cell headline to the month’s longest one, in the cell’s own width', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        days: {
+          '2026-10-01': { net_sales: 4210.5, checks: 61, net_checks: 61 },
+          // Tuzlu Rüzgar's Oct 2 scale: "$29.0K" is the month's longest.
+          '2026-10-02': { net_sales: 28979.4, checks: 142, net_checks: 130, procurement_spend: 39302.5, bottles_sold: 4347, order_count: 549 },
+        },
+        monthly_net_sales: 33189.9,
+        monthly_checks: 203,
+        monthly_net_checks: 191,
+      }),
+    );
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('$29.0K'));
+    const cell = dayCell('2026-10-02');
+    // The cell is a size container: what it holds is sized in its own `cqi`.
+    // (Its narrowing side padding, CELL_SIDE, is a clamp() jsdom's CSS parser
+    // drops; the browser check measured it at 3.2 px in a 36.9 px cell.)
+    expect(cell.style.containerType).toBe('inline-size');
+    // One size for the month, set by its longest figure (six characters).
+    const size = cellFigureSize(6);
+    expect(size).toBe('min(12px, 28.24cqi)');
+    const sized = (el: Element | null) => {
+      const style = (el as HTMLElement).style;
+      return { size: style.getPropertyValue('--dn-cell-size'), font: style.fontSize };
+    };
+    const asSized = (v: string) => ({ size: v, font: 'var(--dn-cell-size)' });
+    expect(sized(cell.querySelector('.dn-cell-fig'))).toEqual(asSized(size));
+    expect(sized(dayCell('2026-10-01').querySelector('.dn-cell-fig'))).toEqual(asSized(size));
+    // The words beside it ("from N of M checks", "N orders") take the cell's word size.
+    expect(sized(cell.querySelector('.dn-cell-from'))).toEqual(asSized(CELL_WORDS_SIZE));
+    expect(sized(cell.querySelector('.dn-cell-orders'))).toEqual(asSized(CELL_WORDS_SIZE));
+    expect(cell.querySelector('.dn-cell-from')?.className).not.toMatch(/text-\[9px\]/);
+    expect(cell.querySelector('.dn-cell-orders')?.className).not.toMatch(/text-\[9px\]/);
+  });
+
+  it('keeps 12 px where the longest figure is short, and fits a longer one smaller', () => {
+    expect(CELL_SIDE).toBe('clamp(3px, calc(25% - 6px), 7px)');
+    expect(cellFigureSize(0)).toBe('12px');
+    expect(cellFigureSize(1)).toBe('12px'); // a month of dashes and quiet dots
+    expect(cellFigureSize(5)).toBe('min(12px, 33.89cqi)'); // "$4.2K"
+    expect(cellFigureSize(7)).toBe('min(12px, 24.21cqi)'); // "$128.9K"
+  });
+
+  it('lays the day’s figures and lists out by the panel’s width, not the viewport’s', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() => houseMonth({ days: TRADING_DAY, monthly_net_sales: 800 }));
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('$800'));
+    fireEvent.click(dayCell('2026-10-02'));
+    const figures = await screen.findByTestId('dn-day-figures');
+    expect(figures.children).toHaveLength(6);
+    // No viewport breakpoint picks the columns any more.
+    expect(figures.className).not.toMatch(/(sm|md|lg):grid-cols-/);
+    expect(figures.style.gridTemplateColumns).toBe(figureColumns(6));
+    const sections = screen.getByTestId('dn-day-sections');
+    expect(sections.className).not.toMatch(/(sm|md|lg):grid-cols-/);
+    expect(sections.style.gridTemplateColumns).toBe(SECTION_COLUMNS);
+  });
+
+  it('never narrows a figure track below 8rem, and holds at most half the figures to a row', () => {
+    expect(figureColumns(6)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 2rem) / 3 - 1px)), 1fr))');
+    expect(figureColumns(4)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 1rem) / 2 - 1px)), 1fr))');
+    expect(SECTION_COLUMNS).toBe('repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))');
   });
 });
