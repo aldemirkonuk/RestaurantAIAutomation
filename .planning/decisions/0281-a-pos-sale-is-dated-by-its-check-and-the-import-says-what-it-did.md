@@ -206,4 +206,5 @@ SELECT public.undo_pos_rows_redate('<run_id>');  -- one run
   - Run 2 changes none, and every former `change` row reads `already`.
   - A re-send changes 3.
   - The undo restores every row exactly except two edited by hand after the re-date, which it leaves and counts.
+  - Through the lane harness, on a template built from every migration at `28d32de36` with the four after it applied in order (main's three, then this one, at `c7b24101b`): `[fix] PASS`, and `[ctl] FAIL` at T0, which finds no undo table.
 - **The dry run, on its own fixtures.** 26 rows read `change` before the migration. After it, none does and the 26 read `already`. After the undo the counts match the first ones again (`p4-scratch/sim-run/fixes/audits/f2redate-local-pg.txt`, outside the repo).
