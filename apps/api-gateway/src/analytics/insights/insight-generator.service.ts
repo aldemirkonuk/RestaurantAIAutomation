@@ -1142,9 +1142,11 @@ export class InsightGeneratorService {
     // A hidden table leaves every table figure, these insights included
     // (ADR 0303, founder fork F2: "Out of every figure (Recommended)"). Only
     // a table the house shows is ranked, correlated, fitted or watched. A
-    // check at a hidden or retired table, or with no table, stays in sales,
-    // in its server's figures and in the waiter adjustment's table control
-    // (founder, 2026-10-05: "Keep them in the control (Recommended)").
+    // check at a hidden or retired table stays in sales, in its server's
+    // figures and, when it has a server, in the waiter adjustment's table
+    // control (founder, 2026-10-05: "Keep them in the control
+    // (Recommended)"). A check with no table stays in sales and in its
+    // server's figures; the control, being a table control, never held it.
     const shownTableIds = new Set(
       bundle.tables.filter((t: any) => !t.hidden_at).map((t: any) => t.id),
     );
@@ -1224,8 +1226,9 @@ export class InsightGeneratorService {
         w.wineChecks += hasWine ? 1 : 0;
         w.tips += c.tip || 0;
         byWaiter.set(server, w);
-        // The control is every check with a table, hidden or not: a hidden
-        // table still shapes what its servers took (ADR 0303).
+        // The control takes every check here (one with a server) that has a
+        // table, hidden or not: a hidden table still shapes what its servers
+        // took (ADR 0303).
         if (c.table_id) {
           waiterObs.y.push(c.total || 0);
           waiterObs.waiter.push(server);

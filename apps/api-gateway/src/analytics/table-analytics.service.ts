@@ -85,8 +85,8 @@ export class TableAnalyticsService {
    * (retired ones included) may answer to it in any case: two tables with one
    * name would split the till's checks between them. `hidden` true hides the
    * table from the room, its export and the hot list while it still catches
-   * its checks (founder fork F2; the insight generator's part is owed, ADR
-   * 0303 residual 1); false shows it again. Merging two till names into one table is not
+   * its checks (founder fork F2; the insight generator leaves it out too, ADR
+   * 0303 amendment 2026-10-05); false shows it again. Merging two till names into one table is not
    * offered (ADR 0303 residual).
    */
   async renameOrHideTable(
@@ -317,8 +317,8 @@ export class TableAnalyticsService {
 
     // ADR 0303. A hidden table still catches its checks, so they stay in
     // takings, but it leaves every figure this register computes (founder
-    // fork F2: "Out of every figure"; the insight generator's part is owed,
-    // ADR 0303 residual 1). A retired table (is_active false) is not listed at all;
+    // fork F2: "Out of every figure"; the insight generator's part is ADR
+    // 0303's amendment of 2026-10-05). A retired table (is_active false) is not listed at all;
     // its checks are counted with the hidden ones. A check the till sent
     // without a table is counted, not dropped: the register says how many.
     const shown = tables.filter((t: any) => !t.hidden_at);

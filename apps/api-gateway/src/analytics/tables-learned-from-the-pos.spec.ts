@@ -26,8 +26,8 @@ import { TableAnalyticsService } from "./table-analytics.service";
  * and learns the table from it (supabase/tests/20261220110000_tables_learned_
  * from_the_pos_test.sql), so pos-hub writes no new column; checks without a
  * table and checks at hidden tables are counted; hidden tables leave the room,
- * its export and the hot list (the insight generator's part is owed, ADR 0303
- * residual 1); an unrecorded value is absent; and
+ * its export and the hot list (the insight generator's part is ADR 0303's
+ * amendment of 2026-10-05); an unrecorded value is absent; and
  * PATCH /analytics/tables/:rid/:tableId renames or hides, owner or manager
  * only.
  */
