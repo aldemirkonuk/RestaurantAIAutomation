@@ -26,15 +26,29 @@
 -- pour therefore gets an item of its own: two pours of one item at one
 -- instant would link to each other's pour events and read 'ambiguous'.
 --
+-- Never later (ADR 0281 F2, fork 1, founder 2026-10-05: "Never move a row
+-- later (Recommended)"): a row whose every date is at or before its target
+-- reads 'already' and is never written, and a 'change' row's dates each become
+-- the earlier of themselves and the target. Three cases pin it, each read
+-- 'change' or written later by the build before it (20d0bc79a):
+--   * a check re-sent with a LATER closed_at after its rows were booked (L19
+--     and its consumption row C15): neither moves (T8);
+--   * a check whose closed_at is a few ms ahead of the row's created_at, booked
+--     by the real functions with the gateway's clock 20 ms behind the
+--     database's now() (L23, G6 and consumption C17): all read 'already' (T1);
+--   * a consumption row whose recorded_at is already before its target while
+--     its created_at is late (C16): created_at moves, recorded_at stays (T3).
+--
 --   T0  the undo table, RLS on, no client grants; the functions closed; no trigger
 --   T1  every fixture row's outcome, target and check
 --   T2  snapshots
---   T3  run 1 writes exactly the targets
+--   T3  run 1 writes exactly the targets, and no date later than it was
 --   T4  nothing else on any row moves; non-change rows are byte-identical
 --   T5  pos_checks, pour_events and lots are not written
 --   T6  the undo log holds the exact old values
 --   T7  run 2 changes nothing (idempotent)
---   T8  a check re-sent with a new closed_at: run 3 moves its rows only
+--   T8  re-sent checks: an earlier close moves that check's rows, a later one
+--       moves none
 --   T9  undo, newest run first; a row edited since is left as is
 --   T10 every other row is back byte-identical; a second undo restores nothing
 
@@ -102,21 +116,22 @@ insert into public.restaurants (id, name, slug, timezone) values
 insert into public.master_wine_library (id, wine_id, name, primary_type)
 select ('f2ed0000-0000-4000-8000-0000000000a' || n)::uuid, 'SYN-F2REDATE-' || n,
        'SYNTHETIC F2 redate wine ' || n, 'red'
-  from generate_series(1, 7) n;
+  from generate_series(1, 8) n;
 
 -- b1 H1 direct rows; b2 H2 direct rows; b3 real pour before #603; b4 real pour
--- after #603; b5 real Toast pour; b6 real bottle sales; b7 non-POS rows.
+-- after #603; b5 real Toast pour; b6 real bottle sales; b7 non-POS rows; b8
+-- real pour after #603 on a check closing ahead of the database's clock.
 insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml)
 select ('f2ed0000-0000-4000-8000-0000000000b' || n)::uuid,
        (case when n = 2 then 'f2ed0000-0000-4000-8000-000000000002'
              else 'f2ed0000-0000-4000-8000-000000000001' end)::uuid,
        ('f2ed0000-0000-4000-8000-0000000000a' || n)::uuid, 750, 150
-  from generate_series(1, 7) n;
+  from generate_series(1, 8) n;
 
 insert into public.inventory_lots (restaurant_id, inventory_id, master_wine_id, qty, open_bottle_ml, received_at)
 select 'f2ed0000-0000-4000-8000-000000000001', ('f2ed0000-0000-4000-8000-0000000000b' || n)::uuid,
        ('f2ed0000-0000-4000-8000-0000000000a' || n)::uuid, 10, 0, now() - interval '60 days'
-  from unnest(array[3, 4, 5, 6]) n;
+  from unnest(array[3, 4, 5, 6, 8]) n;
 
 -- Checks. closed_at is what Postgres stored from the till's string; raw keeps
 -- the till's string as each adapter does.
@@ -150,7 +165,9 @@ select 'f2ed0000-0000-4000-8000-000000000001', 'csv_import', e, c - interval '2 
   from (values ('f2t-rpc-bottle',  now() - interval '1 day'),
                ('f2t-post-bottle', now() - interval '3 days'),
                ('f2t-rpc-pour',    now() - interval '40 days'),
-               ('f2t-post-pour',   now() - interval '5 days')) v(e, c);
+               ('f2t-post-pour',   now() - interval '5 days'),
+               -- closes 30 ms after the database's now(), the rows' created_at
+               ('f2t-ahead',       now() + interval '30 milliseconds')) v(e, c);
 
 create function pg_temp.closed(p_ext text) returns timestamptz language sql stable as $$
   select c.closed_at from public.pos_checks c
@@ -240,7 +257,13 @@ with v(name, n, h, item, src, k, ra, ca, expect, target, chk) as (values
   ('C9',  '209', 1, 1, 'pos', 'pos:csv_import:amb-f2t:x:w:1',     null, '2026-10-02T07:00:00Z', 'ambiguous',  null, null),
   ('C12', '212', 2, 2, 'pos', 'pos:csv_import:f2t-h2only:w:2',    null, '2026-10-02T17:00:00Z', 'change',     '2026-09-30T19:00:00Z', 'f2t-h2only'),
   -- created_at already on the check; only recorded_at is late.
-  ('C14', '214', 2, 2, 'pos', 'pos:csv_import:f2t-h2pour:w:9',    '2026-10-02T17:00:00Z', '2026-10-01T16:00:00Z', 'change', '2026-10-01T16:00:00Z', 'f2t-h2pour')
+  ('C14', '214', 2, 2, 'pos', 'pos:csv_import:f2t-h2pour:w:9',    '2026-10-02T17:00:00Z', '2026-10-01T16:00:00Z', 'change', '2026-10-01T16:00:00Z', 'f2t-h2pour'),
+  -- L19's consumption row, booked after #603 on its check's first close (T8
+  -- re-sends that check to a later close).
+  ('C15', '215', 1, 1, 'pos', 'pos:csv_import:f2t-resend:w:1',    '2026-09-10T18:00:00Z', '2026-09-10T18:00:00Z', 'already', '2026-09-10T18:00:00Z', 'f2t-resend'),
+  -- created_at late, recorded_at already before the check closed: created_at
+  -- moves to the target, recorded_at is never moved later.
+  ('C16', '216', 1, 1, 'pos', 'pos:csv_import:f2t-forty:w:3',     '2026-08-20T12:00:00Z', '2026-10-02T07:00:00Z', 'change', '2026-08-23T18:00:00Z', 'f2t-forty')
 ), ins as (
   insert into public.wine_consumption_log
     (id, restaurant_id, inventory_id, wine_name, consumption_type, quantity, volume_ml, source, notes, recorded_at, created_at)
@@ -322,6 +345,38 @@ begin
      'f2t-rpc-bottle', 'pos:csv_import:f2t-rpc-bottle:w:1'),
     ('C11', 'wcl', 1, 'f2ed0000-0000-4000-8000-000000000211', 'already', pg_temp.closed('f2t-post-bottle'),
      'f2t-post-bottle', null);
+
+  -- A check closing 30 ms ahead of the database's now(), booked after #603:
+  -- the gateway's clock read 20 ms before the database's now(), so it sent
+  -- p_occurred_at = that reading and the rows are dated 20 ms before their
+  -- created_at. Their target, LEAST(closed_at, created_at), is created_at,
+  -- later than their date: never moved later, so 'already'.
+  v_id := public.apply_stock_movement(
+    p_inventory_id => 'f2ed0000-0000-4000-8000-0000000000b6', p_stock_state => 'live', p_delta => -1,
+    p_transaction_type => 'sale', p_source => 'pos', p_reason => 'SYNTHETIC F2 redate bottle, check ahead',
+    p_idempotency_key => 'pos:csv_import:f2t-ahead:w:1', p_restaurant_id => v_house,
+    p_occurred_at => now() - interval '20 milliseconds');
+  assert (pg_temp.row_j('it', v_id) ->> 'transaction_date')::timestamptz = now() - interval '20 milliseconds',
+    'fixture: the check-ahead bottle sale is not dated 20 ms before now()';
+  insert into t_row values ('L23', 'it', 1, v_id, 'already', now(), 'f2t-ahead', null);
+
+  j := public.record_glass_pour(
+    p_inventory_id => 'f2ed0000-0000-4000-8000-0000000000b8', p_pours => 1, p_pour_ml => 150,
+    p_source => 'pos', p_reason => 'SYNTHETIC F2 redate pour, check ahead',
+    p_idempotency_key => 'pos:csv_import:f2t-ahead:w:2',
+    p_occurred_at => now() - interval '20 milliseconds');
+  assert (j ->> 'txn') is not null, format('fixture: the check-ahead pour wrote no ledger row: %s', j);
+  insert into t_row values ('G6', 'it', 1, (j ->> 'txn')::uuid, 'already', now(), 'f2t-ahead', null);
+
+  insert into public.wine_consumption_log
+    (id, restaurant_id, inventory_id, wine_name, consumption_type, quantity, volume_ml, source, notes, recorded_at, created_at)
+  values
+    ('f2ed0000-0000-4000-8000-000000000217', v_house, 'f2ed0000-0000-4000-8000-0000000000b6',
+     'SYNTHETIC F2 redate', 'bottle', 1, 750, 'pos', 'pos:csv_import:f2t-ahead:w:1',
+     now() - interval '20 milliseconds', now() - interval '20 milliseconds');
+  insert into t_row values
+    ('C17', 'wcl', 1, 'f2ed0000-0000-4000-8000-000000000217', 'already', now() - interval '20 milliseconds',
+     'f2t-ahead', null);
 end $$;
 
 -- The fixture itself: every outcome class and every row kind is present.
@@ -329,9 +384,9 @@ do $$
 declare
   n int;
 begin
-  select count(*) into n from t_row; assert n = 42, format('fixture: %s rows, expected 42', n);
-  select count(*) into n from t_row where expect = 'change';       assert n = 18, format('fixture: %s change', n);
-  select count(*) into n from t_row where expect = 'already';      assert n = 8,  format('fixture: %s already', n);
+  select count(*) into n from t_row; assert n = 47, format('fixture: %s rows, expected 47', n);
+  select count(*) into n from t_row where expect = 'change';       assert n = 19, format('fixture: %s change', n);
+  select count(*) into n from t_row where expect = 'already';      assert n = 12, format('fixture: %s already', n);
   select count(*) into n from t_row where expect = 'no check';     assert n = 3,  format('fixture: %s no check', n);
   select count(*) into n from t_row where expect = 'check open';   assert n = 2,  format('fixture: %s check open', n);
   select count(*) into n from t_row where expect = 'unreadable';   assert n = 5,  format('fixture: %s unreadable', n);
@@ -340,6 +395,13 @@ begin
   select count(*) into n from t_row where expect = 'not pos';      assert n = 2,  format('fixture: %s not pos', n);
   select count(distinct left(name, 1)) into n from t_row where expect = 'change';
   assert n = 3, 'fixture: change rows do not cover keyed, glass-pour and consumption';
+  -- Never later: an 'already' row of each kind whose date is BEFORE its target.
+  select count(distinct left(t.name, 1)) into n
+    from t_row t
+   where t.expect = 'already'
+     and (case t.tbl when 'it' then (pg_temp.row_j(t.tbl, t.id) ->> 'transaction_date')
+                     else (pg_temp.row_j(t.tbl, t.id) ->> 'created_at') end)::timestamptz < t.target;
+  assert n = 2, format('fixture: %s kinds of ledger row sit before their target, expected keyed and glass pour', n);
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -347,9 +409,11 @@ end $$;
 -- ---------------------------------------------------------------------------
 create temporary table t_cls1 on commit drop as select * from public.pos_row_date_by_check();
 
+-- Every mismatch is collected and named in one failure.
 do $$
 declare
   r record;
+  bad text[] := '{}';
 begin
   for r in
     select t.*, x.n, x.outcome, x.got, x.row_table, x.row_kind, x.pos_check_id, x.pos_key,
@@ -365,26 +429,29 @@ begin
      order by t.name
   loop
     if r.expect = 'not pos' then
-      assert r.n = 0, format('T1 FAIL %s is not a POS row but is listed as %s', r.name, r.outcome);
+      if r.n <> 0 then bad := bad || format('%s is not a POS row but is listed as %s', r.name, r.outcome); end if;
       continue;
     end if;
-    assert r.n = 1, format('T1 FAIL %s is listed %s times, expected once', r.name, r.n);
-    assert r.outcome = r.expect, format('T1 FAIL %s is %s, expected %s', r.name, r.outcome, r.expect);
-    assert r.got is not distinct from r.target,
-      format('T1 FAIL %s target %s, expected %s', r.name, r.got, r.target);
-    assert r.row_table = case r.tbl when 'it' then 'inventory_transactions' else 'wine_consumption_log' end,
-      format('T1 FAIL %s row_table %s', r.name, r.row_table);
-    assert r.row_kind = case left(r.name, 1) when 'L' then 'ledger (key)'
-                                             when 'G' then 'ledger (glass pour)' else 'consumption' end,
-      format('T1 FAIL %s row_kind %s', r.name, r.row_kind);
-    if r.expect in ('change', 'already') then
-      assert r.pos_check_id = r.want_check,
-        format('T1 FAIL %s matched check %s, expected %s (%s)', r.name, r.pos_check_id, r.want_check, r.chk);
+    if r.n <> 1 then bad := bad || format('%s is listed %s times, expected once', r.name, r.n); continue; end if;
+    if r.outcome <> r.expect then bad := bad || format('%s is %s, expected %s', r.name, r.outcome, r.expect); end if;
+    if r.got is distinct from r.target then
+      bad := bad || format('%s target %s, expected %s', r.name, r.got, r.target);
     end if;
-    if r.expect = 'change' then
-      assert r.pos_key = r.pkey, format('T1 FAIL %s key %s, expected %s', r.name, r.pos_key, r.pkey);
+    if r.row_table <> (case r.tbl when 'it' then 'inventory_transactions' else 'wine_consumption_log' end) then
+      bad := bad || format('%s row_table %s', r.name, r.row_table);
+    end if;
+    if r.row_kind <> (case left(r.name, 1) when 'L' then 'ledger (key)'
+                                           when 'G' then 'ledger (glass pour)' else 'consumption' end) then
+      bad := bad || format('%s row_kind %s', r.name, r.row_kind);
+    end if;
+    if r.expect in ('change', 'already') and r.pos_check_id is distinct from r.want_check then
+      bad := bad || format('%s matched check %s, expected %s (%s)', r.name, r.pos_check_id, r.want_check, r.chk);
+    end if;
+    if r.expect = 'change' and r.pos_key is distinct from r.pkey then
+      bad := bad || format('%s key %s, expected %s', r.name, r.pos_key, r.pkey);
     end if;
   end loop;
+  assert cardinality(bad) = 0, 'T1 FAIL ' || array_to_string(bad, '; ');
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -423,28 +490,50 @@ end $$;
 create temporary table t_runs (run_no int primary key, res jsonb not null) on commit drop;
 insert into t_runs select 1, public.redate_pos_rows_by_check();
 
+-- A change row's dates each become the earlier of themselves and the target,
+-- and no fixture row ends with any date later than it had. Every mismatch is
+-- named in one failure.
 do $$
 declare
   v jsonb := (select res from t_runs where run_no = 1);
   v_other bigint := (select change_n from t_other);
   r record;
+  bad text[] := '{}';
 begin
-  assert (v ->> 'changed')::bigint = 18 + v_other,
-    format('T3 FAIL run 1 changed %s rows, expected 18 fixture + %s other', v ->> 'changed', v_other);
-  assert (v ->> 'logged')::bigint = (v ->> 'changed')::bigint, format('T3 FAIL run 1 logged %s', v ->> 'logged');
-  assert (v ->> 'ledger_updated')::bigint + (v ->> 'consumption_updated')::bigint = (v ->> 'changed')::bigint,
-    format('T3 FAIL run 1 updated %s + %s', v ->> 'ledger_updated', v ->> 'consumption_updated');
-  for r in select t.name, t.tbl, t.target, pg_temp.row_j(t.tbl, t.id) as j
-             from t_row t where t.expect = 'change' loop
+  if (v ->> 'changed')::bigint <> 19 + v_other then
+    bad := bad || format('run 1 changed %s rows, expected 19 fixture + %s other', v ->> 'changed', v_other);
+  end if;
+  if (v ->> 'logged')::bigint <> (v ->> 'changed')::bigint then
+    bad := bad || format('run 1 logged %s', v ->> 'logged');
+  end if;
+  if (v ->> 'ledger_updated')::bigint + (v ->> 'consumption_updated')::bigint <> (v ->> 'changed')::bigint then
+    bad := bad || format('run 1 updated %s + %s', v ->> 'ledger_updated', v ->> 'consumption_updated');
+  end if;
+  for r in select t.name, t.tbl, t.target, s.j as was, pg_temp.row_j(t.tbl, t.id) as j
+             from t_row t join t_snap s using (name) where t.expect = 'change' loop
     if r.tbl = 'it' then
-      assert (r.j ->> 'transaction_date')::timestamptz = r.target,
-        format('T3 FAIL %s transaction_date %s, expected %s', r.name, r.j ->> 'transaction_date', r.target);
-    else
-      assert (r.j ->> 'recorded_at')::timestamptz = r.target and (r.j ->> 'created_at')::timestamptz = r.target,
-        format('T3 FAIL %s recorded_at %s created_at %s, expected both %s',
-               r.name, r.j ->> 'recorded_at', r.j ->> 'created_at', r.target);
+      if (r.j ->> 'transaction_date')::timestamptz is distinct from r.target then
+        bad := bad || format('%s transaction_date %s, expected %s', r.name, r.j ->> 'transaction_date', r.target);
+      end if;
+    elsif (r.j ->> 'recorded_at')::timestamptz
+            is distinct from least((r.was ->> 'recorded_at')::timestamptz, r.target)
+       or (r.j ->> 'created_at')::timestamptz
+            is distinct from least((r.was ->> 'created_at')::timestamptz, r.target) then
+      bad := bad || format('%s recorded_at %s created_at %s, expected %s and %s', r.name,
+                           r.j ->> 'recorded_at', r.j ->> 'created_at',
+                           least((r.was ->> 'recorded_at')::timestamptz, r.target),
+                           least((r.was ->> 'created_at')::timestamptz, r.target));
     end if;
   end loop;
+  for r in select t.name, t.tbl, s.j as was, pg_temp.row_j(t.tbl, t.id) as j
+             from t_row t join t_snap s using (name) loop
+    if (r.tbl = 'it' and (r.j ->> 'transaction_date')::timestamptz > (r.was ->> 'transaction_date')::timestamptz)
+       or (r.tbl = 'wcl' and ((r.j ->> 'recorded_at')::timestamptz > (r.was ->> 'recorded_at')::timestamptz
+                           or (r.j ->> 'created_at')::timestamptz > (r.was ->> 'created_at')::timestamptz)) then
+      bad := bad || format('%s moved later', r.name);
+    end if;
+  end loop;
+  assert cardinality(bad) = 0, 'T3 FAIL ' || array_to_string(bad, '; ');
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -486,7 +575,7 @@ declare
   n bigint;
 begin
   select count(*) into n from public.pos_row_redate_undo u where u.run_id = v_run;
-  assert n = 18 + (select change_n from t_other), format('T6 FAIL run 1 logged %s lines', n);
+  assert n = 19 + (select change_n from t_other), format('T6 FAIL run 1 logged %s lines', n);
   select count(*) into n from public.pos_row_redate_undo u
    where u.run_id = v_run and u.row_id in (select t.id from t_row t where t.expect <> 'change');
   assert n = 0, format('T6 FAIL %s non-change fixture rows were logged', n);
@@ -548,8 +637,11 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- T8 a check re-sent with another closed_at after its rows were booked: the
--- next run moves that check's rows, and only them
+-- T8 checks re-sent with another closed_at after their rows were booked.
+-- f2t-one goes to an EARLIER close: the next run moves its ledger and
+-- consumption rows together (L2, C2). f2t-resend goes to a LATER close: its
+-- rows (L19, C15) already sit at or before their targets, so neither is
+-- written (never later, fork 1). Nothing else moves.
 -- ---------------------------------------------------------------------------
 update public.pos_checks
    set closed_at = '2026-09-10T20:00:00Z', raw = '{"closedAt": "2026-09-10T20:00:00Z"}'
@@ -558,6 +650,7 @@ update public.pos_checks
    set closed_at = '2026-10-01T19:00:00Z', raw = '{"closedAt": "2026-10-01T19:00:00Z"}'
  where restaurant_id = 'f2ed0000-0000-4000-8000-000000000001' and external_check_id = 'f2t-one';
 
+create temporary table t_cls3 on commit drop as select * from public.pos_row_date_by_check();
 insert into t_runs select 3, public.redate_pos_rows_by_check();
 
 do $$
@@ -567,22 +660,41 @@ declare
   l2 uuid := (select id from t_row where name = 'L2');
   c2 uuid := (select id from t_row where name = 'C2');
   l19 uuid := (select id from t_row where name = 'L19');
+  c15 uuid := (select id from t_row where name = 'C15');
   n bigint;
+  bad text[] := '{}';
 begin
-  assert (v ->> 'changed')::bigint = 3, format('T8 FAIL run 3 changed %s rows, expected L2, C2 and L19', v ->> 'changed');
-  assert (pg_temp.row_j('it', l19) ->> 'transaction_date')::timestamptz = '2026-09-10T20:00:00Z',
-    'T8 FAIL L19 does not carry its re-sent close';
-  assert (pg_temp.row_j('it', l2) ->> 'transaction_date')::timestamptz = '2026-10-01T19:00:00Z',
-    'T8 FAIL L2 does not carry its re-sent close';
-  assert (pg_temp.row_j('wcl', c2) ->> 'recorded_at')::timestamptz = '2026-10-01T19:00:00Z'
-     and (pg_temp.row_j('wcl', c2) ->> 'created_at')::timestamptz = '2026-10-01T19:00:00Z',
-    'T8 FAIL C2 does not carry its re-sent close';
+  if (v ->> 'changed')::bigint <> 2 then
+    bad := bad || format('run 3 changed %s rows, expected L2 and C2', v ->> 'changed');
+  end if;
+  select count(*) into n from t_cls3 y
+   where (y.row_id = l19 and y.outcome = 'already' and y.target = '2026-09-10T18:00:00Z')
+      or (y.row_id = c15 and y.outcome = 'already' and y.target = '2026-09-10T18:00:00Z');
+  if n <> 2 then
+    bad := bad || format('after the later re-send, %s of L19 and C15 read already at 2026-09-10T18:00Z', n);
+  end if;
+  if (pg_temp.row_j('it', l19) ->> 'transaction_date')::timestamptz <> '2026-09-10T18:00:00Z' then
+    bad := bad || format('L19 moved to %s on a later re-send', pg_temp.row_j('it', l19) ->> 'transaction_date');
+  end if;
+  if (pg_temp.row_j('wcl', c15) ->> 'recorded_at')::timestamptz <> '2026-09-10T18:00:00Z'
+     or (pg_temp.row_j('wcl', c15) ->> 'created_at')::timestamptz <> '2026-09-10T18:00:00Z' then
+    bad := bad || 'C15 moved on a later re-send';
+  end if;
+  if (pg_temp.row_j('it', l2) ->> 'transaction_date')::timestamptz <> '2026-10-01T19:00:00Z' then
+    bad := bad || 'L2 does not carry its earlier re-sent close';
+  end if;
+  if (pg_temp.row_j('wcl', c2) ->> 'recorded_at')::timestamptz <> '2026-10-01T19:00:00Z'
+     or (pg_temp.row_j('wcl', c2) ->> 'created_at')::timestamptz <> '2026-10-01T19:00:00Z' then
+    bad := bad || 'C2 does not carry its earlier re-sent close';
+  end if;
+  select count(*) into n from public.pos_row_redate_undo u where u.run_id = v_run;
+  if n <> 2 then bad := bad || format('run 3 logged %s lines, expected 2', n); end if;
   select count(*) into n from public.pos_row_redate_undo u
    where u.run_id = v_run
-     and ((u.row_id = l19 and u.old_transaction_date = '2026-09-10T18:00:00Z')
-       or (u.row_id = l2 and u.old_transaction_date = '2026-10-01T20:30:00Z')
+     and ((u.row_id = l2 and u.old_transaction_date = '2026-10-01T20:30:00Z')
        or (u.row_id = c2 and u.old_recorded_at = '2026-10-01T20:30:00Z' and u.old_created_at = '2026-10-01T20:30:00Z'));
-  assert n = 3, format('T8 FAIL run 3 logged %s of the 3 lines with their run-1 values', n);
+  if n <> 2 then bad := bad || format('run 3 logged %s of L2 and C2 with their run-1 values', n); end if;
+  assert cardinality(bad) = 0, 'T8 FAIL ' || array_to_string(bad, '; ');
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -614,10 +726,10 @@ begin
          + (x.res ->> 'left_as_is')::bigint = x.open_lines,
     format('T9 FAIL undo accounted for %s of %s open lines', x.res, x.open_lines);
   if x.other_open = 0 then
-    -- run 3: L19, L2 and C2; run 1: 12 ledger and 6 consumption, less L3 and C7.
-    assert (x.res ->> 'ledger_restored')::bigint = 13 and (x.res ->> 'consumption_restored')::bigint = 6
+    -- run 3: L2 and C2; run 1: 12 ledger and 7 consumption, less L3 and C7.
+    assert (x.res ->> 'ledger_restored')::bigint = 12 and (x.res ->> 'consumption_restored')::bigint = 7
        and (x.res ->> 'left_as_is')::bigint = 2,
-      format('T9 FAIL undo reported %s, expected 13 ledger, 6 consumption, 2 left as is', x.res);
+      format('T9 FAIL undo reported %s, expected 12 ledger, 7 consumption, 2 left as is', x.res);
   end if;
   -- Every fixture line is closed, except L3's and C7's.
   select count(*) into n from public.pos_row_redate_undo u

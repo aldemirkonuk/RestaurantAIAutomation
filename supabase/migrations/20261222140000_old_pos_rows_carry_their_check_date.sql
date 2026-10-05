@@ -24,6 +24,15 @@
 --   saves each row's old date so it can be undone. It runs on production once
 --   its audit passes. Tuzlu's July–Sept stock, pour and consumption charts
 --   then show each sale on its real day."
+--   Fork 1, later moves (2026-10-05 ~16:00Z): "Never move a row later
+--   (Recommended)". Its option text: "One more condition plus a test per case.
+--   Each row then either moves earlier or stays put, so stock and consumption
+--   for a glass always stay together. This morning's count found only earlier
+--   moves, so production gets the same rows either way. Cost: about 2 files in
+--   the same PR."
+--   Fork 2, undo life (2026-10-05 ~16:00Z): "Until you say otherwise
+--   (Recommended)". Its option text: "About 10.7k small rows. The undo stays
+--   one call away and costs almost nothing to keep."
 --
 -- WHICH ROWS. Exactly the rows the dry run calls `change`. The classification
 -- in pos_row_date_by_check() below is the dry run's
@@ -51,10 +60,21 @@
 --   * The target: LEAST(pos_checks.closed_at, the row's created_at) — what
 --     #603 would have written at entry (the check's close, never later than
 --     the moment the row was entered).
+--   * Never later (fork 1): a row whose every date is at or before its target
+--     reads `already` and is never written — keyed ledger, glass-pour ledger
+--     and consumption rows alike (a consumption row's dates are recorded_at
+--     and created_at). Only a row with some date after its target reads
+--     `change`. A NULL date is not at or before anything, so it is set to the
+--     target, as before. Each row therefore moves earlier or stays.
 --
 -- COLUMNS WRITTEN: inventory_transactions.transaction_date (keyed and
 -- glass-pour rows); wine_consumption_log.recorded_at AND created_at, both set
 -- to the target, as #603's gateway writes them (pos-hub.service.ts:1594-1595).
+-- [2026-10-05 ~16:00Z, fork 1: each written date becomes LEAST(itself, the
+-- target), so none moves later. A consumption row's created_at is its entry,
+-- never before its target, so it lands on the target; its recorded_at does
+-- too unless it already sits before the target, where it stays. Both dates
+-- defaulted to one now() before #603, and #603's gateway writes them equal.]
 -- NEVER WRITTEN: pos_checks, pour_events, inventory_transactions.created_at,
 -- quantities, lots, or any other column.
 --
@@ -81,7 +101,9 @@
 --     notification and doubles nothing: stock lives on inventory_lots, moved
 --     only by the two RPCs. The block below halts this migration, before
 --     anything is written, if the database it runs on has any trigger or
---     rule on either table. Nothing is disabled.
+--     rule on either table. Nothing is disabled. [2026-10-05 ~16:10Z: the
+--     same trigger and rule query, run read-only on production, returned
+--     none.]
 --   * Derived data recomputes on read: inventory_analytics (velocity,
 --     sold_30d, runway) and get_inventory_balance_at are a view and a
 --     function. The materialized view inventory_transaction_summary has no
@@ -97,11 +119,16 @@
 --     after its rows were booked (the upsert replaces closed_at, the ledger
 --     keys do not re-write; ADR 0281, "The cost F4 names") — its rows move to
 --     the check's current closed_at, which revenue already reads.
+--     [2026-10-05 ~16:00Z, fork 1: only to an EARLIER close, where the ledger
+--     and consumption rows move together. A re-send to a later close, and a
+--     check whose closed_at was ahead of the database's now() at import, leave
+--     every row where it is: each sits at or before its target, so `already`.]
 --   * Bounded: one set-based statement; no per-row loop.
 --
 -- The classify, re-date and undo functions stay, closed to every role but
 -- the owner, so the SQL test can run them on fixtures and the undo stays
--- callable.
+-- callable. They and the undo table stay with no end date, until the founder
+-- says otherwise (fork 2).
 
 BEGIN;
 
@@ -240,8 +267,9 @@ WITH rows_ AS (
            WHEN m.n_checks = 0 THEN 'no check'
            WHEN c.closed_at IS NULL THEN 'check open'
            WHEN rd.reading = 'unreadable' THEN 'unreadable'
-           WHEN m.cur IS NOT DISTINCT FROM LEAST(c.closed_at, m.entry)
-            AND (m.tbl <> 'consumption' OR m.cur2 IS NOT DISTINCT FROM LEAST(c.closed_at, m.entry))
+           -- Never later (ADR 0281 F2, fork 1): at or before the target is 'already'.
+           WHEN m.cur <= LEAST(c.closed_at, m.entry)
+            AND (m.tbl <> 'consumption' OR m.cur2 <= LEAST(c.closed_at, m.entry))
              THEN 'already'
            ELSE 'change'
          END AS outcome
@@ -305,7 +333,9 @@ COMMENT ON FUNCTION public.pos_row_date_by_check() IS
   'ADR 0281 F2: every POS ledger and consumption row with the outcome of '
   're-dating it by its check (change, already, no check, check open, unreadable, '
   'ambiguous, out of scope) and, for change and already, its target '
-  'LEAST(pos_checks.closed_at, created_at). Read only; the classification of '
+  'LEAST(pos_checks.closed_at, created_at). already: every date the re-date '
+  'writes is at or before the target (fork 1, never later); change: some date is '
+  'after it. Read only; the classification of '
   'p4-scratch/sim-run/fixes/tools/postime-f2-dryrun.sql.';
 
 -- ---------------------------------------------------------------------------
@@ -341,14 +371,15 @@ BEGIN
       FROM chg c
     RETURNING 1
   ), ledger AS (
+    -- Never later (fork 1): each date becomes the earlier of itself and the target.
     UPDATE public.inventory_transactions it
-       SET transaction_date = c.target
+       SET transaction_date = LEAST(it.transaction_date, c.target)
       FROM chg c
      WHERE c.row_table = 'inventory_transactions' AND it.id = c.row_id
     RETURNING 1
   ), consumption AS (
     UPDATE public.wine_consumption_log w
-       SET recorded_at = c.target, created_at = c.target
+       SET recorded_at = LEAST(w.recorded_at, c.target), created_at = LEAST(w.created_at, c.target)
       FROM chg c
      WHERE c.row_table = 'wine_consumption_log' AND w.id = c.row_id
     RETURNING 1
@@ -376,8 +407,9 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION public.redate_pos_rows_by_check() IS
-  'ADR 0281 F2: re-dates every POS row pos_row_date_by_check() calls change to its '
-  'target (inventory_transactions.transaction_date; wine_consumption_log.recorded_at '
+  'ADR 0281 F2: re-dates every POS row pos_row_date_by_check() calls change, each '
+  'date to the earlier of itself and the target, never later '
+  '(inventory_transactions.transaction_date; wine_consumption_log.recorded_at '
   'and created_at), after logging its old values in pos_row_redate_undo under a '
   'fresh run_id. Idempotent. Undo: SELECT public.undo_pos_rows_redate().';
 
@@ -420,12 +452,13 @@ BEGIN
          AND it.transaction_date = u.new_date
       RETURNING u.id
     ), c AS (
+      -- The dates the re-date gave it: each the earlier of the old one and new_date.
       UPDATE public.wine_consumption_log w
          SET recorded_at = u.old_recorded_at, created_at = u.old_created_at
         FROM u
        WHERE u.row_table = 'wine_consumption_log' AND w.id = u.row_id
-         AND w.recorded_at IS NOT DISTINCT FROM u.new_date
-         AND w.created_at IS NOT DISTINCT FROM u.new_date
+         AND w.recorded_at IS NOT DISTINCT FROM LEAST(u.old_recorded_at, u.new_date)
+         AND w.created_at IS NOT DISTINCT FROM LEAST(u.old_created_at, u.new_date)
       RETURNING u.id
     ), done AS (
       UPDATE public.pos_row_redate_undo x
@@ -448,7 +481,8 @@ $fn$;
 COMMENT ON FUNCTION public.undo_pos_rows_redate(uuid) IS
   'ADR 0281 F2: puts back the dates redate_pos_rows_by_check() changed, newest run '
   'first (one run when p_run_id is given). A row whose date changed since is left '
-  'as is and counted in left_as_is; its undo line stays open.';
+  'as is and counted in left_as_is; its undo line stays open. Kept with no end '
+  'date until the founder says otherwise (fork 2).';
 
 REVOKE ALL ON FUNCTION public.pos_row_date_by_check() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.redate_pos_rows_by_check() FROM PUBLIC, anon, authenticated, service_role;
@@ -473,7 +507,8 @@ BEGIN
       ON u.row_table = 'wine_consumption_log' AND w.id = u.row_id
    WHERE u.run_id = (v ->> 'run_id')::uuid
      AND NOT coalesce(it.transaction_date = u.new_date, false)
-     AND NOT coalesce(w.recorded_at = u.new_date AND w.created_at = u.new_date, false);
+     AND NOT coalesce(w.recorded_at = LEAST(u.old_recorded_at, u.new_date)
+                      AND w.created_at = LEAST(u.old_created_at, u.new_date), false);
   IF v_unlanded > 0 THEN
     RAISE EXCEPTION 'old_pos_rows_carry_their_check_date: % logged rows do not carry their new date', v_unlanded;
   END IF;
