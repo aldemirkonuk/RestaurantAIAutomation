@@ -18,6 +18,7 @@ import {
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
+import { bottlesOf } from "../consumption-units";
 import { DayExclusionsService } from "./day-exclusions.service";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import {
@@ -192,8 +193,19 @@ export const BASKET_MIN_LIFT = 1.3;
  *       Lane cap first took 4 on its branch; sig (ADR 0272) landed 4 first
  *       and rec (ADR 0291) takes 5, so this change is 6: a row written by
  *       either earlier change predates it.
+ *   7 — lane stockout's (ADR 0299, PR #619); its own history line lands
+ *       with it.
+ *   8 — 2026-10-05 (ADR 0297): a glass is not a bottle. The bundle counts a
+ *       consumption line's bottles by its own mode, where it read `quantity`
+ *       (servings) as bottles: ten 150 ml glasses were "10 bottles sold", a
+ *       50 ml single fifteen times what it poured. A day holding a line with
+ *       no bottle figure is unobserved, and a wine holding one is left out of
+ *       the movers and the stockout #1. A row below 8 may hold a sentence
+ *       counted in pours, so it is recomputed, not served. Whichever of
+ *       stockout (7) and this merges later takes one past main's version at
+ *       its merge.
  */
-export const INSIGHT_GENERATOR_VERSION = 6;
+export const INSIGHT_GENERATOR_VERSION = 8;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -649,7 +661,7 @@ export class InsightGeneratorService {
             .from("wine_consumption_log")
             // No master_wine_id column — resolve via the inventory FK.
             .select(
-              "id, inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+              "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -744,7 +756,9 @@ export class InsightGeneratorService {
         // undefined on every row. That made `if (!c.wineId) continue` (:394,
         // :578) skip everything and silently emptied both per-wine families.
         wineId: c.restaurant_inventory?.master_wine_id,
-        qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
+        // Bottles by the line's own mode, null when it carries no bottle
+        // figure (ADR 0297). `quantity` counts servings, never bottles.
+        qty: bottlesOf(c).bottles,
         date: (c.created_at || "").substring(0, 10),
       })),
       orders: ok<any>(ords).map((o: any) => ({
@@ -824,14 +838,27 @@ export class InsightGeneratorService {
 
   private computeConsumptionFamily(bundle: Bundle, push: Push) {
     if (!bundle.availability.has("consumption")) return;
-    const rows = bundle.consumption.map((c) => ({
+    // A day holding a line with no bottle figure is short by an unknown
+    // amount, so it joins the manager's exclusions as unobserved, and a wine
+    // holding one has no demand to rank (ADR 0297).
+    const uncountedDays = new Set<string>();
+    const uncountedWines = new Set<string>();
+    for (const c of bundle.consumption)
+      if (c.qty == null) {
+        if (c.date) uncountedDays.add(c.date);
+        if (c.wineId) uncountedWines.add(c.wineId);
+      }
+    const counted = bundle.consumption.filter((c) => c.qty != null);
+    const rows = counted.map((c) => ({
       date: c.date,
-      value: c.qty,
+      value: c.qty as number,
     }));
     const { dates, values, observed } = this.toDaily(
       rows,
       90,
-      bundle.excludedDates,
+      uncountedDays.size > 0
+        ? new Set([...bundle.excludedDates, ...uncountedDays])
+        : bundle.excludedDates,
     );
     const label = "bottles sold";
 
@@ -854,10 +881,10 @@ export class InsightGeneratorService {
         nameByWine.set(i.master_wine_id, i.wine_name || i.master_wine_id);
 
     const byWine = new Map<string, Array<{ date: string; value: number }>>();
-    for (const c of bundle.consumption) {
-      if (!c.wineId) continue;
+    for (const c of counted) {
+      if (!c.wineId || uncountedWines.has(c.wineId)) continue;
       const arr = byWine.get(c.wineId) || [];
-      arr.push({ date: c.date, value: c.qty });
+      arr.push({ date: c.date, value: c.qty as number });
       byWine.set(c.wineId, arr);
     }
 
@@ -897,7 +924,8 @@ export class InsightGeneratorService {
       id: wineId,
       total: r.reduce((s, x) => s + x.value, 0),
     }));
-    if (totalsByWine.length >= 5) {
+    // A share of a total that misses an uncounted wine is not its share.
+    if (totalsByWine.length >= 5 && uncountedWines.size === 0) {
       const weights = totalsByWine.map((t) => t.total);
       const hhi = E.herfindahlIndex(weights);
       const sorted = [...weights].sort((a, b) => b - a);
@@ -941,7 +969,7 @@ export class InsightGeneratorService {
       },
       7,
     );
-    if (hw) {
+    if (hw && uncountedDays.size === 0) {
       const actual = values.slice(-7).reduce((a, b) => a + b, 0);
       const predicted = hw.forecast.reduce((a, b) => a + Math.max(0, b), 0);
       if (predicted > 0) {
@@ -1044,9 +1072,14 @@ export class InsightGeneratorService {
     )
       return;
 
+    // Counted lines only, and no wine holding a line with no bottle figure:
+    // its risk would rest on demand it understates (ADR 0297).
     const byWine = new Map<string, number[]>();
+    const uncounted = new Set<string>();
+    for (const c of bundle.consumption)
+      if (c.qty == null && c.wineId) uncounted.add(c.wineId);
     for (const c of bundle.consumption) {
-      if (!c.wineId) continue;
+      if (!c.wineId || c.qty == null || uncounted.has(c.wineId)) continue;
       const arr = byWine.get(c.wineId) || [];
       arr.push(c.qty);
       byWine.set(c.wineId, arr);
@@ -1072,8 +1105,8 @@ export class InsightGeneratorService {
       const profile = E.demandProfile(
         this.toDaily(
           bundle.consumption
-            .filter((c) => c.wineId === item.master_wine_id)
-            .map((c) => ({ date: c.date, value: c.qty })),
+            .filter((c) => c.wineId === item.master_wine_id && c.qty != null)
+            .map((c) => ({ date: c.date, value: c.qty as number })),
           90,
         ).values,
       );
@@ -1901,7 +1934,8 @@ export interface InsightRecord {
 
 interface Bundle {
   restaurantId: string;
-  consumption: Array<{ wineId: string; qty: number; date: string }>;
+  /** `qty` is bottles; null when the line carries no bottle figure. */
+  consumption: Array<{ wineId: string; qty: number | null; date: string }>;
   orders: Array<{
     vendorId: string;
     vendorName: string;

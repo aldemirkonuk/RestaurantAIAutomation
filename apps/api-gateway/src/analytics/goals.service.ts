@@ -7,6 +7,11 @@ import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
+  UncountedConsumptionError,
+  bottlesOf,
+  summarizeUnits,
+} from "./consumption-units";
+import {
   ModelClientService,
   NfEventRef,
 } from "../common/model-client/model-client.service";
@@ -415,6 +420,8 @@ export class GoalsService {
           "each goal's current value is recomputed from the same query the analytics engine reads, over the window that opens on the goal's creation date",
         peers:
           "no other restaurant's books are in this comparison: every figure here is this house against its own baseline, schedule and projection",
+        units:
+          "Bottles sold counts bottles by each line's own mode: a bottle line is its quantity, a glass line is its millilitres over the item's stated bottle size, or over the 750 ml stand-in the stock moves by when no size is stated; a goal whose window holds a line with no bottle figure is not scored (ADR 0297)",
       },
       generatedAt: new Date().toISOString(),
     };
@@ -885,7 +892,10 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           () => {
             let q = client
               .from("wine_consumption_log")
-              .select("id, quantity, volume_ml, created_at", { count: "exact" })
+              .select(
+                "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(bottle_size_ml)",
+                { count: "exact" },
+              )
               .eq("restaurant_id", restaurantId)
               .gte("created_at", sinceIso);
             if (untilIso) q = q.lte("created_at", untilIso);
@@ -893,11 +903,17 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           },
         );
         rowCount = lines.length;
-        for (const c of lines)
-          add(
-            (c.created_at || "").substring(0, 10),
-            c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
-          );
+        // Bottles by each line's own mode (ADR 0297): `quantity` counts
+        // servings, so ten glasses are two bottles, not ten. A line with no
+        // bottle figure refuses the total rather than leaving it short.
+        const counted = lines.map((c: any) => ({
+          ...bottlesOf(c),
+          inventoryId: c.inventory_id ?? null,
+          date: (c.created_at || "").substring(0, 10),
+        }));
+        const coverage = summarizeUnits(counted);
+        if (!coverage.complete) throw new UncountedConsumptionError(coverage);
+        for (const c of counted) add(c.date, c.bottles as number);
       } else {
         // Check-based metrics (pos_revenue, wine_revenue, checks, avg_check,
         // attach rate). One query serves all of them on purpose: OD-85 asked
@@ -994,6 +1010,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       // goal (listGoalsWithProgress) and refuses rather than writing a wrong
       // baseline (createGoal) or current_value (getGoalProgress). ADR 0292.
       if (err instanceof WholeReadError) throw err;
+      // Same for a total that would rest on a line with no bottle figure.
+      if (err instanceof UncountedConsumptionError) throw err;
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
     }
 

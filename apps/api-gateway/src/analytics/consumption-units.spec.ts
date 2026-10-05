@@ -9,6 +9,7 @@ import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { GoalsService } from "./goals.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
+import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
 
 /**
  * A glass is not a bottle (AW02, ADR 0297).
@@ -166,7 +167,9 @@ describe("bottlesOf — a line's bottles come from its own mode", () => {
     expect(unitsBasisSentence(sized)).toContain(
       "every glass line's item states its bottle size",
     );
-    expect(unitsBasisSentence(sized)).toContain("every line has a bottle figure");
+    expect(unitsBasisSentence(sized)).toContain(
+      "every line has a bottle figure",
+    );
     expect(unitsBasisSentence(summarizeUnits([]))).toBe(
       "no consumption lines in this window",
     );
@@ -190,7 +193,17 @@ function dbOver(rowsByTable: Rows) {
       let lim: number | null = null;
       let counted = false;
       const b: any = {};
-      for (const m of ["eq", "neq", "gte", "lte", "lt", "in", "is", "or", "not"])
+      for (const m of [
+        "eq",
+        "neq",
+        "gte",
+        "lte",
+        "lt",
+        "in",
+        "is",
+        "or",
+        "not",
+      ])
         b[m] = () => b;
       b.select = (_cols: string, opts?: { count?: string }) => {
         if (opts?.count === "exact") counted = true;
@@ -210,7 +223,9 @@ function dbOver(rowsByTable: Rows) {
         const past =
           cursor === null
             ? all
-            : all.filter((r) => String(r.id).localeCompare(cursor as string) > 0);
+            : all.filter(
+                (r) => String(r.id).localeCompare(cursor as string) > 0,
+              );
         return Promise.resolve({
           data: lim === null ? past : past.slice(0, lim),
           error: null,
@@ -246,7 +261,11 @@ let seq = 0;
 function lines(
   n: number,
   count: number,
-  line: { consumption_type: unknown; quantity: number; volume_ml: number | null },
+  line: {
+    consumption_type: unknown;
+    quantity: number;
+    volume_ml: number | null;
+  },
   sizeMl: number | null = 750,
 ) {
   return Array.from({ length: count }, (_, i) => ({
@@ -318,7 +337,10 @@ describe("menu engineering counts bottles, not pours", () => {
     const row = out.items.find((i: any) => i.id === "inv-1");
     expect(row.velocityPerDay).toBeCloseTo(1 / 90, 12);
     expect(row.sizeStandIn).toBe(true);
-    expect(out.unitsCoverage).toMatchObject({ standInLines: 5, standInItems: 1 });
+    expect(out.unitsCoverage).toMatchObject({
+      standInLines: 5,
+      standInItems: 1,
+    });
     expect(out.basis.velocity).toContain("750 ml stand-in");
   });
 });
@@ -329,7 +351,10 @@ describe("the restock list counts bottles, not pours", () => {
   it("R3: 25 glasses are 5 bottles over 90 days; an item with no bottle figure is unassessed, never reordered on a guess", async () => {
     const out: any = await analytics({
       restaurant_inventory: [item(1), item(2, { stock_live: 0 })],
-      wine_consumption_log: [...lines(1, 25, GLASS), ...lines(2, 12, NO_FIGURE)],
+      wine_consumption_log: [
+        ...lines(1, 25, GLASS),
+        ...lines(2, 12, NO_FIGURE),
+      ],
     }).getInventoryScience(RESTAURANT);
     const one = out.skus.find((s: any) => s.id === "inv-1");
     expect(one.avgDailyDemand).toBeCloseTo(5 / 90, 12);
@@ -360,7 +385,9 @@ describe("the insight bundle counts bottles, not pours", () => {
   it("R4: a 150 ml glass of a 750 ml wine is 0.2 of a bottle in the bundle", async () => {
     const svc = new InsightGeneratorService(
       dbOver({ wine_consumption_log: lines(1, 1, GLASS) }),
-      { load: async () => ({ dates: new Set<string>(), readable: true }) } as any,
+      {
+        load: async () => ({ dates: new Set<string>(), readable: true }),
+      } as any,
       {} as any,
     );
     const bundle = await (svc as any).loadBundle(RESTAURANT);
@@ -371,7 +398,9 @@ describe("the insight bundle counts bottles, not pours", () => {
   it("keeps a line with no bottle figure in the bundle as null, never 1", async () => {
     const svc = new InsightGeneratorService(
       dbOver({ wine_consumption_log: lines(2, 1, NO_FIGURE) }),
-      { load: async () => ({ dates: new Set<string>(), readable: true }) } as any,
+      {
+        load: async () => ({ dates: new Set<string>(), readable: true }),
+      } as any,
       {} as any,
     );
     const bundle = await (svc as any).loadBundle(RESTAURANT);
@@ -394,21 +423,30 @@ describe("the Bottles sold goal counts bottles, or refuses", () => {
   const since = daysAgo(30).slice(0, 10);
 
   it("R5: ten 150 ml glasses of a 750 ml wine are 2 bottles sold", async () => {
-    const out = await (goals({
-      wine_consumption_log: lines(1, 10, GLASS),
-    }) as any).computeMetricWithSeries(RESTAURANT, "bottles_sold", since);
+    const out = await (
+      goals({
+        wine_consumption_log: lines(1, 10, GLASS),
+      }) as any
+    ).computeMetricWithSeries(RESTAURANT, "bottles_sold", since);
     expect(out.current).toBeCloseTo(2, 12);
     expect(out.rowCount).toBe(10);
   });
 
   it("R5: a line with no bottle figure refuses the total instead of summing it short", async () => {
-    const err = await (goals({
-      wine_consumption_log: [...lines(1, 10, GLASS), ...lines(2, 1, NO_FIGURE)],
-    }) as any)
+    const err = await (
+      goals({
+        wine_consumption_log: [
+          ...lines(1, 10, GLASS),
+          ...lines(2, 1, NO_FIGURE),
+        ],
+      }) as any
+    )
       .computeMetricWithSeries(RESTAURANT, "bottles_sold", since)
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UncountedConsumptionError);
-    expect((err as Error).message).toContain("1 consumption line across 1 item");
+    expect((err as Error).message).toContain(
+      "1 consumption line across 1 item",
+    );
   });
 });
 
@@ -434,5 +472,56 @@ describe("Wine 360 counts bottles, not pours", () => {
     expect(out.reorderPoint).toBeNull();
     expect(out.forecast14d).toBeNull();
     expect(out.basis.demand).toContain("carry no bottle figure");
+  });
+});
+
+describe("the exported quadrant cutting says why an item has no quadrant", () => {
+  it("does not call a costed item with no bottle figure uncosted", () => {
+    const out = EXPORT_CUTTINGS.quadrants.write(
+      {
+        medians: { velocityPerDay: 0.03, marginPerBottle: 40 },
+        counts: { star: 1, unclassified: 1, unmeasured: 1 },
+        items: [
+          {
+            id: "a",
+            name: "Counted Red",
+            velocityPerDay: 0.05,
+            marginPerBottle: 45,
+            marginPct: 0.6,
+            quadrant: "star",
+          },
+          {
+            id: "b",
+            name: "Unmeasured Single",
+            velocityPerDay: null,
+            marginPerBottle: 30,
+            marginPct: 0.5,
+            quadrant: null,
+          },
+          {
+            id: "c",
+            name: "Uncosted White",
+            velocityPerDay: 0.02,
+            marginPerBottle: null,
+            marginPct: null,
+            quadrant: null,
+          },
+        ],
+      },
+      { days: null },
+    );
+    const rows = out.tables[0].rows;
+    const why = (row: unknown[], col: number) =>
+      (row[col] as { why?: string }).why;
+    const b = rows.find((r) => r[0] === "Unmeasured Single")!;
+    expect(why(b, 1)).toBe("some of its sales carry no bottle figure");
+    expect(why(b, 4)).toBe("some of its sales carry no bottle figure");
+    const c = rows.find((r) => r[0] === "Uncosted White")!;
+    expect(why(c, 4)).toBe("no recorded cost — unknown, not a dog");
+    expect(out.notes.join(" ")).toContain(
+      "1 item has no velocity and no quadrant: some of its sales carry no bottle figure.",
+    );
+    // Both the uncosted and the unmeasured item sit outside the quadrants.
+    expect(out.figures.find((x) => x.label === "No quadrant")?.value).toBe(2);
   });
 });

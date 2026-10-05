@@ -8,6 +8,13 @@ import {
   resolveUnitCost,
   summarizeCostBasis,
 } from "./inventory-cost";
+import {
+  bottlesOf,
+  servingsOf,
+  summarizeUnits,
+  unitsBasisSentence,
+  volumeMlOf,
+} from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 
 /**
@@ -220,7 +227,7 @@ export class AnalyticsService {
           client
             .from("wine_consumption_log")
             .select(
-              "id, inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+              "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -240,12 +247,31 @@ export class AnalyticsService {
       );
       data = [];
     }
-    return data.map((c: any) => ({
-      masterWineId: c.restaurant_inventory?.master_wine_id ?? null,
-      inventoryId: c.inventory_id,
-      qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
-      date: (c.created_at || "").substring(0, 10),
-    }));
+    // `quantity` counts servings in the line's own mode (ADR 0011), so the
+    // demand figure `qty` is BOTTLES (ADR 0297): null when the line carries no
+    // bottle figure. `servings` and `volumeMl` stay for movement tests.
+    return data.map((c: any) => {
+      const { bottles, how } = bottlesOf(c);
+      return {
+        masterWineId: c.restaurant_inventory?.master_wine_id ?? null,
+        inventoryId: c.inventory_id,
+        qty: bottles,
+        how,
+        servings: servingsOf(c),
+        volumeMl: volumeMlOf(c),
+        date: (c.created_at || "").substring(0, 10),
+      };
+    });
+  }
+
+  /** Wines with at least one line that carries no bottle figure. */
+  private uncountedWines(
+    consumption: Array<{ masterWineId: string | null; how: string }>,
+  ) {
+    const out = new Set<string>();
+    for (const c of consumption)
+      if (c.masterWineId && c.how === "uncounted") out.add(c.masterWineId);
+    return out;
   }
 
   /** Aggregate rows into a dense daily series over [sinceDays, today]. */
@@ -506,7 +532,9 @@ export class AnalyticsService {
     const movedInventoryIds = new Set<string>();
     const movedMasterWineIds = new Set<string>();
     for (const c of consumption) {
-      if ((c.qty ?? 0) <= 0) continue;
+      // Movement is a serving or a millilitre, not a bottle figure: a wine
+      // sold only by the glass moved, whatever its size (ADR 0297).
+      if ((c.servings ?? 0) <= 0 && (c.volumeMl ?? 0) <= 0) continue;
       if (c.inventoryId) movedInventoryIds.add(c.inventoryId);
       if (c.masterWineId) movedMasterWineIds.add(c.masterWineId);
     }
@@ -609,11 +637,15 @@ export class AnalyticsService {
       Array<{ date: string; value: number }>
     >();
     for (const c of consumption) {
-      if (!c.masterWineId) continue;
+      if (!c.masterWineId || c.qty == null) continue;
       const arr = demandByWine.get(c.masterWineId) || [];
       arr.push({ date: c.date, value: c.qty });
       demandByWine.set(c.masterWineId, arr);
     }
+    // A wine with any line that carries no bottle figure has no demand to
+    // reorder on: its counted lines alone would understate it (ADR 0297).
+    const unknownDemand = this.uncountedWines(consumption);
+    const unitsCoverage = summarizeUnits(consumption);
 
     const skus = inventory.map((i) => {
       const rows = demandByWine.get(i.masterWineId || "") || [];
@@ -664,8 +696,24 @@ export class AnalyticsService {
         costBasis: i.costBasis,
         inventoryValue: i.inventoryValue,
         abcClass: null as "A" | "B" | "C" | null,
+        demandUnknown: false,
+        ...(unknownDemand.has(i.masterWineId || "")
+          ? {
+              avgDailyDemand: null,
+              demandCv: null,
+              xyzClass: "unknown" as const,
+              daysOfCover: null,
+              reorderPoint: null,
+              safetyStock: null,
+              stockoutProbability: null,
+              eoq: null,
+              needsReorder: false,
+              demandUnknown: true,
+            }
+          : {}),
       };
     });
+    const unassessed = skus.filter((s) => s.demandUnknown).length;
 
     // ABC by inventory value. Every class is a cut on cumulative SHARE OF THE
     // TOTAL, so one unpriced row moves every other row's class: the total is
@@ -701,14 +749,16 @@ export class AnalyticsService {
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `wine_consumption_log units/day over ${sinceDays}d`,
+        demand: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
           "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",
       },
       costCoverage,
+      unitsCoverage,
       skuCount: skus.length,
+      unassessed,
       reorderCount: reorderList.length,
       // 25, extended through any tie at row 25 — "the N at the highest risk"
       // is only true when no row tied with the last one listed was left out.
@@ -762,11 +812,15 @@ export class AnalyticsService {
     const gini = E.risk.giniCoefficient(skuRevenue);
     const skuHhi = E.finance.herfindahlIndex(skuRevenue);
 
-    // Daily revenue series → returns → VaR / Sharpe / drawdown.
-    const revRows = consumption.map((c) => ({
-      date: c.date,
-      value: c.qty, // bottles/day as the "return-generating" flow
-    }));
+    // Daily revenue series → returns → VaR / Sharpe / drawdown. Counted
+    // lines only; `basis.demand` names any that carry no bottle figure.
+    const unitsCoverage = summarizeUnits(consumption);
+    const revRows = consumption
+      .filter((c) => c.qty != null)
+      .map((c) => ({
+        date: c.date,
+        value: c.qty as number, // bottles/day as the "return-generating" flow
+      }));
     const { values: dailyDemand } = this.toDailySeries(revRows, 90);
     const returns: number[] = [];
     for (let i = 1; i < dailyDemand.length; i++) {
@@ -783,6 +837,9 @@ export class AnalyticsService {
     }
 
     return {
+      basis: {
+        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage)}`,
+      },
       vendorConcentration: {
         hhi,
         hhiPoints: hhi === null ? null : Math.round(hhi * 10000),
@@ -835,9 +892,16 @@ export class AnalyticsService {
     const horizon = opts.horizon ?? 14;
     const sinceDays = 120;
     const consumption = await this.loadConsumption(restaurantId, sinceDays);
-    const rows = consumption
-      .filter((c) => !opts.masterWineId || c.masterWineId === opts.masterWineId)
-      .map((c) => ({ date: c.date, value: c.qty }));
+    const scoped = consumption.filter(
+      (c) => !opts.masterWineId || c.masterWineId === opts.masterWineId,
+    );
+    // Counted lines only. One wine with a line that carries no bottle figure
+    // is not projected at all; the house series names the gap (ADR 0297).
+    const unitsCoverage = summarizeUnits(scoped);
+    const unmeasuredWine = !!opts.masterWineId && !unitsCoverage.complete;
+    const rows = scoped
+      .filter((c) => c.qty != null)
+      .map((c) => ({ date: c.date, value: c.qty as number }));
     const { dates, values } = this.toDailySeries(rows, sinceDays);
 
     // Try weekly-seasonal Holt-Winters; fall back to Holt then SES.
@@ -885,7 +949,9 @@ export class AnalyticsService {
       basis: string;
       scoredPoints: number;
     } | null = null;
-    if (result) {
+    // A short history is not scored either: an error measured against it
+    // would be a claim about sales that were never counted.
+    if (result && !unmeasuredWine) {
       const w = Math.min(result.warmup, values.length);
       const actual = values.slice(w);
       const predicted = result.fitted.slice(w);
@@ -936,7 +1002,7 @@ export class AnalyticsService {
     // projection itself must refuse too, or the page reads a flat zero line as
     // a claim about next week (ADR 0020).
     const hasObservation = values.some((v) => v !== 0);
-    const projection = hasObservation ? result : null;
+    const projection = hasObservation && !unmeasuredWine ? result : null;
 
     return {
       // `model` used to report the LAST model attempted even when none of the
@@ -960,12 +1026,14 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `wine_consumption_log units/day over ${sinceDays}d, zero-filled to a dense daily series`,
+        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage)}`,
         model: projection
           ? `${model} fitted on ${values.length} days of history`
-          : hasObservation
-            ? "no model fitted — Holt-Winters, Holt and SES each refused this history, so no line is projected and no total is claimed"
-            : `no model fitted — every one of the ${values.length} days of history reads zero, so there is no demand signal to project from`,
+          : unmeasuredWine
+            ? "no model fitted — this wine has lines that carry no bottle figure, so its history is short by an unknown amount and nothing is projected from it"
+            : hasObservation
+              ? "no model fitted — Holt-Winters, Holt and SES each refused this history, so no line is projected and no total is claimed"
+              : `no model fitted — every one of the ${values.length} days of history reads zero, so there is no demand signal to project from`,
         total: projection
           ? `sum of the ${horizon}-day forecast, each day floored at 0`
           : "null — there is no projection to total",

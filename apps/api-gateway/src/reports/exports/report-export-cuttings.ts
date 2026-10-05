@@ -475,11 +475,17 @@ function writeQuadrants(payload: unknown): ExportDoc {
     quadrant: typeof i.quadrant === "string" ? i.quadrant : null,
   }));
   const uncosted = "no recorded cost — unknown, not a dog";
+  // A costed wine whose sales include a line with no bottle figure has no
+  // velocity, so no quadrant — for that reason, not for want of a cost
+  // (ADR 0297).
+  const unmeasured = "some of its sales carry no bottle figure";
   const count = (k: string) =>
     counts === null
       ? withheld("the register returned no quadrant counts")
       : (num(counts[k]) ?? 0);
   const unclassified = counts === null ? null : (num(counts.unclassified) ?? 0);
+  const unmeasuredCount =
+    counts === null ? null : (num(counts.unmeasured) ?? 0);
   const priced = items.filter((i) => i.margin != null).length;
 
   return doc({
@@ -492,7 +498,15 @@ function writeQuadrants(payload: unknown): ExportDoc {
       f("Plowhorses", count("plowhorse"), "count"),
       f("Puzzles", count("puzzle"), "count"),
       f("Dogs", count("dog"), "count"),
-      f("No quadrant", count("unclassified"), "count"),
+      // Uncosted and unmeasured items both sit outside the four quadrants;
+      // the notes say which is which (ADR 0297).
+      f(
+        "No quadrant",
+        counts === null
+          ? count("unclassified")
+          : (unclassified ?? 0) + (unmeasuredCount ?? 0),
+        "count",
+      ),
       f("Median bottles per day", figure(medians.velocityPerDay, "the register published no median"), "bottles"),
       f("Median margin per bottle", figure(medians.marginPerBottle, "no wine carries a recorded cost"), "money"),
     ],
@@ -511,10 +525,14 @@ function writeQuadrants(payload: unknown): ExportDoc {
               ],
               rows: items.map((i) => [
                 i.name,
-                figure(i.velocity, "no movement figure returned"),
+                figure(
+                  i.velocity,
+                  i.margin != null ? unmeasured : "no movement figure returned",
+                ),
                 figure(i.margin, uncosted),
                 figure(i.marginPct, uncosted),
-                i.quadrant ?? withheld(uncosted),
+                i.quadrant ??
+                  withheld(i.margin == null ? uncosted : unmeasured),
               ]),
               note:
                 items.length > 40
@@ -525,6 +543,9 @@ function writeQuadrants(payload: unknown): ExportDoc {
     notes: [
       unclassified && unclassified > 0
         ? `${nounCount(unclassified, "wine has", "wines have")} no quadrant because no cost was ever recorded for ${unclassified === 1 ? "it" : "them"} — an uncosted wine is unknown, not a dog.`
+        : "",
+      unmeasuredCount && unmeasuredCount > 0
+        ? `${nounCount(unmeasuredCount, "item has", "items have")} no velocity and no quadrant: some of ${unmeasuredCount === 1 ? "its" : "their"} sales carry no bottle figure.`
         : "",
       cc && cc.complete === false && num(cc.total) != null
         ? `${num(cc.priced) ?? 0} of ${num(cc.total)} wines carry a recorded cost.`

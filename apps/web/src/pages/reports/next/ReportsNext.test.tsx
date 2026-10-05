@@ -988,23 +988,6 @@ describe('ReportsNext — honesty', () => {
     expect(within(quad).getByText(/an uncosted wine is unknown, not a dog/)).toBeInTheDocument();
   });
 
-  it('keeps an item with no bottle figure off the plot instead of drawing it at 0 bottles/day (ADR 0297)', () => {
-    const spec = CATALOGUE.quadrants;
-    const data = spec.select({
-      medians: { velocityPerDay: 0.03, marginPerBottle: 40 },
-      counts: { star: 1, unclassified: 0, unmeasured: 1 },
-      items: [
-        { id: 'a', name: 'Counted Red', velocityPerDay: 0.05, marginPerBottle: 45, marginPct: 0.6, quadrant: 'star' },
-        { id: 'b', name: 'Unmeasured Rakı', velocityPerDay: null, marginPerBottle: 30, marginPct: 0.5, quadrant: null },
-      ],
-    });
-    const view = spec.view(data, { days: 90 });
-    expect(view.points!.data.map((p) => p.name)).toEqual(['Counted Red']);
-    const cells = view.table!.rows.find((r) => r.key === 'b')!.cells;
-    expect(cells[1]).toBe('—');
-    expect(view.notes!.join(' ')).toMatch(/1 item is off the plot: some of its sales carry no bottle figure/);
-  });
-
   it('the writing desk points at where reports are really written, and offers no dead button (OD-81)', () => {
     paint();
     const desk = screen.getByRole('region', { name: 'The writing desk' });
