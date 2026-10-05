@@ -64,6 +64,9 @@ const NOT_RECORDED_FIG = {
   fontWeight: 400,
   lineHeight: 1.15,
   color: 'var(--ink-3, #7C7365)',
+  // A phone-width cell is narrower than "recorded": break inside the word
+  // rather than clip it.
+  overflowWrap: 'anywhere',
 } as const;
 
 /** What a cell says. `salesShown` picks the headline (F2, ADR 0290). */
@@ -347,7 +350,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
                 </span>
               )}
               {!isFuture && month.state !== 'loading' && from && (
-                <span className="dn-cell-from text-[9px] leading-tight text-inkm-3" aria-hidden>
+                <span className="dn-cell-from text-[9px] leading-tight text-inkm-3" style={{ overflowWrap: 'anywhere' }} aria-hidden>
                   {from}
                 </span>
               )}

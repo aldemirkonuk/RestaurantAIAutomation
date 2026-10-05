@@ -499,6 +499,8 @@ describe('DashboardNext — the month counts and says (ADR 0290 §2, §4)', () =
 
     await waitFor(() => expect(cellFig('2026-10-02')).toBe('$800'));
     expect(dayCell('2026-10-02').querySelector('.dn-cell-from')?.textContent).toBe('from 10 of 12 checks');
+    // A phone-width cell is narrower than the words: they wrap, never clip.
+    expect((dayCell('2026-10-02').querySelector('.dn-cell-from') as HTMLElement).style.overflowWrap).toBe('anywhere');
     expect(dayCell('2026-10-02')).toHaveAttribute(
       'aria-label',
       '2026-10-02: net sales $800 from 10 of 12 checks, paid to vendors $500, 0 events',
@@ -528,6 +530,7 @@ describe('DashboardNext — the month counts and says (ADR 0290 §2, §4)', () =
     mount();
 
     await waitFor(() => expect(cellFig('2026-10-02')).toBe('not recorded'));
+    expect((dayCell('2026-10-02').querySelector('.dn-cell-fig') as HTMLElement).style.overflowWrap).toBe('anywhere');
     expect(dayCell('2026-10-02').getAttribute('aria-label')).toMatch(/^2026-10-02: net sales not recorded, /);
     expect(screen.getByTestId('dn-month-totals').textContent).toMatch(/net sales\s*not recorded · paid to vendors/);
 
