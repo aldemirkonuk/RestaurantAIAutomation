@@ -93,7 +93,7 @@ F1 and F4 are ruled (above), and F3 was applied by the coordinator (next section
 
 - **F2. Repairing rows already written.** The ledger rows and consumption rows already written by back-fills and late webhooks keep their import-day dates. A repair would re-date `inventory_transactions` rows whose `idempotency_key` starts with `pos:` from their `pos_checks.closed_at`, and `wine_consumption_log` rows whose `notes` key does the same. It writes production rows, so the founder runs it. Nothing is written by this branch.
 
-  **Answered 2026-10-05** (AskUserQuestion, relayed by the fix-lane coordinator). The founder's pick, verbatim: **"Dry run, then your yes (Recommended)"**. The option text he saw, verbatim: "I build a read-only count of the rows a re-date would change (by house and day shift), show it to you, and nothing is written until you say yes." So F2 is no longer an open fork. The dry run is owed and is built outside this repo; no production row is re-dated until he has seen its count and said yes. Neither this branch nor `fix/pos-import-refusals-ring-the-bell` writes or re-dates any row.
+  **Answered 2026-10-05** (AskUserQuestion, relayed by the fix-lane coordinator). The founder's pick, verbatim: **"Dry run, then your yes (Recommended)"**. The option text he saw, verbatim: "I build a read-only count of the rows a re-date would change (by house and day shift), show it to you, and nothing is written until you say yes." So F2 is no longer an open fork. The dry run is owed and is built outside this repo; no production row is re-dated until he has seen its count and said yes. The branch that records this answer, `fix/pos-import-refusals-ring-the-bell`, writes and re-dates no row.
 
 ## F3, applied: glasspour merged first
 
