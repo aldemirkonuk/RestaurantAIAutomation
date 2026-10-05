@@ -494,8 +494,10 @@ insert into public.restaurants (id, name, slug)
 values ('a0303000-0000-4000-8000-000000000002', 'ADR 0303 test house 2', 'adr-0303-test-house-2');
 
 -- T21: new checks. 'booth', 'ayla' and Square's ticket name 'Ayla' make no
--- table and keep their word; 't12', '12', 'patio 3', 'table 7' and the number
--- 14 are each learned once, as learned rows, with the check on them.
+-- table and keep their word; 't12', '12', 'patio 3', 'table 7', '7a',
+-- '2nd floor' and the number 14 are each learned once, as learned rows, with
+-- the check on them. '7a' and '2nd floor' pin "a digit anywhere in the word":
+-- a rule that needs the digit last (or the word to end in one) misses them.
 do $$
 declare
   w text;
@@ -511,7 +513,7 @@ begin
   assert (pg_temp.tl2_row('c21-sq')).table_ref = 'Ayla', 'T21 FAIL: Square''s ticket name was not kept as the word';
   assert pg_temp.tl2_tables() = 0, 'T21 FAIL: a word with no digit made a table';
 
-  foreach w in array array['t12', '12', 'patio 3', 'table 7'] loop
+  foreach w in array array['t12', '12', 'patio 3', 'table 7', '7a', '2nd floor'] loop
     v := pg_temp.tl2_check('c21-' || w, w);
     assert pg_temp.tl2_tables(w) = 1, 'T21 FAIL: the word "' || w || '" was not learned exactly once';
     assert v = pg_temp.tl2_id(w), 'T21 FAIL: the "' || w || '" check is not on its learned table';
@@ -520,7 +522,7 @@ begin
   end loop;
   assert pg_temp.tl2_check('c21-14', null, '{"tableRef": 14}', 'generic_webhook') = pg_temp.tl2_id('14'),
     'T21 FAIL: the number 14 was not learned';
-  assert pg_temp.tl2_tables() = 5, 'T21 FAIL: house 2 should hold 5 learned tables, holds ' || pg_temp.tl2_tables();
+  assert pg_temp.tl2_tables() = 7, 'T21 FAIL: house 2 should hold 7 learned tables, holds ' || pg_temp.tl2_tables();
 end $$;
 
 -- T22: the backfill keeps the same rule. History stored before the migration
