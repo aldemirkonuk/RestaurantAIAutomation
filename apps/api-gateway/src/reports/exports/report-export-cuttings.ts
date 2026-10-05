@@ -148,6 +148,8 @@ function writeReading(payload: unknown): ExportDoc {
       category: str(row.category) || "sales",
       score: num(row.score),
       entity: str(row.entity_label ?? row.entityLabel),
+      // Glass lines read at the 750 ml stand-in under it (ADR 0297).
+      standIn: num(obj(obj(row.evidence).units).standInLines) ?? 0,
     }))
     .filter((r) => r.sentence !== "")
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -160,6 +162,7 @@ function writeReading(payload: unknown): ExportDoc {
 
   const counts = new Map<string, number>();
   for (const r of rows) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+  const standIn = rows.filter((r) => r.standIn > 0).length;
 
   return doc({
     figures: [
@@ -187,9 +190,12 @@ function writeReading(payload: unknown): ExportDoc {
           .map(([c, n]) => [c, n]),
       },
     ],
-    notes: [
+    notes: sentences(
       "Sentences are written as the engine wrote them. This export never composes one.",
-    ],
+      standIn > 0
+        ? `${nounCount(standIn, "of these sentences rests", "of these sentences rest")} in part on glass lines of items with no stated bottle size, read at the 750 ml stand-in the stock moves by; the stored feed carries each one's count of those lines and items.`
+        : null,
+    ),
     basis: [
       `${nounCount(rows.length, "sentence", "sentences")} read from the stored insight feed; every number in them was computed by the engine from this restaurant's own rows.`,
     ],
@@ -330,6 +336,9 @@ function writeWeek(payload: unknown): ExportDoc {
   const basis = sentences(
     basisObj.weekday ??
       "Mean units per weekday over the last 90 days of wine_consumption_log; a weekday with no observation is left blank rather than written as zero.",
+    // How many lines rest on the 750 ml stand-in, and how many carry no
+    // bottle figure (ADR 0297).
+    basisObj.units,
     basisObj.extremes,
   );
   const profile = arr(w.weekdayProfile).map((p) => ({
@@ -913,6 +922,9 @@ function writeGoals(payload: unknown): ExportDoc {
       target: num(entry.target),
       progress: num(entry.progressPct),
       onTrack: typeof entry.onTrack === "boolean" ? entry.onTrack : null,
+      // A Bottles sold goal's lines on the 750 ml stand-in (ADR 0297).
+      standInLines: num(obj(entry.units).standInLines) ?? 0,
+      standInItems: num(obj(entry.units).standInItems) ?? 0,
     };
   });
   const total = num(d.total) ?? goals.length;
@@ -966,8 +978,14 @@ function writeGoals(payload: unknown): ExportDoc {
           ],
     notes: [
       "Every figure is this house against its own baseline. No other restaurant's books are in it.",
+      ...goals
+        .filter((g) => g.standInLines > 0)
+        .map(
+          (g) =>
+            `${g.name}: ${nounCount(g.standInLines, "glass line", "glass lines")} across ${nounCount(g.standInItems, "item", "items")} with no stated bottle size ${g.standInLines === 1 ? "is" : "are"} read at the 750 ml stand-in the stock moves by.`,
+        ),
     ],
-    basis: sentences(b.current, b.peers),
+    basis: sentences(b.current, b.peers, b.units),
   });
 }
 

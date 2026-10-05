@@ -173,6 +173,24 @@ export function unitsBasisSentence(cov: UnitsCoverage): string {
 }
 
 /**
+ * The label a figure carries: the counts of the lines it was built from,
+ * stand-in lines and items included, and the sentence that says so. Fork 1
+ * (ADR 0297) is the stand-in "labelled", with the counts of the lines and
+ * items resting on it, so a figure that carries one never carries the other
+ * alone.
+ */
+export interface UnitsLabel extends UnitsCoverage {
+  basis: string;
+}
+
+export function unitsLabel(
+  lines: Array<{ how: BottleHow; inventoryId?: string | null }>,
+): UnitsLabel {
+  const cov = summarizeUnits(lines);
+  return { ...cov, basis: unitsBasisSentence(cov) };
+}
+
+/**
  * A total that would rest on a line with no bottle figure is refused, never
  * summed short (ADR 0020, ADR 0086). The goal reads "could not be read" with
  * this message (goals.service.ts listGoalsWithProgress).

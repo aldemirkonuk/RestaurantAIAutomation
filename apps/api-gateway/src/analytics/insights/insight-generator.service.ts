@@ -18,7 +18,12 @@ import {
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
-import { bottlesOf } from "../consumption-units";
+import {
+  BottleHow,
+  UnitsLabel,
+  bottlesOf,
+  unitsLabel,
+} from "../consumption-units";
 import { DayExclusionsService } from "./day-exclusions.service";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import {
@@ -200,7 +205,9 @@ export const BASKET_MIN_LIFT = 1.3;
  *       (servings) as bottles: ten 150 ml glasses were "10 bottles sold", a
  *       50 ml single fifteen times what it poured. A day holding a line with
  *       no bottle figure is unobserved, and a wine holding one is left out of
- *       the movers and the stockout #1. A row below 8 may hold a sentence
+ *       the movers and the stockout #1. Every record built on consumption
+ *       carries `evidence.units`: how many of its lines and items rest on
+ *       the 750 ml stand-in. A row below 8 may hold a sentence
  *       counted in pours, so it is recomputed, not served. Whichever of
  *       stockout (7) and this merges later takes one past main's version at
  *       its merge.
@@ -423,6 +430,11 @@ export class InsightGeneratorService {
       // was readable. Same contract, same reason.
       excludedDays: Array.from(bundle.excludedDates).sort(),
       exclusionsReadable: bundle.exclusionsReadable,
+      // The bottle basis of every consumption line the bundle read: how many
+      // rest on the 750 ml stand-in, across how many items, and how many
+      // carry no bottle figure (ADR 0297). Each record built on them carries
+      // its own count in `evidence.units`.
+      units: this.unitsOf(bundle.consumption),
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };
@@ -756,9 +768,11 @@ export class InsightGeneratorService {
         // undefined on every row. That made `if (!c.wineId) continue` (:394,
         // :578) skip everything and silently emptied both per-wine families.
         wineId: c.restaurant_inventory?.master_wine_id,
+        itemId: c.inventory_id ?? null,
         // Bottles by the line's own mode, null when it carries no bottle
         // figure (ADR 0297). `quantity` counts servings, never bottles.
         qty: bottlesOf(c).bottles,
+        how: bottlesOf(c).how,
         date: (c.created_at || "").substring(0, 10),
       })),
       orders: ok<any>(ords).map((o: any) => ({
@@ -788,6 +802,13 @@ export class InsightGeneratorService {
     if (bundle.venueFeatures) bundle.availability.add("venue");
     if (bundle.goals.length) bundle.availability.add("goals");
     return bundle;
+  }
+
+  /** The bottle basis of these consumption lines (ADR 0297). */
+  private unitsOf(lines: Bundle["consumption"]): UnitsLabel {
+    return unitsLabel(
+      lines.map((c) => ({ how: c.how, inventoryId: c.itemId })),
+    );
   }
 
   /**
@@ -861,9 +882,16 @@ export class InsightGeneratorService {
         : bundle.excludedDates,
     );
     const label = "bottles sold";
+    // Every record below carries the bottle basis of the lines it was built
+    // from: how many rest on the 750 ml stand-in, across how many items
+    // (ADR 0297, fork 1: "labelled", with those counts).
+    const inSeries = new Set(dates);
+    const seriesUnits = this.unitsOf(
+      bundle.consumption.filter((c) => inSeries.has(c.date)),
+    );
 
     this.timeSeriesInsights({
-      push,
+      push: (r) => push(withUnits(r, seriesUnits)),
       dates,
       values,
       observed,
@@ -889,16 +917,28 @@ export class InsightGeneratorService {
     }
 
     // Wine week-over-week movers.
-    let bestMove: { wine: string; cmp: E.PeriodComparison } | null = null;
+    let bestMove: {
+      wine: string;
+      wineId: string;
+      days: string[];
+      cmp: E.PeriodComparison;
+    } | null = null;
     for (const [wineId, wineRows] of byWine) {
-      const s = this.toDaily(wineRows, 28).values;
+      const daily = this.toDaily(wineRows, 28);
+      const s = daily.values;
       const cmp = E.periodOverPeriod(s, 7);
       if (!cmp || cmp.deltaPct === null || cmp.previous < 2) continue;
       if (
         !bestMove ||
         Math.abs(cmp.deltaPct) > Math.abs(bestMove.cmp.deltaPct ?? 0)
       )
-        bestMove = { wine: nameByWine.get(wineId) || wineId, cmp };
+        bestMove = {
+          wine: nameByWine.get(wineId) || wineId,
+          wineId,
+          // The two weeks the comparison reads, for its label.
+          days: daily.dates.slice(-14),
+          cmp,
+        };
     }
     if (bestMove && bestMove.cmp.deltaPct !== null) {
       const ev: InsightEvidence = {
@@ -910,12 +950,21 @@ export class InsightGeneratorService {
         deltaPct: bestMove.cmp.deltaPct,
         windowLabel: "week",
       };
+      const movedId = bestMove.wineId;
+      const fortnight = new Set(bestMove.days);
       push(
-        this.record("wine.bottles.vs_prev_period_7d", "sales", "period", ev, {
-          effectPct: bestMove.cmp.deltaPct,
-          n: 14,
-          entityLabel: bestMove.wine,
-        }),
+        withUnits(
+          this.record("wine.bottles.vs_prev_period_7d", "sales", "period", ev, {
+            effectPct: bestMove.cmp.deltaPct,
+            n: 14,
+            entityLabel: bestMove.wine,
+          }),
+          this.unitsOf(
+            bundle.consumption.filter(
+              (c) => c.wineId === movedId && fortnight.has(c.date),
+            ),
+          ),
+        ),
       );
     }
 
@@ -942,15 +991,18 @@ export class InsightGeneratorService {
           hhi,
         };
         push(
-          this.record(
-            "wine.consumption_qty.concentration",
-            "risk",
-            "concentration",
-            ev,
-            {
-              effectPct: topShare - 3 / totalsByWine.length, // excess vs uniform
-              n: dates.length,
-            },
+          withUnits(
+            this.record(
+              "wine.consumption_qty.concentration",
+              "risk",
+              "concentration",
+              ev,
+              {
+                effectPct: topShare - 3 / totalsByWine.length, // excess vs uniform
+                n: dates.length,
+              },
+            ),
+            this.unitsOf(counted.filter((c) => !!c.wineId)),
           ),
         );
       }
@@ -981,15 +1033,18 @@ export class InsightGeneratorService {
           windowLabel: "week",
         };
         push(
-          this.record(
-            "overall.bottles.forecast_gap",
-            "forecast",
-            "forecast",
-            ev,
-            {
-              effectPct: gap,
-              n: 7,
-            },
+          withUnits(
+            this.record(
+              "overall.bottles.forecast_gap",
+              "forecast",
+              "forecast",
+              ev,
+              {
+                effectPct: gap,
+                n: 7,
+              },
+            ),
+            seriesUnits,
           ),
         );
       }
@@ -1097,6 +1152,7 @@ export class InsightGeneratorService {
       daysOfCover: number | null;
       onHand: number;
       rows: number;
+      wineId: string;
     }> = [];
     for (const item of bundle.inventory) {
       const qtys = byWine.get(item.master_wine_id) || [];
@@ -1126,6 +1182,7 @@ export class InsightGeneratorService {
           daysOfCover: E.daysOfCover(onHand, profile.mean),
           onHand,
           rows: qtys.length,
+          wineId: item.master_wine_id,
         });
       }
     }
@@ -1147,14 +1204,20 @@ export class InsightGeneratorService {
         attributeReading: `Only ${worst.onHand} bottles on hand vs its demand pattern — reorder before the next delivery window.`,
       };
       push(
-        this.record("wine.stockout_risk.peer_rank", "risk", "peer", ev, {
-          effectPct: worst.stockoutProbability,
-          // A probability has no test statistic. This was a hard-coded 2 on a
-          // hard-coded n of 30 — significance and support nobody measured.
-          z: null,
-          n: worst.rows,
-          boost: 1.5,
-        }),
+        withUnits(
+          this.record("wine.stockout_risk.peer_rank", "risk", "peer", ev, {
+            effectPct: worst.stockoutProbability,
+            // A probability has no test statistic. This was a hard-coded 2 on
+            // a hard-coded n of 30 — significance and support nobody measured.
+            z: null,
+            n: worst.rows,
+            boost: 1.5,
+          }),
+          // Its demand's bottle basis (ADR 0297).
+          this.unitsOf(
+            bundle.consumption.filter((c) => c.wineId === worst.wineId),
+          ),
+        ),
       );
     }
   }
@@ -1879,6 +1942,14 @@ export class InsightGeneratorService {
 
 type Push = (r: InsightRecord | null) => void;
 
+/** The record with the bottle basis of the lines it rests on (ADR 0297). */
+function withUnits(
+  r: InsightRecord | null,
+  units: UnitsLabel,
+): InsightRecord | null {
+  return r && { ...r, evidence: { ...r.evidence, units } };
+}
+
 /** Each group's count, mean and variance of check totals, for leaderTest. */
 function momentsOf(
   groups: Map<string, { revenue: number; sumSq: number; checks: number }>,
@@ -1913,7 +1984,13 @@ export interface InsightRecord {
   z: number | null;
   entityKey: string | null;
   entityLabel: string | null;
-  evidence: InsightEvidence;
+  /**
+   * `units` is set on every figure built on consumption lines: its bottle
+   * basis, with the counts of the lines and items resting on the 750 ml
+   * stand-in (ADR 0297). It rides in `evidence`, so a stored row carries it
+   * too.
+   */
+  evidence: InsightEvidence & { units?: UnitsLabel };
   /** What the sentence is about ("Wednesday", "Table 4"), or null. */
   subject: string | null;
   /** The period it covers at its own grain ("d:2026-09-02"), or null. */
@@ -1934,8 +2011,18 @@ export interface InsightRecord {
 
 interface Bundle {
   restaurantId: string;
-  /** `qty` is bottles; null when the line carries no bottle figure. */
-  consumption: Array<{ wineId: string; qty: number | null; date: string }>;
+  /**
+   * `qty` is bottles; null when the line carries no bottle figure. `how` is
+   * where that figure came from and `itemId` the inventory row, so a figure
+   * can say how many lines and items rest on the 750 ml stand-in (ADR 0297).
+   */
+  consumption: Array<{
+    wineId: string;
+    itemId: string | null;
+    qty: number | null;
+    how: BottleHow;
+    date: string;
+  }>;
   orders: Array<{
     vendorId: string;
     vendorName: string;

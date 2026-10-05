@@ -8,8 +8,9 @@ import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
   UncountedConsumptionError,
+  UnitsLabel,
   bottlesOf,
-  summarizeUnits,
+  unitsLabel,
 } from "./consumption-units";
 import {
   ModelClientService,
@@ -421,7 +422,7 @@ export class GoalsService {
         peers:
           "no other restaurant's books are in this comparison: every figure here is this house against its own baseline, schedule and projection",
         units:
-          "Bottles sold counts bottles by each line's own mode: a bottle line is its quantity, a glass line is its millilitres over the item's stated bottle size, or over the 750 ml stand-in the stock moves by when no size is stated; a goal whose window holds a line with no bottle figure is not scored (ADR 0297)",
+          "Bottles sold counts bottles by each line's own mode: a bottle line is its quantity, a glass line is its millilitres over the item's stated bottle size, or over the 750 ml stand-in the stock moves by when no size is stated; each Bottles sold goal's `units` counts the lines and items in its window resting on that stand-in; a goal whose window holds a line with no bottle figure is not scored (ADR 0297)",
       },
       generatedAt: new Date().toISOString(),
     };
@@ -443,7 +444,7 @@ export class GoalsService {
     const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
     const periodStart =
       goal.created_at?.substring(0, 10) ?? this.periodStart(goal.period);
-    const { current, dailySeries } = await this.computeMetricWithSeries(
+    const { current, dailySeries, units } = await this.computeMetricWithSeries(
       restaurantId,
       goal.metric_key,
       periodStart,
@@ -516,6 +517,10 @@ export class GoalsService {
             ? projected <= target
             : projected >= target
           : null,
+      // A Bottles sold goal's bottle basis: how many lines and items in its
+      // window rest on the 750 ml stand-in (ADR 0297). Null for every other
+      // metric.
+      units: units ?? null,
       suggestedActions: suggestions.map((s: any) => ({
         sentence: s.sentence,
         category: s.category,
@@ -818,6 +823,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     dailySeries: number[];
     dailyDates: string[];
     rowCount: number;
+    /** Bottles sold only: the bottle basis of the window (ADR 0297). */
+    units?: UnitsLabel;
   }> {
     /**
      * Days of stock, before everything else, and deliberately OUTSIDE the
@@ -862,6 +869,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 
     const daily = new Map<string, number>();
     let rowCount = 0;
+    let units: UnitsLabel | undefined;
     const add = (date: string, v: number) => {
       if (!date) return;
       daily.set(date, (daily.get(date) || 0) + v);
@@ -911,8 +919,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           inventoryId: c.inventory_id ?? null,
           date: (c.created_at || "").substring(0, 10),
         }));
-        const coverage = summarizeUnits(counted);
-        if (!coverage.complete) throw new UncountedConsumptionError(coverage);
+        units = unitsLabel(counted);
+        if (!units.complete) throw new UncountedConsumptionError(units);
         for (const c of counted) add(c.date, c.bottles as number);
       } else {
         // Check-based metrics (pos_revenue, wine_revenue, checks, avg_check,
@@ -1018,7 +1026,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const dates = Array.from(daily.keys()).sort();
     const dailySeries = dates.map((d) => daily.get(d) || 0);
     const current = dailySeries.reduce((a, b) => a + b, 0);
-    return { current, dailySeries, dailyDates: dates, rowCount };
+    return { current, dailySeries, dailyDates: dates, rowCount, units };
   }
 
   // ==========================================================================

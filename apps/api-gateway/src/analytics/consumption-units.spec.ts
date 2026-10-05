@@ -9,6 +9,7 @@ import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { GoalsService } from "./goals.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
+import { stateBookFrom } from "./insights/item-state";
 import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
 
 /**
@@ -219,6 +220,8 @@ function dbOver(rowsByTable: Rows) {
         return b;
       };
       b.maybeSingle = () => Promise.resolve({ data: null, error: null });
+      b.single = () => Promise.resolve({ data: all[0] ?? null, error: null });
+      b.update = () => b;
       b.then = (resolve: any, reject: any) => {
         const past =
           cursor === null
@@ -523,5 +526,443 @@ describe("the exported quadrant cutting says why an item has no quadrant", () =>
     );
     // Both the uncosted and the unmeasured item sit outside the quadrants.
     expect(out.figures.find((x) => x.label === "No quadrant")?.value).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Each sub-behaviour ADR 0297 lists under Decision, pinned one by one: every
+// case below fails if the rule it names is dropped from its reader.
+// ---------------------------------------------------------------------------
+
+/** Noon UTC `d` days back, so a line's date never slides across midnight. */
+const noonDaysAgo = (d: number) => {
+  const t = new Date();
+  t.setUTCHours(12, 0, 0, 0);
+  return new Date(t.getTime() - d * 86400000).toISOString();
+};
+
+type Line = {
+  consumption_type: unknown;
+  quantity: number;
+  volume_ml: number | null;
+};
+
+/** One line of item `n` on the day `d` days back. */
+function on(n: number, d: number, line: Line, sizeMl: number | null = 750) {
+  return {
+    id: `d-${String(++seq).padStart(6, "0")}`,
+    restaurant_id: RESTAURANT,
+    inventory_id: `inv-${n}`,
+    ...line,
+    created_at: noonDaysAgo(d),
+    restaurant_inventory: { master_wine_id: `mw-${n}`, bottle_size_ml: sizeMl },
+  };
+}
+
+/** `perDay` lines of item `n` on every day from `from` back to `to`. */
+function everyDay(
+  n: number,
+  from: number,
+  to: number,
+  line: Line,
+  sizeMl: number | null = 750,
+  perDay = 1,
+) {
+  const out: any[] = [];
+  for (let d = from; d <= to; d++)
+    for (let k = 0; k < perDay; k++) out.push(on(n, d, line, sizeMl));
+  return out;
+}
+
+const NO_STATE = {
+  readState: async () => ({
+    book: stateBookFrom([]),
+    readable: true,
+    problem: null,
+  }),
+} as any;
+
+const insightsOver = (rows: Rows) =>
+  new InsightGeneratorService(
+    dbOver(rows),
+    { load: async () => ({ dates: new Set<string>(), readable: true }) } as any,
+    NO_STATE,
+  );
+
+/** The records one family emits over these rows. */
+async function familyOver(
+  rows: Rows,
+  family: "computeConsumptionFamily" | "computeInventoryFamily",
+) {
+  const svc: any = insightsOver(rows);
+  const bundle = await svc.loadBundle(RESTAURANT);
+  const out: any[] = [];
+  svc[family](bundle, (r: any) => {
+    if (r) out.push(r);
+  });
+  return out;
+}
+const keyed = (records: any[], key: string) =>
+  records.find((r) => r.candidateKey === key);
+
+describe("the insight bundle withholds what a line with no bottle figure would bend", () => {
+  /** Five wines selling 2, 4, 6, 8 and 10 bottles. */
+  const FIVE = [1, 2, 3, 4, 5].flatMap((n) => everyDay(n, 1, n * 2, BOTTLE));
+
+  it("I1: concentration is withheld while any wine holds such a line", async () => {
+    const control = await familyOver(
+      { wine_consumption_log: FIVE },
+      "computeConsumptionFamily",
+    );
+    // It carries the bottle basis of the 30 lines it shares out.
+    expect(
+      keyed(control, "wine.consumption_qty.concentration").evidence.units,
+    ).toMatchObject({ lines: 30, standInLines: 0, uncountedLines: 0 });
+
+    const out = await familyOver(
+      { wine_consumption_log: [...FIVE, on(6, 3, NO_FIGURE)] },
+      "computeConsumptionFamily",
+    );
+    expect(keyed(out, "wine.consumption_qty.concentration")).toBeUndefined();
+  });
+
+  it("I2: the Holt-Winters forecast gap is withheld while any day holds such a line", async () => {
+    const daily = everyDay(1, 1, 85, BOTTLE);
+    const control = await familyOver(
+      { wine_consumption_log: daily },
+      "computeConsumptionFamily",
+    );
+    expect(keyed(control, "overall.bottles.forecast_gap")).toBeDefined();
+
+    const out = await familyOver(
+      { wine_consumption_log: [...daily, on(2, 40, NO_FIGURE)] },
+      "computeConsumptionFamily",
+    );
+    expect(keyed(out, "overall.bottles.forecast_gap")).toBeUndefined();
+  });
+
+  it("I3: a wine holding such a line is left out of the movers", async () => {
+    // Twice the bottles this week as last: a +100% mover.
+    const moving = [
+      ...everyDay(1, 1, 7, BOTTLE, 750, 2),
+      ...everyDay(1, 8, 14, BOTTLE),
+    ];
+    const control = await familyOver(
+      { restaurant_inventory: [item(1)], wine_consumption_log: moving },
+      "computeConsumptionFamily",
+    );
+    expect(keyed(control, "wine.bottles.vs_prev_period_7d")?.entityLabel).toBe(
+      "Item 1",
+    );
+
+    const out = await familyOver(
+      {
+        restaurant_inventory: [item(1)],
+        wine_consumption_log: [...moving, on(1, 30, NO_FIGURE)],
+      },
+      "computeConsumptionFamily",
+    );
+    expect(keyed(out, "wine.bottles.vs_prev_period_7d")).toBeUndefined();
+  });
+
+  it("I4: a wine holding such a line is left out of the stockout #1", async () => {
+    const selling = everyDay(1, 1, 30, BOTTLE);
+    const inventory = [item(1, { stock_live: 1 })];
+    const control = await familyOver(
+      { restaurant_inventory: inventory, wine_consumption_log: selling },
+      "computeInventoryFamily",
+    );
+    expect(keyed(control, "wine.stockout_risk.peer_rank")?.entityLabel).toBe(
+      "Item 1",
+    );
+
+    const out = await familyOver(
+      {
+        restaurant_inventory: inventory,
+        wine_consumption_log: [...selling, on(1, 40, NO_FIGURE)],
+      },
+      "computeInventoryFamily",
+    );
+    expect(keyed(out, "wine.stockout_risk.peer_rank")).toBeUndefined();
+  });
+});
+
+describe("every figure resting on the 750 ml stand-in says so, with its counts (fork 1)", () => {
+  // Item 1 states no size and sells by the glass: 4 a day this week, 2 a day
+  // before that. Item 2 states its size and sells a bottle a day.
+  const rows = () => ({
+    restaurant_inventory: [
+      item(1, { bottle_size_ml: null, stock_live: 1 }),
+      item(2, { stock_live: 50 }),
+    ],
+    wine_consumption_log: [
+      ...everyDay(1, 1, 7, GLASS, null, 4),
+      ...everyDay(1, 8, 85, GLASS, null, 2),
+      ...everyDay(2, 1, 85, BOTTLE),
+    ],
+  });
+  const STAND_IN_LINES = 7 * 4 + 78 * 2; // 184
+
+  it("L1: each consumption insight carries the counts of the lines it was built from", async () => {
+    const out = await familyOver(rows(), "computeConsumptionFamily");
+    expect(out.length).toBeGreaterThan(0);
+    for (const r of out) expect(r.evidence.units).toBeDefined();
+
+    const gap = keyed(out, "overall.bottles.forecast_gap");
+    expect(gap.evidence.units).toMatchObject({
+      lines: STAND_IN_LINES + 85,
+      standInLines: STAND_IN_LINES,
+      standInItems: 1,
+      uncountedLines: 0,
+    });
+    expect(gap.evidence.units.basis).toContain(
+      `${STAND_IN_LINES} glass lines across 1 item with no stated bottle size rest on the 750 ml stand-in`,
+    );
+
+    // The mover counts only its own wine over the two weeks it compares.
+    const mover = keyed(out, "wine.bottles.vs_prev_period_7d");
+    expect(mover.entityLabel).toBe("Item 1");
+    expect(mover.evidence.units).toMatchObject({
+      lines: 7 * 4 + 7 * 2,
+      standInLines: 7 * 4 + 7 * 2,
+      standInItems: 1,
+    });
+  });
+
+  it("L2: the stockout #1 carries its own wine's stand-in count", async () => {
+    const out = await familyOver(rows(), "computeInventoryFamily");
+    const top = keyed(out, "wine.stockout_risk.peer_rank");
+    expect(top.entityLabel).toBe("Item 1");
+    expect(top.evidence.units).toMatchObject({
+      lines: STAND_IN_LINES,
+      standInLines: STAND_IN_LINES,
+      standInItems: 1,
+    });
+  });
+
+  it("L3: the bundle names every line it read, stand-in and all", async () => {
+    const out: any = await insightsOver(rows()).generate(RESTAURANT);
+    expect(out.units).toMatchObject({
+      lines: STAND_IN_LINES + 85,
+      standInLines: STAND_IN_LINES,
+      standInItems: 1,
+    });
+  });
+
+  it("L4: a Bottles sold goal counts the lines in its window resting on the stand-in", async () => {
+    const goals = new GoalsService(
+      dbOver({
+        analytics_goals: [
+          {
+            id: "g-1",
+            restaurant_id: RESTAURANT,
+            metric_key: "bottles_sold",
+            target_value: 100,
+            direction: "at_least",
+            created_at: noonDaysAgo(20),
+            deadline: null,
+          },
+        ],
+        wine_consumption_log: [
+          ...everyDay(1, 1, 10, GLASS, null),
+          ...everyDay(2, 1, 10, BOTTLE),
+        ],
+      }),
+      { getStored: async () => [] } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { getFinancialSummary: async () => ({}) } as any,
+    );
+    const out: any = await goals.getGoalProgress(RESTAURANT, "g-1");
+    expect(out.current).toBeCloseTo(10 * 0.2 + 10, 12);
+    expect(out.units).toMatchObject({
+      lines: 20,
+      standInLines: 10,
+      standInItems: 1,
+    });
+    expect(out.units.basis).toContain("750 ml stand-in");
+  });
+});
+
+describe("seasonality reads counted lines only, and names the rest", () => {
+  it("S1: a line with no bottle figure moves no weekday, and the basis counts it", async () => {
+    const counted = everyDay(1, 1, 60, BOTTLE);
+    const base: any = await advanced({
+      restaurant_inventory: [item(1)],
+      wine_consumption_log: counted,
+    }).getSeasonality(RESTAURANT, 90);
+    const out: any = await advanced({
+      restaurant_inventory: [item(1)],
+      // Quantity 2 on a day of its own: read as its servings it would move
+      // that weekday's mean.
+      wine_consumption_log: [...counted, on(2, 70, NO_FIGURE)],
+    }).getSeasonality(RESTAURANT, 90);
+    expect(out.weekdayProfile).toEqual(base.weekdayProfile);
+    expect(out.basis.units).toContain(
+      "1 line across 1 item carries no bottle figure",
+    );
+  });
+
+  it("S2: a category's weekday winner needs ten counted lines; one with no figure is not one of them", async () => {
+    const red = { master_wine_library: { primary_type: "red" } };
+    const control: any = await advanced({
+      restaurant_inventory: [item(1, red)],
+      wine_consumption_log: everyDay(1, 1, 10, BOTTLE),
+    }).getSeasonality(RESTAURANT, 90);
+    expect(control.categoryProfiles.map((p: any) => p.type)).toEqual(["red"]);
+
+    const out: any = await advanced({
+      restaurant_inventory: [item(1, red)],
+      wine_consumption_log: [
+        ...everyDay(1, 1, 9, BOTTLE),
+        on(1, 12, NO_FIGURE),
+      ],
+    }).getSeasonality(RESTAURANT, 90);
+    expect(out.categoryProfiles).toEqual([]);
+  });
+});
+
+describe("Wine 360 ranks only wines whose every line has a bottle figure", () => {
+  it("W1: a wine holding such a line leaves the peer ranks", async () => {
+    const base = [
+      ...lines(1, 10, GLASS), // 2 bottles
+      ...lines(2, 5, BOTTLE), // 5
+      ...lines(3, 20, BOTTLE), // 20
+    ];
+    const inventory = [item(1), item(2), item(3)];
+    const control: any = await advanced({
+      restaurant_inventory: inventory,
+      wine_consumption_log: base,
+    }).getWine360(RESTAURANT, "mw-1");
+    expect(control.peerCount).toBe(3);
+    expect(control.rankByVolume).toBe(3);
+
+    const out: any = await advanced({
+      restaurant_inventory: inventory,
+      wine_consumption_log: [...base, ...lines(3, 1, NO_FIGURE)],
+    }).getWine360(RESTAURANT, "mw-1");
+    expect(out.peerCount).toBe(2);
+    expect(out.rankByVolume).toBe(2);
+  });
+});
+
+describe("the risk profile reads counted lines only, and names the rest", () => {
+  it("RP1: a line with no bottle figure moves no demand-risk figure, and the basis counts it", async () => {
+    const counted = everyDay(1, 1, 60, BOTTLE);
+    const base: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [item(1)],
+        wine_consumption_log: counted,
+      }),
+    ).getRiskProfile(RESTAURANT);
+    const out: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [item(1)],
+        // Quantity 2 on a day of its own, so reading it as servings would
+        // add a demand day the counted series does not have.
+        wine_consumption_log: [...counted, on(2, 70, NO_FIGURE)],
+      }),
+    ).getRiskProfile(RESTAURANT);
+    expect(out.demandRisk).toEqual(base.demandRisk);
+    expect(base.basis.demand).toContain("every line has a bottle figure");
+    expect(out.basis.demand).toContain(
+      "1 line across 1 item carries no bottle figure",
+    );
+  });
+});
+
+describe("the demand forecast does not project one wine from a history it cannot count", () => {
+  const daily = () => everyDay(1, 1, 100, BOTTLE);
+  const forecastOver = (rows: any[], masterWineId?: string) =>
+    new AnalyticsService(
+      dbOver({ restaurant_inventory: [item(1)], wine_consumption_log: rows }),
+    ).getDemandForecast(RESTAURANT, masterWineId ? { masterWineId } : {});
+
+  it("F1: one wine holding such a line has no projection and no accuracy, and says why", async () => {
+    const control: any = await forecastOver(daily(), "mw-1");
+    expect(control.modelFitted).toBe(true);
+    expect(control.accuracy).not.toBeNull();
+
+    const out: any = await forecastOver(
+      [...daily(), on(1, 50, NO_FIGURE)],
+      "mw-1",
+    );
+    expect(out.modelFitted).toBe(false);
+    expect(out.model).toBeNull();
+    expect(out.forecast).toEqual([]);
+    expect(out.totalForecastDemand).toBeNull();
+    expect(out.accuracy).toBeNull();
+    expect(out.basis.model).toContain("carry no bottle figure");
+  });
+
+  it("F2: the house series still projects, from counted lines, and names the gap", async () => {
+    const out: any = await forecastOver([...daily(), on(2, 50, NO_FIGURE)]);
+    expect(out.modelFitted).toBe(true);
+    expect(out.basis.demand).toContain(
+      "1 line across 1 item carries no bottle figure",
+    );
+  });
+});
+
+describe("the exports carry the stand-in label the registers return", () => {
+  const STAND_IN =
+    "3 glass lines across 1 item with no stated bottle size rest on the 750 ml stand-in the stock moves by";
+
+  it("X1: the week's shape writes the units sentence into its basis", () => {
+    const out = EXPORT_CUTTINGS.week.write(
+      {
+        weekdayProfile: [{ day: "Monday", mean: 1, stdev: 0, n: 4 }],
+        basis: { weekday: "mean bottles per weekday", units: STAND_IN },
+      },
+      { days: null },
+    );
+    expect(out.basis).toContain(STAND_IN);
+  });
+
+  it("X2: a Bottles sold goal names its stand-in lines, and the basis states the rule", () => {
+    const out = EXPORT_CUTTINGS.goals.write(
+      {
+        total: 1,
+        goals: [
+          {
+            goal: { name: "Sell more by the glass" },
+            metricLabel: "Bottles sold",
+            unit: "count",
+            current: 4,
+            target: 10,
+            progressPct: 0.4,
+            onTrack: null,
+            units: { standInLines: 3, standInItems: 1 },
+          },
+        ],
+        basis: { current: "recomputed", units: "the rule" },
+      },
+      { days: null },
+    );
+    expect(out.notes).toContain(
+      "Sell more by the glass: 3 glass lines across 1 item with no stated bottle size are read at the 750 ml stand-in the stock moves by.",
+    );
+    expect(out.basis).toContain("the rule");
+  });
+
+  it("X3: the reading counts the sentences resting on the stand-in", () => {
+    const out = EXPORT_CUTTINGS.reading.write(
+      {
+        insights: [
+          {
+            sentence: "Bottles sold rose 20%.",
+            category: "sales",
+            score: 2,
+            evidence: { units: { standInLines: 3 } },
+          },
+          { sentence: "Table 4 leads.", category: "tables", score: 1 },
+        ],
+      },
+      { days: null },
+    );
+    expect(out.notes.join(" ")).toContain(
+      "1 of these sentences rests in part on glass lines of items with no stated bottle size",
+    );
   });
 });
