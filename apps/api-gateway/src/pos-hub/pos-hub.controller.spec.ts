@@ -120,9 +120,10 @@ describe("PosHubController — sale-unit review routes", () => {
       recipients: 2,
       heldAway: 1,
       quietHours: 1,
+      pushSwitchedOff: 1,
       notFiledBecause: null,
       caveats: [
-        "the quiet hours of 1 recipient could not be read, so that person was pushed",
+        "the notification settings of 1 recipient could not be read, so that person was pushed",
       ],
     };
     const refusing = (bellNote: unknown) => ({
@@ -148,7 +149,7 @@ describe("PosHubController — sale-unit review routes", () => {
 
       expect(res.bellNote).toEqual({ filed: true });
       expect(JSON.stringify(res)).not.toMatch(
-        /recipients|heldAway|quietHours|caveats|notFiledBecause|addedToOpenNote/,
+        /recipients|heldAway|quietHours|pushSwitchedOff|caveats|notFiledBecause|addedToOpenNote/,
       );
       // The import's own answer is unchanged.
       expect(res).toMatchObject({ upserted: 1, refusedUnreadableDate: 1 });

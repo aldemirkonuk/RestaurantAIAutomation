@@ -12,7 +12,9 @@
  * (Recommended)", then F5 "One note per till per hour (Recommended)" and F6
  * "Push outside quiet hours (Recommended)", then "Bring it back
  * (Recommended)", "One push per hour, re-flagged (Recommended)" and "Quiet
- * means quiet (Recommended)", then "Count each check once (Recommended)".
+ * means quiet (Recommended)", then "Count each check once (Recommended)",
+ * then "New note at once (Recommended)", "No, stays as it is (Recommended)"
+ * and "Respect their switch (Recommended)".
  *
  * WHAT IT DOES
  * ------------
@@ -38,16 +40,16 @@
  *   merged with another: each one is counted every time it is refused, and
  *   the note says so (`withoutId`). An import that adds no check the note
  *   had not counted changes nothing in it, so nothing is written and no row
- *   turns unread or comes back from the archive (a reading of the founder's
- *   words, left to him as a fork in ADR 0281).
+ *   turns unread or comes back from the archive (the founder: "No, stays as
+ *   it is (Recommended)").
  * - A ROW DELETED FROM THE BELL is gone (`deleteNotification` removes it), so
  *   it is neither read nor brought back: while another recipient still holds
  *   a row of the note, the one who deleted it hears nothing more of that note
  *   ("Stays deleted (Recommended)"). When every row of the note is deleted,
  *   nothing is left to find, so the next refusal inside the same hour writes
  *   a new note, with only its own checks, and pushes it to every owner and
- *   manager. That case is a fork left to the founder (ADR 0281, "Forks
- *   deferred"); this is how it is built until he answers.
+ *   manager, those who deleted the old one too (the founder: "New note at
+ *   once (Recommended)").
  * - THE IMPORT ANSWERS ON TIME. The import waits at most `NOTE_DEADLINE_MS`
  *   for its note, then answers without it, says so, and logs it; the note
  *   goes on being filed. One filing that never answers holds the next one for
@@ -69,9 +71,24 @@
  *   `NotificationsService.getPreferences` (its defaults for a person with no
  *   row: quiet hours off), on the house's clock from `houseFrame` (ADR 0207:
  *   the house's own zone, else its country's only zone). When the house's
- *   zone cannot be read or is not known, or one person's preferences cannot
- *   be read, those people are pushed, as before quiet hours were read; it is
- *   logged and said in `caveats`.
+ *   zone cannot be read or is not known, quiet hours are not judged and
+ *   everyone whose push switch is on is pushed; when one person's
+ *   preferences cannot be read, that person is pushed, as before quiet hours
+ *   were read (the founder: "Push anyway (Recommended)"). Either is logged
+ *   and said in `caveats`.
+ * - THE PERSON'S OWN PUSH SWITCH (the founder: "Respect their switch
+ *   (Recommended)"). A recipient whose switch is off gets the row with no
+ *   push and no live ping, as a quiet person does, whatever their quiet hours
+ *   and whether the house's zone reads; `pushSwitchedOff` counts them. The
+ *   switch is `push` in the same `getPreferences` answer, which
+ *   `mapPreferencesRow` takes from `notification_preferences.push_enabled`
+ *   (`?? true`), and which is `true` for a person with no row. Only a
+ *   literal `false` is off, as `channelAllowed` (`team/broadcast-preferences.ts`)
+ *   reads it: a missing row, or a field that is not there, pushes; a read
+ *   that fails pushes too (above). Other notes written through the funnel
+ *   still do not read it (`v3.0-TECH-DEBT.md`, the team broadcast entry: the
+ *   funnel's own push "reading no preference"); the team broadcast reads it
+ *   for its own push.
  * - The note names at most `MAX_NOTE_CHECK_IDS` check ids and counts the
  *   rest, each id cut at `MAX_NOTE_ID_CHARS`. It carries the till's name, the
  *   count, and the first unreadable value the till sent, cut at 40
@@ -91,9 +108,10 @@
  * two pushes, one per process), and two that count into the same note race on
  * the update, which only changes rows whose title, and so whose count, is still
  * the one that was read; the loser reads again once, and if it loses again it
- * writes a new note rather than drop its refusals. A note's pushed and quiet
- * rows are written by two calls, so an update from another process can land
- * between them; the rows written second then hold the older count until the
+ * writes a new note rather than drop its refusals. A note's pushed rows, its
+ * quiet rows and the rows of those whose push switch is off are written by up
+ * to three calls, so an update from another process can land between them;
+ * the rows written later then hold the older count until the
  * next import counted into the note brings them up (one that adds no check
  * too), and only rows still holding a count it read, lower than the one it
  * writes, so an older count never lands over a newer one. "Lower" orders the
@@ -198,8 +216,16 @@ export interface RefusedChecksNote {
   recipients: number;
   /** Owners and managers set aside because they are Away today (ADR 0218). */
   heldAway: number;
-  /** Recipients inside their quiet hours: the row, without a push (F6). */
+  /**
+   * Recipients inside their quiet hours, with their push switch on: the row,
+   * without a push or a live ping (F6).
+   */
   quietHours: number;
+  /**
+   * Recipients whose own push switch is off: the row, without a push or a
+   * live ping, whatever their quiet hours ("Respect their switch").
+   */
+  pushSwitchedOff: number;
   /**
    * Why it was not filed, as a fixed phrase (a database's own message is
    * logged, never returned). Null when it was.
@@ -207,17 +233,20 @@ export interface RefusedChecksNote {
   notFiledBecause: string | null;
   /**
    * What fell back, as fixed phrases: an open note that could not be read or
-   * updated (a new note was written), quiet hours that could not be read
-   * (those people were pushed). Empty when neither fell back. Not said here:
-   * an Away register that cannot be read (`AreaRoutingService` logs it), and
-   * a pushed group that wrote no rows beside a quiet group that wrote some.
+   * updated (a new note was written), a house zone that could not be read
+   * (quiet hours not judged; everyone whose switch is on was pushed), a
+   * person's preferences that could not be read (that person was pushed).
+   * Empty when nothing fell back. Not said here: an Away register that
+   * cannot be read (`AreaRoutingService` logs it), and a pushed group that
+   * wrote no rows beside a group without a push that wrote some.
    */
   caveats: string[];
 }
 
 /**
  * What a webhook caller is told about the note: whether it was filed, and
- * nothing about who hears it, who is Away or quiet, or why it was not filed.
+ * nothing about who hears it, who is Away, quiet or has push switched off, or
+ * why it was not filed.
  * A webhook secret need not be the house's own (the legacy one signs the body
  * alone), so its holder learns no more than that.
  */
@@ -629,6 +658,7 @@ function notFiledNote(why: string): RefusedChecksNote {
     recipients: 0,
     heldAway: 0,
     quietHours: 0,
+    pushSwitchedOff: 0,
     notFiledBecause: why,
     caveats: [],
   };
@@ -685,6 +715,7 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
     recipients: 0,
     heldAway: 0,
     quietHours: 0,
+    pushSwitchedOff: 0,
     notFiledBecause: null,
     ...r,
     caveats,
@@ -762,22 +793,33 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
     }
 
     // Who is pushed. Every owner and manager Away: nobody (ADR 0218's last
-    // step). Otherwise everyone outside their quiet hours (F6).
+    // step). Otherwise everyone whose own push switch is on ("Respect their
+    // switch") and who is outside their quiet hours (F6).
     const split = inboxOnly
-      ? { push: [] as string[], quiet: [] as string[] }
-      : await splitByQuietHours(deps, restaurantId, to, now, caveats);
+      ? {
+          push: [] as string[],
+          quiet: [] as string[],
+          switchedOff: [] as string[],
+        }
+      : await splitByPushSettings(deps, restaurantId, to, now, caveats);
+    // `without` names the count a group's rows go to when they carry no push.
     const groups = inboxOnly
-      ? [{ ids: to, push: false }]
+      ? [{ ids: to, push: false, without: null }]
       : [
-          { ids: split.push, push: true },
-          { ids: split.quiet, push: false },
+          { ids: split.push, push: true, without: null },
+          { ids: split.quiet, push: false, without: "quietHours" as const },
+          {
+            ids: split.switchedOff,
+            push: false,
+            without: "pushSwitchedOff" as const,
+          },
         ];
 
     const state = freshState(refused);
     const words = noteWords(providerKey, state);
     const noteId = randomUUID();
     let recipients = 0;
-    let quietHours = 0;
+    const withoutPush = { quietHours: 0, pushSwitchedOff: 0 };
     for (const group of groups) {
       if (group.ids.length === 0) continue;
       const { inserted } = await deps.notifications.persistForRestaurant(
@@ -792,7 +834,7 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
           actionUrl: "/connections",
           actionLabel: "Open Connections",
           groupKey,
-          // The same metadata on every row of the note, both groups alike:
+          // The same metadata on every row of the note, every group alike:
           // `noteId` is how a later import finds them all (F5).
           metadata: {
             source: providerKey,
@@ -813,7 +855,7 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
         },
       );
       recipients += inserted;
-      if (!group.push && !inboxOnly) quietHours += inserted;
+      if (group.without) withoutPush[group.without] += inserted;
     }
     if (recipients === 0) {
       return notFiled(
@@ -823,9 +865,10 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
     }
     deps.logger.log(
       `POS_REFUSED_CHECKS_NOTE_FILED restaurant=${restaurantId} source=${providerKey} ` +
-        `refused=${refused.length} recipients=${recipients} heldAway=${heldAway} quietHours=${quietHours}`,
+        `refused=${refused.length} recipients=${recipients} heldAway=${heldAway} ` +
+        `quietHours=${withoutPush.quietHours} pushSwitchedOff=${withoutPush.pushSwitchedOff}`,
     );
-    return said({ filed: true, recipients, heldAway, quietHours });
+    return said({ filed: true, recipients, heldAway, ...withoutPush });
   } catch (e: unknown) {
     return notFiled("the bell write failed", 0, reasonOf(e));
   }
@@ -852,8 +895,8 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
  * archive), and only rows behind it are brought up to it.
  *
  * A note whose every row was deleted from the bell is no open note: the read
- * finds nothing, so the caller writes a new one (see the header; a fork left
- * to the founder in ADR 0281).
+ * finds nothing, so the caller writes a new one (see the header; the
+ * founder: "New note at once (Recommended)").
  */
 async function addToOpenNote(
   deps: Deps,
@@ -1032,29 +1075,41 @@ async function addToOpenNote(
 }
 
 /**
- * F6: split the recipients by their quiet hours, on the house's clock. Never
- * throws; anyone whose quiet hours cannot be judged is pushed, as before
- * quiet hours were read, and a caveat says why.
+ * Who is pushed, judged once per recipient from one preferences read. Never
+ * throws.
+ * - A person whose own push switch is off gets the row only, with no push and
+ *   no live ping, whatever their quiet hours and whether the house's zone
+ *   reads (the founder: "Respect their switch (Recommended)"). Only a literal
+ *   `push === false` is off: `getPreferences` gives `true` for a person with
+ *   no row and `push_enabled ?? true` for a row (`mapPreferencesRow`), and
+ *   `channelAllowed` (`team/broadcast-preferences.ts`) reads a switch the
+ *   same way, so a field that is not there pushes.
+ * - Otherwise a person inside their quiet window, on the house's clock, gets
+ *   the row only (F6), and everyone else is pushed.
+ * - Preferences that cannot be read push that person, as before quiet hours
+ *   were read (the founder: "Push anyway (Recommended)"); a house zone that
+ *   cannot be read or is not known leaves quiet hours unjudged, so everyone
+ *   whose switch is on is pushed. A caveat says which.
  */
-async function splitByQuietHours(
+async function splitByPushSettings(
   deps: Deps,
   restaurantId: string,
   ids: string[],
   now: Date,
   caveats: string[],
-): Promise<{ push: string[]; quiet: string[] }> {
+): Promise<{ push: string[]; quiet: string[]; switchedOff: string[] }> {
   // `why` is a fixed phrase, returned to the caller; `detail` (a
   // database's own message) goes to the log only.
-  const pushAll = (why: string, detail?: string) => {
+  const zoneUnread = (why: string, detail?: string): null => {
     deps.logger.warn(
       `POS_REFUSED_CHECKS_NOTE_QUIET_HOURS_UNREAD restaurant=${restaurantId} — ${why}${inParens(detail)}. ` +
-        "Every recipient is pushed, as before quiet hours were read.",
+        "Quiet hours are not judged: everyone whose push switch is on is pushed, as before quiet hours were read.",
     );
-    caveats.push(`${why}, so every recipient was pushed`);
-    return { push: ids, quiet: [] as string[] };
+    caveats.push(`${why}, so every recipient whose push is on was pushed`);
+    return null;
   };
 
-  let zone: string | null;
+  let houseZone: string | null;
   try {
     const { data, error } = await deps.client
       .from("restaurants")
@@ -1062,16 +1117,22 @@ async function splitByQuietHours(
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
-      return pushAll("the house's time zone could not be read", error.message);
+      houseZone = zoneUnread(
+        "the house's time zone could not be read",
+        error.message,
+      );
+    } else {
+      const zone = houseFrame(data ?? null).zone;
+      houseZone = zone
+        ? zone
+        : zoneUnread("the house has no time zone on record");
     }
-    zone = houseFrame(data ?? null).zone;
   } catch (e: unknown) {
-    return pushAll("the house's time zone could not be read", reasonOf(e));
+    houseZone = zoneUnread(
+      "the house's time zone could not be read",
+      reasonOf(e),
+    );
   }
-  if (!zone) {
-    return pushAll("the house has no time zone on record");
-  }
-  const houseZone = zone;
 
   const read = await Promise.all(
     ids.map(async (id) => {
@@ -1080,30 +1141,39 @@ async function splitByQuietHours(
           id,
           restaurantId,
         );
-        return {
-          id,
-          quiet: prefs?.quietHours ?? null,
-          failed: null as string | null,
-        };
+        return { id, prefs: prefs ?? null, failed: null as string | null };
       } catch (e: unknown) {
-        return { id, quiet: null, failed: reasonOf(e) };
+        return { id, prefs: null, failed: reasonOf(e) };
       }
     }),
   );
   const push: string[] = [];
   const quiet: string[] = [];
+  const switchedOff: string[] = [];
   const unread: string[] = [];
   for (const r of read) {
-    if (r.failed !== null || !r.quiet) {
+    if (r.failed !== null || !r.prefs) {
       unread.push(r.id);
       push.push(r.id);
       continue;
     }
-    const inside = isWithinQuietHours(now, houseZone, {
-      enabled: r.quiet.enabled === true,
-      start: String(r.quiet.startTime ?? ""),
-      end: String(r.quiet.endTime ?? ""),
-    });
+    if (r.prefs.push === false) {
+      switchedOff.push(r.id);
+      continue;
+    }
+    const q = r.prefs.quietHours;
+    if (!q) {
+      unread.push(r.id);
+      push.push(r.id);
+      continue;
+    }
+    const inside =
+      houseZone !== null &&
+      isWithinQuietHours(now, houseZone, {
+        enabled: q.enabled === true,
+        start: String(q.startTime ?? ""),
+        end: String(q.endTime ?? ""),
+      });
     (inside ? quiet : push).push(r.id);
   }
   if (unread.length > 0) {
@@ -1114,8 +1184,8 @@ async function splitByQuietHours(
         "They are pushed, as before quiet hours were read.",
     );
     caveats.push(
-      `the quiet hours of ${unread.length} recipient${unread.length === 1 ? "" : "s"} could not be read, so ${unread.length === 1 ? "that person was" : "they were"} pushed`,
+      `the notification settings of ${unread.length} recipient${unread.length === 1 ? "" : "s"} could not be read, so ${unread.length === 1 ? "that person was" : "they were"} pushed`,
     );
   }
-  return { push, quiet };
+  return { push, quiet, switchedOff };
 }

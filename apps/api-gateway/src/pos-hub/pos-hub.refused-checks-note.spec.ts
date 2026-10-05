@@ -34,6 +34,23 @@
  * "at least". The seeded notes carry the keys this file computes itself
  * (`keyOf`, 16 hex of the SHA-256 of the id), so no case needs an export
  * the older file lacks.
+ *
+ * Then, after the founder's answers of 2026-10-05 (~21:05Z): "New note at
+ * once (Recommended)" and "No, stays as it is (Recommended)" match the build,
+ * and the cases "every recipient deleted it" and "the same three checks sent
+ * again within the hour" pin them; "Respect their switch (Recommended)"
+ * changed it. Run against d728b6e2b's `refused-checks-note.ts`, 34 of this
+ * file's 69 cases fail (the controller's 20 pass). The 11 under "the
+ * person's own push switch" fail. In six a person whose switch was off was
+ * pushed and pinged like anyone else ((a), (d), the house with no zone,
+ * every one off, through ingest(), and through the real funnel, where the
+ * owner's phone was pushed with `push_enabled` false); the quiet-and-off
+ * case fails on how its rows are grouped and counted. (b), (c) twice and
+ * the no-row default pin behaviour that did not change, and fail there only
+ * on the result's words. So do 23 earlier cases, none on what was pushed:
+ * 20 because the result had no `pushSwitchedOff`, 2 because an unread read
+ * was said differently, and 1 because a house with no zone read no one's
+ * preferences.
  */
 import { createHash } from "crypto";
 import { Logger } from "@nestjs/common";
@@ -133,6 +150,8 @@ interface Opts {
   quiet?: Record<string, Row>;
   /** Users whose preferences cannot be read. */
   prefsFail?: string[];
+  /** Users whose own push switch is off (`push: false`); the rest have it on. */
+  pushOff?: string[];
 }
 
 const minutesAgo = (m: number) =>
@@ -377,7 +396,13 @@ function makeService(opts: Opts = {}) {
               calls.prefs.push({ userId, restaurantId });
               if (opts.prefsFail?.includes(userId))
                 throw new Error("preferences timed out");
-              return { userId, quietHours: opts.quiet?.[userId] ?? QUIET_OFF };
+              // As `getPreferences` answers: `push` is always there, `true`
+              // unless the person switched it off.
+              return {
+                userId,
+                push: !opts.pushOff?.includes(userId),
+                quietHours: opts.quiet?.[userId] ?? QUIET_OFF,
+              };
             },
           ),
         } as unknown as NotificationsService);
@@ -438,6 +463,7 @@ const filedNew = (over: Row = {}) => ({
   recipients: 2,
   heldAway: 0,
   quietHours: 0,
+  pushSwitchedOff: 0,
   notFiledBecause: null,
   caveats: [],
   ...over,
@@ -622,6 +648,7 @@ describe("F5: one note per till per hour", () => {
       recipients: 2,
       heldAway: 0,
       quietHours: 0,
+      pushSwitchedOff: 0,
       notFiledBecause: null,
       caveats: [],
     });
@@ -1019,6 +1046,9 @@ describe('a check sent again is counted once: "Count each check once (Recommende
     message.split(/[\s,.:]+/).filter((w) => w === id).length;
 
   it("the same three checks sent again within the hour leave the note at 3, not 6, and name each once", async () => {
+    // And it does not turn unread: the founder, asked whether a re-send that
+    // leaves the count unchanged re-flags the note (2026-10-05, ~21:05Z):
+    // "No, stays as it is (Recommended)".
     const { service, calls, table } = makeService();
     const first = await ingest(service, [
       check("c-1", "03.10.2026"),
@@ -1497,10 +1527,11 @@ describe("a row deleted from the bell", () => {
     );
   });
 
-  it("every recipient deleted it: nothing is left to find, so the next refusal inside the hour writes a new note and pushes it to all of them (as built; a fork left to the founder)", async () => {
-    // ADR 0281, "Forks deferred": fork 2's option text said "The next hour's
-    // note still reaches them"; when no row of the note is left, the next
-    // note comes at once. This pins what is built until he answers.
+  it('every recipient deleted it: nothing is left to find, so the next refusal inside the hour writes a new note and pushes it to all of them ("New note at once (Recommended)")', async () => {
+    // Fork 2's option text said "The next hour's note still reaches them";
+    // when no row of the note is left, the next note comes at once. The
+    // founder, asked about exactly this case (2026-10-05, ~21:05Z): "New
+    // note at once (Recommended)", "including whoever deleted the old one".
     const { service, calls, table } = makeService();
     await ingest(service, [
       check("c-1", "03.10.2026"),
@@ -1628,9 +1659,10 @@ describe("F6: a push outside quiet hours, the row only inside them", () => {
     const res = await file(deps, NIGHT_IN_ISTANBUL);
     expect(calls.persist).toHaveLength(1);
     expect(calls.persist[0].payload.priority).toBe("high");
-    expect(calls.prefs).toHaveLength(0);
+    // Preferences are still read, for each person's push switch.
+    expect(calls.prefs).toHaveLength(2);
     expect(res.caveats).toEqual([
-      "the house has no time zone on record, so every recipient was pushed",
+      "the house has no time zone on record, so every recipient whose push is on was pushed",
     ]);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("POS_REFUSED_CHECKS_NOTE_QUIET_HOURS_UNREAD"),
@@ -1647,7 +1679,7 @@ describe("F6: a push outside quiet hours, the row only inside them", () => {
     expect(calls.persist[0].opts.broadcast).toBe(true);
     expect(res.filed).toBe(true);
     expect(res.caveats).toEqual([
-      "the house's time zone could not be read, so every recipient was pushed",
+      "the house's time zone could not be read, so every recipient whose push is on was pushed",
     ]);
     expect(JSON.stringify(res)).not.toContain("connection reset");
     expect(warn).toHaveBeenCalledWith(
@@ -1669,7 +1701,7 @@ describe("F6: a push outside quiet hours, the row only inside them", () => {
     ]);
     expect(res.quietHours).toBe(1);
     expect(res.caveats).toEqual([
-      "the quiet hours of 1 recipient could not be read, so that person was pushed",
+      "the notification settings of 1 recipient could not be read, so that person was pushed",
     ]);
     expect(JSON.stringify(res)).not.toContain("timed out");
     expect(warn).toHaveBeenCalledWith(
@@ -1712,6 +1744,227 @@ describe("F6: a push outside quiet hours, the row only inside them", () => {
   });
 });
 
+describe('the person\'s own push switch: "Respect their switch (Recommended)"', () => {
+  // The founder (2026-10-05, ~21:05Z), asked "An owner or manager switched
+  // push off in their settings. Should this till-refusal note still push to
+  // their phone?": "Respect their switch (Recommended)", "they get the note
+  // in their bell only, no phone push, like quiet hours". A preferences read
+  // that fails still pushes (fork 1, "Push anyway (Recommended)").
+  // 12:00 UTC is 15:00 in Istanbul, outside a 22:00-08:00 window; 00:30 UTC
+  // is 03:30 there, inside it.
+  const NOON_UTC = new Date("2026-10-05T12:00:00Z");
+  const NIGHT_IN_ISTANBUL = new Date("2026-10-05T00:30:00Z");
+  const OWNER_ONLY = ACCESS.filter((r) => r.user_id === "u-owner");
+  const file = (deps: any, now?: Date) =>
+    fileRefusedChecksNote(deps, {
+      restaurantId: HOUSE,
+      providerKey: "csv_import",
+      refused: [{ externalCheckId: "c-1", closedAt: "03.10.2026" }],
+      now,
+    });
+
+  it("(a) switch off, outside quiet hours: the row is written, with no push and no live ping", async () => {
+    const { deps, calls, table } = makeService({
+      access: OWNER_ONLY,
+      pushOff: ["u-owner"],
+    });
+    const res = await file(deps, NOON_UTC);
+
+    expect(calls.persist).toHaveLength(1);
+    const { payload, opts } = calls.persist[0];
+    expect(opts.onlyUserIds).toEqual(["u-owner"]);
+    // "low" is the funnel's no-push priority; no broadcast, no live ping.
+    expect(payload.priority).toBe("low");
+    expect(opts.broadcast).toBe(false);
+    expect(table.map((r) => [r.user_id, r.status])).toEqual([
+      ["u-owner", "unread"],
+    ]);
+    expect(res).toEqual(filedNew({ recipients: 1, pushSwitchedOff: 1 }));
+  });
+
+  it("(b) switch on: pushed as before", async () => {
+    const { deps, calls } = makeService({ access: OWNER_ONLY });
+    const res = await file(deps, NOON_UTC);
+    expect(calls.persist).toHaveLength(1);
+    expect(calls.persist[0].payload.priority).toBe("high");
+    expect(calls.persist[0].opts.broadcast).toBe(true);
+    expect(res).toEqual(filedNew({ recipients: 1, pushSwitchedOff: 0 }));
+  });
+
+  it("(c) preferences that cannot be read: pushed, as fork 1 answered, and said", async () => {
+    const { deps, calls } = makeService({
+      access: OWNER_ONLY,
+      prefsFail: ["u-owner"],
+    });
+    const res = await file(deps, NOON_UTC);
+    expect(calls.persist).toHaveLength(1);
+    expect(calls.persist[0].payload.priority).toBe("high");
+    expect(calls.persist[0].opts.broadcast).toBe(true);
+    expect(res).toEqual(
+      filedNew({
+        recipients: 1,
+        pushSwitchedOff: 0,
+        caveats: [
+          "the notification settings of 1 recipient could not be read, so that person was pushed",
+        ],
+      }),
+    );
+  });
+
+  it("(d) a two-recipient house, one with push off and one on: only the second is pushed; one note", async () => {
+    const { deps, calls, table } = makeService({ pushOff: ["u-owner"] });
+    const res = await file(deps, NOON_UTC);
+
+    expect(calls.persist).toHaveLength(2);
+    const [pushed, off] = calls.persist;
+    expect(pushed.opts.onlyUserIds).toEqual(["u-manager"]);
+    expect(pushed.opts.broadcast).toBe(true);
+    expect(pushed.payload.priority).toBe("high");
+    expect(off.opts.onlyUserIds).toEqual(["u-owner"]);
+    expect(off.opts.broadcast).toBe(false);
+    expect(off.payload.priority).toBe("low");
+    // One note: the same words and the same note id on both rows.
+    expect(off.payload.title).toBe(pushed.payload.title);
+    expect(off.payload.metadata).toEqual(pushed.payload.metadata);
+    expect(table).toHaveLength(2);
+    expect(res).toEqual(filedNew({ pushSwitchedOff: 1 }));
+  });
+
+  it("a switch that is off holds in a house whose zone is not known, where quiet hours cannot be judged", async () => {
+    const { deps, calls } = makeService({
+      pushOff: ["u-owner"],
+      house: { timezone: null, country: "US" },
+    });
+    const res = await file(deps, NOON_UTC);
+    expect(
+      calls.persist.map((p) => [p.opts.onlyUserIds, p.opts.broadcast]),
+    ).toEqual([
+      [["u-manager"], true],
+      [["u-owner"], false],
+    ]);
+    expect(res.pushSwitchedOff).toBe(1);
+    expect(res.caveats).toEqual([
+      "the house has no time zone on record, so every recipient whose push is on was pushed",
+    ]);
+  });
+
+  it("switch off and inside quiet hours: counted once, as switched off", async () => {
+    const { deps, calls } = makeService({
+      pushOff: ["u-owner"],
+      quiet: { "u-owner": QUIET_NIGHT, "u-manager": QUIET_NIGHT },
+    });
+    const res = await file(deps, NIGHT_IN_ISTANBUL);
+    expect(
+      calls.persist.map((p) => [p.opts.onlyUserIds, p.payload.priority]),
+    ).toEqual([
+      [["u-manager"], "low"],
+      [["u-owner"], "low"],
+    ]);
+    expect(res).toEqual(filedNew({ quietHours: 1, pushSwitchedOff: 1 }));
+  });
+
+  it("every recipient with push off: one write, nothing pushed, and it is filed", async () => {
+    const { deps, calls } = makeService({
+      pushOff: ["u-owner", "u-manager"],
+    });
+    const res = await file(deps, NOON_UTC);
+    expect(calls.persist).toHaveLength(1);
+    expect([...calls.persist[0].opts.onlyUserIds].sort()).toEqual([
+      "u-manager",
+      "u-owner",
+    ]);
+    expect(calls.persist[0].opts.broadcast).toBe(false);
+    expect(res).toEqual(filedNew({ pushSwitchedOff: 2 }));
+  });
+
+  it("through ingest(): the manager's switch is off, so the owner alone is pushed", async () => {
+    const { service, calls } = makeService({ pushOff: ["u-manager"] });
+    const res = await ingest(service, [check("c-1", "03.10.2026")]);
+    expect(
+      calls.persist.map((p) => [p.opts.onlyUserIds, p.opts.broadcast]),
+    ).toEqual([
+      [["u-owner"], true],
+      [["u-manager"], false],
+    ]);
+    expect(res.bellNote.pushSwitchedOff).toBe(1);
+  });
+
+  describe("through the real funnel and the real preferences read", () => {
+    const prefsRow = (user_id: string, push_enabled: boolean | null) => ({
+      id: `pref-${user_id}`,
+      restaurant_id: HOUSE,
+      user_id,
+      push_enabled,
+      quiet_hours_enabled: false,
+    });
+    const fileReal = (f: ReturnType<typeof realFunnel>) =>
+      fileRefusedChecksNote(
+        {
+          client: f.db.supabase,
+          notifications: f.notifications,
+          logger: new Logger("spec"),
+        },
+        {
+          restaurantId: HOUSE,
+          providerKey: "csv_import",
+          refused: [{ externalCheckId: "c-1", closedAt: "03.10.2026" }],
+        },
+      );
+
+    it("(d) push_enabled false for the owner: both rows land, only the manager's phone is pushed and only the manager is pinged", async () => {
+      const f = realFunnel({
+        preferences: [prefsRow("u-owner", false), prefsRow("u-manager", true)],
+      });
+      const res = await fileReal(f);
+      // What reaches a phone and an open page first, then the count.
+      expect(f.pushes.map((p) => p.ids)).toEqual([["u-manager"]]);
+      expect(f.pings).toEqual(["user:u-manager"]);
+      expect(res).toEqual(filedNew({ pushSwitchedOff: 1 }));
+      expect(
+        f.db.tables.notifications
+          .map((r: Row) => [r.user_id, r.priority])
+          .sort(),
+      ).toEqual([
+        ["u-manager", "high"],
+        ["u-owner", "low"],
+      ]);
+    });
+
+    it("no preferences row, or push_enabled not set: pushed (the defaults getPreferences gives)", async () => {
+      // u-owner has no row; u-manager's row never set push_enabled.
+      const f = realFunnel({ preferences: [prefsRow("u-manager", null)] });
+      const res = await fileReal(f);
+      expect(res).toEqual(filedNew({ pushSwitchedOff: 0 }));
+      expect(f.pushes.map((p) => [...p.ids].sort())).toEqual([
+        ["u-manager", "u-owner"],
+      ]);
+      expect([...f.pings].sort()).toEqual(["user:u-manager", "user:u-owner"]);
+    });
+
+    it("(c) a preferences read that fails: pushed, whatever the row says, and said", async () => {
+      const f = realFunnel({
+        preferences: [prefsRow("u-owner", false), prefsRow("u-manager", false)],
+        errors: {
+          "notification_preferences:select": { message: "statement timeout" },
+        },
+      });
+      const res = await fileReal(f);
+      expect(res).toEqual(
+        filedNew({
+          pushSwitchedOff: 0,
+          caveats: [
+            "the notification settings of 2 recipients could not be read, so they were pushed",
+          ],
+        }),
+      );
+      expect(f.pushes.map((p) => [...p.ids].sort())).toEqual([
+        ["u-manager", "u-owner"],
+      ]);
+      expect(JSON.stringify(res)).not.toContain("statement timeout");
+    });
+  });
+});
+
 describe("a note that cannot be filed never fails the import, and the result says so", () => {
   const twoChecks = [
     check("c-ok", "2026-10-03 21:00:00Z"),
@@ -1739,6 +1992,7 @@ describe("a note that cannot be filed never fails the import, and the result say
       recipients: 0,
       heldAway: 0,
       quietHours: 0,
+      pushSwitchedOff: 0,
       notFiledBecause: "the bell write failed",
       caveats: [],
     });
@@ -1909,6 +2163,7 @@ describe("the import answers on time when the bell does not", () => {
       recipients: 0,
       heldAway: 0,
       quietHours: 0,
+      pushSwitchedOff: 0,
       notFiledBecause:
         "the bell did not answer within 0.05 s; the note may still arrive",
       caveats: [],
@@ -1986,38 +2241,59 @@ describe("the import answers on time when the bell does not", () => {
   });
 });
 
-describe("the phone push carries the note's id and count, never the till's text", () => {
-  /** The real notification funnel over an in-memory database. */
-  function realFunnel() {
-    const db = makeStubDb({
+/**
+ * The real notification funnel over an in-memory database: its phone pushes
+ * and its live pings are recorded. `preferences` are `notification_preferences`
+ * rows; `errors` forces a table's read to fail (`"<table>:select"`).
+ */
+function realFunnel(
+  over: {
+    preferences?: Row[];
+    errors?: Record<string, { message: string }>;
+  } = {},
+) {
+  const db = makeStubDb(
+    {
       restaurants: [{ id: HOUSE, timezone: "UTC", country: null }],
       user_restaurant_access: ACCESS.map((r) => ({ ...r })),
       notifications: [],
-      notification_preferences: [],
-    });
-    const pushes: Array<{ ids: string[]; message: Row }> = [];
-    const database = {
-      supabase: db.supabase,
-      client: db.supabase,
-      getClient: () => db.supabase,
-      getRestaurantMemberIds: async (rid: string) =>
-        ACCESS.filter((r) => r.restaurant_id === rid && r.is_active).map(
-          (r) => r.user_id,
-        ),
-    };
-    const notifications = new NotificationsService(
-      { server: { to: () => ({ emit: () => undefined }) } } as never,
-      { get: () => undefined } as never,
-      database as never,
-      undefined,
-      {
-        sendToUsers: async (ids: string[], message: Row) =>
-          void pushes.push({ ids, message }),
-      } as never,
-    );
-    return { db, notifications, pushes };
-  }
+      notification_preferences: (over.preferences ?? []).map((r) => ({
+        ...r,
+      })),
+    },
+    over.errors ?? {},
+  );
+  const pushes: Array<{ ids: string[]; message: Row }> = [];
+  const pings: string[] = [];
+  const database = {
+    supabase: db.supabase,
+    client: db.supabase,
+    getClient: () => db.supabase,
+    getRestaurantMemberIds: async (rid: string) =>
+      ACCESS.filter((r) => r.restaurant_id === rid && r.is_active).map(
+        (r) => r.user_id,
+      ),
+  };
+  const notifications = new NotificationsService(
+    {
+      server: {
+        to: (rooms: string | string[]) => ({
+          emit: () => void pings.push(...([] as string[]).concat(rooms)),
+        }),
+      },
+    } as never,
+    { get: () => undefined } as never,
+    database as never,
+    undefined,
+    {
+      sendToUsers: async (ids: string[], message: Row) =>
+        void pushes.push({ ids, message }),
+    } as never,
+  );
+  return { db, notifications, pushes, pings };
+}
 
+describe("the phone push carries the note's id and count, never the till's text", () => {
   it("the push's data is the type, the link, the note's id and its count; the bell rows keep the ids and the value", async () => {
     const { db, notifications, pushes } = realFunnel();
     const res = await fileRefusedChecksNote(
