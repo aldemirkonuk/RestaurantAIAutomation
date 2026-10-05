@@ -1,6 +1,6 @@
 # 0266 — An order's vendor letter is staged once, and a replaced draft stays closed
 
-- **Status:** Locked on the founder's rulings of 2026-10-02 (F0, F2, F4, F5, F6, F7) and 2026-10-03 (the sent-letter block), below. The mechanism is built in PR-1 and reviewed at that PR's gate. F3, F8 and F9 are open.
+- **Status:** Locked on the founder's rulings of 2026-10-02 (F0, F2, F4, F5, F6, F7) and 2026-10-03 (the sent-letter block), and 2026-10-04 (any newer draft replaces a waiting order letter; an old pair that cycles settles newest-wins; the 16-file PR), below. The mechanism is built in PR-1 and reviewed at that PR's gate. F3, F8 and F9 are open.
 - **Date:** 2026-10-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** F-106, COMMS-W25, COMMS-W24, one letter per order, stage_order_letter, discard_reason, DISCARDED, pending draft, order_inquiry, approval-time letter, create-time letter, order request, owner-quarter sim
@@ -37,6 +37,13 @@ A draft seal is issued only while exactly one row waits (`:7429`), so the row an
 - **F5, may the house edit the order-request template:** **"Editable now"**, against the recommendation (read-only until 0173 D2's slot editor). The order request becomes a sixth `LETTER_CATEGORIES` purpose (`house-letters.service.ts:157-163`). Template writes get an owner/manager guard and 0173 D2's guardrails. This widens PR-4a.
 - **Whether a letter already SENT blocks the approval-time letter (PR-1, until PR-4b):** "Keep: one letter (Recommended)". Any live outbound letter, sent or waiting, blocks it. Asked 2026-10-02; that ask was cut off by the 01:37 restart and answered on 2026-10-03. Rejected: only a waiting letter blocks. That would keep drafting today's post-approval `order_inquiry` after a sent price inquiry, the letter F-099 calls a price inquiry written after the order is sealed.
 
+**Founder forks (AskUserQuestion, 2026-10-04, raised by the #591 gate at 0c363b4a2):**
+- **A vendor-reply or manual draft and an order letter waiting on one order:** "Newest stays (Recommended)". Any newer waiting draft closes the older one, whatever its kind, and saves the reason on it. The trigger reads neither `direction` nor `outbound_email_type`. Both agents call the door without a kind, so a live outbound row of any type blocks the order letter. In today's writers this is reachable only by a race, or after a send is released or reverted to waiting. Rejected:
+  - the order letter always stays (the reply is closed instead);
+  - one waiting draft of each kind per order. `approveDraft` looks the waiting row up by order alone with `.single()` (`procurement.service.ts:7642-7645`), so that would bring back F-106's 404.
+- **A pair already in production that cycles (a claim, then a release or revert):** "Accept, as disclosed (Recommended)". The trigger settles it newest-wins, not F0's first-written. PR-3's dry-run counts these pairs, and the reconcile settles every other pair first-written. Rejected: first-written everywhere (the trigger would have to tell old pairs from new ones); landing PR-3 before PR-1.
+- **PR-1 at 16 files, over the 15-file cap:** "Allow 16 (Recommended)". The sixteenth file is this ADR, which belongs with the code it describes. Rejected: this ADR in its own PR first.
+
 ## Decision
 
 The order's letter is decided in the database. Both agents stage it through `public.stage_order_letter`, which writes nothing when the order already has a live outbound letter. A trigger keeps one waiting draft per order for every other writer. A draft closed as `DISCARDED` or `CANCELLED` can never be sent.
@@ -49,11 +56,11 @@ The order's letter is decided in the database. Both agents stage it through `pub
   - EXECUTE is granted to `service_role` only. The orchestrator writes as `service_role` (`core/orchestrator.py:155`). OD-72 revoked client table grants, so the agents' existing inserts already need that role. `increment_trust_counter` is the precedent for a server-only RPC called from the orchestrator.
 - **The create-time agent** stages through the door. On `staged=false` it returns before any notice, auto-send publish or decision log.
 - **The approval-time agent** reads `live_order_letter_id` for an `order_inquiry` before it takes its session semaphore, so no model call is spent. It then stages through the door. A refused stage returns `None` and publishes nothing. The door stays the authority, because the create-time letter can land between the read and the write.
-- **The trigger.** `trg_proc_conv_one_pending_draft` is `BEFORE INSERT OR UPDATE OF status`. It shares the door's lock and acts when a row with an order becomes `PENDING_APPROVAL`. The newest waiting row stands (COMMS-W24's server half, "a new draft closes the older as replaced"). The other row becomes `DISCARDED`, with one of two reasons:
+- **The trigger.** `trg_proc_conv_one_pending_draft` is `BEFORE INSERT OR UPDATE OF status`. It shares the door's lock and acts when a row with an order becomes `PENDING_APPROVAL`. The newest waiting row stands (COMMS-W24's server half, "a new draft closes the older as replaced"), whatever its kind (founder, 2026-10-04). The other row becomes `DISCARDED`, with one of two reasons:
   - "Replaced by a newer draft for this order (<id>)."
   - "A newer draft for this order was already waiting (<id>)." This is the release and revert path.
   - Either reason gains "The send request on it no longer applies." when a staff request was on it.
-  - No writer meets an error. An edit to a row that is already waiting is not a new draft. Pairs that already exist are left for PR-3, unless a member cycles. If a row leaves `PENDING_APPROVAL` and comes back to it (a claim, then a release or revert), the trigger settles that pair newest-wins by `created_at`, not F0's first-written. PR-3's dry-run counts the pairs settled this way. (Corrected at the #591 gate: the first text said the trigger never touches an existing pair.)
+  - No writer meets an error. An edit to a row that is already waiting is not a new draft. Pairs that already exist are left for PR-3, unless a member cycles. If a row leaves `PENDING_APPROVAL` and comes back to it (a claim, then a release or revert), the trigger settles that pair newest-wins by `created_at`, not F0's first-written. PR-3's dry-run counts the pairs settled this way; the founder accepted this on 2026-10-04. (Corrected at the #591 gate: the first text said the trigger never touches an existing pair.)
 - **Closed drafts.** `DISCARDED` and `CANCELLED` join the agent's `_CLAIM_REFUSED_STATUSES`, which covers the send claim and the hold-return. `POST /conversations/:id/approve` refuses both before any dispatch.
 
 **Choices made while building, recorded for the gate:**
@@ -108,3 +115,4 @@ The order's letter is decided in the database. Both agents stage it through `pub
 |---|---|---|
 | 2026-10-02 | — | Created, session R2, branch fix/f106-one-letter-per-order (PR-1); founder rulings F0, F2, F4–F7 recorded |
 | 2026-10-02 | — | Numbered 0266 at push: 0265 was already taken by an uncommitted ADR in wt-review-9 (place id), found by sweeping remote refs and every worktree |
+| 2026-10-04 | PR #591 gate at 0c363b4a2 (correctness and security reviews) | Three points nobody had ruled on were asked; founder ruled all three as recommended (Founder forks, 2026-10-04). Recorded at a new head, so a full re-gate follows |
