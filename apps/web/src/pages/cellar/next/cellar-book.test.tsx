@@ -18,8 +18,18 @@ import type { ReactNode } from 'react';
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'r1', loading: false, isAuthenticated: true }),
 }));
+// Mutable so one test can give the house its own rows; every other test reads
+// an empty cellar, as before. The SAME array reference is returned on every
+// render, as TanStack Query does, so memos keyed on it stay stable.
+const inventory = vi.hoisted(() => ({ data: [] as Array<{ id: string; wineId?: string | null }> }));
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
-  useInventory: () => ({ data: [], isLoading: false, isError: false, error: null, refetch: vi.fn() }),
+  useInventory: () => ({
+    data: inventory.data,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useProviders: () => ({ data: [], isError: false, error: null }),
@@ -63,6 +73,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   api.get.mockReset();
+  inventory.data = [];
 });
 
 describe('useCellarNextData — the book never asks for more than BOOK_READ_LIMIT in one request', () => {
@@ -138,5 +149,47 @@ describe('useCellarNextData — the book never asks for more than BOOK_READ_LIMI
       resolveSecondPage(page(BOOK_READ_LIMIT, 650));
     });
     await waitFor(() => expect(result.current.loadingMoreBook).toBe(false));
+  });
+});
+
+/**
+ * A-053 (2026-10-03 analytics walk): the "Carried but off this read" tile
+ * judged the house's rows against only the library pages loaded so far, so a
+ * house whose every row is linked read 119 of 134 on a first load. It now
+ * counts the rows with no library link, from the inventory alone.
+ */
+describe('useCellarNextData — the off-the-library count does not depend on how much of the library is loaded', () => {
+  it('counts only the row with no library link, before AND after the next page loads', async () => {
+    mockLibraryOf(650); // a full first page of 500, then 150 more
+    inventory.data = [
+      // Linked to titles on the SECOND page, so not among the first 500 read.
+      { id: 'i1', wineId: 'w600' },
+      { id: 'i2', wineId: 'w610' },
+      { id: 'i3', wineId: 'w620' },
+      // No library link at all: the one row genuinely off the library.
+      { id: 'i4', wineId: null },
+    ];
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    await waitFor(() => expect(result.current.bottles).toHaveLength(BOOK_READ_LIMIT));
+    expect(result.current.bookTruncated).toBe(true);
+    expect(result.current.building.titles).toBe(4);
+    expect(result.current.building.offBook).toBe(1);
+
+    await act(async () => {
+      result.current.loadMoreBook();
+    });
+    await waitFor(() => expect(result.current.bottles).toHaveLength(650));
+    expect(result.current.building.offBook).toBe(1);
+  });
+
+  it('is known from the inventory alone, even while the library read has not answered', async () => {
+    api.get.mockImplementation(() => new Promise(() => {}));
+    inventory.data = [
+      { id: 'i1', wineId: 'w1' },
+      { id: 'i2', wineId: undefined },
+    ];
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    expect(result.current.bottles).toBeNull();
+    expect(result.current.building.offBook).toBe(1);
   });
 });
