@@ -159,7 +159,9 @@ export interface RefusedChecksNote {
   /**
    * What fell back, as fixed phrases: an open note that could not be read or
    * updated (a new note was written), quiet hours that could not be read
-   * (those people were pushed). Empty when nothing fell back.
+   * (those people were pushed). Empty when neither fell back. Not said here:
+   * an Away register that cannot be read (`AreaRoutingService` logs it), and
+   * a pushed group that wrote no rows beside a quiet group that wrote some.
    */
   caveats: string[];
 }

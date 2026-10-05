@@ -631,6 +631,52 @@ describe("F5: one note per till per hour", () => {
     expect(res.bellNote).toEqual(filedNew());
   });
 
+  it("the hour runs from the note's first write, not its last update (the founder rejected a sliding hour)", async () => {
+    // "One push per hour, re-flagged (Recommended)": one push per clock hour
+    // from the first note; "Sliding hour" was the rejected option. Counting
+    // into the note never moves its created_at, so a refusal 61 minutes after
+    // the first write starts a new note and its push, although the note was
+    // last counted into 11 minutes before.
+    const first = new Date("2026-10-05T12:00:00Z");
+    const at = (m: number) => new Date(first.getTime() + m * 60_000);
+    const { calls, table, deps } = makeService({
+      notes: seededNote({
+        refused: 3,
+        checkIds: ["c-1", "c-2", "c-3"],
+        createdAt: first.toISOString(),
+      }),
+    });
+
+    const counted = await fileRefusedChecksNote(deps, {
+      restaurantId: HOUSE,
+      providerKey: "csv_import",
+      refused: [{ externalCheckId: "c-4", closedAt: "03.10.2026" }],
+      now: at(50),
+    });
+    expect(counted.addedToOpenNote).toBe(true);
+    expect(calls.noteUpdates.length).toBeGreaterThan(0);
+    for (const u of calls.noteUpdates) {
+      expect(u.patch).not.toHaveProperty("created_at");
+    }
+    for (const row of table) {
+      expect(row.title).toBe("4 checks not imported: date not readable");
+      expect(row.created_at).toBe(first.toISOString());
+    }
+
+    const later = await fileRefusedChecksNote(deps, {
+      restaurantId: HOUSE,
+      providerKey: "csv_import",
+      refused: [{ externalCheckId: "c-5", closedAt: "03.10.2026" }],
+      now: at(61),
+    });
+    expect(later).toEqual(filedNew());
+    expect(calls.persist).toHaveLength(1);
+    expect(calls.persist[0].payload.title).toBe(
+      "1 check not imported: date not readable",
+    );
+    expect(calls.persist[0].payload.priority).toBe("high");
+  });
+
   it("keeps the named ids at ten in total across updates, and counts the rest", async () => {
     const eight = Array.from({ length: 8 }, (_, i) => `a-${i}`);
     const { service, table } = makeService({
