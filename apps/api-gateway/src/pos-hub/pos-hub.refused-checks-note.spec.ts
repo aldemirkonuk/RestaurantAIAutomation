@@ -16,19 +16,31 @@
  * fail: every import wrote a new note and pushed, at any hour. Fixtures are
  * synthetic. The notifications table, the house record and the preferences
  * are in-memory stubs: no database is reached here.
+ *
+ * Then, after the founder's answers of 2026-10-05 ("Bring it back
+ * (Recommended)", "One push per hour, re-flagged (Recommended)", "Quiet means
+ * quiet (Recommended)"): run against e6227de5a's `refused-checks-note.ts` and
+ * `notifications.service.ts`, the "Bring it back", the row-behind
+ * compare-and-set, the answer-on-time, the push-data and the fixed-phrase
+ * cases fail: an archived row stayed archived at its old count, an older
+ * count landed over a newer one, a hung bell write held the import and every
+ * later one for that till, the push's data carried the till's text, and a
+ * database's own words reached the caller.
  */
 import { Logger } from "@nestjs/common";
 import { PosHubService } from "./pos-hub.service";
 import {
   MAX_NOTE_CHECK_IDS,
+  NOTE_DEADLINE_MS,
   REFUSED_CHECKS_NOTE_TYPE,
   fileRefusedChecksNote,
   refusedChecksNoteCopy,
   sayCheckId,
 } from "./refused-checks-note";
 import { DatabaseService } from "../database/database.service";
-import type { NotificationsService } from "../notifications/notifications.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import type { AreaRoutingService } from "../areas/area-routing.service";
+import { makeStubDb } from "../team/testing/supabase-stub";
 
 type Row = Record<string, any>;
 
@@ -89,6 +101,7 @@ interface UpdateCall {
 interface Opts {
   access?: Row[];
   accessError?: { message: string } | null;
+  /** Answers the bell write; `undefined` falls through to the in-memory table. */
   persist?: (restaurantId: string, payload: Row, opts: Row) => Promise<any>;
   /** Pass `null` to build the service with no notifications service. */
   notifications?: null;
@@ -310,7 +323,10 @@ function makeService(opts: Opts = {}) {
           persistForRestaurant: jest.fn(
             async (restaurantId: string, payload: Row, o: Row = {}) => {
               calls.persist.push({ restaurantId, payload, opts: o });
-              if (opts.persist) return opts.persist(restaurantId, payload, o);
+              if (opts.persist) {
+                const answer = await opts.persist(restaurantId, payload, o);
+                if (answer !== undefined) return answer;
+              }
               const ids: string[] = [];
               const created_at = new Date().toISOString();
               for (const user_id of o.onlyUserIds ?? []) {
@@ -560,7 +576,8 @@ describe("F5: one note per till per hour", () => {
         type: REFUSED_CHECKS_NOTE_TYPE,
         group_key: GROUP,
       },
-      in: { status: ["unread", "read"] },
+      // Archived rows too: "Bring it back (Recommended)".
+      in: { status: ["unread", "read", "archived"] },
     });
     for (const row of table) {
       expect(row.title).toBe("5 checks not imported: date not readable");
@@ -661,26 +678,20 @@ describe("F5: one note per till per hour", () => {
     ).toEqual([false, true]);
   });
 
-  it("another till's note, an archived note and another house's note are not open notes", async () => {
+  it("another till's note and another house's note are not open notes", async () => {
     const other = seededNote({
       refused: 2,
       checkIds: ["s-1", "s-2"],
       createdAt: minutesAgo(5),
       groupKey: `${REFUSED_CHECKS_NOTE_TYPE}:square`,
     }).map((r) => ({ ...r, id: `sq-${r.id}` }));
-    const archived = seededNote({
-      refused: 2,
-      checkIds: ["x-1", "x-2"],
-      createdAt: minutesAgo(5),
-      status: "archived",
-    }).map((r) => ({ ...r, id: `ar-${r.id}` }));
     const elsewhere = seededNote({
       refused: 2,
       checkIds: ["e-1", "e-2"],
       createdAt: minutesAgo(5),
     }).map((r) => ({ ...r, id: `el-${r.id}`, restaurant_id: OTHER_HOUSE }));
     const { service, calls } = makeService({
-      notes: [...other, ...archived, ...elsewhere],
+      notes: [...other, ...elsewhere],
     });
     const res = await ingest(service, [check("c-1", "03.10.2026")]);
 
@@ -704,9 +715,16 @@ describe("F5: one note per till per hour", () => {
     expect(res.bellNote).toEqual(
       filedNew({
         caveats: [
-          "this till's open note could not be read (statement timeout), so a new note was written",
+          "this till's open note could not be read, so a new note was written",
         ],
       }),
+    );
+    // The database's own words go to the log, never to the caller.
+    expect(JSON.stringify(res.bellNote)).not.toContain("statement timeout");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /POS_REFUSED_CHECKS_NOTE_FELL_BACK .*\(statement timeout\)/,
+      ),
     );
   });
 
@@ -743,8 +761,12 @@ describe("F5: one note per till per hour", () => {
     expect(calls.persist).toHaveLength(1);
     expect(res.bellNote.filed).toBe(true);
     expect(res.bellNote.caveats).toEqual([
-      "this till's open note could not be updated (deadlock detected), so a new note was written",
+      "this till's open note could not be updated, so a new note was written",
     ]);
+    expect(JSON.stringify(res.bellNote)).not.toContain("deadlock");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("(deadlock detected)"),
+    );
   });
 
   it("another process counting into the note first is not overwritten: the update re-reads and adds to its count", async () => {
@@ -826,10 +848,21 @@ describe("F5: one note per till per hour", () => {
     const res = await ingest(service, [check("c-4", "03.10.2026")]);
 
     expect(calls.persist).toHaveLength(0);
-    // The lead rows under the compare-and-set, then the row behind.
-    expect(calls.noteUpdates.map((u) => [u.in.id, u.eq])).toEqual([
-      [["seed-0"], { title: "3 checks not imported: date not readable" }],
-      [["seed-1"], {}],
+    // The lead rows under the compare-and-set, then the row behind under its
+    // own: only while it still holds the count that was read.
+    expect(calls.noteUpdates.map((u) => [u.in, u.eq])).toEqual([
+      [
+        { id: ["seed-0"], status: ["unread", "read", "archived"] },
+        { title: "3 checks not imported: date not readable" },
+      ],
+      [
+        {
+          id: ["seed-1"],
+          title: ["2 checks not imported: date not readable"],
+          status: ["unread", "read", "archived"],
+        },
+        {},
+      ],
     ]);
     for (const row of table) {
       expect(row.title).toBe("4 checks not imported: date not readable");
@@ -840,6 +873,166 @@ describe("F5: one note per till per hour", () => {
       recipients: 2,
       caveats: [],
     });
+  });
+
+  it("a row behind that another process moves on before it is brought up is left at its newer count", async () => {
+    const [first, second] = seededNote({
+      refused: 3,
+      checkIds: ["c-1", "c-2", "c-3"],
+      createdAt: minutesAgo(5),
+    });
+    const behind = {
+      ...second,
+      title: "2 checks not imported: date not readable",
+      metadata: { ...second.metadata, refused: 2, checkIds: ["c-1", "c-2"] },
+    };
+    let updates = 0;
+    const { service, calls, table } = makeService({
+      notes: [first, behind],
+      // Between this import's two updates, another process counts three
+      // refusals into the row behind, which now says 5.
+      beforeUpdate: (_u, rows) => {
+        if (++updates !== 2) return undefined;
+        const row = rows.find((r) => r.id === "seed-1")!;
+        row.title = "5 checks not imported: date not readable";
+        row.metadata = { ...row.metadata, refused: 5 };
+        return undefined;
+      },
+    });
+    const res = await ingest(service, [check("c-4", "03.10.2026")]);
+
+    expect(calls.noteUpdates).toHaveLength(2);
+    // The lead row took the new count; the row behind kept the newer one,
+    // never an older count over a newer one.
+    expect(table.find((r) => r.id === "seed-0")!.title).toBe(
+      "4 checks not imported: date not readable",
+    );
+    expect(table.find((r) => r.id === "seed-1")!.title).toBe(
+      "5 checks not imported: date not readable",
+    );
+    expect(res.bellNote).toMatchObject({
+      addedToOpenNote: true,
+      recipients: 1,
+    });
+  });
+
+  it("a row of the note whose count does not read is not brought up", async () => {
+    const [first, second] = seededNote({
+      refused: 3,
+      checkIds: ["c-1", "c-2", "c-3"],
+      createdAt: minutesAgo(5),
+    });
+    const unreadable = {
+      ...second,
+      title: "something else",
+      metadata: { noteId: "note-seed" },
+    };
+    const { service, calls, table } = makeService({
+      notes: [first, unreadable],
+    });
+    await ingest(service, [check("c-4", "03.10.2026")]);
+    expect(calls.noteUpdates).toHaveLength(1);
+    expect(table.find((r) => r.id === "seed-1")!.title).toBe("something else");
+  });
+});
+
+describe('an archived row is brought back: "Bring it back (Recommended)"', () => {
+  it("a note archived by every recipient, counted into within its hour, returns to every bell as unread with the new count", async () => {
+    const { service, calls, table } = makeService({
+      notes: seededNote({
+        refused: 3,
+        checkIds: ["c-1", "c-2", "c-3"],
+        createdAt: minutesAgo(20),
+        status: "archived",
+      }).map((r) => ({ ...r, archived_at: minutesAgo(10) })),
+    });
+    const res = await ingest(service, [
+      check("c-4", "03.10.2026"),
+      check("c-5", "03.10.2026"),
+      check("c-6", "03.10.2026"),
+      check("c-7", "03.10.2026"),
+      check("c-8", "03.10.2026"),
+      check("c-9", "03.10.2026"),
+    ]);
+
+    // Counted into the note: no new row, so no second push.
+    expect(calls.persist).toHaveLength(0);
+    expect(table).toHaveLength(2);
+    for (const row of table) {
+      expect(row.title).toBe("9 checks not imported: date not readable");
+      expect(row.status).toBe("unread");
+      expect(row.read_at).toBeNull();
+      expect(row.archived_at).toBeNull();
+      expect(row.metadata.refused).toBe(9);
+    }
+    expect(res.bellNote).toEqual(
+      filedNew({ addedToOpenNote: true, recipients: 2 }),
+    );
+  });
+
+  it("one recipient archived it and the other read it: both rows take the new count and are unread", async () => {
+    const [owner, manager] = seededNote({
+      refused: 3,
+      checkIds: ["c-1", "c-2", "c-3"],
+      createdAt: minutesAgo(20),
+    });
+    const { service, calls, table } = makeService({
+      notes: [
+        { ...owner, status: "archived", archived_at: minutesAgo(10) },
+        { ...manager, status: "read", read_at: minutesAgo(15) },
+      ],
+    });
+    const res = await ingest(service, [check("c-4", "03.10.2026")]);
+
+    expect(calls.persist).toHaveLength(0);
+    expect(calls.noteUpdates).toHaveLength(1);
+    expect([...calls.noteUpdates[0].in.id].sort()).toEqual([
+      "seed-0",
+      "seed-1",
+    ]);
+    for (const row of table) {
+      expect(row.title).toBe("4 checks not imported: date not readable");
+      expect(row.status).toBe("unread");
+      expect(row.archived_at).toBeNull();
+    }
+    expect(res.bellNote.recipients).toBe(2);
+  });
+
+  it("an archived note past its hour is left archived, and a new note is written and pushed", async () => {
+    const { service, calls, table } = makeService({
+      notes: seededNote({
+        refused: 3,
+        checkIds: ["c-1", "c-2", "c-3"],
+        createdAt: minutesAgo(61),
+        status: "archived",
+      }),
+    });
+    const res = await ingest(service, [check("c-4", "03.10.2026")]);
+
+    expect(calls.noteUpdates).toHaveLength(0);
+    expect(calls.persist).toHaveLength(1);
+    expect(calls.persist[0].payload.priority).toBe("high");
+    expect(
+      table.filter((r) => r.id.startsWith("seed-")).map((r) => r.status),
+    ).toEqual(["archived", "archived"]);
+    expect(res.bellNote).toEqual(filedNew());
+  });
+
+  it("a row in a status outside unread, read and archived is neither read nor brought back", async () => {
+    const { service, calls, table } = makeService({
+      notes: seededNote({
+        refused: 3,
+        checkIds: ["c-1", "c-2", "c-3"],
+        createdAt: minutesAgo(5),
+        status: "dismissed",
+      }),
+    });
+    await ingest(service, [check("c-4", "03.10.2026")]);
+    expect(calls.noteUpdates).toHaveLength(0);
+    expect(calls.persist).toHaveLength(1);
+    expect(
+      table.filter((r) => r.id.startsWith("seed-")).map((r) => r.status),
+    ).toEqual(["dismissed", "dismissed"]);
   });
 });
 
@@ -864,13 +1057,20 @@ describe("F6: a push outside quiet hours, the row only inside them", () => {
 
     expect(calls.persist).toHaveLength(2);
     const [pushed, quiet] = calls.persist;
+    // The push's data is the note's id and count, never the till's text.
+    const pushData = { noteId: pushed.payload.metadata.noteId, refused: 1 };
     expect(pushed.opts).toEqual({
       onlyUserIds: ["u-manager"],
       broadcast: true,
+      pushData,
     });
     expect(pushed.payload.priority).toBe("high");
     // "low" is the funnel's no-push priority; no broadcast, no live ping.
-    expect(quiet.opts).toEqual({ onlyUserIds: ["u-owner"], broadcast: false });
+    expect(quiet.opts).toEqual({
+      onlyUserIds: ["u-owner"],
+      broadcast: false,
+      pushData,
+    });
     expect(quiet.payload.priority).toBe("low");
     // One note: the same words and the same note id on both rows.
     expect(quiet.payload.title).toBe(pushed.payload.title);
@@ -904,9 +1104,11 @@ describe("F6: a push outside quiet hours, the row only inside them", () => {
       house: { timezone: "America/Los_Angeles", country: "US" },
     });
     const res = await file(deps, NOON_UTC);
-    expect(calls.persist.map((p) => p.opts)).toEqual([
-      { onlyUserIds: ["u-manager"], broadcast: true },
-      { onlyUserIds: ["u-owner"], broadcast: false },
+    expect(
+      calls.persist.map((p) => [p.opts.onlyUserIds, p.opts.broadcast]),
+    ).toEqual([
+      [["u-manager"], true],
+      [["u-owner"], false],
     ]);
     expect(res.quietHours).toBe(1);
   });
@@ -950,8 +1152,12 @@ describe("F6: a push outside quiet hours, the row only inside them", () => {
     expect(calls.persist[0].opts.broadcast).toBe(true);
     expect(res.filed).toBe(true);
     expect(res.caveats).toEqual([
-      "the house's time zone could not be read (connection reset), so every recipient was pushed",
+      "the house's time zone could not be read, so every recipient was pushed",
     ]);
+    expect(JSON.stringify(res)).not.toContain("connection reset");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("(connection reset)"),
+    );
   });
 
   it("preferences that cannot be read: that person is pushed, as before, the others are judged, and it is said", async () => {
@@ -968,8 +1174,12 @@ describe("F6: a push outside quiet hours, the row only inside them", () => {
     ]);
     expect(res.quietHours).toBe(1);
     expect(res.caveats).toEqual([
-      "the quiet hours of 1 recipient could not be read (preferences timed out), so that person was pushed",
+      "the quiet hours of 1 recipient could not be read, so that person was pushed",
     ]);
+    expect(JSON.stringify(res)).not.toContain("timed out");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("preferences timed out"),
+    );
   });
 
   it("every one inside their quiet window: one note, rows only, nothing pushed", async () => {
@@ -1034,11 +1244,14 @@ describe("a note that cannot be filed never fails the import, and the result say
       recipients: 0,
       heldAway: 0,
       quietHours: 0,
-      notFiledBecause: "the bell write failed (socket closed)",
+      notFiledBecause: "the bell write failed",
       caveats: [],
     });
+    // The error's own words are logged, never returned.
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("POS_REFUSED_CHECKS_NOTE_NOT_FILED"),
+      expect.stringMatching(
+        /POS_REFUSED_CHECKS_NOTE_NOT_FILED .*\(socket closed\)/,
+      ),
     );
   });
 
@@ -1061,9 +1274,9 @@ describe("a note that cannot be filed never fails the import, and the result say
     expect(calls.persist).toHaveLength(0);
     expect(res.bellNote).toMatchObject({
       filed: false,
-      notFiledBecause:
-        "this house's owners and managers could not be read (timeout)",
+      notFiledBecause: "this house's owners and managers could not be read",
     });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("(timeout)"));
   });
 
   it("a house with no active owner or manager is not filed, and staff are not told instead", async () => {
@@ -1167,5 +1380,196 @@ describe("the note's copy", () => {
     });
     expect(message).toContain("1 check from some_new_till was not imported");
     expect(message).toContain("(it was written as 1791061200)");
+  });
+});
+
+describe("the import answers on time when the bell does not", () => {
+  const never = () => new Promise<never>(() => undefined);
+  /** `p`'s answer, or "no answer" after `ms`: a hang fails here, never stalls. */
+  const within = <T>(p: Promise<T>, ms: number) =>
+    Promise.race([
+      p,
+      new Promise<"no answer">((resolve) =>
+        setTimeout(() => resolve("no answer"), ms),
+      ),
+    ]);
+  const refused = (id: string) => [{ externalCheckId: id, closedAt: "x" }];
+
+  it("a bell write that never answers: the note answers by its deadline, says so, and logs it", async () => {
+    const { deps } = makeService({ persist: never });
+    const res = await within(
+      fileRefusedChecksNote(
+        { ...deps, deadlineMs: 50 },
+        {
+          restaurantId: HOUSE,
+          providerKey: "hung_till_a",
+          refused: refused("c-1"),
+        },
+      ),
+      1_000,
+    );
+    expect(res).toEqual({
+      filed: false,
+      addedToOpenNote: false,
+      recipients: 0,
+      heldAway: 0,
+      quietHours: 0,
+      notFiledBecause:
+        "the bell did not answer within 0.05 s; the note may still arrive",
+      caveats: [],
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("POS_REFUSED_CHECKS_NOTE_LATE"),
+    );
+  });
+
+  it("one filing that never answers does not hold the next one for the same house and till", async () => {
+    let hang = true;
+    const { deps, table } = makeService({
+      persist: async () => (hang ? never() : undefined),
+    });
+    const input = { restaurantId: HOUSE, providerKey: "hung_till_b" };
+    // The first filing's bell write never answers.
+    const first = fileRefusedChecksNote(
+      { ...deps, deadlineMs: 50 },
+      { ...input, refused: refused("c-1") },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // The next import for the same house and till still reaches the bell.
+    hang = false;
+    const second = await within(
+      fileRefusedChecksNote(
+        { ...deps, deadlineMs: 2_000 },
+        { ...input, refused: refused("c-2") },
+      ),
+      3_000,
+    );
+    expect(second).toEqual(filedNew());
+    expect(table.map((r) => r.metadata.checkIds)).toEqual([["c-2"], ["c-2"]]);
+    expect(await within(first, 1_000)).toMatchObject({ filed: false });
+  }, 10_000);
+
+  it("through ingest(): a bell that never answers holds the import for NOTE_DEADLINE_MS at most, and the import's own result stands", async () => {
+    jest.useFakeTimers();
+    try {
+      const { service, calls } = makeService({
+        persist: never,
+        access: [
+          {
+            restaurant_id: "r-hung",
+            user_id: "u-owner",
+            role: "owner",
+            is_active: true,
+          },
+        ],
+      });
+      let res: any = null;
+      void service
+        .ingest("r-hung", "csv_import", [
+          check("c-ok", "2026-10-03 21:00:00Z"),
+          check("c-bad", "03.10.2026"),
+        ])
+        .then((r) => (res = r));
+
+      await jest.advanceTimersByTimeAsync(NOTE_DEADLINE_MS - 1);
+      expect(calls.persist).toHaveLength(1);
+      expect(res).toBeNull();
+
+      await jest.advanceTimersByTimeAsync(1);
+      expect(res).not.toBeNull();
+      expect(res.upserted).toBe(1);
+      expect(res.refusedUnreadableDate).toBe(1);
+      expect(res.bellNote).toMatchObject({
+        filed: false,
+        notFiledBecause:
+          "the bell did not answer within 3 s; the note may still arrive",
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe("the phone push carries the note's id and count, never the till's text", () => {
+  /** The real notification funnel over an in-memory database. */
+  function realFunnel() {
+    const db = makeStubDb({
+      restaurants: [{ id: HOUSE, timezone: "UTC", country: null }],
+      user_restaurant_access: ACCESS.map((r) => ({ ...r })),
+      notifications: [],
+      notification_preferences: [],
+    });
+    const pushes: Array<{ ids: string[]; message: Row }> = [];
+    const database = {
+      supabase: db.supabase,
+      client: db.supabase,
+      getClient: () => db.supabase,
+      getRestaurantMemberIds: async (rid: string) =>
+        ACCESS.filter((r) => r.restaurant_id === rid && r.is_active).map(
+          (r) => r.user_id,
+        ),
+    };
+    const notifications = new NotificationsService(
+      { server: { to: () => ({ emit: () => undefined }) } } as never,
+      { get: () => undefined } as never,
+      database as never,
+      undefined,
+      {
+        sendToUsers: async (ids: string[], message: Row) =>
+          void pushes.push({ ids, message }),
+      } as never,
+    );
+    return { db, notifications, pushes };
+  }
+
+  it("the push's data is the type, the link, the note's id and its count; the bell rows keep the ids and the value", async () => {
+    const { db, notifications, pushes } = realFunnel();
+    const res = await fileRefusedChecksNote(
+      { client: db.supabase, notifications, logger: new Logger("spec") },
+      {
+        restaurantId: HOUSE,
+        providerKey: "csv_import",
+        refused: [
+          { externalCheckId: "c-till-1", closedAt: "03.10.2026" },
+          { externalCheckId: "c-till-2", closedAt: "call 0555" },
+        ],
+      },
+    );
+
+    expect(res.filed).toBe(true);
+    expect(pushes).toHaveLength(1);
+    expect([...pushes[0].ids].sort()).toEqual(["u-manager", "u-owner"]);
+    const rows = db.tables.notifications;
+    expect(rows).toHaveLength(2);
+    expect(pushes[0].message.data).toEqual({
+      type: REFUSED_CHECKS_NOTE_TYPE,
+      actionUrl: "/connections",
+      noteId: rows[0].metadata.noteId,
+      refused: 2,
+    });
+    expect(JSON.stringify(pushes[0].message.data)).not.toMatch(
+      /c-till|03\.10\.2026|0555/,
+    );
+    for (const row of rows) {
+      expect(row.metadata.checkIds).toEqual(["c-till-1", "c-till-2"]);
+      expect(row.metadata.firstSent).toBe('"03.10.2026"');
+    }
+  });
+
+  it("a caller that gives no push data still sends its metadata, as before", async () => {
+    const { notifications, pushes } = realFunnel();
+    await notifications.persistForRestaurant(HOUSE, {
+      type: "inventory",
+      title: "Gin is running out",
+      message: "2 bottles left",
+      priority: "high",
+      metadata: { inventoryId: "inv-1" },
+    });
+    expect(pushes[0].message.data).toEqual({
+      type: "inventory",
+      actionUrl: null,
+      inventoryId: "inv-1",
+    });
   });
 });

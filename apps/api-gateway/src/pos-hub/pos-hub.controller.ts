@@ -19,6 +19,7 @@ import { Request } from "express";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubService } from "./pos-hub.service";
 import { PosMappingReviewService } from "./pos-mapping-review.service";
+import { bellNoteForTill } from "./refused-checks-note";
 import {
   ListSaleUnitReviewQueryDto,
   SetSaleUnitBatchDto,
@@ -111,7 +112,12 @@ export class PosHubController {
       );
     }
     try {
-      return await this.posHub.ingest(restaurantId, provider, payload);
+      const result = await this.posHub.ingest(restaurantId, provider, payload);
+      // ADR 0281 (amended 2026-10-05): the till is told whether its refusals
+      // reached the bell, never how many owners and managers there are, who
+      // is Away or quiet, or a database's words. The legacy secret binds no
+      // house, so this answer may reach someone outside it.
+      return { ...result, bellNote: bellNoteForTill(result.bellNote) };
     } catch (error) {
       throw new HttpException(
         error.message || "Ingestion failed",

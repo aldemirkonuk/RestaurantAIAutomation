@@ -110,6 +110,68 @@ describe("PosHubController — sale-unit review routes", () => {
       ).rejects.toThrow(HttpException);
       expect(posHub.ingest).not.toHaveBeenCalled();
     });
+
+    // ADR 0281 (amended 2026-10-05): the legacy POS_HUB_WEBHOOK_SECRET signs
+    // the body alone and binds no house, so the till is told whether its
+    // refusals reached the bell and nothing about who hears it.
+    const note = {
+      filed: true,
+      addedToOpenNote: false,
+      recipients: 2,
+      heldAway: 1,
+      quietHours: 1,
+      notFiledBecause: null,
+      caveats: [
+        "the quiet hours of 1 recipient could not be read, so that person was pushed",
+      ],
+    };
+    const refusing = (bellNote: unknown) => ({
+      provider: "generic_webhook",
+      received: 2,
+      upserted: 1,
+      refusedUnreadableDate: 1,
+      errors: ["c-bad: not imported, date not readable"],
+      bellNote,
+    });
+
+    it("tells the till only whether its refused checks reached the bell", async () => {
+      posHub.verifyWebhookSignature.mockReturnValue(true);
+      posHub.ingest.mockResolvedValue(refusing(note));
+
+      const res: any = await controller.webhook(
+        "generic_webhook",
+        "rest-1",
+        [],
+        "sig",
+        req,
+      );
+
+      expect(res.bellNote).toEqual({ filed: true });
+      expect(JSON.stringify(res)).not.toMatch(
+        /recipients|heldAway|quietHours|caveats|notFiledBecause|addedToOpenNote/,
+      );
+      // The import's own answer is unchanged.
+      expect(res).toMatchObject({ upserted: 1, refusedUnreadableDate: 1 });
+    });
+
+    it("says no note when nothing was refused", async () => {
+      posHub.verifyWebhookSignature.mockReturnValue(true);
+      posHub.ingest.mockResolvedValue(refusing(null));
+      const res: any = await controller.webhook(
+        "generic_webhook",
+        "rest-1",
+        [],
+        "sig",
+        req,
+      );
+      expect(res.bellNote).toBeNull();
+    });
+
+    it("the signed-in import keeps the whole note", async () => {
+      posHub.ingest.mockResolvedValue(refusing(note));
+      const res: any = await controller.importChecks("rest-1", []);
+      expect(res.bellNote).toEqual(note);
+    });
   });
 
   describe("GET mappings/:restaurantId/sale-unit-review", () => {
