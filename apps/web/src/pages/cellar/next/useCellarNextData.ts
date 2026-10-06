@@ -279,13 +279,17 @@ export interface BuildingVM {
    */
   parUnset: number | null;
   /**
-   * This house's rows with no wine-library link (`master_wine_id` null).
-   * Counted from the inventory alone, so it does not move as more library
-   * pages load: `restaurant_inventory_master_wine_id_fkey` (RESTRICT) means
-   * every linked row's wine IS in the library, and `GET /wines` filters
-   * nothing out, so "not in the whole library" is exactly "no link". It used
-   * to be judged against only the library pages loaded so far, and read 119
-   * of 134 on a first load for a house whose every row is linked (A-053).
+   * This house's rows with no wine-library link (`master_wine_id` null): the
+   * tile "Carried, not in the wine library" (ADR 0293). Every item counts, not
+   * only wines: the column leaves the link null on every row that is not a
+   * wine (ADR 0293 F2, "count all"). Counted from the
+   * inventory alone, so it does not move as more library pages load: a linked
+   * row's wine IS in the library because `restaurant_inventory_master_wine_id_fkey`
+   * is a foreign key (under any delete action), and `GET /wines` filters no
+   * library row out, so "not in the whole library" is exactly "no link". It
+   * used to be judged against only the library pages loaded so far, and would
+   * read 119 of 134 on a first load for a house whose every row is linked
+   * (A-053, worked out from the code, not seen on screen).
    * Null while the inventory is unread.
    */
   offBook: number | null;
