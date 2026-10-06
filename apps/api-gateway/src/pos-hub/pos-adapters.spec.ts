@@ -208,7 +208,7 @@ describe("canonical adapter — a field a POS cannot supply stays null", () => {
  * ADR 0302 (AW24, analytics walk on Tuzlu Rüzgar, 2026-10-03). A check carried
  * no channel, so a street-fair booth's checks were scored as a server's table
  * service. The founder's ruling: *"Own row, POS field (Recommended)"* — the
- * channel comes from the POS, and a check that names none is table service.
+ * channel comes from the POS, *"else the check counts as table service"*.
  * Fork AW24-b, his pick *"Wait, then owner maps (Recommended)"*: no POS order
  * type is mapped to a channel yet, and the order type stays in `raw`.
  */

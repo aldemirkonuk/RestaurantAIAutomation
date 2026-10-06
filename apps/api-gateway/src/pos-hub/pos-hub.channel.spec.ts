@@ -9,18 +9,28 @@ import { DatabaseService } from "../database/database.service";
  * channel at all. The founder ruled *"Own row, POS field (Recommended)"*.
  *
  * What the ingest owes, pinned here:
- *   - a check that names a channel writes it;
+ *   - a check that names a channel the hub knows writes it;
  *   - a check that names none writes NO channel key, so a gateway deployed
- *     before the column exists never names it, and a re-send that says nothing
- *     leaves a stored channel alone;
+ *     before the column exists still stores it, and a re-send that says
+ *     nothing leaves a stored channel alone;
  *   - a channel outside the vocabulary is counted and said, never folded into
- *     table service in silence (memory: absence reported as health).
+ *     table service in silence (memory: absence reported as health), and is
+ *     never written as a channel: a re-send that names one leaves a stored
+ *     channel alone, and the line says only that, not that anything was stored;
+ *   - only the canonical feeds (generic_webhook, csv_import) name a channel:
+ *     a Square, Clover or Toast `raw` is the provider's own object, so a
+ *     top-level `channel` there is not read as one (ADR 0302 method 3).
  */
 
 type Row = Record<string, any>;
 
-function makeService() {
+function makeService(opts: { upsertError?: string } = {}) {
   const checkUpserts: Row[] = [];
+  // What pos_checks holds, keyed as the ingest's onConflict is
+  // (restaurant_id, source, external_check_id). PostgREST's upsert of one
+  // object updates only the columns that object names, so a key the row
+  // leaves out keeps its stored value: modelled by the merge below.
+  const stored = new Map<string, Row>();
   const client: any = {
     from(table: string) {
       const q: any = {
@@ -33,6 +43,9 @@ function makeService() {
       if (table === "pos_checks") {
         q.upsert = async (row: Row) => {
           checkUpserts.push(row);
+          if (opts.upsertError) return { error: { message: opts.upsertError } };
+          const key = `${row.restaurant_id}|${row.source}|${row.external_check_id}`;
+          stored.set(key, { ...(stored.get(key) ?? {}), ...row });
           return { error: null };
         };
       }
@@ -41,7 +54,9 @@ function makeService() {
     rpc: async () => ({ data: null, error: null }),
   };
   const db = { getClient: () => client } as unknown as DatabaseService;
-  return { service: new PosHubService(db), checkUpserts };
+  const storedChannel = (id: string, source = "csv_import") =>
+    stored.get(`r1|${source}|${id}`)?.channel ?? null;
+  return { service: new PosHubService(db), checkUpserts, storedChannel };
 }
 
 // Open checks (no closedAt), so no stock effect runs: this spec is about the row.
@@ -90,8 +105,90 @@ describe("POS ingest writes the channel a check names (ADR 0302)", () => {
     expect(said).toHaveLength(1);
     expect(said[0]).toContain("2 checks");
     expect(said[0]).toContain('"catering"');
-    expect(said[0]).toContain("table service");
+    expect(said[0]).toContain("not written as a channel");
+    expect(said[0]).not.toContain("stored as");
   });
+
+  it("a re-send that names an unknown channel leaves a stored booth_event in place", async () => {
+    const { service, storedChannel } = makeService();
+    await service.ingest("r1", "csv_import", [
+      check("TR-2026-08-22-BOOTH", { channel: "booth_event" }),
+    ]);
+    expect(storedChannel("TR-2026-08-22-BOOTH")).toBe("booth_event");
+
+    const out = await service.ingest("r1", "csv_import", [
+      check("TR-2026-08-22-BOOTH", { channel: "catering", total: 4300 }),
+    ]);
+    expect(out.upserted).toBe(1);
+    // The re-send landed (its total moved) and its channel did not.
+    expect(storedChannel("TR-2026-08-22-BOOTH")).toBe("booth_event");
+    expect(out.channels.unrecognised).toBe(1);
+    const said = out.errors.filter((e) => e.startsWith("channel:"));
+    expect(said).toHaveLength(1);
+    // The line must not say the check became table service: it did not.
+    expect(said[0]).not.toContain("stored as");
+    expect(said[0]).toContain("not written as a channel");
+  });
+
+  it("a new check that names an unknown channel is stored with no channel", async () => {
+    const { service, storedChannel } = makeService();
+    await service.ingest("r1", "csv_import", [
+      check("TR-7", { channel: "catering" }),
+    ]);
+    expect(storedChannel("TR-7")).toBeNull();
+  });
+
+  it("a refused or failed check that names an unknown channel is not said to be stored", async () => {
+    const refused = makeService();
+    const r = await refused.service.ingest("r1", "csv_import", [
+      check("TR-8", { channel: "catering", closedAt: "03.10.2026" }),
+    ]);
+    expect(r.refusedUnreadableDate).toBe(1);
+    expect(refused.checkUpserts).toHaveLength(0);
+    expect(r.channels.unrecognised).toBe(1);
+    const saidRefused = r.errors.filter((e) => e.startsWith("channel:"));
+    expect(saidRefused).toHaveLength(1);
+    expect(saidRefused[0]).not.toContain("stored as");
+
+    const failed = makeService({ upsertError: "boom" });
+    const f = await failed.service.ingest("r1", "csv_import", [
+      check("TR-9", { channel: "catering" }),
+    ]);
+    expect(f.upserted).toBe(0);
+    expect(f.errors).toContain("TR-9: boom");
+    const saidFailed = f.errors.filter((e) => e.startsWith("channel:"));
+    expect(saidFailed).toHaveLength(1);
+    expect(saidFailed[0]).not.toContain("stored as");
+  });
+
+  it.each([
+    ["square", { id: "sq-1", state: "OPEN", channel: "ONLINE" }],
+    [
+      "clover",
+      {
+        id: "clv-1",
+        state: "open",
+        channel: "Street Fair",
+        lineItems: { elements: [] },
+      },
+    ],
+    ["toast", { guid: "tst-1", channel: "TAKE_OUT" }],
+  ])(
+    "a %s order's own top-level channel key is not read as a channel name",
+    async (provider, order) => {
+      const { service, checkUpserts } = makeService();
+      const out = await service.ingest("r1", provider, order);
+      expect(out.received).toBe(1);
+      expect(out.channels).toEqual({
+        booth_event: 0,
+        table: 0,
+        none: 1,
+        unrecognised: 0,
+      });
+      expect(out.errors.some((e) => e.startsWith("channel:"))).toBe(false);
+      expect(checkUpserts.every((r) => !("channel" in r))).toBe(true);
+    },
+  );
 
   it("the import says how many checks named each channel", async () => {
     const { service } = makeService();

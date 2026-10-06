@@ -12,14 +12,15 @@
 -- THE RULING. The founder, 2026-10-04, verbatim pick "Own row, POS field
 -- (Recommended)": booth and event checks are their own row ("Booth & events")
 -- in staff and table figures and still count in takings; the channel comes
--- from the POS, and a check that names none is table service. ADR 0302 holds
--- the question, the options and the method.
+-- from the POS, "else the check counts as table service". ADR 0302 holds the
+-- question, the options and the method.
 --
 -- THE COLUMN. `channel` is text, null, CHECK in ('table', 'booth_event').
--- Null means the POS named no channel, which is table service; 'table' says
--- so outright. The gateway normalises a feed's value (trimmed, lower-cased)
--- before it writes, so the CHECK sees only the two spellings it admits; any
--- other value is counted in the import result and not written.
+-- Null means no channel the hub knows was named, which reads as table
+-- service; 'table' says so outright. The gateway normalises a feed's value
+-- (trimmed, lower-cased) before it writes, so the CHECK sees only the two
+-- spellings it admits; any other value the canonical feed names is counted
+-- in the import result and not written.
 --
 -- NO BACKFILL. No feed has ever sent a channel: the canonical adapter never
 -- read one, and the sim's generator (gen.py) sends none. There is nothing to
@@ -72,7 +73,7 @@ BEGIN
 END $$;
 
 COMMENT ON COLUMN public.pos_checks.channel IS
-  'How the POS rang the check up (ADR 0302). booth_event = a booth, fair or event check: its own row (''Booth & events'') in staff and table figures, still in takings. table or null = table service; null means the POS named no channel. Written by the POS hub only when the feed names one.';
+  'How the POS rang the check up (ADR 0302). booth_event = a booth, fair or event check: its own row (''Booth & events'') in staff and table figures, still in takings. table or null = table service; null means no channel the hub knows was named. Written by the POS hub only when the feed names one it knows.';
 
 DO $$
 BEGIN

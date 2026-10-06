@@ -583,10 +583,14 @@ export interface WebhookContext {
 }
 
 /**
- * How many checks in one import named each channel (ADR 0302). The four
- * counts partition `received`: `none` is a check whose feed named no channel
- * (table service), `unrecognised` one that named a value outside the
- * vocabulary, which is stored as table service too and therefore said.
+ * How many checks received in one import named each channel (ADR 0302). It
+ * is counted before any check is stored, so a check refused for its closed_at
+ * or whose upsert failed is counted too, and the four counts partition
+ * `received`: `none` is a check that named no channel the hub reads (every
+ * Square, Clover or Toast check: see CANONICAL_FEEDS), `unrecognised` one
+ * that named a value outside the vocabulary. Neither writes a channel: a new
+ * row is stored with none, which reads as table service, and a re-send leaves
+ * the stored channel as it was.
  */
 export type ChannelTally = Record<
   CheckChannel | "none" | "unrecognised",
@@ -597,12 +601,28 @@ export type ChannelTally = Record<
 const MAX_CHANNEL_NAMES_SAID = 5;
 
 /**
- * Count the channels an import named, and say the ones this hub does not
- * know. A name the adapter dropped is read back from the source row
- * (`raw.channel`, which the canonical feed keeps verbatim): reading it as "no
- * channel" would report an absence as health (ADR 0302).
+ * The providers whose `raw` is the canonical row itself (the generic adapter,
+ * under both keys), so a `raw.channel` there is a channel the feed named. A
+ * Square, Clover or Toast `raw` is that provider's own order or check object:
+ * whether any of them carries a top-level `channel`, and what it would mean,
+ * is not verified, and their order types wait for the owner's mapping (ADR
+ * 0302, fork AW24-b). Their checks name no channel here.
  */
-export function tallyChannels(checks: CanonicalCheck[]): {
+const CANONICAL_FEEDS: ReadonlySet<string> = new Set([
+  "generic_webhook",
+  "csv_import",
+]);
+
+/**
+ * Count the channels an import named, and say the ones this hub does not
+ * know. On a canonical feed, a name the adapter dropped is read back from the
+ * source row (`raw.channel`, which that feed keeps verbatim): reading it as
+ * "no channel" would report an absence as health (ADR 0302).
+ */
+export function tallyChannels(
+  checks: CanonicalCheck[],
+  providerKey: string,
+): {
   tally: ChannelTally;
   said: string | null;
 } {
@@ -612,13 +632,16 @@ export function tallyChannels(checks: CanonicalCheck[]): {
     none: 0,
     unrecognised: 0,
   };
+  const readsNamed = CANONICAL_FEEDS.has(providerKey);
   const names = new Set<string>();
   for (const c of checks) {
     if (c.channel) {
       tally[c.channel]++;
       continue;
     }
-    const named = (c.raw as { channel?: unknown } | null | undefined)?.channel;
+    const named = readsNamed
+      ? (c.raw as { channel?: unknown } | null | undefined)?.channel
+      : null;
     if (named == null || (typeof named === "string" && named.trim() === "")) {
       tally.none++;
       continue;
@@ -640,8 +663,8 @@ export function tallyChannels(checks: CanonicalCheck[]): {
     tally,
     said:
       `channel: ${n} check${n === 1 ? "" : "s"} named a channel this hub does not know ` +
-      `(${quoted}${more}), so ${n === 1 ? "it was" : "they were"} stored as table service. ` +
-      `The known channels are "table" and "booth_event".`,
+      `(${quoted}${more}): counted as unrecognised and not written as a channel. ` +
+      `A check with no stored channel reads as table service; the known channels are "table" and "booth_event".`,
   };
 }
 
@@ -929,7 +952,7 @@ export class PosHubService {
         provider: providerKey,
         received: 0,
         upserted: 0,
-        channels: tallyChannels([]).tally,
+        channels: tallyChannels([], providerKey).tally,
         wineItemsDetected: 0,
         refusedUnreadableDate: 0,
         errors: ["No recognizable checks in payload"],
@@ -948,9 +971,10 @@ export class PosHubService {
     // through the same `errors` channel a failed check upsert uses, so the
     // ingest can no longer report a clean success over a lookup that failed.
     if (tableLookup.error) errors.push(tableLookup.error);
-    // ADR 0302: a channel the hub does not know is stored as table service,
-    // and said here rather than folded in silently.
-    const channels = tallyChannels(checks);
+    // ADR 0302: a channel the hub does not know is counted as unrecognised
+    // and never written as a channel, and said here rather than dropped in
+    // silence. A row with no stored channel reads as table service.
+    const channels = tallyChannels(checks, providerKey);
     if (channels.said) errors.push(channels.said);
 
     let upserted = 0;
@@ -1006,8 +1030,9 @@ export class PosHubService {
           source: providerKey,
           external_check_id: check.externalCheckId,
           table_id: this.resolveTable(check.tableRef, providerKey, tables),
-          // ADR 0302: written only when the feed names it, so a re-send that
-          // names none leaves a stored channel alone.
+          // ADR 0302: written only when the check names a channel the hub
+          // knows, so a re-send that names none, or names one it does not
+          // know, leaves a stored channel alone.
           ...(check.channel ? { channel: check.channel } : {}),
           server_external_id: check.serverExternalId ?? null,
           server_name: check.serverName ?? null,
