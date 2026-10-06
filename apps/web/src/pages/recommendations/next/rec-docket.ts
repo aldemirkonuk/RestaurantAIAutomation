@@ -139,6 +139,11 @@ interface ActFiling {
  *   sales_below_weekday   "Tonight: brief the floor …" names a time, and its
  *                         third clause pairs a server with a section. Both sit
  *                         inside a pre-shift; nothing here goes on a day-book.
+ *                         Since ADR 0291 only a dip about yesterday or today
+ *                         opens "Tonight:"; an older one opens "Before the
+ *                         next <weekday>:" (or "Before today's <weekday>
+ *                         service:"). Still a time inside a pre-shift, so the
+ *                         refusal stands.
  */
 const RULE_ACT: Record<string, ActFiling> = {
   stockout_imminent: {
