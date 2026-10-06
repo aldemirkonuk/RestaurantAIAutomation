@@ -584,7 +584,7 @@ type TillCall = {
  * The names `house_beverage_ledger` counts on one row, keyed by the label the
  * record asks with: what `house_till_names(p_restaurant_id, p_label)` returns.
  * The rule that makes them is SQL's, and its own test pins it
- * (supabase/tests/20261222180000_a_till_name_with_a_serve_size_joins_its_row_test.sql);
+ * (supabase/tests/20261223000000_a_till_name_with_a_serve_size_joins_its_row_test.sql);
  * this fake only serves its answer. A label with no entry joins the names
  * whose trimmed text is the label's, as 'exact'.
  * [CHANGED 2026-10-06, ADR 0301 F1 and F2: a name can also join
