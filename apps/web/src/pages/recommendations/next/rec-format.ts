@@ -9,8 +9,8 @@
  * or `__proto__` is an unknown, not a value inherited from `Object.prototype`.
  * A rule the stake knows neither by name nor by category is filed under
  * Unfiled, visible rather than silently binned, and the stake says which of
- * the two filed it (ADR 0288). A hand the page does not know falls back to
- * Reports.
+ * the two filed it (ADR 0288). A hand the page knows neither by rule nor by
+ * category falls back to Reports.
  */
 
 import { roleAllows, roomFor, type ShellRole } from '@/lib/mudavym/rooms';
