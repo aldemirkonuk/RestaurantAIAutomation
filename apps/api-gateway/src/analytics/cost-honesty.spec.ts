@@ -738,8 +738,10 @@ describe("getWine360", () => {
  * elasticity, an optimal markup, a CUSUM break, a drawdown that is 0 by
  * construction), and it named the Gini, the COGS ratio, turnover, DIO and
  * GMROI after a revenue and a cost of goods they did not read. Every `true` below must map to a field a real service call returns,
- * or, for the three lenses that need a whole other service stood up, to the
- * source line that computes it. A new `true` without an entry here fails.
+ * or, for the five entries the test does not call (vendor lead time and
+ * vendor price trend, sales correlation, the anomaly z-score and
+ * recommendations), to the source line that computes each. A new `true`
+ * without an entry here fails.
  */
 describe("METRIC_REGISTRY claims only what a served field computes", () => {
   type Lens =
