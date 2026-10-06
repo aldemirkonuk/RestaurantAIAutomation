@@ -68,6 +68,11 @@ end $$;
 
 -- T4 the signature and return shape did not change: the function still takes
 -- (uuid, integer) and returns the same 31 columns, so callers need no change.
+-- [CHANGED 2026-10-05, a_till_name_with_a_serve_size_joins_its_row: that
+-- migration appends five columns (poured_bottles, poured_glasses,
+-- poured_unit_unknown, tied_lines, till_names), so the shape is 36. The
+-- signature is unchanged, and the first 31 columns are as they were, so a
+-- caller that reads them by name needs no change. Was: 31.]
 do $$
 declare
   args text;
@@ -79,7 +84,7 @@ begin
    where p.oid = 'public.house_beverage_ledger(uuid, integer)'::regprocedure;
   assert args = 'p_restaurant_id uuid, p_limit integer',
     format('T4 FAIL the signature changed: %s', args);
-  assert ncols = 31, format('T4 FAIL the return shape has %s columns, expected 31', ncols);
+  assert ncols = 36, format('T4 FAIL the return shape has %s columns, expected 36', ncols);
 end $$;
 
 rollback;

@@ -483,6 +483,16 @@ export interface QuotedVM {
 export interface PouredVM {
   lines: number;
   qty: number | null;
+  /**
+   * Sold split by what one of each line is (ADR 0301, the founder's ruling of
+   * 2026-10-05: "Bottles · glasses"). The three sum to `qty`; null when the
+   * part is zero. Absent from a gateway before the split.
+   */
+  bottles?: number | null;
+  glasses?: number | null;
+  unitUnknown?: number | null;
+  /** Till lines whose name holds this row's words and another's equally: counted on neither. */
+  tiedLines?: number;
   revenue: number | null;
   firstAt: string | null;
   lastAt: string | null;

@@ -19,6 +19,16 @@
 -- keeps (food stays out; the ledger's signature and shape). T15 also fails on
 -- this migration's first build, which made a row of every till-only name
 -- flagged is_wine (added 2026-10-05).
+--
+-- [CHANGED 2026-10-05, a_till_name_with_a_serve_size_joins_its_row: the
+-- founder answered ADR 0301's "Fork deferred" ("Join by contained name, split
+-- Sold"), so a till name now joins the most specific row whose words it
+-- holds. T1, T13 and T15 pinned the old answer and were changed on purpose to
+-- pin the new one: C6's sized rakı lines join the rakı (T1, T15), the draft
+-- joins the beer (T15), and 'Zqtl Cola Zero' joins the cola, as it has no row
+-- of its own (T13). T12 now counts the five columns that migration adds. On a
+-- build with this migration and without that one, T1, T12, T13 and T15 fail.
+-- The new rules are pinned by that migration's own test.]
 
 begin;
 
@@ -111,14 +121,18 @@ $$;
 
 -- T1 a mapped rakı rung on a closed check is sold (A-016). It never entered
 -- the queue, so the old pour left it blank.
+-- [CHANGED 2026-10-05, a_till_name_with_a_serve_size_joins_its_row: C6's two
+-- sized rakı lines ('Zqtl Yeni Raki (single 50ml)' 4 x 14, 'Zqtl Yeni Raki
+-- 70cl bottle' 1 x 80) now join this row as well, so its Sold is C1's 2 plus
+-- 5, and its Taken C1's 18 plus 56 and 80. Was: 1 line, 2, 18.]
 do $$
 declare r record;
 begin
   select * into r from pg_temp.aw10_row('Zqtl Yeni Raki');
   assert r.pos_lines is not null, 'T1 FAIL the rakı has no ledger row';
-  assert r.pos_lines = 1, format('T1 FAIL the rakı reads pos_lines = %s, expected 1 (the till rang it once)', r.pos_lines);
-  assert r.poured_qty = 2, format('T1 FAIL the rakı reads poured_qty = %s, expected 2', r.poured_qty);
-  assert r.poured_revenue = 18, format('T1 FAIL the rakı reads poured_revenue = %s, expected 18', r.poured_revenue);
+  assert r.pos_lines = 3, format('T1 FAIL the rakı reads pos_lines = %s, expected 3 (C1, and the two sized lines on C6)', r.pos_lines);
+  assert r.poured_qty = 7, format('T1 FAIL the rakı reads poured_qty = %s, expected 7', r.poured_qty);
+  assert r.poured_revenue = 154, format('T1 FAIL the rakı reads poured_revenue = %s, expected 154', r.poured_revenue);
   assert 'pos' = any (r.books), format('T1 FAIL the rakı''s books are %s, expected pos among them', r.books);
 end $$;
 
@@ -262,6 +276,9 @@ begin
 end $$;
 
 -- T12 the ledger's signature and return shape did not change.
+-- [CHANGED 2026-10-05, a_till_name_with_a_serve_size_joins_its_row: the
+-- signature did not; the shape grew by five columns at its end (poured_bottles,
+-- poured_glasses, poured_unit_unknown, tied_lines, till_names). Was: 31.]
 do $$
 declare args text; ncols integer;
 begin
@@ -270,18 +287,23 @@ begin
     from pg_proc p
    where p.oid = 'public.house_beverage_ledger(uuid, integer)'::regprocedure;
   assert args = 'p_restaurant_id uuid, p_limit integer', format('T12 FAIL the signature changed: %s', args);
-  assert ncols = 31, format('T12 FAIL the return shape has %s columns, expected 31', ncols);
+  assert ncols = 36, format('T12 FAIL the return shape has %s columns, expected 36', ncols);
 end $$;
 
 -- T13 an open check's lines count, dated when the check opened; a closed
 -- check's when it closed. The cola's Sold is 1 + 0 (qty not a number) + 2.
+-- [CHANGED 2026-10-05, a_till_name_with_a_serve_size_joins_its_row: 'Zqtl
+-- Cola Zero' (C4, 1 x 4) holds every word of 'Zqtl Cola' and has no row of
+-- its own, so it now joins the cola: Sold 1 + 0 + 2 + 1, Taken 16 + 4. The
+-- same rule that joins a cocktail named after a spirit to that spirit (ADR
+-- 0301, Consequences). Was: 3 lines, 3, 16.]
 do $$
 declare r record;
 begin
   select * into r from pg_temp.aw10_row('Zqtl Cola');
-  assert r.pos_lines = 3, format('T13 FAIL the cola reads pos_lines = %s, expected 3', r.pos_lines);
-  assert r.poured_qty = 3, format('T13 FAIL the cola reads poured_qty = %s, expected 3', r.poured_qty);
-  assert r.poured_revenue = 16, format('T13 FAIL the cola reads poured_revenue = %s, expected 16', r.poured_revenue);
+  assert r.pos_lines = 4, format('T13 FAIL the cola reads pos_lines = %s, expected 4', r.pos_lines);
+  assert r.poured_qty = 4, format('T13 FAIL the cola reads poured_qty = %s, expected 4', r.poured_qty);
+  assert r.poured_revenue = 20, format('T13 FAIL the cola reads poured_revenue = %s, expected 20', r.poured_revenue);
   assert r.first_poured = '2026-08-07 20:30+00'::timestamptz,
     format('T13 FAIL the cola was first sold %s, expected when C1 closed', r.first_poured);
   assert r.last_poured = '2026-08-09 18:00+00'::timestamptz,
@@ -317,15 +339,21 @@ end $$;
 -- was flagged is_wine). They stay in the till's record, where the row record
 -- reads them. How such a name should join its row is the founder's fork (ADR
 -- 0301, "Fork deferred"); an answer that joins them changes this test.
+-- [CHANGED 2026-10-05, a_till_name_with_a_serve_size_joins_its_row: he
+-- answered, "Join by contained name, split Sold", and this test was changed
+-- on purpose. A till name now joins the most specific row whose words it
+-- holds, so the sized lines reach their rows' Sold and Taken; they are still
+-- not rows of their own, and still in the till's record. Was: the rakı 1 line
+-- and 2, the beer 1 line, 2 and 16.]
 do $$
 declare r record; n integer;
 begin
   select * into r from pg_temp.aw10_row('Zqtl Yeni Raki');
-  assert r.pos_lines = 1 and r.poured_qty = 2,
-    format('T15 FAIL the rakı reads pos_lines %s, Sold %s; expected 1 and 2 (only the line under its own name, C1)', r.pos_lines, r.poured_qty);
+  assert r.pos_lines = 3 and r.poured_qty = 7,
+    format('T15 FAIL the rakı reads pos_lines %s, Sold %s; expected 3 and 7 (its own name on C1, and both sized names on C6)', r.pos_lines, r.poured_qty);
   select * into r from pg_temp.aw10_row('Zqtl Efes Pilsen');
-  assert r.pos_lines = 1 and r.poured_qty = 2 and r.poured_revenue = 16,
-    format('T15 FAIL the beer reads pos_lines %s, Sold %s, Taken %s; expected 1, 2 and 16 (the bottled line only)', r.pos_lines, r.poured_qty, r.poured_revenue);
+  assert r.pos_lines = 2 and r.poured_qty = 5 and r.poured_revenue = 46,
+    format('T15 FAIL the beer reads pos_lines %s, Sold %s, Taken %s; expected 2, 5 and 46 (the bottled line and the draft)', r.pos_lines, r.poured_qty, r.poured_revenue);
   select count(*) into n
     from public.house_beverage_ledger('a3010000-0000-4000-8000-000000000001'::uuid, 600) l
    where l.label in ('Zqtl Yeni Raki (single 50ml)', 'Zqtl Yeni Raki 70cl bottle', 'Zqtl Efes Pilsen (draft 400ml)');

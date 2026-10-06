@@ -66,6 +66,15 @@
  * one found the line. Weaker than the ledger's rule, honest about being so, and
  * — unlike the ledger — it answers on a database that has not run the
  * migration yet.
+ *
+ * CHANGED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, the
+ * founder's ruling of 2026-10-05): the TILL book no longer uses this rule. It
+ * reads the names the ledger itself counts on the row
+ * (`house_till_names(p_restaurant_id, p_label)`), so the record lists exactly
+ * the till lines the row's Sold cell sums: a till name joins the row whose key
+ * it equals (`exact`), else the row with the most words among those whose
+ * every word it holds (`contains`), and a name level between two rows joins
+ * neither. The menu, invoice, order and quote books keep the rule above.
  */
 
 /** The five books, in the order a house reads them. */
@@ -144,7 +153,7 @@ export interface RowRecord {
 }
 
 export const ROW_RECORD_MATCH_RULE =
-  "A line belongs to this row when its label is the same words (exact), or contains this row's label inside a longer till or invoice line (loose). This is a weaker rule than the register's own — that one folds producer and name into a sorted token multiset in SQL (beverage_house_key) — and it is used here because it answers on a database that has not run migration 20260903120000 yet. Every line below says which of the two rules found it.";
+  "A menu, invoice, order or quote line belongs to this row when its label is the same words (exact), or contains this row's label inside a longer line (loose). This is a weaker rule than the register's own — that one folds producer and name into a sorted token multiset in SQL (beverage_house_key) — and it is used here because it answers on a database that has not run migration 20260903120000 yet. A till line belongs to this row by the register's own rule, the one its Sold cell counts by: its name has this row's words exactly (exact), or holds every one of them and no other row's with more (loose); a name that holds two rows' words equally belongs to neither. Every line below says which of the two found it.";
 
 /** A finite number, or null. Postgres numerics arrive over PostgREST as strings. */
 export function num(v: unknown): number | null {

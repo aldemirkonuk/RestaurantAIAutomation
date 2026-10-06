@@ -149,6 +149,11 @@ const QUOTE_COLUMNS =
  * too: Taken counts it as qty 1 (the ledger's coalesce(qty, 1)) while this
  * record's total for it is null. Both rules are inherited from main (ADR 0301
  * §1, "Stated behaviours").]
+ * [CHANGED 2026-10-05, a_till_name_with_a_serve_size_joins_its_row: the first
+ * half of that correction no longer holds. readTillLines now takes this
+ * row's names from house_till_names(p_restaurant_id, p_label), the ledger's
+ * own join, so the record and the cell group names by one rule (ADR 0301,
+ * the founder's ruling of 2026-10-05). The qty difference stands.]
  *
  * Q9 (founder 2026-09-22) wired live non-wine sales into the cellar heat map
  * by mining `pos_checks.items` here. That read sampled 200 unordered checks
@@ -1031,16 +1036,22 @@ export class BeveragesService {
   /**
    * The till book: what the till rang up for this row, every line of it.
    *
-   * THREE STEPS, so a row's record never carries the whole till across the
-   * wire. (1) `house_till_names` lists the distinct names the till has rung.
-   * (2) `matchLine` picks the names that belong to this row, here in the
-   * gateway, so the rule is the same fold and contains-floor every other book
-   * of this record uses (a second matcher in SQL would fold case differently,
-   * e.g. the Turkish dotted İ under the C locale). (3) `house_till_lines`
-   * reads every line under those names, each sent back exactly as step (1)
-   * returned it (`rawTillName`). Both reads are keyset-paged on their
-   * own unique column until a short page, so nothing is sampled and nothing is
-   * capped. A failed read on either leaves the book unreadable, never zero.
+   * TWO STEPS, so a row's record never carries the whole till across the
+   * wire. (1) `house_till_names(p_restaurant_id, p_label)` lists the till
+   * names `house_beverage_ledger` counts on this row, and how each joined
+   * ('exact' or 'contains'). (2) `house_till_lines` reads every line under
+   * those names, each sent back exactly as step (1) returned it
+   * (`rawTillName`). Both reads are keyset-paged on their own unique column
+   * until a short page, so nothing is sampled and nothing is capped. A failed
+   * read on either leaves the book unreadable, never zero.
+   *
+   * CHANGED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, the
+   * founder's ruling of 2026-10-05): step (1) listed every name the till had
+   * rung and `matchLine` picked this row's here, a weaker rule than the Sold
+   * cell's, so the record and the cell could disagree. The names now come
+   * from the ledger's own join (a name joins the most specific row whose
+   * words it holds; a tie joins none), so the record lists exactly the lines
+   * its row's Sold cell sums. The other four books keep `matchLine`.
    */
   private async readTillLines(
     restaurantId: string,
@@ -1056,13 +1067,14 @@ export class BeveragesService {
       return unreadableBook(
         "pos",
         source,
-        "The till's record (house_till_lines) is not on this database yet: migration the_cellar_reads_the_tills_own_record has not been applied here. Unread, not empty.",
+        "The till's record (house_till_names for one row) is not on this database yet: migration a_till_name_with_a_serve_size_joins_its_row has not been applied here. Unread, not empty.",
       );
     };
 
     const names = await readTillPages("item_name", (after) => {
       const q = client.rpc("house_till_names", {
         p_restaurant_id: restaurantId,
+        p_label: label,
       });
       return after === null ? q : q.gt("item_name", after);
     });
@@ -1073,13 +1085,15 @@ export class BeveragesService {
     // ANY(p_names), and SQL btrim strips spaces only, while seriesStr's JS
     // trim() also strips a tab, a newline or a no-break space. A name sent
     // back JS-trimmed ('Zqtl Cola' for 'Zqtl Cola\t') would match none of its
-    // lines. `matchLine` folds whitespace itself, so the raw name matches the
-    // same way.
+    // lines. How it joined is the ledger's, never re-derived here.
     const matched = new Map<string, "exact" | "contains">();
     for (const r of names.rows) {
       const name = rawTillName(r.item_name);
       if (name === null) continue;
-      const how = matchLine(label, name);
+      const how =
+        r.joined_by === "exact" || r.joined_by === "contains"
+          ? r.joined_by
+          : null;
       if (how !== null) matched.set(name, how);
     }
 
@@ -1096,8 +1110,7 @@ export class BeveragesService {
 
       for (const r of lines.rows) {
         const name = rawTillName(r.item_name);
-        const how =
-          name === null ? null : (matched.get(name) ?? matchLine(label, name));
+        const how = name === null ? null : (matched.get(name) ?? null);
         if (how === null) continue;
         // Shown trimmed; matched and fetched by the name the till holds.
         const line = seriesStr(name) ?? "";
