@@ -2,6 +2,7 @@ import axios from "axios";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
+  CLOSED_DRAFT_STATUSES,
   ConversationsService,
   HOUSE_LETTER_STATUSES,
 } from "./conversations.service";
@@ -273,6 +274,34 @@ describe("PR #476 Train 5 BLOCK — approveConversation refuses every house lett
 
     expect(result.success).toBe(true);
     expect(updates).toHaveLength(1);
+  });
+
+  it("refuses a DISCARDED draft (ADR 0266, F-106: a replaced duplicate)", async () => {
+    const { service, updates } = makeService({
+      status: "DISCARDED",
+      outboundEmailType: "PRICE_INQUIRY",
+    });
+    expectRefused(await approve(service), updates, /replaced or discarded/);
+  });
+
+  it("refuses a CANCELLED draft (its order was cancelled)", async () => {
+    const { service, updates } = makeService({ status: "CANCELLED" });
+    expectRefused(await approve(service), updates, /order was cancelled/);
+  });
+
+  it("names the same closed-draft words the agent's send claim refuses", () => {
+    const src = readFileSync(
+      join(
+        __dirname,
+        "../../../../services/agent-orchestrator/agents/provider_conversation_agent.py",
+      ),
+      "utf8",
+    );
+    const start = src.indexOf("_CLOSED_DRAFT_STATUSES = (");
+    expect(start).toBeGreaterThan(-1);
+    const block = src.slice(start, src.indexOf(")", start));
+    const words = [...block.matchAll(/"([A-Z_]+)"/g)].map((m) => m[1]);
+    expect([...CLOSED_DRAFT_STATUSES].sort()).toEqual(words.sort());
   });
 
   it("names every LETTER_STATUS word except the shared SENT", () => {
