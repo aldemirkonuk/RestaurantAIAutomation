@@ -97,7 +97,7 @@ The founder's words, verbatim, per item (one-word "Approve" items grouped):
 
 **Follow-up rulings, 2026-10-02, after the PR opened** (founder's AskUserQuestion answers, for the own branches above):
 - Order: W25 first (with the sim's F-106 fix), then W17, then W13b's gateway part ("a, b, c").
-- F-106: approving can leave two pending drafts for one order, and `approveDraft`'s `.single()` (`procurement.service.ts:7770` at 3973374cd) then fails although the rail shows one (`getPendingDraft`, `:9999-10000`). The W25 branch stops the second write. Where two already exist, the newest (the one the rail shows and the owner held) survives and the older is discarded with a recorded reason ("Newest, as shown").
+- F-106: approving can leave two pending drafts for one order, and `approveDraft`'s `.single()` (`procurement.service.ts:7770` at 3973374cd) then fails although the rail shows one (`getPendingDraft`, `:9999-10000`). The W25 branch stops the second write. Where two already exist, the newest (the one the rail shows and the owner held) survives and the older is discarded with a recorded reason ("Newest, as shown"). [corrected 2026-10-02, ADR 0266: "the one the rail shows" and "the one the owner held" are different rows. A draft seal is issued only while exactly one draft waits (`procurement.service.ts:7423-7429`), so the held row is always the older one. Re-asked as F0, the founder chose "First-written (Recommended)": the create-time letter survives. For new orders PR-1 never writes the second one.]
 - W17: the /connections reconnect banner (today only for mail reading, `ConnectionsNext.tsx:341`) also comes up when Gmail sending lost its grant, one banner naming what is down ("Widen to sending").
 - W13b's gateway part ships off behind its flag. The flag goes on only after F-049 (the /connections "Connect yours" button has no action) and F-050 (Google refuses the per-house redirect; a Railway variable plus the client's URI) are fixed and one house has connected its own Gmail end to end ("After F-049, F-050"). The flip stays the founder's keystroke. F-ids are the owner-quarter sim's ledger.
 
@@ -123,5 +123,6 @@ The founder's words, verbatim, per item (one-word "Approve" items grouped):
 | 2026-10-01 | — | Created, session R2, branch fix/review-communications |
 | 2026-10-02 | — | W38 added (the tour, ruled when main was merged in); numbered 0260 at push |
 | 2026-10-02 | — | Follow-up rulings added (order a-b-c, F-106 survivor, W17 banner, W13b flag timing), asked while #587's CI ran |
+| 2026-10-02 | — | F-106 survivor corrected in place (bracket): the held row is the older; re-ruled first-written, recorded in ADR 0266 |
 | 2026-10-03 | — | Follow-up ruling added: F-126 cap notice once per pause, its words (branch fix/f126-cap-notice-once-a-day) |
 | 2026-10-04 | — | F-126: a notice that does not land lifts the fence, unless the lift also fails (audit finding on #595; no new ruling) |
