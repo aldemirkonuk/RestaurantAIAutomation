@@ -17,6 +17,10 @@
  * States, kept apart (ADR 0020 / 0051):
  *   no field        — a readout that does not carry the tally: nothing claimed.
  *   menu unread     — `menuLines: null`: said as unknown, never as zero.
+ *   no current menu — `currentMenus: 0` (ADR 0193's named state): no menu is
+ *                     current, so there was nothing to place. Not an empty
+ *                     menu, and a menu read but not made current is not
+ *                     counted here.
  *   empty menu      — 0 lines read: said as an empty menu, not "all placed".
  *   all placed      — a sentence, no control.
  *   some not placed — the count, the control, and on open: reading / a failed
@@ -55,6 +59,16 @@ export default function UnplacedMenuLines({
         This house’s menu could not be read
         {menuSource?.reason ? ` (${menuSource.reason})` : ''}, so how many of its lines the
         reader placed in a register is unknown — not zero.
+      </p>
+    );
+  }
+
+  if (menuLines.currentMenus === 0) {
+    return (
+      <p className="cl-note" data-testid="menu-lines-no-current">
+        No menu is current at this house, so the reader had nothing to place in a register. A
+        menu that was read but not made current is kept with the house’s menus, not counted
+        here.
       </p>
     );
   }

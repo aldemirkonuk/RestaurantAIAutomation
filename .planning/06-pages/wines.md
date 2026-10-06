@@ -64,7 +64,7 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
 
 **Mudavym cellar behind `mudavym_design_cellar` (OFF by default):**
 
-- `/cellar` — the parent surface: four registers (Wines, Beer, Whiskey, Cocktails) and *In the building tonight* — bottles on hand, titles carried, titles at or under their own par, titles carried but off this read. Every figure counted from real inventory rows
+- `/cellar` — the parent surface: four registers (Wines, Beer, Whiskey, Cocktails) and *In the building tonight* — bottles on hand, titles carried, titles at or under their own par, and the tile "Carried, not in the wine library" (this house's rows with no wine-library link; ADR 0293). Every figure counted from real inventory rows
 - `/wines` — the register kept at full breadth: every title, eight sortable columns (Bottle · Style · Vintage · Origin · Format · List · Market · On hand), search across name/producer/grape/region/country/appellation, six filters (Style, Country, Region, Vintage, Format, Cellar) and two view modes (Register table / Shelf cards)
 - The **reading stand** — a bottle opens above the register with everything the library actually knows: style, vintage, origin, format, list and market price, the producer/tasting/pairing notes, and what this house holds (on hand, its own par, the vendor on the row, when it was last counted)
 - **Recalled vs reasoned** — each set of notes carries the gateway's own `data_enrichment.knowledge` mark, so a fact recorded about *this* bottle is never printed like a profile inferred from its grape and region (76% of the library is `inferred`)
