@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VendorObservationRow } from '../../../services/api/vendorIntel'
-import { classSortKey, groupByClass, laneGroups, orderIdOf, paperBadge, provenanceOf } from './vp-register'
+import { classSortKey, groupByClass, laneGroups, orderIdOf, paperBadge, provenanceOf, whenWords } from './vp-register'
 
 // A variable, not a literal — scripts/check_money_states_its_currency.py scans
 // for a currency field pinned inline, because that pattern is how a page
@@ -210,5 +210,58 @@ describe('provenanceOf', () => {
   it('carries a recorded note through, and null when there is none', () => {
     expect(provenanceOf(row({ note: 'Called on the 12th' })).note).toBe('Called on the 12th')
     expect(provenanceOf(row({ note: null })).note).toBeNull()
+  })
+})
+
+describe('whenWords — which date a row carries (ADR 0273)', () => {
+  const receipt = { sourceType: 'invoice' as const, sourceRef: 'receipt_verified:o-1', comparisonClass: 'quoted' as const }
+
+  it('names the invoice issue date as the date, and when it was checked', () => {
+    const when = provenanceOf(
+      row({
+        ...receipt,
+        observedAt: '2026-07-15T12:00:00.000Z',
+        dateBasis: 'invoice_issue_date',
+        issueDate: '2026-07-15',
+        verifiedAt: '2026-09-03T10:00:00.000Z',
+      }),
+    ).when
+    expect(when).toBe("dated 15 Jul 2026, the invoice's issue date (checked 3 Sept 2026)")
+  })
+
+  it('says a corrected issue date was corrected', () => {
+    expect(
+      whenWords(
+        row({ ...receipt, dateBasis: 'invoice_issue_date_corrected', issueDate: '2026-07-14', verifiedAt: null }),
+      ),
+    ).toBe("dated 14 Jul 2026, the invoice's issue date, as corrected")
+  })
+
+  it('reads the issue date as the day it names, never shifted by the viewer\'s timezone', () => {
+    // observed_at sits at the check (00:30Z) for a same-day invoice checked
+    // before noon; the printed day comes from the issue date itself.
+    expect(
+      whenWords(row({ ...receipt, observedAt: '2026-09-03T00:30:00.000Z', dateBasis: 'invoice_issue_date', issueDate: '2026-09-03' })),
+    ).toMatch(/^dated 3 Sept 2026, /)
+  })
+
+  it('says a fallback row is dated when it was checked, and why', () => {
+    expect(
+      whenWords(
+        row({
+          ...receipt,
+          observedAt: '2026-09-03T10:00:00.000Z',
+          dateBasis: 'verified_at',
+          dateSentence: 'No live invoice is attached to this order, so there is no issue date to read.',
+          verifiedAt: '2026-09-03T10:00:00.000Z',
+        }),
+      ),
+    ).toBe('dated when it was checked, 3 Sept 2026: No live invoice is attached to this order, so there is no issue date to read.')
+  })
+
+  it('keeps the plain "seen" wording for a row written without a basis', () => {
+    const when = provenanceOf(row({ observedAt: new Date().toISOString() })).when
+    expect(when).toMatch(/^seen today \(/)
+    expect(provenanceOf(row({ dateBasis: null })).when).toMatch(/^seen /)
   })
 })
