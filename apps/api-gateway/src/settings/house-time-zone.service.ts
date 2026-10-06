@@ -23,15 +23,18 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  *
  * THE RULES, the currency's (`house-currency.service.ts`), for the same reasons:
  *   1. **Attributable, never silent.** A zone is written by a person here
- *      (source `stated`), or once, when the house is created, from its address
- *      or its owner's device (ADR 0304), always with its source. It is never
- *      defaulted and never written on a read. The source counts only while
- *      `timezone_source_zone` equals the zone (`boundSource`); a writer that
- *      rewrites `timezone` alone leaves it unbound, read as "not recorded".
- *      Until ADR 0304's PR-2 lands, sign-up still saves the browser's zone
- *      with no source (ADR 0213 item 62), and this register says so. The span
- *      rule (`procurement/delivery-deadline.ts`) stays for every house with
- *      no zone.
+ *      (source `stated`), or, once ADR 0304's PR-2 lands, when an address is
+ *      written, from that address or its owner's device, always with its
+ *      source. It is never defaulted and never written on a read. The source
+ *      counts only while `timezone_source_zone` equals the zone
+ *      (`boundSource`); a writer that rewrites `timezone` alone leaves it
+ *      unbound, so the zone reads as one with no recorded source (rule 5
+ *      may still find its witness), and a rewrite back to the bound zone
+ *      binds it again. Until PR-2 lands, sign-up still saves the browser's
+ *      zone with no source (ADR 0213 item 62), and this register returns
+ *      `source: null` for it. The span rule
+ *      (`procurement/delivery-deadline.ts`) stays for every house with no
+ *      zone.
  *   2. **Membership checked here.** The zone must be a canonical IANA name
  *      this server's `Intl` lists (`Intl.supportedValuesOf("timeZone")`, plus
  *      `UTC`) AND resolve (`calendar/zoned-time.ts` `resolveZone`). A browser
@@ -40,7 +43,8 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  *      exactly the one sent.
  *   3. **Audited, or the caller is told it was not.** Every accepted change
  *      of the zone OR of its source files a `system_audit_log` row naming the
- *      actor and both zones (and both sources when the source moved); the
+ *      actor and both zones (and both sources when the source moved; the
+ *      same zone twice when only the source moved, ADR 0304 Decision 5); the
  *      receipt travels back as `audited` / `auditReason`.
  *   4. **A failed read is never an empty one.** `readable: false` with the
  *      reason; `zone: null` means no zone is recorded.
@@ -48,7 +52,9 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  *      now** (ADR 0304): the newest audit row must say `to` = that zone, and
  *      a zone bound to `address` or `device` names nobody. An audit write can
  *      fail (`recorded: false`), so an older row may name someone who never
- *      stated the current zone; that row is not read as its witness.
+ *      stated the current zone; that row is not read as its witness. The
+ *      person named did state this zone value at some time; after a later
+ *      failed audit write, someone else may have set it again since.
  *
  * No clear-to-null: un-answering the question every on-time verdict depends
  * on is not the same kind of act as answering it.
@@ -139,8 +145,9 @@ export interface HouseTimeZoneReadout {
   readable: boolean;
   reason: string | null;
   /**
-   * When and by whom the CURRENT zone was stated: the newest audit row, only
-   * when its `to` is this zone. Null for a zone bound to `address`/`device`.
+   * When and by whom this zone was stated: the newest audit row, only when
+   * its `to` is this zone (its actor stated this zone value at some time, not
+   * necessarily last). Null for a zone bound to `address`/`device`.
    */
   statedAt: string | null;
   statedBy: { userId: string | null; name: string | null } | null;
@@ -288,8 +295,9 @@ export class HouseTimeZoneService {
   /**
    * Who stated the zone the house keeps NOW, from `system_audit_log`.
    * Best-effort, like the currency's. Only the newest row is read, and it is
-   * the witness only when its `to` is `zone`: an older row, or a row for a
-   * zone since rewritten, names someone who did not choose this one (ADR 0304).
+   * the witness only when its `to` is `zone`: a row about another zone names
+   * someone who did not choose this one (ADR 0304). A matching row's actor
+   * stated this zone value at some time, not necessarily last.
    */
   private async lastStated(
     restaurantId: string,

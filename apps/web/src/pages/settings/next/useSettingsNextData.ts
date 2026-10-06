@@ -477,7 +477,8 @@ export interface SetDigestBody {
  * false` a failed read; `unreadZone` a value the server cannot resolve, kept
  * verbatim and never read as a zone. `source` says where the zone came from
  * (ADR 0304) — `address`, `device` or `stated` — and is null when that was
- * never recorded; `statedBy`/`statedAt` name only the witness of THIS zone.
+ * never recorded or no longer vouches for this zone; `statedBy`/`statedAt`
+ * name only the witness of THIS zone.
  */
 export interface HouseTimeZoneRegister {
   restaurantId: string;

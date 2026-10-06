@@ -71,15 +71,19 @@ export function hoursOpenCert(reg: OperatingHoursResponse): Certainty {
 /**
  * `HoursSection.tsx`'s own "Which clock does it keep?" row (ADR 0304).
  *
- * A zone is `manual` only when the Time zone register has loaded and shows a
- * person behind THIS zone: its source is `stated`, or the newest audit row
- * names someone who stated it (the gateway returns `statedBy` only then). A
- * zone the address or the device gave, or one nobody can attribute, is
- * `inferred` — present, never typed by a named person. No zone is `unstated`.
+ * A zone is `manual` only when the Time zone register has loaded, keeps the
+ * same zone, and shows a person behind THIS zone: its bound source is
+ * `stated`, or it has no recorded source and the newest audit row says `to` =
+ * this exact zone (the gateway returns `statedBy` only then). The second case
+ * is ADR 0304 Reading 5, the lane's, awaiting the founder. A zone the address
+ * or the device gave, or one with no source and no witness, is `inferred`:
+ * present, with no person the register can name behind it. A house with no
+ * zone is `unstated`.
  *
  * This widens `inferred` past `SectionKit.tsx`'s `Certainty` note ("computed
  * on read, never written"): a zone kept once with its address or device
- * source, or one no person can be named for, is stored, yet nobody stated it.
+ * source, or one no person can be named for, is stored, yet no person is
+ * recorded as having stated it.
  * ADR 0304 records that reading; the note's own wording is PR-4's, which
  * edits this page again (PR-1 stayed inside its 15 files).
  */

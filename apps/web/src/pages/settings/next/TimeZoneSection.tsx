@@ -71,8 +71,10 @@ export function zoneProvenance(reg: HouseTimeZoneRegister): {
         ? { verb: 'stated', when: reg.statedAt, whenUnknown: 'when was not recorded', by }
         : { verb: 'stated', when: null, whenUnknown: 'who and when were not recorded', by: null };
     default:
-      // A zone saved before its source was recorded: a person who stated it
-      // through this register is still named by the row that recorded it.
+      // No recorded source: a zone saved before ADR 0304, or one a blind
+      // writer unbound. When the newest audit row says `to` = this exact zone
+      // it reads "stated" with that row's date, and its actor is named when
+      // the name can be read (ADR 0304 Reading 5, awaiting the founder).
       return witnessed
         ? { verb: 'stated', when: reg.statedAt, whenUnknown: 'when was not recorded', by }
         : {
