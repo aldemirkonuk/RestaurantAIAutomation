@@ -154,8 +154,20 @@ const quadrants = analysis<QuadrantRegister>({
 export interface LedgerRegister {
   basis?: Record<string, string>;
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
-  /** ADR 0298: how many of the items the till sold carry a recorded cost. */
-  cogsCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
+  /**
+   * ADR 0298: how many of the items the till sold carry a recorded cost. An
+   * item no longer active is costed from its own row; one with no inventory
+   * row at all is "no longer in the books"; one whose row could not be read
+   * is counted as unread.
+   */
+  cogsCoverage?: {
+    total: number;
+    priced: number;
+    unpriced: number;
+    complete: boolean;
+    itemsNotInBooks?: number;
+    itemsCostUnread?: number;
+  };
   salesCoverage?: { unmappedLines: number; itemsSoldWithoutStockMove: number } | null;
   inventoryValue: number | null;
   cogs: number | null;
@@ -248,10 +260,18 @@ const ledger = analysis<LedgerRegister>({
       },
     ];
     const notes: string[] = [];
-    if (gc && !gc.complete && gc.total > 0)
+    if (gc && !gc.complete && gc.total > 0) {
+      const gone = num(gc.itemsNotInBooks) ?? 0;
+      const unread = num(gc.itemsCostUnread) ?? 0;
+      const withheld = `cost of goods and the ratios built on it read ${EM} rather than a floor.`;
       notes.push(
-        `${figure(gc.priced)} of ${figure(gc.total)} items that sold carry a recorded cost, so cost of goods and the ratios built on it read ${EM} rather than a floor.`,
+        unread > 0
+          ? `The cost of ${countOf(unread, 'item', 'items')} that sold could not be read (${unread === 1 ? 'its row is' : 'their rows are'} no longer active, and the read failed), so ${withheld}`
+          : gone > 0
+            ? `${figure(gc.priced)} of ${figure(gc.total)} items that sold carry a recorded cost. ${countOf(gone, 'item that sold is', 'items that sold are')} no longer in the books (no inventory row), so nothing records what ${gone === 1 ? 'it' : 'they'} cost, and ${withheld}`
+            : `${figure(gc.priced)} of ${figure(gc.total)} items that sold carry a recorded cost, so ${withheld}`,
       );
+    }
     if (cc && !cc.complete)
       notes.push(
         cc.total === 0

@@ -40,8 +40,19 @@
 -- plus the counts a reader needs to say what it could not read: checks,
 -- lines, unmapped_lines and unmapped_sales (lines naming no stock item; the
 -- sales sum covers the readable ones), unreadable_lines (lines naming a stock
--- item whose price, qty or id cannot be read; never raised), and
--- first_sale_at (the earliest closed check or POS ledger row in the window).
+-- item whose price, qty or id is not a number or a uuid: counted, not
+-- raised), and the window's two clocks: first_check_at (the earliest closed
+-- check, where sales start), first_move_at (the earliest POS ledger row,
+-- where cost of goods starts) and first_sale_at (the earlier of the two).
+--
+-- WHAT CAN STILL RAISE. A line the gateway's POS ingest wrote cannot: every
+-- adapter coerces price and qty to finite JS numbers (pos-adapters.ts `num`,
+-- `cents`), and the product of two finite doubles is far inside numeric's
+-- range. A line written some other way (a direct service_role write) with a
+-- price or qty string of more digits than numeric holds, or a pair whose
+-- product does not fit, raises "value overflows numeric format" for the
+-- whole call. AnalyticsService reads an error as a failed read: the
+-- figures go null with that reason, never smaller ones (ADR 0067).
 --
 -- WHY A FUNCTION. One jsonb value cannot be cut by PostgREST max_rows (ADR
 -- 0292's row cap), the aggregation stays in the database, and the output is
@@ -168,7 +179,9 @@ AS $$
     'unmapped_sales', (SELECT coalesce(sum(price * qty), 0) FROM cls
                         WHERE kind = 'unmapped' AND price IS NOT NULL AND qty IS NOT NULL),
     'unreadable_lines', (SELECT count(*) FROM cls WHERE kind = 'unreadable'),
-    'first_sale_at', least((SELECT min(closed_at) FROM chk), (SELECT min(first_at) FROM moved))
+    'first_sale_at', least((SELECT min(closed_at) FROM chk), (SELECT min(first_at) FROM moved)),
+    'first_check_at', (SELECT min(closed_at) FROM chk),
+    'first_move_at', (SELECT min(first_at) FROM moved)
   )
 $$;
 
@@ -177,8 +190,10 @@ COMMENT ON FUNCTION public.pos_item_sales(uuid, timestamptz) IS
   'naming the item on closed, non-voided checks) and bottles the POS moved '
   '(-sum of source pos sale/return ledger rows), and whether a mapping of this '
   'house points at it (mapped items that did neither are listed with zeros). '
-  'One jsonb value; never raises '
-  'on a malformed line, counts it. Read by AnalyticsService (cost of goods, '
+  'One jsonb value. A line whose price, qty or id is not a number or a uuid '
+  'is counted, not raised; a line the gateway ingest wrote cannot raise, but '
+  'a numeric string or product past numeric''s range, written directly, '
+  'raises for the whole call. Read by AnalyticsService (cost of goods, '
   'sales, revenue concentration). A second per-item till reader should call '
   'this rather than aggregate pos_checks.items again.';
 

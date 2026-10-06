@@ -550,6 +550,20 @@ function writeLedger(payload: unknown): ExportDoc {
     "Needs a complete cost basis and at least 28 days of POS sales";
   const unmapped = num(sc?.unmappedLines) ?? 0;
   const noStockMove = num(sc?.itemsSoldWithoutStockMove) ?? 0;
+  // An item no longer active is costed from its own row; only one with no
+  // inventory row at all, or whose row could not be read, is named apart.
+  const soldCostNote = (c: Record<string, unknown>) => {
+    const gone = num(c.itemsNotInBooks) ?? 0;
+    const unread = num(c.itemsCostUnread) ?? 0;
+    const withheld =
+      "cost of goods and the ratios built on it are withheld rather than a floor.";
+    const nOfM = `${num(c.priced) ?? 0} of ${num(c.total) ?? 0} items that sold carry a recorded cost`;
+    return unread > 0
+      ? `The cost of ${nounCount(unread, "item", "items")} that sold could not be read (${unread === 1 ? "its row is" : "their rows are"} no longer active, and the read failed), so ${withheld}`
+      : gone > 0
+        ? `${nOfM}. ${nounCount(gone, "item that sold is", "items that sold are")} no longer in the books (no inventory row), so nothing records what ${gone === 1 ? "it" : "they"} cost, and ${withheld}`
+        : `${nOfM}, so ${withheld}`;
+  };
   return doc({
     figures: [
       f("Cellar at cost", figure(d.inventoryValue, "Not every on-hand row carries a recorded cost"), "money"),
@@ -565,7 +579,7 @@ function writeLedger(payload: unknown): ExportDoc {
     ],
     notes: [
       gc && gc.complete === false && (num(gc.total) ?? 0) > 0
-        ? `${num(gc.priced) ?? 0} of ${num(gc.total) ?? 0} items that sold carry a recorded cost, so cost of goods and the ratios built on it are withheld rather than a floor.`
+        ? soldCostNote(gc)
         : "",
       cc && cc.complete === false
         ? num(cc.total) === 0

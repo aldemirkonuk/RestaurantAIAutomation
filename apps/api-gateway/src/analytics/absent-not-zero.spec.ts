@@ -374,6 +374,67 @@ describe("financial never reports an empty result set as $0", () => {
     expect(out.basis.costDerived).toContain("60 days observed");
   });
 
+  // PR #617's audit at 847f2470d: first_sale_at is the earlier of the first
+  // closed check and the first POS stock move, so where they are days apart
+  // one figure holds days the other does not. The basis names both dates; it
+  // does not correct for it or say how much it moves the figure.
+  it("names both clocks when sales start days before the first stock move", async () => {
+    const check = daysAgo(60);
+    const move = daysAgo(45);
+    const out: any = await analytics(
+      { restaurant_inventory: [STOCKED] },
+      till({
+        ...SOLD_THREE.data,
+        first_sale_at: check,
+        first_check_at: check,
+        first_move_at: move,
+      }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBe(60);
+    expect(out.cogsWindow).toMatchObject({
+      since: check,
+      days: 60,
+      firstCheckAt: check,
+      firstMoveAt: move,
+    });
+    expect(out.basis.cogs).toContain(
+      `sales start at the first closed check in the window (${check.slice(0, 10)}) and stock moves at the first POS ledger row (${move.slice(0, 10)}), 15 days later, so cost of goods holds no stock move from those days while sales and the span annualised include them`,
+    );
+  });
+
+  it("names both clocks when stock moves start days before the first check", async () => {
+    const move = daysAgo(60);
+    const check = daysAgo(50);
+    const out: any = await analytics(
+      { restaurant_inventory: [STOCKED] },
+      till({
+        ...SOLD_THREE.data,
+        first_sale_at: move,
+        first_check_at: check,
+        first_move_at: move,
+      }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.basis.cogs).toContain(
+      `stock moves start at the first POS ledger row in the window (${move.slice(0, 10)}) and sales at the first closed check (${check.slice(0, 10)}), 10 days later, so sales hold no check from those days while cost of goods and the span annualised include them`,
+    );
+  });
+
+  it("says nothing of the clocks when they are under a day apart or one is unknown", async () => {
+    const at = daysAgo(60);
+    for (const clocks of [
+      { first_check_at: at, first_move_at: at },
+      { first_check_at: at },
+      {},
+    ]) {
+      const out: any = await analytics(
+        { restaurant_inventory: [STOCKED] },
+        till({ ...SOLD_THREE.data, first_sale_at: at, ...clocks }),
+      ).getFinancialSummary(RESTAURANT);
+      expect(out.cogs).toBe(60);
+      expect(out.basis.cogs).not.toContain("first POS ledger row");
+    }
+  });
+
   it("withholds turns, DIO and GMROI under 28 days of till history", async () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED] },
@@ -630,6 +691,28 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
     expect(out.revenueConcentration.activeItemsNotWeighed).toBe(4);
     expect(out.revenueConcentration.basis).toContain(
       "4 active items no mapping points at and that sold nothing are left out",
+    );
+  });
+
+  it("weighs a mapped item whose voids outweigh its sales as 0, and counts it", async () => {
+    // PR #617's audit at 847f2470d: a mapped, active item can net negative in
+    // the window (the void of an earlier sale). It sold nothing, so it weighs
+    // 0 as the basis says. Unclamped, giniCoefficient dropped it (it keeps
+    // only v >= 0) while "items weighed" still counted it.
+    const out: any = await analytics(
+      { restaurant_inventory: SHELF },
+      sold({ i1: 100, i2: 100, i3: -50 }),
+    ).getRiskProfile(RESTAURANT);
+    expect(out.revenueConcentration.itemsWeighed).toBe(3);
+    expect(out.revenueConcentration.itemsWithSales).toBe(2);
+    expect(out.revenueConcentration.gini).toBeCloseTo(
+      E.risk.giniCoefficient([100, 100, 0]) as number,
+      10,
+    );
+    expect(out.revenueConcentration.gini).toBeCloseTo(1 / 3, 10);
+    expect(out.revenueConcentration.hhi).toBeCloseTo(0.5, 10);
+    expect(out.revenueConcentration.basis).toContain(
+      "3 items weighed, 2 with a sale",
     );
   });
 

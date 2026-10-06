@@ -51,14 +51,27 @@ function makeClient(rowsByTable: Rows, rpc: Rpc = {}) {
     from: jest.fn((table: string) => {
       const builder: any = {};
       for (const m of passthrough) builder[m] = jest.fn(() => builder);
+      // `eq` and `in` filter a row only on a column the fixture row carries,
+      // so a fixture that sets `is_active: false` is a row the active cellar
+      // read leaves out, and every older fixture (no such column) reads as
+      // before.
+      const keep: Array<(r: any) => boolean> = [];
+      builder.eq = jest.fn((k: string, v: unknown) => {
+        keep.push((r) => !(k in r) || r[k] === v);
+        return builder;
+      });
+      builder.in = jest.fn((k: string, vs: unknown[]) => {
+        keep.push((r) => !(k in r) || vs.includes(r[k]));
+        return builder;
+      });
       builder.maybeSingle = jest.fn(() =>
         Promise.resolve({ data: null, error: null }),
       );
       builder.then = (resolve: any, reject: any) =>
-        Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
-          resolve,
-          reject,
-        );
+        Promise.resolve({
+          data: (rowsByTable[table] ?? []).filter((r) => keep.every((k) => k(r))),
+          error: null,
+        }).then(resolve, reject);
       return builder;
     }),
     rpc: jest.fn(() =>
@@ -308,13 +321,165 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     }
   });
 
-  it("counts an item that sold but is no longer stocked as uncosted", async () => {
+  // PR #617's audit at 847f2470d: a sold item deleted on /inventory (a soft
+  // delete, is_active = false) was missing from the active read, so it read
+  // as "has no recorded cost" and withheld cost of goods for the whole
+  // house, though its row still held its cost.
+  /** Deleted on /inventory: inactive, sold out, and its cost still recorded. */
+  const RETIRED = {
+    id: "inv-retired",
+    wine_name: "Delisted Barolo",
+    stock_live: 0,
+    menu_price_current: 90,
+    last_purchase_price: 30,
+    threshold_min: 0,
+    master_wine_id: "mw-retired",
+    is_active: false,
+  };
+  const ACTIVE_RECORDED = { ...RECORDED, is_active: true };
+
+  it("costs an item that sold and was deleted from its own row", async () => {
     const out = await build(
-      [RECORDED],
-      till({ "inv-retired": [1, 90], [RECORDED.id]: [3, 180] }),
+      [ACTIVE_RECORDED, RETIRED],
+      till({ [RETIRED.id]: [1, 90], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT);
+    // 1 × 30 for the deleted Barolo, 3 × 20 for the Chablis.
+    expect(out.cogs).toBe(90);
+    expect(out.cogsCoverage).toMatchObject({
+      total: 2,
+      priced: 2,
+      unpriced: 0,
+      complete: true,
+      itemsNoLongerActive: 1,
+      itemsNotInBooks: 0,
+      itemsCostUnread: 0,
+    });
+    expect(out.basis.cogs).toContain(
+      "1 of these rows is no longer active and read all the same",
+    );
+    expect(out.basis.cogs).not.toContain("no recorded cost (");
+    // The deleted row is not on hand: the cellar value is the active one.
+    expect(out.inventoryValue).toBe(100);
+  });
+
+  it("costs a deleted item from its lots' WAC, through the same resolveUnitCost", async () => {
+    const out = await analytics(
+      {
+        restaurant_inventory: [
+          ACTIVE_RECORDED,
+          { ...RETIRED, last_purchase_price: null },
+        ],
+        inventory_lot_rollup: [
+          {
+            inventory_id: RETIRED.id,
+            live_qty: 2,
+            wac: 25,
+            has_invoice_cost: true,
+            wac_qty: 2,
+          },
+        ],
+      },
+      till({ [RETIRED.id]: [2, 180], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBe(2 * 25 + 3 * 20);
+    expect(out.cogsCoverage.byBasis).toMatchObject({
+      invoice_lot_wac: 1,
+      last_purchase_price: 1,
+      unknown: 0,
+    });
+  });
+
+  it("withholds when a deleted item's row has no recorded cost, and says that", async () => {
+    const out = await build(
+      [ACTIVE_RECORDED, { ...RETIRED, last_purchase_price: null }],
+      till({ [RETIRED.id]: [1, 90], [RECORDED.id]: [3, 180] }),
     ).getFinancialSummary(RESTAURANT);
     expect(out.cogs).toBeNull();
-    expect(out.cogsCoverage.unpriced).toBe(1);
+    expect(out.cogsCoverage).toMatchObject({
+      priced: 1,
+      unpriced: 1,
+      itemsNoLongerActive: 1,
+      itemsNotInBooks: 0,
+    });
+    expect(out.basis.cogs).toContain(
+      "1 of 2 items that sold carry a recorded cost",
+    );
+    expect(out.basis.cogs).toContain("no recorded cost (1)");
+  });
+
+  it("names an item with no inventory row as no longer in the books, not uncosted", async () => {
+    const out = await build(
+      [ACTIVE_RECORDED],
+      till({ "inv-gone": [1, 90], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBeNull();
+    expect(out.cogsCoverage).toMatchObject({
+      total: 2,
+      priced: 1,
+      unpriced: 1,
+      itemsNoLongerActive: 0,
+      itemsNotInBooks: 1,
+      itemsCostUnread: 0,
+    });
+    expect(out.basis.cogs).toContain(
+      "1 of 2 items that sold carry a recorded cost",
+    );
+    expect(out.basis.cogs).toContain(
+      "1 item that sold is no longer in the books (no inventory row of this house)",
+    );
+    // The one row the books hold is costed; no row is said to lack a cost.
+    expect(out.basis.cogs).toContain("every row in scope has a recorded cost");
+    expect(out.basis.cogs).not.toContain("have no recorded cost");
+  });
+
+  it("withholds and says the read failed when a deleted item's row cannot be read", async () => {
+    // The second restaurant_inventory read (the sold-item cost read) fails.
+    const client: any = makeClient(
+      { restaurant_inventory: [ACTIVE_RECORDED, RETIRED] },
+      till({ [RETIRED.id]: [1, 90], [RECORDED.id]: [3, 180] }),
+    );
+    const from = client.from;
+    let reads = 0;
+    client.from = jest.fn((table: string) => {
+      if (table !== "restaurant_inventory" || ++reads === 1) return from(table);
+      const failed: any = {};
+      for (const m of ["select", "eq", "in"]) failed[m] = jest.fn(() => failed);
+      failed.then = (resolve: any, reject: any) =>
+        Promise.resolve({ data: null, error: { message: "timeout" } }).then(
+          resolve,
+          reject,
+        );
+      return failed;
+    });
+    const out = await new AnalyticsService({
+      getClient: () => client,
+    } as any).getFinancialSummary(RESTAURANT);
+    expect(reads).toBe(2);
+    expect(out.cogs).toBeNull();
+    expect(out.cogsCoverage).toMatchObject({
+      itemsCostUnread: 1,
+      itemsNotInBooks: 0,
+      itemsNoLongerActive: 0,
+    });
+    expect(out.basis.cogs).toContain("the read of its row failed");
+    expect(out.basis.cogs).not.toContain("no longer in the books");
+    expect(out.basis.cogs).not.toContain("no recorded cost");
+  });
+
+  it("reads no row twice when every item that sold is active", async () => {
+    const client: any = makeClient(
+      { restaurant_inventory: [ACTIVE_RECORDED, RETIRED] },
+      till({ [RECORDED.id]: [3, 180] }),
+    );
+    const out = await new AnalyticsService({
+      getClient: () => client,
+    } as any).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBe(60);
+    expect(
+      client.from.mock.calls.filter(
+        ([t]: [string]) => t === "restaurant_inventory",
+      ),
+    ).toHaveLength(1);
   });
 
   it("withholds COGS when the till cannot say, delivered orders or not", async () => {

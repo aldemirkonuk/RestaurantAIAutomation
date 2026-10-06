@@ -79,7 +79,20 @@ interface PosSales {
   unmappedLines: number;
   unmappedSales: number;
   unreadableLines: number;
+  /** The earlier of the two below. */
   firstSaleAt: string | null;
+  /** The first closed check in the window: where sales start. */
+  firstCheckAt: string | null;
+  /** The first POS stock move in the window: where cost of goods starts. */
+  firstMoveAt: string | null;
+}
+
+/** A sold item's recorded cost, read from a row the active cellar left out. */
+interface SoldItemCost {
+  unitCost: number | null;
+  costBasis: ReturnType<typeof resolveUnitCost>["costBasis"];
+  /** `is_active` on the row: false for an item deleted on /inventory. */
+  active: boolean;
 }
 
 /** The trailing window cost of goods and sales are read over. */
@@ -217,6 +230,61 @@ export class AnalyticsService {
         inventoryValue: unitCost == null ? null : qty * unitCost,
       };
     });
+  }
+
+  /**
+   * The recorded cost of items that moved stock at the till but are not in
+   * the active cellar `loadInventory` reads (ADR 0298 Decision 1). Deleting
+   * an item on /inventory only sets `is_active = false`
+   * (inventory.service.ts `softDeleteItem`), so its row keeps its
+   * last_purchase_price and its lots keep their cost. The answer comes from
+   * the same two sources through the same `resolveUnitCost`, so no valuation
+   * branch is added and OD-100 is untouched.
+   *
+   * The map holds only the ids this house still has a restaurant_inventory
+   * row for, with whether that row is active (it can be, when the active
+   * read above failed or raced); an id missing from it is not in this
+   * house's books at all. `null` means a read failed, so neither answer can
+   * be given (ADR 0067).
+   */
+  private async loadSoldItemCost(
+    restaurantId: string,
+    ids: string[],
+  ): Promise<Map<string, SoldItemCost> | null> {
+    const client = this.dbService.getClient();
+    try {
+      const [rowRes, lotRes] = await Promise.all([
+        client
+          .from("restaurant_inventory")
+          .select("id, last_purchase_price, is_active")
+          .eq("restaurant_id", restaurantId)
+          .in("id", ids),
+        client
+          .from("inventory_lot_rollup")
+          .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", ids),
+      ]);
+      if (rowRes.error || lotRes.error) {
+        if (rowRes.error) this.logQueryFailure("restaurant_inventory", rowRes.error);
+        if (lotRes.error) this.logQueryFailure("inventory_lot_rollup", lotRes.error);
+        return null;
+      }
+      const wanted = new Set(ids);
+      const lots = new Map<string, any>();
+      for (const l of lotRes.data || []) lots.set(l.inventory_id, l);
+      const cost = new Map<string, SoldItemCost>();
+      for (const r of rowRes.data || [])
+        if (wanted.has(r.id))
+          cost.set(r.id, {
+            ...resolveUnitCost(r, lots.get(r.id)),
+            active: r.is_active !== false,
+          });
+      return cost;
+    } catch (e) {
+      this.logQueryFailure("restaurant_inventory", e);
+      return null;
+    }
   }
 
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
@@ -501,6 +569,10 @@ export class AnalyticsService {
         unreadableLines,
         firstSaleAt:
           typeof d.first_sale_at === "string" ? d.first_sale_at : null,
+        firstCheckAt:
+          typeof d.first_check_at === "string" ? d.first_check_at : null,
+        firstMoveAt:
+          typeof d.first_move_at === "string" ? d.first_move_at : null,
       };
     } catch (e) {
       this.logQueryFailure("pos_item_sales", e);
@@ -562,18 +634,49 @@ export class AnalyticsService {
     //
     // An item whose voids outweigh its sales in the window (ADR 0011 B19
     // returns whole bottles for a voided glass) adds nothing and is counted.
+    //
+    // An item that moved stock but is no longer active (deleted on
+    // /inventory, a soft delete) is costed from its own row, as an active
+    // one is: its row still records what it cost. Only an id with no row of
+    // this house at all is "no longer in the books", counted apart, and it
+    // withholds like any other item with no recorded cost.
     const byId = new Map(inventory.map((i) => [i.id, i]));
-    const soldRows = (pos?.items ?? [])
-      .filter((s) => s.bottlesOut > 0)
-      .map((s) => {
-        const row = byId.get(s.inventoryId);
-        return {
-          bottlesOut: s.bottlesOut,
-          unitCost: row?.unitCost ?? null,
-          costBasis: row?.costBasis ?? ("unknown" as const),
-        };
-      });
+    const movedItems = (pos?.items ?? []).filter((s) => s.bottlesOut > 0);
+    const retiredIds = movedItems
+      .map((s) => s.inventoryId)
+      .filter((id) => !byId.has(id));
+    const retiredCost =
+      retiredIds.length === 0
+        ? new Map<string, SoldItemCost>()
+        : await this.loadSoldItemCost(restaurantId, retiredIds);
+    const soldRows = movedItems.map((s) => {
+      const row = byId.get(s.inventoryId);
+      const retired = row ? undefined : retiredCost?.get(s.inventoryId);
+      const where: "active" | "retired" | "notInBooks" | "unread" = row
+        ? "active"
+        : retiredCost == null
+          ? "unread"
+          : retired == null
+            ? "notInBooks"
+            : retired.active
+              ? "active"
+              : "retired";
+      const known = row ?? retired;
+      return {
+        bottlesOut: s.bottlesOut,
+        unitCost: known?.unitCost ?? null,
+        costBasis: known?.costBasis ?? ("unknown" as const),
+        where,
+      };
+    });
     const soldCoverage = summarizeCostBasis(soldRows);
+    // The rows the books hold, for the per-row sentence: an item with no
+    // row, or whose row could not be read, has no row to describe.
+    const rowCoverage = summarizeCostBasis(
+      soldRows.filter((r) => r.where === "active" || r.where === "retired"),
+    );
+    const countWhere = (w: (typeof soldRows)[number]["where"]) =>
+      soldRows.filter((r) => r.where === w).length;
     const cogsCoverage = {
       ...soldCoverage,
       bottlesSold: E.stats.sum(soldRows.map((r) => r.bottlesOut)),
@@ -582,6 +685,12 @@ export class AnalyticsService {
       ),
       itemsNetReturned: (pos?.items ?? []).filter((s) => s.bottlesOut < 0)
         .length,
+      /** Sold, no longer active, costed (or not) from their own row. */
+      itemsNoLongerActive: countWhere("retired"),
+      /** Sold, with no restaurant_inventory row of this house at all. */
+      itemsNotInBooks: countWhere("notInBooks"),
+      /** Sold, not active, and the read of their rows failed. */
+      itemsCostUnread: countWhere("unread"),
     };
     const posTraded = pos != null && (pos.checks > 0 || soldRows.length > 0);
     // Items the till took money for that moved no stock in the window: a
@@ -644,7 +753,25 @@ export class AnalyticsService {
     const cogsWindow =
       pos?.firstSaleAt == null || spanDays == null || !Number.isFinite(spanDays)
         ? null
-        : { since: pos.firstSaleAt, days: spanDays };
+        : {
+            since: pos.firstSaleAt,
+            days: spanDays,
+            firstCheckAt: pos.firstCheckAt,
+            firstMoveAt: pos.firstMoveAt,
+          };
+    // The span starts at the earlier of two clocks: sales at the first closed
+    // check, cost of goods at the first POS stock move. When they are a day
+    // or more apart, one figure holds days the other does not, and the basis
+    // names both dates. Nothing here corrects for it or measures its size.
+    const spanGap = (() => {
+      const c = Date.parse(pos?.firstCheckAt ?? "");
+      const m = Date.parse(pos?.firstMoveAt ?? "");
+      if (!Number.isFinite(c) || !Number.isFinite(m)) return null;
+      const days = Math.round(Math.abs(m - c) / 86400000);
+      if (days < 1) return null;
+      const day = (t: number) => new Date(t).toISOString().slice(0, 10);
+      return { checksFirst: c < m, days, check: day(c), move: day(m) };
+    })();
     const annualFactor =
       cogsWindow != null && cogsWindow.days >= MIN_ANNUALISED_SPAN_DAYS
         ? DAYS_PER_YEAR / cogsWindow.days
@@ -757,7 +884,27 @@ export class AnalyticsService {
 
     const plural = (n: number, one: string, many: string) =>
       `${n} ${n === 1 ? one : many}`;
-    const cogsHead = `POS bottles out × recorded unit cost (trailing ${COGS_WINDOW_DAYS}d; POS sale rows net of POS void returns, glass pours as the bottles they opened; waste, counts and sales outside the till excluded)`;
+    const cogsHead = `POS bottles out × recorded unit cost (trailing ${COGS_WINDOW_DAYS}d; POS sale rows net of POS void returns, glass pours as the bottles they opened; waste, counts and sales outside the till excluded; a till line whose stock the ledger did not move adds no cost, and is counted only when its item moved none at all)`;
+    const gone = cogsCoverage.itemsNotInBooks;
+    const unread = cogsCoverage.itemsCostUnread;
+    const retiredRows = cogsCoverage.itemsNoLongerActive;
+    // A per-row sentence only for the rows the books hold.
+    const rowSentence =
+      rowCoverage.total === 0 ? "" : costBasisSentence(rowCoverage);
+    const retiredClause =
+      retiredRows > 0
+        ? `; ${plural(retiredRows, "of these rows is", "of these rows are")} no longer active and read all the same`
+        : "";
+    const goneClause =
+      gone > 0
+        ? `${rowSentence ? "; " : ""}${plural(gone, "item", "items")} that sold ${gone === 1 ? "is" : "are"} no longer in the books (no inventory row of this house), so nothing records what ${gone === 1 ? "it" : "they"} cost`
+        : "";
+    const spanClause =
+      spanGap == null
+        ? ""
+        : spanGap.checksFirst
+          ? `; sales start at the first closed check in the window (${spanGap.check}) and stock moves at the first POS ledger row (${spanGap.move}), ${plural(spanGap.days, "day", "days")} later, so cost of goods holds no stock move from those days while sales and the span annualised include them`
+          : `; stock moves start at the first POS ledger row in the window (${spanGap.move}) and sales at the first closed check (${spanGap.check}), ${plural(spanGap.days, "day", "days")} later, so sales hold no check from those days while cost of goods and the span annualised include them`;
     const cogsBasis =
       pos == null
         ? `${cogsHead} — null: the POS sales read failed, and $0 would claim nothing sold`
@@ -767,9 +914,11 @@ export class AnalyticsService {
             ? soldWithoutMove > 0
               ? `${cogsHead} — null: ${plural(soldWithoutMove, "item", "items")} sold at the till but the POS moved no stock for any item, so the cost of what sold is unknown, and $0 would print it as nothing`
               : `${cogsHead} — null: ${plural(pos.checks, "closed check", "closed checks")}, but no line sold a stock item and the POS moved no stock, which is either no stocked item sold or no POS mapping resolving one`
-            : cogs == null
-              ? `${cogsHead} — null: ${soldCoverage.priced} of ${soldCoverage.total} items that sold carry a recorded cost, so a total would be a floor (ADR 0053). ${costBasisSentence(soldCoverage)}`
-              : `${cogsHead} — ${plural(soldCoverage.total, "item", "items")}, ${plural(cogsCoverage.bottlesSold, "bottle", "bottles")} out; ${costBasisSentence(soldCoverage)}${soldWithoutMove > 0 ? `; ${plural(soldWithoutMove, "item", "items")} sold without moving stock, and ${soldWithoutMove === 1 ? "its" : "their"} cost is not in it` : ""}`;
+            : unread > 0
+              ? `${cogsHead} — null: ${plural(unread, "item", "items")} that sold ${unread === 1 ? "is" : "are"} no longer active, and the read of ${unread === 1 ? "its row" : "their rows"} failed, so ${unread === 1 ? "its" : "their"} cost is unknown and a total would be a floor`
+              : cogs == null
+                ? `${cogsHead} — null: ${soldCoverage.priced} of ${soldCoverage.total} items that sold carry a recorded cost, so a total would be a floor (ADR 0053). ${rowSentence}${retiredClause}${goneClause}`
+                : `${cogsHead} — ${plural(soldCoverage.total, "item", "items")}, ${plural(cogsCoverage.bottlesSold, "bottle", "bottles")} out; ${rowSentence}${retiredClause}${soldWithoutMove > 0 ? `; ${plural(soldWithoutMove, "item", "items")} sold without moving stock, and ${soldWithoutMove === 1 ? "its" : "their"} cost is not in it` : ""}${spanClause}`;
     const salesHead = `POS line price × qty for lines naming a stock item, on closed, non-voided checks (trailing ${COGS_WINDOW_DAYS}d; net: before tax and surcharge, check discounts not apportioned)`;
     const revenueBasis =
       pos == null
@@ -1015,10 +1164,15 @@ export class AnalyticsService {
       (i) => !weighedIds.has(i.id),
     ).length;
     const anyItemSale = weighed.some((s) => s.sales > 0);
+    // A mapped, active item whose voids outweigh its sales in the window has
+    // a negative net. It sold nothing, so it weighs 0 like any silent mapped
+    // item: giniCoefficient drops a negative value (engine/risk.ts) and
+    // herfindahlIndex drops anything not positive (engine/finance.ts), so
+    // unclamped it would leave the Gini's count while "items weighed" kept it.
     const skuRevenue =
       pos == null || pos.checks === 0 || !anyItemSale
         ? null
-        : weighed.map((s) => s.sales);
+        : weighed.map((s) => Math.max(0, s.sales));
     const gini = skuRevenue == null ? null : E.risk.giniCoefficient(skuRevenue);
     const skuHhi =
       skuRevenue == null ? null : E.finance.herfindahlIndex(skuRevenue);

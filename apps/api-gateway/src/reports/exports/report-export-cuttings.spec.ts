@@ -137,6 +137,35 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(countWithheld(doc)).toBe(8);
   });
 
+  // PR #617's audit at 847f2470d: a deleted item is costed from its own row
+  // server-side; an item with no inventory row at all, or whose row could not
+  // be read, is named for what it is, not as one more uncosted item.
+  const soldGap = (gap: Record<string, unknown>) =>
+    EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as Record<string, unknown>),
+        cogs: null,
+        cogsCoverage: { total: 2, priced: 1, unpriced: 1, complete: false, ...gap },
+      },
+      { days: null },
+    );
+
+  it("figures of record: an item that sold with no inventory row is named as no longer in the books", () => {
+    const doc = soldGap({ itemsNotInBooks: 1, itemsCostUnread: 0 });
+    expect(isWithheld(figure(doc, "Cost of goods (365d)"))).toBe(true);
+    expect(doc.notes.join(" ")).toContain(
+      "1 of 2 items that sold carry a recorded cost. 1 item that sold is no longer in the books (no inventory row), so nothing records what it cost, and cost of goods and the ratios built on it are withheld rather than a floor.",
+    );
+  });
+
+  it("figures of record: a sold row that could not be read is named as unread, not as uncosted", () => {
+    const notes = soldGap({ itemsNotInBooks: 0, itemsCostUnread: 2 }).notes.join(" ");
+    expect(notes).toContain(
+      "The cost of 2 items that sold could not be read (their rows are no longer active, and the read failed), so cost of goods and the ratios built on it are withheld rather than a floor.",
+    );
+    expect(notes).not.toContain("items that sold carry a recorded cost");
+  });
+
   it("figures of record: a till that sold stock but moved none withholds cost of goods, and says so", () => {
     const doc = EXPORT_CUTTINGS.ledger.write(
       {

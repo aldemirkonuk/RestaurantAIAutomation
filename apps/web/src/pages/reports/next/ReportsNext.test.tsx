@@ -921,6 +921,65 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     expect(within(ledger).queryByText(/it adds sales and no cost/)).not.toBeInTheDocument();
   });
 
+  // PR #617's audit at 847f2470d: an item deleted on /inventory is costed
+  // from its own row server-side; only an item with no inventory row at all,
+  // or whose row could not be read, is named apart, never as "no recorded cost".
+  const soldGap = (cogsCoverage: Record<string, unknown>) =>
+    withRegister(
+      'ledger',
+      ok({
+        basis: { cogs: 'POS bottles out × recorded unit cost — null' },
+        costCoverage: { total: 1, priced: 1, unpriced: 0, complete: true },
+        cogsCoverage,
+        salesCoverage: { unmappedLines: 0, itemsSoldWithoutStockMove: 0 },
+        inventoryValue: 100,
+        cogs: null,
+        revenue: 500,
+        shelfValueAtMenuPrice: 300,
+        grossMargin: null,
+        cogsRatio: null,
+        inventoryTurnover: null,
+        daysInventoryOutstanding: null,
+        gmroi: null,
+        deadStockCapital: null,
+      }),
+    );
+
+  it('names an item that sold with no inventory row as no longer in the books', () => {
+    hook.current = soldGap({
+      total: 2,
+      priced: 1,
+      unpriced: 1,
+      complete: false,
+      itemsNotInBooks: 1,
+      itemsCostUnread: 0,
+    });
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(
+      within(ledger).getByText(
+        /1 of 2 items that sold carry a recorded cost\. 1 item that sold is no longer in the books \(no inventory row\), so nothing records what it cost/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says the cost read failed, not that a cost is missing, when a sold row could not be read', () => {
+    hook.current = soldGap({
+      total: 2,
+      priced: 1,
+      unpriced: 1,
+      complete: false,
+      itemsNotInBooks: 0,
+      itemsCostUnread: 1,
+    });
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(
+      within(ledger).getByText(/The cost of 1 item that sold could not be read \(its row is no longer active, and the read failed\)/),
+    ).toBeInTheDocument();
+    expect(within(ledger).queryByText(/items that sold carry a recorded cost/)).not.toBeInTheDocument();
+  });
+
   it('claims no forecast total when the server reports no model fitted', () => {
     hook.current = withRegister(
       'ahead',

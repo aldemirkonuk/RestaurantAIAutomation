@@ -10,7 +10,9 @@
 -- fixtures only, one transaction, rolled back.
 --
 -- On a build WITHOUT that migration every block from T1 on FAILS: the function
--- and the index do not exist.
+-- and the index do not exist. T10 pins the two clocks the gateway's span
+-- check reads; T11 and T12 pin where the function can and cannot raise, as
+-- its COMMENT now says.
 
 begin;
 
@@ -231,6 +233,73 @@ begin
     format('T9 FAIL h2''s mapping at h1''s item C lists C for h2: %s', r2);
   assert (pg_temp.cg_item(r2, 'c0980000-0000-4000-8000-0000000002d0') -> 'mapped') = 'false'::jsonb,
     format('T9 FAIL h2''s item D is flagged mapped by h1''s mapping: %s', r2);
+end $$;
+
+-- T10 the window's two clocks, apart: sales start at the first closed check
+-- (k7, three days back), cost of goods at the first POS ledger row (the
+-- direct row, five days back), and first_sale_at is the earlier. An empty
+-- window has neither; a 4-day window starts its moves at today's rows.
+do $$
+declare
+  r jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+  r4 jsonb := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001', 4);
+  z jsonb := public.pos_item_sales('c0980000-0000-4000-8000-000000000002', now() + interval '1 day');
+begin
+  assert (r ->> 'first_check_at')::timestamptz = now() - interval '3 days',
+    format('T10 FAIL first_check_at %s, expected %s', r ->> 'first_check_at', now() - interval '3 days');
+  assert (r ->> 'first_move_at')::timestamptz = now() - interval '5 days',
+    format('T10 FAIL first_move_at %s, expected %s', r ->> 'first_move_at', now() - interval '5 days');
+  assert (r ->> 'first_sale_at')::timestamptz = least((r ->> 'first_check_at')::timestamptz, (r ->> 'first_move_at')::timestamptz),
+    format('T10 FAIL first_sale_at %s is not the earlier clock', r ->> 'first_sale_at');
+  assert (r4 ->> 'first_check_at')::timestamptz = now() - interval '3 days'
+     and (r4 ->> 'first_move_at')::timestamptz = now(),
+    format('T10 FAIL a 4-day window reads check %s and move %s', r4 ->> 'first_check_at', r4 ->> 'first_move_at');
+  assert z -> 'first_check_at' = 'null'::jsonb and z -> 'first_move_at' = 'null'::jsonb,
+    format('T10 FAIL an empty window reads %s', z);
+end $$;
+
+-- T11 what the gateway's ingest can write does not raise: every adapter
+-- coerces price and qty to finite JS numbers, and the largest finite double
+-- squared fits numeric. The check is undone by a raise this block catches.
+do $$
+declare
+  big numeric := 1.7976931348623157e308;
+  r jsonb;
+begin
+  begin
+    insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, closed_at, voided, items) values
+      ('c0980000-0000-4000-8000-000000000001', 'cg_test', 'k-max', now() - interval '1 hour', now(), false,
+       jsonb_build_array(jsonb_build_object('name', 'A', 'inventory_id', 'c0980000-0000-4000-8000-0000000002a0',
+                                            'qty', to_jsonb(big), 'price', to_jsonb(big))));
+    r := pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+    assert (pg_temp.cg_item(r, 'c0980000-0000-4000-8000-0000000002a0') ->> 'sales')::numeric > big * big,
+      format('T11 FAIL the largest double squared did not land in A''s sales: %s', r);
+    raise exception 'cg-undo';
+  exception when others then
+    if sqlerrm <> 'cg-undo' then raise; end if;
+  end;
+end $$;
+
+-- T12 what the function does raise, and so is not "never": a price string
+-- longer than numeric holds, written directly (not through ingest), passes
+-- the digit pattern and overflows the cast for the whole call. The gateway
+-- reads that error as a failed read (null figures), never as a smaller one.
+do $$
+declare
+  raised boolean := false;
+begin
+  begin
+    insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, closed_at, voided, items) values
+      ('c0980000-0000-4000-8000-000000000001', 'cg_test', 'k-huge', now() - interval '1 hour', now(), false,
+       jsonb_build_array(jsonb_build_object('name', 'A', 'inventory_id', 'c0980000-0000-4000-8000-0000000002a0',
+                                            'qty', 1, 'price', repeat('9', 140000))));
+    perform pg_temp.cg_read('c0980000-0000-4000-8000-000000000001');
+  exception when numeric_value_out_of_range then
+    raised := true;
+  end;
+  assert raised, 'T12 FAIL a 140000-digit price string written directly did not raise 22003';
+  assert not exists (select 1 from public.pos_checks where external_check_id = 'k-huge'),
+    'T12 FAIL the k-huge check outlived its block';
 end $$;
 
 -- T8 the closed-check window has its index.
