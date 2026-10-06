@@ -20,3 +20,15 @@ Found while building [ADR 0281](../decisions/0281-a-pos-sale-is-dated-by-its-che
 **Not reachable while the database keeps its constraint.** `user_restaurant_access_role_known` (migration `team_access_role_is_a_known_role`) checks `role IN ('owner', 'manager', 'staff')`, which a padded or mixed-case value fails. Production's constraint was not read here. Found by the review of PR #644 at `fe0f31f4d`.
 
 **Fix.** One reading for both: trim in `readRole`, or compare exactly in `isOwnerOrManager`, as the constraint does. Not done on this branch: `readRole` serves the whole funnel's Away routing, and one operation per branch.
+
+## Two imports counting into one note might each win some of its rows — UNCERTAIN — 2026-10-05
+
+Raised by the review of PR #644 at `fe0f31f4d` (correctness note 2, "owed on the same branch or tracked"); still neither proven nor disproven at `6a572b195`.
+
+**The case.** Two gateway processes read the same open till note and each count a different refused check into it. Each sends one compare-and-set `UPDATE … WHERE id IN (ids) AND title = <title it read>` (`apps/api-gateway/src/pos-hub/refused-checks-note.ts:1010-1018`). If the two statements could each win a different subset of the note's rows, both subsets would hold a title of the same rank with different `checkKeys`, and the catch-up pass (`:1036-1045`) would never reconcile them, because it rewrites only rows whose rank is *lower*. One import's check would then be missing from some rows' count.
+
+**Why it is uncertain.** Under READ COMMITTED a second `UPDATE` that meets a row the first has locked waits, then re-checks its `WHERE` against the committed row (the title has changed, so the row is skipped). Two statements that lock the rows in different orders deadlock and one is aborted, which this code treats as "could not be updated" and answers by writing a new note (`:1019-1024`), so nothing is lost. A split therefore needs the two statements to visit the rows in different orders without deadlocking, which was judged unlikely by reading, not reproduced. No database and no second process were used.
+
+**Bound.** Count only: no refusal is dropped from the till's import reply, and no person is notified twice by it. It needs two gateway processes at once and a note with two or more recipients. `ADR 0281`'s "Two imports at once" section and the comment at `refused-checks-note.ts:101-119` cover the per-group writes, not this case.
+
+**Fix, if it is ever seen.** Let the catch-up pass also rewrite rows of *equal* rank whose `checkKeys` differ, merging the key sets; or move the count into one row the other rows read. Reproduce it first, with two connections against local Postgres, before changing anything.
