@@ -230,6 +230,78 @@ describe("compare loads provenance fresh and house-scoped", () => {
   });
 });
 
+describe("compare says which date a receipt's price carries (ADR 0273)", () => {
+  const receiptRow = {
+    id: "obs-receipt",
+    restaurant_id: HOUSE,
+    provider_id: VENDOR,
+    vendor_name_raw: "Vinos",
+    source_type: "invoice",
+    source_ref: "receipt_verified:o-1",
+    raw_price: 30,
+    currency: "EUR",
+    trust_tier: 1,
+    pack_size: 1,
+    unit_volume_ml: 750,
+    observed_at: "2026-07-15T12:00:00.000Z",
+    is_outlier: false,
+    document_id: null,
+    document_line_id: null,
+    conversation_message_id: null,
+    source_contact_id: null,
+    raw: {
+      origin: "own_paper",
+      dateBasis: "invoice_issue_date",
+      dateSentence:
+        "Dated by the issue date on invoice F-9, 2026-07-15, as read from the paper. The price was checked on 2026-09-03.",
+      verifiedAt: "2026-09-03T10:00:00.000Z",
+      issueDate: "2026-07-15",
+    },
+  };
+  const compareWith = async (rows: any[]) => {
+    const { svc } = fakeDb((r) => {
+      if (r.table === "master_wine_library")
+        return {
+          data: { producer: "P", name: "N", vintage: 2019 },
+          error: null,
+        };
+      if (r.table === "vendor_price_observations")
+        return { data: rows, error: null };
+      return { data: [], error: null };
+    });
+    return (await svc.compare({ masterWineId: WINE, restaurantId: HOUSE }))
+      .observations;
+  };
+
+  it("carries raw.dateBasis, its sentence and both dates onto the observation", async () => {
+    const [o] = await compareWith([receiptRow]);
+    expect(o).toMatchObject({
+      dateBasis: "invoice_issue_date",
+      dateSentence: receiptRow.raw.dateSentence,
+      issueDate: "2026-07-15",
+      verifiedAt: "2026-09-03T10:00:00.000Z",
+    });
+  });
+
+  it("is null on a row written without one, and on a basis this build has no word for", async () => {
+    const [plain, unknown] = await compareWith([
+      { ...receiptRow, id: "obs-plain", raw: { origin: "own_paper" } },
+      {
+        ...receiptRow,
+        id: "obs-odd",
+        raw: { ...receiptRow.raw, dateBasis: "delivered_at" },
+      },
+    ]);
+    for (const o of [plain, unknown])
+      expect(o).toMatchObject({
+        dateBasis: null,
+        dateSentence: null,
+        issueDate: null,
+        verifiedAt: null,
+      });
+  });
+});
+
 describe("observationSources", () => {
   it("refuses a vendor that is not this house's", async () => {
     const { svc } = fakeDb((r) => (r.table === "providers" ? { data: null, error: null } : { data: [], error: null }));

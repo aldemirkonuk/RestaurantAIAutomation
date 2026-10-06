@@ -37,6 +37,17 @@ const DUE_PLUS_5 = new Date("2026-09-17T04:05:00Z");
 const WEEKDAY_SENTENCE =
   "Wednesday sales came in 40% lower than your average Wednesday ($600 vs $1.0k, over 12 past Wednesdays).";
 
+/**
+ * A dip day `n` days before the REAL clock. The engine reads a dip's age on
+ * the clock the generator dates its series by (ADR 0291), not on the sweep
+ * instant these specs simulate, so a fixture that means "yesterday" has to
+ * say it on that clock — a fixed date would age past "now" as the calendar
+ * moves and drop the entry below the house's floor.
+ */
+function dipDay(n: number): string {
+  return `d:${new Date(Date.now() - n * 86400000).toISOString().slice(0, 10)}`;
+}
+
 function weekdayInsight(over: Row = {}) {
   return {
     candidateKey: "overall.revenue.vs_same_weekday",
@@ -45,7 +56,7 @@ function weekdayInsight(over: Row = {}) {
     score: 2,
     effectPct: -0.4,
     subject: "Wednesday",
-    periodKey: "d:2026-09-16",
+    periodKey: dipDay(1),
     ...over,
   };
 }
@@ -596,6 +607,22 @@ describe("an empty digest is not sent, and the log says why", () => {
     expect(sends(db)[0].outcome).toBe("skipped_empty");
     expect(sends(db)[0].reason).toMatch(
       /1 entry stood and none at or above "Now"/,
+    );
+  });
+
+  it("a sales dip seven weeks old stands below the default floor: nothing mailed, and the row says it stood (ADR 0291)", async () => {
+    // AW01: the engine said "Tonight" about a day 49 days old, and the digest
+    // mailed whatever the engine called "now". A dip that old is this month's.
+    const { db, service, gmail } = build({
+      engine: { insights: [weekdayInsight({ periodKey: dipDay(49) })] },
+    });
+
+    await service.sweepTenant(TENANT, DUE_PLUS_5);
+
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(sends(db)[0].outcome).toBe("skipped_empty");
+    expect(sends(db)[0].reason).toMatch(
+      /1 entry stood and none at or above "This week"/,
     );
   });
 

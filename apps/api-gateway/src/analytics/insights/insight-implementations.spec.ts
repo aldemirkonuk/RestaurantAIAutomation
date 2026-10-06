@@ -116,6 +116,55 @@ function familyAt(index: number) {
   return f;
 }
 
+interface CallSite {
+  dimension: string;
+  measure: string;
+  window: number;
+  /** The call's literal `category:`, or null when it has none. */
+  category: string | null;
+  index: number;
+}
+
+/** Every `timeSeriesInsights({...})` call, its literals read from the object. */
+function timeSeriesCallSites(): CallSite[] {
+  const calls: CallSite[] = [];
+  const site = /this\.timeSeriesInsights\(\s*\{/g;
+  let c: RegExpExecArray | null;
+  while ((c = site.exec(SRC))) {
+    const objOpen = SRC.indexOf("{", c.index);
+    const obj = SRC.slice(objOpen, balanced(SRC, objOpen, "{", "}") + 1);
+    const dimension = /\bdimension:\s*"([^"]+)"/.exec(obj);
+    const measure = /\bmeasure:\s*"([^"]+)"/.exec(obj);
+    const window = /\bperiodWindow:\s*(\d+)/.exec(obj);
+    const category = /\bcategory:\s*"([^"]+)"/.exec(obj);
+    if (!dimension || !measure)
+      throw new Error(
+        `timeSeriesInsights call at index ${c.index} has a non-literal dimension/measure`,
+      );
+    calls.push({
+      dimension: dimension[1],
+      measure: measure[1],
+      window: window ? Number(window[1]) : HELPER_DEFAULT_WINDOW,
+      category: category ? category[1] : null,
+      index: c.index,
+    });
+  }
+  if (calls.length === 0) throw new Error("no timeSeriesInsights call sites");
+  return calls;
+}
+
+const CALL_SITES = timeSeriesCallSites();
+
+/** A templated `record()` key, expanded for one call site. */
+function expandKey(pattern: string, call: CallSite): string {
+  return pattern.replace(/\$\{(\w+)\}/g, (_, name: string) => {
+    if (name === "dimension") return call.dimension;
+    if (name === "measure") return call.measure;
+    if (name === "window") return String(call.window);
+    throw new Error(`unresolvable \${${name}} in template ${pattern}`);
+  });
+}
+
 /**
  * Every type key the generator can emit, with the data its family guards on.
  * Literal `record("a.b.c")` keys are taken as-is; the templated keys inside
@@ -146,32 +195,7 @@ function deriveImplemented(): Map<string, Set<DataRequirement>> {
   if (patterns.length === 0)
     throw new Error("timeSeriesInsights emitted no recognisable record() keys");
 
-  const calls: Array<{
-    dimension: string;
-    measure: string;
-    window: number;
-    index: number;
-  }> = [];
-  const site = /this\.timeSeriesInsights\(\s*\{/g;
-  let c: RegExpExecArray | null;
-  while ((c = site.exec(SRC))) {
-    const objOpen = SRC.indexOf("{", c.index);
-    const obj = SRC.slice(objOpen, balanced(SRC, objOpen, "{", "}") + 1);
-    const dimension = /\bdimension:\s*"([^"]+)"/.exec(obj);
-    const measure = /\bmeasure:\s*"([^"]+)"/.exec(obj);
-    const window = /\bperiodWindow:\s*(\d+)/.exec(obj);
-    if (!dimension || !measure)
-      throw new Error(
-        `timeSeriesInsights call at index ${c.index} has a non-literal dimension/measure`,
-      );
-    calls.push({
-      dimension: dimension[1],
-      measure: measure[1],
-      window: window ? Number(window[1]) : HELPER_DEFAULT_WINDOW,
-      index: c.index,
-    });
-  }
-  if (calls.length === 0) throw new Error("no timeSeriesInsights call sites");
+  const calls = CALL_SITES;
 
   const found = new Map<string, Set<DataRequirement>>();
   const add = (key: string, requires: Set<DataRequirement>) => {
@@ -183,20 +207,74 @@ function deriveImplemented(): Map<string, Set<DataRequirement>> {
   for (const l of literals) add(l.key, familyAt(l.index).requires);
   for (const call of calls) {
     const requires = familyAt(call.index).requires;
-    for (const pattern of patterns) {
-      const key = pattern.replace(/\$\{(\w+)\}/g, (_, name: string) => {
-        if (name === "dimension") return call.dimension;
-        if (name === "measure") return call.measure;
-        if (name === "window") return String(call.window);
-        throw new Error(`unresolvable \${${name}} in template ${pattern}`);
-      });
-      add(key, requires);
-    }
+    for (const pattern of patterns) add(expandKey(pattern, call), requires);
   }
   return found;
 }
 
 const DERIVED = deriveImplemented();
+
+/**
+ * The category every `record()` files its type under (ADR 0291).
+ *
+ * The second argument is read, never assumed: a string literal is taken as
+ * it stands; inside `timeSeriesInsights` it must be the helper's own
+ * `category` parameter, which is resolved through each call site's literal
+ * `category:`. Anything else — a ternary, a variable, a computed value —
+ * throws, so a refactor that outruns this reader turns the suite red rather
+ * than quietly checking fewer calls. The count check closes the other gap:
+ * a `this.record(` whose key is not a literal would not be matched at all.
+ */
+function deriveRecordedCategories(): Array<{ key: string; category: string }> {
+  const out: Array<{ key: string; category: string }> = [];
+  const rec =
+    /this\.record\(\s*(?:"([^"]*)"|`([^`]*)`|'([^']*)')\s*,\s*(?:"([^"]*)"\s*,|'([^']*)'\s*,|([A-Za-z_$][\w$]*)\s*,)/g;
+  let seen = 0;
+  let m: RegExpExecArray | null;
+  while ((m = rec.exec(SRC))) {
+    seen++;
+    const key = m[1] ?? m[2] ?? m[3];
+    const literal = m[4] ?? m[5];
+    const ident = m[6];
+    const insideHelper = m.index > helper.start && m.index < helper.end;
+    if (m[2] === undefined) {
+      // A literal key: its category must be a literal too.
+      if (literal === undefined)
+        throw new Error(
+          `record("${key}") at index ${m.index} passes a non-literal category`,
+        );
+      out.push({ key, category: literal });
+      continue;
+    }
+    if (!insideHelper)
+      throw new Error(
+        `templated record() key outside timeSeriesInsights: ${key}`,
+      );
+    for (const call of CALL_SITES) {
+      let category: string;
+      if (literal !== undefined) category = literal;
+      else if (ident === "category") {
+        if (call.category === null)
+          throw new Error(
+            `timeSeriesInsights call at index ${call.index} has no literal category:`,
+          );
+        category = call.category;
+      } else
+        throw new Error(
+          `templated record() at index ${m.index} passes an unreadable category`,
+        );
+      out.push({ key: expandKey(key, call), category });
+    }
+  }
+  const total = (SRC.match(/this\.record\(/g) ?? []).length;
+  if (seen !== total)
+    throw new Error(
+      `read the category of ${seen} record() calls, but the generator has ${total}`,
+    );
+  return out;
+}
+
+const RECORDED = deriveRecordedCategories();
 
 // ---------------------------------------------------------------------------
 
@@ -225,6 +303,28 @@ describe("implemented insight types", () => {
       (k) => !catalogued.has(k),
     );
     expect(orphans).toEqual([]);
+  });
+
+  it("every record() files its type under the catalogue's category (ADR 0291)", () => {
+    // The catalogue's narrowed read asks with the catalogue's category, and
+    // the generator filters by category before key — so a type recorded
+    // under any other category reads "Nothing live" while it fires. Found
+    // live on 2026-10-03: vendor.purchase_spend.concentration under `risk`.
+    const byKey = new Map(INSIGHT_CANDIDATES.map((c) => [c.key, c.category]));
+    const disagree = RECORDED.filter(
+      (r) => byKey.get(r.key) !== r.category,
+    ).map(
+      (r) => `${r.key}: generator ${r.category}, catalogue ${byKey.get(r.key)}`,
+    );
+    expect(disagree).toEqual([]);
+    // Every emitted type was checked, not a subset the reader recognised.
+    expect(new Set(RECORDED.map((r) => r.key))).toEqual(
+      new Set(DERIVED.keys()),
+    );
+    expect(
+      RECORDED.find((r) => r.key === "vendor.purchase_spend.concentration")
+        ?.category,
+    ).toBe("purchasing");
   });
 
   it("catalogue requirements cover what each generator family guards on", () => {
