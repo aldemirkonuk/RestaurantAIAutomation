@@ -22,10 +22,12 @@
 -- spellings it admits; any other value the canonical feed names is counted
 -- in the import result and not written.
 --
--- NO BACKFILL. No feed has ever sent a channel: the canonical adapter never
--- read one, and the sim's generator (gen.py) sends none. There is nothing to
--- match, and guessing from table_ref ('BOOTH', 'EVENT') is exactly what the
--- ruling declined. Re-posting the affected days with a channel corrects them:
+-- NO BACKFILL. No feed is known to have sent a channel: the canonical adapter
+-- never read one, and the sim's generator (gen.py) sends none. A channel a
+-- feed did send would sit unread in raw; that is NOT checked against
+-- production (ADR 0302 method 1 gives the read-only count that would show
+-- it). There is nothing known to match, and guessing from table_ref
+-- ('BOOTH', 'EVENT') is exactly what the ruling declined. Re-posting the affected days with a channel corrects them:
 -- the ingest upserts on (restaurant_id, source, external_check_id), and the
 -- stock effects of a re-post are idempotent. NOT checked against production
 -- (no production reads from this lane).
