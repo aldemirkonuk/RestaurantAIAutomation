@@ -9,7 +9,6 @@ import {
   isExportableCutting,
 } from "./report-export-cuttings";
 import { PAYLOADS } from "./__fixtures__/cutting-payloads";
-import { HOUSE_ZONE_UNSET } from "../../common/house-day";
 
 /**
  * OD-81 — every cutting an export can write, pinned to the sheet it exports.
@@ -134,27 +133,6 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     const doc = EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 });
     expect(figure(doc, "Average check")).toBeCloseTo(4210.5 / 96, 10);
     expect(doc.tables[0].note).toBe("2 of the 30 days in the window rang up a check; the rest are absent rather than zero.");
-  });
-
-  it("through the till: a house with no time zone says so and withholds every figure for that reason (ADR 0296)", () => {
-    const doc = EXPORT_CUTTINGS.till.write(
-      { posConnected: true, zoneUnset: true, timezone: null, revenue: null, checkCount: null, from: null, to: null, days: 30, dailySeries: [] },
-      { days: 30 },
-    );
-    expect(doc.say).toBe(HOUSE_ZONE_UNSET);
-    for (const label of ["Taken", "Checks", "Average check"])
-      expect([label, figure(doc, label)]).toEqual([label, { withheld: true, why: HOUSE_ZONE_UNSET }]);
-    expect(doc.tables).toEqual([]);
-  });
-
-  it("through the till: the basis names the house's zone the days were filed in", () => {
-    const doc = EXPORT_CUTTINGS.till.write(
-      { ...(PAYLOADS.till as Record<string, unknown>), timezone: "America/Los_Angeles", zoneUnset: false },
-      { days: 30 },
-    );
-    expect(doc.basis[0]).toContain("filed on the house's day in America/Los_Angeles by when it closed, else when it opened");
-    // An older payload, with neither key, reads as it always did.
-    expect(EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 }).basis[0]).not.toContain("house's day");
   });
 
   it("the week's shape: a tie names no busiest day, and an unseen weekday has no mean", () => {

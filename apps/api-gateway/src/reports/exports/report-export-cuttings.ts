@@ -911,11 +911,17 @@ function writeGoals(payload: unknown): ExportDoc {
       target: num(entry.target),
       progress: num(entry.progressPct),
       onTrack: typeof entry.onTrack === "boolean" ? entry.onTrack : null,
+      paceUnread: str(entry.paceUnread) || null,
     };
   });
   const total = num(d.total) ?? goals.length;
   const paced = goals.some((g) => g.onTrack !== null);
-  const noPace = "no goal carries a deadline, so none has a pace";
+  // "No deadline" only when no goal carries one. A goal with a deadline and no
+  // pace (a house with no time zone, ADR 0296; a goal that could not be read)
+  // is not a goal without a deadline.
+  const noPace = goals.some((g) => g.deadline !== null)
+    ? "no goal's pace was judged; each goal's row says why"
+    : "no goal carries a deadline, so none has a pace";
   return doc({
     say:
       goals.length === 0
@@ -952,7 +958,7 @@ function writeGoals(payload: unknown): ExportDoc {
                   unreadable ? withheld(unreadable) : typed(g.current, g.unit, "the goal's current value was not computed"),
                   typed(g.target, g.unit, "no target recorded"),
                   unreadable ? withheld(unreadable) : figure(g.progress, "the goal's progress was not computed"),
-                  g.onTrack === null ? withheld(g.deadline ? "the pace was not computed" : "no deadline, so no pace") : g.onTrack ? "on pace" : "behind",
+                  g.onTrack === null ? withheld(g.paceUnread ?? (g.deadline ? "the pace was not computed" : "no deadline, so no pace")) : g.onTrack ? "on pace" : "behind",
                   g.deadline,
                 ];
               }),

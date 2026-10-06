@@ -7,6 +7,7 @@ import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import {
   HOUSE_ZONE_UNSET,
+  HOUSE_ZONE_UNSET_PACE,
   houseDayBounds,
   houseDayOf,
   houseToday,
@@ -497,10 +498,16 @@ export class GoalsService {
     let expectedByNow: number | null = null;
     let onTrack: boolean | null = null;
     let projected: number | null = null;
+    let paceUnread: string | null = null;
     // The schedule runs from the midnight that opened the goal's first day to
     // the midnight that opens its deadline day — both on the house's clock
-    // (ADR 0296), as both were on UTC's before. With no zone there is no
-    // schedule to hold it to, so the pace is not computed and the page says so.
+    // (ADR 0296), as both were on UTC's before. With no zone the deadline has
+    // no midnight to count to, so the pace is not computed and `paceUnread`
+    // carries the reason: the reports desk prints it, the goals export
+    // withholds the pace with it, and the recommendations margin says "Pace
+    // unknown" rather than "No deadline". Only days of stock gets here with no
+    // zone; every other metric has already thrown HOUSE_ZONE_UNSET.
+    if (goal.deadline && !zone) paceUnread = HOUSE_ZONE_UNSET_PACE;
     if (goal.deadline && zone && periodStart) {
       const start = localMidnight(periodStart, zone).getTime();
       const end = localMidnight(
@@ -549,6 +556,8 @@ export class GoalsService {
       expectedByNow,
       onTrack,
       daysLeft,
+      /** Why a goal with a deadline has no pace (null otherwise): ADR 0296. */
+      paceUnread,
       projectedAtDeadline: projected,
       projectionHitsTarget:
         projected !== null
@@ -893,7 +902,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * The window arguments are ignored on purpose and the caller is not misled
      * about it: a stock level is what is on the shelf NOW, not a total over a
      * period, and there is no historical series of it anywhere in this gateway.
-     * So it is also the one metric that needs no house zone.
+     * So it is also the one metric whose number needs no house zone. Its pace
+     * against a deadline still does (`getGoalProgress`, `paceUnread`).
      */
     if (metricKey === "days_of_inventory") {
       const financial: any = await this.analyticsService.getFinancialSummary(
@@ -917,7 +927,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     // Every series is read from 24 h before the window's first house midnight
     // (a check opened the night before and closed after midnight is filed on
     // the first day) up to the last instant of its last house day. `untilDate`
-    // is the house's today in every caller, so that end is still to come.
+    // is the house's today in every caller, so that end is still to come —
+    // except on the eve of a clock change at midnight, when it is an hour
+    // early (ADR 0296 §1, `localMidnight`).
     const bounds = houseDayBounds(sinceDate, untilDate ?? sinceDate, zone);
     const sinceIso = bounds.readFromIso;
     const untilIso = untilDate

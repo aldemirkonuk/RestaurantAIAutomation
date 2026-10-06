@@ -18,11 +18,15 @@ import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import {
   HOUSE_DAY_LOOKBACK_MS,
   HOUSE_ZONE_UNSET,
+  HOUSE_ZONE_UNSET_PACE,
   houseDayBounds,
   houseDayOf,
   houseToday,
   readHouseZone,
 } from "../common/house-day";
+import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
+import type { ExportDoc } from "../reports/exports/report-export-doc";
+import { PAYLOADS } from "../reports/exports/__fixtures__/cutting-payloads";
 
 /**
  * `AnalyticsService`, stubbed. Only `days_of_inventory` reaches it — it reads
@@ -146,7 +150,11 @@ const LA_HOUSE = { timezone: LA, country: "US" };
  * A GoalsService over the stub. The house reads Los Angeles time unless a test
  * registers its own `restaurants` row (ADR 0296: every day here is the house's).
  */
-function makeGoals(rowsByTable: Rows, errors: Record<string, string> = {}) {
+function makeGoals(
+  rowsByTable: Rows,
+  errors: Record<string, string> = {},
+  financial: any = analytics,
+) {
   const client = makeClient(
     { restaurants: [LA_HOUSE], ...rowsByTable },
     errors,
@@ -161,7 +169,7 @@ function makeGoals(rowsByTable: Rows, errors: Record<string, string> = {}) {
     { get: () => undefined } as never,
     {} as never,
     verdicts,
-    analytics,
+    financial,
   );
   return { service, client };
 }
@@ -664,6 +672,180 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       }),
     ).rejects.toThrow(HOUSE_ZONE_UNSET);
     expect(client.calls.some((c) => c.table === "analytics_goals")).toBe(false);
+  });
+
+  // Days of stock is the one goal a house with no zone still scores: its
+  // number is what is on the shelf now. Its pace is not known: the deadline is
+  // a house date, and with no zone it has no midnight to count down to.
+  const stock = {
+    ...goal,
+    id: "g-stock",
+    metric_key: "days_of_inventory",
+    target_value: 30,
+    direction: "at_most",
+  };
+  const shelf = {
+    getFinancialSummary: async () => ({ daysInventoryOutstanding: 42 }),
+  };
+  const NO_ZONE = { timezone: null, country: "US" };
+
+  it("(k) scores a days-of-stock goal for a house with no zone, and says why its deadline has no pace", async () => {
+    const { service } = makeGoals(
+      { restaurants: [NO_ZONE], analytics_goals: [stock] },
+      {},
+      shelf,
+    );
+
+    const list: any = await service.listGoalsWithProgress("r1");
+    expect(list.goals[0].unreadable).toBeUndefined();
+    expect(list.goals[0]).toMatchObject({
+      current: 42,
+      onTrack: null,
+      daysLeft: null,
+      expectedByNow: null,
+      projectedAtDeadline: null,
+      paceUnread: HOUSE_ZONE_UNSET_PACE,
+    });
+    // The one-goal route says the same.
+    const one: any = await service.getGoalProgress("r1", "g-stock");
+    expect(one.paceUnread).toBe(HOUSE_ZONE_UNSET_PACE);
+  });
+
+  it("(k2) paces the same goal in a house with a zone, and sends no reason", async () => {
+    const { service } = makeGoals({ analytics_goals: [stock] }, {}, shelf);
+
+    const progress: any = await service.getGoalProgress("r1", "g-stock");
+
+    expect(progress.paceUnread).toBeNull();
+    // 42 days of stock against "at most 30", 31 d 20 h into a 60-day schedule.
+    expect(progress.onTrack).toBe(false);
+    expect(progress.daysLeft).toBe(29);
+  });
+
+  it("(k3) sends no reason for a goal with no deadline: no deadline is not an unread pace", async () => {
+    const { service } = makeGoals(
+      {
+        restaurants: [NO_ZONE],
+        analytics_goals: [{ ...stock, deadline: null }],
+      },
+      {},
+      shelf,
+    );
+
+    const progress: any = await service.getGoalProgress("r1", "g-stock");
+
+    expect([progress.onTrack, progress.paceUnread]).toEqual([null, null]);
+  });
+});
+
+/**
+ * The till and goals exports read the payloads above (ADR 0296). These cases
+ * sit here, beside the payloads they read, rather than in
+ * `report-export-cuttings.spec.ts`.
+ */
+describe("the till and goals exports on the house's day (ADR 0296)", () => {
+  function exportFigure(doc: ExportDoc, label: string) {
+    const f = doc.figures.find((x) => x.label === label);
+    if (!f) throw new Error(`no figure "${label}"`);
+    return f.value;
+  }
+
+  it("through the till: a house with no time zone says so and withholds every figure for that reason", () => {
+    const doc = EXPORT_CUTTINGS.till.write(
+      {
+        posConnected: true,
+        zoneUnset: true,
+        timezone: null,
+        revenue: null,
+        checkCount: null,
+        from: null,
+        to: null,
+        days: 30,
+        dailySeries: [],
+      },
+      { days: 30 },
+    );
+    expect(doc.say).toBe(HOUSE_ZONE_UNSET);
+    for (const label of ["Taken", "Checks", "Average check"])
+      expect([label, exportFigure(doc, label)]).toEqual([
+        label,
+        { withheld: true, why: HOUSE_ZONE_UNSET },
+      ]);
+    expect(doc.tables).toEqual([]);
+  });
+
+  it("through the till: the basis names the house's zone the days were filed in", () => {
+    const doc = EXPORT_CUTTINGS.till.write(
+      {
+        ...(PAYLOADS.till as Record<string, unknown>),
+        timezone: "America/Los_Angeles",
+        zoneUnset: false,
+      },
+      { days: 30 },
+    );
+    expect(doc.basis[0]).toContain(
+      "filed on the house's day in America/Los_Angeles by when it closed, else when it opened",
+    );
+    // An older payload, with neither key, reads as it always did.
+    expect(
+      EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 }).basis[0],
+    ).not.toContain("house's day");
+  });
+
+  const stockRow = (over: Record<string, unknown> = {}) => ({
+    goal: {
+      id: "g-stock",
+      name: "Days of stock",
+      metric_key: "days_of_inventory",
+      deadline: "2026-09-30",
+    },
+    metricLabel: "Days of stock",
+    unit: "days",
+    current: 42,
+    target: 30,
+    progressPct: 1.4,
+    onTrack: null,
+    paceUnread: HOUSE_ZONE_UNSET_PACE,
+    ...over,
+  });
+
+  it("goals: a deadline whose pace was not judged is withheld with the gateway's reason, never as 'no deadline'", () => {
+    const doc = EXPORT_CUTTINGS.goals.write(
+      { goals: [stockRow()], total: 1 },
+      { days: null },
+    );
+    const why = "no goal's pace was judged; each goal's row says why";
+    expect(exportFigure(doc, "On pace")).toEqual({ withheld: true, why });
+    expect(exportFigure(doc, "Behind")).toEqual({ withheld: true, why });
+    // Column 5 is "On pace".
+    expect(doc.tables[0].rows[0][5]).toEqual({
+      withheld: true,
+      why: HOUSE_ZONE_UNSET_PACE,
+    });
+  });
+
+  it("goals: with no deadline on any goal, the sheet still says there is none", () => {
+    const row = stockRow({
+      goal: {
+        id: "g-stock",
+        name: "Days of stock",
+        metric_key: "days_of_inventory",
+        deadline: null,
+      },
+      paceUnread: null,
+    });
+    const doc = EXPORT_CUTTINGS.goals.write(
+      { goals: [row], total: 1 },
+      { days: null },
+    );
+    expect(exportFigure(doc, "On pace")).toEqual({
+      withheld: true,
+      why: "no goal carries a deadline, so none has a pace",
+    });
+    expect(doc.tables[0].rows[0][5]).toEqual({
+      withheld: true,
+      why: "no deadline, so no pace",
+    });
   });
 });
 

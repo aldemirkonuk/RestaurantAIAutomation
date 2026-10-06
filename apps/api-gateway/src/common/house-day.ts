@@ -57,6 +57,17 @@ export const HOUSE_DAY_LOOKBACK_MS = 24 * 3_600_000;
 export const HOUSE_ZONE_UNSET =
   "This house's time zone isn't set, so no sale can be filed on the house's day yet. An owner or manager can set it in Settings, under Time zone.";
 
+/**
+ * Why a goal WITH a deadline has no pace in a house with no zone. The deadline
+ * is a house date, so with no zone it has no midnight to count down to. The
+ * goal's own number may still be known (days of stock is what is on the shelf
+ * now), so this is the pace's reason, sent as `paceUnread`, never the goal's.
+ * Without it a null pace read as "No deadline" on the pages, which is false of
+ * a goal that has one (ADR 0016).
+ */
+export const HOUSE_ZONE_UNSET_PACE =
+  "This house's time zone isn't set, so the deadline has no midnight on the house's clock and the pace is not judged. An owner or manager can set it in Settings, under Time zone.";
+
 export interface HouseZone {
   /** The IANA zone the house's days are read in; null when none is known. */
   zone: string | null;
@@ -180,9 +191,12 @@ export interface HouseDayBounds {
 }
 
 /**
- * The instants bounding house dates `[from, to]`. DST-correct: a 23-hour or
- * 25-hour day is bounded by its own two midnights (`service-day.ts`
- * `localMidnight`, two-pass).
+ * The instants bounding house dates `[from, to]`, from `service-day.ts`
+ * `localMidnight` (two-pass). A 23-hour or 25-hour day is bounded by its own
+ * two midnights when the clock change misses midnight (Los Angeles, Berlin).
+ * When the change happens AT midnight, so the day has no 00:00 (Santiago on
+ * 2026-09-06), `localMidnight` answers 23:00 the evening before, an hour early;
+ * `houseDayOf` still files each row correctly. ADR 0296 §1 says so.
  */
 export function houseDayBounds(
   from: string,

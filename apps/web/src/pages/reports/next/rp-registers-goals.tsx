@@ -60,6 +60,12 @@ export interface GoalRow {
   expectedByNow: number | null;
   onTrack: boolean | null;
   daysLeft: number | null;
+  /**
+   * Why a goal WITH a deadline has no pace, in the gateway's words (ADR 0296:
+   * a house with no time zone), or null. A null `onTrack` means "no deadline"
+   * only when `deadline` is null too.
+   */
+  paceUnread: string | null;
   projected: number | null;
   projectionHitsTarget: boolean | null;
   baseline: number | null;
@@ -80,6 +86,31 @@ function inUnit(v: number | null, unit: string): string {
   if (unit === 'percent') return ratioPct(v);
   if (unit === 'currency') return figure(v, 'compact');
   return figure(v, 'compact');
+}
+
+/**
+ * A goal's pace and projection, in the sentence under its bar. A missing pace
+ * is "no deadline" only when the goal has none. With a deadline, the gateway
+ * did not judge the pace, and the sentence is its reason (`paceUnread`, ADR
+ * 0296), never "no deadline" and never "not enough history".
+ */
+export function paceCaption(g: GoalRow): string {
+  const left = g.daysLeft !== null ? `, ${countOf(g.daysLeft, 'day', 'days')} left` : '';
+  const pace =
+    g.onTrack === null
+      ? !g.deadline
+        ? 'No deadline, so there is no schedule to be ahead or behind of.'
+        : (g.paceUnread ?? 'The pace against this deadline was not computed.')
+      : g.onTrack
+        ? `On the pace this goal needs${left}.`
+        : `Behind the pace this goal needs${left}.`;
+  if (g.projected !== null)
+    return `${pace} The trend projects ${inUnit(g.projected, g.unit)} by the deadline${
+      g.projectionHitsTarget === null ? '' : g.projectionHitsTarget ? ' — enough.' : ' — short.'
+    }`;
+  return g.deadline && g.onTrack !== null
+    ? `${pace} There is not enough history to project the deadline, so none is drawn.`
+    : pace;
 }
 
 /* ──────────────────────────────────────────────────────────── the desk ── */
@@ -671,24 +702,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                         <span style={{ width: `${Math.min(100, Math.max(0, g.progressPct * 100))}%` }} />
                       </div>
                     )}
-                    <p className="rp-cap">
-                      {g.onTrack === null
-                        ? 'No deadline, so there is no schedule to be ahead or behind of.'
-                        : g.onTrack
-                          ? `On the pace this goal needs${g.daysLeft !== null ? `, ${countOf(g.daysLeft, 'day', 'days')} left` : ''}.`
-                          : `Behind the pace this goal needs${g.daysLeft !== null ? `, ${countOf(g.daysLeft, 'day', 'days')} left` : ''}.`}
-                      {g.projected !== null &&
-                        ` The trend projects ${inUnit(g.projected, g.unit)} by the deadline${
-                          g.projectionHitsTarget === null
-                            ? ''
-                            : g.projectionHitsTarget
-                              ? ' — enough.'
-                              : ' — short.'
-                        }`}
-                      {g.projected === null && g.deadline
-                        ? ' There is not enough history to project the deadline, so none is drawn.'
-                        : ''}
-                    </p>
+                    <p className="rp-cap">{paceCaption(g)}</p>
                   </>
                 )}
               </>
@@ -767,6 +781,7 @@ export const goals = analysis<GoalsRegister>({
         expectedByNow: num(entry.expectedByNow),
         onTrack: typeof entry.onTrack === 'boolean' ? entry.onTrack : null,
         daysLeft: num(entry.daysLeft),
+        paceUnread: str(entry.paceUnread) || null,
         projected: num(entry.projectedAtDeadline),
         projectionHitsTarget:
           typeof entry.projectionHitsTarget === 'boolean' ? entry.projectionHitsTarget : null,
@@ -797,9 +812,13 @@ export const goals = analysis<GoalsRegister>({
       {
         label: 'On pace',
         value: reg.goals.some((g) => g.onTrack !== null) ? figure(onTrack) : EM,
+        // "No deadline" only when no goal carries one: a goal with a deadline
+        // and no pace (no time zone, ADR 0296; or not read) says why itself.
         note: reg.goals.some((g) => g.onTrack !== null)
           ? undefined
-          : 'no goal carries a deadline, so none has a pace',
+          : reg.goals.some((g) => g.deadline)
+            ? 'no goal’s pace was judged; each goal says why'
+            : 'no goal carries a deadline, so none has a pace',
       },
       {
         label: 'Behind',
