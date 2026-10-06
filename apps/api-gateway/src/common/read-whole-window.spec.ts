@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import { HttpException, ServiceUnavailableException } from "@nestjs/common";
 import {
   WHOLE_READ_PAGE,
   WholeReadError,
@@ -8,6 +8,8 @@ import { GoalsService } from "../analytics/goals.service";
 import { TableAnalyticsService } from "../analytics/table-analytics.service";
 import { AdvancedAnalyticsService } from "../analytics/advanced-analytics.service";
 import { AnalyticsService } from "../analytics/analytics.service";
+import { AnalyticsController } from "../analytics/analytics.controller";
+import { RecommendationsService } from "../analytics/recommendations.service";
 import { InsightGeneratorService } from "../analytics/insights/insight-generator.service";
 import { DashboardService } from "../dashboard/dashboard.service";
 import { RecordedDaysService } from "../calendar/recorded-days.service";
@@ -666,7 +668,7 @@ describe("AnalyticsService — the till list sums every consumption line", () =>
   });
 });
 
-describe("AnalyticsService — loadConsumption reads every line, or degrades to [] (fork 3)", () => {
+describe("AnalyticsService — loadConsumption reads every line, or refuses (fork 3)", () => {
   // Feeds Wine 360's forecast14d (getDemandForecast), the financial summary,
   // risk and inventory science. Measured RED against origin/main e2cbe426a's
   // analytics.service.ts: it read 1,000 of these 1,500 lines.
@@ -699,21 +701,182 @@ describe("AnalyticsService — loadConsumption reads every line, or degrades to 
     expect(sum(out.history.values)).toBe(1500);
   });
 
-  it("a refused page 2 degrades to [] with a loud log, never 1,000 lines", async () => {
+  // ---- A refused read (the founder, 2026-10-06, ADR 0292 fork 3: "Say
+  // 'could not be read' (Recommended)"). Each case below was RED at
+  // c05c41f4c, where loadConsumption returned [] and every lens computed as
+  // if nothing had been poured.
+
+  it("a refused page 2 throws WholeReadError, never [] and never 1,000 lines", async () => {
     const { db, requests } = cappedDb(
       { wine_consumption_log: lines },
       { wine_consumption_log: { failOn: [2] } },
     );
-    const svc = new AnalyticsService(db) as any;
-    const logged = jest
-      .spyOn(svc.logger, "error")
-      .mockImplementation(() => undefined);
-    const out = await svc.loadConsumption("r1", 90);
-    expect(out).toEqual([]);
+    const err = await (new AnalyticsService(db) as any)
+      .loadConsumption("r1", 90)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.reason).toBe("read_failed");
     expect(consumptionRequests(requests)).toHaveLength(2);
-    expect(logged).toHaveBeenCalledWith(
-      expect.stringContaining("wine_consumption_log"),
+  });
+
+  // A cellar and a year of buying the old code would have priced, so a
+  // resolved lens below would carry real figures, not only nulls.
+  const cellar = [
+    {
+      id: "inv-1",
+      restaurant_id: "r1",
+      is_active: true,
+      wine_name: "Wine M1",
+      stock_live: 12,
+      menu_price_current: 60,
+      last_purchase_price: 20,
+      threshold_min: 2,
+      master_wine_id: "M1",
+      master_wine_library: { primary_type: "red" },
+    },
+  ];
+  const bought = [
+    {
+      id: "o1",
+      restaurant_id: "r1",
+      provider_id: "p1",
+      total_cost: 500,
+      bottles_total: 24,
+      status: "DELIVERED",
+      delivered_at: at(10),
+      created_at: at(12),
+    },
+  ];
+  /** Every page of the pour log times out: each lens's read is refused. */
+  const refusedEverywhere = () =>
+    cappedDb(
+      {
+        wine_consumption_log: lines,
+        restaurant_inventory: cellar,
+        procurement_orders: bought,
+      },
+      {
+        wine_consumption_log: {
+          failOn: Array.from({ length: 60 }, (_x, i) => i + 1),
+        },
+      },
     );
+
+  it.each([
+    [
+      "getFinancialSummary",
+      (s: AnalyticsService) => s.getFinancialSummary("r1"),
+    ],
+    ["getRiskProfile", (s: AnalyticsService) => s.getRiskProfile("r1")],
+    [
+      "getInventoryScience",
+      (s: AnalyticsService) => s.getInventoryScience("r1"),
+    ],
+    ["getDemandForecast", (s: AnalyticsService) => s.getDemandForecast("r1")],
+  ])(
+    "%s refuses with the sentence instead of figures computed without pours",
+    async (_name, call) => {
+      const { db } = refusedEverywhere();
+      const err: any = await call(new AnalyticsService(db)).catch((e) => e);
+      expect(err).toBeInstanceOf(WholeReadError);
+      expect(err.message).toMatch(
+        /^The consumption lines in this window could not be read whole: .*Nothing is reported from part of it\.$/,
+      );
+    },
+  );
+
+  it("the four routes answer the refusal sentence, never a 200 with figures", async () => {
+    const { db } = refusedEverywhere();
+    const none = {} as any;
+    const controller = new AnalyticsController(
+      new AnalyticsService(db),
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+    );
+    for (const route of [
+      () => controller.getFinancial("r1"),
+      () => controller.getInventoryScience("r1"),
+      () => controller.getRisk("r1"),
+      () => controller.getForecast("r1"),
+    ]) {
+      const err: any = await route().catch((e) => e);
+      // The routes' own catch maps any throw to a 500 that carries the
+      // message; /reports prints "The … register could not be read (…)" for
+      // any failed status (rp-format.ts failureLine), as it does for the 503
+      // menu engineering answers.
+      expect(err).toBeInstanceOf(HttpException);
+      expect(err.getStatus()).toBe(500);
+      expect(err.message).toMatch(/could not be read whole/);
+    }
+  });
+
+  it("the overview names the three lenses as unread (null), not as figures", async () => {
+    const { db } = refusedEverywhere();
+    const advanced = new AdvancedAnalyticsService(
+      db,
+      new AnalyticsService(db),
+      { getStored: async () => [] } as any,
+      { listGoals: async () => [] } as any,
+    );
+    const out: any = await advanced.getOverview("r1");
+    expect(out.financial).toBeNull();
+    expect(out.risk).toBeNull();
+    expect(out.inventory).toBeNull();
+    expect(out.menuEngineering).toBeNull();
+  });
+
+  it("/recommendations names the three lenses in sourcesUnread", async () => {
+    const { db, client } = refusedEverywhere();
+    const svc = new RecommendationsService(
+      new AnalyticsService(db),
+      {
+        getMenuEngineering: async () => null,
+        getSeasonality: async () => null,
+        getCashflow: async () => null,
+      } as any,
+      { generate: async () => ({ insights: [] }) } as any,
+      { listGoals: async () => [] } as any,
+      {
+        readDispositions: async () => ({
+          map: new Map(),
+          readable: true,
+          problem: null,
+        }),
+      } as any,
+      { supabase: client, getClient: () => client } as any,
+    );
+    const out = await svc.getRecommendations("r1");
+    expect(out.sourcesUnread).toEqual(
+      expect.arrayContaining([
+        "financial summary",
+        "risk profile",
+        "inventory science",
+      ]),
+    );
+  });
+
+  it("a days-of-stock goal is refused with the read, not scored from the lens", async () => {
+    const { db } = refusedEverywhere();
+    const goals = new GoalsService(
+      db,
+      { getStored: async () => [] } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      new AnalyticsService(db),
+    );
+    const err = await (goals as any)
+      .computeMetricWithSeries("r1", "days_of_inventory", at(30).slice(0, 10))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WholeReadError);
   });
 });
 
