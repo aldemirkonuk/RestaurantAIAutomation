@@ -16,6 +16,13 @@ import {
   POS_PROVIDERS,
   registrySummary,
 } from "./pos-provider.registry";
+import { NotificationsService } from "../notifications/notifications.service";
+import { AreaRoutingService } from "../areas/area-routing.service";
+import {
+  fileRefusedChecksNote,
+  type RefusedCheck,
+  type RefusedChecksNote,
+} from "./refused-checks-note";
 
 /**
  * `record_glass_pour` COALESCEs a missing `bottle_size_ml` to 750 before it
@@ -650,6 +657,15 @@ export class PosHubService {
     @Optional()
     @Inject(forwardRef(() => LowStockAlertsService))
     private readonly lowStockAlerts?: LowStockAlertsService,
+    // ADR 0281 (amended 2026-10-05): refused checks reach the owners' and
+    // managers' bell. Optional for the same reason: the note is a side effect
+    // of an import, never a precondition for it.
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications?: NotificationsService,
+    // ADR 0218: Away applies to that note. Database only, so no cycle.
+    @Optional()
+    private readonly areaRouting?: AreaRoutingService,
   ) {}
 
   getProviders() {
@@ -847,6 +863,12 @@ export class PosHubService {
      * import: 811 back-filled pours moved nothing with no word here (A-029).
      */
     stock: StockTally;
+    /**
+     * The one bell note for this import's refused checks (ADR 0281, amended
+     * 2026-10-05). Null when nothing was refused, so no note was due;
+     * otherwise whether it was filed, to how many bells, and why not.
+     */
+    bellNote: RefusedChecksNote | null;
   }> {
     const provider = PROVIDER_BY_KEY[providerKey];
     if (!provider) throw new Error(`Unknown POS provider '${providerKey}'`);
@@ -868,6 +890,7 @@ export class PosHubService {
         refusedUnreadableDate: 0,
         errors: ["No recognizable checks in payload"],
         stock: stock.tally,
+        bellNote: null,
       };
 
     const [mappingLookup, tableLookup] = await Promise.all([
@@ -886,6 +909,7 @@ export class PosHubService {
     let upserted = 0;
     let wineItems = 0;
     let refusedUnreadableDate = 0;
+    const refusedChecks: RefusedCheck[] = [];
     const client = this.dbService.getClient();
 
     for (const check of checks) {
@@ -905,6 +929,7 @@ export class PosHubService {
           check.closedAt !== undefined
         ) {
           refusedUnreadableDate++;
+          refusedChecks.push(check);
           if (refusedUnreadableDate <= MAX_REFUSED_CHECK_LINES) {
             errors.push(
               `${check.externalCheckId}: not imported, ${CLOSED_AT_NOT_READABLE} (closed_at was ${quoteClosedAt(check.closedAt)})`,
@@ -992,6 +1017,20 @@ export class PosHubService {
       `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${refusedUnreadableDate} refused for an unreadable closed_at, ${wineItems} wine items; ` +
         `stock booked ${t.booked}, already ${t.alreadyBooked}, queued ${t.queued.unmapped + t.queued.no_sale_volume}, failed ${t.failed}`,
     );
+    // ADR 0281 (amended 2026-10-05): one bell note per import that refused a
+    // check, after the loop, never per check. It never throws.
+    const bellNote =
+      refusedChecks.length > 0
+        ? await fileRefusedChecksNote(
+            {
+              client,
+              notifications: this.notifications,
+              areaRouting: this.areaRouting,
+              logger: this.logger,
+            },
+            { restaurantId, providerKey, refused: refusedChecks },
+          )
+        : null;
     return {
       provider: providerKey,
       received: checks.length,
@@ -1000,6 +1039,7 @@ export class PosHubService {
       refusedUnreadableDate,
       errors,
       stock: t,
+      bellNote,
     };
   }
 

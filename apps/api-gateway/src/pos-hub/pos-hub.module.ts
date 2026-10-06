@@ -1,4 +1,5 @@
 import { Module, forwardRef } from "@nestjs/common";
+import { AreaRoutingModule } from "../areas/area-routing.module";
 import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -18,7 +19,15 @@ import { PosMappingReviewService } from "./pos-mapping-review.service";
   // AuthModule supplies TokenBlacklistService, which JwtAuthGuard injects. The
   // guard resolves in *this* module's context, so without this import the whole
   // app fails to boot — not just this route. AuthModule is not @Global().
-  imports: [AuthModule, DatabaseModule, forwardRef(() => NotificationsModule)],
+  // AreaRoutingModule: the refused-checks bell note applies Away (ADR 0218,
+  // ADR 0281 amended 2026-10-05). It imports only the database, so it joins
+  // no cycle.
+  imports: [
+    AuthModule,
+    DatabaseModule,
+    forwardRef(() => NotificationsModule),
+    AreaRoutingModule,
+  ],
   controllers: [PosHubController],
   providers: [PosHubService, CatalogMatcherService, PosMappingReviewService],
   exports: [PosHubService, CatalogMatcherService, PosMappingReviewService],
