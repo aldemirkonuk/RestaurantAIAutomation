@@ -1540,6 +1540,8 @@ describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 028
     expect(row.delivered_at).toBe(hoursBefore(2));
     expect(calls.eventInserts[0].occurred_at).toBe(hoursBefore(2));
     expect(calls.eventInserts[0].occurred_at_basis).toBe("sent");
+    // The stock ledger row is dated by the same time (ADR 0281's p_occurred_at).
+    expect(calls.rpc[0].args.p_occurred_at).toBe(hoursBefore(2));
     expect(r.factTime).toEqual({
       at: hoursBefore(2),
       basis: "sent",
@@ -1564,6 +1566,8 @@ describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 028
     expect(calls.eventInserts[0].occurred_at_basis).toBe("server");
     expect(calls.eventInserts[0].client_captured_at).toBe(hoursBefore(120));
     expect(row.delivered_at).toBe(RECEIVED.toISOString());
+    // The ledger follows the stored event, which the database dated at entry.
+    expect(calls.rpc[0].args.p_occurred_at).toBe(RECEIVED.toISOString());
     expect(r.factTime.basis).toBe("server");
     expect(r.factTime.reason).toBe("too_old");
   });
@@ -1581,6 +1585,7 @@ describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 028
     expect(calls.eventInserts[0].occurred_at).toBe(hoursBefore(24 * 40));
     expect(calls.eventInserts[0].occurred_at_basis).toBe("back_dated");
     expect(row.delivered_at).toBe(hoursBefore(24 * 40));
+    expect(calls.rpc[0].args.p_occurred_at).toBe(hoursBefore(24 * 40));
     expect(r.factTime.basis).toBe("back_dated");
   });
 
@@ -1619,6 +1624,8 @@ describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 028
       reason: "within_window",
     });
     expect(shared.order.delivered_at).toBe(tap);
+    // The retry's movement carries the first attempt's stored date too.
+    expect(shared.calls.rpc[1].args.p_occurred_at).toBe(tap);
   });
 
   it("[REVERT-FAILS] a late-syncing earlier truck does not pull back a later truck's time", async () => {

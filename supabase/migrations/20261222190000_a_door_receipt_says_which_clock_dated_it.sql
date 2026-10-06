@@ -29,8 +29,10 @@
 --   'server'      the server's time: nothing usable was sent, the phone's
 --                 clock was more than five minutes ahead, or it was older and
 --                 no one could vouch.
---   NULL          a receipt recorded before this rule. Nothing is re-dated
---                 (backfill is an open fork in ADR 0286).
+--   NULL          a row this rule did not date: a door receipt recorded
+--                 before it, or a row the door does not write (verifyReceipt's
+--                 'reconciled' events, which take DEFAULT now()). Nothing is
+--                 re-dated (backfill is an open fork in ADR 0286).
 --
 -- A 'sent' or 'back_dated' row must carry the phone's time it was judged by
 -- (client_captured_at; on a clamped 'sent' row that is the phone's later
@@ -48,8 +50,9 @@
 -- and rewrites no row, so the append-only trigger (ADR 0227, BEFORE UPDATE /
 -- DELETE and TRUNCATE) never fires. Each CHECK makes one validating scan, and
 -- every existing row is NULL and passes. The ALTERs take ACCESS EXCLUSIVE on
--- procurement_receipt_events, which only the door writes and a handful of
--- reads touch; statement_timeout follows the repo's ALTER TABLE precedent
+-- procurement_receipt_events, which the door (its case counts) and
+-- verifyReceipt (its 'reconciled' events) write and a handful of reads
+-- touch; statement_timeout follows the repo's ALTER TABLE precedent
 -- (a_google_place_id_is_as_long_as_google_makes_it). Re-runnable: the column
 -- and each constraint are added only if absent. No explicit BEGIN/COMMIT: the
 -- Supabase CLI wraps each file in a transaction. The closing DO block reads
@@ -90,7 +93,7 @@ BEGIN
 END $$;
 
 COMMENT ON COLUMN public.procurement_receipt_events.occurred_at_basis IS
-  'Which clock dated occurred_at (ADR 0286). sent: the phone''s time (client_captured_at), no more than 72 hours before the gateway received the request; or, when the phone''s clock was up to five minutes ahead of the gateway, the moment the gateway received the request, earlier than the phone''s time kept in client_captured_at. back_dated: the phone''s time, older, kept on the word of an owner or a manager of the house the token named. server: the server''s own time (DEFAULT now(), equal to created_at), because nothing usable was sent, the phone clock was more than five minutes ahead, or the sent time was older than 72 hours from someone who may not back-date; client_captured_at still holds whatever was sent. NULL: recorded before the rule; such a row was dated by the server and is not re-dated.';
+  'Which clock dated occurred_at (ADR 0286). sent: the phone''s time (client_captured_at), no more than 72 hours before the gateway received the request; or, when the phone''s clock was up to five minutes ahead of the gateway, the moment the gateway received the request, earlier than the phone''s time kept in client_captured_at. back_dated: the phone''s time, older, kept on the word of an owner or a manager of the house the token named. server: the server''s own time (DEFAULT now(), equal to created_at), because nothing usable was sent, the phone clock was more than five minutes ahead, or the sent time was older than 72 hours from someone who may not back-date; client_captured_at still holds whatever was sent. NULL: a row this rule did not date, dated by the server (DEFAULT now()): a door receipt recorded before the rule, which is not re-dated, or a row the door does not write, such as verifyReceipt''s reconciled events.';
 
 DO $$
 BEGIN

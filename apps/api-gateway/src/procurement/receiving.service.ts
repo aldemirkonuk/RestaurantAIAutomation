@@ -595,6 +595,9 @@ export class ReceivingService {
           // so the ITEM does not follow from that. The primitive is told which
           // house the movement is for and refuses if the item is not its.
           p_restaurant_id: input.restaurantId,
+          // ADR 0286: the ledger row is dated by the event's stored time, as
+          // the order is (ADR 0281's shared argument; never later than now).
+          p_occurred_at: factTime.at,
         });
       if (rpcErr) {
         // THE FAILURE IS MADE REAL, AND IT IS MADE RETRYABLE.
