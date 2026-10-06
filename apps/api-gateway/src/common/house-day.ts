@@ -51,8 +51,10 @@ import {
 export const HOUSE_DAY_LOOKBACK_MS = 24 * 3_600_000;
 
 /**
- * The one sentence for a house with no zone. Gateway copy; the web page that
- * links to Settings says the same thing in its own file.
+ * The sentence a reader gives when it withholds a figure because the house has
+ * no zone. Gateway copy; the web page that links to Settings says the same
+ * thing in its own file. A goal's pace has its own sentence,
+ * `HOUSE_ZONE_UNSET_PACE` below.
  */
 export const HOUSE_ZONE_UNSET =
   "This house's time zone isn't set, so no sale can be filed on the house's day yet. An owner or manager can set it in Settings, under Time zone.";

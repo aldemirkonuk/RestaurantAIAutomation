@@ -30,7 +30,7 @@ The same UTC cut fed `GET /analytics/pos-revenue` (the till, its export, the rec
    - The closed-else-opened half (`checkInstant`) is not exported. So a reader cannot file a check by one of its timestamps without visibly going around the rule.
    - `houseToday(zone)` gives today on the house's clock.
    - `houseDayBounds(from, to, zone)` gives the DST-correct midnights, using `service-day.ts` `localMidnight`. [Narrowed 2026-10-05: correct where the clock change misses midnight, as measured for Los Angeles (2026-03-08, a 23-hour day; 2026-11-01, 25 hours), Berlin (2026-03-29) and Santiago's autumn change (2026-04-05). Where the change happens at midnight, so the day has no 00:00, `localMidnight` (`service-day.ts:90-93`, older than this ADR) answers 23:00 the evening before, an hour early: Santiago on 2026-09-06 gets `2026-09-06T03:00Z`, which `houseDayOf` files on Sep 5, and São Paulo on 2018-11-04 gets `02:00Z`, filed on Nov 3. What that changes is under Consequences.]
-   - `readHouseZone(client, id)` reads the zone, and `HOUSE_ZONE_UNSET` is the one sentence for a house without one.
+   - `readHouseZone(client, id)` reads the zone. `HOUSE_ZONE_UNSET` is the sentence a reader gives when it withholds a figure because the house has no zone, and `HOUSE_ZONE_UNSET_PACE` is the one a goal's pace gives (§5).
 
    A reader that files a sale on a day uses these and cuts no day of its own, and a reader that files a check hands `houseDayOf` the whole check. A later change (a 04:00 close-out, service windows) is a change to `houseDayOf`.
 2. **The zone** is the house's own `restaurants.timezone`, else its country's only zone (ADR 0207 q6, `houseFrame`), else none. It is read by primary key. A read error throws. It is never folded into "no zone", because that would make a database fault look like a settings gap.
@@ -43,7 +43,7 @@ The same UTC cut fed `GET /analytics/pos-revenue` (the till, its export, the rec
    - `getPosConsumptionBreakdown`: `[startIso, endIso)` on the same house days as the till.
    - The till export and the web till: the basis names the zone.
    - `ScenarioVerifyService.checkPosRevenue`: one spare day, so a house ahead of UTC still covers `service_date`. Its split message now says the two clocks differ.
-5. **No zone states nothing.**
+5. **No zone states nothing that is filed on a day.**
    - `getPosRevenueWindow` answers `posConnected` as before, plus `zoneUnset: true`, `timezone: null`, `from`/`to` `null`, `revenue`/`checkCount` `null` and `dailySeries: []`, and reads no window. "No POS" still takes precedence.
    - The controller does not read consumption and answers `consumption: null`. That means not known, which is different from `[]`, an empty cellar.
    - The till page says the sentence and links `/settings?tab=time-zone`. The export withholds all three figures, with the sentence as the reason. The verifier reports `unverifiable` with the sentence.
@@ -71,7 +71,8 @@ The same UTC cut fed `GET /analytics/pos-revenue` (the till, its export, the rec
   - the /reports till and its export state no figure and name the reason;
   - `createGoal` refuses (400, with the zone sentence) all six windowed goal metrics: the four that read `pos_checks` (`wine_revenue`, `checks`, `avg_check`, `wine_attach_rate`), and also `purchase_spend` and `bottles_sold`, which do not read `pos_checks` but are filed on house days too. Only a days-of-stock goal (`days_of_inventory`) can be created;
   - its existing windowed goals read "could not be scored", with the sentence as the reason, and a days-of-stock goal with a deadline shows its number and says its pace is not judged until the zone is set;
-  - the recommendations ribbon reads every day as `unknown` and gives no reason (PR-2 adds it).
+  - the recommendations ribbon reads every day as `unknown` and gives no reason (PR-2 adds it);
+  - the hourly goal-reached and ceiling-held notification producers count each windowed goal they would judge (an "at least" goal; a closed "at most" period) as `failed`, and log `GOAL_PROGRESS_UNREADABLE` or `CEILING_PROGRESS_UNREADABLE` with the zone sentence on every tick (`goal-reached.producer.ts:127-136`, `ceiling-held.producer.ts:149-158`). No note is sent for those goals. Each of their `getGoalProgress` calls reads the `restaurants` row again, once per goal.
 
   Where the zone will come from is the zoneaddr lane's: the founder's later answers for a house with no zone take it from the house's address, with the owner's device as the fallback. That lane's ADR is owed and records them.
 - **A check opened more than 24 h before the window and closed inside it is missed.** This is stated, as ADR 0290 states it for the dashboard. Widen `HOUSE_DAY_LOOKBACK_MS` if a house runs such checks.
@@ -110,3 +111,4 @@ The same UTC cut fed `GET /analytics/pos-revenue` (the till, its export, the rec
 | 2026-10-04 | — | Created with PR-1 (`fix/sales-belong-to-the-house-day`), cut at `origin/main` e2cbe426a |
 | 2026-10-04 | Independent verifier, round 1 | 1 major, 6 minor. Fixed: PR-2 owns /calendar (`recorded-days.service.ts`, A-026), which the ADR had also handed to caltakings; `houseDayOf` now takes the check itself, and `checkInstant` is no longer exported; the payload line names the three widened keys; Consequences add the interim disagreement between surfaces, the ribbon's two `unknown` cells with a zone, and the real tenant's refused goals |
 | 2026-10-05 | Independent review at 18c19a002 | A days-of-stock goal with a deadline in a house with no zone read "No deadline". Fixed: goal progress sends `paceUnread`, and the desk, the margin and the goals export say why; §1 and §5 narrowed (the midnight-DST case, and the pace needing a zone); the zoneaddr pointer added |
+| 2026-10-06 | Last call, lane tz | Narrowed: `HOUSE_ZONE_UNSET` is no longer called the one sentence for a house with no zone (the pace has its own); §5's heading says what no zone withholds; Consequences name the goal producers' hourly `failed` count for such a house |
