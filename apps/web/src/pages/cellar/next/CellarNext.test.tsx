@@ -829,6 +829,41 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(within(tied).getByTitle(/1 till line names this row and another equally/)).toBeInTheDocument();
   });
 
+  // ADR 0301, F2 of 2026-10-06, "List tied names on the row": "Each tied
+  // row's record lists the till names that tied, so the owner sees why its
+  // Sold is short and can fix the menu name. The lines still join neither row."
+  it('lists the till names that tied on the row, each with its lines, and counts none of them', () => {
+    mock.current = { ...base, registers: readout() };
+    const tiedRow = houseRow({
+      key: 'b3',
+      name: 'Lal Rosé',
+      house: {
+        ...houseRow().house,
+        poured: {
+          lines: 1, qty: 1, bottles: 1, glasses: null, unitUnknown: null, tiedLines: 3,
+          tiedNames: [
+            { name: 'Lal Rosé Kavak (glass)', lines: 2 },
+            { name: 'Lal Rosé Kavak Magnum', lines: 1 },
+          ],
+          revenue: 40, firstAt: null, lastAt: null,
+        },
+      },
+    });
+    mock.register = {
+      data: registerVM({ rows: [tiedRow] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Lal Rosé').closest('tr')!;
+    // Sold counts the one bottle; the three tied lines are only named.
+    expect(row).toHaveTextContent('1 bottle · 3 lines tied');
+    expect(
+      within(row).getByTitle(
+        "3 till lines name this row and another equally, so they are counted on neither: 'Lal Rosé Kavak (glass)' (2 lines), 'Lal Rosé Kavak Magnum' (1 line). A menu name that tells the two rows apart lets them count.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('opens the whole record on the stand, naming the table each fact came from', () => {
     mock.current = { ...base, registers: readout() };
     mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };

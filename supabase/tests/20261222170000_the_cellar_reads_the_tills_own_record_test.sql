@@ -279,6 +279,8 @@ end $$;
 -- [CHANGED 2026-10-05, a_till_name_with_a_serve_size_joins_its_row: the
 -- signature did not; the shape grew by five columns at its end (poured_bottles,
 -- poured_glasses, poured_unit_unknown, tied_lines, till_names). Was: 31.]
+-- [CHANGED 2026-10-06, the same migration, F2 "List tied names on the row":
+-- by six, with tied_names. Was: 36.]
 do $$
 declare args text; ncols integer;
 begin
@@ -287,7 +289,7 @@ begin
     from pg_proc p
    where p.oid = 'public.house_beverage_ledger(uuid, integer)'::regprocedure;
   assert args = 'p_restaurant_id uuid, p_limit integer', format('T12 FAIL the signature changed: %s', args);
-  assert ncols = 36, format('T12 FAIL the return shape has %s columns, expected 36', ncols);
+  assert ncols = 37, format('T12 FAIL the return shape has %s columns, expected 37', ncols);
 end $$;
 
 -- T13 an open check's lines count, dated when the check opened; a closed

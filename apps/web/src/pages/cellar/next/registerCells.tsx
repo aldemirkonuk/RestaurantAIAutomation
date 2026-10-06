@@ -60,7 +60,9 @@ function plural(n: number, one: string, many: string): string {
  * the rest is "unknown unit", never folded into a guess. A row none of whose
  * lines has a known unit (a cocktail, a draft with no mapping, or a gateway
  * before the split) keeps the plain count it always showed. Lines that tie
- * between this row and another are named after it, counted on neither.
+ * between this row and another are named after it, counted on neither, and
+ * the mark's title lists the till names that tied, each with its lines (ADR
+ * 0301, F2 of 2026-10-06: "List tied names on the row").
  */
 function soldCell(p: PouredVM | null | undefined): ReactNode {
   if (!p) return dim(EM);
@@ -68,11 +70,18 @@ function soldCell(p: PouredVM | null | undefined): ReactNode {
   const glasses = p.glasses ?? 0;
   const unknown = p.unitUnknown ?? 0;
   const tied = p.tiedLines ?? 0;
+  const names = (p.tiedNames ?? [])
+    .map((t) =>
+      t.lines === null ? `'${t.name}'` : `'${t.name}' (${plural(t.lines, 'line', 'lines')})`,
+    )
+    .join(', ');
   const tie =
     tied > 0 ? (
       <span
         className="cl-dim"
-        title={`${plural(tied, 'till line names', 'till lines name')} this row and another equally, so they are counted on neither.`}
+        title={`${plural(tied, 'till line names', 'till lines name')} this row and another equally, so they are counted on neither${
+          names === '' ? '.' : `: ${names}. A menu name that tells the two rows apart lets them count.`
+        }`}
       >
         {` · ${plural(tied, 'line', 'lines')} tied`}
       </span>

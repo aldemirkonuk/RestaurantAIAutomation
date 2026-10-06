@@ -20,6 +20,17 @@
 -- spirit." His earlier units pick (2026-10-04): "Bottles · glasses
 -- (Recommended)".
 --
+-- THE FORKS (AskUserQuestion, answered 2026-10-06 ~00:58Z), the two this
+-- migration builds, verbatim (all five are quoted in ADR 0301):
+--   F1 "Also match without maker (Recommended)": "If a till name holds none
+--      of a row's full words, try the row's name without the maker, under
+--      the same most-specific and tie rules. Beer fills on both menu shapes,
+--      and no production read is needed. A small change in the same
+--      migration, plus tests."
+--   F2 "List tied names on the row (Recommended)": "Each tied row's record
+--      lists the till names that tied, so the owner sees why its Sold is
+--      short and can fix the menu name. The lines still join neither row."
+--
 -- WHAT THIS DOES.
 --   1. house_till_lines gains `sold_as`: what one of the line is, 'bottle',
 --      'glass', or NULL (unit unknown), by the order ADR 0011 locks for the
@@ -37,6 +48,11 @@
 --          the most distinct words (contains);
 --        - rows level at the top tie, and the name joins none of them; each
 --          tied row counts the name's lines in `tied_lines`;
+--        - (F1) a name that holds no row's full words tries each menu or
+--          order row's name WITHOUT its maker (the line's name keyed alone,
+--          for a line that names a maker), by the same rules: an exact bare
+--          name wins, else the most words, and rows level at the top tie;
+--          such a join is 'without_maker';
 --        - a name that joins no row (it holds no row's words, or it ties) is
 --          a row of its own only when the queue ever held it, as before.
 --      The rows are the keys the menu, invoice, order and quote books name.
@@ -45,14 +61,16 @@
 --      row.
 --   3. The ledger's Sold is split into poured_bottles, poured_glasses and
 --      poured_unit_unknown, which sum to poured_qty. Taken is summed as
---      before. It also returns tied_lines, and till_names: the till names
---      counted on the row, with how each joined.
+--      before. It also returns tied_lines, till_names (the till names
+--      counted on the row, with how each joined) and (F2) tied_names (the
+--      till names that tied on it).
 --   4. house_till_names(p_restaurant_id, p_label) (a new overload) lists the
 --      till names the ledger counts on the row whose key is p_label's key, so
---      the row record's till book and the Sold cell use one rule, this one.
+--      the row record's till book and the Sold cell use one rule, this one,
+--      and (F2) the names that tied on it, as 'tie'.
 --      house_till_names(p_restaurant_id) is unchanged.
 --
--- The ledger's signature does not change; its return shape grows by five
+-- The ledger's signature does not change; its return shape grows by six
 -- columns at the end, so it is dropped and created again, with its grants.
 -- Its body is migration the_cellar_reads_the_tills_own_record's verbatim,
 -- the menu CTE included, except where marked CHANGED or ADDED below. No
@@ -275,7 +293,13 @@ RETURNS TABLE (
   tied_lines          integer,
   -- The till names counted on this row: [{item_name, lines, how}], how being
   -- 'exact' or 'contains'.
-  till_names          jsonb
+  -- [CHANGED 2026-10-06, F1: or 'without_maker', a name that joined this
+  -- row's name without its maker.]
+  till_names          jsonb,
+  -- ADDED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, F2 of
+  -- 2026-10-06): the till names whose lines tied_lines counts, the same
+  -- shape with how 'tie'. Counted on no row's Sold.
+  tied_names          jsonb
 )
 LANGUAGE sql
 STABLE
@@ -286,7 +310,12 @@ menu AS (
   SELECT public.beverage_house_key(mi.producer, mi.name) AS k,
          concat_ws(' ', mi.producer, mi.name)            AS label,
          mi.category                                     AS section,
-         mi.bottle_price, mi.by_glass_price, mi.created_at
+         mi.bottle_price, mi.by_glass_price, mi.created_at,
+         -- ADDED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, F1 of
+         -- 2026-10-06): the line's name without its maker, for a line that
+         -- names one. Read only by `bare_book` below.
+         CASE WHEN btrim(coalesce(mi.producer, '')) <> ''
+              THEN public.beverage_house_key(NULL, mi.name) END AS bare_k
   FROM public.menu_items mi
   -- ADDED the_ledger_lists_only_the_current_menu: only a line on a CURRENT
   -- menu is on the menu (ADR 0193: status 'active'). A draft was read and
@@ -323,7 +352,11 @@ ord AS (
          coalesce(oi.final_unit_price, oi.negotiated_unit_price,
                   oi.quoted_unit_price)                       AS unit_price,
          o.requested_at,
-         p.name                                               AS provider_name
+         p.name                                               AS provider_name,
+         -- ADDED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, F1 of
+         -- 2026-10-06): as the menu's.
+         CASE WHEN btrim(coalesce(oi.producer, '')) <> ''
+              THEN public.beverage_house_key(NULL, oi.wine_name) END AS bare_k
   FROM public.procurement_order_items oi
   JOIN public.procurement_orders o ON o.id = oi.order_id
   LEFT JOIN public.providers p ON p.id = o.provider_id
@@ -465,18 +498,65 @@ reach AS (
   GROUP BY nw.k, bw.k
   HAVING count(*) = min(bw.n)
 ),
--- The row whose key is the name's key wins outright (exact). Else the row
--- with the most words (contains). Rows level at the top are a tie, and the
--- name joins none of them. rnk = 1 marks the winner, or every tied row.
+-- ADDED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, F1 of
+-- 2026-10-06, "Also match without maker"): a row's name without its maker.
+-- A menu or order line that names a maker keys it with its name ('Anadolu
+-- Efes' + 'Efes Pilsen' keys `anadolu efes efes pilsen`), and the till rings
+-- the name alone ('Efes Pilsen (draft 400ml)'), so the name holds no row's
+-- full words. Its bare name is `bare_k`; a line that names no maker, or whose
+-- bare name is its key, has none to add. Words as `book_word`'s: distinct.
+bare_book AS (
+  SELECT k, bare_k FROM menu
+  WHERE k IS NOT NULL AND bare_k IS NOT NULL AND bare_k <> k
+  UNION
+  SELECT k, bare_k FROM ord
+  WHERE k IS NOT NULL AND bare_k IS NOT NULL AND bare_k <> k
+),
+bare_word AS MATERIALIZED (
+  SELECT b.k, b.bare_k, x.w, count(*) OVER (PARTITION BY b.k, b.bare_k) AS n
+  FROM bare_book b
+  CROSS JOIN LATERAL (SELECT DISTINCT unnest(string_to_array(b.bare_k, ' ')) AS w) x
+),
+-- Only a name that holds no row's full words (it is in no `reach` pair) tries
+-- the bare names, on the word as `reach` does. A row with two bare names (its
+-- menu line and its order line split maker and name differently) is one
+-- candidate: its most specific bare name the name holds, exact when either is
+-- the name's key.
+reach_bare AS (
+  SELECT r.name_k, r.row_k, max(r.n) AS n, bool_or(r.bare_k = r.name_k) AS exact
+  FROM (
+    SELECT nw.k AS name_k, bw.k AS row_k, bw.bare_k, min(bw.n) AS n
+    FROM name_word nw
+    JOIN bare_word bw ON bw.w = nw.w
+    WHERE NOT EXISTS (SELECT 1 FROM reach r0 WHERE r0.name_k = nw.k)
+    GROUP BY nw.k, bw.k, bw.bare_k
+    HAVING count(*) = min(bw.n)
+  ) r
+  GROUP BY r.name_k, r.row_k
+),
+-- CHANGED a_till_name_with_a_serve_size_joins_its_row (F1 of 2026-10-06):
+-- one rule over both passes, since a name is a candidate of one pass only.
+-- The row whose key (or, without maker, whose bare name) is the name's key
+-- wins outright (exact). Else the row with the most words (contains, or
+-- without_maker). Rows level at the top are a tie, and the name joins none
+-- of them. rnk = 1 marks the winner, or every tied row.
+cand AS (
+  SELECT r.name_k, r.row_k, r.n, (r.row_k = r.name_k) AS exact, false AS bare
+  FROM reach r
+  UNION ALL
+  SELECT b.name_k, b.row_k, b.n, b.exact, true AS bare
+  FROM reach_bare b
+),
 pick AS (
-  SELECT r.name_k, r.row_k,
-         CASE WHEN r.row_k = r.name_k THEN 'exact'
-              WHEN count(*) OVER (PARTITION BY r.name_k, r.n) > 1 THEN 'tie'
+  SELECT c.name_k, c.row_k,
+         CASE WHEN count(*) OVER (PARTITION BY c.name_k, c.exact, c.n) > 1 THEN 'tie'
+              WHEN c.bare THEN 'without_maker'
+              WHEN c.exact THEN 'exact'
               ELSE 'contains'
          END                                                    AS how,
-         rank() OVER (PARTITION BY r.name_k
-                      ORDER BY (r.row_k = r.name_k) DESC, r.n DESC) AS rnk
-  FROM reach r
+         rank() OVER (PARTITION BY c.name_k
+                      ORDER BY c.exact DESC, c.n DESC)          AS rnk
+  FROM cand c
 ),
 -- Each till name, on the one key its lines count on: the row it joined, or,
 -- when it joined none (it holds no row's words, or it ties), its own key,
@@ -495,8 +575,13 @@ pour_on AS (
                     WHERE pk.name_k = p.k AND pk.rnk = 1 AND pk.how <> 'tie')
 ),
 -- A tied name's lines, counted on every row it tied on, and on none's Sold.
+-- CHANGED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, F2 of
+-- 2026-10-06, "List tied names on the row"): it also lists the names, so the
+-- row's record can say which till names it is short by.
 tie_agg AS (
-  SELECT pk.row_k AS k, sum(p.lines)::integer AS lines
+  SELECT pk.row_k AS k, sum(p.lines)::integer AS lines,
+         jsonb_agg(jsonb_build_object('item_name', p.label, 'lines', p.lines, 'how', 'tie')
+                   ORDER BY p.label)                    AS names
   FROM pour p
   JOIN pick pk ON pk.name_k = p.k AND pk.rnk = 1 AND pk.how = 'tie'
   GROUP BY pk.row_k
@@ -604,7 +689,9 @@ base AS MATERIALIZED (
     po.glasses                                                 AS poured_glasses,
     po.unit_unknown                                            AS poured_unit_unknown,
     coalesce(tz.lines, 0)                                      AS tied_lines,
-    po.till_names                                              AS till_names
+    po.till_names                                              AS till_names,
+    -- ADDED (F2 of 2026-10-06).
+    tz.names                                                   AS tied_names
   FROM keys ky
   LEFT JOIN menu_agg m  ON m.k  = ky.k
   LEFT JOIN inv_agg  i  ON i.k  = ky.k
@@ -635,7 +722,9 @@ SELECT
   m.method AS match_method,
   -- ADDED a_till_name_with_a_serve_size_joins_its_row.
   b.poured_bottles, b.poured_glasses, b.poured_unit_unknown,
-  b.tied_lines, b.till_names
+  b.tied_lines, b.till_names,
+  -- ADDED (F2 of 2026-10-06).
+  b.tied_names
 FROM based b
 -- Exact first; then the most specific containment. There is no third tier: a
 -- product that reaches neither keeps NULL and is shown as the house's own
@@ -665,10 +754,13 @@ COMMENT ON FUNCTION public.house_beverage_ledger(uuid, integer) IS
   'The pos book is the till''s own record, house_till_lines. A till name joins '
   'the row of the other four books whose key equals its key, else the row '
   'with the most words among those whose every word it holds; rows level at '
-  'the top tie, and the name joins none (tied_lines). A name that joins no '
+  'the top tie, and the name joins none (tied_lines). A name that holds no '
+  'row''s full words tries each menu or order row''s name without its maker, '
+  'by the same rules. A name that joins no '
   'row is a row of its own when the queue ever held it. Sold is split into '
   'poured_bottles, poured_glasses and poured_unit_unknown; till_names lists '
-  'the names counted on the row (ADR 0301).';
+  'the names counted on the row, tied_names the names that tied on it '
+  '(ADR 0301).';
 
 REVOKE ALL ON FUNCTION public.house_beverage_ledger(uuid, integer)
   FROM PUBLIC, anon, authenticated;
@@ -694,17 +786,23 @@ AS $function$
   -- p_label's key (a row's label always keys to its own house_key). The
   -- ledger is read whole (no p_limit cut), so a row past the register's cut
   -- still finds its names.
+  -- CHANGED (ADR 0301, F2 of 2026-10-06): with the names that tied on the
+  -- row, joined_by 'tie', which the record lists and never reads lines for.
+  -- A till name is counted on one row or tied, never both, so item_name stays
+  -- unique per row and keyset-pages.
   SELECT j.item_name, j.lines, j.how
   FROM public.house_beverage_ledger(p_restaurant_id, 2147483647) l
-  CROSS JOIN LATERAL jsonb_to_recordset(coalesce(l.till_names, '[]'::jsonb))
+  CROSS JOIN LATERAL jsonb_to_recordset(
+         coalesce(l.till_names, '[]'::jsonb) || coalesce(l.tied_names, '[]'::jsonb))
        AS j(item_name text, lines bigint, how text)
   WHERE l.house_key = public.beverage_house_key(NULL, p_label)
 $function$;
 
 COMMENT ON FUNCTION public.house_till_names(uuid, text) IS
   'The till names house_beverage_ledger counts on the row whose house_key is '
-  'beverage_house_key(NULL, p_label), with how each joined (exact or '
-  'contains), so the row record reads the lines its Sold cell sums. Reads '
+  'beverage_house_key(NULL, p_label), with how each joined (exact, contains '
+  'or without_maker), so the row record reads the lines its Sold cell sums, '
+  'and the names that tied on it (tie), which it lists and does not count. Reads '
   'only. service_role only, for the same reason as house_till_lines '
   '(ADR 0301).';
 

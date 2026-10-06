@@ -324,6 +324,38 @@ describe("BeveragesService.readRegister — Sold split by unit (ADR 0301, 2026-1
     });
   });
 
+  it("names the till names that tied on the row, with their lines, counted on neither (ADR 0301, F2 of 2026-10-06)", async () => {
+    // The founder's answer: "Each tied row's record lists the till names that
+    // tied, so the owner sees why its Sold is short and can fix the menu
+    // name. The lines still join neither row." The ledger lists them in
+    // tied_names; the register carries them, trimmed, beside tiedLines.
+    const poured = await read([
+      row({
+        house_key: "rose",
+        label: "Lal Rosé",
+        pos_lines: 2,
+        poured_qty: "2",
+        tied_lines: 3,
+        tied_names: [
+          { item_name: "Lal Rosé Kavak (glass)", lines: 2, how: "tie" },
+          { item_name: " Lal Rosé Kavak Magnum ", lines: "1", how: "tie" },
+          // Not a name: dropped, never shown as a blank.
+          { item_name: "", lines: 4, how: "tie" },
+          "not an object",
+        ],
+      }),
+    ]);
+    expect(poured("Lal Rosé")).toMatchObject({
+      lines: 2,
+      qty: 2,
+      tiedLines: 3,
+      tiedNames: [
+        { name: "Lal Rosé Kavak (glass)", lines: 2 },
+        { name: "Lal Rosé Kavak Magnum", lines: 1 },
+      ],
+    });
+  });
+
   it("reads a database before the split as no split, not as zero", async () => {
     const poured = await read([
       row({ house_key: "ayran", label: "Ayran", pos_lines: 2, poured_qty: 3 }),
@@ -335,6 +367,9 @@ describe("BeveragesService.readRegister — Sold split by unit (ADR 0301, 2026-1
       glasses: null,
       unitUnknown: null,
       tiedLines: 0,
+      // [ADDED 2026-10-06, F2: and no tied names. A database before
+      // tied_names reads as none tied, as tiedLines 0 does.]
+      tiedNames: [],
     });
   });
 });
@@ -552,8 +587,13 @@ type TillCall = {
  * (supabase/tests/20261222180000_a_till_name_with_a_serve_size_joins_its_row_test.sql);
  * this fake only serves its answer. A label with no entry joins the names
  * whose trimmed text is the label's, as 'exact'.
+ * [CHANGED 2026-10-06, ADR 0301 F1 and F2: a name can also join
+ * 'without_maker', or be listed on the row as 'tie' (counted on neither).]
  */
-type TillJoins = Record<string, Array<[string, "exact" | "contains"]>>;
+type TillJoins = Record<
+  string,
+  Array<[string, "exact" | "contains" | "without_maker" | "tie"]>
+>;
 
 function tillQuery(
   fn: string,
@@ -875,6 +915,142 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
     expect(pos?.rows).toBe(0);
     expect(pos?.ledger).toEqual([]);
     expect(pos?.reason).toContain("Every line of every check that was not voided");
+    expect(calls.filter((c) => c.fn === "house_till_lines")).toHaveLength(0);
+  });
+
+  it("reads the lines of a name the ledger joined without the row's maker, as a loose match (ADR 0301, F1 of 2026-10-06)", async () => {
+    // The founder's answer: "If a till name holds none of a row's full words,
+    // try the row's name without the maker, under the same most-specific and
+    // tie rules." A menu that carries producers keys 'Anadolu Efes' + 'Efes
+    // Pilsen', and the till rings 'Efes Pilsen (draft 400ml)'. The ledger
+    // says 'without_maker'; the record reads its lines and shows the match
+    // as loose, which it is. Before this, the record dropped the name, so the
+    // record listed none of the lines its Sold cell counted.
+    const { service, calls } = await tillService(
+      [
+        tillLine(1, "Efes Pilsen (draft 400ml)", 4, 10),
+        tillLine(2, "Efes Pilsen", 2, 9),
+      ],
+      {},
+      {
+        "Anadolu Efes Efes Pilsen": [
+          ["Efes Pilsen", "without_maker"],
+          ["Efes Pilsen (draft 400ml)", "without_maker"],
+        ],
+      },
+    );
+    const out = await service.readRowRecord(RID, "Anadolu Efes Efes Pilsen");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(2);
+    expect(
+      pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort(),
+    ).toEqual([
+      ["Efes Pilsen (draft 400ml)", 4, "contains"],
+      ["Efes Pilsen", 2, "contains"],
+    ]);
+    expect(pos?.tied).toEqual([]);
+    const lineCalls = calls.filter((c) => c.fn === "house_till_lines");
+    expect(lineCalls).toHaveLength(1);
+    expect(new Set(lineCalls[0].args.p_names as string[])).toEqual(
+      new Set(["Efes Pilsen", "Efes Pilsen (draft 400ml)"]),
+    );
+  });
+
+  it("lists the till names that tied on the row, reads none of their lines, and says why its Sold is short (ADR 0301, F2 of 2026-10-06)", async () => {
+    // The founder's answer: "Each tied row's record lists the till names that
+    // tied, so the owner sees why its Sold is short and can fix the menu
+    // name. The lines still join neither row."
+    const lines = [
+      tillLine(1, "Lal Rosé", 1, 40),
+      tillLine(2, "Lal Rosé Kavak (glass)", 1, 12),
+      tillLine(3, "Lal Rosé Kavak (glass)", 2, 12),
+      tillLine(4, "Lal Rosé Kavak Magnum", 1, 90),
+    ];
+    const tiedOnly = await tillService(
+      lines,
+      {},
+      {
+        "Lal Kavak": [
+          ["Lal Rosé Kavak (glass)", "tie"],
+          ["Lal Rosé Kavak Magnum", "tie"],
+        ],
+      },
+    );
+    const onlyRec = await tiedOnly.service.readRowRecord(RID, "Lal Kavak");
+    const only = onlyRec.books.find((b) => b.book === "pos");
+    // No line counts on this row, so the record has no lines, and its words
+    // say why, naming each tied name and its lines.
+    expect(only?.readable).toBe(true);
+    expect(only?.rows).toBe(0);
+    expect(only?.ledger).toEqual([]);
+    expect(only?.tied).toEqual([
+      { name: "Lal Rosé Kavak (glass)", lines: 2 },
+      { name: "Lal Rosé Kavak Magnum", lines: 1 },
+    ]);
+    expect(only?.reason).toContain("'Lal Rosé Kavak (glass)' (2 lines)");
+    expect(only?.reason).toContain("'Lal Rosé Kavak Magnum' (1 line)");
+    expect(only?.reason).toContain("counted on neither");
+    expect(only?.reason).not.toContain("The till has not rung this up");
+    // Said once: the book's reason names them, the match rule does not repeat it.
+    expect(onlyRec.matchRule).not.toContain("Lal Rosé Kavak");
+    // Their lines are never read: the record lists only what Sold counts.
+    expect(
+      tiedOnly.calls.filter((c) => c.fn === "house_till_lines"),
+    ).toHaveLength(0);
+
+    // A row that also counts a name reads that name's lines only, and still
+    // lists the tie.
+    const both = await tillService(
+      lines,
+      {},
+      {
+        "Lal Rosé": [
+          ["Lal Rosé", "exact"],
+          ["Lal Rosé Kavak (glass)", "tie"],
+        ],
+      },
+    );
+    const bothRec = await both.service.readRowRecord(RID, "Lal Rosé");
+    const pos = bothRec.books.find((b) => b.book === "pos");
+    expect(pos?.rows).toBe(1);
+    // The book shows its reason only when it has no line, so the record's
+    // last sentence names the tie instead.
+    expect(bothRec.matchRule).toContain(
+      "counted on neither: 'Lal Rosé Kavak (glass)' (2 lines).",
+    );
+    expect(pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy])).toEqual([
+      ["Lal Rosé", 1, "exact"],
+    ]);
+    expect(pos?.tied).toEqual([{ name: "Lal Rosé Kavak (glass)", lines: 2 }]);
+    const lineCalls = both.calls.filter((c) => c.fn === "house_till_lines");
+    expect(lineCalls).toHaveLength(1);
+    expect(lineCalls[0].args.p_names).toEqual(["Lal Rosé"]);
+  });
+
+  it("gives a catalogue-only row's record no till lines, though the till rang a name holding its label (ADR 0301, F5 of 2026-10-06)", async () => {
+    // The founder's answer, "Keep one rule": "The record lists exactly the
+    // lines its Sold counts, so the two never disagree. A catalogue-only row
+    // shows no till lines." No book of the house names 'Kalecik Karası', so
+    // the ledger counts no name on it and house_till_names returns none. The
+    // record must not fall back to matching names itself (matchLine would
+    // find 'Kalecik Karası (glass)' as 'contains').
+    const { service, calls } = await tillService([
+      tillLine(1, "Kalecik Karası (glass)", 3, 11),
+    ]);
+    const out = await service.readRowRecord(RID, "Kalecik Karası");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(0);
+    expect(pos?.ledger).toEqual([]);
+    expect(pos?.tied).toEqual([]);
+    // One read, by this row's label; never the till's whole name list.
+    const names = calls.filter((c) => c.fn === "house_till_names");
+    expect(names).toHaveLength(1);
+    expect(names[0].args).toEqual({
+      p_restaurant_id: RID,
+      p_label: "Kalecik Karası",
+    });
     expect(calls.filter((c) => c.fn === "house_till_lines")).toHaveLength(0);
   });
 

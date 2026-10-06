@@ -19,10 +19,12 @@ import {
   matchLine,
   num as seriesNum,
   str as seriesStr,
+  tiedReason,
   unreadableBook,
   type BookRecord,
   type LedgerEntry,
   type RowRecord,
+  type TiedTillName,
 } from "./row-record";
 import {
   readCurrentMenuLines,
@@ -1039,8 +1041,9 @@ export class BeveragesService {
    * TWO STEPS, so a row's record never carries the whole till across the
    * wire. (1) `house_till_names(p_restaurant_id, p_label)` lists the till
    * names `house_beverage_ledger` counts on this row, and how each joined
-   * ('exact' or 'contains'). (2) `house_till_lines` reads every line under
-   * those names, each sent back exactly as step (1) returned it
+   * ('exact', 'contains' or 'without_maker'), plus the names that tied on it
+   * ('tie'). (2) `house_till_lines` reads every line under
+   * the counted names, each sent back exactly as step (1) returned it
    * (`rawTillName`). Both reads are keyset-paged on their own unique column
    * until a short page, so nothing is sampled and nothing is capped. A failed
    * read on either leaves the book unreadable, never zero.
@@ -1052,6 +1055,12 @@ export class BeveragesService {
    * from the ledger's own join (a name joins the most specific row whose
    * words it holds; a tie joins none), so the record lists exactly the lines
    * its row's Sold cell sums. The other four books keep `matchLine`.
+   *
+   * CHANGED the same migration (ADR 0301, the founder's answers of
+   * 2026-10-06): a name can also join 'without_maker' (F1, read and shown as
+   * a loose match) or come back as 'tie' (F2, listed in `tied` with its
+   * lines, never read). A row whose only names tied says so, naming them,
+   * instead of "the till has not rung this up".
    */
   private async readTillLines(
     restaurantId: string,
@@ -1086,15 +1095,30 @@ export class BeveragesService {
     // trim() also strips a tab, a newline or a no-break space. A name sent
     // back JS-trimmed ('Zqtl Cola' for 'Zqtl Cola\t') would match none of its
     // lines. How it joined is the ledger's, never re-derived here.
+    //
+    // 'without_maker' (F1 of 2026-10-06) is a loose join like 'contains': the
+    // name holds every word of the row's name without its maker. Its lines
+    // count on the row, so they are read and shown as matched loosely. 'tie'
+    // (F2) is a name that holds this row's words and another row's equally:
+    // it is listed in `tied`, and its lines are never read, because Sold
+    // counts none of them.
     const matched = new Map<string, "exact" | "contains">();
+    const tied: TiedTillName[] = [];
     for (const r of names.rows) {
       const name = rawTillName(r.item_name);
       if (name === null) continue;
       const how =
-        r.joined_by === "exact" || r.joined_by === "contains"
-          ? r.joined_by
-          : null;
+        r.joined_by === "exact"
+          ? "exact"
+          : r.joined_by === "contains" || r.joined_by === "without_maker"
+            ? "contains"
+            : null;
       if (how !== null) matched.set(name, how);
+      else if (r.joined_by === "tie") {
+        const shown = seriesStr(name);
+        if (shown !== null)
+          tied.push({ name: shown, lines: seriesNum(r.lines) });
+      }
     }
 
     const ledger: LedgerEntry[] = [];
@@ -1131,13 +1155,16 @@ export class BeveragesService {
       }
     }
 
-    return composeBook({
+    const book = composeBook({
       book: "pos",
       source,
       ledger,
       emptyReason:
-        "The till has not rung this up. Every line of every check that was not voided (pos_checks.items) was read, with the queued lines no check holds; none names this.",
+        tied.length > 0
+          ? tiedReason(tied)
+          : "The till has not rung this up. Every line of every check that was not voided (pos_checks.items) was read, with the queued lines no check holds; none names this.",
     });
+    return { ...book, tied };
   }
 }
 

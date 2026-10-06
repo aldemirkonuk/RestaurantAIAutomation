@@ -42,6 +42,7 @@ import {
   registersForLabel,
   type RegisterId,
 } from "../cellar/cellar-registers";
+import { tiedTillNames, type TiedTillName } from "./row-record";
 
 /**
  * Which books named this product. The vocabulary is closed and the words are
@@ -105,6 +106,13 @@ export interface Poured {
    * a tie, counted on neither row's Sold. 0 when there are none.
    */
   tiedLines: number;
+  /**
+   * The till names behind `tiedLines`, each with its lines, in the ledger's
+   * order (ADR 0301, F2 of 2026-10-06: "Each tied row's record lists the till
+   * names that tied"). [] when there are none, or on a database before the
+   * ledger's `tied_names` column.
+   */
+  tiedNames: TiedTillName[];
   revenue: number | null;
   firstAt: string | null;
   lastAt: string | null;
@@ -239,6 +247,8 @@ export interface LedgerRow {
   poured_unit_unknown?: number | null;
   tied_lines?: number | null;
   till_names?: unknown;
+  // Added by the same migration for ADR 0301's F2 (2026-10-06).
+  tied_names?: unknown;
 }
 
 /** One row of `public.beverages`, as the catalogue read selects it. */
@@ -352,6 +362,7 @@ export function toHouseRecord(r: LedgerRow): HouseRecord {
             glasses: positive(r.poured_glasses),
             unitUnknown: positive(r.poured_unit_unknown),
             tiedLines,
+            tiedNames: tiedTillNames(r.tied_names),
             revenue: positive(r.poured_revenue),
             firstAt: str(r.first_poured),
             lastAt: str(r.last_poured),

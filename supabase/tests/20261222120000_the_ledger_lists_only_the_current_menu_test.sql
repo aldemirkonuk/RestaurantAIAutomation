@@ -73,6 +73,8 @@ end $$;
 -- poured_unit_unknown, tied_lines, till_names), so the shape is 36. The
 -- signature is unchanged, and the first 31 columns are as they were, so a
 -- caller that reads them by name needs no change. Was: 31.]
+-- [CHANGED 2026-10-06, the same migration, F2 "List tied names on the row":
+-- a sixth, tied_names, so 37. Was: 36.]
 do $$
 declare
   args text;
@@ -84,7 +86,7 @@ begin
    where p.oid = 'public.house_beverage_ledger(uuid, integer)'::regprocedure;
   assert args = 'p_restaurant_id uuid, p_limit integer',
     format('T4 FAIL the signature changed: %s', args);
-  assert ncols = 36, format('T4 FAIL the return shape has %s columns, expected 36', ncols);
+  assert ncols = 37, format('T4 FAIL the return shape has %s columns, expected 37', ncols);
 end $$;
 
 rollback;
