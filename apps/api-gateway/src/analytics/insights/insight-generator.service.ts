@@ -1156,7 +1156,7 @@ export class InsightGeneratorService {
         // The wines actually ranked — not every active inventory row, most of
         // which had too little demand to be given a risk at all.
         peerCount: ranked.length,
-        // To the tenth: 300 of 750 ml open reads "0.4", not 0.4000000000000001.
+        // To the tenth: 250 of 750 ml open reads "0.3", not 0.3333333333333333.
         attributeReading: `Only ${Math.round(worst.onHand * 10) / 10} bottles on hand vs its demand pattern — reorder before the next delivery window.`,
       };
       push(
