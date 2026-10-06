@@ -47,7 +47,9 @@ Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 6). Found by the
 
 **Not decided here.** No claims row: nothing is built, and there is no target a check could pin until the behaviour is chosen.
 
-## Back-dating has no lower bound — OPEN (fork) — 2026-10-05
+## Back-dating has no lower bound — ~~OPEN (fork)~~ CLOSED on 2026-10-06, no change — 2026-10-05
+
+**[Closed 2026-10-06: the founder answered the fork (AskUserQuestion, ~15:10Z), verbatim pick *"No floor (Recommended)"*: as built. Quoted in ADR 0286, follow-up 7.]**
 
 Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 7). Found by the PR's review at `d9fd02b9f`. This is a founder fork; it is not asked on this branch.
 
