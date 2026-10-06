@@ -75,10 +75,10 @@ export function hoursOpenCert(reg: OperatingHoursResponse): Certainty {
  * same zone, and shows a person behind THIS zone: its bound source is
  * `stated`, or it has no recorded source and the newest audit row says `to` =
  * this exact zone (the gateway returns `statedBy` only then). The second case
- * is ADR 0304 Reading 5, the lane's, awaiting the founder. A zone the address
- * or the device gave, or one with no source and no witness, is `inferred`:
- * present, with no person the register can name behind it. A house with no
- * zone is `unstated`.
+ * is the founder's 2026-10-06 ruling, "Credit the old record" (ADR 0304
+ * Decision 4). A zone the address or the device gave, or one with no source
+ * and no witness, is `inferred`: present, with no person the register can
+ * name behind it. A house with no zone is `unstated`.
  *
  * This widens `inferred` past `SectionKit.tsx`'s `Certainty` note ("computed
  * on read, never written"): a zone kept once with its address or device

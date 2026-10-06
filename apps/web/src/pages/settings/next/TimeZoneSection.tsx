@@ -74,7 +74,8 @@ export function zoneProvenance(reg: HouseTimeZoneRegister): {
       // No recorded source: a zone saved before ADR 0304, or one a blind
       // writer unbound. When the newest audit row says `to` = this exact zone
       // it reads "stated" with that row's date, and its actor is named when
-      // the name can be read (ADR 0304 Reading 5, awaiting the founder).
+      // the name can be read (ADR 0304 Decision 4, the founder's 2026-10-06
+      // ruling "Credit the old record").
       return witnessed
         ? { verb: 'stated', when: reg.statedAt, whenUnknown: 'when was not recorded', by }
         : {
