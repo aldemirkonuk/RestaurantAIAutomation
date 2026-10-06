@@ -26,7 +26,9 @@ Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 2).
 
 **Closed 2026-10-06** on the same branch. The door's call passes `p_occurred_at: factTime.at` (`apps/api-gateway/src/procurement/receiving.service.ts:600`), so the ledger row's `transaction_date` is the event's stored time, never later than now; a retry passes the first attempt's stored time. The purchase lot keeps `inventory_lots.received_at` at entry, and a back-dated ledger row keeps the `quantity_before` and `quantity_after` computed at entry (as ADR 0281 records for POS sales). Pinned by `receiving.spec.ts` (four `[REVERT-FAILS]` cases assert `p_occurred_at`) and by `ADR-0286-DOOR-STOCK-MOVEMENT-IS-DATED`, now resolved.
 
-## Door receipts recorded before ADR 0286 keep their entry date — OPEN (fork) — 2026-10-04
+## Door receipts recorded before ADR 0286 keep their entry date — ~~OPEN (fork)~~ ANSWERED on 2026-10-06: forward-only — 2026-10-04
+
+**[Answered 2026-10-06 19:52Z: the founder picked *"Forward-only (Recommended)"* (AskUserQuestion), quoted in ADR 0286 follow-up 3. No backfill. The rows written before the rule keep their dates, so the sim house's scorecard, pacing and sales chart stay as they are until the house is reset or re-seeded; that cost is the ruling's, stated to him in the question.]**
 
 Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 3). This is a founder fork; it was not asked on this branch.
 
