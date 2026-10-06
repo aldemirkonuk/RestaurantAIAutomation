@@ -314,3 +314,126 @@ describe("an empty POS window is not an absent field (A-040)", () => {
     expect(EXPORT_CUTTINGS.service.write(PAYLOADS.service, { days: null }).say).toBeNull();
   });
 });
+
+/**
+ * ADR 0295 (AW17, A-019, A-047): a payload that says it is net is written as
+ * net — 'Taken (net)', 'Average check (net)', 'Tip rate (on net)' — with the
+ * basis in the owner's words, and a figure taken from only some checks says
+ * so ("from N of M checks", founder F1). A payload without `basis` keeps the
+ * words above: nothing in it says it is net.
+ */
+describe("the POS registers are written as net sales (ADR 0295)", () => {
+  const till = {
+    posConnected: true,
+    basis: "net",
+    from: "2026-09-18",
+    to: "2026-09-20",
+    days: 3,
+    revenue: 300,
+    checkCount: 5,
+    netCheckCount: 4,
+    dailySeries: [
+      { date: "2026-09-18", revenue: 200, checks: 3, netChecks: 2 },
+      { date: "2026-09-19", revenue: 100, checks: 1, netChecks: 1 },
+      { date: "2026-09-20", revenue: null, checks: 1, netChecks: 0 },
+    ],
+  };
+  const room = {
+    sinceDays: 90,
+    basis: "net",
+    dataStatus: "live",
+    tables: [
+      {
+        tableId: "t1",
+        label: "T1",
+        zone: null,
+        seats: 4,
+        checks: 3,
+        netChecks: 2,
+        revenue: 200,
+        avgCheck: 100,
+        wineAttachRate: 0,
+      },
+      {
+        tableId: "t2",
+        label: "T2",
+        zone: null,
+        seats: 2,
+        checks: 1,
+        netChecks: 0,
+        revenue: null,
+        avgCheck: null,
+        wineAttachRate: 0,
+      },
+    ],
+  };
+  const floor = {
+    sinceDays: 90,
+    basis: "net",
+    dataStatus: "live",
+    adjusted: null,
+    waiters: [
+      {
+        name: "Maya",
+        checks: 2,
+        netChecks: 2,
+        revenue: 200,
+        avgCheck: 100,
+        wineAttachRate: 0,
+        tipPct: 0.2,
+      },
+    ],
+  };
+
+  it("g10: the till, the room and who served it carry the net labels", () => {
+    const t = EXPORT_CUTTINGS.till.write(till, { days: 3 });
+    expect(figure(t, "Taken (net)")).toBe(300);
+    expect(figure(t, "Checks")).toBe(5);
+    // Net sales over the checks that carried them: 300 / 4, not 300 / 5.
+    expect(figure(t, "Average check (net)")).toBe(75);
+    expect(t.tables[0].columns.map((c) => c.label)).toEqual([
+      "Day",
+      "Taken (net)",
+    ]);
+    const s = EXPORT_CUTTINGS.seats.write(room, { days: null });
+    expect(s.tables[0].columns.map((c) => c.label)).toContain("Taken (net)");
+    expect(s.tables[0].columns.map((c) => c.label)).toContain(
+      "Average check (net)",
+    );
+    const w = EXPORT_CUTTINGS.service.write(floor, { days: null });
+    const cols = w.tables[0].columns.map((c) => c.label);
+    expect(cols).toContain("Tip rate (on net)");
+    expect(cols).toContain("Average check (net)");
+    expect(w.tables[0].rows[0][5]).toBe(0.2);
+  });
+
+  it("g11: no basis line names a till field, net or not", () => {
+    const docs = [
+      EXPORT_CUTTINGS.till.write(till, { days: 3 }),
+      EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 }),
+      EXPORT_CUTTINGS.seats.write(room, { days: null }),
+      EXPORT_CUTTINGS.seats.write(PAYLOADS.seats, { days: null }),
+      EXPORT_CUTTINGS.service.write(floor, { days: null }),
+      EXPORT_CUTTINGS.service.write(PAYLOADS.service, { days: null }),
+    ];
+    for (const d of docs)
+      for (const line of d.basis)
+        expect(line).not.toMatch(/pos_checks|subtotal\b|\.total/);
+    expect(docs[0].basis[0]).toContain("before tax, surcharge and tips");
+  });
+
+  it("g12: a figure from only some checks says so, and a day none of whose checks carried one is not recorded", () => {
+    const t = EXPORT_CUTTINGS.till.write(till, { days: 3 });
+    expect(t.notes.join(" ")).toContain("from 4 of 5 checks");
+    expect(t.tables[0].note).toContain("2026-09-18 is from 2 of 3 checks");
+    const unrecorded = t.tables[0].rows[2][1];
+    expect(isWithheld(unrecorded)).toBe(true);
+    expect((unrecorded as { why: string }).why).toContain("not recorded");
+    const s = EXPORT_CUTTINGS.seats.write(room, { days: null });
+    expect(s.tables[0].note).toContain("T1: from 2 of 3 checks");
+    expect(isWithheld(s.tables[0].rows[1][4])).toBe(true);
+    expect((s.tables[0].rows[1][4] as { why: string }).why).toContain(
+      "not recorded",
+    );
+  });
+});

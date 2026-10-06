@@ -24,6 +24,7 @@ import {
   type CuttingSpec,
   type SpecRejection,
 } from "./report-cuttings";
+import { foldNetSales, netAverage, type NetSalesFold } from "./net-sales";
 
 /**
  * GoalsService — metric-linked goals with AI assistance.
@@ -100,7 +101,8 @@ export class GoalsService {
       insightCategories: ["sales", "tables"],
     },
     avg_check: {
-      label: "Average check",
+      // Net since ADR 0295: subtotal over the checks that carried one.
+      label: "Average check (net)",
       unit: "currency",
       insightCategories: ["efficiency", "staff", "basket"],
     },
@@ -810,6 +812,15 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     dailySeries: number[];
     dailyDates: string[];
     rowCount: number;
+    /**
+     * `pos_revenue` only: the net-sales fold (ADR 0295) over the window and
+     * per day, so a reader can say "from N of M checks" and print a day
+     * whose checks carried no net figure as "not recorded" rather than 0.
+     */
+    net?: {
+      window: NetSalesFold;
+      days: Array<{ date: string } & NetSalesFold>;
+    };
   }> {
     /**
      * Days of stock, before everything else, and deliberately OUTSIDE the
@@ -852,6 +863,12 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 
     const daily = new Map<string, number>();
     let rowCount = 0;
+    // A reading that cannot be made honestly, thrown AFTER the catch below
+    // (which would otherwise turn it into a sum of nothing).
+    let refusal: string | null = null;
+    let net:
+      | { window: NetSalesFold; days: Array<{ date: string } & NetSalesFold> }
+      | undefined;
     const add = (date: string, v: number) => {
       if (!date) return;
       daily.set(date, (daily.get(date) || 0) + v);
@@ -895,7 +912,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         // already trusts.
         let q = client
           .from("pos_checks")
-          .select("total, opened_at, closed_at, items")
+          .select("subtotal, opened_at, closed_at, items")
           .eq("restaurant_id", restaurantId)
           // Voided checks are not revenue — see pos_checks.voided. Goal progress
           // is the most visible of the three readers: it drives the sentences the
@@ -907,28 +924,44 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         const checks = data || [];
         rowCount = checks.length;
         if (metricKey === "pos_revenue") {
-          // The whole check total — the tender the restaurant actually booked,
-          // which is the denominator a COGS ratio needs. `wine_revenue` below
-          // deliberately sums only itemised wine lines and is NOT a substitute.
-          for (const c of checks)
-            add(
-              (c.closed_at || c.opened_at || "").substring(0, 10),
-              Number(c.total) || 0,
-            );
+          // Net sales (ADR 0295): the subtotal, after discounts and before
+          // tax, surcharge and tip — what the house sold, and the denominator
+          // a P&L puts food cost over. It used to sum `total`, which on Tuzlu
+          // carried 12.63% of tax and surcharge (A-019). A check with no
+          // subtotal is counted, never filled from its total.
+          // `wine_revenue` below sums only itemised wine lines and is NOT a
+          // substitute.
+          const byDay = new Map<string, any[]>();
+          for (const c of checks) {
+            const day = (c.closed_at || c.opened_at || "").substring(0, 10);
+            if (!day) continue;
+            const list = byDay.get(day) ?? [];
+            list.push(c);
+            byDay.set(day, list);
+          }
+          const days = Array.from(byDay.keys())
+            .sort()
+            .map((date) => ({ date, ...foldNetSales(byDay.get(date)!) }));
+          for (const d of days) add(d.date, d.netSales ?? 0);
+          net = { window: foldNetSales(checks), days };
         } else if (metricKey === "checks") {
           for (const c of checks)
             add((c.closed_at || c.opened_at || "").substring(0, 10), 1);
         } else if (metricKey === "avg_check") {
-          const total = checks.reduce(
-            (s: number, c: any) => s + (c.total || 0),
-            0,
-          );
-          return {
-            current: checks.length ? total / checks.length : 0,
-            dailySeries: [],
-            dailyDates: [],
-            rowCount: checks.length,
-          };
+          // Net since ADR 0295, divided by the checks that carried a net
+          // figure. Checks, none of which stated one, cannot be averaged:
+          // refused below rather than read as $0 or as the gross total.
+          const fold = foldNetSales(checks);
+          if (fold.checks > 0 && fold.netChecks === 0) {
+            refusal = `None of the ${fold.checks} check${fold.checks === 1 ? "" : "s"} in this window carried a net figure (the subtotal before tax and tips), so the average check (net) is not recorded.`;
+          } else {
+            return {
+              current: netAverage(fold) ?? 0,
+              dailySeries: [],
+              dailyDates: [],
+              rowCount: checks.length,
+            };
+          }
         } else if (metricKey === "wine_attach_rate") {
           const withWine = checks.filter((c: any) =>
             (Array.isArray(c.items) ? c.items : []).some(
@@ -960,10 +993,12 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
     }
 
+    if (refusal) throw new Error(refusal);
+
     const dates = Array.from(daily.keys()).sort();
     const dailySeries = dates.map((d) => daily.get(d) || 0);
     const current = dailySeries.reduce((a, b) => a + b, 0);
-    return { current, dailySeries, dailyDates: dates, rowCount };
+    return { current, dailySeries, dailyDates: dates, rowCount, net };
   }
 
   // ==========================================================================
@@ -995,12 +1030,17 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   }
 
   /**
-   * Sales revenue booked through the POS over a closed day range.
+   * Net sales booked through the POS over a closed day range (ADR 0295).
    *
    * `revenue`/`checkCount` are `null` — never `0` — when no POS is connected.
    * Every consumer of this payload renders an empty state off `posConnected`,
    * because a zero here would be a claim about the restaurant's trading rather
    * than a statement about our data (ADR 0020).
+   *
+   * `revenue` is net: the sum of the subtotals the window's checks carried.
+   * `netCheckCount` counts those checks beside `checkCount`, so a reader can
+   * say "from N of M checks"; `revenue` is `null` when the window held checks
+   * and none carried a subtotal. Each day of the series says the same.
    */
   async getPosRevenueWindow(
     restaurantId: string,
@@ -1019,14 +1059,23 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         to,
         days: span,
         posConnected: false,
+        basis: "net",
         revenue: null,
         checkCount: null,
+        netCheckCount: null,
         dailySeries: [],
       };
     }
 
-    const { current, dailySeries, dailyDates, rowCount } =
-      await this.computeMetricWithSeries(restaurantId, "pos_revenue", from, to);
+    const { rowCount, net } = await this.computeMetricWithSeries(
+      restaurantId,
+      "pos_revenue",
+      from,
+      to,
+    );
+    // `net` is absent only when the read failed and was logged as a sum of
+    // nothing (the catch in computeMetricWithSeries): no check was folded.
+    const window = net?.window ?? { netSales: 0, netChecks: 0, checks: 0 };
 
     return {
       restaurantId,
@@ -1034,11 +1083,15 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       to,
       days: span,
       posConnected: true,
-      revenue: current,
+      basis: "net",
+      revenue: window.netSales,
       checkCount: rowCount,
-      dailySeries: dailyDates.map((date, i) => ({
-        date,
-        revenue: dailySeries[i] ?? 0,
+      netCheckCount: window.netChecks,
+      dailySeries: (net?.days ?? []).map((d) => ({
+        date: d.date,
+        revenue: d.netSales,
+        checks: d.checks,
+        netChecks: d.netChecks,
       })),
     };
   }
@@ -1056,7 +1109,7 @@ export function stripFence(text: string): string {
     .trim();
 }
 
-/** Sales revenue for one restaurant over one closed day range. */
+/** Net sales for one restaurant over one closed day range (ADR 0295). */
 export interface PosRevenueWindow {
   restaurantId: string;
   /** Inclusive first day of the window, YYYY-MM-DD. */
@@ -1066,10 +1119,35 @@ export interface PosRevenueWindow {
   days: number;
   /** False when this restaurant has never had a POS check. */
   posConnected: boolean;
-  /** Sum of non-voided `pos_checks.total`. `null` when `posConnected` is false. */
+  /**
+   * What `revenue` is. Always `"net"` since ADR 0295; a web build reads its
+   * net labels off it, so a payload from an older gateway (no key, gross)
+   * keeps the old labels during a deploy.
+   */
+  basis: "net";
+  /**
+   * Net sales: the sum of the subtotals of the window's non-voided checks
+   * that carried one. `null` when `posConnected` is false, or when the window
+   * held checks and none carried a subtotal ("not recorded"). `0` is a
+   * window with no check.
+   */
   revenue: number | null;
   /** Non-voided checks in the window. `null` when `posConnected` is false. */
   checkCount: number | null;
-  /** Sparse — only days that actually had revenue appear. */
-  dailySeries: Array<{ date: string; revenue: number }>;
+  /**
+   * Of `checkCount`, the checks that carried a subtotal — the denominator of
+   * the average check. `null` when `posConnected` is false.
+   */
+  netCheckCount: number | null;
+  /**
+   * Sparse — only days with at least one non-voided check appear. `revenue`
+   * is that day's net sales, `null` when none of its checks carried a
+   * subtotal; `netChecks` of its `checks` carried one.
+   */
+  dailySeries: Array<{
+    date: string;
+    revenue: number | null;
+    checks: number;
+    netChecks: number;
+  }>;
 }

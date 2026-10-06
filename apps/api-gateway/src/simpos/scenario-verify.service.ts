@@ -94,7 +94,7 @@ export class ScenarioVerifyService {
     "low_stock.emailed": "That notification records whether the email left",
     "insights.generated":
       "The insight generator produced something about this day",
-    "analytics.pos_revenue": "POS revenue for the service date matches",
+    "analytics.pos_revenue": "POS net sales for the service date match",
     "analytics.tables": "Table performance sees this day's tables",
     "hours.outside": "Out-of-hours checks counted as expected",
     "hours.closed_day": "A closed day produced no checks",
@@ -1564,7 +1564,22 @@ export class ScenarioVerifyService {
       samples?: unknown[],
     ) => void,
   ): Promise<void> {
-    const want = exp.totals?.revenue;
+    // Net sales (ADR 0295): the endpoint sums the subtotals of the posted,
+    // non-voided checks — the same checks `totals.revenue` counts
+    // (scenarios.py _totals), whose figure is the gross total plus the tip
+    // and is no longer the yardstick. The subtotal is what payloads.py posts.
+    const landed = (exp.checks ?? []).filter(
+      (c) => c.posted !== false && c.voided !== true,
+    );
+    const carried = landed.filter(
+      (c) => typeof c.subtotal === "number" && Number.isFinite(c.subtotal),
+    );
+    const want =
+      carried.length > 0
+        ? Math.round(
+            carried.reduce((a, c) => a + (c.subtotal as number), 0) * 100,
+          ) / 100
+        : null;
     const date = run.service_date;
     if ((exp.checks ?? []).length === 0) {
       // A closed-day run expects no revenue — but this sim tenant may carry
@@ -1587,7 +1602,9 @@ export class ScenarioVerifyService {
         want ?? null,
         null,
         want == null
-          ? "the expectation carries no totals.revenue"
+          ? landed.length === 0
+            ? "none of the expectation's checks is posted and not voided, so it expects no net sales on this date that could be told apart from other runs'"
+            : `none of the ${landed.length} posted, non-voided expected check(s) carries a subtotal, so there is no net figure to compare (the gross total is not one)`
           : "the run has no service_date",
       );
       return;
@@ -1620,6 +1637,9 @@ export class ScenarioVerifyService {
         );
         return;
       }
+      // A day whose checks carried no subtotal is `null` ("not recorded");
+      // it counts as nothing booked here, so a run that expected net sales
+      // fails rather than passing on a figure nobody recorded.
       const series = new Map(
         (window.dailySeries ?? []).map((d) => [d.date, Number(d.revenue) || 0]),
       );
@@ -1632,7 +1652,7 @@ export class ScenarioVerifyService {
           "pass",
           want,
           onDate,
-          `pos-revenue booked ${onDate.toFixed(2)} on ${date} (window ${window.from}…${window.to}, ${window.checkCount} non-voided check(s)); voided and dropped checks are excluded by the query itself`,
+          `pos-revenue booked ${onDate.toFixed(2)} net on ${date} (window ${window.from}…${window.to}, ${window.checkCount} non-voided check(s)); voided and dropped checks are excluded by the query itself`,
         );
         return;
       }
@@ -1651,7 +1671,7 @@ export class ScenarioVerifyService {
         "fail",
         want,
         onDate,
-        `pos-revenue booked ${onDate.toFixed(2)} on ${date}, expected ${Number(want).toFixed(2)} (next UTC day holds ${spill.toFixed(2)})`,
+        `pos-revenue booked ${onDate.toFixed(2)} net on ${date}, expected ${Number(want).toFixed(2)}, the subtotals of ${carried.length} expected check(s) (next UTC day holds ${spill.toFixed(2)})`,
       );
     } catch (e: any) {
       push(

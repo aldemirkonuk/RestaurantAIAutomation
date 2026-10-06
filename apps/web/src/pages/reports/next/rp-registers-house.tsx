@@ -302,17 +302,40 @@ export function emptyWindowLine(w: PosWindow): string | null {
     : 'No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.';
 }
 
+/**
+ * ADR 0295: the table and server registers read net sales once the gateway
+ * says `basis: 'net'` — the subtotal, before tax, surcharge and tips. An
+ * older gateway sends no basis and gross figures, and keeps the old words:
+ * the web and the gateway deploy separately.
+ */
+const NET_BASIS =
+  'Net sales: what the checks came to after discounts, before tax, surcharge and tips. Voided checks are left out.';
+
+/** The rows whose net sales came from only some of their checks (ADR 0295 rule 2). */
+function partialNote(rows: Array<{ name: string; checks: number; netChecks: number | null }>): string | null {
+  const some = rows.filter((r) => r.netChecks != null && r.netChecks < r.checks);
+  if (some.length === 0) return null;
+  return `Net sales count only the checks that carried a net figure; none is filled in from a check’s total. ${some
+    .map((r) => `${r.name}: from ${r.netChecks} of ${r.checks} checks`)
+    .join('; ')}.`;
+}
+
 /* ──────────────────────────────────────────────────────── 8. the room ─── */
 
 export interface SeatsRegister extends PosWindow {
   dataStatus: string;
+  /** The gateway said `basis: 'net'` (ADR 0295). */
+  net: boolean;
   tables: Array<{
     tableId: string;
     label: string;
     zone: string | null;
     seats: number | null;
     checks: number;
-    revenue: number;
+    /** Of `checks`, those that carried a net figure (net only). */
+    netChecks: number | null;
+    /** Net: null when none of the table's checks carried a net figure. */
+    revenue: number | null;
     covers: number;
     avgCheck: number | null;
     revenuePerSeat: number | null;
@@ -332,16 +355,19 @@ const seats = analysis<SeatsRegister>({
     'The scatter puts seats against average check, which is the question this register exists for. No line, area or heat map: tables are not a sequence and the endpoint returns no per-day grain.',
   select: (raw) => {
     const d = obj(raw);
+    const net = d.basis === 'net';
     return {
       ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
+      net,
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
         label: str(t.label),
         zone: (t.zone ?? null) as string | null,
         seats: num(t.seats),
         checks: num(t.checks) ?? 0,
-        revenue: num(t.revenue) ?? 0,
+        netChecks: net ? num(t.netChecks) : null,
+        revenue: net ? num(t.revenue) : (num(t.revenue) ?? 0),
         covers: num(t.covers) ?? 0,
         avgCheck: num(t.avgCheck),
         revenuePerSeat: num(t.revenuePerSeat),
@@ -352,9 +378,11 @@ const seats = analysis<SeatsRegister>({
   },
   view: (s) => {
     const basis = [
-      `Non-voided pos_checks attributed to a table over the last ${s.sinceDays} days.`,
+      `Checks attributed to a table over the last ${s.sinceDays} days; voided checks left out.`,
+      s.net ? NET_BASIS : null,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
     ];
+    const taken = s.net ? 'Taken (net)' : 'Taken';
     if (s.tables.length === 0)
       return {
         say: 'No table is mapped for this restaurant yet, so no check can be attributed to a seat. The room has to be drawn before it can be read.',
@@ -400,8 +428,8 @@ const seats = analysis<SeatsRegister>({
           full: `${t.label}${t.zone ? ` · ${t.zone}` : ''}`,
         })),
         xLabel: 'table',
-        yLabel: 'taken',
-        unit: 'taken',
+        yLabel: s.net ? 'taken (net)' : 'taken',
+        unit: s.net ? 'taken (net)' : 'taken',
         format: (v) => money(v, 'compact'),
       },
       points: {
@@ -411,7 +439,7 @@ const seats = analysis<SeatsRegister>({
           name: t.label,
         })),
         xLabel: 'seats',
-        yLabel: 'average check',
+        yLabel: s.net ? 'average check (net)' : 'average check',
         formatX: (v) => figure(v),
         formatY: (v) => money(v, 'compact'),
         refX: null,
@@ -421,8 +449,8 @@ const seats = analysis<SeatsRegister>({
         cols: [
           { key: 't', label: 'Table' },
           { key: 'c', label: 'Checks', numeric: true },
-          { key: 'r', label: 'Taken', numeric: true },
-          { key: 'a', label: 'Avg check', numeric: true },
+          { key: 'r', label: taken, numeric: true },
+          { key: 'a', label: s.net ? 'Avg check (net)' : 'Avg check', numeric: true },
           { key: 'w', label: 'Wine attach', numeric: true },
         ],
         rows: s.tables.slice(0, 40).map((t) => ({
@@ -430,19 +458,21 @@ const seats = analysis<SeatsRegister>({
           cells: [
             t.label,
             figure(t.checks),
-            money(t.revenue, 'table'),
+            s.net && t.checks > 0 && t.revenue == null ? 'not recorded' : money(t.revenue, 'table'),
             money(t.avgCheck, 'table'),
             ratioPct(t.wineAttachRate),
           ],
         })),
       },
       figures,
-      notes:
-        s.tables.length > served.length
+      notes: [
+        ...(s.tables.length > served.length
           ? [
               `${countOf(s.tables.length - served.length, 'mapped table', 'mapped tables')} took no check in the window, and is drawn at no height rather than left off the chart.`,
             ]
-          : [],
+          : []),
+        ...(s.net ? [partialNote(s.tables.map((t) => ({ name: t.label, checks: t.checks, netChecks: t.netChecks })))] : []),
+      ].filter((n): n is string => n != null),
       basis,
     };
   },
@@ -453,10 +483,15 @@ const seats = analysis<SeatsRegister>({
 export interface ServiceRegister extends PosWindow {
   dataStatus: string;
   adjusted: { method?: string; r2?: number | null } | null;
+  /** The gateway said `basis: 'net'` (ADR 0295). */
+  net: boolean;
   waiters: Array<{
     name: string;
     checks: number;
-    revenue: number;
+    /** Of `checks`, those that carried a net figure (net only). */
+    netChecks: number | null;
+    /** Net: null when none of the server's checks carried a net figure. */
+    revenue: number | null;
     avgCheck: number | null;
     wineAttachRate: number | null;
     tipPct: number | null;
@@ -476,14 +511,17 @@ const service = analysis<ServiceRegister>({
   select: (raw) => {
     const d = obj(raw);
     const adj = d.adjusted ? obj(d.adjusted) : null;
+    const net = d.basis === 'net';
     return {
       ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
+      net,
       waiters: arr(d.waiters).map((w) => ({
         name: str(w.name),
         checks: num(w.checks) ?? 0,
-        revenue: num(w.revenue) ?? 0,
+        netChecks: net ? num(w.netChecks) : null,
+        revenue: net ? num(w.revenue) : (num(w.revenue) ?? 0),
         avgCheck: num(w.avgCheck),
         wineAttachRate: num(w.wineAttachRate),
         tipPct: num(w.tipPct),
@@ -493,7 +531,8 @@ const service = analysis<ServiceRegister>({
   },
   view: (s) => {
     const basis = [
-      `Non-voided pos_checks grouped by server name over the last ${s.sinceDays} days.`,
+      `Checks grouped by server name over the last ${s.sinceDays} days; voided checks left out.`,
+      s.net ? `${NET_BASIS} The tip rate is tips over the net sales of the checks that recorded a tip.` : null,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
       s.adjusted?.method ?? null,
     ];
@@ -530,17 +569,17 @@ const service = analysis<ServiceRegister>({
           full: `${w.name} · ${countOf(w.checks, 'check', 'checks')}`,
         })),
         xLabel: 'server',
-        yLabel: 'taken',
-        unit: 'taken',
+        yLabel: s.net ? 'taken (net)' : 'taken',
+        unit: s.net ? 'taken (net)' : 'taken',
         format: (v) => money(v, 'compact'),
       },
       table: {
         cols: [
           { key: 'n', label: 'Server' },
           { key: 'c', label: 'Checks', numeric: true },
-          { key: 'a', label: 'Avg check', numeric: true },
+          { key: 'a', label: s.net ? 'Avg check (net)' : 'Avg check', numeric: true },
           { key: 'w', label: 'Wine attach', numeric: true },
-          { key: 't', label: 'Tip', numeric: true },
+          { key: 't', label: s.net ? 'Tip rate (on net)' : 'Tip', numeric: true },
         ],
         rows: s.waiters.slice(0, 40).map((w) => ({
           key: w.name,
@@ -556,7 +595,8 @@ const service = analysis<ServiceRegister>({
       figures,
       notes: [
         'A server’s raw average is partly the section they were given. The adjusted fit above is the engine’s attempt to remove it; where it reads an em dash, the raw ranking is all there is.',
-      ],
+        ...(s.net ? [partialNote(s.waiters)] : []),
+      ].filter((n): n is string => n != null),
       basis,
     };
   },

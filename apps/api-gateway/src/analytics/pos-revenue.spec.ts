@@ -15,6 +15,7 @@ import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { DatabaseService } from "../database/database.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
+import { foldNetSales, netAverage, netSalesOf } from "./net-sales";
 
 /**
  * `AnalyticsService`, stubbed. Only `days_of_inventory` reaches it — it reads
@@ -155,15 +156,29 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.dailySeries).toEqual([]);
   });
 
-  it("sums pos_checks.total over the window and excludes voided checks in SQL", async () => {
+  it("sums net sales (pos_checks.subtotal) over the window and excludes voided checks in SQL", async () => {
     const day = `${today()}T12:00:00Z`;
     const { service, client } = makeGoals({
       pos_checks: (call) =>
         call === 0
           ? [{ id: "c1" }] // connection probe
           : [
-              { total: 120.5, opened_at: day, closed_at: day, items: [] },
-              { total: 79.5, opened_at: day, closed_at: day, items: [] },
+              // `total` is gross (ADR 0295) and is carried only to prove it
+              // is not the figure summed.
+              {
+                subtotal: 120.5,
+                total: 135.72,
+                opened_at: day,
+                closed_at: day,
+                items: [],
+              },
+              {
+                subtotal: 79.5,
+                total: 89.54,
+                opened_at: day,
+                closed_at: day,
+                items: [],
+              },
             ],
     });
 
@@ -172,7 +187,9 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.posConnected).toBe(true);
     expect(result.revenue).toBeCloseTo(200);
     expect(result.checkCount).toBe(2);
-    expect(result.dailySeries).toEqual([{ date: today(), revenue: 200 }]);
+    expect(result.dailySeries).toEqual([
+      { date: today(), revenue: 200, checks: 2, netChecks: 2 },
+    ]);
 
     // The void filter is not optional: a voided check never happened.
     const voidFilter = client.calls.find(
@@ -229,6 +246,127 @@ describe("GoalsService.getPosRevenueWindow", () => {
       1;
     expect(spanDays).toBe(7);
     expect(result.days).toBe(7);
+  });
+});
+
+/**
+ * ADR 0295 (AW17, A-019): owner sales read net. Tuzlu Rüzgar's checks carry
+ * 8.63% tax and a 4% surcharge in `total`, so total = subtotal × 1.1263; the
+ * till, the average check and every goal on it read 12.63% high.
+ */
+describe("net sales (ADR 0295)", () => {
+  const day = () => `${today()}T12:00:00Z`;
+  const check = (subtotal: number | null, total = 112.63) => ({
+    subtotal,
+    total,
+    opened_at: day(),
+    closed_at: day(),
+    items: [],
+  });
+  const windowOf = (rows: any[]) =>
+    makeGoals({ pos_checks: (call) => (call === 0 ? [{ id: "c1" }] : rows) });
+
+  it("g1: the till sums subtotals, not totals, and says it is net", async () => {
+    const { service, client } = windowOf([check(100), check(100)]);
+    const w = await service.getPosRevenueWindow("r1", 30);
+    expect(w.basis).toBe("net");
+    expect(w.revenue).toBeCloseTo(200); // not 225.26
+    expect(w.netCheckCount).toBe(2);
+    expect(w.dailySeries).toEqual([
+      { date: today(), revenue: 200, checks: 2, netChecks: 2 },
+    ]);
+    const select = client.calls.find(
+      (c) =>
+        c.table === "pos_checks" &&
+        c.method === "select" &&
+        /opened_at/.test(c.args[0]),
+    );
+    expect(select?.args[0]).toMatch(/\bsubtotal\b/);
+    expect(select?.args[0]).not.toMatch(/\btotal\b/);
+  });
+
+  it("g2: the average check (net) is net sales over checks", async () => {
+    const { service } = makeGoals({ pos_checks: [check(100), check(100)] });
+    await expect(
+      (service as any).computeMetric("r1", "avg_check", today()),
+    ).resolves.toBeCloseTo(100); // not 112.63
+    expect(GoalsService.SUPPORTED_METRICS.avg_check.label).toBe(
+      "Average check (net)",
+    );
+  });
+
+  it("g3: a check with no subtotal is counted, never filled from its total", async () => {
+    const rows = [check(100), check(100), check(null, 300)];
+    const { service } = windowOf(rows);
+    const w = await service.getPosRevenueWindow("r1", 30);
+    expect(w.revenue).toBeCloseTo(200);
+    expect(w.checkCount).toBe(3);
+    expect(w.netCheckCount).toBe(2);
+    expect(w.dailySeries).toEqual([
+      { date: today(), revenue: 200, checks: 3, netChecks: 2 },
+    ]);
+    // The average divides by the checks that carried a net figure.
+    const { service: g } = makeGoals({ pos_checks: rows });
+    await expect(
+      (g as any).computeMetric("r1", "avg_check", today()),
+    ).resolves.toBeCloseTo(100); // not 66.67, and not (200+300)/3
+  });
+
+  it("g4: a window whose checks carried no subtotal is not recorded: null, not 0, not the total", async () => {
+    const rows = [check(null, 50), check(null, 70)];
+    const { service } = windowOf(rows);
+    const w = await service.getPosRevenueWindow("r1", 30);
+    expect(w.posConnected).toBe(true);
+    expect(w.revenue).toBeNull();
+    expect(w.checkCount).toBe(2);
+    expect(w.netCheckCount).toBe(0);
+    expect(w.dailySeries).toEqual([
+      { date: today(), revenue: null, checks: 2, netChecks: 0 },
+    ]);
+    // A goal on the average check is refused, not scored $0 (the refusal is
+    // thrown past computeMetric's catch, like days of stock).
+    const { service: g } = makeGoals({ pos_checks: rows });
+    await expect(
+      (g as any).computeMetric("r1", "avg_check", today()),
+    ).rejects.toThrow(/None of the 2 checks .* not recorded/);
+  });
+
+  it("g5: the fold reads subtotal only", () => {
+    expect(netSalesOf({ subtotal: null, total: 50 } as any)).toBeNull();
+    expect(netSalesOf({ total: 50 } as any)).toBeNull();
+    expect(netSalesOf({ subtotal: "" })).toBeNull();
+    expect(netSalesOf({ subtotal: "12.50" })).toBe(12.5);
+    expect(netSalesOf({ subtotal: 0 })).toBe(0);
+    expect(netSalesOf(null)).toBeNull();
+    expect(foldNetSales([{ subtotal: null, total: 50 } as any])).toEqual({
+      netSales: null,
+      netChecks: 0,
+      checks: 1,
+    });
+    // No check at all is a measured quiet window: 0, not null.
+    expect(foldNetSales([])).toEqual({ netSales: 0, netChecks: 0, checks: 0 });
+    const fold = foldNetSales([
+      { subtotal: 30 },
+      { subtotal: null },
+      { subtotal: 50 },
+    ]);
+    expect(fold).toEqual({ netSales: 80, netChecks: 2, checks: 3 });
+    expect(netAverage(fold)).toBe(40);
+    expect(netAverage(foldNetSales([{ subtotal: null }]))).toBeNull();
+  });
+
+  it("g6: voided checks stay out of net sales, in SQL", async () => {
+    const { client, service } = windowOf([check(100)]);
+    await service.getPosRevenueWindow("r1", 30);
+    expect(
+      client.calls.some(
+        (c) =>
+          c.table === "pos_checks" &&
+          c.method === "eq" &&
+          c.args[0] === "voided" &&
+          c.args[1] === false,
+      ),
+    ).toBe(true);
   });
 });
 

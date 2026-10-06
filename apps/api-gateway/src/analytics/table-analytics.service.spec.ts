@@ -62,6 +62,7 @@ const check = (over: Record<string, unknown> = {}) => ({
   opened_at: "2026-08-20T19:00:00+00:00",
   closed_at: "2026-08-20T20:30:00+00:00",
   covers: 2,
+  subtotal: 160,
   total: 180,
   tip: 20,
   items: [],
@@ -184,5 +185,112 @@ describe("TableAnalyticsService — an empty POS window is not an empty feed (A-
     await expect(service.getWaiterPerformance("r1", 90)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
+  });
+});
+
+/**
+ * ADR 0295 (AW17, A-019, A-047): the table and server registers read net
+ * sales — the subtotal, before tax, surcharge and tip — and the tip rate is
+ * on net. `total` here is Tuzlu's gross: subtotal × 1.1263.
+ */
+describe("TableAnalyticsService — sales are net (ADR 0295)", () => {
+  it("g7: a server's tip rate is on net, and their average check is net", async () => {
+    const { service, calls } = makeService({
+      pos_checks: [ok([check({ subtotal: 100, total: 112.63, tip: 20 })])],
+    });
+    const out = await service.getWaiterPerformance("r1", 90);
+    expect(out.basis).toBe("net");
+    const maya = out.waiters.find((w: any) => w.name === "Maya")!;
+    expect(maya.tipPct).toBeCloseTo(0.2, 10); // not 20 / 112.63 = 0.1776
+    expect(maya.avgCheck).toBeCloseTo(100, 10);
+    expect(maya.revenue).toBeCloseTo(100, 10);
+    expect(maya.netChecks).toBe(1);
+    const select = calls.find(
+      (c) => c.table === "pos_checks" && c.method === "select",
+    );
+    expect(String(select?.args[0])).toMatch(/\bsubtotal\b/);
+    expect(String(select?.args[0])).not.toMatch(/\btotal\b/);
+  });
+
+  it("g8: a table's sales and sales per cover are net; a check with no subtotal is counted, not summed", async () => {
+    const { service } = makeService({
+      restaurant_tables: [
+        ok([
+          { id: "t1", label: "T1", seats: 4 },
+          { id: "t2", label: "T2", seats: 2 },
+        ]),
+      ],
+      pos_checks: [
+        ok([
+          check({ id: "a", subtotal: 100, total: 112.63, covers: 2, tip: 10 }),
+          check({ id: "b", subtotal: null, total: 300, covers: 4, tip: 30 }),
+          check({ id: "c", table_id: "t2", subtotal: null, total: 90 }),
+        ]),
+      ],
+    });
+    const out = await service.getTablePerformance("r1", 90);
+    expect(out.basis).toBe("net");
+    const t1 = out.tables.find((t: any) => t.tableId === "t1")!;
+    expect(t1.checks).toBe(2);
+    expect(t1.netChecks).toBe(1);
+    expect(t1.revenue).toBeCloseTo(100, 10); // not 412.63, not 400
+    expect(t1.avgCheck).toBeCloseTo(100, 10);
+    expect(t1.revenuePerCover).toBeCloseTo(50, 10); // 100 over the 2 covers that carried it
+    expect(t1.revenuePerSeat).toBeCloseTo(25, 10);
+    expect(t1.tipPct).toBeCloseTo(0.1, 10); // the $30 tip has no net to sit on
+    // A table whose checks carried no subtotal: not recorded, not $0.
+    const t2 = out.tables.find((t: any) => t.tableId === "t2")!;
+    expect(t2.checks).toBe(1);
+    expect(t2.netChecks).toBe(0);
+    expect(t2.revenue).toBeNull();
+    expect(t2.avgCheck).toBeNull();
+    expect(t2.revenuePerSeat).toBeNull();
+  });
+
+  it("g8b: a server whose checks carried no subtotal reads not recorded", async () => {
+    const { service } = makeService({
+      pos_checks: [ok([check({ subtotal: null, total: 112.63 })])],
+    });
+    const out = await service.getWaiterPerformance("r1", 90);
+    const maya = out.waiters.find((w: any) => w.name === "Maya")!;
+    expect(maya.checks).toBe(1);
+    expect(maya.netChecks).toBe(0);
+    expect(maya.revenue).toBeNull();
+    expect(maya.avgCheck).toBeNull();
+    expect(maya.tipPct).toBeNull();
+  });
+
+  it("g9: an open table's spend so far is net, and an open check with no subtotal has no pace", async () => {
+    const opened = new Date(Date.now() - 30 * 60000).toISOString();
+    const { service } = makeService({
+      pos_checks: [
+        ok([
+          check({
+            id: "o1",
+            opened_at: opened,
+            closed_at: null,
+            subtotal: 60,
+            total: 67.58,
+          }),
+          check({
+            id: "o2",
+            opened_at: opened,
+            closed_at: null,
+            subtotal: null,
+            total: 50,
+          }),
+        ]),
+      ],
+      restaurant_tables: [ok([{ id: "t1", label: "T1", seats: 4 }])],
+    });
+    const out = await service.getHotTables("r1");
+    expect(out.basis).toBe("net");
+    const o1 = out.all.find((h: any) => h.checkId === "o1")!;
+    expect(o1.spendSoFar).toBe(60);
+    expect(o1.pacePerMin).toBeCloseTo(2, 1);
+    const o2 = out.all.find((h: any) => h.checkId === "o2")!;
+    expect(o2.spendSoFar).toBeNull();
+    expect(o2.pacePerMin).toBeNull();
+    expect(o2.surgeZ).toBeNull();
   });
 });
