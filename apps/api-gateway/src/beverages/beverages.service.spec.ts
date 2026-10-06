@@ -18,7 +18,7 @@ type TableResult = { data?: unknown[]; error?: unknown; count?: number };
 
 function chain(result: TableResult) {
   const self: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "neq", "is", "in", "or", "ilike", "order", "limit"]) {
+  for (const m of ["select", "eq", "neq", "is", "in", "gt", "or", "ilike", "order", "limit"]) {
     self[m] = jest.fn(() => self);
   }
   self.then = (resolve: (v: unknown) => unknown) =>
@@ -141,7 +141,7 @@ type Term = { data?: unknown; error?: unknown };
 function writeChain(result: Term) {
   const self: Record<string, unknown> = {};
   for (const m of [
-    "select", "eq", "neq", "is", "in", "or", "ilike", "order", "limit",
+    "select", "eq", "neq", "is", "in", "gt", "or", "ilike", "order", "limit",
     "insert", "update", "delete",
   ]) {
     self[m] = jest.fn(() => self);
@@ -570,5 +570,196 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
         note: "toast-101",
       }),
     ]);
+  });
+});
+
+/* ── the invoice book's vendor link and the menu book's current menu ────────
+   A fake that FILTERS: each `.from()` gets a fresh query that records every
+   call and, when awaited, applies its eq / neq / in / gt / order / limit to
+   the table's rows. So a read that forgets a scope gets the rows that scope
+   would have kept out, exactly as PostgREST would serve them. A row may be a
+   function of the select string, so a column the read never asked for is
+   never served.                                                             */
+
+type FakeRow = Record<string, unknown>;
+type Served = FakeRow[] | ((select: string) => FakeRow[]);
+
+function filteringQuery(served: Served, error: unknown) {
+  const calls: Array<[string, unknown[]]> = [];
+  const keep: Array<(r: FakeRow) => boolean> = [];
+  let select = "";
+  let orderBy: string | null = null;
+  let limit: number | null = null;
+  const self: Record<string, unknown> = {};
+  const on = (m: string, effect: (...a: any[]) => void = () => undefined) => {
+    self[m] = jest.fn((...a: unknown[]) => {
+      calls.push([m, a]);
+      effect(...a);
+      return self;
+    });
+  };
+  on("select", (cols: string) => (select = cols));
+  // A dotted filter names an embedded table; the fake does not model embeds.
+  on("eq", (c: string, v: unknown) => !c.includes(".") && keep.push((r) => r[c] === v));
+  on("neq", (c: string, v: unknown) => keep.push((r) => r[c] !== v));
+  on("in", (c: string, vs: unknown[]) => keep.push((r) => vs.includes(r[c])));
+  on("gt", (c: string, v: unknown) => keep.push((r) => String(r[c]) > String(v)));
+  // `or` / `ilike` are recorded, not modelled: no row here depends on them.
+  for (const m of ["is", "or", "ilike"]) on(m);
+  on("order", (c: string) => (orderBy = c));
+  on("limit", (n: number) => (limit = n));
+  self.then = (resolve: (v: unknown) => unknown) => {
+    const rows = typeof served === "function" ? served(select) : served;
+    let out = rows.filter((r) => keep.every((k) => k(r)));
+    if (orderBy) {
+      const col = orderBy;
+      out = [...out].sort((a, z) => (String(a[col]) < String(z[col]) ? -1 : 1));
+    }
+    if (limit !== null) out = out.slice(0, limit);
+    return Promise.resolve({
+      data: error ? null : out,
+      error: error ?? null,
+    }).then(resolve);
+  };
+  return { query: self, calls };
+}
+
+async function filteringService(
+  tables: Record<string, { rows?: Served; error?: unknown }>,
+) {
+  const log: Array<{ table: string; calls: Array<[string, unknown[]]> }> = [];
+  const db = {
+    getClient: () => ({
+      from: (table: string) => {
+        const t = tables[table] ?? {};
+        const { query, calls } = filteringQuery(t.rows ?? [], t.error);
+        log.push({ table, calls });
+        return query;
+      },
+    }),
+  };
+  const moduleRef = await Test.createTestingModule({
+    providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+  }).compile();
+  const readsOf = (table: string) => log.filter((l) => l.table === table);
+  return { service: moduleRef.get(BeveragesService), readsOf };
+}
+
+describe("BeveragesService.readRowRecord — the invoice book names its vendor link (A-043, A-044)", () => {
+  /** One invoice line, serving `doc_number` only to a read that asks for it. */
+  const invoiceLine = (select: string): FakeRow[] => [
+    {
+      id: "pdl-1",
+      restaurant_id: RID,
+      description: "Yeni Raki 70cl",
+      unit_price: 610,
+      line_total: 7320,
+      qty_bottles: 12,
+      created_at: "2026-09-30T08:00:00.000Z",
+      procurement_documents: {
+        id: "doc-1",
+        doc_type: "invoice",
+        doc_date: "2026-09-29",
+        restaurant_id: RID,
+        ...(select.includes("doc_number") ? { doc_number: "INV-7" } : {}),
+        providers: { name: "Anise Trading" },
+      },
+    },
+  ];
+
+  it("embeds the vendor through procurement_documents_provider_id_fkey, never a bare providers(name)", async () => {
+    const { service, readsOf } = await filteringService({
+      procurement_document_lines: { rows: invoiceLine },
+    });
+    await service.readRowRecord(RID, "Yeni Raki 70cl");
+
+    const [read] = readsOf("procurement_document_lines");
+    const select = String(read.calls.find(([m]) => m === "select")?.[1][0]);
+    const embed = select.slice(select.indexOf("procurement_documents!inner("));
+    // Two foreign keys join these tables (provider_id, and
+    // providers.created_from_document_id), so a bare embed 400s the read.
+    expect(embed).toContain("providers!procurement_documents_provider_id_fkey(name)");
+    expect(embed).not.toMatch(/(^|[\s,(])providers\(/);
+    expect(embed).toContain("doc_number");
+  });
+
+  it("prints the invoice's own number as the line's note", async () => {
+    const { service } = await filteringService({
+      procurement_document_lines: { rows: invoiceLine },
+    });
+    const out = await service.readRowRecord(RID, "Yeni Raki 70cl");
+    const invoice = out.books.find((b) => b.book === "invoice");
+    expect(invoice?.readable).toBe(true);
+    expect(invoice?.ledger).toEqual([
+      expect.objectContaining({
+        label: "Yeni Raki 70cl",
+        who: "Anise Trading",
+        note: "INV-7",
+        at: "2026-09-29",
+      }),
+    ]);
+  });
+});
+
+describe("BeveragesService.readRowRecord — the menu book reads the CURRENT menu only (A-028)", () => {
+  const menus: FakeRow[] = [
+    { id: "live", restaurant_id: RID, status: "active" },
+    { id: "old", restaurant_id: RID, status: "archived" },
+    { id: "scan", restaurant_id: RID, status: "draft" },
+  ];
+  const line = (id: string, menuId: string): FakeRow => ({
+    id,
+    menu_id: menuId,
+    restaurant_id: RID,
+    status: "approved",
+    name: "Yeni Raki 70cl",
+    producer: null,
+    category: "Raki",
+    bottle_price: 1800,
+    by_glass_price: 220,
+    created_at: "2026-09-01T00:00:00.000Z",
+  });
+
+  it("lists a line on the current menu once, not once per kept copy of the menu", async () => {
+    const { service, readsOf } = await filteringService({
+      restaurant_menus: { rows: menus },
+      // The same line on the current menu, its archived copy and a draft.
+      menu_items: { rows: [line("mi-1", "live"), line("mi-2", "old"), line("mi-3", "scan")] },
+    });
+    const out = await service.readRowRecord(RID, "Yeni Raki 70cl");
+    const menu = out.books.find((b) => b.book === "menu");
+    expect(menu?.readable).toBe(true);
+    expect(menu?.rows).toBe(1);
+
+    const [menusRead] = readsOf("restaurant_menus");
+    expect(menusRead.calls).toContainEqual(["eq", ["restaurant_id", RID]]);
+    expect(menusRead.calls).toContainEqual(["eq", ["status", "active"]]);
+    const [linesRead] = readsOf("menu_items");
+    expect(linesRead.calls).toContainEqual(["in", ["menu_id", ["live"]]]);
+    expect(linesRead.calls).toContainEqual(["neq", ["status", "discarded"]]);
+  });
+
+  it("says a house with no current menu has none, and never reads its kept lines", async () => {
+    const { service, readsOf } = await filteringService({
+      restaurant_menus: { rows: menus.filter((m) => m.status !== "active") },
+      menu_items: { rows: [line("mi-2", "old"), line("mi-3", "scan")] },
+    });
+    const out = await service.readRowRecord(RID, "Yeni Raki 70cl");
+    const menu = out.books.find((b) => b.book === "menu");
+    expect(menu?.readable).toBe(true);
+    expect(menu?.rows).toBe(0);
+    expect(menu?.reason).toMatch(/no current menu/);
+    expect(readsOf("menu_items")).toHaveLength(0);
+  });
+
+  it("says the menu book is unread — not empty — when the current menu cannot be read", async () => {
+    const { service } = await filteringService({
+      restaurant_menus: { error: { code: "57014", message: "statement timeout" } },
+    });
+    const out = await service.readRowRecord(RID, "Yeni Raki 70cl");
+    const menu = out.books.find((b) => b.book === "menu");
+    expect(menu?.readable).toBe(false);
+    expect(menu?.rows).toBeNull();
+    expect(menu?.reason).toMatch(/statement timeout/);
   });
 });
