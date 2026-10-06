@@ -7,6 +7,11 @@
  * CLASSIFICATIONS of a rule that already fired, not measurements. Both read
  * a table's own rows only (`ownRow`), so a stored key such as `constructor`
  * or `__proto__` is an unknown, not a value inherited from `Object.prototype`.
+ * [2026-10-06: so do `urgencyLabel` below and the page's goal, cutting,
+ * day-book, lever and urgency-rank tables. Until then they read a plain
+ * `table[key]`, and a stored `__proto__` rule key (through the goal and
+ * cutting refusals) or urgency (through `urgencyLabel`) made the page throw
+ * at render, though these two mappings already filed it (ADR 0288).]
  * A rule the stake knows neither by name nor by category is filed under
  * Unfiled, visible rather than silently binned, and the stake says which of
  * the two filed it (ADR 0288). A hand the page knows neither by rule nor by
@@ -39,11 +44,11 @@ export function num(v: unknown): number | null {
 }
 
 /**
- * A table's row for `key`, read from the table's OWN rows only. The filing
- * tables on this page are object literals, so a plain `table[key]` answers a
- * stored key such as `constructor`, `toString`, `valueOf` or `__proto__` with
- * a value inherited from `Object.prototype`, and the entry would be filed
- * nowhere (ADR 0288). `Object.prototype.hasOwnProperty.call`, because the
+ * A table's row for `key`, read from the table's OWN rows only. The tables on
+ * this page are object literals, so a plain `table[key]` answers a stored key
+ * such as `constructor`, `toString`, `valueOf` or `__proto__` with a value
+ * inherited from `Object.prototype`: an entry filed nowhere, a refusal React
+ * cannot render, a rank that is not a number (ADR 0288). `Object.prototype.hasOwnProperty.call`, because the
  * web build's `lib` is ES2020 and has no `Object.hasOwn`.
  */
 export function ownRow<T>(table: Record<string, T>, key: string): T | undefined {
@@ -206,7 +211,7 @@ export const URGENCY_RANK: Record<string, number> = {
 
 export function urgencyLabel(u: string | null | undefined): string {
   if (!u) return EM;
-  return URGENCY_LABEL[u] ?? u;
+  return ownRow(URGENCY_LABEL, u) ?? u;
 }
 
 /* ── Axis 3: the hand — who does it, and where the work lands ────────────── */

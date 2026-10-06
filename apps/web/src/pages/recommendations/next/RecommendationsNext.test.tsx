@@ -414,6 +414,68 @@ describe('RecommendationsNext — the standing book', () => {
     expect(screen.queryByText(/undefined/)).toBeNull();
   });
 
+  it('a stored rule key `__proto__` renders: Unfiled, and both forward doors refuse in words', () => {
+    // ADR 0288, audit of PR #611 at 9d1d9fa53: `__proto__` read from the goal
+    // and cutting tables by a plain `table[key]` is `Object.prototype`, a
+    // truthy "refusal" that React cannot render, so the page threw.
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: '__proto__', category: 'efficiency' })],
+    };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent('Unfiled');
+    expect(screen.getByTestId('rc-goal-dark')).toHaveAttribute(
+      'title',
+      expect.stringContaining('no metric filed for the rule __proto__'),
+    );
+    expect(screen.getByTestId('rc-cutting-dark')).toHaveAttribute(
+      'title',
+      expect.stringContaining('no cutting filed for the rule __proto__'),
+    );
+    const note = row.querySelector('.rc-forward-note');
+    expect(note).toHaveTextContent(/no metric filed for the rule __proto__/);
+    expect(note).toHaveTextContent(/no cutting filed for the rule __proto__/);
+    fireEvent.click(within(row).getByText('The working'));
+    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/no register for the rule __proto__/);
+    expect(document.body.textContent).not.toMatch(/undefined|\[object Object\]/);
+  });
+
+  it('a stored urgency `__proto__` renders as its own word, never an inherited value', () => {
+    mockData.current = {
+      ...base,
+      entries: [entry({ urgency: '__proto__' })],
+    };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('__proto__')).toHaveClass('rc-micro');
+    expect(document.body.textContent).not.toMatch(/undefined|\[object Object\]/);
+  });
+
+  it('a stored urgency named on Object.prototype ranks as an unknown urgency, after Tonight', () => {
+    // `URGENCY_RANK['constructor']` was the `Object` function: the comparator
+    // returned NaN and the entry kept its place above a Tonight entry.
+    mockData.current = {
+      ...base,
+      entries: [
+        entry({
+          ruleKey: 'revenue_concentration',
+          category: 'risk',
+          urgency: 'constructor',
+          score: 9,
+          observation: 'Three wines carry most of the revenue.',
+        }),
+        entry({ ruleKey: 'stockout_imminent', category: 'inventory', urgency: 'now', score: 1 }),
+      ],
+    };
+    draw();
+    const rows = screen.getAllByTestId('rc-entry');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent(/Chablis 2021 runs out/);
+    expect(rows[1]).toHaveTextContent(/Three wines carry most of the revenue/);
+    expect(within(rows[1]).getByText('constructor')).toHaveClass('rc-micro');
+  });
+
   it('the rail says the register is filed by the rule where it says so, not only by category', () => {
     draw();
     expect(screen.queryByText(/Filed from the rule’s own category\./)).toBeNull();

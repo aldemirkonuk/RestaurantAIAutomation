@@ -129,6 +129,7 @@ import {
   fmtDay,
   fmtReadAt,
   heldBy,
+  ownRow,
   type StakeId,
 } from './rec-format';
 import {
@@ -307,7 +308,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
       if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
       const st = stakeRank(a.stake) - stakeRank(b.stake);
       if (st !== 0) return st;
-      const ur = (URGENCY_RANK[a.urgency] ?? 3) - (URGENCY_RANK[b.urgency] ?? 3);
+      const ur = (ownRow(URGENCY_RANK, a.urgency) ?? 3) - (ownRow(URGENCY_RANK, b.urgency) ?? 3);
       return ur !== 0 ? ur : (b.score ?? 0) - (a.score ?? 0);
     });
     const m = new Map<ActId, EntryVM[]>();

@@ -12,8 +12,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { handOf, heldBy, receiptFor, stakeFilingOf, stakeOf } from './rec-format';
+import { handOf, heldBy, receiptFor, stakeFilingOf, stakeOf, urgencyLabel } from './rec-format';
 import { actOf } from './rec-docket';
+import { cuttingFor, goalOfferFor } from './rec-forward';
+import { daybookBasis, daybookDraftFor, leverWords, leversFor, METRIC_CATEGORIES } from './rec-daybook';
+import type { EntryVM } from './useRecommendationsNextData';
 
 function entry(over: Partial<Parameters<typeof receiptFor>[0]> = {}) {
   return {
@@ -260,5 +263,50 @@ describe('a key named on Object.prototype is an unknown rule, never an inherited
     expect(handOf(key, 'inventory').href).toMatch(/^\/inventory\?rec=/);
     expect(handOf(key, key)).toMatchObject({ label: 'Open Reports', where: 'Reports' });
     expect(handOf(key, key).href).toMatch(/^\/reports\?rec=/);
+  });
+
+  /*
+   * 2026-10-06, the PR #611 audit at 9d1d9fa53: the page's other tables keyed
+   * by a stored rule, urgency or goal metric read a plain `table[key]` too.
+   * `__proto__` gave the goal and cutting doors `Object.prototype` as a
+   * refusal's why, and the page threw rendering it. They read own rows now.
+   */
+  const forward = (ruleKey: string) => ({ ruleKey, category: 'efficiency', urgency: 'now', subject: null });
+
+  it.each(PROTO_KEYS)('the goal door refuses the rule %s in words', (key) => {
+    expect(goalOfferFor(forward(key))).toEqual({
+      kind: 'refused',
+      why: expect.stringContaining(`no metric filed for the rule ${key}`),
+    });
+  });
+
+  it.each(PROTO_KEYS)('the cutting door refuses the rule %s in words', (key) => {
+    expect(cuttingFor(forward(key))).toEqual({
+      kind: 'refused',
+      why: expect.stringContaining(`no cutting filed for the rule ${key}`),
+    });
+  });
+
+  it.each(PROTO_KEYS)('the day-book drafts the rule %s as a rule it has no spec for', (key) => {
+    const draft = daybookDraftFor({ ruleKey: key, recommendation: 'Do it.' } as EntryVM, '2026-10-06');
+    expect(draft).toEqual({
+      title: `Follow up: ${key}`,
+      date: '2026-10-06',
+      type: 'custom',
+      note: `From the recommendations book — rule ${key}. Do it.`,
+    });
+    expect(daybookBasis(key)).toBeNull();
+  });
+
+  it.each(PROTO_KEYS)('the urgency %s is said as its own word', (key) => {
+    expect(urgencyLabel(key)).toBe(key);
+  });
+
+  it.each(PROTO_KEYS)('a goal held on %s names no levers, and says the metric is not mapped', (key) => {
+    const slip = { goalId: 'g-1', name: 'A goal', metricKey: key, href: '/reports', landing: '' };
+    expect(leversFor(slip, [])).toBeNull();
+    expect(leverWords(slip, null)).toBe(
+      `This goal is held on ${key}, which is not one of the ${Object.keys(METRIC_CATEGORIES).length} metrics the gateway maps to insight categories, so the rule’s “this goal’s category” has no answer here.`,
+    );
   });
 });
