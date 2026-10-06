@@ -421,41 +421,128 @@ describe("BeveragesService cocktail writes", () => {
   });
 });
 
-/**
- * Q9 (founder 2026-09-22): the non-alcoholic register heat map must read LIVE
- * sales. Non-wine lines never enter `pos_unresolved_lines` (pos-hub skips
- * `!is_wine` before that queue), so a till book that only reads unresolved
- * lines leaves Turkish coffee / tea / water with an empty heat map forever.
- * This pin fails if `readTillLines` stops mining `pos_checks.items`.
- */
-describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () => {
-  it("surfaces a non-alcoholic sale from pos_checks.items even when the unresolved queue is empty", async () => {
-    const { service } = await richService({
-      tables: {
-        menu_items: [{ data: [] }],
-        procurement_document_lines: [{ data: [] }],
-        procurement_order_items: [{ data: [] }],
-        vendor_price_observations: [{ data: [] }],
-        pos_unresolved_lines: [{ data: [] }],
-        pos_checks: [
-          {
-            data: [
-              {
-                id: "chk-1",
-                external_check_id: "toast-99",
-                opened_at: "2026-09-20T09:00:00.000Z",
-                closed_at: "2026-09-20T09:12:00.000Z",
-                voided: false,
-                items: [
-                  { name: "Turkish Coffee", qty: 2, price: 4.5, is_wine: false },
-                  { name: "House Cabernet", qty: 1, price: 14, is_wine: true },
-                ],
-              },
-            ],
-          },
-        ],
+/* ── the till book: the till's own record, every line (ADR 0301 §1) ──────────
+   Q9 (founder 2026-09-22) wired LIVE non-wine sales into the cellar heat map;
+   A-016 found the read that did it sampled 200 unordered checks and skipped
+   every wine-flagged line, so a MAPPED rakı read "the till never rang it".
+   The till book now reads two functions of migration
+   the_cellar_reads_the_tills_own_record. This fake serves them: it applies the
+   call's p_names and its gt / order / limit to the lines it holds, and keeps
+   every call, so a test can see what was asked for, page by page. A line's
+   item_name here is the function's own output, btrim(name), so it can keep a
+   tab or a no-break space at its edge, and p_names keeps a line only on an
+   exact match, as `btrim(name) = ANY(p_names)` does. Which lines the
+   functions return (voided checks out, a queued line with its check counted
+   once, each listed name round-tripping to its lines) is pinned in SQL, in
+   that migration's test file.                                               */
+
+type TillLine = {
+  id: string;
+  item_name: string;
+  qty: number | null;
+  price: number | null;
+  sold_at: string;
+  external_check_id: string | null;
+};
+
+type TillCall = {
+  fn: string;
+  args: Record<string, unknown>;
+  gt: [string, string] | null;
+  order: string | null;
+  limit: number | null;
+};
+
+function tillQuery(
+  fn: string,
+  args: Record<string, unknown>,
+  lines: TillLine[],
+  errors: Record<string, Term["error"]>,
+  calls: TillCall[],
+) {
+  const call: TillCall = { fn, args, gt: null, order: null, limit: null };
+  calls.push(call);
+  const settle = () => {
+    if (errors[fn]) return Promise.resolve({ data: null, error: errors[fn] });
+    let rows: Record<string, unknown>[];
+    if (fn === "house_till_names") {
+      const count = new Map<string, number>();
+      for (const l of lines) count.set(l.item_name, (count.get(l.item_name) ?? 0) + 1);
+      rows = [...count].map(([item_name, n]) => ({ item_name, lines: n }));
+    } else {
+      const names = args.p_names as string[] | null;
+      rows = lines.filter((l) => names === null || names.includes(l.item_name));
+    }
+    if (call.gt) {
+      const [col, v] = call.gt;
+      rows = rows.filter((r) => String(r[col]) > v);
+    }
+    if (call.order) {
+      const col = call.order;
+      rows = [...rows].sort((a, b) => (String(a[col]) < String(b[col]) ? -1 : 1));
+    }
+    if (call.limit !== null) rows = rows.slice(0, call.limit);
+    return Promise.resolve({ data: rows, error: null });
+  };
+  const q: Record<string, unknown> = {
+    gt: (col: string, v: string) => ((call.gt = [col, v]), q),
+    order: (col: string) => ((call.order = col), q),
+    limit: (n: number) => ((call.limit = n), q),
+    then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+      settle().then(resolve, reject),
+  };
+  return q;
+}
+
+async function tillService(
+  lines: TillLine[],
+  errors: Record<string, Term["error"]> = {},
+) {
+  const calls: TillCall[] = [];
+  const tables: string[] = [];
+  const db = {
+    getClient: () => ({
+      rpc: (fn: string, args: Record<string, unknown>) =>
+        tillQuery(fn, args, lines, errors, calls),
+      from: (table: string) => {
+        tables.push(table);
+        return writeChain({ data: [] });
       },
-    });
+    }),
+  };
+  const moduleRef = await Test.createTestingModule({
+    providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+  }).compile();
+  return { service: moduleRef.get(BeveragesService), calls, tables };
+}
+
+function tillLine(
+  n: number,
+  item_name: string,
+  qty: number | null,
+  price: number | null,
+  sold_at = "2026-08-09T21:00:00.000Z",
+): TillLine {
+  return {
+    // Shaped like the function's own id: check uuid, colon, line ordinal.
+    id: `c${String(n).padStart(6, "0")}:1`,
+    item_name,
+    qty,
+    price,
+    sold_at,
+    external_check_id: `clover-${n}`,
+  };
+}
+
+describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () => {
+  it("surfaces a non-alcoholic sale from pos_checks.items", async () => {
+    const { service } = await tillService([
+      {
+        ...tillLine(1, "Turkish Coffee", 2, 4.5, "2026-09-20T09:12:00.000Z"),
+        external_check_id: "toast-99",
+      },
+      tillLine(2, "House Cabernet", 1, 14),
+    ]);
 
     const out = await service.readRowRecord(RID, "Turkish Coffee");
     const pos = out.books.find((b) => b.book === "pos");
@@ -467,109 +554,194 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
         label: "Turkish Coffee",
         qty: 2,
         unitPrice: 4.5,
+        total: 9,
         at: "2026-09-20T09:12:00.000Z",
         note: "toast-99",
+        matchedBy: "exact",
       }),
     ]);
-    // Instant + qty are what rowSeries.whenItSells buckets into the heat map.
-    expect(pos?.ledger[0].at).toBeTruthy();
-    expect(pos?.ledger[0].qty).toBeGreaterThan(0);
   });
 
-  it("does not invent a till series when pos_checks has no matching non-wine line", async () => {
-    const { service } = await richService({
-      tables: {
-        menu_items: [{ data: [] }],
-        procurement_document_lines: [{ data: [] }],
-        procurement_order_items: [{ data: [] }],
-        vendor_price_observations: [{ data: [] }],
-        pos_unresolved_lines: [{ data: [] }],
-        pos_checks: [
-          {
-            data: [
-              {
-                id: "chk-2",
-                external_check_id: "toast-100",
-                closed_at: "2026-09-20T18:00:00.000Z",
-                voided: false,
-                items: [{ name: "House Cabernet", qty: 1, price: 14, is_wine: true }],
-              },
-            ],
-          },
-        ],
-      },
-    });
+  it("counts a wine-flagged, mapped line: the till rang Yeni Rakı, so the record says so (A-016)", async () => {
+    // pos-hub flags rakı is_wine and maps it to stock; when its sale volume
+    // resolves against this house's own item it never reaches the unresolved
+    // queue. The old read skipped every is_wine line of a check.
+    const { service } = await tillService([
+      tillLine(1, "Yeni Rakı 35cl", 1, 38),
+      tillLine(2, "Yeni Rakı (single)", 2, 9),
+    ]);
+    const out = await service.readRowRecord(RID, "Yeni Rakı");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(2);
+    expect(pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort()).toEqual([
+      ["Yeni Rakı (single)", 2, "contains"],
+      ["Yeni Rakı 35cl", 1, "contains"],
+    ]);
+  });
 
+  it("finds Tuzlu Rüzgar's own till names, which add a serve size to the menu's name (A-016)", async () => {
+    // The names are the sim feed's own (p4-scratch/sim-run/rebuild/run/feed).
+    // Each carries a size, so none has its menu row's beverage_house_key and
+    // none reaches that row's Sold cell (ADR 0301, Fork deferred; SQL T15).
+    // The record finds them with matchLine, as 'contains'. That rule is
+    // main's and inherited: 'Yeni Rakı Âlâ' contains 'Yeni Rakı', so its lines
+    // show in Yeni Rakı's record too (ADR 0301, Stated behaviours).
+    const lines = [
+      tillLine(1, "Yeni Rakı (single 50ml)", 4, 14),
+      tillLine(2, "Yeni Rakı 70cl bottle", 1, 80),
+      tillLine(3, "Yeni Rakı 100cl bottle", 1, 110),
+      tillLine(4, "Yeni Rakı Âlâ (single 50ml)", 2, 16),
+      tillLine(5, "Kulüp Rakı (single 50ml)", 3, 12),
+      tillLine(6, "Efes Pilsen", 2, 8),
+      tillLine(7, "Efes Pilsen (draft 400ml)", 3, 10),
+      tillLine(8, "Tito's Handmade Vodka (50ml)", 1, 12),
+    ];
+    const read = async (label: string) => {
+      const { service } = await tillService(lines);
+      const out = await service.readRowRecord(RID, label);
+      const pos = out.books.find((b) => b.book === "pos");
+      expect(pos?.readable).toBe(true);
+      return pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort();
+    };
+
+    expect(await read("Yeni Rakı")).toEqual([
+      ["Yeni Rakı (single 50ml)", 4, "contains"],
+      ["Yeni Rakı 100cl bottle", 1, "contains"],
+      ["Yeni Rakı 70cl bottle", 1, "contains"],
+      ["Yeni Rakı Âlâ (single 50ml)", 2, "contains"],
+    ]);
+    expect(await read("Efes Pilsen")).toEqual([
+      ["Efes Pilsen (draft 400ml)", 3, "contains"],
+      ["Efes Pilsen", 2, "exact"],
+    ]);
+    expect(await read("Tito's Handmade Vodka")).toEqual([
+      ["Tito's Handmade Vodka (50ml)", 1, "contains"],
+    ]);
+  });
+
+  it("reads all 2,152 lines of a row across three pages, with no sample cap (A-015)", async () => {
+    const lines = Array.from({ length: 2152 }, (_, i) => tillLine(i + 1, "Lions Milk", 1, 17));
+    const { service, calls } = await tillService(lines);
+
+    const out = await service.readRowRecord(RID, "Lions Milk");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(2152);
+
+    const pages = calls.filter((c) => c.fn === "house_till_lines");
+    expect(pages).toHaveLength(3);
+    expect(pages.map((c) => c.limit)).toEqual([1000, 1000, 1000]);
+    expect(pages.map((c) => c.order)).toEqual(["id", "id", "id"]);
+    // Keyset, not offset: each page starts after the last id of the one before.
+    expect(pages[0].gt).toBeNull();
+    expect(pages[1].gt).toEqual(["id", "c001000:1"]);
+    expect(pages[2].gt).toEqual(["id", "c002000:1"]);
+  });
+
+  it("matches names with the record's own matcher and fetches only the names that matched", async () => {
+    const { service, calls } = await tillService([
+      tillLine(1, "Turkish Coffee", 1, 4.5),
+      tillLine(2, "Turkish Coffee Double", 1, 6),
+      tillLine(3, "Turkish Tea", 2, 3),
+      tillLine(4, "Coffee", 1, 3),
+    ]);
+    const out = await service.readRowRecord(RID, "turkish  COFFEE");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.rows).toBe(2);
+
+    const names = calls.filter((c) => c.fn === "house_till_names");
+    expect(names).toHaveLength(1);
+    expect(names[0].args).toEqual({ p_restaurant_id: RID });
+    expect(names[0].order).toBe("item_name");
+
+    const lineCalls = calls.filter((c) => c.fn === "house_till_lines");
+    expect(lineCalls).toHaveLength(1);
+    expect(lineCalls[0].args).toEqual({
+      p_restaurant_id: RID,
+      p_names: ["Turkish Coffee", "Turkish Coffee Double"],
+    });
+  });
+
+  it("sends each matched name back exactly as the till listed it, so a tab or no-break space at its edge keeps its lines (A-016)", async () => {
+    // house_till_names returns btrim(name), and SQL btrim strips spaces only,
+    // so 'Zqtl Cola\t' and 'Zqtl Cola\u00a0' come back with their edge kept.
+    // house_till_lines keeps a line only when btrim(name) = ANY(p_names), an
+    // exact comparison, which this fake's p_names filter is too. A name sent
+    // back JS-trimmed ('Zqtl Cola') matches neither, and their lines vanish.
+    const { service, calls } = await tillService([
+      tillLine(1, "Zqtl Cola", 1, 4),
+      tillLine(2, "Zqtl Cola\t", 2, 4),
+      tillLine(3, "Zqtl Cola\u00a0", 3, 4),
+    ]);
+    const out = await service.readRowRecord(RID, "Zqtl Cola");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(3);
+    // Shown trimmed; matched and fetched by the name the till holds.
+    expect(
+      pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort(),
+    ).toEqual([
+      ["Zqtl Cola", 1, "exact"],
+      ["Zqtl Cola", 2, "exact"],
+      ["Zqtl Cola", 3, "exact"],
+    ]);
+    const lineCalls = calls.filter((c) => c.fn === "house_till_lines");
+    expect(lineCalls).toHaveLength(1);
+    expect(new Set(lineCalls[0].args.p_names as string[])).toEqual(
+      new Set(["Zqtl Cola", "Zqtl Cola\t", "Zqtl Cola\u00a0"]),
+    );
+  });
+
+  it("does not invent a till series, nor read lines, when no name the till rang matches", async () => {
+    const { service, calls } = await tillService([tillLine(1, "House Cabernet", 1, 14)]);
     const out = await service.readRowRecord(RID, "Turkish Coffee");
     const pos = out.books.find((b) => b.book === "pos");
     expect(pos?.readable).toBe(true);
     expect(pos?.rows).toBe(0);
     expect(pos?.ledger).toEqual([]);
+    expect(pos?.reason).toContain("Every line of every check that was not voided");
+    expect(calls.filter((c) => c.fn === "house_till_lines")).toHaveLength(0);
   });
 
-  it("skips voided checks and does not double-count wine already on the unresolved queue", async () => {
-    const { service } = await richService({
-      tables: {
-        menu_items: [{ data: [] }],
-        procurement_document_lines: [{ data: [] }],
-        procurement_order_items: [{ data: [] }],
-        vendor_price_observations: [{ data: [] }],
-        pos_unresolved_lines: [
-          {
-            data: [
-              {
-                id: "u-1",
-                item_name: "House Cabernet",
-                qty: 1,
-                price: 14,
-                created_at: "2026-09-20T18:00:00.000Z",
-                external_check_id: "toast-101",
-              },
-            ],
-          },
-        ],
-        pos_checks: [
-          {
-            data: [
-              {
-                id: "chk-void",
-                external_check_id: "toast-void",
-                closed_at: "2026-09-20T10:00:00.000Z",
-                voided: true,
-                items: [
-                  { name: "Turkish Coffee", qty: 9, price: 4.5, is_wine: false },
-                ],
-              },
-              {
-                id: "chk-wine",
-                external_check_id: "toast-101",
-                closed_at: "2026-09-20T18:00:00.000Z",
-                voided: false,
-                items: [
-                  { name: "House Cabernet", qty: 1, price: 14, is_wine: true },
-                ],
-              },
-            ],
-          },
-        ],
-      },
+  it("keeps a line with no quantity or price as unknown, never as zero", async () => {
+    const { service } = await tillService([tillLine(1, "Ayran", null, null)]);
+    const out = await service.readRowRecord(RID, "Ayran");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.rows).toBe(1);
+    expect(pos?.ledger[0]).toMatchObject({ qty: null, unitPrice: null, total: null });
+  });
+
+  it.each([
+    ["house_till_names"],
+    ["house_till_lines"],
+  ])("leaves the book unreadable, not empty, when %s fails", async (fn) => {
+    const { service } = await tillService([tillLine(1, "Ayran", 1, 2)], {
+      [fn]: { code: "57014", message: "canceling statement due to statement timeout" },
     });
+    const out = await service.readRowRecord(RID, "Ayran");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(false);
+    expect(pos?.rows).toBeNull();
+    expect(pos?.reason).toBe("canceling statement due to statement timeout");
+  });
 
-    const coffee = await service.readRowRecord(RID, "Turkish Coffee");
-    const coffeePos = coffee.books.find((b) => b.book === "pos");
-    expect(coffeePos?.rows).toBe(0);
-    expect(coffeePos?.ledger).toEqual([]);
+  it("names the migration when the till's functions are not on this database", async () => {
+    const { service } = await tillService([], {
+      house_till_names: { code: "PGRST202", message: "Could not find the function" },
+    });
+    const out = await service.readRowRecord(RID, "Ayran");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(false);
+    expect(pos?.reason).toContain("the_cellar_reads_the_tills_own_record");
+    expect(pos?.reason).toContain("Unread, not empty.");
+  });
 
-    const wine = await service.readRowRecord(RID, "House Cabernet");
-    const winePos = wine.books.find((b) => b.book === "pos");
-    expect(winePos?.rows).toBe(1);
-    expect(winePos?.ledger).toEqual([
-      expect.objectContaining({
-        label: "House Cabernet",
-        qty: 1,
-        note: "toast-101",
-      }),
-    ]);
+  it("reads the till only through those functions, never a pos_checks sample or the queue alone", async () => {
+    const { service, tables } = await tillService([tillLine(1, "Ayran", 1, 2)]);
+    await service.readRowRecord(RID, "Ayran");
+    expect(tables).not.toContain("pos_checks");
+    expect(tables).not.toContain("pos_unresolved_lines");
   });
 });
 
@@ -630,6 +802,9 @@ async function filteringService(
   const log: Array<{ table: string; calls: Array<[string, unknown[]]> }> = [];
   const db = {
     getClient: () => ({
+      // The till book reads two functions (ADR 0301 §1); these tests are not
+      // about it, so it is served a till that has rung nothing.
+      rpc: () => filteringQuery([], undefined).query,
       from: (table: string) => {
         const t = tables[table] ?? {};
         const { query, calls } = filteringQuery(t.rows ?? [], t.error);
