@@ -719,6 +719,15 @@ begin
     'T25 FAIL: a new "Table 5" check did not go to the hand-added "5"';
   assert pg_temp.tl3_hub('c25-2', '{"tableRef": "5"}') = patio,
     'T25 FAIL: a new "5" check did not reach Patio by its pos ref';
+  -- The belt compares the word trimmed and in any case (ADR 0303): the till
+  -- re-sending "table 5", or a writer setting " Table 5 " itself, is the same
+  -- word, so the check stays on Patio though each write names the new "5".
+  assert pg_temp.tl3_hub('c24-2', '{"tableRef": "table 5"}', five) = patio,
+    'T25 FAIL: a re-send of the same word in another case, naming the new "5", moved a past check off Patio';
+  update public.pos_checks set table_ref = ' Table 5 ', table_id = five
+   where restaurant_id = pg_temp.tl_house3() and external_check_id = 'c24-3';
+  assert pg_temp.tl3_link('c24-3') = patio,
+    'T25 FAIL: a write of the same word with spaces, naming the new "5", moved a past check off Patio';
 end $$;
 
 -- T26: the hand-added variant. A table "9" added by hand (no pos ref) catches
@@ -805,6 +814,10 @@ begin
   assert pg_temp.tl3_tables('P7') = 0, 'T28 FAIL: a twin "P7" table was learned';
   assert (select former_labels = '{}'::text[] from public.restaurant_tables where id = bar),
     'T28 FAIL: a re-map with the label unchanged wrote a former label';
+  -- A rename that changes only the label's case keeps no former label (ADR 0303).
+  update public.restaurant_tables set label = 'BAR 2' where id = bar;
+  assert (select former_labels = '{}'::text[] from public.restaurant_tables where id = bar),
+    'T28 FAIL: a rename that changed only the case wrote a former label';
 end $$;
 
 -- T29: a learned label is at most 60 characters, the most PATCH lets a person
