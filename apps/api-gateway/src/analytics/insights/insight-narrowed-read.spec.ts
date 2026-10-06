@@ -84,8 +84,23 @@ function check(date: string, total: number) {
   };
 }
 
+/** A delivered order from one vendor, as the bundle's select returns it. */
+function order(date: string, providerId: string, name: string, cost: number) {
+  return {
+    provider_id: providerId,
+    providers: { name },
+    total_cost: cost,
+    final_price: null,
+    bottles_total: 12,
+    quantity: 12,
+    delivered_at: `${date}T10:00:00.000Z`,
+    created_at: `${date}T09:00:00.000Z`,
+    status: "DELIVERED",
+  };
+}
+
 /** 90 days where one weekday out-earns the rest and yesterday came in soft. */
-function generator() {
+function generator(orders: ReturnType<typeof order>[] = []) {
   const target = weekdayOf(dayBack(1));
   const checks: ReturnType<typeof check>[] = [];
   for (let back = 90; back >= 1; back--) {
@@ -96,7 +111,7 @@ function generator() {
   const client = makeClient({
     pos_checks: checks,
     wine_consumption_log: [],
-    procurement_orders: [],
+    procurement_orders: orders,
     restaurant_inventory: [],
     restaurant_tables: [],
     restaurant_venue_profiles: [],
@@ -180,5 +195,43 @@ describe("a read narrowed to one catalogue type (ADR 0191)", () => {
         (w) => w.table === "analytics_insights" && w.op === "delete",
       ),
     ).toBe(true);
+  });
+});
+
+describe("vendor concentration is found where the catalogue files it (ADR 0291)", () => {
+  // The catalogue's `categorize()` sorts every vendor dimension into
+  // purchasing, and CatalogView asks the narrowed read with that category.
+  // The generator used to record this type under `risk`, so the read filtered
+  // it out before the key and the page said "Nothing live" while it fired.
+  const twoVendors = () => {
+    const out: ReturnType<typeof order>[] = [];
+    for (let back = 40; back >= 2; back -= 3) {
+      out.push(order(dayBack(back), "v-kum", "Kumdere", 900));
+      out.push(order(dayBack(back), "v-keg", "Kegmoor", 300));
+    }
+    return out;
+  };
+  const KEY = "vendor.purchase_spend.concentration";
+
+  it("the catalogue's own category finds it", async () => {
+    const { svc } = generator(twoVendors());
+    const out = await svc.generate("r1", {
+      categories: ["purchasing"],
+      candidateKeys: [KEY],
+      persist: false,
+    });
+    expect(out.insights.length).toBeGreaterThan(0);
+    expect(out.insights.every((i) => i.candidateKey === KEY)).toBe(true);
+    expect(out.insights[0].category).toBe("purchasing");
+  });
+
+  it("and it is no longer filed under risk", async () => {
+    const { svc } = generator(twoVendors());
+    const out = await svc.generate("r1", {
+      categories: ["risk"],
+      candidateKeys: [KEY],
+      persist: false,
+    });
+    expect(out.insights).toEqual([]);
   });
 });

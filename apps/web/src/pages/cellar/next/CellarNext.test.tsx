@@ -483,8 +483,73 @@ describe('CellarNext — "In the building tonight" (ADR 0160 sec110 item 2)', ()
     expect(within(section).getByText('Registers carried')).toBeInTheDocument();
     // Every tile names the table/rows it was counted from — the sketch's own
     // "every tile names the table" rule, item 2's own gap before this fix.
-    expect(within(section).getAllByText(/this house.s wine rows|restaurant_cellar_registers/).length).toBeGreaterThanOrEqual(2);
+    expect(within(section).getAllByText(/this house.s items|restaurant_cellar_registers/).length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByTestId('gazetteer-measures-none')).not.toBeInTheDocument();
+  });
+
+  it('names the off-library tile for what it counts — rows with no wine-library link (ADR 0293)', () => {
+    // A-053's fix (#606) made `offBook` count this house's rows with no
+    // wine-library link, so "off this read" no longer described it. The
+    // founder, 2026-10-05: "Rename, small follow-up (Recommended)". The id
+    // `offbook`, and every house's stored choice of tiles, stay as they were.
+    // F2, the founder, 2026-10-05: "Say 'items', count all (Recommended)".
+    // The figure counts every item with no link, beers and spirits included,
+    // so the source line says "items", not "wine rows".
+    mock.current = {
+      ...base,
+      registers: readout(),
+      building: { titles: 9, bottles: 40, belowPar: 2, offBook: 3, parUnset: 1 },
+    };
+    mock.settings = {
+      ...mock.settings,
+      loading: false,
+      data: {
+        ...(mock.settings.data as Record<string, unknown>),
+        gazetteerMeasures: ['bottles', 'titles', 'par', 'offbook'],
+        gazetteerMeasuresConfigured: false,
+        readable: true,
+      },
+    };
+    draw();
+    const section = screen.getByText('In the building tonight').closest('section')!;
+    const tile = within(section).getByText('Carried, not in the wine library').closest('.cl-tile')!;
+    expect(tile).toHaveTextContent('this house’s items with no wine-library link');
+    expect(tile).not.toHaveTextContent(/wine rows/);
+    expect(within(section).queryByText('Carried but off this read')).not.toBeInTheDocument();
+    expect(within(section).queryByText(/vs the wine library/)).not.toBeInTheDocument();
+  });
+
+  // F3, the founder, 2026-10-05: "Say 'items' on all four (Recommended)". The
+  // four sibling tiles are counted off the same whole inventory read as the
+  // off-library one (every item, wine or not), so their source
+  // lines say "items", not "wine rows"; the par tiles also name the items
+  // their figure looks at. Labels and figures are unchanged. One case per line.
+  it.each([
+    ['bottles', 'Bottles on hand', 'this house’s items'],
+    ['titles', 'Titles carried', 'this house’s items'],
+    ['par', 'At or under their own par', 'this house’s items with a par recorded, against each item’s own par'],
+    ['parUnset', 'No par recorded', 'this house’s items with no par recorded'],
+  ])('the %s tile names the items it was counted from, not "wine rows" (ADR 0293 F3)', (id, label, source) => {
+    mock.current = {
+      ...base,
+      registers: readout(),
+      building: { titles: 9, bottles: 40, belowPar: 2, offBook: 3, parUnset: 1 },
+    };
+    mock.settings = {
+      ...mock.settings,
+      loading: false,
+      data: {
+        ...(mock.settings.data as Record<string, unknown>),
+        gazetteerMeasures: [id],
+        gazetteerMeasuresConfigured: true,
+        readable: true,
+      },
+    };
+    draw();
+    const section = screen.getByText('In the building tonight').closest('section')!;
+    const tile = within(section).getByText(label).closest('.cl-tile')!;
+    expect(tile.querySelector('.cl-note')?.textContent).toBe(source);
+    expect(tile).not.toHaveTextContent(/wine rows/);
   });
 });
 
