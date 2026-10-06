@@ -1710,10 +1710,12 @@ describe('ReportsNext — sales are net once the gateway says so (ADR 0295)', ()
     expect(v.figures.map((f) => f.label)).toEqual(['Taken (net)', 'Checks', 'Average check (net)']);
     // 300 over the 4 checks with a net figure, not over all 5.
     expect(v.figures[2].value).toBe('$75.00');
-    expect(flat(v.basis)).toContain('before tax, surcharge and tips');
+    // AW17's words, and no claim about discounts: SimPOS's subtotal is taken before them (ADR 0295 Limits).
+    expect(flat(v.basis)).toContain('Net sales: what the checks came to before tax and surcharge, between');
+    expect(flat(v.basis)).not.toMatch(/discount/i);
     expect(flat(v.basis)).not.toMatch(/pos_checks|subtotal/);
     expect(flat(v.notes)).toContain('from 4 of 5 checks');
-    expect(CATALOGUE.till.answers).toBe('What the house sold, day by day, before tax and tips');
+    expect(CATALOGUE.till.answers).toBe('What the house sold, day by day, before tax and surcharge');
 
     hook.current = {
       ...alone('till', { x: 0, y: 0, w: 6, h: 8 }, 'table'),
@@ -1789,7 +1791,8 @@ describe('ReportsNext — sales are net once the gateway says so (ADR 0295)', ()
     expect(seatCols).toContain('Taken (net)');
     expect(seatCols).toContain('Avg check (net)');
     expect(seats.table!.rows[1].cells[2]).toBe('not recorded');
-    expect(flat(seats.basis)).toContain('before tax, surcharge and tips');
+    expect(flat(seats.basis)).toContain('Net sales: what the checks came to before tax and surcharge. Voided checks are left out.');
+    expect(flat(seats.basis)).not.toMatch(/discount/i);
     expect(flat(seats.basis)).not.toMatch(/pos_checks/);
 
     // Without a basis the house register keeps its old columns.

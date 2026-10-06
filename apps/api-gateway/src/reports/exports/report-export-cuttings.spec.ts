@@ -419,7 +419,13 @@ describe("the POS registers are written as net sales (ADR 0295)", () => {
     for (const d of docs)
       for (const line of d.basis)
         expect(line).not.toMatch(/pos_checks|subtotal\b|\.total/);
-    expect(docs[0].basis[0]).toContain("before tax, surcharge and tips");
+    // AW17's words, and no claim about discounts (ADR 0295 Limits: SimPOS's
+    // subtotal is taken before them).
+    expect(docs[0].basis[0]).toContain(
+      "Net sales: what the checks came to before tax and surcharge.",
+    );
+    for (const d of docs)
+      for (const line of d.basis) expect(line).not.toMatch(/discount/i);
   });
 
   it("g12: a figure from only some checks says so, and a day none of whose checks carried one is not recorded", () => {

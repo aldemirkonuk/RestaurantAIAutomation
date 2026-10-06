@@ -107,7 +107,8 @@ export interface TillWindow {
   posConnected: boolean;
   /**
    * True when the gateway says `basis: 'net'` (ADR 0295): `revenue` is net
-   * sales, the subtotal before tax, surcharge and tips. An older gateway
+   * sales, the till's subtotal before tax and surcharge (AW17's words; no
+   * claim that it is after discounts, ADR 0295 Limits). An older gateway
    * sends no basis and its figure is the gross total, so it keeps the old
    * labels — the web and the gateway deploy separately.
    */
@@ -156,7 +157,7 @@ function weekColumns(from: string, to: string): string[] {
 const till = analysis<TillWindow>({
   title: 'Through the till',
   register: 'till register',
-  answers: 'What the house sold, day by day, before tax and tips',
+  answers: 'What the house sold, day by day, before tax and surcharge',
   window: (ctx) => `the last ${ctx.days} days of POS checks`,
   path: (rid, ctx) => `/analytics/pos-revenue/${rid}?days=${ctx.days}`,
   graphs: ['area', 'line', 'bars', 'heatmap', 'table', 'figure'],
@@ -227,7 +228,7 @@ const till = analysis<TillWindow>({
       : [];
     const basis = [
       w.net
-        ? `Net sales: what the checks came to after discounts, before tax, surcharge and tips, between ${w.from || EM} and ${w.to || EM}. Voided checks are left out.`
+        ? `Net sales: what the checks came to before tax and surcharge, between ${w.from || EM} and ${w.to || EM}. Voided checks are left out.`
         : `Check totals as the till rang them, tax included, between ${w.from || EM} and ${w.to || EM}. Voided checks are left out.`,
       'The series is sparse on purpose: a day with no check is absent, not plotted at zero.',
     ];

@@ -924,9 +924,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         const checks = data || [];
         rowCount = checks.length;
         if (metricKey === "pos_revenue") {
-          // Net sales (ADR 0295): the subtotal, after discounts and before
-          // tax, surcharge and tip — what the house sold, and the denominator
-          // a P&L puts food cost over. It used to sum `total`, which on Tuzlu
+          // Net sales (ADR 0295): the till's subtotal, before tax and
+          // surcharge (AW17's words), the denominator a P&L puts food cost
+          // over. Nothing here makes it after discounts: SimPOS's subtotal is
+          // taken before them, so its discounted checks read high until PR-3
+          // (ADR 0295 Limits). It used to sum `total`, which on Tuzlu
           // carried 12.63% of tax and surcharge (A-019). A check with no
           // subtotal is counted, never filled from its total.
           // `wine_revenue` below sums only itemised wine lines and is NOT a
@@ -953,7 +955,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           // refused below rather than read as $0 or as the gross total.
           const fold = foldNetSales(checks);
           if (fold.checks > 0 && fold.netChecks === 0) {
-            refusal = `None of the ${fold.checks} check${fold.checks === 1 ? "" : "s"} in this window carried a net figure (the subtotal before tax and tips), so the average check (net) is not recorded.`;
+            refusal = `None of the ${fold.checks} check${fold.checks === 1 ? "" : "s"} in this window carried a net figure (the subtotal before tax and surcharge), so the average check (net) is not recorded.`;
           } else {
             return {
               current: netAverage(fold) ?? 0,

@@ -190,7 +190,7 @@ describe("TableAnalyticsService — an empty POS window is not an empty feed (A-
 
 /**
  * ADR 0295 (AW17, A-019, A-047): the table and server registers read net
- * sales — the subtotal, before tax, surcharge and tip — and the tip rate is
+ * sales — the till's subtotal, before tax and surcharge — and the tip rate is
  * on net. `total` here is Tuzlu's gross: subtotal × 1.1263.
  */
 describe("TableAnalyticsService — sales are net (ADR 0295)", () => {
@@ -238,6 +238,8 @@ describe("TableAnalyticsService — sales are net (ADR 0295)", () => {
     expect(t1.revenuePerCover).toBeCloseTo(50, 10); // 100 over the 2 covers that carried it
     expect(t1.revenuePerSeat).toBeCloseTo(25, 10);
     expect(t1.tipPct).toBeCloseTo(0.1, 10); // the $30 tip has no net to sit on
+    // Tips per seat is no ratio over sales: the $30 tip still counts.
+    expect(t1.tipPerSeat).toBeCloseTo(10, 10); // (10 + 30) / 4 seats, not 10 / 4
     // A table whose checks carried no subtotal: not recorded, not $0.
     const t2 = out.tables.find((t: any) => t.tableId === "t2")!;
     expect(t2.checks).toBe(1);
@@ -258,6 +260,24 @@ describe("TableAnalyticsService — sales are net (ADR 0295)", () => {
     expect(maya.revenue).toBeNull();
     expect(maya.avgCheck).toBeNull();
     expect(maya.tipPct).toBeNull();
+  });
+
+  it("g8c: a till that sends no subtotal (Clover) keeps its tips per seat; only the tip rate is not recorded", async () => {
+    const { service } = makeService({
+      restaurant_tables: [ok([{ id: "t1", label: "T1", seats: 4 }])],
+      pos_checks: [
+        ok([
+          check({ id: "a", subtotal: null, total: 112.63, covers: 2, tip: 18 }),
+          check({ id: "b", subtotal: null, total: 56.32, covers: 2, tip: 6 }),
+        ]),
+      ],
+    });
+    const out = await service.getTablePerformance("r1", 90);
+    const t1 = out.tables.find((t: any) => t.tableId === "t1")!;
+    expect(t1.netChecks).toBe(0);
+    expect(t1.revenue).toBeNull();
+    expect(t1.tipPct).toBeNull(); // no net to put the tips over
+    expect(t1.tipPerSeat).toBeCloseTo(6, 10); // $24 of real tips over 4 seats, not 0
   });
 
   it("g9: an open table's spend so far is net, and an open check with no subtotal has no pace", async () => {

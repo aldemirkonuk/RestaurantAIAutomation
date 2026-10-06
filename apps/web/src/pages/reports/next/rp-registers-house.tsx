@@ -304,12 +304,13 @@ export function emptyWindowLine(w: PosWindow): string | null {
 
 /**
  * ADR 0295: the table and server registers read net sales once the gateway
- * says `basis: 'net'` — the subtotal, before tax, surcharge and tips. An
+ * says `basis: 'net'` — the till's subtotal, before tax and surcharge (AW17's
+ * words; nothing claims it is after discounts, ADR 0295 Limits). An
  * older gateway sends no basis and gross figures, and keeps the old words:
  * the web and the gateway deploy separately.
  */
 const NET_BASIS =
-  'Net sales: what the checks came to after discounts, before tax, surcharge and tips. Voided checks are left out.';
+  'Net sales: what the checks came to before tax and surcharge. Voided checks are left out.';
 
 /** The rows whose net sales came from only some of their checks (ADR 0295 rule 2). */
 function partialNote(rows: Array<{ name: string; checks: number; netChecks: number | null }>): string | null {

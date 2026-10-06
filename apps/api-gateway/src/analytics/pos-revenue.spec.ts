@@ -328,7 +328,9 @@ describe("net sales (ADR 0295)", () => {
     const { service: g } = makeGoals({ pos_checks: rows });
     await expect(
       (g as any).computeMetric("r1", "avg_check", today()),
-    ).rejects.toThrow(/None of the 2 checks .* not recorded/);
+    ).rejects.toThrow(
+      /None of the 2 checks .*\(the subtotal before tax and surcharge\), so the average check \(net\) is not recorded/,
+    );
   });
 
   it("g5: the fold reads subtotal only", () => {

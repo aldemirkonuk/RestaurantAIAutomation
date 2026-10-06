@@ -171,7 +171,7 @@ function partialRowsNote(
     (r) => r.checks != null && r.netChecks != null && r.netChecks < r.checks,
   );
   if (partial.length === 0) return null;
-  return `Net sales are counted only from checks that carried a net figure (the subtotal before tax and tips); none is filled in from a check's total. ${partial
+  return `Net sales are counted only from checks that carried a net figure (the subtotal before tax and surcharge); none is filled in from a check's total. ${partial
     .map((r) => `${r.name}: from ${r.netChecks} of ${r.checks} checks`)
     .join("; ")}.`;
 }
@@ -337,7 +337,7 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
           ],
     notes: [
       w.net && checks != null && netChecks != null && netChecks < checks
-        ? `${w.taken} is from ${netChecks} of ${checks} checks: the other ${checks - netChecks} carried no net figure (the subtotal before tax and tips), and none is filled in from its total. The average divides by the ${netChecks}.`
+        ? `${w.taken} is from ${netChecks} of ${checks} checks: the other ${checks - netChecks} carried no net figure (the subtotal before tax and surcharge), and none is filled in from its total. The average divides by the ${netChecks}.`
         : "",
     ],
     basis: [

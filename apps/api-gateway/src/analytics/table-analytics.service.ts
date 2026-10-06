@@ -212,7 +212,7 @@ export class TableAnalyticsService {
       this.loadChecks(restaurantId, sinceDays),
     ]);
 
-    // Sales are net (ADR 0295): the subtotal, before tax, surcharge and tip.
+    // Sales are net (ADR 0295): the till's subtotal, before tax and surcharge.
     // A check without one is counted in `checks` and left out of every sales
     // figure (`netChecks` says how many carried one); its total is never read.
     const agg = new Map<string, SalesTally>();
@@ -253,7 +253,9 @@ export class TableAnalyticsService {
             ? Math.min(1, (a.covers || 0) / (t.seats * Math.max(1, a.checks)))
             : null,
         wineAttachRate: a && a.checks > 0 ? a.wineChecks / a.checks : null,
-        tipPct: a && a.netWithTip > 0 ? a.tips / a.netWithTip : null,
+        tipPct: a && a.netWithTip > 0 ? a.tipsOnNet / a.netWithTip : null,
+        // Not a ratio over sales, so a check's missing subtotal does not drop
+        // its tip: every recorded tip counts (a Clover check's too).
         tipPerSeat: a && t.seats > 0 ? a.tips / t.seats : null,
         turnoverPerSeat: a && t.seats > 0 ? a.checks / t.seats : null,
       };
@@ -413,7 +415,7 @@ export class TableAnalyticsService {
       revenue: salesOf(a),
       avgCheck: a.netChecks > 0 ? a.net / a.netChecks : null,
       wineAttachRate: a.checks > 0 ? a.wineChecks / a.checks : null,
-      tipPct: a.netWithTip > 0 ? a.tips / a.netWithTip : null,
+      tipPct: a.netWithTip > 0 ? a.tipsOnNet / a.netWithTip : null,
       revenuePerCover: a.netCovers > 0 ? a.netOnCovers / a.netCovers : null,
     }));
 
@@ -571,7 +573,13 @@ interface SalesTally {
   /** Covers on the checks that also carried a subtotal. */
   netCovers: number;
   wineChecks: number;
+  /**
+   * Every recorded tip, whether or not its check carried a subtotal: tips per
+   * seat is not a ratio over sales, so an unstated net does not drop a tip.
+   */
   tips: number;
+  /** Tips of the checks that also carried a net above zero: the tip rate's numerator. */
+  tipsOnNet: number;
   /** Net sales of the checks whose tip was recorded: the tip rate's base. */
   netWithTip: number;
 }
@@ -586,6 +594,7 @@ function newSalesTally(): SalesTally {
     netCovers: 0,
     wineChecks: 0,
     tips: 0,
+    tipsOnNet: 0,
     netWithTip: 0,
   };
 }
@@ -597,6 +606,7 @@ function tallySale(a: SalesTally, c: any): number | null {
   a.covers += c.covers || 0;
   const items: any[] = Array.isArray(c.items) ? c.items : [];
   a.wineChecks += items.some((it) => it?.is_wine) ? 1 : 0;
+  if (c.tip != null) a.tips += Number(c.tip) || 0;
   if (net === null) return null;
   a.netChecks += 1;
   a.net += net;
@@ -607,7 +617,7 @@ function tallySale(a: SalesTally, c: any): number | null {
   // The tip rate is on net (AW17): tips over the net of the checks that
   // recorded a tip. It used to divide by the gross total.
   if (c.tip != null && net > 0) {
-    a.tips += Number(c.tip) || 0;
+    a.tipsOnNet += Number(c.tip) || 0;
     a.netWithTip += net;
   }
   return net;

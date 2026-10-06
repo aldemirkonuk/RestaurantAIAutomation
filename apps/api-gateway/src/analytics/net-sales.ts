@@ -5,8 +5,11 @@
  * ----------
  * AW17, founder, 2026-10-04: "Net sales (Recommended)". Owner sales figures
  * ('Taken', 'Average check', a server's average, the tip rate) read the
- * check's subtotal: after discounts, before tax, surcharge and tip, as /team
- * already does with `server_sales.net_sales` and as a restaurant P&L does. The
+ * check's subtotal as the till sends it: in the founder's words, "before tax
+ * and surcharge", as /team already does with `server_sales.net_sales` and as
+ * a restaurant P&L does. Nothing here establishes that a till's subtotal is
+ * after discounts: SimPOS's is the line sum before them (ADR 0295 Limits,
+ * open claim ADR-0295-SIMPOS-SUBTOTAL-AFTER-DISCOUNTS, PR-3). The
  * gross `pos_checks.total` carried 8.63% sales tax and a 4% surcharge on
  * Tuzlu Rüzgar, so every figure read 12.63% over what the house sold, and the
  * tip rate divided by that inflated figure (A-019, A-047).
@@ -86,7 +89,9 @@ export function netAverage(fold: NetSalesFold): number | null {
 
 /**
  * The basis, in the owner's words, for every surface that prints a net
- * figure. The till's own field name is never shown (F-135).
+ * figure. The till's own field name is never shown (F-135). It says only what
+ * AW17 ruled ("before tax and surcharge") and claims nothing about discounts,
+ * which not every till takes off its subtotal (ADR 0295 Limits).
  */
 export const NET_SALES_BASIS =
-  "Net sales: what the checks came to after discounts, before tax, surcharge and tips. Voided checks are left out.";
+  "Net sales: what the checks came to before tax and surcharge. Voided checks are left out.";
