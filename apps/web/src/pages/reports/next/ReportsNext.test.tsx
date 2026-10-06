@@ -1603,16 +1603,94 @@ describe('ReportsNext — a stockout risk needs a measured history (AW29, ADR 02
   });
 
   it('draws the measured risks, leaves the rest as gaps, and says how a mixed list is ordered', () => {
-    const v = viewOf([row('m', 0.52, 3), row('a', null, 0), row('b', null, 0.9)], 30);
+    // [ADR 0272 D4, 2026-10-04: the gateway sends soonest to run out first,
+    // and the bars rank the same rows by risk on their own.]
+    const v = viewOf([row('a', null, 0), row('b', null, 0.9), row('m', 0.52, 3)], 30);
     expect(v.cats!.data.map((d) => d.value)).toEqual([0.52, null, null]);
-    expect(v.table!.more).toContain('30 wines are below their reorder point');
-    expect(v.table!.more).toContain('highest measured risk first, then the fewest days of cover');
+    expect(v.table!.more).toBe('30 wines are below their reorder point; the 3 that run out soonest are listed.');
   });
 
-  it('keeps the sentence it had when every listed risk is measured (control)', () => {
+  it('says one order whether or not every listed risk is measured', () => {
     const v = viewOf([row('m', 0.52, 3), row('n', 0.4, 5)], 30);
-    expect(v.table!.more).toBe('30 wines are below their reorder point; the 2 at the highest risk are listed.');
+    expect(v.table!.more).toBe('30 wines are below their reorder point; the 2 that run out soonest are listed.');
     expect(notesOf(v)).not.toContain('fewer than');
+  });
+});
+
+/**
+ * ADR 0272 Decision 4, amended 2026-10-04 with the founder's two answers
+ * (AskUserQuestion): "Soonest to run out (Recommended)" — the list runs by
+ * days of cover, the risk only breaking a tie — and, for fork 3, "Out of both,
+ * say a count": a wine below its reorder point with no sale in the window and
+ * nothing on hand leaves the table and the bars, and one line carries them.
+ */
+describe('ReportsNext — what to buy back runs soonest out first, and counts the wines with no demand (ADR 0272)', () => {
+  const row = (id: string, p: number | null, cover: number | null) => ({
+    id,
+    name: `Wine ${id}`,
+    onHand: 0.5,
+    daysOfCover: cover,
+    reorderPoint: p == null ? null : 4,
+    safetyStock: p == null ? null : 2,
+    stockoutProbability: p,
+  });
+  const viewOf = (
+    list: ReturnType<typeof row>[],
+    counts: { reorderCount: number; noDemandCount?: number },
+  ) => {
+    const spec = CATALOGUE.restock;
+    const data = spec.select({
+      params: { serviceLevel: 0.95, leadTimeDays: 7, demandWindowDays: 90, minDemandDays: 14 },
+      skuCount: 60,
+      ...counts,
+      reorderList: list,
+    });
+    return spec.view(data, { days: 30 });
+  };
+  const notesOf = (v: ReturnType<typeof viewOf>) => v.notes.map(String);
+
+  it('ranks the bars by risk though the list arrives soonest out first (fails before)', () => {
+    const v = viewOf(
+      [row('out', null, 0), row('low', 0.3, 1), row('high', 0.8, 2), row('mid', 0.5, 4)],
+      { reorderCount: 4 },
+    );
+    expect(v.cats!.data.map((d) => d.value)).toEqual([0.8, 0.5, 0.3, null]);
+    // The table keeps the register's order.
+    expect(v.table!.rows.map((r) => r.key)).toEqual(['out', 'low', 'high', 'mid']);
+  });
+
+  it('carries the wines with no demand in one line, under the table and the bars alike (fails before)', () => {
+    const v = viewOf([row('m', 0.52, 3), row('n', 0.4, 5)], { reorderCount: 33, noDemandCount: 31 });
+    expect(notesOf(v)).toContain('31 more below their reorder point have no demand to judge.');
+    expect(v.table!.more).toBeUndefined();
+    expect(v.table!.rows).toHaveLength(2);
+    expect(v.cats!.data).toHaveLength(2);
+  });
+
+  it('counts only the wines with demand in the table line, and keeps the count line (fails before)', () => {
+    const v = viewOf([row('m', 0.52, 3), row('n', 0.4, 5)], { reorderCount: 40, noDemandCount: 1 });
+    expect(v.table!.more).toBe('39 wines are below their reorder point; the 2 that run out soonest are listed.');
+    expect(notesOf(v)).toContain('1 more below its reorder point has no demand to judge.');
+  });
+
+  it('does not say nothing is below its reorder point when only wines with no demand are (fails before)', () => {
+    const v = viewOf([], { reorderCount: 3, noDemandCount: 3 });
+    expect(String(v.say)).toBe(
+      'No wine with demand to judge is below its reorder point. 3 more below their reorder point have no demand to judge.',
+    );
+  });
+
+  it('prints no count line, and no days-of-cover dash note, when every listed wine has cover (fails before)', () => {
+    // Before, the dash note printed under every list, though the wines whose
+    // cover is a dash (no sale, nothing on hand) are now counted, not listed.
+    const v = viewOf([row('m', 0.52, 3), row('u', null, 0.4)], { reorderCount: 2, noDemandCount: 0 });
+    expect(notesOf(v).join(' ')).not.toContain('no demand to judge');
+    expect(notesOf(v).join(' ')).not.toContain('days-of-cover em dash');
+  });
+
+  it('keeps the days-of-cover dash note when a listed wine has no cover (control)', () => {
+    const v = viewOf([row('m', 0.52, 3), row('u', null, null)], { reorderCount: 2 });
+    expect(notesOf(v).join(' ')).toContain('days-of-cover em dash');
   });
 });
 

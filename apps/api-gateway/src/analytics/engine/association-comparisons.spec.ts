@@ -328,28 +328,22 @@ describe("ties and cuts (ADR 0272)", () => {
     expect(cutKeepingTies(rows, 0, (r) => r.p)).toHaveLength(0);
   });
 
-  it("never extends through a tie at or below its floor (fork 3 bound)", () => {
-    // 5 risks, then 40 wines at exactly 0% — no demand, nothing on hand.
-    const zeroTail = [
-      ...Array.from({ length: 5 }, (_, i) => ({ p: 0.6 - i * 0.05 })),
-      ...Array.from({ length: 40 }, () => ({ p: 0 })),
+  it("never extends through a null edge (fails before ADR 0272 D4's 2026-10-04 amendment)", () => {
+    // A null key has nothing measured to rank by: on the restock list, a wine
+    // with no days of cover. Its rows are not a tie the cut could split.
+    const unmeasured = [
+      { p: 0.5 },
+      ...Array.from({ length: 40 }, () => ({ p: null })),
     ];
-    const at0 = { extendOnlyAbove: 0 };
-    expect(cutKeepingTies(zeroTail, 25, (r) => r.p, at0)).toHaveLength(25);
-    // Without the floor the whole 0% group joins (the unbounded case).
-    expect(cutKeepingTies(zeroTail, 25, (r) => r.p)).toHaveLength(45);
-    // Below the tie tolerance of 0 counts as 0; an unmeasured edge too.
-    const tiny = [{ p: 0.5 }, { p: 1e-12 }, { p: 1e-12 }, { p: 1e-12 }];
-    expect(cutKeepingTies(tiny, 2, (r) => r.p, at0)).toHaveLength(2);
-    const unmeasured = [{ p: 0.5 }, { p: null }, { p: null }];
-    expect(cutKeepingTies(unmeasured, 2, (r) => r.p, at0)).toHaveLength(2);
-    // A tie above the floor still extends: the floor bounds, it does not undo.
-    const positive = [
-      ...Array.from({ length: 22 }, (_, i) => ({ p: 0.9 - i * 0.01 })),
-      ...Array.from({ length: 5 }, () => ({ p: 0.2684409644946642 })),
-      { p: 0 },
-    ];
-    expect(cutKeepingTies(positive, 25, (r) => r.p, at0)).toHaveLength(27);
+    expect(cutKeepingTies(unmeasured, 2, (r) => r.p)).toHaveLength(2);
+    expect(cutKeepingTies(unmeasured, 25, (r) => r.p)).toHaveLength(25);
+    // A tie at 0 is a value like any other and extends: on the restock list
+    // it is every wine that sold in the window and now holds nothing.
+    const empty = [...Array.from({ length: 30 }, () => ({ p: 0 })), { p: 1 }];
+    expect(cutKeepingTies(empty, 25, (r) => r.p)).toHaveLength(30);
+    // Below the tie tolerance of 0 counts as 0.
+    const tiny = [{ p: 0 }, { p: 0 }, { p: 1e-12 }, { p: 2 }];
+    expect(cutKeepingTies(tiny, 2, (r) => r.p)).toHaveLength(3);
   });
 
   it("orders a stockout tie by the data, never by input order", () => {
