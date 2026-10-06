@@ -6,7 +6,10 @@
 -- first time the till names it with a word that has a digit in it (founder,
 -- 2026-10-05: "Only words with a number"), re-links past checks when a table
 -- is added or changed, and backfills history. Words with no digit ('booth',
--- 'Ayla') keep their table_ref and make no table: T21-T23.
+-- 'Ayla') keep their table_ref and make no table: T21-T23. A renamed or
+-- re-mapped table keeps every till spelling it was linked by and its old
+-- label, so a rename never makes a twin table, and a past check never moves
+-- (founder, 2026-10-05, "Keep every spelling"): T24-T29.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or a
 -- RAISE naming the test), so `psql -v ON_ERROR_STOP=1 -f` stops at the first
@@ -79,6 +82,11 @@ begin
            where table_schema = 'public' and table_name = 'restaurant_tables'
              and column_name in ('learned_at', 'hidden_at')) = 2,
     'T1 FAIL: restaurant_tables.learned_at / hidden_at are missing';
+  assert (select count(*) from information_schema.columns
+           where table_schema = 'public' and table_name = 'restaurant_tables' and is_nullable = 'NO'
+             and ((column_name = 'till_words' and data_type = 'jsonb' and column_default like '''{}''::jsonb%')
+               or (column_name = 'former_labels' and data_type = 'ARRAY' and column_default like '''{}''::text[]%'))) = 2,
+    'T1 FAIL: restaurant_tables.till_words / former_labels are missing, nullable, or without an empty default';
   assert (select is_nullable from information_schema.columns
            where table_schema = 'public' and table_name = 'restaurant_tables' and column_name = 'seats') = 'YES',
     'T1 FAIL: restaurant_tables.seats is still NOT NULL';
@@ -161,17 +169,25 @@ begin
   assert pg_temp.tl_tables() = n, 'T7 FAIL: the next T7 learned a duplicate';
   assert (select pos_refs ->> 'csv_import' from public.restaurant_tables where id = v) = 'T7',
     'T7 FAIL: the rename lost the till''s word';
+  assert (select till_words -> 'csv_import' = '["T7"]'::jsonb and former_labels = array['T7']
+            from public.restaurant_tables where id = v),
+    'T7 FAIL: the rename did not keep T7 (once, any case) in till_words and former_labels';
 end $$;
 
--- T8: renaming a hand-added table carries the till's word into pos_refs.
+-- T8: renaming a hand-added table keeps the till's word in till_words and
+-- the old label in former_labels; pos_refs is not written.
 do $$
 declare
   v uuid := pg_temp.tl_id('T12');
 begin
   assert pg_temp.tl_check('c8a', 'T12') = v, 'T8 FAIL: T12 did not find the hand-added T12';
   update public.restaurant_tables set label = 'Corner' where id = v;
-  assert (select pos_refs ->> 'csv_import' from public.restaurant_tables where id = v) = 'T12',
-    'T8 FAIL: pos_refs did not gain csv_import:T12 on the rename';
+  assert (select till_words -> 'csv_import' from public.restaurant_tables where id = v) = '["T12"]'::jsonb,
+    'T8 FAIL: till_words did not gain csv_import:["T12"] on the rename';
+  assert (select former_labels from public.restaurant_tables where id = v) = array['T12'],
+    'T8 FAIL: former_labels did not gain T12 on the rename';
+  assert (select pos_refs from public.restaurant_tables where id = v) = '{}'::jsonb,
+    'T8 FAIL: the rename wrote pos_refs';
   assert pg_temp.tl_check('c8b', 'T12') = v, 'T8 FAIL: the next T12 did not reach "Corner"';
   assert pg_temp.tl_tables('T12') = 0, 'T8 FAIL: a T12 table was learned after the rename';
 end $$;
@@ -297,8 +313,8 @@ begin
   assert pg_temp.tl_check('c14b', 'P1') = a, 'T14 FAIL: a pos ref no longer outranks a label';
 end $$;
 
--- T15: a re-sent check keeps its table when nothing answers to its unchanged
--- word (here: the table was retired after the check landed on it).
+-- T15: a re-sent check keeps its table while its word is unchanged (here:
+-- the table was retired after the check landed on it, so nothing answers).
 do $$
 declare
   v uuid;
@@ -413,44 +429,57 @@ end $$;
 -- "table <label>" rule. A table labelled "Table 7" then outranks that rule for
 -- the same word, so the word now resolves to it, yet the check stays on "7":
 -- a re-link fills only unlinked checks. The same for a rename into "Table 8".
--- (T14 cannot see this: there the pos ref keeps the word on Alpha.)
+-- (T14 cannot see this: there the pos ref keeps the word on Alpha.) The
+-- re-link does not even rewrite the linked check (its ctid stands): the belt
+-- in pos_checks_find_or_learn_table would also hold the link, so only the
+-- untouched row version shows the re-link's own "fills only unlinked checks".
 do $$
 declare
   seven uuid;
   table7 uuid;
   eight uuid;
   lounge uuid;
+  v_ctid tid;
 begin
   insert into public.restaurant_tables (restaurant_id, label, seats)
   values (pg_temp.tl_house(), '7', 4) returning id into seven;
   assert pg_temp.tl_check('c19a', 'table 7') = seven, 'T19 FAIL: setup: "table 7" did not land on "7"';
+  select ctid into v_ctid from public.pos_checks where restaurant_id = pg_temp.tl_house() and external_check_id = 'c19a';
   insert into public.restaurant_tables (restaurant_id, label, seats)
   values (pg_temp.tl_house(), 'Table 7', 4) returning id into table7;
   assert public.pos_table_for_ref(pg_temp.tl_house(), 'csv_import', 'table 7') = table7,
     'T19 FAIL: setup: "table 7" does not resolve to the added "Table 7", so the case proves nothing';
   assert pg_temp.tl_link('c19a') = seven, 'T19 FAIL: adding "Table 7" moved a linked check off "7"';
+  assert (select ctid from public.pos_checks where restaurant_id = pg_temp.tl_house() and external_check_id = 'c19a') = v_ctid,
+    'T19 FAIL: adding "Table 7" rewrote a linked check (the immediate re-link must touch only unlinked ones)';
 
   insert into public.restaurant_tables (restaurant_id, label, seats)
   values (pg_temp.tl_house(), '8', 4) returning id into eight;
   insert into public.restaurant_tables (restaurant_id, label, seats)
   values (pg_temp.tl_house(), 'Lounge', 4) returning id into lounge;
   assert pg_temp.tl_check('c19b', 'table 8') = eight, 'T19 FAIL: setup: "table 8" did not land on "8"';
+  select ctid into v_ctid from public.pos_checks where restaurant_id = pg_temp.tl_house() and external_check_id = 'c19b';
   update public.restaurant_tables set label = 'Table 8' where id = lounge;
   assert public.pos_table_for_ref(pg_temp.tl_house(), 'csv_import', 'table 8') = lounge,
     'T19 FAIL: setup: "table 8" does not resolve to the renamed "Table 8", so the case proves nothing';
   assert pg_temp.tl_link('c19b') = eight, 'T19 FAIL: renaming "Lounge" to "Table 8" moved a linked check off "8"';
+  assert (select ctid from public.pos_checks where restaurant_id = pg_temp.tl_house() and external_check_id = 'c19b') = v_ctid,
+    'T19 FAIL: renaming "Lounge" to "Table 8" rewrote a linked check (the immediate re-link must touch only unlinked ones)';
 end $$;
 
 -- T20: a re-link never moves a link: the deferred re-link after learning. A
 -- check written with its own table_id beside the word "Zed 1" stays on that
--- table when a later check learns "Zed 1" and the re-link runs at commit.
+-- table when a later check learns "Zed 1" and the re-link runs at commit,
+-- and the re-link does not rewrite it (its ctid stands; see T19).
 do $$
 declare
   five uuid := pg_temp.tl_id('5');
   zed uuid;
+  v_ctid tid;
 begin
   insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_ref, table_id)
   values (pg_temp.tl_house(), 'csv_import', 'c20a', now(), 'Zed 1', five);
+  select ctid into v_ctid from public.pos_checks where restaurant_id = pg_temp.tl_house() and external_check_id = 'c20a';
   assert pg_temp.tl_link('c20a') = five and pg_temp.tl_tables('Zed 1') = 0,
     'T20 FAIL: setup: the check did not keep the table its writer gave, or "Zed 1" exists already';
   zed := pg_temp.tl_check('c20b', 'Zed 1');
@@ -459,6 +488,8 @@ begin
   set constraints public.restaurant_tables_relink_on_learn immediate;
   assert pg_temp.tl_link('c20a') = five,
     'T20 FAIL: the re-link after learning "Zed 1" moved a linked check off "5"';
+  assert (select ctid from public.pos_checks where restaurant_id = pg_temp.tl_house() and external_check_id = 'c20a') = v_ctid,
+    'T20 FAIL: the re-link after learning "Zed 1" rewrote a linked check (it must touch only unlinked ones)';
   assert pg_temp.tl_link('c20b') = zed, 'T20 FAIL: the check that learned "Zed 1" left it';
   set constraints public.restaurant_tables_relink_on_learn deferred;
 end $$;
@@ -586,6 +617,213 @@ begin
   update public.restaurant_tables set label = 'Window' where id = room;
   assert (pg_temp.tl2_row('c23d')).table_id = room, 'T23 FAIL: renaming a table to "Window" did not link the "window" check';
   assert pg_temp.tl2_check('c23e', 'Window') = room, 'T23 FAIL: a new "Window" check did not reach the renamed table';
+end $$;
+
+
+-- T24-T29: the founder's 2026-10-05 answer to the rename fork, verbatim pick
+-- "Keep every spelling (Recommended)": "A table remembers every till
+-- spelling it was ever linked by, not just one. A rename never creates a twin
+-- table, and past checks never move." A third house, empty, so no row of the
+-- other two answers these words. tl3_hub writes as pos-hub does (raw and the
+-- gateway's table_id, never table_ref), with an opened_at when the order of
+-- checks matters.
+create function pg_temp.tl_house3() returns uuid language sql immutable as $$
+  select 'a0303000-0000-4000-8000-000000000003'::uuid
+$$;
+create function pg_temp.tl3_hub(p_ext text, p_raw jsonb, p_table uuid default null, p_opened timestamptz default now())
+returns uuid language sql as $$
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, table_id, raw)
+  values (pg_temp.tl_house3(), 'csv_import', p_ext, p_opened, p_table, p_raw)
+  on conflict (restaurant_id, source, external_check_id)
+  do update set table_id = excluded.table_id, raw = excluded.raw, opened_at = excluded.opened_at
+  returning table_id
+$$;
+create function pg_temp.tl3_link(p_ext text) returns uuid language sql as $$
+  select table_id from public.pos_checks
+   where restaurant_id = pg_temp.tl_house3() and external_check_id = p_ext
+$$;
+create function pg_temp.tl3_ref(p_ext text) returns text language sql as $$
+  select table_ref from public.pos_checks
+   where restaurant_id = pg_temp.tl_house3() and external_check_id = p_ext
+$$;
+create function pg_temp.tl3_tables(p_word text default null) returns bigint language sql as $$
+  select count(*) from public.restaurant_tables
+   where restaurant_id = pg_temp.tl_house3()
+     and (p_word is null or lower(label) = lower(p_word))
+$$;
+create function pg_temp.tl3_id(p_label text) returns uuid language sql as $$
+  select id from public.restaurant_tables
+   where restaurant_id = pg_temp.tl_house3() and lower(label) = lower(p_label)
+$$;
+insert into public.restaurants (id, name, slug)
+values ('a0303000-0000-4000-8000-000000000003', 'ADR 0303 test house 3', 'adr-0303-test-house-3');
+
+-- T24: the sequence the fork was asked on. The till learns table "5"; a
+-- "Table 5" check lands on it; the owner renames it "Patio"; the till re-sends
+-- the "Table 5" check and sends a new one. The gateway's in-memory resolve
+-- finds no table for "Table 5" after the rename (pos ref "5", label "Patio"),
+-- so both writes carry table_id NULL. One table, Patio, holds all three
+-- checks; no "Table 5" table is learned.
+do $$
+declare
+  patio uuid;
+begin
+  patio := pg_temp.tl3_hub('c24-1', '{"tableRef": "5"}');
+  assert patio is not null and patio = pg_temp.tl3_id('5') and pg_temp.tl3_tables() = 1,
+    'T24 FAIL: setup: the till''s "5" was not learned as the house''s one table';
+  assert pg_temp.tl3_hub('c24-2', '{"tableRef": "Table 5"}', patio) = patio,
+    'T24 FAIL: setup: the "Table 5" check did not land on "5"';
+  set constraints public.restaurant_tables_relink_on_learn immediate;
+  set constraints public.restaurant_tables_relink_on_learn deferred;
+
+  update public.restaurant_tables set label = 'Patio' where id = patio;
+
+  assert pg_temp.tl3_hub('c24-2', '{"tableRef": "Table 5"}') = patio,
+    'T24 FAIL: the re-sent "Table 5" check moved off Patio';
+  assert pg_temp.tl3_hub('c24-3', '{"tableRef": "Table 5"}') = patio,
+    'T24 FAIL: the new "Table 5" check did not land on Patio';
+  set constraints public.restaurant_tables_relink_on_learn immediate;
+  set constraints public.restaurant_tables_relink_on_learn deferred;
+  assert pg_temp.tl3_tables('Table 5') = 0, 'T24 FAIL: a twin "Table 5" table was learned';
+  assert pg_temp.tl3_tables() = 1, 'T24 FAIL: house 3 should hold one table, holds ' || pg_temp.tl3_tables();
+  assert pg_temp.tl3_link('c24-1') = patio and pg_temp.tl3_link('c24-2') = patio and pg_temp.tl3_link('c24-3') = patio,
+    'T24 FAIL: c1, c2 and c3 are not all on Patio';
+  assert pg_temp.tl3_hub('c24-4', '{"tableRef": "5"}', patio) = patio,
+    'T24 FAIL: a new "5" check did not land on Patio';
+  assert (select till_words -> 'csv_import' = '["5", "Table 5"]'::jsonb and former_labels = array['5']
+                 and pos_refs = '{"csv_import": "5"}'::jsonb
+            from public.restaurant_tables where id = patio),
+    'T24 FAIL: Patio does not keep "5" and "Table 5" as till words, "5" as its former label, and its pos ref';
+end $$;
+
+-- T25: a past check never moves, even when the write names another table.
+-- The owner adds a table "5" by hand after the rename. The gateway now
+-- resolves "Table 5" to that new "5" ("table <label>") and writes its id on
+-- the re-send; the check stays on Patio. A NEW "Table 5" check goes to the
+-- new "5": a table's current label outranks a word another table remembers
+-- (ADR 0303, residual). A new "5" still reaches Patio by its pos ref.
+do $$
+declare
+  patio uuid := pg_temp.tl3_id('Patio');
+  five uuid;
+begin
+  insert into public.restaurant_tables (restaurant_id, label, seats) values (pg_temp.tl_house3(), '5', 4)
+  returning id into five;
+  assert pg_temp.tl3_link('c24-2') = patio and pg_temp.tl3_link('c24-3') = patio,
+    'T25 FAIL: adding a hand "5" moved a "Table 5" check off Patio';
+  assert pg_temp.tl3_hub('c24-2', '{"tableRef": "Table 5"}', five) = patio,
+    'T25 FAIL: a re-send naming the new "5" moved a past check off Patio';
+  assert pg_temp.tl3_hub('c24-3', '{"tableRef": "Table 5", "closed": true}', five) = patio,
+    'T25 FAIL: a re-send with a changed payload but the same word moved a past check off Patio';
+  assert pg_temp.tl3_hub('c25-1', '{"tableRef": "Table 5"}') = five,
+    'T25 FAIL: a new "Table 5" check did not go to the hand-added "5"';
+  assert pg_temp.tl3_hub('c25-2', '{"tableRef": "5"}') = patio,
+    'T25 FAIL: a new "5" check did not reach Patio by its pos ref';
+end $$;
+
+-- T26: the hand-added variant. A table "9" added by hand (no pos ref) catches
+-- "9" and "Table 9"; renamed "Garden", it still catches both, past and new,
+-- and no "9" or "Table 9" table is learned. A hand-added "11" that no check
+-- ever named, renamed "Corner", still answers "11" and "Table 11": the old
+-- label is kept even when no check carried it.
+do $$
+declare
+  garden uuid;
+  corner uuid;
+begin
+  insert into public.restaurant_tables (restaurant_id, label, seats) values (pg_temp.tl_house3(), '9', 4)
+  returning id into garden;
+  assert pg_temp.tl3_hub('c26-1', '{"tableRef": "9"}') = garden, 'T26 FAIL: setup: "9" did not land on "9"';
+  assert pg_temp.tl3_hub('c26-2', '{"tableRef": "Table 9"}') = garden, 'T26 FAIL: setup: "Table 9" did not land on "9"';
+
+  update public.restaurant_tables set label = 'Garden' where id = garden;
+
+  assert pg_temp.tl3_hub('c26-2', '{"tableRef": "Table 9"}') = garden,
+    'T26 FAIL: the re-sent "Table 9" check moved off Garden';
+  assert pg_temp.tl3_hub('c26-3', '{"tableRef": "Table 9"}') = garden,
+    'T26 FAIL: a new "Table 9" check did not land on Garden';
+  assert pg_temp.tl3_hub('c26-4', '{"tableRef": "9"}') = garden,
+    'T26 FAIL: a new "9" check did not land on Garden';
+  set constraints public.restaurant_tables_relink_on_learn immediate;
+  set constraints public.restaurant_tables_relink_on_learn deferred;
+  assert pg_temp.tl3_tables('9') = 0 and pg_temp.tl3_tables('Table 9') = 0,
+    'T26 FAIL: a twin "9" or "Table 9" table was learned';
+  assert pg_temp.tl3_link('c26-1') = garden, 'T26 FAIL: the first "9" check left Garden';
+
+  insert into public.restaurant_tables (restaurant_id, label, seats) values (pg_temp.tl_house3(), '11', 2)
+  returning id into corner;
+  update public.restaurant_tables set label = 'Corner' where id = corner;
+  assert pg_temp.tl3_hub('c26-5', '{"tableRef": "Table 11"}') = corner,
+    'T26 FAIL: "Table 11" did not reach Corner, renamed from "11"';
+  assert pg_temp.tl3_hub('c26-6', '{"tableRef": "11"}') = corner,
+    'T26 FAIL: "11" did not reach Corner, renamed from "11"';
+  set constraints public.restaurant_tables_relink_on_learn immediate;
+  set constraints public.restaurant_tables_relink_on_learn deferred;
+  assert pg_temp.tl3_tables('11') = 0 and pg_temp.tl3_tables('Table 11') = 0,
+    'T26 FAIL: a twin "11" or "Table 11" table was learned';
+  assert (select till_words = '{}'::jsonb and former_labels = array['11'] from public.restaurant_tables where id = corner),
+    'T26 FAIL: a rename with no linked check did not keep "11" as a former label';
+end $$;
+
+-- T27: every spelling, not one per till. A learned "Deck 4" carries "Deck 4"
+-- and, through a writer's own table_id, "D4". Renamed "Sun deck" (the latest
+-- check says "Deck 4"), it still answers "D4": no "D4" table is learned.
+do $$
+declare
+  deck uuid;
+begin
+  deck := pg_temp.tl3_hub('c27-1', '{"tableRef": "Deck 4"}', null, now() - interval '2 hours');
+  assert deck = pg_temp.tl3_id('Deck 4'), 'T27 FAIL: setup: "Deck 4" was not learned';
+  assert pg_temp.tl3_hub('c27-2', '{"tableRef": "D4"}', deck, now() - interval '1 hour') = deck,
+    'T27 FAIL: setup: "D4" did not keep the table its writer gave';
+  assert pg_temp.tl3_hub('c27-3', '{"tableRef": "Deck 4"}', null, now()) = deck,
+    'T27 FAIL: setup: the latest "Deck 4" did not land on "Deck 4"';
+  update public.restaurant_tables set label = 'Sun deck' where id = deck;
+  assert pg_temp.tl3_hub('c27-4', '{"tableRef": "D4"}') = deck, 'T27 FAIL: a new "D4" did not reach Sun deck';
+  set constraints public.restaurant_tables_relink_on_learn immediate;
+  set constraints public.restaurant_tables_relink_on_learn deferred;
+  assert pg_temp.tl3_tables('D4') = 0, 'T27 FAIL: a twin "D4" table was learned';
+  assert (select till_words -> 'csv_import' = '["Deck 4", "D4"]'::jsonb from public.restaurant_tables where id = deck),
+    'T27 FAIL: Sun deck does not keep both "Deck 4" and "D4"';
+end $$;
+
+-- T28: a re-mapped pos ref keeps the old word. "Bar 2" answers the till's
+-- "P7"; re-mapped to "P8" (label unchanged), it answers both, and "P7" makes
+-- no table.
+do $$
+declare
+  bar uuid;
+begin
+  insert into public.restaurant_tables (restaurant_id, label, seats, pos_refs)
+  values (pg_temp.tl_house3(), 'Bar 2', 2, '{"csv_import": "P7"}') returning id into bar;
+  assert pg_temp.tl3_hub('c28-1', '{"tableRef": "P7"}') = bar, 'T28 FAIL: setup: "P7" did not reach Bar 2';
+  update public.restaurant_tables set pos_refs = '{"csv_import": "P8"}' where id = bar;
+  assert pg_temp.tl3_hub('c28-2', '{"tableRef": "P7"}') = bar, 'T28 FAIL: "P7" did not reach Bar 2 after the re-map';
+  assert pg_temp.tl3_hub('c28-3', '{"tableRef": "P8"}') = bar, 'T28 FAIL: "P8" did not reach Bar 2';
+  set constraints public.restaurant_tables_relink_on_learn immediate;
+  set constraints public.restaurant_tables_relink_on_learn deferred;
+  assert pg_temp.tl3_tables('P7') = 0, 'T28 FAIL: a twin "P7" table was learned';
+  assert (select former_labels = '{}'::text[] from public.restaurant_tables where id = bar),
+    'T28 FAIL: a re-map with the label unchanged wrote a former label';
+end $$;
+
+-- T29: a learned label is at most 60 characters, the most PATCH lets a person
+-- name a table. A 61-character word with a digit stays on the check as its
+-- word and makes no table; the check is stored, never refused. A 60-character
+-- one is learned.
+do $$
+declare
+  w61 text := 'Room 1 ' || repeat('x', 54);
+  w60 text := 'Room 2 ' || repeat('y', 53);
+  n bigint := pg_temp.tl3_tables();
+begin
+  assert char_length(w61) = 61 and char_length(w60) = 60, 'T29 FAIL: setup: the words are the wrong length';
+  assert pg_temp.tl3_hub('c29-1', jsonb_build_object('tableRef', w61)) is null,
+    'T29 FAIL: a 61-character word got a table';
+  assert pg_temp.tl3_ref('c29-1') = w61, 'T29 FAIL: the 61-character word was not kept on its check';
+  assert pg_temp.tl3_tables() = n, 'T29 FAIL: a 61-character word made a table';
+  assert pg_temp.tl3_hub('c29-2', jsonb_build_object('tableRef', w60)) = pg_temp.tl3_id(w60),
+    'T29 FAIL: a 60-character word was not learned';
 end $$;
 
 rollback;

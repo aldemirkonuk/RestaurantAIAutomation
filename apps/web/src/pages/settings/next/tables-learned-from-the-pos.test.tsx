@@ -191,4 +191,16 @@ describe('Settings → Point of sale: tables the till has named (ADR 0303)', () 
     expect(screen.queryByRole('button', { name: 'Hide' })).toBeNull();
     expect(screen.getByText(/Only the owner or a manager can rename or hide a table/)).toBeTruthy();
   });
+
+  it('a renamed table lists every till spelling it keeps, its pos ref first, each once', async () => {
+    const PATIO = {
+      id: 'tab-p', label: 'Patio', pos_refs: { csv_import: '5' },
+      till_words: { csv_import: ['5', 'Table 5', 'table 5 '], square: ['Patio five'] },
+      learned_at: '2026-10-04T00:31:00.000Z', hidden_at: null,
+    };
+    http.get.mockResolvedValue({ data: [PATIO] });
+    draw();
+    expect(await screen.findByText('Patio')).toBeTruthy();
+    expect(screen.getByText('csv_import: 5, Table 5 · square: Patio five')).toBeTruthy();
+  });
 });

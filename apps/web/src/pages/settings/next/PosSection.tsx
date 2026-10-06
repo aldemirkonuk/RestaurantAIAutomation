@@ -167,6 +167,8 @@ export interface TillTable {
   id: string;
   label: string;
   pos_refs: Record<string, unknown> | null;
+  /** Every till word the table was linked by when it was renamed or re-mapped, per till (ADR 0303). */
+  till_words?: Record<string, unknown> | null;
   learned_at: string | null;
   hidden_at: string | null;
 }
@@ -177,12 +179,25 @@ async function readTillTables(restaurantId: string): Promise<TillTable[]> {
   return data as TillTable[];
 }
 
-/** The till's own words for a table, per till: "csv_import: T7". */
-function tillWords(refs: TillTable['pos_refs']): string | null {
-  if (!refs || typeof refs !== 'object') return null;
-  const words = Object.entries(refs)
-    .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
-    .map(([source, v]) => `${source}: ${String(v)}`);
+/**
+ * The till's own words for a table, per till: "csv_import: T7", or, for a
+ * renamed table that keeps every spelling, "csv_import: 5, Table 5". The pos
+ * ref comes first, then each remembered word not already listed in any case.
+ */
+function tillWords(refs: TillTable['pos_refs'], kept?: TillTable['till_words']): string | null {
+  const bySource = new Map<string, string[]>();
+  const add = (source: string, v: unknown) => {
+    if (typeof v !== 'string' && typeof v !== 'number') return;
+    const word = String(v).trim();
+    if (!word) return;
+    const list = bySource.get(source) ?? [];
+    if (!list.some((w) => w.toLowerCase() === word.toLowerCase())) list.push(word);
+    bySource.set(source, list);
+  };
+  if (refs && typeof refs === 'object') for (const [source, v] of Object.entries(refs)) add(source, v);
+  if (kept && typeof kept === 'object')
+    for (const [source, list] of Object.entries(kept)) if (Array.isArray(list)) for (const v of list) add(source, v);
+  const words = [...bySource].map(([source, list]) => `${source}: ${list.join(', ')}`);
   return words.length > 0 ? words.join(' · ') : null;
 }
 
@@ -248,7 +263,7 @@ export function TillTables({ data }: { data: SettingsNextData }) {
       ) : (
         tables.map((t) => {
           const busy = writer.busy === `table:${t.id}`;
-          const words = tillWords(t.pos_refs);
+          const words = tillWords(t.pos_refs, t.till_words);
           return (
             <Row
               key={t.id}
