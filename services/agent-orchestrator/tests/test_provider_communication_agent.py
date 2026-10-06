@@ -49,6 +49,11 @@ def mock_db():
     conv_insert_chain.execute.return_value = MagicMock(data=[{"id": "conv-uuid-1234"}])
     db.supabase.table.return_value.insert.return_value = conv_insert_chain
 
+    # The order letter is staged through stage_order_letter (ADR 0266, F-106)
+    db.supabase.rpc.return_value.execute.return_value = MagicMock(
+        data={"id": "conv-uuid-1234", "staged": True}
+    )
+
     # negotiation_facts / rolling_summary chains (empty by default)
     facts_chain = MagicMock()
     facts_chain.execute.return_value = MagicMock(data=[])
