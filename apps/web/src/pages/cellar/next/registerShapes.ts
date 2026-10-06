@@ -10,14 +10,15 @@
  *
  * `public.beverages` has no `restaurant_id`
  * (`20260817070000_beverages_table.sql:217`), so it can only ever answer "what
- * exists". Five other tables DO carry one and DO carry the product's name, and
+ * exists". Six other tables DO carry one and DO carry the product's name, and
  * between them they answer "what THIS house pours":
  *
  *   menu_items                  what the house lists, and charges
  *   procurement_document_lines  what the house has been invoiced, and when
  *   procurement_order_items     what the house has ordered
  *   vendor_price_observations   who quoted it, at what, off which source
- *   pos_unresolved_lines        what the house has actually sold
+ *   pos_checks.items            what the house has actually sold (with
+ *   + pos_unresolved_lines      the queued lines no check holds; ADR 0301)
  *
  * `public.house_beverage_ledger` (migration 20260903120000) assembles them, and
  * every register below is now served by the house's own books first and the
