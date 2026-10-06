@@ -16,20 +16,27 @@
 -- sent, and the vendor scorecard read 0 of 548 on time.
 --
 -- WHAT THIS FILE ADDS. Only the MARK. The gateway now writes occurred_at as
--- the fact's time (the phone's, under the rule) and leaves it to DEFAULT now()
--- when the server's clock dates it. Which clock it was is the one thing the
--- times alone cannot say, so it gets a column:
+-- the fact's time (the phone's, under the rule, or the moment it received the
+-- request when the phone's clock ran slightly ahead) and leaves it to DEFAULT
+-- now() when the server's clock dates it. Which clock it was is the one thing
+-- the times alone cannot say, so it gets a column:
 --
---   'sent'        the phone's time, no more than 72 hours old;
+--   'sent'        the phone's time, no more than 72 hours old; or, when the
+--                 phone's clock was up to five minutes ahead of the gateway,
+--                 the moment the gateway received the request (no fact is in
+--                 the future), with the phone's later time kept beside it;
 --   'back_dated'  the phone's time, older, on an owner's or a manager's word;
 --   'server'      the server's time: nothing usable was sent, the phone's
---                 clock was ahead, or it was older and no one could vouch.
+--                 clock was more than five minutes ahead, or it was older and
+--                 no one could vouch.
 --   NULL          a receipt recorded before this rule. Nothing is re-dated
 --                 (backfill is an open fork in ADR 0286).
 --
--- A 'sent' or 'back_dated' row must carry the time it was dated by: the mark
--- is only auditable if the evidence sits beside it. A 'server' row may or may
--- not, since "nothing was sent" is one of the reasons.
+-- A 'sent' or 'back_dated' row must carry the phone's time it was judged by
+-- (client_captured_at; on a clamped 'sent' row that is the phone's later
+-- time, not occurred_at): the mark is only auditable if the evidence sits
+-- beside it. A 'server' row may or may not, since "nothing was sent" is one
+-- of the reasons.
 --
 -- WHY NO TIME CHECK. The 72-hour rule is NOT a database constraint. The
 -- gateway measures it against the moment it received the request, and the
@@ -83,7 +90,7 @@ BEGIN
 END $$;
 
 COMMENT ON COLUMN public.procurement_receipt_events.occurred_at_basis IS
-  'Which clock dated occurred_at (ADR 0286). sent: the phone''s time (client_captured_at), no more than 72 hours before the server received it. back_dated: the phone''s time, older, kept on the word of an owner or a manager of the house the token named. server: the server''s own time (DEFAULT now(), equal to created_at), because nothing usable was sent, the phone clock was more than five minutes ahead, or the sent time was older than 72 hours from someone who may not back-date; client_captured_at still holds whatever was sent. NULL: recorded before the rule; such a row was dated by the server and is not re-dated.';
+  'Which clock dated occurred_at (ADR 0286). sent: the phone''s time (client_captured_at), no more than 72 hours before the gateway received the request; or, when the phone''s clock was up to five minutes ahead of the gateway, the moment the gateway received the request, earlier than the phone''s time kept in client_captured_at. back_dated: the phone''s time, older, kept on the word of an owner or a manager of the house the token named. server: the server''s own time (DEFAULT now(), equal to created_at), because nothing usable was sent, the phone clock was more than five minutes ahead, or the sent time was older than 72 hours from someone who may not back-date; client_captured_at still holds whatever was sent. NULL: recorded before the rule; such a row was dated by the server and is not re-dated.';
 
 DO $$
 BEGIN
