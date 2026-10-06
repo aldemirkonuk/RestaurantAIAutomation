@@ -369,6 +369,14 @@ export function emptyWindowLine(w: PosWindow): string | null {
 
 export interface SeatsRegister extends PosWindow {
   dataStatus: string;
+  /** Checks in the window with no table: the till named none, or a word no table answers (ADR 0303); null from an older gateway. */
+  checksWithoutTable: number | null;
+  /** Checks in the window at a hidden (or retired) table; null from an older gateway. */
+  checksAtHiddenTables: number | null;
+  /** How many hidden (or retired) tables those checks were at. */
+  hiddenTables: number | null;
+  /** The house's tables hidden now, whatever the window held; null from an older gateway. */
+  hiddenTablesInHouse: number | null;
   tables: Array<{
     tableId: string;
     label: string;
@@ -398,6 +406,10 @@ const seats = analysis<SeatsRegister>({
     return {
       ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
+      checksWithoutTable: num(d.checksWithoutTable),
+      checksAtHiddenTables: num(d.checksAtHiddenTables),
+      hiddenTables: num(d.hiddenTables),
+      hiddenTablesInHouse: num(d.hiddenTablesInHouse),
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
         label: str(t.label),
@@ -415,16 +427,39 @@ const seats = analysis<SeatsRegister>({
   },
   view: (s) => {
     const basis = [
-      `Non-voided pos_checks attributed to a table over the last ${s.sinceDays} days.`,
+      `Non-voided pos_checks the till attributed to a shown table over the last ${s.sinceDays} days.`,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
     ];
+    // ADR 0303: tables are learned from the till, so nothing is drawn. A check
+    // the till sent without a table, or one at a table the owner hid, is in
+    // takings and in no table's figure; the register says how many.
+    const withoutTable = s.checksWithoutTable ?? 0;
+    const atHidden = s.checksAtHiddenTables ?? 0;
+    const hiddenInHouse = s.hiddenTablesInHouse ?? 0;
+    const hiddenNote =
+      atHidden > 0
+        ? `${countOf(atHidden, 'check was', 'checks were')} at ${countOf(s.hiddenTables ?? 0, 'hidden table', 'hidden tables')}: counted in takings, not shown here.`
+        : null;
     if (s.tables.length === 0)
       return {
-        say: 'No table is mapped for this restaurant yet, so no check can be attributed to a seat. The room has to be drawn before it can be read.',
+        say:
+          withoutTable > 0
+            ? `${countOf(withoutTable, 'check in this window has', 'checks in this window have')} no table, so none can be attributed to a seat. They are in takings. A till word with no number in it, such as Booth or a name, makes no table.`
+            : atHidden > 0
+              ? 'No shown table took a check in this window; show a table again under Settings → Point of sale.'
+              : hiddenInHouse > 0
+                ? 'Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.'
+                : 'This house has no table yet, so no check can be attributed to a seat. A table is learned when a check arrives naming one with a number in it, such as T12, 12 or Patio 3; rename or hide it under Settings → Point of sale.',
         figures: [],
-        notes: [],
+        notes: hiddenNote ? [hiddenNote] : [],
         basis,
       };
+    const roomNotes = [
+      withoutTable > 0
+        ? `${countOf(withoutTable, 'check has', 'checks have')} no table: counted in takings, not in the room.`
+        : null,
+      hiddenNote,
+    ].filter((n): n is string => n !== null);
     const served = s.tables.filter((t) => t.checks > 0);
     const figures = [
       { label: 'Tables in the room', value: figure(s.tables.length) },
@@ -447,10 +482,12 @@ const seats = analysis<SeatsRegister>({
         say: empty
           ? `${mapped}. ${empty}`
           : n !== null && n > 0
-            ? `${mapped}, and ${none} attributed to any of them — that is an absent attribution, not an empty room.`
+            ? atHidden > 0
+              ? `${mapped}, and ${none} attributed to any of them.`
+              : `${mapped}, and ${none} attributed to any of them — that is an absent attribution, not an empty room.`
             : `${mapped}, and no check in the last ${s.sinceDays} days was attributed to any of them. This register does not say whether the window held any check, so an empty window and checks that name no table cannot be told apart here.`,
         figures,
-        notes: [],
+        notes: roomNotes,
         basis,
       };
     }
@@ -500,12 +537,14 @@ const seats = analysis<SeatsRegister>({
         })),
       },
       figures,
-      notes:
-        s.tables.length > served.length
+      notes: [
+        ...(s.tables.length > served.length
           ? [
               `${countOf(s.tables.length - served.length, 'mapped table', 'mapped tables')} took no check in the window, and is drawn at no height rather than left off the chart.`,
             ]
-          : [],
+          : []),
+        ...roomNotes,
+      ],
       basis,
     };
   },
