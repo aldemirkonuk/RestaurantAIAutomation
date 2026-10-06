@@ -107,10 +107,41 @@ describe('rec-forward — the goal door', () => {
       e({ ruleKey: 'sales_below_weekday_baseline', subject: 'Wednesday' }),
     );
     if (offer.kind !== 'plan') throw new Error('expected a plan');
-    expect(offer.plan.name).toBe('Wednesday wine revenue back to baseline');
+    expect(offer.plan.name).toBe('Wednesday wine revenue, after a soft Wednesday');
     const bare = goalOfferFor(e({ ruleKey: 'sales_below_weekday_baseline' }));
     if (bare.kind !== 'plan') throw new Error('expected a plan');
-    expect(bare.plan.name).toBe('Wine revenue back to baseline');
+    expect(bare.plan.name).toBe('Wine revenue, after a soft day');
+    const week = goalOfferFor(e({ ruleKey: 'weekly_demand_slide' }));
+    if (week.kind !== 'plan') throw new Error('expected a plan');
+    expect(week.plan.name).toBe('Wine revenue, after a soft week');
+  });
+
+  // ADR 0291 (AW20, A-022). The dip rule fires on whole-check sales from the
+  // till (overall.revenue) or on bottles sold (overall.bottles); the weekly
+  // slide also on one wine's bottles. Neither reads wine revenue, so a basis
+  // that says it does is a false claim made on the house's behalf.
+  it('states what the two sales rules really fire on, and why the goal is wine revenue anyway', () => {
+    const dip = goalOfferFor(e({ ruleKey: 'sales_below_weekday_baseline', subject: 'Saturday' }));
+    if (dip.kind !== 'plan') throw new Error('expected a plan');
+    expect(dip.plan.metricKey).toBe('wine_revenue');
+    expect(dip.plan.basis).toMatch(/whole-check sales/);
+    expect(dip.plan.basis).toMatch(/bottles sold/);
+    expect(dip.plan.basis).toMatch(/prescription/);
+    expect(dip.plan.basis).not.toMatch(/wine sales/i);
+    // The bottles series is computed whenever a cellar log exists, till or
+    // not (insight-generator computeConsumptionFamily / computeChecksFamily
+    // are gated independently), so a basis limiting it to log-only houses
+    // would be a narrower false claim.
+    expect(dip.plan.basis).not.toMatch(/only the cellar log/);
+    expect(dip.plan.basis).toMatch(/in any house that keeps one/);
+    expect(dip.plan.name).not.toMatch(/back to baseline/);
+
+    const slide = goalOfferFor(e({ ruleKey: 'weekly_demand_slide' }));
+    if (slide.kind !== 'plan') throw new Error('expected a plan');
+    expect(slide.plan.metricKey).toBe('wine_revenue');
+    expect(slide.plan.basis).toMatch(/whole-check sales/);
+    expect(slide.plan.basis).toMatch(/one wine’s bottles/);
+    expect(slide.plan.basis).not.toMatch(/same quantity/);
   });
 
   it('derives the period from urgency — "tonight" is not a measurement window', () => {
