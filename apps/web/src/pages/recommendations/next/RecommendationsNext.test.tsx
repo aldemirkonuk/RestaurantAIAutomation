@@ -395,6 +395,25 @@ describe('RecommendationsNext — the standing book', () => {
     expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/Raise those prices/);
   });
 
+  it('a stored key named on Object.prototype stands under Unfiled and says why, never "undefined"', () => {
+    // ADR 0288, audit of PR #611: `setAction` rejects only an empty key, so a
+    // leaf row can carry `constructor`. It is an unknown rule, not an
+    // inherited table row.
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: 'constructor', category: 'efficiency' })],
+    };
+    draw();
+    const unfiled = screen.getByRole('button', { name: /^Unfiled\s*\d+$/ });
+    expect(within(unfiled).getByText('1')).toBeInTheDocument();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent('Unfiled');
+    fireEvent.click(within(row).getByText('The working'));
+    expect(screen.getByText('Why it is unfiled')).toBeInTheDocument();
+    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/no register for the rule constructor/);
+    expect(screen.queryByText(/undefined/)).toBeNull();
+  });
+
   it('the rail says the register is filed by the rule where it says so, not only by category', () => {
     draw();
     expect(screen.queryByText(/Filed from the rule’s own category\./)).toBeNull();

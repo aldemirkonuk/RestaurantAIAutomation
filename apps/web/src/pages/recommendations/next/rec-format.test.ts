@@ -213,3 +213,52 @@ describe('the register — filed by what acting on it changes (ADR 0288)', () =>
     expect(stockout.why).toMatch(/category, inventory/);
   });
 });
+
+/**
+ * ADR 0288, audit of PR #611. The tables are object literals, so a plain
+ * `table[key]` answers a stored key that names something on
+ * `Object.prototype` (`constructor`, `__proto__`, `toString`, `valueOf`) with
+ * an inherited value instead of nothing. The register then filed such an
+ * entry as `{ stake: undefined, why: undefined }`: the working read "Why it
+ * would change undefined" and the entry fell out of every register count,
+ * Unfiled included. `setAction` rejects only an empty `ruleKey`, so such a
+ * key can reach the Snoozed, Dismissed and History leaves. Each table is now
+ * read by its own rows only, and such a key is an unknown rule.
+ */
+describe('a key named on Object.prototype is an unknown rule, never an inherited row (ADR 0288)', () => {
+  const PROTO_KEYS = ['constructor', '__proto__', 'toString', 'valueOf'];
+
+  it.each(PROTO_KEYS)('the register files the rule %s under Unfiled, with a why', (key) => {
+    const filing = stakeFilingOf(key, null);
+    expect(filing).toEqual({ stake: 'unfiled', by: 'unfiled', why: expect.any(String) });
+    expect(filing.why).toContain(`no register for the rule ${key}`);
+    // a category no register knows changes nothing
+    expect(stakeFilingOf(key, 'efficiency')).toMatchObject({ stake: 'unfiled', by: 'unfiled' });
+    // nor does a composite stored key on the leaves (ADR 0191)
+    expect(stakeOf(`${key}#*#fire:week:2026-W40`, null)).toBe('unfiled');
+  });
+
+  it('a rule key named on Object.prototype still files by a category the page knows', () => {
+    expect(stakeFilingOf('valueOf', 'inventory')).toMatchObject({ stake: 'stock', by: 'category' });
+    expect(stakeFilingOf('constructor', 'pricing')).toMatchObject({ stake: 'money', by: 'category' });
+  });
+
+  it.each(['constructor', '__proto__', 'toString'])('a category named %s files under Unfiled, with a why', (cat) => {
+    const filing = stakeFilingOf('a_rule_not_filed_by_name', cat);
+    expect(filing).toEqual({ stake: 'unfiled', by: 'unfiled', why: expect.any(String) });
+    expect(filing.why).toContain(`or for its category, ${cat}`);
+  });
+
+  it.each(PROTO_KEYS)('the docket files the rule %s under its unfiled act, with a why', (key) => {
+    const filing = actOf(key);
+    expect(filing.act).toBe('unfiled');
+    expect(filing.why).toContain(`no act filed for the rule ${key}`);
+  });
+
+  it.each(PROTO_KEYS)('the hand of the rule %s falls back to its category, then Reports', (key) => {
+    expect(handOf(key, 'inventory')).toMatchObject({ label: 'Open Inventory', where: 'Inventory' });
+    expect(handOf(key, 'inventory').href).toMatch(/^\/inventory\?rec=/);
+    expect(handOf(key, key)).toMatchObject({ label: 'Open Reports', where: 'Reports' });
+    expect(handOf(key, key).href).toMatch(/^\/reports\?rec=/);
+  });
+});

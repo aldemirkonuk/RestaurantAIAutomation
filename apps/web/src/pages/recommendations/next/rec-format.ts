@@ -3,10 +3,14 @@
  *
  * House honesty rule: an unknown is an em dash, never a zero and never a
  * guess. Nothing in this file invents a figure — the two mappings below
- * (rule, then category → stake; rule → hand) are CLASSIFICATIONS of a rule
- * that already fired, not measurements, and both keep an explicit fallback so
- * an unrecognised rule is visible rather than silently binned. The stake
- * says which of the two filed it (ADR 0288).
+ * (rule, then category → stake; rule, then category → hand) are
+ * CLASSIFICATIONS of a rule that already fired, not measurements. Both read
+ * a table's own rows only (`ownRow`), so a stored key such as `constructor`
+ * or `__proto__` is an unknown, not a value inherited from `Object.prototype`.
+ * A rule the stake knows neither by name nor by category is filed under
+ * Unfiled, visible rather than silently binned, and the stake says which of
+ * the two filed it (ADR 0288). A hand the page does not know falls back to
+ * Reports.
  */
 
 import { roleAllows, roomFor, type ShellRole } from '@/lib/mudavym/rooms';
@@ -32,6 +36,18 @@ export function num(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
   return null;
+}
+
+/**
+ * A table's row for `key`, read from the table's OWN rows only. The filing
+ * tables on this page are object literals, so a plain `table[key]` answers a
+ * stored key such as `constructor`, `toString`, `valueOf` or `__proto__` with
+ * a value inherited from `Object.prototype`, and the entry would be filed
+ * nowhere (ADR 0288). `Object.prototype.hasOwnProperty.call`, because the
+ * web build's `lib` is ES2020 and has no `Object.hasOwn`.
+ */
+export function ownRow<T>(table: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
 }
 
 /* ── Axis 1: the stake — what the entry would change ─────────────────────── */
@@ -139,16 +155,17 @@ const CATEGORY_STAKE: Record<string, StakeId> = {
  * Where the register files an entry, and why. The rule is read from the key
  * with `readKey`, so a row on the Snoozed, Dismissed or History leaves —
  * whose stored key may be the composite `rule#subject#grain` (ADR 0191) —
- * files exactly as the standing entry does.
+ * files exactly as the standing entry does. Both tables are read by their own
+ * rows only (`ownRow`).
  */
 export function stakeFilingOf(
   ruleKey: string | null | undefined,
   category: string | null | undefined,
 ): StakeFiling {
   const ruleId = readKey(ruleKey ?? '').ruleId;
-  const named = RULE_STAKE[ruleId];
+  const named = ownRow(RULE_STAKE, ruleId);
   if (named) return { stake: named.stake, why: named.why, by: 'rule' };
-  const byCategory = category ? CATEGORY_STAKE[category] : undefined;
+  const byCategory = category ? ownRow(CATEGORY_STAKE, category) : undefined;
   if (category && byCategory)
     return {
       stake: byCategory,
@@ -228,7 +245,7 @@ export function handOf(ruleKey: string, category: string): Hand {
     // ADR 0193 round 3: the locks live on /menu, under Locked prices.
     price_locks_to_review: { href: `/menu?${q}#locked-prices`, label: 'Look at the locks', where: 'Menu' },
   };
-  const hit = byRule[ruleKey];
+  const hit = ownRow(byRule, ruleKey);
   if (hit) return hit;
   if (ruleKey.startsWith('goal_behind'))
     return { href: `/reports?${q}`, label: 'Open the goal', where: 'Reports' };
@@ -242,7 +259,7 @@ export function handOf(ruleKey: string, category: string): Hand {
     basket: { href: `/promotions?${q}`, label: 'Open Promotions', where: 'Promotions' },
     goals: { href: `/reports?${q}`, label: 'Open Goals', where: 'Reports' },
   };
-  return byCategory[category] ?? { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' };
+  return ownRow(byCategory, category) ?? { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' };
 }
 
 /** A hand as the person looking at the card holds it. */
