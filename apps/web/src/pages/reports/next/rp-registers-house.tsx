@@ -595,9 +595,9 @@ export interface RestockRegister {
  * noise (one part in a billion, the gateway's own `sameValue`); two risks that
  * merely PRINT alike (26.8% and 26.9%, both "27%") are not tied.
  *
- * A tie at 0% is never extended, as on the gateway's cut: it is the wines with
- * no demand and nothing on hand, a group with no risk to rank and no height to
- * draw, and extending through it drew every one of them.
+ * A tie at no risk or at 0% is never extended, as on the gateway's cut: a wine
+ * sold on too few days has a null risk (ADR 0299), with no risk to rank and no
+ * height to draw, and extending through that group would draw all of it.
  */
 function barsKeepingTies(
   rows: RestockRegister['reorderList'],

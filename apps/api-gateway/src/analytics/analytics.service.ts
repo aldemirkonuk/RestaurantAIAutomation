@@ -690,9 +690,9 @@ export class AnalyticsService {
       reorderCount: reorderList.length,
       // 25, extended through any tie at row 25 — "the N at the highest risk"
       // is only true when no row tied with the last one listed was left out.
-      // Never through a tie at 0%: that group is every wine with no demand
-      // and nothing on hand, it carries no risk to rank, and extending
-      // through it listed all of them (ADR 0272, fork 3 bound).
+      // Never through a tie at no risk or at 0% (ADR 0272, fork 3 bound): a
+      // wine sold on fewer than MIN_DEMAND_DAYS days has a null risk (ADR
+      // 0299), nothing to rank, and extending through them would list all.
       reorderList: E.cutKeepingTies(
         reorderList,
         25,
