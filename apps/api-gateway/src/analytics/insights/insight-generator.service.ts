@@ -186,16 +186,18 @@ export const BASKET_MIN_LIFT = 1.3;
  *       would show it twice once the new row lands; it is refused and
  *       recomputed. (Drafted as 4 on 2026-10-03; #602 took 4 first, so this
  *       change is 5 — no ADR 0291 row was ever written at 4.)
- *   6 — lane cap's (ADR 0292, PR #609). It lands its own history line, which
- *       is not on this branch.
+ *   6 — held for lane cap (ADR 0292, PR #609), which writes its own line
+ *       here. If 7 reaches main first, cap takes main's version + 1 instead
+ *       and 6 is never used.
  *   7 — 2026-10-04 (ADR 0299): the stockout #1 counts the open bottle in on
  *       hand, and ranks only wines sold on at least MIN_DEMAND_DAYS days in
  *       the window. "Jameson Irish Whiskey ranks #1 of 134 by stockout risk
  *       (61.0%). Only 0 bottles on hand" was a one-day import series read as
  *       a swing, about a wine whose open bottle was not counted. A row below 7
  *       may hold that sentence, so it is recomputed, not served. Numbered
- *       after rec (5) and cap (6); whichever of the three merges later takes
- *       one past the version on main at its merge, by later-truth.
+ *       after rec (5) and the 6 held for cap; whichever of cap and this
+ *       merges later takes one past the version on main at its merge, by
+ *       later-truth.
  */
 export const INSIGHT_GENERATOR_VERSION = 7;
 
