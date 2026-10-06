@@ -69,7 +69,9 @@ function makeClient(rowsByTable: Rows, rpc: Rpc = {}) {
       );
       builder.then = (resolve: any, reject: any) =>
         Promise.resolve({
-          data: (rowsByTable[table] ?? []).filter((r) => keep.every((k) => k(r))),
+          data: (rowsByTable[table] ?? []).filter((r) =>
+            keep.every((k) => k(r)),
+          ),
           error: null,
         }).then(resolve, reject);
       return builder;

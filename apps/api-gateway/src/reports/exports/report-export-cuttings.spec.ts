@@ -145,7 +145,13 @@ describe("a figure the engine did not compute is written as withheld, never as 0
       {
         ...(PAYLOADS.ledger as Record<string, unknown>),
         cogs: null,
-        cogsCoverage: { total: 2, priced: 1, unpriced: 1, complete: false, ...gap },
+        cogsCoverage: {
+          total: 2,
+          priced: 1,
+          unpriced: 1,
+          complete: false,
+          ...gap,
+        },
       },
       { days: null },
     );
@@ -159,7 +165,10 @@ describe("a figure the engine did not compute is written as withheld, never as 0
   });
 
   it("figures of record: a sold row that could not be read is named as unread, not as uncosted", () => {
-    const notes = soldGap({ itemsNotInBooks: 0, itemsCostUnread: 2 }).notes.join(" ");
+    const notes = soldGap({
+      itemsNotInBooks: 0,
+      itemsCostUnread: 2,
+    }).notes.join(" ");
     expect(notes).toContain(
       "The cost of 2 items that sold could not be read (their rows are no longer active, and the read failed), so cost of goods and the ratios built on it are withheld rather than a floor.",
     );

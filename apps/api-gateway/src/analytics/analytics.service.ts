@@ -266,8 +266,10 @@ export class AnalyticsService {
           .in("inventory_id", ids),
       ]);
       if (rowRes.error || lotRes.error) {
-        if (rowRes.error) this.logQueryFailure("restaurant_inventory", rowRes.error);
-        if (lotRes.error) this.logQueryFailure("inventory_lot_rollup", lotRes.error);
+        if (rowRes.error)
+          this.logQueryFailure("restaurant_inventory", rowRes.error);
+        if (lotRes.error)
+          this.logQueryFailure("inventory_lot_rollup", lotRes.error);
         return null;
       }
       const wanted = new Set(ids);
