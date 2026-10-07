@@ -73,8 +73,9 @@ export const STAKE_LABEL: Record<StakeId, string> = {
 /**
  * A register's name as it is printed inside a sentence: lower-case ("Why it
  * would change the floor", "1 more filed under stock, vendors and the
- * floor"). The rail, the "Would change" fact and the headings print
- * `STAKE_LABEL` as it is. The founder, 2026-10-07 (ADR 0288): "Lower-case
+ * floor"). The rail and the "Would change" fact print `STAKE_LABEL` as it
+ * is; the section headings name an act (`ACT_LABEL`), not a register. The
+ * founder, 2026-10-07 (ADR 0288): "Lower-case
  * mid-sentence (Recommended)".
  *
  * `stakeOf` always returns a register, so only a hand-built entry can carry a
