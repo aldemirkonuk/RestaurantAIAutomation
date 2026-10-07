@@ -6,7 +6,9 @@
 -- marked door-checked, until an invoice linked to the order, or paired with
 -- its line, takes over. An invoice filed but neither linked nor paired does
 -- not take over: T18 pins that one delivery then counts twice, a limit ADR
--- 0301 names (Harder / given up, 2026-10-07), not a ruling.
+-- 0301 names (Harder / given up, 2026-10-07) and the coordinator's decision
+-- of 2026-10-07 keeps (made under the founder's delegation; not the
+-- founder's pick).
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` stops at the first one. Run
@@ -29,7 +31,7 @@
 -- weighs a door row as 2 (Triple Door at 5, level with Yellow Five Orders and
 -- above it by name). T18 fails on a build without the migration too (no
 -- house_door_checked); on this build it fails the day a door row steps aside
--- for an invoice nobody linked, which is the open fork it pins.
+-- for an invoice nobody linked, which the decided limit it pins rules out.
 
 begin;
 
@@ -505,7 +507,7 @@ begin
   assert first_row = 'Zqdc Yellow Five Orders', format('T17 FAIL the ledger''s first row is %s, expected Zqdc Yellow Five Orders', first_row);
 end $$;
 
--- T18 (a pin of a recorded limit, not a ruling) ONE delivery counted twice.
+-- T18 (a pin of a decided limit) ONE delivery counted twice.
 -- Zqdc One Delivery is one order, o24, checked at the door on 2026-08-20 at
 -- 35.00 a bottle with 6 bottles accepted. The invoice for those same 6
 -- bottles is filed the same day for 210 from the same vendor, but it is
@@ -515,10 +517,12 @@ end $$;
 -- bought block counts the one delivery twice: Paid 420 (210 + 210), bottles
 -- 12 (6 + 6). This is today's behaviour, named as a limit in ADR 0301
 -- (Consequences, Harder / given up, 2026-10-07). Whether an unlinked invoice
--- of the same delivery should make the door row step aside is an open fork,
--- being decided by the coordinator under the founder's 2026-10-07T20:04:10Z
--- delegation; if that changes the code, this block changes with it, and the
--- open CLAIMS row CELLAR-DOOR-ROW-STEPS-ASIDE-FOR-AN-UNLINKED-INVOICE flips.
+-- of the same delivery should make the door row step aside was decided on
+-- 2026-10-07 by the coordinator under the founder's 2026-10-07T20:04:10Z
+-- delegation (not the founder's pick): it should not, and the register's Paid
+-- and the record's Bottles and Paid say 'door-checked + invoiced' instead.
+-- Changing that goes back through ADR 0301, this block, and the CLAIMS row
+-- CELLAR-DOOR-ROW-COUNTS-BESIDE-AN-UNLINKED-INVOICE.
 -- Once the same invoice is linked to o24, the delivery counts once (T4's
 -- rule). Added after T17 so every row above keeps its numbers.
 insert into public.procurement_orders
@@ -549,7 +553,7 @@ declare r jsonb; n integer;
 begin
   select count(*) into n from public.house_door_checked('a3014000-0000-4000-8000-000000000001'::uuid)
    where order_id = 'a3014000-0000-4000-8000-000000000501';
-  assert n = 1, format('T18 FAIL o24 has %s door rows, expected 1: the door row stepped aside for an invoice nobody linked, so the limit ADR 0301 records has changed; settle the open fork and update this pin', n);
+  assert n = 1, format('T18 FAIL o24 has %s door rows, expected 1: the door row stepped aside for an invoice nobody linked, so the limit ADR 0301 decided to keep has changed; that change goes back through ADR 0301 and this pin', n);
   r := pg_temp.aw14_row('Zqdc One Delivery');
   assert r is not null, 'T18 FAIL Zqdc One Delivery has no ledger row';
   assert (r->>'invoice_lines')::int = 1 and (r->>'door_checked_lines')::int = 1,
