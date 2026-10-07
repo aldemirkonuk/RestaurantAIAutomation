@@ -53,7 +53,7 @@ Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 6). Found by the
 
 ## Back-dating has no lower bound — ~~OPEN (fork)~~ CLOSED on 2026-10-06, no change — 2026-10-05
 
-**[Closed 2026-10-06: the founder answered the fork (AskUserQuestion, ~15:10Z), verbatim pick *"No floor (Recommended)"*: as built. Quoted in ADR 0286, follow-up 7.]**
+**[Closed 2026-10-06: the founder answered the fork (AskUserQuestion, 15:13:54Z [corrected 2026-10-07: was "~15:10Z"]), verbatim pick *"No floor (Recommended)"*: as built. Quoted in ADR 0286, follow-up 7.]**
 
 Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 7). Found by the PR's review at `d9fd02b9f`. It was a founder fork, answered on 2026-10-06 (above). **[Corrected 2026-10-07. Was: "This is a founder fork; it is not asked on this branch."]**
 
