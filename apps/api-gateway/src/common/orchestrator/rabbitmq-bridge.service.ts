@@ -767,6 +767,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
       // 2. Match order via gmail_thread_id on existing outbound conversation
       let orderId: string | null = null;
+      // The order named by this reply's own Gmail thread, and only that one.
+      // `orderId` can also be set by the 2b fallback below, which is a guess;
+      // the attachment refs written after the inbound row take this value.
+      let threadOrderId: string | null = null;
       let threadId: string | null = null;
       let restaurantId: string = provider.restaurant_id;
 
@@ -778,6 +782,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           .limit(1);
         if (outbound?.[0]) {
           orderId = outbound[0].order_id;
+          threadOrderId = outbound[0].order_id;
           threadId = outbound[0].thread_id;
           restaurantId = outbound[0].restaurant_id || restaurantId;
         }
@@ -882,9 +887,21 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       );
 
       // Persist attachment bytes to Storage + refs (D2) — best-effort, fire-and-forget.
+      //
+      // The attachment row carries the THREAD's order, not the 2b fallback's
+      // guess. `DocumentIntakeService.sweepUningestedAttachments` hands
+      // `conversation_attachments.order_id` to `ingest`, and `linkAndMatch`
+      // files a document that arrives with an order as link_method "manual",
+      // confidence 1, and skips the PO-number check. The fallback picks this
+      // vendor's newest order whose status is not terminal, so an invoice
+      // sent in a fresh thread would be filed against that order whether or
+      // not it bills it. With no order on the row, intake runs `autoLink`,
+      // which links only when the PO number the document cites equals one of
+      // this house's order numbers. The reply itself still carries the
+      // fallback's order (the row above, the notice and the responder below).
       void this.persistAttachments(
         inserted.id,
-        orderId,
+        threadOrderId,
         restaurantId,
         provider.id,
         attachments,
