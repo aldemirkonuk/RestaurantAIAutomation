@@ -24,6 +24,7 @@ import {
   houseToday,
   readHouseZone,
 } from "../common/house-day";
+import { ScenarioVerifyService } from "../simpos/scenario-verify.service";
 import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
 import type { ExportDoc } from "../reports/exports/report-export-doc";
 import { PAYLOADS } from "../reports/exports/__fixtures__/cutting-payloads";
@@ -1083,5 +1084,154 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
     // to the default — `?days=0` asking for today is a coherent request.
     await controller.getPosRevenue("r1", "0");
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1);
+  });
+});
+
+/**
+ * The scenario verifier's POS-revenue check, over the real GoalsService (ADR
+ * 0296). It calls the same `getPosRevenueWindow` the route above serves, so
+ * its pass is a statement about the house's day. These cases sit here, beside
+ * the window they read, rather than in `scenario-verify.service.spec.ts`, so
+ * the PR stays within its 15 files.
+ */
+describe("ScenarioVerifyService — pos revenue on the house's day (ADR 0296)", () => {
+  // 03:00 UTC on 2 September 2026: still 20:00 on 1 September in Los Angeles.
+  // Only the clock is fixed; the verifier's timers keep running.
+  beforeEach(() => {
+    jest.useFakeTimers({
+      doNotFake: [
+        "nextTick",
+        "queueMicrotask",
+        "setImmediate",
+        "clearImmediate",
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+      ],
+    });
+    jest.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  /**
+   * A sim run on `serviceDate` in `zone` whose checks (each 125) close at
+   * `closes`, verified against `house`. One stub serves both the verifier's
+   * reads and the real GoalsService's.
+   */
+  function runOn(
+    serviceDate: string,
+    zone: string,
+    closes: string[],
+    house: { timezone: string | null; country: string },
+  ) {
+    const checks = closes.map((closed_at, i) => ({
+      external_check_id: `chk-${i + 1}`,
+      table_id: "t-12",
+      server_name: "Ana",
+      opened_at: new Date(Date.parse(closed_at) - 3_600_000).toISOString(),
+      closed_at,
+      covers: 2,
+      subtotal: 120,
+      total: 125,
+      tip: 0,
+      voided: false,
+      items: [],
+    }));
+    const expected = {
+      contract_version: 1,
+      source: "generic_webhook",
+      service_date: serviceDate,
+      timezone: zone,
+      checks: checks.map((c) => ({ ...c, posted: true, lines: [] })),
+      totals: {
+        checks: checks.length,
+        posted_checks: checks.length,
+        wine_lines: 0,
+        food_lines: 0,
+        revenue: 125 * checks.length,
+      },
+    };
+    const run = {
+      id: "run-1",
+      restaurant_id: "r-sim",
+      archetype_id: "bistro",
+      scenario: "random",
+      seed: 7,
+      service_date: serviceDate,
+      timezone: zone,
+      operating_hours: null,
+      params: {},
+      expected,
+      posted_at: closes[closes.length - 1],
+      created_at: closes[closes.length - 1],
+    };
+    const { service: goals, client } = makeGoals({
+      restaurants: [house],
+      sim_scenario_runs: [run],
+      pos_checks: checks,
+    });
+    const db = { getClient: () => client } as unknown as DatabaseService;
+    const service = new ScenarioVerifyService(
+      db,
+      { assertSimRestaurant: async () => undefined } as any,
+      goals,
+      {
+        getTablePerformance: async () => ({
+          sinceDays: 1,
+          tables: [],
+          correlations: [],
+          drivers: {},
+          dataStatus: "live",
+        }),
+      } as any,
+      { generate: async () => ({}) } as any,
+      { triggerEdgeSweep: async () => undefined } as any,
+    );
+    return { service, goals };
+  }
+
+  const posRevenueRow = async (service: ScenarioVerifyService) =>
+    (await service.verify("r-sim", "run-1")).checks.find(
+      (c: any) => c.id === "analytics.pos_revenue",
+    ) as any;
+
+  it("passes a Los Angeles service day whose dinners close after 17:00 there", async () => {
+    // 16:00 and 20:00 LA on Aug 30 are 23:00 UTC Aug 30 and 03:00 UTC Aug 31.
+    const { service } = runOn(
+      "2026-08-30",
+      LA,
+      ["2026-08-30T23:00:00.000Z", "2026-08-31T03:00:00.000Z"],
+      LA_HOUSE,
+    );
+    const row = await posRevenueRow(service);
+    expect([row.status, row.actual]).toEqual(["pass", 250]);
+  });
+
+  it("is unverifiable, with the reason, for a house with no zone", async () => {
+    const { service } = runOn("2026-08-30", LA, ["2026-08-30T23:00:00.000Z"], {
+      timezone: null,
+      country: "US",
+    });
+    const row = await posRevenueRow(service);
+    expect(row.status).toBe("unverifiable");
+    expect(row.detail).toContain(HOUSE_ZONE_UNSET);
+  });
+
+  it("still covers service_date when the house is a day ahead of UTC (Istanbul at 23:30 UTC)", async () => {
+    jest.setSystemTime(new Date("2026-09-01T23:30:00.000Z")); // 02:30 Sep 2 in Istanbul
+    const IST = "Europe/Istanbul";
+    // 20:00 Istanbul on Sep 1 — the run's day, which UTC also calls Sep 1.
+    const { service, goals } = runOn(
+      "2026-09-01",
+      IST,
+      ["2026-09-01T17:00:00.000Z"],
+      { timezone: IST, country: "TR" },
+    );
+    const spy = jest.spyOn(goals, "getPosRevenueWindow");
+    const row = await posRevenueRow(service);
+    // One day back by UTC; one more for the house's clock, so Sep 1 is in.
+    expect(spy).toHaveBeenCalledWith("r-sim", 2);
+    expect([row.status, row.actual]).toEqual(["pass", 125]);
   });
 });
