@@ -140,8 +140,10 @@ export function pickHouseMenu(versions: MenuVersion[]): MenuVersion | null {
 
 /**
  * The house's stored lines as proof lines. The stored row is the truth for
- * what it keeps (name, section, prices); this tab's reading of the SAME menu
- * adds only what the row does not keep: the match, the raw line, the crop box.
+ * what it keeps (name, section, prices, the raw line); this tab's reading of
+ * the SAME menu adds only what the row does not keep or the gateway does not
+ * send: the match, the crop box, and the raw line from a gateway that does not
+ * send it yet (ADR 0309).
  */
 export function proofFromServer(lines: MenuLine[], reading: StoredProof | null): ProofLine[] {
   const byId = new Map((reading?.items ?? []).map((item) => [item.menuItemId, item]))
@@ -158,7 +160,7 @@ export function proofFromServer(lines: MenuLine[], reading: StoredProof | null):
       grapeVariety: line.grape_variety,
       byGlassPrice: line.by_glass_price,
       bottlePrice: line.bottle_price,
-      rawText: read?.rawText ?? null,
+      rawText: line.raw_extracted_text ?? read?.rawText ?? null,
       matched: read ? read.matched : null,
       needsReview: read ? read.needsReview : false,
       bbox: read?.bbox ?? null,

@@ -619,9 +619,28 @@ describe('/house reads the house (MENU-07)', () => {
     fireEvent.drop(screen.getByText(/Drop the last invoice here/), {
       dataTransfer: { files: [file] },
     })
-    expect(screen.getByText(/Last invoice · kept for later — suvla-sept.pdf/)).toBeInTheDocument()
+    expect(screen.getByText(/Last invoice · noted — suvla-sept.pdf/)).toBeInTheDocument()
+    expect(screen.getByText(/Only its name is noted, in this tab: the file is not sent, read or kept yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/kept for later/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Open later' }))
     expect(navigate).toHaveBeenCalledWith('/settings?tab=cellar')
+  })
+
+  it("never shows the last house's invoice note after a house switch", async () => {
+    serve([SMOKY], { linesExtracted: 1 })
+    const { rerender } = render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    await screen.findByText(/pencilled|The first proof is set/)
+    const file = new File(['x'], 'suvla-sept.pdf', { type: 'application/pdf' })
+    fireEvent.drop(screen.getByText(/Drop the last invoice here/), {
+      dataTransfer: { files: [file] },
+    })
+    expect(screen.getByText(/Last invoice · noted — suvla-sept.pdf/)).toBeInTheDocument()
+    auth.value = { ...auth.value, activeRestaurantId: 'house-2' }
+    rerender(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(screen.queryByText(/suvla-sept.pdf/)).toBeNull()
+    await waitFor(() => expect(screen.queryByText(/Reading the house/)).toBeNull())
+    expect(screen.queryByText(/suvla-sept.pdf/)).toBeNull()
+    expect(screen.getByText('Last invoice · later')).toBeInTheDocument()
   })
 
   it("shows the house's menu in a tab that never read it", async () => {

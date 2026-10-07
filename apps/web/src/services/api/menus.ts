@@ -183,6 +183,8 @@ export interface MenuLine {
   /** Blank menu price: the house kept its last known one, or had none either; a manager can change it. */
   price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
   price_flag_note?: string | null
+  /** The line as the reading saw it (`menu_items.raw_extracted_text`). A gateway from before ADR 0309's correction does not send it. */
+  raw_extracted_text?: string | null
   created_at: string
 }
 

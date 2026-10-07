@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useReducer, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
@@ -17,7 +17,10 @@ export default function HouseContents() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [invoice, setInvoice] = useState(readLastInvoiceLater)
+  // Read on every render, so a house switch on this page shows the new
+  // house's note or none, never the last house's (ADR 0309).
+  const [, invoiceNoted] = useReducer((n: number) => n + 1, 0)
+  const invoice = readLastInvoiceLater(activeRestaurantId)
   const [invoiceDropping, setInvoiceDropping] = useState(false)
 
   const saveSupplier = async () => {
@@ -37,8 +40,8 @@ export default function HouseContents() {
 
   const keepInvoice = (file?: File) => {
     if (!file) return
-    writeLastInvoiceLater(file.name)
-    setInvoice({ name: file.name })
+    writeLastInvoiceLater(activeRestaurantId, file.name)
+    invoiceNoted()
   }
 
   return (
@@ -136,11 +139,11 @@ export default function HouseContents() {
             <span className="text-xs uppercase tracking-[0.12em]">Later · not required</span>
             <span className="mt-2 block">
               {invoice
-                ? `Last invoice · kept for later — ${invoice.name}`
+                ? `Last invoice · noted — ${invoice.name}`
                 : 'Last invoice · later'}
             </span>
             <span className="mt-1 block font-sans text-sm">
-              Drop a file when you want. We will not read it yet.
+              Drop a file when you want. Only its name is noted, in this tab: the file is not sent, read or kept yet.
             </span>
             <input
               aria-label="Last invoice later"
@@ -164,7 +167,7 @@ export default function HouseContents() {
               }}
               className="mt-3 block min-h-[72px] border border-dashed border-[#211f1b]/20 px-4 py-4 font-sans text-sm"
             >
-              {invoiceDropping ? 'Drop it here' : 'Drop the last invoice here, or click to keep a file for later.'}
+              {invoiceDropping ? 'Drop it here' : 'Drop the last invoice here, or click to note a file for later.'}
             </span>
           </label>
 

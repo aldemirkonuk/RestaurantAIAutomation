@@ -5,6 +5,7 @@ import {
   lineNeedsPencil,
   lineSourceCrop,
   markProofLine,
+  pencilledCount,
   pickHouseMenu,
   proofFromServer,
   readProof,
@@ -170,6 +171,21 @@ describe('proofFromServer', () => {
     expect(line.matched).toBeNull()
     expect(line.needsReview).toBe(false)
     expect(line.rawText).toBeNull()
+  })
+
+  it('takes the raw line from the house, so a kitchen line counts the same in every tab', () => {
+    const dish: MenuLine = { ...stored, id: 'line-2', name: 'Lamb', category: null, raw_extracted_text: 'Lamb shank (kitchen) 24' }
+    const here = proofFromServer([dish], { ...reading, restaurantId: 'house-1' })
+    const elsewhere = proofFromServer([dish], null)
+    expect(elsewhere[0].rawText).toBe('Lamb shank (kitchen) 24')
+    expect(here[0].rawText).toBe('Lamb shank (kitchen) 24')
+    expect(pencilledCount(elsewhere)).toBe(0)
+    expect(pencilledCount(elsewhere)).toBe(pencilledCount(here))
+  })
+
+  it("keeps the reading's raw line when the gateway does not send one", () => {
+    const [line] = proofFromServer([{ ...stored, raw_extracted_text: undefined }], { ...reading, restaurantId: 'house-1' })
+    expect(line.rawText).toBe('Smoky No. 4 9')
   })
 })
 
