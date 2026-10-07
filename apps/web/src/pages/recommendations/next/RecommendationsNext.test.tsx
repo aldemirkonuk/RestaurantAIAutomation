@@ -1922,6 +1922,37 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     expect(screen.getByTestId('rc-quiet-tier')).toHaveTextContent(/does not say which of the engine’s sources answered/);
   });
 
+  it('ADR 0292 (the founder 2026-10-07, "Say it couldn’t be read"): an insight read the engine could not make is named, and an empty book is not called clear', () => {
+    // The gateway names the insight bundle's own refused reads in house words.
+    mockData.current = { ...base, entries: [], sourcesUnread: ['pour history', 'till checks'] };
+    const { unmount } = draw();
+    expect(screen.getByTestId('rc-quiet-tier')).toHaveTextContent(
+      'The engine could not read 2 of its sources (pour history and till checks), so entries that depend on them could not fire.',
+    );
+    expect(
+      screen.getByText(
+        '17 rules were read, and none of them stands, but the engine could not read 2 of its sources, so the book is not proven clear.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/The book is clear/)).not.toBeInTheDocument();
+    expect(screen.getByText('Nothing stands against what the engine could read.')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing stands against tonight’s numbers.')).not.toBeInTheDocument();
+    unmount();
+
+    // Every source answered: the empty book is clear, as before.
+    mockData.current = { ...base, entries: [], sourcesUnread: [] };
+    const second = draw();
+    expect(screen.getByText('17 rules were read, and none of them stands. The book is clear.')).toBeInTheDocument();
+    expect(screen.getByText('Nothing stands against tonight’s numbers.')).toBeInTheDocument();
+    second.unmount();
+
+    // An older gateway that does not say: none stands, and clear is not claimed.
+    mockData.current = { ...base, entries: [], sourcesUnread: null };
+    draw();
+    expect(screen.getByText('17 rules were read, and none of them stands.')).toBeInTheDocument();
+    expect(screen.queryByText(/The book is clear/)).not.toBeInTheDocument();
+  });
+
   it('Q2 + Q7: a floor entry is briefed with one tap — recorded at once, undo-after, and it does not leave the page', () => {
     mockData.current = { ...base, entries: [weekdayEntry()] };
     draw();
