@@ -13,13 +13,18 @@ import { stateBookFrom } from "./item-state";
  * read (Recommended)"*.
  *
  * A refused or failed read inside the insight bundle leaves its slice `[]`,
- * and every family that reads the slice is gated on it, so the family states
- * no figure. Before this change `generate()` still resolved, /recommendations
- * listed nothing in `sourcesUnread`, and its quiet tier said every source
- * answered: a failed read read as "nothing to recommend". Now the generator
- * names each such read in house words, and the feed (and so the page and the
- * digest) prints the name. A read that answered with no rows is not named:
- * an empty read is not a refused one.
+ * so no insight states a figure from it: each family is gated on the slice it
+ * is built on, and the per-table insights and the wine mover, which take a
+ * label or a name from a second slice, are gated on that read too (the last
+ * block below). Before this change `generate()` still resolved,
+ * /recommendations listed nothing in `sourcesUnread`, and its quiet tier said
+ * every source answered: a failed read read as "nothing to recommend". Now
+ * the generator names each such read in house words, and the feed names it in
+ * its own `sourcesUnread`, which the page's quiet tier prints. The weekly
+ * digest prints it only in a letter that carries entries; in a week where
+ * nothing stands it sends nothing, and the name is in its log row only (not
+ * tested here). A read that answered with no rows is not named: an empty read
+ * is not a refused one.
  */
 
 type Row = Record<string, any>;
@@ -307,10 +312,166 @@ describe("the insight generator names a read it could not make (ADR 0292, 2026-1
   });
 });
 
+/**
+ * Two insights read a second slice besides the one their family is built on:
+ * the per-table insights take the table's label from the table list, and the
+ * wine mover takes the wine's name from the inventory list. Gating the family
+ * on its own slice did not cover that second read, so a failed table read
+ * printed "Top table" and "A table", and a failed inventory read printed the
+ * wine's id as its name. Each case below first shows the insight firing with
+ * every read answered, so its absence after a refusal is not a fixture that
+ * never fires.
+ */
+describe("an insight that takes a name from a read that could not be made does not fire", () => {
+  const TABLE_RANK = "table.avg_check.peer_rank";
+  const TABLE_HOT = "table.revenue.hot_entity_live";
+  const WAITER_RANK = "waiter.avg_check.peer_rank";
+  const MOVER = "wine.bottles.vs_prev_period_7d";
+
+  /**
+   * Three tables, 40 closed checks each, T1 well ahead; Ana adds $100 a check
+   * on every table, so her lead survives the table adjustment; and one check
+   * open at T1 for 10 minutes at $2,000, far past T1's usual pace.
+   */
+  function floor(): Record<string, Answer> {
+    const checks: Row[] = [];
+    let n = 0;
+    for (const [table, base] of [
+      ["t1", 300],
+      ["t2", 100],
+      ["t3", 100],
+    ] as const) {
+      for (let i = 0; i < 40; i++) {
+        const server = i % 2 === 0 ? "Ana" : "Ben";
+        const date = dayBack(1 + (i % 60)).substring(0, 10);
+        checks.push({
+          id: `k${String(n++).padStart(4, "0")}`,
+          source: "test",
+          table_id: table,
+          server_name: server,
+          server_external_id: null,
+          opened_at: `${date}T19:00:00.000Z`,
+          closed_at: `${date}T21:00:00.000Z`,
+          covers: 2,
+          total: base + (server === "Ana" ? 100 : 0) + (i % 7) * 3,
+          tip: 0,
+          items: null,
+        });
+      }
+    }
+    checks.push({
+      id: "k9999",
+      source: "test",
+      table_id: "t1",
+      server_name: "Ana",
+      server_external_id: null,
+      opened_at: new Date(Date.now() - 10 * 60000).toISOString(),
+      closed_at: null,
+      covers: 4,
+      total: 2000,
+      tip: 0,
+      items: null,
+    });
+    return {
+      ...withRows(),
+      pos_checks: { rows: checks },
+      restaurant_tables: {
+        rows: ["t1", "t2", "t3"].map((id, i) => ({
+          id,
+          label: `T${i + 1}`,
+          seats: 4,
+          is_outdoor: false,
+        })),
+      },
+    };
+  }
+
+  /** One wine, two bottles a day last week and six a day this week. */
+  function mover(): Record<string, Answer> {
+    const rows: Row[] = [];
+    for (let d = 1; d <= 14; d++)
+      rows.push({
+        id: `c${String(d).padStart(3, "0")}`,
+        inventory_id: "inv-1",
+        quantity: d <= 7 ? 6 : 2,
+        volume_ml: null,
+        created_at: dayBack(d),
+        restaurant_inventory: { master_wine_id: "M1" },
+      });
+    return { ...withRows(), wine_consumption_log: { rows } };
+  }
+
+  const fire = async (answers: Record<string, Answer>) =>
+    (await generatorOver(answers).generate("r1", { persist: false })).insights;
+  const of = (xs: Array<{ candidateKey: string }>, key: string) =>
+    xs.filter((i) => i.candidateKey === key);
+
+  it("with the table list read, the table #1 and the surge fire and name the table", async () => {
+    const xs = await fire(floor());
+    expect(of(xs, TABLE_RANK).map((i) => i.entityLabel)).toEqual(["Table T1"]);
+    expect(of(xs, TABLE_HOT).map((i) => i.entityLabel)).toEqual(["Table T1"]);
+    expect(of(xs, WAITER_RANK).map((i) => i.entityLabel)).toEqual(["Ana"]);
+  });
+
+  it.each([
+    ["failing", { error: "canceling statement due to statement timeout" }],
+    ["rejecting", { throws: "fetch failed" }],
+  ] as Array<[string, Answer]>)(
+    "with the table list %s, no per-table insight fires, and the server #1 still does",
+    async (_how, answer) => {
+      const out = await generatorOver({
+        ...floor(),
+        restaurant_tables: answer,
+      }).generate("r1", { persist: false });
+      expect(out.sourcesUnread).toEqual(["table list"]);
+      expect(of(out.insights, TABLE_RANK)).toEqual([]);
+      expect(of(out.insights, TABLE_HOT)).toEqual([]);
+      expect(
+        out.insights.filter((i) => /Top table|A table/.test(i.sentence)),
+      ).toEqual([]);
+      // Built on the checks alone, which a check's own table_id serves.
+      expect(of(out.insights, WAITER_RANK).map((i) => i.entityLabel)).toEqual([
+        "Ana",
+      ]);
+    },
+  );
+
+  it("with the inventory list read, the mover fires and names the wine", async () => {
+    const xs = await fire(mover());
+    expect(of(xs, MOVER).map((i) => i.entityLabel)).toEqual(["Wine M1"]);
+  });
+
+  it.each([
+    ["failing", { error: "canceling statement due to statement timeout" }],
+    ["rejecting", { throws: "fetch failed" }],
+  ] as Array<[string, Answer]>)(
+    "with the inventory list %s, the mover does not fire, and no insight names a wine by its id",
+    async (_how, answer) => {
+      const out = await generatorOver({
+        ...mover(),
+        restaurant_inventory: answer,
+      }).generate("r1", { persist: false });
+      expect(out.sourcesUnread).toEqual(["inventory list"]);
+      expect(of(out.insights, MOVER)).toEqual([]);
+      expect(
+        out.insights.filter(
+          (i) =>
+            i.entityLabel === "M1" ||
+            i.evidence.entity === "M1" ||
+            /\bM1\b/.test(i.sentence),
+        ),
+      ).toEqual([]);
+    },
+  );
+});
+
 describe("/recommendations says which insight read could not be made", () => {
   it("a refused pour read is named in sourcesUnread, so the feed is not 'nothing to recommend'", async () => {
     const out = await feedOver(
-      generatorOver({ ...withRows(), wine_consumption_log: { overCeiling: true } }),
+      generatorOver({
+        ...withRows(),
+        wine_consumption_log: { overCeiling: true },
+      }),
     ).getRecommendations("r1", { recordImpressions: false });
     expect(out.sourcesUnread).toEqual(["pour history"]);
     // `generate()` answered, so the engine is not named as a whole.
