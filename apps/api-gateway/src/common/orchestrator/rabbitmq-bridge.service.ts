@@ -765,26 +765,55 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // 2. Match order via gmail_thread_id on existing outbound conversation
+      // 2. Match order via the reply's gmail_thread_id, read from the thread's
+      //    EARLIEST stored row (its origin).
+      //
+      // `orderId` takes the origin's order, so the reply's text joins the
+      // order the thread is stored under; when that is none, 2b below guesses.
+      //
+      // `threadOrderId` is the order the thread NAMES, and only the attachment
+      // refs take it. A thread names an order only when its origin is an
+      // outbound row with no `email_headers.in_reply_to`: a letter the house
+      // opened, not a reply. A letter is stored when it is staged, before any
+      // vendor row, and gets its gmail_thread_id only when it is sent
+      // (procurement.service.ts approveDraft and the auto-send sweep), so it
+      // stays its thread's earliest row. In a thread the vendor opened, the
+      // origin is the vendor's own inbound row, whose order may be the 2b
+      // guess. Every row that later copies that order into the thread (a
+      // responder draft, scheduled, approved or auto-sent; a staff reply; a
+      // deal confirmation) is stored after it and so cannot be the origin. A
+      // reply that opens a NEW Gmail thread is that thread's origin, and its
+      // in_reply_to refuses it. A reply row stored with no in_reply_to (a
+      // deal confirmation written before confirmDeal recorded it, or any
+      // reply to an inbound message that had no Message-ID) that opens a new
+      // thread still names its order there. Rows written in one transaction
+      // share created_at, so ties break on id. Direction is compared in lower
+      // case because stage_order_letter accepts it in any case.
       let orderId: string | null = null;
-      // The order named by this reply's own Gmail thread, and only that one.
-      // `orderId` can also be set by the 2b fallback below, which is a guess;
-      // the attachment refs written after the inbound row take this value.
       let threadOrderId: string | null = null;
       let threadId: string | null = null;
       let restaurantId: string = provider.restaurant_id;
 
       if (gmailThreadId) {
-        const { data: outbound } = await this.databaseService.supabase
+        const { data: thread } = await this.databaseService.supabase
           .from("procurement_conversations")
-          .select("id, order_id, thread_id, restaurant_id")
+          .select(
+            "id, order_id, thread_id, restaurant_id, direction, email_headers",
+          )
           .eq("gmail_thread_id", gmailThreadId)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
           .limit(1);
-        if (outbound?.[0]) {
-          orderId = outbound[0].order_id;
-          threadOrderId = outbound[0].order_id;
-          threadId = outbound[0].thread_id;
-          restaurantId = outbound[0].restaurant_id || restaurantId;
+        const origin = thread?.[0];
+        if (origin) {
+          orderId = origin.order_id;
+          threadOrderId =
+            String(origin.direction).toLowerCase() === "outbound" &&
+            !origin.email_headers?.in_reply_to
+              ? origin.order_id
+              : null;
+          threadId = origin.thread_id;
+          restaurantId = origin.restaurant_id || restaurantId;
         }
       }
 
@@ -888,17 +917,19 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
       // Persist attachment bytes to Storage + refs (D2) — best-effort, fire-and-forget.
       //
-      // The attachment row carries the THREAD's order, not the 2b fallback's
-      // guess. `DocumentIntakeService.sweepUningestedAttachments` hands
-      // `conversation_attachments.order_id` to `ingest`, and `linkAndMatch`
-      // files a document that arrives with an order as link_method "manual",
-      // confidence 1, and skips the PO-number check. The fallback picks this
-      // vendor's newest order whose status is not terminal, so an invoice
-      // sent in a fresh thread would be filed against that order whether or
-      // not it bills it. With no order on the row, intake runs `autoLink`,
-      // which links only when the PO number the document cites equals one of
-      // this house's order numbers. The reply itself still carries the
-      // fallback's order (the row above, the notice and the responder below).
+      // The attachment row takes `threadOrderId`, the order step 2 found this
+      // reply's Gmail thread names, and never `orderId`. `orderId` may be the
+      // 2b fallback's guess (this vendor's newest order whose status is not
+      // terminal), or that guess read back from the inbound row an earlier
+      // message in the same thread stored. `DocumentIntakeService
+      // .sweepUningestedAttachments` hands `conversation_attachments.order_id`
+      // to `ingest`, and `linkAndMatch` files a document that arrives with an
+      // order as link_method "manual", confidence 1, and skips the PO-number
+      // check, so a guess here would file an invoice against an order it may
+      // not bill. With no order on the row, intake runs `autoLink`, which
+      // links only when the PO number the document cites equals one of this
+      // house's order numbers. The reply's text still carries `orderId` (the
+      // row above, the notice and the responder below).
       void this.persistAttachments(
         inserted.id,
         threadOrderId,
