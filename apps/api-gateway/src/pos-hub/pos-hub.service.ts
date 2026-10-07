@@ -608,6 +608,16 @@ export type ChannelTally = Record<
 const MAX_CHANNEL_NAMES_SAID = 5;
 
 /**
+ * Said, unquoted, in place of a named channel that is not a string. The
+ * vocabulary is strings only (checkChannelOf), so any other JSON value is
+ * unrecognised, and it is never converted to text to quote it: `String()` on
+ * `{"toString":1}` or a deeply nested array throws, and the tally runs before
+ * the per-check try, so one such check aborted the whole import (ADR 0302,
+ * audit at 28c59e9f8).
+ */
+const CHANNEL_NOT_TEXT_SAID = "a value that is not text";
+
+/**
  * The providers whose `raw` is the canonical row itself (the generic adapter,
  * under both keys), so a `raw.channel` there is a channel the feed named. A
  * Square, Clover or Toast `raw` is that provider's own order or check object:
@@ -641,6 +651,7 @@ export function tallyChannels(
   };
   const readsNamed = CANONICAL_FEEDS.has(providerKey);
   const names = new Set<string>();
+  let namedNotText = false;
   for (const c of checks) {
     if (c.channel) {
       tally[c.channel]++;
@@ -654,17 +665,17 @@ export function tallyChannels(
       continue;
     }
     tally.unrecognised++;
-    names.add(String(named).trim().slice(0, 40));
+    if (typeof named === "string") names.add(named.trim().slice(0, 40));
+    else namedNotText = true;
   }
   if (tally.unrecognised === 0) return { tally, said: null };
   const n = tally.unrecognised;
-  const quoted = [...names]
-    .slice(0, MAX_CHANNEL_NAMES_SAID)
-    .map((v) => JSON.stringify(v))
-    .join(", ");
+  const shown = [...names].map((v) => JSON.stringify(v));
+  if (namedNotText) shown.push(CHANNEL_NOT_TEXT_SAID);
+  const quoted = shown.slice(0, MAX_CHANNEL_NAMES_SAID).join(", ");
   const more =
-    names.size > MAX_CHANNEL_NAMES_SAID
-      ? ` and ${names.size - MAX_CHANNEL_NAMES_SAID} more`
+    shown.length > MAX_CHANNEL_NAMES_SAID
+      ? ` and ${shown.length - MAX_CHANNEL_NAMES_SAID} more`
       : "";
   return {
     tally,

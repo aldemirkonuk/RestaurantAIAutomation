@@ -109,6 +109,62 @@ describe("POS ingest writes the channel a check names (ADR 0302)", () => {
     expect(said[0]).not.toContain("stored as");
   });
 
+  // Audit at 28c59e9f8: the tally ran String() on whatever raw.channel held,
+  // before the per-check try. String() on {"toString":1} throws "Cannot
+  // convert object to primitive value", and on a deeply nested array a
+  // RangeError, so one such check turned the whole import into a 400 and no
+  // check in it was stored. A channel that is not text is unrecognised, said
+  // under a fixed label, and never converted.
+  const deeplyNested = () => {
+    let v: unknown = "booth_event";
+    for (let i = 0; i < 100_000; i++) v = [v];
+    return v;
+  };
+  it.each([
+    ['{"toString":1}', () => JSON.parse('{"toString":1}')],
+    ["a 100,000-deep nested array", deeplyNested],
+  ])(
+    "a channel that is %s is counted as unrecognised and the rest of the import still lands",
+    async (_label, value) => {
+      const { service, checkUpserts } = makeService();
+      const out = await service.ingest("r1", "csv_import", [
+        check("TR-2026-08-22-BOOTH", { channel: "booth_event" }),
+        check("TR-10", { channel: value() }),
+      ]);
+      expect(out.received).toBe(2);
+      expect(out.upserted).toBe(2);
+      expect(checkUpserts.map((r) => r.channel ?? null)).toEqual([
+        "booth_event",
+        null,
+      ]);
+      expect(out.channels).toEqual({
+        booth_event: 1,
+        table: 0,
+        none: 0,
+        unrecognised: 1,
+      });
+      const said = out.errors.filter((e) => e.startsWith("channel:"));
+      expect(said).toHaveLength(1);
+      expect(said[0]).toContain("1 check named");
+      expect(said[0]).toContain("(a value that is not text)");
+    },
+  );
+
+  it("values that are not text share one label beside the quoted names", async () => {
+    const { service } = makeService();
+    const out = await service.ingest("r1", "generic_webhook", [
+      check("TR-11", { channel: "catering" }),
+      check("TR-12", { channel: 7 }),
+      check("TR-13", JSON.parse('{"channel":{"toString":1,"valueOf":1}}')),
+    ]);
+    expect(out.upserted).toBe(3);
+    expect(out.channels.unrecognised).toBe(3);
+    const said = out.errors.filter((e) => e.startsWith("channel:"));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain('("catering", a value that is not text)');
+    expect(said[0]).not.toContain("7");
+  });
+
   it("a re-send that names an unknown channel leaves a stored booth_event in place", async () => {
     const { service, storedChannel } = makeService();
     await service.ingest("r1", "csv_import", [
