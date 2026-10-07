@@ -15,7 +15,7 @@
  *  - it never prints an empty box and never prints a zero.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeAll, describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -325,23 +325,39 @@ describe('MarketIndexPanel — a house with no country is asked for it', () => {
 });
 
 describe('useHouseIndex — countryNotRecorded off the wire', () => {
+  // The real module is loaded once, outside any test's 5 s budget: its first
+  // transform is slow when the suite runs beside others, and a timeout there
+  // would say nothing about the flag.
+  let useRealHouseIndex: typeof import('./useHouseIndex').useHouseIndex;
+  beforeAll(async () => {
+    ({ useHouseIndex: useRealHouseIndex } = await vi.importActual<
+      typeof import('./useHouseIndex')
+    >('./useHouseIndex'));
+  }, 60_000);
+
   async function readWith(data: Record<string, unknown>) {
     mockGet.mockResolvedValueOnce({ data });
-    const { useHouseIndex } = await vi.importActual<typeof import('./useHouseIndex')>(
-      './useHouseIndex',
-    );
-    const { result, unmount } = renderHook(() => useHouseIndex());
+    const { result, unmount } = renderHook(() => useRealHouseIndex());
     await waitFor(() => expect(result.current.state).toBe('ready'));
     const flag = result.current.countryNotRecorded;
     unmount();
     return flag;
   }
 
-  it('is set only by a true from the gateway', async () => {
+  it('is set by a true from the gateway', async () => {
     expect(await readWith({ countryNotRecorded: true, lines: [] })).toBe(true);
+  });
+
+  it('is not set by a false', async () => {
     expect(await readWith({ countryNotRecorded: false, lines: [] })).toBe(false);
+  });
+
+  it('is not set when an older gateway does not send it', async () => {
     // An older gateway that does not send it is not a house with no country.
     expect(await readWith({ lines: [] })).toBe(false);
+  });
+
+  it('is not set by a truthy string', async () => {
     expect(await readWith({ countryNotRecorded: 'true', lines: [] })).toBe(false);
   });
 });
