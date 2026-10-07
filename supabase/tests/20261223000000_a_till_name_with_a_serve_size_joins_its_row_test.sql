@@ -20,11 +20,23 @@
 -- predates them. S13 passes there too, as F5 changes nothing: it reads
 -- tied_names through to_jsonb(l) so it runs on both builds.]
 --
+-- [ADDED 2026-10-07, the founder's answers of 2026-10-06 to the #650 BLOCK
+-- (ADR 0301): "Menu first": an invoice, order or quote row takes only a till
+-- name that no menu row contains (S14, S15, S18); size words "Only to break
+-- ties": rows rank by product words, and size words decide only between
+-- rows level on those (S16, S17). Each names the mutation that kills it; all
+-- were run on a local database (fixes/audits/650-local-pg.txt). On the build
+-- before them (3f3689307) S14, S15, S17 and S18 fail; S16 passes there, as
+-- counting size words as any word also picks the 35cl row.]
+--
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` stops at the first one. Run
 -- it on a database built from supabase/migrations. Synthetic fixtures only,
 -- one transaction, rolled back: it leaves nothing behind. Every product name
 -- starts with "Zqss", so rows already in a populated database cannot match.
+-- [CHANGED 2026-10-07: every product and maker name starts with a word
+-- beginning "Zq" (Zqss, Zqef, Zqrd, Zqyk, Zqpr, Zqmk, Zqyr, Zqmf, Zqtb, Zqaw,
+-- Zqbp, Zqob), not only "Zqss", since F1 of 2026-10-06.]
 --
 -- On a build WITHOUT the migration (#627's head, 27faf423a), every block
 -- fails. S2, S4 and S5 fail on what they count: the names they join reach no
@@ -130,6 +142,58 @@ insert into public.pos_unresolved_lines
   -- S3: an orphan queue line whose name ties too. The queue held it, so it is
   -- a row of its own, as a till name that joins no row always was.
   ('a3030000-0000-4000-8000-000000000001', 'toast', 'zqss-orphan', 'm1', 'Zqss Lal Rose Kavak Magnum', 1, 90, false, '2026-08-09 20:00+00');
+
+-- [ADDED 2026-10-07, the founder's answers of 2026-10-06 to the #650 BLOCK
+-- (ADR 0301): "Menu first" and size words "Only to break ties". S14 to S18.]
+insert into public.menu_items (menu_id, restaurant_id, name, producer, category, bottle_price, status) values
+  -- S14: the BLOCK's case, a menu row and (below) a quote whose only extra
+  -- words are a size.
+  ('a3030000-0000-4000-8000-0000000000a1', 'a3030000-0000-4000-8000-000000000001', 'Zqyr Yeni Rakı Âlâ', null, 'Rakı', 120, 'approved'),
+  -- S15: a menu row, and (below) two invoice rows that each hold its words
+  -- and more: a size, and a product word.
+  ('a3030000-0000-4000-8000-0000000000a1', 'a3030000-0000-4000-8000-000000000001', 'Zqmf Tekel Raki', null, 'Rakı', 90, 'approved'),
+  -- S16: two menu rows level on product words; one names a size.
+  ('a3030000-0000-4000-8000-0000000000a1', 'a3030000-0000-4000-8000-000000000001', 'Zqtb Yeni Raki', null, 'Rakı', 90, 'approved'),
+  ('a3030000-0000-4000-8000-0000000000a1', 'a3030000-0000-4000-8000-000000000001', 'Zqtb Yeni Raki 35cl', null, 'Rakı', 50, 'approved'),
+  -- S17: two menu rows, one with a product word more, one with a size.
+  ('a3030000-0000-4000-8000-0000000000a1', 'a3030000-0000-4000-8000-000000000001', 'Zqaw Yeni Raki Ala', null, 'Rakı', 120, 'approved'),
+  ('a3030000-0000-4000-8000-0000000000a1', 'a3030000-0000-4000-8000-000000000001', 'Zqaw Yeni Raki 70cl', null, 'Rakı', 90, 'approved'),
+  -- S18: a menu line that names its maker, and (below) a quote of its bare name.
+  ('a3030000-0000-4000-8000-0000000000a1', 'a3030000-0000-4000-8000-000000000001', 'Zqbp Pilsen', 'Zqmk Anadolu', 'Beer', 9, 'approved');
+
+insert into public.vendor_price_observations (restaurant_id, product_name_raw, source_type, trust_tier, raw_price, observed_at) values
+  ('a3030000-0000-4000-8000-000000000001', 'Zqyr Yeni Rakı 70cl', 'quote', 3, 70, '2026-08-01 10:00+00'),
+  ('a3030000-0000-4000-8000-000000000001', 'Zqbp Pilsen', 'quote', 3, 5, '2026-08-01 10:00+00');
+
+insert into public.procurement_documents (id, restaurant_id, doc_type, source_channel, doc_date) values
+  ('a3030000-0000-4000-8000-0000000000d1', 'a3030000-0000-4000-8000-000000000001', 'invoice', 'manual', '2026-08-02');
+insert into public.procurement_document_lines (document_id, restaurant_id, line_no, description, qty_bottles, unit_price) values
+  ('a3030000-0000-4000-8000-0000000000d1', 'a3030000-0000-4000-8000-000000000001', 1, 'Zqmf Tekel Raki 70cl', 6, 60),
+  ('a3030000-0000-4000-8000-0000000000d1', 'a3030000-0000-4000-8000-000000000001', 2, 'Zqmf Tekel Raki Ozel', 6, 80);
+
+-- S18: an order line that names its maker, and no other book's row its till
+-- name holds.
+insert into public.providers (id, name, primary_contact) values
+  ('a3030000-0000-4000-8000-0000000000e1', 'Zqss Supplier', '{}'::jsonb);
+insert into public.procurement_orders (id, order_number, restaurant_id, inventory_id, provider_id, quantity, bottles_total, final_price, total_cost, requested_at) values
+  ('a3030000-0000-4000-8000-0000000000e2', 'ZQSS-1', 'a3030000-0000-4000-8000-000000000001', 'a3030000-0000-4000-8000-0000000000f1', 'a3030000-0000-4000-8000-0000000000e1', 1, 1, 10, 10, '2026-08-03 10:00+00');
+insert into public.procurement_order_items (order_id, wine_name, producer, quantity) values
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqob Lager', 'Zqmk Brewer', 1);
+
+insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, closed_at, voided, items) values
+  ('a3030000-0000-4000-8000-000000000001', 'simpos', 'zqss-c4',
+   '2026-08-10 19:00+00', '2026-08-10 21:00+00', false,
+   '[{"name": "Zqyr Yeni Rakı Âlâ 70cl bottle", "qty": 3, "price": 100},
+     {"name": "Zqyr Yeni Rakı Âlâ (single 50ml)", "qty": 2, "price": 15},
+     {"name": "Zqyr Yeni Rakı 70cl", "qty": 1, "price": 80},
+     {"name": "Zqmf Tekel Raki 70cl bottle", "qty": 2, "price": 90},
+     {"name": "Zqmf Tekel Raki Ozel 70cl", "qty": 1, "price": 110},
+     {"name": "Zqmf Tekel Raki 70cl", "qty": 4, "price": 85},
+     {"name": "Zqtb Yeni Raki 35cl (glass)", "qty": 2, "price": 50},
+     {"name": "Zqtb Yeni Raki (single 50ml)", "qty": 3, "price": 14},
+     {"name": "Zqaw Yeni Raki Ala 70cl bottle", "qty": 1, "price": 120},
+     {"name": "Zqbp Pilsen (draft 400ml)", "qty": 4, "price": 9},
+     {"name": "Zqob Lager (draft 400ml)", "qty": 2, "price": 8}]'::jsonb);
 
 create function pg_temp.ss_row(p_label text)
 returns table (pos_lines integer, poured_qty numeric, poured_revenue numeric)
@@ -409,7 +473,9 @@ end $$;
 -- joins that row, never trying the bare names, even where one has more words:
 -- 'Zqpr Gold Seri (single 50ml)' holds 'Zqpr Gold' and joins it, not the
 -- maker's 'Zqpr Gold Seri' ("if a till name holds none of a row's full
--- words").
+-- words"). [CHANGED 2026-10-07, "Menu first": both rows here are menu rows;
+-- a name that holds only an invoice, order or quote row's full words does
+-- try the menu's bare names first (S18).]
 do $$
 declare r record; a integer; b integer; got text;
 begin
@@ -453,6 +519,131 @@ begin
       -- to_jsonb(l): the build before F2 has no tied_names column.
       or (to_jsonb(l) -> 'tied_names') @> '[{"item_name": "Zqss Kalecik Karasi (glass)"}]'::jsonb;
   assert n = 0, format('S13 FAIL %s rows count the catalogue-only name''s line; expected 0', n);
+end $$;
+
+-- S14 ("Menu first", 2026-10-06) the BLOCK's case: a menu row 'Zqyr Yeni
+-- Rakı Âlâ' and a quote 'Zqyr Yeni Rakı 70cl'. Both Âlâ till names join the
+-- menu row and the quote takes neither of them. The quote still takes a name
+-- no menu row contains: 'Zqyr Yeni Rakı 70cl', its own key. Killed by the
+-- build as it stood at 3f3689307 (every book alike, size words as any word),
+-- where the quote's five words beat the Âlâ's four and it took the bottle.
+-- Undoing only one of the two answers leaves it passing (the other still
+-- keeps the Âlâ on the menu); S15 and S17 kill each one alone.
+do $$
+declare r record; got text; n integer;
+begin
+  select * into r from pg_temp.ss_row('Zqyr Yeni Rakı Âlâ');
+  assert r.pos_lines = 2 and r.poured_qty = 5,
+    format('S14 FAIL the menu''s Âlâ reads pos_lines %s, Sold %s; expected 2 and 5 (its bottle and its single)', r.pos_lines, r.poured_qty);
+  select string_agg(t.item_name || '=' || t.joined_by || ':' || t.lines, ', ' order by t.item_name collate "C")
+    into got
+    from public.house_till_names('a3030000-0000-4000-8000-000000000001'::uuid, 'Zqyr Yeni Rakı 70cl') t;
+  assert got = 'Zqyr Yeni Rakı 70cl=exact:1',
+    format('S14 FAIL the quote''s record lists %s; expected only its own name (no Âlâ line)', got);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqyr Yeni Rakı 70cl';
+  assert r.pos_lines = 1 and r.tied_lines = 0,
+    format('S14 FAIL the quote reads pos_lines %s, tied_lines %s; expected 1 and 0', r.pos_lines, r.tied_lines);
+end $$;
+
+-- S15 ("Menu first") a menu row against invoice rows that hold its words and
+-- more. 'Zqmf Tekel Raki 70cl bottle' holds the menu's 'Zqmf Tekel Raki' and
+-- the invoice's 'Zqmf Tekel Raki 70cl'; 'Zqmf Tekel Raki Ozel 70cl' holds the
+-- menu's and the invoice's 'Zqmf Tekel Raki Ozel', which has a product word
+-- more; 'Zqmf Tekel Raki 70cl' is the 70cl invoice row's own key. All three
+-- join the menu row, the answer's stated cost ("a supplier's name never beats
+-- the menu's, even when the menu's name is vaguer"), so an exact key on an
+-- invoice row loses to a menu row the name contains, and neither invoice row
+-- counts or ties on them. Killed by reading every book's rows alike (size
+-- words still only breaking ties): the 70cl invoice wins the first on its
+-- size and the third as exact, the Ozel the second on its product word.
+do $$
+declare r record;
+begin
+  select * into r from pg_temp.ss_row('Zqmf Tekel Raki');
+  assert r.pos_lines = 3 and r.poured_qty = 7,
+    format('S15 FAIL the menu row reads pos_lines %s, Sold %s; expected 3 and 7', r.pos_lines, r.poured_qty);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqmf Tekel Raki 70cl';
+  assert r.pos_lines = 0 and r.tied_lines = 0,
+    format('S15 FAIL the sized invoice row reads pos_lines %s, tied_lines %s; expected 0 and 0', r.pos_lines, r.tied_lines);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqmf Tekel Raki Ozel';
+  assert r.pos_lines = 0 and r.tied_lines = 0,
+    format('S15 FAIL the Ozel invoice row reads pos_lines %s, tied_lines %s; expected 0 and 0', r.pos_lines, r.tied_lines);
+end $$;
+
+-- S16 (size words "Only to break ties", 2026-10-06) the 35cl tie-break. The
+-- menu's 'Zqtb Yeni Raki' and 'Zqtb Yeni Raki 35cl' are level on product
+-- words (three each); 'Zqtb Yeni Raki 35cl (glass)' holds both, and the size
+-- words decide: it joins the 35cl row. The 50 ml single holds only the plain
+-- row's words and joins it. Killed by size words never counting: the glass
+-- ties the two rows and joins neither.
+do $$
+declare r record; got text;
+begin
+  select * into r from pg_temp.ss_row('Zqtb Yeni Raki 35cl');
+  assert r.pos_lines = 1 and r.poured_qty = 2,
+    format('S16 FAIL the 35cl row reads pos_lines %s, Sold %s; expected 1 and 2 (the 35cl glass)', r.pos_lines, r.poured_qty);
+  select string_agg(t.item_name || '=' || t.joined_by || ':' || t.lines, ', ' order by t.item_name collate "C")
+    into got
+    from public.house_till_names('a3030000-0000-4000-8000-000000000001'::uuid, 'Zqtb Yeni Raki') t;
+  assert got = 'Zqtb Yeni Raki (single 50ml)=contains:1',
+    format('S16 FAIL the plain row''s record lists %s', got);
+  select l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqtb Yeni Raki';
+  assert r.tied_lines = 0, format('S16 FAIL the plain row reads tied_lines %s; expected 0', r.tied_lines);
+end $$;
+
+-- S17 (size words "Only to break ties") product words rank first, inside one
+-- book. 'Zqaw Yeni Raki Ala 70cl bottle' holds the menu's 'Zqaw Yeni Raki
+-- Ala' (four product words) and 'Zqaw Yeni Raki 70cl' (three, and two size
+-- words): it joins the Ala. Killed by counting size words as any word, where
+-- the 70cl row's five beat the Ala's four.
+do $$
+declare r record;
+begin
+  select * into r from pg_temp.ss_row('Zqaw Yeni Raki Ala');
+  assert r.pos_lines = 1 and r.poured_qty = 1,
+    format('S17 FAIL the Ala reads pos_lines %s, Sold %s; expected 1 and 1', r.pos_lines, r.poured_qty);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqaw Yeni Raki 70cl';
+  assert r.pos_lines = 0 and r.tied_lines = 0,
+    format('S17 FAIL the 70cl row reads pos_lines %s, tied_lines %s; expected 0 and 0', r.pos_lines, r.tied_lines);
+end $$;
+
+-- S18 ("Menu first", with F1) the menu's name without its maker comes before
+-- another book's full words. 'Zqbp Pilsen (draft 400ml)' holds the quote
+-- 'Zqbp Pilsen' whole and the menu's 'Zqmk Anadolu' + 'Zqbp Pilsen' only
+-- without the maker: it joins the menu row. Killed by reading other books'
+-- full words before the menu's bare names (and by the build at 3f3689307,
+-- where a name holding any row's full words never tried a bare name). An
+-- order line's name without its maker still joins a name nothing else
+-- holds: 'Zqob Lager (draft 400ml)' joins 'Zqmk Brewer' + 'Zqob Lager'; that
+-- pins kept behaviour, as the earlier build joins it too.
+do $$
+declare r record; got text;
+begin
+  select string_agg(t.item_name || '=' || t.joined_by || ':' || t.lines, ', ')
+    into got
+    from public.house_till_names('a3030000-0000-4000-8000-000000000001'::uuid, 'Zqmk Anadolu Zqbp Pilsen') t;
+  assert got = 'Zqbp Pilsen (draft 400ml)=without_maker:1',
+    format('S18 FAIL the menu row''s record lists %s', got);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqbp Pilsen';
+  assert r.pos_lines = 0 and r.tied_lines = 0,
+    format('S18 FAIL the quote reads pos_lines %s, tied_lines %s; expected 0 and 0', r.pos_lines, r.tied_lines);
+  select string_agg(t.item_name || '=' || t.joined_by || ':' || t.lines, ', ')
+    into got
+    from public.house_till_names('a3030000-0000-4000-8000-000000000001'::uuid, 'Zqmk Brewer Zqob Lager') t;
+  assert got = 'Zqob Lager (draft 400ml)=without_maker:1',
+    format('S18 FAIL the order row''s record lists %s', got);
 end $$;
 
 rollback;

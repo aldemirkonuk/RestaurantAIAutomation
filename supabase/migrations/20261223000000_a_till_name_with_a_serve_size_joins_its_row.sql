@@ -31,6 +31,19 @@
 --      lists the till names that tied, so the owner sees why its Sold is
 --      short and can fix the menu name. The lines still join neither row."
 --
+-- THE #650 BLOCK ANSWERS (AskUserQuestion, asked 2026-10-06 14:17:38Z,
+-- answered 15:13:54Z), verbatim, quoted in full with the rejected options in
+-- ADR 0301:
+--   Till books, "Menu first (Recommended)": "A till name joins a menu row
+--      whenever one contains it. Invoice, order and quote rows only take
+--      names that no menu row contains, so the Âlâ lines stay on the menu.
+--      Cost: a supplier's name never beats the menu's, even when the menu's
+--      name is vaguer."
+--   Size words, "Only to break ties (Recommended)": "Rows rank by product
+--      words, and size words only decide between rows tied on those. Âlâ
+--      beats 'Yeni Rakı 70cl', and 'Yeni Rakı 35cl' still beats 'Yeni Rakı'
+--      for a 35cl glass."
+--
 -- WHAT THIS DOES.
 --   1. house_till_lines gains `sold_as`: what one of the line is, 'bottle',
 --      'glass', or NULL (unit unknown), by the order ADR 0011 locks for the
@@ -43,22 +56,36 @@
 --   2. house_beverage_ledger joins each till name to ONE row:
 --        - "words" are the distinct tokens of the name's beverage_house_key,
 --          the one normalisation every book's key already went through;
---        - the row whose key equals the name's key (exact) wins;
---        - else the row, among those whose every word the name holds, with
---          the most distinct words (contains);
---        - rows level at the top tie, and the name joins none of them; each
---          tied row counts the name's lines in `tied_lines`;
---        - (F1) a name that holds no row's full words tries each menu or
---          order row's name WITHOUT its maker (the line's name keyed alone,
---          for a line that names a maker), by the same rules: an exact bare
---          name wins, else the most words, and rows level at the top tie;
---          such a join is 'without_maker';
+--        - the rows are the keys the menu, invoice, order and quote books
+--          name; a key the menu names is a menu row;
+--        - (Menu first, 2026-10-06) a name's candidates are read in four
+--          passes, and only the first pass that has any counts: menu rows
+--          whose every word the name holds; menu rows whose name without its
+--          maker the name holds (F1); invoice, order and quote rows whose
+--          every word the name holds; order rows whose name without its
+--          maker the name holds (F1). So an invoice, order or quote row
+--          takes only a name that no menu row contains;
+--        - within that pass, the row whose key (or bare name) equals the
+--          name's key (exact) wins; else the row with the most product
+--          words (contains, or without_maker for a bare name);
+--        - (size words only break ties, 2026-10-06) a size word is a word a
+--          row's labels name inside a volume ('70cl' gives '70' and 'cl'; the
+--          units are the gateway's VOLUME_IN_TEXT's, see `size_word`); a
+--          product word is any other. Only rows level on product words are
+--          told apart by size words, the most winning;
+--        - rows level on all of that tie, and the name joins none of them;
+--          each tied row counts the name's lines in `tied_lines`;
 --        - a name that joins no row (it holds no row's words, or it ties) is
 --          a row of its own only when the queue ever held it, as before.
---      The rows are the keys the menu, invoice, order and quote books name.
+--      [CHANGED 2026-10-07: until the answers of 2026-10-06 to the #650
+--      BLOCK, every book's rows were candidates alike and size words counted
+--      as any word, so a quote 'Yeni Rakı 70cl' took 'Yeni Rakı Âlâ 70cl
+--      bottle' off the menu's 'Yeni Rakı Âlâ'.]
 --      The join runs once per distinct till name, on the words a name and a
---      row share (an equi-join on the word), never every name against every
---      row.
+--      row share (an equi-join on the word), so only (name, row) pairs that
+--      share a word are grouped and counted. [CHANGED 2026-10-07: this said
+--      "never every name against every row"; a word every row and every name
+--      share, such as a size unit, still pairs them all.]
 --   3. The ledger's Sold is split into poured_bottles, poured_glasses and
 --      poured_unit_unknown, which sum to poured_qty. Taken is summed as
 --      before. It also returns tied_lines, till_names (the till names
@@ -466,21 +493,55 @@ quo_agg AS (
 ),
 
 -- ── ADDED a_till_name_with_a_serve_size_joins_its_row: the row each till
---    name joins (ADR 0301, the 2026-10-05 ruling) ───────────────────────────
--- The rows a till name can join: the keys the four other books name.
+--    name joins (ADR 0301, the 2026-10-05 ruling, and the answers of
+--    2026-10-06 to the #650 BLOCK: "Menu first" and size words "Only to
+--    break ties") ─────────────────────────────────────────────────────────
+-- CHANGED (ADR 0301, "Menu first", 2026-10-06): the rows a till name can
+-- join are the keys the four other books name, each in one of two tiers: a
+-- key the menu names is a menu row (tier 1), whatever else names it; a key
+-- only the invoice, order or quote books name is tier 2.
 book AS (
-  SELECT k FROM menu_agg
-  UNION SELECT k FROM inv_agg
-  UNION SELECT k FROM ord_agg
-  UNION SELECT k FROM quo_agg
+  SELECT k, 1 AS tier FROM menu_agg
+  UNION ALL
+  SELECT x.k, 2 AS tier
+  FROM (SELECT k FROM inv_agg
+        UNION SELECT k FROM ord_agg
+        UNION SELECT k FROM quo_agg) x
+  WHERE NOT EXISTS (SELECT 1 FROM menu_agg m WHERE m.k = x.k)
+),
+-- ADDED (ADR 0301, size words "Only to break ties", 2026-10-06): a row's
+-- size words. A word of a row is a size word when one of the labels its
+-- books key to that row names it inside a volume: a number followed by a
+-- volume unit, the pattern of the gateway's VOLUME_IN_TEXT
+-- (apps/api-gateway/src/vendor-intel/bottle-size.ts), copied here, not
+-- shared: ml, mls, cl, cls, l, lt, ltr, litre(s), liter(s), millilitre(s),
+-- milliliter(s), centilitre(s), centiliter(s), fl oz, fluid ounce(s). Bare
+-- 'oz' is not one. The volume is tokenized as every key is, so '70cl' gives
+-- the words '70' and 'cl', and '1,5 L' gives '1', '5' and 'l'.
+size_word AS MATERIALIZED (
+  SELECT DISTINCT bl.k, t.w
+  FROM (SELECT k, label FROM menu WHERE k IS NOT NULL
+        UNION SELECT k, label FROM inv WHERE k IS NOT NULL
+        UNION SELECT k, label FROM ord WHERE k IS NOT NULL
+        UNION SELECT k, label FROM quo WHERE k IS NOT NULL) bl
+  CROSS JOIN LATERAL regexp_matches(
+         bl.label,
+         '(?<![\w.,])(\d{1,5}(?:[.,]\d{1,3})?)\s{0,3}(ml|mls|cl|cls|l|lt|ltr|litres?|liters?|millilitres?|milliliters?|centilitres?|centiliters?|fl\.?\s?oz\.?|fluid\s?ounces?)(?![a-z0-9])',
+         'gi') v
+  CROSS JOIN LATERAL unnest(public.beverage_tokenize(v[1] || ' ' || v[2])) AS t(w)
 ),
 -- A key's words are the distinct tokens of its beverage_house_key: the
 -- normalisation every book's key already went through, never a second one.
--- `n` is how many distinct words the row has: how specific it is.
+-- `n` is how many distinct words the row has. CHANGED (size words "Only to
+-- break ties", 2026-10-06): `p` is how many of them are not size words (its
+-- product words), which is how specific the row is.
 book_word AS MATERIALIZED (
-  SELECT b.k, x.w, count(*) OVER (PARTITION BY b.k) AS n
+  SELECT b.k, b.tier, x.w,
+         count(*) OVER (PARTITION BY b.k)                             AS n,
+         count(*) FILTER (WHERE sw.w IS NULL) OVER (PARTITION BY b.k) AS p
   FROM book b
   CROSS JOIN LATERAL (SELECT DISTINCT unnest(string_to_array(b.k, ' ')) AS w) x
+  LEFT JOIN size_word sw ON sw.k = b.k AND sw.w = x.w
   WHERE b.k IS NOT NULL
 ),
 name_word AS MATERIALIZED (
@@ -488,11 +549,11 @@ name_word AS MATERIALIZED (
   FROM pour p
   WHERE p.k IS NOT NULL
 ),
--- Every row whose every word the name holds. Joined on the word, so the work
--- is the (name, row) pairs that share a word, never every name against every
--- row.
+-- Every row whose every word the name holds. Joined on the word, so only the
+-- (name, row) pairs that share a word are grouped and counted.
 reach AS (
-  SELECT nw.k AS name_k, bw.k AS row_k, min(bw.n) AS n
+  SELECT nw.k AS name_k, bw.k AS row_k, min(bw.tier) AS tier,
+         min(bw.n) AS n, min(bw.p) AS p
   FROM name_word nw
   JOIN book_word bw ON bw.w = nw.w
   GROUP BY nw.k, bw.k
@@ -504,7 +565,9 @@ reach AS (
 -- Efes' + 'Efes Pilsen' keys `anadolu efes efes pilsen`), and the till rings
 -- the name alone ('Efes Pilsen (draft 400ml)'), so the name holds no row's
 -- full words. Its bare name is `bare_k`; a line that names no maker, or whose
--- bare name is its key, has none to add. Words as `book_word`'s: distinct.
+-- bare name is its key, has none to add. Words as `book_word`'s: distinct,
+-- with the row's tier, and `p` counts the bare name's words that are not the
+-- row's size words.
 bare_book AS (
   SELECT k, bare_k FROM menu
   WHERE k IS NOT NULL AND bare_k IS NOT NULL AND bare_k <> k
@@ -513,50 +576,74 @@ bare_book AS (
   WHERE k IS NOT NULL AND bare_k IS NOT NULL AND bare_k <> k
 ),
 bare_word AS MATERIALIZED (
-  SELECT b.k, b.bare_k, x.w, count(*) OVER (PARTITION BY b.k, b.bare_k) AS n
+  SELECT b.k, b.bare_k, bk.tier, x.w,
+         count(*) OVER (PARTITION BY b.k, b.bare_k)                             AS n,
+         count(*) FILTER (WHERE sw.w IS NULL) OVER (PARTITION BY b.k, b.bare_k) AS p
   FROM bare_book b
+  JOIN book bk ON bk.k = b.k
   CROSS JOIN LATERAL (SELECT DISTINCT unnest(string_to_array(b.bare_k, ' ')) AS w) x
+  LEFT JOIN size_word sw ON sw.k = b.k AND sw.w = x.w
 ),
--- Only a name that holds no row's full words (it is in no `reach` pair) tries
--- the bare names, on the word as `reach` does. A row with two bare names (its
--- menu line and its order line split maker and name differently) is one
--- candidate: its most specific bare name the name holds, exact when either is
--- the name's key.
+-- The bare names, on the word as `reach` does. A name that holds a menu row's
+-- full words never needs them (that pass comes first, `cand` below), so it is
+-- not tried here. A row with two bare names (its menu line and its order line
+-- split maker and name differently) is one candidate: the bare name it holds
+-- with the most product words, then the most size words; exact when either
+-- is the name's key.
 reach_bare AS (
-  SELECT r.name_k, r.row_k, max(r.n) AS n, bool_or(r.bare_k = r.name_k) AS exact
+  SELECT DISTINCT ON (r.name_k, r.row_k)
+         r.name_k, r.row_k, r.tier, r.p, r.n - r.p AS s,
+         bool_or(r.bare_k = r.name_k) OVER (PARTITION BY r.name_k, r.row_k) AS exact
   FROM (
-    SELECT nw.k AS name_k, bw.k AS row_k, bw.bare_k, min(bw.n) AS n
+    SELECT nw.k AS name_k, bw.k AS row_k, bw.bare_k, min(bw.tier) AS tier,
+           min(bw.n) AS n, min(bw.p) AS p
     FROM name_word nw
     JOIN bare_word bw ON bw.w = nw.w
-    WHERE NOT EXISTS (SELECT 1 FROM reach r0 WHERE r0.name_k = nw.k)
+    WHERE NOT EXISTS (SELECT 1 FROM reach r0
+                      WHERE r0.name_k = nw.k AND r0.tier = 1)
     GROUP BY nw.k, bw.k, bw.bare_k
     HAVING count(*) = min(bw.n)
   ) r
-  GROUP BY r.name_k, r.row_k
+  ORDER BY r.name_k, r.row_k, r.p DESC, r.n DESC
 ),
--- CHANGED a_till_name_with_a_serve_size_joins_its_row (F1 of 2026-10-06):
--- one rule over both passes, since a name is a candidate of one pass only.
--- The row whose key (or, without maker, whose bare name) is the name's key
--- wins outright (exact). Else the row with the most words (contains, or
--- without_maker). Rows level at the top are a tie, and the name joins none
--- of them. rnk = 1 marks the winner, or every tied row.
+-- CHANGED (ADR 0301, "Menu first" and size words "Only to break ties",
+-- 2026-10-06): a name's candidates come in four passes, and only the first
+-- pass that has any is read:
+--   1. menu rows whose every word the name holds;
+--   2. menu rows whose name without its maker the name holds (F1);
+--   3. invoice, order and quote rows whose every word the name holds;
+--   4. order rows whose name without its maker the name holds (F1).
+-- So an invoice, order or quote row takes only a name no menu row contains,
+-- even when its key is the name's own key. In that pass, the row whose key
+-- (or, without maker, whose bare name) is the name's key wins outright
+-- (exact). Else the row with the most product words; only rows level on
+-- those are told apart by size words, the most winning. Rows level on all
+-- three are a tie, and the name joins none of them. rnk = 1 marks the
+-- winner, or every tied row.
 cand AS (
-  SELECT r.name_k, r.row_k, r.n, (r.row_k = r.name_k) AS exact, false AS bare
+  SELECT r.name_k, r.row_k, r.p, r.n - r.p AS s, (r.row_k = r.name_k) AS exact,
+         false AS bare, CASE WHEN r.tier = 1 THEN 1 ELSE 3 END AS pass
   FROM reach r
   UNION ALL
-  SELECT b.name_k, b.row_k, b.n, b.exact, true AS bare
+  SELECT b.name_k, b.row_k, b.p, b.s, b.exact,
+         true AS bare, CASE WHEN b.tier = 1 THEN 2 ELSE 4 END AS pass
   FROM reach_bare b
+),
+first_pass AS (
+  SELECT c.*, min(c.pass) OVER (PARTITION BY c.name_k) AS min_pass
+  FROM cand c
 ),
 pick AS (
   SELECT c.name_k, c.row_k,
-         CASE WHEN count(*) OVER (PARTITION BY c.name_k, c.exact, c.n) > 1 THEN 'tie'
+         CASE WHEN count(*) OVER (PARTITION BY c.name_k, c.exact, c.p, c.s) > 1 THEN 'tie'
               WHEN c.bare THEN 'without_maker'
               WHEN c.exact THEN 'exact'
               ELSE 'contains'
          END                                                    AS how,
          rank() OVER (PARTITION BY c.name_k
-                      ORDER BY c.exact DESC, c.n DESC)          AS rnk
-  FROM cand c
+                      ORDER BY c.exact DESC, c.p DESC, c.s DESC) AS rnk
+  FROM first_pass c
+  WHERE c.pass = c.min_pass
 ),
 -- Each till name, on the one key its lines count on: the row it joined, or,
 -- when it joined none (it holds no row's words, or it ties), its own key,
@@ -752,11 +839,17 @@ COMMENT ON FUNCTION public.house_beverage_ledger(uuid, integer) IS
   'The menu CTE reads only lines on a current menu (restaurant_menus.status '
   '= ''active'', ADR 0193) and excludes status = ''discarded'' lines. '
   'The pos book is the till''s own record, house_till_lines. A till name joins '
-  'the row of the other four books whose key equals its key, else the row '
-  'with the most words among those whose every word it holds; rows level at '
-  'the top tie, and the name joins none (tied_lines). A name that holds no '
-  'row''s full words tries each menu or order row''s name without its maker, '
-  'by the same rules. A name that joins no '
+  'one row of the other four books, menu rows first: an invoice, order or '
+  'quote row takes only a name that no menu row contains, by its full words '
+  'or its name without the maker. Among the '
+  'rows of that first pass, the row whose key equals its key wins, else the '
+  'row with the most product words among those whose every word it holds; '
+  'size words (a number and volume unit in a row''s label) decide only '
+  'between rows level on product words; rows level on both tie, and the name '
+  'joins none (tied_lines). A name that holds no menu row''s full words tries '
+  'each menu row''s name without its maker; one that reaches no menu row and '
+  'holds no other row''s full words tries each other order row''s name '
+  'without its maker, by the same rules. A name that joins no '
   'row is a row of its own when the queue ever held it. Sold is split into '
   'poured_bottles, poured_glasses and poured_unit_unknown; till_names lists '
   'the names counted on the row, tied_names the names that tied on it '
