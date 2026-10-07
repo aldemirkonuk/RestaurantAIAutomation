@@ -3,7 +3,10 @@
 -- and files no paper read them blank. Migration
 -- the_cellar_counts_the_door_checked_price (ADR 0301 §2; the founder's pick
 -- "Door-checked, labelled (Recommended)") counts the door-checked price,
--- marked door-checked, until a filed invoice takes over.
+-- marked door-checked, until an invoice linked to the order, or paired with
+-- its line, takes over. An invoice filed but neither linked nor paired does
+-- not take over: T18 pins that one delivery then counts twice, a limit ADR
+-- 0301 names (Harder / given up, 2026-10-07), not a ruling.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` stops at the first one. Run
@@ -24,7 +27,9 @@
 -- by name), on the build whose ORDER BY added door_checked_lines itself
 -- (Triple Door at 6, above Yellow Five Orders at 5), and on an ORDER BY that
 -- weighs a door row as 2 (Triple Door at 5, level with Yellow Five Orders and
--- above it by name).
+-- above it by name). T18 fails on a build without the migration too (no
+-- house_door_checked); on this build it fails the day a door row steps aside
+-- for an invoice nobody linked, which is the open fork it pins.
 
 begin;
 
@@ -498,6 +503,73 @@ begin
   select l.label into first_row
     from public.house_beverage_ledger('a3014000-0000-4000-8000-000000000001'::uuid, 1) l;
   assert first_row = 'Zqdc Yellow Five Orders', format('T17 FAIL the ledger''s first row is %s, expected Zqdc Yellow Five Orders', first_row);
+end $$;
+
+-- T18 (a pin of a recorded limit, not a ruling) ONE delivery counted twice.
+-- Zqdc One Delivery is one order, o24, checked at the door on 2026-08-20 at
+-- 35.00 a bottle with 6 bottles accepted. The invoice for those same 6
+-- bottles is filed the same day for 210 from the same vendor, but it is
+-- neither linked to o24 nor paired with its line (filed without the order's
+-- PO number, say). house_door_checked steps aside only for an invoice linked
+-- to the order or paired with its line, so the door row stays, and the
+-- bought block counts the one delivery twice: Paid 420 (210 + 210), bottles
+-- 12 (6 + 6). This is today's behaviour, named as a limit in ADR 0301
+-- (Consequences, Harder / given up, 2026-10-07). Whether an unlinked invoice
+-- of the same delivery should make the door row step aside is an open fork,
+-- being decided by the coordinator under the founder's 2026-10-07T20:04:10Z
+-- delegation; if that changes the code, this block changes with it, and the
+-- open CLAIMS row CELLAR-DOOR-ROW-STEPS-ASIDE-FOR-AN-UNLINKED-INVOICE flips.
+-- Once the same invoice is linked to o24, the delivery counts once (T4's
+-- rule). Added after T17 so every row above keeps its numbers.
+insert into public.procurement_orders
+  (id, order_number, restaurant_id, inventory_id, provider_id, quantity, bottles_total,
+   final_price, total_cost, status, requested_at, match_verified_at) values
+  ('a3014000-0000-4000-8000-000000000501', 'ZQDC-24', 'a3014000-0000-4000-8000-000000000001', 'a3014000-0000-4000-8000-0000000000c1', 'a3014000-0000-4000-8000-0000000000b1', 6, 6, 35, 210, 'COMPLETED', '2026-08-18 09:00+00', '2026-08-20 10:00+00');
+
+insert into public.procurement_order_items (id, order_id, restaurant_id, wine_name, producer, quantity, final_unit_price) values
+  ('a3014000-0000-4000-8000-000000000601', 'a3014000-0000-4000-8000-000000000501', 'a3014000-0000-4000-8000-000000000001', 'Zqdc One Delivery', null, 6, 35);
+
+insert into public.price_history (restaurant_id, order_id, provider_id, price, quantity, unit, effective_date, source, currency, created_at) values
+  ('a3014000-0000-4000-8000-000000000001', 'a3014000-0000-4000-8000-000000000501', 'a3014000-0000-4000-8000-0000000000b1', 35.00, 6, 'bottle', '2026-08-20', 'receipt_verified', null, '2026-08-20 10:00+00');
+
+insert into public.procurement_receipt_events
+  (restaurant_id, order_id, stage, counted_qty, counted_uom, counted_qty_bottles, rejected_qty_bottles, invoice_qty_bottles, occurred_at) values
+  ('a3014000-0000-4000-8000-000000000001', 'a3014000-0000-4000-8000-000000000501', 'reconciled', 6, 'bottle', 6, 0, 6, '2026-08-20 10:00+00');
+
+-- The same delivery's invoice: filed, and linked to nothing.
+insert into public.procurement_documents (id, restaurant_id, provider_id, doc_type, source_channel, status, direction, doc_date) values
+  ('a3014000-0000-4000-8000-000000000701', 'a3014000-0000-4000-8000-000000000001', 'a3014000-0000-4000-8000-0000000000b1', 'invoice', 'manual', 'verified', 'issued_by_vendor', '2026-08-20');
+
+insert into public.procurement_document_lines
+  (document_id, restaurant_id, line_no, description, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, order_line_id) values
+  ('a3014000-0000-4000-8000-000000000701', 'a3014000-0000-4000-8000-000000000001', 1, 'Zqdc One Delivery', 6, 'bottle', 1, 6, 0, 35, 210, null);
+
+do $$
+declare r jsonb; n integer;
+begin
+  select count(*) into n from public.house_door_checked('a3014000-0000-4000-8000-000000000001'::uuid)
+   where order_id = 'a3014000-0000-4000-8000-000000000501';
+  assert n = 1, format('T18 FAIL o24 has %s door rows, expected 1: the door row stepped aside for an invoice nobody linked, so the limit ADR 0301 records has changed; settle the open fork and update this pin', n);
+  r := pg_temp.aw14_row('Zqdc One Delivery');
+  assert r is not null, 'T18 FAIL Zqdc One Delivery has no ledger row';
+  assert (r->>'invoice_lines')::int = 1 and (r->>'door_checked_lines')::int = 1,
+    format('T18 FAIL invoice_lines %s / door_checked_lines %s, expected 1 / 1 (the invoice and the door check of one delivery)', r->>'invoice_lines', r->>'door_checked_lines');
+  assert (r->>'paid_total')::numeric = 420,
+    format('T18 FAIL paid_total = %s, expected 420: the recorded limit is that one delivery of 210 counts twice when its invoice is not linked', r->>'paid_total');
+  assert (r->>'bottles_bought')::numeric = 12,
+    format('T18 FAIL bottles_bought = %s, expected 12: the 6 bottles of one delivery, counted twice', r->>'bottles_bought');
+
+  -- The same invoice, linked to o24: the door row steps aside and the
+  -- delivery counts once.
+  insert into public.procurement_document_links (document_id, order_id, restaurant_id, link_method)
+  values ('a3014000-0000-4000-8000-000000000701', 'a3014000-0000-4000-8000-000000000501', 'a3014000-0000-4000-8000-000000000001', 'manual');
+  select count(*) into n from public.house_door_checked('a3014000-0000-4000-8000-000000000001'::uuid)
+   where order_id = 'a3014000-0000-4000-8000-000000000501';
+  assert n = 0, 'T18 FAIL o24 is still a door row after its invoice was linked';
+  r := pg_temp.aw14_row('Zqdc One Delivery');
+  assert (r->>'paid_total')::numeric = 210 and (r->>'bottles_bought')::numeric = 6
+     and (r->>'door_checked_lines')::int = 0,
+    format('T18 FAIL once linked, paid %s, bottles %s, door lines %s; expected 210, 6, 0', r->>'paid_total', r->>'bottles_bought', r->>'door_checked_lines');
 end $$;
 
 rollback;
