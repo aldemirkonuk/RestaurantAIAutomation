@@ -219,34 +219,25 @@ export class AnalyticsService {
     //
     // Read whole or refused (ADR 0292): unranged, this stopped at PostgREST's
     // 1,000 rows and every demand series below was built from a slice.
-    let data: any[] = [];
-    try {
-      data = await readWholeWindow<any>(
-        "The consumption lines in this window",
-        () =>
-          client
-            .from("wine_consumption_log")
-            .select(
-              "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
-              { count: "exact" },
-            )
-            .eq("restaurant_id", restaurantId)
-            .gte("created_at", since),
-      );
-    } catch (err: any) {
-      // getFinancialSummary's dead-stock join now depends on this series, and
-      // an empty one is deliberately read as "no movement signal" rather than
-      // "no movement" — so a failure here must at least be loud in the logs.
-      // A refused whole-window read degrades the same way (documented residual,
-      // ADR 0292): one consumption lens must not take /reports' financial
-      // summary down with it.
-      this.logger.error(
-        `analytics query on wine_consumption_log failed — demand, reorder ` +
-          `science and dead stock will report empty rather than wrong: ` +
-          `${err?.message ?? err}`,
-      );
-      data = [];
-    }
+    //
+    // A refusal (`WholeReadError`, a 503) PROPAGATES, and so does a failed
+    // page: this used to return `[]` with a log line, and the financial
+    // summary, risk, inventory science and the forecast then computed as if
+    // nothing had been poured. The founder, 2026-10-06 (ADR 0292 fork 3):
+    // "Say 'could not be read' (Recommended)". Each of those lenses now
+    // refuses whole, as menu engineering and seasonality already did.
+    const data = await readWholeWindow<any>(
+      "The consumption lines in this window",
+      () =>
+        client
+          .from("wine_consumption_log")
+          .select(
+            "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("created_at", since),
+    );
     // `quantity` counts servings in the line's own mode (ADR 0011), so the
     // demand figure `qty` is BOTTLES (ADR 0297): null when the line carries no
     // bottle figure. `servings` and `volumeMl` stay for movement tests.
@@ -539,7 +530,8 @@ export class AnalyticsService {
       if (c.masterWineId) movedMasterWineIds.add(c.masterWineId);
     }
     // No movement recorded ANYWHERE is not evidence that nothing moved — it is
-    // a restaurant with no POS/consumption feed, or a loader that failed. Zero
+    // a restaurant with no POS/consumption feed (a failed or refused read of
+    // the log no longer lands here: it throws, ADR 0292 fork 3). Zero
     // rows would otherwise mark the entire cellar dead and put the whole
     // inventory value in front of a manager as idle capital. Null says "we
     // have no idea", which is the truth (ADR 0020).

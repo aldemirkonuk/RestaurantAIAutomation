@@ -155,14 +155,17 @@ describe("recordConsumption must not silently omit a row", () => {
       .spyOn((s as any).logger, "error")
       .mockImplementation(() => undefined);
 
+    // The real signature (ADR 0281 added the sale instant). These calls once
+    // passed an older argument list, which still ran because the method is
+    // reached through `any`.
     await (s as any).recordConsumption(
       "r-1",
-      { inventory_id: "inv-1", name: "Test Wine" },
+      { inventory_id: "inv-1", name: "Test Wine", qty: 1, price: 12.5 },
+      { mode: "whole_bottle" },
+      { bottleMl: 750, pourMl: null, menuPrice: null },
       1,
-      "bottle",
-      750,
-      12.5,
       "pos:chk-1:1",
+      "2026-09-12T21:00:00.000Z",
     );
 
     const said = [...warn.mock.calls, ...error.mock.calls].flat().join(" ");
@@ -178,14 +181,17 @@ describe("recordConsumption must not silently omit a row", () => {
       .spyOn((s as any).logger, "error")
       .mockImplementation(() => undefined);
 
+    // The real signature (ADR 0281 added the sale instant). These calls once
+    // passed an older argument list, which still ran because the method is
+    // reached through `any`.
     await (s as any).recordConsumption(
       "r-1",
-      { inventory_id: "inv-1", name: "Test Wine" },
+      { inventory_id: "inv-1", name: "Test Wine", qty: 1, price: 12.5 },
+      { mode: "whole_bottle" },
+      { bottleMl: 750, pourMl: null, menuPrice: null },
       1,
-      "bottle",
-      750,
-      12.5,
       "pos:chk-2:1",
+      "2026-09-12T21:00:00.000Z",
     );
 
     expect(sink.consumption).toHaveLength(1);
