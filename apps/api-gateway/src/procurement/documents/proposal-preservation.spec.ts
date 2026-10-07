@@ -152,13 +152,16 @@ const SUGGESTIONS_TABLE = "procurement_line_match_suggestions";
 const ORDER_ITEMS_TABLE = "procurement_order_items";
 
 /**
- * Which house's order each order line hangs off. `ol-b` is another house's.
- * Any id not listed does not exist.
+ * Which house's order each order line hangs off. `ol-b` is another house's,
+ * and so is OTHER_HOUSE_LINE, a uuid for the route, which refuses a body id
+ * that is not one. Any id not listed does not exist.
  */
+const OTHER_HOUSE_LINE = "22222222-2222-4222-8222-222222222222";
 const ORDER_LINE_HOUSE: Record<string, string> = {
   "ol-1": "rest-1",
   "ol-9": "rest-1",
   "ol-b": "rest-2",
+  [OTHER_HOUSE_LINE]: "rest-2",
 };
 
 /**
@@ -634,13 +637,11 @@ describe("confirmLineMatch — a line pairs only with its own house's order line
     expect(payload).toMatchObject({ order_line_id: null, confirmed_by: null });
   });
 
-  it("the route answers 404 for another house's order line", async () => {
-    const db = houseFixture();
-    const service = await buildService(db, noExtractor);
-    // Only the intake service is on this route's path; the other ten
-    // collaborators, in constructor order, are never reached.
+  // Only the intake service is on this route's path; the other ten
+  // collaborators, in constructor order, are never reached.
+  function routeFor(service: DocumentIntakeService) {
     const unused = null as never;
-    const controller = new DocumentsController(
+    return new DocumentsController(
       service,
       unused,
       unused,
@@ -653,18 +654,37 @@ describe("confirmLineMatch — a line pairs only with its own house's order line
       unused,
       unused,
     );
-    const UUID = "11111111-1111-4111-8111-111111111111";
+  }
+  const UUID = "11111111-1111-4111-8111-111111111111";
+  const caller = { userId: "user-1", restaurantId: "rest-1" } as never;
+
+  it("the route answers 404 for another house's order line", async () => {
+    const db = houseFixture();
+    const controller = routeFor(await buildService(db, noExtractor));
 
     const err = await controller
-      .linkLine(UUID, UUID, { orderLineId: "ol-b" }, {
-        userId: "user-1",
-        restaurantId: "rest-1",
-      } as never)
+      .linkLine(UUID, UUID, { orderLineId: OTHER_HOUSE_LINE }, caller)
       .catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(HttpException);
     expect((err as HttpException).getStatus()).toBe(HttpStatus.NOT_FOUND);
     expect(db.written(LINES_TABLE, "update")).toHaveLength(0);
+  });
+
+  // Postgres would answer 22P02 for it, which the route's catch-all makes a 500
+  // (documents.controller.ts, requireUuid's note).
+  it("the route answers 400 for a body orderLineId that is not a uuid, before any read", async () => {
+    const db = houseFixture();
+    const controller = routeFor(await buildService(db, noExtractor));
+
+    for (const bad of ["ol-b", "not-a-uuid", 42]) {
+      const err = await controller
+        .linkLine(UUID, UUID, { orderLineId: bad as never }, caller)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(HttpException);
+      expect((err as HttpException).getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    }
+    expect(db.calls).toHaveLength(0);
   });
 });
 

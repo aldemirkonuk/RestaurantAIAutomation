@@ -1593,7 +1593,8 @@ export class DocumentsController {
       "The human half of line matching. Pass orderLineId to accept a suggestion, or null to unlink one that was wrong. " +
       "The answer is APPENDED, never substituted (ADR 0059): a pairing the machine proposed keeps its proposed_confidence / proposed_method untouched, and this endpoint adds confirmed_by / confirmed_at beside them. " +
       "Only a pairing no machine ever proposed gets match_method 'manual' — there is no proposal there to preserve. " +
-      "An orderLineId that is not a line of one of this restaurant's orders is refused with 404, the same answer as an id that does not exist.",
+      "An orderLineId that is not a uuid is refused with 400 before any read. " +
+      "A uuid that is not a line of one of this restaurant's orders is refused with 404, the same answer as an id that does not exist.",
   })
   async linkLine(
     @Param("id") documentId: string,
@@ -1603,13 +1604,25 @@ export class DocumentsController {
   ) {
     requireUuid(documentId, "document id");
     requireUuid(lineId, "line id");
+    // The body's id reaches the same uuid column, through the ownership read in
+    // confirmLineMatch. Malformed, it would come back as 22P02 and leave the
+    // catch below as a 500, so it is the caller's 400 here, before any read.
+    const orderLineId = body?.orderLineId ?? null;
+    if (
+      orderLineId !== null &&
+      !(typeof orderLineId === "string" && UUID_RE.test(orderLineId))
+    )
+      throw new HttpException(
+        "The orderLineId in this request is not an id we can read.",
+        HttpStatus.BAD_REQUEST,
+      );
     try {
       return await this.intake.confirmLineMatch(
         documentId,
         lineId,
         user.restaurantId,
         user.userId,
-        body?.orderLineId ?? null,
+        orderLineId,
       );
     } catch (error) {
       if (error?.message === "NOT_FOUND")
