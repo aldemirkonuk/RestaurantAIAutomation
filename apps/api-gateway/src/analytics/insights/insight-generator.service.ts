@@ -17,6 +17,7 @@ import {
   InsightEvidence,
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
+import { readWholeWindow } from "../../common/read-whole-window";
 import { DayExclusionsService } from "./day-exclusions.service";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import {
@@ -188,8 +189,20 @@ export const BASKET_MIN_LIFT = 1.3;
  *       would show it twice once the new row lands; it is refused and
  *       recomputed. (Drafted as 4 on 2026-10-03; #602 took 4 first, so this
  *       change is 5 — no ADR 0291 row was ever written at 4.)
- *   6, 7 — lanes cap (ADR 0292, PR #609) and stockout (ADR 0299, PR #619).
- *       Each lands before 8.
+ *   6 — 2026-10-04 (ADR 0292): the bundle reads `pos_checks` and
+ *       `wine_consumption_log` whole (`readWholeWindow`), where it used to
+ *       read the first 1,000 rows PostgREST returned and name them a window.
+ *       A row below 6 may hold a sentence computed from that slice: the
+ *       sim's Saturday 2026-08-15 read "97% lower ($274 vs $10.8k)" where the
+ *       whole window says about 14.6% lower. Those rows are refused and
+ *       recomputed, not served until their category's cadence comes round.
+ *       Lane cap first took 4 on its branch; sig (ADR 0272) landed 4 first
+ *       and rec (ADR 0291) takes 5, so this change is 6: a row written by
+ *       either earlier change predates it.
+ *   7 — held for lane stockout (ADR 0299, PR #619), which writes its own
+ *       line here; #619 was not on `main` when this change merged 6 in. If
+ *       this change reaches `main` first, #619 takes one past the version on
+ *       `main` at its merge, by later-truth, and 7 is never used.
  *   8 — 2026-10-05 (ADR 0303): a hidden table leaves every table insight
  *       (rank, correlation, drivers, live surge), and so does a retired one
  *       or a check with no table; the driver fit reads only recorded seat
@@ -643,16 +656,26 @@ export class InsightGeneratorService {
     // through `toDaily` and every one of them must honour the same list.
     const exclusions = await this.dayExclusions.load(restaurantId);
 
+    // The two window reads go through `readWholeWindow` (ADR 0292). Unranged,
+    // they stopped at PostgREST's 1,000 rows: the sales-dip rule then read
+    // Saturday Aug 15 as $274 against a $10.8k average, "97% lower", over a
+    // day the feed puts about 15% down (A-004). The whole rows are put back
+    // into the `{ data, error }` shape `ok()` reads; a refusal REJECTS, which
+    // the loop below logs, and the family stays silent rather than wrong.
+    const whole = (rows: unknown[]) => ({ data: rows, error: null });
     const [cons, ords, inv, checks, tables, venue, goals] =
       await Promise.allSettled([
-        client
-          .from("wine_consumption_log")
-          // No master_wine_id column — resolve via the inventory FK.
-          .select(
-            "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
-          )
-          .eq("restaurant_id", restaurantId)
-          .gte("created_at", since90),
+        readWholeWindow("The insight bundle's consumption lines", () =>
+          client
+            .from("wine_consumption_log")
+            // No master_wine_id column — resolve via the inventory FK.
+            .select(
+              "id, inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("created_at", since90),
+        ).then(whole),
         client
           .from("procurement_orders")
           // NO provider_name column on procurement_orders (see
@@ -673,15 +696,18 @@ export class InsightGeneratorService {
           )
           .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
-        client
-          .from("pos_checks")
-          .select(
-            "id, source, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
-          )
-          .eq("restaurant_id", restaurantId)
-          // Voided checks are not revenue — see pos_checks.voided.
-          .eq("voided", false)
-          .gte("opened_at", since90),
+        readWholeWindow("The insight bundle's POS checks", () =>
+          client
+            .from("pos_checks")
+            .select(
+              "id, source, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            // Voided checks are not revenue — see pos_checks.voided.
+            .eq("voided", false)
+            .gte("opened_at", since90),
+        ).then(whole),
         client
           .from("restaurant_tables")
           .select(
