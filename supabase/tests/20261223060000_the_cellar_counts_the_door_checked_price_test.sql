@@ -21,8 +21,10 @@
 -- sitting below Campari. T15 and T16 are pins: they pass on that build too.
 -- T17 is the same pick on a row with three door lines, which count as one
 -- book: it FAILS on that build (Triple Door level with Three Orders, below it
--- by name) and on the build whose ORDER BY added door_checked_lines itself
--- (Triple Door at 6, above Five Orders at 5).
+-- by name), on the build whose ORDER BY added door_checked_lines itself
+-- (Triple Door at 6, above Yellow Five Orders at 5), and on an ORDER BY that
+-- weighs a door row as 2 (Triple Door at 5, level with Yellow Five Orders and
+-- above it by name).
 
 begin;
 
@@ -432,11 +434,14 @@ end $$;
 
 -- T17 (ruling A) three door lines on one row are one book, not three. Added
 -- after T16 so the rows above keep their numbers. Triple Door has three
--- orders, each door-checked (o13-o15); Five Orders has five orders and Three
--- Orders three, none checked (o16-o23). Their order weights are 3 + 1 = 4,
--- 5 and 3. Counting the door lines instead (3 + 3 = 6) puts Triple Door above
--- Five Orders; counting no door puts it level with Three Orders, which then
--- sorts first by name.
+-- orders, each door-checked (o13-o15); Yellow Five Orders has five orders and
+-- Three Orders three, none checked (o16-o23). Their order weights are
+-- 3 + 1 = 4, 5 and 3. Counting the door lines instead (3 + 3 = 6) puts Triple
+-- Door above Yellow Five Orders; weighing a door row as 2 (3 + 2 = 5, a CASE
+-- giving 2 or least(door_checked_lines, 2)) puts it level, and the name then
+-- puts Triple Door first: the five-order row is named "Yellow" so that it
+-- sorts after Triple Door and loses that tie. Counting no door puts Triple
+-- Door level with Three Orders, which then sorts first by name.
 insert into public.procurement_orders
   (id, order_number, restaurant_id, inventory_id, provider_id, quantity, bottles_total,
    final_price, total_cost, status, requested_at, match_verified_at)
@@ -450,7 +455,7 @@ insert into public.procurement_order_items (id, order_id, restaurant_id, wine_na
 select ('a3014000-0000-4000-8000-0000000004' || lpad(g::text, 2, '0'))::uuid,
        ('a3014000-0000-4000-8000-0000000003' || lpad(g::text, 2, '0'))::uuid,
        'a3014000-0000-4000-8000-000000000001',
-       case when g <= 3 then 'Zqdc Triple Door' when g <= 8 then 'Zqdc Five Orders' else 'Zqdc Three Orders' end,
+       case when g <= 3 then 'Zqdc Triple Door' when g <= 8 then 'Zqdc Yellow Five Orders' else 'Zqdc Three Orders' end,
        null, 6, 20
   from generate_series(1, 11) g;
 
@@ -469,7 +474,7 @@ select 'a3014000-0000-4000-8000-000000000001', ('a3014000-0000-4000-8000-0000000
 
 do $$
 declare t jsonb := pg_temp.aw14_row('Zqdc Triple Door');
-        f jsonb := pg_temp.aw14_row('Zqdc Five Orders');
+        f jsonb := pg_temp.aw14_row('Zqdc Yellow Five Orders');
         h jsonb := pg_temp.aw14_row('Zqdc Three Orders');
         first_row text;
 begin
@@ -479,20 +484,20 @@ begin
     format('T17 FAIL Triple Door reads door %s, order %s, invoice %s, books %s; expected 3, 3, 0, ["order"]',
            t->>'door_checked_lines', t->>'order_lines', t->>'invoice_lines', t->'books');
   assert (f->>'order_lines')::int = 5 and (f->>'door_checked_lines')::int = 0,
-    format('T17 FAIL Five Orders reads order %s, door %s; expected 5, 0', f->>'order_lines', f->>'door_checked_lines');
+    format('T17 FAIL Yellow Five Orders reads order %s, door %s; expected 5, 0', f->>'order_lines', f->>'door_checked_lines');
   assert (h->>'order_lines')::int = 3 and (h->>'door_checked_lines')::int = 0,
     format('T17 FAIL Three Orders reads order %s, door %s; expected 3, 0', h->>'order_lines', h->>'door_checked_lines');
-  assert pg_temp.aw14_pos('Zqdc Five Orders') < pg_temp.aw14_pos('Zqdc Triple Door'),
-    format('T17 FAIL Triple Door sits at %s, above Five Orders at %s: its three door lines counted as three books',
-           pg_temp.aw14_pos('Zqdc Triple Door'), pg_temp.aw14_pos('Zqdc Five Orders'));
+  assert pg_temp.aw14_pos('Zqdc Yellow Five Orders') < pg_temp.aw14_pos('Zqdc Triple Door'),
+    format('T17 FAIL Triple Door sits at %s, above Yellow Five Orders at %s: its door lines weighed more than one book',
+           pg_temp.aw14_pos('Zqdc Triple Door'), pg_temp.aw14_pos('Zqdc Yellow Five Orders'));
   assert pg_temp.aw14_pos('Zqdc Triple Door') < pg_temp.aw14_pos('Zqdc Three Orders'),
     format('T17 FAIL Triple Door sits at %s, below Three Orders at %s: its door lines counted as no book',
            pg_temp.aw14_pos('Zqdc Triple Door'), pg_temp.aw14_pos('Zqdc Three Orders'));
-  -- p_limit cuts in the same order: the ledger's first row is Five Orders (5),
+  -- p_limit cuts in the same order: the ledger's first row is Yellow Five Orders (5),
   -- not Triple Door.
   select l.label into first_row
     from public.house_beverage_ledger('a3014000-0000-4000-8000-000000000001'::uuid, 1) l;
-  assert first_row = 'Zqdc Five Orders', format('T17 FAIL the ledger''s first row is %s, expected Zqdc Five Orders', first_row);
+  assert first_row = 'Zqdc Yellow Five Orders', format('T17 FAIL the ledger''s first row is %s, expected Zqdc Yellow Five Orders', first_row);
 end $$;
 
 rollback;
