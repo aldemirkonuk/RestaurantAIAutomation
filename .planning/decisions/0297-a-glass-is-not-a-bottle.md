@@ -14,7 +14,7 @@ ADR 0011 (Locked) makes the summary view's two count columns mode counts (`0011:
 
 - A volume sale is written as a `glass` row whose `volume_ml` is the pour's millilitres times `quantity`.
 - A bottle sale is written as a `bottle` row.
-- The writer is `apps/api-gateway/src/pos-hub/pos-hub.service.ts:1018-1022`, with `quantity: qty` at `:1060`.
+- The writer is `apps/api-gateway/src/pos-hub/pos-hub.service.ts:1018-1022`, with `quantity: qty` at `:1060`. [2026-10-07, re-pinned at the merge of `origin/main` ca3582988: now `:1583-1587`, with `quantity: qty` at `:1625`.]
 - A 500 ml carafe is a `glass` row of 500 ml.
 
 So a 150 ml glass counted as one whole bottle, five times what it poured. A 50 ml rakı single counted fifteen times what it poured.
@@ -37,7 +37,7 @@ A bottle's size is not always known:
 
 - `restaurant_inventory.bottle_size_ml` is nullable. ADR 0124 (Locked) records it as known on 51 of 206 rows (`0124:93`).
 - ADR 0124 also rules that `master_wine_library.bottle_size_ml`'s 750 is a default, never a reading.
-- The stock of an unsized item already moves at 750 ml. `record_glass_pour` COALESCEs a missing size to 750 (`supabase/migrations/20261217112500_a_short_pour_opens_the_next_bottle.sql:102`), and pos-hub mirrors the same number (`RPC_DEFAULT_BOTTLE_ML`, `pos-hub.service.ts:26`).
+- The stock of an unsized item already moves at 750 ml. `record_glass_pour` COALESCEs a missing size to 750 (`supabase/migrations/20261217112500_a_short_pour_opens_the_next_bottle.sql:102`), and pos-hub mirrors the same number (`RPC_DEFAULT_BOTTLE_ML`, `pos-hub.service.ts:26`). [2026-10-07, at the merge of `origin/main` ca3582988: `record_glass_pour` is now defined by the newer migration `supabase/migrations/20261222100000_a_pos_sale_is_dated_by_its_check.sql` (#603), which keeps `COALESCE(ri.bottle_size_ml, 750)` at `:318`; `RPC_DEFAULT_BOTTLE_ML = 750` is now `pos-hub.service.ts:33`. All three numbers are still 750, and AW02-STAND-IN-IS-THE-STOCKS still passes against the newer migration. The founder's answer on #619 of 2026-10-07 (*Earlier answers* below) keeps the same 75 cl for the stock side of a row that states no size.]
 
 AW02 is neither the 1000-row cap (ADR 0292) nor sale-time dating (F-129), and fixing either leaves it standing.
 
@@ -45,7 +45,7 @@ AW02 is neither the 1000-row cap (ADR 0292) nor sale-time dating (F-129), and fi
 
 **The rule.** Each line's bottles come from its own mode. Three alternatives were weighed and rejected:
 
-- **Divide every line's `volume_ml` by a size, whatever its mode.** For a `bottle` line, `volume_ml` is only the writer's stamp of size × quantity, and it already carries the 750 default for an unsized item (`:1021`). A bottle line already *is* bottles. Re-deriving it from the stamp brings the default back for nothing.
+- **Divide every line's `volume_ml` by a size, whatever its mode.** For a `bottle` line, `volume_ml` is only the writer's stamp of size × quantity, and it already carries the 750 default for an unsized item (`:1021`) [2026-10-07, re-pinned at the merge of `origin/main` ca3582988: now `pos-hub.service.ts:1586`]. A bottle line already *is* bottles. Re-deriving it from the stamp brings the default back for nothing.
 - **Keep `quantity` and rename the axis "servings".** Stock, days of cover and the reorder point are in bottles. A servings velocity cannot be set against bottles on hand, and a glass would still weigh the same as a bottle.
 - **Re-read the mapping's `sale_volume_ml` at read time.** The line already carries the `volume_ml` written from that mapping at the moment of sale. Re-reading a mapping that may have changed since would rewrite history.
 
@@ -89,6 +89,7 @@ AW02 is neither the 1000-row cap (ADR 0292) nor sale-time dating (F-129), and fi
 - **R7**, from the ADR 0115 lock row (`.planning/decisions/0115-the-house-item-is-the-ledgers-key.md:920` on `origin/docs/adr-0115-drinks-lock` @d54f2de90, PR #589, unmerged): "One wine at a time (Recommended)". Each wine moves to ml once it is sized, using the 750/150 interim, and the interim is dropped after a production count.
 - **AW14**, from the 2026-10-04 answers, not yet in an ADR: "Door-checked, labelled (Recommended)". It is a labelled interim figure that holds until the better source takes over, the same shape as fork 1 (a).
 - **dash F5**, from the 2026-10-04 answers, not yet in an ADR: "Keep out, say so (Recommended)". This is the shape used here for a line with no bottle figure at all.
+- [Added 2026-10-07.] **#619's bottle size**, answered 2026-10-07 at 13:51:58Z (AskUserQuestion, session transcript; quoted in ADR 0299 rule 1 in #619's next head, which was not yet pushed on 2026-10-07 at 20:00Z, and not on `main`). Asked: *"#619: when a stock row doesn't say its bottle size, what size should the stockout count use for the bottle that's already open?"* Picked: *"Standard 75 cl, as built (Recommended)"*, which read *"The row's own size, else 75 cl: the same stand-in each glass pour uses, so stock and demand count the same bottle. No code change. We add a check that ties the two 75 cl stand-ins together, and record your pick in ADR 0299."* Rejected: *"Shared catalogue next"*, which read *"The row, then the shared wine catalogue, then 75 cl. The catalogue is almost always 75 cl, it can come from another restaurant's entry, and demand would still divide by 75 cl, so days of cover would mix two sizes. A small code change in #619 means a fresh audit."*; and *"Refuse without a size"*, which read *"No open-bottle count when the row has no size. The card says the size is missing until someone writes it. A code change in #619 means a fresh audit, and many cards go quiet until sizes are filled in."* It rules the stock side (the open bottle's size in the stockout count) for a row that states no size. It is the same 750 that fork 1 (a) gave the demand side here, so stock and demand divide by one number; it changes no code in this record.
 
 ## Decision
 
@@ -146,7 +147,7 @@ AW02 is neither the 1000-row cap (ADR 0292) nor sale-time dating (F-129), and fi
   - The reading export counts the sentences that rest in part on the stand-in. Each sentence's own counts stay in the stored feed's `evidence.units`, not in the export.
 - **Dead stock:** "moved" stays a line with servings or millilitres above 0, which is the earlier test.
 
-The POS writer never writes such a line, because it fails closed on an explicit volume below `MIN_PLAUSIBLE_SALE_ML` (`pos-hub.service.ts:78-85`) and on a derived glass with no positive pour size (`:111-118`, `:645`), and it skips a line whose quantity rounds to 0 or less (`:755-756`). Such lines can come only from `manual` or `ai_agent` rows.
+The POS writer never writes such a line, because it fails closed on an explicit volume below `MIN_PLAUSIBLE_SALE_ML` (`pos-hub.service.ts:78-85`) and on a derived glass with no positive pour size (`:111-118`, `:645`), and it skips a line whose quantity rounds to 0 or less (`:755-756`). [2026-10-07, re-pinned at the merge of `origin/main` ca3582988: the volume test is now `:473-480`, the pour-size test `:507-513` and `:65`, and the skip `:1257-1258`.] Such lines can come only from `manual` or `ai_agent` rows.
 
 ## Consequences
 
@@ -174,15 +175,15 @@ The POS writer never writes such a line, because it fails closed on an explicit 
 ## Not fixed here
 
 1. **The dashboard sales chart.**
-   - `apps/api-gateway/src/dashboard/dashboard.service.ts:893` (`existing.glasses += c.quantity || 0`) counts every line, bottle lines included, as glasses. Its select has no `consumption_type`.
-   - No page calls GET /dashboard/sales-chart. Its client, `getSalesChartData` (`apps/web/src/services/api/dashboard.ts:111`), is only re-exported (`apps/web/src/services/api/index.ts:82`), never called.
+   - `apps/api-gateway/src/dashboard/dashboard.service.ts:893` [2026-10-07, re-pinned at the merge of `origin/main` ca3582988: now `:1386`] (`existing.glasses += c.quantity || 0`) counts every line, bottle lines included, as glasses. Its select has no `consumption_type`.
+   - No page calls GET /dashboard/sales-chart. Its client, `getSalesChartData` (`apps/web/src/services/api/dashboard.ts:111`), is only re-exported (`apps/web/src/services/api/index.ts:82`), never called. [2026-10-07: it is also listed in the `dashboardApi` object (`apps/web/src/services/api/dashboard.ts:349`), and no page calls `dashboardApi.getSalesChartData` either.]
    - Open claim AW02-DASH-CHART-GLASSES.
 2. **The weekly email's Sold column.**
    - `apps/api-gateway/src/communications/scheduled-tasks.service.ts:1285` adds glasses and bottles into one figure.
    - Fork 2 is answered "Bottles · glasses (Recommended)". It is owed as its own PR in /communications once R2's pause lifts.
    - Open claim AW02-WEEKLY-SOLD-MIXED.
 3. **The 90-day divisor over a shorter history.** `advanced-analytics.service.ts:285` divides by `sinceDays` even when the house's history is shorter (60 days at Tuzlu).
-4. **Master-wine demand against per-row stock.** `getInventoryScience` keys demand on `master_wine_id` (`analytics.service.ts:635-651`), while stock is per `restaurant_inventory` row. Two rows of one wine, for example two sizes, share one demand.
+4. **Master-wine demand against per-row stock.** `getInventoryScience` keys demand on `master_wine_id` (`analytics.service.ts:635-651` [2026-10-07, re-pinned at the merge of `origin/main` ca3582988: now `:627-643`]), while stock is per `restaurant_inventory` row. Two rows of one wine, for example two sizes, share one demand.
 5. **Glass revenue.** Menu engineering's margin per bottle is the bottle menu price less cost. Glass revenue per bottle-equivalent is not used.
 6. **The web quadrant register.**
    - In `apps/web/src/pages/reports/next/rp-registers-house.tsx`:
@@ -193,7 +194,7 @@ The POS writer never writes such a line, because it fails closed on an explicit 
    - It does not read `counts.unmeasured`.
    - The fix and its test are owed as a follow-up PR; this change is at its file limit.
    - Until it lands, an item whose sales include a line with no bottle figure plots at 0 bottles a day on /reports, and its "No quadrant" tile counts only `counts.unclassified`. That can happen only through a `manual` or `ai_agent` line: a glass line with no millilitres or a bottle line with a negative quantity.
-   - The restock register's empty answer (`:661`, "Nothing is below its reorder point. That is a real answer about N wines") does not read `unassessed`. With an unassessed wine it counts that wine among the ones the answer covers; `basis.demand`, shown beside it, names the unassessed rows.
+   - The restock register's empty answer (`:661` [2026-10-07, re-pinned at the merge of `origin/main` ca3582988: now `:700`], "Nothing is below its reorder point. That is a real answer about N wines") does not read `unassessed`. With an unassessed wine it counts that wine among the ones the answer covers; `basis.demand`, shown beside it, names the unassessed rows.
    - How many wines that touches is unmeasured. The read-only count is `SELECT restaurant_id, count(*) FROM wine_consumption_log WHERE (consumption_type = 'glass' AND (volume_ml <= 0 OR volume_ml = 'NaN'::float8 OR volume_ml = 'Infinity'::float8)) OR (consumption_type = 'bottle' AND quantity < 0) GROUP BY 1`.
 
 ## Review trail
@@ -203,3 +204,4 @@ Cite an audit as `audit of PR #M, round N` with its report path under `.planning
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-05 | — | Created by the `units` fix lane (branch `fix/a-glass-is-not-a-bottle`, stacked on PR #609). Forks 1 and 2 answered by the founder on 2026-10-04. |
+| 2026-10-07 | — (fix round, lane `units`, on d9b87752d) | Merged `origin/main` ca3582988 (a95cb520c), which carries #609 squashed as b270a45b8; never rebased. Nine files conflicted. #609's own three (ADR 0292, its claims and its tech-debt note) were taken from `main` whole. Four lane files were re-merged three-way against the lane's own pre-state; the lines this lane adds or removes in them are unchanged. `analytics.service.ts` loadConsumption keeps `main`'s read, which now propagates a refusal (ADR 0292 fork 3), with this lane's columns and bottle mapping on top; the lane's earlier catch that degraded a refused read to no lines is gone. The index keeps `main`'s rows plus 0297's. `INSIGHT_GENERATOR_VERSION` moved 8 → 9 (bracket under *Consequences*; claim AW02-GENERATOR-VERSION-9), re-checked at merge. The consumption stub in `consumption-units.spec.ts` now returns only the columns a reader selects, and four stated-size cases fail when any reader stops selecting `bottle_size_ml`. The pos-hub, dashboard, `analytics.service.ts` and register cites that `main` moved are re-pinned in brackets. The founder's #619 bottle-size answer (2026-10-07T13:51:58Z) is quoted under *Earlier answers*. AW02-STAND-IN-IS-THE-STOCKS's text now names the newer `record_glass_pour` migration (`:318`); its check already reads the newest one, and all three numbers are still 750. No new founder fork. |
