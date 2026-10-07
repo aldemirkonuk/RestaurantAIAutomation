@@ -1592,7 +1592,8 @@ export class DocumentsController {
     description:
       "The human half of line matching. Pass orderLineId to accept a suggestion, or null to unlink one that was wrong. " +
       "The answer is APPENDED, never substituted (ADR 0059): a pairing the machine proposed keeps its proposed_confidence / proposed_method untouched, and this endpoint adds confirmed_by / confirmed_at beside them. " +
-      "Only a pairing no machine ever proposed gets match_method 'manual' — there is no proposal there to preserve.",
+      "Only a pairing no machine ever proposed gets match_method 'manual' — there is no proposal there to preserve. " +
+      "An orderLineId that is not a line of one of this restaurant's orders is refused with 404, the same answer as an id that does not exist.",
   })
   async linkLine(
     @Param("id") documentId: string,
@@ -1613,6 +1614,13 @@ export class DocumentsController {
     } catch (error) {
       if (error?.message === "NOT_FOUND")
         throw new HttpException("Line not found", HttpStatus.NOT_FOUND);
+      // The same answer for another house's order line and for an id that does
+      // not exist (document-intake.service.ts, confirmLineMatch).
+      if (error?.message === "ORDER_LINE_NOT_FOUND")
+        throw new HttpException(
+          "This restaurant has no order line with that id, so the line was not paired.",
+          HttpStatus.NOT_FOUND,
+        );
       throw new HttpException(
         error?.message || "Failed to confirm the pairing",
         HttpStatus.INTERNAL_SERVER_ERROR,
