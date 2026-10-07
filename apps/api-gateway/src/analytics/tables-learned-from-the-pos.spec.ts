@@ -111,6 +111,9 @@ const check = (over: Row = {}): Row => ({
   closed_at: "2026-09-20T20:30:00+00:00",
   covers: 2,
   total: 100,
+  // A till check states its subtotal too. Net sales read it (ADR 0295, #615);
+  // it follows the total unless a test sets it, so the gross reading is unchanged.
+  subtotal: (over as { total?: number }).total ?? 100,
   tip: 10,
   items: [],
   ...over,
