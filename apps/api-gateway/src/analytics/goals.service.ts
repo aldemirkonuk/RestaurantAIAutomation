@@ -5,6 +5,7 @@ import { AnalyticsService } from "./analytics.service";
 import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
   ModelClientService,
   NfEventRef,
@@ -829,7 +830,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * That catch logs and falls through to a sum of nothing, which returns
      * `0` — the shape that lets a failed query read as "this house bought
      * nothing". The other six metrics have lived with it since before this
-     * change and repairing them is its own piece of work; what must not happen
+     * change and repairing them is its own piece of work (since ADR 0292 the
+     * check and consumption reads refuse through it with `WholeReadError`;
+     * `purchase_spend` still falls through); what must not happen
      * is a NEW metric inheriting it, because a days-of-stock goal reading
      * "0 days" is not a light cellar, it is an unread one.
      *
@@ -891,15 +894,23 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             o.total_cost || o.final_price || 0,
           );
       } else if (metricKey === "bottles_sold") {
-        let q = client
-          .from("wine_consumption_log")
-          .select("quantity, volume_ml, created_at")
-          .eq("restaurant_id", restaurantId)
-          .gte("created_at", sinceIso);
-        if (untilIso) q = q.lte("created_at", untilIso);
-        const { data } = await q;
-        rowCount = (data || []).length;
-        for (const c of data || [])
+        // Read whole or refused (ADR 0292): an unranged select stopped at
+        // PostgREST's 1,000 rows and reported the first thousand lines as
+        // the window's bottles.
+        const lines = await readWholeWindow<any>(
+          "The consumption lines in this window",
+          () => {
+            let q = client
+              .from("wine_consumption_log")
+              .select("id, quantity, volume_ml, created_at", { count: "exact" })
+              .eq("restaurant_id", restaurantId)
+              .gte("created_at", sinceIso);
+            if (untilIso) q = q.lte("created_at", untilIso);
+            return q;
+          },
+        );
+        rowCount = lines.length;
+        for (const c of lines)
           add(
             (c.created_at || "").substring(0, 10),
             c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
@@ -910,18 +921,40 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         // for POS revenue on four web surfaces, and a second hand-written sum
         // of `pos_checks` would be free to drift from the one goal progress
         // already trusts.
-        let q = client
-          .from("pos_checks")
-          .select("subtotal, opened_at, closed_at, items")
-          .eq("restaurant_id", restaurantId)
-          // Voided checks are not revenue — see pos_checks.voided. Goal progress
-          // is the most visible of the three readers: it drives the sentences the
-          // hourly sweep shows the owner.
-          .eq("voided", false)
-          .gte("opened_at", sinceIso);
-        if (untilIso) q = q.lte("opened_at", untilIso);
-        const { data } = await q;
-        const checks = data || [];
+        //
+        // Read whole or refused (ADR 0292). The unranged select this replaces
+        // stopped at PostgREST's 1,000 rows: the 90-day till counted 1,000 of
+        // 3,313 checks, $187k against $626k, with no day after Aug 15 (A-005).
+        // `items` is fetched only for the two metrics that read it, so the
+        // 365-day ribbon does not page every check's lines for a sum of net
+        // sales. `subtotal`, not `total`: these sales are net (ADR 0295).
+        const needsItems =
+          metricKey === "wine_revenue" || metricKey === "wine_attach_rate";
+        const checks = await readWholeWindow<any>(
+          "The POS checks in this window",
+          () => {
+            let q: any = needsItems
+              ? client
+                  .from("pos_checks")
+                  .select("id, subtotal, opened_at, closed_at, items", {
+                    count: "exact",
+                  })
+              : client
+                  .from("pos_checks")
+                  .select("id, subtotal, opened_at, closed_at", {
+                    count: "exact",
+                  });
+            q = q
+              .eq("restaurant_id", restaurantId)
+              // Voided checks are not revenue — see pos_checks.voided. Goal
+              // progress is the most visible of the three readers: it drives
+              // the sentences the hourly sweep shows the owner.
+              .eq("voided", false)
+              .gte("opened_at", sinceIso);
+            if (untilIso) q = q.lte("opened_at", untilIso);
+            return q;
+          },
+        );
         rowCount = checks.length;
         if (metricKey === "pos_revenue") {
           // Net sales (ADR 0295): the till's subtotal, before tax and
@@ -992,6 +1025,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         }
       }
     } catch (err: any) {
+      // A window that could not be read whole is never summed to a figure:
+      // it reaches the caller, which already says "could not be read" per
+      // goal (listGoalsWithProgress) and refuses rather than writing a wrong
+      // baseline (createGoal) or current_value (getGoalProgress). ADR 0292.
+      if (err instanceof WholeReadError) throw err;
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
     }
 
