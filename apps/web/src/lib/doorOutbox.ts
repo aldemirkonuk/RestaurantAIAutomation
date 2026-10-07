@@ -18,7 +18,11 @@
  */
 
 import { offlineStorage } from './offline-storage'
-import { receivingApi, type DoorReceiptRequest } from '../services/api/receiving'
+import {
+  receivingApi,
+  type DoorFactTime,
+  type DoorReceiptRequest,
+} from '../services/api/receiving'
 import {
   currentQueueOwner,
   isPermanentRefusal,
@@ -339,6 +343,8 @@ export async function submitDoorReceipt(
    */
   stockBooked?: boolean
   stockIssue?: string
+  /** Whose clock dated the delivery, passed through for the screen to say. */
+  factTime?: DoorFactTime
 }> {
   if (!navigator.onLine) {
     await queue(entry)
@@ -352,6 +358,7 @@ export async function submitDoorReceipt(
       alreadyRecorded: res.alreadyRecorded,
       stockBooked: res.stockBooked,
       stockIssue: res.stockIssue,
+      factTime: res.factTime,
     }
   } catch (err) {
     // A 4xx means the server understood and refused; retrying will not help and
