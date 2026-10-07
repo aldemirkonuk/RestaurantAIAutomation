@@ -13,7 +13,7 @@
  *  4. a tenant switch never leaves the previous restaurant's entries painted.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 const auth = vi.hoisted(() => ({ rid: 'r1' as string | null }));
@@ -31,6 +31,7 @@ vi.mock('@/services/api/client', () => ({ apiClient: api }));
 vi.mock('@/services/api/team', () => ({ getTeamMembers: vi.fn(async () => []) }));
 
 import { useRecommendationsNextData } from './useRecommendationsNextData';
+import { getTeamMembers } from '@/services/api/team';
 
 const FEED = {
   recommendations: [
@@ -810,5 +811,129 @@ describe('round 6 reads and writes', () => {
       await result.current.setDisposition(result.current.entries[0], { feedback: 'helpful' }, 'Noted.', false);
     });
     expect(result.current.undo).toBeNull();
+  });
+});
+
+/**
+ * OPS-03: everything the page shows about a house is that house's. The tab
+ * counts and the Standing figures go back to "not read" in the same render
+ * as a switch, on every leaf; the roster is read for the house on screen,
+ * says "reading" while it is read, and a failed read can be read again.
+ */
+describe('a house switch, the figures and the roster (OPS-03)', () => {
+  const team = vi.mocked(getTeamMembers);
+  type Member = Awaited<ReturnType<typeof getTeamMembers>>[number];
+  const member = (id: string, name: string, status?: string) =>
+    ({ id, restaurant_id: 'r1', user_id: null, display_name: name, status }) as unknown as Member;
+  afterEach(() => {
+    team.mockReset();
+    team.mockImplementation(async () => []);
+  });
+
+  it('the last house’s counts and figures are gone in the render that switches, even on a leaf that never reads them', async () => {
+    const { result, rerender } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.counts).not.toBeNull());
+    expect(result.current.rulesEvaluated).toBe(17);
+    act(() => result.current.setLeaf('snoozed'));
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.counts).toEqual({ active: 1, snoozed: 2, dismissed: 3, done: 4 });
+
+    auth.rid = 'r2';
+    rerender();
+    expect(result.current.counts).toBeNull();
+    expect(result.current.rulesEvaluated).toBeNull();
+    expect(result.current.generatedAt).toBeNull();
+    expect(result.current.suppressed).toBeNull();
+    expect(result.current.sourcesUnread).toBeNull();
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(api.get).toHaveBeenCalledWith('/analytics/recommendations/r2/actions?status=snoozed');
+    // The Snoozed leaf never reads the figures: they stay unread, not r1's.
+    expect(result.current.counts).toBeNull();
+    expect(result.current.rulesEvaluated).toBeNull();
+  });
+
+  it('the roster read for the last house is not offered in the new one', async () => {
+    team.mockImplementationOnce(async () => [member('m1', 'Ayşe', 'active')]);
+    const { result, rerender } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.loadTeam());
+    await waitFor(() => expect(result.current.team).toEqual([{ id: 'm1', name: 'Ayşe' }]));
+
+    auth.rid = 'r2';
+    rerender();
+    expect(result.current.team).toBeUndefined();
+    team.mockImplementationOnce(async () => [member('m2', 'Deniz', 'active')]);
+    act(() => result.current.loadTeam());
+    expect(team).toHaveBeenLastCalledWith('r2');
+    await waitFor(() => expect(result.current.team).toEqual([{ id: 'm2', name: 'Deniz' }]));
+  });
+
+  it('the last house’s roster answering late is dropped', async () => {
+    const held: Record<string, (rows: Member[]) => void> = {};
+    team.mockImplementation(
+      (rid?: string) => new Promise<Member[]>((res) => { held[String(rid)] = res; }),
+    );
+    const { result, rerender } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.loadTeam());
+    expect(team).toHaveBeenLastCalledWith('r1');
+
+    auth.rid = 'r2';
+    rerender();
+    act(() => result.current.loadTeam());
+    expect(team).toHaveBeenLastCalledWith('r2');
+    await act(async () => held.r2([member('m2', 'Deniz', 'active')]));
+    expect(result.current.team).toEqual([{ id: 'm2', name: 'Deniz' }]);
+    await act(async () => held.r1([member('m1', 'Ayşe', 'active')]));
+    expect(result.current.team).toEqual([{ id: 'm2', name: 'Deniz' }]);
+  });
+
+  it('reading says reading, a failed read says failed, and opening the menu again reads again', async () => {
+    let fail: (e: unknown) => void = () => {};
+    team.mockImplementationOnce(
+      () => new Promise<Member[]>((_, rej) => { fail = rej; }),
+    );
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.loadTeam());
+    act(() => result.current.loadTeam());
+    expect(team).toHaveBeenCalledTimes(1);
+    expect(result.current.team).toBeUndefined();
+    expect(result.current.teamFailed).toBe(false);
+
+    await act(async () => fail(new Error('503')));
+    expect(result.current.team).toBeNull();
+    expect(result.current.teamFailed).toBe(true);
+
+    team.mockImplementationOnce(async () => [member('m1', 'Ayşe', 'active')]);
+    act(() => result.current.loadTeam());
+    expect(team).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.team).toEqual([{ id: 'm1', name: 'Ayşe' }]));
+    // An answered roster is not read again for the same house.
+    act(() => result.current.loadTeam());
+    expect(team).toHaveBeenCalledTimes(2);
+  });
+
+  it('a body that is not a list is a failed read, and only active rows are offered', async () => {
+    team.mockImplementationOnce(async () => ({}) as unknown as Member[]);
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.loadTeam());
+    await waitFor(() => expect(result.current.teamFailed).toBe(true));
+    expect(result.current.team).toBeNull();
+
+    team.mockImplementationOnce(async () => [
+      member('m1', 'Ayşe', 'active'),
+      member('m2', 'Deniz', 'trial'),
+      member('m3', 'Ece', 'inactive'),
+      member('m4', 'Fatma'),
+    ]);
+    act(() => result.current.loadTeam());
+    await waitFor(() =>
+      expect(result.current.team).toEqual([
+        { id: 'm1', name: 'Ayşe' },
+        { id: 'm4', name: 'Fatma' },
+      ]),
+    );
   });
 });
