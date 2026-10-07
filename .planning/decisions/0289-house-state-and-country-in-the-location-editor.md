@@ -4,11 +4,14 @@
   apply: the choice of (a), 2026-10-04 ~00:30Z, *"Add it to the editor (Recommended)"*;
   R1's owner and R3's United States rule, 2026-10-04 ~02:10Z, *"The house's owner
   (Recommended)"* and *"Required for US (Recommended)"*; and the method, answered
-  2026-10-07 (recorded 12:54:27Z; the answer's own second was not taken), *"Keep all, as
+  2026-10-07 at 12:54:16Z **[corrected 2026-10-07: was "recorded 12:54:27Z; the answer's own second was not taken". 12:54:27Z was when the coordinator ran `date -u`; the transcript stamps the answer itself at 12:54:16Z.]**, *"Keep all, as
   built (Recommended)"*, which keeps R2, R3, R4, R5 and R8 as built (quoted under "The
   founder's words, 2026-10-07"). Two consequences of R3 were not in that question and
   stay his open forks: US territories, and two-letter provinces abroad (see "Open forks").
-  Until he answers them, the code refuses both, as built. **[Locked 2026-10-07 by that
+  Until he answers them, the code refuses both, as built. **[2026-10-07, 14:41:21Z: he
+  answered the first. Every ISO country code goes in the country table, in a follow-up
+  PR; this PR is unchanged. For the second he asked for research before he rules. Both
+  are quoted under "Open forks".]** **[Locked 2026-10-07 by that
   answer. Was: "Locked for the ruling, and Proposed for the method. The ruling is the
   founder's, in three answers, each quoted where it applies: the choice of (a),
   2026-10-04 ~00:30Z, *"Add it to the editor (Recommended)"*; and the two forks it left
@@ -231,7 +234,7 @@ and distributor panels, and the statute named in the mail-retention notice (R7).
 
 ## The founder's words, 2026-10-07 (verbatim, binding)
 
-Answered 2026-10-07 (recorded 12:54:27Z; the answer's own second was not taken), with
+Answered 2026-10-07 at 12:54:16Z **[corrected 2026-10-07: was "recorded 12:54:27Z; the answer's own second was not taken". 12:54:27Z was when the coordinator ran `date -u`; the transcript stamps the answer itself at 12:54:16Z.]**, with
 AskUserQuestion:
 
 - **Question:** *"#613 (owner sets the house's state and country): you ruled the state is
@@ -260,10 +263,40 @@ answers, the code refuses both.
    United States state" (`house-state-country.ts` `checkStateFor`, probed 2026-10-07 at
    the merged head), and the country table has no row coded PR, GU, VI, AS or MP. A house
    in a territory cannot save the pair.
+
+   **[Answered 2026-10-07, 14:41:21Z, with AskUserQuestion (verbatim, binding).**
+   - **Question:** *"#613: Puerto Rico, Guam and the other US territories can't save an
+     address at all today. How should the country list handle places like them?"*
+   - **Picked:** **"Every ISO country code (Recommended)"**. The option text was: *"Add
+     about 54 rows (Puerto Rico, Guam, Hong Kong, Gibraltar, Réunion…), each with its own
+     currency, clock and address search. A follow-up PR; #613 merges as locked. Missing DR
+     Congo and Côte d'Ivoire get fixed as a defect either way."*
+   - **Rejected:** *"Just the US territories"* (*"Add only the five US territories as their
+     own entries. Smaller, but the same gap stays for Hong Kong, Gibraltar and the
+     rest."*) and *"Write them as US states"* (*"Pick 'United States' and write PR as the
+     state. Brazil's PR (Paraná), Spain's GU/VI and India's AS/MP would then start reading
+     as US territories, and the address search for 'United States' doesn't find San
+     Juan."*).
+
+   So the country table becomes every ISO 3166-1 code, territories as their own
+   countries, in a follow-up PR. The same PR adds the two sovereign states the table lacks
+   today, CD (DR Congo) and CI (Côte d'Ivoire), which is a defect, not a fork. This PR's
+   code is unchanged: until the follow-up lands, a territory house still cannot save the
+   pair.**]**
 2. **Two-letter provinces abroad.** On any other country, a two-letter state that reads as
    a US state is refused: `MI` on an Italian house, `CA` on a Spanish one, `NH` on a Dutch
    one (probed the same way). The refusal names the way out: write the name in full, or
    leave the state blank.
+
+   **[2026-10-07, 14:41:21Z: asked, not yet ruled.** The question was: *"#613: you kept
+   'refuse a US state code on a foreign house' today. An Italian owner writing 'MI' for
+   Milan is refused, while houses added another way with 'MI' are read as Michigan by the
+   market panels. Change that ruling?"*. Its options were *"Read it within the country
+   (Recommended)"* and *"Keep refusing, as locked"*. He picked neither and wrote:
+   *"research on how industry do it? in italy they would just write the city's name and
+   they don't do like US satet  short writings so."* R3 stays locked as built until he
+   rules. The research is under way, and its result goes back to him as a fresh
+   question.**]**
 
 ## Consequences
 
@@ -358,3 +391,4 @@ answers, the code refuses both.
 | 2026-10-04 | Final reviewer, HOLD | Status split into Locked for the ruling and Proposed for the method (ADR 0285's pattern), and the index row moved to the Proposed table; the Locations note scoped to the section's own edits, since currency, time zone, carrying cost, tone scoring, data terms and target margin also write the row and file settings-log rows; two more stale comments named |
 | 2026-10-06 | ADR 0090 audit at `c5f27f7a8`, PASS | No block; owed records named (readers that misread a country name, three minor limits, the #561 re-run) |
 | 2026-10-07 | Prep fixer, after merging origin/main `5e6c0684e` | Status Locked as built by the founder's 2026-10-07 answer, quoted verbatim; the US-territory and two-letter-province refusals listed as his open forks; the audit's owed records added under Consequences; the time-zone and `isOwner` cites moved by #620 corrected in brackets |
+| 2026-10-07 | Coordinator, after the founder's 14:41:21Z answers | Open fork 1 answered (every ISO country code, in a follow-up PR; CD and CI filed as a defect), quoted verbatim; open fork 2 put to him and sent back for research, his reply quoted; the 2026-10-07 answer time corrected from 12:54:27Z to 12:54:16Z in brackets |
