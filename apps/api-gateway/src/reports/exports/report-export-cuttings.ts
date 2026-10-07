@@ -769,11 +769,22 @@ function writeRestock(payload: unknown): ExportDoc {
       basis,
     });
   const unmeasured = "no measured demand — it cannot run out on a rate nobody has observed";
+  // A wine with cover and no risk sold, but on too few days for its swing to
+  // be measured (ADR 0299): its risk, reorder point and safety stock are
+  // withheld for that reason, not for "no demand".
+  const minDays = num(p.minDemandDays);
+  const unswung = `sold on ${minDays == null ? "too few days" : `fewer than ${minDays} days`} in the window; its swing is not measured`;
+  const why = (cover: number | null) => (cover == null ? unmeasured : unswung);
+  // The register lists measured risks first, then the rest by days of cover.
+  const mixed = list.some((x) => x.risk == null);
+  const order = mixed
+    ? "highest measured risk first, then the fewest days of cover"
+    : "highest risk first";
   return doc({
     figures,
     tables: [
       {
-        title: "Below the reorder point, highest risk first",
+        title: `Below the reorder point, ${order}`,
         columns: [
           { label: "Wine", unit: "text" },
           { label: "On hand", unit: "bottles" },
@@ -786,13 +797,15 @@ function writeRestock(payload: unknown): ExportDoc {
           x.name,
           figure(x.onHand, "no on-hand count returned"),
           figure(x.cover, unmeasured),
-          figure(x.reorderPoint, unmeasured),
-          figure(x.safety, unmeasured),
-          figure(x.risk, unmeasured),
+          figure(x.reorderPoint, why(x.cover)),
+          figure(x.safety, why(x.cover)),
+          figure(x.risk, why(x.cover)),
         ]),
         note:
           reorderCount > list.length
-            ? `${reorderCount} wines are below their reorder point; the ${list.length} at the highest risk are listed, as the register returns them.`
+            ? mixed
+              ? `${reorderCount} wines are below their reorder point; the first ${list.length}, ${order}, are listed, as the register returns them.`
+              : `${reorderCount} wines are below their reorder point; the ${list.length} at the highest risk are listed, as the register returns them.`
             : undefined,
       },
     ],

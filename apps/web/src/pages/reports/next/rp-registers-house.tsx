@@ -604,7 +604,13 @@ const service = analysis<ServiceRegister>({
 /* ──────────────────────────────────────────── 10. what to buy back ────── */
 
 export interface RestockRegister {
-  params: { serviceLevel: number | null; leadTimeDays: number | null; demandWindowDays: number | null };
+  params: {
+    serviceLevel: number | null;
+    leadTimeDays: number | null;
+    demandWindowDays: number | null;
+    /** Days with a sale a wine needs before it is given a risk (ADR 0299). */
+    minDemandDays: number | null;
+  };
   basis?: Record<string, string>;
   skuCount: number;
   reorderCount: number;
@@ -628,9 +634,9 @@ export interface RestockRegister {
  * noise (one part in a billion, the gateway's own `sameValue`); two risks that
  * merely PRINT alike (26.8% and 26.9%, both "27%") are not tied.
  *
- * A tie at 0% is never extended, as on the gateway's cut: it is the wines with
- * no demand and nothing on hand, a group with no risk to rank and no height to
- * draw, and extending through it drew every one of them.
+ * A tie at no risk or at 0% is never extended, as on the gateway's cut: a wine
+ * sold on too few days has a null risk (ADR 0299), with no risk to rank and no
+ * height to draw, and extending through that group would draw all of it.
  */
 function barsKeepingTies(
   rows: RestockRegister['reorderList'],
@@ -665,6 +671,7 @@ const restock = analysis<RestockRegister>({
         serviceLevel: num(p.serviceLevel),
         leadTimeDays: num(p.leadTimeDays),
         demandWindowDays: num(p.demandWindowDays),
+        minDemandDays: num(p.minDemandDays),
       },
       basis: d.basis as Record<string, string>,
       skuCount: num(d.skuCount) ?? 0,
@@ -702,8 +709,13 @@ const restock = analysis<RestockRegister>({
         notes: [],
         basis,
       };
+    // A wine sold on too few days has cover but no risk (ADR 0299): it is a
+    // gap among the bars, and with no risk anywhere there is nothing to draw.
+    const unswung = r.reorderList.filter((s) => s.stockoutProbability == null);
+    const tooFew =
+      r.params.minDemandDays == null ? 'on too few days' : `on fewer than ${figure(r.params.minDemandDays)} days`;
     return {
-      cats: {
+      cats: unswung.length === r.reorderList.length ? undefined : {
         data: barsKeepingTies(r.reorderList, 14).map((s) => ({
           label: s.name.length > 12 ? `${s.name.slice(0, 11)}…` : s.name,
           value: s.stockoutProbability,
@@ -734,12 +746,19 @@ const restock = analysis<RestockRegister>({
         })),
         more:
           r.reorderCount > r.reorderList.length
-            ? `${figure(r.reorderCount)} wines are below their reorder point; the ${figure(r.reorderList.length)} at the highest risk are listed.`
+            ? unswung.length > 0
+              ? `${figure(r.reorderCount)} wines are below their reorder point; the first ${figure(r.reorderList.length)}, highest measured risk first, then the fewest days of cover, are listed.`
+              : `${figure(r.reorderCount)} wines are below their reorder point; the ${figure(r.reorderList.length)} at the highest risk are listed.`
             : undefined,
       },
       figures,
       notes: [
         'A days-of-cover em dash means the wine has no measured demand — it cannot run out on a rate nobody has observed.',
+        ...(unswung.some((s) => s.daysOfCover != null)
+          ? [
+              `A risk or reorder-at em dash beside a days-of-cover figure means the wine sold ${tooFew} in the window: its average is known, its swing is not, and a chance of running out needs both. It is listed because its bottles do not cover the lead time at that average.`,
+            ]
+          : []),
       ],
       basis,
     };
