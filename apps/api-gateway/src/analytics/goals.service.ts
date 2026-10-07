@@ -419,7 +419,15 @@ export class GoalsService {
           this.logger.warn(
             `goal progress failed for ${g.id}: ${err?.message ?? err}`,
           );
-          return { goal: g, unreadable: true, reason: String(err?.message ?? "") };
+          // `zoneUnset` says the reason is the house's missing zone, so the
+          // reports goal card can link it to Settings, as it does the pace
+          // reason (ADR 0296 §5), without matching the sentence's words.
+          return {
+            goal: g,
+            unreadable: true,
+            reason: String(err?.message ?? ""),
+            zoneUnset: err?.message === HOUSE_ZONE_UNSET,
+          };
         }
       }),
     );

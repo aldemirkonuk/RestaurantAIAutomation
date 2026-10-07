@@ -71,6 +71,12 @@ export interface GoalRow {
   projectionHitsTarget: boolean | null;
   baseline: number | null;
   unreadable: string | null;
+  /**
+   * True when the goal could not be scored because the house has no time zone
+   * (the gateway's `zoneUnset` on an unreadable entry, ADR 0296 §5). Only then
+   * does the card draw the time-zone Settings link beside the reason.
+   */
+  zoneUnset: boolean;
 }
 
 export interface GoalsRegister {
@@ -688,6 +694,15 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                 {g.unreadable ? (
                   <p className="rp-cap" role="status">
                     This goal could not be scored ({g.unreadable}). Nothing below it is claimed.
+                    {/* The same link as beside the pace reason below. */}
+                    {g.zoneUnset && (
+                      <>
+                        {' '}
+                        <Link to="/settings?tab=time-zone" className="rp-link rp-ink rp-focus rp-no-drag">
+                          Set the time zone in Settings
+                        </Link>
+                      </>
+                    )}
                   </p>
                 ) : (
                   <>
@@ -811,6 +826,7 @@ export const goals = analysis<GoalsRegister>({
           typeof entry.projectionHitsTarget === 'boolean' ? entry.projectionHitsTarget : null,
         baseline: num(g.baseline_value),
         unreadable,
+        zoneUnset: unreadable !== null && entry.zoneUnset === true,
       };
     });
     const basis = obj(d.basis);

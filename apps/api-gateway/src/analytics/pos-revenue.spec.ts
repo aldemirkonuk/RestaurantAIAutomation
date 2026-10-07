@@ -656,7 +656,21 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     expect(list.goals[0]).toMatchObject({
       unreadable: true,
       reason: HOUSE_ZONE_UNSET,
+      zoneUnset: true,
     });
+  });
+
+  it("marks a goal that could not be read for another reason as not a zone matter", async () => {
+    const { service } = makeGoals(
+      { analytics_goals: [goal] },
+      { pos_checks: "statement timeout" },
+    );
+
+    const list: any = await service.listGoalsWithProgress("r1");
+
+    expect(list.goals[0].unreadable).toBe(true);
+    expect(list.goals[0].reason).not.toBe(HOUSE_ZONE_UNSET);
+    expect(list.goals[0].zoneUnset).toBe(false);
   });
 
   it("refuses to create a windowed goal for a house with no zone", async () => {

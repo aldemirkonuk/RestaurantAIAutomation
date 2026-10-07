@@ -11,8 +11,9 @@
  *
  * The second block is ADR 0296's other web case, a goal's pace in a house
  * with no zone, on the goals desk (its reason, with the till's time-zone
- * Settings link beside it) and the recommendations margin. It sits in this
- * file so the PR stays within its 15 files.
+ * Settings link beside it) and the recommendations margin. It also holds the
+ * same link beside a goal that could not be scored for want of a zone. It
+ * sits in this file so the PR stays within its 15 files.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -196,6 +197,33 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
     // A judged pace beside a stray reason: the caption is the judgement
     // ("Behind the pace…"), not the reason, so no link.
     expect(zoneLink({ ...STOCK, onTrack: false, daysLeft: 3 })).toBeNull();
+  });
+
+  it('draws the same link beside a goal that could not be scored for want of a zone, and beside no other reason', () => {
+    /** The gateway's sentence (`house-day.ts` HOUSE_ZONE_UNSET), as it arrives. */
+    const NO_ZONE =
+      "This house's time zone isn't set, so no sale can be filed on the house's day yet. An owner or manager can set it in Settings, under Time zone.";
+    const covers = { ...STOCK.goal, id: 'g-covers', name: 'Covers', metric_key: 'checks', direction: 'at_least' };
+    /** The card's link to the time-zone setting, with its paragraph, or null. */
+    const zoneLink = (row: unknown) => {
+      const { unmount } = render(<MemoryRouter>{goals.view(book(row), { days: 30, goals: desk }).node}</MemoryRouter>);
+      const link = screen.queryByRole('link', { name: 'Set the time zone in Settings' });
+      const found = link && { href: link.getAttribute('href'), caption: link.closest('p')?.textContent };
+      unmount();
+      return found;
+    };
+    expect(zoneLink({ goal: covers, unreadable: true, reason: NO_ZONE, zoneUnset: true })).toEqual({
+      href: '/settings?tab=time-zone',
+      caption: `This goal could not be scored (${NO_ZONE}). Nothing below it is claimed. Set the time zone in Settings`,
+    });
+    // Another reason, such as a refused read: no link.
+    expect(
+      zoneLink({ goal: covers, unreadable: true, reason: 'The POS checks in this window could not be read whole.', zoneUnset: false }),
+    ).toBeNull();
+    // A gateway from before the flag sends the sentence without it: no link.
+    expect(zoneLink({ goal: covers, unreadable: true, reason: NO_ZONE })).toBeNull();
+    // The flag is read only off an entry that could not be scored.
+    expect(book({ ...STOCK, zoneUnset: true }).goals[0].zoneUnset).toBe(false);
   });
 
   it('says the pace was not computed when a deadline has no pace and no reason came with it', () => {
