@@ -399,10 +399,12 @@ describe("The table driver fit reads only what was recorded (ADR 0051, 0053, 030
  * The founder's two rulings on the driver sentence (ADR 0303, *Ruling
  * 2026-10-07*), verbatim. The first (asked 2026-10-06 19:57:41Z, answered
  * 2026-10-07 04:15:17Z): "F-test at alpha (Recommended)". The second
- * (answered 2026-10-07, recorded 12:04:50Z): "F-test + r² > 0.15
- * (Recommended)". The sentence prints only when the fit leaves a residual
- * degree of freedom, its overall F-test passes at SIGNIFICANCE_ALPHA (0.05),
- * and its r² is above DRIVER_MIN_R2 (0.15).
+ * (answered 2026-10-07, recorded 12:04:50Z [Corrected 2026-10-07: answered
+ * 12:02:43Z per the transcript; 12:04:50Z was the coordinator's later
+ * date -u]): "F-test + r² > 0.15 (Recommended)". The sentence prints only
+ * when the fit leaves a residual degree of freedom, its overall F-test
+ * passes at SIGNIFICANCE_ALPHA (0.05), and its r² is above DRIVER_MIN_R2
+ * (0.15).
  */
 describe("The table driver sentence needs the fit's F-test at alpha and r² above 0.15 (founder, 2026-10-07)", () => {
   /** Hand-drawn tables, one per row of [kitchen m, bar m, seats, outdoor]. */
@@ -520,6 +522,118 @@ describe("The table driver sentence needs the fit's F-test at alpha and r² abov
       "kitchen distance",
     ]);
     expect(d[0].effectPct!).toBeCloseTo(fit.r2, 12);
+  });
+
+  /**
+   * The call site's wiring into driverSentencePrints: the test's k is the
+   * attributes kept, its n the tables fitted (`fitRows`), and the record is
+   * built with that same n. Six tables on all four attributes, the averages
+   * on 100 + 2·kitchen + 3·bar + 5·seats + 10·outdoor (the five-on-four
+   * case's line, one table more): the ridge fit's r² is 0.9997, and on
+   * (4, 1) degrees of freedom its p is 0.026.
+   */
+  const sixOnFour = [
+    [5, 8, 2, 0],
+    [10, 6, 4, 1],
+    [15, 4, 4, 0],
+    [20, 2, 6, 1],
+    [25, 9, 2, 0],
+    [30, 3, 6, 1],
+  ];
+  const onTheLine = (rows: Array<Array<number | null>>) =>
+    rows.map(
+      ([k, b, s, o]) =>
+        100 +
+        2 * (k as number) +
+        3 * (b as number) +
+        5 * (s as number) +
+        10 * (o as number),
+    );
+
+  it("six tables on four attributes fitting almost exactly print: the test's k is the attributes kept, so one residual degree of freedom is left", async () => {
+    const avg = onTheLine(sixOnFour);
+    const fit = fitOf(sixOnFour, avg);
+    expect(fit.r2).toBeGreaterThan(0.999);
+    expect(fit.p).toBeLessThanOrEqual(SIGNIFICANCE_ALPHA);
+    // One more attribute than were kept leaves no residual degree of freedom.
+    expect(regressionSignificance(fit.r2, 6, 5)).toBeNull();
+    const d = of(await fireDrawn(sixOnFour, avg), DRIVERS);
+    expect(d).toHaveLength(1);
+    expect(d[0].evidence.drivers!.map((x) => x.attribute).sort()).toEqual([
+      "bar distance",
+      "kitchen distance",
+      "outdoor",
+      "seats",
+    ]);
+    expect(d[0].effectPct!).toBeCloseTo(fit.r2, 12);
+  });
+
+  it("a table missing a kept attribute is not fitted, and is not counted in the test's n: five fitted on three attributes do not print, though eight would", async () => {
+    // The near-exact handful above (r² 0.995, p 0.09 on one residual degree
+    // of freedom), and three more ranked tables with a kitchen and a bar
+    // distance but no seat count. Seats are still kept (recorded and varying
+    // on five tables), so those three leave the fit.
+    const fitted = [
+      [5, 8, 2, null],
+      [10, 6, 4, null],
+      [15, 4, 4, null],
+      [20, 2, 6, null],
+      [25, 9, 2, null],
+    ];
+    const fittedAvg = [150, 171, 168, 192, 181];
+    const noSeats = [
+      [30, 5, null, null],
+      [35, 7, null, null],
+      [40, 1, null, null],
+    ];
+    const fit = fitOf(fitted, fittedAvg);
+    expect(fit.p).toBeGreaterThan(SIGNIFICANCE_ALPHA);
+    // Counted over all eight ranked tables, the same r² would pass.
+    expect(regressionSignificance(fit.r2, 8, 3)!.p).toBeLessThanOrEqual(
+      SIGNIFICANCE_ALPHA,
+    );
+    const xs = await fireDrawn(
+      [...fitted, ...noSeats],
+      [...fittedAvg, 200, 210, 220],
+    );
+    expect(of(xs, DRIVERS)).toEqual([]);
+  });
+
+  it("the record is built with the tables fitted, not the tables ranked: its score's support is six tables, not nine", async () => {
+    // The six above, and three more with no outdoor flag: ranked, but not
+    // fitted. n reaches the record only through its score's support weight
+    // (scoreOf), and the score is what is stored.
+    const noOutdoor = [
+      [35, 5, 4, null],
+      [40, 7, 2, null],
+      [45, 1, 6, null],
+    ];
+    const avg = onTheLine(sixOnFour);
+    const fit = fitOf(sixOnFour, avg);
+    const built = jest.spyOn(
+      InsightGeneratorService.prototype as any,
+      "record",
+    );
+    try {
+      const d = of(
+        await fireDrawn([...sixOnFour, ...noOutdoor], [...avg, 230, 240, 250]),
+        DRIVERS,
+      );
+      expect(d).toHaveLength(1);
+      expect(d[0].effectPct!).toBeCloseTo(fit.r2, 12);
+      const calls = built.mock.calls.filter((c) => c[0] === DRIVERS);
+      expect(calls).toHaveLength(1);
+      expect((calls[0][4] as { n: number }).n).toBe(6);
+      const scoreOf = (n: number) =>
+        (InsightGeneratorService.prototype as any).scoreOf.call(null, {
+          effectPct: d[0].effectPct,
+          n,
+        });
+      expect(scoreOf(6)).not.toBe(scoreOf(9));
+      expect(d[0].score).toBe(scoreOf(6));
+    } finally {
+      built.mockRestore();
+    }
   });
 
   it("equal average checks are no fit, though the regression calls their r² 1", async () => {
