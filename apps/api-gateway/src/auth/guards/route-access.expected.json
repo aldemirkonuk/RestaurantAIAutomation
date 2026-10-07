@@ -424,6 +424,68 @@
     "owner",
     "manager"
   ],
+  "GET /providers/:id/knowledge (ProviderIntelligenceController.getKnowledge)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/:id/knowledge/contradictions (ProviderIntelligenceController.getContradictions)": [
+    "owner",
+    "manager"
+  ],
+  "PUT /providers/:id/knowledge/:knowledgeId/verify (ProviderIntelligenceController.verifyKnowledge)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/:id/promotions (ProviderIntelligenceController.getPromotions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/promotions/active (ProviderIntelligenceController.getAllActivePromotions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/promotions/expiring (ProviderIntelligenceController.getExpiringPromotions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/promotions/compare (ProviderIntelligenceController.comparePromotions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/promotions/savings (ProviderIntelligenceController.getPromoSavings)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/:id/conversation-memory (ProviderIntelligenceController.getConversationMemory)": [
+    "owner",
+    "manager"
+  ],
+  "POST /providers/:id/conversation-memory/search (ProviderIntelligenceController.searchConversationMemory)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/:id/sessions (ProviderIntelligenceController.getSessions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/:id/sessions/:sessionId/summary (ProviderIntelligenceController.getSessionSummary)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/:id/sentiment (ProviderIntelligenceController.getSentimentTrend)": [
+    "owner",
+    "manager"
+  ],
+  "POST /providers/:id/outreach (ProviderIntelligenceController.triggerOutreach)": "open",
+  "POST /providers/:id/onboard (ProviderIntelligenceController.triggerOnboarding)": "open",
+  "GET /providers/intelligence/compare (ProviderIntelligenceController.compareProviders)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/intelligence/leverage (ProviderIntelligenceController.getLeverageSignals)": [
+    "owner",
+    "manager"
+  ],
   "POST /reports/exports (ReportExportsController.request)": [
     "owner",
     "manager"

@@ -122,6 +122,12 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // orders/:id/history, a line's history on the desk, with
     // @Roles("owner", "manager") on the method, the queue's rule (ADR 0167)
     // applied to the desk's newest route. It admits no admin, like the queue.
+    // A nineteenth, ProviderIntelligenceController, is fix/promotions-gate-
+    // every-route's own change (2026-10-07): its five /providers/promotions
+    // reads were a side door to the rows GET /promotions refuses staff (ADR
+    // 0124:357-362), so fifteen of its seventeen routes gained the promotions
+    // controller's @Roles("owner", "manager") on the method. Outreach and
+    // onboard return no figure and stay "open".
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -139,6 +145,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",
       "promotions/promotions.controller.ts",
+      "providers/provider-intelligence.controller.ts",
       "reports/exports/report-exports.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",
     ]);

@@ -51,7 +51,10 @@ function rethrow(error: unknown, fallback: string): never {
  * :121-126` has no `minRole`; `provider-intelligence.controller.ts:21` is
  * `JwtAuthGuard` only). A staff account that could see offers on the legacy
  * page gets a named refusal here, not a silent empty list — see
- * `PromotionsNext.tsx`'s role-withheld state.
+ * `PromotionsNext.tsx`'s role-withheld state. [2026-10-07: that side door is
+ * closed. `provider-intelligence.controller.ts` now puts this class's
+ * `RolesGuard` + `@Roles("owner", "manager")` on every read it serves,
+ * `/providers/promotions/*` and `/providers/:id/promotions` included.]
  *
  * No request body accepted on either write: the id comes from the path and
  * the actor from the token, per the house's own write-shape convention

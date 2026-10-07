@@ -13,6 +13,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 import { DatabaseService } from "../database/database.service";
@@ -47,6 +49,23 @@ function rethrow(error: unknown, fallback: string): never {
  * house's vendor knowledge, promotions, conversation memory, sessions and
  * sentiment. Every route below now takes its house from the token through
  * `houseOf(user)` and hands it to the service, which puts it in the query.
+ *
+ * House-scoped is not role-scoped. Until 2026-10-07 every read here was open
+ * to any member of the house, staff included, while `GET /promotions` refused
+ * staff the same `provider_promotions` rows (`promotions.controller.ts:63-64`,
+ * ADR 0124:357-362: what a vendor quotes this house is its negotiating
+ * position, owner/manager). Every read below now carries that controller's
+ * exact gate, `RolesGuard` + `@Roles("owner", "manager")`, on the method:
+ * the promotions, the Digital Twin (its `pricing` price points, `financial`
+ * and `relationship` leverage rows are free-form JSON a field list cannot
+ * strip), conversation memory and sessions (the AI's extracted entities and
+ * negotiation summaries), sentiment (ADR 0207 round 3: owners and managers
+ * only, staff never see it) and the cross-vendor compare and leverage reads.
+ * A staff caller gets the guard's 403 before the handler runs.
+ *
+ * `outreach` and `onboard` stay open: they return no figure, and who may start
+ * a vendor conversation is a send-authority question (ADR 0175 D9/D10: a grant
+ * is a row, not a token role), not this gate's.
  */
 @ApiTags("provider-intelligence")
 @Controller("providers")
@@ -62,6 +81,8 @@ export class ProviderIntelligenceController {
   // =========================================================================
 
   @Get(":id/knowledge")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Get provider Digital Twin (knowledge graph)" })
   @ApiQuery({ name: "category", required: false })
   async getKnowledge(
@@ -81,6 +102,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get(":id/knowledge/contradictions")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "List unresolved contradictions in provider knowledge",
   })
@@ -99,6 +122,8 @@ export class ProviderIntelligenceController {
   }
 
   @Put(":id/knowledge/:knowledgeId/verify")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Verify an extracted knowledge fact" })
   async verifyKnowledge(
     @Param("knowledgeId") knowledgeId: string,
@@ -125,6 +150,8 @@ export class ProviderIntelligenceController {
   // =========================================================================
 
   @Get(":id/promotions")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Get this restaurant's promotions for a provider" })
   @ApiQuery({ name: "status", required: false })
   async getPromotions(
@@ -144,6 +171,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("promotions/active")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Get this restaurant's active promotions across its providers",
   })
@@ -158,6 +187,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("promotions/expiring")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Get this restaurant's promotions expiring soon" })
   @ApiQuery({ name: "days", required: false })
   async getExpiringPromotions(
@@ -175,6 +206,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("promotions/compare")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Cross-vendor promotion comparison matrix for this restaurant",
   })
@@ -187,6 +220,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("promotions/savings")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Total savings from this restaurant's promotions" })
   async getPromoSavings(@CurrentUser() user: AuthUser) {
     try {
@@ -201,6 +236,8 @@ export class ProviderIntelligenceController {
   // =========================================================================
 
   @Get(":id/conversation-memory")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Get recent conversation memory with extracted intelligence",
   })
@@ -222,6 +259,8 @@ export class ProviderIntelligenceController {
   }
 
   @Post(":id/conversation-memory/search")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Semantic search across provider conversations" })
   async searchConversationMemory(
     @Param("id") providerId: string,
@@ -251,6 +290,8 @@ export class ProviderIntelligenceController {
   // =========================================================================
 
   @Get(":id/sessions")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Get active and recent conversation sessions" })
   @ApiQuery({ name: "includeCompleted", required: false })
   async getSessions(
@@ -270,6 +311,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get(":id/sessions/:sessionId/summary")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Get session summary with extracted intelligence" })
   async getSessionSummary(
     @Param("sessionId") sessionId: string,
@@ -290,6 +333,8 @@ export class ProviderIntelligenceController {
   // =========================================================================
 
   @Get(":id/sentiment")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Get sentiment trend data for a provider" })
   @ApiQuery({ name: "limit", required: false })
   async getSentimentTrend(
@@ -391,6 +436,8 @@ export class ProviderIntelligenceController {
   // =========================================================================
 
   @Get("intelligence/compare")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Cross-vendor intelligence comparison for this restaurant",
   })
@@ -413,6 +460,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("intelligence/leverage")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Current negotiation leverage signals for this restaurant",
   })
