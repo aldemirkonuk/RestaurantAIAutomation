@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -209,23 +210,29 @@ export class AnalyticsService {
     // column, so selecting one 42703s the whole query and silently yields an
     // empty demand series (zero velocity, zero forecast, no reorder points).
     // Resolve the wine through the inventory FK instead.
-    const { data, error } = await client
-      .from("wine_consumption_log")
-      .select(
-        "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
-    // getFinancialSummary's dead-stock join now depends on this series, and an
-    // empty one is deliberately read as "no movement signal" rather than "no
-    // movement" — so a failure here must at least be loud in the logs.
-    if (error)
-      this.logger.error(
-        `analytics query on wine_consumption_log failed — demand, reorder ` +
-          `science and dead stock will report empty rather than wrong: ` +
-          `${error.code ?? "?"} ${error.message ?? error}`,
-      );
-    return (data || []).map((c: any) => ({
+    //
+    // Read whole or refused (ADR 0292): unranged, this stopped at PostgREST's
+    // 1,000 rows and every demand series below was built from a slice.
+    //
+    // A refusal (`WholeReadError`, a 503) PROPAGATES, and so does a failed
+    // page: this used to return `[]` with a log line, and the financial
+    // summary, risk, inventory science and the forecast then computed as if
+    // nothing had been poured. The founder, 2026-10-06 (ADR 0292 fork 3):
+    // "Say 'could not be read' (Recommended)". Each of those lenses now
+    // refuses whole, as menu engineering and seasonality already did.
+    const data = await readWholeWindow<any>(
+      "The consumption lines in this window",
+      () =>
+        client
+          .from("wine_consumption_log")
+          .select(
+            "id, inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("created_at", since),
+    );
+    return data.map((c: any) => ({
       masterWineId: c.restaurant_inventory?.master_wine_id ?? null,
       inventoryId: c.inventory_id,
       qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
@@ -291,15 +298,24 @@ export class AnalyticsService {
     const { startIso, endIso } = houseDayBounds(fromDate, toDate, zone);
     // `created_at` (not `recorded_at`) is what pos-hub writes through and what
     // loadConsumption above already filters on — keep the two consistent.
-    const { data, error } = await client
-      .from("wine_consumption_log")
-      .select(
-        "inventory_id, wine_name, consumption_type, quantity, volume_ml, total_revenue, restaurant_inventory(wine_name, last_purchase_price)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", startIso)
-      .lt("created_at", endIso);
-    if (error) throw new Error(error.message);
+    //
+    // Read whole or refused (ADR 0292). Unranged, this stopped at PostgREST's
+    // 1,000 rows and the till list summed a slice of the window (A-033). A
+    // refusal throws, as a failed read already did. The window is the house
+    // days' half-open range (ADR 0296), not UTC's.
+    const data = await readWholeWindow<any>(
+      "The consumption lines in this window",
+      () =>
+        client
+          .from("wine_consumption_log")
+          .select(
+            "id, inventory_id, wine_name, consumption_type, quantity, volume_ml, total_revenue, restaurant_inventory(wine_name, last_purchase_price)",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("created_at", startIso)
+          .lt("created_at", endIso),
+    );
 
     type Acc = PosConsumptionRow & {
       bottleRevenueRows: number;
@@ -496,7 +512,8 @@ export class AnalyticsService {
       if (c.masterWineId) movedMasterWineIds.add(c.masterWineId);
     }
     // No movement recorded ANYWHERE is not evidence that nothing moved — it is
-    // a restaurant with no POS/consumption feed, or a loader that failed. Zero
+    // a restaurant with no POS/consumption feed (a failed or refused read of
+    // the log no longer lands here: it throws, ADR 0292 fork 3). Zero
     // rows would otherwise mark the entire cellar dead and put the whole
     // inventory value in front of a manager as idle capital. Null says "we
     // have no idea", which is the truth (ADR 0020).
