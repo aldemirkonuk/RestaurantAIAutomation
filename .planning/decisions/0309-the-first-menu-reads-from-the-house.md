@@ -1,0 +1,78 @@
+# 0309 — The first menu reads from the house, and a housed account is never sent back into sign-up
+
+- **Status:** Proposed. Decided by the coordinator under the founder's 2026-10-07T20:04:10Z delegation, verbatim: *"Do not ask me questions, I allow and approve for you to decide on your own. If its a decision question then research deep, find answers."* The founder can overrule any part of it. A lock is his.
+- **Date:** 2026-10-07
+- **Decider:** the coordinator, under the delegation above. Built by lane firstmenu on `fix/the-first-menu-reads-from-the-house`.
+- **Keywords:** first proof, /house/menu, /house, /get-started, sessionStorage, mudavym:first-proof, restaurantId stamp, useHouseProof, pickHouseMenu, proofFromServer, menu-versions, draft menu, matched, pencil, ink, setup nudge, Finish setup, /auth/houses, choose-house, MENU-07, MENU-08, SETUP-01, SETUP-11
+- **Links:** [[0213-get-started-is-account-then-house-then-first-proof]] (the first proof at `/house/menu`; the pencil rule: unmatched / uncategorised / unknown → pencil); [[0193-a-house-price-follows-its-menu-and-its-manager-and-advice-aims-at-its-own-margin]] (every reading is kept as a draft; it becomes current only by make-current); [[0293-the-off-library-tile-names-the-wine-library-and-a-draft-menu-is-not-current]]; [[0067-a-failed-read-is-never-an-empty-one]]; [[0164-sessions-follow-membership-and-several-houses-choose]]; [[0020-no-fabricated-answers]]; `claims.d/fix-the-first-menu-reads-from-the-house.jsonl`; the scenario walk `p4-scratch/sim-run/pages/SCENARIO-WALK-2026-10-07.md` (outside the repo), rows MENU-07, MENU-08, SETUP-01 and SETUP-11
+
+## Context
+
+Cites are at `ca3582988` unless marked.
+
+- **MENU-07 (P1).** `/house/menu` and `/house` read the first proof only from this tab's `sessionStorage` (`apps/web/src/lib/firstProof.ts:45`, `readProof()`; `HouseMenu.tsx:53`; `HouseContents.tsx:11`). The menu itself is stored: the import keeps every reading as a `restaurant_menus` draft with its `menu_items` (ADR 0193). A new tab, a reload after the tab closed, or another device therefore showed *"No menu has been read yet."* for a house that has a menu. The stored reading was not stamped with a house either, so after a house switch in the same tab, `/house/menu` showed the other house's lines, and *Add it.* posted a line to the other house's menu id (`HouseMenu.tsx:135`, `addMenuItem(proof.menuId, …)`).
+- **SETUP-01 (P1).** That false *"No menu has been read yet."* had a button to `/get-started` (`HouseMenu.tsx:85`, `:100`). `/get-started` had no entry check, so a person with a house started the sign-up wizard again from step *you*. Creating the house then fails with 409 *"This account already has a house"* (`apps/api-gateway/src/auth/auth.service.ts:1662`).
+- **SETUP-11 (P1).** The setup nudge's *Finish setup* sent every owner and manager to `/get-started` (`apps/web/src/guidance/components/SetupNudgeBanner.tsx:54`). The banner shows only to an owner or a manager (`canActivate`, `:26`), a role a person holds in a house, so every press led a housed person into that wizard.
+- **MENU-08 (P2).** Placing a pencilled line and adding a missing line had `try … finally` with no `catch` (`HouseMenu.tsx:125`, `:142`). A refused or failed save cleared the saving state and said nothing.
+- **What the server keeps.** `GET /menu-versions` lists the house's kept menus newest first. `GET /menu-versions/:menuId` returns the menu and its lines (`LINE_SELECT`, `apps/api-gateway/src/menus/menus.service.ts:251`): name, producer, section, vintage, region, prices, `wine_library_id`, status. Both read the house from the signed token, and any member may read them (`menus.controller.ts:143-185`). A line's **match** to the wine library is *not* kept on the line: the import computes `matched` (`menus.service.ts:1653`), returns it in the import's reply (`:1773`), and stores it only as a library submission's status (`merged` or `pending_review`, `:1808`). `wine_library_id` is set for a matched wine and for a provisional one alike (`:1686`), so it cannot stand in for the match. The raw line text and the crop box are not returned either.
+
+## Options considered
+
+1. **Read the house's menu from the server; keep the tab's reading only as a cache stamped with the house (chosen).** `/house/menu` and `/house` read `GET /menu-versions`, pick one menu (rule below) and read its lines. The tab's reading adds only what the stored line does not keep (the match, the raw line, the crop box), and only when it carries the same house and the same menu id. It costs two reads per page open, and a line read back from the server has no match (option 1a).
+1a. **A line whose match nobody can tell is pencilled by its section alone, and the page says so (chosen).** ADR 0213's pencil rule is *unmatched / uncategorised / unknown → pencil*. The match of a line read back from the server is unknown. Pencilling every such line would print a whole proof in pencil for a house that has made no mistake, and inking it would claim a match nobody recorded. So the match is `null`, not `false`. The line is pencilled when its section is missing, unknown or outside the vocabulary. The page says: *"Read back from the house's record: it does not keep which wines matched the library, so a line is pencilled here only when its section is not known."*
+1b. **The gateway returns the match per line** (rejected for this lane, owed). It would need a join from `menu_items` to the submission rows, or a new column and a migration. It is a gateway change outside this lane's files and its fifteen-file budget. Recorded as owed below.
+2. **Cache-first: show the tab's reading when there is one, else read the server** (rejected). That is the defect's own shape. A cached reading can be stale (a line was added on another device, a menu was made current), and only the server can tell.
+3. **Show the newest kept menu of any status** (rejected). A failed reading (`linesExtracted: 0`) or a retired menu newer than the current menu would replace the house's current menu on its own front page.
+4. **Show only the current menu** (rejected). A new house's every reading is a draft (ADR 0193), so its first proof would never be shown.
+
+**Which menu is shown** (chosen): the current one; else the newest draft whose `linesExtracted` is not `0` (a count nobody recorded is unknown, not zero, so such a draft is not skipped); else the newest kept menu of any kind (its page then says the file could not be read, or that it has no lines). *Newest* is `extractedAt`, else `createdAt`. *"No menu has been read yet."* is shown only when the server lists no kept menu. A failed read shows its reason and *Try again*, never the empty state (ADR 0067).
+
+5. **`/get-started` checks the account on arrival (chosen).** A signed-in account whose session has a house goes to `/house`. One with no house open goes to `/choose-house` when `GET /auth/houses` lists a house or a held membership (the read `/choose-house` makes). It sees the wizard only when that read lists none. An unverified account goes to `/verify-email`. A check that fails, or a reply without a list of houses, says *"We could not check whether this account already has a house: …"* with *Try again*. It does not open the wizard as if the answer were "no house". The check runs once, on arrival: creating the house mid-wizard sets the session's house, and the person must not be sent away before the menu step.
+5a. **Use `AuthContext.availableRestaurants`** (rejected). It can be this device's cached list. A stale empty list would show the wizard to a person with a house, and a stale full one would send a person who has none to `/choose-house`, which sends them back to `/get-started`.
+5b. **Jump a housed account to the wizard's menu step** (rejected). The wizard's menu step belongs to the house just created. A housed person reads a new menu on the Menu page (`/menu`), which keeps it as a draft under ADR 0193.
+5c. **Leave `/get-started` open and fix only the links into it** (rejected). Other ways in remain: LearnPanel (`LearnPanel.tsx:74`), `/onboarding`, the help guide, a typed URL. The check on arrival covers them all.
+6. **The read pages' exits go to the Menu page, not to `/get-started` (chosen).** *Read a menu* (no kept menu) and *Try another menu* / *Open the Menu page* (a menu without lines) lead to `/menu`.
+7. **The nudge's *Finish setup* leads to `/house` (chosen).** The banner shows only to an owner or a manager, so its viewer has a house, and that house's contents page is the right door. Sending it to `/get-started` would work now, through the arrival check (option 5), but it would cost a round trip and a "Checking this account…" screen on every press.
+8. **A refused save says why, next to the line or the form (chosen, MENU-08).** *"This line was not placed: …"* under the line's section buttons, which leaves the line pencilled. *"The line was not added: …"* under the add form, which keeps the typed name. The reason is the gateway's message, else the error's, else *"no reason was given"*.
+
+## Decision
+
+Options 1, 1a, the menu rule, 5, 6, 7 and 8 above. In code:
+
+- `apps/web/src/lib/firstProof.ts`: `useHouseProof(restaurantId)` → `loading | failed(reason) | none | ready(version, lines, sourceImage)`; `pickHouseMenu`; `proofFromServer`; `readProof(restaurantId)` returns a reading only when its stamp is that house; `writeProof(result, restaurantId, image)` stamps it; `markProofLine` keeps a placed line placed in the same house's reading; `ProofLine.matched` is `boolean | null`.
+- `apps/web/src/services/api/menus.ts`: `getMenuVersion(menuId)` reads `GET /menu-versions/:menuId`.
+- `HouseMenu.tsx`, `HouseContents.tsx`: read through `useHouseProof(activeRestaurantId)`. Add-a-line posts to the server's menu id. `/house/menu` says where the menu stands: *"This is the house's current menu."*; for a draft, *"Kept as a draft — not the house's current menu, and none of its prices are the house's yet. An owner or a manager makes a menu current on the Menu page."*; otherwise *"Retired: …"*. A missing crop says whether the original was kept with the menu or not kept at all (`version.source.kept`).
+- `GetStarted.tsx`: the entry check (option 5); the reading is stamped with the session's house.
+- `SetupNudgeBanner.tsx`: *Finish setup* → `/house`.
+
+**Staff and money.** `/house/menu` shows the same sale prices that `GET /menu-versions/:menuId` already serves to any member of the house. It shows no cost, margin or revenue. This decision adds no money surface.
+
+## Relations
+
+Implements ADR 0213's first proof at `/house/menu` against the stored menu instead of one tab's memory, and narrows its pencil rule for a line whose match is unknown (option 1a). Applies ADR 0193 (every reading is a draft) and ADR 0293 (a draft is not the current menu) to what the proof page says. Applies ADR 0067 to both read pages and to the arrival check. The arrival check reads the same `GET /auth/houses` as ADR 0164's chooser and sends a housed account the way that chooser would.
+
+## Consequences
+
+- A house's first proof survives a new tab, a reload, another device and a house switch. The tab's reading only enriches lines of the same house and menu.
+- A line read back from the server is pencilled by its section alone until the gateway returns the match (owed 1). The page says so whenever such a line is shown.
+- A placement is saved on the server (`reviewMenuItem`). The tab's reading is patched so the line stays inked on reload in that tab. In another tab, the line comes back inked by its new section, because its match is unknown there.
+- `/get-started` costs one `GET /auth/houses` for an account with no house in its session. While that read is in flight, the page shows *"Checking this account…"*.
+
+**Owed (not built here):**
+
+1. The gateway returns each line's library match (`merged` or `pending_review` from the submission rows) with `GET /menu-versions/:menuId`, so a line read back from the server can be pencilled by ADR 0213's whole rule.
+2. LearnPanel's *Upload Now* (`LearnPanel.tsx:74`) still points at `/get-started`. It reaches `/house` through the arrival check, one hop later. A direct link is a one-line follow-up.
+3. The nudge asks for a low-stock threshold (`SetupNudgeBanner.tsx:52`), and `activated` needs `threshold_configured`. No mounted screen sets that threshold: `components/onboarding/ThresholdStep.tsx` has no importer. This was true before this change, and the wizard never set it either. The nudge therefore cannot be finished from any page until a threshold screen is mounted.
+4. `createFirstHouse` refuses only when `users.restaurant_id` is set (`auth.service.ts:1661`). An existing account that accepted an invite holds only a `user_restaurant_access` row: `acceptInviteAsExistingUser` inserts that row (`auth.service.ts:2626`) and leaves `users.restaurant_id` as it was. Such an account passes that check. The arrival check now sends it to `/choose-house` before the wizard, but the gateway itself would still let it create a house of its own. Read from the code; not exercised.
+
+## Evidence
+
+- Web: `apps/web/src/pages/ArrivalFlow.test.tsx` (33 cases: the wizard, the arrival check, the server-read proof, the refused saves, `/house`), `apps/web/src/lib/firstProof.test.ts` (15 cases), `apps/web/src/guidance/components/SetupNudgeBanner.test.tsx` (1 case), and `apps/web/src/pages/__tests__/GetStarted.cellarRegisters.test.tsx` (updated for the arrival check).
+- Mutations: twenty, one per behaviour, each run against the tests and restored byte-for-byte (`cmp`). Every one failed at least one case. The PR body lists them.
+- Claims: `claims.d/fix-the-first-menu-reads-from-the-house.jsonl`, one static row per behaviour. Each row fails when its code is reverted.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-07 | Claude (lane firstmenu), under the coordinator's delegation | Built the above on `fix/the-first-menu-reads-from-the-house`. The gateway half (owed 1) was left out to keep the lane inside its files and its fifteen-file budget |
