@@ -231,6 +231,10 @@ function checks(n: number, first = 56, last = 0): Row[] {
     opened_at: at(daysAgo, minute),
     closed_at: at(daysAgo, minute + 30),
     total: 100 + (i % 7),
+    // A till check states its subtotal too. Net sales read it (ADR 0295,
+    // #615); it equals the total here, so these whole-window sums hold on
+    // either basis.
+    subtotal: 100 + (i % 7),
     covers: 2,
     tip: 10,
     items: [],
@@ -448,7 +452,8 @@ describe("GoalsService — the till and goal progress read the whole window", ()
     const window = requests.filter((r) => r.order === "id");
     expect(window.length).toBeGreaterThan(0);
     for (const r of window) {
-      expect(r.select).toBe("id, total, opened_at, closed_at");
+      // Gross on main, net once ADR 0295 reads `subtotal`; never `items`.
+      expect(r.select).toMatch(/^id, (total|subtotal), opened_at, closed_at$/);
       expect(r.count).toBe("exact");
     }
     const { db: db2, requests: req2 } = cappedDb({ pos_checks: rows });
@@ -457,8 +462,8 @@ describe("GoalsService — the till and goal progress read the whole window", ()
       "wine_revenue",
       at(80).slice(0, 10),
     );
-    expect(req2.filter((r) => r.order === "id")[0].select).toBe(
-      "id, total, opened_at, closed_at, items",
+    expect(req2.filter((r) => r.order === "id")[0].select).toMatch(
+      /^id, (total|subtotal), opened_at, closed_at, items$/,
     );
   });
 
@@ -549,6 +554,8 @@ describe("TableAnalyticsService — 'Who served it' ranks on every check", () =>
         closed_at: at(1 + (k % 50), (k % 200) + 30),
         covers: 2,
         total: name === "Maya" ? 180 : 200,
+        // Equal to the total, so the ranking holds on the net basis too (ADR 0295).
+        subtotal: name === "Maya" ? 180 : 200,
         tip: null,
         items: [],
       });
