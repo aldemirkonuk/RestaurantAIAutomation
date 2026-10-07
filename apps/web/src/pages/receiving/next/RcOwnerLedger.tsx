@@ -12,10 +12,21 @@
  *   from the credited claims' own settle dates, not estimated;
  * - the honest denominator stated as a sentence: what share of everything
  *   asked for ever settles, and what they refused.
+ *
+ * ONE BLOCK PER CURRENCY (scenario walk 2026-10-07, PROCURE-03). Every figure
+ * here used to print through formatters pinned to US dollars, from the
+ * gateway's combined figures — which add lira to euros when a house claims in
+ * both (credits.controller.ts, `byCurrency`). The ledger now reads `byCurrency`
+ * and the settled list per claim currency: each currency gets its own
+ * recovered figure, trend and still-owed/promised/refused, in its own money.
+ * Nothing is added across currencies and nothing is converted; a claim that
+ * names no currency says "currency not recorded". The /receipts credits lane
+ * (ReceiptsCredits.tsx) already reads the figures this way.
  */
 
 import { RcTally } from './RcTally';
 import {
+  CURRENCY_UNRECORDED,
   GE,
   MONO,
   SANS,
@@ -25,7 +36,12 @@ import {
   fmtMoneyWhole,
   fmtMoneyWholeFloor,
 } from './rc-format';
-import { SERVER_WINDOWS, type RecoveryData } from './useReceivingNextData';
+import {
+  SERVER_WINDOWS,
+  recoveryGroups,
+  type RecoveryData,
+  type RecoveryGroup,
+} from './useReceivingNextData';
 
 function Figure({
   label,
@@ -58,11 +74,127 @@ function Figure({
   );
 }
 
+/** What a currency block is called when there is more than one, or when its money is unnamed. */
+function groupCaption(code: string | null): string {
+  if (code === null)
+    return 'The gateway did not say which currency these figures are in — they may add several currencies together';
+  if (code === CURRENCY_UNRECORDED) return 'Claims that name no currency — kept apart';
+  return `Claims in ${code} — kept apart, nothing is converted`;
+}
+
+function CurrencyBlock({
+  group,
+  many,
+  statsAtFloor,
+  trendAtFloor,
+  statsFloorNote,
+}: {
+  group: RecoveryGroup;
+  many: boolean;
+  statsAtFloor: boolean;
+  trendAtFloor: boolean;
+  statsFloorNote: string;
+}) {
+  // `code` is the money's own: an ISO code, or one the formatters cannot read
+  // (`CURRENCY_UNRECORDED`, null), which they print as "currency not recorded".
+  const { code, figures, trend } = group;
+  const trendDelta =
+    trend && trend.thisMonth !== null && trend.lastMonth !== null
+      ? trend.thisMonth - trend.lastMonth
+      : null;
+  const money = (n: number) => (statsAtFloor ? `${GE}${fmtMoney(n, code)}` : fmtMoney(n, code));
+
+  return (
+    <div data-currency={code ?? 'combined'} style={{ marginTop: many ? 14 : 0 }}>
+      {/* A caption only when it says something: more than one currency, or
+          an older gateway's combined figures (code null WITH figures — the
+          not-yet-answered placeholder has neither). */}
+      {(many || (code === null && figures !== null)) && (
+        <p style={{ ...capStyle, margin: '0 0 2px' }}>{groupCaption(code)}</p>
+      )}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
+        <RcTally
+          value={figures ? figures.recovered : null}
+          format={(n) => fmtMoneyWholeFloor(n, statsAtFloor, code)}
+          style={{
+            fontFamily: MONO,
+            fontSize: many ? 28 : 38,
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            color: 'var(--seal-deep, #14515C)',
+          }}
+        />
+        {/* the trend — real settle dates, never estimated */}
+        <span
+          title={
+            trendAtFloor
+              ? `At least this much. The settled-claims list is served oldest-first and capped at ${SERVER_WINDOWS.CREDITS_LIST} rows, so the most recent settlements can fall outside it.`
+              : undefined
+          }
+          style={{
+            fontFamily: MONO,
+            fontSize: 12.5,
+            fontVariantNumeric: 'tabular-nums',
+            color: 'var(--ink-2, #4F473C)',
+          }}
+        >
+          this month {fmtMoneyWholeFloor(trend ? trend.thisMonth : null, trendAtFloor, code)} · last
+          month {fmtMoneyWholeFloor(trend ? trend.lastMonth : null, trendAtFloor, code)}
+          {trendDelta !== null && trendDelta !== 0 && (
+            <span style={{ color: 'var(--seal-deep, #14515C)' }}>
+              {' '}
+              ({trendDelta > 0 ? '+' : '−'}
+              {fmtMoneyWhole(Math.abs(trendDelta), code)})
+            </span>
+          )}
+        </span>
+      </div>
+
+      {figures && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: 16,
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: '1px solid var(--paper-2, #EAE4D8)',
+          }}
+        >
+          <Figure
+            label="Still owed"
+            title={statsFloorNote}
+            value={money(figures.outstanding)}
+            hint={`${GE}${figures.openClaims} open claim${figures.openClaims === 1 ? '' : 's'}${
+              figures.oldestOpenDays != null ? `, oldest ${figures.oldestOpenDays}d` : ''
+            }`}
+          />
+          <Figure
+            label="Promised"
+            title={statsFloorNote}
+            value={money(figures.promised)}
+            hint="Their word, not yet their memo"
+          />
+          <Figure
+            label="They refused"
+            title={statsFloorNote}
+            value={money(figures.rejected)}
+            // `settlementRate` used to sit here, and it is settled ÷ ALL
+            // RESOLVED claims — not a property of the refused ones. Correct
+            // number, wrong population implied. It now stands on its own
+            // line below, over the population it actually describes.
+            hint="Asked for and turned down"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RcOwnerLedger({ data }: { data: RecoveryData }) {
   const {
     stats,
-    creditedThisMonth,
-    creditedLastMonth,
+    trendByCurrency,
     trendIsError,
     trendFailure,
     statsAtFloor,
@@ -75,8 +207,9 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
   const settlement =
     stats?.settlementRate == null ? null : Math.round(stats.settlementRate * 100);
 
-  const trendKnown = creditedThisMonth !== null && creditedLastMonth !== null;
-  const trendDelta = trendKnown ? creditedThisMonth! - creditedLastMonth! : null;
+  const groups = recoveryGroups(stats, trendByCurrency);
+  // Answered, and no claim in any currency: nothing to print a zero in.
+  const noClaims = stats?.byCurrency != null && groups.length === 0;
 
   const statsFloorNote = `At least this much. /credits/stats reads at most ${SERVER_WINDOWS.RECOVERY_STATS} credit rows with no ordering, so a restaurant past that cap has claims outside the figure entirely.`;
 
@@ -91,43 +224,31 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
         }}
       >
         <span style={capStyle}>Recovered from vendors</span>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
-          <RcTally
-            value={stats ? stats.recovered : null}
-            format={(n) => fmtMoneyWholeFloor(n, statsAtFloor)}
+        {noClaims ? (
+          <p
             style={{
-              fontFamily: MONO,
-              fontSize: 38,
-              fontWeight: 700,
-              letterSpacing: '-0.02em',
-              color: 'var(--seal-deep, #14515C)',
-            }}
-          />
-          {/* the trend — real settle dates, never estimated */}
-          <span
-            title={
-              trendAtFloor
-                ? `At least this much. The settled-claims list is served oldest-first and capped at ${SERVER_WINDOWS.CREDITS_LIST} rows, so the most recent settlements can fall outside it.`
-                : undefined
-            }
-            style={{
-              fontFamily: MONO,
-              fontSize: 12.5,
-              fontVariantNumeric: 'tabular-nums',
+              fontFamily: SERIF,
+              fontSize: 22,
               color: 'var(--ink-2, #4F473C)',
+              margin: '4px 0 0',
             }}
           >
-            this month {fmtMoneyWholeFloor(creditedThisMonth, trendAtFloor)} · last month{' '}
-            {fmtMoneyWholeFloor(creditedLastMonth, trendAtFloor)}
-            {trendKnown && trendDelta !== 0 && (
-              <span style={{ color: 'var(--seal-deep, #14515C)' }}>
-                {' '}
-                ({trendDelta! > 0 ? '+' : '−'}
-                {fmtMoneyWhole(Math.abs(trendDelta!))})
-              </span>
-            )}
-          </span>
-        </div>
+            Nothing yet
+          </p>
+        ) : (
+          // Before either read answers there is no currency to name: one block,
+          // every figure a dash.
+          (groups.length > 0 ? groups : [{ code: null, figures: null, trend: null }]).map((g) => (
+            <CurrencyBlock
+              key={g.code ?? 'combined'}
+              group={g}
+              many={groups.length > 1}
+              statsAtFloor={statsAtFloor}
+              trendAtFloor={trendAtFloor}
+              statsFloorNote={statsFloorNote}
+            />
+          ))
+        )}
         <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
           Credit memos actually issued. Money asked for is not counted here.
         </p>
@@ -200,42 +321,6 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
 
         {stats && (
           <>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                gap: 16,
-                marginTop: 18,
-                paddingTop: 16,
-                borderTop: '1px solid var(--paper-2, #EAE4D8)',
-              }}
-            >
-              <Figure
-                label="Still owed"
-                title={statsFloorNote}
-                value={statsAtFloor ? `${GE}${fmtMoney(stats.outstanding)}` : fmtMoney(stats.outstanding)}
-                hint={`${GE}${stats.openClaims} open claim${stats.openClaims === 1 ? '' : 's'}${
-                  stats.oldestOpenDays != null ? `, oldest ${stats.oldestOpenDays}d` : ''
-                }`}
-              />
-              <Figure
-                label="Promised"
-                title={statsFloorNote}
-                value={statsAtFloor ? `${GE}${fmtMoney(stats.promised)}` : fmtMoney(stats.promised)}
-                hint="Their word, not yet their memo"
-              />
-              <Figure
-                label="They refused"
-                title={statsFloorNote}
-                value={statsAtFloor ? `${GE}${fmtMoney(stats.rejected)}` : fmtMoney(stats.rejected)}
-                // `settlementRate` used to sit here, and it is settled ÷ ALL
-                // RESOLVED claims — not a property of the refused ones. Correct
-                // number, wrong population implied. It now stands on its own
-                // line below, over the population it actually describes.
-                hint="Asked for and turned down"
-              />
-            </div>
-
             {/* The denominator. A recovery figure with nothing to divide it by
                 flatters — this sentence is the whole point, and it is about
                 every resolved claim, not the refused ones. */}

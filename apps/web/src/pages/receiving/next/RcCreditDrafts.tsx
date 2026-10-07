@@ -15,6 +15,11 @@
  * - the only forward control is the hold-to-approve die, a human gesture —
  *   completing it runs the REAL open→requested transition. A gateway refusal
  *   is stated in place and the die resets. There is no auto-anything.
+ *
+ * Each draft's amount is printed in the claim's OWN currency
+ * (`procurement_credits.currency`), never in a page-wide one: these used to
+ * print `$` whatever the claim was in (scenario walk 2026-10-07, PROCURE-03).
+ * A claim that names none says "currency not recorded".
  */
 
 import { useState } from 'react';
@@ -85,7 +90,7 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
             color: 'var(--ink-1, #211C16)',
           }}
         >
-          {fmtMoney(draft.claimed_amount)}
+          {fmtMoney(draft.claimed_amount, draft.currency)}
         </span>
       </div>
 
@@ -167,7 +172,7 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
             <span style={capStyle}>What the house knows</span>
             <p style={{ margin: '3px 0 0' }}>{draft.notes || draft.reason || EM}</p>
             <p style={{ margin: '3px 0 0', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>
-              claimed {fmtMoney(draft.claimed_amount)} · state {draft.state}
+              claimed {fmtMoney(draft.claimed_amount, draft.currency)} · state {draft.state}
               {draft.document_id ? ' · document attached' : ' · no document attached'}
             </p>
           </div>
@@ -177,7 +182,7 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
       <div style={{ marginTop: 10 }}>
         <HoldToApprove
           key={`credit-${draft.id}-${attempt}`}
-          label={`Hold to send the request — ${fmtMoney(draft.claimed_amount)}`}
+          label={`Hold to send the request — ${fmtMoney(draft.claimed_amount, draft.currency)}`}
           approvedLabel="Requested — it is with the vendor now"
           disabled={approve.isPending}
           onApprove={onApprove}

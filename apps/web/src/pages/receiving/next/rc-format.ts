@@ -5,6 +5,8 @@
  * dash, never as a zero. A zero is a claim; a dash is an admission.
  */
 
+import { CURRENCY_NOT_RECORDED, currencyMinorUnits } from '@/lib/currency';
+
 export const EM = '—';
 
 /**
@@ -23,28 +25,86 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-const money = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+/**
+ * The key the gateway files a claim with no stated currency under
+ * (`CURRENCY_UNRECORDED`, apps/api-gateway/src/procurement/documents/
+ * credit-ledger.ts). Not an ISO 4217 code on purpose: `currencyCode` finds no
+ * code in it, so the money formatters below say the currency was not recorded
+ * instead of borrowing one.
+ */
+export const CURRENCY_UNRECORDED = 'UNRECORDED';
 
-export function fmtMoney(v: number | null | undefined): string {
-  const n = num(v);
-  return n === null ? EM : money.format(n);
+/**
+ * A stated ISO 4217 code, trimmed and upper-cased, or null when the money does
+ * not say which currency it is in. Null is "not recorded", never USD.
+ */
+export function currencyCode(currency: string | null | undefined): string | null {
+  if (typeof currency !== 'string') return null;
+  const code = currency.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : null;
 }
 
-/** Whole-dollar form for the recovered figure. Unknown stays a dash. */
-const moneyWhole = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
+const moneyByKey = new Map<string, Intl.NumberFormat | null>();
+function currencyFormatter(code: string, digits: number): Intl.NumberFormat | null {
+  const key = `${code}:${digits}`;
+  const hit = moneyByKey.get(key);
+  if (hit !== undefined) return hit;
+  let fmt: Intl.NumberFormat | null = null;
+  try {
+    fmt = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  } catch {
+    // A well-formed code `Intl` does not know: the caller prints the code itself.
+    fmt = null;
+  }
+  moneyByKey.set(key, fmt);
+  return fmt;
+}
 
-export function fmtMoneyWhole(v: number | null | undefined): string {
+/**
+ * Money in the currency it is in, or the number with the sentence saying the
+ * currency was not recorded.
+ *
+ * NEVER USD BY DEFAULT. This page's formatters used to be two `Intl` instances
+ * pinned to US dollars, so a lira house's recovered money and every
+ * credit draft printed `$` (scenario walk 2026-10-07, PROCURE-03). The rule is
+ * the product's (`formatMoney` in lib/currency.ts; founder, 2026-09-06, batch
+ * 63: the house states its currency and nothing is converted): a missing code
+ * is said in words, a code `Intl` does not know is printed beside the number.
+ *
+ * `whole` drops the minor units (the recovered headline and the queue's at-risk
+ * totals). Otherwise the currency's own decimal places are used — yen have none
+ * and a Bahraini dinar has three — and two when the currency is not recorded.
+ */
+function sayMoney(n: number, currency: string | null | undefined, whole: boolean): string {
+  const code = currencyCode(currency);
+  const digits = whole ? 0 : (code ? currencyMinorUnits(code) : null) ?? 2;
+  const bare = n.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  if (code === null) return `${bare} (${CURRENCY_NOT_RECORDED})`;
+  const fmt = currencyFormatter(code, digits);
+  return fmt ? fmt.format(n) : `${bare} ${code}`;
+}
+
+/** Money with its minor units, in the stated currency. Unknown stays a dash. */
+export function fmtMoney(v: number | null | undefined, currency: string | null | undefined): string {
   const n = num(v);
-  return n === null ? EM : moneyWhole.format(n);
+  return n === null ? EM : sayMoney(n, currency, false);
+}
+
+/** Whole-unit money, in the stated currency. Unknown stays a dash. */
+export function fmtMoneyWhole(
+  v: number | null | undefined,
+  currency: string | null | undefined,
+): string {
+  const n = num(v);
+  return n === null ? EM : sayMoney(n, currency, true);
 }
 
 export function fmtInt(v: number | null | undefined): string {
@@ -67,48 +127,29 @@ export function fmtIntFloor(v: number | null | undefined, atFloor: boolean): str
 
 /**
  * Whole-money form of the same, with the floor marker. A summed window is a
- * lower bound on the sum. `currency` is optional and defaults to the page's
- * legacy hardcoded USD formatting (RcOwnerLedger's stats, not yet audited for
- * currency — fixer review, 2026-09-18); a caller that knows the row's own
- * currency (RcManagerQueue's per-currency "At risk" total) passes it so the
- * floor marker never sits in front of the wrong symbol.
+ * lower bound on the sum. `currency` is required: the floor marker must never
+ * sit in front of a symbol nobody stated, and a missing code reads "currency
+ * not recorded" (see `sayMoney`).
  */
 export function fmtMoneyWholeFloor(
   v: number | null | undefined,
   atFloor: boolean,
-  currency?: string | null,
+  currency: string | null | undefined,
 ): string {
   const n = num(v);
   if (n === null) return EM;
-  const body = currency === undefined ? moneyWhole.format(n) : fmtMoneyWholeCcy(n, currency);
+  const body = sayMoney(n, currency, true);
   return atFloor ? `${GE}${body}` : body;
 }
 
-const moneyWholeByCurrency = new Map<string, Intl.NumberFormat>();
 /**
- * Whole-money form in a STATED currency, not the page's hardcoded USD
- * formatters above (fixer review, 2026-09-18: "a priced receipt needs its
- * currency" — a vendor-box subtotal must never sum, or print, across
- * currencies as if they were one). Falls back to USD only when the order
- * itself carries no currency, which is the pre-existing convention this
- * page's other figures already assume.
+ * Whole-money form in a STATED currency (fixer review, 2026-09-18: "a priced
+ * receipt needs its currency" — a vendor-box subtotal must never sum, or print,
+ * across currencies as if they were one). An order with no currency reads
+ * "currency not recorded"; it used to borrow USD.
  */
 export function fmtMoneyWholeCcy(v: number | null | undefined, currency: string | null): string {
-  const n = num(v);
-  if (n === null) return EM;
-  const code = (currency ?? 'USD').toUpperCase();
-  let fmt = moneyWholeByCurrency.get(code);
-  if (!fmt) {
-    try {
-      fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: code, maximumFractionDigits: 0 });
-    } catch {
-      // An unrecognised ISO-4217 code (a typo the order-entry side let through) —
-      // print the code itself rather than pretending it was USD.
-      fmt = null as any;
-    }
-    if (fmt) moneyWholeByCurrency.set(code, fmt);
-  }
-  return fmt ? fmt.format(n) : `${Math.round(n)} ${code}`;
+  return fmtMoneyWhole(v, currency);
 }
 
 /**

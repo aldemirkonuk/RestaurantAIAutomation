@@ -13,7 +13,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
-import { creditsApi, type ProcurementCredit, type CreditStats } from '@/services/api/credits';
+import {
+  creditsApi,
+  type ProcurementCredit,
+  type CreditStats,
+  type RecoveryFigures,
+} from '@/services/api/credits';
 import {
   receivingApi,
   type LineHistoryEntry,
@@ -32,7 +37,7 @@ import {
 } from '@/lib/doorOutbox';
 import { offlineStorage, type PendingMutation } from '@/lib/offline-storage';
 import { currentQueueOwner, isReplayable } from '@/lib/queue-owner';
-import { num } from './rc-format';
+import { CURRENCY_UNRECORDED, num } from './rc-format';
 
 /* ─────────────────────────────────────────── the shape of a failure ─────── */
 
@@ -611,11 +616,30 @@ export function useApproveCreditDraft() {
 
 /* ───────────────────────────────────────────────────── owner: recovery ── */
 
+/** One currency's credited money, settled this calendar month and last. */
+/**
+ * Money settled in one currency this month and last. A month is null when a
+ * claim settled in it carries no readable credited amount: the sum is then
+ * unknown, and an unknown is not a zero.
+ */
+export interface MonthTrend {
+  thisMonth: number | null;
+  lastMonth: number | null;
+}
+
 export interface RecoveryData {
   stats: CreditStats | null;
-  /** Sum of credited_amount settled this calendar month / last. Null until known. */
-  creditedThisMonth: number | null;
-  creditedLastMonth: number | null;
+  /**
+   * Credited money settled this calendar month and last, KEPT APART BY EACH
+   * CLAIM'S OWN CURRENCY — a claim that names none is filed under
+   * `CURRENCY_UNRECORDED`, the key the gateway's `byCurrency` uses. Nothing is
+   * added across currencies and nothing is converted. Null until the settled
+   * list has been read (or when it failed: see `trendIsError`).
+   *
+   * The months are the BROWSER's calendar months, not the house's: no house
+   * time zone reaches this page yet (PROCURE-09, owed).
+   */
+  trendByCurrency: Record<string, MonthTrend> | null;
   /**
    * The trend's own failure. Separate from `isError` on purpose: the headline
    * figure is allowed to stand when only the trend broke, but the trend must
@@ -639,6 +663,81 @@ export interface RecoveryData {
   refetch: () => void;
 }
 
+/** The currency a claim is filed under: its own code, or `CURRENCY_UNRECORDED`. */
+export function creditCurrencyKey(currency: string | null | undefined): string {
+  return typeof currency === 'string' && currency.trim() !== ''
+    ? currency.trim().toUpperCase()
+    : CURRENCY_UNRECORDED;
+}
+
+/**
+ * The settled list's money by currency, this month and last. Every currency
+ * the list carries gets an entry, zero in a month it settled nothing in, and
+ * null in a month where one of its claims has no readable credited amount.
+ */
+export function trendByCurrencyOf(
+  credited: readonly ProcurementCredit[],
+  now: Date = new Date(),
+): Record<string, MonthTrend> {
+  const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const inMonth = (iso: string | null, ref: Date) => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
+  };
+  const out: Record<string, MonthTrend> = {};
+  for (const c of credited) {
+    const key = creditCurrencyKey(c.currency);
+    const t = out[key] ?? (out[key] = { thisMonth: 0, lastMonth: 0 });
+    const amount = num(c.credited_amount);
+    const add = (sum: number | null) => (sum === null || amount === null ? null : sum + amount);
+    if (inMonth(c.settled_at, now)) t.thisMonth = add(t.thisMonth);
+    else if (inMonth(c.settled_at, lastRef)) t.lastMonth = add(t.lastMonth);
+  }
+  return out;
+}
+
+/**
+ * One block of the owner ledger.
+ *
+ * `code` is a claim currency as the gateway keys it (an ISO code, or
+ * `CURRENCY_UNRECORDED`), or null for the combined figures of a gateway older
+ * than `byCurrency`, whose currency is not stated.
+ */
+export interface RecoveryGroup {
+  code: string | null;
+  /** This currency's figures. Null while /credits/stats is unread, or when it did not count this currency. */
+  figures: RecoveryFigures | null;
+  /** This currency's settled money by month. Null while the settled list is unread or failed. */
+  trend: MonthTrend | null;
+}
+
+/**
+ * The ledger's blocks: one per currency, never one sum across them (the
+ * gateway's own comment on the combined figures: they "add lira to euros when
+ * a house claims in both"). The codes are every currency either read carries,
+ * sorted. Empty when both reads have answered and neither carries a claim — or
+ * when neither has answered; the ledger tells those apart from `stats`.
+ */
+export function recoveryGroups(
+  stats: CreditStats | null,
+  trendByCurrency: Record<string, MonthTrend> | null,
+): RecoveryGroup[] {
+  if (stats && !stats.byCurrency) {
+    // A gateway older than `byCurrency`: the combined figures are all there
+    // is, and the trend cannot be matched to a sum of unnamed currencies.
+    return [{ code: null, figures: stats, trend: null }];
+  }
+  const codes = new Set<string>(Object.keys(stats?.byCurrency ?? {}));
+  for (const code of Object.keys(trendByCurrency ?? {})) codes.add(code);
+  return [...codes].sort().map((code) => ({
+    code,
+    figures: stats?.byCurrency?.[code] ?? null,
+    // A currency the settled list does not carry settled nothing in it.
+    trend: trendByCurrency === null ? null : (trendByCurrency[code] ?? { thisMonth: 0, lastMonth: 0 }),
+  }));
+}
+
 export function useOwnerRecovery(): RecoveryData {
   const rid = useActiveRestaurantId();
   const statsQ = useQuery({
@@ -654,27 +753,9 @@ export function useOwnerRecovery(): RecoveryData {
   });
 
   return useMemo(() => {
-    let thisMonth: number | null = null;
-    let lastMonth: number | null = null;
-    if (Array.isArray(creditedQ.data)) {
-      const now = new Date();
-      const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const inMonth = (iso: string | null, ref: Date) => {
-        if (!iso) return false;
-        const d = new Date(iso);
-        return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
-      };
-      const sum = (ref: Date) =>
-        creditedQ.data!
-          .filter((c) => inMonth(c.settled_at, ref))
-          .reduce((s, c) => s + (num(c.credited_amount) ?? 0), 0);
-      thisMonth = sum(now);
-      lastMonth = sum(lastRef);
-    }
     return {
       stats: statsQ.data ?? null,
-      creditedThisMonth: thisMonth,
-      creditedLastMonth: lastMonth,
+      trendByCurrency: Array.isArray(creditedQ.data) ? trendByCurrencyOf(creditedQ.data) : null,
       trendIsError: creditedQ.isError,
       trendFailure: failureOf(creditedQ.isError, creditedQ.error),
       // Not observable from the payload — /credits/stats returns aggregates,

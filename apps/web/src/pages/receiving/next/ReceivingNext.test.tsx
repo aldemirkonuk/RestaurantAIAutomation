@@ -6,6 +6,7 @@ import { RcStaffLane } from './RcStaffLane'
 import { RcManagerQueue } from './RcManagerQueue'
 import { RcOwnerLedger } from './RcOwnerLedger'
 import { RcOutboxRail } from './RcOutboxRail'
+import { RcCreditDrafts } from './RcCreditDrafts'
 import {
   useStaffDeliveries,
   useManagerQueue,
@@ -144,10 +145,53 @@ const queueItem = (over: Record<string, unknown> = {}) => ({
   backorderWhy: null,
   verifiedAt: '2026-08-30T09:00:00.000Z',
   dollarsAtRisk: 120,
+  // The order's own currency (PROCURE-03): a fixture that leaves it out now
+  // reads "currency not recorded", which is what the page must say for one.
+  currency: 'EUR',
   selfEvidenced: false,
   openClaims: 1,
   ...over,
 })
+
+/** One currency's recovery figures, as `/credits/stats` keeps them in `byCurrency`. */
+const figures = (o: Record<string, unknown> = {}) => ({
+  recovered: 0,
+  outstanding: 0,
+  promised: 0,
+  rejected: 0,
+  openClaims: 0,
+  oldestOpenDays: null as number | null,
+  settlementRate: null as number | null,
+  ...o,
+})
+
+/**
+ * `/credits/stats` as the gateway answers it: the combined figures (every
+ * currency added together, which the page must never print) beside
+ * `byCurrency`. `byCurrency: undefined` is a gateway older than the field.
+ */
+const statsPayload = (
+  byCurrency: Record<string, ReturnType<typeof figures>> | undefined,
+  over: Record<string, unknown> = {},
+) => {
+  const groups = Object.values(byCurrency ?? {})
+  const add = (k: 'recovered' | 'outstanding' | 'promised' | 'rejected' | 'openClaims') =>
+    groups.reduce((sum, g) => sum + (g[k] as number), 0)
+  return {
+    data: {
+      recovered: add('recovered'),
+      outstanding: add('outstanding'),
+      promised: add('promised'),
+      rejected: add('rejected'),
+      openClaims: add('openClaims'),
+      oldestOpenDays: null,
+      settlementRate: null,
+      selfEvidencedOpen: 0,
+      ...(byCurrency === undefined ? {} : { byCurrency }),
+      ...over,
+    },
+  }
+}
 
 /**
  * Scopes a query to the page header's own "At risk" figure(s) — since a row
@@ -489,7 +533,7 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     // A full window is 100 rows, and the day line now mounts above them, so the
     // first paint of this case is the heaviest in the file. On a loaded CI runner
     // it crossed the 1000 ms default and the assertion read the pre-load em dash.
-    expect(await screen.findByText('≥$12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
+    expect(await screen.findByText('≥€12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Short/ })).toHaveTextContent('≥100')
   })
 
@@ -497,12 +541,12 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     get.mockResolvedValue(queuePayload({ items: [queueItem()], totalAtRisk: 120 }))
     harness(ManagerBody)
 
-    // The header total and this fixture's one row carry the same $120 —
+    // The header total and this fixture's one row carry the same €120 —
     // scoped to the header, since a bare query would also match the row.
     // RcTally sets its display via a post-commit effect, so the header can
     // lag the row's own render by a tick; waitFor settles once it catches up.
     await screen.findByText('PO-1')
-    await waitFor(() => expect(atRiskHeader().getByText('$120')).toBeInTheDocument())
+    await waitFor(() => expect(atRiskHeader().getByText('€120')).toBeInTheDocument())
     const short = screen.getByRole('tab', { name: /Short/ })
     expect(short).toHaveTextContent('1')
     expect(short).not.toHaveTextContent('≥1')
@@ -523,19 +567,19 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
   it('marks every owner figure as a floor — stats read at most 5000 unordered rows', async () => {
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')
-        ? {
-            data: {
+        ? statsPayload({
+            EUR: figures({
               recovered: 900, outstanding: 400, promised: 100, rejected: 250,
-              openClaims: 3, oldestOpenDays: 12, settlementRate: 0.5, selfEvidencedOpen: 0,
-            },
-          }
+              openClaims: 3, oldestOpenDays: 12, settlementRate: 0.5,
+            }),
+          })
         : { data: { items: [] } },
     )
     harness(OwnerBody)
 
-    expect(await screen.findByText('≥$900')).toBeInTheDocument()
-    expect(screen.getByText('≥$400.00')).toBeInTheDocument()
-    expect(screen.getByText('≥$250.00')).toBeInTheDocument()
+    expect(await screen.findByText('≥€900')).toBeInTheDocument()
+    expect(screen.getByText('≥€400.00')).toBeInTheDocument()
+    expect(screen.getByText('≥€250.00')).toBeInTheDocument()
     expect(screen.getByText(/≥3 open claims/)).toBeInTheDocument()
   })
 })
@@ -555,7 +599,7 @@ describe('F6 — $0 measured and $— unknown are different facts', () => {
     // bare query would match both.
     await screen.findByText('PO-1')
     const row = screen.getByText('PO-1').closest('button') as HTMLElement
-    expect(within(row).getByText('$0')).toBeInTheDocument()
+    expect(within(row).getByText('€0')).toBeInTheDocument()
   })
 
   it('renders an absent figure as an em dash', async () => {
@@ -878,13 +922,7 @@ describe('F8 — a refusal is not an outage, on all three renderings', () => {
 describe('F9 — the trend says when it broke, instead of being honest by accident', () => {
   it('states the settled-claims failure while the headline figure stands', async () => {
     get.mockImplementation(async (url: string) => {
-      if (url.endsWith('/stats'))
-        return {
-          data: {
-            recovered: 900, outstanding: 0, promised: 0, rejected: 0,
-            openClaims: 0, oldestOpenDays: null, settlementRate: null, selfEvidencedOpen: 0,
-          },
-        }
+      if (url.endsWith('/stats')) return statsPayload({ EUR: figures({ recovered: 900 }) })
       throw httpError(500, 'credits list down')
     })
     harness(OwnerBody)
@@ -895,19 +933,12 @@ describe('F9 — the trend says when it broke, instead of being honest by accide
     // Awaited on its own: /stats can land after the list fails, and the headline
     // is an RcTally, which shows its figure one effect after the commit. Read in
     // the alert's tick, it saw the em dash on a slow CI runner (2026-10-06).
-    expect(await screen.findByText('≥$900')).toBeInTheDocument()
+    expect(await screen.findByText('≥€900')).toBeInTheDocument()
   })
 
   it('says nothing when the list simply came back empty', async () => {
     get.mockImplementation(async (url: string) =>
-      url.endsWith('/stats')
-        ? {
-            data: {
-              recovered: 0, outstanding: 0, promised: 0, rejected: 0,
-              openClaims: 0, oldestOpenDays: null, settlementRate: null, selfEvidencedOpen: 0,
-            },
-          }
-        : { data: { items: [] } },
+      url.endsWith('/stats') ? statsPayload({}) : { data: { items: [] } },
     )
     harness(OwnerBody)
 
@@ -932,12 +963,10 @@ describe('F10 — the hand-off carries the order, and the rate names its populat
   it('does not put the settlement rate under "They refused"', async () => {
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')
-        ? {
-            data: {
-              recovered: 900, outstanding: 0, promised: 0, rejected: 250,
-              openClaims: 0, oldestOpenDays: null, settlementRate: 0.5, selfEvidencedOpen: 0,
-            },
-          }
+        ? statsPayload(
+            { EUR: figures({ recovered: 900, rejected: 250, settlementRate: 0.5 }) },
+            { settlementRate: 0.5 },
+          )
         : { data: { items: [] } },
     )
     harness(OwnerBody)
@@ -990,5 +1019,187 @@ describe('F11 — a delivery hand-off opens its row in the decision queue', () =
     harness(ManagerBodyHighlighted)
 
     expect(screen.queryByTestId('highlight-order-missing')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * PROCURE-03 (scenario walk 2026-10-07) — /receiving printed every recovery
+ * figure and every credit draft through formatters pinned to US dollars, from
+ * the gateway's combined figures, which add lira to euros. `byCurrency` was
+ * served and nothing here read it. Each case fails against the pre-fix tree.
+ */
+describe('PROCURE-03 — money on /receiving is in its own currency, never summed across them', () => {
+  /** A credited claim on the settled list, in its own currency. */
+  const settled = (o: Record<string, unknown>) => ({
+    id: 'c',
+    restaurant_id: 'rest-A',
+    provider_id: null,
+    order_id: null,
+    document_id: null,
+    state: 'credited',
+    claimed_amount: 0,
+    credit_document_id: 'memo',
+    reason: 'qty_short',
+    notes: null,
+    self_evidenced: false,
+    opened_at: '2026-01-01T00:00:00.000Z',
+    requested_at: null,
+    promised_at: null,
+    ...o,
+  })
+  const block = (container: HTMLElement, code: string) =>
+    container.querySelector(`[data-currency="${code}"]`) as HTMLElement | null
+
+  it('prints one block per currency from byCurrency, and never the combined sum', async () => {
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? statsPayload({
+            EUR: figures({ recovered: 90, outstanding: 40, openClaims: 1 }),
+            TRY: figures({ recovered: 250, outstanding: 1000, openClaims: 2 }),
+          })
+        : { data: { items: [] } },
+    )
+    const { container } = harness(OwnerBody)
+
+    await waitFor(() => expect(within(block(container, 'EUR')!).getByText('≥€90')).toBeInTheDocument())
+    await waitFor(() => expect(within(block(container, 'TRY')!).getByText('≥TRY 250')).toBeInTheDocument())
+    expect(within(block(container, 'EUR')!).getByText('≥€40.00')).toBeInTheDocument()
+    expect(within(block(container, 'TRY')!).getByText('≥TRY 1,000.00')).toBeInTheDocument()
+    expect(screen.getByText(/Claims in EUR — kept apart, nothing is converted/)).toBeInTheDocument()
+    expect(screen.getByText(/Claims in TRY — kept apart, nothing is converted/)).toBeInTheDocument()
+    // The combined figures (340 recovered, 1,040 owed) add lira to euros: they
+    // appear nowhere, and neither does a dollar sign.
+    expect(container.textContent).not.toMatch(/340|1,040/)
+    expect(container.textContent).not.toContain('$')
+  })
+
+  it('sums the month trend per currency from the settled list, never across them', async () => {
+    const now = new Date()
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1, 12).toISOString()
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15, 12).toISOString()
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? statsPayload({
+            EUR: figures({ recovered: 90 }),
+            TRY: figures({ recovered: 350 }),
+          })
+        : {
+            data: {
+              items: [
+                settled({ id: 'e1', currency: 'EUR', credited_amount: 90, settled_at: thisMonth }),
+                settled({ id: 't1', currency: 'TRY', credited_amount: 250, settled_at: thisMonth }),
+                settled({ id: 't2', currency: 'try', credited_amount: 100, settled_at: lastMonth }),
+              ],
+            },
+          },
+    )
+    const { container } = harness(OwnerBody)
+
+    await waitFor(() =>
+      expect(block(container, 'TRY')).toHaveTextContent('this month ≥TRY 250 · last month ≥TRY 100 (+TRY 150)'),
+    )
+    expect(block(container, 'EUR')).toHaveTextContent('this month ≥€90 · last month ≥€0 (+€90)')
+    // Pre-fix: "this month ≥$340" — lira and euros added into dollars.
+    expect(container.textContent).not.toMatch(/340/)
+  })
+
+  it('shows a month as a dash, with no change figure, when a settled claim has no readable amount', async () => {
+    const now = new Date()
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1, 12).toISOString()
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15, 12).toISOString()
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? statsPayload({ EUR: figures({ recovered: 90 }) })
+        : {
+            data: {
+              items: [
+                settled({ id: 'e1', currency: 'EUR', credited_amount: 90, settled_at: thisMonth }),
+                settled({ id: 'e2', currency: 'EUR', credited_amount: null, settled_at: thisMonth }),
+                settled({ id: 'e3', currency: 'EUR', credited_amount: 40, settled_at: lastMonth }),
+              ],
+            },
+          },
+    )
+    const { container } = harness(OwnerBody)
+
+    await waitFor(() =>
+      expect(block(container, 'EUR')).toHaveTextContent('this month — · last month ≥€40'),
+    )
+    // Not "≥€90 … (+€50)": one claim's money is unknown, so the month's is.
+    expect(block(container, 'EUR')).not.toHaveTextContent('€50')
+  })
+
+  it('says a claim with no currency is not recorded, and never borrows dollars', async () => {
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? statsPayload({ UNRECORDED: figures({ recovered: 5, outstanding: 12, openClaims: 2 }) })
+        : { data: { items: [settled({ currency: null, credited_amount: 5, settled_at: null })] } },
+    )
+    const { container } = harness(OwnerBody)
+
+    await waitFor(() =>
+      expect(within(block(container, 'UNRECORDED')!).getByText('≥5 (currency not recorded)')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('≥12.00 (currency not recorded)')).toBeInTheDocument()
+    expect(container.textContent).not.toContain('$')
+  })
+
+  it('names an older gateway’s combined figures as currency-less instead of dressing them in dollars', async () => {
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? statsPayload(undefined, { recovered: 900, outstanding: 400 })
+        : { data: { items: [] } },
+    )
+    const { container } = harness(OwnerBody)
+
+    expect(await screen.findByText(/did not say which currency these figures are in/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('≥900 (currency not recorded)')).toBeInTheDocument())
+    expect(container.textContent).not.toContain('$')
+  })
+
+  it('says "Nothing yet" for a ledger with no claim, not a zero in some currency', async () => {
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats') ? statsPayload({}) : { data: { items: [] } },
+    )
+    const { container } = harness(OwnerBody)
+
+    expect(await screen.findByText('Nothing yet')).toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/\$0|≥0/)
+  })
+
+  it('prints a queue order with no currency as not recorded, not as dollars', async () => {
+    get.mockResolvedValue(queuePayload({ items: [queueItem({ dollarsAtRisk: 40, currency: null })] }))
+    const { container } = harness(ManagerBody)
+
+    await screen.findByText('PO-1')
+    await waitFor(() => expect(screen.getAllByText('40 (currency not recorded)')).toHaveLength(2))
+    expect(container.textContent).not.toContain('$')
+  })
+
+  it('prints each credit draft in its own currency, and says when it has none', () => {
+    const draft = (o: Record<string, unknown>) =>
+      settled({ state: 'open', credited_amount: null, credit_document_id: null, settled_at: null, ...o }) as any
+    const Drafts = () => (
+      <RcCreditDrafts
+        data={{
+          drafts: [
+            draft({ id: 'd-try', claimed_amount: 250, currency: 'TRY' }),
+            draft({ id: 'd-none', claimed_amount: 88.5, currency: null }),
+          ],
+          hasData: true,
+          isLoading: false,
+          isError: false,
+          failure: null,
+          refetch: () => {},
+        }}
+      />
+    )
+    const { container } = harness(Drafts)
+
+    expect(screen.getAllByText(/TRY 250\.00/).length).toBeGreaterThan(0)
+    // `Intl` puts a no-break space between the code and the number, hence `\s`.
+    expect(screen.getByRole('button', { name: /^Hold to send the request — TRY\s250\.00$/ })).toBeInTheDocument()
+    expect(screen.getAllByText(/88\.50 \(currency not recorded\)/).length).toBeGreaterThan(0)
+    expect(container.textContent).not.toContain('$')
   })
 })
