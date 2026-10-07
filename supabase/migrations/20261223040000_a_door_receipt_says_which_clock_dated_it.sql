@@ -32,7 +32,7 @@
 --   NULL          a row this rule did not date: a door receipt recorded
 --                 before it, or a row the door does not write (verifyReceipt's
 --                 'reconciled' events, which take DEFAULT now()). Nothing is
---                 re-dated (backfill is an open fork in ADR 0286).
+--                 re-dated (a backfill was declined: ADR 0286 follow-up 3).
 --
 -- A 'sent' or 'back_dated' row must carry the phone's time it was judged by
 -- (client_captured_at; on a clamped 'sent' row that is the phone's later

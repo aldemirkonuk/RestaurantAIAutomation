@@ -683,7 +683,7 @@ export class ReceivingService {
     // pull back the time a later one already set, which is what writing "now"
     // on every receipt always did. A retry writes the same stored time, so it
     // converges. Rows dated wrongly before this change are left as they are
-    // (backfill is an open fork, ADR 0286).
+    // (forward-only: the founder declined a backfill, ADR 0286 follow-up 3).
     if (statusWritten) {
       const at = `"${factTime.at}"`;
       const { error: deliveredErr } = await this.db
