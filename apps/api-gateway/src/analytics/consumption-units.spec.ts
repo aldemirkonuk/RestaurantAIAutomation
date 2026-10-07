@@ -183,6 +183,28 @@ describe("bottlesOf — a line's bottles come from its own mode", () => {
 
 type Rows = Record<string, any[]>;
 
+/**
+ * Keep only the columns a select names: `col` and `rel(sub, sub)`, as
+ * PostgREST returns them. Applied to the consumption lines only, so a reader
+ * that stops selecting `consumption_type` or `bottle_size_ml` reads lines
+ * without them here too, as it would in production (merge of 2026-10-07:
+ * analytics.service.ts loadConsumption's select was re-applied by hand).
+ */
+function project(cols: string, row: any) {
+  const out: any = {};
+  for (const part of cols.split(/,(?![^(]*\))/)) {
+    const m = part.trim().match(/^(\w+)(?:\((.*)\))?$/);
+    if (!m) throw new Error(`unparsed select part: ${part}`);
+    const [, name, subs] = m;
+    if (!(name in row)) continue;
+    out[name] =
+      subs === undefined || row[name] == null
+        ? row[name]
+        : project(subs, row[name]);
+  }
+  return out;
+}
+
 /** Keyset paging on `id`, an exact count past the cursor, filters ignored. */
 function dbOver(rowsByTable: Rows) {
   const client = {
@@ -193,6 +215,7 @@ function dbOver(rowsByTable: Rows) {
       let cursor: string | null = null;
       let lim: number | null = null;
       let counted = false;
+      let selected: string | null = null;
       const b: any = {};
       for (const m of [
         "eq",
@@ -206,8 +229,9 @@ function dbOver(rowsByTable: Rows) {
         "not",
       ])
         b[m] = () => b;
-      b.select = (_cols: string, opts?: { count?: string }) => {
+      b.select = (cols: string, opts?: { count?: string }) => {
         if (opts?.count === "exact") counted = true;
+        if (table === "wine_consumption_log") selected = cols;
         return b;
       };
       b.order = () => b;
@@ -229,8 +253,12 @@ function dbOver(rowsByTable: Rows) {
             : all.filter(
                 (r) => String(r.id).localeCompare(cursor as string) > 0,
               );
+        const page = lim === null ? past : past.slice(0, lim);
         return Promise.resolve({
-          data: lim === null ? past : past.slice(0, lim),
+          data:
+            selected === null
+              ? page
+              : page.map((r) => project(selected as string, r)),
           error: null,
           count: counted ? past.length : undefined,
         }).then(resolve, reject);
@@ -450,6 +478,65 @@ describe("the Bottles sold goal counts bottles, or refuses", () => {
     expect((err as Error).message).toContain(
       "1 consumption line across 1 item",
     );
+  });
+});
+
+// The stub above returns only the columns a reader selects, so each case here
+// fails if that reader stops selecting `restaurant_inventory(bottle_size_ml)`:
+// a 1.5 l item would then rest on the 750 ml stand-in and read double.
+describe("each reader divides by the item's stated size, which it must select", () => {
+  const MAGNUM = 1500;
+
+  it("menu engineering: ten 150 ml glasses of a 1.5 l item move 1/90 bottles a day", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1, { bottle_size_ml: MAGNUM })],
+      wine_consumption_log: lines(1, 10, GLASS, MAGNUM),
+    }).getMenuEngineering(RESTAURANT, 90);
+    const row = out.items.find((i: any) => i.id === "inv-1");
+    expect(row.velocityPerDay).toBeCloseTo(1 / 90, 12);
+    expect(row.sizeStandIn).toBe(false);
+  });
+
+  it("the restock list (loadConsumption): 25 glasses of a 1.5 l item are 2.5 bottles over 90 days", async () => {
+    const out: any = await new AnalyticsService(
+      dbOver({
+        restaurant_inventory: [item(1, { bottle_size_ml: MAGNUM })],
+        wine_consumption_log: lines(1, 25, GLASS, MAGNUM),
+      }),
+    ).getInventoryScience(RESTAURANT);
+    const one = out.skus.find((s: any) => s.id === "inv-1");
+    expect(one.avgDailyDemand).toBeCloseTo(2.5 / 90, 12);
+    expect(out.unitsCoverage).toMatchObject({ standInLines: 0 });
+  });
+
+  it("the insight bundle: a 150 ml glass of a 1.5 l item is 0.1 of a bottle", async () => {
+    const svc = new InsightGeneratorService(
+      dbOver({ wine_consumption_log: lines(1, 1, GLASS, MAGNUM) }),
+      {
+        load: async () => ({ dates: new Set<string>(), readable: true }),
+      } as any,
+      {} as any,
+    );
+    const bundle = await (svc as any).loadBundle(RESTAURANT);
+    expect(bundle.consumption[0].qty).toBeCloseTo(0.1, 12);
+  });
+
+  it("the Bottles sold goal: ten 150 ml glasses of a 1.5 l item are 1 bottle sold", async () => {
+    const out = await (
+      new GoalsService(
+        dbOver({ wine_consumption_log: lines(1, 10, GLASS, MAGNUM) }),
+        { getStored: async () => [] } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        { getFinancialSummary: async () => ({}) } as any,
+      ) as any
+    ).computeMetricWithSeries(
+      RESTAURANT,
+      "bottles_sold",
+      daysAgo(30).slice(0, 10),
+    );
+    expect(out.current).toBeCloseTo(1, 12);
   });
 });
 
