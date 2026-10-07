@@ -1222,6 +1222,44 @@ describe('SettingsNext — the settings record', () => {
     expect(screen.getByText(/not a house where nothing has changed/i)).toBeInTheDocument();
   });
 
+  /*
+   * SETUP-05 (scenario walk 2026-10-07): the trail is read as the latest 100
+   * rows. "100 changes · oldest 3 Sep" read as the whole record, with the
+   * 100th row posing as the first change ever filed.
+   */
+  const hundred = () =>
+    Array.from({ length: 100 }, (_, i) => ({
+      ...(ledgerRegister().entries[0] as Record<string, unknown>),
+      id: `a${i}`,
+    }));
+
+  it('says "latest 100 of 1,050" and calls the date the oldest SHOWN when the trail runs past the window', () => {
+    mock.current = base({
+      ledger: remote(ledgerRegister({ entries: hundred(), total: 1050, complete: false, limit: 100 })),
+    });
+    mount('/settings?tab=ledger');
+    const section = screen.getByTestId('st-section-ledger');
+    expect(within(section).getByText(/^latest 100 of 1,050 changes · oldest shown /)).toBeInTheDocument();
+    expect(within(section).queryByText(/^100 changes/)).not.toBeInTheDocument();
+  });
+
+  it('says "N changes · oldest" only when the gateway proved the whole trail was read', () => {
+    mock.current = base({
+      ledger: remote(ledgerRegister({ total: 1, complete: true, limit: 100 })),
+    });
+    mount('/settings?tab=ledger');
+    const section = screen.getByTestId('st-section-ledger');
+    expect(within(section).getByText(/^1 change · oldest (?!shown)/)).toBeInTheDocument();
+    expect(within(section).queryByText(/latest/)).not.toBeInTheDocument();
+  });
+
+  it('with no count, says how many are older was not counted, never a whole record', () => {
+    // An older gateway (no total, no complete) or a database that sent no count.
+    mount('/settings?tab=ledger');
+    const section = screen.getByTestId('st-section-ledger');
+    expect(within(section).getByText(/^latest 1 change . how many are older was not counted · oldest shown /)).toBeInTheDocument();
+  });
+
   it('names the registers whose changes it does NOT cover, so their silence means nothing', () => {
     mount('/settings?tab=ledger');
     // Scoped: every named register is ALSO its own heading elsewhere on the

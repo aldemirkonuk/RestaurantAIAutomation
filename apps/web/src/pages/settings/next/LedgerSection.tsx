@@ -160,6 +160,32 @@ function Entry({ entry }: { entry: LedgerEntry }) {
   );
 }
 
+/**
+ * The count above the list, saying whether it is the whole record.
+ *
+ * The gateway answers the latest `limit` rows (100 asked, 200 at most). A
+ * busy house passes that in weeks, and "100 changes · oldest 3 Sep" then read
+ * as the whole record with the 100th row posing as the first change ever
+ * filed (SETUP-05). So the line says "N changes · oldest …" only when the
+ * gateway proved every counted row was read (`complete`); otherwise it is
+ * "latest N of M" (or "latest N" with no count) and the date is the oldest
+ * SHOWN.
+ */
+function countLine(reg: LedgerRegister): string {
+  const n = reg.entries.length;
+  if (n === 0) return 'No change recorded yet';
+  const noun = (k: number) => `change${k === 1 ? '' : 's'}`;
+  if (reg.complete === true) {
+    return `${n} ${noun(n)}${reg.oldestAt ? ` · oldest ${fmtWhen(reg.oldestAt)}` : ''}`;
+  }
+  const total = typeof reg.total === 'number' && Number.isFinite(reg.total) ? reg.total : null;
+  const head =
+    total !== null
+      ? `latest ${n} of ${total.toLocaleString('en-US')} ${noun(total)}`
+      : `latest ${n} ${noun(n)} ${EM} how many are older was not counted`;
+  return `${head}${reg.oldestAt ? ` · oldest shown ${fmtWhen(reg.oldestAt)}` : ''}`;
+}
+
 export function LedgerSection({ data }: { data: SettingsNextData }) {
   return (
     <Register<LedgerRegister> remote={data.ledger} name="the settings record">
@@ -192,15 +218,7 @@ export function LedgerSection({ data }: { data: SettingsNextData }) {
             not evidence that nobody changed anything.
           </p>
 
-          {reg.readable && (
-            <Micro tone="seal">
-              {reg.entries.length === 0
-                ? 'No change recorded yet'
-                : `${reg.entries.length} change${reg.entries.length === 1 ? '' : 's'}${
-                    reg.oldestAt ? ` · oldest ${fmtWhen(reg.oldestAt)}` : ''
-                  }`}
-            </Micro>
-          )}
+          {reg.readable && <Micro tone="seal">{countLine(reg)}</Micro>}
 
           {reg.readable && reg.entries.length === 0 ? (
             <Note role="status">

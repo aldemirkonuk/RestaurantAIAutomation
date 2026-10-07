@@ -324,9 +324,28 @@ export interface SettingsAuditReadout {
   reason: string | null;
   /**
    * The date of the OLDEST row this readout holds, so the reader knows how far
-   * back "nothing here" actually reaches. Null when the list is empty.
+   * back "nothing here" actually reaches. Null when the list is empty. It is
+   * the oldest row SHOWN: when `complete` is false, older rows exist.
    */
   oldestAt: string | null;
+  /**
+   * How many rows of the trail this reader may read, counted exactly by the
+   * same query that fetched the window (so a staff reader's count leaves out
+   * what they are never handed). Every register: a `register` filter narrows
+   * `entries`, not this. Null when the log was unreadable or the database
+   * reported no count.
+   */
+  total: number | null;
+  /**
+   * True only when every row `total` counts was read, so `entries` is the
+   * whole trail (narrowed by `register`, when one was asked for). False when
+   * the window stopped short of the trail, or when no count came back to
+   * prove it did not: a capped list never reads as the whole record
+   * (scenario walk 2026-10-07, SETUP-05).
+   */
+  complete: boolean;
+  /** The window's size, after the cap: the most rows one read returns. */
+  limit: number;
   /**
    * The instant settings changes started being recorded at all. Everything
    * before it is unrecorded and unrecoverable, and the register says so rather
@@ -445,13 +464,19 @@ export class SettingsAuditService {
       reason: null,
       oldestAt: null,
       recordingSince: SETTINGS_RECORDING_SINCE,
+      total: null,
+      complete: false,
+      limit: capped,
     };
 
     let rows: AuditRow[] = [];
+    let total: number | null = null;
     try {
-      const { data, error } = await this.databaseService.client
+      const { data, error, count } = await this.databaseService.client
         .from("system_audit_log")
-        .select("id, actor_id, action, entity_type, entity_id, changes, created_at")
+        .select("id, actor_id, action, entity_type, entity_id, changes, created_at", {
+          count: "exact",
+        })
         .eq("restaurant_id", restaurantId)
         .in("action", readBackActionsFor(readerRole))
         .order("created_at", { ascending: false })
@@ -467,6 +492,7 @@ export class SettingsAuditService {
         };
       }
       rows = (data ?? []) as unknown as AuditRow[];
+      total = typeof count === "number" && Number.isFinite(count) ? count : null;
     } catch (err: unknown) {
       return {
         ...empty,
@@ -487,6 +513,8 @@ export class SettingsAuditService {
       ...empty,
       entries,
       oldestAt: entries.length > 0 ? entries[entries.length - 1].occurredAt : null,
+      total,
+      complete: total !== null && rows.length >= total,
     };
   }
 

@@ -349,3 +349,139 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
     expect(readBackActionsFor("manager")).toEqual([...READ_BACK_ACTIONS]);
   });
 });
+
+/**
+ * SETUP-05 (scenario walk 2026-10-07): the Ledger asks for the latest 100
+ * rows, the service caps at 200, and the readout said neither how many rows
+ * the trail holds nor that the window stopped short of them. "100 changes ·
+ * oldest <date>" then read as the whole record, with the 100th row posing as
+ * the oldest change ever filed.
+ *
+ * The double below is PostgREST as far as `list` uses it: `.in` and `.order`
+ * are honoured, every response is cut at `limit` (and at max_rows, 1,000),
+ * and `count: "exact"` is the size of the filtered set before the limit.
+ * Each case was RED against origin/main ca3582988's service.
+ */
+describe("SettingsAuditService.list — a capped trail says it is capped", () => {
+  const at = (i: number) => new Date(Date.UTC(2026, 8, 3) + i * 3_600_000).toISOString();
+  function trail(n: number, action = "feature_flag_changed") {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `s-${String(i).padStart(5, "0")}`,
+      actor_id: null,
+      action,
+      entity_type: "restaurant_feature_flag",
+      entity_id: "rest-1",
+      changes: {
+        register: "features",
+        subject: "enable_ai_autonomous_send",
+        fields: { enable_ai_autonomous_send: { from: i % 2 === 0, to: i % 2 !== 0 } },
+      },
+      created_at: at(i),
+    }));
+  }
+
+  function postgrestDb(rows: Array<Record<string, any>>, opts: { noCount?: boolean } = {}) {
+    const asked: Array<{ limit?: number; count?: string }> = [];
+    const client = {
+      from(table: string) {
+        let allow: Set<string> | null = null;
+        let limit: number | undefined;
+        let count: string | undefined;
+        let desc = false;
+        const chain: any = {
+          select: (_cols: string, o?: { count?: string }) => {
+            count = o?.count;
+            return chain;
+          },
+          eq: () => chain,
+          in: (column: string, values: string[]) => {
+            if (column === "action") allow = new Set(values);
+            return chain;
+          },
+          order: (_col: string, o?: { ascending?: boolean }) => {
+            desc = o?.ascending === false;
+            return chain;
+          },
+          limit: (n: number) => {
+            limit = n;
+            return chain;
+          },
+          then: (resolve: (v: unknown) => unknown) => {
+            if (table !== "system_audit_log")
+              return Promise.resolve({ data: [], error: null }).then(resolve);
+            asked.push({ limit, count });
+            let set = allow ? rows.filter((r) => allow!.has(r.action)) : rows;
+            set = [...set].sort((a, b) =>
+              a.created_at === b.created_at ? 0 : (a.created_at < b.created_at ? -1 : 1) * (desc ? -1 : 1),
+            );
+            return Promise.resolve({
+              data: set.slice(0, Math.min(limit ?? 1000, 1000)),
+              error: null,
+              count: count === "exact" && !opts.noCount ? set.length : null,
+            }).then(resolve);
+          },
+        };
+        return chain;
+      },
+    };
+    return { asked, databaseService: { client } as any };
+  }
+
+  it("1,050 changes, the Ledger's limit of 100: latest 100, total 1,050, not complete, oldest SHOWN", async () => {
+    const rows = trail(1050);
+    const { asked, databaseService } = postgrestDb(rows);
+    const out = await new SettingsAuditService(databaseService).list("rest-1", 100, undefined, "owner");
+    expect(asked[0]).toEqual({ limit: 100, count: "exact" });
+    expect(out.entries).toHaveLength(100);
+    expect(out.total).toBe(1050);
+    expect(out.complete).toBe(false);
+    expect(out.limit).toBe(100);
+    // The oldest row shown is the 100th newest, not the first change filed.
+    expect(out.oldestAt).toBe(rows[950].created_at);
+    expect(out.oldestAt).not.toBe(rows[0].created_at);
+  });
+
+  it("asks for more than 200 and is held to 200, still counted", async () => {
+    const { asked, databaseService } = postgrestDb(trail(1050));
+    const out = await new SettingsAuditService(databaseService).list("rest-1", 5000, undefined, "owner");
+    expect(asked[0].limit).toBe(200);
+    expect(out.entries).toHaveLength(200);
+    expect(out.total).toBe(1050);
+    expect(out.complete).toBe(false);
+    expect(out.limit).toBe(200);
+  });
+
+  it("30 changes: every one read, total 30, complete", async () => {
+    const rows = trail(30);
+    const { databaseService } = postgrestDb(rows);
+    const out = await new SettingsAuditService(databaseService).list("rest-1", 100, undefined, "owner");
+    expect(out.entries).toHaveLength(30);
+    expect(out.total).toBe(30);
+    expect(out.complete).toBe(true);
+    expect(out.oldestAt).toBe(rows[0].created_at);
+  });
+
+  it("no count came back: total null, and the list is never called complete", async () => {
+    const { databaseService } = postgrestDb(trail(30), { noCount: true });
+    const out = await new SettingsAuditService(databaseService).list("rest-1", 100, undefined, "owner");
+    expect(out.entries).toHaveLength(30);
+    expect(out.total).toBeNull();
+    expect(out.complete).toBe(false);
+  });
+
+  it("a staff reader's total counts only the rows they may read", async () => {
+    const rows = [...trail(120), ...trail(40, "away_set_for_member")];
+    const { databaseService } = postgrestDb(rows);
+    const out = await new SettingsAuditService(databaseService).list("rest-1", 100, undefined, "staff");
+    expect(out.total).toBe(120);
+    expect(out.entries.map((e) => e.action)).not.toContain("away_set_for_member");
+  });
+
+  it("an unreadable log states no total and is not complete", async () => {
+    const { databaseService } = makeDb({}, { system_audit_log: { message: "connection reset" } });
+    const out = await new SettingsAuditService(databaseService).list("rest-1");
+    expect(out.readable).toBe(false);
+    expect(out.total).toBeNull();
+    expect(out.complete).toBe(false);
+  });
+});

@@ -361,8 +361,23 @@ export interface LedgerRegister {
   entries: LedgerEntry[];
   readable: boolean;
   reason: string | null;
+  /** The oldest row SHOWN. Older rows exist unless `complete` is true. */
   oldestAt: string | null;
   recordingSince: string;
+  /**
+   * Rows of the trail this reader may read, counted exactly by the gateway
+   * (`settings-audit.service.ts` `list`). Null, or absent from an older
+   * gateway, when no count came back: then "of N" cannot be said.
+   */
+  total?: number | null;
+  /**
+   * True only when every counted row was read, so `entries` is the whole
+   * record. Absent ⇒ an older gateway ⇒ not proven whole: the page never
+   * lets the latest 100 read as everything that ever changed (SETUP-05).
+   */
+  complete?: boolean;
+  /** The window the gateway applied (its cap of the asked `limit`). */
+  limit?: number;
 }
 
 /**
