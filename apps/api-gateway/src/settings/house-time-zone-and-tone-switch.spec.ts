@@ -341,6 +341,196 @@ describe("PUT /settings/time-zone", () => {
   });
 });
 
+/**
+ * ADR 0304, PR-1: a house's zone says where it came from. The PUT records the
+ * person's word as the source, bound to the zone it vouches for; the read
+ * names a source only while it still vouches for the zone, and names a person
+ * only as the witness of the zone the house keeps now.
+ */
+describe("the zone's source and its witness (ADR 0304)", () => {
+  const ZONE_KEYS = ["timezone", "timezone_source", "timezone_source_zone"];
+  const restaurantUpdates = (db: FakeDb) =>
+    db.writes.filter((w) => w.table === "restaurants" && w.kind === "update");
+  const auditFields = (db: FakeDb) =>
+    db.tables.system_audit_log.map((r) => r.changes?.fields);
+
+  it("a PUT writes exactly the zone, 'stated' and the zone it vouches for", async () => {
+    const { db, controller } = make();
+    await controller.setHouseTimeZone(
+      A,
+      { zone: "America/Los_Angeles" },
+      "owner-a",
+    );
+    const [w] = restaurantUpdates(db);
+    expect(Object.keys(w.row).sort()).toEqual(ZONE_KEYS);
+    expect(w.row).toEqual({
+      timezone: "America/Los_Angeles",
+      timezone_source: "stated",
+      timezone_source_zone: "America/Los_Angeles",
+    });
+    expect(await controller.getHouseTimeZone(A)).toMatchObject({
+      zone: "America/Los_Angeles",
+      source: "stated",
+      statedBy: { userId: "owner-a", name: "Owner A" },
+    });
+  });
+
+  it("re-stating a zone whose source was never recorded files one row that moves the source; over the person's own word it files none", async () => {
+    const { db, controller } = make();
+    houseA(db).timezone = "Europe/Istanbul";
+    const out = await controller.setHouseTimeZone(
+      A,
+      { zone: "Europe/Istanbul" },
+      "owner-a",
+    );
+    expect(out.audited).toBe(true);
+    expect(auditFields(db)).toEqual([
+      {
+        timezone: { from: "Europe/Istanbul", to: "Europe/Istanbul" },
+        timezone_source: { from: null, to: "stated" },
+      },
+    ]);
+    expect(out).toMatchObject({
+      source: "stated",
+      statedBy: { userId: "owner-a" },
+    });
+    const again = await controller.setHouseTimeZone(
+      A,
+      { zone: "Europe/Istanbul" },
+      "manager-a",
+    );
+    expect(db.tables.system_audit_log).toHaveLength(1);
+    expect(again).toMatchObject({
+      audited: false,
+      auditReason: "nothing changed",
+    });
+  });
+
+  it("a new zone over one the address gave files both moves", async () => {
+    const { db, controller } = make();
+    Object.assign(houseA(db), {
+      timezone: "America/Chicago",
+      timezone_source: "address",
+      timezone_source_zone: "America/Chicago",
+    });
+    await controller.setHouseTimeZone(
+      A,
+      { zone: "America/New_York" },
+      "owner-a",
+    );
+    expect(auditFields(db)).toEqual([
+      {
+        timezone: { from: "America/Chicago", to: "America/New_York" },
+        timezone_source: { from: "address", to: "stated" },
+      },
+    ]);
+    // A new zone over the person's own word moves the zone only.
+    await controller.setHouseTimeZone(A, { zone: "America/Denver" }, "owner-a");
+    expect(auditFields(db)[1]).toEqual({
+      timezone: { from: "America/New_York", to: "America/Denver" },
+    });
+  });
+
+  it("reads the source only while it vouches for the zone the row holds", async () => {
+    const { db, controller } = make();
+    Object.assign(houseA(db), {
+      timezone: "America/Chicago",
+      timezone_source: "address",
+      timezone_source_zone: "America/Chicago",
+    });
+    expect(await controller.getHouseTimeZone(A)).toMatchObject({
+      zone: "America/Chicago",
+      source: "address",
+    });
+    houseA(db).timezone_source = "device";
+    expect(await controller.getHouseTimeZone(A)).toMatchObject({
+      source: "device",
+    });
+    // A writer that rewrites the zone alone (the sim seed, synth seed.py).
+    houseA(db).timezone = "Europe/Istanbul";
+    expect(await controller.getHouseTimeZone(A)).toMatchObject({
+      zone: "Europe/Istanbul",
+      source: null,
+    });
+    Object.assign(houseA(db), {
+      timezone: null,
+      timezone_source: null,
+      timezone_source_zone: null,
+    });
+    expect(await controller.getHouseTimeZone(A)).toMatchObject({
+      zone: null,
+      source: null,
+    });
+  });
+
+  it("names nobody when the newest row stated another zone", async () => {
+    const { db, controller } = make();
+    houseA(db).timezone = "Europe/Istanbul";
+    db.tables.system_audit_log.push({
+      action: TIME_ZONE_AUDIT_ACTION,
+      restaurant_id: A,
+      actor_id: "owner-a",
+      created_at: "2026-09-22T10:00:00.000Z",
+      changes: {
+        register: "time-zone",
+        fields: { timezone: { from: null, to: "America/Chicago" } },
+      },
+    });
+    expect(await controller.getHouseTimeZone(A)).toMatchObject({
+      zone: "Europe/Istanbul",
+      source: null,
+      statedAt: null,
+      statedBy: null,
+    });
+    // The same row names its person while the zone is the one stated.
+    houseA(db).timezone = "America/Chicago";
+    expect(await controller.getHouseTimeZone(A)).toMatchObject({
+      statedAt: "2026-09-22T10:00:00.000Z",
+      statedBy: { userId: "owner-a", name: "Owner A" },
+    });
+  });
+
+  it("a zone the address or the device gave names no person, even with a matching older row", async () => {
+    const { db, controller } = make();
+    db.tables.system_audit_log.push({
+      action: TIME_ZONE_AUDIT_ACTION,
+      restaurant_id: A,
+      actor_id: "owner-a",
+      created_at: "2026-09-22T10:00:00.000Z",
+      changes: {
+        register: "time-zone",
+        fields: { timezone: { from: null, to: "America/Chicago" } },
+      },
+    });
+    for (const source of ["address", "device"]) {
+      Object.assign(houseA(db), {
+        timezone: "America/Chicago",
+        timezone_source: source,
+        timezone_source_zone: "America/Chicago",
+      });
+      expect(await controller.getHouseTimeZone(A)).toMatchObject({
+        source,
+        statedAt: null,
+        statedBy: null,
+      });
+    }
+  });
+
+  it("'stated' with no row to witness it says so: the source, and nobody named", async () => {
+    const { db, controller } = make();
+    Object.assign(houseA(db), {
+      timezone: "Europe/Istanbul",
+      timezone_source: "stated",
+      timezone_source_zone: "Europe/Istanbul",
+    });
+    expect(await controller.getHouseTimeZone(A)).toMatchObject({
+      source: "stated",
+      statedAt: null,
+      statedBy: null,
+    });
+  });
+});
+
 describe("GET /settings/time-zone", () => {
   it("says nobody has stated one (zone null), keeps an unreadable value verbatim, and never reads a failure as empty", async () => {
     const { db, controller } = make();
