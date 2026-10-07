@@ -654,25 +654,21 @@ export class InsightGeneratorService {
     restaurantId: string,
   ): Promise<Map<string, number> | null> {
     try {
-      const { data, error } = await readLotRollup(
+      const rows = await readLotRollup(
         client,
         restaurantId,
         "inventory_id, open_ml",
       );
-      if (error) {
-        this.logger.error(
-          `insight bundle query on inventory_lot_rollup failed — the stockout ` +
-            `#1 will be silent rather than wrong: ${error.code ?? "?"} ${error.message ?? error}`,
-        );
-        return null;
-      }
       const byInventory = new Map<string, number>();
-      for (const r of data || [])
+      for (const r of rows)
         byInventory.set(r.inventory_id, Number(r.open_ml) || 0);
       return byInventory;
     } catch (err: any) {
+      // readLotRollup throws a WholeReadError on every failure, a database
+      // error included (ADR 0299, 2026-10-07).
       this.logger.error(
-        `insight bundle query on inventory_lot_rollup rejected: ${err?.message ?? err}`,
+        `insight bundle query on inventory_lot_rollup rejected — the stockout ` +
+          `#1 will be silent rather than wrong: ${err?.message ?? err}`,
       );
       return null;
     }

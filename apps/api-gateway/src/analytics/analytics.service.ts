@@ -29,25 +29,45 @@ import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
  * fallback, with nothing said. `readWholeWindow` cannot page it: the view has
  * no `id` column to keyset on, and `inventory_id` is not unique in it.
  *
- * The rows are `{ data, error }`-shaped so the three readers keep their own
- * failure paths. A database error is returned as before; a prefix THROWS, so
- * each reader's `allSettled` or `catch` takes it as a failed read: the
- * reorder register and Wine-360 fall back to `stock_live` with no open ml and
- * say so in the log; the stockout #1 insight is silent. None of them answers
- * from part of the rollup. With no count reported (test doubles only), a page
- * shorter than `WHOLE_READ_PAGE` is taken as whole, as `readWholeWindow` does.
+ * Every failure THROWS a `WholeReadError`, as `readWholeWindow` does: a
+ * database error is `read_failed`, a page with no rows and no error is
+ * `malformed_page`, a prefix is `row_ceiling`. The reorder register, Wine-360
+ * and every other lens that loads stock through `loadInventory` or
+ * `loadInventoryWithCost` let it PROPAGATE, so that lens says it could not be
+ * read, by the same path a refused pour read takes (ADR 0292 fork 3). They
+ * used to fall back to `stock_live` with no open bottle. The founder,
+ * 2026-10-07 (ADR 0299, "When the rollup read fails"): "Say it couldn't be
+ * read (Recommended)". The stockout #1 insight catches it and is silent, as
+ * the insight bundle is on a refused pour read. None of them answers from part
+ * of the rollup. With no count reported (test doubles only), a page shorter
+ * than `WHOLE_READ_PAGE` is taken as whole, as `readWholeWindow` does.
  */
 export async function readLotRollup(
   client: ReturnType<DatabaseService["getClient"]>,
   restaurantId: string,
   columns: string,
-): Promise<{ data: any[] | null; error: any }> {
+): Promise<any[]> {
   const what = "This house's lot rollup (inventory_lot_rollup)";
   const { data, error, count } = await client
     .from("inventory_lot_rollup")
     .select(columns, { count: "exact" })
     .eq("restaurant_id", restaurantId);
-  if (error || !Array.isArray(data)) return { data: data ?? null, error };
+  if (error)
+    throw new WholeReadError(
+      what,
+      "read_failed",
+      0,
+      null,
+      `page 1: ${error.code ?? "?"} ${error.message ?? String(error)}`,
+    );
+  if (!Array.isArray(data))
+    throw new WholeReadError(
+      what,
+      "malformed_page",
+      0,
+      null,
+      "page 1 carried no rows and no error",
+    );
   const counted = typeof count === "number" && Number.isFinite(count);
   if (counted && data.length > (count as number))
     throw new WholeReadError(
@@ -69,7 +89,7 @@ export async function readLotRollup(
         ? `${data.length} of ${count} rows came back in its one page; the view has no id column to page on`
         : `a full page of ${data.length} rows came back with no count to prove it the last`,
     );
-  return { data, error: null };
+  return data;
 }
 
 /**
@@ -185,7 +205,8 @@ export class AnalyticsService {
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      // Whole in one proved page or rejected, never a prefix (readLotRollup).
+      // Whole in one proved page or a WholeReadError, never a prefix
+      // (readLotRollup).
       readLotRollup(
         client,
         restaurantId,
@@ -203,14 +224,17 @@ export class AnalyticsService {
     // advanced-analytics.service.ts was hardened with logQueryFailure and this
     // file, same directory and same tables, was not. See ADR 0067.
     this.reportSlice("restaurant_inventory", invRes);
-    this.reportSlice("inventory_lot_rollup", rollupRes);
 
+    // An unread rollup PROPAGATES (a `WholeReadError`, the same path as a
+    // refused pour read in loadConsumption, ADR 0292 fork 3). This used to log
+    // and fall back to `stock_live` with no open bottle, so on a bad read the
+    // register printed a lower on hand and nobody could tell. The founder,
+    // 2026-10-07 (ADR 0299): "Say it couldn't be read (Recommended)".
+    if (rollupRes.status === "rejected") throw rollupRes.reason;
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled") {
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
-    }
+    for (const r of rollupRes.value) rollup.set(r.inventory_id, r);
 
     // Unit cost: invoiced lot WAC → recorded last purchase price → UNKNOWN.
     // The third branch used to be `unitPrice * 0.6`, a magic number with no

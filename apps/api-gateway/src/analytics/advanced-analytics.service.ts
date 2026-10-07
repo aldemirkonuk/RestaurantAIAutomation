@@ -68,7 +68,8 @@ export class AdvancedAnalyticsService {
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      // Whole in one proved page or rejected, never a prefix (readLotRollup).
+      // Whole in one proved page or a WholeReadError, never a prefix
+      // (readLotRollup).
       readLotRollup(
         client,
         restaurantId,
@@ -81,19 +82,16 @@ export class AdvancedAnalyticsService {
     ]);
     if (invRes.status === "fulfilled" && invRes.value.error)
       this.logQueryFailure("restaurant_inventory", invRes.value.error);
-    if (rollupRes.status === "fulfilled" && rollupRes.value.error)
-      this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
-    // A refused rollup (more rows than its one page) rejects; say so, as the
-    // register's reportSlice does, rather than falling back in silence.
-    if (rollupRes.status === "rejected")
-      this.logger.error(
-        `analytics query on inventory_lot_rollup rejected: ${rollupRes.reason}`,
-      );
+    // An unread rollup PROPAGATES, as AnalyticsService.loadInventory's does
+    // and as a refused pour read does (ADR 0292 fork 3): Wine-360 and menu
+    // engineering say they could not be read. They used to log it and fall
+    // back to `stock_live` with no open bottle. The founder, 2026-10-07
+    // (ADR 0299): "Say it couldn't be read (Recommended)".
+    if (rollupRes.status === "rejected") throw rollupRes.reason;
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled")
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    for (const r of rollupRes.value) rollup.set(r.inventory_id, r);
     // Same fix as AnalyticsService.loadInventory: the third branch here was
     // `unitPrice * 0.6`, an undocumented magic number that was the live path
     // for ~70 of 72 production rows while `basis.margin` below called the

@@ -5,6 +5,8 @@ import { stateBookFrom } from "./insights/item-state";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
 import { isWithheld } from "../reports/exports/report-export-doc";
+import { WholeReadError } from "../common/read-whole-window";
+import { AnalyticsController } from "./analytics.controller";
 
 /**
  * "Jameson Irish Whiskey ranks #1 of 134 by stockout risk (61.0%). Only 0
@@ -618,26 +620,30 @@ describe("a lot rollup past one page is read whole or refused, never used as a p
     expect(await stockoutRecords(insight(rows))).toHaveLength(1);
   });
 
-  it("the register refuses the 1,000 of 1,001 and falls back for every wine, saying so, instead of counting one wine's open bottle and not the other's (fails before)", async () => {
-    const svc = register(withRetired(PAGE - 1));
-    const log = logged(svc);
-    const out = await svc.getInventoryScience(R);
-    const onHand = (name: string) =>
-      out.skus.find((s: any) => s.name === name)!.onHand;
-    // Before: 0.33 for the wine inside the page, 0 for the one past it.
-    expect(onHand("Open Rioja")).toBe(0);
-    expect(onHand("Jameson Irish Whiskey")).toBe(0);
-    expect(said(log)).toMatch(
+  // [2026-10-07, the founder's answer at 14:41:21Z, "Say it couldn't be read
+  // (Recommended)": these two cases used to expect the register and Wine-360
+  // to fall back to stock_live for every wine (on hand 0 and 0) and log it.
+  // They now expect the refusal; see "an unread lot rollup is said, not
+  // replaced" below.]
+  it("the register refuses the 1,000 of 1,001 instead of counting one wine's open bottle and not the other's (fails before)", async () => {
+    const err: any = await register(withRetired(PAGE - 1))
+      .getInventoryScience(R)
+      .catch((e: unknown) => e);
+    // Before the read was proved: 0.33 for the wine inside the page, 0 for
+    // the one past it. Before 2026-10-07: 0 and 0 from stock_live.
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.reason).toBe("row_ceiling");
+    expect(err.message).toMatch(
       /inventory_lot_rollup.*could not be read whole.*1000 of 1001 rows/,
     );
   });
 
   it("Wine-360 refuses it the same way (fails before)", async () => {
-    const svc = wine360(withRetired(PAGE - 1));
-    const log = logged(svc);
-    const out = await svc.getWine360(R, "mw-open-rioja");
-    expect(out.onHand).toBe(0);
-    expect(said(log)).toMatch(
+    const err: any = await wine360(withRetired(PAGE - 1))
+      .getWine360(R, "mw-open-rioja")
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WholeReadError);
+    expect(err.message).toMatch(
       /inventory_lot_rollup.*could not be read whole.*1000 of 1001 rows/,
     );
   });
@@ -649,6 +655,133 @@ describe("a lot rollup past one page is read whole or refused, never used as a p
     expect(said(log)).toMatch(
       /inventory_lot_rollup.*could not be read whole.*1000 of 1001 rows/,
     );
+  });
+});
+
+/**
+ * The founder, 2026-10-07 (AskUserQuestion, answered 14:41:21Z), ADR 0299
+ * "When the rollup read fails": *"Say it couldn't be read (Recommended)"*. A
+ * rollup that cannot be read, by a database error or by a page its count does
+ * not prove whole, makes every lens that loads stock through it say so, by the
+ * path ADR 0292 fork 3 set for a refused pour read. They used to fall back to
+ * stock_live with no open bottle: a lower on hand that nobody could tell.
+ */
+describe("an unread lot rollup is said, not replaced by the shelf count without the open bottle (ADR 0299, 2026-10-07)", () => {
+  const PAGE = 1000;
+  const wine: Wine = {
+    name: "Open Rioja",
+    sealed: 2,
+    openMl: 250,
+    bottleSizeMl: 750,
+    sales: everyDay(20),
+  };
+  const denied = { code: "42501", message: "permission denied" };
+  /** The two ways a rollup read fails: an error, and an unproved page. */
+  const failures: Array<[string, () => any, string, RegExp]> = [
+    [
+      "a database error",
+      () =>
+        makeClient(tables([wine]), { inventory_lot_rollup: denied }),
+      "read_failed",
+      /^This house's lot rollup \(inventory_lot_rollup\) could not be read whole: the database refused one of its pages \(page 1: 42501 permission denied\)\. Nothing is reported from part of it\.$/,
+    ],
+    [
+      "1,000 of 1,001 rows",
+      () => {
+        const rows = tables([wine]);
+        rows.inventory_lot_rollup = [
+          ...rows.inventory_lot_rollup,
+          ...Array.from({ length: PAGE }, (_, i) => ({
+            inventory_id: `inv-retired-${i}`,
+            live_qty: 0,
+            wac: null,
+            has_invoice_cost: false,
+            wac_qty: 0,
+            open_ml: 0,
+          })),
+        ];
+        return makeClient(rows, {}, { maxRows: PAGE });
+      },
+      "row_ceiling",
+      /^This house's lot rollup \(inventory_lot_rollup\) could not be read whole: the window holds more rows than one read may hold \(1000 of 1001 rows came back in its one page; .*\)\. Nothing is reported from part of it\.$/,
+    ],
+  ];
+  const base = (client: any) =>
+    new AnalyticsService({ getClient: () => client } as any);
+  const adv = (client: any) =>
+    new AdvancedAnalyticsService(
+      { getClient: () => client } as any,
+      base(client),
+      { getStored: async () => [] } as any,
+      { listGoals: async () => [] } as any,
+    );
+  /** Every lens that loads stock through the rollup. */
+  const lenses: Array<[string, (client: any) => Promise<unknown>]> = [
+    ["getInventoryScience (the reorder register)", (c) => base(c).getInventoryScience(R)],
+    ["getFinancialSummary", (c) => base(c).getFinancialSummary(R)],
+    ["getRiskProfile", (c) => base(c).getRiskProfile(R)],
+    ["getWine360", (c) => adv(c).getWine360(R, "mw-open-rioja")],
+    ["getMenuEngineering", (c) => adv(c).getMenuEngineering(R)],
+  ];
+  const cases = failures.flatMap(([how, client, reason, sentence]) =>
+    lenses.map(
+      ([lens, call]) => [lens, how, client, reason, sentence, call] as const,
+    ),
+  );
+
+  it.each(cases)(
+    "%s refuses on %s with the sentence, never the shelf count without the open bottle (fails before)",
+    async (_lens, _how, client, reason, sentence, call) => {
+      const err: any = await call(client()).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(WholeReadError);
+      expect(err.reason).toBe(reason);
+      expect(err.message).toMatch(sentence);
+    },
+  );
+
+  it("the routes answer the sentence: the register's as a 500 (its own catch), Wine-360's as the 503 (fails before)", async () => {
+    const [, client] = failures[0];
+    const c = client();
+    const none = {} as any;
+    const controller = new AnalyticsController(
+      base(c),
+      adv(c),
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+    );
+    const register: any = await controller
+      .getInventoryScience(R)
+      .catch((e: unknown) => e);
+    expect(register.getStatus()).toBe(500);
+    expect(register.message).toMatch(/inventory_lot_rollup\) could not be read whole/);
+    const w360: any = await controller
+      .getWine360(R, "mw-open-rioja")
+      .catch((e: unknown) => e);
+    expect(w360).toBeInstanceOf(WholeReadError);
+    expect(w360.getStatus()).toBe(503);
+  });
+
+  it("the overview holds the stock lenses as unread (null), not as figures (fails before)", async () => {
+    const [, client] = failures[0];
+    const out: any = await adv(client()).getOverview(R);
+    expect(out.financial).toBeNull();
+    expect(out.risk).toBeNull();
+    expect(out.inventory).toBeNull();
+    expect(out.menuEngineering).toBeNull();
+  });
+
+  it("control: a whole rollup that holds no row for a wine still reads that wine's sealed count from stock_live (no lot, so no open bottle)", async () => {
+    const rows = tables([wine]);
+    rows.inventory_lot_rollup = [];
+    const out = await base(makeClient(rows)).getInventoryScience(R);
+    expect(out.skus[0].onHand).toBe(2);
   });
 });
 
