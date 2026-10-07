@@ -36,8 +36,8 @@ export const TUCK_BELOW_PX = 1280;
 /**
  * Pages whose own layout wants the width (reports-next.css asks 1280). The
  * dashboard (`/`) joined them on 2026-10-05: its month needs the room for a
- * 12 px figure, and the founder chose this over a shorter cell form or
- * stacking its side rail ("Counter starts tucked", ADR 0290).
+ * 12 px figure, and the founder chose this over stacking its side rail or
+ * no change ("Counter starts tucked", ADR 0290).
  */
 export const WIDE_PAGES: readonly string[] = ['/reports', '/inventory', '/'];
 
