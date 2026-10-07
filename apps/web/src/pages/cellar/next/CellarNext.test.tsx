@@ -32,7 +32,14 @@ import type {
   RegisterRowVM,
 } from './useCellarNextData';
 import { sortValueFor } from './registerCells';
-import { registerHref, DOOR_CHECKED_NOTE, DOOR_CHECKED_SOURCE } from './cellar-format';
+import {
+  registerHref,
+  DOOR_CHECKED_INVOICED_LABEL,
+  DOOR_CHECKED_INVOICED_NOTE,
+  DOOR_CHECKED_LABEL,
+  DOOR_CHECKED_NOTE,
+  DOOR_CHECKED_SOURCE,
+} from './cellar-format';
 import type { RegisterId } from './cellar-format';
 import { HOUSE_SPINE } from './cellar-columns';
 
@@ -1008,6 +1015,77 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(DOOR_CHECKED_NOTE).toMatch(/An invoice filed but not linked to it counts alongside/);
     expect(DOOR_CHECKED_NOTE).not.toMatch(/has been filed/);
     expect(DOOR_CHECKED_SOURCE).toMatch(/no invoice linked to the order or paired with its line/);
+  });
+
+  // ADR 0301, Harder / given up: the coordinator's decision of 2026-10-07
+  // (amendment 1), not the founder's pick. A Paid that adds invoice lines and a
+  // door check says both on the cell, not only in a title (a title never shows
+  // on touch), and its note names the double count. A Paid only the door fills
+  // keeps 'door-checked', and so do First bought and the record's stand.
+  it('marks a Paid that adds invoice lines and a door check "door-checked + invoiced", and a door-only Paid "door-checked"', () => {
+    const both = houseRow({
+      key: 'b-both',
+      name: 'Both Books',
+      house: {
+        ...houseRow().house,
+        bought: {
+          ...houseRow().house.bought, // lines: 3
+          doorChecked: 1,
+          firstDoorChecked: true,
+          lastDoorChecked: true,
+          paidTotal: 828.4,
+        },
+      },
+    });
+    const doorOnly = houseRow({
+      key: 'b-door-only',
+      name: 'Door Only',
+      house: {
+        ...houseRow().house,
+        books: ['order'],
+        bought: {
+          lines: 0, doorChecked: 1,
+          first: '2026-08-03', firstDoorChecked: true,
+          last: '2026-08-03', lastDoorChecked: true,
+          bottles: 10, paidTotal: 265, lastUnitPrice: 26.5, lastFrom: 'Zqdc Door Vendor',
+        },
+        poured: null,
+      },
+    });
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({ rows: [both, doorOnly] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    // Both books: the Paid cell's visible words name both, its note the double count.
+    const bothRow = screen.getByText('Both Books').closest('tr')!;
+    expect(within(bothRow).getAllByTestId('door-checked-mark')).toHaveLength(2);
+    const bothPaid = within(within(bothRow).getByText('$828.40')).getByTestId('door-checked-mark');
+    expect(DOOR_CHECKED_INVOICED_LABEL).toBe('door-checked + invoiced');
+    expect(bothPaid.textContent?.trim()).toBe('door-checked + invoiced');
+    expect(bothPaid).toHaveAttribute('title', DOOR_CHECKED_INVOICED_NOTE);
+    expect(DOOR_CHECKED_INVOICED_NOTE).toMatch(
+      /same delivery as a door-checked order, that delivery is counted twice until the invoice is linked to the order or its line is paired/,
+    );
+    // Its First bought holds one date, the door's: still 'door-checked'.
+    const bothFirst = within(within(bothRow).getByText('2 Mar 2026')).getByTestId('door-checked-mark');
+    expect(bothFirst.textContent?.trim()).toBe(DOOR_CHECKED_LABEL);
+    expect(bothFirst).toHaveAttribute('title', DOOR_CHECKED_NOTE);
+
+    // Door only: the Paid mark is unchanged.
+    const doorRow = screen.getByText('Door Only').closest('tr')!;
+    const doorPaid = within(within(doorRow).getByText('$265.00')).getByTestId('door-checked-mark');
+    expect(doorPaid.textContent?.trim()).toBe('door-checked');
+    expect(doorPaid).toHaveAttribute('title', DOOR_CHECKED_NOTE);
+    expect(doorRow).not.toHaveTextContent(/invoiced/);
+
+    // The record's stand is not changed by this: every mark there reads 'door-checked'.
+    fireEvent.click(screen.getByText('Both Books'));
+    const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
+    const standMarks = within(book).getAllByTestId('door-checked-mark');
+    expect(standMarks.length).toBeGreaterThan(0);
+    for (const m of standMarks) expect(m.textContent?.trim()).toBe(DOOR_CHECKED_LABEL);
   });
 
   it('renders add-to-inventory disabled, with the OD-113 sentence beside it', () => {

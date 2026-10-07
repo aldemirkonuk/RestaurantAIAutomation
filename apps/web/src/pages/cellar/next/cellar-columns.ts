@@ -232,7 +232,7 @@ const PAID: CellarColumn = {
   source:
     'procurement_document_lines.line_total, summed over invoice lines; plus price_history receipt_verified × the bottles accepted, on door-checked orders with no invoice linked to the order or paired with its line',
   meaning:
-    'Everything this house has been charged for it, across every invoice, plus each order whose price was checked at the door and has no invoice linked to it yet, marked door-checked. An invoice filed but not linked to the order counts alongside the door check, so the same delivery can count twice. Open the cell for the ledger those lines make — what was bought, when, from whom, at what. That ledger lists the invoice lines; a door-checked order shows there as its order, not yet as a purchase.',
+    'Everything this house has been charged for it, across every invoice, plus each order whose price was checked at the door and has no invoice linked to it yet, marked door-checked. An invoice filed but not linked to the order counts alongside the door check, so the same delivery can count twice; a Paid that adds invoice lines and a door check is marked door-checked + invoiced. Open the cell for the ledger those lines make — what was bought, when, from whom, at what. That ledger lists the invoice lines; a door-checked order shows there as its order, not yet as a purchase.',
   fill: null,
   on: true,
   why: '',

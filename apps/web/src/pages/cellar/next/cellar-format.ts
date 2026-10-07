@@ -642,6 +642,20 @@ export const DOOR_CHECKED_NOTE =
   'Checked against the delivery at the door. No invoice is linked to this order yet; once one is, the invoice takes over. An invoice filed but not linked to it counts alongside, so the same delivery can count twice.';
 
 /**
+ * ADR 0301, Harder / given up: the coordinator's decision of 2026-10-07 under
+ * the founder's delegation, amendment 1 (not the founder's pick). The Paid
+ * cell's mark (`cellFor` in registerCells.tsx) when that Paid adds both books,
+ * invoice lines and door-checked orders. The words say both on the cell
+ * itself, because a title never shows on touch and 'door-checked' alone named
+ * only the door. A Paid only the door fills keeps DOOR_CHECKED_LABEL, and so
+ * do every First bought mark and every mark on the record's stand.
+ */
+export const DOOR_CHECKED_INVOICED_LABEL = 'door-checked + invoiced';
+
+export const DOOR_CHECKED_INVOICED_NOTE =
+  'Adds invoice lines and orders checked against the delivery at the door with no invoice linked to them. If one of these invoices is for the same delivery as a door-checked order, that delivery is counted twice until the invoice is linked to the order or its line is paired with the order’s line.';
+
+/**
  * `vendor_price_observations.source_type`, in the vocabulary `/vendor-prices`
  * already uses. An unrecognised value is shown verbatim rather than bucketed:
  * the column has no CHECK constraint, and renaming a value we do not know

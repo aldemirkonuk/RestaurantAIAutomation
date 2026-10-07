@@ -19,6 +19,8 @@ import type { ReactNode } from 'react';
 import {
   BOOK_LABEL,
   BOOK_ORDER,
+  DOOR_CHECKED_INVOICED_LABEL,
+  DOOR_CHECKED_INVOICED_NOTE,
   DOOR_CHECKED_LABEL,
   DOOR_CHECKED_NOTE,
   EM,
@@ -65,17 +67,24 @@ function dim(v: string): ReactNode {
  * figure a door check filled — a price checked against the delivery, on an
  * order no invoice is linked to. Words, not a colour, and the reason on
  * hover. The record's stand draws the same mark, so it is exported from here.
+ *
+ * `withInvoices` is for a Paid that adds invoice lines too: the words read
+ * 'door-checked + invoiced' and the note says the same delivery can be counted
+ * twice until the invoice is linked (ADR 0301, Harder / given up, the
+ * coordinator's decision of 2026-10-07, amendment 1). Only the Paid cell below
+ * passes it (the registers and the whole-cellar list draw it through
+ * `cellFor`); the record's stand calls this with no argument.
  */
-export function doorCheckedMark(): ReactNode {
+export function doorCheckedMark(withInvoices = false): ReactNode {
   return (
     <span
       className="cl-dim"
       data-testid="door-checked-mark"
-      title={DOOR_CHECKED_NOTE}
+      title={withInvoices ? DOOR_CHECKED_INVOICED_NOTE : DOOR_CHECKED_NOTE}
       style={{ fontSize: 10, whiteSpace: 'nowrap' }}
     >
       {' '}
-      {DOOR_CHECKED_LABEL}
+      {withInvoices ? DOOR_CHECKED_INVOICED_LABEL : DOOR_CHECKED_LABEL}
     </span>
   );
 }
@@ -119,12 +128,14 @@ export function cellFor(r: RegisterRowVM, id: string): ReactNode {
         </>
       );
     case 'paid': {
-      const paid = h?.bought?.paidTotal ?? null;
+      const b = h?.bought;
+      const paid = b?.paidTotal ?? null;
       if (paid === null) return money(paid);
+      // Door rows in it: marked. Invoice lines in it too: the mark says both.
       return (
         <>
           {money(paid)}
-          {(h?.bought?.doorChecked ?? 0) > 0 ? doorCheckedMark() : null}
+          {(b?.doorChecked ?? 0) > 0 ? doorCheckedMark((b?.lines ?? 0) > 0) : null}
         </>
       );
     }
