@@ -1,5 +1,6 @@
 /**
- * Edit one location: its name, its city, the chain it belongs to.
+ * Edit one location: its name, its city, the chain it belongs to — and, on the
+ * house surface, for an owner, the state and country it is in (ADR 0289).
  *
  * SHAPE: `Sheet`. ADR 0112's rule is "what is the overlay FOR" — this one edits
  * ONE OBJECT that already exists, which is the Sheet's definition (right
@@ -15,6 +16,25 @@
  * `chainId: null` on the location row — the location stays, the chain stays.
  * That is why there is no hold-to-approve seal here; the seal is reserved for
  * an irreversible act and this one is a PATCH you can undo by re-selecting.
+ *
+ * THE STATE AND COUNTRY (ADR 0289, founder 2026-10-04: "Add it to the editor
+ * (Recommended)"). Until then nothing a person could reach wrote either column
+ * on a house that already existed, while the market index told a United States
+ * house with no state to "Set the state in Settings". The pair scopes the
+ * market index, the commodity and distributor panels and the statute the
+ * mail-retention notice names (never how long mail is kept: that window is
+ * the house's longest dispute plus a margin, ADR 0289 R7), so:
+ *   - only an owner of THIS house may change it — the gateway refuses anyone
+ *     else whole, and this sheet shows a manager the values read-only, saying
+ *     why, rather than a control that would only be refused;
+ *   - the pair is read from `GET /organizations/locations/:id` when the sheet
+ *     opens; a read that fails says so and offers no control, because a field
+ *     seeded with a guess would write the guess back;
+ *   - it is sent only when it moved, always as a pair (the state is checked
+ *     against the country), and the gateway's receipt is shown in the sheet:
+ *     whether the settings log recorded the change, and if not, why.
+ * Only the house branch has it. The legacy branch stays byte-frozen and never
+ * reads the pair.
  */
 
 import { useState, useEffect, useRef } from 'react'
@@ -26,6 +46,8 @@ import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
 import type { RestaurantBranch } from '../../contexts/AuthContext'
 import { apiClient, getErrorMessage } from '../../services/api/client'
+import { countryByName } from '../../lib/countries'
+import { CountryCombobox } from '../ui/CountryCombobox'
 import { Sheet } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
 import './locations-mudavym.css'
@@ -34,6 +56,50 @@ export interface Chain {
   id: string
   name: string
   locationCount?: number
+}
+
+/** Where the house is, as `GET /organizations/locations/:id` answered it. */
+type PlaceRead =
+  | { status: 'idle' }
+  | { status: 'pending' }
+  | { status: 'unreadable' }
+  | { status: 'read'; country: string; state: string; callerRole: string | null }
+
+/** The words for `PATCH /organizations/locations/:id`'s receipt (ADR 0289). */
+function placeReceipt(data: unknown): { head: string; body: string } {
+  const r = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  if (r.stateAndCountry === 'unchanged') {
+    return {
+      head: 'Nothing to change',
+      body: 'The state and country were already these, so nothing moved and nothing was recorded.',
+    }
+  }
+  if (r.stateAndCountry === 'changed' && r.audited === true) {
+    return {
+      head: 'Saved',
+      body: 'The state and country are changed, and the settings log records the change under your name.',
+    }
+  }
+  if (r.stateAndCountry === 'changed') {
+    const why = typeof r.auditReason === 'string' && r.auditReason.trim() ? r.auditReason : 'no reason was given'
+    return {
+      head: 'Saved, not recorded',
+      body: `The state and country are changed, but the settings log did not record who changed them: ${why}.`,
+    }
+  }
+  // An answer without a receipt is not a recorded change (ADR 0020).
+  return {
+    head: 'Saved, unconfirmed',
+    body: 'The answer did not say whether the state and country changed or were recorded. Reopen this location to see what it holds.',
+  }
+}
+
+/** The rule the gateway applies to the state, said before it is applied. */
+function stateHint(countryCode: string | undefined): string {
+  if (countryCode === 'US') return 'Required for a United States house: the two-letter code or the full name, CA or California.'
+  if (countryCode === 'GB') return 'England, Scotland, Wales or Northern Ireland — or blank for the whole country.'
+  if (countryCode === 'TR') return 'One of the 81 provinces — or blank for the whole country.'
+  return 'Optional. Kept as you write it.'
 }
 
 interface EditLocationChainDialogProps {
@@ -63,6 +129,43 @@ export function EditLocationChainDialog({
   const [failure, setFailure] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement | null>(null)
   const shell = useMudavymShell()
+  /* The state and country — house branch only (ADR 0289). */
+  const [place, setPlace] = useState<PlaceRead>({ status: 'idle' })
+  const [country, setCountry] = useState('')
+  const [stateProvince, setStateProvince] = useState('')
+  const [receipt, setReceipt] = useState<{ head: string; body: string } | null>(null)
+
+  useEffect(() => {
+    if (!shell.on || !open) return
+    let live = true
+    setPlace({ status: 'pending' })
+    apiClient
+      .get(`/organizations/locations/${branch.id}`)
+      .then(({ data }) => {
+        if (!live) return
+        const row = data as Record<string, unknown> | null
+        // A row without the two keys is not a house with no state: it is a
+        // read this sheet cannot use, and seeding the fields from it would
+        // write blanks back over what the house records.
+        if (!row || typeof row !== 'object' || Array.isArray(row) || !('country' in row) || !('stateProvince' in row)) {
+          setPlace({ status: 'unreadable' })
+          return
+        }
+        const storedCountry = typeof row.country === 'string' ? row.country : ''
+        const shownCountry = countryByName(storedCountry)?.name ?? storedCountry
+        const storedState = typeof row.stateProvince === 'string' ? row.stateProvince : ''
+        const callerRole = typeof row.callerRole === 'string' ? row.callerRole : null
+        setPlace({ status: 'read', country: shownCountry, state: storedState, callerRole })
+        setCountry(shownCountry)
+        setStateProvince(storedState)
+      })
+      .catch(() => {
+        if (live) setPlace({ status: 'unreadable' })
+      })
+    return () => {
+      live = false
+    }
+  }, [shell.on, open, branch.id])
 
   useEffect(() => {
     setSelectedChainId(branch.chain_id ?? '')
@@ -70,10 +173,18 @@ export function EditLocationChainDialog({
     setCity(branch.city ?? '')
   }, [branch.id, branch.chain_id, branch.name, branch.city])
 
+  const isOwner = place.status === 'read' && place.callerRole === 'owner'
+  const placeDirty =
+    isOwner &&
+    place.status === 'read' &&
+    (country.trim() !== place.country || stateProvince.trim() !== place.state)
+  const countryCode = countryByName(country)?.code
+
   const isDirty =
     selectedChainId !== (branch.chain_id ?? '') ||
     locationName.trim() !== branch.name ||
-    city.trim() !== (branch.city ?? '')
+    city.trim() !== (branch.city ?? '') ||
+    placeDirty
 
   const isSwitchingChain =
     branch.chain_name !== null &&
@@ -90,15 +201,34 @@ export function EditLocationChainDialog({
       toast.error('Location name cannot be empty')
       return
     }
+    // Said here before the gateway says it, so a half-filled pair costs no
+    // round trip. The gateway still checks both (ADR 0289 R3).
+    if (placeDirty && !country.trim()) {
+      setFailure('Choose the country this house is in. A house’s country cannot be cleared.')
+      return
+    }
+    if (placeDirty && countryCode === 'US' && !stateProvince.trim()) {
+      setFailure('A United States house needs its state — write it as CA or California.')
+      return
+    }
     setIsSubmitting(true)
     setFailure(null)
     try {
-      await apiClient.patch(`/organizations/locations/${branch.id}`, {
+      const res = await apiClient.patch(`/organizations/locations/${branch.id}`, {
         chainId: selectedChainId || null,
         name: locationName.trim() !== branch.name ? locationName.trim() : undefined,
         city: city.trim() !== (branch.city ?? '') ? (city.trim() || null) : undefined,
+        // The pair travels together or not at all: the gateway reads the
+        // state against the country it is sent with.
+        ...(placeDirty ? { country: country.trim(), stateProvince: stateProvince.trim() || null } : {}),
       })
       toast.success(`${locationName.trim()} updated`)
+      if (placeDirty) {
+        // The receipt stays on the sheet until it is read; a toast that has
+        // faded is not a record of whether the log took the change.
+        setReceipt(placeReceipt(res?.data))
+        return
+      }
       onSaved()
     } catch (err: unknown) {
       setFailure(getErrorMessage(err))
@@ -113,6 +243,16 @@ export function EditLocationChainDialog({
     setLocationName(branch.name)
     setCity(branch.city ?? '')
     setFailure(null)
+    if (place.status === 'read') {
+      setCountry(place.country)
+      setStateProvince(place.state)
+    }
+    if (receipt) {
+      // A save already happened; the list behind the sheet must re-read it.
+      setReceipt(null)
+      onSaved()
+      return
+    }
     onClose()
   }
 
@@ -127,8 +267,81 @@ export function EditLocationChainDialog({
     })),
   ]
 
+  /* ── the state and country, by what the read said (ADR 0289) ─────────── */
+  const placeBlock = (() => {
+    if (place.status === 'idle' || place.status === 'pending') {
+      return (
+        <p className="mdv-hintline" role="status">
+          Reading the state and country…
+        </p>
+      )
+    }
+    if (place.status === 'unreadable') {
+      return (
+        <div className="mdv-alert" role="status">
+          <p className="mdv-alert__head">State and country</p>
+          <p>
+            The state and country could not be read, so they cannot be changed here right now. Close
+            and reopen this location to try again.
+          </p>
+        </div>
+      )
+    }
+    if (!isOwner) {
+      return (
+        <div>
+          <span className="mdv-label">State and country</span>
+          <p className="mdv-consequence">
+            <strong>{place.state || 'No state recorded'}</strong>
+            {' · '}
+            <strong>{place.country || 'No country recorded'}</strong>
+          </p>
+          <p className="mdv-hintline" role="status">
+            {place.callerRole === null
+              ? 'Your role in this house could not be confirmed, so the state and country cannot be changed here.'
+              : 'Only an owner can change the state and country.'}
+          </p>
+        </div>
+      )
+    }
+    return (
+      <>
+        <div>
+          <label className="mdv-label" htmlFor="mdv-loc-country">
+            Country
+          </label>
+          {/* `.mdv-adopt`: a shared legacy control, repainted not rewritten
+              (locations-mudavym.css). */}
+          <div className="mdv-adopt">
+            <CountryCombobox id="mdv-loc-country" value={country} onChange={setCountry} />
+          </div>
+        </div>
+        <div>
+          <label className="mdv-label" htmlFor="mdv-loc-state">
+            State or province
+          </label>
+          <input
+            id="mdv-loc-state"
+            className="mdv-input"
+            value={stateProvince}
+            onChange={(e) => setStateProvince(e.target.value)}
+            placeholder={countryCode === 'US' ? 'CA or California' : 'Optional'}
+          />
+          <p className="mdv-hintline">{stateHint(countryCode)}</p>
+        </div>
+        {placeDirty ? (
+          <p className="mdv-consequence">
+            This re-scopes the market index, the commodity and distributor panels and the statute
+            named in the mail-retention notice, and the settings log records who changed it.
+          </p>
+        ) : null}
+      </>
+    )
+  })()
+
   /* ── the house shape ─────────────────────────────────────────────────────
-     Copy is the legacy dialog's, word for word. Only the surface changes. */
+     Copy is the legacy dialog's, word for word, except the state and country
+     (ADR 0289), which only this branch has. Only the surface changes. */
   if (shell.on) {
     return (
       <Sheet
@@ -139,8 +352,21 @@ export function EditLocationChainDialog({
         title="Edit location"
         initialFocusRef={nameRef}
         bodyClassName="mdv-ovl__body--flush"
-        footer={<span>Update name, city, or chain assignment.</span>}
+        footer={<span>Update name, city, chain assignment, or — as an owner — the state and country.</span>}
       >
+        {receipt ? (
+          <div className="mdv-form">
+            <div className="mdv-alert" role="status">
+              <p className="mdv-alert__head">{receipt.head}</p>
+              <p>{receipt.body}</p>
+            </div>
+            <div className="mdv-actions">
+              <button type="button" className="mdv-btn mdv-btn--seal" onClick={handleClose}>
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="mdv-form">
           {failure ? (
             <div className="mdv-alert" role="alert">
@@ -204,6 +430,8 @@ export function EditLocationChainDialog({
             </div>
           </div>
 
+          {placeBlock}
+
           {isSwitchingChain && selectedChain && (
             <p className="mdv-consequence">
               Moving from <strong>{branch.chain_name}</strong> →{' '}
@@ -231,6 +459,7 @@ export function EditLocationChainDialog({
             </button>
           </div>
         </div>
+        )}
       </Sheet>
     )
   }
