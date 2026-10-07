@@ -1,0 +1,19 @@
+## /receiving counts "this month" by the browser's calendar, not the house's — OPEN — 2026-10-07
+
+PROCURE-09 (scenario walk 2026-10-07), the /receiving part. It was left open on `fix/receiving-prints-its-own-currency`, which fixed PROCURE-03 on the same page.
+
+**Where.** The owner ledger's line "this month X · last month Y" comes from `trendByCurrencyOf` (`apps/web/src/pages/receiving/next/useReceivingNextData.ts`, called by `useOwnerRecovery`). It sorts each settled claim by `settled_at` into the month of the **viewing browser** (`getFullYear()` / `getMonth()` on a local `Date`). An owner reading from abroad, or a claim settled near midnight on a month's last day, can see money counted in the wrong month. The branch kept the browser month on purpose. The task said to use the house's month only if a house time-zone helper exists on `main`, and none does. `git grep -ln "houseDateOf\|houseTimeZone\|useHouseTimezone" origin/main -- apps/web/src` finds only page-local code in `pages/dashboard/next` and `pages/settings/next`. `apps/web/src/lib` exports `formatVenueTime`, `hoursStateLabel` and `getBrowserTimezone`, and none of them gives a house's calendar month.
+
+**Fix.** Read the house's time zone where /receiving can reach it, and bucket `settled_at` by the house's calendar. The dashboard's `houseDateOf` is the nearest precedent. A shared helper in `lib/` would serve every page that names a month. The other PROCURE-09 pages are outside this entry.
+
+## A claim raised on an order with no currency is still stored, and shown, as dollars — OPEN — 2026-10-07
+
+This is the same database default as `2026-10-01-fix-review-communications.md:23` item 3, "A credit letter's currency defaults to USD". It is filed here because it now also reaches /receiving. `procurement_credits.currency` is `character varying(3) DEFAULT 'USD' NOT NULL` (`supabase/migrations/20260805000000_baseline_from_production.sql:4348`). After this branch, /receiving prints every claim in the currency the row carries, and prints "currency not recorded" when the row has none. A row that took the default carries `USD`, though, so it still prints `$`, and the owner ledger files it under USD. The page cannot tell a real dollar claim from a defaulted one. The cause is in the database and in the gateway's insert, which this lane did not touch (it is web only, and `receiving.service.ts` belongs to open PR #612).
+
+**Fix.** The fix named in that entry: drop the default, or write the order's currency, or `NULL` when there is none, so the row says the currency was not recorded.
+
+## The owner ledger marks its figures as a floor whether or not the window was full — OPEN — 2026-10-07
+
+`useOwnerRecovery` sets `statsAtFloor: !!statsQ.data` and `trendAtFloor` whenever the settled list is non-empty. The comment beside them says a full window is "Not observable from the payload". That stopped being true on 2026-09-27: since #476 (`a605dabdc`), GET `/procurement/credits/stats` returns `rowsCounted` and `capped: credits.length >= 5000` (`apps/api-gateway/src/procurement/documents/credits.controller.ts:265-266`). So every recovered, owed, promised and refused figure on /receiving carries `≥` even when all of the house's claims were counted. That is true but weaker than the page can say (ADR 0051 clause 2 asks for the marker only when the window was full). It was found while reading the code for PROCURE-03 and left alone, because the marker is not part of that fix: one operation per branch.
+
+**Fix.** `statsAtFloor`: `stats.capped !== false`, so a payload without the field still reads as a floor. `trendAtFloor`: check whether the credits list says it was capped. If it does not, the marker stays.
