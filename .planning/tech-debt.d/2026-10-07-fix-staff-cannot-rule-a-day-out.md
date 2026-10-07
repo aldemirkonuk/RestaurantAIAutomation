@@ -1,11 +1,11 @@
-## Staff could rule a day out of every baseline, and name anyone as its author — CLOSED on `fix/staff-cannot-rule-a-day-out` — 2026-10-07
+## Staff could rule a day out of the insight baselines, and name anyone as its author — CLOSED on `fix/staff-cannot-rule-a-day-out` — 2026-10-07
 
 Item 4 of M1 in the money-policy audit of 2026-10-07 (OPS-04). The audit lives in the coordinator's scratch, not in the repo. At `a323cc80b`, `POST /analytics/exclusions/:restaurantId` and `DELETE /analytics/exclusions/:restaurantId/:businessDate` carried only the class `JwtAuthGuard` (`route-access.expected.json` had both as `"open"`). So any member of the house could do either of these:
 
 - Strike a business date out of every baseline the insight generator builds.
 - Put a struck date back.
 
-Either one moves every sales average the house reads. `/recommendations` drew the strike, "Count it again" (on the strip and the rail) and the dismissal sheet's "Also exclude" box for everyone. The write also stored `created_by` from a body `createdBy`, so a struck day could name anyone as its author.
+Either one moves every baseline the insight generator builds (`InsightGeneratorService`, the only reader that counts with the store; the calendar only draws a struck day), and so every "below your usual" figure it writes. `/recommendations` drew the strike, "Count it again" (on the strip and the rail) and the dismissal sheet's "Also exclude" box for everyone. The write also stored `created_by` from a body `createdBy`, so a struck day could name anyone as its author.
 
 **Who may do it. This was the coordinator's call under the founder's 2026-10-07T20:04:10Z delegation.** His delegation, verbatim:
 
@@ -13,12 +13,12 @@ Either one moves every sales average the house reads. `/recommendations` drew th
 
 No record names who may rule a day out:
 
-- [ADR 0111](../decisions/0111-the-calendar-is-the-houses-day-book.md) built the store (`:282`). It lists "exclude a day from the baselines" among the acts the Ask AI "may act alone" on (`:398`). It names no role.
+- [ADR 0111](../decisions/0111-the-calendar-is-the-houses-day-book.md) cites the store (`:282`), which landed with it in #289 (`941d9cb40`). It lists "exclude a day from the baselines" among the acts the Ask AI "may act alone" on (`:398`). It names no role.
 - The migration's own comment says "A day the MANAGER rules out" (`supabase/migrations/20260903091000_days_the_engine_must_not_count.sql:17`). That is a comment, not a ruling.
 
 Three rulings on `main` bear on it:
 
-- **Sales.** Sales are an owner's or a manager's. See the `sales` class and `ROLE_POLICY` in [ADR 0145](../decisions/0145-mudavym-answers-out-of-a-reading.md) (`:630-637`), and [ADR 0290](../decisions/0290-the-dashboard-tells-the-houses-day-true.md) §5 (`:44`), where an unknown role is a non-holder. A struck day changes every sales baseline.
+- **Sales.** Sales are an owner's or a manager's. See the `sales` class and `ROLE_POLICY` in [ADR 0145](../decisions/0145-mudavym-answers-out-of-a-reading.md) (`:630-637`), and [ADR 0290](../decisions/0290-the-dashboard-tells-the-houses-day-true.md) §5 (`:44`), where an unknown role is a non-holder. A struck day changes every baseline the insight generator builds from sales.
 - **House-wide acts.** On this page they are owner/manager only, with the platform `admin` refused. See [ADR 0191](../decisions/0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf.md), round 2 answer 1 (`:226-229`) and round 4 answer 7 (`:645-647`).
 - **Admin.** `RolesGuard` is exact, so `admin` is not admitted. See [ADR 0164](../decisions/0164-sessions-follow-membership-and-several-houses-choose.md) (`:47`).
 

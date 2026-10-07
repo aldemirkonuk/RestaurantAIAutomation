@@ -1219,7 +1219,7 @@ export default function Entry(props: EntryProps) {
             {dismissing && !props.canRuleOutDays && day && (
               <p className="rc-why" data-testid="rc-exclude-withheld">
                 Ruling {fmtDay(day)} out of the analysis is for an owner or manager {EM} it changes
-                every average the house reads.
+                the usual days every recommendation is measured against.
               </p>
             )}
 

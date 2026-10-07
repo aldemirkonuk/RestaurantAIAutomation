@@ -7,8 +7,9 @@
  * At a323cc80b `POST /analytics/exclusions/:rid` and
  * `DELETE /analytics/exclusions/:rid/:businessDate` carried only the
  * class-level `JwtAuthGuard`. Any member of the house, staff included, could
- * strike a day out of every baseline the house reads, or put one back, and so
- * move every sales average on every page. Sales are owners' and managers'
+ * strike a day out of every baseline the insight generator builds, or put one
+ * back, and so move every "below your usual" figure it reports. Sales are
+ * owners' and managers'
  * (ADR 0145's `sales` class; ADR 0290 §5). The write also stored `created_by`
  * from the request body, so a struck day could name anyone as its author.
  *

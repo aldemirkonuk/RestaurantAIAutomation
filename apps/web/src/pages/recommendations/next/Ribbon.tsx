@@ -34,7 +34,7 @@
  * thing to store from a single click.
  *
  * Striking a day and counting it again are an owner's or a manager's (OPS-04,
- * 2026-10-07): a struck day leaves every sales baseline the house reads. The
+ * 2026-10-07): a struck day leaves every baseline the insight generator builds. The
  * gateway refuses anyone else, so for them the strip draws the strike and its
  * reason read-only and offers neither control (`canRuleOut`).
  */
@@ -250,8 +250,8 @@ export default function Ribbon(props: RibbonProps) {
             </p>
           ) : !props.canRuleOut ? (
             <p className="rc-why" data-testid="rc-ruleout-withheld">
-              Ruling a day out of the analysis is for an owner or manager {EM} it changes every
-              average the house reads.
+              Ruling a day out of the analysis is for an owner or manager {EM} it changes the
+              usual days every recommendation is measured against.
             </p>
           ) : !askExclude ? (
             <div className="rc-row">

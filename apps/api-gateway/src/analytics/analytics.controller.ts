@@ -1377,9 +1377,11 @@ export class AnalyticsController {
   // what a manager did with a card, the other is what the analysis may look at.
   //
   // Ruling a day out and counting it again are an owner's or a manager's
-  // (OPS-04, 2026-10-07). A struck day leaves every sales baseline the house
-  // reads, and sales are owners' and managers' (ADR 0145's `sales` class, ADR
-  // 0290 §5). Both writes carry `RolesGuard` with `@Roles("owner", "manager")`,
+  // (OPS-04, 2026-10-07). A struck day leaves every baseline the insight
+  // generator builds (`InsightGeneratorService`, the only reader that counts
+  // with it; the calendar only draws it), and sales are owners' and managers'
+  // (ADR 0145's `sales` class, ADR 0290 §5). Both writes carry `RolesGuard`
+  // with `@Roles("owner", "manager")`,
   // the pattern the insight-catalog toggle and the table rename above use:
   // the role is the one on the caller's access row in the token's house, and
   // RolesGuard is exact, so admin is not admitted (ADR 0164). The read stays
@@ -1399,7 +1401,7 @@ export class AnalyticsController {
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Exclude a business date from every baseline (owner/manager)",
+    summary: "Exclude a business date from the insight baselines (owner/manager)",
     description:
       "Body: { businessDate: 'YYYY-MM-DD', reason? }. Owner or manager of this house only; anyone else is 403. created_by is the signed-in caller; a body `createdBy` is ignored.",
   })

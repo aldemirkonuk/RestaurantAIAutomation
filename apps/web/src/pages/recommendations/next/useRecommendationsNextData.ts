@@ -336,7 +336,8 @@ export interface RecommendationsData {
   /**
    * Whether this person may rule a day out of the analysis, or count one
    * again — owners and managers (OPS-04, 2026-10-07): a struck day leaves
-   * every sales baseline, and sales are theirs (ADR 0145, ADR 0290 §5). The
+   * every baseline the insight generator builds from sales, and sales are
+   * theirs (ADR 0145, ADR 0290 §5). The
    * gateway refuses anyone else (`RolesGuard`, the role on this house's
    * access row), so this reads `activeRole` alone, never the account-wide
    * `user.role` fallback. Everyone still SEES which days are struck.
