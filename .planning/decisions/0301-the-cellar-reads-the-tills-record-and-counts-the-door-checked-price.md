@@ -1,9 +1,9 @@
 # 0301 — The cellar reads the till's own record, and counts the door-checked price
 
-- **Status:** Locked for the AW14 ruling, and Proposed for the method. The ruling is the founder's: AskUserQuestion, 2026-10-04 ~00:30Z, verbatim pick *"Door-checked, labelled (Recommended)"*: the cellar counts the price checked at the door, marked 'door-checked' until a filed invoice takes over. §1 (AW10) is a defect fix, not a fork: ADR 0160 item 7 (Q9) already ruled that live sales reach the cellar. The methods in §1 and §2 are fix lane `cellarledger`'s proposal, built for his review. **Locked 2026-10-05 for how a till name with a serve size joins its row:** AskUserQuestion, 2026-10-05 ~23:07Z, verbatim pick *"Join by contained name, split Sold (Recommended)"* (the section after *Fork deferred*); the method is fix lane `servesize`'s, built for his review. **Locked 2026-10-06 for the five forks that PR left open:** AskUserQuestion, 2026-10-06, F1 to F4 asked ~00:50Z and answered ~00:58Z, F5 asked after 01:10Z and answered by 01:42Z; each pick is quoted verbatim under *The answers of 2026-10-06* below. F1 and F2 are built by the same migration, F3, F4 and F5 keep what was built.
+- **Status:** Locked for the AW14 ruling, and Proposed for the method. The ruling is the founder's: AskUserQuestion, 2026-10-04 ~00:30Z, verbatim pick *"Door-checked, labelled (Recommended)"*: the cellar counts the price checked at the door, marked 'door-checked' until a filed invoice takes over. §1 (AW10) is a defect fix, not a fork: ADR 0160 item 7 (Q9) already ruled that live sales reach the cellar. The methods in §1 and §2 are fix lane `cellarledger`'s proposal, built for his review. **Locked 2026-10-05 for how a till name with a serve size joins its row:** AskUserQuestion, 2026-10-05 ~23:07Z, verbatim pick *"Join by contained name, split Sold (Recommended)"* (the section after *Fork deferred*); the method is fix lane `servesize`'s, built for his review. **Locked 2026-10-06 for the five forks that PR left open:** AskUserQuestion, 2026-10-06, F1 to F4 asked ~00:50Z and answered ~00:58Z, F5 asked after 01:10Z and answered by 01:42Z; each pick is quoted verbatim under *The answers of 2026-10-06* below. F1 and F2 are built by the same migration, F3, F4 and F5 keep what was built. **Locked 2026-10-06 for the two forks the #650 BLOCK raised:** AskUserQuestion, asked 14:17:38Z and answered 15:13:54Z (a first asking at 05:22:10Z was cut off by the session's end and never answered); each pick is quoted verbatim under *The answers to the #650 BLOCK* below, and both are built by the same migration.
 - **Date:** 2026-10-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
-- **Keywords:** cellar, house_beverage_ledger, house_till_lines, house_till_names, sold_as, poured_bottles, poured_glasses, poured_unit_unknown, tied_lines, till_names, tied_names, without_maker, maker, contained name, serve size, bottles · glasses, pos_checks.items, pos_unresolved_lines, Sold, Taken, pour, till book, row record, readTillLines, rawTillName, POS_CHECK_SCAN_LIMIT, keyset paging, First bought, Paid, door-checked, match_verified_at, receipt_verified, price_history, AW10, AW14, A-015, A-016, A-045, Q9, Tuzlu Rüzgar
+- **Keywords:** cellar, house_beverage_ledger, house_till_lines, house_till_names, sold_as, poured_bottles, poured_glasses, poured_unit_unknown, tied_lines, till_names, tied_names, without_maker, maker, menu first, product words, size words, VOLUME_IN_TEXT, holdsLabel, nothingNamesIt, contained name, serve size, bottles · glasses, pos_checks.items, pos_unresolved_lines, Sold, Taken, pour, till book, row record, readTillLines, rawTillName, POS_CHECK_SCAN_LIMIT, keyset paging, First bought, Paid, door-checked, match_verified_at, receipt_verified, price_history, AW10, AW14, A-015, A-016, A-045, Q9, Tuzlu Rüzgar
 - **Links:** amends [[0108-a-register-is-the-houses-own-books-first]] (its books table, two rows); [[0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes]] item 7 / Q9; [[0115-the-house-item-is-the-ledgers-key]] and OD-113 (food and non-wine identity); ADR 0286 (C02, a sent time is the fact's time for 72 hours; on branch `fix/door-keeps-the-arrival-time`, not on main yet) and ADR 0296 (a sale belongs to the house's day; on branch `fix/sales-belong-to-the-house-day`); OD-125 (a document per door check); migration `the_cellar_reads_the_tills_own_record` and its `supabase/tests` file of the same slug, and migration `a_till_name_with_a_serve_size_joins_its_row` and its test (cited by slug, [[0235-a-migration-is-numbered-at-merge-and-cited-by-its-slug]]); `claims.d/fix-cellar-till-and-door-checked-cost.jsonl`; CLAIMS row `ADR-0160-Q9-NON-ALCOHOLIC-HEATMAP-LIVE-SALES` (corrected in place); the lane brief `p4-scratch/sim-run/fixes/briefs/cellarledger.md` (outside the repo)
 
 ## Context
@@ -122,11 +122,11 @@ Built by migration `a_till_name_with_a_serve_size_joins_its_row`, on branch `fix
 - **Words are the distinct tokens of `beverage_house_key`**, the one normalisation every book's key already goes through. They are distinct, not counted, because a menu row that repeats its producer in its own name keys with the producer twice: producer 'Château Musar' with name 'Château Musar Rouge' keys `chateau chateau musar musar rouge`. A counted rule would never let the till's 'Château Musar Rouge (glass)' join it.
 - **The join, in order:**
   1. The row whose key equals the name's key wins (exact).
-  2. Else, of the rows whose every word the name holds, the one with the most distinct words wins (contains).
+  2. Else, of the rows whose every word the name holds, the one with the most distinct words wins (contains). [CHANGED 2026-10-07, the #650 BLOCK's answers: the most product words wins, and size words decide only between rows level on those; and steps 1 to 4 run on menu rows first, so an exact key on an invoice, order or quote row loses to a menu row whose every word the name holds. See *The answers to the #650 BLOCK*.]
   3. Rows level at the top tie, and the name joins none of them. Each tied row counts the name's lines in `tied_lines`, never in its Sold or Taken. [CHANGED 2026-10-06, F2: and lists the name, with its lines, in `tied_names`.]
   4. [ADDED 2026-10-06, F1: a name that holds no row's every word tries each row's name without its maker, by steps 1 to 3; see *The answers of 2026-10-06*.]
   5. A name that joins no row keeps its own key. It is a row only when the queue ever held it, as before (§1).
-- **The rows a till name can join** are the keys the menu, invoice, order and quote books name. A till-only row is never joined by another till name.
+- **The rows a till name can join** are the keys the menu, invoice, order and quote books name. A till-only row is never joined by another till name. [CHANGED 2026-10-07, the #650 BLOCK's answers: all four books' rows still can, but not alike. A key the menu names is a menu row, and the others are tried only for a name no menu row takes; see *The answers to the #650 BLOCK*.]
 - **A line's unit follows ADR 0011's order for the POS bridge** (`PosHubService` `resolveSaleVolume`), line by line:
   - A line gets a unit only when its `inventory_id` is, as a string, the id of an item of this house, as the bridge's own check is. An unmapped line, a line mapped to another house's item, and a queued line with no check behind it are unknown.
   - A sale volume, when the line has one, outranks its label:
@@ -137,11 +137,11 @@ Built by migration `a_till_name_with_a_serve_size_joins_its_row`, on branch `fix
   - Else the unit is unknown.
 - **Not gated on `is_wine`.** The bridge books stock only for a line flagged wine. The unit is a fact about the sale, so a line not flagged wine that names this house's item still gets one; S6's lines carry no flag. On the sim's feed every line that names a house item is flagged wine (25,050 of 25,050 on the local build), so nothing there turns on it. It is listed as a fork in the PR. [ANSWERED 2026-10-06: F3, *"Every line (Recommended)"*; kept as built. See *The answers of 2026-10-06*.]
 - **Sizes are the item's as they are now**, not as they were at the sale. No test pins this. [ANSWERED 2026-10-06: F4, *"Today's size for now (Recommended)"*; kept as built, and still no test pins it.]
-- **Each part of Sold uses Sold's own `coalesce(qty, 0)`**, so the three parts always sum to Sold (S7). Taken is summed as before.
+- **Each part of Sold uses Sold's own `coalesce(qty, 0)`**, so the three parts always sum to Sold (S7). Taken is summed as before. [CORRECTED 2026-10-07, the #650 BLOCK's smaller item: in SQL only. The gateway (`house-record.ts`) nulled a part below zero, so 5 glasses and a net refund of 1 bottle read '5 glasses' against a Sold of 4. A part below zero is now kept, and a Sold cell with one shows the net count alone (`registerCells.tsx`). A `beverages.service.spec.ts` case and a `CellarNext.test.tsx` case pin it.]
 - **The cell stays honest where units are unknown.** A row none of whose lines has a known unit shows the plain count, as before: a cocktail, an unmapped draft, or a gateway from before the split. A row that only tied shows the dash and its tied lines. `CellarNext.test.tsx` pins both.
 - **A catalogue-only row's record has no till lines now.** The till book lists only names the ledger counted on a house row whose key is the label's key, and a catalogue-only row is not one. Before, `matchLine` could show it the lines of a till name that contains its label. No test pins this. [ANSWERED 2026-10-06: F5, *"Keep one rule (Recommended)"*; kept as built. Now pinned: the migration's test S13, and a `beverages.service.spec.ts` case that gives a catalogue-only row's record no till lines though the till rang a name holding its label.]
 
-**Measured** on a local build of the sim's feed (92 days, 11,158 checks, 111,020 lines over two houses), not on production. House A is the v2 drinks menu with its producer column; house B is the same menu with names only, the shape the *Fork deferred* table was keyed in.
+**Measured** on a local build of the sim's feed (92 days, 11,158 checks, 111,020 lines over two houses), not on production. [2026-10-07: that build holds no invoice, order or quote rows, so this table never tested the books that compete for a till name; the #650 BLOCK found it. Re-measured with competing books under *The answers to the #650 BLOCK*.] House A is the v2 drinks menu with its producer column; house B is the same menu with names only, the shape the *Fork deferred* table was keyed in.
 
 | The feed's category | Reach a row's cell, before (equal keys) | After, house B | After, house A |
 |---|---|---|---|
@@ -168,11 +168,11 @@ F3, F4 and F5 keep what was built. F1 and F2 are built in the same migration, `a
 
 **F1, how a name joins a row without its maker.**
 - A menu line or an order line that names a producer also keys its name alone: `beverage_house_key(NULL, name)`, the row's *bare name*. A line with no producer, or whose bare name is its key, adds none. Invoice and quote lines carry no producer column, so they add none.
-- Only a name that holds no row's every word (it is in no pair of the first pass) tries the bare names. It holds a bare name when it holds every one of that name's distinct words, as in the first pass.
-- The candidates then go through the same pick: a row whose bare name is the name's key wins (exact); else the row with the most distinct words; rows level at the top tie, and the name joins none of them. A row with two bare names (its menu line and its order line split maker and name differently) is one candidate, by its more specific bare name.
+- Only a name that holds no row's every word (it is in no pair of the first pass) tries the bare names. It holds a bare name when it holds every one of that name's distinct words, as in the first pass. [CHANGED 2026-10-07, the #650 BLOCK's answers: only a name that holds no menu row's every word tries the menu rows' bare names, and it tries them before any invoice, order or quote row's full words; the order rows' bare names come last. See *The answers to the #650 BLOCK*.]
+- The candidates then go through the same pick: a row whose bare name is the name's key wins (exact); else the row with the most distinct words; rows level at the top tie, and the name joins none of them. [CHANGED 2026-10-07: the most product words, then the most size words, as in the first pass.] A row with two bare names (its menu line and its order line split maker and name differently) is one candidate, by its more specific bare name.
 - The join says `without_maker` in `till_names`. The record reads those lines and shows them as matched loosely, as it shows `contains`.
-- The first pass is unchanged: a name that holds a row's full words never tries a bare name, even when a bare name would be more specific. That is the answer's own order (*"If a till name holds none of a row's full words"*). The test's S11 pins it: 'Zqpr Gold Seri (single 50ml)' joins the plain 'Zqpr Gold', whose full words it holds, not the maker's 'Zqpr Gold Seri', whose bare name is longer.
-- **Its risk.** A short bare name joins any till name that holds its words and no row's full words. A maker's row named 'Pale Ale' takes a till's 'Pale Ale (pint)' and also a till's 'Hoppy Pale Ale' when no row's full words are in that name. On the sim's feed, each of the twelve names that join this way is the beer's own row (see *Measured* below, with two examples).
+- The first pass is unchanged: a name that holds a row's full words never tries a bare name, even when a bare name would be more specific. [CHANGED 2026-10-07: a name that holds a menu row's full words never tries a bare name. One that holds only an invoice, order or quote row's full words tries the menu rows' bare names first (S18).] That is the answer's own order (*"If a till name holds none of a row's full words"*). The test's S11 pins it: 'Zqpr Gold Seri (single 50ml)' joins the plain 'Zqpr Gold', whose full words it holds, not the maker's 'Zqpr Gold Seri', whose bare name is longer.
+- **Its risk.** A short bare name joins any till name that holds its words and no row's full words. [CHANGED 2026-10-07: a short menu bare name now also beats an invoice, order or quote row whose every word the name holds; that is the #650 BLOCK's *"Menu first"* answer's own stated cost.] A maker's row named 'Pale Ale' takes a till's 'Pale Ale (pint)' and also a till's 'Hoppy Pale Ale' when no row's full words are in that name. On the sim's feed, each of the twelve names that join this way is the beer's own row (see *Measured* below, with two examples).
 - Pinned by the migration's test: S10 (a draft and a bottle join without the maker; an exact bare name wins; the more specific bare name wins) and S11 (a tie between bare names joins neither row and is listed on both; the full-words pass comes first). `beverages.service.spec.ts` pins that the record reads a `without_maker` name's lines.
 
 **F2, how a tied row lists its names.**
@@ -182,7 +182,7 @@ F3, F4 and F5 keep what was built. F1 and F2 are built in the same migration, `a
 - The register carries them on `poured.tiedNames` (`house-record.ts`), and /cellar's Sold cell names each one, with its lines, in the title of its '· N lines tied' mark (`registerCells.tsx`).
 - Not shown: the row's expanded view (`RowExpander.tsx`) and the house record leaf (`HouseRecordLeaf.tsx`) do not list them. A row whose only names tied still reads "The till has never rung this up" in the expanded view's rate line, which is not so: its till names were rung and tied. Showing the names there, and saying why in that line, is owed to a follow-up change of those two files.
 
-**Measured** on the same local build of the sim's feed as above (92 days, 11,158 checks, 111,020 lines), before (the branch at `a5879b72d`) and after F1 and F2. Not on production.
+**Measured** on the same local build of the sim's feed as above (92 days, 11,158 checks, 111,020 lines), before (the branch at `a5879b72d`) and after F1 and F2. Not on production. [2026-10-07: with no invoice, order or quote rows, as above; re-measured under *The answers to the #650 BLOCK*.]
 
 | The feed's category | House A (with producers), before | House A, after | House B (names only), before and after |
 |---|---|---|---|
@@ -197,6 +197,97 @@ F3, F4 and F5 keep what was built. F1 and F2 are built in the same migration, `a
 - **House A's Sold on rows with a book** went from 17,586 to 22,016: bottles 3,077 to 4,489, unknown unit 6,107 to 9,125, glasses 8,402 unchanged. House B did not move (21,798), as its menu carries no producers.
 - **House B's two Musar rows** ('Château Musar Rouge' and 'Musar Jeune Rouge') each now list the two names that tie between them: 'Château Musar Musar Jeune Rouge (bottle)', 13 lines, and '(glass)', 204 lines.
 - **Speed.** This run of the machine read slower than the run above, so the 2026-10-05 figures are not comparable. Interleaved, seven rounds each, medians before → after: the ledger 246 → 235 ms (house A) and 268 → 207 ms (house B); `house_till_names` for one label 274 → 213 ms (A) and 238 → 243 ms (B); `house_till_lines` for two names 55 → 49 ms. No slowdown shows above the run's noise (single runs ranged 177-425 ms).
+
+### The answers to the #650 BLOCK: menu rows first, and size words only break ties
+
+[ADDED 2026-10-07 by fix lane `servesize`. The task that carried these answers to the lane dates them 2026-10-07 12:04:50Z; the AskUserQuestion call and its answer in the session's transcript are dated 2026-10-06, as below, so that later time is when they were relayed, not given.]
+
+The audit of PR #650 at `3f3689307` (`p4-scratch/sim-run/fixes/audits/650-3f3689307/report.md`) BLOCKED it. On a copy of the measure build with one house-scoped quote, 'Yeni Rakı 70cl', the quote's row took 111 till lines, and 37 of them were 'Yeni Rakı Âlâ 70cl bottle', a different product, taken off the menu row 'Yeni Rakı Âlâ'. Its Finding 2 is under *The record's two sentences* below.
+
+He answered two questions (AskUserQuestion, asked 2026-10-06 14:17:38Z, answered 15:13:54Z; a first asking at 05:22:10Z was cut off by the session's end and never answered). The questions, his picks and the rejected options, verbatim:
+
+- **Till books.** *"#650 (serve-size) was blocked: a supplier quote 'Yeni Rakı 70cl' took 111 till lines off their menu row, and 37 of them were 'Yeni Rakı Âlâ', a different product. Which books' rows may a till name join?"* Picked: *"Menu first (Recommended)"*: *"A till name joins a menu row whenever one contains it. Invoice, order and quote rows only take names that no menu row contains, so the Âlâ lines stay on the menu. Cost: a supplier's name never beats the menu's, even when the menu's name is vaguer."* Rejected: *"Menu only"*: *"Only menu rows take till names. Cost: a bottle that sells but isn't on the menu shows no Sold until the owner lists it."* And *"All books equally"*: *"As built. The defect above stays."*
+- **Size words.** *"When two rows both fit a till name, the row with more words wins, and '70cl' counts as two words. That is how 'Yeni Rakı 70cl' beat 'Yeni Rakı Âlâ'. Should size words count?"* Picked: *"Only to break ties (Recommended)"*: *"Rows rank by product words, and size words only decide between rows tied on those. Âlâ beats 'Yeni Rakı 70cl', and 'Yeni Rakı 35cl' still beats 'Yeni Rakı' for a 35cl glass."* Rejected: *"Never"*: *"Cost: a 35cl glass ties 'Yeni Rakı' with 'Yeni Rakı 35cl' and joins neither row."* And *"Like any word"*: *"As built. The defect above stays."*
+
+[2026-10-07: no text in this ADR named these two forks as deferred or asked, so none is dropped. The *Fork deferred* section above is the 2026-10-05 fork, answered then.]
+
+Both are built in the same migration, `a_till_name_with_a_serve_size_joins_its_row`, on the same branch.
+
+**Menu first.**
+- A menu row is a key the menu book names. A key that only the invoice, order or quote books name is a supplier row here.
+- A till name's candidates come in four passes, and only the first pass that has any candidate counts:
+  1. menu rows whose every word the name holds;
+  2. menu rows whose name without its maker the name holds (F1);
+  3. supplier rows whose every word the name holds;
+  4. order rows whose name without its maker the name holds (F1).
+- Inside a pass, F1's and F2's rules hold as before: the pick below, and a tie joins none of the tied rows and is listed on each.
+- So an exact key on a supplier row loses to a menu row whose every word the name holds. S15 pins it: the till's 'Zqmf Tekel Raki 70cl', the invoice row's own key, joins the menu's 'Zqmf Tekel Raki'.
+- Pass 2 before pass 3 is this lane's reading of the answer, not a new fork. A menu row's name without its maker still names that menu row, so a till name that holds it is one *"a menu row contains"*. The other order would let a supplier's row take a name that a menu row contains by its bare name, which the answer rules out. S18 pins it.
+
+**Size words only break ties.**
+- **What counts as a size word.** A size word of a row is a token of a volume written in one of that row's own labels, in any book. A volume is what `VOLUME_IN_TEXT` finds in `apps/api-gateway/src/vendor-intel/bottle-size.ts` (`:201-202` at this branch), the gateway's parser of a bottle size in text. The migration copies its pattern verbatim, with the same flags (case ignored). It is:
+  - a number of one to five digits, optionally followed by '.' or ',' and one to three more digits;
+  - then up to three whitespace characters;
+  - then one of ml, mls, cl, cls, l, lt, ltr, litre(s), liter(s), millilitre(s), milliliter(s), centilitre(s), centiliter(s), fl oz (the dots and the space optional), or fluid ounce(s);
+  - with no word character, '.' or ',' just before the number, and no ASCII letter (a-z, either case) or digit just after the unit.
+- Bare 'oz' is not a unit there, so it is not one here. Each volume found is tokenized by `beverage_tokenize`, so '70cl' gives the size words '70' and 'cl'. No other word is a size word: 'single', 'bottle', 'glass' and 'draft' are product words.
+- **The pick, in every pass.** A row's product words are its key's distinct words that are not its size words. The order is:
+  1. a row whose key (or bare name) is the name's own key (exact);
+  2. else the most product words;
+  3. else the most size words.
+  Rows level at the top on all three tie.
+- **Pinned by the migration's test.**
+  - S14 is the BLOCK's case. The menu's 'Zqyr Yeni Rakı Âlâ' keeps its 70cl bottle and its single against a quote 'Zqyr Yeni Rakı 70cl'. The quote takes only the till name that no menu row contains, its own. It fails only with both answers undone, as at 3f3689307; S15 and S17 each fail with one undone.
+  - S16 is the 35cl tie-break. With 'Zqtb Yeni Raki' and 'Zqtb Yeni Raki 35cl' on the menu, the till's 'Zqtb Yeni Raki 35cl (glass)' joins the second, and the 50 ml single joins the first.
+  - S17 shows a product word beating a size. 'Zqaw Yeni Raki Ala 70cl bottle' joins the menu's 'Zqaw Yeni Raki Ala', not its 'Zqaw Yeni Raki 70cl'.
+- **Not shown to match the gateway character for character.** Postgres's `\w` and `\s` follow the database's locale, and JavaScript's do not. So a number glued to a non-ASCII letter, such as 'Rakı70cl', may be a volume to the gateway and not to the ledger. No test pins either side of that. A CLAIMS row (`CELLAR-LEDGER-SIZE-WORDS-ARE-THE-GATEWAYS-VOLUMES`) fails the build if the two patterns' text drifts apart.
+
+**Each mutation is killed by a named test,** run block by block on a local database (`p4-scratch/sim-run/fixes/audits/650-local-pg.txt`):
+
+| Mutation | Fails |
+|---|---|
+| The build before (`3f3689307`) | S14, S15, S17, S18 |
+| Every book's rows alike, size words still breaking ties | S15, S18 |
+| An exact key wins from any book | S15 |
+| Size words count as any word | S17 |
+| Size words never count | S16 |
+| Every full-words pass before any bare-name pass | S18 |
+
+S16 passes on the build before, as counting size words as any word also picks the 35cl row.
+
+**The record's two sentences (the BLOCK's Finding 2).**
+- **Before.** A row record's till book could count no line on a row while the till held a name containing the row's name, counted on another row. Even then, the book's reason said the till had not rung it up, and the record claimed nothing names the row (`nothingNamesIt`).
+- **Now.** When no line counts on the row and no name tied on it, `readTillLines` reads every till name (`house_till_names(p_restaurant_id)`, keyset-paged). It checks each name against the row's label by `matchLine`, with case and spacing ignored (a label under four characters matches only a name equal to it). The book's reason then says one of three things:
+  - the till holds such a name, and the register counts it on another row or on none (`TILL_HOLDS_THE_NAME_ELSEWHERE`);
+  - no till name contains it (`TILL_HOLDS_NO_SUCH_NAME`);
+  - the read failed, so whether it does could not be read (`tillNamesUnreadReason`).
+- The book carries the answer as `holdsLabel`: true, false, or null when unread. No name is listed and no line is read, as F5 keeps.
+- `nothingNamesIt` is false when `holdsLabel` is true or null, and when the till book lists names that tied on the row. A till book with no `holdsLabel` makes no claim either way. `readTillLines` leaves it off a readable book in two cases: when names tied (already covered above), and when the register counts names on the row whose lines were gone by the second read. In that second case the record can still claim nothing names the row. That case is as before and is not covered by this change.
+- **Pinned by `beverages.service.spec.ts`.**
+  - 'Turkish Coffee', which no till name contains, gets both sentences.
+  - A catalogue-only row (F5) and a 'Yeni Rakı' row whose names count elsewhere get the other reason, with `nothingNamesIt` false.
+  - A tied-only row never claims nothing names it, and does not read the whole name list.
+  - A failed read says it could not tell.
+
+**Re-measured** 2026-10-07 on synthetic local data only: copies of the measure build above (`servesize_after`: the sim's feed, two houses, 133 menu rows each, and no invoice, order or quote rows). Production was not read. Four copies:
+- before (`3f3689307`'s migration) and after (this one);
+- each with and without competing books, which are:
+  - one house-scoped quote 'Yeni Rakı 70cl' in each house (the audit's case);
+  - one invoice in each house, with a line '<name> 70cl' for each of the house's 132 distinct menu names.
+
+| Build | Till lines on menu rows, A / B | Sold on menu rows, A / B | Till lines on supplier rows, A / B |
+|---|---|---|---|
+| Before, no competing books | 20,938 / 20,721 | 22,016 / 21,798 | 0 / 0 |
+| Before, with them | 20,715 / 20,498 | 21,792 / 21,574 | 223 / 223, on 8 rows each |
+| After, no competing books | 20,938 / 20,721 | 22,016 / 21,798 | 0 / 0 |
+| After, with them | 20,938 / 20,721 | 22,016 / 21,798 | 0 / 0 |
+
+- **Yeni Rakı, before with the books.** 'Yeni Rakı' read 666 lines and 'Yeni Rakı Âlâ' 283. The supplier row 'Yeni Rakı 70cl' took 74 lines, and 'Yeni Rakı Âlâ 70cl' took 37. Unlike the audit's quote-only case, those 37 Âlâ lines went to the invoice row 'Yeni Rakı Âlâ 70cl', which has a word more than 'Yeni Rakı 70cl'. Either way they left the menu row.
+- **After, with the books.** The menu rows read 740 and 320 lines, Sold 785 and 323, and the two supplier rows take none. Both houses show the same counts.
+- **By menu section.** With the books, before, 35 of the 43 spirit names joined a menu row (2,802 lines); after, all 43 do (3,025). Every other section is the same in all four builds.
+- **Ties.** House B's tied lines are 434 in all four builds: the two Musar names, 217 lines, on each of their two rows.
+- **The menu-only feed did not move.** On it, after equals before, so this change moves nothing there.
+- **Speed.** The ledger was timed with the books, interleaved, seven rounds, by `EXPLAIN ANALYZE`'s execution time. Medians, before → after: 183 → 170 ms for house A, and 172 → 160 ms for house B. Single runs ranged from 159 to 235 ms.
 
 ### §2 (AW14): the door-checked price, labelled
 
@@ -231,6 +322,7 @@ His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and
   - Two more functions sit behind a tenancy boundary, and both stay service_role only. [CHANGED 2026-10-05: three, with the `house_till_names(p_restaurant_id, p_label)` overload, service_role only too.]
   - **The ruling's own risk (2026-10-05).** A cocktail named after a spirit that has no row of its own joins that spirit; the migration's test pins it with 'Fords Gin Fizz' on 'Fords Gin' (S4). A variant joins its base the same way: 'Cola Zero' on 'Cola' when no row names 'Cola Zero' (§1's test, T13). On the sim's feed no cocktail joins a spirit; the containment joins outside rakı, spirits, beer and wine are 'Booth Ayran' on 'Ayran' and 'Booth Şalgam' on 'Şalgam', in both houses.
   - **A menu that carries producers keeps some till names apart.** On house A, all twelve beer names reach no row, because the menu row's words include its producer ('Anadolu Efes') and the till's name leaves it out. Containment needs every word of the row. [CHANGED 2026-10-06, F1: a name that holds no row's full words now joins by the row's name without its maker; on house A all twelve beer names reach their rows. The risk that answer brings, a short bare name taking a till name, is under *The answers of 2026-10-06*.]
+  - **A supplier's name never beats the menu's (2026-10-07, the #650 BLOCK's answer, its stated cost).** A till name that a menu row contains joins only menu rows, even when an invoice, order or quote row names the product more exactly. An invoice or quote row's Sold fills only from names no menu row contains. Size words count only between rows level on product words, so they never move a name to a less specific row. The full rule is under *The answers to the #650 BLOCK*.
   - **A tie joins neither row**, and a tie's lines show only as a count. On house B's names-only menu, 'Château Musar Musar Jeune Rouge' (bottle and glass) ties between 'Château Musar Rouge' and 'Musar Jeune Rouge', 217 lines. Neither row's record lists them. [CHANGED 2026-10-06, F2: both rows' records now list the two names with their lines (13 and 204), and the Sold cell's tied mark names them; the lines still count on neither.]
 - **Revisit when:**
   - OD-113 gives non-wine products an identity: the till names could then key by product, not by name.
@@ -248,3 +340,4 @@ His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and
 | 2026-10-05 | fix lane `cellarledger`, last call | Wording narrowed in place, no code changed: the admit rule's "as on main" (main read the open queue only; nothing in the code sets `resolved`), and the speed claim (slower with an empty queue, as at Tuzlu Rüzgar, on a verifier's local build) |
 | 2026-10-05 | fix lane `servesize` | The founder's ruling on *Fork deferred* recorded verbatim, and built on `fix/cellar-till-names-with-a-serve-size` (stacked on §1's branch): a till name joins the most specific row whose words it contains, exact first, and a tie joins none; Sold is split into bottles, glasses and unknown unit by ADR 0011's unit order; the record's till book reads the ledger's names. *Stated behaviours*, the measure and the consequences are added in place |
 | 2026-10-06 | fix lane `servesize` | The founder's answers to the PR's five forks recorded verbatim. F1 built: a name that holds no row's full words joins by the row's name without its maker, under the same rules (SQL test S10, S11). F2 built: each tied row lists the names that tied, on the ledger (`tied_names`), the record and the Sold cell (S8, S11, S12). F3, F4 and F5 kept as built; F5 now pinned (S13 and a jest case). The *is_wine*, sizes and catalogue-only notes, the measure and the consequences bracketed in place; re-measured on the sim's feed |
+| 2026-10-07 | fix lane `servesize` | After the #650 BLOCK at `3f3689307`: the founder's two answers of 2026-10-06 recorded verbatim, with the rejected options. Menu first built: four passes, the menu's before any supplier's. Size words only break ties: rows rank by product words, and size words are `VOLUME_IN_TEXT`'s volumes. Both are built in the same migration and pinned by SQL tests S14 to S18, each killed by a named mutation. Finding 2 fixed: the till book's reason and `nothingNamesIt` say whether the till holds a name containing the label (jest). A net refund's part below zero is kept, not nulled. The join steps, F1's bullets and both measures bracketed in place. Re-measured on synthetic local copies of the measure build with competing books; production was not read |
