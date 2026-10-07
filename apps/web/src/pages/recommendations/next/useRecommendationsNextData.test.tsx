@@ -812,3 +812,61 @@ describe('round 6 reads and writes', () => {
     expect(result.current.undo).toBeNull();
   });
 });
+
+/**
+ * OPS-02 (scenario walk 2026-10-07): History is the newest 200 acted rows, and
+ * the leaf counts come from a dispositions read that may fail. The hook keeps
+ * the gateway's `total` and `capped` for the History leaf, and a `stateCounts:
+ * null` (the dispositions could not be read whole) stays null, never zeros.
+ */
+describe('useRecommendationsNextData — a capped History says it is capped (OPS-02)', () => {
+  const histItems = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ ruleKey: `rule_${i}#*#d:2026-01-01`, status: 'done' }));
+  function serveHistory(history: Record<string, unknown>, feed: Record<string, unknown> = FEED) {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      if (url.includes('/history')) return { data: history };
+      return { data: feed };
+    });
+  }
+
+  it('keeps total and capped from the History read: 200 shown of 1,234', async () => {
+    serveHistory({ items: histItems(200), total: 1234, capped: true, limit: 200 });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.historyWindow).toBeNull();
+    act(() => result.current.setLeaf('history'));
+    await waitFor(() => expect(result.current.entries).toHaveLength(200));
+    expect(result.current.historyWindow).toEqual({ shown: 200, total: 1234, capped: true });
+    act(() => result.current.setLeaf('standing'));
+    await waitFor(() => expect(result.current.historyWindow).toBeNull());
+  });
+
+  it('a whole History is not capped', async () => {
+    serveHistory({ items: histItems(50), total: 50, capped: false, limit: 200 });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.setLeaf('history'));
+    await waitFor(() => expect(result.current.entries).toHaveLength(50));
+    expect(result.current.historyWindow).toEqual({ shown: 50, total: 50, capped: false });
+  });
+
+  it('an older gateway (no total, no capped) with a full window is capped with no count, never whole', async () => {
+    serveHistory({ items: histItems(200) });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.setLeaf('history'));
+    await waitFor(() => expect(result.current.entries).toHaveLength(200));
+    expect(result.current.historyWindow).toEqual({ shown: 200, total: null, capped: true });
+  });
+
+  it('stateCounts: null (dispositions not read whole) leaves the leaf counts unknown, not zero', async () => {
+    serveHistory({ items: [] }, { ...FEED, stateCounts: null, suppressionsReadable: false });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.counts).toBeNull();
+    expect(result.current.suppressionsReadable).toBe(false);
+  });
+});

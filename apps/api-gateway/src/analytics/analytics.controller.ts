@@ -1353,12 +1353,14 @@ export class AnalyticsController {
   }
 
   @Get("recommendations/:restaurantId/history")
-  @ApiOperation({ summary: "Acted/dismissed/completed history (NEW-302)" })
+  @ApiOperation({
+    summary: "Acted/dismissed/completed history (NEW-302)",
+    description:
+      "The newest 200 rows, newest first, with `total` (the history's exact row count; null when none came back) and `capped` (true when the 200 stop short of it), so the page can say 'newest 200 of N' rather than let a window read as the whole history.",
+  })
   async recommendationHistory(@Param("restaurantId") restaurantId: string) {
     try {
-      return {
-        items: await this.recommendationActions.listHistory(restaurantId),
-      };
+      return await this.recommendationActions.listHistory(restaurantId);
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to load recommendation history",

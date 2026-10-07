@@ -185,6 +185,8 @@ const base = {
   entries: [],
   failure: null,
   counts: { active: 1, snoozed: 2, dismissed: 3, done: 4 },
+  // OPS-02: the History leaf's window; null off that leaf.
+  historyWindow: null,
   rulesEvaluated: 17,
   generatedAt: '2026-09-02T19:04:00.000Z',
   suppressed: 0,
@@ -1752,6 +1754,48 @@ describe('round 3: the dismiss list, the snooze audience and the firing', () => 
     mockData.current = { ...base, entries: [weekdayEntry()] };
     draw();
     expect(screen.queryByTestId('rc-hidden-for-you')).toBeNull();
+  });
+
+  /*
+   * OPS-02 (scenario walk 2026-10-07): History is the newest 200 acted rows.
+   * At 1,234 it listed 200 and said nothing, so the newest 200 read as the
+   * history. The gateway now says `total` and `capped`; the leaf says them.
+   */
+  it('the History leaf says "newest 200 of 1,234" when the gateway says it is capped', () => {
+    mockData.current = {
+      ...base,
+      leaf: 'history',
+      entries: [weekdayEntry()],
+      historyWindow: { shown: 200, total: 1234, capped: true },
+    };
+    draw();
+    expect(screen.getByTestId('rc-history-window')).toHaveTextContent(
+      'Newest 200 of 1,234 acted entries. The other 1,034 are kept and are not listed here.',
+    );
+  });
+
+  it('a capped History with no count says how many was not counted, never a number', () => {
+    mockData.current = {
+      ...base,
+      leaf: 'history',
+      entries: [weekdayEntry()],
+      historyWindow: { shown: 200, total: null, capped: true },
+    };
+    draw();
+    expect(screen.getByTestId('rc-history-window')).toHaveTextContent(
+      'Newest 200 acted entries. Older ones are kept and are not listed here; how many was not counted.',
+    );
+  });
+
+  it('a whole History draws no window line', () => {
+    mockData.current = {
+      ...base,
+      leaf: 'history',
+      entries: [weekdayEntry()],
+      historyWindow: { shown: 50, total: 50, capped: false },
+    };
+    draw();
+    expect(screen.queryByTestId('rc-history-window')).toBeNull();
   });
 
   it("the Snoozed leaf wakes a person's own snooze — never a house restore", () => {

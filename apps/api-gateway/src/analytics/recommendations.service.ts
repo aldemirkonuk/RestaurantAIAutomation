@@ -290,7 +290,13 @@ export class RecommendationsService {
     recommendations: Recommendation[];
     rulesEvaluated: number;
     generatedAt: string;
-    stateCounts: Record<"active" | "snoozed" | "dismissed" | "done", number>;
+    /**
+     * Null when the house's dispositions could not be read whole
+     * (`suppressionsReadable: false`): a count of an unread book is not a
+     * count, and zero snoozed, dismissed and done would read as a house that
+     * never acted (ADR 0067; OPS-02).
+     */
+    stateCounts: Record<"active" | "snoozed" | "dismissed" | "done", number> | null;
     suppressed: number;
     suppressionsReadable: boolean;
     priceAdviceReadable: boolean;
@@ -938,7 +944,7 @@ export class RecommendationsService {
       recommendations: visible,
       rulesEvaluated,
       generatedAt: new Date().toISOString(),
-      stateCounts,
+      stateCounts: dispositions.readable ? stateCounts : null,
       // How many rules fired and were then withheld because they had been
       // dismissed, and whether the dismissal store was readable at all.
       // `suppressionsReadable: false` means this list may contain things the

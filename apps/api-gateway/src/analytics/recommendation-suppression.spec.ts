@@ -1,6 +1,13 @@
+import { Logger } from "@nestjs/common";
 import { RecommendationsService } from "./recommendations.service";
-import { RecommendationActionRow } from "./recommendation-actions.service";
+import {
+  HISTORY_LIST_ROWS,
+  RecommendationActionRow,
+  RecommendationActionsService,
+} from "./recommendation-actions.service";
 import { buildSuppressionKey } from "./insights/suppression";
+import { WholeReadError } from "../common/read-whole-window";
+import { AnalyticsController } from "./analytics.controller";
 
 /**
  * The feed's half of "if the person says dismiss, it should be avoided at all
@@ -276,6 +283,9 @@ describe("a dismissal the feed honours, at the scope it was made", () => {
     const { svc } = makeService({ dispositionsReadable: false });
     const out = await svc.getRecommendations(RID);
     expect(out.suppressionsReadable).toBe(false);
+    // OPS-02: the leaf counts of an unread book are not counts. Zero
+    // snoozed, dismissed and done would read as a house that never acted.
+    expect(out.stateCounts).toBeNull();
   });
 });
 
@@ -372,5 +382,252 @@ describe("standing — the first time a rule was ever shown", () => {
     const out = await svc.getRecommendations(RID);
     const entry = out.recommendations.find((r) => r.ruleKey === WEEKDAY_RULE)!;
     expect(entry.firstSeenAt).toBeNull();
+  });
+});
+
+/**
+ * OPS-02 (scenario walk 2026-10-07): the house's recommendation book stopped
+ * at PostgREST's `max_rows` and said nothing.
+ *
+ * `recommendation_actions` keeps one row per key a house ever acted on, and
+ * nothing prunes it. `readDispositions` selected every row with no range,
+ * count or order, so past 1,000 rows the database answered an arbitrary 1,000
+ * of them under `readable: true`: dismissed and done entries stood again and
+ * the leaf counts ran low. `listByStatus` stopped at the newest 1,000, and
+ * History cut at 200 without saying so.
+ *
+ * The double below is PostgREST as far as these reads use it: every response
+ * is cut at `cap` (max_rows) whatever was asked, `count: "exact"` is the size
+ * of the filtered set before the limit, and `.gt("id", …)` is honoured, so a
+ * later page's count is what lies past its cursor. Each case here was RED
+ * against origin/main ca3582988's service before the fix.
+ */
+
+type Row = Record<string, any>;
+
+interface Behaviour {
+  cap?: number;
+  /** 1-based request numbers that answer with an error. */
+  failOn?: number[];
+  /** Never report a count. */
+  noCount?: boolean;
+}
+
+function fakeDb(rows: Row[], behave: Behaviour = {}) {
+  const cap = behave.cap ?? 1000;
+  const requests: Array<{ limit?: number; gt?: string; count?: string }> = [];
+  const client = {
+    from(table: string) {
+      if (table !== "recommendation_actions")
+        throw new Error(`unexpected table ${table}`);
+      const eqs: Array<[string, unknown]> = [];
+      const orders: Array<[string, boolean]> = [];
+      let orFilter: string | null = null;
+      let gt: string | null = null;
+      let limit: number | null = null;
+      let countMode: string | undefined;
+      const b: any = {
+        select(_cols: string, opts?: { count?: string }) {
+          countMode = opts?.count;
+          return b;
+        },
+        eq(col: string, val: unknown) {
+          eqs.push([col, val]);
+          return b;
+        },
+        or(expr: string) {
+          orFilter = expr;
+          return b;
+        },
+        order(col: string, opts?: { ascending?: boolean }) {
+          orders.push([col, opts?.ascending !== false]);
+          return b;
+        },
+        gt(col: string, val: string) {
+          if (col !== "id") throw new Error("gt only on id here");
+          gt = val;
+          return b;
+        },
+        limit(n: number) {
+          limit = n;
+          return b;
+        },
+        then(resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) {
+          requests.push({ limit: limit ?? undefined, gt: gt ?? undefined, count: countMode });
+          const n = requests.length;
+          if (behave.failOn?.includes(n))
+            return Promise.resolve({
+              data: null,
+              error: { message: "canceling statement due to statement timeout", code: "57014" },
+              count: null,
+            }).then(resolve, reject);
+          let set = rows.filter((r) => eqs.every(([c, v]) => String(r[c]) === String(v)));
+          if (orFilter === "status.in.(dismissed,done),acted_at.not.is.null")
+            set = set.filter(
+              (r) => r.status === "dismissed" || r.status === "done" || r.acted_at != null,
+            );
+          else if (orFilter) throw new Error(`unexpected or(${orFilter})`);
+          if (gt !== null) set = set.filter((r) => String(r.id) > (gt as string));
+          if (orders.length > 0)
+            set = [...set].sort((a, c) => {
+              for (const [col, asc] of orders) {
+                const x = String(a[col]);
+                const y = String(c[col]);
+                if (x !== y) return (x < y ? -1 : 1) * (asc ? 1 : -1);
+              }
+              return 0;
+            });
+          const count =
+            countMode === "exact" && !behave.noCount ? set.length : null;
+          const take = Math.min(limit ?? Number.POSITIVE_INFINITY, cap);
+          return Promise.resolve({
+            data: set.slice(0, take),
+            error: null,
+            count,
+          }).then(resolve, reject);
+        },
+      };
+      return b;
+    },
+  };
+  return { db: { getClient: () => client } as any, requests };
+}
+
+const pad = (i: number) => String(i).padStart(5, "0");
+/** One minute apart, oldest first, so `updated_at` and `id` agree on order. */
+const at = (i: number) =>
+  new Date(Date.UTC(2026, 0, 1) + i * 60_000).toISOString();
+
+function row(i: number, over: Row = {}): Row {
+  return {
+    id: `id-${pad(i)}`,
+    restaurant_id: RID,
+    rule_key: `rule_${i}#*#d:2026-01-01`,
+    status: "done",
+    reason: null,
+    snooze_until: null,
+    pinned: false,
+    acted_at: null,
+    updated_at: at(i),
+    ...over,
+  };
+}
+
+describe("the house's recommendation book past PostgREST max_rows (OPS-02)", () => {
+  let warn: jest.SpyInstance;
+  let error: jest.SpyInstance;
+  beforeAll(() => {
+    warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+  });
+  afterAll(() => {
+    warn.mockRestore();
+    error.mockRestore();
+  });
+
+  describe("readDispositions reads the house's whole book (OPS-02)", () => {
+    // 1,500 rows; the dismissal that matters sits past the first 1,000.
+    const BOOK = Array.from({ length: 1500 }, (_, i) =>
+      i === 1400
+        ? row(i, { status: "dismissed", reason: "not_relevant" })
+        : row(i),
+    );
+
+    it("holds a dismissal past the 1,000th row, in two keyset pages", async () => {
+      const { db, requests } = fakeDb(BOOK);
+      const out = await new RecommendationActionsService(db).readDispositions(RID);
+      expect(out.readable).toBe(true);
+      expect(out.map.size).toBe(1500);
+      expect(out.map.get("rule_1400#*#d:2026-01-01")?.status).toBe("dismissed");
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toMatchObject({ limit: 1000, count: "exact" });
+      expect(requests[1]).toMatchObject({ gt: "id-00999", count: "exact" });
+    });
+
+    it("the suppression list carries that dismissal too", async () => {
+      const { db } = fakeDb(BOOK);
+      const out = await new RecommendationActionsService(db).listSuppressions(RID);
+      expect(out.readable).toBe(true);
+      expect(out.keys.has("rule_1400#*#d:2026-01-01")).toBe(true);
+    });
+
+    it("a page that fails mid-book answers readable: false, never the first 1,000", async () => {
+      const { db } = fakeDb(BOOK, { failOn: [2] });
+      const out = await new RecommendationActionsService(db).readDispositions(RID);
+      expect(out.readable).toBe(false);
+      expect(out.map.size).toBe(0);
+      expect(out.problem).toMatch(/could not be read whole/);
+    });
+  });
+
+  describe("listByStatus lists the whole leaf, newest first (OPS-02)", () => {
+    const LEAF = Array.from({ length: 1200 }, (_, i) =>
+      row(i, { status: "dismissed", reason: "not_relevant" }),
+    ).concat(Array.from({ length: 300 }, (_, i) => row(2000 + i, { status: "done" })));
+
+    it("returns every one of 1,200 dismissed rows, newest first", async () => {
+      const { db, requests } = fakeDb(LEAF);
+      const items = await new RecommendationActionsService(db).listByStatus(
+        RID,
+        "dismissed",
+      );
+      expect(items).toHaveLength(1200);
+      expect(items[0].ruleKey).toBe("rule_1199#*#d:2026-01-01");
+      expect(items[1199].ruleKey).toBe("rule_0#*#d:2026-01-01");
+      expect(items.every((r) => r.status === "dismissed")).toBe(true);
+      expect(requests.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("refuses with WholeReadError when a page fails, rather than listing part of the leaf", async () => {
+      const { db } = fakeDb(LEAF, { failOn: [2] });
+      await expect(
+        new RecommendationActionsService(db).listByStatus(RID, "dismissed"),
+      ).rejects.toBeInstanceOf(WholeReadError);
+    });
+  });
+
+  describe("listHistory says when it is the newest 200, not the history (OPS-02)", () => {
+    it("1,234 acted rows: 200 shown, total 1,234, capped", async () => {
+      const BOOK = Array.from({ length: 1234 }, (_, i) => row(i));
+      const { db } = fakeDb(BOOK);
+      const out = await new RecommendationActionsService(db).listHistory(RID);
+      expect(HISTORY_LIST_ROWS).toBe(200);
+      expect(out.items).toHaveLength(200);
+      expect(out.total).toBe(1234);
+      expect(out.capped).toBe(true);
+      expect(out.limit).toBe(200);
+      expect(out.items[0].ruleKey).toBe("rule_1233#*#d:2026-01-01");
+    });
+
+    it("50 acted rows: all shown, not capped", async () => {
+      const BOOK = Array.from({ length: 50 }, (_, i) => row(i));
+      const { db } = fakeDb(BOOK);
+      const out = await new RecommendationActionsService(db).listHistory(RID);
+      expect(out.items).toHaveLength(50);
+      expect(out.total).toBe(50);
+      expect(out.capped).toBe(false);
+    });
+
+    it("no count reported and a full window: capped, total null", async () => {
+      const BOOK = Array.from({ length: 300 }, (_, i) => row(i));
+      const { db } = fakeDb(BOOK, { noCount: true });
+      const out = await new RecommendationActionsService(db).listHistory(RID);
+      expect(out.items).toHaveLength(200);
+      expect(out.total).toBeNull();
+      expect(out.capped).toBe(true);
+    });
+  });
+
+  describe("GET recommendations/:id/history carries the window to the page (OPS-02)", () => {
+    it("answers { items, total, capped, limit }, not items alone", async () => {
+      const BOOK = Array.from({ length: 1234 }, (_, i) => row(i));
+      const { db } = fakeDb(BOOK);
+      const self = { recommendationActions: new RecommendationActionsService(db) };
+      const proto = AnalyticsController.prototype as unknown as Record<string, any>;
+      const body = await proto.recommendationHistory.call(self, RID);
+      expect(Array.isArray(body.items)).toBe(true);
+      expect(body.items).toHaveLength(200);
+      expect(body).toMatchObject({ total: 1234, capped: true, limit: 200 });
+    });
   });
 });

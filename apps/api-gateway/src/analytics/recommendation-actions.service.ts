@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import { INSIGHT_CANDIDATES } from "./insights/insight-catalog";
 import { insightRuleId } from "./insights/suppression";
 import { SuppressionTarget } from "./insights/suppression";
@@ -39,6 +40,36 @@ import {
  * answer that has not reached every key is refused, not read as "nobody".
  */
 export const HISTORY_READ_ROWS = 1000;
+
+/** The most rows the History leaf lists, newest first (NEW-302). */
+export const HISTORY_LIST_ROWS = 200;
+
+/** The History leaf's answer: a newest-first window that says when it is one. */
+export interface RecommendationHistoryPage {
+  items: RecommendationActionRow[];
+  /** Rows the history holds, counted exactly; null when no count came back. */
+  total: number | null;
+  /** True when `items` stops short of the history (or cannot be shown not to). */
+  capped: boolean;
+  /** The window's size, `HISTORY_LIST_ROWS`. */
+  limit: number;
+}
+
+/**
+ * `updated_at` descending, as the leaves were ordered when the database
+ * sorted them, then `id`, so equal instants keep one order.
+ */
+function newestFirst(a: any, b: any): number {
+  const ta = Date.parse(String(a?.updated_at ?? ""));
+  const tb = Date.parse(String(b?.updated_at ?? ""));
+  if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return tb - ta;
+  const sa = String(a?.updated_at ?? "");
+  const sb = String(b?.updated_at ?? "");
+  if (sa !== sb) return sa < sb ? 1 : -1;
+  const ia = String(a?.id ?? "");
+  const ib = String(b?.id ?? "");
+  return ia === ib ? 0 : ia < ib ? 1 : -1;
+}
 
 /** The `system_audit_log.action` a catalogue on/off files (ADR 0191). */
 export type TypeToggleAction =
@@ -315,6 +346,16 @@ export class RecommendationActionsService {
    * loaded". The feed must say so, because the alternative — showing every
    * entry as if nothing had ever been dismissed — is precisely the failure the
    * founder named: a dismissal that does not hold, reported as a clean page.
+   *
+   * The book is read WHOLE, page by page, or not at all (ADR 0292's
+   * `readWholeWindow`). The table keeps one row per key a house ever acted on
+   * and nothing prunes it, so a busy house passes PostgREST's `max_rows`
+   * (1000, `supabase/config.toml:18`). An unranged select then answered an
+   * arbitrary 1000 rows as if they were the book: the dispositions past the
+   * cut vanished, dismissed and done entries stood again, and the leaf counts
+   * were low, all under `readable: true` (scenario walk 2026-10-07, OPS-02).
+   * A read that cannot be proved whole now answers `readable: false`, which
+   * every caller already says out loud.
    */
   async readDispositions(restaurantId: string): Promise<{
     map: Map<string, RecommendationActionRow>;
@@ -323,14 +364,12 @@ export class RecommendationActionsService {
   }> {
     const map = new Map<string, RecommendationActionRow>();
     try {
-      const { data, error } = await this.dbService
-        .getClient()
-        .from("recommendation_actions")
-        .select("*")
-        .eq("restaurant_id", restaurantId);
-      if (error) throw new Error(error.message);
+      const data = await this.readActionRows(
+        "The house's recommendation dispositions",
+        restaurantId,
+      );
       const now = Date.now();
-      for (const r of data || []) {
+      for (const r of data) {
         const expiredSnooze =
           r.status === "snoozed" &&
           r.snooze_until &&
@@ -355,11 +394,35 @@ export class RecommendationActionsService {
         });
       }
     } catch (err: any) {
+      // A refused whole read lands here too, so a short book is never
+      // answered as the book.
       const problem = err?.message || "recommendation_actions could not be read";
       this.logger.warn(`readDispositions failed: ${problem}`);
       return { map, readable: false, problem };
     }
     return { map, readable: true, problem: null };
+  }
+
+  /**
+   * Every `recommendation_actions` row of one house (optionally of one
+   * status), read whole through `readWholeWindow` or refused with its
+   * `WholeReadError`. Rows come back in `id` order; a caller that lists them
+   * sorts them itself.
+   */
+  private async readActionRows(
+    what: string,
+    restaurantId: string,
+    status?: RecommendationStatus,
+  ): Promise<any[]> {
+    const client = this.dbService.getClient();
+    return readWholeWindow<any>(what, () => {
+      let q: any = client
+        .from("recommendation_actions")
+        .select("*", { count: "exact" })
+        .eq("restaurant_id", restaurantId);
+      if (status) q = q.eq("status", status);
+      return q;
+    });
   }
 
   /**
@@ -1568,17 +1631,20 @@ export class RecommendationActionsService {
     status: RecommendationStatus | "all",
     viewer?: RecommendationActor,
   ): Promise<Array<RecommendationActionRow & { undoableByYou?: boolean | null }>> {
-    let q = this.dbService
-      .getClient()
-      .from("recommendation_actions")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("updated_at", { ascending: false });
-    if (status !== "all") q = q.eq("status", status);
-    const { data, error } = await q;
-    if (error) throw new Error(error.message);
+    // Read whole or refused (ADR 0292), never the newest 1000: a leaf must
+    // list every entry its count says it holds, or say it could not be read
+    // (OPS-02). The helper pages on `id`, so the leaf's newest-first order is
+    // applied here, after the read.
+    const data = await this.readActionRows(
+      status === "all"
+        ? "The house's acted entries"
+        : `The house's ${status} entries`,
+      restaurantId,
+      status === "all" ? undefined : status,
+    );
     const now = Date.now();
-    const rows = (data || [])
+    const rows = [...data]
+      .sort(newestFirst)
       .map((d) => this.toRow(d))
       .filter((r) => {
         // Hide snoozes that have expired from the "snoozed" tab.
@@ -1629,18 +1695,36 @@ export class RecommendationActionsService {
     return out;
   }
 
-  /** NEW-302: everything the manager has acted on / dismissed / completed. */
-  async listHistory(restaurantId: string): Promise<RecommendationActionRow[]> {
-    const { data, error } = await this.dbService
+  /**
+   * NEW-302: everything the manager has acted on / dismissed / completed,
+   * newest first, at most `HISTORY_LIST_ROWS` of it.
+   *
+   * The leaf is a window, and it says so: `total` is how many rows the
+   * history holds (the same query, counted exactly) and `capped` is whether
+   * the window stops short of them, so the page prints "newest 200 of N"
+   * rather than letting 200 read as the whole history (OPS-02). `total` is
+   * null only when the database reported no count; `capped` is then true
+   * whenever the window came back full, since nothing proves it is not.
+   */
+  async listHistory(restaurantId: string): Promise<RecommendationHistoryPage> {
+    const { data, error, count } = await this.dbService
       .getClient()
       .from("recommendation_actions")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("restaurant_id", restaurantId)
       .or("status.in.(dismissed,done),acted_at.not.is.null")
       .order("updated_at", { ascending: false })
-      .limit(200);
+      .limit(HISTORY_LIST_ROWS);
     if (error) throw new Error(error.message);
-    return (data || []).map((d) => this.toRow(d));
+    const items = (data || []).map((d) => this.toRow(d));
+    const total =
+      typeof count === "number" && Number.isFinite(count) ? count : null;
+    return {
+      items,
+      total,
+      capped: total === null ? items.length >= HISTORY_LIST_ROWS : total > items.length,
+      limit: HISTORY_LIST_ROWS,
+    };
   }
 
   // ---- Digest preferences (NEW-303) ---------------------------------------

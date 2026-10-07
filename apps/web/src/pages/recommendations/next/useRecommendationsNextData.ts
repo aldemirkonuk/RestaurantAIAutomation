@@ -147,6 +147,29 @@ export interface StateCounts {
   done: number;
 }
 
+/**
+ * What the History leaf's read held, against what the history holds.
+ *
+ * `GET …/history` answers the newest 200 rows (`HISTORY_LIST_ROWS`) with the
+ * history's exact `total` and a `capped` flag. Before them, 200 acted entries
+ * read as the whole history (OPS-02).
+ */
+export interface HistoryWindow {
+  shown: number;
+  /** Rows the history holds; null when the gateway reported no count. */
+  total: number | null;
+  /**
+   * True when older acted entries exist past the window, or may. An older
+   * gateway that states no `capped` also answered at most
+   * `HISTORY_WINDOW_ROWS`; a full window from it is said as capped with no
+   * count, never as the whole history (an unknown is not a zero).
+   */
+  capped: boolean;
+}
+
+/** The gateway's History window (`HISTORY_LIST_ROWS`), before and after OPS-02. */
+export const HISTORY_WINDOW_ROWS = 200;
+
 export interface DigestPref {
   /**
    * False when this house has never stored a digest row at all. The
@@ -318,6 +341,8 @@ export interface RecommendationsData {
   entries: EntryVM[];
   failure: FailureVM | null;
   counts: StateCounts | null;
+  /** The History leaf's window; null on every other leaf and before a read. */
+  historyWindow: HistoryWindow | null;
   rulesEvaluated: number | null;
   generatedAt: string | null;
   /** How many fired and were withheld because they had been dismissed. */
@@ -480,6 +505,7 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [entries, setEntries] = useState<EntryVM[]>([]);
   const [failure, setFailure] = useState<FailureVM | null>(null);
   const [counts, setCounts] = useState<StateCounts | null>(null);
+  const [historyWindow, setHistoryWindow] = useState<HistoryWindow | null>(null);
   const [rulesEvaluated, setRulesEvaluated] = useState<number | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [digest, setDigest] = useState<DigestPref | null | undefined>(undefined);
@@ -518,6 +544,7 @@ export function useRecommendationsNextData(): RecommendationsData {
       // A tenant switch must never leave the previous restaurant's rows on
       // screen while the new read is in flight.
       setEntries([]);
+      setHistoryWindow(null);
       if (!rid) return; // AuthContext resolves a beat after login — stay loading.
       try {
         if (which === 'standing') {
@@ -564,6 +591,16 @@ export function useRecommendationsNextData(): RecommendationsData {
           const list = Array.isArray(data?.items) ? (data.items as Record<string, unknown>[]) : [];
           const fallback: Disposition = which === 'history' ? 'done' : (which as Disposition);
           const house = list.map((r) => toEntry(r, fallback));
+          if (which === 'history') {
+            setHistoryWindow({
+              shown: list.length,
+              total: num(data?.total),
+              capped:
+                typeof data?.capped === 'boolean'
+                  ? data.capped
+                  : list.length >= HISTORY_WINDOW_ROWS,
+            });
+          }
           if (which !== 'snoozed') {
             setEntries(house);
           } else {
@@ -1222,6 +1259,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     entries,
     failure,
     counts,
+    historyWindow,
     rulesEvaluated,
     generatedAt,
     digest,

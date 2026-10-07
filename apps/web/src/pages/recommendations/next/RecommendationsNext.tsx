@@ -658,6 +658,17 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             </p>
           )}
           {/*
+            The History leaf is the newest 200, not the history (OPS-02): when
+            the gateway says the window stops short, the page says by how much.
+          */}
+          {data.phase === 'ready' && leaf === 'history' && data.historyWindow?.capped === true && (
+            <p className="rc-said" data-testid="rc-history-window">
+              {data.historyWindow.total !== null
+                ? `Newest ${data.historyWindow.shown.toLocaleString('en-US')} of ${data.historyWindow.total.toLocaleString('en-US')} acted entries. The other ${Math.max(0, data.historyWindow.total - data.historyWindow.shown).toLocaleString('en-US')} are kept and are not listed here.`
+                : `Newest ${data.historyWindow.shown.toLocaleString('en-US')} acted entries. Older ones are kept and are not listed here; how many was not counted.`}
+            </p>
+          )}
+          {/*
             What THIS person snoozed for themselves (ADR 0191 round 3): hidden
             from them alone, so it is counted to them alone — and when it
             could not be read, that is said rather than shown as nothing.
