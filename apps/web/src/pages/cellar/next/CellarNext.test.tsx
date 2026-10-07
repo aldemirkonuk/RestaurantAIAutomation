@@ -32,8 +32,9 @@ import type {
   RegisterRowVM,
 } from './useCellarNextData';
 import { sortValueFor } from './registerCells';
-import { registerHref } from './cellar-format';
+import { registerHref, DOOR_CHECKED_NOTE, DOOR_CHECKED_SOURCE } from './cellar-format';
 import type { RegisterId } from './cellar-format';
+import { HOUSE_SPINE } from './cellar-columns';
 
 const mock = vi.hoisted(() => ({
   current: {} as Record<string, unknown>,
@@ -824,6 +825,10 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(within(row).getByText('$265.00')).toBeInTheDocument();
     // One mark on First bought, one on Paid.
     expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(2);
+    // Its reason on hover is the narrowed note (ADR 0301, Harder / given up).
+    for (const mark of within(row).getAllByTestId('door-checked-mark')) {
+      expect(mark).toHaveAttribute('title', DOOR_CHECKED_NOTE);
+    }
 
     fireEvent.click(screen.getByText('Efes Pilsen'));
     const leaf = screen.getByTestId('house-leaf');
@@ -985,6 +990,24 @@ describe('CellarNext — the registers that are not wines', () => {
     const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
     expect(within(book).queryByTestId('door-checked-mark')).toBeNull();
     expect(book).not.toHaveTextContent(/receipt_verified/);
+  });
+
+  it('says a door check stands until an invoice is linked, and that one filed but not linked counts alongside', () => {
+    // ADR 0301, Harder / given up (2026-10-07): a door row steps aside only
+    // for an invoice linked to the order or paired with its line. An invoice
+    // filed any other way counts alongside it (SQL test T18), so the words
+    // must not say "no invoice has been filed".
+    const said = HOUSE_SPINE.filter((c) => c.id === 'first' || c.id === 'paid');
+    expect(said.map((c) => c.id)).toEqual(['first', 'paid']);
+    for (const c of said) {
+      expect(c.meaning).toMatch(/no invoice (is )?linked to/);
+      expect(c.meaning).toMatch(/An invoice filed but not linked to the order counts alongside the door check/);
+      expect(`${c.meaning} ${c.source}`).not.toMatch(/been filed for|no invoice filed|invoice filed yet/);
+    }
+    expect(DOOR_CHECKED_NOTE).toMatch(/No invoice is linked to this order yet/);
+    expect(DOOR_CHECKED_NOTE).toMatch(/An invoice filed but not linked to it counts alongside/);
+    expect(DOOR_CHECKED_NOTE).not.toMatch(/has been filed/);
+    expect(DOOR_CHECKED_SOURCE).toMatch(/no invoice linked to the order or paired with its line/);
   });
 
   it('renders add-to-inventory disabled, with the OD-113 sentence beside it', () => {

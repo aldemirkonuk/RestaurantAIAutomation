@@ -63,7 +63,7 @@ function dim(v: string): ReactNode {
 /**
  * ADR 0301 §2 (AW14), his pick: "Door-checked, labelled". The mark beside any
  * figure a door check filled — a price checked against the delivery, on an
- * order no invoice has been filed for. Words, not a colour, and the reason on
+ * order no invoice is linked to. Words, not a colour, and the reason on
  * hover. The record's stand draws the same mark, so it is exported from here.
  */
 export function doorCheckedMark(): ReactNode {

@@ -1,6 +1,6 @@
 -- /cellar's First bought and Paid count the door-checked price, marked
--- door-checked until a filed invoice takes over. 2026-10-03 analytics walk,
--- AW14 (A-045); ADR 0301 §2.
+-- door-checked until an invoice linked to the order, or paired with its line,
+-- takes over. 2026-10-03 analytics walk, AW14 (A-045); ADR 0301 §2.
 --
 -- THE RULING. The founder's pick for AW14, 2026-10-04 ~00:30Z, verbatim:
 -- "Door-checked, labelled (Recommended)".
@@ -18,7 +18,7 @@
 --
 -- WHAT THIS DOES.
 --   1. public.house_door_checked(p_restaurant_id) is one row per door-checked
---      order that no filed invoice covers. A row needs all of:
+--      order that no linked or paired invoice covers. A row needs all of:
 --        - procurement_orders.match_verified_at is set (the door check);
 --        - a price_history row for the order with source 'receipt_verified'
 --          and unit 'bottle', the latest by created_at. verifyReceipt writes
@@ -36,11 +36,14 @@
 --        - exactly one procurement_order_items line, with a name. The price
 --          belongs to one line, and verifyReceipt reads the agreed line with
 --          maybeSingle; with two lines nothing says which one was checked;
---        - no filed invoice: no procurement_document_links row from the order
---          to a document of type invoice, and no invoice line whose
---          order_line_id is the order's line. Once one is filed, the invoice
---          book carries the purchase and the door row steps aside, with no
---          client change.
+--        - no linked or paired invoice: no procurement_document_links row
+--          from the order to a document of type invoice, and no invoice line
+--          whose order_line_id is the order's line. Once one is linked or
+--          paired, the invoice book carries the purchase and the door row
+--          steps aside, with no client change. An invoice filed but neither
+--          linked nor paired does not: it counts alongside the door row, so
+--          one delivery counts twice when the two key the same (ADR 0301,
+--          Harder / given up, 2026-10-07; SQL test T18).
 --      The date is match_verified_at::date, a wall-clock stamp, until the door
 --      check is dated by its fact time (AW03 / C02, ADR 0286; the house-day is
 --      ADR 0296). The currency is the price row's own, carried and not
@@ -78,7 +81,7 @@
 -- Reads only; this migration changes no row.
 
 -- ---------------------------------------------------------------------------
--- 1. The door-checked orders no filed invoice covers.
+-- 1. The door-checked orders no linked or paired invoice covers.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.house_door_checked(p_restaurant_id uuid)
 RETURNS TABLE (
@@ -147,7 +150,7 @@ AS $function$
       SELECT 1 FROM public.procurement_order_items x
       WHERE x.order_id = o.id AND x.id <> oi.id
     )
-    -- No filed invoice: none linked to the order ...
+    -- No linked invoice: none linked to the order ...
     AND NOT EXISTS (
       SELECT 1
       FROM public.procurement_document_links dl
@@ -168,7 +171,7 @@ AS $function$
 $function$;
 
 COMMENT ON FUNCTION public.house_door_checked(uuid) IS
-  'One row per door-checked order of one house that no filed invoice covers: '
+  'One row per door-checked order of one house that no linked or paired invoice covers: '
   'match_verified_at set, the latest receipt_verified price_history row in '
   'bottles, the accepted bottles of the latest reconciled event that carried '
   'the invoiced quantity (more than zero), exactly one order line, and no '
@@ -258,8 +261,10 @@ menu AS (
 -- Invoices. A purchase order is what we asked for; an invoice is what we were
 -- charged. CHANGED the_cellar_counts_the_door_checked_price (ADR 0301 §2): the
 -- door check, where a person checked the bill against the delivery, is the
--- other record of a charge. It joins below as `door`, labelled, and a filed
--- invoice for the order takes over from it.
+-- other record of a charge. It joins below as `door`, labelled, and an
+-- invoice linked to the order, or paired with its line, takes over from it;
+-- one filed but neither linked nor paired counts alongside it (ADR 0301,
+-- Harder / given up, 2026-10-07).
 inv AS (
   SELECT public.beverage_house_key(NULL, l.description) AS k,
          l.description                                  AS label,
@@ -274,7 +279,7 @@ inv AS (
     AND btrim(coalesce(l.description, '')) <> ''
 ),
 -- ADDED the_cellar_counts_the_door_checked_price (ADR 0301 §2): each
--- door-checked order no filed invoice covers, at its checked price and its
+-- door-checked order no linked or paired invoice covers, at its checked price and its
 -- accepted bottles. Keyed exactly as the order book keys the same line, so it
 -- never makes a key the order book does not already make.
 door AS (
@@ -598,7 +603,7 @@ COMMENT ON FUNCTION public.house_beverage_ledger IS
   'behind them, summed by house_key; a name only the till knows is a row '
   'when the queue ever held it (ADR 0301). '
   'Bought is the invoice lines plus house_door_checked, the door-checked '
-  'orders no filed invoice covers, at the checked price times the accepted '
+  'orders no linked or paired invoice covers, at the checked price times the accepted '
   'bottles; invoice_lines and the invoice book count invoice lines only, and '
   'door_checked_lines, first_bought_door_checked and last_bought_door_checked '
   'say what came from the door (ADR 0301 §2). service_role only.';

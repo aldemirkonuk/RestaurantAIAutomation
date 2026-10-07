@@ -61,8 +61,9 @@ export interface Bought {
   /** Invoice lines naming it. 0 when only door checks do. */
   lines: number;
   /**
-   * Orders whose price was checked at the door and that no filed invoice has
-   * taken over yet (ADR 0301 §2: "Door-checked, labelled"). Their figures are
+   * Orders whose price was checked at the door and that no linked or paired
+   * invoice has taken over yet (ADR 0301 §2: "Door-checked, labelled"; an
+   * invoice filed but not linked counts alongside). Their figures are
    * in `first`, `last`, `bottles`, `paidTotal` and `lastUnitPrice`, so a
    * surface that shows those must say so when this is above 0.
    */

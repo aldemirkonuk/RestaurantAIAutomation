@@ -466,7 +466,7 @@ export interface BoughtVM {
   /** Invoice lines naming it. 0 when only door checks do. */
   lines: number;
   /**
-   * Door-checked orders with no invoice filed (ADR 0301 §2). Optional so a
+   * Door-checked orders with no invoice linked (ADR 0301 §2). Optional so a
    * gateway that predates them reads as none.
    */
   doorChecked?: number;
