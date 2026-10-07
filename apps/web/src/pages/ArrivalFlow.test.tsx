@@ -10,6 +10,7 @@ const {
   navigate,
   createFirstHouse,
   patch,
+  get,
   addMenuItem,
   reviewMenuItem,
   listMenuVersions,
@@ -21,6 +22,7 @@ const {
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
+  get: vi.fn(),
   addMenuItem: vi.fn(),
   reviewMenuItem: vi.fn(),
   listMenuVersions: vi.fn(),
@@ -38,7 +40,7 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => auth.value,
 }))
 vi.mock('../services/api/client', () => ({
-  apiClient: { patch },
+  apiClient: { patch, get },
 }))
 vi.mock('../components/brand/BrandMark', () => ({
   BrandMark: () => <span>Mudavym</span>,
@@ -210,6 +212,7 @@ const SMOKY_READ = read('pencil', 'Smoky No. 4', {
 beforeEach(() => {
   vi.clearAllMocks()
   signedIn()
+  get.mockResolvedValue({ data: { houses: [], held: [], accessEnded: false } })
   reviewMenuItem.mockResolvedValue({})
   patch.mockResolvedValue({})
   createFirstHouse.mockResolvedValue('house-1')
@@ -234,8 +237,14 @@ beforeEach(() => {
 
 describe('approved arrival flow', () => {
   it('creates the house on the restaurant screen and offers skip only on menu', async () => {
+    createFirstHouse.mockImplementation(async () => {
+      // The house now exists: the entry check must not fire again mid-wizard.
+      signedIn({ ...SELIN, restaurantId: 'house-1' })
+      return 'house-1'
+    })
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
+    expect(get).toHaveBeenCalledWith('/auth/houses')
     expect(screen.queryByText(/Skip for now/)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -261,6 +270,7 @@ describe('approved arrival flow', () => {
         currency: 'TRY',
       }),
     )
+    expect(navigate).not.toHaveBeenCalled()
     expect(screen.getByText('Skip for now — open the house')).toBeInTheDocument()
     expect(screen.getByText('Drop the menu here')).toBeInTheDocument()
     expect(screen.getByText(/Your last invoice — read the same way/)).toBeInTheDocument()
@@ -322,6 +332,67 @@ describe('approved arrival flow', () => {
     })
     const kept = JSON.parse(sessionStorage.getItem('mudavym:first-proof') ?? 'null')
     expect(kept).toMatchObject({ menuId: 'menu', restaurantId: 'house-1' })
+  })
+})
+
+describe('/get-started for an account that already has a house (SETUP-01)', () => {
+  it('sends an account with an open house to /house and never shows the wizard', async () => {
+    signedIn({ ...SELIN, restaurantId: 'house-1' })
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/house', { replace: true }))
+    expect(screen.queryByRole('heading', { name: /Welcome, Selin/ })).not.toBeInTheDocument()
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('sends an account that holds houses but has none open to choose one', async () => {
+    get.mockResolvedValue({
+      data: { houses: [{ id: 'house-1', name: 'Meyhane' }], held: [], accessEnded: false },
+    })
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/choose-house', { replace: true }))
+    expect(screen.queryByRole('heading', { name: /Welcome, Selin/ })).not.toBeInTheDocument()
+  })
+
+  it('sends a membership waiting to be accepted to choose, too', async () => {
+    get.mockResolvedValue({
+      data: { houses: [], held: [{ id: 'house-2', name: 'Lokanta' }], accessEnded: false },
+    })
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/choose-house', { replace: true }))
+  })
+
+  it('says a failed check failed instead of opening the wizard as if there were no house', async () => {
+    get.mockRejectedValueOnce(new Error('Network Error'))
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'We could not check whether this account already has a house: Network Error',
+    )
+    expect(screen.queryByRole('heading', { name: /Welcome, Selin/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads a reply without a list of houses as a failed check, not as none', async () => {
+    get.mockResolvedValueOnce({ data: {} })
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/came back without a list/)
+    expect(screen.queryByRole('heading', { name: /Welcome, Selin/ })).not.toBeInTheDocument()
+  })
+
+  it('sends an unverified account to verify its email first', async () => {
+    signedIn({ ...SELIN, emailVerified: false })
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/verify-email', { replace: true }))
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('waits for the session before deciding', async () => {
+    auth.value = { user: null, loading: true, activeRestaurantId: null, createFirstHouse }
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(screen.getByRole('status')).toHaveTextContent('Checking this account')
+    expect(navigate).not.toHaveBeenCalled()
+    expect(get).not.toHaveBeenCalled()
   })
 })
 

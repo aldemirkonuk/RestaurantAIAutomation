@@ -10,12 +10,18 @@ import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { name: 'Selin Kaya', emailVerified: true },
+    user: { name: 'Selin Kaya', emailVerified: true, restaurantId: '' },
+    loading: false,
+    activeRestaurantId: null,
     createFirstHouse: vi.fn(),
   }),
 }))
 vi.mock('../../services/api/client', () => ({
-  apiClient: { patch: vi.fn() },
+  // An account with no house yet: /get-started checks this on arrival (ADR 0309).
+  apiClient: {
+    patch: vi.fn(),
+    get: vi.fn().mockResolvedValue({ data: { houses: [], held: [], accessEnded: false } }),
+  },
 }))
 vi.mock('../../components/brand/BrandMark', () => ({
   BrandMark: () => <span>Mudavym</span>,
@@ -24,13 +30,13 @@ vi.mock('../../components/brand/BrandMark', () => ({
 import GetStarted from '../GetStarted'
 
 describe('GetStarted — cellar registers left onboarding (ADR 0213)', () => {
-  it('does not mount a register-checkbox step', () => {
+  it('does not mount a register-checkbox step', async () => {
     render(
       <MemoryRouter>
         <GetStarted />
       </MemoryRouter>,
     )
-    expect(screen.getByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
     expect(screen.queryByTestId('onboarding-cellar-registers')).toBeNull()
     expect(screen.queryByTestId('activate-cellar-registers')).toBeNull()
     expect(screen.queryByLabelText('Wines register')).toBeNull()
