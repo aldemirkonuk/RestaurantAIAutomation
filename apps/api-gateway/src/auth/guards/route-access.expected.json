@@ -17,6 +17,10 @@
   "POST /analytics/tables/:restaurantId (AnalyticsController.upsertTable)": "open",
   "GET /analytics/venue/:restaurantId (AnalyticsController.getVenue)": "open",
   "PUT /analytics/venue/:restaurantId (AnalyticsController.setVenue)": "open",
+  "PATCH /analytics/tables/:restaurantId/:tableId (AnalyticsController.renameOrHideTable)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/table-performance/:restaurantId (AnalyticsController.getTablePerformance)": "open",
   "GET /analytics/waiters/:restaurantId (AnalyticsController.getWaiters)": "open",
   "GET /analytics/basket/:restaurantId (AnalyticsController.getBasket)": "open",

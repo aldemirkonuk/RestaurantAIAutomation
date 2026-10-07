@@ -31,6 +31,16 @@ function remote<T>(data: T | null, status: 'idle' | 'loading' | 'ok' | 'error' |
   return { status, data, error: status === 'error' ? 'gateway unreachable' : null, reload: () => {}, set: () => {} };
 }
 
+/** The Time zone register's answer for the house in `fullInput` (Europe/Istanbul). */
+function zone(over: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r1', zone: 'Europe/Istanbul', source: null as 'address' | 'device' | 'stated' | null,
+    unreadZone: null, country: 'TR', readable: true, reason: null,
+    statedAt: null as string | null, statedBy: null as { userId: string | null; name: string | null } | null,
+    ...over,
+  };
+}
+
 /** Every one of the nine rows answered — 9 of 9. */
 function fullInput(): CertaintyTallyInput {
   return {
@@ -47,6 +57,7 @@ function fullInput(): CertaintyTallyInput {
       operatingHours: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] },
       updatedAt: null,
     }),
+    houseTimeZone: remote(zone({ source: 'stated' })),
     digest: remote({
       stated: true, digestEnabled: true, digestHour: 8, digestMinUrgency: 'now',
       recipientEmail: 'a@b.com', lastSentAt: null,
@@ -67,6 +78,7 @@ function emptyInput(): CertaintyTallyInput {
     houseCarryingCost: remote(null, 'loading'),
     houseCurrency: remote(null, 'loading'),
     hours: remote(null, 'loading'),
+    houseTimeZone: remote(null, 'loading'),
     digest: remote(null, 'loading'),
     notif: remote(null, 'loading'),
   };
@@ -83,11 +95,32 @@ describe('the per-row certainty functions — the single source each section imp
     expect(currencyCert({ code: null } as never)).toBe('unstated');
   });
 
-  it('hoursOpenCert / hoursTimezoneCert', () => {
+  it('hoursOpenCert', () => {
     expect(hoursOpenCert({ operatingHours: { mon: [] } } as never)).toBe('manual');
     expect(hoursOpenCert({ operatingHours: null } as never)).toBe('unstated');
-    expect(hoursTimezoneCert({ timezone: 'UTC' } as never)).toBe('manual');
-    expect(hoursTimezoneCert({ timezone: null } as never)).toBe('unstated');
+  });
+
+  /**
+   * ADR 0304: a zone is `manual` only when a person stands behind THIS zone —
+   * its source is `stated`, or (a zone saved before sources were recorded) the
+   * newest audit row names who stated it. A zone the address or the device
+   * gave, or one nobody can attribute, is `inferred`; no zone is `unstated`.
+   */
+  it('hoursTimezoneCert: manual only for a stated or witnessed zone', () => {
+    const h = { timezone: 'Europe/Istanbul' } as never;
+    const witness = { statedAt: '2026-09-22T10:00:00.000Z', statedBy: { userId: 'u', name: 'A' } };
+    expect(hoursTimezoneCert(h, remote(zone({ source: 'stated' })))).toBe('manual');
+    expect(hoursTimezoneCert(h, remote(zone({ source: 'stated', ...witness })))).toBe('manual');
+    expect(hoursTimezoneCert(h, remote(zone({ source: null, ...witness })))).toBe('manual');
+    expect(hoursTimezoneCert(h, remote(zone({ source: 'address' })))).toBe('inferred');
+    expect(hoursTimezoneCert(h, remote(zone({ source: 'device' })))).toBe('inferred');
+    expect(hoursTimezoneCert(h, remote(zone({ source: null })))).toBe('inferred');
+    // Not loaded, unreadable, or describing another zone: no person can be named.
+    expect(hoursTimezoneCert(h, remote(null, 'loading'))).toBe('inferred');
+    expect(hoursTimezoneCert(h, remote(zone({ source: 'stated', readable: false })))).toBe('inferred');
+    expect(hoursTimezoneCert(h, remote(zone({ source: 'stated', zone: 'America/Chicago' })))).toBe('inferred');
+    expect(hoursTimezoneCert(h, undefined)).toBe('inferred');
+    expect(hoursTimezoneCert({ timezone: null } as never, remote(zone({ source: 'stated' })))).toBe('unstated');
   });
 
   it('digestCert: unstated in every non-ok state, and in a null-data "ok" (mirrors DigestRow.tsx)', () => {
@@ -139,6 +172,13 @@ describe('certaintyTags / computeCertaintyTally — from data, never the DOM', (
     const data = fullInput();
     data.digest = remote(null, 'loading');
     expect(computeCertaintyTally(data)).toEqual({ counted: 8, total: 9 });
+  });
+
+  it('a zone the address gave is on the page and counted, tagged inferred rather than manual', () => {
+    const data = fullInput();
+    data.houseTimeZone = remote(zone({ source: 'address' }));
+    expect(certaintyTags(data)).toContain('inferred');
+    expect(computeCertaintyTally(data)).toEqual({ counted: 9, total: 9 });
   });
 
   it('nothing loaded yet → zero and zero', () => {
