@@ -141,6 +141,14 @@ const QUOTE_COLUMNS =
  * are in migration the_cellar_reads_the_tills_own_record and are the same
  * record `house_beverage_ledger`'s Sold and Taken sum, so a row's record and
  * its register cell cannot disagree about which lines were sold.
+ * [CORRECTED 2026-10-05: too broad. The record and its cell read the same
+ * till record, but they group names by different rules: the cell by
+ * `beverage_house_key` in SQL, the record by `matchLine` below, the weaker
+ * rule ROW_RECORD_MATCH_RULE states (row-record.ts:147). So a row's lines can
+ * differ between the two. A line whose qty is not a number differs in amount
+ * too: Taken counts it as qty 1 (the ledger's coalesce(qty, 1)) while this
+ * record's total for it is null. Both rules are inherited from main (ADR 0301
+ * §1, "Stated behaviours").]
  *
  * Q9 (founder 2026-09-22) wired live non-wine sales into the cellar heat map
  * by mining `pos_checks.items` here. That read sampled 200 unordered checks
@@ -148,6 +156,13 @@ const QUOTE_COLUMNS =
  * had a path through the queue; a MAPPED line never enters the queue, so a
  * mapped rakı read "the till never rang it" (A-016). This read takes every
  * line, paged rather than sampled.
+ * [CORRECTED 2026-10-05: "a MAPPED line never enters the queue" was too
+ * broad. PosHubService.applyStockEffects queues a mapped wine line whose
+ * mapping names another house's item, or whose read of the house's items
+ * failed, and one whose sale volume does not resolve (no_sale_volume). A
+ * mapped line whose sale volume resolves against this house's own item never
+ * enters it, and the rakı's lines had not. house_till_lines reads a queued
+ * line from the queue only when no check is behind it.]
  */
 const TILL_BOOK_SOURCE =
   "pos_checks.items (every line of every check not voided) + pos_unresolved_lines with no check behind them";
@@ -1022,7 +1037,8 @@ export class BeveragesService {
    * gateway, so the rule is the same fold and contains-floor every other book
    * of this record uses (a second matcher in SQL would fold case differently,
    * e.g. the Turkish dotted İ under the C locale). (3) `house_till_lines`
-   * reads every line under those names. Both reads are keyset-paged on their
+   * reads every line under those names, each sent back exactly as step (1)
+   * returned it (`rawTillName`). Both reads are keyset-paged on their
    * own unique column until a short page, so nothing is sampled and nothing is
    * capped. A failed read on either leaves the book unreadable, never zero.
    */
@@ -1052,9 +1068,16 @@ export class BeveragesService {
     });
     if (names.error) return unread(names.error);
 
+    // Keyed by the name exactly as house_till_names returned it, and sent back
+    // that way. house_till_lines keeps a line only when btrim(name) =
+    // ANY(p_names), and SQL btrim strips spaces only, while seriesStr's JS
+    // trim() also strips a tab, a newline or a no-break space. A name sent
+    // back JS-trimmed ('Zqtl Cola' for 'Zqtl Cola\t') would match none of its
+    // lines. `matchLine` folds whitespace itself, so the raw name matches the
+    // same way.
     const matched = new Map<string, "exact" | "contains">();
     for (const r of names.rows) {
-      const name = seriesStr(r.item_name);
+      const name = rawTillName(r.item_name);
       if (name === null) continue;
       const how = matchLine(label, name);
       if (how !== null) matched.set(name, how);
@@ -1072,9 +1095,12 @@ export class BeveragesService {
       if (lines.error) return unread(lines.error);
 
       for (const r of lines.rows) {
-        const line = seriesStr(r.item_name) ?? "";
-        const how = matched.get(line) ?? matchLine(label, line);
+        const name = rawTillName(r.item_name);
+        const how =
+          name === null ? null : (matched.get(name) ?? matchLine(label, name));
         if (how === null) continue;
+        // Shown trimmed; matched and fetched by the name the till holds.
+        const line = seriesStr(name) ?? "";
         const qty = seriesNum(r.qty);
         const price = seriesNum(r.price);
         ledger.push({
@@ -1100,6 +1126,16 @@ export class BeveragesService {
         "The till has not rung this up. Every line of every check that was not voided (pos_checks.items) was read, with the queued lines no check holds; none names this.",
     });
   }
+}
+
+/**
+ * A till name exactly as house_till_names or house_till_lines returned it,
+ * untrimmed: the functions' own btrim(name), which can still carry a tab or a
+ * no-break space at its edge. It is the key that round-trips through
+ * `p_names`; trim it only to show it.
+ */
+function rawTillName(v: unknown): string | null {
+  return typeof v === "string" && v !== "" ? v : null;
 }
 
 /**

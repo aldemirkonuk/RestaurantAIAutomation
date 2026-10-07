@@ -244,9 +244,9 @@ const SOLD: CellarColumn = {
   label: 'Sold',
   kind: 'figure',
   side: 'house',
-  source: 'pos_checks.items.qty, every check not voided + pos_unresolved_lines.qty with no check behind them',
+  source: 'pos_checks.items.qty, every check not voided + pos_unresolved_lines.qty with no check behind them, where the line’s name has this row’s beverage_house_key',
   meaning:
-    'How many the till has rung up: every line of every check that was not voided, wine or not, mapped or not, plus the lines the till queued that no check holds. Read whole, not sampled.',
+    'How many the till has rung up under this row’s name: every line, on a check that was not voided or queued with no check behind it, whose name has the same words as this row in any order, wine or not, mapped or not. A till name that adds a size, such as "(single 50ml)" or "70cl bottle", is not counted here; it shows in the row’s own record. Read whole, not sampled.',
   fill: null,
   on: true,
   why: '',
@@ -258,7 +258,7 @@ const CHARGED: CellarColumn = {
   label: 'Taken',
   kind: 'figure',
   side: 'house',
-  source: 'pos_checks.items.price · qty, every check not voided + pos_unresolved_lines.price · qty with no check behind them',
+  source: 'pos_checks.items.price · qty, every check not voided + pos_unresolved_lines.price · qty with no check behind them, where the line’s name has this row’s beverage_house_key',
   meaning:
     'What the till actually took for it — the price charged, not the price listed. The two differ every time somebody comps, discounts or rings the wrong button, and the difference is the only place a menu price is ever checked. Read from the same lines as Sold.',
   fill: null,

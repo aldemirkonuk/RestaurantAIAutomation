@@ -152,6 +152,11 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
         mapping(),
         mapping({ id: "map-2", external_item_id: "ext-2", sale_unit: "glass" }),
       ],
+      // A 'glass' answer is an answer only when the row it reaches carries a
+      // pour size: that is how the import resolves it (ADR 0281).
+      inventory: [
+        { id: "inv-1", restaurant_id: RESTAURANT, pour_size_ml: 150 },
+      ],
     });
 
     const res = await service.listNeedingSaleUnit(RESTAURANT);
@@ -167,6 +172,9 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
       mappings: [
         mapping(),
         mapping({ id: "map-2", external_item_id: "ext-2", sale_unit: "glass" }),
+      ],
+      inventory: [
+        { id: "inv-1", restaurant_id: RESTAURANT, pour_size_ml: 150 },
       ],
     });
 
@@ -320,14 +328,18 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
     expect(row).not.toHaveProperty("suggested_unit");
     expect(row).not.toHaveProperty("inferred_sale_unit");
     expect(row).not.toHaveProperty("confidence");
-    // What the existing code does if nobody answers — a statement about
-    // applyStockEffects, not a recommendation. ADR 0011 removed the
-    // `?? "bottle"` default in 2026-08-25: an unanswered mapping now depletes
-    // NOTHING and queues as `no_sale_volume` (pos-hub.service.ts:766-780).
-    // Saying "bottle" here told the owner their wines were about to
-    // over-deplete when in fact they silently under-deplete to zero.
+    // What the import does on the next sale — a statement about
+    // applyStockEffects, not a recommendation. With no volume and no unit it
+    // moves nothing and queues as `no_sale_volume` (ADR 0011). The old
+    // `unit_if_unanswered: "bottle"` and the hard-coded
+    // `effect_if_unanswered` are both gone (ADR 0281).
     expect(row).not.toHaveProperty("unit_if_unanswered");
-    expect(row.effect_if_unanswered).toBe("depletes_nothing");
+    expect(row).not.toHaveProperty("effect_if_unanswered");
+    expect(row.next_sale).toEqual({
+      kind: "depletes_nothing",
+      reason: expect.any(String),
+      queued_as: "no_sale_volume",
+    });
   });
 
   it("says 'dangling' rather than blank when inventory_id resolves to nothing", async () => {
@@ -380,10 +392,20 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
     expect(byId.get("map-2")!.inventory_link).toBe("unmapped");
     expect(byId.get("map-3")!.depletes_stock).toBe(false);
     // Was `deplete_on_next_sale`, which claimed these rows were about to move
-    // stock. They are not: ADR 0011 queues them. The count is the same set of
-    // rows under the name that is true of them.
+    // stock. They are not: ADR 0011 queues them. Since ADR 0281 the count is
+    // what the import queues: map-1 names an item this house does not hold
+    // and map-2 names none, so both queue as `unmapped`; map-3 is not a stock
+    // line and is never queued.
     expect(res.summary).not.toHaveProperty("deplete_on_next_sale");
-    expect(res.summary.queue_on_next_sale).toBe(1);
+    expect(byId.get("map-1")!.next_sale).toMatchObject({
+      kind: "depletes_nothing",
+      queued_as: "unmapped",
+    });
+    expect(byId.get("map-2")!.next_sale).toMatchObject({
+      queued_as: "unmapped",
+    });
+    expect(byId.get("map-3")!.next_sale).toMatchObject({ queued_as: null });
+    expect(res.summary.queue_on_next_sale).toBe(2);
   });
 
   it("orders decidable rows first", async () => {
@@ -421,6 +443,111 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
     // inventory_id carries no FK, so a cross-tenant id must read as dangling
     // rather than surfacing another restaurant's bottle price as evidence.
     expect(calls.inQueries).toEqual([["inv-1"]]);
+  });
+
+  // ADR 0281 reads every mapping's inventory, so the id list grows with the
+  // menu: it is read in bounded chunks, and no row is lost between them.
+  it("reads a large menu's inventory in bounded chunks", async () => {
+    const n = 320;
+    const ids = Array.from({ length: n }, (_, i) => `inv-${i}`);
+    const { service, calls } = makeService({
+      mappings: ids.map((id, i) =>
+        mapping({
+          id: `map-${i}`,
+          external_item_id: `ext-${i}`,
+          inventory_id: id,
+        }),
+      ),
+      inventory: ids.map((id) => ({
+        id,
+        restaurant_id: RESTAURANT,
+        bottle_size_ml: 750,
+      })),
+    });
+
+    const res = await service.listNeedingSaleUnit(RESTAURANT, {
+      includeAnswered: true,
+    });
+
+    expect(calls.inQueries.map((q: string[]) => q.length)).toEqual([
+      150, 150, 20,
+    ]);
+    expect(res.summary.dangling_inventory).toBe(0);
+    expect(res.items.every((r) => r.inventory_link === "ok")).toBe(true);
+  });
+
+  // A-041 (ADR 0281): the review read the mapping without sale_volume_ml and
+  // called every unlabelled row unanswered and depleting nothing, while the
+  // import reads the volume first and pours it. 57 glass, single and carafe
+  // buttons were reported as moving no stock while their sales took it out.
+  it("reads a mapping the way the import does: a volume with no label is answered", async () => {
+    const { service } = makeService({
+      mappings: [
+        mapping({ id: "glass-150", sale_volume_ml: 150 }),
+        mapping({
+          id: "single-50",
+          external_item_id: "ext-2",
+          sale_volume_ml: 50,
+        }),
+        mapping({
+          id: "bottle-750",
+          external_item_id: "ext-3",
+          sale_volume_ml: 750,
+        }),
+        mapping({ id: "nothing", external_item_id: "ext-4" }),
+      ],
+      inventory: [
+        {
+          id: "inv-1",
+          restaurant_id: RESTAURANT,
+          bottle_size_ml: 750,
+          pour_size_ml: 150,
+        },
+      ],
+    });
+
+    const all = await service.listNeedingSaleUnit(RESTAURANT, {
+      includeAnswered: true,
+    });
+    const byId = new Map(all.items.map((r) => [r.id, r]));
+
+    expect(byId.get("glass-150")!.sale_volume_ml).toBe(150);
+    expect(byId.get("glass-150")!.next_sale).toEqual({
+      kind: "volume",
+      ml: 150,
+    });
+    expect(byId.get("single-50")!.next_sale).toEqual({
+      kind: "volume",
+      ml: 50,
+    });
+    expect(byId.get("bottle-750")!.next_sale).toEqual({ kind: "whole_bottle" });
+    expect(byId.get("nothing")!.next_sale).toMatchObject({
+      kind: "depletes_nothing",
+      queued_as: "no_sale_volume",
+    });
+    expect(all.summary.needing_unit).toBe(1);
+    expect(all.summary.queue_on_next_sale).toBe(1);
+
+    const open = await service.listNeedingSaleUnit(RESTAURANT);
+    expect(open.items.map((r) => r.id)).toEqual(["nothing"]);
+  });
+
+  it("a 'glass' label is not an answer while the inventory row has no pour size", async () => {
+    const { service } = makeService({
+      mappings: [mapping({ sale_unit: "glass" })],
+      inventory: [
+        { id: "inv-1", restaurant_id: RESTAURANT, bottle_size_ml: 750 },
+      ],
+    });
+
+    const res = await service.listNeedingSaleUnit(RESTAURANT);
+
+    expect(res.items.map((r) => r.id)).toEqual(["map-1"]);
+    expect(res.items[0].next_sale).toMatchObject({
+      kind: "depletes_nothing",
+      queued_as: "no_sale_volume",
+      reason: expect.stringContaining("pour_size_ml"),
+    });
   });
 
   it("surfaces a read failure instead of returning an empty review", async () => {
@@ -508,6 +635,17 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
       service.setSaleUnit(RESTAURANT, "map-missing", "bottle"),
     ).rejects.toThrow(/not found for this restaurant/);
     expect(calls.upserts).toHaveLength(0);
+  });
+
+  it("keeps the mapping's sale_volume_ml: answering a unit must not wipe the volume the import reads first", async () => {
+    const { service, calls } = makeService({
+      inventory: HOUSE_ITEMS,
+      mappings: [mapping({ sale_volume_ml: 150 })],
+    });
+
+    await service.setSaleUnit(RESTAURANT, "map-1", "glass");
+
+    expect(calls.upserts[0].sale_volume_ml).toBe(150);
   });
 
   it("reports the previous unit when an answer is corrected", async () => {

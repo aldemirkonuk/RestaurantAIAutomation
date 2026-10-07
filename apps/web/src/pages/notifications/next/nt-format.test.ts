@@ -21,7 +21,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { hasEmoji, iconForKind, iconForType, kindOf, plainText } from './nt-format';
+import {
+  KIND_BY_TYPE,
+  KIND_ORDER,
+  hasEmoji,
+  iconForKind,
+  iconForType,
+  kindOf,
+  plainText,
+} from './nt-format';
 
 /** The exact literals production stores today (measured 2026-09-03). */
 const SIREN = '\u{1F6A8}';
@@ -182,5 +190,103 @@ describe('the mark drawn in the emoji’s place', () => {
     expect(iconForType('inventory_low_stock')).toBe(iconForKind('Stock'));
     expect(iconForType('draft_ready')).toBe(iconForKind('Vendor mail'));
     expect(iconForType('report')).toBe(iconForKind('Reports'));
+  });
+});
+
+describe('a till’s refused checks have a register of their own (ADR 0281, founder F7)', () => {
+  // `pos_import_refused` is the type api-gateway `pos-hub/refused-checks-note.ts`
+  // writes (branch fix/pos-import-refusals-ring-the-bell). It is kept out of the
+  // "a real producer writes" list above because, when this row was added, that
+  // producer was not on main yet. Founder, F7: "Own group, small web PR
+  // (Recommended)" — a group of its own, so not a seat in a shared register.
+  // Its name: the founder answered "do the most user like answer", and the
+  // coordinator chose "Point of sale", the title of the Connections row the
+  // note's link opens.
+  it('files the note under Point of sale, not under Other and not under a shared register', () => {
+    expect(kindOf('pos_import_refused')).toBe('Point of sale');
+    for (const shared of ['Other', 'Connections', 'Sales', 'System']) {
+      expect(kindOf('pos_import_refused')).not.toBe(shared);
+    }
+    // Connections keeps the two notes it already held.
+    expect(kindOf('grant_suspended')).toBe('Connections');
+    expect(kindOf('mcp_tool_added')).toBe('Connections');
+  });
+
+  it('draws the register’s own mark, not the Other inbox and not the Connections plug', () => {
+    expect(iconForType('pos_import_refused')).toBe(iconForKind('Point of sale'));
+    for (const other of ['Other', 'Connections', 'Sales', 'System']) {
+      expect(
+        iconForType('pos_import_refused'),
+        `Point of sale must not draw ${other}’s mark`,
+      ).not.toBe(iconForKind(other));
+    }
+  });
+
+  it('is counted on the rail', () => {
+    expect(KIND_ORDER as readonly string[]).toContain('Point of sale');
+  });
+});
+
+describe('two mail notes that open Connections are filed there (founder, 2026-10-05)', () => {
+  // `mail_grant_absent` (notifications/producers/mail-grant-absent.producer.ts)
+  // and `mail_retention_deleted` (communications/retention/
+  // raw-mail-retention.service.ts) both link to /connections and fell to
+  // *Other*. Asked which group they join (Connections, where the link goes, or
+  // Vendor mail, what they are about), the founder answered: "Connections".
+  for (const type of ['mail_grant_absent', 'mail_retention_deleted']) {
+    it(`files ${type} under Connections, not Other and not Vendor mail`, () => {
+      expect(kindOf(type)).toBe('Connections');
+      expect(kindOf(type)).not.toBe('Other');
+      expect(kindOf(type)).not.toBe('Vendor mail');
+    });
+
+    it(`draws the Connections plug for ${type}, not the Other inbox`, () => {
+      expect(iconForType(type)).toBe(iconForKind('Connections'));
+      expect(iconForType(type)).not.toBe(iconForKind('Other'));
+    });
+  }
+});
+
+describe('the rail counts every register a line can land in', () => {
+  // The rail's "On this page" tally walks KIND_ORDER and nothing else
+  // (`registerTally` in NotificationsNext.tsx). Connections was missing from
+  // it until 2026-10-05, so a Connections line was drawn with its chip but
+  // never counted, and a book holding only such lines said "The book is open
+  // and empty."
+  const registers = [...new Set(Object.values(KIND_BY_TYPE))];
+
+  it('reads a non-empty map, so the loops below cannot pass by doing nothing', () => {
+    expect(registers.length).toBeGreaterThan(1);
+    expect(registers).toContain('Connections');
+    expect(registers).toContain('Point of sale');
+  });
+
+  it('has a place in KIND_ORDER for every register KIND_BY_TYPE names', () => {
+    for (const register of registers) {
+      expect(KIND_ORDER as readonly string[], `${register} must be counted on the rail`).toContain(
+        register,
+      );
+    }
+    expect(KIND_ORDER as readonly string[]).toContain('Other');
+  });
+
+  it('gives every register KIND_BY_TYPE names its own mark, not the Other inbox', () => {
+    for (const register of registers) {
+      expect(iconForKind(register), `${register} must draw its own mark`).not.toBe(
+        iconForKind('Other'),
+      );
+    }
+  });
+
+  it('draws no two registers on the rail with the same mark', () => {
+    // A register that borrows a neighbour's mark reads as that neighbour at a
+    // glance, which is the same failure as sharing its name.
+    const seen = new Map<unknown, string>();
+    for (const register of KIND_ORDER) {
+      const mark = iconForKind(register);
+      expect(seen.get(mark), `${register} draws the same mark as ${seen.get(mark)}`).toBeUndefined();
+      seen.set(mark, register);
+    }
+    expect(seen.size).toBe(KIND_ORDER.length);
   });
 });

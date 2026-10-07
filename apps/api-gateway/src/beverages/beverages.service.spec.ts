@@ -428,9 +428,13 @@ describe("BeveragesService cocktail writes", () => {
    The till book now reads two functions of migration
    the_cellar_reads_the_tills_own_record. This fake serves them: it applies the
    call's p_names and its gt / order / limit to the lines it holds, and keeps
-   every call, so a test can see what was asked for, page by page. Which lines
-   the functions return (voided checks out, a queued line with its check counted
-   once) is pinned in SQL, in that migration's test file.                    */
+   every call, so a test can see what was asked for, page by page. A line's
+   item_name here is the function's own output, btrim(name), so it can keep a
+   tab or a no-break space at its edge, and p_names keeps a line only on an
+   exact match, as `btrim(name) = ANY(p_names)` does. Which lines the
+   functions return (voided checks out, a queued line with its check counted
+   once, each listed name round-tripping to its lines) is pinned in SQL, in
+   that migration's test file.                                               */
 
 type TillLine = {
   id: string;
@@ -559,8 +563,9 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
   });
 
   it("counts a wine-flagged, mapped line: the till rang Yeni Rakı, so the record says so (A-016)", async () => {
-    // pos-hub flags rakı is_wine and maps it to stock, so it never reaches the
-    // unresolved queue. The old read skipped every is_wine line of a check.
+    // pos-hub flags rakı is_wine and maps it to stock; when its sale volume
+    // resolves against this house's own item it never reaches the unresolved
+    // queue. The old read skipped every is_wine line of a check.
     const { service } = await tillService([
       tillLine(1, "Yeni Rakı 35cl", 1, 38),
       tillLine(2, "Yeni Rakı (single)", 2, 9),
@@ -572,6 +577,46 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
     expect(pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort()).toEqual([
       ["Yeni Rakı (single)", 2, "contains"],
       ["Yeni Rakı 35cl", 1, "contains"],
+    ]);
+  });
+
+  it("finds Tuzlu Rüzgar's own till names, which add a serve size to the menu's name (A-016)", async () => {
+    // The names are the sim feed's own (p4-scratch/sim-run/rebuild/run/feed).
+    // Each carries a size, so none has its menu row's beverage_house_key and
+    // none reaches that row's Sold cell (ADR 0301, Fork deferred; SQL T15).
+    // The record finds them with matchLine, as 'contains'. That rule is
+    // main's and inherited: 'Yeni Rakı Âlâ' contains 'Yeni Rakı', so its lines
+    // show in Yeni Rakı's record too (ADR 0301, Stated behaviours).
+    const lines = [
+      tillLine(1, "Yeni Rakı (single 50ml)", 4, 14),
+      tillLine(2, "Yeni Rakı 70cl bottle", 1, 80),
+      tillLine(3, "Yeni Rakı 100cl bottle", 1, 110),
+      tillLine(4, "Yeni Rakı Âlâ (single 50ml)", 2, 16),
+      tillLine(5, "Kulüp Rakı (single 50ml)", 3, 12),
+      tillLine(6, "Efes Pilsen", 2, 8),
+      tillLine(7, "Efes Pilsen (draft 400ml)", 3, 10),
+      tillLine(8, "Tito's Handmade Vodka (50ml)", 1, 12),
+    ];
+    const read = async (label: string) => {
+      const { service } = await tillService(lines);
+      const out = await service.readRowRecord(RID, label);
+      const pos = out.books.find((b) => b.book === "pos");
+      expect(pos?.readable).toBe(true);
+      return pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort();
+    };
+
+    expect(await read("Yeni Rakı")).toEqual([
+      ["Yeni Rakı (single 50ml)", 4, "contains"],
+      ["Yeni Rakı 100cl bottle", 1, "contains"],
+      ["Yeni Rakı 70cl bottle", 1, "contains"],
+      ["Yeni Rakı Âlâ (single 50ml)", 2, "contains"],
+    ]);
+    expect(await read("Efes Pilsen")).toEqual([
+      ["Efes Pilsen (draft 400ml)", 3, "contains"],
+      ["Efes Pilsen", 2, "exact"],
+    ]);
+    expect(await read("Tito's Handmade Vodka")).toEqual([
+      ["Tito's Handmade Vodka (50ml)", 1, "contains"],
     ]);
   });
 
@@ -616,6 +661,36 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
       p_restaurant_id: RID,
       p_names: ["Turkish Coffee", "Turkish Coffee Double"],
     });
+  });
+
+  it("sends each matched name back exactly as the till listed it, so a tab or no-break space at its edge keeps its lines (A-016)", async () => {
+    // house_till_names returns btrim(name), and SQL btrim strips spaces only,
+    // so 'Zqtl Cola\t' and 'Zqtl Cola\u00a0' come back with their edge kept.
+    // house_till_lines keeps a line only when btrim(name) = ANY(p_names), an
+    // exact comparison, which this fake's p_names filter is too. A name sent
+    // back JS-trimmed ('Zqtl Cola') matches neither, and their lines vanish.
+    const { service, calls } = await tillService([
+      tillLine(1, "Zqtl Cola", 1, 4),
+      tillLine(2, "Zqtl Cola\t", 2, 4),
+      tillLine(3, "Zqtl Cola\u00a0", 3, 4),
+    ]);
+    const out = await service.readRowRecord(RID, "Zqtl Cola");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(3);
+    // Shown trimmed; matched and fetched by the name the till holds.
+    expect(
+      pos?.ledger.map((e) => [e.label, e.qty, e.matchedBy]).sort(),
+    ).toEqual([
+      ["Zqtl Cola", 1, "exact"],
+      ["Zqtl Cola", 2, "exact"],
+      ["Zqtl Cola", 3, "exact"],
+    ]);
+    const lineCalls = calls.filter((c) => c.fn === "house_till_lines");
+    expect(lineCalls).toHaveLength(1);
+    expect(new Set(lineCalls[0].args.p_names as string[])).toEqual(
+      new Set(["Zqtl Cola", "Zqtl Cola\t", "Zqtl Cola\u00a0"]),
+    );
   });
 
   it("does not invent a till series, nor read lines, when no name the till rang matches", async () => {
