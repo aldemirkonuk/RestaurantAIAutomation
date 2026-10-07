@@ -80,13 +80,16 @@ function soldCell(p: PouredVM | null | undefined): ReactNode {
       <span
         className="cl-dim"
         title={`${plural(tied, 'till line names', 'till lines name')} this row and another equally, so they are counted on neither${
-          names === '' ? '.' : `: ${names}. A menu name that tells the two rows apart lets them count.`
+          names === '' ? '.' : `: ${names}. A menu name that tells the two rows apart can let each name count on one row.`
         }`}
       >
         {` · ${plural(tied, 'line', 'lines')} tied`}
       </span>
     ) : null;
-  if (bottles === 0 && glasses === 0) {
+  // A part below zero (more of that unit refunded than sold; ADR 0301, the
+  // #650 BLOCK's smaller item, 2026-10-07) is not a split the owner can read:
+  // the cell shows the net Sold alone, as it does with no split at all.
+  if ((bottles === 0 && glasses === 0) || bottles < 0 || glasses < 0 || unknown < 0) {
     return (
       <>
         {p.qty === null ? dim(EM) : count(p.qty)}

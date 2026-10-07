@@ -794,6 +794,29 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(within(row).getByTitle(/3 till lines name this row and another equally/)).toBeInTheDocument();
   });
 
+  // [ADDED 2026-10-07, the #650 BLOCK's smaller item] A part below zero is a
+  // net refund of that unit; '5 glasses' would read against a Sold of 4.
+  it('shows the net Sold alone when a part of the split is below zero', () => {
+    mock.current = { ...base, registers: readout() };
+    const refunded = houseRow({
+      house: {
+        ...houseRow().house,
+        poured: {
+          lines: 6, qty: 4, bottles: -1, glasses: 5, unitUnknown: null, tiedLines: 0,
+          revenue: 60, firstAt: null, lastAt: null,
+        },
+      },
+    });
+    mock.register = {
+      data: registerVM({ rows: [refunded] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).getByText('4')).toBeInTheDocument();
+    expect(row).not.toHaveTextContent(/bottle|glass/);
+  });
+
   it('keeps the plain count where no line names its unit, and a dash where only ties name the row', () => {
     mock.current = { ...base, registers: readout() };
     const unknown = houseRow({
@@ -859,7 +882,7 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(row).toHaveTextContent('1 bottle · 3 lines tied');
     expect(
       within(row).getByTitle(
-        "3 till lines name this row and another equally, so they are counted on neither: 'Lal Rosé Kavak (glass)' (2 lines), 'Lal Rosé Kavak Magnum' (1 line). A menu name that tells the two rows apart lets them count.",
+        "3 till lines name this row and another equally, so they are counted on neither: 'Lal Rosé Kavak (glass)' (2 lines), 'Lal Rosé Kavak Magnum' (1 line). A menu name that tells the two rows apart can let each name count on one row.",
       ),
     ).toBeInTheDocument();
   });

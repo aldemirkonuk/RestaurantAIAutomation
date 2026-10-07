@@ -1,6 +1,11 @@
 import { Test } from "@nestjs/testing";
 import { DatabaseService } from "../database/database.service";
 import { BeveragesService } from "./beverages.service";
+import {
+  TILL_HOLDS_NO_SUCH_NAME,
+  TILL_HOLDS_THE_NAME_ELSEWHERE,
+  tillNamesUnreadReason,
+} from "./row-record";
 
 /**
  * Two tables that had a schema and no way in since August. What these tests pin
@@ -308,6 +313,29 @@ describe("BeveragesService.readRegister — Sold split by unit (ADR 0301, 2026-1
     });
   });
 
+  it("keeps a part below zero (a net refund of that unit), so the parts still sum to Sold", async () => {
+    // [ADDED 2026-10-07, the #650 BLOCK's smaller item] 5 glasses and a net
+    // refund of 1 bottle: Sold is 4. The bottle part was read as null.
+    const poured = await read([
+      row({
+        house_key: "raki",
+        label: "Rakı",
+        pos_lines: 6,
+        poured_qty: "4",
+        poured_bottles: "-1",
+        poured_glasses: "5",
+        poured_unit_unknown: "0",
+        tied_lines: 0,
+      }),
+    ]);
+    expect(poured("Rakı")).toMatchObject({
+      qty: 4,
+      bottles: -1,
+      glasses: 5,
+      unitUnknown: null,
+    });
+  });
+
   it("keeps a row whose only till lines tied, with no lines and its tie, never a blank", async () => {
     const poured = await read([
       row({
@@ -605,8 +633,16 @@ function tillQuery(
 ) {
   const call: TillCall = { fn, args, gt: null, order: null, limit: null };
   calls.push(call);
+  // An error keyed "house_till_names(p_restaurant_id)" fails only the
+  // one-argument read (every till name), so the per-row read still answers.
+  const overload =
+    fn === "house_till_names" && typeof args.p_label !== "string"
+      ? "house_till_names(p_restaurant_id)"
+      : fn;
   const settle = () => {
     if (errors[fn]) return Promise.resolve({ data: null, error: errors[fn] });
+    if (errors[overload])
+      return Promise.resolve({ data: null, error: errors[overload] });
     let rows: Record<string, unknown>[];
     if (fn === "house_till_names") {
       const count = new Map<string, number>();
@@ -916,6 +952,12 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
     expect(pos?.ledger).toEqual([]);
     expect(pos?.reason).toContain("Every line of every check that was not voided");
     expect(calls.filter((c) => c.fn === "house_till_lines")).toHaveLength(0);
+    // [ADDED 2026-10-07, the #650 BLOCK's Finding 2] No till name contains
+    // 'Turkish Coffee', so both sentences may say so: the book's reason, and
+    // the record's "nothing names it" (every other book here is empty).
+    expect(pos?.reason).toBe(TILL_HOLDS_NO_SUCH_NAME);
+    expect(pos?.holdsLabel).toBe(false);
+    expect(out.nothingNamesIt).toBe(true);
   });
 
   it("reads the lines of a name the ledger joined without the row's maker, as a loose match (ADR 0301, F1 of 2026-10-06)", async () => {
@@ -1044,14 +1086,75 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
     expect(pos?.rows).toBe(0);
     expect(pos?.ledger).toEqual([]);
     expect(pos?.tied).toEqual([]);
-    // One read, by this row's label; never the till's whole name list.
+    // The row's names come from one read, by this row's label.
+    // [CHANGED 2026-10-07, the #650 BLOCK's Finding 2: a second read, of every
+    // till name, decides only what the two sentences below say. It lists no
+    // name and reads no line. Was: one read, "never the till's whole name
+    // list".]
     const names = calls.filter((c) => c.fn === "house_till_names");
-    expect(names).toHaveLength(1);
+    expect(names).toHaveLength(2);
     expect(names[0].args).toEqual({
       p_restaurant_id: RID,
       p_label: "Kalecik Karası",
     });
+    expect(names[1].args).toEqual({ p_restaurant_id: RID });
     expect(calls.filter((c) => c.fn === "house_till_lines")).toHaveLength(0);
+    // The till rang 'Kalecik Karası (glass)', so neither sentence may say it
+    // did not: the book says the till holds such a name that counts
+    // elsewhere, and the record does not claim nothing names the row.
+    expect(pos?.reason).toBe(TILL_HOLDS_THE_NAME_ELSEWHERE);
+    expect(pos?.reason).not.toContain("has not rung");
+    expect(pos?.holdsLabel).toBe(true);
+    expect(out.nothingNamesIt).toBe(false);
+  });
+
+  it("says the till holds the name when a row's every till name counts on a more specific row (the #650 BLOCK's Finding 2)", async () => {
+    // 'Yeni Rakı Âlâ 70cl bottle' contains 'Yeni Rakı', and the ledger counts
+    // it on the Âlâ's row, so the plain rakı's book has no line of its own.
+    const { service } = await tillService(
+      [tillLine(1, "Yeni Rakı Âlâ 70cl bottle", 1, 100)],
+      {},
+      { "Yeni Rakı": [] },
+    );
+    const out = await service.readRowRecord(RID, "Yeni Rakı");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.rows).toBe(0);
+    expect(pos?.reason).toBe(TILL_HOLDS_THE_NAME_ELSEWHERE);
+    expect(out.nothingNamesIt).toBe(false);
+  });
+
+  it("never claims nothing names a row whose till names tied on it, and reads no whole name list for it", async () => {
+    const { service, calls } = await tillService(
+      [tillLine(1, "Lal Rosé Kavak (glass)", 1, 12)],
+      {},
+      { "Lal Kavak": [["Lal Rosé Kavak (glass)", "tie"]] },
+    );
+    const out = await service.readRowRecord(RID, "Lal Kavak");
+    expect(out.books.find((b) => b.book === "pos")?.rows).toBe(0);
+    expect(out.nothingNamesIt).toBe(false);
+    expect(calls.filter((c) => c.fn === "house_till_names")).toHaveLength(1);
+  });
+
+  it("says it could not tell, and claims nothing, when the till's names cannot be read for the check", async () => {
+    const { service } = await tillService(
+      [tillLine(1, "House Cabernet", 1, 14)],
+      {
+        "house_till_names(p_restaurant_id)": {
+          code: "57014",
+          message: "canceling statement due to statement timeout",
+        },
+      },
+    );
+    const out = await service.readRowRecord(RID, "Turkish Coffee");
+    const pos = out.books.find((b) => b.book === "pos");
+    // The row's own read answered: the book is read, and empty.
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(0);
+    expect(pos?.reason).toBe(
+      tillNamesUnreadReason("canceling statement due to statement timeout"),
+    );
+    expect(pos?.holdsLabel).toBeNull();
+    expect(out.nothingNamesIt).toBe(false);
   });
 
   it("keeps a line with no quantity or price as unknown, never as zero", async () => {

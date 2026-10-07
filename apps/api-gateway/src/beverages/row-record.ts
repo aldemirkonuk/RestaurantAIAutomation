@@ -155,6 +155,16 @@ export interface BookRecord {
    * series, and their lines are not read.
    */
   tied?: TiedTillName[];
+  /**
+   * ADDED (ADR 0301, the #650 BLOCK's Finding 2, 2026-10-07). The till book
+   * only, when it counts no line and no name tied on it: whether the till
+   * holds a name that contains this row's name by `matchLine` (case- and
+   * spacing-insensitive). True: it does, and that name counts on another row
+   * or on none. False: no till name does. Null: the till's names could not be
+   * read. Absent on a book `readTillLines` did not build that way, which then
+   * makes no claim either way.
+   */
+  holdsLabel?: boolean | null;
 }
 
 /** A till name that tied on a row: what the till calls it, and its lines. */
@@ -207,7 +217,25 @@ function tiedClause(tied: TiedTillName[]): string {
  * each with its lines, and that they count on neither row.
  */
 export function tiedReason(tied: TiedTillName[]): string {
-  return `No till line is counted on this row. ${tiedClause(tied)} A menu name that tells the two rows apart lets them count.`;
+  return `No till line is counted on this row. ${tiedClause(tied)} A menu name that tells the two rows apart can let each name count on one row.`;
+}
+
+/**
+ * ADDED (ADR 0301, the #650 BLOCK's Finding 2, 2026-10-07): why a till book
+ * with no counted and no tied name is empty, by what the till holds. Each
+ * says only what `readTillLines` checked: the names the register counts on
+ * this row, and whether any till name contains this row's name
+ * (`matchLine`). Never "the till has not rung this up": a till name the
+ * register counts on another row may be this very product.
+ */
+export const TILL_HOLDS_THE_NAME_ELSEWHERE =
+  "No till line is counted on this row. The till holds a name that contains this row's name (ignoring case and spacing), but the register counts that name on another row or on none, and this record lists only the lines this row's Sold counts.";
+
+export const TILL_HOLDS_NO_SUCH_NAME =
+  "No till line is counted on this row, and no till name contains this row's name (ignoring case and spacing). Every line of every check that was not voided (pos_checks.items) was read, with the queued lines no check holds.";
+
+export function tillNamesUnreadReason(message: string): string {
+  return `No till line is counted on this row. Whether the till holds a name that contains this row's name could not be read: ${message}`;
 }
 
 /**
@@ -231,7 +259,7 @@ export interface RowRecord {
 }
 
 export const ROW_RECORD_MATCH_RULE =
-  "A menu, invoice, order or quote line belongs to this row when its label is the same words (exact), or contains this row's label inside a longer line (loose). This is a weaker rule than the register's own — that one folds producer and name into a sorted token multiset in SQL (beverage_house_key) — and it is used here because it answers on a database that has not run migration 20260903120000 yet. A till line belongs to this row by the register's own rule, the one its Sold cell counts by: its name has this row's words exactly (exact), or holds every one of them and no other row's with more (loose); a name that holds no row's every word joins by the row's name without its maker, under the same rule (loose); a name that holds two rows' words equally belongs to neither, and is named on each row's record without its lines. Every line below says which of the two found it.";
+  "A menu, invoice, order or quote line belongs to this row when its label is the same words (exact), or contains this row's label inside a longer line (loose). This is a weaker rule than the register's own — that one folds producer and name into a sorted token multiset in SQL (beverage_house_key) — and it is used here because it answers on a database that has not run migration 20260903120000 yet. A till line belongs to this row by the register's own rule, the one its Sold cell counts by. Menu rows come first: an invoice, order or quote row takes only a till name that no menu row contains, by the menu row's every word or by its name without the maker. Among the rows that may take it, a name joins the row whose words it has exactly (exact), else the row with the most product words among those whose every word it holds; size words (a number with a volume unit, such as '70cl') decide only between rows level on product words (loose). A name that holds no menu row's every word tries the menu rows' names without their makers, under the same rule (loose); one that reaches no menu row and holds no other row's every word tries the order rows' names without their makers (loose). A name that holds two rows' words equally belongs to neither, and is named on each row's record without its lines. Every line below says which of the two found it.";
 
 /** A finite number, or null. Postgres numerics arrive over PostgREST as strings. */
 export function num(v: unknown): number | null {
@@ -387,6 +415,16 @@ export function composeRowRecord(input: {
     named,
     // Only claimable when every book was actually readable. A row whose books
     // could not be read is not a row nothing names.
-    nothingNamesIt: named.length === 0 && books.every((b) => b.readable),
+    // CHANGED (ADR 0301, the #650 BLOCK's Finding 2, 2026-10-07): nor while
+    // the till book lists names that tied on this row, holds a name that
+    // contains this row's name (`holdsLabel` true), or could not say whether
+    // it does (null).
+    nothingNamesIt:
+      named.length === 0 &&
+      books.every((b) => b.readable) &&
+      (till === undefined ||
+        ((till.tied === undefined || till.tied.length === 0) &&
+          till.holdsLabel !== true &&
+          till.holdsLabel !== null)),
   };
 }

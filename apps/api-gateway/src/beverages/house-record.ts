@@ -97,6 +97,12 @@ export interface Poured {
    * or a volume the item cannot hold). The three sum to `qty`. Null when the
    * ledger has no such column yet (a database before migration
    * a_till_name_with_a_serve_size_joins_its_row) or the part is zero.
+   * [CORRECTED 2026-10-07, the #650 BLOCK's smaller item: they summed to
+   * `qty` in SQL only; `positive()` nulled a part below zero, so 5 glasses
+   * and a net refund of 1 bottle read as "5 glasses" against a Sold of 4. A
+   * part below zero is now kept as it is (`nonZero`), so the parts the
+   * ledger returns sum to its Sold; `qty` itself still reads null at or
+   * below zero, as before.]
    */
   bottles: number | null;
   glasses: number | null;
@@ -291,6 +297,16 @@ function positive(v: unknown): number | null {
   return n !== null && n > 0 ? n : null;
 }
 
+/**
+ * ADDED (ADR 0301, 2026-10-07): a part of Sold, sign kept. Null when absent
+ * or zero, as `positive`; a part below zero is a net refund of that unit and
+ * stays, so the parts still sum to the ledger's Sold.
+ */
+function nonZero(v: unknown): number | null {
+  const n = num(v);
+  return n !== null && n !== 0 ? n : null;
+}
+
 export function toHouseRecord(r: LedgerRow): HouseRecord {
   const books = (r.books ?? []).filter((b): b is HouseBook =>
     ["menu", "invoice", "order", "quote", "pos"].includes(b),
@@ -358,9 +374,9 @@ export function toHouseRecord(r: LedgerRow): HouseRecord {
         : {
             lines: posLines ?? 0,
             qty: positive(r.poured_qty),
-            bottles: positive(r.poured_bottles),
-            glasses: positive(r.poured_glasses),
-            unitUnknown: positive(r.poured_unit_unknown),
+            bottles: nonZero(r.poured_bottles),
+            glasses: nonZero(r.poured_glasses),
+            unitUnknown: nonZero(r.poured_unit_unknown),
             tiedLines,
             tiedNames: tiedTillNames(r.tied_names),
             revenue: positive(r.poured_revenue),

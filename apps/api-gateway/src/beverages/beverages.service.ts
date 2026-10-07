@@ -20,6 +20,9 @@ import {
   num as seriesNum,
   str as seriesStr,
   tiedReason,
+  tillNamesUnreadReason,
+  TILL_HOLDS_NO_SUCH_NAME,
+  TILL_HOLDS_THE_NAME_ELSEWHERE,
   unreadableBook,
   type BookRecord,
   type LedgerEntry,
@@ -1061,6 +1064,11 @@ export class BeveragesService {
    * a loose match) or come back as 'tie' (F2, listed in `tied` with its
    * lines, never read). A row whose only names tied says so, naming them,
    * instead of "the till has not rung this up".
+   *
+   * CHANGED (the #650 BLOCK's Finding 2, 2026-10-07): a row with no counted
+   * and no tied name takes a third read, house_till_names(p_restaurant_id),
+   * only to say whether the till holds a name containing this row's name
+   * (`holdsLabel`); see the comment at the read.
    */
   private async readTillLines(
     restaurantId: string,
@@ -1155,16 +1163,50 @@ export class BeveragesService {
       }
     }
 
-    const book = composeBook({
-      book: "pos",
-      source,
-      ledger,
-      emptyReason:
-        tied.length > 0
-          ? tiedReason(tied)
-          : "The till has not rung this up. Every line of every check that was not voided (pos_checks.items) was read, with the queued lines no check holds; none names this.",
-    });
-    return { ...book, tied };
+    // CHANGED (ADR 0301, the #650 BLOCK's Finding 2, 2026-10-07): a book
+    // that counts no name and lists no tied one says whether the till holds
+    // a name containing this row's name (`matchLine`, the rule the other
+    // four books use), read from house_till_names(p_restaurant_id), every
+    // distinct till name, keyset-paged like the reads above. Only the yes or
+    // no is kept: no name is listed and no line is read (F5, "Keep one
+    // rule"). Without it the book said "The till has not rung this up" and
+    // the record "nothing names it" for a catalogue-only row whose wine the
+    // till rang, or a row whose names count on a more specific row.
+    let holdsLabel: boolean | null | undefined;
+    let emptyReason: string;
+    if (tied.length > 0) {
+      emptyReason = tiedReason(tied);
+    } else if (matched.size > 0) {
+      // Shown only when the counted names' lines were gone by the second read.
+      emptyReason =
+        "No till line is counted on this row: the names the register counts on it held no line when this record read them.";
+    } else {
+      const every = await readTillPages("item_name", (after) => {
+        const q = client.rpc("house_till_names", {
+          p_restaurant_id: restaurantId,
+        });
+        return after === null ? q : q.gt("item_name", after);
+      });
+      if (every.error) {
+        this.logger.error(
+          `row record pos name check failed: ${every.error.message}`,
+        );
+        holdsLabel = null;
+        emptyReason = tillNamesUnreadReason(every.error.message);
+      } else {
+        holdsLabel = every.rows.some(
+          (r) => matchLine(label, rawTillName(r.item_name)) !== null,
+        );
+        emptyReason = holdsLabel
+          ? TILL_HOLDS_THE_NAME_ELSEWHERE
+          : TILL_HOLDS_NO_SUCH_NAME;
+      }
+    }
+
+    const book = composeBook({ book: "pos", source, ledger, emptyReason });
+    return holdsLabel === undefined
+      ? { ...book, tied }
+      : { ...book, tied, holdsLabel };
   }
 }
 
