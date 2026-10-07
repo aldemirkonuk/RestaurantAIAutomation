@@ -217,7 +217,8 @@ export const INSIGHT_GENERATOR_VERSION = 10;
  * A read that was refused (`readWholeWindow`'s `WholeReadError`) or that
  * failed (a Supabase error) leaves its slice empty, so no insight states a
  * figure from it. Each family is gated on the slice it is built on, and the
- * two insights that also read a second slice are gated on that read too:
+ * two groups of insights that also read a second slice are gated on that
+ * read too:
  * the checks family's per-table insights (the table "#1" and the live surge)
  * on the table list, and the consumption family's wine mover on the
  * inventory list, which holds the wine's name (`readWasRefused`). That is
@@ -252,8 +253,10 @@ type BundleRead = keyof typeof BUNDLE_READ_WORDS;
 /**
  * Whether this bundle read was refused or failed: its slice is `[]` because
  * nothing could be read, not because the house has no rows. An insight that
- * names a thing from that slice (a table's label, a wine's name) checks this,
- * never the slice's length, before it fires.
+ * takes a name from a slice other than its own family's (a table's label, a
+ * wine's name) checks this, never the slice's length, before it fires. An
+ * insight that names things from its own family's slice is gated on that
+ * slice's length, which is empty when the read failed.
  */
 function readWasRefused(bundle: Bundle, read: BundleRead): boolean {
   return bundle.unread.includes(BUNDLE_READ_WORDS[read]);
@@ -2016,7 +2019,8 @@ interface Bundle {
   /**
    * The reads above that were refused or failed, in `BUNDLE_READ_WORDS`'
    * words. Their slices hold `[]`, which is NOT a house with no rows: an
-   * insight that names a thing from one of them asks `readWasRefused` first.
+   * insight that takes a name from one of them, other than its own family's
+   * slice, asks `readWasRefused` first.
    */
   unread: string[];
 }

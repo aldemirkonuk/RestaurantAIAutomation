@@ -15,8 +15,8 @@ import { stateBookFrom } from "./item-state";
  * A refused or failed read inside the insight bundle leaves its slice `[]`,
  * so no insight states a figure from it: each family is gated on the slice it
  * is built on, and the per-table insights and the wine mover, which take a
- * label or a name from a second slice, are gated on that read too (the last
- * block below). Before this change `generate()` still resolved,
+ * label or a name from a second slice, are gated on that read too (the
+ * middle describe block below; the last one is /recommendations). Before this change `generate()` still resolved,
  * /recommendations listed nothing in `sourcesUnread`, and its quiet tier said
  * every source answered: a failed read read as "nothing to recommend". Now
  * the generator names each such read in house words, and the feed names it in
@@ -313,7 +313,8 @@ describe("the insight generator names a read it could not make (ADR 0292, 2026-1
 });
 
 /**
- * Two insights read a second slice besides the one their family is built on:
+ * Two groups of insights read a second slice besides the one their family
+ * is built on:
  * the per-table insights take the table's label from the table list, and the
  * wine mover takes the wine's name from the inventory list. Gating the family
  * on its own slice did not cover that second read, so a failed table read
