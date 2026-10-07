@@ -676,13 +676,37 @@ describe("an unread lot rollup is said, not replaced by the shelf count without 
     sales: everyDay(20),
   };
   const denied = { code: "42501", message: "permission denied" };
-  /** The two ways a rollup read fails: an error, and an unproved page. */
+  /**
+   * The three ways a rollup read fails: an error, an answer with no data array
+   * and no error, and an unproved page. A zero-row answer (`data: []`) is not
+   * one of them: the control below reads it whole.
+   */
   const failures: Array<[string, () => any, string, RegExp]> = [
     [
       "a database error",
       () => makeClient(tables([wine]), { inventory_lot_rollup: denied }),
       "read_failed",
       /^This house's lot rollup \(inventory_lot_rollup\) could not be read whole: the database refused one of its pages \(page 1: 42501 permission denied\)\. Nothing is reported from part of it\.$/,
+    ],
+    [
+      "no data array and no error",
+      () => {
+        const client = makeClient(tables([wine]));
+        return {
+          from: (table: string) => {
+            const builder: any = client.from(table);
+            if (table === "inventory_lot_rollup")
+              builder.then = (resolve: any, reject: any) =>
+                Promise.resolve({ data: null, error: null }).then(
+                  resolve,
+                  reject,
+                );
+            return builder;
+          },
+        };
+      },
+      "malformed_page",
+      /^This house's lot rollup \(inventory_lot_rollup\) could not be read whole: a page came back in a shape that cannot prove the read whole \(page 1 carried no rows and no error\)\. Nothing is reported from part of it\.$/,
     ],
     [
       "1,000 of 1,001 rows",
