@@ -27,34 +27,65 @@ const KEYS = [WAITER, TABLE, BASKET, STOCKOUT];
 
 type Rows = Record<string, any[]>;
 
-/** The same thenable PostgREST stand-in baseline-honesty.spec.ts uses. */
+/**
+ * The same thenable PostgREST stand-in baseline-honesty.spec.ts uses, except
+ * that it honours a keyset page: `.order("id")`, `.gt("id", cursor)` and
+ * `.limit(n)`. The bundle reads `pos_checks` and `wine_consumption_log`
+ * through `readWholeWindow` (ADR 0292), which refuses a page longer than it
+ * asked for; a Tuzlu quarter holds more than 1,000 checks, so a double that
+ * ignored `.limit` handed back a page no server would.
+ */
 function makeClient(rowsByTable: Rows) {
   const passthrough = [
     "select",
     "eq",
     "neq",
-    "gt",
     "gte",
     "lt",
     "lte",
     "is",
     "or",
     "not",
-    "order",
-    "limit",
     "in",
   ];
   return {
     from: (table: string) => {
-      const rows = rowsByTable[table] ?? [];
+      const all = rowsByTable[table] ?? [];
+      const page: { byId?: boolean; after?: string; limit?: number } = {};
       const builder: any = {};
       for (const m of passthrough) builder[m] = (..._args: any[]) => builder;
+      builder.order = (col: string) => {
+        if (col === "id") page.byId = true;
+        return builder;
+      };
+      builder.gt = (col: string, val: unknown) => {
+        if (col === "id") page.after = String(val);
+        return builder;
+      };
+      builder.limit = (n: number) => {
+        page.limit = n;
+        return builder;
+      };
+      const rows = () => {
+        let out = all;
+        if (page.after !== undefined)
+          out = out.filter((r) => String(r.id) > page.after!);
+        if (page.byId)
+          out = [...out].sort((a, b) =>
+            String(a.id) < String(b.id)
+              ? -1
+              : String(a.id) > String(b.id)
+                ? 1
+                : 0,
+          );
+        return page.limit === undefined ? out : out.slice(0, page.limit);
+      };
       builder.maybeSingle = () =>
-        Promise.resolve({ data: rows[0] ?? null, error: null });
+        Promise.resolve({ data: rows()[0] ?? null, error: null });
       builder.single = () =>
-        Promise.resolve({ data: rows[0] ?? null, error: null });
+        Promise.resolve({ data: rows()[0] ?? null, error: null });
       builder.then = (resolve: any, reject: any) =>
-        Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+        Promise.resolve({ data: rows(), error: null }).then(resolve, reject);
       return builder;
     },
   };
