@@ -19,6 +19,10 @@
 -- founder's 2026-10-07 order pick: on a build of this migration from before
 -- that pick (its ORDER BY without door_checked_lines) it FAILS, Fords Gin
 -- sitting below Campari. T15 and T16 are pins: they pass on that build too.
+-- T17 is the same pick on a row with three door lines, which count as one
+-- book: it FAILS on that build (Triple Door level with Three Orders, below it
+-- by name) and on the build whose ORDER BY added door_checked_lines itself
+-- (Triple Door at 6, above Five Orders at 5).
 
 begin;
 
@@ -353,9 +357,9 @@ begin
 end $$;
 
 -- The founder's picks of 2026-10-07 (ADR 0301 §2). A: "Count it as a book
--- (Recommended)": a door check lifts a row in the ledger's order as an
--- invoice line does. B: "Keep it out (Recommended)": a door check that saw no
--- bill is not bought. By here T4 has filed Titos's invoice, so the house's
+-- (Recommended)": a row with a door row gains 1 in the ledger's order,
+-- however many door rows it has (T17). B: "Keep it out (Recommended)": a
+-- door check that saw no bill is not bought. By here T4 has filed Titos's invoice, so the house's
 -- order weights are: Monkey 47 and Tie 3 (invoice + door + order), Fords Gin
 -- 2 (door + order), Titos 2 (invoice + order), every other row 1.
 create function pg_temp.aw14_pos(p_label text, p_limit integer default 600)
@@ -424,6 +428,71 @@ begin
   assert n = 12, format('T16 FAIL the house has %s rows, expected 12', n);
   assert paid = 1621, format('T16 FAIL the house''s Paid adds to %s, expected 1621', paid);
   assert dl = 3, format('T16 FAIL %s door lines, expected 3 (Fords Gin, Monkey 47, Tie)', dl);
+end $$;
+
+-- T17 (ruling A) three door lines on one row are one book, not three. Added
+-- after T16 so the rows above keep their numbers. Triple Door has three
+-- orders, each door-checked (o13-o15); Five Orders has five orders and Three
+-- Orders three, none checked (o16-o23). Their order weights are 3 + 1 = 4,
+-- 5 and 3. Counting the door lines instead (3 + 3 = 6) puts Triple Door above
+-- Five Orders; counting no door puts it level with Three Orders, which then
+-- sorts first by name.
+insert into public.procurement_orders
+  (id, order_number, restaurant_id, inventory_id, provider_id, quantity, bottles_total,
+   final_price, total_cost, status, requested_at, match_verified_at)
+select ('a3014000-0000-4000-8000-0000000003' || lpad(g::text, 2, '0'))::uuid, 'ZQDC-' || (12 + g),
+       'a3014000-0000-4000-8000-000000000001', 'a3014000-0000-4000-8000-0000000000c1',
+       'a3014000-0000-4000-8000-0000000000b1', 6, 6, 20, 120, 'COMPLETED', '2026-08-13 09:00+00',
+       case when g <= 3 then '2026-08-13 10:00+00'::timestamptz + make_interval(days => g) end
+  from generate_series(1, 11) g;
+
+insert into public.procurement_order_items (id, order_id, restaurant_id, wine_name, producer, quantity, final_unit_price)
+select ('a3014000-0000-4000-8000-0000000004' || lpad(g::text, 2, '0'))::uuid,
+       ('a3014000-0000-4000-8000-0000000003' || lpad(g::text, 2, '0'))::uuid,
+       'a3014000-0000-4000-8000-000000000001',
+       case when g <= 3 then 'Zqdc Triple Door' when g <= 8 then 'Zqdc Five Orders' else 'Zqdc Three Orders' end,
+       null, 6, 20
+  from generate_series(1, 11) g;
+
+-- The checked price and the accepted bottles for o13-o15 only.
+insert into public.price_history (restaurant_id, order_id, provider_id, price, quantity, unit, effective_date, source, currency, created_at)
+select 'a3014000-0000-4000-8000-000000000001', ('a3014000-0000-4000-8000-0000000003' || lpad(g::text, 2, '0'))::uuid,
+       'a3014000-0000-4000-8000-0000000000b1', 20.00, 6, 'bottle', ('2026-08-13'::date + g),
+       'receipt_verified', null, '2026-08-13 10:00+00'::timestamptz + make_interval(days => g)
+  from generate_series(1, 3) g;
+
+insert into public.procurement_receipt_events
+  (restaurant_id, order_id, stage, counted_qty, counted_uom, counted_qty_bottles, rejected_qty_bottles, invoice_qty_bottles, occurred_at)
+select 'a3014000-0000-4000-8000-000000000001', ('a3014000-0000-4000-8000-0000000003' || lpad(g::text, 2, '0'))::uuid,
+       'reconciled', 6, 'bottle', 6, 0, 6, '2026-08-13 10:00+00'::timestamptz + make_interval(days => g)
+  from generate_series(1, 3) g;
+
+do $$
+declare t jsonb := pg_temp.aw14_row('Zqdc Triple Door');
+        f jsonb := pg_temp.aw14_row('Zqdc Five Orders');
+        h jsonb := pg_temp.aw14_row('Zqdc Three Orders');
+        first_row text;
+begin
+  -- The fixture is what the weights above say, or the order below proves nothing.
+  assert (t->>'door_checked_lines')::int = 3 and (t->>'order_lines')::int = 3
+     and (t->>'invoice_lines')::int = 0 and (t->'books') = '["order"]'::jsonb,
+    format('T17 FAIL Triple Door reads door %s, order %s, invoice %s, books %s; expected 3, 3, 0, ["order"]',
+           t->>'door_checked_lines', t->>'order_lines', t->>'invoice_lines', t->'books');
+  assert (f->>'order_lines')::int = 5 and (f->>'door_checked_lines')::int = 0,
+    format('T17 FAIL Five Orders reads order %s, door %s; expected 5, 0', f->>'order_lines', f->>'door_checked_lines');
+  assert (h->>'order_lines')::int = 3 and (h->>'door_checked_lines')::int = 0,
+    format('T17 FAIL Three Orders reads order %s, door %s; expected 3, 0', h->>'order_lines', h->>'door_checked_lines');
+  assert pg_temp.aw14_pos('Zqdc Five Orders') < pg_temp.aw14_pos('Zqdc Triple Door'),
+    format('T17 FAIL Triple Door sits at %s, above Five Orders at %s: its three door lines counted as three books',
+           pg_temp.aw14_pos('Zqdc Triple Door'), pg_temp.aw14_pos('Zqdc Five Orders'));
+  assert pg_temp.aw14_pos('Zqdc Triple Door') < pg_temp.aw14_pos('Zqdc Three Orders'),
+    format('T17 FAIL Triple Door sits at %s, below Three Orders at %s: its door lines counted as no book',
+           pg_temp.aw14_pos('Zqdc Triple Door'), pg_temp.aw14_pos('Zqdc Three Orders'));
+  -- p_limit cuts in the same order: the ledger's first row is Five Orders (5),
+  -- not Triple Door.
+  select l.label into first_row
+    from public.house_beverage_ledger('a3014000-0000-4000-8000-000000000001'::uuid, 1) l;
+  assert first_row = 'Zqdc Five Orders', format('T17 FAIL the ledger''s first row is %s, expected Zqdc Five Orders', first_row);
 end $$;
 
 rollback;

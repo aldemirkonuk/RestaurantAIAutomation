@@ -29,7 +29,9 @@ import type {
   BottleVM,
   CellarRegistersVM,
   RegisterReadoutVM,
+  RegisterRowVM,
 } from './useCellarNextData';
+import { sortValueFor } from './registerCells';
 import { registerHref } from './cellar-format';
 import type { RegisterId } from './cellar-format';
 
@@ -874,7 +876,8 @@ describe('CellarNext — the registers that are not wines', () => {
 
   // ADR 0301 §2, the founder's pick of 2026-10-07: "Count it as a book
   // (Recommended)". A door check lifts a row in the most-books-first order
-  // like any other book, and moves nothing else.
+  // as one book, however many door rows it has; the pin at the end checks the
+  // books cell, First bought, Paid and the two door-checked marks.
   function doorRows() {
     const plain = houseRow({
       key: 'b-plain',
@@ -927,9 +930,38 @@ describe('CellarNext — the registers that are not wines', () => {
     ]);
   });
 
-  // A pin, not a fix test: it passes with or without the ruling, and fails if
-  // counting the door book ever reaches the books cell or a figure.
-  it('counts the door book in the sort value only, not in the books cell or any figure', () => {
+  // Three door-checked lines are still one door book: the sort counts whether a
+  // row has a door row, never how many (ADR 0301 §2). Fed plain first, so a
+  // tie with Anadolu Plain's one book would keep Zeytin Door below it, and
+  // fed after Full Three, so a count of 4 (the lines) would lift it above.
+  it('counts a row with three door-checked lines as one more book, not three', () => {
+    const { plain, fuller } = doorRows();
+    const door3 = houseRow({
+      key: 'b-door3',
+      name: 'Zeytin Door',
+      house: {
+        ...houseRow().house,
+        books: ['order'],
+        bought: {
+          lines: 0, doorChecked: 3,
+          first: '2026-08-03', firstDoorChecked: true,
+          last: '2026-08-10', lastDoorChecked: true,
+          bottles: 30, paidTotal: 795, lastUnitPrice: 26.5, lastFrom: 'Zqdc Door Vendor',
+        },
+        poured: null,
+      },
+    });
+    // The order book's one, plus one for the door: 2, not 1 + 3 = 4.
+    expect(sortValueFor(door3 as unknown as RegisterRowVM, 'books')).toBe(2);
+    expect(drawRows([plain, fuller, door3])).toEqual([
+      'Full Three', 'Zeytin Door', 'Anadolu Plain',
+    ]);
+  });
+
+  // A pin, not a fix test: it passes with or without the ruling. It fails if
+  // the door book lights a mark of its own in the books cell, or if the row's
+  // First bought date, its Paid or its two door-checked marks stop showing.
+  it("lights only the order's mark in a door-only row's books cell, and still shows its First bought, Paid and two door-checked marks", () => {
     const { plain, door } = doorRows();
     drawRows([plain, door]);
     const row = screen.getByText('Zeytin Door').closest('tr')!;
