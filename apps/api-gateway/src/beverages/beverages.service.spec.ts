@@ -4,6 +4,7 @@ import { BeveragesService } from "./beverages.service";
 import {
   TILL_HOLDS_NO_SUCH_NAME,
   TILL_HOLDS_THE_NAME_ELSEWHERE,
+  TILL_NAME_TOO_SHORT_TO_SEARCH,
   tillNamesUnreadReason,
 } from "./row-record";
 
@@ -333,6 +334,54 @@ describe("BeveragesService.readRegister — Sold split by unit (ADR 0301, 2026-1
       bottles: -1,
       glasses: 5,
       unitUnknown: null,
+    });
+  });
+
+  // [ADDED 2026-10-07, the audit of aa5b5ce19] The same for the other two
+  // parts: only the bottles half was pinned, so `positive()` back on either
+  // of these passed every case.
+  it("keeps a glasses part below zero (a net refund of glasses)", async () => {
+    // 5 bottles and a net refund of 1 glass: Sold is 4.
+    const poured = await read([
+      row({
+        house_key: "raki",
+        label: "Rakı",
+        pos_lines: 6,
+        poured_qty: "4",
+        poured_bottles: "5",
+        poured_glasses: "-1",
+        poured_unit_unknown: "0",
+        tied_lines: 0,
+      }),
+    ]);
+    expect(poured("Rakı")).toMatchObject({
+      qty: 4,
+      bottles: 5,
+      glasses: -1,
+      unitUnknown: null,
+    });
+  });
+
+  it("keeps an unknown-unit part below zero (a net refund the till gave no unit)", async () => {
+    // 3 bottles, 2 glasses and a net refund of 1 line of no known unit: Sold
+    // is 4.
+    const poured = await read([
+      row({
+        house_key: "raki",
+        label: "Rakı",
+        pos_lines: 6,
+        poured_qty: "4",
+        poured_bottles: "3",
+        poured_glasses: "2",
+        poured_unit_unknown: "-1",
+        tied_lines: 0,
+      }),
+    ]);
+    expect(poured("Rakı")).toMatchObject({
+      qty: 4,
+      bottles: 3,
+      glasses: 2,
+      unitUnknown: -1,
     });
   });
 
@@ -1153,6 +1202,26 @@ describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () 
     expect(pos?.reason).toBe(
       tillNamesUnreadReason("canceling statement due to statement timeout"),
     );
+    expect(pos?.holdsLabel).toBeNull();
+    expect(out.nothingNamesIt).toBe(false);
+  });
+
+  it("says it did not look, and claims nothing, for a label too short to search inside a till name (the audit of aa5b5ce19)", async () => {
+    // [ADDED 2026-10-07] matchLine matches a label under four characters
+    // only to an equal name, so 'Gin' beside the till's 'Gin Tonic' (counted
+    // on another row) got holdsLabel false: "no till name contains this
+    // row's name", which is untrue, and nothingNamesIt true.
+    const { service } = await tillService(
+      [tillLine(1, "Gin Tonic", 2, 12)],
+      {},
+      { Gin: [] },
+    );
+    const out = await service.readRowRecord(RID, "Gin");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(0);
+    expect(pos?.reason).toBe(TILL_NAME_TOO_SHORT_TO_SEARCH);
+    expect(pos?.reason).not.toBe(TILL_HOLDS_NO_SUCH_NAME);
     expect(pos?.holdsLabel).toBeNull();
     expect(out.nothingNamesIt).toBe(false);
   });

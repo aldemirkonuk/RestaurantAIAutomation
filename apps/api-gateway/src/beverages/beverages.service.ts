@@ -16,6 +16,8 @@ import {
 import {
   composeBook,
   composeRowRecord,
+  CONTAINS_FLOOR,
+  fold,
   matchLine,
   num as seriesNum,
   str as seriesStr,
@@ -23,6 +25,7 @@ import {
   tillNamesUnreadReason,
   TILL_HOLDS_NO_SUCH_NAME,
   TILL_HOLDS_THE_NAME_ELSEWHERE,
+  TILL_NAME_TOO_SHORT_TO_SEARCH,
   unreadableBook,
   type BookRecord,
   type LedgerEntry,
@@ -1193,13 +1196,23 @@ export class BeveragesService {
         );
         holdsLabel = null;
         emptyReason = tillNamesUnreadReason(every.error.message);
-      } else {
-        holdsLabel = every.rows.some(
+      } else if (
+        every.rows.some(
           (r) => matchLine(label, rawTillName(r.item_name)) !== null,
-        );
-        emptyReason = holdsLabel
-          ? TILL_HOLDS_THE_NAME_ELSEWHERE
-          : TILL_HOLDS_NO_SUCH_NAME;
+        )
+      ) {
+        holdsLabel = true;
+        emptyReason = TILL_HOLDS_THE_NAME_ELSEWHERE;
+      } else if (fold(label).length < CONTAINS_FLOOR) {
+        // [CHANGED 2026-10-07, the audit of aa5b5ce19] matchLine matches a
+        // label this short only to an equal name, so finding none says
+        // nothing of a longer name containing it ('Gin' in 'Gin Tonic').
+        // Unknown, as when unread: never "no till name contains it".
+        holdsLabel = null;
+        emptyReason = TILL_NAME_TOO_SHORT_TO_SEARCH;
+      } else {
+        holdsLabel = false;
+        emptyReason = TILL_HOLDS_NO_SUCH_NAME;
       }
     }
 

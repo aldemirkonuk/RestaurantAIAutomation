@@ -163,6 +163,10 @@ export interface BookRecord {
    * or on none. False: no till name does. Null: the till's names could not be
    * read. Absent on a book `readTillLines` did not build that way, which then
    * makes no claim either way.
+   * [CHANGED 2026-10-07, the audit of aa5b5ce19: null also when the row's
+   * label is shorter than `CONTAINS_FLOOR` and no till name equals it, since
+   * `matchLine` then never looks inside a longer name ('Gin' beside 'Gin
+   * Tonic'). False was said there, and could be untrue.]
    */
   holdsLabel?: boolean | null;
 }
@@ -239,6 +243,23 @@ export function tillNamesUnreadReason(message: string): string {
 }
 
 /**
+ * The shortest folded row label `matchLine` looks for inside a longer line.
+ * A shorter one matches only a line equal to it. Declared here, above the
+ * reason that names it, since that string is built when the module loads.
+ */
+export const CONTAINS_FLOOR = 4;
+
+/**
+ * ADDED (ADR 0301, the audit of aa5b5ce19, 2026-10-07): a row label shorter
+ * than `CONTAINS_FLOOR`, which `matchLine` matches only to a till name equal
+ * to it. When none is equal, a longer name may still contain it ('Gin' in
+ * 'Gin Tonic'), and this record did not look, so it says neither yes nor no.
+ * TILL_HOLDS_NO_SUCH_NAME was said here, and was false for 'Gin' beside
+ * 'Gin Tonic'.
+ */
+export const TILL_NAME_TOO_SHORT_TO_SEARCH = `No till line is counted on this row, and no till name is this row's name (ignoring case and spacing). Whether a longer till name contains it was not checked: this record looks for a name shorter than ${CONTAINS_FLOOR} characters only as a whole till name.`;
+
+/**
  * The same names for a till book that does count lines, said under the match
  * rule (the record's last sentence), since the book's own reason is only
  * shown when it has no line.
@@ -283,8 +304,9 @@ export function fold(v: string): string {
  * Does this line belong to this row? Returns HOW, or null.
  *
  * A one-character row label would "contain" its way into most of the till, so
- * containment is refused below four characters — a rule with a stated floor
- * rather than a rule that quietly matches everything for a short label.
+ * containment is refused below four characters (`CONTAINS_FLOOR`) — a rule
+ * with a stated floor rather than a rule that quietly matches everything for
+ * a short label.
  */
 export function matchLine(
   rowLabel: string,
@@ -294,7 +316,7 @@ export function matchLine(
   const line = lineLabel === null ? "" : fold(lineLabel);
   if (row === "" || line === "") return null;
   if (row === line) return "exact";
-  if (row.length >= 4 && line.includes(row)) return "contains";
+  if (row.length >= CONTAINS_FLOOR && line.includes(row)) return "contains";
   return null;
 }
 

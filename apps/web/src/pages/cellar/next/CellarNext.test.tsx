@@ -817,6 +817,51 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(row).not.toHaveTextContent(/bottle|glass/);
   });
 
+  // [ADDED 2026-10-07, the audit of aa5b5ce19] The same for the other two
+  // parts: only the bottles half was pinned, so dropping `glasses < 0` or
+  // `unknown < 0` from the cell passed every case.
+  it('shows the net Sold alone when the glasses part is below zero', () => {
+    mock.current = { ...base, registers: readout() };
+    const refunded = houseRow({
+      house: {
+        ...houseRow().house,
+        poured: {
+          lines: 6, qty: 4, bottles: 5, glasses: -1, unitUnknown: null, tiedLines: 0,
+          revenue: 60, firstAt: null, lastAt: null,
+        },
+      },
+    });
+    mock.register = {
+      data: registerVM({ rows: [refunded] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).getByText('4')).toBeInTheDocument();
+    expect(row).not.toHaveTextContent(/bottle|glass/);
+  });
+
+  it('shows the net Sold alone when the unknown-unit part is below zero', () => {
+    mock.current = { ...base, registers: readout() };
+    const refunded = houseRow({
+      house: {
+        ...houseRow().house,
+        poured: {
+          lines: 6, qty: 4, bottles: 3, glasses: 2, unitUnknown: -1, tiedLines: 0,
+          revenue: 60, firstAt: null, lastAt: null,
+        },
+      },
+    });
+    mock.register = {
+      data: registerVM({ rows: [refunded] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).getByText('4')).toBeInTheDocument();
+    expect(row).not.toHaveTextContent(/bottle|glass|unknown unit/);
+  });
+
   it('keeps the plain count where no line names its unit, and a dash where only ties name the row', () => {
     mock.current = { ...base, registers: readout() };
     const unknown = houseRow({
