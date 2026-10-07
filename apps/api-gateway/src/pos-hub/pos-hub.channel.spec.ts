@@ -114,7 +114,7 @@ describe("POS ingest writes the channel a check names (ADR 0302)", () => {
   // convert object to primitive value", and on a deeply nested array a
   // RangeError, so one such check turned the whole import into a 400 and no
   // check in it was stored. A channel that is not text is unrecognised, said
-  // under a fixed label, and never converted.
+  // under a fixed label (within the five-name cap), and never converted.
   const deeplyNested = () => {
     let v: unknown = "booth_event";
     for (let i = 0; i < 100_000; i++) v = [v];
