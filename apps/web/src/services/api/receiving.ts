@@ -84,6 +84,34 @@ export interface DoorReceiptResponse {
   stockBooked?: boolean
   /** A sentence for the receiver when it did not. Never a code. */
   stockIssue?: string
+  /**
+   * Whose clock dated this delivery, and why. Absent from a gateway older than
+   * the rule; read nothing into its absence.
+   */
+  factTime?: DoorFactTime
+}
+
+/**
+ * Whose clock dated a door receipt. The phone's time is the delivery's when it
+ * is no more than 72 hours old, or older on an owner's or a manager's word
+ * (then `back_dated`); otherwise the server's own (`server`).
+ */
+export interface DoorFactTime {
+  /** The delivery's time, as stored. */
+  at: string
+  /** Null for a receipt recorded before the rule, read back on a retry. */
+  basis: 'sent' | 'back_dated' | 'server' | null
+  /** What the phone sent, kept whether or not it was used. */
+  sentAt: string | null
+  reason:
+    | 'within_window'
+    | 'clamped_ahead'
+    | 'back_dated'
+    | 'not_sent'
+    | 'unreadable'
+    | 'ahead'
+    | 'too_old'
+    | null
 }
 
 /**
