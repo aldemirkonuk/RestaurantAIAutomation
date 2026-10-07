@@ -108,7 +108,12 @@ describe("DashboardService — procurement spend is not revenue", () => {
     db.getLowStockItems.mockResolvedValue([]);
     db.getProcurementOrders.mockResolvedValue([]);
     db.getClient.mockReturnValue(
-      makeClient({ procurement_orders: DELIVERED_ORDERS }),
+      makeClient({
+        procurement_orders: DELIVERED_ORDERS,
+        // The calendar files each day by the house's own clock (ADR 0290); a
+        // house with no stated zone gets no figures at all.
+        restaurants: [{ timezone: "UTC" }],
+      }),
     );
 
     const module: TestingModule = await Test.createTestingModule({
