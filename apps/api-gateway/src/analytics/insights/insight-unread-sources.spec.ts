@@ -404,7 +404,7 @@ describe("an insight that takes a name from a read that could not be made does n
 
   const fire = async (answers: Record<string, Answer>) =>
     (await generatorOver(answers).generate("r1", { persist: false })).insights;
-  const of = (xs: Array<{ candidateKey: string }>, key: string) =>
+  const of = <X extends { candidateKey: string }>(xs: X[], key: string) =>
     xs.filter((i) => i.candidateKey === key);
 
   it("with the table list read, the table #1 and the surge fire and name the table", async () => {
