@@ -682,10 +682,10 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
   /**
    * A `pos_checks` double shaped like PostgREST: every response stops at the
    * server's `max_rows` (1,000) whatever was asked, `{ count: "exact" }` is the
-   * size of the set past the `.gt("id", …)` cursor, and `order` / `limit` are
+   * size of the set past the `.gt("id", …)` cursor, `order` / `limit` are
    * honoured, and a row carries only the columns the select named.
- * `ignoreCursor` is a server that drops the cursor, so the read
-   * can never be proved whole. Filters other than the cursor are not applied:
+   * `ignoreCursor` is a server that drops the cursor, so the read can never be
+   * proved whole. Filters other than the cursor are not applied:
    * every row handed in belongs to the window.
    */
   function pagedDb(

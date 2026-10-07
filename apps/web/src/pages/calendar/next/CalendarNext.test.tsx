@@ -1166,7 +1166,8 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
     expect(openDay().querySelector('[data-takings]')).toBeNull();
   });
 
-  // ADR 0287 F1, the founder 2026-10-04 ~02:10Z: owners and managers see the
+  // ADR 0287 F1, built as option (b) on the founder's words of 2026-10-04
+  // ~02:10Z (his confirmation owed): owners and managers see the
   // house's takings; every other role gets the days with `netSales`,
   // `netSalesCheckCount` and `currency` LEFT OUT, and `takingsWithheld: true`.
   it('draws no takings for a viewer the house money is withheld from, and keeps the covers', () => {

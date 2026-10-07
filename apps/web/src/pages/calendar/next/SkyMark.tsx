@@ -211,7 +211,7 @@ export function DayRecordMark({ day }: { day: ReconciledDay }) {
  * window (ADR 0292) and sends no recorded day with a refusal, so there is no
  * figure to draw; the check here keeps one that reached the page anyway from
  * reading "net sales · recorded" over a register that could not be read whole.
- * The page's head line carries the refusal sentence.
+ * The page prints the refusal sentence in its own line above the grid.
  */
 export function TakingsMark({
   day,
