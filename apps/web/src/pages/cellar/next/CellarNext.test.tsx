@@ -770,6 +770,100 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(within(row).queryByText('$0.00')).not.toBeInTheDocument();
   });
 
+  // ADR 0301, the founder's ruling of 2026-10-05: Sold is split into bottles
+  // and glasses by the till's sale unit ("Bottles · glasses"); what no unit
+  // names stays "unknown unit", and lines tied with another row are named.
+  it('shows Sold as bottles and glasses, the unknown unit and the tied lines beside it', () => {
+    mock.current = { ...base, registers: readout() };
+    const split = houseRow({
+      house: {
+        ...houseRow().house,
+        poured: {
+          lines: 12, qty: 15, bottles: 9, glasses: 4, unitUnknown: 2, tiedLines: 3,
+          revenue: 60, firstAt: null, lastAt: null,
+        },
+      },
+    });
+    mock.register = {
+      data: registerVM({ rows: [split] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(row).toHaveTextContent('9 bottles · 4 glasses · 2 unknown unit · 3 lines tied');
+    expect(within(row).getByTitle(/3 till lines name this row and another equally/)).toBeInTheDocument();
+  });
+
+  it('keeps the plain count where no line names its unit, and a dash where only ties name the row', () => {
+    mock.current = { ...base, registers: readout() };
+    const unknown = houseRow({
+      house: {
+        ...houseRow().house,
+        poured: {
+          lines: 41, qty: 58, bottles: null, glasses: null, unitUnknown: 58, tiedLines: 0,
+          revenue: 464, firstAt: null, lastAt: null,
+        },
+      },
+    });
+    const tiedOnly = houseRow({
+      key: 'b2',
+      name: 'Musar Jeune Rouge',
+      house: {
+        ...houseRow().house,
+        poured: {
+          lines: 0, qty: null, bottles: null, glasses: null, unitUnknown: null, tiedLines: 1,
+          revenue: null, firstAt: null, lastAt: null,
+        },
+      },
+    });
+    mock.register = {
+      data: registerVM({ rows: [unknown, tiedOnly] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).getByText('58')).toBeInTheDocument();
+    expect(row).not.toHaveTextContent(/bottle|glass|unknown unit/);
+    const tied = screen.getByText('Musar Jeune Rouge').closest('tr')!;
+    expect(tied).toHaveTextContent('— · 1 line tied');
+    expect(within(tied).getByTitle(/1 till line names this row and another equally/)).toBeInTheDocument();
+  });
+
+  // ADR 0301, F2 of 2026-10-06, "List tied names on the row": "Each tied
+  // row's record lists the till names that tied, so the owner sees why its
+  // Sold is short and can fix the menu name. The lines still join neither row."
+  it('lists the till names that tied on the row, each with its lines, and counts none of them', () => {
+    mock.current = { ...base, registers: readout() };
+    const tiedRow = houseRow({
+      key: 'b3',
+      name: 'Lal Rosé',
+      house: {
+        ...houseRow().house,
+        poured: {
+          lines: 1, qty: 1, bottles: 1, glasses: null, unitUnknown: null, tiedLines: 3,
+          tiedNames: [
+            { name: 'Lal Rosé Kavak (glass)', lines: 2 },
+            { name: 'Lal Rosé Kavak Magnum', lines: 1 },
+          ],
+          revenue: 40, firstAt: null, lastAt: null,
+        },
+      },
+    });
+    mock.register = {
+      data: registerVM({ rows: [tiedRow] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Lal Rosé').closest('tr')!;
+    // Sold counts the one bottle; the three tied lines are only named.
+    expect(row).toHaveTextContent('1 bottle · 3 lines tied');
+    expect(
+      within(row).getByTitle(
+        "3 till lines name this row and another equally, so they are counted on neither: 'Lal Rosé Kavak (glass)' (2 lines), 'Lal Rosé Kavak Magnum' (1 line). A menu name that tells the two rows apart lets them count.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('opens the whole record on the stand, naming the table each fact came from', () => {
     mock.current = { ...base, registers: readout() };
     mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };

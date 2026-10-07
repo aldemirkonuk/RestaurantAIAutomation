@@ -17,7 +17,7 @@
 
 import type { ReactNode } from 'react';
 import { BOOK_LABEL, BOOK_ORDER, EM, count, money, shortDate, type HouseBookId } from './cellar-format';
-import type { RegisterRowVM } from './useCellarNextData';
+import type { PouredVM, RegisterRowVM } from './useCellarNextData';
 
 /**
  * The row's record at a glance: one mark per book that names it. Ink, never a
@@ -48,6 +48,62 @@ function booksCell(books: HouseBookId[]): ReactNode {
 
 function dim(v: string): ReactNode {
   return <span className="cl-dim">{v}</span>;
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${count(n)} ${n === 1 ? one : many}`;
+}
+
+/**
+ * Sold, as bottles and glasses (ADR 0301, the founder's ruling of 2026-10-05,
+ * "Bottles · glasses"). Only the units the till's record can say are named;
+ * the rest is "unknown unit", never folded into a guess. A row none of whose
+ * lines has a known unit (a cocktail, a draft with no mapping, or a gateway
+ * before the split) keeps the plain count it always showed. Lines that tie
+ * between this row and another are named after it, counted on neither, and
+ * the mark's title lists the till names that tied, each with its lines (ADR
+ * 0301, F2 of 2026-10-06: "List tied names on the row").
+ */
+function soldCell(p: PouredVM | null | undefined): ReactNode {
+  if (!p) return dim(EM);
+  const bottles = p.bottles ?? 0;
+  const glasses = p.glasses ?? 0;
+  const unknown = p.unitUnknown ?? 0;
+  const tied = p.tiedLines ?? 0;
+  const names = (p.tiedNames ?? [])
+    .map((t) =>
+      t.lines === null ? `'${t.name}'` : `'${t.name}' (${plural(t.lines, 'line', 'lines')})`,
+    )
+    .join(', ');
+  const tie =
+    tied > 0 ? (
+      <span
+        className="cl-dim"
+        title={`${plural(tied, 'till line names', 'till lines name')} this row and another equally, so they are counted on neither${
+          names === '' ? '.' : `: ${names}. A menu name that tells the two rows apart lets them count.`
+        }`}
+      >
+        {` · ${plural(tied, 'line', 'lines')} tied`}
+      </span>
+    ) : null;
+  if (bottles === 0 && glasses === 0) {
+    return (
+      <>
+        {p.qty === null ? dim(EM) : count(p.qty)}
+        {tie}
+      </>
+    );
+  }
+  const parts: string[] = [];
+  if (bottles > 0) parts.push(plural(bottles, 'bottle', 'bottles'));
+  if (glasses > 0) parts.push(plural(glasses, 'glass', 'glasses'));
+  return (
+    <>
+      {parts.join(' · ')}
+      {unknown > 0 ? <span className="cl-dim">{` · ${count(unknown)} unknown unit`}</span> : null}
+      {tie}
+    </>
+  );
 }
 
 export function cellFor(r: RegisterRowVM, id: string): ReactNode {
@@ -85,7 +141,7 @@ export function cellFor(r: RegisterRowVM, id: string): ReactNode {
     case 'paid':
       return money(h?.bought?.paidTotal);
     case 'sold':
-      return count(h?.poured?.qty ?? null);
+      return soldCell(h?.poured);
     case 'charged':
       return money(h?.poured?.revenue ?? null);
     case 'quote':

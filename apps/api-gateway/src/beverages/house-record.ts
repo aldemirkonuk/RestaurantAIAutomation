@@ -42,6 +42,7 @@ import {
   registersForLabel,
   type RegisterId,
 } from "../cellar/cellar-registers";
+import { tiedTillNames, type TiedTillName } from "./row-record";
 
 /**
  * Which books named this product. The vocabulary is closed and the words are
@@ -89,6 +90,29 @@ export interface Quoted {
 export interface Poured {
   lines: number;
   qty: number | null;
+  /**
+   * Sold split by what one of each line is (ADR 0301, the founder's ruling of
+   * 2026-10-05: "Bottles · glasses"): bottles, glasses (pours and singles),
+   * and lines whose unit the till's record cannot say (unmapped, no sale unit,
+   * or a volume the item cannot hold). The three sum to `qty`. Null when the
+   * ledger has no such column yet (a database before migration
+   * a_till_name_with_a_serve_size_joins_its_row) or the part is zero.
+   */
+  bottles: number | null;
+  glasses: number | null;
+  unitUnknown: number | null;
+  /**
+   * Till lines whose name holds this row's words and another row's equally:
+   * a tie, counted on neither row's Sold. 0 when there are none.
+   */
+  tiedLines: number;
+  /**
+   * The till names behind `tiedLines`, each with its lines, in the ledger's
+   * order (ADR 0301, F2 of 2026-10-06: "Each tied row's record lists the till
+   * names that tied"). [] when there are none, or on a database before the
+   * ledger's `tied_names` column.
+   */
+  tiedNames: TiedTillName[];
   revenue: number | null;
   firstAt: string | null;
   lastAt: string | null;
@@ -216,6 +240,15 @@ export interface LedgerRow {
   last_poured: string | null;
   beverage_id: string | null;
   match_method: string | null;
+  // Added by migration a_till_name_with_a_serve_size_joins_its_row (ADR
+  // 0301, 2026-10-05). Optional: a database before it does not return them.
+  poured_bottles?: number | null;
+  poured_glasses?: number | null;
+  poured_unit_unknown?: number | null;
+  tied_lines?: number | null;
+  till_names?: unknown;
+  // Added by the same migration for ADR 0301's F2 (2026-10-06).
+  tied_names?: unknown;
 }
 
 /** One row of `public.beverages`, as the catalogue read selects it. */
@@ -267,6 +300,7 @@ export function toHouseRecord(r: LedgerRow): HouseRecord {
   const orderLines = positive(r.order_lines);
   const quotes = positive(r.quote_count);
   const posLines = positive(r.pos_lines);
+  const tiedLines = positive(r.tied_lines) ?? 0;
 
   return {
     books,
@@ -315,12 +349,20 @@ export function toHouseRecord(r: LedgerRow): HouseRecord {
             lastSource: str(r.last_quote_source),
             lastFrom: str(r.last_quote_from),
           },
+    // A row whose only till lines tied with another row still carries the
+    // block, with no lines, so the surface can say they exist and why they
+    // are not counted rather than showing a blank.
     poured:
-      posLines === null
+      posLines === null && tiedLines === 0
         ? null
         : {
-            lines: posLines,
+            lines: posLines ?? 0,
             qty: positive(r.poured_qty),
+            bottles: positive(r.poured_bottles),
+            glasses: positive(r.poured_glasses),
+            unitUnknown: positive(r.poured_unit_unknown),
+            tiedLines,
+            tiedNames: tiedTillNames(r.tied_names),
             revenue: positive(r.poured_revenue),
             firstAt: str(r.first_poured),
             lastAt: str(r.last_poured),

@@ -66,6 +66,23 @@
  * one found the line. Weaker than the ledger's rule, honest about being so, and
  * — unlike the ledger — it answers on a database that has not run the
  * migration yet.
+ *
+ * CHANGED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, the
+ * founder's ruling of 2026-10-05): the TILL book no longer uses this rule. It
+ * reads the names the ledger itself counts on the row
+ * (`house_till_names(p_restaurant_id, p_label)`), so the record lists exactly
+ * the till lines the row's Sold cell sums: a till name joins the row whose key
+ * it equals (`exact`), else the row with the most words among those whose
+ * every word it holds (`contains`), and a name level between two rows joins
+ * neither. The menu, invoice, order and quote books keep the rule above.
+ *
+ * CHANGED the same migration (ADR 0301, the founder's answers of 2026-10-06):
+ * F1 "Also match without maker": a name that holds no row's every word joins
+ * by the row's name without its maker, under the same rules; the ledger says
+ * 'without_maker', and this record shows it as `contains` (loose), which it
+ * is. F2 "List tied names on the row": the names that tied on the row come
+ * back as 'tie'; the till book lists them in `tied` and never reads their
+ * lines, so the record still lists exactly the lines the Sold cell sums.
  */
 
 /** The five books, in the order a house reads them. */
@@ -130,6 +147,76 @@ export interface BookRecord {
   ledger: LedgerEntry[];
   /** Which table this came from, named so the claim is checkable. */
   source: string;
+  /**
+   * The till book only, once it was read: the till names that hold this
+   * row's words and another row's equally, so they count on neither (a tie;
+   * ADR 0301, F2 of 2026-10-06, "List tied names on the row"). Listed so the
+   * owner sees why the row's Sold is short; never in `ledger`, `rows` or a
+   * series, and their lines are not read.
+   */
+  tied?: TiedTillName[];
+}
+
+/** A till name that tied on a row: what the till calls it, and its lines. */
+export interface TiedTillName {
+  /** Trimmed to show. */
+  name: string;
+  /** How many lines the till holds under the name; null when not said. */
+  lines: number | null;
+}
+
+/**
+ * The tied names a ledger or `house_till_names` read returned, in its order:
+ * each `{item_name, lines}` whose name is text. Anything else is dropped,
+ * never shown as a blank name.
+ */
+export function tiedTillNames(v: unknown): TiedTillName[] {
+  if (!Array.isArray(v)) return [];
+  const out: TiedTillName[] = [];
+  for (const e of v) {
+    if (e === null || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    const name = str(r.item_name);
+    if (name === null) continue;
+    out.push({ name, lines: num(r.lines) });
+  }
+  return out;
+}
+
+/** Each tied name with its lines, as the owner reads it: 'A' (2 lines). */
+function tiedList(tied: TiedTillName[]): string {
+  return tied
+    .map((t) =>
+      t.lines === null
+        ? `'${t.name}'`
+        : `'${t.name}' (${t.lines} ${t.lines === 1 ? "line" : "lines"})`,
+    )
+    .join(", ");
+}
+
+/** "One till name holds" / "3 till names hold", and what is counted. */
+function tiedClause(tied: TiedTillName[]): string {
+  const one = tied.length === 1;
+  return `${one ? "One till name holds" : `${tied.length} till names hold`} this row's words and another row's equally, so ${
+    one ? "its lines are" : "their lines are"
+  } counted on neither: ${tiedList(tied)}.`;
+}
+
+/**
+ * Why a till book whose only names tied has no line of its own: the names,
+ * each with its lines, and that they count on neither row.
+ */
+export function tiedReason(tied: TiedTillName[]): string {
+  return `No till line is counted on this row. ${tiedClause(tied)} A menu name that tells the two rows apart lets them count.`;
+}
+
+/**
+ * The same names for a till book that does count lines, said under the match
+ * rule (the record's last sentence), since the book's own reason is only
+ * shown when it has no line.
+ */
+export function tiedNote(tied: TiedTillName[]): string {
+  return `On this row's till book: ${tiedClause(tied)}`;
 }
 
 export interface RowRecord {
@@ -144,7 +231,7 @@ export interface RowRecord {
 }
 
 export const ROW_RECORD_MATCH_RULE =
-  "A line belongs to this row when its label is the same words (exact), or contains this row's label inside a longer till or invoice line (loose). This is a weaker rule than the register's own — that one folds producer and name into a sorted token multiset in SQL (beverage_house_key) — and it is used here because it answers on a database that has not run migration 20260903120000 yet. Every line below says which of the two rules found it.";
+  "A menu, invoice, order or quote line belongs to this row when its label is the same words (exact), or contains this row's label inside a longer line (loose). This is a weaker rule than the register's own — that one folds producer and name into a sorted token multiset in SQL (beverage_house_key) — and it is used here because it answers on a database that has not run migration 20260903120000 yet. A till line belongs to this row by the register's own rule, the one its Sold cell counts by: its name has this row's words exactly (exact), or holds every one of them and no other row's with more (loose); a name that holds no row's every word joins by the row's name without its maker, under the same rule (loose); a name that holds two rows' words equally belongs to neither, and is named on each row's record without its lines. Every line below says which of the two found it.";
 
 /** A finite number, or null. Postgres numerics arrive over PostgREST as strings. */
 export function num(v: unknown): number | null {
@@ -280,10 +367,22 @@ export function composeRowRecord(input: {
   const named = books
     .filter((b) => b.readable && (b.rows ?? 0) > 0)
     .map((b) => b.book);
+  // The till names that tied on this row (ADR 0301, F2 of 2026-10-06). A
+  // till book with no line already names them in its reason; one that counts
+  // lines names them here, so the record lists them either way.
+  const till = books.find((b) => b.book === "pos");
+  const tiedHere =
+    till !== undefined &&
+    till.readable &&
+    (till.rows ?? 0) > 0 &&
+    till.tied !== undefined &&
+    till.tied.length > 0
+      ? ` ${tiedNote(till.tied)}`
+      : "";
   return {
     restaurantId,
     label,
-    matchRule: ROW_RECORD_MATCH_RULE,
+    matchRule: ROW_RECORD_MATCH_RULE + tiedHere,
     books,
     named,
     // Only claimable when every book was actually readable. A row whose books

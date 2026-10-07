@@ -484,9 +484,30 @@ export interface QuotedVM {
   lastSource: string | null;
   lastFrom: string | null;
 }
+/** A till name that tied on a row, and how many lines the till holds under it. */
+export interface TiedTillNameVM {
+  name: string;
+  lines: number | null;
+}
 export interface PouredVM {
   lines: number;
   qty: number | null;
+  /**
+   * Sold split by what one of each line is (ADR 0301, the founder's ruling of
+   * 2026-10-05: "Bottles · glasses"). The three sum to `qty`; null when the
+   * part is zero. Absent from a gateway before the split.
+   */
+  bottles?: number | null;
+  glasses?: number | null;
+  unitUnknown?: number | null;
+  /** Till lines whose name holds this row's words and another's equally: counted on neither. */
+  tiedLines?: number;
+  /**
+   * The till names behind `tiedLines`, each with its lines (ADR 0301, F2 of
+   * 2026-10-06: "Each tied row's record lists the till names that tied").
+   * Absent from a gateway before it.
+   */
+  tiedNames?: TiedTillNameVM[];
   revenue: number | null;
   firstAt: string | null;
   lastAt: string | null;
@@ -938,6 +959,13 @@ export interface BookRecordVM {
   quantity: SeriesPointVM[];
   ledger: LedgerEntryVM[];
   source: string;
+  /**
+   * The till book only: the names that tied on this row, counted on neither
+   * and never in `ledger` (ADR 0301, F2 of 2026-10-06). The gateway also
+   * says them in words: in `reason` when no till line counts, else at the
+   * end of `matchRule`.
+   */
+  tied?: TiedTillNameVM[];
 }
 
 export interface RowRecordVM {
