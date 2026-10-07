@@ -73,24 +73,70 @@ type Act = [string, (c: DocumentsController, u: User) => Promise<unknown>];
 
 /** Every route that writes the document's money, and the seals they take. */
 const MONEY_ACTS: Act[] = [
-  ["POST :id/corrections-seal-challenge", (c, u) =>
-    c.mintFieldCorrectSeal(DOC, { path: "documentNumber", value: "INV-2" } as never, u as never)],
-  ["POST :id/corrections", (c, u) =>
-    c.correctField(DOC, { path: "documentNumber", value: "INV-2" } as never, u as never, "a-seal")],
-  ["POST :id/fields/verify-seal-challenge", (c, u) =>
-    c.mintFieldVerifySeal(DOC, { path: "documentNumber" } as never, u as never)],
-  ["POST :id/fields/verify", (c, u) =>
-    c.verifyFieldTick(DOC, { path: "documentNumber" } as never, u as never, "a-seal")],
-  ["POST :id/extraction", (c, u) =>
-    c.applyExtraction(DOC, { rawText: "{}", model: "m" } as never, u as never)],
+  [
+    "POST :id/corrections-seal-challenge",
+    (c, u) =>
+      c.mintFieldCorrectSeal(
+        DOC,
+        { path: "documentNumber", value: "INV-2" } as never,
+        u as never,
+      ),
+  ],
+  [
+    "POST :id/corrections",
+    (c, u) =>
+      c.correctField(
+        DOC,
+        { path: "documentNumber", value: "INV-2" } as never,
+        u as never,
+        "a-seal",
+      ),
+  ],
+  [
+    "POST :id/fields/verify-seal-challenge",
+    (c, u) =>
+      c.mintFieldVerifySeal(
+        DOC,
+        { path: "documentNumber" } as never,
+        u as never,
+      ),
+  ],
+  [
+    "POST :id/fields/verify",
+    (c, u) =>
+      c.verifyFieldTick(
+        DOC,
+        { path: "documentNumber" } as never,
+        u as never,
+        "a-seal",
+      ),
+  ],
+  [
+    "POST :id/extraction",
+    (c, u) =>
+      c.applyExtraction(
+        DOC,
+        { rawText: "{}", model: "m" } as never,
+        u as never,
+      ),
+  ],
   ["POST :id/match", (c, u) => c.match(DOC, u as never)],
-  ["POST :id/lines/:lineId/link", (c, u) =>
-    c.linkLine(DOC, LINE, { orderLineId: null }, u as never)],
-  ["POST :id/lines/:lineId/edit-seal-challenge", (c, u) =>
-    c.mintLineEditSeal(DOC, LINE, { unitPrice: 1 }, u as never)],
-  ["PATCH :id/lines/:lineId", (c, u) =>
-    c.editLine(DOC, LINE, { unitPrice: 1 }, u as never, "a-seal")],
-  ["POST :id/verify-seal-challenge", (c, u) => c.mintVerifySeal(DOC, u as never)],
+  [
+    "POST :id/lines/:lineId/link",
+    (c, u) => c.linkLine(DOC, LINE, { orderLineId: null }, u as never),
+  ],
+  [
+    "POST :id/lines/:lineId/edit-seal-challenge",
+    (c, u) => c.mintLineEditSeal(DOC, LINE, { unitPrice: 1 }, u as never),
+  ],
+  [
+    "PATCH :id/lines/:lineId",
+    (c, u) => c.editLine(DOC, LINE, { unitPrice: 1 }, u as never, "a-seal"),
+  ],
+  [
+    "POST :id/verify-seal-challenge",
+    (c, u) => c.mintVerifySeal(DOC, u as never),
+  ],
   ["POST :id/verify", (c, u) => c.verify(DOC, u as never, "a-seal")],
 ];
 
@@ -126,13 +172,21 @@ describe("document money writes go to the people who hold the house's money", ()
       for (const u of NON_HOLDERS.slice(1)) {
         const h = harness();
         const r = await settle(call(h.controller, u));
-        expect((r as { e: HttpException }).e.getStatus()).toBe(HttpStatus.FORBIDDEN);
+        expect((r as { e: HttpException }).e.getStatus()).toBe(
+          HttpStatus.FORBIDDEN,
+        );
         expect(h.reached).toEqual([]);
       }
       const h = harness();
       const r = await settle(call(h.controller, as(null)));
-      expect(String((r as { e: Error }).e.message)).toMatch(
-        /could not be shown to hold any role at this house/,
+      const said = String((r as { e: Error }).e.message);
+      expect(said).toMatch(/could not be shown to hold any role at this house/);
+      // A session with no role may have no house either, so the door is not
+      // promised to it; a staff member at the house is told the door is open.
+      expect(said).not.toMatch(/still go through/);
+      const staff = await settle(call(harness().controller, NON_HOLDERS[0]));
+      expect(String((staff as { e: Error }).e.message)).toMatch(
+        /The photograph and the door count still go through for you/,
       );
     });
 
@@ -153,11 +207,19 @@ describe("document money writes go to the people who hold the house's money", ()
   it("keeps the uuid check first on the line routes, so a bad id is still a 400 for anyone", async () => {
     const h = harness();
     for (const call of [
-      () => h.controller.linkLine(DOC, "nope", { orderLineId: null }, staff as never),
+      () =>
+        h.controller.linkLine(
+          DOC,
+          "nope",
+          { orderLineId: null },
+          staff as never,
+        ),
       () => h.controller.editLine(DOC, "nope", { qty: 1 }, staff as never),
     ]) {
       const r = await settle(call());
-      expect((r as { e: HttpException }).e.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+      expect((r as { e: HttpException }).e.getStatus()).toBe(
+        HttpStatus.BAD_REQUEST,
+      );
     }
     expect(h.reached).toEqual([]);
   });
@@ -167,7 +229,12 @@ describe("the door stays open to staff", () => {
   it("lets staff name a shelf for a line (link-item carries no price)", async () => {
     const h = harness();
     const r = await settle(
-      h.controller.linkLineToItem(DOC, LINE, { inventoryId: null }, staff as never),
+      h.controller.linkLineToItem(
+        DOC,
+        LINE,
+        { inventoryId: null },
+        staff as never,
+      ),
     );
     const err = (r as { e: unknown }).e;
     if (err instanceof HttpException)
@@ -207,7 +274,9 @@ const PARSE = {
   tieOutDelta: 0,
   tiesOut: true,
   confidence: 0.91,
-  warnings: ["Lines plus charges come to 987.65 but the document states 1185.18"],
+  warnings: [
+    "Lines plus charges come to 987.65 but the document states 1185.18",
+  ],
   printed: { total: "1.185,18" },
   moneyWithheld: null,
   lines: [
@@ -257,10 +326,10 @@ const PHOTO = {
 describe("POST /procurement/documents answers a non-holder without the money", () => {
   it("still stores the paper for staff, and returns only the keys the door reads", async () => {
     const h = uploadHarness();
-    const res = (await h.controller.upload(PHOTO as never, staff as never)) as Record<
-      string,
-      any
-    >;
+    const res = (await h.controller.upload(
+      PHOTO as never,
+      staff as never,
+    )) as Record<string, any>;
     expect(res.documentId).toBe(DOC);
     expect(res.amountsWithheld).toBe(true);
     expect(res.vendor).toEqual(VENDOR);
@@ -279,8 +348,19 @@ describe("POST /procurement/documents answers a non-holder without the money", (
     // And no figure survives anywhere in the answer, by key or by value.
     const wire = JSON.stringify(res);
     for (const leak of [
-      "unitPrice", "lineTotal", "subtotal", "total", "tax", "printed",
-      "warnings", "tieOut", "987.65", "1185.18", "493", "197.53", "1.185,18",
+      "unitPrice",
+      "lineTotal",
+      "subtotal",
+      "total",
+      "tax",
+      "printed",
+      "warnings",
+      "tieOut",
+      "987.65",
+      "1185.18",
+      "493",
+      "197.53",
+      "1.185,18",
     ])
       expect(wire).not.toContain(leak);
   });
@@ -288,7 +368,10 @@ describe("POST /procurement/documents answers a non-holder without the money", (
   it("withholds the same way for a session with no role, an empty role or an unknown one", async () => {
     for (const u of NON_HOLDERS.slice(1)) {
       const h = uploadHarness();
-      const res = (await h.controller.upload(PHOTO as never, u as never)) as Record<string, any>;
+      const res = (await h.controller.upload(
+        PHOTO as never,
+        u as never,
+      )) as Record<string, any>;
       expect(res.amountsWithheld).toBe(true);
       expect(JSON.stringify(res)).not.toContain("1185.18");
     }
@@ -297,7 +380,10 @@ describe("POST /procurement/documents answers a non-holder without the money", (
   it("gives an owner, a manager and an admin the whole parse, with no withheld marker", async () => {
     for (const u of HOLDERS) {
       const h = uploadHarness();
-      const res = (await h.controller.upload(PHOTO as never, u as never)) as Record<string, any>;
+      const res = (await h.controller.upload(
+        PHOTO as never,
+        u as never,
+      )) as Record<string, any>;
       expect(res.document).toEqual(PARSE);
       expect("amountsWithheld" in res).toBe(false);
     }
@@ -305,7 +391,10 @@ describe("POST /procurement/documents answers a non-holder without the money", (
 
   it("says a duplicate has no parse to either reader, and still marks the staff answer", async () => {
     const h = uploadHarness(null);
-    const res = (await h.controller.upload(PHOTO as never, staff as never)) as Record<string, any>;
+    const res = (await h.controller.upload(
+      PHOTO as never,
+      staff as never,
+    )) as Record<string, any>;
     expect(res.document).toBeNull();
     expect(res.amountsWithheld).toBe(true);
   });

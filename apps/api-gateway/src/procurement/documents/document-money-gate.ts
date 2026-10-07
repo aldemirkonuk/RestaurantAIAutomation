@@ -64,7 +64,9 @@ export function assertHoldsHouseMoney(
   throw new HttpException(
     `${ACT_WORDS[act]} is desk work on the record this house pays its vendors from, so it is an owner's or a manager's act. ` +
       `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was sealed and nothing was changed. ` +
-      "The photograph and the door count still go through for you; ask a manager or an owner to do this one.",
+      (role
+        ? "The photograph and the door count still go through for you; ask a manager or an owner to do this one."
+        : "Ask a manager or an owner of this house to do this one."),
     HttpStatus.FORBIDDEN,
   );
 }
@@ -80,7 +82,11 @@ export function assertHoldsHouseMoney(
  * `warnings` is left out too, because a tie-out warning prints the figures it
  * compared.
  */
-export const DOOR_ECHO_DOCUMENT_KEYS = ["docType", "docNumber", "lines"] as const;
+export const DOOR_ECHO_DOCUMENT_KEYS = [
+  "docType",
+  "docNumber",
+  "lines",
+] as const;
 export const DOOR_ECHO_LINE_KEYS = [
   "lineNo",
   "qty",
