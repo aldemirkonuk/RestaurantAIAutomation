@@ -123,7 +123,9 @@ export const MIN_TREND_OBSERVED = 14;
  * (A-002). These are the four numbers the gates below share.
  *
  *  - SIGNIFICANCE_ALPHA: the family-wise error a printed #1 or pairing may
- *    carry, after the correction for having picked it out of many.
+ *    carry, after the correction for having picked it out of many. The
+ *    table driver fit's F-test uses it too (ADR 0303, founder 2026-10-07);
+ *    that fit is one pre-set model, not a pick, so it is not corrected.
  *  - MIN_RANK_N: checks a server or table needs before it is ranked at all.
  *  - BASKET_MIN_COUNT: checks a pair must share before it is tested; it also
  *    sizes the multiple-comparison family (items on at least this many).
@@ -193,7 +195,10 @@ export const BASKET_MIN_LIFT = 1.3;
  *       or a check with no table; the driver fit reads only recorded seat
  *       counts, distances and outdoor flags, never a NULL as 0. A row below
  *       8 may rank a hidden table or fit an unrecorded 0, so it is
- *       recomputed, not served.
+ *       recomputed, not served. Same version, 2026-10-07 (founder ruling;
+ *       no version-8 row has been served, `main` is at 5): the driver
+ *       sentence passes the fit's F-test at SIGNIFICANCE_ALPHA instead of
+ *       r² > 0.15.
  */
 export const INSIGHT_GENERATOR_VERSION = 8;
 
@@ -1354,7 +1359,23 @@ export class InsightGeneratorService {
                   { ridgeLambda: 0.1 },
                 )
               : null;
-          if (reg && reg.r2 > 0.15) {
+          // The founder's rule (2026-10-07, ADR 0303 amendment): the sentence
+          // prints only when the fit passes the overall F-test at
+          // SIGNIFICANCE_ALPHA, ADR 0272's bar. The r² > 0.15 gate it
+          // replaces was no test: five tables on four attributes fit almost
+          // exactly by chance. The test reads the ridge fit's own r², the fit
+          // whose weights the sentence prints. A penalised fit never explains
+          // more than least squares on the same rows, so its p is never the
+          // smaller one and the test stays at or under alpha. With no
+          // residual degree of freedom (rows − attributes − 1 < 1) there is
+          // no test, so no sentence. Equal average checks leave nothing to
+          // drive: multipleRegression calls that r² 1, and it is no fit.
+          const ys = fitRows.map((r) => r.y);
+          const fTest =
+            reg && ys.some((v) => v !== ys[0])
+              ? E.regressionSignificance(reg.r2, fitRows.length, kept.length)
+              : null;
+          if (reg && fTest && fTest.p <= SIGNIFICANCE_ALPHA) {
             const drivers = reg.standardizedBetas
               .map((w, i) => ({ attribute: kept[i].name, weight: w }))
               .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));

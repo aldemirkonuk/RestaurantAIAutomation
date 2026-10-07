@@ -1,3 +1,4 @@
+import { fUpperTail, regressionSignificance } from "../engine";
 import { stateBookFrom } from "./item-state";
 import {
   INSIGHT_GENERATOR_VERSION,
@@ -383,6 +384,141 @@ describe("The table driver fit reads only what was recorded (ADR 0051, 0053, 030
       "kitchen distance",
     ]);
     expect(d[0].evidence.drivers![0].weight).toBeGreaterThan(0.99);
+  });
+});
+
+/**
+ * The founder's ruling on the driver sentence (asked 2026-10-06 19:57:41Z,
+ * answered 2026-10-07 04:15:17Z), verbatim: "F-test at alpha (Recommended)".
+ * The sentence prints only when the fit's overall F-test passes at
+ * SIGNIFICANCE_ALPHA (0.05), in place of r² > 0.15.
+ */
+describe("The table driver sentence passes the fit's F-test at alpha (founder, 2026-10-07)", () => {
+  /** Hand-drawn tables, one per row of [kitchen m, bar m, seats, outdoor]. */
+  const drawn = (rows: Array<Array<number | null>>) =>
+    rows.map(([k, b, s, o], i) =>
+      table(`d${i}`, String(i + 1), {
+        distance_to_kitchen_m: k,
+        distance_to_bar_m: b,
+        seats: s,
+        is_outdoor: o === null ? null : o === 1,
+      }),
+    );
+  const fireDrawn = (rows: Array<Array<number | null>>, avg: number[]) => {
+    const tables = drawn(rows);
+    return fire({
+      restaurant_tables: tables,
+      pos_checks: tables.flatMap((t, i) => around(t.id, avg[i], 5)),
+    });
+  };
+
+  it("a handful of tables fitting almost exactly no longer prints: five on three attributes, six on four", async () => {
+    // r² 0.995 on both, far above the old 0.15 gate, and p 0.09 and 0.11 on
+    // one residual degree of freedom: chance fits that well this often.
+    const five = await fireDrawn(
+      [
+        [5, 8, 2, null],
+        [10, 6, 4, null],
+        [15, 4, 4, null],
+        [20, 2, 6, null],
+        [25, 9, 2, null],
+      ],
+      [150, 171, 168, 192, 181],
+    );
+    expect(of(five, DRIVERS)).toEqual([]);
+    const six = await fireDrawn(
+      [
+        [5, 8, 2, 0],
+        [10, 6, 4, 1],
+        [15, 4, 4, 0],
+        [20, 2, 6, 1],
+        [25, 9, 2, 0],
+        [30, 3, 6, 1],
+      ],
+      [150, 175, 168, 199, 181, 212],
+    );
+    expect(of(six, DRIVERS)).toEqual([]);
+  });
+
+  it("five tables on four attributes leave no residual degree of freedom, so even an exact fit never prints", async () => {
+    const rows = [
+      [5, 8, 2, 0],
+      [10, 6, 4, 1],
+      [15, 4, 4, 0],
+      [20, 2, 6, 1],
+      [25, 9, 2, 1],
+    ];
+    const exact = rows.map(
+      ([k, b, s, o]) => 100 + 2 * k + 3 * b + 5 * s + 10 * o,
+    );
+    expect(of(await fireDrawn(rows, exact), DRIVERS)).toEqual([]);
+  });
+
+  it("a weak but real driver on forty tables prints, below the old 0.15 gate (r² 0.137, p 0.019)", async () => {
+    const noise = [-18, 12, 25, -9, 3, -22, 16, -5, 9, -14];
+    const rows = Array.from({ length: 40 }, (_, i) => [
+      2 + i,
+      null,
+      null,
+      null,
+    ]);
+    const avg = rows.map(
+      ([k], i) => 180 + 1.25 * (k as number) + noise[i % 10] * (1 + (i % 3)),
+    );
+    const d = of(await fireDrawn(rows, avg), DRIVERS);
+    expect(d).toHaveLength(1);
+    expect(d[0].evidence.drivers!.map((x) => x.attribute)).toEqual([
+      "kitchen distance",
+    ]);
+    expect(d[0].effectPct!).toBeGreaterThan(0.13);
+    expect(d[0].effectPct!).toBeLessThanOrEqual(0.15);
+  });
+
+  it("equal average checks are no fit, though the regression calls their r² 1", async () => {
+    const rows = [5, 10, 15, 20, 25].map((k) => [k, null, null, null]);
+    expect(
+      of(await fireDrawn(rows, [180, 180, 180, 180, 180]), DRIVERS),
+    ).toEqual([]);
+  });
+});
+
+describe("The F upper tail the driver test reads (engine)", () => {
+  it("matches the textbook 5% critical values to three decimals", () => {
+    expect(fUpperTail(4.96, 1, 10)).toBeCloseTo(0.05, 3);
+    expect(fUpperTail(4.1, 2, 10)).toBeCloseTo(0.05, 3);
+    expect(fUpperTail(3.48, 4, 10)).toBeCloseTo(0.05, 3);
+    expect(fUpperTail(3.1, 3, 20)).toBeCloseTo(0.05, 3);
+    expect(fUpperTail(161.45, 1, 1)).toBeCloseTo(0.05, 4);
+  });
+
+  it("matches the closed forms: F(2, d) is (1 + 2f/d)^(-d/2), F(1, 1) at 1 is one half", () => {
+    for (const [f, d] of [
+      [0.3, 4],
+      [4.1, 10],
+      [9, 30],
+    ])
+      expect(fUpperTail(f, 2, d)).toBeCloseTo(
+        (1 + (2 * f) / d) ** (-d / 2),
+        12,
+      );
+    expect(fUpperTail(1, 1, 1)).toBeCloseTo(0.5, 12);
+    expect(fUpperTail(0, 3, 7)).toBe(1);
+    expect(fUpperTail(Number.POSITIVE_INFINITY, 3, 7)).toBe(0);
+  });
+
+  it("tests a fit's r² on (k, n − k − 1) degrees of freedom, and makes no test without a residual one", () => {
+    const t = regressionSignificance(0.5, 12, 2)!;
+    expect(t.df1).toBe(2);
+    expect(t.df2).toBe(9);
+    expect(t.f).toBeCloseTo(4.5, 12);
+    expect(t.p).toBeCloseTo((1 + (2 * 4.5) / 9) ** -4.5, 12);
+    expect(regressionSignificance(0.999, 5, 4)).toBeNull();
+    expect(regressionSignificance(1, 6, 4)).toEqual({
+      f: Number.POSITIVE_INFINITY,
+      df1: 4,
+      df2: 1,
+      p: 0,
+    });
   });
 });
 
