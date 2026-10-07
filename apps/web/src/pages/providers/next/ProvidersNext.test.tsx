@@ -454,5 +454,30 @@ describe('ProvidersNext', () => {
       expect(screen.queryByTestId('mail-tone-stub')).not.toBeInTheDocument();
       auth.role = 'owner';
     });
+
+    // Every read of the twin panel (twin, promotions, conversations) is
+    // owner/manager at the gateway since 2026-10-07 (the GET /promotions gate,
+    // ADR 0124:357-362). Mounted for staff it would draw empty tabs over 403s.
+    it('carries what the platform has learned for an owner and a manager, and never for staff', async () => {
+      for (const role of ['owner', 'manager'] as const) {
+        auth.role = role;
+        mockData.current = oneCard();
+        const { unmount } = render(<ProvidersNext />);
+        fireEvent.click(screen.getByText('Bodega Álvaro'));
+        expect(await screen.findByTestId('twin-panel')).toHaveTextContent('twin of Bodega Álvaro');
+        unmount();
+      }
+      for (const role of ['staff', null] as const) {
+        auth.role = role;
+        mockData.current = oneCard();
+        const { unmount } = render(<ProvidersNext />);
+        fireEvent.click(screen.getByText('Bodega Álvaro'));
+        await screen.findByTestId('ledger-stub');
+        expect(screen.queryByTestId('twin-panel')).not.toBeInTheDocument();
+        expect(screen.queryByText('What the platform has learned')).not.toBeInTheDocument();
+        unmount();
+      }
+      auth.role = 'owner';
+    });
   });
 });

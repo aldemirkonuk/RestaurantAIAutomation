@@ -93,6 +93,12 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
   const { user, activeRole } = useAuth();
   const role = activeRole ?? user?.role ?? null;
   const readsMail = role === 'owner' || role === 'manager';
+  // "What the platform has learned" is owner/manager for the same reason since
+  // 2026-10-07: every read of the panel (twin, promotions, conversations) is
+  // refused to anyone else at the gateway (provider-intelligence.controller.ts,
+  // the GET /promotions gate, ADR 0124:357-362). Mounted for staff, its tabs
+  // would print "nothing learned" over a 403, which is not true.
+  const readsTwin = readsMail;
 
   return (
     <Sheet
@@ -166,43 +172,45 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
         </div>
       )}
 
-      {/* the twin — fetched on open, never on the grid */}
-      <div className="px-4 pb-6" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-        <h3
-          style={{
-            fontFamily: MONO,
-            fontSize: 9.5,
-            fontWeight: 600,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-4, #665D50)',
-            margin: '14px 0 6px',
-          }}
-        >
-          What the platform has learned
-        </h3>
-        {/*
-          `data-ground="paper"` because the panel below is a LEGACY component —
-          hard-coded light Tailwind cards that read none of the Mudavym tokens.
-          Since 2026-09-12 the bare `.mudavym` selector paints Warm Charcoal in
-          every app theme (ADR 0138), so without this the panel sits as a white
-          card on charcoal, and `color-scheme: dark` reaches its native controls.
-          The escape is the decided one (ADR 0104 D9) and wins on specificity —
-          (0,2,0) over the base `.mudavym`'s (0,1,0) — but only on the SAME
-          element, which is why the class is repeated here.
-        */}
-        <div className="mudavym" data-ground="paper">
-          <Suspense
-            fallback={
-              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
-                Opening the vendor’s record…
-              </p>
-            }
+      {/* the twin — fetched on open, never on the grid; owners and managers */}
+      {readsTwin && (
+        <div className="px-4 pb-6" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+          <h3
+            style={{
+              fontFamily: MONO,
+              fontSize: 9.5,
+              fontWeight: 600,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-4, #665D50)',
+              margin: '14px 0 6px',
+            }}
           >
-            <ProviderIntelligencePanel providerId={provider.id} providerName={provider.name} />
-          </Suspense>
+            What the platform has learned
+          </h3>
+          {/*
+            `data-ground="paper"` because the panel below is a LEGACY component —
+            hard-coded light Tailwind cards that read none of the Mudavym tokens.
+            Since 2026-09-12 the bare `.mudavym` selector paints Warm Charcoal in
+            every app theme (ADR 0138), so without this the panel sits as a white
+            card on charcoal, and `color-scheme: dark` reaches its native controls.
+            The escape is the decided one (ADR 0104 D9) and wins on specificity —
+            (0,2,0) over the base `.mudavym`'s (0,1,0) — but only on the SAME
+            element, which is why the class is repeated here.
+          */}
+          <div className="mudavym" data-ground="paper">
+            <Suspense
+              fallback={
+                <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
+                  Opening the vendor’s record…
+                </p>
+              }
+            >
+              <ProviderIntelligencePanel providerId={provider.id} providerName={provider.name} />
+            </Suspense>
+          </div>
         </div>
-      </div>
+      )}
     </Sheet>
   );
 }
