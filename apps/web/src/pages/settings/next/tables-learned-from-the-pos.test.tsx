@@ -1,7 +1,9 @@
 /**
  * ADR 0303 — tables learned from the till (analytics walk AW25 / AW30;
- * founder ruling 2026-10-04 "Learn from the POS": every POS table ref becomes
- * a table the owner can rename or hide; no drawing).
+ * founder ruling 2026-10-04 "Learn from the POS", narrowed 2026-10-05 to
+ * "Only words with a number": a POS table word with a digit in it becomes a
+ * table the owner can rename or hide, a word with none makes no table; no
+ * drawing).
  *
  * Two surfaces. The room register on /reports no longer tells the owner to
  * draw a room no screen can draw, and says how many checks it cannot place.
@@ -32,11 +34,11 @@ const room = (extra: Record<string, unknown>) =>
   );
 
 describe('the room register (ADR 0303)', () => {
-  it('never asks for a drawing; with no table named it says so and where to rename', () => {
+  it('never asks for a drawing; with no table it says a table is learned from a word with a number', () => {
     const say = room({ checksWithoutTable: 0, checksAtHiddenTables: 0 }).say as string;
     expect(say).not.toMatch(/drawn/);
     expect(say).toBe(
-      'The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.',
+      'This house has no table yet, so no check can be attributed to a seat. A table is learned when a check arrives naming one with a number in it, such as T12, 12 or Patio 3; rename or hide it under Settings → Point of sale.',
     );
   });
 
@@ -45,13 +47,14 @@ describe('the room register (ADR 0303)', () => {
     expect(say).toBe(
       'Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.',
     );
-    expect(say).not.toMatch(/has not named/);
+    expect(say).not.toMatch(/has no table yet/);
   });
 
-  it('counts the checks the till sent without a table', () => {
+  it('counts the checks with no table, and says a word with no number makes none', () => {
     expect(room({ checksWithoutTable: 12 }).say).toBe(
-      '12 checks in this window came from the till without a table, so none can be attributed to a seat. They are in takings.',
+      '12 checks in this window have no table, so none can be attributed to a seat. They are in takings. A till word with no number in it, such as Booth or a name, makes no table.',
     );
+    expect(room({ checksWithoutTable: 1 }).say).toMatch(/^1 check in this window has no table, so none/);
   });
 
   it('notes both counts beside the tables it shows, and its basis is the shown tables', () => {
@@ -65,7 +68,7 @@ describe('the room register (ADR 0303)', () => {
       ],
     });
     expect(v.notes).toEqual([
-      '3 checks came from the till without a table: counted in takings, not in the room.',
+      '3 checks have no table: counted in takings, not in the room.',
       '5 checks were at 2 hidden tables: counted in takings, not shown here.',
     ]);
     expect((v.basis ?? []).join(' ')).toContain('the till attributed to a shown table');
@@ -130,13 +133,15 @@ describe('Settings → Point of sale: tables the till has named (ADR 0303)', () 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('gateway timeout');
     expect(alert.textContent).toContain('not the same as a till that has named none');
-    expect(screen.queryByText(/has not named a table yet/)).toBeNull();
+    expect(screen.queryByText(/has no table yet/)).toBeNull();
   });
 
-  it('an empty read says the till has not named a table yet', async () => {
+  it('an empty read says the house has no table yet, and that only a word with a number makes one', async () => {
     http.get.mockResolvedValue({ data: [] });
     draw();
-    expect(await screen.findByText(/The till has not named a table yet/)).toBeTruthy();
+    expect(await screen.findByText(/This house has no table yet\. One appears here the first time a check arrives naming a table with a number in\s+it, such as T12, 12 or Patio 3\./)).toBeTruthy();
+    expect(screen.getByText(/A table name the till sends on a check becomes a table here when it has a number in it \(T12, 12, Patio 3\)\. A\s+word with no number, such as Booth or a name, stays on its check and makes no table\./)).toBeTruthy();
+    expect(screen.queryByText(/Each table name the till sends/)).toBeNull();
     expect(http.get).toHaveBeenCalledWith('/analytics/tables/r1');
   });
 
@@ -193,5 +198,17 @@ describe('Settings → Point of sale: tables the till has named (ADR 0303)', () 
     expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Hide' })).toBeNull();
     expect(screen.getByText(/Only the owner or a manager can rename or hide a table/)).toBeTruthy();
+  });
+
+  it('a renamed table lists every till spelling it keeps, its pos ref first, each once', async () => {
+    const PATIO = {
+      id: 'tab-p', label: 'Patio', pos_refs: { csv_import: '5' },
+      till_words: { csv_import: ['5', 'Table 5', 'table 5 '], square: ['Patio five'] },
+      learned_at: '2026-10-04T00:31:00.000Z', hidden_at: null,
+    };
+    http.get.mockResolvedValue({ data: [PATIO] });
+    draw();
+    expect(await screen.findByText('Patio')).toBeTruthy();
+    expect(screen.getByText('csv_import: 5, Table 5 · square: Patio five')).toBeTruthy();
   });
 });

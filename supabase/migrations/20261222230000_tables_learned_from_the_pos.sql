@@ -19,7 +19,13 @@
 -- THE RULING. The founder, 2026-10-04 ~00:30Z, verbatim pick "Learn from the
 -- POS (Recommended)": every POS table ref becomes a table the owner can rename
 -- or hide; past checks re-link from the stored ref when a table is added or
--- renamed; no drawing.
+-- renamed; no drawing. Narrowed 2026-10-05 ~14:15Z, after the production dry
+-- run found a 'booth' table and six people's names among the words, verbatim
+-- pick "Only words with a number (Recommended)": a word becomes a NEW table
+-- only when it has an ASCII digit 0-9 in it ('T12', '12', 'Patio 3'). A word
+-- with none ('booth', 'Ayla') stays on the check as its table_ref, links to a
+-- table that already answers it, and never makes one; such a table is added
+-- by hand once. The rule holds for the backfill and for new checks alike.
 --
 -- THE METHOD (the lane's proposal under that ruling, in ADR 0303):
 --  1. pos_checks.table_ref keeps the till's own word for where the check was,
@@ -38,19 +44,42 @@
 --     insert, and on an update that writes raw (an upsert re-send). A word
 --     raw carries wins; when raw carries none, a writer's own table_ref
 --     stands, and a word that came from the old raw goes with it. A changed
---     word drops a link the statement did not set itself. It then
---     resolves the word to a table with the same precedence as resolveTable
---     (pos ref of that source, then the label, then "table <label>"),
---     case- and space-insensitive, over active
---     tables, hidden ones included. When nothing answers and no RETIRED
---     (is_active = false) table answers either, it LEARNS the table. Learning
+--     word drops a link the statement did not set itself. An update that
+--     leaves the word as it was keeps the table the check had, whatever the
+--     statement sets: a past check never moves while its word stands
+--     (founder, 2026-10-05, "Keep every spelling"). Otherwise the trigger
+--     resolves the word to a table: the pos ref of that source, then the
+--     label, then "table <label>" (resolveTable's three rules), then a word
+--     the table remembers (step 4), case- and space-insensitive, over active
+--     tables, hidden ones included. When nothing answers, the word has an
+--     ASCII digit in it, it is at most 60 characters long (the most PATCH
+--     lets a person name a table), and no RETIRED (is_active = false) table
+--     answers either, it LEARNS the table. Any other word is kept as
+--     table_ref and left without a table until one answers it. Learning
 --     runs inside its own exception block: a failure is a WARNING and the
 --     check is stored without a table. A sale is never refused for this.
---     A re-sent check whose word has not changed keeps the table it had when
---     nothing answers now: a re-send never drops a link.
---  4. On a rename, the till words already linked to the row are merged into
---     its pos_refs (existing keys win), so "Window 7" keeps catching T7 and
---     the till's next T7 never learns a duplicate.
+--  4. A renamed table keeps every spelling (founder, 2026-10-05 ~23:22Z,
+--     verbatim pick "Keep every spelling (Recommended)"). When a table's
+--     label or pos_refs changes, every distinct
+--     word on a check linked to it, per source, and its old pos_refs words
+--     join restaurant_tables.till_words ({source: [word, ...]}), and its old
+--     label joins former_labels. The resolver reads both, last: a till word
+--     of that source, or a former label by either label rule. So a renamed
+--     table answers every word it answered before the rename (another
+--     table's current label can outrank a remembered word, but the word is
+--     still answered), and no rename or re-map leaves a word for the learner
+--     to make a twin of.
+--     [Corrected 2026-10-05, after the afda5d868 audit. Step 3's "an update
+--     that leaves the word as it was keeps the table" replaces "A re-sent
+--     check whose word has not changed keeps the table it had when nothing
+--     answers now: a re-send never drops a link", which held only when the
+--     statement left table_id NULL; a re-send naming another table moved the
+--     check. Step 4 replaces "On a rename, the till words already linked to
+--     the row are merged into its pos_refs (existing keys win), so ... the
+--     till's next T7 never learns a duplicate", which was broader than the
+--     code: it kept one word per source and the row's own word won, so a
+--     renamed table could learn a twin and a re-send move a past check onto
+--     it.]
 --  5. Re-link: adding a table by hand, or changing a table's label, pos_refs
 --     or is_active, fills table_id on the house's unlinked checks whose word
 --     now resolves to it. A LEARNED insert re-links only at commit (a
@@ -62,15 +91,20 @@
 --     never moves an existing link.
 --  6. Backfill: every stored check whose raw carries a table word gets
 --     table_ref, which runs (3) row by row, so history learns and links in
---     this one statement.
+--     this one statement, by the same digit rule as a new check.
 --
 -- PRODUCTION EFFECT ON MERGE (migrations auto-apply). Step 6 writes
--- restaurant_tables rows, and pos_checks.table_ref and table_id, for every
--- house whose stored raw carries a table word. For Tuzlu Rüzgar that is
--- expected to be about 26 tables (T1-T24, BOOTH, EVENT, per the sim
--- generator) over about 3,593 checks. Neither count was measured on
--- production: this lane reads no production data. ADR 0303 carries the
--- read-only dry-run query for the coordinator.
+-- pos_checks.table_ref on every check whose stored raw carries a table word,
+-- and restaurant_tables rows and pos_checks.table_id for the words with a
+-- digit. The coordinator's read-only production dry run under the digit rule
+-- (2026-10-05 ~16:10Z) counted 3,656 checks with a word: 21 already linked
+-- and kept, 3,621 to link (none to an existing table), 14 that keep their
+-- word with no table (Tuzlu Rüzgar's 2 "booth" checks and a Sim Meyhouse's
+-- 12 first-name checks), 0 blocked by a retired table, and 40 tables to
+-- learn (Tuzlu 24, the Sim Meyhouse 16). This lane reads no production data.
+-- ADR 0303 names the read-only dry-run query and records its counts.
+-- till_words and former_labels arrive empty on every existing row (a constant
+-- default, no rewrite); the backfill renames nothing, so it writes neither.
 --
 -- SECURITY. Every function is SECURITY INVOKER with no search_path setting,
 -- like a_short_pour_opens_the_next_bottle. The only pos_checks writer today is
@@ -105,6 +139,12 @@ COMMENT ON COLUMN public.restaurant_tables.learned_at IS
   'When this table was learned from a till word on a check (ADR 0303). NULL means a person added it.';
 COMMENT ON COLUMN public.restaurant_tables.hidden_at IS
   'When an owner or manager hid this table (ADR 0303). A hidden table still catches its checks, and they stay in takings. Each per-table reader that honours it leaves the table out; ADR 0303 names which readers do. NULL means shown.';
+ALTER TABLE public.restaurant_tables ADD COLUMN IF NOT EXISTS till_words jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.restaurant_tables ADD COLUMN IF NOT EXISTS former_labels text[] NOT NULL DEFAULT '{}'::text[];
+COMMENT ON COLUMN public.restaurant_tables.till_words IS
+  'Every till word, per source ({source: [word, ...]}), that a check linked to this table carried when its label or pos_refs last changed, plus its earlier pos_refs words (ADR 0303). Written by restaurant_tables_keep_till_names only; pos_table_for_ref reads it after pos_refs and the label.';
+COMMENT ON COLUMN public.restaurant_tables.former_labels IS
+  'Every label this table had before a rename (ADR 0303). pos_table_for_ref reads each one, last, by the label and "table <label>" rules, so a renamed table answers what it answered before.';
 
 CREATE INDEX IF NOT EXISTS idx_pos_checks_unlinked_ref
   ON public.pos_checks (restaurant_id)
@@ -147,10 +187,16 @@ COMMENT ON FUNCTION public.pos_table_ref_from_raw(text, jsonb) IS
   'The till''s table word inside a stored pos_checks.raw, read as the adapters read it (ADR 0303). Clover gives NULL: its order type is a channel (AW24).';
 
 -- ---------------------------------------------------------------------------
--- 3b. Which table answers to a till word. Same precedence as resolveTable:
---     the source's pos ref, then the label, then "table <label>"; ties go to
---     the older row. Active tables only (hidden ones included), unless asked
---     for retired ones too.
+-- 3b. Which table answers to a till word: the source's pos ref, then the
+--     label, then "table <label>" (resolveTable's three rules, in this
+--     order), then a word the table remembers (step 4): a till word of that
+--     source, or a former label by either label rule. Ties go to the older
+--     row. A remembered word ranks last because pos-hub's in-memory
+--     resolveTable reads pos_refs and labels only and its answer stands when
+--     it finds one: with remembered words last, it answers only by rules
+--     that outrank them here too, and when it finds nothing it leaves
+--     table_id NULL and this function decides. Active tables only (hidden
+--     ones included), unless asked for retired ones too.
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.pos_table_for_ref(
@@ -164,23 +210,37 @@ LANGUAGE sql
 STABLE
 PARALLEL SAFE
 AS $$
-  SELECT t.id
-    FROM public.restaurant_tables t
-    CROSS JOIN (SELECT lower(btrim(p_ref)) AS ref) r
-   WHERE r.ref <> ''
-     AND t.restaurant_id = p_restaurant_id
-     AND (t.is_active OR p_include_retired)
-     AND (lower(btrim(t.pos_refs ->> p_source)) = r.ref
-          OR lower(btrim(t.label)) = r.ref
-          OR 'table ' || lower(btrim(t.label)) = r.ref)
-   ORDER BY CASE WHEN lower(btrim(t.pos_refs ->> p_source)) = r.ref THEN 0
-                 WHEN lower(btrim(t.label)) = r.ref THEN 1
-                 ELSE 2 END,
-            t.created_at, t.id
+  SELECT m.id
+    FROM (
+      SELECT t.id, t.created_at,
+             CASE
+               WHEN lower(btrim(t.pos_refs ->> p_source)) = r.ref THEN 0
+               WHEN lower(btrim(t.label)) = r.ref THEN 1
+               WHEN 'table ' || lower(btrim(t.label)) = r.ref THEN 2
+               -- A table never renamed or re-mapped remembers nothing: skip the scans.
+               WHEN t.till_words = '{}'::jsonb AND cardinality(t.former_labels) = 0 THEN NULL
+               WHEN EXISTS (SELECT 1
+                              FROM jsonb_array_elements_text(
+                                     CASE WHEN jsonb_typeof(t.till_words -> p_source) = 'array'
+                                          THEN t.till_words -> p_source ELSE '[]'::jsonb END) k(word)
+                             WHERE lower(btrim(k.word)) = r.ref)
+                 OR EXISTS (SELECT 1
+                              FROM unnest(t.former_labels) f(label)
+                             WHERE lower(btrim(f.label)) = r.ref
+                                OR 'table ' || lower(btrim(f.label)) = r.ref) THEN 3
+             END AS rank
+        FROM public.restaurant_tables t
+        CROSS JOIN (SELECT lower(btrim(p_ref)) AS ref) r
+       WHERE r.ref <> ''
+         AND t.restaurant_id = p_restaurant_id
+         AND (t.is_active OR p_include_retired)
+    ) m
+   WHERE m.rank IS NOT NULL
+   ORDER BY m.rank, m.created_at, m.id
    LIMIT 1
 $$;
 COMMENT ON FUNCTION public.pos_table_for_ref(uuid, text, text, boolean) IS
-  'The table a till word resolves to, with resolveTable''s precedence (ADR 0303). NULL for a blank word or no match.';
+  'The table a till word resolves to (ADR 0303): the source''s pos ref, then the label, then "table <label>", then a remembered till word of that source or former label. NULL for a blank word or no match.';
 
 -- ---------------------------------------------------------------------------
 -- 3c. Find the check's table, or learn it.
@@ -216,6 +276,17 @@ BEGIN
     END IF;
   END IF;
 
+  -- A past check never moves (founder, 2026-10-05, "Keep every spelling"):
+  -- while an update leaves the check's word as it was, the check keeps the
+  -- table it had, whatever the statement sets. An upsert re-send names
+  -- table_id from pos-hub's in-memory resolve, which may now find another
+  -- table, or none.
+  IF TG_OP = 'UPDATE' AND OLD.table_id IS NOT NULL
+     AND lower(btrim(coalesce(NEW.table_ref, ''))) = lower(btrim(coalesce(OLD.table_ref, ''))) THEN
+    NEW.table_id := OLD.table_id;
+    RETURN NEW;
+  END IF;
+
   v_ref := NULLIF(btrim(NEW.table_ref), '');
   IF NEW.table_id IS NOT NULL OR v_ref IS NULL THEN
     RETURN NEW;
@@ -223,14 +294,14 @@ BEGIN
 
   v_id := public.pos_table_for_ref(NEW.restaurant_id, NEW.source, v_ref);
 
-  -- A re-sent check keeps its table when nothing answers to its unchanged word.
-  IF v_id IS NULL AND TG_OP = 'UPDATE' AND OLD.table_id IS NOT NULL
-     AND lower(btrim(coalesce(OLD.table_ref, ''))) = lower(v_ref) THEN
-    v_id := OLD.table_id;
-  END IF;
-
-  -- A retired table that answers is the owner's earlier answer: no duplicate.
+  -- Only a word with an ASCII digit in it makes a table (founder, 2026-10-05:
+  -- "Only words with a number"), and only one of at most 60 characters, the
+  -- most PATCH lets a person name a table. Any other word keeps its
+  -- table_ref and waits for a table that answers it. A retired table that
+  -- answers is the owner's earlier answer: no duplicate.
   IF v_id IS NULL
+     AND v_ref ~ '[0123456789]'
+     AND char_length(v_ref) <= 60
      AND public.pos_table_for_ref(NEW.restaurant_id, NEW.source, v_ref, true) IS NULL THEN
     BEGIN
       INSERT INTO public.restaurant_tables
@@ -254,7 +325,7 @@ BEGIN
 END
 $$;
 COMMENT ON FUNCTION public.pos_checks_find_or_learn_table() IS
-  'BEFORE trigger on pos_checks (ADR 0303): reads table_ref out of raw, then resolves it to a table, or learns one. Never refuses a check.';
+  'BEFORE trigger on pos_checks (ADR 0303): reads table_ref out of raw; an update that leaves the word as it was keeps the check''s table; otherwise resolves the word to a table, or learns one when the word has an ASCII digit in it and is at most 60 characters. Never refuses a check.';
 
 DROP TRIGGER IF EXISTS pos_checks_find_or_learn_table ON public.pos_checks;
 -- No WHEN clause: the word is read from raw inside the function, after a
@@ -267,7 +338,11 @@ CREATE TRIGGER pos_checks_find_or_learn_table
   EXECUTE FUNCTION public.pos_checks_find_or_learn_table();
 
 -- ---------------------------------------------------------------------------
--- 4. A renamed table keeps the till words it already caught.
+-- 4. A renamed or re-mapped table keeps every spelling: every word on a
+--    check linked to it, per source, and its earlier pos_refs words join
+--    till_words; its old label joins former_labels. Nothing is dropped: the
+--    row's own till_words and former_labels, old and new, are kept, and a
+--    word already kept in any case is not added twice.
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.restaurant_tables_keep_till_names()
@@ -275,31 +350,63 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  v_words jsonb;
+  v_words jsonb := CASE WHEN jsonb_typeof(NEW.till_words) = 'object' THEN NEW.till_words ELSE '{}'::jsonb END;
+  v_list jsonb;
+  v_label text;
+  w record;
 BEGIN
-  IF jsonb_typeof(coalesce(NEW.pos_refs, '{}'::jsonb)) <> 'object' THEN
-    RETURN NEW;
-  END IF;
-  SELECT jsonb_object_agg(w.source, w.word) INTO v_words
-    FROM (SELECT DISTINCT ON (c.source) c.source, btrim(c.table_ref) AS word
-            FROM public.pos_checks c
-           WHERE c.table_id = OLD.id
-             AND NULLIF(btrim(c.table_ref), '') IS NOT NULL
-           ORDER BY c.source, c.opened_at DESC, c.id) w;
-  IF v_words IS NOT NULL THEN
-    NEW.pos_refs := v_words || coalesce(NEW.pos_refs, '{}'::jsonb);
-  END IF;
+  FOR w IN
+    SELECT k.key AS source, btrim(e.word) AS word, 0 AS pass, NULL::timestamptz AS seen
+      FROM jsonb_each(CASE WHEN jsonb_typeof(OLD.till_words) = 'object' THEN OLD.till_words ELSE '{}'::jsonb END) k
+     CROSS JOIN LATERAL jsonb_array_elements_text(
+             CASE WHEN jsonb_typeof(k.value) = 'array' THEN k.value ELSE '[]'::jsonb END) e(word)
+    UNION ALL
+    SELECT p.key, btrim(p.value #>> '{}'), 1, NULL::timestamptz
+      FROM jsonb_each(CASE WHEN jsonb_typeof(OLD.pos_refs) = 'object' THEN OLD.pos_refs ELSE '{}'::jsonb END) p
+     WHERE jsonb_typeof(p.value) IN ('string', 'number')
+    UNION ALL
+    SELECT c.source, btrim(c.table_ref), 2, min(c.opened_at)
+      FROM public.pos_checks c
+     WHERE c.table_id = OLD.id
+       AND NULLIF(btrim(c.table_ref), '') IS NOT NULL
+     GROUP BY c.source, btrim(c.table_ref)
+     ORDER BY 3, 4, 1, 2
+  LOOP
+    CONTINUE WHEN w.word IS NULL OR w.word = '';
+    v_list := CASE WHEN jsonb_typeof(v_words -> w.source) = 'array' THEN v_words -> w.source ELSE '[]'::jsonb END;
+    IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(v_list) k(word)
+                    WHERE lower(btrim(k.word)) = lower(w.word)) THEN
+      v_words := jsonb_set(v_words, ARRAY[w.source], v_list || to_jsonb(w.word));
+    END IF;
+  END LOOP;
+  NEW.till_words := v_words;
+
+  -- The old label, unless the rename only changed its case or spacing.
+  NEW.former_labels := coalesce(NEW.former_labels, '{}'::text[]);
+  FOREACH v_label IN ARRAY coalesce(OLD.former_labels, '{}'::text[])
+                           || CASE WHEN lower(btrim(OLD.label)) IS DISTINCT FROM lower(btrim(NEW.label))
+                                   THEN ARRAY[OLD.label] ELSE '{}'::text[] END LOOP
+    v_label := NULLIF(btrim(v_label), '');
+    IF v_label IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM unnest(NEW.former_labels) f(label)
+                        WHERE lower(btrim(f.label)) = lower(v_label)) THEN
+      NEW.former_labels := NEW.former_labels || v_label;
+    END IF;
+  END LOOP;
   RETURN NEW;
 END
 $$;
+-- [Corrected 2026-10-05, after the afda5d868 audit: this comment replaces
+-- "merges the till words already linked to the row into pos_refs; existing
+-- keys win", broader than that code, which merged one word per source.]
 COMMENT ON FUNCTION public.restaurant_tables_keep_till_names() IS
-  'BEFORE UPDATE OF label on restaurant_tables (ADR 0303): merges the till words already linked to the row into pos_refs; existing keys win.';
+  'BEFORE UPDATE OF label, pos_refs on restaurant_tables (ADR 0303): adds to till_words every distinct word, per source, on a check linked to the row, and its earlier pos_refs words; adds its old label to former_labels unless the rename changed only its case or spacing. It drops no word or label the row kept.';
 
 DROP TRIGGER IF EXISTS restaurant_tables_keep_till_names ON public.restaurant_tables;
 CREATE TRIGGER restaurant_tables_keep_till_names
-  BEFORE UPDATE OF label ON public.restaurant_tables
+  BEFORE UPDATE OF label, pos_refs ON public.restaurant_tables
   FOR EACH ROW
-  WHEN (NEW.label IS DISTINCT FROM OLD.label)
+  WHEN (NEW.label IS DISTINCT FROM OLD.label OR NEW.pos_refs IS DISTINCT FROM OLD.pos_refs)
   EXECUTE FUNCTION public.restaurant_tables_keep_till_names();
 
 -- ---------------------------------------------------------------------------

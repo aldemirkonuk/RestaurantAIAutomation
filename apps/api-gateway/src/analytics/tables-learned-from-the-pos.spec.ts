@@ -23,7 +23,8 @@ import { TableAnalyticsService } from "./table-analytics.service";
  * could rename or hide a table.
  *
  * After: the database reads the word out of `raw` into pos_checks.table_ref
- * and learns the table from it (supabase/tests/20261220110000_tables_learned_
+ * and learns the table from a word with a digit in it, and from no other
+ * (founder 2026-10-05, "Only words with a number"; supabase/tests/20261222230000_tables_learned_
  * from_the_pos_test.sql), so pos-hub writes no new column; checks without a
  * table and checks at hidden tables are counted; hidden tables leave the room,
  * its export and the hot list (the insight generator's part is ADR 0303's
@@ -315,7 +316,7 @@ describe("a room with every table hidden and no check says so (ADR 0303)", () =>
     expect(d.say).toBe(
       "Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.",
     );
-    expect(d.say).not.toMatch(/has not named/);
+    expect(d.say).not.toMatch(/has no table yet/);
   });
 
   it("counts no hidden table when none is hidden", async () => {
@@ -532,11 +533,11 @@ describe("the room export (ADR 0303)", () => {
       { days: null },
     );
 
-  it("never asks for a drawing, and says the till has not named a table", () => {
+  it("never asks for a drawing; with no table, says a table is learned from a word with a number", () => {
     const d = seats({ checksWithoutTable: 0, checksAtHiddenTables: 0 });
     expect(d.say).not.toMatch(/drawn/);
     expect(d.say).toBe(
-      "The till has not named a table yet, so no check can be attributed to a seat. Tables appear here as checks arrive with one on them; rename or hide them under Settings → Point of sale.",
+      "This house has no table yet, so no check can be attributed to a seat. A table is learned when a check arrives naming one with a number in it, such as T12, 12 or Patio 3; rename or hide it under Settings → Point of sale.",
     );
   });
 
@@ -551,9 +552,12 @@ describe("the room export (ADR 0303)", () => {
     );
   });
 
-  it("counts the checks that came without a table", () => {
+  it("counts the checks with no table, and says a word with no number makes none", () => {
     expect(seats({ checksWithoutTable: 12 }).say).toBe(
-      "12 checks in this window came from the till without a table, so none can be attributed to a seat. They are in takings.",
+      "12 checks in this window have no table, so none can be attributed to a seat. They are in takings. A till word with no number in it, such as Booth or a name, makes no table.",
+    );
+    expect(seats({ checksWithoutTable: 1 }).say).toMatch(
+      /^1 check in this window has no table, so none/,
     );
   });
 
@@ -578,7 +582,7 @@ describe("the room export (ADR 0303)", () => {
       ],
     });
     expect(d.notes).toEqual([
-      "3 checks came from the till without a table: counted in takings, not in the room.",
+      "3 checks have no table: counted in takings, not in the room.",
       "5 checks were at 2 hidden tables: counted in takings, not shown here.",
     ]);
     expect(d.basis.join(" ")).toContain("attributed to a shown table");

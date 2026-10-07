@@ -534,7 +534,11 @@ export class TableAnalyticsService {
       ),
       correlations,
       drivers,
-      /** Checks in the window the till sent without a table. In takings, in no table's figure. */
+      /**
+       * Checks in the window with no table: the till named none, or a word no
+       * table answers (a word with no digit makes no table, ADR 0303). In
+       * takings, in no table's figure.
+       */
       checksWithoutTable,
       /** Checks in the window at a hidden (or retired) table. In takings, in no table's figure. */
       checksAtHiddenTables,
@@ -543,7 +547,7 @@ export class TableAnalyticsService {
       /**
        * The house's tables that are hidden now, whatever the window held. With
        * no shown table and no check, it tells "every table is hidden" from
-       * "the till has not named a table yet".
+       * "this house has no table yet".
        */
       hiddenTablesInHouse: tables.length - shown.length,
       /** Shown tables learned from the till (ADR 0303), as against added by hand. */
