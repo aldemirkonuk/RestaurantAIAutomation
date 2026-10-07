@@ -164,7 +164,11 @@ export function sortValueFor(r: RegisterRowVM, id: string): string | number | nu
   const h = r.house;
   const c = r.catalogue;
   switch (id) {
-    case 'books': return h ? h.books.length : null;
+    // Most books first. A price checked at the door counts as one book here,
+    // the founder's pick of 2026-10-07, "Count it as a book (Recommended)"
+    // (ADR 0301 §2). It moves only the row's place: the books cell keeps its
+    // five marks, and no figure reads this.
+    case 'books': return h ? h.books.length + ((h.bought?.doorChecked ?? 0) > 0 ? 1 : 0) : null;
     case 'listed': return h?.onMenu?.bottlePrice ?? h?.onMenu?.glassPrice ?? null;
     case 'first': return h?.bought?.first ? Date.parse(h.bought.first) : null;
     case 'paid': return h?.bought?.paidTotal ?? null;

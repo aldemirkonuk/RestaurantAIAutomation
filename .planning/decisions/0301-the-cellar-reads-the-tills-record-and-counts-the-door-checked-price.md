@@ -1,6 +1,6 @@
 # 0301 — The cellar reads the till's own record, and counts the door-checked price
 
-- **Status:** Locked for the AW14 ruling, and Proposed for the method. The ruling is the founder's: AskUserQuestion, 2026-10-04 ~00:30Z, verbatim pick *"Door-checked, labelled (Recommended)"*: the cellar counts the price checked at the door, marked 'door-checked' until a filed invoice takes over. §1 (AW10) is a defect fix, not a fork: ADR 0160 item 7 (Q9) already ruled that live sales reach the cellar. The methods in §1 and §2 are fix lane `cellarledger`'s proposal, built for his review.
+- **Status:** Locked for the AW14 ruling, and Proposed for the method. The ruling is the founder's: AskUserQuestion, 2026-10-04 ~00:30Z, verbatim pick *"Door-checked, labelled (Recommended)"*: the cellar counts the price checked at the door, marked 'door-checked' until a filed invoice takes over. §1 (AW10) is a defect fix, not a fork: ADR 0160 item 7 (Q9) already ruled that live sales reach the cellar. The methods in §1 and §2 are fix lane `cellarledger`'s proposal, built for his review. The two §2 follow-up forks are Locked too: the founder's picks of 2026-10-07 (AskUserQuestion, asked 2026-10-06 19:57:41Z, answered 2026-10-07 04:15:17Z), verbatim *"Count it as a book (Recommended)"* for the row order and *"Keep it out (Recommended)"* for a door check that saw no bill (*Forks answered*, under Deferred).
 - **Date:** 2026-10-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** cellar, house_beverage_ledger, house_till_lines, house_till_names, pos_checks.items, pos_unresolved_lines, Sold, Taken, pour, till book, row record, readTillLines, rawTillName, POS_CHECK_SCAN_LIMIT, keyset paging, First bought, Paid, door-checked, match_verified_at, receipt_verified, price_history, AW10, AW14, A-015, A-016, A-045, Q9, Tuzlu Rüzgar
@@ -120,6 +120,12 @@ His pick, verbatim: *"Door-checked, labelled (Recommended)"*. 'First bought' and
   - On the record's stand, a block with invoice lines is headed 'invoiced' and marks each figure a door check filled.
   - A block only the door fills is headed 'door-checked'.
   - Either way, the block names both tables it was read from.
+- **The row order counts a door check as one book** (his pick of 2026-10-07, *"Count it as a book (Recommended)"*). A row has the door book when the ledger holds at least one door row for it (`door_checked_lines > 0`), that is, an order that passes every `house_door_checked` condition above. It counts once, like each of the five books, and it counts beside the invoice book when both are there, because it is a different record of a purchase.
+  - The register's default order, most books first, is `sortValueFor('books')` (`registerCells.tsx`, used by every non-wine register and the whole-cellar list): `books.length`, plus 1 for the door book.
+  - The ledger's own `ORDER BY`, which counts lines rather than books (`pos_lines + invoice_lines + order_lines + quote_count + menu_lines`), adds `door_checked_lines` beside `invoice_lines`. That order also decides which rows `p_limit` keeps (600 from the gateway), so in a house with more rows than that, a door-checked row can now be kept where a row with fewer lines is not. SQL test T14 shows it with a limit of 4.
+  - Nothing else moves. `books` does not gain a sixth word, the 'Our record' cell keeps its five marks (the door has none of its own), and no figure reads the order: vitest and SQL test T16 pin this.
+  - **A door check that saw no bill does not count as a book for the order either.** It is not a door row (no checked price), and his pick B keeps it out of bought: *"A price nobody checked is not a purchase price, and the order book already shows the order."* One definition of the door book keeps the row's place and its 'door-checked' marks from disagreeing. The order book still lifts that row once, for the order. SQL test T15 pins this.
+- **A door check that saw no bill stays out of bought** (his pick of 2026-10-07, *"Keep it out (Recommended)"*, as built: no code change). SQL tests T7 and T15 pin it.
 
 Measured on a local build: §1's seed (about 59,000 till lines) plus 400 door-checked orders, 100 of them invoiced. The ledger took 330-434 ms, against 262-296 ms on §1 alone (about 1.27× by the median). `house_door_checked` took 36-48 ms. It reads `price_history` and the receipt events once each per call, keeping the latest row per order, and does not probe once per order. This was not measured on production.
 
@@ -142,12 +148,22 @@ Four departures from the lane plan:
 - The house-day date of a sale (ADR 0296) and the fact time of a door check (ADR 0286, C02).
 - One stale comment that still names the queue as the sales record: `apps/web/src/pages/cellar/next/CatalogueRegister.tsx:18-19` at origin/main `155960b59`. It was left out to keep this PR at 14 files. `registerShapes.ts`, `cellar-format.ts` and `row-record.ts` are corrected here. [CHANGED 2026-10-05, round 2: corrected here too; it is no longer deferred.]
 - Production `price_history` `receipt_verified` rows were never counted, so "at least 50 of 80" is the walk's estimate.
-- The ledger's row order (most books first) does not count a door check as a book, so a door-only row sorts by its order book alone.
+- The ledger's row order (most books first) counts a door check as one book, so a door-only row sorts by its order book and its door check (§2, *The row order counts a door check as one book*). [CHANGED 2026-10-07: this line said the order did not count a door check, and was deferred; the founder's pick A below decided it, and it is built. It is no longer deferred.]
 
-### Forks deferred (the founder's call)
+### Forks answered (the founder's call, 2026-10-07)
 
-- A door check that saw no bill has no checked price, so it does not count as bought. Whether it should count, as bottles with no price, is his to say.
-- Whether a door check should lift a row in the ledger's order the way an invoice does.
+Both were asked with AskUserQuestion on 2026-10-06 at 19:57:41Z and answered on 2026-10-07 at 04:15:17Z. Quoted verbatim.
+
+- **A. Ledger order. Answered.**
+  - Question: *"#628 (cellar ledger): the ledger orders wines 'most books first' — an invoice counts as a book. Should a door check (a delivery checked at the door) also count as one book, so it lifts that wine's row?"*
+  - His answer: *"Count it as a book (Recommended)"*. Its option text: *"A door check is real evidence the wine was bought. Small code change in #628; it only re-orders rows, no figure changes."*
+  - Rejected: *"No, as built"*. Its option text: *"Only invoices count; a door check does not move the row."*
+  - Built as §2 says. The question's framing was checked against the code first: in the register's order an invoice does count as one book (`books.length`); the ledger's own `ORDER BY` counts invoice lines, not books, and it is also what `p_limit` cuts by. Both now count the door check the way they count the invoice.
+- **B. A door check that saw no bill. Answered.**
+  - Question: *"#628 (cellar ledger): a door check that saw no bill has bottles but no price. Should those bottles count as 'bought' in the ledger?"*
+  - His answer: *"Keep it out (Recommended)"*. Its option text: *"As built. A price nobody checked is not a purchase price, and the order book already shows the order. No code change."*
+  - Rejected: *"Count, marked no price"*. Its option text: *"Count the bottles as bought with no price, marked so. Code change in #628."*
+  - As built. Such a check is not a door row, so it lifts no row in the order either (§2).
 
 ## Consequences
 
@@ -159,6 +175,7 @@ Four departures from the lane plan:
   - Two more functions sit behind a tenancy boundary, and both stay service_role only. §2 adds a third, `house_door_checked`, also service_role only.
   - A house that files no paper now sees a First bought and a Paid on rows that were blank, each marked 'door-checked'. When the invoice is filed, the figure can move to the invoice's.
   - The ledger's signature grew by three appended columns, so §2's migration drops and recreates it. Between that migration and the gateway that reads the new columns, the door figures show without their mark.
+  - A door-checked row now sorts above a row it used to tie with, and in a house with more than 600 rows it can take a place in the ledger's first 600 that a row with fewer lines held before. Between the migration and the web build, the server's order counts the door and the register's books sort does not.
 - **Revisit when:**
   - OD-113 gives non-wine products an identity: the till names could then key by product, not by name.
   - Toast writes `pos_checks`: then its orphans stop and its mapped sales count.
@@ -174,3 +191,4 @@ Four departures from the lane plan:
 | 2026-10-05 | fix lane `cellarledger` | Round 2, after a verifier read the sim's own till names: the `is_wine` half of the admit rule is dropped (an unasked display choice that made every mapped name a row); SQL test T15 pins it with serve-size names. *Fork deferred* added: a till name with a serve size reaches no cell, measured on the sim's feed, with five options and a recommendation, not built. §2's "built" narrowed to PR #628 merging. `CatalogueRegister.tsx`'s stale comment corrected |
 | 2026-10-05 | fix lane `cellarledger`, last call | Wording narrowed in place, no code changed: the admit rule's "as on main" (main read the open queue only; nothing in the code sets `resolved`), and the speed claim (slower with an empty queue, as at Tuzlu Rüzgar, on a verifier's local build) |
 | 2026-10-05 | fix lane `cellarledger` | §2 built on `fix/cellar-door-checked-cost`: `house_door_checked`, three appended ledger columns, the gateway's door fields and the web's door-checked marks |
+| 2026-10-07 | fix lane `cellardoor` | Re-headed onto main `42fe1252b` (the base's later fixes `ab0f599a4`, then main). The door migration is renumbered to `20261223060000` and its ledger body re-synced to the till migration as merged: it had carried back the dropped `is_wine` admit rule, which the till test's T15 caught on a local build. The founder's picks of 2026-10-07 recorded verbatim (*Forks answered*): A built (the register's books sort and the ledger's `ORDER BY` count a door check; SQL T14, vitest), B as built (SQL T15 pins it); T16 and a vitest case pin that no figure moves |

@@ -872,6 +872,77 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(book).toHaveTextContent(/receipt_verified/);
   });
 
+  // ADR 0301 §2, the founder's pick of 2026-10-07: "Count it as a book
+  // (Recommended)". A door check lifts a row in the most-books-first order
+  // like any other book, and moves nothing else.
+  function doorRows() {
+    const plain = houseRow({
+      key: 'b-plain',
+      name: 'Anadolu Plain',
+      house: { ...houseRow().house, books: ['order'], bought: null, poured: null },
+    });
+    const door = houseRow({
+      key: 'b-door',
+      name: 'Zeytin Door',
+      house: {
+        ...houseRow().house,
+        books: ['order'],
+        bought: {
+          lines: 0, doorChecked: 1,
+          first: '2026-08-03', firstDoorChecked: true,
+          last: '2026-08-03', lastDoorChecked: true,
+          bottles: 10, paidTotal: 265, lastUnitPrice: 26.5, lastFrom: 'Zqdc Door Vendor',
+        },
+        poured: null,
+      },
+    });
+    const richer = houseRow({ key: 'b-rich', name: 'Rich Three' }); // invoice + pos
+    const fuller = houseRow({
+      key: 'b-full',
+      name: 'Full Three',
+      house: { ...houseRow().house, books: ['invoice', 'order', 'pos'] },
+    });
+    return { plain, door, richer, fuller };
+  }
+  function drawRows(rows: unknown[]) {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({ rows }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    return ['Anadolu Plain', 'Zeytin Door', 'Rich Three', 'Full Three']
+      .map((n) => screen.queryByText(n))
+      .filter((el): el is HTMLElement => el !== null)
+      .sort((a, z) => (a.compareDocumentPosition(z) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+      .map((el) => el.textContent);
+  }
+
+  it('sorts a door-only row above a row with fewer books (a door check is one book)', () => {
+    const { plain, door, richer, fuller } = doorRows();
+    // Fed plain first, and "Zeytin" sorts last by name: only the door book
+    // can lift it. Two books (the order + the door) tie with Rich Three's
+    // two, so the input order keeps Rich Three first; Full Three's three stay on top.
+    expect(drawRows([plain, richer, door, fuller])).toEqual([
+      'Full Three', 'Rich Three', 'Zeytin Door', 'Anadolu Plain',
+    ]);
+  });
+
+  // A pin, not a fix test: it passes with or without the ruling, and fails if
+  // counting the door book ever reaches the books cell or a figure.
+  it('counts the door book in the sort value only, not in the books cell or any figure', () => {
+    const { plain, door } = doorRows();
+    drawRows([plain, door]);
+    const row = screen.getByText('Zeytin Door').closest('tr')!;
+    // The books cell still lights one mark, the order's: the door has no mark.
+    const marks = row.querySelectorAll('.cl-mark[data-on="true"]');
+    expect(marks).toHaveLength(1);
+    expect(marks[0]).toHaveAttribute('aria-label', 'ordered');
+    // The figures are the door row's own, as before the ruling.
+    expect(within(row).getByText('3 Aug 2026')).toBeInTheDocument();
+    expect(within(row).getByText('$265.00')).toBeInTheDocument();
+    expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(2);
+  });
+
   it('carries no door mark on a record the invoices alone fill', () => {
     mock.current = { ...base, registers: readout() };
     mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };

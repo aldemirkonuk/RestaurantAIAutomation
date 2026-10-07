@@ -188,7 +188,7 @@ const BOOKS: CellarColumn = {
   side: 'house',
   source: 'house_beverage_ledger (menu · invoice · order · quote · till)',
   meaning:
-    'One mark per book of this house that names the row. Five marks means we list it, were invoiced for it, ordered it, were quoted it and sold it. No marks means the shared catalogue knows it and we have never touched it.',
+    'One mark per book of this house that names the row. Five marks means we list it, were invoiced for it, ordered it, were quoted it and sold it. No marks means the shared catalogue knows it and we have never touched it. Sorted by this column, a price checked at the door counts as one more book, though it has no mark of its own.',
   fill: null,
   on: true,
   why: '',

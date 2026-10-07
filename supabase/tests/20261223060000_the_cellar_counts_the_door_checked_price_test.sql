@@ -15,7 +15,10 @@
 -- read as jsonb, so a block fails on its assertion (no door column, no door
 -- row) rather than on a missing column, and the blocks that call
 -- house_door_checked fail on the missing function. T12 fails too: it pins the
--- three appended columns behind the 31 that stay where they were.
+-- three appended columns behind the 31 that stay where they were. T14 is the
+-- founder's 2026-10-07 order pick: on a build of this migration from before
+-- that pick (its ORDER BY without door_checked_lines) it FAILS, Fords Gin
+-- sitting below Campari. T15 and T16 are pins: they pass on that build too.
 
 begin;
 
@@ -347,6 +350,80 @@ begin
     from public.house_door_checked('a3014000-0000-4000-8000-000000000002'::uuid);
   assert n = 1 and o = 'a3014000-0000-4000-8000-000000000111',
     format('T13 FAIL the other house reads %s door rows (%s)', n, o);
+end $$;
+
+-- The founder's picks of 2026-10-07 (ADR 0301 §2). A: "Count it as a book
+-- (Recommended)": a door check lifts a row in the ledger's order as an
+-- invoice line does. B: "Keep it out (Recommended)": a door check that saw no
+-- bill is not bought. By here T4 has filed Titos's invoice, so the house's
+-- order weights are: Monkey 47 and Tie 3 (invoice + door + order), Fords Gin
+-- 2 (door + order), Titos 2 (invoice + order), every other row 1.
+create function pg_temp.aw14_pos(p_label text, p_limit integer default 600)
+returns bigint
+language sql as $$
+  select l.ordinality
+    from public.house_beverage_ledger('a3014000-0000-4000-8000-000000000001'::uuid, p_limit)
+         with ordinality l
+   where l.label = p_label
+$$;
+
+-- T14 (ruling A) a door-only row sorts above a row with fewer books: Fords
+-- Gin (its order + its door check) above Campari (its order alone), which a
+-- tie would put first by name. And since p_limit cuts in this order, the
+-- ledger's top 4 now keep Fords Gin, where the 1-weight rows used to win the
+-- fourth place by name.
+do $$
+declare f bigint := pg_temp.aw14_pos('Zqdc Fords Gin');
+        c bigint := pg_temp.aw14_pos('Zqdc Campari');
+        top text[];
+begin
+  assert f is not null and c is not null, format('T14 FAIL a row is missing: Fords Gin %s, Campari %s', f, c);
+  assert f < c, format('T14 FAIL Fords Gin sits at %s, below Campari at %s: the door check did not count as a book', f, c);
+  select array_agg(l.label order by l.ordinality) into top
+    from public.house_beverage_ledger('a3014000-0000-4000-8000-000000000001'::uuid, 4) with ordinality l;
+  assert top = array['Zqdc Monkey 47', 'Zqdc Tie', 'Zqdc Fords Gin', 'Zqdc Titos'],
+    format('T14 FAIL the top 4 are %s', top);
+end $$;
+
+-- T15 (ruling B; a pin, it holds with or without ruling A's change) a door
+-- check that saw no bill counts as nothing bought and lifts nothing. o6
+-- (Hendricks) was checked at the door with no price written: no bought
+-- figure, no door line, only the order book; it ties with Campari (never
+-- checked), so the name decides, and the door-checked Fords Gin stays above.
+do $$
+declare r jsonb := pg_temp.aw14_row('Zqdc Hendricks');
+begin
+  assert (r->>'first_bought') is null and (r->>'last_bought') is null
+     and (r->>'paid_total') is null and (r->>'bottles_bought') is null
+     and (r->>'last_unit_price') is null,
+    format('T15 FAIL a no-bill door check reads as bought: %s', r);
+  assert (r->>'door_checked_lines')::int = 0, format('T15 FAIL door_checked_lines = %s, expected 0', r->>'door_checked_lines');
+  assert (r->'books') = '["order"]'::jsonb, format('T15 FAIL books = %s, expected the order book alone', r->'books');
+  assert pg_temp.aw14_pos('Zqdc Campari') < pg_temp.aw14_pos('Zqdc Hendricks'),
+    'T15 FAIL Hendricks was lifted above Campari by a door check that saw no bill';
+  assert pg_temp.aw14_pos('Zqdc Fords Gin') < pg_temp.aw14_pos('Zqdc Hendricks'),
+    'T15 FAIL the door-checked Fords Gin sits below Hendricks';
+end $$;
+
+-- T16 (a pin) the order moves no figure. Fords Gin's figures are T1-T2's, its
+-- books are the order book alone (the door has no book of its own in
+-- `books`), and the house's rows and Paid total are what the books hold:
+-- 265 (Fords Gin) + 144 (Titos) + 120 (Aperol One Litre) + 492 (Monkey 47)
+-- + 600 (Tie: its invoice 300 and its door check 300) = 1621.
+do $$
+declare r jsonb := pg_temp.aw14_row('Zqdc Fords Gin'); n integer; paid numeric; dl integer;
+begin
+  assert (r->'books') = '["order"]'::jsonb, format('T16 FAIL books = %s, expected the order book alone', r->'books');
+  assert (r->>'paid_total')::numeric = 265 and (r->>'bottles_bought')::numeric = 10
+     and (r->>'first_bought') = '2026-08-03' and (r->>'last_unit_price')::numeric = 26.50
+     and (r->>'invoice_lines')::int = 0 and (r->>'order_lines')::int = 1
+     and (r->>'door_checked_lines')::int = 1,
+    format('T16 FAIL Fords Gin''s figures moved: %s', r);
+  select count(*), sum(l.paid_total), sum(l.door_checked_lines) into n, paid, dl
+    from public.house_beverage_ledger('a3014000-0000-4000-8000-000000000001'::uuid, 600) l;
+  assert n = 12, format('T16 FAIL the house has %s rows, expected 12', n);
+  assert paid = 1621, format('T16 FAIL the house''s Paid adds to %s, expected 1621', paid);
+  assert dl = 3, format('T16 FAIL %s door lines, expected 3 (Fords Gin, Monkey 47, Tie)', dl);
 end $$;
 
 rollback;

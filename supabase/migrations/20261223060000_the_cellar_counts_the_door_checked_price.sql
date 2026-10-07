@@ -56,6 +56,15 @@
 --      last_bought_door_checked (true when that date came from a door row; on
 --      the same day an invoice line wins).
 --
+-- THE ROW ORDER (added 2026-10-07). The ledger's ORDER BY counts
+-- door_checked_lines beside invoice_lines: the founder's pick of 2026-10-07
+-- on whether a door check lifts a row, verbatim: "Count it as a book
+-- (Recommended)". It moves a row's place, and so which rows p_limit keeps; no
+-- column's value changes. A door check that saw no bill is not a door row
+-- (item 1 above), so it neither lifts a row nor counts as bought: his pick of
+-- the same day, verbatim: "Keep it out (Recommended)". (The "header, item 3"
+-- cited in the till lines below is the_cellar_reads_the_tills_own_record's.)
+--
 -- The return shape grows, which CREATE OR REPLACE cannot do, so the ledger is
 -- dropped and created in this one transaction, and its COMMENT and grants are
 -- applied again. The new columns go at the end, so the first 31 keep their
@@ -567,7 +576,11 @@ LEFT JOIN LATERAL (
 ) m ON true
 -- The richest record first: a bottle with an invoice, a quote and a sale behind
 -- it is the one an operator opened this register to find.
-ORDER BY (b.pos_lines + b.invoice_lines + b.order_lines
+-- CHANGED the_cellar_counts_the_door_checked_price (ADR 0301 §2): a door
+-- check counts here as an invoice line does, the founder's pick of
+-- 2026-10-07, "Count it as a book (Recommended)". It moves only a row's
+-- place (and so which rows p_limit keeps), never a figure.
+ORDER BY (b.pos_lines + b.invoice_lines + b.door_checked_lines + b.order_lines
           + b.quote_count + b.menu_lines) DESC,
          b.label ASC
 LIMIT greatest(p_limit, 1);
