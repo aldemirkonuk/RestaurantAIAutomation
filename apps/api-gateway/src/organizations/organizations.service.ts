@@ -7,11 +7,20 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ORG_OWNER } from "./org-role";
 import { DatabaseService } from "../database/database.service";
 import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
+import {
+  SettingsAuditService,
+  type FieldChange,
+} from "../settings-audit/settings-audit.service";
+import {
+  checkHouseStateCountry,
+  resolveHouseCountry,
+} from "./house-state-country";
 
 /**
  * What this person is at this restaurant — the ONE implementation of the
@@ -144,11 +153,49 @@ export interface RestaurantChain {
   updated_at: string | null;
 }
 
+/** The settings-log action a house's state or country change files (ADR 0289). */
+export const HOUSE_STATE_COUNTRY_AUDIT_ACTION = "house_state_country_changed";
+
+/**
+ * What `PATCH /organizations/locations/:id` answers (ADR 0289).
+ *
+ * `stateAndCountry` says what happened to the pair: it was not part of the
+ * request, it was sent and already recorded that way, or it moved. `audited`
+ * and `auditReason` are the settings log's receipt for a move — the same
+ * shape `PUT /settings/time-zone` returns — so a change the log failed to
+ * record is said, never inferred from a short list.
+ */
+export interface LocationUpdateReceipt {
+  stateAndCountry: "not-sent" | "unchanged" | "changed";
+  audited: boolean;
+  auditReason: string | null;
+}
+
 @Injectable()
 export class OrganizationsService {
   private readonly logger = new Logger(OrganizationsService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  /**
+   * `settingsAudit` files a house's state or country change (ADR 0289).
+   *
+   * `@Optional()`, and the reason is a second provider, not a convenience:
+   * `CommunicationsModule` provides this class directly
+   * (`communications/communications.module.ts`, ADR 0149 #19) for
+   * `resolveRestaurantRole` alone, and it cannot import `SettingsAuditModule`
+   * — that module imports `AuthModule`, so the import would close the
+   * load-time ring auth → communications → settings-audit → auth. It is the
+   * same shape as the ring `communications.module.ts` names for
+   * `OrganizationsModule` (auth → communications → organizations → auth), the
+   * reason it provides this class by its service file. `OrganizationsModule`
+   * imports `SettingsAuditModule`, so the
+   * instance behind the route always has it (`check_gateway_boots.sh` builds
+   * the real graph). An instance without it never claims a record: the
+   * receipt says `audited: false` and names why.
+   */
+  constructor(
+    private readonly databaseService: DatabaseService,
+    @Optional() private readonly settingsAudit?: SettingsAuditService,
+  ) {}
 
   private async getUserOrgIds(userId: string): Promise<string[]> {
     const { data: memberships, error } = await this.databaseService.supabase
@@ -324,6 +371,16 @@ export class OrganizationsService {
    * an em dash. Returning it is the whole fix; it is deliberately returned raw
    * (never defaulted to 'free' or 'pilot' in this layer) so an absent value
    * stays absent all the way to the page.
+   *
+   * `country`, `stateProvince` and `callerRole` are added for ADR 0289: the
+   * location editor shows the pair, and lets the caller change it only when
+   * `callerRole` is `owner` for THIS house. The role is a fresh, strict read
+   * of the target house rather than the token's role, which names the house
+   * the session is working in — not necessarily the branch being edited.
+   * `callerRole` is `null` when that read failed: the record is still
+   * returned (the manager-or-owner gate above it is unchanged), and the
+   * editor says the role could not be confirmed instead of guessing.
+   * The server stays the authority: `updateLocation` reads the role again.
    */
   async getLocation(
     userId: string,
@@ -335,6 +392,9 @@ export class OrganizationsService {
     email: string | null;
     phone: string | null;
     subscriptionTier: string | null;
+    country: string | null;
+    stateProvince: string | null;
+    callerRole: string | null;
   }> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
     if (orgIds.length === 0)
@@ -342,7 +402,9 @@ export class OrganizationsService {
 
     const { data: rest } = await this.databaseService.supabase
       .from("restaurants")
-      .select("id, name, city, email, phone, subscription_tier")
+      .select(
+        "id, name, city, email, phone, subscription_tier, country, state_province",
+      )
       .eq("id", restaurantId)
       .in("organization_id", orgIds)
       .maybeSingle();
@@ -358,6 +420,20 @@ export class OrganizationsService {
       "read the restaurant record",
     );
 
+    let callerRole: string | null;
+    try {
+      const role = await this.readRestaurantRole(userId, restaurantId);
+      callerRole = role ? role.trim().toLowerCase() : null;
+    } catch (err) {
+      if (!(err instanceof RestaurantRoleUnreadableError)) throw err;
+      // The person is told (the editor says the role could not be confirmed
+      // and offers no control); the operator is told here.
+      this.logger.warn(
+        `getLocation could not read ${userId}'s role at ${restaurantId}; callerRole is null: ${err.message}`,
+      );
+      callerRole = null;
+    }
+
     return {
       id: rest.id,
       name: rest.name,
@@ -365,9 +441,61 @@ export class OrganizationsService {
       email: rest.email ?? null,
       phone: rest.phone ?? null,
       subscriptionTier: rest.subscription_tier ?? null,
+      country: rest.country ?? null,
+      stateProvince: rest.state_province ?? null,
+      callerRole,
     };
   }
 
+  /**
+   * The owner gate for a house's state and country (ADR 0289 R1): the
+   * caller's role in the TARGET house, read strictly — a failed read is a 503
+   * that says so, never a 403 that blames the person. The house role, the
+   * same reader `authority-grants.service.ts` `assertOwner` uses; not the
+   * organisation role that gates opening a location (ADR 0164). The founder
+   * chose this reading, 2026-10-04: "The house's owner (Recommended)".
+   */
+  private async assertHouseOwnerForPlace(
+    userId: string,
+    restaurantId: string,
+  ): Promise<void> {
+    let role: string | null;
+    try {
+      role = await this.readRestaurantRole(userId, restaurantId);
+    } catch (err) {
+      if (!(err instanceof RestaurantRoleUnreadableError)) throw err;
+      this.logger.error(
+        `updateLocation could not read ${userId}'s role at ${restaurantId}: ${err.message}`,
+      );
+      throw new ServiceUnavailableException(
+        `Your role in this house could not be read (${err.message}), so the state and country were not changed. Nothing was changed; try again.`,
+      );
+    }
+    if ((role ?? "").trim().toLowerCase() !== "owner") {
+      throw new ForbiddenException(
+        "Only an owner of this house can change its state or country, not a manager. Nothing was changed.",
+      );
+    }
+  }
+
+  /**
+   * Edit one location. Name, city, chain and billing contact: managers and
+   * owners, unchanged. State and country (ADR 0289): owners of this house
+   * only, checked against the one country table, written together in the
+   * same UPDATE, and filed in the settings log when either moved.
+   *
+   * The order is the contract. The role is checked before anything is
+   * validated or written, so a manager's PATCH that carries a name AND a state
+   * is refused whole rather than half-applied; the pair is validated before
+   * the write, so a refused state leaves the name unwritten too; and there is
+   * one UPDATE, so the pair cannot land without the rest or the rest without
+   * the pair. The settings log is written after it, never throws, and its
+   * receipt is returned: when the row cannot be written the change stands and
+   * the answer says so (the `PUT /settings/time-zone` contract).
+   *
+   * Currency and time zone never move with the country. They are stated
+   * separately, by their own audited settings (ADR 0207).
+   */
   async updateLocation(
     userId: string,
     restaurantId: string,
@@ -377,29 +505,74 @@ export class OrganizationsService {
       city?: string;
       email?: string;
       phone?: string;
+      country?: string | null;
+      stateProvince?: string | null;
     },
-  ): Promise<void> {
+  ): Promise<LocationUpdateReceipt> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
     if (orgIds.length === 0)
       throw new ForbiddenException("User has no organization");
 
-    const { data: rest } = await this.databaseService.supabase
+    // The row's name and place are read here, with the membership check, so
+    // the log can name what the state and country WERE. Its error is read:
+    // before ADR 0289 a failed read was destructured away and answered as
+    // "not found", a 404 for an outage.
+    const { data: rest, error: restError } = await this.databaseService.supabase
       .from("restaurants")
-      .select("organization_id")
+      .select("organization_id, name, country, state_province")
       .eq("id", restaurantId)
       .in("organization_id", orgIds)
       .maybeSingle();
+    if (restError) {
+      this.logger.error(
+        `updateLocation could not read restaurant ${restaurantId}: ${restError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "This location could not be read, so nothing was changed. Try again.",
+      );
+    }
     if (!rest)
       throw new NotFoundException("Restaurant not found or access denied");
 
+    const placeSent =
+      dto.country !== undefined || dto.stateProvince !== undefined;
     const touchesOps =
       dto.name !== undefined ||
       dto.city !== undefined ||
       dto.email !== undefined ||
       dto.phone !== undefined ||
       dto.chainId !== undefined;
-    if (touchesOps) {
+    if (placeSent) {
+      // An owner of this house is also past the manager-or-owner gate.
+      await this.assertHouseOwnerForPlace(userId, restaurantId);
+    } else if (touchesOps) {
       await this.assertManagerOrOwner(userId, restaurantId);
+    }
+
+    // The pair's own changes, decided before anything is written.
+    const placeFields: Record<string, FieldChange> = {};
+    const placePatch: Record<string, unknown> = {};
+    if (placeSent) {
+      const checked = checkHouseStateCountry(dto.country, dto.stateProvince);
+      if ("refused" in checked) throw new BadRequestException(checked.refused);
+
+      const storedCountry: string | null = rest.country ?? null;
+      const storedState: string | null =
+        typeof rest.state_province === "string" && rest.state_province.trim()
+          ? rest.state_province
+          : null;
+      // The country moved when it names a different country, not when it is
+      // spelled differently: a house recorded as "US" that is sent "United
+      // States" keeps the spelling it has, and no false change is filed.
+      const storedCode = resolveHouseCountry(storedCountry)?.code ?? null;
+      if (storedCode !== checked.country.code) {
+        placePatch.country = checked.country.name;
+        placeFields.country = { from: storedCountry, to: checked.country.name };
+      }
+      if ((storedState ?? null) !== checked.state) {
+        placePatch.state_province = checked.state;
+        placeFields.state_province = { from: storedState, to: checked.state };
+      }
     }
 
     if (dto.chainId !== undefined && dto.chainId !== null) {
@@ -413,14 +586,27 @@ export class OrganizationsService {
         throw new NotFoundException("Chain not found or access denied");
     }
 
-    const patch: Record<string, unknown> = {};
+    const patch: Record<string, unknown> = { ...placePatch };
     if (dto.chainId !== undefined) patch.chain_id = dto.chainId;
     if (dto.name?.trim()) patch.name = dto.name.trim();
     if (dto.city !== undefined) patch.city = dto.city?.trim() || null;
     if (dto.email !== undefined) patch.email = dto.email.trim() || null;
     if (dto.phone !== undefined) patch.phone = dto.phone.trim() || null;
 
-    if (Object.keys(patch).length === 0) return;
+    const placeMoved = Object.keys(placeFields).length > 0;
+    const quiet: LocationUpdateReceipt = placeSent
+      ? {
+          stateAndCountry: "unchanged",
+          audited: false,
+          auditReason: "nothing changed",
+        }
+      : {
+          stateAndCountry: "not-sent",
+          audited: false,
+          auditReason: "the state and country were not part of this change",
+        };
+
+    if (Object.keys(patch).length === 0) return quiet;
 
     const { error } = await this.databaseService.supabase
       .from("restaurants")
@@ -429,6 +615,41 @@ export class OrganizationsService {
       .in("organization_id", orgIds);
     if (error)
       throw new InternalServerErrorException("Failed to update location");
+
+    if (!placeMoved) return quiet;
+
+    if (!this.settingsAudit) {
+      // Reachable only from an instance built without the settings log (a
+      // test, or a module that provides this class for its role reads). The
+      // change stands; the receipt does not pretend it was recorded.
+      this.logger.error(
+        `${HOUSE_STATE_COUNTRY_AUDIT_ACTION} at ${restaurantId} was not recorded: this instance has no settings log.`,
+      );
+      return {
+        stateAndCountry: "changed",
+        audited: false,
+        auditReason:
+          "the settings log is not wired into this service, so the change was not recorded",
+      };
+    }
+    const receipt = await this.settingsAudit.record({
+      restaurantId,
+      actorUserId: userId,
+      action: HOUSE_STATE_COUNTRY_AUDIT_ACTION,
+      register: "state-and-country",
+      entityType: "restaurant",
+      entityId: restaurantId,
+      // The house's name AFTER this write, captured now so the log still
+      // reads correctly after a later rename.
+      subject:
+        typeof patch.name === "string" ? patch.name : (rest.name ?? null),
+      fields: placeFields,
+    });
+    return {
+      stateAndCountry: "changed",
+      audited: receipt.recorded,
+      auditReason: receipt.reason,
+    };
   }
 
   async renameChain(
