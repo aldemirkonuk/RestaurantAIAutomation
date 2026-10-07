@@ -740,6 +740,134 @@ describe("GoalsService goal progress on the house's days (j)", () => {
 });
 
 /**
+ * The goal reads' fold, per metric (`computeMetricWithSeries`). Goal progress
+ * hands back the sum, and no day key changes a sum, so these read the series
+ * the fold builds, as `read-whole-window.spec.ts` does. In September Los
+ * Angeles is seven hours behind UTC, so each early-evening-and-later row below
+ * sits on a house day its UTC date does not name.
+ */
+describe("the goal reads file every row on the house's day (ADR 0296)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const foldOf = (
+    service: GoalsService,
+    metric: string,
+    since: string,
+    until?: string,
+  ) =>
+    (service as any).computeMetricWithSeries(
+      "r1",
+      metric,
+      since,
+      until,
+      LA,
+    ) as Promise<{
+      current: number;
+      dailySeries: number[];
+      dailyDates: string[];
+      rowCount: number;
+    }>;
+
+  it("files a bottle on the house day it was poured, not on its UTC date", async () => {
+    const { service } = makeGoals({
+      wine_consumption_log: [
+        // 22:00 LA on Aug 30, which is 05:00 UTC on Aug 31.
+        {
+          id: "w1",
+          quantity: 2,
+          volume_ml: null,
+          created_at: "2026-08-31T05:00:00Z",
+        },
+        // 10:00 LA on Aug 31.
+        {
+          id: "w2",
+          quantity: 1,
+          volume_ml: null,
+          created_at: "2026-08-31T17:00:00Z",
+        },
+      ],
+    });
+
+    const out = await foldOf(service, "bottles_sold", "2026-08-30");
+
+    expect(out.dailyDates).toEqual(["2026-08-30", "2026-08-31"]);
+    expect(out.dailySeries).toEqual([2, 1]);
+  });
+
+  it("files a purchase on the house day it was delivered, not on its UTC date", async () => {
+    const { service } = makeGoals({
+      procurement_orders: [
+        // Delivered 21:00 LA on Aug 30, which is 04:00 UTC on Aug 31.
+        {
+          total_cost: 400,
+          final_price: null,
+          delivered_at: "2026-08-31T04:00:00Z",
+          created_at: "2026-08-28T16:00:00Z",
+          status: "delivered",
+        },
+        // Delivered 09:00 LA on Aug 31.
+        {
+          total_cost: 150,
+          final_price: null,
+          delivered_at: "2026-08-31T16:00:00Z",
+          created_at: "2026-08-29T16:00:00Z",
+          status: "delivered",
+        },
+      ],
+    });
+
+    const out = await foldOf(service, "purchase_spend", "2026-08-30");
+
+    expect(out.dailyDates).toEqual(["2026-08-30", "2026-08-31"]);
+    expect(out.dailySeries).toEqual([400, 150]);
+  });
+
+  it("drops a check the read lets through when it closed after the window's last house day", async () => {
+    const { service, client } = makeGoals({
+      pos_checks: [
+        // 13:00 LA on Aug 30.
+        {
+          id: "c1",
+          total: 100,
+          opened_at: "2026-08-30T19:00:00Z",
+          closed_at: "2026-08-30T20:00:00Z",
+        },
+        // Opened 23:30 LA on Aug 30, closed 00:20 LA on Aug 31: Aug 31's sale.
+        {
+          id: "c2",
+          total: 60,
+          opened_at: "2026-08-31T06:30:00Z",
+          closed_at: "2026-08-31T07:20:00Z",
+        },
+      ],
+    });
+
+    const out = await foldOf(
+      service,
+      "pos_revenue",
+      "2026-08-29",
+      "2026-08-30",
+    );
+
+    // The read bounds the OPEN by the last instant of Aug 30 in LA, so a real
+    // read returns c2 too; only the fold keeps it out of the window.
+    const until = client.calls.find(
+      (c) =>
+        c.table === "pos_checks" &&
+        c.method === "lte" &&
+        c.args[0] === "opened_at",
+    )?.args[1];
+    expect(until).toBe("2026-08-31T06:59:59.999Z");
+    expect(out.dailyDates).toEqual(["2026-08-30"]);
+    expect([out.current, out.rowCount]).toEqual([100, 1]);
+  });
+});
+
+/**
  * The till and goals exports read the payloads above (ADR 0296). These cases
  * sit here, beside the payloads they read, rather than in
  * `report-export-cuttings.spec.ts`.
