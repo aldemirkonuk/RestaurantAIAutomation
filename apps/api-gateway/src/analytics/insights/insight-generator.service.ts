@@ -18,6 +18,7 @@ import {
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
+import { readLotRollup } from "../analytics.service";
 import { DayExclusionsService } from "./day-exclusions.service";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import {
@@ -643,17 +644,21 @@ export class InsightGeneratorService {
    * bottles alone and ranked Pierre Ferrand — 950 of 1,000 ml open — as the
    * likeliest wine to run out. A failed read returns null and says so in the
    * log: the family is then silent rather than wrong. Never rejects, so it can
-   * be started before the reads it runs alongside.
+   * be started before the reads it runs alongside. The rollup is read whole in
+   * one page its exact count proves, or refused (`readLotRollup`): a house past
+   * PostgREST's 1,000 rows would otherwise count the open bottle for an
+   * unordered part of its wines and rank the rest without it.
    */
   private async readOpenMl(
     client: ReturnType<DatabaseService["getClient"]>,
     restaurantId: string,
   ): Promise<Map<string, number> | null> {
     try {
-      const { data, error } = await client
-        .from("inventory_lot_rollup")
-        .select("inventory_id, open_ml")
-        .eq("restaurant_id", restaurantId);
+      const { data, error } = await readLotRollup(
+        client,
+        restaurantId,
+        "inventory_id, open_ml",
+      );
       if (error) {
         this.logger.error(
           `insight bundle query on inventory_lot_rollup failed — the stockout ` +

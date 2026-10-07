@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
-import { AnalyticsService } from "./analytics.service";
+import { AnalyticsService, readLotRollup } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
 import {
@@ -68,21 +68,27 @@ export class AdvancedAnalyticsService {
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one. open_ml is the
-          // open bottle a glass pour draws from (ADR 0299).
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, open_ml",
-        )
-        .eq("restaurant_id", restaurantId),
+      // Whole in one proved page or rejected, never a prefix (readLotRollup).
+      readLotRollup(
+        client,
+        restaurantId,
+        // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+        // can tell a WAC that covers every on-hand bottle from one that
+        // covers a single invoiced bottle in twenty-one. open_ml is the
+        // open bottle a glass pour draws from (ADR 0299).
+        "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, open_ml",
+      ),
     ]);
     if (invRes.status === "fulfilled" && invRes.value.error)
       this.logQueryFailure("restaurant_inventory", invRes.value.error);
     if (rollupRes.status === "fulfilled" && rollupRes.value.error)
       this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
+    // A refused rollup (more rows than its one page) rejects; say so, as the
+    // register's reportSlice does, rather than falling back in silence.
+    if (rollupRes.status === "rejected")
+      this.logger.error(
+        `analytics query on inventory_lot_rollup rejected: ${rollupRes.reason}`,
+      );
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();

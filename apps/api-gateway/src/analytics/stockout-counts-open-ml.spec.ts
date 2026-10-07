@@ -27,10 +27,18 @@ import { isWithheld } from "../reports/exports/report-export-doc";
 type Rows = Record<string, any[]>;
 type Failing = Record<string, { code: string; message: string }>;
 
-/** The thenable PostgREST stand-in cost-honesty.spec.ts uses, plus refusals. */
-function makeClient(rowsByTable: Rows, failing: Failing = {}) {
+/**
+ * The thenable PostgREST stand-in cost-honesty.spec.ts uses, plus refusals.
+ * `maxRows` makes it answer as PostgREST's `max_rows` does: at most that many
+ * rows, with a 200, and the full count only when the select asks for
+ * `{ count: "exact" }`.
+ */
+function makeClient(
+  rowsByTable: Rows,
+  failing: Failing = {},
+  opts: { maxRows?: number } = {},
+) {
   const passthrough = [
-    "select",
     "eq",
     "neq",
     "gt",
@@ -49,10 +57,21 @@ function makeClient(rowsByTable: Rows, failing: Failing = {}) {
     from: (table: string) => {
       const builder: any = {};
       for (const m of passthrough) builder[m] = () => builder;
-      const answer = () =>
-        failing[table]
-          ? { data: null, error: failing[table] }
-          : { data: rowsByTable[table] ?? [], error: null };
+      let counted = false;
+      builder.select = (_columns?: string, o?: { count?: string }) => {
+        if (o?.count === "exact") counted = true;
+        return builder;
+      };
+      const answer = () => {
+        if (failing[table]) return { data: null, error: failing[table] };
+        const all = rowsByTable[table] ?? [];
+        if (opts.maxRows === undefined) return { data: all, error: null };
+        return {
+          data: all.slice(0, opts.maxRows),
+          error: null,
+          count: counted ? all.length : null,
+        };
+      };
       builder.maybeSingle = () => Promise.resolve(answer());
       builder.single = () => Promise.resolve(answer());
       builder.then = (resolve: any, reject: any) =>
@@ -494,6 +513,141 @@ describe("the stockout #1 insight (AW29)", () => {
     expect(await stockoutRecords(svc)).toEqual([]);
     expect(log.mock.calls.map((c) => String(c[0])).join("\n")).toMatch(
       /inventory_lot_rollup/,
+    );
+  });
+});
+
+/**
+ * The rollup past one PostgREST page (ADR 0292's rule, which names only
+ * `pos_checks` and `wine_consumption_log`, carried to the rollup by ADR 0299).
+ * The view keeps a row for every inventory row that ever held a lot, retired
+ * ones included, so two wines on the list can sit beside 999 retired rows:
+ * 1,001 rollup rows. PostgREST answers 1,000 of them with a 200. Here the
+ * first wine's row is inside that page and the second's is past it, so an
+ * unproved read would count the first wine's open bottle and not the second's.
+ */
+describe("a lot rollup past one page is read whole or refused, never used as a prefix (ADR 0292, ADR 0299)", () => {
+  const PAGE = 1000;
+  const inside: Wine = {
+    name: "Open Rioja",
+    sealed: 0,
+    openMl: 250,
+    bottleSizeMl: 750,
+    sales: everyDay(20),
+  };
+  const outside: Wine = {
+    name: "Jameson Irish Whiskey",
+    sealed: 0,
+    openMl: 500,
+    bottleSizeMl: 1000,
+    sales: everyDay(20),
+  };
+  /** The two wines' rows, `retired` retired rows between them. */
+  function withRetired(retired: number): Rows {
+    const rows = tables([inside, outside]);
+    const [first, last] = rows.inventory_lot_rollup;
+    rows.inventory_lot_rollup = [
+      first,
+      ...Array.from({ length: retired }, (_, i) => ({
+        inventory_id: `inv-retired-${i}`,
+        live_qty: 0,
+        wac: null,
+        has_invoice_cost: false,
+        wac_qty: 0,
+        open_ml: 0,
+      })),
+      last,
+    ];
+    return rows;
+  }
+  const capped = (rows: Rows) => makeClient(rows, {}, { maxRows: PAGE });
+  const register = (rows: Rows) =>
+    new AnalyticsService({ getClient: () => capped(rows) } as any);
+  const wine360 = (rows: Rows) =>
+    new AdvancedAnalyticsService(
+      { getClient: () => capped(rows) } as any,
+      {
+        getDemandForecast: async () => ({
+          totalForecastDemand: null,
+          model: "none",
+        }),
+      } as any,
+      {} as any,
+      {} as any,
+    );
+  const insight = (rows: Rows) => {
+    const client = makeClient(
+      {
+        pos_checks: [],
+        procurement_orders: [],
+        restaurant_tables: [],
+        restaurant_venue_profiles: [],
+        analytics_goals: [],
+        ...rows,
+      },
+      {},
+      { maxRows: PAGE },
+    );
+    return new InsightGeneratorService(
+      { getClient: () => client, supabase: client } as any,
+      {
+        load: async () => ({ dates: new Set(), readable: true, problem: null }),
+      } as any,
+      {
+        readState: async () => ({
+          book: stateBookFrom([]),
+          readable: true,
+          problem: null,
+        }),
+      } as any,
+    );
+  };
+  const logged = (svc: any) =>
+    jest.spyOn(svc.logger, "error").mockImplementation(() => undefined);
+  const said = (log: jest.SpyInstance) =>
+    log.mock.calls.map((c) => String(c[0])).join("\n");
+
+  it("control: 1,000 rows counted 1,000 are one whole page, and both wines count their open bottle", async () => {
+    const rows = withRetired(PAGE - 2);
+    expect(rows.inventory_lot_rollup).toHaveLength(PAGE);
+    const out = await register(rows).getInventoryScience(R);
+    const onHand = (name: string) =>
+      out.skus.find((s: any) => s.name === name)!.onHand;
+    expect(onHand("Open Rioja")).toBe(0.33);
+    expect(onHand("Jameson Irish Whiskey")).toBe(0.5);
+    expect(await stockoutRecords(insight(rows))).toHaveLength(1);
+  });
+
+  it("the register refuses the 1,000 of 1,001 and falls back for every wine, saying so, instead of counting one wine's open bottle and not the other's (fails before)", async () => {
+    const svc = register(withRetired(PAGE - 1));
+    const log = logged(svc);
+    const out = await svc.getInventoryScience(R);
+    const onHand = (name: string) =>
+      out.skus.find((s: any) => s.name === name)!.onHand;
+    // Before: 0.33 for the wine inside the page, 0 for the one past it.
+    expect(onHand("Open Rioja")).toBe(0);
+    expect(onHand("Jameson Irish Whiskey")).toBe(0);
+    expect(said(log)).toMatch(
+      /inventory_lot_rollup.*could not be read whole.*1000 of 1001 rows/,
+    );
+  });
+
+  it("Wine-360 refuses it the same way (fails before)", async () => {
+    const svc = wine360(withRetired(PAGE - 1));
+    const log = logged(svc);
+    const out = await svc.getWine360(R, "mw-open-rioja");
+    expect(out.onHand).toBe(0);
+    expect(said(log)).toMatch(
+      /inventory_lot_rollup.*could not be read whole.*1000 of 1001 rows/,
+    );
+  });
+
+  it("the stockout #1 insight is silent, and says why, rather than ranking on part of the rollup (fails before)", async () => {
+    const svc = insight(withRetired(PAGE - 1));
+    const log = logged(svc);
+    expect(await stockoutRecords(svc)).toEqual([]);
+    expect(said(log)).toMatch(
+      /inventory_lot_rollup.*could not be read whole.*1000 of 1001 rows/,
     );
   });
 });

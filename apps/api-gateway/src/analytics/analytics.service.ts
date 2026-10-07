@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { readWholeWindow } from "../common/read-whole-window";
+import {
+  WHOLE_READ_PAGE,
+  WholeReadError,
+  readWholeWindow,
+} from "../common/read-whole-window";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -9,6 +13,64 @@ import {
   summarizeCostBasis,
 } from "./inventory-cost";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+
+/**
+ * One house's `inventory_lot_rollup` rows, read in one page that its exact
+ * count proves whole, or refused with a `WholeReadError` (ADR 0299, carrying
+ * ADR 0292's rule to a relation its readers table does not name).
+ *
+ * The view groups every lot the house ever held by `inventory_id,
+ * restaurant_id, master_wine_id` (`20260902150000_lot_cost_truth.sql`, the
+ * view's `GROUP BY`), with no `is_active` or stock-state filter, so it holds a
+ * row for every inventory row that ever had a lot, retired ones included. A
+ * house past PostgREST's `max_rows` (1,000, `supabase/config.toml:18`) would
+ * get an unordered 1,000 of them with a 200, and every wine left out would
+ * read on hand without its open bottle, and its sealed count and WAC from the
+ * fallback, with nothing said. `readWholeWindow` cannot page it: the view has
+ * no `id` column to keyset on, and `inventory_id` is not unique in it.
+ *
+ * The rows are `{ data, error }`-shaped so the three readers keep their own
+ * failure paths. A database error is returned as before; a prefix THROWS, so
+ * each reader's `allSettled` or `catch` takes it as a failed read: the
+ * reorder register and Wine-360 fall back to `stock_live` with no open ml and
+ * say so in the log; the stockout #1 insight is silent. None of them answers
+ * from part of the rollup. With no count reported (test doubles only), a page
+ * shorter than `WHOLE_READ_PAGE` is taken as whole, as `readWholeWindow` does.
+ */
+export async function readLotRollup(
+  client: ReturnType<DatabaseService["getClient"]>,
+  restaurantId: string,
+  columns: string,
+): Promise<{ data: any[] | null; error: any }> {
+  const what = "This house's lot rollup (inventory_lot_rollup)";
+  const { data, error, count } = await client
+    .from("inventory_lot_rollup")
+    .select(columns, { count: "exact" })
+    .eq("restaurant_id", restaurantId);
+  if (error || !Array.isArray(data)) return { data: data ?? null, error };
+  const counted = typeof count === "number" && Number.isFinite(count);
+  if (counted && data.length > (count as number))
+    throw new WholeReadError(
+      what,
+      "malformed_page",
+      data.length,
+      count as number,
+      `${data.length} rows came back against a count of ${count}`,
+    );
+  if (
+    counted ? data.length < (count as number) : data.length >= WHOLE_READ_PAGE
+  )
+    throw new WholeReadError(
+      what,
+      "row_ceiling",
+      data.length,
+      counted ? (count as number) : null,
+      counted
+        ? `${data.length} of ${count} rows came back in its one page; the view has no id column to page on`
+        : `a full page of ${data.length} rows came back with no count to prove it the last`,
+    );
+  return { data, error: null };
+}
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -123,16 +185,16 @@ export class AnalyticsService {
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one. open_ml is the
-          // open bottle a glass pour draws from (ADR 0299).
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, open_ml",
-        )
-        .eq("restaurant_id", restaurantId),
+      // Whole in one proved page or rejected, never a prefix (readLotRollup).
+      readLotRollup(
+        client,
+        restaurantId,
+        // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+        // can tell a WAC that covers every on-hand bottle from one that
+        // covers a single invoiced bottle in twenty-one. open_ml is the
+        // open bottle a glass pour draws from (ADR 0299).
+        "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, open_ml",
+      ),
     ]);
 
     // allSettled makes a REJECTION invisible and `{ data, error }` makes a
