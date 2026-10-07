@@ -45,9 +45,9 @@ import { countryOf, normalizeNonUsJurisdiction } from "./jurisdiction";
  * WHY IT LIVES HERE AND NOT IN THE REGISTRY OR `jurisdiction.ts`
  * --------------------------------------------------------------
  * It imports both. `organizations/house-state-country.ts` (PR #613, ADR 0289,
- * unmerged on 2026-10-07) imports both too and holds `HOUSE_COUNTRIES`; a
- * resolver inside either file could not later read `HOUSE_COUNTRIES` without
- * an import cycle. In its own file it can.
+ * merged after this file was written) imports both too and holds
+ * `HOUSE_COUNTRIES`; a resolver inside either file could not read it without
+ * an import cycle. In its own file it can (a follow-up, ADR 0305).
  */
 
 export type HouseJurisdiction =
