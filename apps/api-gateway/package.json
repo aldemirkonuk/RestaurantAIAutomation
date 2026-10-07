@@ -35,7 +35,7 @@
     "@nestjs/platform-socket.io": "^10.3.0",
     "@nestjs/schedule": "^4.1.0",
     "@nestjs/swagger": "^7.1.17",
-    "@nestjs/websockets": "^10.3.0",
+    "@nestjs/websockets": "^12.1.2",
     "@sentry/node": "^10.36.0",
     "@simplewebauthn/server": "^14.0.3",
     "@supabase/supabase-js": "^2.103.0",
