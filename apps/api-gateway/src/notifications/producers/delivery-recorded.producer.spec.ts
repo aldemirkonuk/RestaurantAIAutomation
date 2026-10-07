@@ -33,6 +33,10 @@ function receipt(over: Record<string, any> = {}) {
     order_id: "order-1",
     stage: "case_count",
     occurred_at: "2026-09-03T09:15:00Z",
+    // Entered a minute after the tap: the ordinary, on-line case.
+    created_at: "2026-09-03T09:16:00Z",
+    client_captured_at: null,
+    occurred_at_basis: null,
     outcome: "accepted",
     refusal_reason: null,
     counted_qty: 4,
@@ -155,6 +159,106 @@ describe("DeliveryRecordedProducer", () => {
     const call = notifications.persistForRestaurant.calls[0][1];
     expect(call.title).toBe("An unlinked delivery was received at the door");
     expect(call.metadata.orderNumber).toBeNull();
+  });
+
+  /**
+   * ADR 0286: a receipt that synced late is dated by the phone's tap, so its
+   * `occurred_at` can be older than the sweep's window the moment it lands.
+   * The window is on entry (`created_at`), or the bell never says it.
+   */
+  describe("a receipt that synced late (ADR 0286)", () => {
+    it("[REVERT-FAILS] is reported when it was DATED 60 hours ago but ENTERED an hour ago", async () => {
+      const { db, notifications, producer } = build();
+      db.tables.procurement_receipt_events.push(
+        receipt({
+          occurred_at: "2026-09-01T00:00:00Z",
+          client_captured_at: "2026-09-01T00:00:00Z",
+          occurred_at_basis: "sent",
+          created_at: "2026-09-03T11:00:00Z",
+        }),
+      );
+      order(db);
+      const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+      expect(tally.emitted).toBe(2);
+      const call = notifications.persistForRestaurant.calls[0][1];
+      // The fact's time, in the restaurant's words (8 PM on the 31st in New York).
+      expect(call.message).toContain("on Monday, August 31 at 8:00 PM");
+      // A sent time inside the 72 hours is ordinary and says nothing more.
+      expect(call.message).not.toMatch(/Back-dated|72 hours|ahead of ours/);
+      expect(call.metadata.occurredAtBasis).toBe("sent");
+      expect(call.metadata.enteredAt).toBe("2026-09-03T11:00:00Z");
+    });
+
+    it("[REVERT-FAILS] is not re-reported when it was ENTERED before the window, however recent its date", async () => {
+      const { db, notifications, producer } = build();
+      db.tables.procurement_receipt_events.push(
+        receipt({
+          occurred_at: "2026-09-03T09:15:00Z",
+          created_at: "2026-09-01T09:00:00Z",
+        }),
+      );
+      const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+      expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+      expect(tally.withheldReason).toMatch(/No delivery has been counted/);
+    });
+
+    it("[REVERT-FAILS] says a back-dated receipt was back-dated, and when it was entered", async () => {
+      const { db, notifications, producer } = build();
+      db.tables.procurement_receipt_events.push(
+        receipt({
+          occurred_at: "2026-08-20T14:00:00Z",
+          client_captured_at: "2026-08-20T14:00:00Z",
+          occurred_at_basis: "back_dated",
+          created_at: "2026-09-03T11:00:00Z",
+        }),
+      );
+      order(db);
+      await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+      const call = notifications.persistForRestaurant.calls[0][1];
+      expect(call.message).toContain("on Thursday, August 20 at 10:00 AM");
+      expect(call.message).toContain(
+        "Back-dated by an owner or a manager; entered on Thursday, September 3 at 7:00 AM.",
+      );
+      expect(call.metadata.occurredAtBasis).toBe("back_dated");
+    });
+
+    it("[REVERT-FAILS] says a refused sent time was refused, and that the arrival dates it", async () => {
+      const { db, notifications, producer } = build();
+      db.tables.procurement_receipt_events.push(
+        receipt({
+          occurred_at: "2026-09-03T11:00:00Z",
+          client_captured_at: "2026-08-25T14:00:00Z",
+          occurred_at_basis: "server",
+          created_at: "2026-09-03T11:00:00Z",
+        }),
+      );
+      order(db);
+      await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+      const call = notifications.persistForRestaurant.calls[0][1];
+      expect(call.message).toContain(
+        "The phone took it on Tuesday, August 25 at 10:00 AM, more than 72 hours before it reached us, so it is dated when it arrived.",
+      );
+      expect(call.metadata.clientCapturedAt).toBe("2026-08-25T14:00:00Z");
+    });
+
+    it("says a phone clock that ran ahead was not trusted", async () => {
+      const { db, notifications, producer } = build();
+      db.tables.procurement_receipt_events.push(
+        receipt({
+          occurred_at: "2026-09-03T11:00:00Z",
+          client_captured_at: "2026-09-03T15:00:00Z",
+          occurred_at_basis: "server",
+          created_at: "2026-09-03T11:00:00Z",
+        }),
+      );
+      order(db);
+      await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+      const call = notifications.persistForRestaurant.calls[0][1];
+      expect(call.message).toContain(
+        "ahead of ours, so it is dated when it reached us.",
+      );
+      expect(call.message).not.toContain("72 hours");
+    });
   });
 
   it("[REVERT-FAILS] writes no emoji", async () => {

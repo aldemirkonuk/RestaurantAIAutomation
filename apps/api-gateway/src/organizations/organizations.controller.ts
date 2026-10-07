@@ -14,6 +14,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import {
+  LocationUpdateReceipt,
   OrganizationsService,
   RestaurantBranch,
   RestaurantChain,
@@ -93,12 +94,14 @@ export class OrganizationsController {
     return this.organizationsService.deleteChain(userId, id);
   }
 
+  // The receipt is returned rather than swallowed (ADR 0289): when the state
+  // or country moved, it says whether the settings log recorded who moved it.
   @Patch("locations/:id")
   async updateLocation(
     @Req() req: Request & { user: AuthenticatedUser },
     @Param("id") id: string,
     @Body() body: UpdateLocationDto,
-  ): Promise<void> {
+  ): Promise<LocationUpdateReceipt> {
     const userId: string = (req.user as AuthenticatedUser)?.userId;
     if (!userId) throw new UnauthorizedException("Missing user identity");
     return this.organizationsService.updateLocation(userId, id, {
@@ -107,6 +110,8 @@ export class OrganizationsController {
       city: body.city,
       email: body.email,
       phone: body.phone,
+      country: body.country,
+      stateProvince: body.stateProvince,
     });
   }
 
