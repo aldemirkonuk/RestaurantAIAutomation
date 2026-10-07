@@ -23,9 +23,10 @@
  * The graft itself — B's day sheet — is here as ONE `Sheet` (ADR 0112: one
  * object, this house's whole week) rather than seven separate overlays, with
  * each day laid out as its own mini-editor inside it. `restaurants.timezone`
- * is read from the same response and printed, but is NOT editable from this
- * sheet or anywhere else in the gateway (grepped: no `PUT`/`PATCH` route
- * writes it) — shown as a plain fact with the gap said out loud.
+ * is read from the same response and printed, but is not edited from this
+ * sheet: a person states it in Settings → Time zone (`PUT
+ * /settings/time-zone`, ADR 0207 round 3), and that row says where the zone
+ * came from (ADR 0304). This row points there rather than repeating it.
  */
 
 import { useEffect, useState } from 'react';
@@ -249,7 +250,7 @@ function DaySheet({
 }
 
 export function HoursSection({ data }: { data: SettingsNextData }) {
-  const { hours, canManage, restaurantId } = data;
+  const { hours, canManage, restaurantId, houseTimeZone } = data;
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -293,7 +294,7 @@ export function HoursSection({ data }: { data: SettingsNextData }) {
             />
             <Row
               label="Which clock does it keep?"
-              cert={hoursTimezoneCert(reg)}
+              cert={hoursTimezoneCert(reg, houseTimeZone)}
               provenance={{
                 kept: 'restaurant', when: null, whenUnknown: 'restaurants.timezone carries no changed-at of its own',
                 readBy: (
@@ -310,15 +311,18 @@ export function HoursSection({ data }: { data: SettingsNextData }) {
                   : 'Not recorded. Without a zone the hours above cannot be placed on a clock, and every reader of them answers “timezone unknown”.'
               }
               control={
-                <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4)' }}>
-                  no editor exists
-                </span>
+                <a
+                  href="#st-section-time-zone"
+                  className="st-ink st-focus"
+                  style={{ fontFamily: MONO, fontSize: 10, color: 'var(--seal-deep)' }}
+                >
+                  set in Time zone
+                </a>
               }
             >
               <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
-                Read-only here and everywhere: no route under the gateway writes
-                <code style={{ fontFamily: MONO }}> restaurants.timezone</code> (grepped 2026-09-17). Changing it needs a
-                decision and a route this pass did not build.
+                Read here, set in Time zone above. That row says where this zone came from, when that was recorded,
+                and is where an owner or manager changes it.
               </p>
             </Row>
           </>
