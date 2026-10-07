@@ -1,0 +1,108 @@
+# 0305 — A house's state is read inside its own country, and a house with no country is asked for one
+
+- **Status:** Locked for the two rulings (the founder, 2026-10-07T19:48:13Z, both quoted verbatim below), and Proposed for the method: the resolver, its file, the country spellings it reads, the `countryNotRecorded` flag and the panel's copy and link are this lane's build, for his review.
+- **Date:** 2026-10-07
+- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Keywords:** state_province, country, jurisdiction, country first, read inside the country, MI Milano Michigan, Georgia GE US-GA, provincia sigla, country not recorded, countryNotRecorded, resolveHouseJurisdiction, houseJurisdictionKey, house-jurisdiction.ts, normalizeJurisdiction, normalizeNonUsJurisdiction, price index, price-book review, admitter pool, commodity, distributor feed, /settings?tab=locations, R3 supersession
+- **Links:** ADR 0289 (PR #613, `feat/house-state-in-location-editor`, **unmerged on 2026-10-07**; its R3 and its "Open forks" item 2 carry the same two answers); [[0117-a-price-sighting-names-its-source-its-date-and-its-unit]] (Q33, the web's one country table); [[0067-a-failed-read-is-never-an-empty-one]]; [[0304-a-house-zone-comes-from-its-address]] (the no-time-zone line this mirrors); `claims.d/fix-market-readers-read-inside-the-country.jsonl`; the research note `p4-scratch/sim-run/fixes/audits/research-r3-subdivisions-2026-10-07.md` and the founder's answers `p4-scratch/sim-run/fixes/briefs/answers-2026-10-07-pm.md:37-44` (both outside the repo)
+
+## Context
+
+`restaurants.state_province` and `restaurants.country` are free text. Every market reader of a house read the state first, with `normalizeJurisdiction` (`price-index.registry.ts:482-501`), and read the country only when the state did not resolve. That function reads a bare two-letter US code (`:490`) and a US state name (`:494`) before anything else. So:
+
+- An Italian house that writes "MI" for Milano, as Poste Italiane's address standard asks ("20133 MILANO MI"), was read as Michigan. The research note counts 19 of Italy's 111 province codes spelled like US state codes. A twentieth, Terni ("TR"), was read as Türkiye, because `normalizeNonUsJurisdiction` passes the country code through (`jurisdiction.ts:236`). The founder's question counted 20, the codes R3 refuses.
+- A house in Georgia the country was read as the US state GA whenever its state was blank or unreadable, because `normalizeJurisdiction("Georgia")` is `US-GA`.
+
+The readers that did this, at `origin/main` `ca3582988`, were five house call sites in four services:
+
+| Reader | Old read | What a misplaced house got |
+|---|---|---|
+| `PriceIndexService.forHouse` | `price-index.service.ts:271-281` | Michigan's posted prices and sources on `/price-index/me` |
+| `PriceIndexReviewService.jurisdictionOfHouse` | `price-index-review.service.ts:401-408` | Michigan's held price books on `GET /price-index/uploads` (`price-index.controller.ts:119`) |
+| `PriceIndexReviewService.admittersFor` | `price-index-review.service.ts:439-446` | a place in Michigan's admitter pool |
+| `CommodityService.forHouse` | `commodity.service.ts:232-236` | the United States' commodity series |
+| `DistributorFeedService.forHouse` | `distributor-feed.service.ts:141-147` | Michigan's distributors on `/connections` |
+
+Every standard the research checked reads a subdivision code inside the address's own country: ISO 3166-2, CLDR, Google's address data and Shopify's validator. Under them IT-MI is Milano and US-MI is Michigan. Our market readers were the outlier. Separately, ADR 0289 R3 (in #613) refuses a US state code on a foreign house in the location editor. That kept new Italian "MI" rows out of the editor, but not out of the three writers that check nothing (Consequences).
+
+## The founder's words (verbatim, binding)
+
+Asked 2026-10-07 with AskUserQuestion, answered at **19:48:13Z**. Recorded at `answers-2026-10-07-pm.md:37-44`.
+
+**#613 R3, re-asked with the research.** Q: *"The research is back (fixes/audits/research-r3-subdivisions-2026-10-07.md). Italian addresses do carry a two-letter province code: Poste Italiane's standard requires '20133 MILANO MI', and Google's address data, Shopify and Italy's e-invoice format all expect it. What nobody does is read that code as a US state. Every standard looks the code up inside the address's own country (IT-MI is Milano, US-MI is Michigan). Our market panels are the odd one out: they read a bare 'MI' as Michigan whatever the country. That reader fix ships either way as a defect fix. What should the location editor do with 'MI' on an Italian house?"*
+
+- Picked **"Keep it, read inside the country (Recommended)"**: *"Supersedes R3. The editor stops refusing and keeps what the owner writes (code or name), and Italy's field is labelled 'Provincia (sigla, es. MI)'. This is how Google, Stripe and Yelp work. The readers are fixed first, then the editor, in follow-up PRs; #613 merges as locked."*
+- Rejected "Check Italy's own list": *"The same, but the server accepts only Italy's 111 province codes or names for an Italian house and refuses anything else (Shopify's model). It catches typos, but the list has to be kept current: Sardinia's codes already differ between Google and ISO."*
+- Rejected "Keep refusing, as locked": *"20 Italian province codes (MI, CO, PA, VA…) stay unsavable in the editor. The editor's hint 'Kept as you write it' then contradicts it."*
+
+**No-country house.** Q: *"Once the market panels read the state inside the house's country, what does a house with no country recorded get? (One of 14 houses had none at the 2026-09-05 count.)"*
+
+- Picked **"Ask for the country (Recommended)"**: *"The panels say the country isn't recorded and link to Settings, the same way a house with no time zone is handled. Nothing is guessed. That one house sees no state-based prices until the owner sets it."*
+- Rejected "Treat it as US": *"A US state code on a no-country house is read as the US state, as today. A real US house with no country keeps its prices, but an Italian house with no country and 'MI' still reads as Michigan."*
+
+## Decision
+
+**A house's state is read only inside its recorded country. A house with no country has no state read, and its panel asks for the country with a link to Settings.**
+
+The rule lives in one function, `resolveHouseJurisdiction(stateProvince, country)` in `apps/api-gateway/src/price-index/house-jurisdiction.ts:72-92`:
+
+1. **The country is read first.** A blank country (null, empty or whitespace) is `country_not_recorded`. No state is read and nothing is guessed (`:78-80`).
+2. **A recorded country the register has no list for is `country_unrecognised`.** The register lists only the United States, the United Kingdom and Türkiye. No state is read for any other country, so "MI" on an Italian house is never Michigan and a Georgian house is never US-GA (`:81-84`). The country is read with `normalizeNonUsJurisdiction` (`jurisdiction.ts:228-240`), which knows no US state name.
+3. **For those three the state is read only against the country's own list.** For a US house that is the registry's code, name or `US-XX` list. For the other two it is the UK nations or Türkiye's provinces. A key is kept only when its country half is the house's country (`stateWithin`, `:62-70`). A state that does not read inside the country is not used, and the country alone answers, as it did for the Antalya house before.
+
+A country written as one of the UK's nations ("England") or as a Turkish province is read as that subdivision. `normalizeJurisdiction` read it the same way before.
+
+All five call sites now read through it. Four call `resolveHouseJurisdiction(rawState, rawCountry)` or `houseJurisdictionKey(…)`: `price-index.service.ts:302`, `price-index-review.service.ts:402` and `:439`, and `commodity.service.ts:245`. The fifth is `distributor-feed.service.ts:169`. `normalizeJurisdiction` stays on the two URL routes, `forState` and `forJurisdiction`, which ask about a place rather than a house.
+
+**What a house with no country gets.**
+
+- The price index returns no line and no source, and reads nothing after `restaurants`. Its result carries `countryNotRecorded: true` and the sentence `COUNTRY_NOT_RECORDED_SENTENCE` (`house-jurisdiction.ts:108-111`).
+- The distributor catalogue returns no list and the same sentence and flag.
+- The commodity register returns only the world series. FAO speaks for everywhere and is not a state-based price. It also returns the flag.
+- The review service puts the house in no pool. For such a house `GET /price-index/uploads` keeps its existing sentence, "This house records no jurisdiction this register recognises… Set the address in Settings."
+
+On the web, `MarketIndexPanel` draws *"This house's country isn't recorded, so its state isn't read and no state-based price is shown…"* with a link, **Set the country in Settings**, to `/settings?tab=locations`, in place of the generic silence. This is the shape of the dashboard's no-time-zone line (`SalesCalendar.tsx:338`, `dn-zone-unset`). `useHouseIndex` sets the flag only on a literal `true` from the wire.
+
+**A failed read is not a missing country.** `forHouse` in the price index and in commodity now tracks `readFailed`. A `restaurants` read that throws keeps "could not be read… unknown, not empty" and never sets `countryNotRecorded` ([[0067-a-failed-read-is-never-an-empty-one]]). Without that, a database fault would have sent an owner to Settings to fix an address that was never wrong. The distributor feed already returned early on a failed read.
+
+**The country spellings.** The brief asked for the country to be mapped to an ISO code through #613's `HOUSE_COUNTRIES`. That table is not on `main`, because #613 is unmerged. A copy here would be a second country table and a merge conflict with #613. The country step therefore reads `jurisdiction.ts`'s `COUNTRIES`, and this PR adds the two spellings of the web's one country table it lacked: "Republic of Türkiye" and "U.S." (`jurisdiction.ts:100`, `:111`). `house-jurisdiction.spec.ts` reads `apps/web/src/lib/countries.ts` as text and fails in two cases: if any spelling of the three listed countries stops resolving to that country, or if any spelling of the other 191 starts resolving at all. The resolver sits in its own file because it imports both the registry and `jurisdiction.ts`. Once #613 lands it can read `HOUSE_COUNTRIES` without an import cycle (`house-jurisdiction.ts:45-50`). The retention resolver's shape (`retention-rules.ts:282`: blank country → `UNKNOWN`, a state read only inside the US) is the pattern lifted. Its table was not reused, because it lists only the jurisdictions whose retention law was researched and reads only California as a state.
+
+## What this PR does not do: the editor half is the next PR
+
+The founder's pick says *"The readers are fixed first, then the editor, in follow-up PRs; #613 merges as locked."* This PR is the readers. The next PR, with its own ADR, will:
+
+- **formally supersede ADR 0289 R3.** The location editor stops refusing a two-letter province abroad and keeps what the owner writes, code or name.
+- **label Italy's field "Provincia (sigla, es. MI)".**
+- **drop the "IL" placeholder for non-US houses** (`AddLocationDialog.tsx:295` and `:460`; `Register.tsx:1029` has no Italy case).
+
+It must land after this PR, or the editor writes rows the old readers take for Michigan. This PR does not touch the location editor or R3's refusal. **#613 (ADR 0289) is unmerged on 2026-10-07.** Until it merges, the Locations section this PR links to has no country field: `EditLocationChainDialog` at `origin/main` edits no country, and #613 adds one. Until then the link names the right place but cannot finish the job there.
+
+## Options considered
+
+1. **Read the state inside the country, and ask a house with no country** (chosen, both rulings). Every address standard checked reads a subdivision this way. Its cost is the one house with no country, which loses its state-based prices until its owner sets a country.
+2. **Read inside the country, but treat a no-country house as US** (rejected by the founder: *"an Italian house with no country and 'MI' still reads as Michigan"*). It keeps a real US house's prices and keeps the defect for exactly the house that can least be placed.
+3. **Read inside the country, and have the server accept only Italy's own 111 province list for an Italian house** (rejected by the founder: *"the list has to be kept current"*). This is an editor rule, not a reader rule. The readers here would be unchanged under it.
+4. **Keep the readers state-first and rely on R3's editor refusal** (what `main` did). It leaves 20 Italian codes unsavable, and it leaves the three unchecked writers and every existing row read as US states.
+5. **Copy #613's `HOUSE_COUNTRIES` into this PR as the country step** (rejected by this lane). That makes a second country table on `main` and a conflict with an unmerged PR. Reading `jurisdiction.ts` and testing it against the web's table gives the same answer for the only three countries that have a state list.
+
+## Consequences
+
+- **Easier:** one function answers "which market is this house in" for all four services, so the panels cannot disagree. An Italian "MI" house and a Georgian house leave Michigan's and Georgia's prices, books, pools and distributor lists.
+- **Given up:** a house with no country (1 of 14 at the 2026-09-05 count, not re-measured, since this lane had no production reads) sees no state-based price and is in no admitter pool until its country is set. A US house whose state does not read inside the US (e.g. "Milano") still gets only "US" and its existing "set the state" sentence. That imprecision predates this PR.
+- **Three writers still store any state with any country, unchecked** (out of scope here, named by the brief and the research): `auth.service.ts:1690-1691` and `:1812-1813` (the two sign-up paths) and `organizations.service.ts:771-772` (add location). Since the readers are now country-first, what those writers store can no longer be read as the wrong country's state. It can still be stored inconsistently.
+- **Readers left, and why:**
+  - `communications/retention/retention-rules.ts:282` (`resolveJurisdiction`, read by `raw-mail-retention.service.ts` and `house-mail-archive.service.ts`) is already country-first and reads a state only inside the US.
+  - vendor-intel reads no house's state. It scopes by the shop's jurisdiction (`shop-reference-sweep.service.ts:256`), and its one mention of `state_province` (`price-reference-shops.ts:298`) is a sentence.
+  - The SQL territory gate `search_distributors` already compares `t.country = r.country`. That is the research note's finding and was not re-checked here.
+  - `forState` and `forJurisdiction` take a jurisdiction from the URL, not a house.
+- **Owed follow-ups, not in this PR:**
+  - `/connections` prints the distributor feed's sentence as plain text and has no link to Settings.
+  - The commodity section of `MarketIndexPanel` does not read the flag. The index register above it carries the ask.
+  - `GET /price-index/uploads` keeps one sentence for no country, an unrecognised country and a failed read (`jurisdictionOfHouse` returns null for all three, as before).
+- **Revisit when:** #613 merges (switch the country step to `HOUSE_COUNTRIES` and retire the mirror test), the register gains a fourth country with a subdivision list, or a house's country is found written in a spelling the web's table does not hold.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-07 | — | Created by lane countryfirst on `fix/market-readers-read-inside-the-country` from `origin/main` `ca3582988`. 20 mutations were run against the tests, one per new behaviour, and every one failed the suite. Every claim row was also run by hand and mutated until it failed. Unaudited. |
