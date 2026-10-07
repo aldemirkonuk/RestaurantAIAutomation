@@ -99,16 +99,42 @@ describe('when is it open — three states, never collapsed into each other', ()
   });
 });
 
-describe('the timezone — read-only, and honest about not having an editor', () => {
-  it('prints the stored zone', () => {
+function zoneData(over: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r1', zone: 'America/Chicago', source: null, unreadZone: null, country: 'US',
+    readable: true, reason: null, statedAt: null, statedBy: null, ...over,
+  };
+}
+
+const clockCert = () =>
+  screen.getByText(/Which clock does it keep\?/).closest('[data-cert]')?.getAttribute('data-cert');
+
+describe('the timezone — read here, set in Time zone (ADR 0207 round 3, ADR 0304)', () => {
+  it('prints the stored zone and points at the Time zone row, where it is set', () => {
     mount({ hours: remote(hoursData({ timezone: 'America/Chicago' })) });
     expect(screen.getByText(/America\/Chicago/)).toBeInTheDocument();
-    expect(screen.getByText(/no editor exists/i)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'set in Time zone' });
+    expect(link).toHaveAttribute('href', '#st-section-time-zone');
+    // ADR 0207's PUT made both of these false.
+    expect(screen.queryByText(/no editor exists/i)).toBeNull();
+    expect(screen.queryByText(/grepped 2026-09-17/)).toBeNull();
   });
 
   it('says not recorded rather than assuming one', () => {
     mount({ hours: remote(hoursData({ timezone: null })) });
     expect(screen.getByText(/Not recorded\./i)).toBeInTheDocument();
+    expect(clockCert()).toBe('unstated');
+  });
+
+  it('tags the clock manual only when a person stands behind this zone', () => {
+    const hours = remote(hoursData({ timezone: 'America/Chicago' }));
+    mount({ hours, houseTimeZone: remote(zoneData({ source: 'stated' })) });
+    expect(clockCert()).toBe('manual');
+  });
+
+  it('tags a zone the address gave, or one nobody can attribute, inferred', () => {
+    mount({ hours: remote(hoursData({ timezone: 'America/Chicago' })), houseTimeZone: remote(zoneData({ source: 'address' })) });
+    expect(clockCert()).toBe('inferred');
   });
 });
 

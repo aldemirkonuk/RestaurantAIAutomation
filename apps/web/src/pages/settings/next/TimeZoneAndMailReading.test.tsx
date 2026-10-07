@@ -105,6 +105,55 @@ describe('the Time zone register', () => {
     expect(screen.getByText(/stated by · Aldemir/)).toBeInTheDocument();
   });
 
+  /**
+   * ADR 0304: the provenance line names where the zone came from, and a
+   * person only as the witness of the zone the house keeps now. Each case
+   * says why it has no date in its own words.
+   */
+  describe('where the zone came from (ADR 0304)', () => {
+    const text = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
+    const witness = { statedAt: '2026-09-22T10:00:00.000Z', statedBy: { userId: 'u', name: 'Aldemir' } };
+
+    it('from the address: no person chose it, and nobody is named even if a name arrives', () => {
+      mountZone({ houseTimeZone: remote(zoneReg({ zone: 'America/Chicago', source: 'address', ...witness })) });
+      expect(text()).toContain(
+        'from the address · — worked out from this house’s address when it was entered; no person chose it',
+      );
+      expect(screen.queryByText(/stated by/)).toBeNull();
+    });
+
+    it('from the device: the device the house was created on, no person named', () => {
+      mountZone({ houseTimeZone: remote(zoneReg({ zone: 'America/Chicago', source: 'device' })) });
+      expect(text()).toContain('from the device · — the zone of the device the house was created on; no person chose it');
+      expect(screen.queryByText(/stated by/)).toBeNull();
+    });
+
+    it('stated, with its witness: the date and the person', () => {
+      mountZone({ houseTimeZone: remote(zoneReg({ zone: 'Europe/Istanbul', source: 'stated', ...witness })) });
+      expect(screen.getByText(/stated by · Aldemir/)).toBeInTheDocument();
+      expect(text()).not.toContain('not recorded');
+    });
+
+    it('stated, with no row to witness it: says who and when were not recorded', () => {
+      mountZone({ houseTimeZone: remote(zoneReg({ zone: 'Europe/Istanbul', source: 'stated' })) });
+      expect(text()).toContain('stated · — who and when were not recorded');
+      expect(screen.queryByText(/stated by/)).toBeNull();
+    });
+
+    it('a zone stated before its source was recorded still names its witness', () => {
+      mountZone({ houseTimeZone: remote(zoneReg({ zone: 'Europe/Istanbul', source: null, ...witness })) });
+      expect(screen.getByText(/stated by · Aldemir/)).toBeInTheDocument();
+      expect(text()).not.toContain('source not recorded');
+    });
+
+    it('a zone nobody can attribute says so, never "stated"', () => {
+      mountZone({ houseTimeZone: remote(zoneReg({ zone: 'Europe/Istanbul', source: null })) });
+      expect(text()).toContain('source not recorded · — nothing records who or what chose it');
+      expect(text()).not.toContain('stated ·');
+      expect(screen.queryByText(/stated by/)).toBeNull();
+    });
+  });
+
   it('keeps the control closed for staff and says the gateway refuses it too', () => {
     mountZone({ canManage: false });
     expect(screen.getByLabelText('Time zone')).toBeDisabled();
