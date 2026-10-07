@@ -383,6 +383,18 @@ export interface Order {
   finalPrice?: number;
   /** The order's total. This is the field the old `totalPrice` meant. */
   totalCost?: number;
+  /**
+   * The currency the order was PLACED in — `OrderResponseDto.currency`, read
+   * from `procurement_orders.currency` by `mapOrderRow`. THREE values: an ISO
+   * 4217 code; `null` (the row names none — never defaulted, print "currency
+   * not recorded"); or the KEY ABSENT (this route does not read the column).
+   * Every amount on this order is in it, `finalPrice` and `totalCost` included.
+   *
+   * The gateway sent it and this type did not declare it, so /orders printed
+   * every order in US dollars and summed lira with euros (PROCURE-01,
+   * 2026-10-07). Never default it, and never add two currencies together.
+   */
+  currency?: string | null;
   status: OrderWireStatus;
   requestedAt?: string;
   approvedAt?: string;

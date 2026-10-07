@@ -37,7 +37,16 @@ import { ReceiptSheet } from './ReceiptSheet';
 import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
-import { EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
+import {
+  EM,
+  MONO,
+  SANS,
+  SERIF,
+  fmtMoneyLines,
+  fmtMoneyWhole,
+  fmtReadTime,
+  moneyLineKey,
+} from './format';
 import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -283,21 +292,54 @@ export default function OrdersNext() {
             >
               {monthName.format(now)} so far
             </span>
-            <Tally
-              value={data.month.thisMonth}
-              format={fmtMoneyWhole}
-              style={{
-                display: 'block',
-                fontFamily: MONO,
-                fontSize: 30,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
-                lineHeight: 1.15,
-                color: 'var(--ink-1, #211C16)',
-              }}
-            />
+            {/* One line per currency, never one sum across them, nothing
+                converted (ADR 0117 rule 3; PROCURE-01). Each line is keyed by
+                its currency so the Tally never animates lira into euros. */}
+            <span data-testid="month-figure" style={{ display: 'block' }}>
+              {data.month.thisMonth === null || data.month.thisMonth.length === 0 ? (
+                <Tally
+                  value={data.month.thisMonth === null ? null : 0}
+                  style={{
+                    display: 'block',
+                    fontFamily: MONO,
+                    fontSize: 30,
+                    fontWeight: 600,
+                    letterSpacing: '-0.02em',
+                    lineHeight: 1.15,
+                    color: 'var(--ink-1, #211C16)',
+                  }}
+                />
+              ) : (
+                data.month.thisMonth.map((line) => (
+                  <Tally
+                    key={moneyLineKey(line.currency)}
+                    value={line.amount}
+                    format={(n) => fmtMoneyWhole(n, line.currency)}
+                    style={{
+                      display: 'block',
+                      fontFamily: MONO,
+                      fontSize: data.month.thisMonth!.length > 1 ? 20 : 30,
+                      fontWeight: 600,
+                      letterSpacing: '-0.02em',
+                      lineHeight: 1.15,
+                      color: 'var(--ink-1, #211C16)',
+                    }}
+                  />
+                ))
+              )}
+            </span>
+            {data.month.thisMonth !== null && data.month.thisMonth.length > 1 && (
+              <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+                {data.month.thisMonth.length} currencies — each its own total, not added together
+              </span>
+            )}
             <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-              last month {data.month.lastMonth === null ? EM : fmtMoneyWhole(data.month.lastMonth)}
+              last month{' '}
+              {data.month.lastMonth === null
+                ? EM
+                : data.month.lastMonth.length === 0
+                  ? '0'
+                  : fmtMoneyLines(data.month.lastMonth, true)}
               {data.month.unpricedThisMonth > 0 &&
                 ` · ${data.month.unpricedThisMonth} unpriced — excluded, not zeroed`}
             </span>

@@ -127,6 +127,9 @@ function wire(over: Record<string, unknown> = {}) {
     allowance: null,
     deposit: null,
     freight: null,
+    // The order's own money (PROCURE-01): the row prints in it. Euros, so a
+    // "$" anywhere in the row is the defect, not the default.
+    currency: 'EUR',
     ...over,
   } as never;
 }
@@ -172,12 +175,15 @@ describe('the sheet asks for the money outside the price', () => {
 
     expect(screen.getByTestId('agreement-total').textContent).toContain('2,078');
     const working = screen.getByTestId('agreement-working').textContent ?? '';
-    expect(working).toContain('Goods $2100.00');
-    expect(working).toContain('less allowance $100.00');
-    expect(working).toContain('plus deposit $30.00');
-    expect(working).toContain('plus freight $48.00');
+    // The sheet does not yet pass its chosen currency to the working
+    // (PROCURE-01 follow-up, owed), so every figure says so — never "$".
+    expect(working).toContain('Goods 2,100.00 (currency not read)');
+    expect(working).toContain('less allowance 100.00 (currency not read)');
+    expect(working).toContain('plus deposit 30.00 (currency not read)');
+    expect(working).toContain('plus freight 48.00 (currency not read)');
+    expect(working).not.toContain('$');
     // The figure is printed once, above; the sentence does not repeat it.
-    expect(working).not.toContain('= $2078.00');
+    expect(working).not.toContain('2,078');
   });
 
   it('3. sends NO key for a field left empty, so the column stays NULL', async () => {
@@ -209,9 +215,10 @@ describe('the ledger row prints what the agreement charges beyond the wine', () 
   it('5. names the fees inside the working, with the goods stated separately', () => {
     mountRow({ allowance: null, deposit: 30, freight: 48 });
     const working = screen.getByTestId('row-working').textContent ?? '';
-    expect(working).toContain('Goods $2100.00');
-    expect(working).toContain('plus deposit $30.00');
-    expect(working).toContain('plus freight $48.00');
+    expect(working).toContain('Goods €2,100.00');
+    expect(working).toContain('plus deposit €30.00');
+    expect(working).toContain('plus freight €48.00');
+    expect(working).not.toContain('$');
     // The goods figure stands on its own, so the $2,178 total can never be
     // read as the wine having gone up. And the fees are NOT printed a second
     // time on their own line — the first capture of this pass did that.
@@ -224,8 +231,9 @@ describe('the ledger row prints what the agreement charges beyond the wine', () 
     // approves money from.
     mountRow({ priceUom: null, pricePackSize: null, deposit: 30, freight: 48 });
     const line = screen.getByTestId('row-fees').textContent ?? '';
-    expect(line).toContain('a deposit of $30.00');
-    expect(line).toContain('freight of $48.00');
+    expect(line).toContain('a deposit of €30.00');
+    expect(line).toContain('freight of €48.00');
+    expect(line).not.toContain('$');
   });
 
   it('5c. prints nothing at all when the agreement names none', () => {
@@ -306,8 +314,15 @@ describe('the arithmetic', () => {
     expect(
       describeFees({ allowance: null, deposit: null, freight: null }),
     ).toBeNull();
-    expect(describeFees({ allowance: 25, deposit: null, freight: null })).toBe(
+    expect(describeFees({ allowance: 25, deposit: null, freight: null }, 'USD')).toBe(
       'an allowance of $25.00',
+    );
+    // PROCURE-01: in the order's currency, and never dollars by default.
+    expect(describeFees({ allowance: 25, deposit: null, freight: null }, 'EUR')).toBe(
+      'an allowance of €25.00',
+    );
+    expect(describeFees({ allowance: 25, deposit: null, freight: null })).toBe(
+      'an allowance of 25.00 (currency not read)',
     );
   });
 });

@@ -106,7 +106,7 @@ function ordersData(over: Partial<OrdersNextData> = {}): OrdersNextData {
     recurringCount: 0,
     recurrenceReadCount: 0,
     cancelledCount: 0,
-    month: { thisMonth: 0, lastMonth: null, unpricedThisMonth: 0 },
+    month: { thisMonth: [], lastMonth: null, unpricedThisMonth: 0 },
     hasData: true,
     isLoading: false,
     isError: false,
@@ -357,5 +357,68 @@ describe('the stage strip at phone width (ORD-W18)', () => {
     expect(tabs[3].className).toMatch(/max-sm:border-t/);
     expect(tabs[4].className).toMatch(/max-sm:border-t/);
     expect(tabs[0].className).not.toMatch(/\bborder-l\b/);
+  });
+});
+
+/*
+ * PROCURE-01, 2026-10-07. The month figure was one "$" sum of every order's
+ * value, whatever its currency. It is now one line per currency, each in its
+ * own money, and says so; nothing is added across them (ADR 0117 rule 3).
+ */
+describe('the month figure, per currency', () => {
+  const flat = (t: string | null | undefined) => (t ?? '').replace(/\u00a0/g, ' ');
+
+  it('prints one line per currency, each in its own money, and no sum of them', async () => {
+    state.current = ordersData({
+      month: {
+        thisMonth: [
+          { currency: 'EUR', amount: 1500 },
+          { currency: 'TRY', amount: 12480 },
+        ],
+        lastMonth: [
+          { currency: 'TRY', amount: 9000 },
+          { currency: null, amount: 80 },
+        ],
+        unpricedThisMonth: 1,
+      },
+    });
+    harness('/orders');
+
+    const figure = flat((await screen.findByTestId('month-figure')).textContent);
+    expect(figure).toContain('€1,500');
+    expect(figure).toContain('TRY 12,480');
+    expect(figure).not.toContain('$');
+    // 1,500 + 12,480 — the old cross-currency figure — is nowhere on the page.
+    expect(document.body.textContent).not.toContain('13,980');
+    expect(screen.getByText(/2 currencies — each its own total, not added together/)).toBeInTheDocument();
+    const lastMonth = flat(screen.getByText(/^last month/).textContent);
+    expect(lastMonth).toContain('TRY 9,000 · 80 (currency not recorded)');
+    expect(lastMonth).toContain('1 unpriced — excluded, not zeroed');
+  });
+
+  it('prints one currency at the full size, with no "not added" caption', async () => {
+    state.current = ordersData({
+      month: { thisMonth: [{ currency: 'TRY', amount: 12480 }], lastMonth: [], unpricedThisMonth: 0 },
+    });
+    harness('/orders');
+    expect(flat((await screen.findByTestId('month-figure')).textContent)).toBe('TRY 12,480');
+    expect(screen.queryByText(/not added together/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^last month/).textContent).toBe('last month 0');
+  });
+
+  it('prints 0 for a month with no priced order, and a dash for one it could not read', async () => {
+    state.current = ordersData({
+      month: { thisMonth: [], lastMonth: null, unpricedThisMonth: 0 },
+    });
+    const first = harness('/orders');
+    expect((await screen.findByTestId('month-figure')).textContent).toBe('0');
+    expect(screen.getByText(/^last month/).textContent).toBe('last month —');
+    first.unmount();
+
+    state.current = ordersData({
+      month: { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 },
+    });
+    harness('/orders');
+    expect((await screen.findByTestId('month-figure')).textContent).toBe('—');
   });
 });

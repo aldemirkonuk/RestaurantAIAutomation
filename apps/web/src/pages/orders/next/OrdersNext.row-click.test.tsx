@@ -103,7 +103,7 @@ function ordersData(rows: OrderRowVM[]): OrdersNextData {
     recurringCount: 0,
     recurrenceReadCount: 0,
     cancelledCount: 0,
-    month: { thisMonth: 0, lastMonth: null, unpricedThisMonth: 0 },
+    month: { thisMonth: [], lastMonth: null, unpricedThisMonth: 0 },
     hasData: true,
     isLoading: false,
     isError: false,

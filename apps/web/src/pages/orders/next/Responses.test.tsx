@@ -485,8 +485,10 @@ describe('confirm', () => {
 describe('the agreed price', () => {
   it('is printed with its unit and its pack, not as a bare number', () => {
     mount();
+    // The sheet does not yet pass the order's currency (PROCURE-01 follow-up,
+    // owed), so the figure says so — never "$" (ADR 0117 rule 3).
     expect(screen.getByTestId('sheet-agreed-price')).toHaveTextContent(
-      '$420.00 per case (12 bottles)',
+      '420.00 (currency not read) per case (12 bottles)',
     );
   });
 

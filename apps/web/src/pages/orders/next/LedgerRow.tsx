@@ -324,7 +324,7 @@ export function LedgerRow({
               textAlign: 'right',
             }}
           >
-            {fmtMoney(row.total)}
+            {fmtMoney(row.total, row.currency)}
           </span>
           {clickOpensReceipt ? (
             <span className="sr-only"> — open the receipt</span>
@@ -409,7 +409,7 @@ export function LedgerRow({
                 <div data-testid="agreed-price">
                   {label('Agreed price')}{' '}
                   <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
-                    {describeStatedPrice(row.unitPrice, row.priceUnit.stated) ?? EM}
+                    {describeStatedPrice(row.unitPrice, row.priceUnit.stated, row.currency) ?? EM}
                   </span>
                 </div>
                 {/*
@@ -424,7 +424,7 @@ export function LedgerRow({
                       <span data-testid="row-working">{row.agreement.working}</span>
                       <span style={{ color: 'var(--ink-4, #665D50)' }}> = </span>
                       <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
-                        {fmtMoney(row.agreement.total)}
+                        {fmtMoney(row.agreement.total, row.currency)}
                       </span>
                     </>
                   ) : row.agreement && !row.agreement.ok ? (
@@ -448,7 +448,9 @@ export function LedgerRow({
                         ? 'no working can be shown, because this view never read the unit the price is in. The figure above is the ledger’s own.'
                         : row.priceUnit.stated === null
                           ? `no working can be shown, because nothing says what unit ${
-                              row.unitPrice === null ? 'the price' : fmtMoney(row.unitPrice)
+                              row.unitPrice === null
+                                ? 'the price'
+                                : fmtMoney(row.unitPrice, row.currency)
                             } is in. The figure above is the ledger’s own.`
                           : 'the working needs the order’s pack size, which this row does not carry, so the figure above is the ledger’s own and not one worked out here.'}
                     </span>
@@ -499,9 +501,9 @@ export function LedgerRow({
                   <div data-testid="fees-unread" style={{ color: 'var(--ink-4, #665D50)' }}>
                     {ROW_FEES_NOT_READ}
                   </div>
-                ) : !(row.agreement && row.agreement.ok) && describeFees(row.fees.fees) ? (
+                ) : !(row.agreement && row.agreement.ok) && describeFees(row.fees.fees, row.currency) ? (
                   <div data-testid="row-fees" style={{ color: 'var(--ink-2, #4F473C)' }}>
-                    outside the price of the wine: {describeFees(row.fees.fees)}
+                    outside the price of the wine: {describeFees(row.fees.fees, row.currency)}
                   </div>
                 ) : null}
                 {row.priceUnit.stated &&
@@ -515,7 +517,7 @@ export function LedgerRow({
                   )}
                 {disagreement && (
                   <div style={{ color: 'var(--seal-deep, #14515C)' }}>
-                    the ledger lists {fmtMoney(row.listedTotal)} — the two disagree; the listed figure is
+                    the ledger lists {fmtMoney(row.listedTotal, row.currency)} — the two disagree; the listed figure is
                     what will be spent
                   </div>
                 )}
@@ -626,7 +628,7 @@ export function LedgerRow({
                     */}
                     <HoldToApprove
                       key={`die-${row.id}-${attempt}`}
-                      label={`Hold to approve · ${fmtMoney(row.total)}`}
+                      label={`Hold to approve · ${fmtMoney(row.total, row.currency)}`}
                       approvedLabel="Approved"
                       disabled={bulkRunning || approve.isPending || heldForApproval}
                       onApprove={onApprove}

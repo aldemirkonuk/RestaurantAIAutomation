@@ -90,18 +90,23 @@ export interface StatedPriceUnit {
 }
 
 /**
- * "$420.00 per case (12 bottles)". Mirrors the gateway's `describeAgreedPrice`.
+ * "€420.00 per case (12 bottles)". Mirrors the gateway's `describeAgreedPrice`.
  *
- * Returns null for an absent price rather than "$0.00": `Number(null)` is 0 and
+ * Returns null for an absent price rather than a zero: `Number(null)` is 0 and
  * a fabricated zero is the one figure this page may never print (ADR 0020).
+ *
+ * `currency` is the ORDER's (PROCURE-01): the three states `fmtMoney` reads —
+ * a code, `null` ("currency not recorded"), or omitted ("currency not read").
+ * It printed dollars for every order until 2026-10-07.
  */
 export function describeStatedPrice(
   price: number | null | undefined,
   stated: StatedPriceUnit | null,
+  currency?: string | null,
 ): string | null {
   if (price == null || !Number.isFinite(Number(price))) return null;
-  // Grouped like every other figure on the page ($1,090.00, not $1090.00; ORD-W14).
-  const money = fmtMoney(Number(price));
+  // Grouped like every other figure on the page (1,090.00, not 1090.00; ORD-W14).
+  const money = fmtMoney(Number(price), currency);
   if (!stated) return money;
   const pack =
     stated.pricePackSize > 1 ? ` (${stated.pricePackSize} bottles)` : '';
@@ -199,8 +204,17 @@ export function agreementTotal(input: {
    * what they were before phase 2 — no existing figure moves.
    */
   fees?: AgreementFees;
+  /**
+   * The currency every amount in the working is in — the order's (PROCURE-01).
+   * A code; `null` (the order names none); or omitted (the caller never read
+   * it). The working printed `$` before every amount until 2026-10-07, so a
+   * lira order's working read in dollars beside its lira total.
+   */
+  currency?: string | null;
 }): AgreementTotal | null {
   const { price, stated, quantity, unitType } = input;
+  // Passes `undefined` through on purpose: omitted reads "currency not read".
+  const m = (v: number) => fmtMoney(v, input.currency);
   if (price == null || quantity == null || !Number.isFinite(price)) return null;
 
   const orderOpaque = OPAQUE.has(unitType);
@@ -225,14 +239,11 @@ export function agreementTotal(input: {
           (fees.freight ?? 0)) *
           100,
       ) / 100;
-    const parts = [`Goods $${goods.toFixed(2)}`];
-    if (fees.allowance !== null)
-      parts.push(`less allowance $${fees.allowance.toFixed(2)}`);
-    if (fees.deposit !== null)
-      parts.push(`plus deposit $${fees.deposit.toFixed(2)}`);
-    if (fees.freight !== null)
-      parts.push(`plus freight $${fees.freight.toFixed(2)}`);
-    // NO trailing "= $total": the sheet prints the figure above this sentence
+    const parts = [`Goods ${m(goods)}`];
+    if (fees.allowance !== null) parts.push(`less allowance ${m(fees.allowance)}`);
+    if (fees.deposit !== null) parts.push(`plus deposit ${m(fees.deposit)}`);
+    if (fees.freight !== null) parts.push(`plus freight ${m(fees.freight)}`);
+    // NO trailing "= total": the sheet prints the figure above this sentence
     // and the ledger row prints it after, so carrying it here printed it twice
     // on the row. Measured in the first capture of this pass.
     return {
@@ -246,7 +257,7 @@ export function agreementTotal(input: {
   if (!stated) {
     return goodsOnly(
       price * bottlesTotal,
-      `${bottlesTotal} × $${price.toFixed(2)} — no price unit stated, so this uses the old per-bottle convention.`,
+      `${bottlesTotal} × ${m(price)} — no price unit stated, so this uses the old per-bottle convention.`,
     );
   }
 
@@ -254,7 +265,7 @@ export function agreementTotal(input: {
     if (stated.priceUom === unitType) {
       return goodsOnly(
         price * quantity,
-        `${quantity} × $${price.toFixed(2)} per ${unitType}.`,
+        `${quantity} × ${m(price)} per ${unitType}.`,
       );
     }
     return {
@@ -267,26 +278,25 @@ export function agreementTotal(input: {
   return goodsOnly(
     Math.round(price * unitsBought * 100) / 100,
     stated.pricePackSize === 1
-      ? `${bottlesTotal} × $${price.toFixed(2)} per ${stated.priceUom}.`
-      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × $${price.toFixed(2)}.`,
+      ? `${bottlesTotal} × ${m(price)} per ${stated.priceUom}.`
+      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × ${m(price)}.`,
   );
 }
 
 /**
- * "an allowance of $25.00, a deposit of $6.00" — the fees a row prints.
+ * "an allowance of €25.00, a deposit of €6.00" — the fees a row prints, in the
+ * order's currency (`currency`, the three states `fmtMoney` reads).
  *
  * Returns null when the agreement names none, so a row that has no fees prints
  * nothing rather than a line saying so: absence of a fee is the ordinary case
  * and does not need announcing. Absence of a READ does — see
  * `ROW_FEES_NOT_READ`.
  */
-export function describeFees(fees: AgreementFees): string | null {
+export function describeFees(fees: AgreementFees, currency?: string | null): string | null {
   const parts = [
-    fees.allowance !== null
-      ? `an allowance of $${fees.allowance.toFixed(2)}`
-      : null,
-    fees.deposit !== null ? `a deposit of $${fees.deposit.toFixed(2)}` : null,
-    fees.freight !== null ? `freight of $${fees.freight.toFixed(2)}` : null,
+    fees.allowance !== null ? `an allowance of ${fmtMoney(fees.allowance, currency)}` : null,
+    fees.deposit !== null ? `a deposit of ${fmtMoney(fees.deposit, currency)}` : null,
+    fees.freight !== null ? `freight of ${fmtMoney(fees.freight, currency)}` : null,
   ].filter(Boolean);
   return parts.length ? parts.join(', ') : null;
 }

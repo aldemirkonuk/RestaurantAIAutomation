@@ -142,9 +142,11 @@ describe('the total is drawn from the pair and says so', () => {
     fireEvent.change(screen.getByTestId('price-uom'), { target: { value: 'case' } });
     fireEvent.change(screen.getByTestId('price-pack'), { target: { value: '12' } });
 
-    expect(screen.getByTestId('agreement-total').textContent).toBe('$2,100.00');
+    // The sheet does not yet pass its chosen currency to the figure
+    // (PROCURE-01 follow-up, owed), so it says so — never "$" (ADR 0117 r3).
+    expect(screen.getByTestId('agreement-total').textContent).toBe('2,100.00 (currency not read)');
     // The pre-fix arithmetic, asserted as the number the page must not show.
-    expect(screen.getByTestId('agreement-total').textContent).not.toBe('$25,200.00');
+    expect(screen.getByTestId('agreement-total').textContent).not.toContain('25,200');
     expect(screen.getByTestId('agreement-working').textContent).toContain(
       '60 bottles ÷ 12 = 5 cases',
     );
@@ -155,9 +157,9 @@ describe('the total is drawn from the pair and says so', () => {
     fillCaseOrder({ price: '35' });
     fireEvent.change(screen.getByTestId('price-uom'), { target: { value: 'bottle' } });
 
-    expect(screen.getByTestId('agreement-total').textContent).toBe('$2,100.00');
+    expect(screen.getByTestId('agreement-total').textContent).toBe('2,100.00 (currency not read)');
     expect(screen.getByTestId('agreement-working').textContent).toContain(
-      '60 × $35.00 per bottle',
+      '60 × 35.00 (currency not read) per bottle',
     );
     expect(
       screen.getByText(/a bottle price and a case price are\s+posted separately/i),
@@ -273,17 +275,28 @@ describe('the lists are honest about not having been read', () => {
 
 describe('the page arithmetic agrees with the words it prints', () => {
   it('describes a case price with its pack and a bottle price without one', () => {
-    expect(describeStatedPrice(420, { priceUom: 'case', pricePackSize: 12 })).toBe(
+    expect(describeStatedPrice(420, { priceUom: 'case', pricePackSize: 12 }, 'USD')).toBe(
       '$420.00 per case (12 bottles)',
     );
-    expect(describeStatedPrice(35, { priceUom: 'bottle', pricePackSize: 1 })).toBe(
+    expect(describeStatedPrice(35, { priceUom: 'bottle', pricePackSize: 1 }, 'USD')).toBe(
       '$35.00 per bottle',
+    );
+    // PROCURE-01: the price is in the order's currency, and an unread one is
+    // said, never assumed to be dollars.
+    expect(
+      describeStatedPrice(420, { priceUom: 'case', pricePackSize: 12 }, 'TRY')?.replace(/\u00a0/g, ' '),
+    ).toBe('TRY 420.00 per case (12 bottles)');
+    expect(describeStatedPrice(35, { priceUom: 'bottle', pricePackSize: 1 }, null)).toBe(
+      '35.00 (currency not recorded) per bottle',
+    );
+    expect(describeStatedPrice(35, { priceUom: 'bottle', pricePackSize: 1 })).toBe(
+      '35.00 (currency not read) per bottle',
     );
   });
 
   it('groups thousands like every other figure on the page (ORD-W14)', () => {
-    expect(describeStatedPrice(1090, null)).toBe('$1,090.00');
-    expect(describeStatedPrice(2400, { priceUom: 'case', pricePackSize: 6 })).toBe(
+    expect(describeStatedPrice(1090, null, 'USD')).toBe('$1,090.00');
+    expect(describeStatedPrice(2400, { priceUom: 'case', pricePackSize: 6 }, 'USD')).toBe(
       '$2,400.00 per case (6 bottles)',
     );
   });

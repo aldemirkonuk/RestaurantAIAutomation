@@ -17,7 +17,7 @@ import { apiClient } from '@/services/api/client';
 import { useOrders } from '@/hooks/queries/useOrderQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
-import { num } from './format';
+import { num, sumByCurrency, type MoneyLine } from './format';
 import {
   PRICE_UOMS,
   agreementTotal,
@@ -148,6 +148,15 @@ export interface OrderRowVM {
   listedTotal: number | null;
   /** The figure the page acts on: listed if present, else computed, else null. */
   total: number | null;
+  /**
+   * The currency every amount on this row is in — the order's own, as the
+   * route sent it (PROCURE-01, 2026-10-07). THREE states, like `priceUnit`:
+   * an ISO code; `null` (the order names none, so every figure says "currency
+   * not recorded"); or ABSENT (the route never read the column, so every
+   * figure says "currency not read"). Optional because absent IS the third
+   * state. Never defaulted to USD, and never added to another currency.
+   */
+  currency?: string | null;
   stage: Stage | 'cancelled';
   status: OrderStatus;
   /**
@@ -169,9 +178,15 @@ export interface OrderRowVM {
 }
 
 export interface MonthFigure {
-  /** Sum of known order values created this calendar month (cancelled excluded). Null = unknown. */
-  thisMonth: number | null;
-  lastMonth: number | null;
+  /**
+   * Known order values requested this calendar month (cancelled excluded),
+   * ONE LINE PER CURRENCY — never one sum across currencies, nothing converted
+   * (ADR 0117 rule 3; PROCURE-01). Until 2026-10-07 this was one number, and a
+   * house buying in lira and euros saw them added into one "$" figure. An
+   * empty list = no priced order this month. Null = unknown.
+   */
+  thisMonth: MoneyLine[] | null;
+  lastMonth: MoneyLine[] | null;
   /** Orders inside this month whose value is unknown — stated, not silently zeroed. */
   unpricedThisMonth: number;
 }
@@ -250,6 +265,17 @@ export interface OrdersNextData {
   approvalPolicyNote: string | null;
 }
 
+/**
+ * The order's currency, three-state (see `OrderRowVM.currency`). The gateway
+ * sends a member of ISO 4217 or null (`currencyCode`); anything else is read as
+ * naming no currency, never as money.
+ */
+function readCurrency(o: OrderWire): string | null | undefined {
+  if (!('currency' in o)) return undefined;
+  const raw = typeof o.currency === 'string' ? o.currency.trim().toUpperCase() : '';
+  return /^[A-Z]{3}$/.test(raw) ? raw : null;
+}
+
 /** The order's own quantity unit, when it is one of the seven the schema allows. */
 function readUnitType(v: unknown): PriceUom | null {
   const raw = typeof v === 'string' ? v.trim().toLowerCase() : '';
@@ -290,6 +316,7 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
   const unitType = readUnitType(o.unitType);
   const priceUnit = readPriceUnitFromWire(o);
   const fees = readFeesFromWire(o);
+  const currency = readCurrency(o);
 
   /*
    * The working, drawn from the PRICE's unit — the same arithmetic the gateway
@@ -329,6 +356,8 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
           // ADR 0119 phase 2 — rather than a total built on three assumed
           // zeroes.
           fees: fees.read ? fees.fees : undefined,
+          // The working's amounts are the order's money, not dollars.
+          currency,
         })
       : null;
   const computedTotal = agreement && agreement.ok ? agreement.total : null;
@@ -383,6 +412,7 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
     computedTotal,
     listedTotal,
     total: listedTotal ?? computedTotal,
+    currency,
     stage: stageOf(status),
     status,
     recurring,
@@ -392,6 +422,31 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
     approvedAt: o.approvedAt ?? null,
     deliveredAt: o.deliveredAt ?? null,
     notes: null,
+  };
+}
+
+/**
+ * The month figure from the rows: this month's and last month's known order
+ * values by `requestedAt`, cancelled excluded, ONE LINE PER CURRENCY
+ * (`sumByCurrency`). Unpriced orders this month are counted, never zeroed.
+ * Exported so the grouping is tested on rows, not on a hand-built figure.
+ */
+export function monthFigure(rows: OrderRowVM[], now: Date): MonthFigure {
+  const inMonth = (iso: string | null, ref: Date) => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
+  };
+  const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const active = rows.filter((r) => r.stage !== 'cancelled');
+  const byCurrency = (rs: OrderRowVM[]) =>
+    sumByCurrency(rs.map((r) => ({ amount: r.total, currency: r.currency })));
+  const thisRows = active.filter((r) => inMonth(r.requestedAt, now));
+  const lastRows = active.filter((r) => inMonth(r.requestedAt, lastRef));
+  return {
+    thisMonth: byCurrency(thisRows),
+    lastMonth: byCurrency(lastRows),
+    unpricedThisMonth: thisRows.filter((r) => r.total === null).length,
   };
 }
 
@@ -439,7 +494,7 @@ export function useOrdersNextData(): OrdersNextData {
     let recurringCount: number | null = null;
     let recurrenceReadCount: number | null = null;
     let cancelledCount: number | null = null;
-    const month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
+    let month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
 
     if (known) {
       const oneTime = rows.filter((r) => !r.recurring);
@@ -458,21 +513,7 @@ export function useOrdersNextData(): OrdersNextData {
       recurrenceReadCount = rows.filter((r) => r.recurrence.read).length;
       cancelledCount = rows.filter((r) => r.stage === 'cancelled').length;
 
-      const now = new Date();
-      const inMonth = (iso: string | null, ref: Date) => {
-        if (!iso) return false;
-        const d = new Date(iso);
-        return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
-      };
-      const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const active = rows.filter((r) => r.stage !== 'cancelled');
-      const sumKnown = (rs: OrderRowVM[]) =>
-        rs.reduce((s, r) => s + (r.total ?? 0), 0);
-      const thisRows = active.filter((r) => inMonth(r.requestedAt, now));
-      const lastRows = active.filter((r) => inMonth(r.requestedAt, lastRef));
-      month.thisMonth = sumKnown(thisRows);
-      month.lastMonth = sumKnown(lastRows);
-      month.unpricedThisMonth = thisRows.filter((r) => r.total === null).length;
+      month = monthFigure(rows, new Date());
     }
 
     const err = ordersQuery.error as { message?: string } | null;

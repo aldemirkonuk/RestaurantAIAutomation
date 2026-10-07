@@ -31,7 +31,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 
 vi.mock('@/services/api/orders', () => ({ mintOrderSeal: vi.fn(async () => 'seal') }));
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
@@ -40,7 +40,8 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 }));
 
 import { LedgerRow } from './LedgerRow';
-import { toRow } from './useOrdersNextData';
+import { BulkApproveBar } from './BulkApproveBar';
+import { monthFigure, toRow } from './useOrdersNextData';
 import { ROW_PRICE_UNIT_NOT_READ, ROW_UNSTATED_PRICE_UNIT } from './price-unit';
 
 const NO_PROVIDERS = new Map<string, string>();
@@ -69,6 +70,10 @@ function wire(over: Record<string, unknown> = {}) {
     wineName: 'Barolo Riserva',
     priceUom: 'case',
     pricePackSize: 12,
+    // The order's own money (PROCURE-01). Euros, deliberately not dollars: a
+    // "$" anywhere in these rows is now the defect, not the default. The
+    // PROCURE-01 block below varies it.
+    currency: 'EUR',
     ...over,
   } as never;
 }
@@ -115,18 +120,18 @@ describe('the ledger row reads the price the route actually sends', () => {
 });
 
 describe('a stated price is printed with its unit', () => {
-  it('2. prints "$420.00 per case (12 bottles)" and totals by the case', () => {
+  it('2. prints "€420.00 per case (12 bottles)" and totals by the case', () => {
     const row = mount();
     expect(row.priceUnit).toEqual({
       read: true,
       stated: { priceUom: 'case', pricePackSize: 12 },
     });
     expect(screen.getByTestId('agreed-price').textContent).toContain(
-      '$420.00 per case (12 bottles)',
+      '€420.00 per case (12 bottles)',
     );
     // The working names the conversion, so the figure can be re-derived.
     expect(screen.getByTestId('row-working').textContent).toBe(
-      '60 bottles ÷ 12 = 5 cases × $420.00.',
+      '60 bottles ÷ 12 = 5 cases × €420.00.',
     );
     expect(row.computedTotal).toBe(2100);
     // NOT the per-bottle reading, which would be 60 × $420 = $25,200.
@@ -135,7 +140,7 @@ describe('a stated price is printed with its unit', () => {
 
   it('2b. a per-bottle price on a case order is ordinary, and said to be', () => {
     mount({ priceUom: 'bottle', pricePackSize: 1, finalPrice: 22, totalCost: 1320 });
-    expect(screen.getByTestId('agreed-price').textContent).toContain('$22.00 per bottle');
+    expect(screen.getByTestId('agreed-price').textContent).toContain('€22.00 per bottle');
     expect(screen.getByTestId('units-differ').textContent).toContain('that is ordinary');
   });
 });
@@ -155,13 +160,13 @@ describe('an unstated unit is a refusal, not a default', () => {
     expect(row.computedTotal).toBeNull();
     expect(screen.queryByTestId('row-working')).toBeNull();
     expect(screen.getByTestId('row-no-working').textContent).toContain(
-      'nothing says what unit $420.00 is in',
+      'nothing says what unit €420.00 is in',
     );
     // and no figure of the page's own invention anywhere in the row
     expect(document.body.textContent).not.toContain('25,200');
     // The price is still shown — the row does not hide the number, it refuses
     // to let the number stand as though a unit had been stated.
-    expect(screen.getByTestId('agreed-price').textContent).toContain('$420.00');
+    expect(screen.getByTestId('agreed-price').textContent).toContain('€420.00');
     expect(screen.getByTestId('agreed-price').textContent).not.toContain('per');
     expect(screen.getByTestId('price-unit-unstated').textContent).toBe(
       ROW_UNSTATED_PRICE_UNIT,
@@ -263,5 +268,154 @@ describe('a count is said in words (ORD-W17)', () => {
   it('says one of a unit in the singular, and a split case as two words', () => {
     mount({ priceUom: null, pricePackSize: null, quantity: 1, unitType: 'split_case' });
     expect(screen.getByTestId('row-no-working').textContent).toContain('1 split case —');
+  });
+});
+
+/*
+ * PROCURE-01, 2026-10-07. Every figure on /orders was formatted as US dollars
+ * (an en-US Intl formatter pinned to the dollar), and the month figure and
+ * the bulk-approve total added lira, euros and dollars into one "$" sum. The
+ * gateway had sent each order's `currency` all along (`mapOrderRow`). Nothing
+ * converts and nothing sums across currencies (ADR 0117 rule 3).
+ */
+/** Intl puts a no-break space between a code and its figure ("TRY\u00a0420.00"). */
+const flat = (t: string | null | undefined) => (t ?? '').replace(/\u00a0/g, ' ');
+
+describe('each order is printed in its own currency (PROCURE-01)', () => {
+  it('reads the currency in its three states, and never defaults it', () => {
+    expect(toRow(wire({ currency: 'TRY' }), NO_PROVIDERS).currency).toBe('TRY');
+    expect(toRow(wire({ currency: ' eur ' }), NO_PROVIDERS).currency).toBe('EUR');
+    // read, names none: null — not USD
+    expect(toRow(wire({ currency: null }), NO_PROVIDERS).currency).toBeNull();
+    // not a currency code: read as naming none, not as money
+    expect(toRow(wire({ currency: 'lira' }), NO_PROVIDERS).currency).toBeNull();
+    // never read: absent, a third state
+    const payload = wire();
+    delete (payload as Record<string, unknown>).currency;
+    expect(toRow(payload, NO_PROVIDERS).currency).toBeUndefined();
+  });
+
+  it('prints a lira order in lira, with no dollar sign anywhere in the row', () => {
+    mount({ currency: 'TRY' });
+    const body = flat(document.body.textContent);
+    expect(flat(screen.getByTestId('agreed-price').textContent)).toContain('TRY 420.00 per case');
+    expect(flat(screen.getByTestId('row-working').textContent)).toBe(
+      '60 bottles ÷ 12 = 5 cases × TRY 420.00.',
+    );
+    expect(body).toContain('TRY 2,100.00');
+    expect(body).not.toContain('$');
+    // EVERY figure in the row has the order's currency — the row total, the
+    // agreement total and the approval hold — so none says it was not read.
+    expect(body).not.toContain('currency not');
+    expect(flat(screen.getByTestId('row-working').nextSibling?.nextSibling?.textContent)).toBe(
+      'TRY 2,100.00',
+    );
+    expect(
+      flat(screen.getByRole('button', { name: /^Hold to approve · / }).getAttribute('aria-label')),
+    ).toBe('Hold to approve · TRY 2,100.00');
+  });
+
+  it('says what the ledger lists in the order’s currency when the two disagree', () => {
+    mount({ currency: 'TRY', totalCost: 2178 });
+    expect(flat(document.body.textContent)).toContain(
+      'the ledger lists TRY 2,178.00 — the two disagree',
+    );
+  });
+
+  it('prints a yen order in yen, in its own decimal places', () => {
+    mount({ currency: 'JPY' });
+    expect(screen.getByTestId('agreed-price').textContent).toContain('¥420 per case');
+    expect(screen.getByTestId('row-working').textContent).toBe('60 bottles ÷ 12 = 5 cases × ¥420.');
+    expect(document.body.textContent).not.toContain('$');
+  });
+
+  it('says "currency not recorded" for an order that names none — never USD', () => {
+    mount({ currency: null });
+    const body = document.body.textContent ?? '';
+    expect(body).toContain('2,100.00 (currency not recorded)');
+    expect(body).not.toContain('$');
+  });
+
+  it('says "currency not read" when the route never sent the key', () => {
+    const payload = wire();
+    delete (payload as Record<string, unknown>).currency;
+    render(
+      <LedgerRow
+        row={toRow(payload, NO_PROVIDERS)}
+        expanded
+        onToggle={() => {}}
+        selected={false}
+        onSelectChange={() => {}}
+        bulkRunning={false}
+      />,
+    );
+    const body = document.body.textContent ?? '';
+    expect(body).toContain('2,100.00 (currency not read)');
+    expect(body).not.toContain('$');
+    expect(body).not.toContain('not recorded');
+  });
+
+  it('groups the month figure per currency, never one sum across them', () => {
+    const now = new Date('2026-10-15T12:00:00Z');
+    const rows = [
+      toRow(wire({ id: 'a', currency: 'TRY', totalCost: 1200, requestedAt: '2026-10-02T10:00:00Z' }), NO_PROVIDERS),
+      toRow(wire({ id: 'b', currency: 'TRY', totalCost: 300, requestedAt: '2026-10-03T10:00:00Z' }), NO_PROVIDERS),
+      toRow(wire({ id: 'c', currency: 'EUR', totalCost: 1500, requestedAt: '2026-10-04T10:00:00Z' }), NO_PROVIDERS),
+      toRow(wire({ id: 'd', currency: null, totalCost: 80, requestedAt: '2026-10-05T10:00:00Z' }), NO_PROVIDERS),
+      toRow(wire({ id: 'e', currency: 'GBP', totalCost: 900, requestedAt: '2026-09-05T10:00:00Z' }), NO_PROVIDERS),
+      // unpriced this month: counted, not zeroed
+      toRow(
+        wire({ id: 'f', currency: 'TRY', totalCost: null, finalPrice: null, requestedAt: '2026-10-06T10:00:00Z' }),
+        NO_PROVIDERS,
+      ),
+      // cancelled: excluded
+      toRow(wire({ id: 'g', currency: 'TRY', totalCost: 5000, status: 'CANCELLED', requestedAt: '2026-10-07T10:00:00Z' }), NO_PROVIDERS),
+    ];
+    const m = monthFigure(rows, now);
+    expect(m.thisMonth).toEqual([
+      { currency: 'EUR', amount: 1500 },
+      { currency: 'TRY', amount: 1500 },
+      { currency: null, amount: 80 },
+    ]);
+    expect(m.lastMonth).toEqual([{ currency: 'GBP', amount: 900 }]);
+    expect(m.unpricedThisMonth).toBe(1);
+    // the old cross-currency sum, 1200 + 300 + 1500 + 80, is nowhere
+    expect(JSON.stringify(m)).not.toContain('3080');
+  });
+
+  it('the bulk-approve bar states each currency on its own line, never their sum', () => {
+    const rows = [
+      toRow(wire({ id: 'a', currency: 'TRY', totalCost: 1200 }), NO_PROVIDERS),
+      toRow(wire({ id: 'b', currency: 'EUR', totalCost: 1500 }), NO_PROVIDERS),
+      toRow(wire({ id: 'c', currency: 'TRY', totalCost: null, finalPrice: null }), NO_PROVIDERS),
+    ];
+    const { container } = render(
+      <BulkApproveBar
+        selectedRows={rows}
+        onClear={() => {}}
+        onApproved={() => {}}
+        onRunningChange={() => {}}
+      />,
+    );
+    const said = flat(within(container).getByText(/known/).textContent);
+    expect(said).toBe('€1,500.00 · TRY 1,200.00 known · 1 unpriced');
+    expect(container.textContent).not.toContain('2,700');
+    expect(container.textContent).not.toContain('$');
+  });
+
+  it('the bulk-approve bar says no price is known, never a zero, when none is', () => {
+    const rows = [
+      toRow(wire({ id: 'a', currency: 'TRY', totalCost: null, finalPrice: null }), NO_PROVIDERS),
+      toRow(wire({ id: 'b', currency: 'EUR', totalCost: null, finalPrice: null }), NO_PROVIDERS),
+    ];
+    const { container } = render(
+      <BulkApproveBar
+        selectedRows={rows}
+        onClear={() => {}}
+        onApproved={() => {}}
+        onRunningChange={() => {}}
+      />,
+    );
+    expect(within(container).getByText(/known/).textContent).toBe('no price known · 2 unpriced');
   });
 });
