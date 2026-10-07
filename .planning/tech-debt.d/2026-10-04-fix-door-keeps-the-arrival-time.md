@@ -39,7 +39,9 @@ Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 3). This is a fo
 - (b) A data migration that re-dates `delivered_at` from the latest door event's `client_captured_at`, where that time is within 72 hours of the event's `occurred_at`. It fits the ruling and needs no role. It fixes none of the sim house's rows, whose captures were 31-44 days old.
 - (c) Option (b), plus re-dating older rows where the receiver is an owner or a manager today. That guesses the role at the time. The event rows also cannot be marked `back_dated`, because the append-only trigger (ADR 0227) refuses the update. Not recommended.
 
-## A late sync onto an order that refuses the receipt leaves the order undated — OPEN — 2026-10-05
+## A late sync onto an order that refuses the receipt leaves the order undated — ~~OPEN~~ CLOSED on 2026-10-07, no change — 2026-10-05
+
+**[Closed 2026-10-07: the founder answered (AskUserQuestion, 04:29:14Z), verbatim pick *"Leave it, logged (Recommended)"*: as built. The stock and the event are dated to when the goods were taken, the order's `delivered_at` stays as it was, and the refusal is logged. Quoted in ADR 0286, follow-up 6.]**
 
 Filed by `fix/door-keeps-the-arrival-time` (ADR 0286, follow-up 6). Found by the PR's review at `d9fd02b9f`.
 
