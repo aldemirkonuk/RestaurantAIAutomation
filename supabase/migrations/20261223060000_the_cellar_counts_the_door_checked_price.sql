@@ -61,7 +61,11 @@
 -- applied again. The new columns go at the end, so the first 31 keep their
 -- names, types and places. The body is the_cellar_reads_the_tills_own_record's
 -- verbatim (the menu CTE and the till, pour and keys lines included) except
--- the lines marked CHANGED or ADDED below. No applied migration is edited.
+-- the lines marked CHANGED or ADDED below. [CHANGED 2026-10-07: re-synced
+-- to that migration's merged body (main 42fe1252b), which dropped its is_wine
+-- admit rule after this file was first written; the till, queued, pour,
+-- pour_agg and keys lines and their comments are its own again.] No applied
+-- migration is edited.
 -- Reads only; this migration changes no row.
 
 -- ---------------------------------------------------------------------------
@@ -301,7 +305,14 @@ quo AS (
 -- every check not voided, plus the queue lines with no check behind them. It
 -- used to be the open unresolved-lines queue alone, which holds only the wine
 -- lines the bridge could not map, so a mapped rakı and every non-wine sale
--- never reached Sold or Taken. Grouped by name first, so beverage_house_key
+-- never reached Sold or Taken.
+-- [CORRECTED 2026-10-05: too broad, as the header's correction says: the queue
+-- also holds mapped wine lines pos-hub could not book, and the Toast direct
+-- path's lines, wine or not, that nothing maps or whose mapping names another
+-- house's item. What never reached Sold or Taken was a mapped line whose sale
+-- volume resolved against this house's own item, like the rakı, and every
+-- non-wine line on the pos-hub path, which skips them before the queue.]
+-- Grouped by name first, so beverage_house_key
 -- runs once per distinct name rather than once per line.
 till AS MATERIALIZED (
   SELECT t.item_name,
@@ -309,8 +320,7 @@ till AS MATERIALIZED (
          sum(coalesce(t.qty, 0))                              AS qty,
          sum(coalesce(t.price, 0) * coalesce(t.qty, 1))       AS revenue,
          min(t.sold_at)                                       AS first_at,
-         max(t.sold_at)                                       AS last_at,
-         bool_or(coalesce(t.is_wine, false) OR t.from_queue)  AS admit
+         max(t.sold_at)                                       AS last_at
   FROM public.house_till_lines(p_restaurant_id) t
   GROUP BY t.item_name
 ),
@@ -318,6 +328,17 @@ till AS MATERIALIZED (
 -- the queue, so each of these names was a row before this migration and stays
 -- one. pos-hub queues wine lines only; the Toast direct path queues every line
 -- it cannot map.
+-- [CORRECTED 2026-10-05: too broad three times. The old pour read only the
+-- OPEN queue (resolved = false), so a name only resolved lines held was not a
+-- row before. And `pour` below starts from `till` and only joins these names
+-- to it, so a queued name is admitted only while house_till_lines still holds
+-- a line of it; a name whose every line sat on voided checks has none there,
+-- and leaves with them. And the Toast direct path queues a line that has a
+-- menu guid and a quantity above 0 when nothing maps it or its mapping names
+-- another house's item; a line without a guid or a quantity it skips.]
+-- [CHANGED 2026-10-05: these names are now the only way a till name that no
+-- other book names becomes a row. The first build also admitted a name when a
+-- line of it was flagged is_wine; that is dropped (the header, item 3).]
 queued AS (
   SELECT DISTINCT btrim(u.item_name) AS item_name
   FROM public.pos_unresolved_lines u
@@ -328,7 +349,7 @@ pour AS (
   SELECT public.beverage_house_key(NULL, t.item_name) AS k,
          t.item_name                                  AS label,
          t.lines, t.qty, t.revenue, t.first_at, t.last_at,
-         (t.admit OR q.item_name IS NOT NULL)         AS admit
+         (q.item_name IS NOT NULL)                    AS admit
   FROM till t
   LEFT JOIN queued q ON q.item_name = t.item_name
 ),
@@ -402,6 +423,12 @@ quo_agg AS (
          (array_agg(label ORDER BY length(label) DESC))[1]                 AS label
   FROM quo WHERE k IS NOT NULL GROUP BY k
 ),
+-- CHANGED the_cellar_reads_the_tills_own_record (ADR 0301 §1): `pour` now
+-- arrives one row per till name, already summed in `till`, so these columns
+-- sum and bound those per-name fields (lines, qty, revenue, first_at,
+-- last_at) where they used to count and date raw queue lines (count(*),
+-- created_at). Sold and Taken keep the old per-line rules, applied in `till`.
+-- bool_or(admit) is new, and feeds the keys line below.
 pour_agg AS (
   SELECT k,
          sum(lines)::integer                                AS lines,
@@ -423,9 +450,12 @@ keys AS (
   UNION SELECT k FROM ord_agg
   UNION SELECT k FROM quo_agg
   -- CHANGED the_cellar_reads_the_tills_own_record: a name only the till
-  -- knows is a row when a line of it is flagged is_wine or the queue ever
-  -- held it. A key the other books name attaches its till lines below either
-  -- way.
+  -- knows is a row when the queue ever held it, resolved or not (main's pour
+  -- read the open queue alone; nothing in the code sets `resolved`), and only
+  -- while `till` holds a line of that exact name (`pour` starts from `till`;
+  -- T2). A key the other books name gets the till lines
+  -- of the same key below either way. [CHANGED 2026-10-05: no longer also
+  -- when a line of it is flagged is_wine; the header, item 3.]
   UNION SELECT k FROM pour_agg WHERE admit
 ),
 
@@ -550,8 +580,8 @@ COMMENT ON FUNCTION public.house_beverage_ledger IS
   '= ''active'', ADR 0193) and excludes status = ''discarded'' lines. '
   'The pos book is the till''s own record, house_till_lines: every line of '
   'every pos_checks row not voided, plus pos_unresolved_lines with no check '
-  'behind them; a name only the till knows is a row when a line of it is '
-  'flagged is_wine or the queue ever held it (ADR 0301). '
+  'behind them, summed by house_key; a name only the till knows is a row '
+  'when the queue ever held it (ADR 0301). '
   'Bought is the invoice lines plus house_door_checked, the door-checked '
   'orders no filed invoice covers, at the checked price times the accepted '
   'bottles; invoice_lines and the invoice book count invoice lines only, and '
