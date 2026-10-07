@@ -1,16 +1,33 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MenuImportReviewItem, MenuLine, MenuVersion } from '../services/api/menus'
 import GetStarted from './GetStarted'
 import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
 
-const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider } = vi.hoisted(() => ({
+const {
+  navigate,
+  createFirstHouse,
+  patch,
+  addMenuItem,
+  reviewMenuItem,
+  listMenuVersions,
+  getMenuVersion,
+  importMenu,
+  addCustomProvider,
+  auth,
+} = vi.hoisted(() => ({
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
   addMenuItem: vi.fn(),
+  reviewMenuItem: vi.fn(),
+  listMenuVersions: vi.fn(),
+  getMenuVersion: vi.fn(),
+  importMenu: vi.fn(),
   addCustomProvider: vi.fn(),
+  auth: { value: {} as Record<string, unknown> },
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -18,10 +35,7 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => navigate }
 })
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { name: 'Selin Kaya', emailVerified: true },
-    createFirstHouse,
-  }),
+  useAuth: () => auth.value,
 }))
 vi.mock('../services/api/client', () => ({
   apiClient: { patch },
@@ -78,14 +92,125 @@ vi.mock('../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../services/api/menus')>(
     '../services/api/menus',
   )
-  return { ...actual, reviewMenuItem: vi.fn().mockResolvedValue({}), addMenuItem }
+  return { ...actual, reviewMenuItem, addMenuItem, listMenuVersions, getMenuVersion, importMenu }
 })
 vi.mock('../services/api/vendors', () => ({
   addCustomProvider,
 }))
 
+const SELIN = { name: 'Selin Kaya', emailVerified: true, restaurantId: '' }
+
+function signedIn(user: Record<string, unknown> = SELIN) {
+  auth.value = { user, loading: false, activeRestaurantId: 'house-1', createFirstHouse }
+}
+
+/** A kept menu of the house, as GET /menu-versions lists it. */
+function menu(over: Partial<MenuVersion> = {}): MenuVersion {
+  return {
+    menuId: 'menu',
+    name: null,
+    status: 'draft',
+    current: false,
+    cadence: null,
+    menuDate: null,
+    menuDatePrecision: null,
+    sourceMethod: 'scan',
+    source: { kept: false, mime: null, bytes: null, failure: null },
+    linesExtracted: 2,
+    extractedAt: '2026-10-07T10:00:00Z',
+    extractedBy: null,
+    madeCurrentAt: null,
+    madeCurrentBy: null,
+    retiredAt: null,
+    retiredBy: null,
+    createdAt: '2026-10-07T10:00:00Z',
+    ...over,
+  }
+}
+
+/** A stored line, as GET /menu-versions/:menuId returns it. */
+function line(id: string, name: string, over: Partial<MenuLine> = {}): MenuLine {
+  return {
+    id,
+    name,
+    producer: null,
+    category: null,
+    vintage: null,
+    region: null,
+    country: null,
+    grape_variety: null,
+    by_glass_price: null,
+    bottle_price: null,
+    wine_library_id: null,
+    inventory_item_id: null,
+    source: 'scan',
+    status: 'approved',
+    created_at: '2026-10-07T10:00:00Z',
+    ...over,
+  }
+}
+
+/** This tab's reading of a line, as the import returned it. */
+function read(menuItemId: string, name: string, over: Partial<MenuImportReviewItem> = {}): MenuImportReviewItem {
+  return {
+    menuItemId,
+    submissionId: null,
+    name,
+    producer: null,
+    category: null,
+    vintage: null,
+    region: null,
+    grapeVariety: null,
+    byGlassPrice: null,
+    bottlePrice: null,
+    rawText: null,
+    matched: true,
+    needsReview: false,
+    ...over,
+  }
+}
+
+/** The server holds `lines` on the house's one kept menu. */
+function serve(lines: MenuLine[], over: Partial<MenuVersion> = {}) {
+  const version = menu(over)
+  listMenuVersions.mockResolvedValue({
+    current: version.current ? version : null,
+    lastUsed: null,
+    versions: [version],
+  })
+  getMenuVersion.mockResolvedValue({ version, items: lines })
+  return version
+}
+
+/** This tab just read `items` (stamped with a house, ADR 0309). */
+function keepReading(items: MenuImportReviewItem[], extra: Record<string, unknown> = {}) {
+  sessionStorage.setItem(
+    'mudavym:first-proof',
+    JSON.stringify({
+      menuId: 'menu',
+      itemsExtracted: items.length,
+      submissionsCreated: 0,
+      restaurantId: 'house-1',
+      items,
+      ...extra,
+    }),
+  )
+}
+
+const LAGER = line('ink', 'House Lager', { category: 'beer', by_glass_price: 8 })
+const SMOKY = line('pencil', 'Smoky No. 4', { bottle_price: 18 })
+const LAGER_READ = read('ink', 'House Lager', { category: 'beer', byGlassPrice: 8, rawText: 'House Lager 8' })
+const SMOKY_READ = read('pencil', 'Smoky No. 4', {
+  bottlePrice: 18,
+  rawText: 'Smoky No. 4 18',
+  matched: false,
+  needsReview: true,
+})
+
 beforeEach(() => {
   vi.clearAllMocks()
+  signedIn()
+  reviewMenuItem.mockResolvedValue({})
   patch.mockResolvedValue({})
   createFirstHouse.mockResolvedValue('house-1')
   addMenuItem.mockResolvedValue({
@@ -110,7 +235,7 @@ beforeEach(() => {
 describe('approved arrival flow', () => {
   it('creates the house on the restaurant screen and offers skip only on menu', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
     expect(screen.queryByText(/Skip for now/)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -148,6 +273,7 @@ describe('approved arrival flow', () => {
 
   it('shows SMS consent only after a mobile number is entered', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await screen.findByRole('heading', { name: /Welcome, Selin/ })
     expect(screen.queryByText(/the account does not depend on it/i)).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '+90 532 000 00 00' } })
     expect(screen.getByText(/the account does not depend on it/i)).toBeInTheDocument()
@@ -163,6 +289,7 @@ describe('approved arrival flow', () => {
       value: { getCurrentPosition },
     })
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await screen.findByRole('heading', { name: /Welcome, Selin/ })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Your restaurant' })
     fireEvent.click(screen.getByRole('button', { name: /Use my location/ }))
@@ -171,49 +298,39 @@ describe('approved arrival flow', () => {
     expect(screen.getByText('Restaurant search is now centred near you.')).toBeInTheDocument()
   })
 
+    it('stamps the reading it keeps with the house it was read for', async () => {
+    importMenu.mockResolvedValue({
+      menuId: 'menu',
+      itemsExtracted: 1,
+      submissionsCreated: 0,
+      items: [LAGER_READ],
+    })
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await screen.findByRole('heading', { name: /Welcome, Selin/ })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    fireEvent.change(screen.getByLabelText('Restaurant name'), { target: { value: 'Meyhane' } })
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: '1 House Street' } })
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Istanbul' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Türkiye' }))
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    const photo = new File(['x'], 'menu.png', { type: 'image/png' })
+    fireEvent.drop(screen.getByText('Drop the menu here'), { dataTransfer: { files: [photo] } })
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/house/menu', { replace: true }), {
+      timeout: 3000,
+    })
+    const kept = JSON.parse(sessionStorage.getItem('mudavym:first-proof') ?? 'null')
+    expect(kept).toMatchObject({ menuId: 'menu', restaurantId: 'house-1' })
+  })
+})
+
+describe('the first proof reads from the house (MENU-07)', () => {
   it('prints the first proof and expands only a pencilled line inline', async () => {
-    sessionStorage.setItem(
-      'mudavym:first-proof',
-      JSON.stringify({
-        menuId: 'menu',
-        itemsExtracted: 2,
-        submissionsCreated: 0,
-        items: [
-          {
-            menuItemId: 'ink',
-            submissionId: null,
-            name: 'House Lager',
-            producer: null,
-            category: 'beer',
-            vintage: null,
-            region: null,
-            grapeVariety: null,
-            byGlassPrice: 8,
-            bottlePrice: null,
-            rawText: 'House Lager 8',
-            matched: true,
-            needsReview: false,
-          },
-          {
-            menuItemId: 'pencil',
-            submissionId: null,
-            name: 'Smoky No. 4',
-            producer: null,
-            category: null,
-            vintage: null,
-            region: null,
-            grapeVariety: null,
-            byGlassPrice: null,
-            bottlePrice: 18,
-            rawText: 'Smoky No. 4 18',
-            matched: false,
-            needsReview: true,
-          },
-        ],
-      }),
-    )
+    serve([LAGER, SMOKY])
+    keepReading([LAGER_READ, SMOKY_READ])
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
-    const counts = screen.getByRole('group', { name: 'The reading count' })
+    const counts = await screen.findByRole('group', { name: 'The reading count' })
     expect(counts).toHaveTextContent(/2read1set1pencilled/)
     expect(screen.queryByText('Smoky No. 4 18')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Smoky No. 4/ }))
@@ -223,120 +340,120 @@ describe('approved arrival flow', () => {
     expect(screen.queryByText(/certain/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/likely/i)).not.toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/approve all/i)
+    expect(screen.queryByText(/does not keep which wines matched/)).not.toBeInTheDocument()
+    expect(getMenuVersion).toHaveBeenCalledWith('menu')
   })
 
-  it('counts kitchen lines instead of dropping them, and never prints an empty failed proof', () => {
-    sessionStorage.setItem(
-      'mudavym:first-proof',
-      JSON.stringify({
-        menuId: 'menu',
-        itemsExtracted: 2,
-        submissionsCreated: 0,
-        items: [
-          {
-            menuItemId: 'beer',
-            submissionId: null,
-            name: 'House Lager',
-            producer: null,
-            category: 'beer',
-            vintage: null,
-            region: null,
-            grapeVariety: null,
-            byGlassPrice: 8,
-            bottlePrice: null,
-            rawText: 'House Lager 8',
-            matched: true,
-            needsReview: false,
-          },
-          {
-            menuItemId: 'food',
-            submissionId: null,
-            name: 'Grilled octopus',
-            producer: null,
-            category: 'food',
-            vintage: null,
-            region: null,
-            grapeVariety: null,
-            byGlassPrice: null,
-            bottlePrice: 24,
-            rawText: 'Grilled octopus starter 24',
-            matched: false,
-            needsReview: true,
-          },
-        ],
-      }),
-    )
+  it("shows the house's stored lines in a tab that never read the menu", async () => {
+    serve([LAGER, line('mystery', 'Mystery Bottle', { category: 'unknown', bottle_price: 40 })])
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
-    expect(screen.getByText(/1 kitchen line set aside/)).toBeInTheDocument()
+    expect(await screen.findByText('House Lager')).toBeInTheDocument()
+    expect(screen.getByText('Mystery Bottle')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'The reading count' })).toHaveTextContent(
+      /2read1set1pencilled/,
+    )
+    // The record keeps no match: the page says pencils follow the section alone.
+    expect(screen.getByText(/does not keep which wines matched the library/)).toBeInTheDocument()
+  })
+
+  it("ignores another house's reading left in this tab", async () => {
+    serve([LAGER])
+    keepReading([read('ink', 'Another House Red', { category: 'red', rawText: 'Another House Red 30' })], {
+      restaurantId: 'house-2',
+    })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByText('House Lager')).toBeInTheDocument()
+    expect(screen.queryByText(/Another House Red/)).not.toBeInTheDocument()
+    expect(screen.getByText(/does not keep which wines matched the library/)).toBeInTheDocument()
+  })
+
+  it('ignores a reading of an older menu of the same house', async () => {
+    serve([SMOKY])
+    keepReading([read('pencil', 'Smoky No. 4', { rawText: 'Old raw line' })], { menuId: 'older-menu' })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /Smoky No. 4/ }))
+    expect(screen.queryByText('Old raw line')).not.toBeInTheDocument()
+  })
+
+  it('sends a house with no kept menu to the Menu page, never to the sign-up wizard', async () => {
+    listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'No menu has been read yet.' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Read a menu' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
+    expect(navigate).not.toHaveBeenCalledWith('/get-started')
+  })
+
+  it('says a failed read failed, never that the house has no menu', async () => {
+    listMenuVersions.mockRejectedValueOnce({ response: { data: { message: 'The menus could not be read.' } } })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByRole('alert')).toHaveTextContent('The menus could not be read.')
+    expect(screen.queryByText(/No menu has been read yet/)).not.toBeInTheDocument()
+    serve([LAGER])
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('House Lager')).toBeInTheDocument()
+  })
+
+  it('says a draft is not the house\'s current menu', async () => {
+    serve([LAGER], { status: 'draft', current: false })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByText(/Kept as a draft — not the house's current menu/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open the Menu page' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
+  })
+
+  it('says when the menu shown is the current one', async () => {
+    serve([LAGER], { status: 'active', current: true })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByText("This is the house's current menu.")).toBeInTheDocument()
+    expect(screen.queryByText(/Kept as a draft/)).not.toBeInTheDocument()
+  })
+
+  it('counts kitchen lines instead of dropping them, and never prints an empty failed proof', async () => {
+    serve([LAGER, line('food', 'Grilled octopus', { category: 'food', bottle_price: 24 })])
+    keepReading([
+      LAGER_READ,
+      read('food', 'Grilled octopus', {
+        category: 'food',
+        bottlePrice: 24,
+        rawText: 'Grilled octopus starter 24',
+        matched: false,
+        needsReview: true,
+      }),
+    ])
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByText(/1 kitchen line set aside/)).toBeInTheDocument()
     expect(screen.queryByText('Grilled octopus')).not.toBeInTheDocument()
   })
 
-  it('says the file could not be read instead of printing an empty proof', () => {
-    sessionStorage.setItem(
-      'mudavym:first-proof',
-      JSON.stringify({ menuId: 'empty', itemsExtracted: 0, submissionsCreated: 0, items: [] }),
-    )
+  it('says the file could not be read instead of printing an empty proof', async () => {
+    serve([], { linesExtracted: 0 })
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: /couldn't read this file/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /couldn't read this file/i })).toBeInTheDocument()
   })
 
   it('shows an honest empty crop when the original page was not kept', async () => {
-    sessionStorage.setItem(
-      'mudavym:first-proof',
-      JSON.stringify({
-        menuId: 'menu',
-        itemsExtracted: 1,
-        submissionsCreated: 0,
-        items: [{
-          menuItemId: 'pencil',
-          submissionId: null,
-          name: 'Smoky No. 4',
-          producer: null,
-          category: null,
-          vintage: null,
-          region: null,
-          grapeVariety: null,
-          byGlassPrice: null,
-          bottlePrice: 18,
-          rawText: 'Smoky No. 4 18',
-          matched: false,
-          needsReview: true,
-        }],
-      }),
-    )
+    serve([SMOKY], { linesExtracted: 1 })
+    keepReading([SMOKY_READ])
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /Smoky No. 4/ }))
     expect(screen.queryByRole('button', { name: /Show my original/ })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Smoky No. 4/ }))
-    expect(await screen.findByText(/No crop of this line/)).toBeInTheDocument()
+    expect(await screen.findByText(/the original page was not kept/)).toBeInTheDocument()
+  })
+
+  it('does not call a kept original lost when this view has no copy of it', async () => {
+    serve([SMOKY], { linesExtracted: 1, source: { kept: true, mime: 'image/png', bytes: 10, failure: null } })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /Smoky No. 4/ }))
+    expect(await screen.findByText(/the original is kept with the menu, but not in this view/)).toBeInTheDocument()
+    expect(screen.queryByText(/was not kept/)).not.toBeInTheDocument()
   })
 
   it('splits the original page when a source image exists', async () => {
-    sessionStorage.setItem(
-      'mudavym:first-proof',
-      JSON.stringify({
-        menuId: 'menu',
-        itemsExtracted: 1,
-        submissionsCreated: 0,
-        sourceImage: 'data:image/png;base64,aaaa',
-        items: [{
-          menuItemId: 'pencil',
-          submissionId: null,
-          name: 'Smoky No. 4',
-          producer: null,
-          category: null,
-          vintage: null,
-          region: null,
-          grapeVariety: null,
-          byGlassPrice: null,
-          bottlePrice: 18,
-          rawText: 'Smoky No. 4 18',
-          matched: false,
-          needsReview: true,
-        }],
-      }),
-    )
+    serve([SMOKY], { linesExtracted: 1 })
+    keepReading([SMOKY_READ], { sourceImage: 'data:image/png;base64,aaaa' })
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Show my original' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Show my original' }))
     expect(screen.getByAltText('Your original menu')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Smoky No. 4/ }))
     expect(await screen.findByText(/the reading did not return a box/)).toBeInTheDocument()
@@ -344,95 +461,78 @@ describe('approved arrival flow', () => {
   })
 
   it('crops a line only when the extractor already returned a box', async () => {
-    sessionStorage.setItem(
-      'mudavym:first-proof',
-      JSON.stringify({
-        menuId: 'menu',
-        itemsExtracted: 1,
-        submissionsCreated: 0,
-        sourceImage: 'data:image/png;base64,aaaa',
-        items: [{
-          menuItemId: 'pencil',
-          submissionId: null,
-          name: 'Smoky No. 4',
-          producer: null,
-          category: null,
-          vintage: null,
-          region: null,
-          grapeVariety: null,
-          byGlassPrice: null,
-          bottlePrice: 18,
-          rawText: 'Smoky No. 4 18',
-          matched: false,
-          needsReview: true,
-          bbox: { x: 10, y: 20, width: 80, height: 24, page: 1 },
-        }],
-      }),
-    )
+    serve([SMOKY], { linesExtracted: 1 })
+    keepReading([{ ...SMOKY_READ, bbox: { x: 10, y: 20, width: 80, height: 24, page: 1 } }], {
+      sourceImage: 'data:image/png;base64,aaaa',
+    })
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: /Smoky No. 4/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Smoky No. 4/ }))
     expect(await screen.findByAltText('Crop of this line from the original')).toBeInTheDocument()
   })
 
-  it('adds an absent section line from the footer', async () => {
-    sessionStorage.setItem(
-      'mudavym:first-proof',
-      JSON.stringify({
-        menuId: 'menu',
-        itemsExtracted: 1,
-        submissionsCreated: 0,
-        items: [{
-          menuItemId: 'ink',
-          submissionId: null,
-          name: 'House Lager',
-          producer: null,
-          category: 'beer',
-          vintage: null,
-          region: null,
-          grapeVariety: null,
-          byGlassPrice: 8,
-          bottlePrice: null,
-          rawText: 'House Lager 8',
-          matched: true,
-          needsReview: false,
-        }],
-      }),
-    )
+  it("adds an absent section line to the house's own menu", async () => {
+    serve([LAGER], { menuId: 'server-menu', linesExtracted: 1 })
+    keepReading([LAGER_READ], { menuId: 'server-menu' })
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Add it.' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add it.' }))
     fireEvent.change(screen.getByLabelText('New menu line'), { target: { value: 'House Cider' } })
     fireEvent.change(screen.getByLabelText('New line section'), { target: { value: 'cider' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add this line' }))
-    await waitFor(() => expect(addMenuItem).toHaveBeenCalledWith('menu', { name: 'House Cider', category: 'cider' }))
+    await waitFor(() =>
+      expect(addMenuItem).toHaveBeenCalledWith('server-menu', { name: 'House Cider', category: 'cider' }),
+    )
     expect(await screen.findByText('House Cider')).toBeInTheDocument()
   })
+})
 
-  it('opens the house contents page with exactly one ask', async () => {
-    sessionStorage.setItem(
-      'mudavym:first-proof',
-      JSON.stringify({
-        menuId: 'menu',
-        itemsExtracted: 1,
-        submissionsCreated: 0,
-        items: [{
-          menuItemId: 'pencil',
-          submissionId: null,
-          name: 'Smoky No. 4',
-          producer: null,
-          category: null,
-          vintage: null,
-          region: null,
-          grapeVariety: null,
-          byGlassPrice: null,
-          bottlePrice: 18,
-          rawText: 'Smoky No. 4 18',
-          matched: false,
-          needsReview: true,
-        }],
-      }),
+describe('a refused save says so (MENU-08)', () => {
+  it('shows why a line was not added, and keeps the form', async () => {
+    serve([LAGER], { linesExtracted: 1 })
+    addMenuItem.mockRejectedValueOnce({
+      response: { data: { message: 'Only an owner or a manager can add a menu line.' } },
+    })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add it.' }))
+    fireEvent.change(screen.getByLabelText('New menu line'), { target: { value: 'House Cider' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this line' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The line was not added: Only an owner or a manager can add a menu line.',
     )
+    expect(screen.getByLabelText('New menu line')).toHaveValue('House Cider')
+    expect(screen.queryByText('House Cider')).not.toBeInTheDocument()
+  })
+
+  it('shows why a line was not placed, and leaves it pencilled', async () => {
+    serve([SMOKY], { linesExtracted: 1 })
+    keepReading([SMOKY_READ])
+    reviewMenuItem.mockRejectedValueOnce(new Error('Network Error'))
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /Smoky No. 4/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beer' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('This line was not placed: Network Error')
+    expect(screen.getByRole('group', { name: 'The reading count' })).toHaveTextContent(/1pencilled/)
+  })
+
+  it("keeps a placed line placed in this tab's reading", async () => {
+    serve([SMOKY], { linesExtracted: 1 })
+    keepReading([SMOKY_READ])
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /Smoky No. 4/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beer' }))
+    await waitFor(() =>
+      expect(screen.getByRole('group', { name: 'The reading count' })).toHaveTextContent(/0pencilled/),
+    )
+    const kept = JSON.parse(sessionStorage.getItem('mudavym:first-proof') ?? 'null')
+    expect(kept.items[0]).toMatchObject({ category: 'beer', needsReview: false, matched: true })
+  })
+})
+
+describe('/house reads the house (MENU-07)', () => {
+  it('opens the house contents page with exactly one ask', async () => {
+    serve([SMOKY], { linesExtracted: 1 })
+    keepReading([SMOKY_READ])
     render(<MemoryRouter><HouseContents /></MemoryRouter>)
-    expect(screen.getByText('1 pencilled')).toBeInTheDocument()
+    expect(await screen.findByText('1 pencilled')).toBeInTheDocument()
     expect(screen.getByText(/The one ask/)).toBeInTheDocument()
     expect(screen.getByLabelText('Supplier')).toBeInTheDocument()
     expect(screen.getByText(/Last invoice · later/)).toBeInTheDocument()
@@ -451,5 +551,28 @@ describe('approved arrival flow', () => {
     expect(screen.getByText(/Last invoice · kept for later — suvla-sept.pdf/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open later' }))
     expect(navigate).toHaveBeenCalledWith('/settings?tab=cellar')
+  })
+
+  it("shows the house's menu in a tab that never read it", async () => {
+    serve([LAGER], { linesExtracted: 1 })
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: 'The first proof is set.' }))
+    expect(navigate).toHaveBeenCalledWith('/house/menu')
+    expect(screen.queryByText('No menu read yet.')).not.toBeInTheDocument()
+  })
+
+  it('says a failed read failed, never "No menu read yet"', async () => {
+    listMenuVersions.mockRejectedValueOnce(new Error('Network Error'))
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByRole('alert')).toHaveTextContent("The house's menu could not be read: Network Error")
+    expect(screen.queryByText('No menu read yet.')).not.toBeInTheDocument()
+  })
+
+  it('offers the Menu page when the house has kept no menu', async () => {
+    listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] })
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText('No menu read yet.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Read a menu' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
   })
 })

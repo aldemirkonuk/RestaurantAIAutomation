@@ -1,12 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
+import { useAuth } from '../contexts/AuthContext'
+import { addMenuItem, reviewMenuItem, type MenuVersion } from '../services/api/menus'
 import {
-  addMenuItem,
-  reviewMenuItem,
-  type MenuImportReviewItem,
-} from '../services/api/menus'
-import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
+  isKitchenLine,
+  lineNeedsPencil,
+  lineSourceCrop,
+  markProofLine,
+  proofReason,
+  useHouseProof,
+  type ProofLine,
+} from '../lib/firstProof'
 
 const sectionOrder = [
   'wine',
@@ -23,7 +28,7 @@ const sectionOrder = [
   'sake',
 ]
 
-function markFor(item: MenuImportReviewItem): 'ink' | 'pencil' | 'ring' {
+function markFor(item: ProofLine): 'ink' | 'pencil' | 'ring' {
   if (!lineNeedsPencil(item)) return 'ink'
   return item.category && item.category.toLowerCase() !== 'unknown' ? 'pencil' : 'ring'
 }
@@ -40,7 +45,7 @@ function sectionName(value: string) {
   return names[value] ?? value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
-function price(item: MenuImportReviewItem) {
+function price(item: ProofLine) {
   const parts = [
     item.byGlassPrice != null ? `${item.byGlassPrice} glass` : null,
     item.bottlePrice != null ? `${item.bottlePrice} bottle` : null,
@@ -48,23 +53,113 @@ function price(item: MenuImportReviewItem) {
   return parts.join(' · ')
 }
 
+function Plain({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[#fbfaf7] px-6 py-16 text-[#211f1b]">
+      <div className="mx-auto max-w-2xl">
+        <BrandMark size={24} alt="Mudavym" />
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * /house/menu reads the house's newest read menu from the server (ADR 0309),
+ * for the house this session is in. This tab's own reading only adds the marks
+ * the stored lines do not keep, and only for the same menu of the same house.
+ */
 export default function HouseMenu() {
   const navigate = useNavigate()
-  const proof = useMemo(readProof, [])
-  const [items, setItems] = useState(proof?.items ?? [])
+  const { activeRestaurantId } = useAuth()
+  const { proof, retry } = useHouseProof(activeRestaurantId)
+
+  if (proof.state === 'loading') {
+    return (
+      <Plain>
+        <p role="status" className="mt-8 text-[#6d685f]">Reading the house&apos;s menu…</p>
+      </Plain>
+    )
+  }
+
+  if (proof.state === 'failed') {
+    return (
+      <Plain>
+        <h1 className="mt-8 font-serif text-4xl">The house&apos;s menu could not be read.</h1>
+        <p role="alert" className="mt-4 text-[#6d685f]">{proof.reason}</p>
+        <button type="button" onClick={retry} className="mt-6 text-[#1a5e6b] underline">
+          Try again
+        </button>
+      </Plain>
+    )
+  }
+
+  if (proof.state === 'none') {
+    return (
+      <Plain>
+        <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
+        <button type="button" onClick={() => navigate('/menu')} className="mt-6 text-[#1a5e6b] underline">
+          Read a menu
+        </button>
+      </Plain>
+    )
+  }
+
+  if (proof.lines.length === 0) {
+    const unread = proof.version.linesExtracted === 0
+    return (
+      <Plain>
+        <h1 className="mt-8 font-serif text-4xl">
+          {unread ? <>We couldn&apos;t read this file.</> : 'This menu has no lines on it.'}
+        </h1>
+        {unread && (
+          <p className="mt-4 text-[#6d685f]">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
+        )}
+        <button type="button" onClick={() => navigate('/menu')} className="mt-6 text-[#1a5e6b] underline">
+          {unread ? 'Try another menu' : 'Open the Menu page'}
+        </button>
+      </Plain>
+    )
+  }
+
+  return (
+    <FirstProof
+      key={proof.version.menuId}
+      restaurantId={activeRestaurantId}
+      version={proof.version}
+      lines={proof.lines}
+      sourceImage={proof.sourceImage}
+    />
+  )
+}
+
+function FirstProof({
+  restaurantId,
+  version,
+  lines,
+  sourceImage,
+}: {
+  restaurantId: string | null
+  version: MenuVersion
+  lines: ProofLine[]
+  sourceImage: string | null
+}) {
+  const navigate = useNavigate()
+  const [items, setItems] = useState<ProofLine[]>(lines)
   const [open, setOpen] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [placeError, setPlaceError] = useState<{ menuItemId: string; reason: string } | null>(null)
+  const [addError, setAddError] = useState<string | null>(null)
   const [showOriginal, setShowOriginal] = useState(false)
   const [adding, setAdding] = useState(false)
   const [addName, setAddName] = useState('')
   const [addSection, setAddSection] = useState('')
-  const sourceImage = proof?.sourceImage ?? null
 
   const kitchen = items.filter(isKitchenLine)
   const drinkItems = items.filter((item) => !isKitchenLine(item))
 
   const grouped = useMemo(() => {
-    const map = new Map<string, MenuImportReviewItem[]>()
+    const map = new Map<string, ProofLine[]>()
     for (const item of drinkItems) {
       const key = item.category?.toLowerCase().trim() || 'needs a place'
       map.set(key, [...(map.get(key) ?? []), item])
@@ -76,52 +171,29 @@ export default function HouseMenu() {
     )
   }, [drinkItems])
 
-  if (!proof) {
-    return (
-      <div className="min-h-screen bg-[#fbfaf7] px-6 py-16 text-[#211f1b]">
-        <div className="mx-auto max-w-2xl">
-          <BrandMark size={24} alt="Mudavym" />
-          <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
-          <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
-            Read a menu
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (proof.itemsExtracted === 0 && items.length === 0) {
-    return (
-      <div className="min-h-screen bg-[#fbfaf7] px-6 py-16 text-[#211f1b]">
-        <div className="mx-auto max-w-2xl">
-          <BrandMark size={24} alt="Mudavym" />
-          <h1 className="mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
-          <p className="mt-4 text-[#6d685f]">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
-          <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
-            Try another menu
-          </button>
-        </div>
-      </div>
-    )
-  }
+  // A line whose match nobody can tell is pencilled by its section alone;
+  // the page says so rather than letting ink stand for a match (ADR 0309).
+  const matchUnknown = drinkItems.some((item) => item.matched === null)
 
   const pencilled = drinkItems.filter((item) => lineNeedsPencil(item)).length
   const absent = sectionOrder.filter(
     (section) => !drinkItems.some((item) => item.category?.toLowerCase().trim() === section),
   )
 
-  const place = async (item: MenuImportReviewItem, category: string) => {
+  // MENU-08: a refused or failed save says so, next to the line or the form.
+  const place = async (item: ProofLine, category: string) => {
     setSaving(item.menuItemId)
+    setPlaceError(null)
     try {
       await reviewMenuItem(item.menuItemId, 'category', category)
+      const placed = { category, needsReview: false, matched: true }
       setItems((current) =>
-        current.map((row) =>
-          row.menuItemId === item.menuItemId
-            ? { ...row, category, needsReview: false, matched: true }
-            : row,
-        ),
+        current.map((row) => (row.menuItemId === item.menuItemId ? { ...row, ...placed } : row)),
       )
+      markProofLine(restaurantId, item.menuItemId, placed)
       setOpen(null)
+    } catch (cause) {
+      setPlaceError({ menuItemId: item.menuItemId, reason: proofReason(cause) })
     } finally {
       setSaving(null)
     }
@@ -129,16 +201,20 @@ export default function HouseMenu() {
 
   const addAbsent = async () => {
     const category = addSection || absent[0]
-    if (!addName.trim() || !category || !proof) return
+    if (!addName.trim() || !category) return
     setSaving('add')
+    setAddError(null)
     try {
-      const created = await addMenuItem(proof.menuId, { name: addName.trim(), category })
+      // The menu the server named for the house this session is in (MENU-07 b).
+      const created = await addMenuItem(version.menuId, { name: addName.trim(), category })
       setItems((current) => [
         ...current,
         { ...created, category, needsReview: false, matched: true },
       ])
       setAddName('')
       setAdding(false)
+    } catch (cause) {
+      setAddError(proofReason(cause))
     } finally {
       setSaving(null)
     }
@@ -157,6 +233,28 @@ export default function HouseMenu() {
         <p className="mt-4 max-w-2xl text-[#6d685f]">
           It&apos;s a first proof — we&apos;ve pencilled the lines worth a second look.
         </p>
+        {/* ADR 0193 / 0293: every reading is kept as a draft; a draft's prices are not the house's. */}
+        {version.current ? (
+          <p className="mt-3 max-w-2xl text-sm text-[#6d685f]">This is the house&apos;s current menu.</p>
+        ) : version.status === 'draft' ? (
+          <p className="mt-3 max-w-2xl text-sm text-[#6d685f]">
+            Kept as a draft — not the house&apos;s current menu, and none of its prices are the
+            house&apos;s yet. An owner or a manager makes a menu current on the Menu page.{' '}
+            <button type="button" onClick={() => navigate('/menu')} className="text-[#1a5e6b] underline">
+              Open the Menu page
+            </button>
+          </p>
+        ) : (
+          <p className="mt-3 max-w-2xl text-sm text-[#6d685f]">
+            Retired: no longer the house&apos;s current menu.
+          </p>
+        )}
+        {matchUnknown && (
+          <p className="mt-3 max-w-2xl text-sm text-[#6d685f]">
+            Read back from the house&apos;s record: it does not keep which wines matched the library,
+            so a line is pencilled here only when its section is not known.
+          </p>
+        )}
         {sourceImage ? (
           <button
             type="button"
@@ -230,7 +328,9 @@ export default function HouseMenu() {
                                 <p className="mt-2 text-sm text-[#6d685f]">
                                   {sourceImage
                                     ? 'No crop of this line — the reading did not return a box.'
-                                    : 'No crop of this line — the original page was not kept.'}
+                                    : version.source?.kept
+                                      ? 'No crop of this line — the original is kept with the menu, but not in this view.'
+                                      : 'No crop of this line — the original page was not kept.'}
                                 </p>
                               )
                             })()}
@@ -258,6 +358,11 @@ export default function HouseMenu() {
                                 </button>
                               ))}
                             </div>
+                            {placeError?.menuItemId === item.menuItemId && (
+                              <p role="alert" className="mt-3 text-sm text-[#9b2c2c]">
+                                This line was not placed: {placeError.reason}
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -318,6 +423,11 @@ export default function HouseMenu() {
                   {saving === 'add' ? 'Adding…' : 'Add this line'}
                 </button>
               </form>
+            )}
+            {adding && addError && (
+              <p role="alert" className="mt-3 text-sm text-[#9b2c2c]">
+                The line was not added: {addError}
+              </p>
             )}
           </div>
         )}

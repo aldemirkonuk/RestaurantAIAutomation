@@ -3,13 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
 import { updateOnboardingProgress } from '../services/api/menus'
-import { pencilledCount, readProof } from '../lib/firstProof'
+import { pencilledCount, useHouseProof } from '../lib/firstProof'
+import { useAuth } from '../contexts/AuthContext'
 import { readLastInvoiceLater, writeLastInvoiceLater } from '../lib/houseLater'
 
 export default function HouseContents() {
   const navigate = useNavigate()
-  const proof = readProof()
-  const pencilled = proof ? pencilledCount(proof.items) : 0
+  // The house's own record, for the house this session is in (ADR 0309) —
+  // not whatever one browser tab happened to read.
+  const { activeRestaurantId } = useAuth()
+  const { proof, retry } = useHouseProof(activeRestaurantId)
   const [supplier, setSupplier] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -52,16 +55,44 @@ export default function HouseContents() {
         <div className="mt-12 divide-y divide-[#211f1b]/15 border-y border-[#211f1b]/15">
           <div className="py-6">
             <p className="text-xs uppercase tracking-wider text-[#6d685f]">Menu</p>
-            {proof ? (
+            {proof.state === 'loading' ? (
+              <p role="status" className="mt-2 font-serif text-2xl text-[#6d685f]">
+                Reading the house&apos;s menu…
+              </p>
+            ) : proof.state === 'failed' ? (
+              <div className="mt-2">
+                <p role="alert" className="font-serif text-2xl text-[#6d685f]">
+                  The house&apos;s menu could not be read: {proof.reason}
+                </p>
+                <button type="button" onClick={retry} className="mt-2 text-sm underline underline-offset-4">
+                  Try again
+                </button>
+              </div>
+            ) : proof.state === 'none' ? (
+              <div className="mt-2">
+                <p className="font-serif text-2xl text-[#6d685f]">No menu read yet.</p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/menu')}
+                  className="mt-2 text-sm underline underline-offset-4"
+                >
+                  Read a menu
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
                 onClick={() => navigate('/house/menu')}
                 className="mt-2 block text-left font-serif text-2xl"
               >
-                {pencilled === 0 ? 'The first proof is set.' : `${pencilled} pencilled`}
+                {proof.lines.length === 0
+                  ? proof.version.linesExtracted === 0
+                    ? 'The reading found no lines.'
+                    : 'This menu has no lines on it.'
+                  : pencilledCount(proof.lines) === 0
+                    ? 'The first proof is set.'
+                    : `${pencilledCount(proof.lines)} pencilled`}
               </button>
-            ) : (
-              <p className="mt-2 font-serif text-2xl text-[#6d685f]">No menu read yet.</p>
             )}
           </div>
 

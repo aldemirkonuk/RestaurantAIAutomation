@@ -49,7 +49,7 @@ function ArrivalShell({
 
 export default function GetStarted() {
   const navigate = useNavigate()
-  const { user, createFirstHouse } = useAuth()
+  const { user, activeRestaurantId, createFirstHouse } = useAuth()
   const [step, setStep] = useState<Step>('you')
   const [name, setName] = useState(user?.name ?? '')
   const [mobile, setMobile] = useState('')
@@ -87,11 +87,13 @@ export default function GetStarted() {
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
     const timer = window.setTimeout(() => {
-      writeProof(pendingResult, sourceImage)
+      // The tab's reading is stamped with the house it was read for (MENU-07);
+      // /house/menu reads the house's record and uses this only for that house.
+      if (activeRestaurantId) writeProof(pendingResult, activeRestaurantId, sourceImage)
       navigate('/house/menu', { replace: true })
     }, 1200)
     return () => window.clearTimeout(timer)
-  }, [navigate, pendingResult, sourceImage, step])
+  }, [activeRestaurantId, navigate, pendingResult, sourceImage, step])
 
   const saveYou = async () => {
     setSaving(true)
