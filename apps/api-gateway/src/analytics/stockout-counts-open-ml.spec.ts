@@ -680,8 +680,7 @@ describe("an unread lot rollup is said, not replaced by the shelf count without 
   const failures: Array<[string, () => any, string, RegExp]> = [
     [
       "a database error",
-      () =>
-        makeClient(tables([wine]), { inventory_lot_rollup: denied }),
+      () => makeClient(tables([wine]), { inventory_lot_rollup: denied }),
       "read_failed",
       /^This house's lot rollup \(inventory_lot_rollup\) could not be read whole: the database refused one of its pages \(page 1: 42501 permission denied\)\. Nothing is reported from part of it\.$/,
     ],
@@ -717,7 +716,10 @@ describe("an unread lot rollup is said, not replaced by the shelf count without 
     );
   /** Every lens that loads stock through the rollup. */
   const lenses: Array<[string, (client: any) => Promise<unknown>]> = [
-    ["getInventoryScience (the reorder register)", (c) => base(c).getInventoryScience(R)],
+    [
+      "getInventoryScience (the reorder register)",
+      (c) => base(c).getInventoryScience(R),
+    ],
     ["getFinancialSummary", (c) => base(c).getFinancialSummary(R)],
     ["getRiskProfile", (c) => base(c).getRiskProfile(R)],
     ["getWine360", (c) => adv(c).getWine360(R, "mw-open-rioja")],
@@ -760,7 +762,9 @@ describe("an unread lot rollup is said, not replaced by the shelf count without 
       .getInventoryScience(R)
       .catch((e: unknown) => e);
     expect(register.getStatus()).toBe(500);
-    expect(register.message).toMatch(/inventory_lot_rollup\) could not be read whole/);
+    expect(register.message).toMatch(
+      /inventory_lot_rollup\) could not be read whole/,
+    );
     const w360: any = await controller
       .getWine360(R, "mw-open-rioja")
       .catch((e: unknown) => e);
