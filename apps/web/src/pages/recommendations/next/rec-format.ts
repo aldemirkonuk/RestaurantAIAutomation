@@ -70,6 +70,21 @@ export const STAKE_LABEL: Record<StakeId, string> = {
   unfiled: 'Unfiled',
 };
 
+/**
+ * A register's name as it is printed inside a sentence: lower-case ("Why it
+ * would change the floor", "1 more filed under stock, vendors and the
+ * floor"). The rail, the "Would change" fact and the headings print
+ * `STAKE_LABEL` as it is. The founder, 2026-10-07 (ADR 0288): "Lower-case
+ * mid-sentence (Recommended)".
+ *
+ * `stakeOf` always returns a register, so only a hand-built entry can carry a
+ * stake this table does not know; it is printed as its own word, lower-case,
+ * the way `urgencyLabel` prints an unknown urgency, rather than throwing.
+ */
+export function stakeInSentence(stake: StakeId): string {
+  return (ownRow(STAKE_LABEL, stake) ?? String(stake)).toLowerCase();
+}
+
 /** The register's own gloss — what "acting on this" would actually move. */
 export const STAKE_BLURB: Record<StakeId, string> = {
   money: 'money taken across the pass',
@@ -180,8 +195,8 @@ export function stakeFilingOf(
   return {
     stake: 'unfiled',
     why: category
-      ? `This page has no register for the rule ${ruleId || EM} or for its category, ${category}. It is shown under Unfiled rather than sorted by guesswork.`
-      : `This page has no register for the rule ${ruleId || EM}, and it carried no category to file it by. It is shown under Unfiled rather than sorted by guesswork.`,
+      ? `This page has no register for the rule ${ruleId || EM} or for its category, ${category}. It is shown under ${stakeInSentence('unfiled')} rather than sorted by guesswork.`
+      : `This page has no register for the rule ${ruleId || EM}, and it carried no category to file it by. It is shown under ${stakeInSentence('unfiled')} rather than sorted by guesswork.`,
     by: 'unfiled',
   };
 }

@@ -125,6 +125,7 @@ import {
   STAKE_LABEL,
   STAKE_ORDER,
   URGENCY_RANK,
+  stakeInSentence,
   failureSentence,
   fmtDay,
   fmtReadAt,
@@ -328,7 +329,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
    * rail counts — so a section head and the rail cannot disagree. With a
    * register pressed, a head says how many of its act's entries are filed
    * under the others (ADR 0288, AW28): "Order it · 1 entry · 1 more filed
-   * under Stock" rather than a count that reads as the whole act.
+   * under stock" rather than a count that reads as the whole act.
    */
   const actStakes = useMemo(() => {
     const m = new Map<ActId, Map<StakeId, number>>();
@@ -1141,8 +1142,10 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
 
 /**
  * The entries of one act that the pressed register leaves out, and the
- * registers they are filed under, in rail order ("Stock", "Stock and
- * Vendors", "Stock, Vendors and The floor"). Null when there are none.
+ * registers they are filed under, in rail order and lower-case, since they
+ * are printed inside the head's sentence ("stock", "stock and vendors",
+ * "stock, vendors and the floor"; ADR 0288, the founder 2026-10-07:
+ * "Lower-case mid-sentence (Recommended)"). Null when there are none.
  */
 function filedElsewhere(
   byStake: Map<StakeId, number> | undefined,
@@ -1152,7 +1155,7 @@ function filedElsewhere(
   const others = STAKE_ORDER.filter((s) => s !== pressed && (byStake.get(s) ?? 0) > 0);
   if (others.length === 0) return null;
   const count = others.reduce((n, s) => n + (byStake.get(s) ?? 0), 0);
-  const names = others.map((s) => STAKE_LABEL[s]);
+  const names = others.map((s) => stakeInSentence(s));
   const under =
     names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
   return { count, under };

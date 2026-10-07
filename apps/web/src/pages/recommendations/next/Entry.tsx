@@ -51,6 +51,7 @@ import {
   scopeLabel,
   scopePromise,
   stakeFilingOf,
+  stakeInSentence,
   standingOf,
   urgencyLabel,
   type DismissChoiceId,
@@ -1386,7 +1387,7 @@ export default function Entry(props: EntryProps) {
               */}
               <div className="rc-workblock">
                 <span className="rc-micro">
-                  {e.stake === 'unfiled' ? 'Why it is unfiled' : `Why it would change ${STAKE_LABEL[e.stake]}`}
+                  {e.stake === 'unfiled' ? 'Why it is unfiled' : `Why it would change ${stakeInSentence(e.stake)}`}
                 </span>
                 <p className="rc-prose" data-testid="rc-register-why">{register.why}</p>
               </div>

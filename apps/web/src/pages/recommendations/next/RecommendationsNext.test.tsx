@@ -334,7 +334,7 @@ describe('RecommendationsNext — the standing book', () => {
     // the stockout is an order that changes stock: the head says so
     expect(within(headOf('Order it')).getByText('1 entry')).toBeInTheDocument();
     expect(within(headOf('Order it')).getByTestId('rc-act-elsewhere')).toHaveTextContent(
-      '· 1 more filed under Stock',
+      '· 1 more filed under stock',
     );
     // the hook the phone layout keys on (rec-next.css: the count drops to its own line)
     expect(headOf('Order it')).toHaveAttribute('data-elsewhere');
@@ -375,7 +375,7 @@ describe('RecommendationsNext — the standing book', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Stock\s*\d+$/ }));
     expect(within(headOf('Order it')).getByText('2 entries')).toBeInTheDocument();
     expect(within(headOf('Order it')).getByTestId('rc-act-elsewhere')).toHaveTextContent(
-      '· 1 more filed under Vendors',
+      '· 1 more filed under vendors',
     );
     fireEvent.click(screen.getByRole('button', { name: /^The floor\s*\d+$/ }));
     expect(within(headOf('Schedule it')).getByText('1 entry')).toBeInTheDocument();
@@ -391,8 +391,60 @@ describe('RecommendationsNext — the standing book', () => {
     const row = screen.getByTestId('rc-entry');
     expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent('Money');
     fireEvent.click(within(row).getByText('The working'));
-    expect(screen.getByText('Why it would change Money')).toBeInTheDocument();
+    expect(screen.getByText('Why it would change money')).toBeInTheDocument();
     expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/Raise those prices/);
+  });
+
+  /**
+   * ADR 0288, the founder 2026-10-07: "Lower-case mid-sentence (Recommended)".
+   * A register's name inside a sentence is lower-case; the rail, the "Would
+   * change" fact and the act headings keep their capitals.
+   */
+  it('prints a register name lower-case inside a sentence, and as it is on the rail and the fact', () => {
+    mockData.current = {
+      ...base,
+      entries: [
+        // one act (Not yet filed: no rule is known by name), five registers
+        entry({ ruleKey: 'a_rule_on_sales', category: 'sales' }),
+        entry({ ruleKey: 'a_rule_on_inventory', category: 'inventory' }),
+        entry({ ruleKey: 'a_rule_on_purchasing', category: 'purchasing' }),
+        entry({ ruleKey: 'a_rule_on_staff', category: 'staff' }),
+        entry({ ruleKey: 'a_rule_on_nothing', category: 'efficiency' }),
+      ],
+    };
+    draw();
+    // the rail keeps its capitals
+    for (const name of ['Money', 'Stock', 'Vendors', 'The floor', 'Unfiled'])
+      expect(screen.getByRole('button', { name: new RegExp(`^${name}\\s*\\d+$`) })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Money\s*\d+$/ }));
+    // the head's sentence names the other four lower-case, in rail order
+    expect(within(headOf('Not yet filed')).getByTestId('rc-act-elsewhere')).toHaveTextContent(
+      '· 4 more filed under stock, vendors, the floor and unfiled',
+    );
+    // the act heading keeps its own capital
+    expect(screen.getByRole('heading', { name: 'Not yet filed' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^The floor\s*\d+$/ }));
+    const row = screen.getByTestId('rc-entry');
+    // the fact is a value on its own, not a sentence: it keeps the capital
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent(/^The floor$/);
+    fireEvent.click(within(row).getByText('The working'));
+    expect(screen.getByText('Why it would change the floor')).toBeInTheDocument();
+    expect(screen.queryByText('Why it would change The floor')).toBeNull();
+  });
+
+  it('says an unfiled entry is shown under unfiled, lower-case, inside its why', () => {
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: 'a_new_efficiency_rule', category: 'efficiency' })],
+    };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent(/^Unfiled$/);
+    fireEvent.click(within(row).getByText('The working'));
+    const why = screen.getByTestId('rc-register-why');
+    expect(why).toHaveTextContent('It is shown under unfiled rather than sorted by guesswork.');
+    expect(why.textContent).not.toMatch(/Unfiled/);
   });
 
   it('a stored key named on Object.prototype stands under Unfiled and says why, never "undefined"', () => {

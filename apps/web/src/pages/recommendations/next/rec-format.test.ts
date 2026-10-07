@@ -12,7 +12,18 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { handOf, heldBy, receiptFor, stakeFilingOf, stakeOf, urgencyLabel } from './rec-format';
+import {
+  handOf,
+  heldBy,
+  receiptFor,
+  STAKE_LABEL,
+  STAKE_ORDER,
+  stakeFilingOf,
+  stakeInSentence,
+  stakeOf,
+  urgencyLabel,
+  type StakeId,
+} from './rec-format';
 import { actOf } from './rec-docket';
 import { cuttingFor, goalOfferFor } from './rec-forward';
 import { daybookBasis, daybookDraftFor, leverWords, leversFor, METRIC_CATEGORIES } from './rec-daybook';
@@ -191,6 +202,26 @@ describe('the register — filed by what acting on it changes (ADR 0288)', () =>
     expect(stakeOf('a_new_efficiency_rule', 'efficiency')).toBe('unfiled');
     expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').by).toBe('unfiled');
     expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').why).toMatch(/no register for the rule a_new_efficiency_rule/);
+  });
+
+  it('names a register lower-case inside a sentence, and keeps the rail’s capitals in STAKE_LABEL', () => {
+    // The founder, 2026-10-07: "Lower-case mid-sentence (Recommended)".
+    expect(STAKE_ORDER.map(stakeInSentence)).toEqual(['money', 'stock', 'vendors', 'the floor', 'unfiled']);
+    expect(STAKE_ORDER.map((s) => STAKE_LABEL[s])).toEqual(['Money', 'Stock', 'Vendors', 'The floor', 'Unfiled']);
+    // both unfiled whys name the register inside their sentence
+    for (const why of [
+      stakeFilingOf('a_new_efficiency_rule', 'efficiency').why,
+      stakeFilingOf('a_new_efficiency_rule', null).why,
+    ]) {
+      expect(why).toContain('It is shown under unfiled rather than sorted by guesswork.');
+      expect(why).not.toContain('Unfiled');
+    }
+  });
+
+  it('prints a stake it does not know as its own word, lower-case, never a throw', () => {
+    // `stakeOf` always returns a register; only a hand-built entry carries one.
+    expect(stakeInSentence('Cash' as StakeId)).toBe('cash');
+    expect(stakeInSentence('constructor' as StakeId)).toBe('constructor');
   });
 
   it('no engine rule is unfiled; every Price it rule is Money and every Move stock rule is Stock', () => {
