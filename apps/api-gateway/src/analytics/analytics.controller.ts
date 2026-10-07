@@ -1375,6 +1375,15 @@ export class AnalyticsController {
   // average down is not answered by hiding the sentence — the average is still
   // wrong. Stored separately from `recommendation_actions` on purpose: one is
   // what a manager did with a card, the other is what the analysis may look at.
+  //
+  // Ruling a day out and counting it again are an owner's or a manager's
+  // (OPS-04, 2026-10-07). A struck day leaves every sales baseline the house
+  // reads, and sales are owners' and managers' (ADR 0145's `sales` class, ADR
+  // 0290 §5). Both writes carry `RolesGuard` with `@Roles("owner", "manager")`,
+  // the pattern the insight-catalog toggle and the table rename above use:
+  // the role is the one on the caller's access row in the token's house, and
+  // RolesGuard is exact, so admin is not admitted (ADR 0164). The read stays
+  // open, so staff still see which days are struck.
 
   @Get("exclusions/:restaurantId")
   @ApiOperation({
@@ -1387,14 +1396,18 @@ export class AnalyticsController {
   }
 
   @Post("exclusions/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Exclude a business date from every baseline",
-    description: "Body: { businessDate: 'YYYY-MM-DD', reason?, createdBy? }.",
+    summary: "Exclude a business date from every baseline (owner/manager)",
+    description:
+      "Body: { businessDate: 'YYYY-MM-DD', reason? }. Owner or manager of this house only; anyone else is 403. created_by is the signed-in caller; a body `createdBy` is ignored.",
   })
   async excludeDay(
     @Param("restaurantId") restaurantId: string,
     @Body()
     body: { businessDate?: string; reason?: string | null; createdBy?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       if (!body?.businessDate) throw new Error("businessDate is required");
@@ -1402,7 +1415,9 @@ export class AnalyticsController {
         restaurantId,
         body.businessDate,
         body.reason ?? null,
-        body.createdBy ?? null,
+        // Who ruled the day out is the person on the token, never a body
+        // field: the rule the page's card acts already follow (ADR 0191).
+        actorOf(user).userId,
       );
     } catch (error) {
       throw new HttpException(
@@ -1413,7 +1428,12 @@ export class AnalyticsController {
   }
 
   @Delete("exclusions/:restaurantId/:businessDate")
-  @ApiOperation({ summary: "Put an excluded business date back in the analysis" })
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Put an excluded business date back in the analysis (owner/manager)",
+    description: "Owner or manager of this house only; anyone else is 403.",
+  })
   async includeDay(
     @Param("restaurantId") restaurantId: string,
     @Param("businessDate") businessDate: string,
