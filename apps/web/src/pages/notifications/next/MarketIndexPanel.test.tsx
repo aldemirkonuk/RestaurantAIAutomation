@@ -16,7 +16,8 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 const mockIndex = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 vi.mock('./useHouseIndex', () => ({
@@ -36,6 +37,20 @@ vi.mock('./useHouseCommodity', () => ({
   useHouseCommodity: () => mockCommodity.current,
 }));
 
+/**
+ * The real hook is read once below (`vi.importActual`), for the one field the
+ * panel's mock cannot vouch for: `countryNotRecorded` off the wire. Its two
+ * imports that reach the network and the session are stubbed here.
+ */
+const mockGet = vi.hoisted(() => vi.fn());
+vi.mock('@/services/api/client', () => ({
+  apiClient: { get: mockGet },
+  getErrorMessage: (e: unknown) => String(e),
+}));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: null, activeRestaurantId: 'r1' }),
+}));
+
 import MarketIndexPanel from './MarketIndexPanel';
 
 const READY = {
@@ -49,6 +64,7 @@ const READY = {
   heldBooks: 0 as number | null,
   heldBookHoldHours: 24 as number | null,
   carriedBooks: [] as Array<Record<string, unknown>> | null,
+  countryNotRecorded: false,
   refresh: vi.fn(),
 };
 
@@ -259,6 +275,74 @@ describe('MarketIndexPanel — the four silences, each in the endpoint’s own w
     expect(screen.getByRole('status').textContent).toMatch(
       /gave no reason. That is unknown, not "nothing is posted"/,
     );
+  });
+});
+
+/**
+ * A house with no country recorded (ADR 0305). The founder, 2026-10-07T19:48:13Z:
+ * *"The panels say the country isn't recorded and link to Settings, the same way
+ * a house with no time zone is handled. Nothing is guessed."*
+ */
+describe('MarketIndexPanel — a house with no country is asked for it', () => {
+  it('says the country is not recorded and links to Settings, under Locations', () => {
+    mockIndex.current = {
+      ...READY,
+      countryNotRecorded: true,
+      silence: 'the gateway sentence, which this box replaces with a link',
+    };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    const asked = screen.getByTestId('mi-country-unset');
+    expect(asked.textContent).toContain('This house’s country isn’t recorded');
+    expect(asked.textContent).toContain(
+      'MI is Michigan in the United States and Milano in Italy',
+    );
+    expect(
+      within(asked).getByRole('link', { name: 'Set the country in Settings' }),
+    ).toHaveAttribute('href', '/settings?tab=locations');
+    // One sentence, not two: the generic silence is not drawn beside it.
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('a house whose country is recorded is not asked for it', () => {
+    const silence =
+      '"Italy" is not a jurisdiction this register recognises. No index line is drawn rather than guessing a state.';
+    mockIndex.current = { ...READY, requested: 'Italy', silence };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('mi-country-unset')).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: 'Set the country in Settings' }),
+    ).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain(silence);
+  });
+});
+
+describe('useHouseIndex — countryNotRecorded off the wire', () => {
+  async function readWith(data: Record<string, unknown>) {
+    mockGet.mockResolvedValueOnce({ data });
+    const { useHouseIndex } = await vi.importActual<typeof import('./useHouseIndex')>(
+      './useHouseIndex',
+    );
+    const { result, unmount } = renderHook(() => useHouseIndex());
+    await waitFor(() => expect(result.current.state).toBe('ready'));
+    const flag = result.current.countryNotRecorded;
+    unmount();
+    return flag;
+  }
+
+  it('is set only by a true from the gateway', async () => {
+    expect(await readWith({ countryNotRecorded: true, lines: [] })).toBe(true);
+    expect(await readWith({ countryNotRecorded: false, lines: [] })).toBe(false);
+    // An older gateway that does not send it is not a house with no country.
+    expect(await readWith({ lines: [] })).toBe(false);
+    expect(await readWith({ countryNotRecorded: 'true', lines: [] })).toBe(false);
   });
 });
 

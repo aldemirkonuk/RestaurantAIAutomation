@@ -18,6 +18,8 @@
  * shapes that must not be allowed to look alike:
  *
  *   • the call itself failed / was refused → say which, name the status
+ *   • the house has no COUNTRY recorded    → ask for it, with a link to
+ *                                             Settings (ADR 0305)
  *   • the house has no state recorded      → the endpoint's own sentence
  *   • the jurisdiction is not one the register knows (Türkiye, the UK)
  *                                           → the endpoint's own sentence
@@ -54,6 +56,7 @@ import {
   Sprout,
   TriangleAlert,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { EM, MONO, SANS, SERIF } from './nt-format';
 import { HouseIndexLine, HouseIndexSource, useHouseIndex } from './useHouseIndex';
 import { CommoditySeriesVM, useHouseCommodity } from './useHouseCommodity';
@@ -771,7 +774,32 @@ export function MarketIndexPanel() {
         </ul>
       )}
 
-      {m.state === 'ready' && m.lines.length === 0 && (
+      {/* No country recorded (ADR 0305; the founder, 2026-10-07T19:48:13Z:
+          "Ask for the country (Recommended)"). The house's state was not read,
+          because a code names different places in different countries, so the
+          box asks for the country with a link, the way a house with no time
+          zone is asked (SalesCalendar's `dn-zone-unset`). */}
+      {m.state === 'ready' && m.countryNotRecorded && (
+        <p
+          role="status"
+          data-testid="mi-country-unset"
+          className="mt-1.5 text-[11.5px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+        >
+          This house’s country isn’t recorded, so its state isn’t read and no state-based price
+          is shown. A state code names different places in different countries (MI is Michigan
+          in the United States and Milano in Italy), so nothing is guessed.{' '}
+          <Link
+            to="/settings?tab=locations"
+            className="underline underline-offset-2"
+            style={{ color: 'var(--ink-1)' }}
+          >
+            Set the country in Settings
+          </Link>
+        </p>
+      )}
+
+      {m.state === 'ready' && !m.countryNotRecorded && m.lines.length === 0 && (
         <p
           role="status"
           className="mt-1.5 text-[11.5px]"
