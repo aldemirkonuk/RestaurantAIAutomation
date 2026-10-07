@@ -10,8 +10,9 @@
  * as it did.
  *
  * The second block is ADR 0296's other web case, a goal's pace in a house
- * with no zone, on the goals desk and the recommendations margin. It sits in
- * this file so the PR stays within its 15 files.
+ * with no zone, on the goals desk (its reason, with the till's time-zone
+ * Settings link beside it) and the recommendations margin. It sits in this
+ * file so the PR stays within its 15 files.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -170,6 +171,25 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
     expect(screen.getByText(NO_ZONE_PACE)).toBeInTheDocument();
     expect(screen.queryByText(/No deadline/)).toBeNull();
     expect(screen.queryByText(/not enough history/)).toBeNull();
+  });
+
+  it("draws the till's time-zone Settings link beside the no-zone pace reason, and beside no other caption", () => {
+    /** The goal card's link to the time-zone setting, or null when it draws none. */
+    const zoneLink = (row: unknown) => {
+      const { unmount } = render(<MemoryRouter>{goals.view(book(row), { days: 30, goals: desk }).node}</MemoryRouter>);
+      const link = screen.queryByRole('link', { name: 'Set the time zone in Settings' });
+      const found = link && { href: link.getAttribute('href'), caption: link.closest('p')?.textContent };
+      unmount();
+      return found;
+    };
+    expect(zoneLink(STOCK)).toEqual({
+      href: '/settings?tab=time-zone',
+      caption: `${NO_ZONE_PACE} Set the time zone in Settings`,
+    });
+    // A house with a zone: the gateway judged the pace and sent no reason.
+    expect(zoneLink({ ...STOCK, onTrack: true, daysLeft: 29, paceUnread: null })).toBeNull();
+    // A deadline with no pace and no reason: the "not computed" caption.
+    expect(zoneLink({ ...STOCK, paceUnread: null })).toBeNull();
   });
 
   it('says the pace was not computed when a deadline has no pace and no reason came with it', () => {

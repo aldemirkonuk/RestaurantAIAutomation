@@ -35,6 +35,7 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
 import { EM, countOf, figure, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
@@ -111,6 +112,17 @@ export function paceCaption(g: GoalRow): string {
   return g.deadline && g.onTrack !== null
     ? `${pace} There is not enough history to project the deadline, so none is drawn.`
     : pace;
+}
+
+/**
+ * True when the pace in `paceCaption` is the gateway's `paceUnread` reason.
+ * The gateway sets that field only for a goal with a deadline in a house with
+ * no time zone (`goals.service.ts`), so the goal card draws the till's
+ * time-zone Settings link beside it (ADR 0296 §5). The "not computed" and
+ * "No deadline" captions get no link.
+ */
+function paceAwaitsZone(g: GoalRow): boolean {
+  return g.onTrack === null && Boolean(g.deadline) && g.paceUnread !== null;
 }
 
 /* ──────────────────────────────────────────────────────────── the desk ── */
@@ -702,7 +714,19 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                         <span style={{ width: `${Math.min(100, Math.max(0, g.progressPct * 100))}%` }} />
                       </div>
                     )}
-                    <p className="rp-cap">{paceCaption(g)}</p>
+                    <p className="rp-cap">
+                      {paceCaption(g)}
+                      {/* Same target and markup as the till's no-zone notice
+                          (rp-registers-trade.tsx). */}
+                      {paceAwaitsZone(g) && (
+                        <>
+                          {' '}
+                          <Link to="/settings?tab=time-zone" className="rp-link rp-ink rp-focus rp-no-drag">
+                            Set the time zone in Settings
+                          </Link>
+                        </>
+                      )}
+                    </p>
                   </>
                 )}
               </>
