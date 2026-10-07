@@ -111,6 +111,12 @@ export interface EntryProps {
   team: TeamOption[] | null | undefined;
   /** The day-exclusion store, so the sheet can offer — or refuse — that choice. */
   exclusions: ExclusionsVM | undefined;
+  /**
+   * Whether this person may rule a day out of the analysis — owners and
+   * managers (OPS-04, 2026-10-07). Anyone else is not offered "Also exclude
+   * this day"; the sheet says whose it is instead.
+   */
+  canRuleOutDays: boolean;
   /** The `d` key asked for this entry's dismissal sheet. */
   openDismiss: boolean;
   onDismissOpened: () => void;
@@ -740,7 +746,7 @@ export default function Entry(props: EntryProps) {
   /** This entry's firing, when its rule names no subject and no period. */
   const firing = firingOf(e.periodKey);
   const exclusions = props.exclusions;
-  const canExclude = !!day && exclusions?.readable === true;
+  const canExclude = !!day && exclusions?.readable === true && props.canRuleOutDays;
 
   useEffect(() => {
     const node = rootRef.current;
@@ -1210,7 +1216,14 @@ export default function Entry(props: EntryProps) {
             </div>
             ))}
 
-            {dismissing && (
+            {dismissing && !props.canRuleOutDays && day && (
+              <p className="rc-why" data-testid="rc-exclude-withheld">
+                Ruling {fmtDay(day)} out of the analysis is for an owner or manager {EM} it changes
+                every average the house reads.
+              </p>
+            )}
+
+            {dismissing && props.canRuleOutDays && (
             <div className="rc-sheet-block">
               <label className="rc-scope">
                 <input
@@ -1292,7 +1305,7 @@ export default function Entry(props: EntryProps) {
                       reason,
                       scope,
                       key,
-                      excludeDate: alsoExclude && day ? day : null,
+                      excludeDate: alsoExclude && canExclude && day ? day : null,
                       said: `Dismissed. You will not see ${promise}.`,
                     });
                   }}
