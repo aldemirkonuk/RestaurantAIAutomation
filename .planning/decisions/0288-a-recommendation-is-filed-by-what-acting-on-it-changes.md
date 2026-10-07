@@ -1,6 +1,6 @@
 # 0288 — A recommendation is filed by what acting on it changes
 
-- **Status:** Locked for the filing of four rules. Founder, 2026-10-04 ~00:30Z, verbatim pick for the two `efficiency` rules: "Money / Stock (Recommended)". Founder, 2026-10-04 ~02:10Z, verbatim picks for the two forks the lane raised: `revenue_concentration` "Stock (Recommended)" and `weekday_gap` "The floor (Recommended)". The section-head words, the efficiency → Unfiled fallback and the composite-key reading are this lane's method, not the founder's words; they are stated below so they can be overturned on their own.
+- **Status:** Locked for the filing of four rules. Founder, 2026-10-04 ~00:30Z, verbatim pick for the two `efficiency` rules: "Money / Stock (Recommended)". Founder, 2026-10-04 ~02:10Z, verbatim picks for the two forks the lane raised: `revenue_concentration` "Stock (Recommended)" and `weekday_gap` "The floor (Recommended)". The section-head words, the efficiency → Unfiled fallback and the composite-key reading are this lane's method, not the founder's words; they are stated below so they can be overturned on their own. [Added 2026-10-07: the session transcript stamps the two answers 00:22:23Z and 02:05:59Z, so "~00:30Z" and "~02:10Z" are approximate. The questions as put, with every option, are under *Founder answers*. Two choices the founder has not been asked are listed under *Open, not yet asked*; they are built one way and are not decided by that.]
 - **Date:** 2026-10-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** recommendations, register, stake, stakeOf, stakeFilingOf, RULE_STAKE, CATEGORY_STAKE, efficiency, plowhorse_repricing, puzzle_activation, revenue_concentration, weekday_gap, Price it, Move stock, Money, Stock, The floor, Unfiled, section head, rc-act-elsewhere, rc-register-why, AW28, A-054, analytics walk
@@ -58,6 +58,29 @@ The lane raised two forks after the first pick. Both were put to the founder as 
 - **F1 — `revenue_concentration`** (category `risk`, filed under Vendors): should it move to **Stock**? The lane recommended Stock. Founder: **"Stock (Recommended)"**. Built as one `RULE_STAKE` row; tested in `rec-format.test.ts` and `RecommendationsNext.test.tsx`.
 - **F2 — `weekday_gap`** (category `sales`, filed under Money): should the register follow the leading-clause rule the founder set for this rule's act, and file it under **The floor**? The lane's confidence was low. Founder: **"The floor (Recommended)"**. Built as one `RULE_STAKE` row, filed by its leading clause; tested in the same two files.
 
+[Added 2026-10-07: the three questions as they were put, verbatim, with every option and its description, from the coordinating session's transcript (session `05c659bb`, its AskUserQuestion calls and their results). Each time is the transcript's stamp on the result, when the answer reached the session; the second at which the founder answered was not taken.]
+
+- **AW28**, asked with three other forks (AW14, AW22, AW26); answer recorded 2026-10-04 00:22:23Z.
+  - Question: "[FORK AW28] /recommendations files 'Price it' (plowhorse repricing) and 'Move stock' (puzzle activation) under 'The floor', though the rail says a register is what acting on an entry would change. Where should they go?"
+  - Picked: **"Money / Stock (Recommended)"**, "'Price it' is filed under Money and 'Move stock' under Stock. That follows the rail's own definition."
+  - Not picked: "Money for both", "Both are filed under Money, since both aim at margin."
+  - Not picked: "Keep 'The floor'", "Leave them there and say so in the section head."
+- **F1**, asked with F2 and two dashboard forks; answer recorded 2026-10-04 02:05:59Z.
+  - Question: "On /recommendations, 'Protect the top sellers' stock first (raise their service level to 98%)' is filed under Vendors because its category is risk. Where should it go?"
+  - Picked: **"Stock (Recommended)"**, "It changes how much cover you hold, not which vendor you pay or what you pay them. Its act is already 'Order it'."
+  - Not picked: "Keep under Vendors", "It stays filed by its category (risk)."
+- **F2**, in the same call; answer recorded 2026-10-04 02:05:59Z.
+  - Question: "'Move staff training, deliveries and counts to <slowest day>; test a <slowest day>-only offer' is filed under Money because its category is sales. You ruled the leading clause decides a rule's act. Should the same rule decide where it's filed?"
+  - Picked: **"The floor (Recommended)"**, "Filed by its leading clause: moving training, deliveries and counts changes how the shift runs. The planner's confidence in this one is low."
+  - Not picked: "Keep under Money", "It stays filed by its category (sales)."
+
+### Open, not yet asked (2026-10-07)
+
+Two choices here are the founder's call and have not been put to him. Each is built one way as this lane's method. Being built does not decide it (CLAUDE.md §0.1). Both were listed by the open-PR fork sweep of 2026-10-06 (`p4-scratch/sim-run/fixes/audits/fork-sweep-2026-10-06.md`, items 15 and 16). No `OPEN-DECISIONS.md` row is opened for either.
+
+- **Hidden empty act sections.** As built, with a register pressed, the docket draws only the act sections that hold an entry under that register (`RecommendationsNext.tsx`, the `ACT_ORDER` filter on `byAct`). An act whose entries are all filed elsewhere has no head, and only the rail's count shows those entries (*Decision*, the section-head bullet). The options: (a) keep such sections hidden, as built; (b) draw a stub head for them, such as "Order it · 2 filed under Stock".
+- **Register names keep their rail capitals mid-sentence.** As built, the page prints `STAKE_LABEL` (`rec-format.ts`) as it is inside sentences: the working reads "Why it would change The floor", and a head reads "filed under Stock, Vendors and The floor". The options: (a) keep the capitals, as built; (b) lower-case the names mid-sentence.
+
 ### Adjacent, not built here
 
 - `actOf` and `handOf` look up the raw `ruleKey`. On the Snoozed, Dismissed and History leaves, a composite stored key (e.g. `sales_below_weekday_baseline#wednesday#d:2026-09-02`) is therefore filed under *Not yet filed*, and its hand falls back to the category. The register no longer has this gap; the act and the hand still do.
@@ -79,3 +102,4 @@ Retires nothing. It amends the page note's register paragraph and axis-table row
 | 2026-10-06 | lane `recregisters`, after the PR #611 audit | `margin_to_target` corrected to `margin_target_unset` in Context, in place and bracketed; the service line numbers there and under *Adjacent* pinned to `8c673db4b`. The filing tables read by own rows only (`ownRow`), with tests for `constructor`, `__proto__`, `toString` and `valueOf`, each shown failing without the guard |
 | 2026-10-06 | lane `recregisters`, last call | Prose only, no behaviour changed: *Adjacent* now names the page's other tables that still read a plain `table[key]` (goal, cutting, draft and urgency), and the `rec-format.ts` header says a hand falls back to Reports only when the page knows it neither by rule nor by category |
 | 2026-10-06 | lane `recregisters`, after the PR #611 audit at `9d1d9fa53` | The page's other tables read own rows (`GOAL_REFUSAL`, `RULE_GOAL`, `CUTTING_REFUSAL`, `RULE_CUTTING`, `RULE_DRAFT`, `METRIC_CATEGORIES`, `URGENCY_LABEL`, `URGENCY_RANK`): a stored `__proto__` rule key or urgency no longer makes the page throw. 23 new tests (3 page tests, 20 unit tests); 19 failed at `9d1d9fa53`, and the 4 day-book tests pass on both sides because that read never had a visible effect. The own-row bullet and *Adjacent* bracket-corrected in place; the gateway refusal of prototype names recorded as owed |
+| 2026-10-07 | prep fixer, lane `recregisters`, after the PR #611 PASS at `5608cb36a` | Records only, no behaviour changed: the three founder questions quoted as put, with every option, and the transcript times of the answers; the two unasked forks (hidden empty act sections, rail capitals mid-sentence) listed under *Open, not yet asked*. main `5e6c0684e` merged in, with no conflict |
