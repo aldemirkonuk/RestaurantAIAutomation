@@ -91,11 +91,16 @@ export function actorOf(user?: {
   };
 }
 
+/** A roster row's id (`team_members.id`, a uuid). */
+const ROSTER_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * A state write that is not made, said in words (ADR 0191 round 3): a staff
  * member asking to snooze for everyone, a write with no signed-in person to
- * keep in the history, or a malformed snooze. `forbidden` → 403, otherwise
- * 400. Thrown BEFORE anything is written.
+ * keep in the history, a malformed snooze, or an assignee who is not on this
+ * house's active team. `forbidden` → 403, otherwise 400. Thrown BEFORE
+ * anything is written.
  */
 export class ActRefused extends Error {
   constructor(
@@ -429,6 +434,46 @@ export class RecommendationActionsService {
       throw new Error("A snooze needs a snoozeUntil instant in the future");
   }
 
+  /**
+   * An assignee is a row of THIS house's roster whose status is `active`
+   * (OPS-03). Before, `assignedTo` was written as sent, so an id from another
+   * house, a person taken off the team or any string landed on the card.
+   * "Active" is the status word as the crew audience already reads it
+   * (ADR 0218, round 4 answer 3, "Active roster only"): a `trial` or
+   * `inactive` row is refused, and the page's roster offers neither. A roster
+   * that could not be read refuses the write instead of letting it through
+   * unchecked. Nothing is written before this answers.
+   */
+  private async assertAssigneeOnRoster(
+    restaurantId: string,
+    assignedTo: string,
+  ): Promise<void> {
+    const notOnTeam = new ActRefused(
+      "That person is not on this house's active team, so the entry was not assigned to them.",
+      false,
+    );
+    // `team_members.id` is a uuid: anything else is no one on the team, and
+    // must not reach the read as a cast error that looks like a failed read.
+    if (!ROSTER_ID_RE.test(assignedTo)) throw notOnTeam;
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("team_members")
+      .select("id, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", assignedTo)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `assertAssigneeOnRoster: could not read the roster: ${error.message}`,
+      );
+      throw new Error(
+        "Could not read this house's team, so nobody was assigned. Try again.",
+      );
+    }
+    if (!data || (data as { status?: unknown }).status !== "active")
+      throw notOnTeam;
+  }
+
   async setAction(
     restaurantId: string,
     ruleKey: string,
@@ -437,6 +482,10 @@ export class RecommendationActionsService {
     createdBy?: string,
   ): Promise<RecommendationActionRow> {
     if (!ruleKey?.trim()) throw new Error("ruleKey is required");
+    // Every door that assigns comes through here, after its permission gates
+    // and before anything is written.
+    if (patch.assignedTo)
+      await this.assertAssigneeOnRoster(restaurantId, patch.assignedTo);
     const row: Record<string, any> = {
       restaurant_id: restaurantId,
       rule_key: ruleKey,
