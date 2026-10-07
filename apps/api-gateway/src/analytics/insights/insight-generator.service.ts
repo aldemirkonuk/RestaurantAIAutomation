@@ -179,16 +179,25 @@ export const BASKET_MIN_LIFT = 1.3;
  *       test corrected over every pair; a tied stockout #1 is withheld and no
  *       longer carries a hard-coded z of 2. A version-3 row may hold any of
  *       those sentences, so it is recomputed, not served.
- *   5 — lane rec's (ADR 0291, PR #607); 6 — lane cap's (ADR 0292). Each lands
- *       its own history line; neither is on this branch.
+ *   5 — 2026-10-04 (ADR 0291): vendor concentration is recorded under
+ *       `purchasing`, the category the catalogue files it under, not `risk`.
+ *       A version-4 or older row still sits under `risk`, where the
+ *       catalogue's narrowed read never looks and the purchasing+risk rails
+ *       would show it twice once the new row lands; it is refused and
+ *       recomputed. (Drafted as 4 on 2026-10-03; #602 took 4 first, so this
+ *       change is 5 — no ADR 0291 row was ever written at 4.)
+ *   6 — held for lane cap (ADR 0292, PR #609), which writes its own line
+ *       here. If 7 reaches main first, cap takes main's version + 1 instead
+ *       and 6 is never used.
  *   7 — 2026-10-04 (ADR 0299): the stockout #1 counts the open bottle in on
  *       hand, and ranks only wines sold on at least MIN_DEMAND_DAYS days in
  *       the window. "Jameson Irish Whiskey ranks #1 of 134 by stockout risk
  *       (61.0%). Only 0 bottles on hand" was a one-day import series read as
  *       a swing, about a wine whose open bottle was not counted. A row below 7
  *       may hold that sentence, so it is recomputed, not served. Numbered
- *       after rec (5) and cap (6); whichever of the three merges later takes
- *       one past the version on main at its merge, by later-truth.
+ *       after rec (5) and the 6 held for cap; whichever of cap and this
+ *       merges later takes one past the version on main at its merge, by
+ *       later-truth.
  */
 export const INSIGHT_GENERATOR_VERSION = 7;
 
@@ -1039,10 +1048,13 @@ export class InsightGeneratorService {
         topCount: 1,
         hhi,
       };
+      // Filed where the catalogue files it (ADR 0291): `categorize()` sorts
+      // every vendor dimension into purchasing, and a type recorded under any
+      // other category is one the catalogue's narrowed read cannot find.
       push(
         this.record(
           "vendor.purchase_spend.concentration",
-          "risk",
+          "purchasing",
           "concentration",
           ev,
           {
@@ -1144,7 +1156,7 @@ export class InsightGeneratorService {
         // The wines actually ranked — not every active inventory row, most of
         // which had too little demand to be given a risk at all.
         peerCount: ranked.length,
-        // To the tenth: 300 of 750 ml open reads "0.4", not 0.4000000000000001.
+        // To the tenth: 250 of 750 ml open reads "0.3", not 0.3333333333333333.
         attributeReading: `Only ${Math.round(worst.onHand * 10) / 10} bottles on hand vs its demand pattern — reorder before the next delivery window.`,
       };
       push(

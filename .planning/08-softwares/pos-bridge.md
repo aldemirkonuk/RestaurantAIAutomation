@@ -239,7 +239,12 @@ Seams:
 > the queue, the catalog-match proposals and the sale-unit answers together, and an approval now
 > writes `sale_unit`/`sale_volume_ml` (batch route for the whole queue in one request — the 107
 > sequential approvals lost 7 to the 100-per-60s limit). `unit_if_unanswered: "bottle"` became
-> `effect_if_unanswered: "depletes_nothing"`.
+> `effect_if_unanswered: "depletes_nothing"`. [Superseded 2026-10-03 by
+> [ADR 0281](../decisions/0281-a-pos-sale-is-dated-by-its-check-and-the-import-says-what-it-did.md):
+> the constant is gone; each review row now carries `next_sale`, read by the import's own
+> `resolveSaleVolume`. The same ADR dates a POS sale's stock and consumption by one reading of the check's
+> `closed_at`, the one `pos_checks` stores, instead of the import time (never later than now;
+> a check that carries a `closed_at` other than a strict ISO-8601 instant is refused and said, per its F4).]
 >
 > **Also closed 2026-09-05 (#310):** every SimPOS line arriving as wine, and the
 > Square day's `covers: null → 0`. The covers cause was a coercion, not the column:

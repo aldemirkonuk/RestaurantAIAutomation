@@ -469,10 +469,12 @@ describe("the stockout #1 insight (AW29)", () => {
     expect(one).toEqual([]);
   });
 
+  // 250 of 750 ml is 0.3333…, so the sentence's rounding to the tenth is
+  // pinned: unrounded it would print "0.3333333333333333".
   const measured: Wine = {
     name: "Open Rioja",
     sealed: 0,
-    openMl: 300,
+    openMl: 250,
     bottleSizeMl: 750,
     sales: everyDay(20),
   };
@@ -482,14 +484,14 @@ describe("the stockout #1 insight (AW29)", () => {
     expect(s).toHaveLength(1);
     const p = E.demandProfile(series(20))!;
     const prob = E.stockoutProbability({
-      onHand: 0.4,
+      onHand: 250 / 750,
       avgDemandPerPeriod: p.mean,
       demandStdev: p.stdev,
       leadTime: 7,
     })!;
     expect(s[0].evidence.value).toBeCloseTo(prob, 12);
     expect(s[0].effectPct).toBeCloseTo(prob, 12);
-    expect(s[0].sentence).toContain("Only 0.4 bottles on hand");
+    expect(s[0].sentence).toContain("Only 0.3 bottles on hand");
     expect(s[0].z).toBeNull();
   });
 

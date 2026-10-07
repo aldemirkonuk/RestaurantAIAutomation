@@ -16,8 +16,9 @@
  * what we poured, who quoted it.** So the spine is inverted. The house's own
  * books come first (`house_beverage_ledger`, migration 20260903120000, over
  * menu_items · procurement_document_lines · procurement_order_items ·
- * vendor_price_observations · pos_unresolved_lines), and the shared catalogue
- * is the lookup laid over them — not the other way round.
+ * vendor_price_observations · the till's own record: `pos_checks.items` plus
+ * the queued `pos_unresolved_lines` no check holds, ADR 0301), and the shared
+ * catalogue is the lookup laid over them — not the other way round.
  *
  * THE THREE KINDS OF ROW, EACH A DIFFERENT SENTENCE
  *

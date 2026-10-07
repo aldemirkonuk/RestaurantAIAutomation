@@ -4,7 +4,7 @@
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** cellar, beverages, register, house record, ledger, identity, OD-113, beverage_house_key, pos_unresolved_lines, soft drinks, cocktails, recipes
-- **Links:** [[0044-mudavym-design-wave-4]], [[0042-iznik-seal]], [[0051-no-seeded-defaults]], [[0070-ledger-quantity]], `.planning/06-pages/DESIGN-FOUNDATION.md` §6 (`/cellar` row) and §6a, `.planning/06-pages/wines.md` §1b, `supabase/migrations/20260903120000_the_house_s_own_record.sql`, `apps/api-gateway/src/beverages/`, OD-113 (non-wine inventory identity)
+- **Links:** [[0044-mudavym-design-wave-4]], [[0042-iznik-seal]], [[0051-no-seeded-defaults]], [[0070-ledger-quantity]], `.planning/06-pages/DESIGN-FOUNDATION.md` §6 (`/cellar` row) and §6a, `.planning/06-pages/wines.md` §1b, `supabase/migrations/20260903120000_the_house_s_own_record.sql`, `apps/api-gateway/src/beverages/`, OD-113 (non-wine inventory identity); amended by [[0301-the-cellar-reads-the-tills-record-and-counts-the-door-checked-price]] (the books table's sold and invoiced rows: what we sold is every `pos_checks.items` line not voided, plus queued lines no check holds; invoiced also counts the door-checked price, labelled, once its §2 is built)
 
 ## Context
 

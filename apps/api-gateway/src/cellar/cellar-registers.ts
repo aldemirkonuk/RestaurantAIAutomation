@@ -293,10 +293,13 @@ export function placeMenuLine(line: MenuLine): RegisterId[] {
  * could place on a register, and how many it read but could not place.
  *
  * WHAT THESE ARE NOT. `read` is not "lines in the uploaded file" and not
- * `MenuImportResult.itemsExtracted`. It is the number of `menu_items` rows this
- * house's book holds and the register inference actually looked at, on this
+ * `MenuImportResult.itemsExtracted`. It is the number of lines on this house's
+ * CURRENT menu (`restaurant_menus.status = 'active'`, ADR 0193; discarded
+ * lines left out) that the register inference actually looked at, on this
  * read — the same rows, in the same pass, that produced every `menuRows` figure
- * beside a register. Extraction dropping a line and the reader never seeing it
+ * beside a register. It is not every `menu_items` row the house keeps: a menu
+ * read and kept as a draft, or an archived copy of an earlier menu, is not on
+ * the menu, and counting it printed each line twice (A-028, F-148). Extraction dropping a line and the reader never seeing it
  * are two different failures and this number is only the second one's
  * denominator.
  *
@@ -310,6 +313,17 @@ export interface MenuLineTally {
   read: number;
   placed: number;
   notPlaced: number;
+}
+
+/**
+ * The tally as the readout carries it: `MenuLineTally` plus how many menus
+ * were current when it was read. `currentMenus: 0` is ADR 0193's named state
+ * "no current menu": the reader had no menu to place, which is a different
+ * sentence from a current menu with no lines. `tallyMenuLines` stays a pure
+ * count of lines; the service adds this from its own read.
+ */
+export interface CurrentMenuLineTally extends MenuLineTally {
+  currentMenus: number;
 }
 
 /**
@@ -417,7 +431,10 @@ export interface InferenceInput {
    * two registers `beverage_kind` cannot express.
    */
   inventoryNameCounts: Map<RegisterId, number> | null;
-  /** Register → count, over this tenant's menu_items rows. */
+  /**
+   * Register → count, over the lines on this house's current menu
+   * (`restaurant_menus.status = 'active'`, ADR 0193) — not every kept copy.
+   */
   menuCounts: Map<RegisterId, number> | null;
   /** Rows this tenant owns in public.cocktails. */
   cocktailRows: number | null;
