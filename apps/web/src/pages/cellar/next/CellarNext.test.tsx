@@ -1021,7 +1021,8 @@ describe('CellarNext — the registers that are not wines', () => {
   // (amendment 1), not the founder's pick. A Paid that adds invoice lines and a
   // door check says both on the cell, not only in a title (a title never shows
   // on touch), and its note names the double count. A Paid only the door fills
-  // keeps 'door-checked', and so do First bought and the record's stand.
+  // keeps 'door-checked', and so does First bought. On the record's stand,
+  // Bottles and Paid add both books too and read the same; its dates do not.
   it('marks a Paid that adds invoice lines and a door check "door-checked + invoiced", and a door-only Paid "door-checked"', () => {
     const both = houseRow({
       key: 'b-both',
@@ -1080,12 +1081,21 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(doorPaid).toHaveAttribute('title', DOOR_CHECKED_NOTE);
     expect(doorRow).not.toHaveTextContent(/invoiced/);
 
-    // The record's stand is not changed by this: every mark there reads 'door-checked'.
+    // The record's stand: Bottles and Paid add both books, so they read
+    // 'door-checked + invoiced' with the double-count note; First bought, Last
+    // bought, Last unit price and From are one row's each and keep 'door-checked'.
     fireEvent.click(screen.getByText('Both Books'));
     const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
     const standMarks = within(book).getAllByTestId('door-checked-mark');
-    expect(standMarks.length).toBeGreaterThan(0);
-    for (const m of standMarks) expect(m.textContent?.trim()).toBe(DOOR_CHECKED_LABEL);
+    expect(standMarks.map((m) => m.textContent?.trim())).toEqual([
+      DOOR_CHECKED_LABEL, // First bought
+      DOOR_CHECKED_LABEL, // Last bought
+      DOOR_CHECKED_INVOICED_LABEL, // Bottles
+      DOOR_CHECKED_INVOICED_LABEL, // Paid, in total
+      DOOR_CHECKED_LABEL, // Last unit price
+      DOOR_CHECKED_LABEL, // From
+    ]);
+    for (const m of standMarks.slice(2, 4)) expect(m).toHaveAttribute('title', DOOR_CHECKED_INVOICED_NOTE);
   });
 
   it('renders add-to-inventory disabled, with the OD-113 sentence beside it', () => {

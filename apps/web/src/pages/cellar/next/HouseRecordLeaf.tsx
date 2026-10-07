@@ -87,7 +87,11 @@ function Book({
  * What the bought block is headed and read from (ADR 0301 §2). Invoice lines
  * keep the "invoiced" heading and mark each figure a door check filled; a block
  * only the door fills is headed "door-checked" instead, so no fact in it needs
- * its own mark.
+ * its own mark. Bottles and Paid in a block with both books add the two, so
+ * their mark reads 'door-checked + invoiced', as the register's Paid cell does
+ * (ADR 0301, Harder / given up, the coordinator's decision of 2026-10-07,
+ * amendment 1); the dates, the last price and its vendor are one row's each,
+ * so their marks keep 'door-checked'.
  */
 function boughtBook(b: NonNullable<NonNullable<RegisterRowVM['house']>['bought']>) {
   const door = (b.doorChecked ?? 0) > 0;
@@ -98,7 +102,7 @@ function boughtBook(b: NonNullable<NonNullable<RegisterRowVM['house']>['bought']
     sources: [...(paper ? [BOOK_SOURCE.invoice] : []), ...(door ? [DOOR_CHECKED_SOURCE] : [])],
     first: mark(b.firstDoorChecked),
     last: mark(b.lastDoorChecked),
-    sums: mark(door),
+    sums: paper && door ? doorCheckedMark(true) : null,
   };
 }
 

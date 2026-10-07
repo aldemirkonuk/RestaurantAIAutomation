@@ -71,9 +71,10 @@ function dim(v: string): ReactNode {
  * `withInvoices` is for a Paid that adds invoice lines too: the words read
  * 'door-checked + invoiced' and the note says the same delivery can be counted
  * twice until the invoice is linked (ADR 0301, Harder / given up, the
- * coordinator's decision of 2026-10-07, amendment 1). Only the Paid cell below
+ * coordinator's decision of 2026-10-07, amendment 1). The Paid cell below
  * passes it (the registers and the whole-cellar list draw it through
- * `cellFor`); the record's stand calls this with no argument.
+ * `cellFor`), and so do Bottles and Paid on the record's stand; every First
+ * bought and Last bought mark calls this with no argument.
  */
 export function doorCheckedMark(withInvoices = false): ReactNode {
   return (
