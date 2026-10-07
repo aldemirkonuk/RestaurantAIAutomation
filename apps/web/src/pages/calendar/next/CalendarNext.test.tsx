@@ -1201,6 +1201,27 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
     expect(screen.queryByText(NET())).toBeNull();
     expect(document.querySelector('[data-takings]')).toBeNull();
   });
+
+  // ADR 0292 on ADR 0287: the sales register is read whole or refused. A
+  // refused window carries no recorded day, and the mark also checks the
+  // refusal, so no "net sales · recorded" stands over a register that could
+  // not be read whole.
+  it('draws no takings under a sales-register refusal, even if a figure reached it, and says the refusal', () => {
+    const refusal =
+      'The sales register could not be read whole, so no day is drawn from part of it.';
+    state.current = withRecorded({}, { recordedRefusal: refusal });
+    draw();
+    expect(screen.getByText(refusal)).toBeInTheDocument();
+    const panel = openDay();
+    expect(panel.querySelector('[data-takings]')).toBeNull();
+    expect(panel.textContent).not.toContain(NET());
+    expect(panel.textContent).not.toMatch(/net sales/);
+    // and the Day view agrees
+    fireEvent.click(screen.getByRole('button', { name: 'Day' }));
+    expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText(NET())).toBeNull();
+    expect(document.querySelector('[data-takings]')).toBeNull();
+  });
 });
 
 /* ── the day-book hand-over: `?new=` from /recommendations ────────────────── */

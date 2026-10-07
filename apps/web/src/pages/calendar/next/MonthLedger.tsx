@@ -166,6 +166,7 @@ export function DayLedger({
             day={record}
             currency={data.record.window?.currency}
             withheld={data.record.window?.takingsWithheld === true}
+            refused={!!data.record.window?.recordedRefusal}
           />
         )}
         {sky && record && <SkyMark reading={sky} />}

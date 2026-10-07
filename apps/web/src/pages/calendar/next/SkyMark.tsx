@@ -199,21 +199,33 @@ export function DayRecordMark({ day }: { day: ReconciledDay }) {
  * claim about a question nobody asked.
  *
  * And it draws nothing when the window says `takingsWithheld`: owners and
- * managers see the house's takings, nobody else does (ADR 0287 F1; the
- * founder, 2026-10-04 ~02:10Z: "authorized ones see everything others only
- * see actions"). The gateway already leaves the figure out; the flag is checked
- * here too, so a figure that reached this viewer anyway is still not drawn.
+ * managers see the house's takings, nobody else does (ADR 0287 F1, built as
+ * option (b) on the founder's own words of 2026-10-04 ~02:10Z, "authorized
+ * ones see everything others only see actions"; his confirmation of that
+ * reading is still owed). The gateway already leaves the figure out; the flag
+ * is checked here too, so a figure that reached this viewer anyway is still
+ * not drawn.
+ *
+ * Nor when the sales register refused (`refused`, the window's
+ * `recordedRefusal`). The gateway refuses rather than answer from part of a
+ * window (ADR 0292) and sends no recorded day with a refusal, so there is no
+ * figure to draw; the check here keeps one that reached the page anyway from
+ * reading "net sales · recorded" over a register that could not be read whole.
+ * The page's head line carries the refusal sentence.
  */
 export function TakingsMark({
   day,
   currency,
   withheld = false,
+  refused = false,
 }: {
   day: ReconciledDay;
   currency: HouseCurrency | null | undefined;
   withheld?: boolean;
+  refused?: boolean;
 }) {
   if (withheld) return null;
+  if (refused) return null;
   const record = day.recorded;
   if (!record || record.checkCount <= 0) return null;
   const { netSales, netSalesCheckCount: carried, checkCount } = record;
