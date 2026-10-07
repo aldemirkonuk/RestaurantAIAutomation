@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
 import { AnalyticsService } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -117,19 +118,43 @@ export class AdvancedAnalyticsService {
     });
   }
 
+  /**
+   * Consumption lines of the last `sinceDays` days, read WHOLE or refused
+   * (ADR 0292). The unranged select this replaces stopped at PostgREST's 1,000
+   * rows: menu engineering classified the list on 752 of about 8,445 units,
+   * and seasonality and Wine 360 read the same slice (A-032, A-033).
+   *
+   * A refusal (`WholeReadError`, a 503) PROPAGATES. It used to log and return
+   * the empty list, which menu engineering, seasonality and Wine 360 then drew
+   * as a house that sold nothing. The overview's `allSettled` turns it into a
+   * null lens (`getOverview`), as it does for any lens that throws.
+   */
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("wine_consumption_log")
-      // No master_wine_id column on this table — resolve via the inventory FK.
-      .select(
-        "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
-    if (error) this.logQueryFailure("wine_consumption_log", error);
-    return (data || []).map((c: any) => ({
+    const client = this.dbService.getClient();
+    let data: any[];
+    try {
+      data = await readWholeWindow<any>(
+        "The consumption lines in this window",
+        () =>
+          client
+            .from("wine_consumption_log")
+            // No master_wine_id column on this table — resolve via the inventory FK.
+            .select(
+              "id, inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("created_at", since),
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `analytics query on wine_consumption_log refused — this lens says it ` +
+          `could not be read rather than drawing part of the window: ${err?.message ?? err}`,
+      );
+      throw err;
+    }
+    return data.map((c: any) => ({
       wineId: c.restaurant_inventory?.master_wine_id ?? null,
       qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
       date: (c.created_at || "").substring(0, 10),
