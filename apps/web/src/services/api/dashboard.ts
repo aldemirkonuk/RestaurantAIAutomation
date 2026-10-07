@@ -236,14 +236,60 @@ export async function cancelOneTapAction(
   return response.data;
 }
 
+/** One day of the dashboard month, as the gateway files it (ADR 0290). */
+export interface CalendarMonthDay {
+  date: string;
+  /** Delivered orders' value — money paid to vendors. Null: not known. */
+  procurement_spend: number | null;
+  /** Bottles DELIVERED by vendors (frozen misnomer). Null: not known. */
+  bottles_sold: number | null;
+  order_count: number | null;
+  /**
+   * Sum of the subtotals the day's checks carried, voided left out. Null: not
+   * known, not shown, or checks came and none carried a subtotal (then
+   * `checks > 0` and `net_checks` is 0: "not recorded").
+   */
+  net_sales?: number | null;
+  /** Every check on the day. */
+  checks?: number | null;
+  /** The checks that carried a subtotal ("from net_checks of checks"). */
+  net_checks?: number | null;
+  events: Array<{
+    id?: string;
+    title?: string | null;
+    event_type?: string | null;
+    event_date?: string;
+    event_time?: string | null;
+  }>;
+}
+
 /**
  * Per-day figures for the dashboard calendar.
  *
  * The endpoint path `GET /dashboard/calendar-revenue/:id` is frozen and is a
- * misnomer: `daily[].procurement_spend` and `monthly_procurement_spend` are
- * summed from delivered `procurement_orders` — vendor SPEND, not sales revenue.
- * `bottles_sold` counts bottles DELIVERED by vendors, for the same reason. See
- * `apps/api-gateway/src/dashboard/dashboard.service.ts` `getCalendarRevenue`.
+ * misnomer. What each field carries (ADR 0290):
+ *  - `procurement_spend` / `monthly_procurement_spend` are summed from
+ *    delivered `procurement_orders` — vendor SPEND, never sales; `bottles_sold`
+ *    counts bottles DELIVERED by vendors, for the same reason.
+ *  - `net_sales` / `monthly_net_sales` are the register's takings: the sum of
+ *    the `pos_checks.subtotal`s the checks carried (before tax and surcharge
+ *    where the POS adapter sends it so; Square maps net_amounts.total_money),
+ *    voided checks left out. `net_checks` of `checks` carried one, so a page
+ *    says "from N of M checks"; with checks and none carrying one, the figure
+ *    is null, "not recorded" (netsales F1, "Count and say"). Only an owner or
+ *    manager gets them; for anyone else `sales_withheld` is true and they are
+ *    null.
+ *  - The month's figure sums the begun days the register counted:
+ *    `monthly_days_counted` of `monthly_days_begun` (the founder, 2026-10-05,
+ *    "Sum, say N of M days").
+ *  - Every day is the HOUSE's day, in `timezone`. With no zone set,
+ *    `zone_unset` is true and every day figure is null — never a UTC guess.
+ *  - Null is "not known", never zero. A quiet day between the register's
+ *    first and latest check is 0; a day before the first or after the latest
+ *    (today too, until its first check lands) is null.
+ * The optional fields are optional because a gateway older than ADR 0290
+ * does not send them. See `apps/api-gateway/src/dashboard/dashboard.service.ts`
+ * `getCalendarRevenue`.
  */
 export async function getCalendarRevenue(
   year?: number,
@@ -253,15 +299,19 @@ export async function getCalendarRevenue(
   year: number;
   month: number;
   restaurant_id: string;
-  daily: Array<{
-    date: string;
-    procurement_spend: number;
-    bottles_sold: number;
-    events: any[];
-    order_count: number;
-  }>;
-  monthly_procurement_spend: number;
-  monthly_bottles: number;
+  daily: CalendarMonthDay[];
+  monthly_procurement_spend: number | null;
+  monthly_bottles: number | null;
+  monthly_net_sales?: number | null;
+  monthly_checks?: number | null;
+  monthly_net_checks?: number | null;
+  monthly_days_counted?: number | null;
+  monthly_days_begun?: number | null;
+  timezone?: string | null;
+  zone_unset?: boolean;
+  today?: string | null;
+  pos_connected?: boolean | null;
+  sales_withheld?: boolean;
 }> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
@@ -276,14 +326,15 @@ export async function getCalendarRevenue(
     });
     return response.data;
   } catch {
-    // Return empty structure on failure
+    // An unreachable month: no days, and no totals (null, not 0). The
+    // dashboard hook reads `daily: []` as "unknown" (useDashboardNextData).
     return {
       year: y,
       month: m,
       restaurant_id: id,
       daily: [],
-      monthly_procurement_spend: 0,
-      monthly_bottles: 0,
+      monthly_procurement_spend: null,
+      monthly_bottles: null,
     };
   }
 }
