@@ -205,19 +205,23 @@ export const BASKET_MIN_LIFT = 1.3;
  *       either earlier change predates it.
  *   7 — lane stockout's (ADR 0299, PR #619); its own history line lands
  *       with it.
- *   8 — 2026-10-05 (ADR 0297): a glass is not a bottle. The bundle counts a
+ *   8 — lane tablesins' (ADR 0303 amendment, PR #625); its own history
+ *       line lands with it.
+ *   9 — 2026-10-05 (ADR 0297): a glass is not a bottle. The bundle counts a
  *       consumption line's bottles by its own mode, where it read `quantity`
  *       (servings) as bottles: ten 150 ml glasses were "10 bottles sold", a
  *       50 ml single fifteen times what it poured. A day holding a line with
  *       no bottle figure is unobserved, and a wine holding one is left out of
  *       the movers and the stockout #1. Every record built on consumption
  *       carries `evidence.units`: how many of its lines and items rest on
- *       the 750 ml stand-in. A row below 8 may hold a sentence
- *       counted in pours, so it is recomputed, not served. Whichever of
- *       stockout (7) and this merges later takes one past main's version at
- *       its merge.
+ *       the 750 ml stand-in. A row below 9 may hold a sentence
+ *       counted in pours, so it is recomputed, not served. (Drafted as 8;
+ *       renumbered 9 on 2026-10-07 because #625 also holds 8, so no two open
+ *       PRs share a version.) The number is re-checked at merge: of stockout
+ *       (7), tablesins (8) and this, whichever merges later takes one past
+ *       the version on `main` at its merge.
  */
-export const INSIGHT_GENERATOR_VERSION = 8;
+export const INSIGHT_GENERATOR_VERSION = 9;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.

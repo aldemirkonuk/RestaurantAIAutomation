@@ -162,7 +162,7 @@ The POS writer never writes such a line, because it fails closed on an explicit 
   - Insight bundle: `units`, and `insights[].evidence.units`.
   - Goals: `basis.units`, and `units` on each goal's progress.
   - Demand forecast: no new field; `basis.demand` and `basis.model` name the coverage.
-- **Generator version:** `INSIGHT_GENERATOR_VERSION` is 8. Version 7 belongs to the stockout change (ADR 0299, PR #619), whose history line lands with it.
+- **Generator version:** `INSIGHT_GENERATOR_VERSION` is 8. Version 7 belongs to the stockout change (ADR 0299, PR #619), whose history line lands with it. [2026-10-07: now 9, not 8. `main` is at 6 (ADR 0292, #609), #619 holds 7 and #625 (lane tablesins, the ADR 0303 amendment) also holds 8, so this change moved to 9 and no two open PRs share a version. The history line for 8 is #625's and lands with it. The number is re-checked at merge: of #619, #625 and this change, whichever merges later must be above the version on `main` at its merge, by later-truth. The claim AW02-GENERATOR-VERSION-9 reads a version of 9 or more and this record's history line, so a later bump keeps it true.]
 - **Given up:**
   - An unsized glass seller's figures carry the stand-in's residual error, labelled. A 70 cl item reads 7% low, a 100 cl one 33% high, and a 37.5 cl one 50% low.
   - An item with a line that has no bottle figure leaves the per-item figures named above until the line is corrected.
