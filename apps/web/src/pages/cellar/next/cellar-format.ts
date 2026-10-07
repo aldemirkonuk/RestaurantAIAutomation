@@ -579,7 +579,8 @@ export function strandedPrompt(id: RegisterId, n: number): string {
  *    invoice dated the 2nd showing as the 1st is precisely the class of quiet
  *    error this whole register exists to refuse, so a date-only string is
  *    formatted in UTC and stays the day the document says.
- *  - an INSTANT — `pos_unresolved_lines.created_at` is a `timestamptz` and
+ *  - an INSTANT — a till line's time (`pos_checks.closed_at`, else
+ *    `opened_at`, else a queued line's `created_at`) is a `timestamptz` and
  *    names a moment. That one IS rendered in the reader's own timezone,
  *    because "when did we last sell it" is a question about their evening.
  */
@@ -619,7 +620,7 @@ export const BOOK_SOURCE: Record<HouseBookId, string> = {
   invoice: 'procurement_document_lines, on documents of type invoice',
   order: 'procurement_order_items',
   quote: 'vendor_price_observations, this restaurant’s rows only',
-  pos: 'pos_unresolved_lines + pos_checks.items — unresolved wine lines, and live non-wine sales (Q9)',
+  pos: 'pos_checks.items + pos_unresolved_lines — every line of every check not voided, and the queued lines no check holds',
 };
 
 /**

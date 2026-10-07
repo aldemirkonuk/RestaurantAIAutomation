@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 
 /**
  * What the ledger actually recorded, day by day — slice 3 of ADR 0111.
@@ -190,33 +191,47 @@ export class RecordedDaysService {
     until.setUTCDate(until.getUTCDate() + 1);
     const untilIso = until.toISOString();
 
-    const { data: checks, error: checksError } = await client
-      .from("pos_checks")
-      .select("opened_at, closed_at, subtotal, covers")
-      .eq("restaurant_id", restaurantId)
-      // Voided checks are not trading. The same filter goal progress applies
-      // (goals.service.ts:740), so the two readers cannot drift.
-      .eq("voided", false)
-      .gte("opened_at", `${from}T00:00:00Z`)
-      .lt("opened_at", untilIso);
-
-    if (checksError) {
+    // Read whole or refused (ADR 0292). Unranged, this stopped at PostgREST's
+    // 1,000 rows: a month window holds about 2,000 checks, so half the month's
+    // cells read "covers not recorded" over days that traded (A-031), and a
+    // day's net sales would be a part sum labelled complete (ADR 0287).
+    let rows: CheckRow[];
+    try {
+      rows = await readWholeWindow<CheckRow>(
+        "The sales register for this window",
+        () =>
+          client
+            .from("pos_checks")
+            .select("id, opened_at, closed_at, subtotal, covers", {
+              count: "exact",
+            })
+            .eq("restaurant_id", restaurantId)
+            // Voided checks are not trading. The same filter goal progress
+            // applies (goals.service.ts:740), so the two readers cannot drift.
+            .eq("voided", false)
+            .gte("opened_at", `${from}T00:00:00Z`)
+            .lt("opened_at", untilIso),
+      );
+    } catch (err: any) {
+      if (!(err instanceof WholeReadError)) throw err;
       // Never `days: []`. An unreadable register and a quiet month are the
       // same empty array to a caller reading only `data`, which is the exact
-      // defect ADR 0020 exists to prevent.
+      // defect ADR 0020 exists to prevent. A register read only in part is
+      // refused the same way: half a month drawn would look like closures.
       this.logger.warn(
-        `pos_checks unreadable for r=${restaurantId}: ${checksError.message}`,
+        `pos_checks unreadable for r=${restaurantId}: ${err.message}`,
       );
       return {
         from,
         to,
         posConnected: false,
         days: [],
-        refusal: "The sales register could not be read.",
+        refusal:
+          err.reason === "read_failed"
+            ? "The sales register could not be read."
+            : "The sales register could not be read whole, so no day is drawn from part of it.",
       };
     }
-
-    const rows = (checks ?? []) as CheckRow[];
     const days = foldChecksToDays(rows);
 
     // Whether this house has EVER had a check land. A window with no rows in a
