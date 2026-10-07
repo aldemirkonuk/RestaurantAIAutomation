@@ -226,6 +226,48 @@ describe("MenusService.getMenu", () => {
     const result = await service.getMenu("rest-1");
     expect(result.items.map((i: any) => i.id)).toEqual(["mi-1"]);
   });
+
+  it("asks for and sends the raw line the house keeps (ADR 0309 option 1c)", async () => {
+    const service = makeService({
+      restaurant_menus: [
+        { id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" },
+      ],
+      menu_items: [
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          name: "Lamb",
+          category: null,
+          status: "approved",
+          raw_extracted_text: "Lamb shank (kitchen) 24",
+        },
+      ],
+    });
+    // The fake ignores the column list, so the list itself is what is pinned.
+    const supabase = (service as any).dbService.supabase;
+    const from = supabase.from;
+    const lineColumns: string[] = [];
+    supabase.from = (table: string) => {
+      const q = from(table);
+      if (table === "menu_items") {
+        const select = q.select;
+        q.select = (cols: string) => {
+          lineColumns.push(cols);
+          return select(cols);
+        };
+      }
+      return q;
+    };
+
+    const result = await service.getMenu("rest-1");
+
+    expect(lineColumns.length).toBeGreaterThan(0);
+    for (const cols of lineColumns) {
+      expect(cols.split(",").map((c) => c.trim())).toContain("raw_extracted_text");
+    }
+    expect(result.items[0].raw_extracted_text).toBe("Lamb shank (kitchen) 24");
+  });
 });
 
 /**

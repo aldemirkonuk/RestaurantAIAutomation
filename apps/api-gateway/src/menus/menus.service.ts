@@ -248,8 +248,14 @@ export interface MenuVersion {
 const VERSION_SELECT =
   "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
+/**
+ * The columns every line read sends. `raw_extracted_text` is the line as the
+ * reading saw it: the import keeps it, and a page that reads the menu back
+ * needs it to tell a kitchen line from a drink the same way the reading tab
+ * did (ADR 0309 option 1c).
+ */
 const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, created_at";
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, raw_extracted_text, created_at";
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
