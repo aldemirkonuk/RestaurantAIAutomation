@@ -1,6 +1,6 @@
 # 0304 — A house's time zone comes from its address, and says where it came from
 
-- **Status:** Locked for the ruling, and Proposed for the method until PR-2 merges. The ruling is the founder's: four answers on 2026-10-04 ~22:35Z, four fork answers on 2026-10-05T01:17Z and one answer by 2026-10-06 03:52Z, all quoted verbatim below. The 2026-10-06 answer makes the witness rule (Decisions 4 and 6) part of the ruling: a person is named only as the witness of the zone kept now, and a zone with no recorded source that such a witness names reads as stated. The rest of the method (the order, the tables, the two columns and the five PRs) is lane zoneaddr's proposal, built for his review. The three readings under "Readings" are the lane's and he may overrule any of them.
+- **Status:** Locked for the ruling, and Proposed for the method until PR-2 merges. The ruling is the founder's: four answers on 2026-10-04 ~22:35Z, four fork answers on 2026-10-05T01:17Z, one answer by 2026-10-06 03:52Z and one answer at 2026-10-07 04:15:17Z (Reading 3), all quoted verbatim below. The 2026-10-06 answer makes the witness rule (Decisions 4 and 6) part of the ruling: a person is named only as the witness of the zone kept now, and a zone with no recorded source that such a witness names reads as stated. The rest of the method (the order, the tables, the two columns and the five PRs) is lane zoneaddr's proposal, built for his review. The three readings under "Readings" are the lane's and he may overrule any of them.
 - **Date:** 2026-10-04
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** time zone, timezone, restaurants.timezone, timezone_source, timezone_source_zone, restaurants_timezone_source_known, from the address, from the device, stated, source not recorded, witness, Credit the old record, house_time_zone_changed, PUT /settings/time-zone, Settings → Time zone, Hours, certainty, inferred, sign-up zone, device zone, browser zone, one-clock countries, US state zone, territory, back-fill dry run, a default is not an answer
@@ -80,11 +80,17 @@ An unattributable value stays not an answer. That is why a zone with no source a
 
 The witnessed exception is the founder's ruling of 2026-10-06, "Credit the old record (Recommended)" (quoted above). A zone with no source counts as attributable when the newest `house_time_zone_changed` row says `to` = that exact zone. That row is a person's own audited act naming who set the zone, so crediting it invents no witness (ADR 0116). Settings then reads the zone "stated" with that row's date, plus "stated by · {name}" when the name can be read, and the Hours row is tagged `manual` (Decision 4). The code is `zoneProvenance`'s default branch in `TimeZoneSection.tsx` and `hoursTimezoneCert` in `certaintyTally.ts`, pinned by `certaintyTally.test.ts` and `TimeZoneAndMailReading.test.tsx`. This case is reachable for a zone saved before this ADR. `PUT /settings/time-zone` has filed such rows since ADR 0207 round 3, and the migration leaves every existing row's source null.
 
+Asked 2026-10-06 19:57:41Z with AskUserQuestion and answered 2026-10-07 04:15:17Z, on the Settings wording for a zone that came from a device (Reading 3):
+
+- **Question:** *"#620 (zone from the address), for the later PR that takes a zone from a device: how should Settings word a zone that came from a device? (No PR-1 code change either way.)"*
+- **Answer:** **`"from the device" (Recommended)`**. The option text was: *Names the device the house was created on. True for every viewer.*
+- **Rejected:** *`"from your device"`* (option 29 below) and *`"from {name}'s device"`* (option 30 below).
+
 ## Readings (the lane's; the founder may overrule them)
 
 1. **Territories.** Sometimes the address names one zone but the owner's device lies in a place addressed under that country's name that keeps another clock: FR with RE MQ GP GF YT PM BL MF NC PF WF TF; NL with BQ CW AW SX; DK with FO GL; GB with GI FK BM KY VG MS TC AI SH IO PN GS; TR with CY ("Mersin 10, Turkey"). Then the device's zone is saved, as `device`. The address names the territory too and the device is the more specific of the two (Q2 sends what the address cannot settle to the device). A device outside the country entirely does not override the address (Q1).
 2. **A device "UTC" or `Etc/*` zone is not an answer.** "UTC" is what an unconfigured or privacy-hardened device reports, and no restaurant keeps it as a civil zone name (ADR 0116). `Etc/GMT+5` is not a zone Settings can name. Neither is saved as `device`.
-3. **"from the device", not "from your device", in Settings.** The follow-up's option text labels the zone *'from your device'*. Settings is read by every owner and manager of the house, and "your" would tell a manager the zone came from their own device. Settings therefore says "from the device" with "the device the house was created on". The sign-up preview, shown on that device to the person signing up, says "from this device" (PR-2).
+3. **"from the device", not "from your device", in Settings.** The follow-up's option text labels the zone *'from your device'*. Settings is read by every owner and manager of the house, and "your" would tell a manager the zone came from their own device. Settings therefore says "from the device" with "the device the house was created on". The sign-up preview, shown on that device to the person signing up, says "from this device" (PR-2). **[Confirmed by the founder 2026-10-07 04:15:17Z; quoted under "The founder's words". This reading is now part of the ruling and binds PR-2.]**
 
 ## Amends and keeps
 
@@ -137,6 +143,8 @@ Rejected, with the reason that carried it:
 26. **A web mirror of `notAZoneBecause` for the preview.** The preview is advisory; the gateway recomputes and saves the authoritative zone.
 27. **Doing nothing.** The real house (Meyhouse Palo Alto; its missing zone is inferred, not re-read, as Context says) reads "time zone not set" on every windowed figure until someone finds Settings → Time zone, and every new house keeps an unlabelled browser zone.
 28. **"Source not recorded" for a zone with no recorded source that the newest audit row witnesses**, counted `inferred` until someone saves it again. The founder rejected it on 2026-10-06 (*"Say 'source not recorded'"*, quoted above).
+29. **"from your device" in Settings**, verbatim from the follow-up's option text. Settings is read by every owner and manager, and "your" is wrong for anyone who did not create the house. The founder rejected it on 2026-10-07 (quoted above).
+30. **"from {name}'s device" in Settings.** It names the creator, but it needs a schema addition that stores the creator's id with the source. The founder rejected it on 2026-10-07 (quoted above).
 
 ## Consequences
 
@@ -160,3 +168,4 @@ Rejected, with the reason that carried it:
 | 2026-10-06 | Aldemir | Ruled the witnessed zone with no recorded source: "Credit the old record (Recommended)", quoted above; "Say 'source not recorded'" rejected |
 | 2026-10-06 | Claude (lane zoneaddr) | Record brought in line with that ruling; no behaviour changed (code comments only). The answer is quoted under "The founder's words". The witness rule and the witnessed exception left "Readings" (the former Readings 4 and 5) for the Status line, Decisions 4 and 6 and the "How a derived zone squares…" paragraph. The rejected answer is option 28 |
 | 2026-10-06 | Coordinator (merge-turn re-head) | Merged origin/main `5c07cfb23` (#622; README index only). Owed by the PASS at `64e967fc4`: Context and option 27 name the real tenant (Meyhouse Palo Alto) and say its missing zone is inferred, not re-read; Decision 7 says PR-5 must keep the machine's move from reading as a witness. No code change |
+| 2026-10-07 | Aldemir | Ruled the Settings wording for a device-derived zone: `"from the device" (Recommended)`, quoted above; "from your device" and "from {name}'s device" rejected (options 29, 30). Reading 3 is confirmed and binds PR-2 |
