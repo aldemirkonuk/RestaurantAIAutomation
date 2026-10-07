@@ -1946,11 +1946,14 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     expect(screen.getByText('Nothing stands against tonight’s numbers.')).toBeInTheDocument();
     second.unmount();
 
-    // An older gateway that does not say: none stands, and clear is not claimed.
+    // An older gateway that does not say: none stands, and neither the voice nor
+    // the headline claims every source was read.
     mockData.current = { ...base, entries: [], sourcesUnread: null };
     draw();
     expect(screen.getByText('17 rules were read, and none of them stands.')).toBeInTheDocument();
     expect(screen.queryByText(/The book is clear/)).not.toBeInTheDocument();
+    expect(screen.getByText('Nothing stands against what the engine read.')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing stands against tonight’s numbers.')).not.toBeInTheDocument();
   });
 
   it('Q2 + Q7: a floor entry is briefed with one tap — recorded at once, undo-after, and it does not leave the page', () => {

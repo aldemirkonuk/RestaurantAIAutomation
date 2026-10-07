@@ -857,15 +857,21 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                   {day
                     ? 'Nothing on the docket touches that day.'
                     : leaf === 'standing'
-                      ? // A source the engine could not read leaves its rules
-                        // silent: the empty book is then only what could be read.
-                        Array.isArray(data.sourcesUnread) && data.sourcesUnread.length > 0
+                      ? // "Tonight's numbers" only when the engine says every
+                        // source answered. A source it could not read leaves its
+                        // rules silent, so the empty book is only what it could
+                        // read; a feed that does not say proves neither.
+                        !Array.isArray(data.sourcesUnread)
                         ? stake === 'all'
-                          ? 'Nothing stands against what the engine could read.'
-                          : `Nothing the engine could read would change ${STAKE_BLURB[stake as StakeId]}.`
-                        : stake === 'all'
-                          ? 'Nothing stands against tonight’s numbers.'
-                          : `Nothing on this leaf would change ${STAKE_BLURB[stake as StakeId]}.`
+                          ? 'Nothing stands against what the engine read.'
+                          : `Nothing the engine read would change ${STAKE_BLURB[stake as StakeId]}.`
+                        : data.sourcesUnread.length > 0
+                          ? stake === 'all'
+                            ? 'Nothing stands against what the engine could read.'
+                            : `Nothing the engine could read would change ${STAKE_BLURB[stake as StakeId]}.`
+                          : stake === 'all'
+                            ? 'Nothing stands against tonight’s numbers.'
+                            : `Nothing on this leaf would change ${STAKE_BLURB[stake as StakeId]}.`
                       : `Nothing on ${REGISTER_NAME[leaf]}.`}
                 </p>
                 {day ? (
