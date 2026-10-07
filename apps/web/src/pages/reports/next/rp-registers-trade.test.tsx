@@ -190,6 +190,12 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
     expect(zoneLink({ ...STOCK, onTrack: true, daysLeft: 29, paceUnread: null })).toBeNull();
     // A deadline with no pace and no reason: the "not computed" caption.
     expect(zoneLink({ ...STOCK, paceUnread: null })).toBeNull();
+    // A reason with no deadline: the caption is "No deadline", which needs no
+    // zone, so no link — even if a reason rode along.
+    expect(zoneLink({ ...NO_DEADLINE, paceUnread: NO_ZONE_PACE })).toBeNull();
+    // A judged pace beside a stray reason: the caption is the judgement
+    // ("Behind the pace…"), not the reason, so no link.
+    expect(zoneLink({ ...STOCK, onTrack: false, daysLeft: 3 })).toBeNull();
   });
 
   it('says the pace was not computed when a deadline has no pace and no reason came with it', () => {
