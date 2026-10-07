@@ -454,7 +454,10 @@ describe("GoalsService — the till and goal progress read the whole window", ()
       expect(r.select).toBe("id, total, opened_at, closed_at");
       expect(r.count).toBe("exact");
     }
-    const { db: db2, requests: req2 } = cappedDb({ pos_checks: rows, restaurants });
+    const { db: db2, requests: req2 } = cappedDb({
+      pos_checks: rows,
+      restaurants,
+    });
     await (goalsOver(db2) as any).computeMetricWithSeries(
       "r1",
       "wine_revenue",
