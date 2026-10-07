@@ -47,6 +47,8 @@ describe("resolveHouseJurisdiction: the country first, the state inside it", () 
       expect(houseJurisdictionKey("MI", country)).toBeNull();
     }
     expect(houseJurisdictionKey("Milano", "Italy")).toBeNull();
+    // Terni's sigla is "TR", which a state-first read took for Türkiye.
+    expect(houseJurisdictionKey("TR", "Italy")).toBeNull();
   });
 
   it("reads 'MI' as Michigan on a United States house, however the country is spelled", () => {
