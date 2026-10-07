@@ -902,6 +902,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (data: CreateFirstHouseData): Promise<string> => {
       const response = await api.post("/api/v1/auth/register/house", data);
       const { restaurantId, accessToken, refreshToken: refresh } = response.data;
+      // A person who already had a house moves into the new one, so the
+      // device read cache goes as at a switch: notifications are keyed by
+      // person only, and a failed read falls back to them. Cleared before
+      // the new session is stored, bounded as at sign-out.
+      try {
+        await Promise.race([
+          offlineStorage.clearEntityCache(),
+          new Promise<void>((resolve) =>
+            setTimeout(resolve, SIGN_OUT_CACHE_CLEAR_MAX_MS),
+          ),
+        ]);
+      } catch (err) {
+        console.error("Could not clear the read cache for a new house:", err);
+      }
       // `activeRestaurantId` follows the TOKEN's house (ADR 0164), and the
       // device remembers it as this person's last house.
       const house = storeSession(accessToken, refresh) ?? restaurantId;

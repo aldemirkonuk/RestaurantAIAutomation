@@ -217,9 +217,26 @@ describe("a house switch forgets the last house's reads", () => {
     });
     const before = frames.length;
     const keyedBefore = keyedReads.length;
+    // `/auth/me` is held open, as a real round trip is, so React paints the
+    // frames between the new house's name and the end of the switch. A forget
+    // placed after that read would let one of them draw A's data under B.
+    let releaseMe: () => void = () => {};
+    const meAnswered = new Promise<void>((resolve) => (releaseMe = resolve));
+    const served = h.instance.get.getMockImplementation()!;
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url === "/api/v1/auth/me") await meAnswered;
+      return served(url);
+    });
+    let switching: Promise<boolean> = Promise.resolve(false);
+    await act(async () => {
+      switching = auth().setActiveRestaurantId(B);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(auth().activeRestaurantId).toBe(B);
     let ok: boolean | undefined;
     await act(async () => {
-      ok = await auth().setActiveRestaurantId(B);
+      releaseMe();
+      ok = await switching;
     });
 
     expect(ok).toBe(true);
@@ -258,6 +275,12 @@ describe("a house switch forgets the last house's reads", () => {
   it("creating a new house from inside another forgets the old house's reads too", async () => {
     const { qc, frames, auth } = await mountInA();
     qc.setQueryData(["left-behind"], `${A}-only`);
+    const clearedIn: Array<string | null> = [];
+    const clear = vi
+      .spyOn(offlineStorage, "clearEntityCache")
+      .mockImplementation(async () => {
+        clearedIn.push(tokenHouseNow());
+      });
     h.instance.post.mockResolvedValue({
       data: {
         restaurantId: B,
@@ -275,6 +298,10 @@ describe("a house switch forgets the last house's reads", () => {
     const after = frames.slice(before);
     expect(after.filter((f) => f.house === B && f.shown === `${A}-data`)).toEqual([]);
     expect(qc.getQueryCache().find({ queryKey: ["left-behind"] })).toBeUndefined();
+    // The device read cache too, before the new house's session is stored.
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(clearedIn).toEqual([A]);
+    clear.mockRestore();
   });
 
   it("a refused switch forgets nothing", async () => {

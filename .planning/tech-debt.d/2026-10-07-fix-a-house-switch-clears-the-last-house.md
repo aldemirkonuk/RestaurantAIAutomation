@@ -8,7 +8,7 @@ Filed by branch `fix/a-house-switch-clears-the-last-house` (lane `houseswitch`, 
   2. It stores the new session.
   3. It resets every cached react-query read (`forgetHouseReads`) before the new house is set.
   4. It then reads again only what is still on screen.
-- `createFirstHouse` does the same. Sign-out (`endSession`) resets the reads and clears the mutation cache.
+- `createFirstHouse` does the same. [Since 2026-10-07 ~22:35Z: until then it skipped step 1, so a person who created a second house from inside the first kept the device rows keyed by person only. It now empties the device read cache, bounded, before it stores the new session, and `houseSwitch.test.tsx` checks that.] Sign-out (`endSession`) resets the reads and clears the mutation cache.
 - Six named reads now carry the house in their key: promotions, vendor currency coverage, price locks, price advice, menu versions, and Menu's house currency.
 - `/recommendations` resets its Standing figures in the same render that switches the house. It keys its roster to the house, and a failed roster read is read again when the menu is next opened.
 - The gateway refuses an `assignedTo` that is not an `active` row of the path house's roster.
@@ -33,6 +33,7 @@ How the list was built: a regex over every `queryKey:` in `apps/web/src` (tests 
 - `pages/inventory/command/ReceivingWorkspace.tsx:395`: `['settings','currency']`. This is the same read that Menu now keys as `['settings','currency',rid]`, so the two pages no longer share one cache entry.
 - `pages/inventory/command/RowExpansion.tsx:87`: keyed by item, but it calls `getOrders()` for the whole house.
 - `pages/vendor-prices/next/useVendorPricesNextData.ts:290`, `:297`, `:316`.
+- `pages/settings/next/ConsentPanel.tsx:97`: `['consent-trail', spec.register]` reads `GET /settings-audit`. That route takes the house from the token (`settings-audit/settings-audit.controller.ts:84`, `@CurrentUser("restaurantId")`), so it is a house read. A register name is not a record id. It is not keyed on this branch because of the 15-file cap. [Added 2026-10-07 after the lane's verifier found it missing from this list.]
 
 **Keyed by the person only:**
 - `hooks/queries/useNotificationQueries.ts:40`, `:80`, `:92`, `:122`. The device cache entry `notifications_${userId}_…` is keyed the same way, which is why the switch empties the device cache.
