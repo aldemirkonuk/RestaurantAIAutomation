@@ -439,7 +439,16 @@ export class DayRecordService {
       posConnected: ledger.posConnected,
       recordedRefusal: ledger.refusal,
       weatherRefusal: weather.refusal,
-      pairsWritten: await this.keepPairs(restaurantId, days, currency),
+      // A pair is written once per day and never again (`keepPairs`), so one
+      // written while the sales register refused would freeze "0 checks, no
+      // net sales" over a day that traded. The register refuses rather than
+      // answer from part of the window (ADR 0292), and nothing is paired from
+      // a refusal either: the forecasts are kept in `weather_readings`, so the
+      // next whole read writes these days in full (ADR 0287).
+      pairsWritten:
+        ledger.refusal === null
+          ? await this.keepPairs(restaurantId, days, currency)
+          : 0,
     };
   }
 

@@ -678,37 +678,104 @@ describe("DayRecordService — writing the first real accuracy_score", () => {
 
 /* ── the day's takings are NET, and travel with their currency (ADR 0287) ─── */
 
-describe("RecordedDaysService — reads the net column", () => {
-  function fakeDb(checks: any[]) {
-    const selects: Array<{ table: string; columns: string }> = [];
+describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0292)", () => {
+  /**
+   * A `pos_checks` double shaped like PostgREST: every response stops at the
+   * server's `max_rows` (1,000) whatever was asked, `{ count: "exact" }` is the
+   * size of the set past the `.gt("id", …)` cursor, and `order` / `limit` are
+   * honoured, and a row carries only the columns the select named.
+ * `ignoreCursor` is a server that drops the cursor, so the read
+   * can never be proved whole. Filters other than the cursor are not applied:
+   * every row handed in belongs to the window.
+   */
+  function pagedDb(
+    checks: Array<Record<string, unknown>>,
+    opts: { ignoreCursor?: boolean } = {},
+  ) {
+    const CAP = 1000;
+    const reads: Array<{
+      table: string;
+      columns: string;
+      count?: string;
+      order?: string;
+      gt?: string;
+      limit?: number;
+    }> = [];
     const from = (table: string) => {
+      const req: (typeof reads)[number] = { table, columns: "" };
+      reads.push(req);
       const c: any = {
-        select: (columns: string) => {
-          selects.push({ table, columns });
+        select: (columns: string, o?: { count?: string }) => {
+          req.columns = columns;
+          req.count = o?.count;
           return c;
         },
         eq: () => c,
         gte: () => c,
         lt: () => c,
         lte: () => c,
-        limit: () => c,
-        then: (resolve: (v: unknown) => unknown) =>
-          Promise.resolve({
-            data: table === "pos_checks" ? checks : [],
+        order: (col: string) => {
+          req.order = col;
+          return c;
+        },
+        gt: (col: string, val: string) => {
+          if (col === "id") req.gt = val;
+          return c;
+        },
+        limit: (n: number) => {
+          req.limit = n;
+          return c;
+        },
+        then: (resolve: (v: unknown) => unknown) => {
+          if (table !== "pos_checks") {
+            return Promise.resolve({ data: [], error: null }).then(resolve);
+          }
+          const sorted = [...checks].sort((a, b) =>
+            String(a.id).localeCompare(String(b.id)),
+          );
+          const past =
+            req.gt !== undefined && !opts.ignoreCursor
+              ? sorted.filter((r) => String(r.id) > String(req.gt))
+              : sorted;
+          // Only the columns asked for come back, as PostgREST projects them.
+          const cols = req.columns.split(",").map((c) => c.trim());
+          const pick = (r: Record<string, unknown>) =>
+            Object.fromEntries(cols.map((c) => [c, r[c] ?? null]));
+          return Promise.resolve({
+            data: past.slice(0, Math.min(req.limit ?? Infinity, CAP)).map(pick),
             error: null,
-          }).then(resolve),
+            count: req.count === "exact" ? past.length : null,
+          }).then(resolve);
+        },
       };
       return c;
     };
-    return { db: { supabase: { from } } as never, selects };
+    return { db: { supabase: { from } } as never, reads };
+  }
+
+  /** `n` checks spread over the 31 days from 2026-08-01, ids sortable. */
+  function month(n: number, subtotal: string | null = "10.00") {
+    return Array.from({ length: n }, (_, i) => {
+      const day = String(1 + (i % 31)).padStart(2, "0");
+      return {
+        id: `chk-${String(i).padStart(5, "0")}`,
+        opened_at: `2026-08-${day}T19:00:00Z`,
+        closed_at: `2026-08-${day}T19:40:00Z`,
+        subtotal,
+        total: "11.26",
+        covers: 2,
+      };
+    });
   }
 
   it("selects pos_checks.subtotal, not the gross total, and folds it as netSales", async () => {
-    const { db, selects } = fakeDb([
+    const { db, reads } = pagedDb([
       {
+        id: "chk-1",
         opened_at: "2026-09-02T19:00:00Z",
         closed_at: null,
         subtotal: "100.00",
+        total: "112.63",
         covers: 2,
       },
     ]);
@@ -718,14 +785,131 @@ describe("RecordedDaysService — reads the net column", () => {
       "2026-09-02",
     );
 
-    const checkRead = selects.find(
-      (s) => s.table === "pos_checks" && s.columns !== "id",
+    const checkRead = reads.find(
+      (r) => r.table === "pos_checks" && r.columns !== "id",
     )!;
     const columns = checkRead.columns.split(",").map((c) => c.trim());
     expect(columns).toContain("subtotal");
     expect(columns).not.toContain("total");
+    // The read is the counted, paged one (ADR 0292), not a bare select.
+    expect(columns).toContain("id");
+    expect(checkRead.count).toBe("exact");
+    expect(checkRead.order).toBe("id");
+    expect(out.refusal).toBeNull();
     expect(out.days[0].netSales).toBe(100);
     expect(out.days[0].netSalesCheckCount).toBe(1);
+  });
+
+  it("sums the net takings of every check in a month past the server's 1,000-row cap", async () => {
+    // Tuzlu's August window held 2,121 checks (A-031). Cut at 1,000, every
+    // day's figure would be short while its count said "all of them".
+    const { db, reads } = pagedDb(month(2121));
+    const out = await new RecordedDaysService(db).windowFor(
+      "r1",
+      "2026-08-01",
+      "2026-08-31",
+    );
+
+    expect(out.refusal).toBeNull();
+    expect(out.days).toHaveLength(31);
+    const checks = out.days.reduce((n, d) => n + d.checkCount, 0);
+    const carried = out.days.reduce((n, d) => n + d.netSalesCheckCount, 0);
+    const net = out.days.reduce((n, d) => n + (d.netSales ?? 0), 0);
+    expect(checks).toBe(2121);
+    expect(carried).toBe(2121);
+    expect(net).toBeCloseTo(21210, 2);
+    expect(out.days.every((d) => d.netSalesCheckCount === d.checkCount)).toBe(
+      true,
+    );
+    // Three pages: 1,000 + 1,000 + 121.
+    expect(
+      reads.filter((r) => r.table === "pos_checks" && r.columns !== "id"),
+    ).toHaveLength(3);
+  });
+
+  it("a register read only in part refuses: no day, so no takings, is drawn from part of it", async () => {
+    const { db } = pagedDb(month(2121), { ignoreCursor: true });
+    const out = await new RecordedDaysService(db).windowFor(
+      "r1",
+      "2026-08-01",
+      "2026-08-31",
+    );
+
+    expect(out.days).toEqual([]);
+    expect(out.refusal).toBe(
+      "The sales register could not be read whole, so no day is drawn from part of it.",
+    );
+  });
+
+  it("the refusal reaches the day record as a refusal, with no takings and no pair frozen", async () => {
+    // The day is pairable on its weather half alone (a forecast before it, a
+    // station's measurement after), so only the refusal keeps it unwritten.
+    const { db } = pagedDb(month(2121), { ignoreCursor: true });
+    const ledger = await new RecordedDaysService(db).windowFor(
+      "r1",
+      YESTERDAY,
+      YESTERDAY,
+    );
+    const { service, inserted } = makeService({
+      recorded: ledger,
+      weather: WEATHER({
+        observations: [
+          {
+            businessDate: YESTERDAY,
+            issuer: "NOAA/NWS",
+            stationId: "KPAO",
+            stationName: "Palo Alto Airport",
+            timeZone: "America/Los_Angeles",
+            firstObservedAt: `${YESTERDAY}T14:47:00Z`,
+            lastObservedAt: `${YESTERDAY}T23:47:00Z`,
+            observationCount: 18,
+            fetchedAt: new Date().toISOString(),
+            temperatureHigh: 25,
+            temperatureLow: 13,
+            temperatureUnit: "C" as const,
+            precipitationTotalMm: null,
+          },
+        ],
+      }),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
+
+    expect(out.recordedRefusal).toMatch(/could not be read whole/);
+    expect(out.days).toHaveLength(1);
+    expect(out.days[0].recorded).toBeNull();
+    expect(out.pairsWritten).toBe(0);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("the same day, read whole, is paired with its net takings", async () => {
+    // The control for the case above: same weather, a register that answers.
+    const { service, inserted } = makeService({
+      recorded: LEDGER(),
+      weather: WEATHER({
+        observations: [
+          {
+            businessDate: YESTERDAY,
+            issuer: "NOAA/NWS",
+            stationId: "KPAO",
+            stationName: "Palo Alto Airport",
+            timeZone: "America/Los_Angeles",
+            firstObservedAt: `${YESTERDAY}T14:47:00Z`,
+            lastObservedAt: `${YESTERDAY}T23:47:00Z`,
+            observationCount: 18,
+            fetchedAt: new Date().toISOString(),
+            temperatureHigh: 25,
+            temperatureLow: 13,
+            temperatureUnit: "C" as const,
+            precipitationTotalMm: null,
+          },
+        ],
+      }),
+    });
+
+    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
+    expect(out.pairsWritten).toBe(1);
+    expect(inserted[0][0].actual_value.netSales).toBe(3400);
   });
 });
 
