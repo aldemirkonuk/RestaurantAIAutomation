@@ -1,9 +1,17 @@
-import { fUpperTail, regressionSignificance } from "../engine";
+import {
+  fUpperTail,
+  multipleRegression,
+  regressionSignificance,
+} from "../engine";
 import { stateBookFrom } from "./item-state";
 import {
+  DRIVER_AVERAGES_REL_TOL,
+  DRIVER_MIN_R2,
   INSIGHT_GENERATOR_VERSION,
   InsightGeneratorService,
   InsightRecord,
+  SIGNIFICANCE_ALPHA,
+  driverSentencePrints,
 } from "./insight-generator.service";
 
 /**
@@ -388,12 +396,15 @@ describe("The table driver fit reads only what was recorded (ADR 0051, 0053, 030
 });
 
 /**
- * The founder's ruling on the driver sentence (asked 2026-10-06 19:57:41Z,
- * answered 2026-10-07 04:15:17Z), verbatim: "F-test at alpha (Recommended)".
- * The sentence prints only when the fit's overall F-test passes at
- * SIGNIFICANCE_ALPHA (0.05), in place of r² > 0.15.
+ * The founder's two rulings on the driver sentence (ADR 0303, *Ruling
+ * 2026-10-07*), verbatim. The first (asked 2026-10-06 19:57:41Z, answered
+ * 2026-10-07 04:15:17Z): "F-test at alpha (Recommended)". The second
+ * (answered 2026-10-07, recorded 12:04:50Z): "F-test + r² > 0.15
+ * (Recommended)". The sentence prints only when the fit leaves a residual
+ * degree of freedom, its overall F-test passes at SIGNIFICANCE_ALPHA (0.05),
+ * and its r² is above DRIVER_MIN_R2 (0.15).
  */
-describe("The table driver sentence passes the fit's F-test at alpha (founder, 2026-10-07)", () => {
+describe("The table driver sentence needs the fit's F-test at alpha and r² above 0.15 (founder, 2026-10-07)", () => {
   /** Hand-drawn tables, one per row of [kitchen m, bar m, seats, outdoor]. */
   const drawn = (rows: Array<Array<number | null>>) =>
     rows.map(([k, b, s, o], i) =>
@@ -411,33 +422,68 @@ describe("The table driver sentence passes the fit's F-test at alpha (founder, 2
       pos_checks: tables.flatMap((t, i) => around(t.id, avg[i], 5)),
     });
   };
+  /**
+   * The ridge fit (λ 0.1) and F-test the generator makes over these tables,
+   * for a fixture whose non-null columns are recorded on every table and
+   * vary, so the generator keeps each of them. A case reads it to state
+   * which side of each gate it sits on. Every `avg` passed here is a
+   * multiple of 0.25, so the five checks `around` writes average to it
+   * exactly.
+   */
+  const fitOf = (rows: Array<Array<number | null>>, avg: number[]) => {
+    const cols = [0, 1, 2, 3].filter((j) => rows.every((r) => r[j] !== null));
+    const reg = multipleRegression(
+      rows.map((r) => cols.map((j) => r[j] as number)),
+      avg,
+      { ridgeLambda: 0.1 },
+    )!;
+    const test = regressionSignificance(reg.r2, avg.length, cols.length)!;
+    return { r2: reg.r2, p: test.p };
+  };
+  const noise = [-18, 12, 25, -9, 3, -22, 16, -5, 9, -14];
+  /** Forty tables with a kitchen distance only, the average check rising by `slope` a metre. */
+  const forty = (slope: number) => {
+    const rows = Array.from({ length: 40 }, (_, i) => [
+      2 + i,
+      null,
+      null,
+      null,
+    ]);
+    const avg = rows.map(
+      ([k], i) => 180 + slope * (k as number) + noise[i % 10] * (1 + (i % 3)),
+    );
+    return { rows, avg };
+  };
 
-  it("a handful of tables fitting almost exactly no longer prints: five on three attributes, six on four", async () => {
-    // r² 0.995 on both, far above the old 0.15 gate, and p 0.09 and 0.11 on
-    // one residual degree of freedom: chance fits that well this often.
-    const five = await fireDrawn(
-      [
-        [5, 8, 2, null],
-        [10, 6, 4, null],
-        [15, 4, 4, null],
-        [20, 2, 6, null],
-        [25, 9, 2, null],
-      ],
-      [150, 171, 168, 192, 181],
-    );
-    expect(of(five, DRIVERS)).toEqual([]);
-    const six = await fireDrawn(
-      [
-        [5, 8, 2, 0],
-        [10, 6, 4, 1],
-        [15, 4, 4, 0],
-        [20, 2, 6, 1],
-        [25, 9, 2, 0],
-        [30, 3, 6, 1],
-      ],
-      [150, 175, 168, 199, 181, 212],
-    );
-    expect(of(six, DRIVERS)).toEqual([]);
+  it("a handful of tables fitting almost exactly does not print: r² far above 0.15, but p above alpha (five on three attributes, six on four)", async () => {
+    // r² 0.995 on both, and p 0.09 and 0.11 on one residual degree of
+    // freedom: chance fits that well this often.
+    const fiveRows = [
+      [5, 8, 2, null],
+      [10, 6, 4, null],
+      [15, 4, 4, null],
+      [20, 2, 6, null],
+      [25, 9, 2, null],
+    ];
+    const fiveAvg = [150, 171, 168, 192, 181];
+    const sixRows = [
+      [5, 8, 2, 0],
+      [10, 6, 4, 1],
+      [15, 4, 4, 0],
+      [20, 2, 6, 1],
+      [25, 9, 2, 0],
+      [30, 3, 6, 1],
+    ];
+    const sixAvg = [150, 175, 168, 199, 181, 212];
+    for (const [rows, avg] of [
+      [fiveRows, fiveAvg],
+      [sixRows, sixAvg],
+    ] as const) {
+      const fit = fitOf(rows as any, avg as any);
+      expect(fit.r2).toBeGreaterThan(0.99);
+      expect(fit.p).toBeGreaterThan(SIGNIFICANCE_ALPHA);
+      expect(of(await fireDrawn(rows as any, avg as any), DRIVERS)).toEqual([]);
+    }
   });
 
   it("five tables on four attributes leave no residual degree of freedom, so even an exact fit never prints", async () => {
@@ -454,24 +500,26 @@ describe("The table driver sentence passes the fit's F-test at alpha (founder, 2
     expect(of(await fireDrawn(rows, exact), DRIVERS)).toEqual([]);
   });
 
-  it("a weak but real driver on forty tables prints, below the old 0.15 gate (r² 0.137, p 0.019)", async () => {
-    const noise = [-18, 12, 25, -9, 3, -22, 16, -5, 9, -14];
-    const rows = Array.from({ length: 40 }, (_, i) => [
-      2 + i,
-      null,
-      null,
-      null,
-    ]);
-    const avg = rows.map(
-      ([k], i) => 180 + 1.25 * (k as number) + noise[i % 10] * (1 + (i % 3)),
-    );
+  it("a weak driver on forty tables passes the F-test but explains 15% or less, so it does not print (r² 0.137, p 0.019)", async () => {
+    const { rows, avg } = forty(1.25);
+    const fit = fitOf(rows, avg);
+    expect(fit.r2).toBeGreaterThan(0.13);
+    expect(fit.r2).toBeLessThanOrEqual(0.15);
+    expect(fit.p).toBeLessThanOrEqual(SIGNIFICANCE_ALPHA);
+    expect(of(await fireDrawn(rows, avg), DRIVERS)).toEqual([]);
+  });
+
+  it("a driver on forty tables that passes the F-test and explains more than 15% prints", async () => {
+    const { rows, avg } = forty(2.5);
+    const fit = fitOf(rows, avg);
+    expect(fit.r2).toBeGreaterThan(0.15);
+    expect(fit.p).toBeLessThanOrEqual(SIGNIFICANCE_ALPHA);
     const d = of(await fireDrawn(rows, avg), DRIVERS);
     expect(d).toHaveLength(1);
     expect(d[0].evidence.drivers!.map((x) => x.attribute)).toEqual([
       "kitchen distance",
     ]);
-    expect(d[0].effectPct!).toBeGreaterThan(0.13);
-    expect(d[0].effectPct!).toBeLessThanOrEqual(0.15);
+    expect(d[0].effectPct!).toBeCloseTo(fit.r2, 12);
   });
 
   it("equal average checks are no fit, though the regression calls their r² 1", async () => {
@@ -479,6 +527,69 @@ describe("The table driver sentence passes the fit's F-test at alpha (founder, 2
     expect(
       of(await fireDrawn(rows, [180, 180, 180, 180, 180]), DRIVERS),
     ).toEqual([]);
+  });
+
+  it("eight tables whose averages are equal to the cent, but not in their last binary digits, are no fit either", async () => {
+    // 180.10 + 180.20 + 180.30 sums to 180.19999999999996 a check, and
+    // 180.00 + 180.10 + 180.50 to 180.20000000000002: both are 180.20.
+    const low = [180.1, 180.2, 180.3];
+    const high = [180, 180.1, 180.5];
+    const tables = [5, 10, 15, 20, 25, 30, 35, 40].map((k, i) =>
+      table(`f${i}`, String(i + 1), { distance_to_kitchen_m: k }),
+    );
+    const xs = await fire({
+      restaurant_tables: tables,
+      pos_checks: tables.flatMap((t, i) =>
+        (i < 4 ? low : high).map((total) => closed(t.id, total)),
+      ),
+    });
+    const sum = (a: number[]) => a.reduce((s, v) => s + v, 0);
+    expect(sum(low) / 3).not.toBe(sum(high) / 3);
+    expect(of(xs, DRIVERS)).toEqual([]);
+  });
+});
+
+describe("driverSentencePrints: averages that vary, a residual degree of freedom, p at or under alpha, and r² above 0.15", () => {
+  const varying = Array.from({ length: 40 }, (_, i) => 180 + i);
+
+  it("does not print at r² exactly 0.15 on forty tables, where the F-test alone would pass", () => {
+    expect(regressionSignificance(0.15, 40, 1)!.p).toBeLessThanOrEqual(
+      SIGNIFICANCE_ALPHA,
+    );
+    expect(DRIVER_MIN_R2).toBe(0.15);
+    expect(driverSentencePrints(0.15, varying, 1)).toBe(false);
+    expect(driverSentencePrints(0.15000000000000002, varying, 1)).toBe(true);
+  });
+
+  it("does not print when r² is above 0.15 but p is above alpha", () => {
+    const six = varying.slice(0, 6);
+    expect(regressionSignificance(0.5, 6, 1)!.p).toBeGreaterThan(
+      SIGNIFICANCE_ALPHA,
+    );
+    expect(driverSentencePrints(0.5, six, 1)).toBe(false);
+    expect(driverSentencePrints(0.9, six, 1)).toBe(true);
+  });
+
+  it("does not print without a residual degree of freedom, even at r² 1", () => {
+    expect(driverSentencePrints(1, varying.slice(0, 5), 4)).toBe(false);
+    expect(driverSentencePrints(1, varying.slice(0, 6), 4)).toBe(true);
+  });
+
+  it("reads averages within DRIVER_AVERAGES_REL_TOL of the largest as equal, and 180.20 against 180.21 as varying", () => {
+    expect(DRIVER_AVERAGES_REL_TOL).toBe(1e-9);
+    const rounding = varying.map((_, i) =>
+      i % 2 ? 180.20000000000002 : 180.19999999999996,
+    );
+    const cent = varying.map((_, i) => (i % 2 ? 180.21 : 180.2));
+    expect(driverSentencePrints(0.9, rounding, 1)).toBe(false);
+    expect(driverSentencePrints(0.9, cent, 1)).toBe(true);
+    expect(
+      driverSentencePrints(
+        0.9,
+        varying.map(() => 0),
+        1,
+      ),
+    ).toBe(false);
   });
 });
 

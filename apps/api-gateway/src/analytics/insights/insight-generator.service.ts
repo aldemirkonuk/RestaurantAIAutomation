@@ -195,10 +195,11 @@ export const BASKET_MIN_LIFT = 1.3;
  *       or a check with no table; the driver fit reads only recorded seat
  *       counts, distances and outdoor flags, never a NULL as 0. A row below
  *       8 may rank a hidden table or fit an unrecorded 0, so it is
- *       recomputed, not served. Same version, 2026-10-07 (founder ruling;
- *       no version-8 row has been served, `main` is at 5): the driver
- *       sentence passes the fit's F-test at SIGNIFICANCE_ALPHA instead of
- *       r² > 0.15.
+ *       recomputed, not served. Same version, 2026-10-07 (the founder's
+ *       two rulings, ADR 0303; version 8 was not on `main` when they were
+ *       built): the driver sentence needs the fit's F-test at
+ *       SIGNIFICANCE_ALPHA and r² above DRIVER_MIN_R2, where it needed
+ *       r² > 0.15 alone.
  */
 export const INSIGHT_GENERATOR_VERSION = 8;
 
@@ -1359,23 +1360,18 @@ export class InsightGeneratorService {
                   { ridgeLambda: 0.1 },
                 )
               : null;
-          // The founder's rule (2026-10-07, ADR 0303 amendment): the sentence
-          // prints only when the fit passes the overall F-test at
-          // SIGNIFICANCE_ALPHA, ADR 0272's bar. The r² > 0.15 gate it
-          // replaces was no test: five tables on four attributes fit almost
-          // exactly by chance. The test reads the ridge fit's own r², the fit
-          // whose weights the sentence prints. A penalised fit never explains
-          // more than least squares on the same rows, so its p is never the
-          // smaller one and the test stays at or under alpha. With no
-          // residual degree of freedom (rows − attributes − 1 < 1) there is
-          // no test, so no sentence. Equal average checks leave nothing to
-          // drive: multipleRegression calls that r² 1, and it is no fit.
-          const ys = fitRows.map((r) => r.y);
-          const fTest =
-            reg && ys.some((v) => v !== ys[0])
-              ? E.regressionSignificance(reg.r2, fitRows.length, kept.length)
-              : null;
-          if (reg && fTest && fTest.p <= SIGNIFICANCE_ALPHA) {
+          // The founder's two rulings (2026-10-07, ADR 0303): the sentence
+          // needs the fit's F-test at alpha and r² above DRIVER_MIN_R2; see
+          // driverSentencePrints. Both read the ridge fit's own r², the fit
+          // whose weights the sentence prints.
+          if (
+            reg &&
+            driverSentencePrints(
+              reg.r2,
+              fitRows.map((r) => r.y),
+              kept.length,
+            )
+          ) {
             const drivers = reg.standardizedBetas
               .map((w, i) => ({ attribute: kept[i].name, weight: w }))
               .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
@@ -1917,6 +1913,69 @@ function zOfUpperTail(p: number): number {
  * register's number (`getTablePerformance`, ADR 0303).
  */
 export const DRIVER_MIN_RECORDED = 5;
+
+/**
+ * The share of the variation in average check a table driver fit must
+ * explain, strictly, before its sentence prints: the r² > 0.15 gate the
+ * sentence had before the F-test, kept beside it as its effect floor by the
+ * founder's second ruling of 2026-10-07 (ADR 0303), as ADR 0272 keeps
+ * |r| ≥ 0.35 beside its correlation test.
+ */
+export const DRIVER_MIN_R2 = 0.15;
+
+/**
+ * How far apart, relative to the largest |average|, the fitted tables'
+ * average checks must be before they count as varying. Each average is a sum
+ * of check totals over a count, so averages equal to the cent can differ in
+ * the last binary digits: 180.10 + 180.20 + 180.30 averages to
+ * 180.19999999999996, and 180.00 + 180.10 + 180.50 to 180.20000000000002.
+ * Compared exactly, that rounding was fitted and printed a "driver" (the
+ * spec's eight-table case). A double carries about 16 significant digits,
+ * so 1e-9 sits well above that rounding on a sum of a few thousand positive
+ * totals, and still counts a one-cent spread as varying on any average
+ * under 1,000,000.
+ */
+export const DRIVER_AVERAGES_REL_TOL = 1e-9;
+
+/**
+ * Does the table driver sentence print, for a fit of `k` attributes with
+ * r² `r2` over tables whose average checks are `averages`? Only when all of:
+ *
+ *  - the averages vary (by DRIVER_AVERAGES_REL_TOL). Equal averages leave
+ *    nothing to drive: multipleRegression calls their r² 1, and it is no fit;
+ *  - the fit leaves a residual degree of freedom (n − k − 1 ≥ 1, n the
+ *    number of averages), so there is a test to make;
+ *  - its overall F-test passes at SIGNIFICANCE_ALPHA, ADR 0272's bar (the
+ *    founder's first ruling of 2026-10-07; r² alone was no test, and five
+ *    tables on four attributes fit almost exactly by chance);
+ *  - r² is above DRIVER_MIN_R2 (his second ruling: real AND big enough).
+ *
+ * `r2` is the ridge fit's. A penalised fit never explains more than least
+ * squares on the same rows, so its p is never the smaller one. Under the
+ * F-test's assumptions (independent, normally distributed errors of equal
+ * variance), a sentence on a fit with no real driver therefore prints at a
+ * rate at or under alpha; the r² floor and the equal-averages check only
+ * remove prints. Those assumptions are not checked here (ADR 0303, *Ruling
+ * 2026-10-07*, residual 5).
+ */
+export function driverSentencePrints(
+  r2: number,
+  averages: number[],
+  k: number,
+): boolean {
+  if (averages.length === 0) return false;
+  let lo = Infinity;
+  let hi = -Infinity;
+  let scale = 0;
+  for (const v of averages) {
+    lo = Math.min(lo, v);
+    hi = Math.max(hi, v);
+    scale = Math.max(scale, Math.abs(v));
+  }
+  if (!(hi - lo > DRIVER_AVERAGES_REL_TOL * scale)) return false;
+  const test = E.regressionSignificance(r2, averages.length, k);
+  return test !== null && test.p <= SIGNIFICANCE_ALPHA && r2 > DRIVER_MIN_R2;
+}
 
 /** A recorded number, or NaN: `Number(null)` is 0, a measurement nobody took. */
 function recordedNumber(v: unknown): number {
