@@ -201,6 +201,36 @@ export const BASKET_MIN_LIFT = 1.3;
 export const INSIGHT_GENERATOR_VERSION = 6;
 
 /**
+ * Each of the bundle's reads, in the words the house uses for it.
+ *
+ * A read that was refused (`readWholeWindow`'s `WholeReadError`) or that
+ * failed (a Supabase error) leaves its slice empty, and every family that
+ * reads the slice is gated on it, so the family states no figure. That is not
+ * enough on its own: an empty feed then looks like a quiet week. The founder,
+ * 2026-10-07 (ADR 0292, fork 3 follow-on): *"Say it couldn't be read
+ * (Recommended)"*. So `generate()` names every such read in its
+ * `sourcesUnread`, and /recommendations and its digest print the name.
+ *
+ * Names, not table names; and a read that answered with no rows is never
+ * named (an empty read is not a refused one). `goals` is the word the
+ * recommendations feed already uses for its own read of the same goals, so
+ * the two collapse into one name there.
+ *
+ * Not a sentence: no stored row carries these names, so this does not move
+ * `INSIGHT_GENERATOR_VERSION`.
+ */
+export const BUNDLE_READ_WORDS = {
+  wine_consumption_log: "pour history",
+  procurement_orders: "order history",
+  restaurant_inventory: "inventory list",
+  pos_checks: "till checks",
+  restaurant_tables: "table list",
+  restaurant_venue_profiles: "venue profile",
+  analytics_goals: "goals",
+} as const;
+type BundleRead = keyof typeof BUNDLE_READ_WORDS;
+
+/**
  * InsightGeneratorService — executes the insight candidate space.
  *
  * Pipeline (the SOTA "auto-insights" loop):
@@ -416,6 +446,11 @@ export class InsightGeneratorService {
       // was readable. Same contract, same reason.
       excludedDays: Array.from(bundle.excludedDates).sort(),
       exclusionsReadable: bundle.exclusionsReadable,
+      // The bundle's reads that were refused or failed, in house words
+      // (`BUNDLE_READ_WORDS`). Empty = every read answered, rows or none. A
+      // name here means the families that read it said nothing because
+      // nothing could be read, not because nothing happened (ADR 0292).
+      sourcesUnread: bundle.unread,
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };
@@ -645,7 +680,8 @@ export class InsightGeneratorService {
     // Saturday Aug 15 as $274 against a $10.8k average, "97% lower", over a
     // day the feed puts about 15% down (A-004). The whole rows are put back
     // into the `{ data, error }` shape `ok()` reads; a refusal REJECTS, which
-    // the loop below logs, and the family stays silent rather than wrong.
+    // the loop below logs and names in `unread`: the family states no figure,
+    // and the feed says which read it could not make (ADR 0292, 2026-10-07).
     const whole = (rows: unknown[]) => ({ data: rows, error: null });
     const [cons, ords, inv, checks, tables, venue, goals] =
       await Promise.allSettled([
@@ -715,8 +751,9 @@ export class InsightGeneratorService {
     // whole insight run down. But it must not do so SILENTLY: an empty array
     // from a 42703 is indistinguishable from an empty array from a quiet
     // restaurant, which is precisely how the provider_name drift above stayed
-    // invisible. Every failure now names itself in the logs.
-    const slices: Array<[string, PromiseSettledResult<any>]> = [
+    // invisible. Every failure now names itself in the logs, and in `unread`,
+    // which `generate()` returns as `sourcesUnread` (ADR 0292, 2026-10-07).
+    const slices: Array<[BundleRead, PromiseSettledResult<any>]> = [
       ["wine_consumption_log", cons],
       ["procurement_orders", ords],
       ["restaurant_inventory", inv],
@@ -725,16 +762,20 @@ export class InsightGeneratorService {
       ["restaurant_venue_profiles", venue],
       ["analytics_goals", goals],
     ];
+    const unread: string[] = [];
     for (const [table, r] of slices) {
-      if (r.status === "rejected")
+      if (r.status === "rejected") {
         this.logger.error(
           `insight bundle query on ${table} rejected: ${r.reason}`,
         );
-      else if (r.value?.error)
+        unread.push(BUNDLE_READ_WORDS[table]);
+      } else if (r.value?.error) {
         this.logger.error(
-          `insight bundle query on ${table} failed — this family will be ` +
-            `silent rather than wrong: ${r.value.error.code ?? "?"} ${r.value.error.message ?? r.value.error}`,
+          `insight bundle query on ${table} failed — this family states no ` +
+            `figure and is named as unread: ${r.value.error.code ?? "?"} ${r.value.error.message ?? r.value.error}`,
         );
+        unread.push(BUNDLE_READ_WORDS[table]);
+      }
     }
 
     const ok = <T>(r: PromiseSettledResult<any>): T[] =>
@@ -769,6 +810,7 @@ export class InsightGeneratorService {
       availability: new Set<DataRequirement>(),
       excludedDates: exclusions.dates,
       exclusionsReadable: exclusions.readable,
+      unread,
     };
 
     if (bundle.consumption.length) bundle.availability.add("consumption");
@@ -1926,4 +1968,9 @@ interface Bundle {
   excludedDates: Set<string>;
   /** False when that list could not be read — never the same as "empty". */
   exclusionsReadable: boolean;
+  /**
+   * The reads above that were refused or failed, in `BUNDLE_READ_WORDS`'
+   * words. Their slices hold `[]`, which is NOT a house with no rows.
+   */
+  unread: string[];
 }
