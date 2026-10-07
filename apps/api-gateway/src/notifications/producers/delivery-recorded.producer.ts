@@ -42,6 +42,17 @@ import { clockIn, dayIn } from "./producer-copy";
  * expectation (receiving.service.ts:241-247) — no shortfall is computed and none
  * is claimed.
  *
+ * THE WINDOW IS ON ENTRY; THE SENTENCE IS ON THE FACT (ADR 0286)
+ * --------------------------------------------------------------
+ * Since ADR 0286 a door receipt's `occurred_at` is the moment of the tap when
+ * the phone sent one within 72 hours (or older on an owner's or a manager's
+ * word), not the moment it synced. A receipt taken offline 60 hours ago and
+ * synced now is therefore DATED 60 hours ago. A window on `occurred_at` would
+ * never see it: it entered the table after every sweep that could have
+ * reported it had already looked. So the sweep windows on `created_at`, the
+ * entry time, and the sentence says the fact's time, and how it came to be
+ * dated, in words.
+ *
  * WHY IT DOES NOT ALSO CHASE THE ORDER'S STATUS
  * ---------------------------------------------
  * `procurement.service.ts:1744` already writes a receipt-verification
@@ -62,7 +73,9 @@ export class DeliveryRecordedProducer {
   static readonly PRODUCER = PRODUCER;
 
   /**
-   * How far back a sweep still looks. Long enough that an outage of a few hours
+   * How far back a sweep still looks, by ENTRY time (`created_at`) — when the
+   * row reached the table, not when the delivery happened (ADR 0286). Long
+   * enough that an outage of a few hours
    * is recoverable; short enough that turning this producer on for the first
    * time does not replay a year of deliveries into the inbox. The claim ledger
    * makes a re-read free, so this is a cost bound, not a correctness one.
@@ -91,12 +104,15 @@ export class DeliveryRecordedProducer {
     const { data, error } = await client
       .from("procurement_receipt_events")
       .select(
-        "id, order_id, occurred_at, outcome, refusal_reason, counted_qty, counted_uom, counted_qty_bottles, rejected_qty_bottles, expected_qty_bottles, driver_name, signed_by_initials",
+        "id, order_id, occurred_at, created_at, client_captured_at, occurred_at_basis, outcome, refusal_reason, counted_qty, counted_uom, counted_qty_bottles, rejected_qty_bottles, expected_qty_bottles, driver_name, signed_by_initials",
       )
       .eq("restaurant_id", restaurantId)
       .eq("stage", DOOR_STAGE)
-      .gte("occurred_at", since)
-      .order("occurred_at", { ascending: true })
+      // Entry time, not the fact's time: a receipt that synced late is dated
+      // in the past and would fall outside a window on `occurred_at` before
+      // any sweep saw it (ADR 0286).
+      .gte("created_at", since)
+      .order("created_at", { ascending: true })
       .limit(DeliveryRecordedProducer.CANDIDATE_CAP + 1);
 
     if (error) {
@@ -185,6 +201,11 @@ export class DeliveryRecordedProducer {
               shortBottles: shortfall,
               driverName: event.driver_name ?? null,
               signedByInitials: event.signed_by_initials ?? null,
+              // Whose clock dated it (ADR 0286): 'sent', 'back_dated' or
+              // 'server'; null for a receipt recorded before the rule.
+              occurredAtBasis: event.occurred_at_basis ?? null,
+              enteredAt: event.created_at ?? null,
+              clientCapturedAt: event.client_captured_at ?? null,
               stage: DOOR_STAGE,
               timeZone,
             },
@@ -280,8 +301,39 @@ export class DeliveryRecordedProducer {
       parts.push(`${trim(rejected)} bottles were rejected on the spot.`);
     }
 
+    const dated = this.datedBy(event, occurredAt, timeZone);
+    if (dated) parts.push(dated);
+
     if (event.driver_name) parts.push(`Driver: ${event.driver_name}.`);
     return parts.join(" ");
+  }
+
+  /**
+   * How the delivery came to carry its time, when that is worth a sentence
+   * (ADR 0286). A sent time inside the 72 hours is the ordinary case and says
+   * nothing; a back-dated one, and a sent time the rule refused, are said, so
+   * a manager reading the bell knows which clock they are looking at.
+   */
+  private datedBy(
+    event: any,
+    occurredAt: Date,
+    timeZone: string,
+  ): string | null {
+    const basis = event.occurred_at_basis ?? null;
+    const sentAt = readable(event.client_captured_at);
+    if (basis === "back_dated") {
+      const entered = readable(event.created_at);
+      return entered
+        ? `Back-dated by an owner or a manager; entered on ${dayIn(entered, timeZone)} at ${clockIn(entered, timeZone)}.`
+        : "Back-dated by an owner or a manager.";
+    }
+    if (basis === "server" && sentAt) {
+      if (sentAt.getTime() > occurredAt.getTime()) {
+        return `The phone's clock said ${dayIn(sentAt, timeZone)} at ${clockIn(sentAt, timeZone)}, ahead of ours, so it is dated when it reached us.`;
+      }
+      return `The phone took it on ${dayIn(sentAt, timeZone)} at ${clockIn(sentAt, timeZone)}, more than 72 hours before it reached us, so it is dated when it arrived.`;
+    }
+    return null;
   }
 
   /** Order numbers for the events in hand, so the row can name what arrived. */
@@ -314,6 +366,12 @@ export class DeliveryRecordedProducer {
     }
     return out;
   }
+}
+
+function readable(value: any): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isFinite(d.getTime()) ? d : null;
 }
 
 function numberOrNull(value: any): number | null {
