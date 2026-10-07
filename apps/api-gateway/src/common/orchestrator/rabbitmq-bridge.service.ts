@@ -773,22 +773,28 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       //
       // `threadOrderId` is the order the thread NAMES, and only the attachment
       // refs take it. A thread names an order only when its origin is an
-      // outbound row with no `email_headers.in_reply_to`: a letter the house
-      // opened, not a reply. A letter is stored when it is staged, before any
-      // vendor row, and gets its gmail_thread_id only when it is sent
-      // (procurement.service.ts approveDraft and the auto-send sweep), so it
-      // stays its thread's earliest row. In a thread the vendor opened, the
-      // origin is the vendor's own inbound row, whose order may be the 2b
-      // guess. Every row that later copies that order into the thread (a
-      // responder draft, scheduled, approved or auto-sent; a staff reply; a
-      // deal confirmation) is stored after it and so cannot be the origin. A
-      // reply that opens a NEW Gmail thread is that thread's origin, and its
-      // in_reply_to refuses it. A reply row stored with no in_reply_to (a
-      // deal confirmation written before confirmDeal recorded it, or any
-      // reply to an inbound message that had no Message-ID) that opens a new
-      // thread still names its order there. Rows written in one transaction
-      // share created_at, so ties break on id. Direction is compared in lower
-      // case because stage_order_letter accepts it in any case.
+      // outbound row with no `email_headers.in_reply_to`: a row the house sent
+      // first, not a reply. Two kinds of row can be that:
+      // - a staged row (an order letter, or a staff letter held for release),
+      //   stored before it is sent and given its gmail_thread_id only at send
+      //   (procurement.service.ts approveDraft and the auto-send sweep);
+      // - a manual reply or deal confirmation sent when its order has no
+      //   inbound message to answer, stored after the send with the id
+      //   already set. Its order is the one the staff sent on. Nothing makes
+      //   the store land before a vendor reply into the new thread does; in
+      //   practice the round trip orders them.
+      // In a thread the vendor opened, the origin is the vendor's own inbound
+      // row, whose order may be the 2b guess. Every row that later copies that
+      // order into the thread (a responder draft, scheduled, approved or
+      // auto-sent; a staff reply; a deal confirmation) is stored after it and
+      // so cannot be the origin. A reply that opens a NEW Gmail thread is that
+      // thread's origin, and its in_reply_to refuses it. A reply row stored
+      // with no in_reply_to (a deal confirmation written before confirmDeal
+      // recorded it, or any reply, a deal confirmation included, to an inbound
+      // message that had no Message-ID) that opens a new thread still names
+      // its order there. Rows written in one transaction share created_at, so
+      // ties break on id. Direction is compared in lower case because
+      // stage_order_letter accepts it in any case.
       let orderId: string | null = null;
       let threadOrderId: string | null = null;
       let threadId: string | null = null;

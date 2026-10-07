@@ -23,8 +23,11 @@ import { DocumentIntakeService } from "../../procurement/documents/document-inta
  * onto later rows with the same gmail_thread_id. So the attachment takes only
  * the order the thread NAMES: the order of the thread's EARLIEST row, and only
  * when that row is outbound and was not itself a reply (no
- * email_headers.in_reply_to). The house's letter is stored before it is sent,
- * so it stays the earliest row of the thread it opens.
+ * email_headers.in_reply_to): a row the house sent first. That is a staged
+ * letter, stored before it is sent, so it stays the earliest row of the
+ * thread it opens; or a manual reply or deal confirmation sent when its order
+ * had no inbound message to answer, and stored after the send. This spec
+ * stages letters only.
  *
  * Not covered here, and still open: a reply row stored with no in_reply_to
  * (a deal confirmation written before confirmDeal recorded it, or any reply
