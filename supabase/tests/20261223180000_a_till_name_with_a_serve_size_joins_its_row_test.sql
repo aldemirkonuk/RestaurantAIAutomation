@@ -37,6 +37,17 @@
 -- from menu labels only (S23). On 3f3689307 S20, S22 and S23 fail too; S19
 -- and S21 pass there, as that build picks the same rows by other rules.]
 --
+-- [ADDED 2026-10-07, the verifier's last items on this branch: S19 pins the
+-- bare pass's size tie-break on menu rows (pass 2) only. S24 to S27 pin pass
+-- 4, order rows by their name without the maker: its size tie-break (S24),
+-- a product word beating a size (S25), an exact name winning outright (S26)
+-- and a tie joining neither row (S27). Each fails on a one-spot mutation of
+-- the migration scoped to pass 4 (named in its block), and each of those
+-- mutations fails that block alone of the 27
+-- (fixes/audits/650-local-pg-b31ee7f33-pass4.txt). On 3f3689307 S25 fails,
+-- as the 70cl row's five words beat the Ala's four there; S24, S26 and S27
+-- pass there, as that build picks the same rows by other rules.]
+--
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` stops at the first one. Run
 -- it on a database built from supabase/migrations. Synthetic fixtures only,
@@ -47,6 +58,8 @@
 -- Zqbp, Zqob), not only "Zqss", since F1 of 2026-10-06.]
 -- [CHANGED 2026-10-07, the audit of aa5b5ce19: S19 to S23 add Zqbs, Zqot,
 -- Zqfp, Zqbw and Zqiv.]
+-- [CHANGED 2026-10-07, the verifier's last items: S24 to S27 add Zqos,
+-- Zqow, Zqoe and Zqoy.]
 --
 -- On a build WITHOUT the migration (#627's head, 27faf423a), every block
 -- fails. S2, S4 and S5 fail on what they count: the names they join reach no
@@ -244,6 +257,33 @@ insert into public.pos_checks (restaurant_id, source, external_check_id, opened_
      {"name": "Zqfp Lager Gold (draft 400ml)", "qty": 3, "price": 8},
      {"name": "Zqbw Yeni Raki Ala 70cl bottle", "qty": 1, "price": 120},
      {"name": "Zqiv Raki Ozel 70cl", "qty": 1, "price": 85}]'::jsonb);
+
+-- [ADDED 2026-10-07, the verifier of b31ee7f33: S19 pins the bare pass's
+-- size tie-break on menu rows (pass 2) only. S24 to S27 pin pass 4, order
+-- rows by their name without the maker: two order rows per block, of one
+-- maker or two, that no menu row and no supplier row's full words reach.]
+insert into public.procurement_order_items (order_id, wine_name, producer, quantity) values
+  -- S24: level on product words without the maker; one names a size.
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqos Yeni Raki', 'Zqmk Imbik', 1),
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqos Yeni Raki 35cl', 'Zqmk Imbik', 1),
+  -- S25: one with a product word more, one with a size.
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqow Yeni Raki Ala', 'Zqmk Kazan', 1),
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqow Yeni Raki 70cl', 'Zqmk Kazan', 1),
+  -- S26: two makers' rows level in words; one's name without its maker is
+  -- the till name's key.
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqoe Rouge', 'Zqmk Bagci', 1),
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqoe Zqoe Rouge', 'Zqmk Diger', 1),
+  -- S27: two makers' rows with the same name without the maker.
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqoy Yakut', 'Zqmk Sarap', 1),
+  ('a3030000-0000-4000-8000-0000000000e2', 'Zqoy Yakut', 'Zqmk Asma', 1);
+
+insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, closed_at, voided, items) values
+  ('a3030000-0000-4000-8000-000000000001', 'simpos', 'zqss-c6',
+   '2026-08-12 19:00+00', '2026-08-12 21:00+00', false,
+   '[{"name": "Zqos Yeni Raki 35cl (glass)", "qty": 2, "price": 50},
+     {"name": "Zqow Yeni Raki Ala 70cl bottle", "qty": 1, "price": 120},
+     {"name": "Zqoe Rouge", "qty": 1, "price": 40},
+     {"name": "Zqoy Yakut (glass)", "qty": 2, "price": 12}]'::jsonb);
 
 create function pg_temp.ss_row(p_label text)
 returns table (pos_lines integer, poured_qty numeric, poured_revenue numeric)
@@ -807,6 +847,105 @@ begin
    where l.label = 'Zqiv Raki 70cl';
   assert r.pos_lines = 0 and r.tied_lines = 0,
     format('S23 FAIL the sized invoice row reads pos_lines %s, tied_lines %s; expected 0 and 0', r.pos_lines, r.tied_lines);
+end $$;
+
+-- S24 (size words "Only to break ties", pass 4) size words tell order rows
+-- apart without their maker too. The order lines 'Zqmk Imbik' with 'Zqos
+-- Yeni Raki' and with 'Zqos Yeni Raki 35cl' are level on product words
+-- without the maker (three each). No menu row and no supplier row's full
+-- words reach the till's 'Zqos Yeni Raki 35cl (glass)', which holds both
+-- rows' names without the maker: it joins the 35cl row, and the plain row
+-- neither counts nor ties on it. S19 is the same rule on menu rows (pass 2).
+-- Killed by forcing pass 4's size words to 0 (reach_bare's `CASE WHEN
+-- r.tier = 2 THEN 0 ELSE r.n - r.p END AS s`), where the glass ties the two
+-- rows and joins neither.
+do $$
+declare r record; got text;
+begin
+  select * into r from pg_temp.ss_row('Zqmk Imbik Zqos Yeni Raki 35cl');
+  assert r.pos_lines = 1 and r.poured_qty = 2,
+    format('S24 FAIL the 35cl order row reads pos_lines %s, Sold %s; expected 1 and 2 (the 35cl glass, without the maker)', r.pos_lines, r.poured_qty);
+  select string_agg(t.item_name || '=' || t.joined_by || ':' || t.lines, ', ' order by t.item_name collate "C")
+    into got
+    from public.house_till_names('a3030000-0000-4000-8000-000000000001'::uuid, 'Zqmk Imbik Zqos Yeni Raki 35cl') t;
+  assert got = 'Zqos Yeni Raki 35cl (glass)=without_maker:1',
+    format('S24 FAIL the 35cl order row''s record lists %s', got);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqmk Imbik Zqos Yeni Raki';
+  assert r.pos_lines = 0 and r.tied_lines = 0,
+    format('S24 FAIL the plain order row reads pos_lines %s, tied_lines %s; expected 0 and 0', r.pos_lines, r.tied_lines);
+end $$;
+
+-- S25 (size words "Only to break ties", pass 4) a product word beats a size
+-- among order rows without their maker. The till's 'Zqow Yeni Raki Ala 70cl
+-- bottle' holds the names without the maker of 'Zqmk Kazan' with 'Zqow Yeni
+-- Raki Ala' (four product words) and with 'Zqow Yeni Raki 70cl' (three, and
+-- two size words), and joins the Ala. S22 is the same rule on menu rows.
+-- Killed by counting pass 4's size words as product words (bare_word's `p`
+-- with `OR bk.tier = 2` in its filter), where the 70cl row's five beat the
+-- Ala's four.
+do $$
+declare r record;
+begin
+  select * into r from pg_temp.ss_row('Zqmk Kazan Zqow Yeni Raki Ala');
+  assert r.pos_lines = 1 and r.poured_qty = 1,
+    format('S25 FAIL the Ala order row reads pos_lines %s, Sold %s; expected 1 and 1', r.pos_lines, r.poured_qty);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqmk Kazan Zqow Yeni Raki 70cl';
+  assert r.pos_lines = 0 and r.tied_lines = 0,
+    format('S25 FAIL the 70cl order row reads pos_lines %s, tied_lines %s; expected 0 and 0', r.pos_lines, r.tied_lines);
+end $$;
+
+-- S26 (F1, pass 4) an exact name without the maker wins outright among order
+-- rows too. 'Zqmk Bagci' with 'Zqoe Rouge' and 'Zqmk Diger' with 'Zqoe Zqoe
+-- Rouge' have the same two distinct words without the maker; the till's
+-- 'Zqoe Rouge' is the first's name without its maker exactly, and joins it.
+-- The other neither counts nor ties on it. S10 is the same rule on menu
+-- rows. Killed by reading pass 4's names as never exact (reach_bare's
+-- `bool_or(r.bare_k = r.name_k AND r.tier = 1)`), where the two rows tie.
+do $$
+declare r record; got text;
+begin
+  select * into r from pg_temp.ss_row('Zqmk Bagci Zqoe Rouge');
+  assert r.pos_lines = 1 and r.poured_qty = 1,
+    format('S26 FAIL the exact order row reads pos_lines %s, Sold %s; expected 1 and 1', r.pos_lines, r.poured_qty);
+  select string_agg(t.item_name || '=' || t.joined_by || ':' || t.lines, ', ' order by t.item_name collate "C")
+    into got
+    from public.house_till_names('a3030000-0000-4000-8000-000000000001'::uuid, 'Zqmk Bagci Zqoe Rouge') t;
+  assert got = 'Zqoe Rouge=without_maker:1',
+    format('S26 FAIL the exact order row''s record lists %s', got);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqmk Diger Zqoe Zqoe Rouge';
+  assert r.pos_lines = 0 and r.tied_lines = 0,
+    format('S26 FAIL the order row level in words reads pos_lines %s, tied_lines %s; expected 0 and 0 (an exact name without the maker wins outright)', r.pos_lines, r.tied_lines);
+end $$;
+
+-- S27 (F1 and F2, pass 4) a tie among order rows joins neither. 'Zqmk Sarap'
+-- and 'Zqmk Asma' each with 'Zqoy Yakut' are level on everything without
+-- the maker; the till's 'Zqoy Yakut (glass)' counts on neither's Sold, and
+-- each counts its line as tied and lists it. S11 is the same rule on menu
+-- rows. Killed by never calling a pass-4 pick a tie (pick's tie test with
+-- `AND c.pass <> 4`), where both rows count the line.
+do $$
+declare r record; got text;
+begin
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqmk Sarap Zqoy Yakut';
+  assert r.pos_lines = 0 and r.tied_lines = 1,
+    format('S27 FAIL the Sarap order row reads pos_lines %s, tied_lines %s; expected 0 and 1 (a tie without the maker)', r.pos_lines, r.tied_lines);
+  select l.pos_lines, l.tied_lines into r
+    from public.house_beverage_ledger('a3030000-0000-4000-8000-000000000001'::uuid, 600) l
+   where l.label = 'Zqmk Asma Zqoy Yakut';
+  assert r.pos_lines = 0 and r.tied_lines = 1,
+    format('S27 FAIL the Asma order row reads pos_lines %s, tied_lines %s; expected 0 and 1', r.pos_lines, r.tied_lines);
+  select string_agg(t.item_name || '=' || t.joined_by || ':' || t.lines, ', ')
+    into got
+    from public.house_till_names('a3030000-0000-4000-8000-000000000001'::uuid, 'Zqmk Sarap Zqoy Yakut') t;
+  assert got = 'Zqoy Yakut (glass)=tie:1', format('S27 FAIL the Sarap order row''s record lists %s', got);
 end $$;
 
 rollback;

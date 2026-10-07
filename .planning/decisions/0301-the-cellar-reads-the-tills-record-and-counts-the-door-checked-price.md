@@ -246,27 +246,39 @@ Both are built in the same migration, `a_till_name_with_a_serve_size_joins_its_r
   - S21 shows pass 3 before pass 4. The till's 'Zqfp Lager Gold (draft 400ml)' joins a quote 'Zqfp Lager' by its full words, not an order row whose name without its maker, 'Zqfp Lager Gold', it holds.
   - S22 is S17 without the maker. The till's 'Zqbw Yeni Raki Ala 70cl bottle' joins 'Zqmk Efendi Zqbw Yeni Raki Ala', not 'Zqmk Efendi Zqbw Yeni Raki 70cl'.
   - S23 shows a size word is read from any book's label. The till's 'Zqiv Raki Ozel 70cl' joins the invoice's 'Zqiv Raki Ozel', not its 'Zqiv Raki 70cl', whose '70cl' is read from the invoice line.
+  - [ADDED 2026-10-07, the verifier's last items on this branch: S19 pinned the size tie-break without the maker on menu rows (pass 2) only. S24 to S27 pin pass 4, order rows by their name without the maker, with two order lines each that no menu row and no supplier row's full words reach:]
+  - S24 is S19 in pass 4. The order lines 'Zqmk Imbik' with 'Zqos Yeni Raki' and with 'Zqos Yeni Raki 35cl' are level on product words without the maker. The till's 'Zqos Yeni Raki 35cl (glass)' joins the 35cl row without the maker; the plain row neither counts nor ties.
+  - S25 is S22 in pass 4. The till's 'Zqow Yeni Raki Ala 70cl bottle' joins 'Zqmk Kazan Zqow Yeni Raki Ala', not 'Zqmk Kazan Zqow Yeni Raki 70cl'.
+  - S26 is S10's exact rule in pass 4. The till's 'Zqoe Rouge' joins 'Zqmk Bagci Zqoe Rouge', whose name without its maker is the till name's key, not 'Zqmk Diger Zqoe Zqoe Rouge', level with it in words.
+  - S27 is S11's tie in pass 4. 'Zqmk Sarap' and 'Zqmk Asma', each with 'Zqoy Yakut', tie on the till's 'Zqoy Yakut (glass)'. Neither's Sold counts it, and each counts it as a tied line and lists it.
 - **Not shown to match the gateway character for character.** Postgres's `\w` and `\s` follow the database's locale, and JavaScript's do not. So a number glued to a non-ASCII letter, such as 'Rakı70cl', may be a volume to the gateway and not to the ledger. No test pins either side of that. A CLAIMS row (`CELLAR-LEDGER-SIZE-WORDS-ARE-THE-GATEWAYS-VOLUMES`) fails the build if the two patterns' text drifts apart.
 
 **Each mutation is killed by a named test,** run block by block on a local database (`p4-scratch/sim-run/fixes/audits/650-local-pg.txt`):
 
 [CORRECTED 2026-10-07, the audit of `aa5b5ce19`: true only of the mutations this table listed. Five more, each one spot in the migration, passed S1 to S18: the last five rows below. The table is re-run on all 23 blocks (`p4-scratch/sim-run/fixes/audits/650-local-pg-aa5b5ce19-rework.txt`); the build before and three of the first five rows now fail more blocks.]
 
+[CORRECTED 2026-10-07, the verifier's last items: re-run on all 27 blocks, S24 to S27 included (`p4-scratch/sim-run/fixes/audits/650-local-pg-b31ee7f33-pass4.txt`). Five rows' cells grow, bracketed in each; the last five rows are new, each one spot of the migration scoped to pass 4, and each fails its block alone.]
+
 | Mutation | Fails |
 |---|---|
-| The build before (`3f3689307`) | S14, S15, S17, S18, S20, S22, S23 |
+| The build before (`3f3689307`) | S14, S15, S17, S18, S20, S22, S23 [27 blocks: and S25] |
 | Every book's rows alike, size words still breaking ties | S15, S18, S20 |
 | An exact key wins from any book | S15 |
 | Size words count as any word | S17, S23 |
-| Size words never count | S16, S19 |
+| Size words never count | S16, S19 [27 blocks: and S24] |
 | Every full-words pass before any bare-name pass | S18 |
-| The bare pass's size words forced to 0 (`reach_bare`'s `r.n - r.p AS s`) | S19 |
+| The bare pass's size words forced to 0 (`reach_bare`'s `r.n - r.p AS s`) | S19 [27 blocks: and S24] |
 | The order book's rows read as menu rows (tier 1) | S20, S21 |
 | Passes 3 and 4 read as one | S21 |
-| The bare names' size words counted as product words (`bare_word`'s `p`) | S22 |
-| Size words read from menu labels only | S23 |
+| The bare names' size words counted as product words (`bare_word`'s `p`) | S22 [27 blocks: and S25] |
+| Size words read from menu labels only | S23 [27 blocks: and S25] |
+| [ADDED 2026-10-07] Pass 4's size words forced to 0 (`reach_bare`'s `CASE WHEN r.tier = 2 THEN 0 ELSE r.n - r.p END AS s`) | S24 |
+| [ADDED 2026-10-07] The same in `cand`'s bare half (`CASE WHEN b.tier = 2 THEN 0 ELSE b.s END`) | S24 |
+| [ADDED 2026-10-07] Pass 4's size words counted as product words (`bare_word`'s `p` filter with `OR bk.tier = 2`) | S25 |
+| [ADDED 2026-10-07] Pass 4's names without the maker never exact (`reach_bare`'s `bool_or(r.bare_k = r.name_k AND r.tier = 1)`) | S26 |
+| [ADDED 2026-10-07] A pass-4 tie never called one (`pick`'s tie test with `AND c.pass <> 4`) | S27 |
 
-S16 passes on the build before, as counting size words as any word also picks the 35cl row. [ADDED 2026-10-07: S19 and S21 pass there too. There the most words won, so the longer name, 35cl's, won in S19, and the order row's bare name was tried after the quote's full words, as in S21.]
+S16 passes on the build before, as counting size words as any word also picks the 35cl row. [ADDED 2026-10-07: S19 and S21 pass there too. There the most words won, so the longer name, 35cl's, won in S19, and the order row's bare name was tried after the quote's full words, as in S21.] [ADDED 2026-10-07, the verifier's last items: S24, S26 and S27 pass there too, by the same most-words rule (S24) and the exact and tie rules F1 already had (S26, S27). S25 fails there, as the 70cl row's five words beat the Ala's four.]
 
 **The record's two sentences (the BLOCK's Finding 2).**
 - **Before.** A row record's till book could count no line on a row while the till held a name containing the row's name, counted on another row. Even then, the book's reason said the till had not rung it up, and the record claimed nothing names the row (`nothingNamesIt`).
