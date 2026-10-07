@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import {
   DashboardSummaryDto,
   DashboardStatsDto,
@@ -1333,21 +1334,30 @@ export class DashboardService {
           .eq("restaurant_id", restaurantId)
           .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", sinceStr),
-        client
-          .from("wine_consumption_log")
-          .select("id, volume_ml, quantity, created_at")
-          .eq("restaurant_id", restaurantId)
-          .gte("created_at", sinceStr),
+        // Read whole or refused (ADR 0292). Unranged, this stopped at
+        // PostgREST's 1,000 rows, so a year's chart drew a slice of its
+        // glasses (A-033).
+        readWholeWindow<any>("The consumption lines for the chart", () =>
+          client
+            .from("wine_consumption_log")
+            .select("id, volume_ml, quantity, created_at", { count: "exact" })
+            .eq("restaurant_id", restaurantId)
+            .gte("created_at", sinceStr),
+        ),
       ]);
 
       const orders =
         ordersResult.status === "fulfilled"
           ? ordersResult.value.data || []
           : [];
-      const consumption =
-        consumptionResult.status === "fulfilled"
-          ? consumptionResult.value.data || []
-          : [];
+      // A refused consumption read is not "no glasses poured": it is thrown,
+      // and the catch below rethrows it, instead of drawing glasses = 0.
+      // Asked as "not fulfilled": a "rejected" literal next to a
+      // procurement_orders chain reads to check_order_status_literals.py as
+      // an order status typed in the wrong case.
+      if (consumptionResult.status !== "fulfilled")
+        throw consumptionResult.reason;
+      const consumption = consumptionResult.value;
 
       const buckets = new Map<
         string,
