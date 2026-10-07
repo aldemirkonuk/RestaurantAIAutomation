@@ -54,6 +54,7 @@ import {
   provenanceFor,
   provenanceIdsOf,
 } from "./price-provenance";
+import type { SightingDateBasis } from "../procurement/own-paper-sighting";
 
 export interface VendorComparison {
   productKey: { masterWineId?: string; signatureHash?: string };
@@ -114,6 +115,21 @@ export interface VendorComparison {
     packSize: number;
     unitVolumeMl: number | null;
     observedAt: string;
+    /**
+     * ADR 0273: which date `observedAt` is — a verified receipt's invoice
+     * issue date (`invoice_issue_date`, or `invoice_issue_date_corrected`
+     * when a person corrected it) or the moment it was checked
+     * (`verified_at`) — and the writer's sentence saying why. Read off the
+     * row's `raw` (`own-paper-sighting.ts`); null on every row written
+     * without one: hand-recorded rows, confirmed orders, and receipts
+     * written before ADR 0273, which are not re-dated.
+     */
+    dateBasis: SightingDateBasis | null;
+    dateSentence: string | null;
+    /** The calendar date the invoice states (YYYY-MM-DD), when one was read. */
+    issueDate: string | null;
+    /** When a person checked the receipt (`match_verified_at`). */
+    verifiedAt: string | null;
     parseConfidence: number | null;
     isOutlier: boolean;
     outlierReason: string | null;
@@ -788,6 +804,8 @@ export class VendorComparisonService {
         packSize: r.pack_size ?? 1,
         unitVolumeMl: r.unit_volume_ml ?? null,
         observedAt: r.observed_at,
+        // ADR 0273 — `raw` is already selected above; nothing new is read.
+        ...observationDating(r.raw),
         parseConfidence:
           r.parse_confidence === null || r.parse_confidence === undefined
             ? null
@@ -1099,6 +1117,42 @@ export class VendorComparisonService {
       })),
     };
   }
+}
+
+const SIGHTING_DATE_BASES: ReadonlySet<string> = new Set<SightingDateBasis>([
+  "invoice_issue_date",
+  "invoice_issue_date_corrected",
+  "verified_at",
+]);
+
+/**
+ * ADR 0273: the date basis a receipt's writer stored on `raw`, as the compare
+ * returns it. A basis this build has no word for is returned as null rather
+ * than passed through, so the page never labels a date by a value it cannot
+ * explain; the sentence and the two dates travel only beside a known basis.
+ */
+export function observationDating(raw: unknown): {
+  dateBasis: SightingDateBasis | null;
+  dateSentence: string | null;
+  issueDate: string | null;
+  verifiedAt: string | null;
+} {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  const basis =
+    typeof r.dateBasis === "string" && SIGHTING_DATE_BASES.has(r.dateBasis)
+      ? (r.dateBasis as SightingDateBasis)
+      : null;
+  const str = (v: unknown) =>
+    basis !== null && typeof v === "string" ? v : null;
+  return {
+    dateBasis: basis,
+    dateSentence: str(r.dateSentence),
+    issueDate: str(r.issueDate),
+    verifiedAt: str(r.verifiedAt),
+  };
 }
 
 function emptyReads(): ProvenanceReads {

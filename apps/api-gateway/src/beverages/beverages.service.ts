@@ -24,6 +24,10 @@ import {
   type LedgerEntry,
   type RowRecord,
 } from "./row-record";
+import {
+  readCurrentMenuLines,
+  type CurrentMenuLines,
+} from "../menus/current-menu-lines";
 import type {
   CreateCocktailDto,
   SetCocktailIngredientsDto,
@@ -95,12 +99,26 @@ const CATALOGUE_COLUMNS =
  * Each is a module-level const for the same reason CATALOGUE_COLUMNS is:
  * `scripts/check_read_columns_exist.py` resolves a module-level const and
  * checks every column against the migrations. A read whose column list is
- * inlined at the call site is a read nobody is checking.
+ * inlined at the call site is a read nobody is checking. The menu book's
+ * columns are `CURRENT_MENU_LINE_COLUMNS`, beside the one current-menu read
+ * (`menus/current-menu-lines.ts`).
+ *
+ * The invoice book (below). Its vendor is embedded through a NAMED foreign
+ * key, and the name is load-bearing. `procurement_documents` and `providers`
+ * are joined by two foreign keys: `procurement_documents.provider_id ->
+ * providers` (`procurement_documents_provider_id_fkey`, the baseline) and
+ * `providers.created_from_document_id -> procurement_documents` (migration
+ * a_vendor_is_resolved_by_identity, the document a provider was born from).
+ * With two paths a bare `providers(name)` makes PostgREST refuse the whole
+ * read ("more than one relationship was found"), and every row record's
+ * invoice book said "invoices unread" (2026-10-03 analytics walk, A-043). The
+ * hint picks the vendor who billed us; the JSON key stays `providers`.
+ *
+ * `doc_number` is read because the ledger prints it as the line's note — the
+ * invoice the line came from (A-044). Without it every note was null.
  */
-const MENU_LINE_COLUMNS =
-  "id, name, producer, category, bottle_price, by_glass_price, created_at";
 const INVOICE_LINE_COLUMNS =
-  "id, description, unit_price, line_total, qty_bottles, created_at, procurement_documents!inner(id, doc_type, doc_date, restaurant_id, providers(name))";
+  "id, description, unit_price, line_total, qty_bottles, created_at, procurement_documents!inner(id, doc_type, doc_date, doc_number, restaurant_id, providers!procurement_documents_provider_id_fkey(name))";
 const ORDER_LINE_COLUMNS =
   "id, wine_name, producer, quantity, quoted_unit_price, negotiated_unit_price, final_unit_price, procurement_orders!inner(id, requested_at, restaurant_id, providers(name))";
 /**
@@ -116,23 +134,50 @@ const ORDER_LINE_COLUMNS =
  */
 const QUOTE_COLUMNS =
   "id, product_name_raw, raw_price, normalized_unit_price, source_type, observed_at, vendor_name_raw, provider_id";
-const TILL_LINE_COLUMNS =
-  "id, item_name, qty, price, created_at, external_check_id";
 /**
- * Live checks that carry the sold lines. Non-wine items (cola, coffee, tea,
- * water — the non-alcoholic register) never enter `pos_unresolved_lines`:
- * `PosHubService.applyStockEffects` skips `!is_wine` before the unresolved
- * queue (`pos-hub.service.ts`), so their only durable sale record is
- * `pos_checks.items`. Q9 (founder 2026-09-22) wires that into the cellar heat
- * map via this read.
+ * The till book is the till's own record (ADR 0301 §1): every line of every
+ * check that was not voided, read from `pos_checks.items`, plus the
+ * `pos_unresolved_lines` rows that have no check behind them. Both functions
+ * are in migration the_cellar_reads_the_tills_own_record and are the same
+ * record `house_beverage_ledger`'s Sold and Taken sum, so a row's record and
+ * its register cell cannot disagree about which lines were sold.
+ * [CORRECTED 2026-10-05: too broad. The record and its cell read the same
+ * till record, but they group names by different rules: the cell by
+ * `beverage_house_key` in SQL, the record by `matchLine` below, the weaker
+ * rule ROW_RECORD_MATCH_RULE states (row-record.ts:147). So a row's lines can
+ * differ between the two. A line whose qty is not a number differs in amount
+ * too: Taken counts it as qty 1 (the ledger's coalesce(qty, 1)) while this
+ * record's total for it is null. Both rules are inherited from main (ADR 0301
+ * §1, "Stated behaviours").]
+ *
+ * Q9 (founder 2026-09-22) wired live non-wine sales into the cellar heat map
+ * by mining `pos_checks.items` here. That read sampled 200 unordered checks
+ * and skipped every wine-flagged line, on the belief that a wine line already
+ * had a path through the queue; a MAPPED line never enters the queue, so a
+ * mapped rakı read "the till never rang it" (A-016). This read takes every
+ * line, paged rather than sampled.
+ * [CORRECTED 2026-10-05: "a MAPPED line never enters the queue" was too
+ * broad. PosHubService.applyStockEffects queues a mapped wine line whose
+ * mapping names another house's item, or whose read of the house's items
+ * failed, and one whose sale volume does not resolve (no_sale_volume). A
+ * mapped line whose sale volume resolves against this house's own item never
+ * enters it, and the rakı's lines had not. house_till_lines reads a queued
+ * line from the queue only when no check is behind it.]
  */
-const POS_CHECK_COLUMNS =
-  "id, external_check_id, opened_at, closed_at, voided, items";
+const TILL_BOOK_SOURCE =
+  "pos_checks.items (every line of every check not voided) + pos_unresolved_lines with no check behind them";
 
-/** How many lines of one book a single row's record will carry. */
+/**
+ * One page of the till book. PostgREST stops a response at 1000 rows by
+ * default, the same stop `readAll` pages past.
+ */
+export const TILL_PAGE_ROWS = 1000;
+
+/**
+ * How many lines the invoice, order and quote books of one row's record read.
+ * The menu book and the till book are read whole.
+ */
 export const ROW_RECORD_LINE_LIMIT = 400;
-/** How many recent checks to expand when mining `pos_checks.items` for a row. */
-export const POS_CHECK_SCAN_LIMIT = 200;
 
 /** The register read's own cap on each side. The response says if it was hit. */
 export const REGISTER_CATALOGUE_LIMIT = 400;
@@ -763,25 +808,43 @@ export class BeveragesService {
     );
   }
 
+  /**
+   * The menu book reads the CURRENT menu only (ADR 0193: `restaurant_menus`
+   * `status = 'active'`), through the one read the cellar's registers use.
+   * A house keeps every menu it reads, so a read of every `menu_items` row
+   * counted the archived copy of the same menu too and printed each line
+   * twice (A-028). The read is paged whole, so the old unordered 400-line
+   * slice is gone from this book. A discarded line stays out (ADR 0160
+   * sec110 item 7).
+   */
   private async readMenuLines(
     restaurantId: string,
     label: string,
   ): Promise<BookRecord> {
     const source = "menu_items";
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("menu_items")
-      .select(MENU_LINE_COLUMNS)
-      .eq("restaurant_id", restaurantId)
-      // A discarded line was removed from what guests see; it should not
-      // still surface in this row's own "on the menu" record (migration
-      // 20260922230200, ADR 0160 sec110 item 7).
-      .neq("status", "discarded")
-      .limit(ROW_RECORD_LINE_LIMIT);
-    if (error) return this.failed("menu", source, error);
+    let current: CurrentMenuLines;
+    try {
+      current = await readCurrentMenuLines(
+        this.dbService.getClient(),
+        restaurantId,
+      );
+    } catch (e) {
+      return this.failed("menu", source, {
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+    if (current.currentMenus === 0) {
+      return composeBook({
+        book: "menu",
+        source,
+        ledger: [],
+        emptyReason:
+          "This house has no current menu, so no line is on it. A menu that was read but never made current is kept, not listed here.",
+      });
+    }
 
     const ledger: LedgerEntry[] = [];
-    for (const r of (data ?? []) as Record<string, unknown>[]) {
+    for (const r of current.rows) {
       const line = [seriesStr(r.producer), seriesStr(r.name)]
         .filter(Boolean)
         .join(" ");
@@ -965,96 +1028,94 @@ export class BeveragesService {
     });
   }
 
+  /**
+   * The till book: what the till rang up for this row, every line of it.
+   *
+   * THREE STEPS, so a row's record never carries the whole till across the
+   * wire. (1) `house_till_names` lists the distinct names the till has rung.
+   * (2) `matchLine` picks the names that belong to this row, here in the
+   * gateway, so the rule is the same fold and contains-floor every other book
+   * of this record uses (a second matcher in SQL would fold case differently,
+   * e.g. the Turkish dotted İ under the C locale). (3) `house_till_lines`
+   * reads every line under those names, each sent back exactly as step (1)
+   * returned it (`rawTillName`). Both reads are keyset-paged on their
+   * own unique column until a short page, so nothing is sampled and nothing is
+   * capped. A failed read on either leaves the book unreadable, never zero.
+   */
   private async readTillLines(
     restaurantId: string,
     label: string,
   ): Promise<BookRecord> {
-    // TWO SOURCES, ONE BOOK. Unresolved wine lines still live in
-    // `pos_unresolved_lines`. Non-wine live sales (non-alcoholic heat map, Q9)
-    // live only in `pos_checks.items` — see POS_CHECK_COLUMNS above.
-    const unresolvedSource = "pos_unresolved_lines";
-    const checksSource = "pos_checks.items";
-    const source = `${unresolvedSource} + ${checksSource}`;
-
+    const source = TILL_BOOK_SOURCE;
     const client = this.dbService.getClient();
-    const [unresolved, checks] = await Promise.all([
-      client
-        .from("pos_unresolved_lines")
-        .select(TILL_LINE_COLUMNS)
-        .eq("restaurant_id", restaurantId)
-        .eq("resolved", false)
-        .limit(ROW_RECORD_LINE_LIMIT),
-      client
-        .from("pos_checks")
-        .select(POS_CHECK_COLUMNS)
-        .eq("restaurant_id", restaurantId)
-        .limit(POS_CHECK_SCAN_LIMIT),
-    ]);
+    const unread = (error: { message: string; code?: string }) => {
+      if (!MISSING_FUNCTION_CODES.has(String(error.code))) {
+        return this.failed("pos", source, error);
+      }
+      this.logger.error(`row record pos read failed: ${error.message}`);
+      return unreadableBook(
+        "pos",
+        source,
+        "The till's record (house_till_lines) is not on this database yet: migration the_cellar_reads_the_tills_own_record has not been applied here. Unread, not empty.",
+      );
+    };
 
-    if (unresolved.error && checks.error) {
-      return this.failed("pos", source, {
-        message: `${unresolved.error.message}; ${checks.error.message}`,
-        code: unresolved.error.code,
+    const names = await readTillPages("item_name", (after) => {
+      const q = client.rpc("house_till_names", {
+        p_restaurant_id: restaurantId,
       });
-    }
-    if (unresolved.error) {
-      return this.failed("pos", unresolvedSource, unresolved.error);
-    }
-    if (checks.error) {
-      return this.failed("pos", checksSource, checks.error);
+      return after === null ? q : q.gt("item_name", after);
+    });
+    if (names.error) return unread(names.error);
+
+    // Keyed by the name exactly as house_till_names returned it, and sent back
+    // that way. house_till_lines keeps a line only when btrim(name) =
+    // ANY(p_names), and SQL btrim strips spaces only, while seriesStr's JS
+    // trim() also strips a tab, a newline or a no-break space. A name sent
+    // back JS-trimmed ('Zqtl Cola' for 'Zqtl Cola\t') would match none of its
+    // lines. `matchLine` folds whitespace itself, so the raw name matches the
+    // same way.
+    const matched = new Map<string, "exact" | "contains">();
+    for (const r of names.rows) {
+      const name = rawTillName(r.item_name);
+      if (name === null) continue;
+      const how = matchLine(label, name);
+      if (how !== null) matched.set(name, how);
     }
 
     const ledger: LedgerEntry[] = [];
-
-    for (const r of (unresolved.data ?? []) as Record<string, unknown>[]) {
-      const line = seriesStr(r.item_name) ?? "";
-      const how = matchLine(label, line);
-      if (how === null) continue;
-      const qty = seriesNum(r.qty);
-      const price = seriesNum(r.price);
-      ledger.push({
-        at: seriesStr(r.created_at),
-        label: line,
-        who: null,
-        qty,
-        unitPrice: price,
-        total: qty !== null && price !== null ? qty * price : null,
-        note: seriesStr(r.external_check_id),
-        matchedBy: how,
+    if (matched.size > 0) {
+      const lines = await readTillPages("id", (after) => {
+        const q = client.rpc("house_till_lines", {
+          p_restaurant_id: restaurantId,
+          p_names: [...matched.keys()],
+        });
+        return after === null ? q : q.gt("id", after);
       });
-    }
+      if (lines.error) return unread(lines.error);
 
-    for (const check of (checks.data ?? []) as Record<string, unknown>[]) {
-      if (check.voided === true) continue;
-      const at =
-        seriesStr(check.closed_at) ?? seriesStr(check.opened_at) ?? null;
-      const checkId = seriesStr(check.external_check_id);
-      const items = Array.isArray(check.items) ? check.items : [];
-      for (const raw of items) {
-        if (!raw || typeof raw !== "object") continue;
-        const item = raw as Record<string, unknown>;
-        // Wine lines already have a path: mapped → inventory pour, unmapped →
-        // pos_unresolved_lines. Re-reading them from the check would double-
-        // count every unmapped wine. Non-wine (Q9) has only this path.
-        if (item.is_wine === true) continue;
-        const line = seriesStr(item.name) ?? "";
-        const how = matchLine(label, line);
+      for (const r of lines.rows) {
+        const name = rawTillName(r.item_name);
+        const how =
+          name === null ? null : (matched.get(name) ?? matchLine(label, name));
         if (how === null) continue;
-        const qty = seriesNum(item.qty);
-        const price = seriesNum(item.price);
+        // Shown trimmed; matched and fetched by the name the till holds.
+        const line = seriesStr(name) ?? "";
+        const qty = seriesNum(r.qty);
+        const price = seriesNum(r.price);
         ledger.push({
-          at,
+          // When the check closed, else when it opened; a queue line with no
+          // check behind it is dated when it was queued.
+          at: seriesStr(r.sold_at),
           label: line,
           who: null,
           qty,
           unitPrice: price,
           total: qty !== null && price !== null ? qty * price : null,
-          note: checkId,
+          note: seriesStr(r.external_check_id),
           matchedBy: how,
         });
-        if (ledger.length >= ROW_RECORD_LINE_LIMIT) break;
       }
-      if (ledger.length >= ROW_RECORD_LINE_LIMIT) break;
     }
 
     return composeBook({
@@ -1062,7 +1123,54 @@ export class BeveragesService {
       source,
       ledger,
       emptyReason:
-        "The till has not rung this up. Unresolved wine lines and live non-wine pos_checks.items were both read; neither names this.",
+        "The till has not rung this up. Every line of every check that was not voided (pos_checks.items) was read, with the queued lines no check holds; none names this.",
     });
+  }
+}
+
+/**
+ * A till name exactly as house_till_names or house_till_lines returned it,
+ * untrimmed: the functions' own btrim(name), which can still carry a tab or a
+ * no-break space at its edge. It is the key that round-trips through
+ * `p_names`; trim it only to show it.
+ */
+function rawTillName(v: unknown): string | null {
+  return typeof v === "string" && v !== "" ? v : null;
+}
+
+/**
+ * Every row of one keyset-paged rpc. `build(after)` returns the call with its
+ * cursor filter; this adds the order and the page size, and stops at a short
+ * page. The rpc name stays a literal at the call site, where
+ * `scripts/check_queried_tables_exist.py` can resolve it.
+ */
+async function readTillPages(
+  key: string,
+  build: (after: string | null) => {
+    order: (
+      col: string,
+      o: { ascending: boolean },
+    ) => {
+      limit: (n: number) => PromiseLike<{
+        data: unknown;
+        error: { message: string; code?: string } | null;
+      }>;
+    };
+  },
+): Promise<{
+  rows: Record<string, unknown>[];
+  error: { message: string; code?: string } | null;
+}> {
+  const rows: Record<string, unknown>[] = [];
+  let after: string | null = null;
+  for (;;) {
+    const { data, error } = await build(after)
+      .order(key, { ascending: true })
+      .limit(TILL_PAGE_ROWS);
+    if (error) return { rows: [], error };
+    const page = (Array.isArray(data) ? data : []) as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < TILL_PAGE_ROWS) return { rows, error: null };
+    after = String(page[page.length - 1][key]);
   }
 }

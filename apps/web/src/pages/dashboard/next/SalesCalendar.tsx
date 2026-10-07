@@ -115,7 +115,7 @@ const NOT_RECORDED_FIG: CSSProperties = {
   fontFamily: 'inherit',
   fontStyle: 'italic',
   fontWeight: 400,
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
 };
 
 /** What a cell says. `salesShown` picks the headline (F2, ADR 0290). */
