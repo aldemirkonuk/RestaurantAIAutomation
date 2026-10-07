@@ -11,7 +11,11 @@
   Until he answers them, the code refuses both, as built. **[2026-10-07, 14:41:21Z: he
   answered the first. Every ISO country code goes in the country table, in a follow-up
   PR; this PR is unchanged. For the second he asked for research before he rules. Both
-  are quoted under "Open forks".]** **[Locked 2026-10-07 by that
+  are quoted under "Open forks".]** **[2026-10-07, 19:48:13Z: after the research he
+  answered the second. A two-letter province abroad is to be kept and read inside the
+  house's country, which supersedes R3's refusal in follow-up PRs. A house with no
+  country is to be asked for one. This PR is unchanged, and both are quoted under "Open
+  forks".]** **[Locked 2026-10-07 by that
   answer. Was: "Locked for the ruling, and Proposed for the method. The ruling is the
   founder's, in three answers, each quoted where it applies: the choice of (a),
   2026-10-04 ~00:30Z, *"Add it to the editor (Recommended)"*; and the two forks it left
@@ -298,6 +302,54 @@ answers, the code refuses both.
    rules. The research is under way, and its result goes back to him as a fresh
    question.**]**
 
+   **[Answered 2026-10-07, 19:48:13Z, with AskUserQuestion, after the research
+   (`p4-scratch/sim-run/fixes/audits/research-r3-subdivisions-2026-10-07.md`;
+   verbatim, binding). This supersedes R3's refusal of a two-letter province abroad, in
+   follow-up PRs.**
+   - **Question:** *"The research is back (fixes/audits/research-r3-subdivisions-2026-10-07.md).
+     Italian addresses do carry a two-letter province code: Poste Italiane's standard
+     requires '20133 MILANO MI', and Google's address data, Shopify and Italy's e-invoice
+     format all expect it. What nobody does is read that code as a US state. Every standard
+     looks the code up inside the address's own country (IT-MI is Milano, US-MI is
+     Michigan). Our market panels are the odd one out: they read a bare 'MI' as Michigan
+     whatever the country. That reader fix ships either way as a defect fix. What should
+     the location editor do with 'MI' on an Italian house?"*
+   - **Picked:** **"Keep it, read inside the country (Recommended)"**. The option text
+     was: *"Supersedes R3. The editor stops refusing and keeps what the owner writes (code
+     or name), and Italy's field is labelled 'Provincia (sigla, es. MI)'. This is how
+     Google, Stripe and Yelp work. The readers are fixed first, then the editor, in
+     follow-up PRs; #613 merges as locked."*
+   - **Rejected:** *"Check Italy's own list"* (*"The same, but the server accepts only
+     Italy's 111 province codes or names for an Italian house and refuses anything else
+     (Shopify's model). It catches typos, but the list has to be kept current: Sardinia's
+     codes already differ between Google and ISO."*) and *"Keep refusing, as locked"*
+     (*"20 Italian province codes (MI, CO, PA, VA…) stay unsavable in the editor. The
+     editor's hint 'Kept as you write it' then contradicts it."*).
+
+   **A second answer, same call:**
+   - **Question:** *"Once the market panels read the state inside the house's country,
+     what does a house with no country recorded get? (One of 14 houses had none at the
+     2026-09-05 count.)"*
+   - **Picked:** **"Ask for the country (Recommended)"**. The option text was: *"The
+     panels say the country isn't recorded and link to Settings, the same way a house with
+     no time zone is handled. Nothing is guessed. That one house sees no state-based prices
+     until the owner sets it."*
+   - **Rejected:** *"Treat it as US"* (*"A US state code on a no-country house is read as
+     the US state, as today. A real US house with no country keeps its prices, but an
+     Italian house with no country and 'MI' still reads as Michigan."*).
+
+   **What follows, in order, none of it in this PR:**
+   1. A defect-fix PR. The five market readers read a state only inside the house's own
+      country, and a house with no country is asked for one. The readers are the price
+      index, price-index review, commodity and distributor-feed call sites listed in the
+      research note.
+   2. A follow-up PR with a new ADR that supersedes R3's refusal. The editor keeps a
+      two-letter province abroad, and Italy's field is labelled "Provincia (sigla, es.
+      MI)". It must land after step 1, or the editor writes rows the old readers take for
+      Michigan.
+
+   This PR's code is unchanged, and it still refuses as built until those land.**]**
+
 ## Consequences
 
 - The four "Set the … in Settings" sentences now point at a control: Settings → Locations
@@ -392,3 +444,4 @@ answers, the code refuses both.
 | 2026-10-06 | ADR 0090 audit at `c5f27f7a8`, PASS | No block; owed records named (readers that misread a country name, three minor limits, the #561 re-run) |
 | 2026-10-07 | Prep fixer, after merging origin/main `5e6c0684e` | Status Locked as built by the founder's 2026-10-07 answer, quoted verbatim; the US-territory and two-letter-province refusals listed as his open forks; the audit's owed records added under Consequences; the time-zone and `isOwner` cites moved by #620 corrected in brackets |
 | 2026-10-07 | Coordinator, after the founder's 14:41:21Z answers | Open fork 1 answered (every ISO country code, in a follow-up PR; CD and CI filed as a defect), quoted verbatim; open fork 2 put to him and sent back for research, his reply quoted; the 2026-10-07 answer time corrected from 12:54:27Z to 12:54:16Z in brackets |
+| 2026-10-07 | Coordinator, after the founder's 19:48:13Z answers | Open fork 2 answered after the research, "Keep it, read inside the country (Recommended)", which supersedes R3's refusal in follow-up PRs (readers first, then the editor). The no-country rule is answered, "Ask for the country (Recommended)". Both are quoted verbatim, and this PR's code is unchanged |
