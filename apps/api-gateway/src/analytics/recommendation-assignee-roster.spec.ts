@@ -115,7 +115,7 @@ function tables(opts: { rosterFails?: boolean } = {}) {
   return { db: { getClient: () => client } as any, writes, reads };
 }
 
-const houseWrites = (w: Array<{ table: string; op: string }>) =>
+const houseWrites = <W extends { table: string; op: string }>(w: W[]) =>
   w.filter((x) => x.table === "recommendation_actions" && x.op === "upsert");
 
 async function refusalOf(p: Promise<unknown>): Promise<ActRefused> {
