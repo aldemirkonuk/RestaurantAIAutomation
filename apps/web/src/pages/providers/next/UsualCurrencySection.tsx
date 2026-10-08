@@ -252,6 +252,24 @@ export function UsualCurrencySection({
             )}{' '}
             That is a failed read, not a vendor who has stated none — nothing here
             says what they invoice in.
+            {' '}
+            <button
+              type="button"
+              onClick={() => void stated.refetch()}
+              style={{
+                fontFamily: SANS,
+                fontSize: 11.5,
+                fontWeight: 600,
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                color: 'var(--seal-deep, #14515C)',
+                textDecoration: 'underline',
+              }}
+            >
+              Try again
+            </button>
           </span>
         </p>
       </section>

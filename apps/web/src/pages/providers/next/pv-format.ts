@@ -21,7 +21,8 @@ export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
 export function houseMessage(e: unknown, fallback: string): string {
   const r = (e as { response?: { status?: number; data?: { message?: unknown } } } | null)
     ?.response;
-  const msg = r?.data?.message;
+  const raw = r?.data?.message;
+  const msg = Array.isArray(raw) ? raw.join('; ') : raw;
   if (
     typeof r?.status === 'number' &&
     r.status >= 400 &&

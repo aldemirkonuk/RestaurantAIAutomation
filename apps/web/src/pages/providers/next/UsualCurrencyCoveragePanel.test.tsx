@@ -118,6 +118,10 @@ describe('the usual-currency coverage panel', () => {
     expect(alert).toHaveTextContent('not a house whose vendors have stated none');
     expect(screen.queryByTestId('usual-currency-unstated')).not.toBeInTheDocument();
     expect(screen.queryByTestId('usual-currency-coverage-sentence')).not.toBeInTheDocument();
+    // VEN-W29: a failed read offers a retry, and the retry reads again.
+    const before = api.get.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(before));
   });
 
   it('names a vendor holding a value that is not a currency', async () => {

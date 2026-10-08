@@ -121,7 +121,8 @@ describe('BranchesSection — reading', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/could not be read/);
     expect(alert).toHaveTextContent(/not the same as this vendor having none/);
-    expect(alert).toHaveTextContent('gateway down');
+    // a transport error is not the house's language (VEN-W28)
+    expect(alert).not.toHaveTextContent('gateway down');
     expect(screen.queryByText(/No branches are recorded/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add a branch' })).not.toBeInTheDocument();
 
@@ -294,13 +295,13 @@ describe('BranchesSection — writing', () => {
   // a failed hand-off refuses the whole removal, so the branch is still there.
   it('a refused removal keeps the branch and says nothing changed', async () => {
     api.get.mockResolvedValue({ data: [HQ, DEPOT] });
-    api.delete.mockRejectedValue({ response: { data: { message: 'provider_location_remove refused' } } });
+    api.delete.mockRejectedValue({ response: { status: 409, data: { message: 'The hand-off to another branch was refused.' } } });
     renderSection();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Head office' }));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, remove Head office' }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(
-      'That was not saved, so the book still holds what it held: provider_location_remove refused',
+      'That was not saved, so the book still holds what it held. The hand-off to another branch was refused.',
     );
     expect(api.get).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Head office')).toBeInTheDocument();
@@ -309,7 +310,7 @@ describe('BranchesSection — writing', () => {
   it('a refused write says the book still holds what it held, and keeps the list', async () => {
     api.get.mockResolvedValue({ data: [HQ] });
     api.patch.mockRejectedValue({
-      response: { data: { message: ['type must be one of the following values: office, warehouse, store, other'] } },
+      response: { status: 400, data: { message: ['type must be one of the following values: office, warehouse, store, other'] } },
     });
     renderSection();
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Head office' }));
@@ -319,7 +320,7 @@ describe('BranchesSection — writing', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(
-      'That was not saved, so the book still holds what it held: type must be one of the following values',
+      'That was not saved, so the book still holds what it held. type must be one of the following values',
     );
     // the list was not re-read and the editor stays open with what was typed
     expect(api.get).toHaveBeenCalledTimes(1);

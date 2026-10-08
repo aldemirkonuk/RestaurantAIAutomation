@@ -111,7 +111,7 @@ expect(screen.getByText(fmtMoney(250, 'USD'))).toBeInTheDocument();
     mount();
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('could not be read');
-    expect(alert).toHaveTextContent('gateway timed out');
+    expect(alert).not.toHaveTextContent('gateway timed out');
     expect(alert).toHaveTextContent('not the same as this vendor having no terms');
     expect(screen.queryByText('Record what they said')).not.toBeInTheDocument();
   });

@@ -27,7 +27,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiClient, getErrorMessage } from '../../../services/api/client';
+import { apiClient } from '../../../services/api/client';
+import { houseMessage } from './pv-format';
 import { useAuth } from '../../../contexts/AuthContext';
 import type {
   SetVendorTermsBody,
@@ -94,11 +95,11 @@ export function useProviderTerms(providerId: string | null): ProviderTermsState 
         const { data } = await apiClient.get<VendorTermsRegister>('/vendor-terms');
         if (cancelled) return;
         setRegister(data ?? null);
-        if (!data) setError('the register came back empty of structure');
+        if (!data) setError('');
       } catch (e) {
         if (cancelled) return;
         setDenied(statusOf(e) === 403);
-        setError(getErrorMessage(e));
+        setError(houseMessage(e, ''));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -132,7 +133,7 @@ export function useProviderTerms(providerId: string | null): ProviderTermsState 
         setSaveError(
           st === 404
             ? 'That vendor is not on this restaurant’s books, so nothing was recorded.'
-            : getErrorMessage(e),
+            : houseMessage(e, 'Nothing was recorded — try again.'),
         );
         return false;
       } finally {

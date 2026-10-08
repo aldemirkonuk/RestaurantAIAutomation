@@ -107,6 +107,24 @@ export function UsualCurrencyCoveragePanel({
             )}{' '}
             That is a failed read, not a house whose vendors have stated none —
             nothing here says how many have.
+            {' '}
+            <button
+              type="button"
+              onClick={() => void coverage.refetch()}
+              style={{
+                fontFamily: SANS,
+                fontSize: 11.5,
+                fontWeight: 600,
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                color: 'var(--seal-deep, #14515C)',
+                textDecoration: 'underline',
+              }}
+            >
+              Try again
+            </button>
           </span>
         </p>
       </section>

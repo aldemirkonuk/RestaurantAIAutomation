@@ -247,6 +247,10 @@ describe('UsualCurrencySection', () => {
     expect(screen.queryByText(/has not stated a usual currency/)).toBeNull();
     // And no control is offered over a fact we do not have.
     expect(screen.queryByTestId('vendor-usual-currency-select')).toBeNull();
+    // VEN-W29: a failed read offers a retry, and the retry reads again.
+    const before = api.get.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(before));
   });
 
   it('renders a failed WRITE as itself and does not claim the code changed', async () => {

@@ -482,9 +482,9 @@ export function TermsSection({
         </Words>
       )}
 
-      {!terms.denied && terms.error && (
+      {!terms.denied && terms.error !== null && (
         <Words alert>
-          The terms register could not be read — {terms.error}. Nothing is shown
+          The terms register could not be read{terms.error ? ` — ${terms.error}` : ''}. Nothing is shown
           below, which is not the same as this vendor having no terms.{' '}
           <button
             type="button"

@@ -406,10 +406,10 @@ export function BranchesList({
       )}
 
       {/* A FAILED READ IS NOT AN EMPTY BOOK. */}
-      {!loading && error && (
+      {!loading && error !== null && (
         <p role="alert" style={REFUSAL}>
           This vendor’s branches could not be read, so nothing is shown — that is
-          not the same as this vendor having none. {error}{' '}
+          not the same as this vendor having none.{error ? ` ${error}` : ''}{' '}
           <button type="button" onClick={onReload} style={LINK}>
             Try again
           </button>
@@ -522,9 +522,9 @@ export function BranchesList({
         </p>
       )}
 
-      {saveError && (
+      {saveError !== null && (
         <p role="alert" style={REFUSAL}>
-          That was not saved, so the book still holds what it held: {saveError}
+          That was not saved, so the book still holds what it held.{saveError ? ` ${saveError}` : ''}
         </p>
       )}
     </section>

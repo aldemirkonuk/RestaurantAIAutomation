@@ -80,7 +80,7 @@ export function topTerms(
   provider: Pick<Provider, 'leadTimeDays' | 'paymentTerms' | 'minimumOrder'>,
 ): TopTerms {
   if (terms.denied) return { leadTime: DENIED, paymentTerms: DENIED, minimumOrder: DENIED };
-  if (terms.error) return { leadTime: NOT_READ, paymentTerms: NOT_READ, minimumOrder: NOT_READ };
+  if (terms.error !== null) return { leadTime: NOT_READ, paymentTerms: NOT_READ, minimumOrder: NOT_READ };
   const reg = terms.register;
   if (!reg) return { leadTime: READING, paymentTerms: READING, minimumOrder: READING };
 
