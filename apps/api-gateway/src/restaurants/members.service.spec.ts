@@ -132,6 +132,27 @@ describe("MembersService.getMembers — a failed read is not an empty roster", (
     expect(members[0].users?.email).toBe("ada@example.test");
   });
 
+  it("asks for each member's email and sign-in provider for an owner", async () => {
+    // The stub does not project columns, so the column list asked for is the
+    // evidence of what reaches the caller.
+    const db = seedRoster();
+    await service(db).getMembers(OWNER, RID);
+
+    const [usersRead] = db.opsOn("users", "select").slice(-1);
+    expect(usersRead.columns).toMatch(/email/);
+    expect(usersRead.columns).toMatch(/oauth_provider/);
+  });
+
+  it("does not ask for emails or sign-in providers when staff read the roster (F-194)", async () => {
+    const db = seedRoster();
+    const members = await service(db).getMembers(SAM, RID);
+
+    expect(members).toHaveLength(3);
+    const [usersRead] = db.opsOn("users", "select").slice(-1);
+    expect(usersRead.columns).not.toMatch(/email|oauth_provider/);
+    expect(usersRead.columns).toMatch(/name/);
+  });
+
   it("throws rather than reporting a dead read as a restaurant with no members", async () => {
     const db = seedRoster();
     db.errors["user_restaurant_access:select"] = { message: "read failed" };
@@ -234,6 +255,33 @@ describe("MembersService.addMember — a manager adds a manager or staff, never 
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(addedRows(db)).toEqual([]);
     }
+  });
+
+  it("adds by the exact address only: % and _ match nobody else (F-189)", async () => {
+    // class-validator's @IsEmail accepts all of these. Through `.ilike` each
+    // matched another house's member and added them here.
+    for (const probe of ["%@other.test", "v_ctim@other.test", "%_%@other.test", "VIC%"]) {
+      const db = seedAdd("owner");
+      db.tables.users.push({
+        user_id: "user-victim",
+        restaurant_id: "restaurant-other",
+        role: "owner",
+        email: "victim@other.test",
+      });
+      await expect(
+        service(db).addMember(ACTOR, RID, probe, "staff"),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(
+        db.tables.user_restaurant_access.filter((r) => r.user_id === "user-victim"),
+      ).toEqual([]);
+    }
+  });
+
+  it("still finds the person when the address is typed in another case", async () => {
+    const db = seedAdd("owner");
+    await service(db).addMember(ACTOR, RID, "  NewComer@Example.TEST ", "staff");
+
+    expect(addedRows(db).map((r) => r.role)).toEqual(["staff"]);
   });
 
   it("lets an owner add an owner", async () => {

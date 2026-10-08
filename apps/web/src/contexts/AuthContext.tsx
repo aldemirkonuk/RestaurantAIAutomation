@@ -370,6 +370,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [activeRole, setActiveRole] = useState<
     "owner" | "manager" | "staff" | null
   >(null);
+  // Bumped by refreshBranches so the role below is read again: changing your
+  // own role in Settings left the page showing owner controls (F-193).
+  const [roleEpoch, setRoleEpoch] = useState(0);
   const branchFetchSeq = React.useRef(0);
   // Optional on purpose: the app nests this provider inside
   // QueryClientProvider (App.tsx), but `useQueryClient()` throws without one.
@@ -629,11 +632,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user, activeRestaurantId]);
+  }, [user, activeRestaurantId, roleEpoch]);
 
   // Public refresh — can be called after chain/location changes to update the branch switcher
   const refreshBranches = useCallback(async () => {
     if (!user?.userId) return;
+    setRoleEpoch((n) => n + 1);
     await fetchAndSetBranches(user.restaurantId);
   }, [user, fetchAndSetBranches]);
 

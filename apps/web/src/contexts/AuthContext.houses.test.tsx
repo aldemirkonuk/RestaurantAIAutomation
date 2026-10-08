@@ -316,3 +316,36 @@ describe("sign-in and switching (ADR 0164, R1, R3, R6)", () => {
     expect(lastHouseFor(U)?.houseId).toBe(B);
   });
 });
+
+describe("the role in this house after a roster change (F-193)", () => {
+  it("refreshBranches reads the role again, so stepping down drops the owner controls", async () => {
+    localStorage.setItem("accessToken", jwt({ sub: U, restaurantId: A }));
+    let houseRole = "owner";
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url === "/api/v1/auth/me") {
+        return {
+          data: {
+            user: {
+              userId: U,
+              email: "p@house.test",
+              restaurantId: A,
+              role: "owner",
+              emailVerified: true,
+            },
+          },
+        };
+      }
+      if (url === "/api/v1/auth/me/role") return { data: { role: houseRole } };
+      return { data: [{ id: A, name: "Moda" }] };
+    });
+    const auth = await mount();
+    await waitFor(() => expect(auth().activeRole).toBe("owner"));
+
+    houseRole = "manager";
+    await act(async () => {
+      await auth().refreshBranches();
+    });
+
+    await waitFor(() => expect(auth().activeRole).toBe("manager"));
+  });
+});
