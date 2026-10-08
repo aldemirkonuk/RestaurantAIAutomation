@@ -264,7 +264,13 @@ export interface DayRecordWindow {
    * takings at all, not "not recorded".
    */
   takingsWithheld?: true;
-  posConnected: boolean;
+  /**
+   * False: this house has never had a POS check land. Null: the sales register
+   * refused (`recordedRefusal` is set), so that is not known, and no line may
+   * say "no register" (ADR 0287 §Forks F4). A gateway from before F4 sent
+   * `false` beside a refusal; the page reads `recordedRefusal` first either way.
+   */
+  posConnected: boolean | null;
   recordedRefusal: string | null;
   weatherRefusal: string | null;
   pairsWritten: number;

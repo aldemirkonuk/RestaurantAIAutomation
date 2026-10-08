@@ -1221,6 +1221,13 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
     expect(panel.textContent).not.toContain(NET());
     expect(panel.textContent).not.toMatch(/net sales · |net sales not recorded/);
     expect(mark.textContent).not.toMatch(/\$\s?0|0\.00/);
+    // The covers beside it are not known either (ADR 0287 F4): the em dash and
+    // "covers could not be read", never the 41 that reached the page.
+    const covers = panel.querySelector('[data-record="unreadable"]') as HTMLElement;
+    expect(covers).toBeTruthy();
+    expect(within(covers).getByText('covers could not be read')).toBeInTheDocument();
+    expect(within(covers).getByText('—')).toBeInTheDocument();
+    expect(panel.textContent).not.toMatch(/covers · recorded|covers not recorded/);
     // and the Day view agrees
     fireEvent.click(screen.getByRole('button', { name: 'Day' }));
     expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
@@ -1231,16 +1238,29 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
   });
 
   it('says it on a refused day with no recorded half too, where the gateway sends only the weather', () => {
+    // The day as the gateway sends it under a refusal since ADR 0287 F4:
+    // weather only, `posConnected: null`, and the refused line.
+    const line = "The sales register could not be read, so this day's trading is not known.";
     state.current = mkData({
       record: recordWindow({
-        days: [reconciled({ recorded: null })],
-        window: { recordedRefusal: 'The sales register could not be read.' },
+        days: [reconciled({ recorded: null, line })],
+        window: { recordedRefusal: 'The sales register could not be read.', posConnected: null },
       }),
     });
     draw();
-    const mark = openDay().querySelector('[data-takings]') as HTMLElement;
+    // The month cell's covers mark already says it, not "covers not recorded".
+    const cellMark = document.querySelector('.cn-cell [data-record="unreadable"]') as HTMLElement;
+    expect(cellMark).toBeTruthy();
+    expect(within(cellMark).getByText('covers could not be read')).toBeInTheDocument();
+    const panel = openDay();
+    const mark = panel.querySelector('[data-takings]') as HTMLElement;
     expect(mark).toHaveAttribute('data-takings', 'unreadable');
     expect(within(mark).getByText('net sales could not be read')).toBeInTheDocument();
+    // Three marks, one fact: the covers, the takings and the line all say the
+    // register could not be read, and nothing says there is no register.
+    expect(within(panel).getByText('covers could not be read')).toBeInTheDocument();
+    expect(within(panel).getByText(line)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/covers not recorded|No sales register is connected/);
   });
 
   it('draws no takings at all for a withheld viewer under a refusal (F1 before F3)', () => {
@@ -1252,6 +1272,9 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
     const panel = openDay();
     expect(panel.querySelector('[data-takings]')).toBeNull();
     expect(panel.textContent).not.toMatch(/net sales/);
+    // Covers are not house money: the withheld viewer is told they could not
+    // be read, like everyone else (ADR 0287 F4).
+    expect(within(panel).getByText('covers could not be read')).toBeInTheDocument();
   });
 });
 
