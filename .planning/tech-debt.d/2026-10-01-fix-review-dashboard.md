@@ -1,4 +1,4 @@
-> [2026-10-08, PR #579 at merge] Line citations in this file, apart from those inside 2026-10-08 brackets, were measured before #579 merged main (#622, #609, #654), either at the commit an entry names or on that entry's date. That merge moved many of them. The round-4g audit found the behaviour each OPEN entry describes still holds at merge. Re-measure the lines before acting on an entry.
+> [2026-10-08, PR #579 at merge] Line citations in this file, apart from those inside 2026-10-08 brackets, were measured at the commit an entry names or on that entry's date, before #579's later merges of main (among them #622, #609, #654 and #657). Those merges moved many of them, and #609 changed what one entry describes (the getSalesChart line, bracketed in place). Re-measure the lines, and re-check the behaviour, before acting on an entry.
 
 ## A page load reads `/auth/me` twice against a ten-a-minute per-IP auth bucket — OPEN — 2026-10-01
 
@@ -77,6 +77,7 @@ Found by the second PR #579 audit (on 3a72c2f).
 **What.**
 - W3, W6 and W11 made the four routes the page reads (stats, activity, alerts, calendar-revenue) fail the call when a read fails.
 - The other three still answer empty or zero: `getSalesChart` (`dashboard.service.ts:1069-1076`), `getInventoryBreakdown` (`:1141-1144`), and the summary's sub-reads (`getDashboardSummary`, `:327-345`, `:476-481`, `:541-546`).
+  [2026-10-08: #609, merged into #579 at bbab6a0d9, made `getSalesChart` refuse a failed consumption read (`readWholeWindow`, `dashboard.service.ts:1568`; thrown at `:1586-1587`, rethrown at `:1627-1628`). Only its orders read still answers zero (`:1577-1579`).]
 - No web or mobile page calls them today (`services/api/dashboard.ts` exports them; nothing imports them).
 
 **Fix.** Treat them as W3 did, before any page reads them, or retire them.

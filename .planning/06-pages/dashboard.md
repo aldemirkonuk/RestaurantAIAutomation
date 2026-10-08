@@ -419,6 +419,7 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
   - `/procurement/orders/pending` and `/history` still send prices to staff (the server half of W22).
   - A failed alerts or activity read shows as an empty list: the shared client and the page's own hook both empty it, and Lately has no failure line (the web half of W11).
   - Three dashboard routes no page reads (`sales-chart`, `inventory-breakdown`, `summary`) still answer empty on a failed read.
+    [2026-10-08: since #609, `sales-chart` refuses a failed consumption read; only its orders read still answers zero. See the debt entry's bracket.]
   - Read errors reach the client with table names and PostgREST text.
 - **Not verified:**
   - Real touch and the day-tape drag on a phone.
@@ -935,7 +936,7 @@ the house's Gmail grant. Being built; producers stay off until armed.
 
 ## 14. Founder walk-through — 2026-10-01 (branch fix/review-dashboard)
 
-> [2026-10-08, PR #579 at merge] This section is dated 2026-10-01 walk-through evidence. Its file:line citations, apart from those inside 2026-10-08 brackets, predate #579's merges of main (#622, #609, #654), which moved many of them; re-measure before acting.
+> [2026-10-08, PR #579 at merge] This section is dated 2026-10-01 walk-through evidence. Its file:line citations, apart from those inside 2026-10-08 brackets, predate #579's later merges of main (among them #622, #609, #654 and #657), which moved many of them; re-measure before acting.
 
 Session R1 (wt-review-1b, web :5311, gateway :4111 as the founder's own account, house ALDEMIR, production data, timers off). Rows are added when proposed; rulings go to this page's walk-through ADR.
 
