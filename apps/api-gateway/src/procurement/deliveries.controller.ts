@@ -9,12 +9,18 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { DeliverySpineService } from "./canonical/delivery-spine.service";
 import { DeliveryService } from "./canonical/delivery.service";
 import { DeliveryClockService } from "./canonical/delivery-clock.service";
+import { assertDeliveryDesk } from "./canonical/delivery-desk-gate";
 import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
 import {
   AcceptAsBilledDto,
@@ -24,7 +30,13 @@ import {
   RunClocksDto,
 } from "./dto/deliveries.dto";
 
-type AuthedUser = { userId: string; restaurantId: string };
+/** `role` is the role in the token's house, re-derived by `JwtStrategy` on
+ * every request; null or absent is no role there. */
+type AuthedUser = {
+  userId: string;
+  restaurantId: string;
+  role?: string | null;
+};
 
 /**
  * The delivery — the commercial event of ADR 0103 D1 / ADR 0104 D7.
@@ -35,11 +47,17 @@ type AuthedUser = { userId: string; restaurantId: string };
  *   GET  /procurement/deliveries/:id/proposals   the thread, oldest first
  *   POST /procurement/deliveries/:id/documents   attach a document with its role
  *   POST /procurement/deliveries/:id/proposals   put a position on the record
+ *                                                (owner or manager)
  *   POST /procurement/deliveries/proposals/:pid/counter   answer one
- *   POST /procurement/deliveries/proposals/:pid/accept    accept one (human)
+ *                                                (owner or manager)
+ *   POST /procurement/deliveries/proposals/:pid/accept    accept one (human;
+ *                                                owner or manager)
  *   POST /procurement/deliveries/:id/accept-as-billed  A11 — answer a difference
+ *                                                (owner or manager)
  *   POST /procurement/deliveries/:id/agree     D3 — and it says which rule fired
+ *                                                (owner or manager)
  *   POST /procurement/deliveries/:id/verify    D6 — a human, and idempotent
+ *                                                (owner or manager)
  *   POST /procurement/deliveries/clocks/run    the catch-up for D9's ladder
  *                                              (platform operators only)
  *
@@ -48,9 +66,21 @@ type AuthedUser = { userId: string; restaurantId: string };
  * The one exception is `clocks/run`, which works EVERY house's due clocks and
  * is therefore a platform act, not a house one; see its own comment.
  *
- * NO ROUTE HERE WRITES STOCK OR COST. See `DeliveryService`'s header: the
- * columns ADR 0103 A1 will use have no writer on this build, and `verify` is
- * deliberately not the first one.
+ * WHERE STOCK AND COST MOVE (ADR 0103 A1). The door count
+ * (`POST /procurement/documents/door-count`, `DeliveryStockService.bookAtTheDoor`)
+ * books the counted lines as stock, provisionally, with no price yet. Here,
+ * `verify` posts the agreed price as the final cost of each item an agreed
+ * price reaches (`finaliseAtVerified`, rpc `finalise_delivery_cost`); an item
+ * no agreed price reaches stays provisional, and a delivery the door count
+ * never booked posts nothing. A WRONG_VENUE proposal reverses the door's
+ * booking.
+ *
+ * THE DESK ACTS ARE THE HOUSE-MONEY HOLDERS' (ADR 0312). propose, counter,
+ * accept, accept-as-billed, agree and verify call `assertDeliveryDesk` as
+ * their first statement: an owner or a manager (ADR 0145's money row) gets
+ * through, anyone else gets a 403 with a sentence and nothing is written.
+ * Listing, creating and reading a delivery, reading its thread and attaching
+ * a document stay open to every member of the house, like the door.
  */
 @ApiTags("procurement-deliveries")
 @ApiBearerAuth()
@@ -170,6 +200,10 @@ export class DeliveriesController {
   }
 
   @Post(":id/proposals")
+  @ApiForbiddenResponse({
+    description:
+      "The session does not hold this house's money (owner or manager, ADR 0145): a sentence says so, and nothing was written (ADR 0312).",
+  })
   @ApiOperation({
     summary: "Put one side's position on the record (ADR 0103 D7)",
     description:
@@ -180,6 +214,7 @@ export class DeliveriesController {
     @Body() body: ProposeDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertDeliveryDesk(user, "propose");
     const res = await this.deliveries.propose(
       user.restaurantId,
       id,
@@ -191,6 +226,10 @@ export class DeliveriesController {
   }
 
   @Post("proposals/:pid/counter")
+  @ApiForbiddenResponse({
+    description:
+      "The session does not hold this house's money (owner or manager, ADR 0145): a sentence says so, and nothing was written (ADR 0312).",
+  })
   @ApiOperation({
     summary: "Answer one proposal with another",
     description:
@@ -201,6 +240,7 @@ export class DeliveriesController {
     @Body() body: ProposeDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertDeliveryDesk(user, "counter");
     const res = await this.deliveries.counter(
       user.restaurantId,
       pid,
@@ -212,12 +252,17 @@ export class DeliveriesController {
   }
 
   @Post("proposals/:pid/accept")
+  @ApiForbiddenResponse({
+    description:
+      "The session does not hold this house's money (owner or manager, ADR 0145): a sentence says so, and nothing was written (ADR 0312).",
+  })
   @ApiOperation({
     summary: "Accept one proposal — a human gate (ADR 0103 D6)",
     description:
       "Accepting a substitution, a vintage change or a price move above threshold is never automated. Idempotent: accepting twice returns the first acceptance rather than moving its timestamp.",
   })
   async accept(@Param("pid") pid: string, @CurrentUser() user: AuthedUser) {
+    assertDeliveryDesk(user, "accept");
     const res = await this.deliveries.accept(
       user.restaurantId,
       pid,
@@ -239,6 +284,10 @@ export class DeliveriesController {
    * the one `delivery_proposals` already uses: (document, line number).
    */
   @Post(":id/accept-as-billed")
+  @ApiForbiddenResponse({
+    description:
+      "The session does not hold this house's money (owner or manager, ADR 0145): a sentence says so, and nothing was written (ADR 0312).",
+  })
   @ApiOperation({
     summary:
       "Accept one recorded difference as billed — a human gate (ADR 0103 A11)",
@@ -250,6 +299,7 @@ export class DeliveriesController {
     @Body() body: AcceptAsBilledDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertDeliveryDesk(user, "accept_as_billed");
     const res = await this.deliveries.acceptAsBilled(
       user.restaurantId,
       id,
@@ -261,24 +311,35 @@ export class DeliveriesController {
   }
 
   @Post(":id/agree")
+  @ApiForbiddenResponse({
+    description:
+      "The session does not hold this house's money (owner or manager, ADR 0145): a sentence says so, and nothing was written (ADR 0312).",
+  })
   @ApiOperation({
     summary: "AGREED — both sides on the record, or a final signed ticket (D3)",
     description:
       "Refuses unless the restaurant's position AND the vendor's position are both recorded with nothing left open, OR this vendor's `signed_ticket_is_final` is true and a signed door document is attached. **And, before either rule (ADR 0103 A11), every recorded difference — door count against paperwork, or invoice against PO — must be answered by an accepted proposal or an explicit accept-as-billed;** a refusal names the unanswered lines. The response names WHICH rule fired. Vendor silence never becomes agreement here, whatever the law deems.",
   })
   async agree(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    assertDeliveryDesk(user, "agree");
     const res = await this.deliveries.agree(user.restaurantId, id, user.userId);
     if (!res.ok) throw new HttpException(res.error, res.status);
     return res.value;
   }
 
   @Post(":id/verify")
-  @ApiOperation({
-    summary: "VERIFIED — a person asserts they received the goods (D6)",
+  @ApiForbiddenResponse({
     description:
-      "Only from AGREED: agreement is about the document, verification is about the goods and the books, and ADR 0103 D1 never collapses them. Idempotent — a second verify returns the first one's stamp. Writes NO stock and NO cost on this build, and the response says so in words.",
+      "The session does not hold this house's money (owner or manager, ADR 0145): a sentence says so, and nothing was written (ADR 0312).",
+  })
+  @ApiOperation({
+    summary:
+      "VERIFIED — an owner or a manager asserts receipt, and the agreed cost posts (D6, A1)",
+    description:
+      "Only from AGREED: agreement is about the document, verification is about the goods and the books, and ADR 0103 D1 never collapses them. This is the step that posts cost (ADR 0103 A1, A12): each item the door count booked, provisionally and with no price yet, takes the agreed price as its final cost where an agreed price reaches it; an item no agreed price reaches stays provisional, and a delivery the door count never booked posts nothing. It is an owner's or a manager's act whether or not anything posts (ADR 0312 says why); anyone else gets a 403 with a sentence, and nothing changes. Idempotent: a second verify returns the first one's stamp and posts nothing, so it does not retry a post that failed. The response's `costNote` says in words how many items' cost posted and how many stayed provisional, or why nothing posted.",
   })
   async verify(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    assertDeliveryDesk(user, "verify");
     const res = await this.deliveries.verify(
       user.restaurantId,
       id,

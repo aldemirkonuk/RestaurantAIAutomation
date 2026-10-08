@@ -493,6 +493,91 @@ describe("DeliveryClockService", () => {
   });
 
   // -------------------------------------------------------------------------
+  describe("the half rung reaches someone who can act (D9 clause 1, ADR 0312)", () => {
+    // A door count creates its delivery with the counter as owner
+    // (delivery.service.ts create: owner_user_id = ownerUserId ?? caller), and
+    // ADR 0312 makes the desk acts the money holders'. So a staff-owned
+    // delivery's 50 % notice goes to the house's owner and manager instead.
+    const STAFF = "u-staff";
+    const OWNER = "u-owner";
+    const MANAGER = "u-manager";
+    let sent: { opts: Record<string, unknown> }[];
+
+    const halfOver = async (
+      ownerUserId: string | null,
+      access: { data: unknown; error: { message: string } | null },
+    ) => {
+      sent = [];
+      (notifications as unknown as {
+        persistForRestaurant: (...a: unknown[]) => Promise<unknown>;
+      }).persistForRestaurant = async (
+        _r: unknown,
+        _p: unknown,
+        opts: Record<string, unknown> = {},
+      ) => {
+        sent.push({ opts });
+        return { inserted: 1, ids: ["n-1"] };
+      };
+      db.answers.delivery_timers = { data: [timer()], error: null };
+      db.answers.deliveries = {
+        data: {
+          id: DEL,
+          state: "DELIVERED",
+          jurisdiction: "TR",
+          owner_user_id: ownerUserId,
+          deputy_user_id: null,
+        },
+        error: null,
+      };
+      db.answers.user_restaurant_access = access;
+      const res = await service.runDue(new Date("2026-08-17T18:00:00Z"));
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.value.notifiedHalf).toBe(1);
+      expect(sent.length).toBe(1);
+      return sent[0].opts;
+    };
+
+    const HOUSE = [
+      { user_id: STAFF, role: "staff" },
+      { user_id: OWNER, role: "owner" },
+      { user_id: MANAGER, role: "Manager" },
+      { user_id: "u-waiter", role: "waiter" },
+    ];
+
+    it("sends a staff-created delivery's 50 % notice to the owner and the manager, not to the staff member", async () => {
+      const opts = await halfOver(STAFF, { data: HOUSE, error: null });
+      expect(opts.onlyUserIds).toEqual([OWNER, MANAGER]);
+      expect(opts.onlyUserIds).not.toContain(STAFF);
+    });
+
+    it("keeps the notice on the owner when the owner holds the money", async () => {
+      const opts = await halfOver(MANAGER, { data: HOUSE, error: null });
+      expect(opts.onlyUserIds).toEqual([MANAGER]);
+    });
+
+    it("keeps the notice on the owner when nobody at the house holds the money", async () => {
+      const opts = await halfOver(STAFF, {
+        data: [{ user_id: STAFF, role: "staff" }],
+        error: null,
+      });
+      expect(opts.onlyUserIds).toEqual([STAFF]);
+    });
+
+    it("goes house-wide rather than guess when the access read fails", async () => {
+      const opts = await halfOver(STAFF, {
+        data: null,
+        error: { message: "connection reset" },
+      });
+      expect(opts).not.toHaveProperty("onlyUserIds");
+    });
+
+    it("goes house-wide, as before, for a delivery with no owner", async () => {
+      const opts = await halfOver(null, { data: HOUSE, error: null });
+      expect(opts).not.toHaveProperty("onlyUserIds");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   describe("what the law deems, in words", () => {
     it("says silence accepts for a Turkish response window, and says it is not agreement", () => {
       const s = lapseDeeming("response_window", "TR");

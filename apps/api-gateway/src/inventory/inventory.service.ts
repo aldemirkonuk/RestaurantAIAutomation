@@ -871,6 +871,12 @@ export class InventoryService {
     // add-wine ... so every price version names who set it". From the
     // verified JWT; the controller has already refused a priced create by
     // anyone but an owner or manager.
+    // [Corrected 2026-10-08, ADR 0312: the controller refuses only a create
+    // that names a MENU price (`menuPriceBottle` / `menuPriceGlass`,
+    // `assertMayPrice`). A create naming `costPerBottle` alone reaches here
+    // from any member, `resolveLotCost` files it as a 'manual' cost, and
+    // `apply_stock_movement` makes a priced 'manual' lot final. ADR 0312's
+    // census names it, with an open CLAIMS row.]
     actorUserId: string | null = null,
   ) {
     const client = this.dbService.getClient();

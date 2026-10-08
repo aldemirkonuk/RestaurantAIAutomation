@@ -3,6 +3,7 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { ReadResult } from "./canonical-document.service";
+import { holdsHouseMoney } from "../documents/document-money-gate";
 
 /**
  * DeliveryClockService — the escalation ladder as durable rows (ADR 0103 D9/A10).
@@ -26,7 +27,12 @@ import { ReadResult } from "./canonical-document.service";
  *
  * THE LADDER, AND WHERE ITS TWO FLOORS COME FROM.
  *
- *   half      50 % of the window — re-notify the owner (D9 clause 1).
+ *   half      50 % of the window — re-notify the owner (D9 clause 1). When
+ *             the delivery's owner does not hold the house's money, the rung
+ *             goes to the house's money holders instead (ADR 0312): the desk
+ *             acts that settle a delivery are theirs, and D9 tells someone
+ *             who can act. A delivery a door count created is owned by the
+ *             person who counted it, often staff.
  *   escalate  80 % of the window, but NEVER LATER THAN:
  *               · 48 hours before expiry (D9 clause 1's floor — a short clock
  *                 must not compress a human's reaction time to hours), and
@@ -467,6 +473,10 @@ export class DeliveryClockService {
       );
 
     const owners = await this.ownersOf(timer.delivery_id);
+    const halfAudience =
+      rung === "notified_half"
+        ? await this.halfRungAudience(timer.restaurant_id, owners.owner)
+        : null;
     const days = timer.due_at
       ? Math.max(
           0,
@@ -498,11 +508,10 @@ export class DeliveryClockService {
         },
       },
       {
-        // At 50 % the owner; at 80 % the deputy and the venue owner as well
+        // At 50 % the owner, or the house's money holders when the owner is
+        // not one (ADR 0312); at 80 % the deputy and the venue owner as well
         // (D9 clause 2 — a closed venue must not lapse silently).
-        ...(rung === "notified_half" && owners.owner
-          ? { onlyUserIds: [owners.owner] }
-          : {}),
+        ...(halfAudience ? { onlyUserIds: halfAudience } : {}),
         dedupeWithinMinutes: 60 * 12,
       },
     );
@@ -597,6 +606,54 @@ export class DeliveryClockService {
       { dedupeWithinMinutes: 60 * 24 },
     );
     return true;
+  }
+
+  /**
+   * WHO THE 50 % RUNG GOES TO (ADR 0103 D9 clause 1, ADR 0312).
+   *
+   * D9 re-notifies the delivery's owner so that someone who can act is told
+   * while there is time. ADR 0312 makes propose, counter, accept,
+   * accept-as-billed, agree and verify acts for the house's money holders,
+   * and a delivery a door count created is owned by the person who counted
+   * it (`create` sets `owner_user_id` to the caller when none is named). So:
+   *
+   *   no owner on the delivery        null: the house-wide write, as before;
+   *   the owner holds the money       [owner], as before;
+   *   the owner does not              the house's active members whose role
+   *                                   holds the money (ADR 0145's money row,
+   *                                   through `holdsHouseMoney`);
+   *   nobody here holds it            [owner]: there is no one else to name;
+   *   the access read failed          null: the house-wide write, so the
+   *                                   rung is not narrowed on a guess.
+   *
+   * Who owns the delivery is not changed here.
+   */
+  private async halfRungAudience(
+    restaurantId: string,
+    owner: string | null,
+  ): Promise<string[] | null> {
+    if (!owner) return null;
+    const { data, error } = await this.db
+      .getClient()
+      .from("user_restaurant_access")
+      .select("user_id, role")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
+    if (error || !Array.isArray(data)) {
+      this.logger.error(
+        `delivery clocks: could not read who holds the money at ${restaurantId} (${error?.message ?? "no rows answer"}); the half rung goes house-wide`,
+      );
+      return null;
+    }
+    const holders = [
+      ...new Set(
+        (data as { user_id: string | null; role: string | null }[])
+          .filter((r) => r.user_id && holdsHouseMoney(r.role))
+          .map((r) => r.user_id as string),
+      ),
+    ];
+    if (holders.includes(owner)) return [owner];
+    return holders.length ? holders : [owner];
   }
 
   private async ownersOf(
