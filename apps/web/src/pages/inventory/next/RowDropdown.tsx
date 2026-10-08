@@ -282,7 +282,7 @@ function WhereTheCountComesFrom({
 
 function HowFastItPours({ row }: { row: InvRow }) {
   const record = useRowRecord(row.name);
-  const pos = record.data?.books.find((b) => b.book === 'pos') ?? null;
+  const pos = record.data?.books?.find((b) => b.book === 'pos') ?? null;
   const tillLines: TillLine[] = useMemo(
     () => (pos?.readable ? pos.ledger : []).map((l) => ({ at: l.at, qty: l.qty, unitPrice: l.unitPrice })),
     [pos],

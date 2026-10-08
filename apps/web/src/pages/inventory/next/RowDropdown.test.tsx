@@ -241,6 +241,12 @@ describe('RowDropdown pour note (INV-W9)', () => {
     expect(note.textContent).toBe('The till could not be read. This is unread, not a quiet night.');
     expect(note.textContent).not.toContain('relation');
   });
+
+  it('a record answer with no books array does not blank the row', () => {
+    reads.record = { data: {} };
+    renderDrop();
+    expect(screen.getByTestId('row-dropdown')).toBeTruthy();
+  });
 });
 
 describe('RowDropdown head facts (INV-W13, W16, W17)', () => {
