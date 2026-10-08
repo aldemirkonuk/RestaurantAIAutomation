@@ -182,6 +182,12 @@ describe('the width rule — open first, then remember', () => {
     expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
   });
 
+  it('starts tucked on the dashboard, so its month has the room (ADR 0290)', () => {
+    mount('/');
+    expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'The counter' })).toBeNull();
+  });
+
   it('is tucked below 1280 px', () => {
     setWidth(1180);
     mount('/orders');

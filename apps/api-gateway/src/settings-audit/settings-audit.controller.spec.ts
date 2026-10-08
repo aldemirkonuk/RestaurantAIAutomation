@@ -32,8 +32,12 @@
  *   perfectly well-typed array. Only a run can tell.
  */
 
+import { Logger } from "@nestjs/common";
 import { REGISTERS } from "./settings-audit.controller";
-import type { SettingsRegister } from "./settings-audit.service";
+import {
+  SettingsAuditService,
+  type SettingsRegister,
+} from "./settings-audit.service";
 
 /**
  * Every member of the union, written out by hand.
@@ -56,6 +60,7 @@ const EVERY: Record<SettingsRegister, true> = {
   "data-terms": true,
   "target-margin": true,
   "ask-training": true,
+  "state-and-country": true,
 };
 
 describe("the ?register= allow-list holds every register the type admits", () => {
@@ -80,5 +85,83 @@ describe("the ?register= allow-list holds every register the type admits", () =>
     for (const register of REGISTERS) {
       expect(Object.prototype.hasOwnProperty.call(EVERY, register)).toBe(true);
     }
+  });
+});
+
+/**
+ * EVERY REGISTER READS BACK BY NAME (ADR 0289 R5).
+ *
+ * The allow-list above only proves `?register=` ACCEPTS a name. Until
+ * 2026-10-04 the service's `readRegister` knew five of the twelve registers by
+ * a hand-typed list, so a row filed under `currency`, `time-zone`,
+ * `ask-training` or any of the four others read back with `register: null`,
+ * and `list(rid, 50, register)` filtered it away: the route answered 200 with
+ * an empty trail for rows it had written (ConsentPanel's ask-training trail
+ * among them). A new register would have been born with the same fault.
+ *
+ * So each member of `EVERY` — the compiler-held list — is stored as a real
+ * row and must come back carrying its register, and through the filter.
+ */
+describe("every register the type admits reads back by name", () => {
+  beforeAll(() => {
+    jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+  });
+  afterAll(() => jest.restoreAllMocks());
+
+  function serviceHolding(register: string): SettingsAuditService {
+    const row = {
+      id: `row-${register}`,
+      actor_id: "u-1",
+      // Any read-back action: the register comes from the row, not the action.
+      action: "house_state_country_changed",
+      entity_type: "restaurant",
+      entity_id: "rest-1",
+      changes: {
+        register,
+        subject: "Tuzlu Rüzgar",
+        fields: { x: { from: 1, to: 2 } },
+      },
+      created_at: "2026-10-04T00:30:00Z",
+    };
+    const tables: Record<string, unknown[]> = {
+      system_audit_log: [row],
+      users: [{ user_id: "u-1", name: "Deniz", email: null }],
+    };
+    const client = {
+      from(table: string) {
+        const chain: Record<string, unknown> = {
+          select: () => chain,
+          eq: () => chain,
+          in: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          then: (resolve: (v: unknown) => unknown) =>
+            Promise.resolve({ data: tables[table] ?? [], error: null }).then(
+              resolve,
+            ),
+        };
+        return chain;
+      },
+    };
+    return new SettingsAuditService({ client } as never);
+  }
+
+  it.each(Object.keys(EVERY) as SettingsRegister[])(
+    "%s: a stored row carries its register, and ?register= returns it",
+    async (register) => {
+      const service = serviceHolding(register);
+
+      const all = await service.list("rest-1", 50, undefined, "owner");
+      expect(all.entries.map((e) => e.register)).toEqual([register]);
+
+      const filtered = await service.list("rest-1", 50, register, "owner");
+      expect(filtered.entries.map((e) => e.id)).toEqual([`row-${register}`]);
+    },
+  );
+
+  it("still reads a register the type does not admit as unfiled, never as a guess", async () => {
+    const service = serviceHolding("not-a-register");
+    const all = await service.list("rest-1", 50, undefined, "owner");
+    expect(all.entries.map((e) => e.register)).toEqual([null]);
   });
 });
