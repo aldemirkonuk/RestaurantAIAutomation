@@ -102,6 +102,25 @@ export interface UserPreferences {
   [key: string]: unknown
 }
 
+// Copied from the gateway's `deepMerge`
+// (apps/api-gateway/src/user-preferences/user-preferences.service.ts): an
+// object saved over an object is merged key by key, and anything else (an
+// array, a string, `null`) takes the place of what was there.
+const FORBIDDEN_MERGE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+type Plain = Record<string, unknown>
+const isPlain = (v: unknown): v is Plain => !!v && typeof v === 'object' && !Array.isArray(v)
+
+function mergeLikeGateway(target: Plain, source: Plain): Plain {
+  const result: Plain = { ...target }
+  for (const key of Object.keys(source)) {
+    if (FORBIDDEN_MERGE_KEYS.has(key)) continue
+    const from = source[key]
+    const into = target[key]
+    result[key] = isPlain(from) && isPlain(into) ? mergeLikeGateway(into, from) : from
+  }
+  return result
+}
+
 async function fetchPreferences(userId: string): Promise<UserPreferences> {
   const { data } = await apiClient.get<{ preferences: UserPreferences }>(
     `/users/${userId}/preferences`,
@@ -152,9 +171,18 @@ export function useUserPreferences() {
         queryKeys.user.preferences(userId),
       )
 
+      // Only over an answer the account has given. With none yet (the first
+      // read still loading, or failed), returning `undefined` leaves the
+      // cache alone: TanStack would record `{ ...partial }` as a successful
+      // read, clearing the error, and every reader would take that one key
+      // for the whole account (PR #570, gate round 3). The save still goes
+      // out; it shows once a read succeeds (`onSettled` refetches). Over an
+      // answer, the save is merged the way the gateway will merge it, so a
+      // save that names only some keys of an object (guidance does) keeps
+      // the rest.
       queryClient.setQueryData<UserPreferences>(
         queryKeys.user.preferences(userId),
-        (old) => ({ ...old, ...partial }),
+        (old) => (old ? (mergeLikeGateway(old, partial) as UserPreferences) : old),
       )
 
       return { previous }
@@ -203,6 +231,15 @@ export function useUserPreferences() {
      * `isLoading` is false before the gateway has said anything.
      */
     isPlaceholderData: query.isPlaceholderData,
+    /**
+     * True once a read of the account has succeeded, and still true if a
+     * later refetch fails: TanStack keeps the last good data and sets `error`
+     * beside it. False while the placeholder shows and after a first read
+     * that failed. It counts any data in the cache as read: a save through
+     * this hook adds to data only when there is some (`onMutate` above),
+     * and the guidance provider saves only once this is true.
+     */
+    isAccountRead: !query.isPlaceholderData && query.data !== undefined,
     error: query.error,
     updatePreferences,
     updatePreferencesAsync,

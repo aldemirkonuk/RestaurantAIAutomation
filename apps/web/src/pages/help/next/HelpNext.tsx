@@ -98,6 +98,7 @@ import {
 import { nextUpEntries, type NextUpEntry } from './hp-nextup';
 import { SupportPanel } from './SupportPanel';
 import { useHelpNextData } from './useHelpNextData';
+import { useGuidanceOptional } from '../../../guidance/GuidanceProvider';
 
 export interface HelpNextProps {
   /** Force a ground regardless of app theme (ADR 0042). Default: charcoal. */
@@ -111,6 +112,66 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
     <p style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: 0 }}>
       {children}
     </p>
+  );
+}
+
+/**
+ * Where page tips come back from in the house shell. "Don't show tips again"
+ * on any tip turns them all off, and they stay off until the person turns
+ * them back on here (founder, 2026-10-01). The legacy sidebar's LearnPanel
+ * also has a "Reset page tips" button, but that sidebar is drawn only when a
+ * browser override turns the house shell off (`useMudavymDesign('shell')`,
+ * DashboardLayout.tsx). Outside the guidance provider this draws nothing.
+ *
+ * Until a read of the account's copy of the tips setting has succeeded,
+ * `guidance.state` is this browser's copy laid over an empty stand-in. It can
+ * say "on" to someone who turned tips off in another browser. So while
+ * `guidance.accountCopy` is not `'read'` the card shows one line, checking or
+ * not loaded, and no on/off and no button. (The provider also drops any save
+ * made then.) Offline before that first answer, the read waits rather than
+ * fails, so the card says it is checking until the connection comes back.
+ *
+ * A tab where two tips or tours were turned away shows no more tips while
+ * tips are still on (`guidance.tipsPausedInThisTab`), so the card says they
+ * are paused here and offers the same "Turn tips back on", which clears
+ * this tab's count (`resetTips`).
+ */
+function PageTipsSwitch() {
+  const guidance = useGuidanceOptional();
+  if (!guidance) return null;
+  if (guidance.accountCopy !== 'read') {
+    const loading = guidance.accountCopy === 'loading';
+    return (
+      <div className="hp-card" data-testid="hp-page-tips" aria-busy={loading}>
+        <p role="status" style={{ fontFamily: SANS, fontSize: 13.5, color: 'var(--ink-4)', margin: 0 }}>
+          {loading ? 'Checking your tip setting…' : "Couldn't load your tip setting."}
+        </p>
+      </div>
+    );
+  }
+  const off = guidance.state.global.hide_all_tips;
+  const paused = !off && guidance.tipsPausedInThisTab;
+  return (
+    <div className="hp-card" data-testid="hp-page-tips">
+      <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>
+        {off ? 'Page tips are off' : paused ? 'Page tips are paused in this tab' : 'Page tips are on'}
+      </p>
+      <Prose muted>
+        {off
+          ? 'You turned them off. They stay off until you turn them back on here.'
+          : paused
+            ? 'Two tips or tours in this tab were put off, stopped or could not start, so this tab shows no more tips until it is closed or you turn them back on here.'
+            : 'Some pages open with a short tip. "Not now" puts it off for four hours; "Don\'t show tips again" turns them all off.'}
+      </Prose>
+      <button
+        type="button"
+        className="hp-btn hp-ink hp-focus"
+        style={{ marginTop: 10 }}
+        onClick={() => (off || paused ? guidance.resetTips() : guidance.hideAllTips())}
+      >
+        {off || paused ? 'Turn tips back on' : 'Turn tips off'}
+      </button>
+    </div>
   );
 }
 
@@ -577,7 +638,7 @@ export default function HelpNext({ ground }: HelpNextProps) {
           <div className="hp-grid2">
             <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/get-started?tab=use">
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>The app guide</p>
-              <Prose muted>The tours and the getting-started walkthrough, from the top.</Prose>
+              <Prose muted>The getting-started walkthrough, from the top.</Prose>
             </a>
             <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/ask">
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>Ask</p>
@@ -587,6 +648,7 @@ export default function HelpNext({ ground }: HelpNextProps) {
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>Your profile</p>
               <Prose muted>Password, connected accounts, and your own linked services.</Prose>
             </a>
+            <PageTipsSwitch />
           </div>
         </Section>
 
