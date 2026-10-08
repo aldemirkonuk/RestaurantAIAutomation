@@ -2,7 +2,11 @@ import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import * as E from "./engine";
 import { stateBookFrom } from "./insights/item-state";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  BUNDLE_READ_WORDS,
+  InsightGeneratorService,
+  OPEN_ML_READ_WORD,
+} from "./insights/insight-generator.service";
 import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
 import { isWithheld } from "../reports/exports/report-export-doc";
 import { WholeReadError } from "../common/read-whole-window";
@@ -810,6 +814,142 @@ describe("an unread lot rollup is said, not replaced by the shelf count without 
     rows.inventory_lot_rollup = [];
     const out = await base(makeClient(rows)).getInventoryScience(R);
     expect(out.skus[0].onHand).toBe(2);
+  });
+});
+
+/**
+ * #652 (ADR 0292 fork 3 follow-on, the founder 2026-10-07: *"Say it couldn't
+ * be read (Recommended)"*) names every refused insight-bundle read in
+ * `sourcesUnread`, and gates an insight that takes a label or a figure from a
+ * second read on that read. The stockout #1 takes its on-hand figure from the
+ * open-bottle read, so it is silent when that read is refused (above). Merged
+ * with #652 on 2026-10-08, the read is named too, as "open bottles", after the
+ * seven: an empty feed is otherwise "every source answered" over a rollup
+ * nobody could read. Each case marked "fails before" fails on this branch
+ * before that merge resolution, where `sourcesUnread` stayed empty.
+ */
+describe("a refused open-bottle read is named in sourcesUnread, and the stockout #1 is silent (#652 with ADR 0299, 2026-10-08)", () => {
+  const PAGE = 1000;
+  const wine: Wine = {
+    name: "Open Rioja",
+    sealed: 0,
+    openMl: 250,
+    bottleSizeMl: 750,
+    sales: everyDay(20),
+  };
+  const denied = { code: "42501", message: "permission denied" };
+  const over = (client: any, rollup: () => Promise<any>) => ({
+    from: (table: string) => {
+      const builder: any = client.from(table);
+      if (table === "inventory_lot_rollup")
+        builder.then = (resolve: any, reject: any) =>
+          rollup().then(resolve, reject);
+      return builder;
+    },
+  });
+  const insight = (client: any) =>
+    new InsightGeneratorService(
+      { getClient: () => client, supabase: client } as any,
+      {
+        load: async () => ({ dates: new Set(), readable: true, problem: null }),
+      } as any,
+      {
+        readState: async () => ({
+          book: stateBookFrom([]),
+          readable: true,
+          problem: null,
+        }),
+      } as any,
+    );
+  const run = async (client: any) => {
+    const svc = insight(client);
+    jest
+      .spyOn((svc as any).logger, "error")
+      .mockImplementation(() => undefined);
+    const out = await svc.generate("r1", { candidateKeys: [STOCKOUT] });
+    return {
+      unread: out.sourcesUnread,
+      stockout: out.insights.filter((i) => i.candidateKey === STOCKOUT),
+    };
+  };
+
+  it("control: a rollup read whole names nothing, and the stockout #1 fires", async () => {
+    const out = await run(makeClient(tables([wine])));
+    expect(out.unread).toEqual([]);
+    expect(out.stockout).toHaveLength(1);
+  });
+
+  it("control: a rollup that answers with no rows is read whole, not refused, so it is not named", async () => {
+    const rows = tables([wine]);
+    rows.inventory_lot_rollup = [];
+    const out = await run(makeClient(rows));
+    expect(out.unread).toEqual([]);
+    // No lot, so no open bottle: the sealed 0 is the on-hand figure.
+    expect(out.stockout).toHaveLength(1);
+    expect(out.stockout[0].sentence).toContain("Only 0 bottles on hand");
+  });
+
+  const refusals: Array<[string, () => any]> = [
+    [
+      "a database error",
+      () => makeClient(tables([wine]), { inventory_lot_rollup: denied }),
+    ],
+    [
+      "a request that rejects",
+      () =>
+        over(makeClient(tables([wine])), () =>
+          Promise.reject(new Error("fetch failed")),
+        ),
+    ],
+    [
+      "no data array and no error",
+      () =>
+        over(makeClient(tables([wine])), () =>
+          Promise.resolve({ data: null, error: null }),
+        ),
+    ],
+    [
+      "1,000 of 1,001 rows",
+      () => {
+        const rows = tables([wine]);
+        rows.inventory_lot_rollup = [
+          ...rows.inventory_lot_rollup,
+          ...Array.from({ length: PAGE }, (_, i) => ({
+            inventory_id: `inv-retired-${i}`,
+            open_ml: 0,
+          })),
+        ];
+        return makeClient(rows, {}, { maxRows: PAGE });
+      },
+    ],
+  ];
+
+  it.each(refusals)(
+    'on %s the read is named "open bottles", and nothing else is, and the stockout #1 is silent (fails before)',
+    async (_how, client) => {
+      const out = await run(client());
+      expect(out.unread).toEqual([OPEN_ML_READ_WORD]);
+      expect(out.stockout).toEqual([]);
+    },
+  );
+
+  it("names it after the seven bundle reads, in the bundle's order (fails before)", async () => {
+    const out = await run(
+      makeClient(tables([wine]), {
+        restaurant_tables: denied,
+        inventory_lot_rollup: denied,
+      }),
+    );
+    expect(out.unread).toEqual([
+      BUNDLE_READ_WORDS.restaurant_tables,
+      OPEN_ML_READ_WORD,
+    ]);
+  });
+
+  it("uses a house word that no other bundle read uses, so the feed's de-duplication cannot hide it", () => {
+    expect(OPEN_ML_READ_WORD).toBe("open bottles");
+    expect(OPEN_ML_READ_WORD).not.toMatch(/_/);
+    expect(Object.values(BUNDLE_READ_WORDS)).not.toContain(OPEN_ML_READ_WORD);
   });
 });
 
