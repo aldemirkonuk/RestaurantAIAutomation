@@ -294,4 +294,41 @@ describe("getPendingDraft never lets another house's vendor speak for the draft"
     }
     expect(warn).toHaveBeenCalledTimes(1);
   });
+
+  it("reads an orphan vendor (no house, ADR 0221) as no vendor too", async () => {
+    const orphan = { ...pendingRow, providers: { ...pendingRow.providers, restaurant_id: null } };
+    const { service } = serviceWith(orphan);
+    jest.spyOn(service as any, "sendRequestViews").mockResolvedValue([null]);
+    jest.spyOn((service as any).logger, "warn").mockImplementation(() => undefined);
+    const draft = await service.getPendingDraft(REST, ORDER);
+    expect(draft?.providers).toBeNull();
+    expect(draft?.provider_email).toBeNull();
+    expect(draft?.at_send?.unfillable).toEqual(["[Provider First Name]"]);
+  });
+
+  it("keys the once-only warning on the draft id: a second draft is logged too", async () => {
+    const foreign: any = { ...pendingRow };
+    const { service } = serviceWith(foreign);
+    jest.spyOn(service as any, "sendRequestViews").mockResolvedValue([null]);
+    const warn = jest.spyOn((service as any).logger, "warn").mockImplementation(() => undefined);
+    for (const id of ["conv-1", "conv-2", "conv-1", "conv-2"]) {
+      foreign.id = id;
+      foreign.providers = { ...pendingRow.providers, restaurant_id: "rest-2" };
+      await service.getPendingDraft(REST, ORDER);
+    }
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it("remembers 1000 draft ids, then starts over", () => {
+    const { service } = serviceWith(pendingRow);
+    const first = (id: string) => (service as any).firstForeignVendorSighting(id);
+    for (let n = 0; n < 1000; n++) expect(first(`d${n}`)).toBe(true);
+    // All 1000 are still remembered.
+    expect(first("d0")).toBe(false);
+    expect(first("d999")).toBe(false);
+    // The 1001st id clears the memory and is remembered alone.
+    expect(first("d1000")).toBe(true);
+    expect((service as any).foreignVendorDraftsWarned.size).toBe(1);
+    expect(first("d0")).toBe(true);
+  });
 });

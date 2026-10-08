@@ -10005,12 +10005,12 @@ export class ProcurementService {
     if (error) return null;
     if (!data) return null;
     const row = data as any;
-    // A vendor of another house never speaks for this draft: not its name or
-    // address on the card, and not the first name the card is told the send
-    // fills (`at_send.fills`). approveDraft refuses such a send outright; here
+    // On this read, a vendor of another house or an orphan (ADR 0221) gives
+    // the draft no name or address, and not the first name the card is told
+    // the send fills (`at_send.fills`). approveDraft refuses such a send; here
     // the draft reads as having no vendor, so a greeting blank, if any, is unfillable.
     if (row.providers && row.providers.restaurant_id !== restaurantId) {
-      if (this.firstForeignVendorSighting(row.id)) this.logger.warn(`getPendingDraft: the draft ${row.id} on order ${orderId} names a vendor of another house; it is read as having none.`);
+      if (this.firstForeignVendorSighting(row.id)) this.logger.warn(`getPendingDraft: the draft ${row.id} on order ${orderId} names a vendor of another house or of no house; it is read as having none.`);
       row.providers = null;
     }
     const content = row.content ?? row.message_text ?? null;
