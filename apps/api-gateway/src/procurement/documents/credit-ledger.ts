@@ -40,7 +40,152 @@ export type CreditReason =
    * `ProcurementService.openNeverArrivedCreditClaim`, never from
    * `draftClaimFromMatch` (an invoice-match verdict is never this reason).
    */
-  | "never_arrived";
+  | "never_arrived"
+  /**
+   * The door's own reason, kept on the claim (founder, 2026-10-02, W54 /
+   * F-158, ADR 0267 option 8: "Keep the door's reason"). Before this a
+   * `rejected` verdict was always filed as `damaged`, so a wrong item, a
+   * broken case and a warm truck were one claim with three names on three
+   * pages. `damaged` stays for old rows and for a rejection whose reason the
+   * door did not give (see `doorReason`) — never rewritten (no backfill).
+   */
+  | "wrong_item"
+  | "broken"
+  | "temperature";
+
+/**
+ * Every claim reason in the house's words — ONE wording, used by every page
+ * and by the vendor letter (W54: "one wording on every page and in the
+ * letter").
+ *
+ * `label` is what a page prints for the claim (/receipts › Credits,
+ * /receiving's drafted card, the vendor scorecard). `sentence` is the clause
+ * the credit letter puts after "because" (`credit-letter.ts`). They say the
+ * same thing in two grammatical shapes; no page or letter carries its own
+ * copy. The web keeps a mirror of `label` (`ReceiptsCredits.tsx`
+ * REASON_WORDS) because it cannot import gateway code at runtime, and
+ * `credit-reason-words.test.ts` fails the build when the two differ.
+ */
+export const CREDIT_REASON_WORDING: Record<
+  CreditReason,
+  { label: string; sentence: string }
+> = {
+  overbilled_vs_ship: {
+    label: "Billed for more than their packing slip shipped",
+    sentence: "we were invoiced for more than was delivered",
+  },
+  qty_short: {
+    label: "Billed for more than arrived",
+    sentence: "the quantity delivered was short of the quantity invoiced",
+  },
+  short_shipped: {
+    label: "Lost between their warehouse and the door",
+    sentence: "part of the order was not delivered",
+  },
+  // Old rows and unnamed rejections: the door turned it away or found it
+  // broken, and the claim does not know which. Said as exactly that — the
+  // old "arrived damaged" told a vendor something the house never recorded.
+  damaged: {
+    label: "Refused or broken at the door",
+    sentence: "part of the delivery was refused or arrived broken at the door",
+  },
+  price_variance: {
+    label: "Billed above the agreed price",
+    sentence: "the price invoiced differs from the price agreed",
+  },
+  never_ordered: {
+    label: "Billed for something never ordered",
+    sentence: "we were invoiced for goods we did not order",
+  },
+  other: {
+    label: "Another reason",
+    sentence: "there is a discrepancy on this delivery",
+  },
+  never_arrived: {
+    label: "Paid for, never arrived",
+    sentence: "we paid for an order that never arrived",
+  },
+  wrong_item: {
+    label: "Wrong item, refused at the door",
+    sentence:
+      "part of the delivery was not what we ordered, and we refused it at the door",
+  },
+  broken: {
+    label: "Arrived broken",
+    sentence: "part of the delivery arrived broken",
+  },
+  temperature: {
+    label: "Wrong temperature, refused at the door",
+    sentence:
+      "part of the delivery arrived at the wrong temperature, and we refused it at the door",
+  },
+};
+
+/** A reason code in the house's words; an unknown code is shown, not hidden. */
+export function creditReasonLabel(reason: string | null | undefined): string {
+  if (!reason) return "No reason recorded";
+  return (
+    CREDIT_REASON_WORDING[reason as CreditReason]?.label ??
+    `Recorded as “${reason}”`
+  );
+}
+
+/**
+ * The door's refusal reasons (`procurement_receipt_events.refusal_reason`,
+ * `DOOR_REFUSAL_REASONS` in receiving.service.ts) as claim reasons. The door
+ * says `wrong_wine` because it was built for a wine house; the claim says
+ * `wrong_item` because the build scope is every beverage, then food.
+ */
+export const DOOR_REASON_TO_CREDIT_REASON: Record<string, CreditReason> = {
+  wrong_wine: "wrong_item",
+  broken_case: "broken",
+  temperature: "temperature",
+  other: "other",
+};
+
+/** One door receipt event, as far as its rejection is concerned. */
+export interface DoorRejectionFact {
+  outcome: string | null;
+  refusal_reason: string | null;
+  rejected_qty_bottles?: number | null;
+  rejected_qty?: number | null;
+}
+
+/**
+ * The one reason the door gave for what it turned away on an order, or null
+ * when it gave none, or more than one.
+ *
+ * - `refused` carries the receiver's own reason (wrong item, broken case,
+ *   temperature, other). A refusal with no reason is no reason.
+ * - `accepted` or `short` with units rejected is the door's broken count —
+ *   the only way those outcomes reject anything (DoorModel.doorFacts) — so
+ *   it is `broken`.
+ * - An event with no outcome predates the door's structured facts: what it
+ *   rejected was refused or broken, and nothing says which.
+ *
+ * Two trucks with two different reasons make one claim with no single
+ * reason; it is filed `damaged` ("refused or broken at the door") rather
+ * than under whichever truck came first.
+ */
+export function doorReason(
+  events: readonly DoorRejectionFact[],
+): CreditReason | null {
+  const found = new Set<CreditReason>();
+  for (const e of events) {
+    const rejected = Number(e.rejected_qty_bottles ?? e.rejected_qty ?? 0);
+    if (e.outcome === "refused") {
+      const r = e.refusal_reason
+        ? DOOR_REASON_TO_CREDIT_REASON[e.refusal_reason]
+        : undefined;
+      if (!r) return null;
+      found.add(r);
+    } else if (rejected > 0) {
+      if (e.outcome === "accepted" || e.outcome === "short") found.add("broken");
+      else return null;
+    }
+  }
+  return found.size === 1 ? [...found][0] : null;
+}
 
 export interface Credit {
   state: CreditState;
@@ -149,7 +294,10 @@ export function transition(
  * ending with either a claim raised on an unfinished delivery, or a real
  * overbill silently never claimed.
  */
-export function reasonForVerdict(verdict: MatchVerdict): CreditReason | null {
+export function reasonForVerdict(
+  verdict: MatchVerdict,
+  fromDoor: CreditReason | null = null,
+): CreditReason | null {
   if (!isClaimable(verdict)) return null;
   switch (verdict) {
     case "overbilled_vs_ship":
@@ -159,7 +307,9 @@ export function reasonForVerdict(verdict: MatchVerdict): CreditReason | null {
     case "short_shipped":
       return "short_shipped";
     case "rejected":
-      return "damaged";
+      // The door's own reason when it gave one (W54); `damaged` — "refused
+      // or broken at the door" — only when it did not.
+      return fromDoor ?? "damaged";
     case "price_variance":
       return "price_variance";
     default:
@@ -181,8 +331,11 @@ export interface DraftClaim {
  * computed. An unpriced discrepancy is real but not yet chargeable, and a claim
  * for $0 in a distributor's inbox costs more credibility than it recovers.
  */
-export function draftClaimFromMatch(match: MatchResult): DraftClaim | null {
-  const reason = reasonForVerdict(match.verdict);
+export function draftClaimFromMatch(
+  match: MatchResult,
+  fromDoor: CreditReason | null = null,
+): DraftClaim | null {
+  const reason = reasonForVerdict(match.verdict, fromDoor);
   if (!reason) return null;
   if (!match.creditDue) return null;
   if (match.creditAmount == null || match.creditAmount <= 0) return null;

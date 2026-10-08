@@ -73,7 +73,12 @@ import {
   shelfUnreadable,
   type ShelfReceived,
 } from "./shelf-received";
-import { draftClaimFromMatch } from "./documents/credit-ledger";
+import {
+  type CreditReason,
+  type DoorRejectionFact,
+  doorReason,
+  draftClaimFromMatch,
+} from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import {
   OrderSource,
@@ -5674,6 +5679,35 @@ export class ProcurementService {
   }
 
   /**
+   * The one reason the door gave for what it turned away on this order
+   * (`doorReason`; W54 / F-158, ADR 0267 option 8), read from the door's own
+   * `case_count` events — never the desk's `reconciled` one, which carries no
+   * reason. Null when it gave none, gave two, or could not be read: the claim
+   * is then filed `damaged` ("refused or broken at the door") rather than not
+   * filed at all, because a lost read must not cost the house its claim.
+   */
+  private async readDoorReason(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<CreditReason | null> {
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .select("outcome, refusal_reason, rejected_qty, rejected_qty_bottles")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("stage", "case_count");
+      if (error) throw new Error(error.message);
+      return doorReason((data ?? []) as DoorRejectionFact[]);
+    } catch (err: any) {
+      this.logger.warn(
+        `openCreditClaim could not read the door's reason for order ${orderId}: ${err?.message}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Apply one signed correction to live stock through the ledger.
    * The idempotency key is per (order, inventory) so a replayed request — the mobile
    * outbox retries — can never double-count.
@@ -5710,7 +5744,18 @@ export class ProcurementService {
     order?: { provider_id?: string | null; currency?: string | null } | null,
   ): Promise<void> {
     try {
-      const claim = draftClaimFromMatch(match);
+      // KEEP THE DOOR'S REASON (founder, 2026-10-02, W54 / F-158, ADR 0267
+      // option 8). A `rejected` verdict used to be filed as `damaged` whatever
+      // the door said, so a wrong item read "damaged" on /receiving and
+      // "Refused at the door" on /receipts. The door's own words live on its
+      // receipt events; read them only when the verdict is a rejection, and
+      // when they cannot be read file the claim as before (`damaged`, now
+      // worded "refused or broken at the door") rather than strand it.
+      const fromDoor =
+        match.verdict === "rejected"
+          ? await this.readDoorReason(restaurantId, orderId)
+          : null;
+      const claim = draftClaimFromMatch(match, fromDoor);
       if (!claim) return;
 
       const insertRow: Record<string, unknown> = {

@@ -1,0 +1,56 @@
+## A claim filed every door rejection as "damaged" — CLOSED on `fix/claim-keeps-the-door-reason` — 2026-10-08
+
+F-158 (owner-quarter sim, `p4-scratch/sim-findings-share-out-2026-10-02.md` §R3 4,
+`sim-ledger.md:209`). Founder ruling W54, ADR 0267 option 8 (on branch
+`fix/door-releases-reservation`, PR #664 at the time of writing), verbatim pick
+"Keep the door's reason".
+
+**What main did (origin/main 87dafc064).** The door stores its reason on
+`procurement_receipt_events.refusal_reason` (`wrong_wine`, `broken_case`,
+`temperature`, `other`; `receiving.service.ts:94-99`), but nothing read it
+back for the claim. `verifyReceipt` → `openCreditClaim` → `draftClaimFromMatch`
+filed every `rejected` verdict as `damaged` (`credit-ledger.ts` `reasonForVerdict`).
+/receiving's drafted card printed the raw code (`RcCreditDrafts.tsx:101`,
+"damaged"); /receipts › Credits worded it "Refused at the door"
+(`ReceiptsCredits.tsx:66`); the letter said "arrived damaged"
+(`credit-letter.ts:41`); the scorecard printed "damaged". A broken count on a
+kept delivery took the same path.
+
+**Fixed.** `openCreditClaim` reads the order's door `case_count` events and
+keeps the one reason they give: wrong_wine→`wrong_item`, broken_case→`broken`,
+temperature→`temperature`, other→`other`, a broken count on an accepted/short
+delivery→`broken`. No reason, two reasons, or an unreadable read → `damaged`,
+still opened. Migration `a_claim_keeps_the_door_reason` widens
+`procurement_credits_reason_check` (read-and-append). One wording:
+`CREDIT_REASON_WORDING` in `credit-ledger.ts` feeds the letter and the
+scorecard; the web mirror `REASON_WORDS` is pinned to it by
+`credit-reason-words.test.ts`. Old `damaged` rows are not rewritten; they now
+read "Refused or broken at the door" everywhere, which is all they know.
+Claims: `claims.d/fix-claim-keeps-the-door-reason.jsonl:1-5`.
+
+## Left open from F-158 — OPEN — 2026-10-08
+
+1. **/receiving's "Refused" lane still counts a broken-only delivery.**
+   `laneOf` (`useReceivingNextData.ts:353-366`) folds verdict `rejected` into
+   `refused`, so one broken bottle on a kept delivery still counts in
+   "Refused N". The ruling covers the claim's reason and its wording, not the
+   lane; renaming or splitting it is a founder fork (reported, not decided).
+2. **`apps/web/src/services/api/credits.ts:19-27` `CreditReason` is stale.** It
+   lists the baseline seven; `never_arrived`, `wrong_item`, `broken` and
+   `temperature` are missing. Nothing breaks (`ProcurementCredit.reason` is
+   `string | null`), but the type lies. Shared file, left to its owner: add the
+   four codes to the union.
+3. **A desk rejection on top of a door refusal inherits the door's reason.**
+   `readDoorReason` does not compare the desk's rejected count with the
+   door's, so bottles the desk rejected for another cause are filed under the
+   door's reason.
+4. **Two reasons on one order make one `damaged` claim.** A claim is one row
+   per line and reason; splitting the amount by reason needs a per-reason
+   price split nobody has specified.
+5. **The door's own buttons still say "Wrong wine" / "Broken case"**
+   (`DoorModel.ts:371-376`) while the claim says "Wrong item, refused at the
+   door" / "Arrived broken". That is the receiver's pick list, not the claim;
+   left as is.
+6. **Old `damaged` claims' letters change words.** A `damaged` claim asked
+   after this lands says "part of the delivery was refused or arrived broken
+   at the door" instead of "arrived damaged".
