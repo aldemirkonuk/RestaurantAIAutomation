@@ -41,8 +41,11 @@ vi.mock('../../../services/api/client', () => ({
   },
 }));
 
+// VEN-W30: a manager by default, so the write controls are offered; the
+// staff case sets `auth.role = 'staff'` and is reset in beforeEach.
+const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1' }),
+  useAuth: () => ({ activeRestaurantId: 'r1', activeRole: auth.role, user: { role: auth.role } }),
 }));
 
 // The shared Places control needs a Maps key and a network. The double keeps
@@ -106,6 +109,7 @@ const URL = '/providers/p1/locations';
 beforeEach(() => {
   api.get.mockReset();
   api.post.mockReset();
+  auth.role = 'manager';
   api.patch.mockReset();
   api.delete.mockReset();
 });
@@ -356,5 +360,26 @@ describe('BranchesSection draws only with house tokens', () => {
       (name) => !new RegExp(`^\\s*${name}\\s*:`, 'm').test(css),
     );
     expect(undeclared).toEqual([]);
+  });
+});
+
+describe('BranchesSection for staff (VEN-W30, "Staff read only")', () => {
+  it('shows every branch and offers no add, edit, primary or remove', async () => {
+    auth.role = 'staff';
+    api.get.mockResolvedValue({ data: [HQ, DEPOT] });
+    renderSection();
+    expect(await screen.findByText('Head office')).toBeInTheDocument();
+    expect(screen.getByText('1 Old St, New York')).toBeInTheDocument();
+    expect(screen.getAllByText('Primary')).toHaveLength(1);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('an empty book says so without telling staff to add one', async () => {
+    auth.role = 'staff';
+    api.get.mockResolvedValue({ data: [] });
+    renderSection();
+    expect(await screen.findByText(/No branches are recorded for Sheena Wines\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Add the office/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add a branch' })).toBeNull();
   });
 });

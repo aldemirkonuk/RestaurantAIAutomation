@@ -17,6 +17,11 @@ vi.mock('../../../services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
 vi.mock('./NewVendorSheet', () => ({ BUSINESS_TYPES: ['Distributor', 'Importer', 'Wholesaler'] }));
+// VEN-W30: a manager by default; the staff case flips it.
+const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: auth.role, user: { role: auth.role } }),
+}));
 
 import { VendorRecordEdit, businessTypeLabel } from './VendorRecordEdit';
 
@@ -25,6 +30,7 @@ const provider = (over: Record<string, unknown> = {}) =>
 
 beforeEach(() => {
   api.update.mockReset();
+  auth.role = 'manager';
 });
 
 describe('the vendor record, edited in the rebuilt sheet', () => {
@@ -88,5 +94,20 @@ describe('the vendor record, edited in the rebuilt sheet', () => {
     fireEvent.click(screen.getByTestId('vendor-record-save'));
     await waitFor(() => expect(screen.getByTestId('vendor-record-problem')).toHaveTextContent(/Nothing was changed \(forbidden\)/));
     expect((screen.getByLabelText('Wholesaler') as HTMLInputElement).checked).toBe(true);
+  });
+});
+
+describe('the vendor record for staff (VEN-W30, "Staff read only")', () => {
+  it('reads the type and offers no edit', () => {
+    auth.role = 'staff';
+    render(<VendorRecordEdit provider={provider({ primaryBusinessType: 'Importer' })} onSaved={vi.fn()} />);
+    expect(screen.getByTestId('vendor-record')).toHaveTextContent('Importer');
+    expect(screen.queryByTestId('vendor-record-edit')).toBeNull();
+  });
+
+  it('a session whose role is not known is not offered the edit either', () => {
+    auth.role = null;
+    render(<VendorRecordEdit provider={provider()} onSaved={vi.fn()} />);
+    expect(screen.queryByTestId('vendor-record-edit')).toBeNull();
   });
 });

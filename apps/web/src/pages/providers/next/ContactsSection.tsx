@@ -24,6 +24,7 @@
  * (ADR 0042).
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { ink, useReducedMotion } from '../../../lib/mudavym/motion';
 import type { ProviderContact } from '../../../services/api/providers';
 import { useProviderContacts, PHONE_TYPE_CHOICES } from './useProviderContacts';
@@ -159,6 +160,8 @@ export interface ContactsListProps {
   saveError: string | null;
   onSetPhoneType: (contactId: string, phoneType: string) => void;
   onReload: () => void;
+  /** VEN-W30: staff read the line's type in words; only owners and managers get the picker. */
+  canChange?: boolean;
 }
 
 /**
@@ -175,6 +178,7 @@ export function ContactsList({
   saveError,
   onSetPhoneType,
   onReload,
+  canChange = true,
 }: ContactsListProps) {
   const reduced = useReducedMotion();
   const savingName = saving ? contacts?.find((c) => c.id === saving)?.name ?? null : null;
@@ -251,7 +255,7 @@ export function ContactsList({
                 </p>
               )}
 
-              {c.phone && (
+              {c.phone && canChange && (
                 <label
                   style={{
                     ...BODY,
@@ -323,6 +327,7 @@ export function ContactsList({
 export function ContactsSection({ providerId, providerName }: Props) {
   const { contacts, loading, error, saving, saveError, setPhoneType, reload } =
     useProviderContacts(providerId);
+  const canChange = useCanChangeVendors();
 
   return (
     <ContactsList
@@ -334,6 +339,7 @@ export function ContactsSection({ providerId, providerName }: Props) {
       saveError={saveError}
       onSetPhoneType={(id, type) => void setPhoneType(id, type)}
       onReload={reload}
+      canChange={canChange}
     />
   );
 }

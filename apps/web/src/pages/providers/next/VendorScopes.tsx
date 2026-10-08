@@ -12,6 +12,7 @@
  * item 4's filter-bar row, not something to guess at from one caller.
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -331,6 +332,7 @@ export function FindNewVendors({
   const [adding, setAdding] = useState<string | null>(null);
   const [added, setAdded] = useState<Set<string>>(() => new Set());
   const [addError, setAddError] = useState<string | null>(null);
+  const canChange = useCanChangeVendors();
 
   const add = async (v: CatalogueVendorLike) => {
     setAdding(v.id);
@@ -391,7 +393,9 @@ export function FindNewVendors({
       </div>
       <p id="find-country-hint" style={quiet}>
         The curated catalogue — vendors a person has checked, listed by two-letter country code.
-        Adding one puts it in your own book; nothing is sent to the vendor.{' '}
+        {canChange
+          ? ' Adding one puts it in your own book; nothing is sent to the vendor.'
+          : ' A manager or an owner adds one to your book.'}{' '}
         <span data-testid="find-country-basis">{countryHint(find)}</span>
       </p>
 
@@ -457,6 +461,8 @@ function CatalogueRow({
   onAdd: () => void;
   tag?: string;
 }) {
+  // VEN-W30: staff read the catalogue; only owners and managers add from it.
+  const canChange = useCanChangeVendors();
   return (
     <li
       data-testid={tag ? 'find-wine-row' : 'find-row'}
@@ -499,7 +505,7 @@ function CatalogueRow({
       </div>
       {yours ? (
         <span style={{ fontSize: 12, color: 'var(--ink-4, #665D50)' }}>In your vendors</span>
-      ) : (
+      ) : canChange && (
         <button
           type="button"
           onClick={onAdd}

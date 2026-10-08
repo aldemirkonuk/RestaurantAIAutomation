@@ -21,6 +21,7 @@
  *   - A failed save keeps what was typed and says nothing changed.
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { useMemo, useState } from 'react';
 import { updateProvider, type Provider } from '../../../services/api/providers';
 import { getErrorMessage } from '../../../services/api/client';
@@ -56,6 +57,8 @@ export function VendorRecordEdit({
 
   const typeChanged = type !== current;
   const nameChanged = name.trim() !== provider.name && name.trim() !== '';
+  // VEN-W30: staff read the record; only owners and managers edit it.
+  const canChange = useCanChangeVendors();
   const canSave = !busy && (typeChanged || nameChanged) && name.trim() !== '';
 
   const save = async () => {
@@ -100,6 +103,7 @@ export function VendorRecordEdit({
         <span style={label}>Business type</span>
         <span style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-1, #211C16)' }}>
           {businessTypeLabel(provider.primaryBusinessType)}{' '}
+          {canChange && (
           <button
             type="button"
             data-testid="vendor-record-edit"
@@ -124,6 +128,7 @@ export function VendorRecordEdit({
           >
             Edit the record
           </button>
+          )}
         </span>
         {says && (
           <span role="status" data-testid="vendor-record-says" style={{ fontSize: 11.5 }}>

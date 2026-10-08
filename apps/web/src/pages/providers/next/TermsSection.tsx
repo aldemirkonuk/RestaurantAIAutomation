@@ -28,6 +28,7 @@
  * the JWT, never sent by this form. Recorded, not restricted.
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { useState } from 'react';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import {
@@ -446,6 +447,8 @@ export function TermsSection({
   const own = useProviderTerms(lifted ? null : providerId);
   const terms = lifted ?? own;
   const [editing, setEditing] = useState(false);
+  // VEN-W30: staff read the terms; only owners and managers record them.
+  const canChange = useCanChangeVendors();
   const reg = terms.register;
   const row = terms.row;
   // The house's reporting currency, or `null` when nobody has been asked. It
@@ -588,7 +591,7 @@ export function TermsSection({
             />
           ) : (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              <Btn onClick={() => setEditing(true)}>Record what they said</Btn>
+              {canChange && <Btn onClick={() => setEditing(true)}>Record what they said</Btn>}
               <a
                 href="/settings?tab=vendor-terms"
                 style={{

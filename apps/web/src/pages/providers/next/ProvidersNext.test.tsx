@@ -210,6 +210,7 @@ const base = {
 };
 
 beforeEach(() => {
+  auth.role = 'owner';
   mockData.current = { ...base, cards: [] };
   roll.current = { data: undefined, isError: false };
   // Each test states its own URL; without the reset a `?vendor=` from one test
@@ -458,5 +459,21 @@ describe('ProvidersNext', () => {
       expect(screen.queryByTestId('mail-tone-stub')).not.toBeInTheDocument();
       auth.role = 'owner';
     });
+  });
+});
+
+describe('the book for staff (VEN-W30, "Staff read only")', () => {
+  it('offers no "Add a vendor" and says who changes the book', () => {
+    auth.role = 'staff';
+    render(<ProvidersNext />);
+    expect(screen.queryByTestId('add-vendor')).toBeNull();
+    expect(screen.getByTestId('vendors-read-only')).toHaveTextContent('A manager or an owner changes this book.');
+  });
+
+  it('a manager is offered "Add a vendor"', () => {
+    auth.role = 'manager';
+    render(<ProvidersNext />);
+    expect(screen.getByTestId('add-vendor')).toHaveTextContent('Add a vendor');
+    expect(screen.queryByTestId('vendors-read-only')).toBeNull();
   });
 });

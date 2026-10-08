@@ -30,8 +30,11 @@ vi.mock('../../../services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : 'unknown error'),
 }));
 
+// VEN-W30: a manager by default, so the write controls are offered; the
+// staff case sets `auth.role = 'staff'` and is reset in beforeEach.
+const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1' }),
+  useAuth: () => ({ activeRestaurantId: 'r1', activeRole: auth.role, user: { role: auth.role } }),
 }));
 
 import { ContactsList, ContactsSection } from './ContactsSection';
@@ -65,6 +68,7 @@ const DEFAULTED = {
 beforeEach(() => {
   api.get.mockReset();
   api.patch.mockReset();
+  auth.role = 'manager';
 });
 
 describe('ContactsSection', () => {
@@ -197,5 +201,17 @@ describe('ContactsSection draws only with house tokens', () => {
       (name) => !new RegExp(`^\\s*${name}\\s*:`, 'm').test(css),
     );
     expect(undeclared).toEqual([]);
+  });
+});
+
+describe('ContactsSection for staff (VEN-W30, "Staff read only")', () => {
+  it('says the type of line in words and offers no picker', async () => {
+    auth.role = 'staff';
+    api.get.mockResolvedValue({ data: [MOBILE, DEFAULTED] });
+    render(<ContactsSection providerId="p1" providerName="Sheena Wines" />);
+    expect(await screen.findByText('Textable')).toBeInTheDocument();
+    expect(screen.getByText('Not stated')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Type of line for/)).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
   });
 });

@@ -17,6 +17,7 @@
  * unreachable ≠ zero open orders); a vendor never contacted says so.
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Wordmark } from "@/components/mudavym";
 import type { Provider } from "../../../services/api/providers";
@@ -222,6 +223,7 @@ export default function ProvidersNext() {
   );
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
   const [adding, setAdding] = useState(false);
+  const canChange = useCanChangeVendors();
   const [view, setView] = useState<ProvidersView>(viewFromUrl);
   const chooseView = (next: ProvidersView) => {
     setView(next);
@@ -344,6 +346,7 @@ export default function ProvidersNext() {
                   ? 'Vendors not known'
                   : 'Reading your vendors…'}
             </span>
+            {canChange ? (
             <button
               type="button"
               onClick={() => setAdding(true)}
@@ -361,6 +364,13 @@ export default function ProvidersNext() {
             >
               Add a vendor
             </button>
+            ) : (
+              // VEN-W30: staff read the book; the server refuses their writes,
+              // so they are told who changes it instead of offered a button.
+              <span data-testid="vendors-read-only" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
+                A manager or an owner changes this book.
+              </span>
+            )}
           </div>
         </header>
 

@@ -27,6 +27,10 @@ vi.mock('../../../services/api/client', () => ({
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'r1', user: { role: 'staff' }, activeRole: 'staff' }),
 }));
+// Staff above keeps the mail-tone read out of this file; the Terms write is
+// offered as for a manager, because this file proves the top/Terms join, not
+// VEN-W30's role split (TermsSection.test.tsx covers that).
+vi.mock('./useCanChangeVendors', () => ({ useCanChangeVendors: () => true }));
 vi.mock('../../../components/mudavym/Sheet', () => ({
   Sheet: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));

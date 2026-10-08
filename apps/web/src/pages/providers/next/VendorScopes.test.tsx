@@ -41,8 +41,11 @@ vi.mock('./useProvidersNextData', () => ({
   }),
 }));
 
+// VEN-W30: a manager by default, so the write controls are offered; the
+// staff case sets `auth.role = 'staff'` and is reset in beforeEach.
+const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1' }),
+  useAuth: () => ({ activeRestaurantId: 'r1', activeRole: auth.role, user: { role: auth.role } }),
 }));
 
 vi.mock('./UsualCurrencyCoveragePanel', () => ({
@@ -137,6 +140,7 @@ const names = () =>
   screen.queryAllByRole('button').map((b) => b.textContent ?? '').filter((t) => /Bodega|Cave|Vinos/.test(t));
 
 beforeEach(() => {
+  auth.role = 'manager';
   h.cards = [
     card(provider('p1', 'Bodega Álvaro')),
     card(provider('p2', 'Cave Lumière', { catalogueVendorId: 'cat-2' })),
@@ -410,5 +414,18 @@ describe('a wine NAME matches any vintage where the menu rung is not applied (it
     expect(screen.getByTestId('find-wine-basis')).toHaveTextContent('A price on a vendor’s list is not a sale');
     fireEvent.click(within(row).getByText('Add to my vendors'));
     await waitFor(() => expect(h.posts).toEqual([{ url: '/providers', body: { catalogue_vendor_id: 'cat-7' } }]));
+  });
+});
+
+describe('Find new vendors for staff (VEN-W30, "Staff read only")', () => {
+  it('lists the catalogue, marks what is already in the book, and offers no add', async () => {
+    auth.role = 'staff';
+    window.history.replaceState({}, '', '/vendors?scope=find');
+    renderPage();
+    const rows = await screen.findAllByTestId('find-row');
+    expect(within(rows[0]).getByText('In your vendors')).toBeInTheDocument();
+    expect(screen.queryByText('Add to my vendors')).toBeNull();
+    expect(screen.getByText(/A manager or an owner adds one to your book\./)).toBeInTheDocument();
+    expect(h.posts).toEqual([]);
   });
 });
