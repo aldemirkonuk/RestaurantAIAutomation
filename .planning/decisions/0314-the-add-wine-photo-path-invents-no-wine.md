@@ -54,7 +54,7 @@ display only: a person was shown a wine nobody read, and the add then failed sil
    opened it ("Single Wine Label Scan", "Scan Another Wine"), `handlePhotoWineDetected` with
    its defaults, the `detectedWine` state, the "Wine Detected Successfully!" pane and the
    "AI Detected" badge. The Photo tab keeps the real scanner. This follows ADR 0020's
-   *"deleted, not labelled"* and leaves no dead end. [The "Single Wine" card that opens this sheet (`AddWineSelectionModal.tsx:88-91`) still promises "Scan one wine label at a time"; its Photo tab now opens only the Menu Scanner, whose own copy disagrees on the detector (the sheet's info box `:437-440` says YOLOv8, `MenuScannerFlow.tsx:47-50` says RF-DETR). Whether that scanner reads a lone bottle label well was not checked. The card copy is pre-existing and listed under Out of scope.]
+   *"deleted, not labelled"* and leaves no dead end. [The "Single Wine" card that opens this sheet (`AddWineSelectionModal.tsx:88-91`) still promises "Scan one wine label at a time"; its Photo tab now opens only the Menu Scanner, whose own copy disagrees on the detector (the sheet's info box `:436-439` says YOLOv8, `MenuScannerFlow.tsx:47-50` says RF-DETR). Whether that scanner reads a lone bottle label well was not checked. The card copy is pre-existing and listed under Out of scope.]
 2. **Keep it, and say detection is unavailable.** This was the brief as written: the mock
    goes, a photo returns "not available", and the result screen renders nulls as "Not
    recorded". Rejected. Nothing could reach that result screen, so it would be dead code. A
