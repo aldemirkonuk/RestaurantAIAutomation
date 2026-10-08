@@ -27,6 +27,7 @@
  * until now editable only in the legacy sheet's Locations tab.
  */
 
+import { Mail, Phone } from 'lucide-react';
 import type { Provider } from '../../../services/api/providers';
 import { Sheet } from '../../../components/mudavym/Sheet';
 import { EM, MONO, SANS, fmtLastContact, visibleRegions } from './pv-format';
@@ -60,30 +61,75 @@ interface Props {
   onProviderSaved?: (updated: Provider) => void;
 }
 
-function FactRow({ label, value, href }: { label: string; value: string; href?: string }) {
+const FACT_LABEL: React.CSSProperties = {
+  fontFamily: MONO,
+  fontSize: 9.5,
+  fontWeight: 500,
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase',
+  color: 'var(--ink-4, #665D50)',
+};
+
+function FactRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
-      <span
+      <span style={FACT_LABEL}>{label}</span>
+      <span style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-1, #211C16)', textAlign: 'right' }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * How to reach the vendor, drawn as the act it is (VEN-W32, founder
+ * 2026-10-08: "more striking looking, right now looks like an error"; then
+ * "Approve, phone too"). An underlined teal line wrapping down the right edge
+ * read as a warning; a sealed button with its icon says "write to them" /
+ * "call them". Nothing on file stays an em dash, never a button.
+ */
+function ReachRow({
+  label,
+  shown,
+  href,
+  verb,
+  Icon,
+  testId,
+}: {
+  label: string;
+  shown: string;
+  href: string;
+  verb: string;
+  Icon: typeof Mail;
+  testId: string;
+}) {
+  if (!shown) return <FactRow label={label} value={EM} />;
+  return (
+    <div className="flex items-center justify-between gap-4 py-2" data-testid={testId}>
+      <span style={FACT_LABEL}>{label}</span>
+      <a
+        href={href}
+        aria-label={`${verb} ${shown}`}
         style={{
-          fontFamily: MONO,
-          fontSize: 9.5,
-          fontWeight: 500,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: 'var(--ink-4, #665D50)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          minWidth: 0,
+          maxWidth: '78%',
+          padding: '6px 12px',
+          borderRadius: 10,
+          background: 'var(--seal, #1A5E6B)',
+          color: 'var(--paper-0, #FBF8F1)',
+          fontFamily: SANS,
+          fontSize: 12.5,
+          fontWeight: 600,
+          lineHeight: 1.35,
+          textDecoration: 'none',
         }}
       >
-        {label}
-      </span>
-      <span style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-1, #211C16)', textAlign: 'right' }}>
-        {href ? (
-          <a href={href} style={{ color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', textUnderlineOffset: 2 }}>
-            {value}
-          </a>
-        ) : (
-          value
-        )}
-      </span>
+        <Icon aria-hidden className="w-3.5 h-3.5 shrink-0" />
+        <span style={{ overflowWrap: 'anywhere' }}>{shown}</span>
+      </a>
     </div>
   );
 }
@@ -114,8 +160,22 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
         {/* the vendor's own record — the type first, editable here */}
         <VendorRecordEdit provider={provider} onSaved={(p) => onProviderSaved?.(p)} />
         {/* plain facts, EM for absences */}
-        <FactRow label="Email" value={provider.email || EM} href={provider.email ? `mailto:${provider.email}` : undefined} />
-        <FactRow label="Phone" value={provider.phone || EM} href={provider.phone ? `tel:${provider.phone.replace(/[^\d+]/g, '')}` : undefined} />
+        <ReachRow
+          label="Email"
+          shown={(provider.email ?? '').trim()}
+          href={`mailto:${(provider.email ?? '').trim()}`}
+          verb="Write to"
+          Icon={Mail}
+          testId="vendor-email"
+        />
+        <ReachRow
+          label="Phone"
+          shown={(provider.phone ?? '').trim()}
+          href={`tel:${(provider.phone ?? '').replace(/[^\d+]/g, '')}`}
+          verb="Call"
+          Icon={Phone}
+          testId="vendor-phone"
+        />
         {/* what the HOUSE recorded, else the vendor's record, labelled —
             the same cells as Terms below (VEN-W24, "One source") */}
         <FactRow label="Lead time" value={top.leadTime} />
