@@ -3,13 +3,16 @@
  * the width rule, the phone's four doors, and what the shell must NOT carry.
  *
  * The network is mocked at its seams — the counter's one read, the flag API —
- * and the header's own popovers (bell, account, theme) are markers, because
- * their suites are theirs. Nothing the shell itself renders is mocked.
+ * and the header's own popovers (bell, account) are markers, because their
+ * suites are theirs. Nothing the shell itself renders is mocked. There is no
+ * theme popover to mock: the header's theme control was removed on
+ * 2026-10-01 (founder, page walk-through DASH-W23) and the person's ground is
+ * chosen on /profile — the case below holds that.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const readCounter = vi.hoisted(() => vi.fn());
 const checkFlag = vi.hoisted(() => vi.fn());
@@ -22,7 +25,6 @@ vi.mock('../../services/api/settings', () => ({
 }));
 vi.mock('./HouseBell', () => ({ HouseBell: () => <span data-testid="bell" /> }));
 vi.mock('./HouseUserMenu', () => ({ HouseUserMenu: () => <span data-testid="account" /> }));
-vi.mock('../layout/ThemeMenu', () => ({ ThemeMenu: () => null }));
 vi.mock('../command/CommandProvider', () => ({
   CommandProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -124,6 +126,17 @@ describe('the shell at 1440', () => {
     expect(screen.queryByRole('complementary', { name: 'Ask Mudavym' })).toBeNull();
   });
 
+  it('the one header carries no theme control — the ground is chosen on /profile (DASH-W23)', () => {
+    mount('/orders');
+    const banner = screen.getByRole('banner');
+    const names = within(banner)
+      .queryAllByRole('button')
+      .map((b) => `${b.getAttribute('aria-label') ?? ''} ${b.getAttribute('title') ?? ''} ${b.textContent ?? ''}`);
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((n) => /theme|ground|paper|charcoal|light|dark/i.test(n))).toEqual([]);
+    expect(banner.querySelector('.mdv-hdr__theme')).toBeNull();
+  });
+
   it("names the page by its room in the one header", () => {
     mount('/orders');
     const banner = screen.getByRole('banner');
@@ -169,18 +182,40 @@ describe('the width rule — open first, then remember', () => {
     expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
   });
 
+  it('starts tucked on the dashboard, so its month has the room (ADR 0290)', () => {
+    mount('/');
+    expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'The counter' })).toBeNull();
+  });
+
   it('is tucked below 1280 px', () => {
     setWidth(1180);
     mount('/orders');
     expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
   });
 
-  it("remembers the person's choice for that page", () => {
-    mount('/orders');
+  it("remembers the person's choice: closed here stays closed on the next page (founder, 2026-10-01)", () => {
+    mount('/orders', 'owner', <Link to="/calendar">next page</Link>);
     fireEvent.click(screen.getByRole('button', { name: 'Tuck the counter' }));
     expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('link', { name: 'next page' }));
+    expect(screen.getByRole('complementary', { name: 'The counter, tucked' })).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: 'The counter' })).toBeNull();
     const stored = JSON.parse(window.localStorage.getItem(prefsKeyFor('u-1')) ?? '{}');
-    expect(stored.counter['/orders']).toBe('tucked');
+    expect(stored.counter).toBe('tucked');
+  });
+
+  it('an opened counter stays open on the next page, a wide one included', () => {
+    mount('/reports', 'owner', <Link to="/inventory">next page</Link>);
+    fireEvent.click(screen.getByRole('button', { name: 'Open the counter' }));
+    fireEvent.click(screen.getByRole('link', { name: 'next page' }));
+    expect(screen.getByRole('complementary', { name: 'The counter' })).toBeTruthy();
+  });
+
+  it('a per-page record from the first build is read as never chosen', () => {
+    window.localStorage.setItem(prefsKeyFor('u-1'), JSON.stringify({ counter: { '/orders': 'tucked' }, railTucked: false }));
+    mount('/orders');
+    expect(screen.getByRole('complementary', { name: 'The counter' })).toBeTruthy();
   });
 });
 
@@ -314,6 +349,22 @@ describe('the Ask panel in the counter slot', () => {
     mount('/orders');
     fireEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: /^Ask Mudavym/ }));
     expect(await screen.findByRole('complementary', { name: 'Ask Mudavym' })).toBeTruthy();
+    expect(window.localStorage.getItem(prefsKeyFor('u-1'))).toBeNull();
+  });
+
+  it("while Ask holds the slot, the header's Counter shows the counter tucked and gives the slot back without rewriting the choice", async () => {
+    mount('/orders');
+    const header = within(screen.getByRole('banner'));
+    const counterButton = header.getByRole('button', { name: /^The counter/ });
+    expect(counterButton.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /Ask Mudavym\./ }));
+    expect(await screen.findByRole('complementary', { name: 'Ask Mudavym' })).toBeTruthy();
+    expect(counterButton.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(counterButton);
+    expect(screen.queryByRole('complementary', { name: 'Ask Mudavym' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'The counter' })).toBeTruthy();
+    expect(counterButton.getAttribute('aria-pressed')).toBe('true');
     expect(window.localStorage.getItem(prefsKeyFor('u-1'))).toBeNull();
   });
 

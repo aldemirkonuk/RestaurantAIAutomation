@@ -121,6 +121,8 @@ function stub(opts: { pending?: unknown; readError?: string }) {
         },
       },
       logger: { warn: () => undefined, error: () => undefined },
+      // ORD-W7: no blanks in "Dear Hasan"; the rule itself is unfilled-slots.spec.
+      draftBlanksAtSend: async () => ({ unfillable: [], fills: [] }),
     },
   };
 }
@@ -271,6 +273,7 @@ describe("sendDraftedReply", () => {
       newerReplyStillAnalyzing: async () => false,
       sealChallenges: { redeem },
       logger: { error: jest.fn() },
+      draftBlanksAtSend: async () => ({ unfillable: [], fills: [] }),
     };
     await expect(
       ProcurementService.prototype.approveDraft.call(

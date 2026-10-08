@@ -183,10 +183,12 @@ export class ProcurementController {
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ count: number }> {
     try {
-      const pending = await this.procurementService.listPendingOrders(
+      // The badge needs a number, not the flags (ADR 0256): the same read as
+      // the queue, without asking the house's rules every 30 s.
+      const count = await this.procurementService.countPendingOrders(
         user.restaurantId,
       );
-      return { count: pending.length };
+      return { count };
     } catch (error) {
       // The service refuses a failed read with 503; keep that status instead
       // of re-wrapping it as a 500 with the same message.

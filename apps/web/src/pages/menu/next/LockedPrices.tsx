@@ -28,6 +28,7 @@ import {
   type LockMarker,
   type PriceLock,
 } from '../../../services/api/pricing';
+import { useAuthStore } from '../../../stores';
 
 const EM = '—';
 
@@ -88,7 +89,11 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
     mutationFn: (v: { target: string; price: number }) => movePriceLock(l.lockId, v.target, v.price),
     onSuccess: (r) => done(r.sentence),
   });
-  const wines = useQuery({ queryKey: ['pricing', 'advice'], queryFn: getPriceAdvice, enabled: mode === 'move' });
+  // The house is in every pricing key: the gateway reads it from the token,
+  // and one house's locks or advice must never stand under another's name
+  // (MENU-01).
+  const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
+  const wines = useQuery({ queryKey: ['pricing', 'advice', house], queryFn: getPriceAdvice, enabled: mode === 'move' });
   const busy = change.isPending || release.isPending || move.isPending;
   const failed = change.error ?? release.error ?? move.error;
 
@@ -205,7 +210,8 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
 
 export function LockedPrices({ canManage }: { canManage: boolean }) {
   const [said, setSaid] = useState<string | null>(null);
-  const q = useQuery({ queryKey: ['pricing', 'locks'], queryFn: listPriceLocks });
+  const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
+  const q = useQuery({ queryKey: ['pricing', 'locks', house], queryFn: listPriceLocks });
 
   let body: ReactNode;
   if (q.isLoading) {

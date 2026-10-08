@@ -64,7 +64,9 @@ describe('FieldVerifyDialog — focus and Escape', () => {
   it('moves focus INSIDE the dialog when it opens', async () => {
     render(<Harness onCancel={() => {}} />)
     open()
-    const dialog = await screen.findByTestId('field-verify-dialog')
+    await screen.findByTestId('field-verify-dialog')
+    // The dialog is the Panel around the content (walk-through RECEIPTS-W32).
+    const dialog = screen.getByRole('dialog')
     await waitFor(() =>
       expect(dialog.contains(document.activeElement)).toBe(true),
     )

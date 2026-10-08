@@ -16,7 +16,8 @@
  * Rows the screen caps for space (40 wines, 14 bars) are written whole: an
  * export is where a reader goes for the rest. Dates are ISO, money is a bare
  * number under a header that names the house's reporting currency (or says it
- * is not recorded), and ratios are the engine's 0–1 values.
+ * is not recorded), ratios are the engine's 0–1 values, and a signed change
+ * (pace, trend — also 0–1 in the engine) is written in percent (`pctOf`).
  *
  * DRIFT
  * -----
@@ -44,6 +45,7 @@ import {
   type ExportTable,
   type Unit,
 } from "./report-export-doc";
+import { HOUSE_ZONE_UNSET } from "../../common/house-day";
 
 export const EXPORTABLE_CUTTINGS = [
   "reading",
@@ -100,6 +102,42 @@ const f = (label: string, value: Cell, unit: Unit): ExportFigure => ({
 const nounCount = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
 
+/**
+ * A signed change the engine returns as a 0–1 fraction, in percent: 0.3333 →
+ * 33.33, written under the `percent` unit ("already in percent").
+ *
+ * `paceDeltaPct` is (current − previous) ÷ |previous| (engine/comparisons.ts
+ * periodOverPeriod) and `trendPerDayPct` is OLS slope ÷ |mean|
+ * (engine/statistics.ts trendPerPeriodPct) — fractions, despite the names.
+ * Until 2026-10-03 they were tagged `percent` as they came, so +20.7% a day
+ * was written as 0.2 and printed "0.2%" (analytics walk, A-020). Not `ratio`:
+ * that unit reads "share, 0–1", and a change is not a share of anything.
+ */
+const pctOf = (v: unknown): number | null => {
+  const n = num(v);
+  return n === null ? null : n * 100;
+};
+
+/** A timestamptz's UTC calendar day, said as one — the export has no house clock. */
+const utcDay = (v: string): string => {
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? v : `${new Date(t).toISOString().slice(0, 10)} (UTC)`;
+};
+
+/**
+ * `rp-registers-house.tsx` emptyWindowLine, for the two POS registers: the
+ * sentence for a window that holds NO check, or null when it holds some (or
+ * the gateway did not say). Only a `checksInWindow > 0` branch may blame a
+ * missing field — there are checks, and none of them carries it.
+ */
+function emptyWindowLine(s: Record<string, unknown>, sinceDays: number): string | null {
+  if (num(s.checksInWindow) !== 0) return null;
+  const latest = typeof s.latestCheckAt === "string" && s.latestCheckAt ? s.latestCheckAt : null;
+  return latest
+    ? `No POS check was opened in the last ${sinceDays} days — the latest this house has was opened ${utcDay(latest)}. The window is empty; no field is missing.`
+    : "No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.";
+}
+
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
 
 function writeReading(payload: unknown): ExportDoc {
@@ -111,6 +149,8 @@ function writeReading(payload: unknown): ExportDoc {
       category: str(row.category) || "sales",
       score: num(row.score),
       entity: str(row.entity_label ?? row.entityLabel),
+      // Glass lines read at the 750 ml stand-in under it (ADR 0297).
+      standIn: num(obj(obj(row.evidence).units).standInLines) ?? 0,
     }))
     .filter((r) => r.sentence !== "")
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -123,6 +163,7 @@ function writeReading(payload: unknown): ExportDoc {
 
   const counts = new Map<string, number>();
   for (const r of rows) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+  const standIn = rows.filter((r) => r.standIn > 0).length;
 
   return doc({
     figures: [
@@ -150,9 +191,12 @@ function writeReading(payload: unknown): ExportDoc {
           .map(([c, n]) => [c, n]),
       },
     ],
-    notes: [
+    notes: sentences(
       "Sentences are written as the engine wrote them. This export never composes one.",
-    ],
+      standIn > 0
+        ? `${nounCount(standIn, "of these sentences rests", "of these sentences rest")} in part on glass lines of items with no stated bottle size, read at the 750 ml stand-in the stock moves by; the stored feed carries each one's count of those lines and items.`
+        : null,
+    ),
     basis: [
       `${nounCount(rows.length, "sentence", "sentences")} read from the stored insight feed; every number in them was computed by the engine from this restaurant's own rows.`,
     ],
@@ -165,6 +209,7 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
   const d = obj(payload);
   const from = str(d.from);
   const to = str(d.to);
+  const timezone = str(d.timezone);
   const days = num(d.days) ?? ctx.days;
   const noFeed =
     "No POS check has ever landed for this restaurant — an absent feed, not a day of zero";
@@ -178,6 +223,21 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
         f("Average check", withheld(noFeed), "money"),
       ],
       basis: [`Window ${from || "—"} to ${to || "—"}.`],
+    });
+
+  // A house with no time zone has no days to file a check on (ADR 0296): the
+  // till answered with no figures, and the sheet says why rather than reading
+  // the gap as a quiet till. A payload from before ADR 0296 carries no
+  // `zoneUnset` and is read as it always was.
+  if (d.zoneUnset === true)
+    return doc({
+      say: HOUSE_ZONE_UNSET,
+      figures: [
+        f("Taken", withheld(HOUSE_ZONE_UNSET), "money"),
+        f("Checks", withheld(HOUSE_ZONE_UNSET), "count"),
+        f("Average check", withheld(HOUSE_ZONE_UNSET), "money"),
+      ],
+      basis: [],
     });
 
   const revenue = num(d.revenue);
@@ -226,7 +286,9 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
             },
           ],
     basis: [
-      `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}.`,
+      timezone
+        ? `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}, each check filed on the house's day in ${timezone} by when it closed, else when it opened.`
+        : `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}.`,
       "The series is sparse on purpose: a day with no check is absent, not written as zero.",
     ],
   });
@@ -250,7 +312,7 @@ function writePacing(payload: unknown): ExportDoc {
     figures: [
       f("Paid out, the last 30 days", figure(last, "the cashflow register returned no figure"), "money"),
       f("Paid out, the 30 days before", figure(prev, "the cashflow register returned no figure"), "money"),
-      f("Pace", figure(c.paceDeltaPct, "Needs two comparable 30-day windows"), "percent"),
+      f("Pace", figure(pctOf(c.paceDeltaPct), "Needs two comparable 30-day windows"), "percent"),
       f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
     ],
@@ -293,6 +355,9 @@ function writeWeek(payload: unknown): ExportDoc {
   const basis = sentences(
     basisObj.weekday ??
       "Mean units per weekday over the last 90 days of wine_consumption_log; a weekday with no observation is left blank rather than written as zero.",
+    // How many lines rest on the 750 ml stand-in, and how many carry no
+    // bottle figure (ADR 0297).
+    basisObj.units,
     basisObj.extremes,
   );
   const profile = arr(w.weekdayProfile).map((p) => ({
@@ -322,7 +387,7 @@ function writeWeek(payload: unknown): ExportDoc {
     figures: [
       f("Busiest day", ranked && best ? best : withheld("More than one weekday shares the highest mean"), "text"),
       f("Quietest day", ranked && worst ? worst : withheld("More than one weekday shares the lowest mean"), "text"),
-      f("28-day trend, per day", figure(w.trendPerDayPct, "the seasonality register returned no trend"), "percent"),
+      f("28-day trend, per day", figure(pctOf(w.trendPerDayPct), "the seasonality register returned no trend"), "percent"),
     ],
     tables: [
       {
@@ -438,11 +503,17 @@ function writeQuadrants(payload: unknown): ExportDoc {
     quadrant: typeof i.quadrant === "string" ? i.quadrant : null,
   }));
   const uncosted = "no recorded cost — unknown, not a dog";
+  // A costed wine whose sales include a line with no bottle figure has no
+  // velocity, so no quadrant — for that reason, not for want of a cost
+  // (ADR 0297).
+  const unmeasured = "some of its sales carry no bottle figure";
   const count = (k: string) =>
     counts === null
       ? withheld("the register returned no quadrant counts")
       : (num(counts[k]) ?? 0);
   const unclassified = counts === null ? null : (num(counts.unclassified) ?? 0);
+  const unmeasuredCount =
+    counts === null ? null : (num(counts.unmeasured) ?? 0);
   const priced = items.filter((i) => i.margin != null).length;
 
   return doc({
@@ -455,7 +526,15 @@ function writeQuadrants(payload: unknown): ExportDoc {
       f("Plowhorses", count("plowhorse"), "count"),
       f("Puzzles", count("puzzle"), "count"),
       f("Dogs", count("dog"), "count"),
-      f("No quadrant", count("unclassified"), "count"),
+      // Uncosted and unmeasured items both sit outside the four quadrants;
+      // the notes say which is which (ADR 0297).
+      f(
+        "No quadrant",
+        counts === null
+          ? count("unclassified")
+          : (unclassified ?? 0) + (unmeasuredCount ?? 0),
+        "count",
+      ),
       f("Median bottles per day", figure(medians.velocityPerDay, "the register published no median"), "bottles"),
       f("Median margin per bottle", figure(medians.marginPerBottle, "no wine carries a recorded cost"), "money"),
     ],
@@ -474,10 +553,14 @@ function writeQuadrants(payload: unknown): ExportDoc {
               ],
               rows: items.map((i) => [
                 i.name,
-                figure(i.velocity, "no movement figure returned"),
+                figure(
+                  i.velocity,
+                  i.margin != null ? unmeasured : "no movement figure returned",
+                ),
                 figure(i.margin, uncosted),
                 figure(i.marginPct, uncosted),
-                i.quadrant ?? withheld(uncosted),
+                i.quadrant ??
+                  withheld(i.margin == null ? uncosted : unmeasured),
               ]),
               note:
                 items.length > 40
@@ -488,6 +571,9 @@ function writeQuadrants(payload: unknown): ExportDoc {
     notes: [
       unclassified && unclassified > 0
         ? `${nounCount(unclassified, "wine has", "wines have")} no quadrant because no cost was ever recorded for ${unclassified === 1 ? "it" : "them"} — an uncosted wine is unknown, not a dog.`
+        : "",
+      unmeasuredCount && unmeasuredCount > 0
+        ? `${nounCount(unmeasuredCount, "item has", "items have")} no velocity and no quadrant: some of ${unmeasuredCount === 1 ? "its" : "their"} sales carry no bottle figure.`
         : "",
       cc && cc.complete === false && num(cc.total) != null
         ? `${num(cc.priced) ?? 0} of ${num(cc.total)} wines carry a recorded cost.`
@@ -533,7 +619,7 @@ function writeSeats(payload: unknown): ExportDoc {
   const s = obj(payload);
   const sinceDays = num(s.sinceDays) ?? 90;
   const basis = sentences(
-    `Non-voided pos_checks attributed to a table over the last ${sinceDays} days.`,
+    `Non-voided pos_checks the till attributed to a shown table over the last ${sinceDays} days.`,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
   );
   const tables = arr(s.tables).map((t) => ({
@@ -545,18 +631,49 @@ function writeSeats(payload: unknown): ExportDoc {
     avgCheck: num(t.avgCheck),
     wineAttach: num(t.wineAttachRate),
   }));
+  // ADR 0303: tables are learned from the till, so nothing is drawn. A check
+  // the till sent without a table, or one at a table the owner hid, is in
+  // takings and in no table's figure; the register says how many.
+  const withoutTable = num(s.checksWithoutTable) ?? 0;
+  const atHidden = num(s.checksAtHiddenTables) ?? 0;
+  const hiddenInHouse = num(s.hiddenTablesInHouse) ?? 0;
+  const hiddenNote =
+    atHidden > 0
+      ? `${nounCount(atHidden, "check was", "checks were")} at ${nounCount(num(s.hiddenTables) ?? 0, "hidden table", "hidden tables")}: counted in takings, not shown here.`
+      : "";
   if (tables.length === 0)
     return doc({
-      say: "No table is mapped for this restaurant yet, so no check can be attributed to a seat. The room has to be drawn before it can be read.",
+      say:
+        withoutTable > 0
+          ? `${nounCount(withoutTable, "check in this window has", "checks in this window have")} no table, so none can be attributed to a seat. They are in takings. A till word with no number in it, such as Booth or a name, makes no table.`
+          : atHidden > 0
+            ? "No shown table took a check in this window; show a table again under Settings → Point of sale."
+            : hiddenInHouse > 0
+              ? "Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale."
+              : "This house has no table yet, so no check can be attributed to a seat. A table is learned when a check arrives naming one with a number in it, such as T12, 12 or Patio 3; rename or hide it under Settings → Point of sale.",
+      notes: [hiddenNote],
       basis,
     });
   const served = tables.filter((t) => t.checks > 0);
   const noCheck = "no check attributed to this table";
+  const mapped = `${nounCount(tables.length, "table is", "tables are")} mapped`;
+  const empty = emptyWindowLine(s, sinceDays);
+  const n = num(s.checksInWindow);
+  const none =
+    n === 1
+      ? `the one check in the last ${sinceDays} days was not`
+      : `not one of the ${nounCount(n ?? 0, "check", "checks")} in the last ${sinceDays} days was`;
   return doc({
     say:
-      served.length === 0
-        ? `${nounCount(tables.length, "table is", "tables are")} mapped, and not one check in the last ${sinceDays} days was attributed to any of them — an absent attribution, not an empty room.`
-        : null,
+      served.length > 0
+        ? null
+        : empty
+          ? `${mapped}. ${empty}`
+          : n !== null && n > 0
+            ? atHidden > 0
+              ? `${mapped}, and ${none} attributed to any of them.`
+              : `${mapped}, and ${none} attributed to any of them — an absent attribution, not an empty room.`
+            : `${mapped}, and no check in the last ${sinceDays} days was attributed to any of them. This register does not say whether the window held any check, so an empty window and checks that name no table cannot be told apart here.`,
     figures: [
       f("Tables in the room", tables.length, "count"),
       f("Tables that took a check", served.length, "count"),
@@ -585,6 +702,12 @@ function writeSeats(payload: unknown): ExportDoc {
         ]),
       },
     ],
+    notes: [
+      withoutTable > 0
+        ? `${nounCount(withoutTable, "check has", "checks have")} no table: counted in takings, not in the room.`
+        : "",
+      hiddenNote,
+    ],
     basis,
   });
 }
@@ -612,12 +735,22 @@ function writeService(payload: unknown): ExportDoc {
     f("Servers with a check", waiters.length, "count"),
     f("Table-adjusted fit (R²)", figure(adj ? adj.r2 : null, "Needs 10 checks across at least two tables before a server can be separated from their section"), "ratio"),
   ];
-  if (waiters.length === 0)
+  if (waiters.length === 0) {
+    const n = num(s.checksInWindow);
+    const none =
+      n === 1
+        ? `The one check in the last ${sinceDays} days carries no`
+        : `None of the ${nounCount(n ?? 0, "check", "checks")} in the last ${sinceDays} days carries a`;
     return doc({
-      say: "No check in the window carries a server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.",
+      say:
+        emptyWindowLine(s, sinceDays) ??
+        (n !== null && n > 0
+          ? `${none} server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.`
+          : `No check in the last ${sinceDays} days names a server. This register does not say whether the window held any check, so an empty window and checks that carry no server name cannot be told apart here.`),
       figures,
       basis,
     });
+  }
   const none = "the register returned no figure for this server";
   return doc({
     figures,
@@ -744,13 +877,13 @@ function writeBench(payload: unknown): ExportDoc {
       "Buying, the last 30 days against the 30 before",
       typed(last, "money", cfWhy),
       typed(prev, "money", cfWhy),
-      typed(cf.paceDeltaPct, "percent", cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"),
+      typed(pctOf(cf.paceDeltaPct), "percent", cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"),
     ],
     [
-      "The week's own extremes (busiest, quietest, trend)",
+      "The week's own extremes (busiest, quietest, trend per day)",
       seasonalityMissing ? withheld(seMissing) : tie ? withheld("shared — more than one weekday holds the extreme") : typeof se.bestDay === "string" ? se.bestDay : withheld("no weekday is separable"),
       seasonalityMissing ? withheld(seMissing) : tie ? withheld("shared — more than one weekday holds the extreme") : typeof se.worstDay === "string" ? se.worstDay : withheld("no weekday is separable"),
-      typed(se.trendPerDayPct, "percent", seasonalityMissing ? seMissing : "the seasonality register returned no trend"),
+      typed(pctOf(se.trendPerDayPct), "percent", seasonalityMissing ? seMissing : "the seasonality register returned no trend"),
     ],
     ...arr(se.weekdayProfile).map((w): Cell[] => [
       `${str(w.day)}, mean per service`,
@@ -774,9 +907,9 @@ function writeBench(payload: unknown): ExportDoc {
     figures: [
       f("Bought, the last 30 days", figure(last, cfWhy), "money"),
       f("Bought, the 30 before", figure(prev, cfWhy), "money"),
-      f("Pace against last month", figure(cf.paceDeltaPct, cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
+      f("Pace against last month", figure(pctOf(cf.paceDeltaPct), cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
       f("Committed, not yet delivered", figure(cf.committedOpenOrders, cfWhy), "money"),
-      f("The week's trend", figure(se.trendPerDayPct, seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
+      f("Trend per day, last 28 days", figure(pctOf(se.trendPerDayPct), seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
       f("Goals running", goals.length, "count"),
     ],
     tables: [
@@ -834,11 +967,20 @@ function writeGoals(payload: unknown): ExportDoc {
       target: num(entry.target),
       progress: num(entry.progressPct),
       onTrack: typeof entry.onTrack === "boolean" ? entry.onTrack : null,
+      paceUnread: str(entry.paceUnread) || null,
+      // A Bottles sold goal's lines on the 750 ml stand-in (ADR 0297).
+      standInLines: num(obj(entry.units).standInLines) ?? 0,
+      standInItems: num(obj(entry.units).standInItems) ?? 0,
     };
   });
   const total = num(d.total) ?? goals.length;
   const paced = goals.some((g) => g.onTrack !== null);
-  const noPace = "no goal carries a deadline, so none has a pace";
+  // "No deadline" only when no goal carries one. A goal with a deadline and no
+  // pace (a house with no time zone, ADR 0296; a goal that could not be read)
+  // is not a goal without a deadline.
+  const noPace = goals.some((g) => g.deadline !== null)
+    ? "no goal's pace was judged; each goal's row says why"
+    : "no goal carries a deadline, so none has a pace";
   return doc({
     say:
       goals.length === 0
@@ -875,7 +1017,7 @@ function writeGoals(payload: unknown): ExportDoc {
                   unreadable ? withheld(unreadable) : typed(g.current, g.unit, "the goal's current value was not computed"),
                   typed(g.target, g.unit, "no target recorded"),
                   unreadable ? withheld(unreadable) : figure(g.progress, "the goal's progress was not computed"),
-                  g.onTrack === null ? withheld(g.deadline ? "the pace was not computed" : "no deadline, so no pace") : g.onTrack ? "on pace" : "behind",
+                  g.onTrack === null ? withheld(g.paceUnread ?? (g.deadline ? "the pace was not computed" : "no deadline, so no pace")) : g.onTrack ? "on pace" : "behind",
                   g.deadline,
                 ];
               }),
@@ -887,8 +1029,14 @@ function writeGoals(payload: unknown): ExportDoc {
           ],
     notes: [
       "Every figure is this house against its own baseline. No other restaurant's books are in it.",
+      ...goals
+        .filter((g) => g.standInLines > 0)
+        .map(
+          (g) =>
+            `${g.name}: ${nounCount(g.standInLines, "glass line", "glass lines")} across ${nounCount(g.standInItems, "item", "items")} with no stated bottle size ${g.standInLines === 1 ? "is" : "are"} read at the 750 ml stand-in the stock moves by.`,
+        ),
     ],
-    basis: sentences(b.current, b.peers),
+    basis: sentences(b.current, b.peers, b.units),
   });
 }
 

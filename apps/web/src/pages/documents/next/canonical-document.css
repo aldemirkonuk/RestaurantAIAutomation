@@ -38,6 +38,75 @@
   overflow-x: auto;
 }
 
+/* ON A PHONE, EACH LINE IS A SHORT BLOCK (walk-through RECEIPTS-W35,
+   2026-10-01). Measured at 375px: the eight-column line table was 395px wide
+   in a 343px box, so the line total — the figure checked most — started past
+   the edge, and nothing said it was there. Below the house's phone width the
+   number and the item take the first row, the three counts (ordered, shipped,
+   received) the second, and billed, unit and line total the third, each under
+   its own small label. The table keeps its roles (CanonicalSheet sets them
+   explicitly), because changing a table's display drops them in some screen
+   readers. Screen only: paper keeps the table. */
+@media screen and (max-width: 639px) {
+  .cd-lines,
+  .cd-lines tbody {
+    display: block;
+    width: 100%;
+  }
+  .cd-lines caption {
+    display: block !important;
+  }
+  .cd-lines thead {
+    display: none;
+  }
+  .cd-lines tr {
+    display: grid;
+    grid-template-columns: 18px repeat(3, minmax(0, 1fr));
+    column-gap: 10px;
+    row-gap: 6px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--paper-2, #eae4d8);
+  }
+  .cd-lines td {
+    display: block;
+    min-width: 0;
+    padding: 0 !important;
+    border: 0 !important;
+    text-align: left !important;
+  }
+  .cd-lines td[data-cell='n'] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .cd-lines td[data-cell='item'] {
+    grid-column: 2 / -1;
+    grid-row: 1;
+  }
+  .cd-lines td[data-cell='ordered'],
+  .cd-lines td[data-cell='billed'] {
+    grid-column: 2;
+  }
+  .cd-lines td[data-cell='shipped'],
+  .cd-lines td[data-cell='unit'] {
+    grid-column: 3;
+  }
+  .cd-lines td[data-cell='received'],
+  .cd-lines td[data-cell='line'] {
+    grid-column: 4;
+  }
+  .cd-lines td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 1px;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-4, #665d50);
+  }
+}
+
 @media print {
   /* Print equals screen (D9): the sheet is already light, so nothing inverts.
      The viewport minimum is dropped here — on paper it would force a blank

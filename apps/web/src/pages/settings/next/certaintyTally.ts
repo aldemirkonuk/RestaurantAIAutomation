@@ -48,6 +48,7 @@ import type {
   DigestRegister,
   HouseCarryingCostRegister,
   HouseCurrencyRegister,
+  HouseTimeZoneRegister,
   Remote,
   SettingsNextData,
 } from './useSettingsNextData';
@@ -67,9 +68,34 @@ export function hoursOpenCert(reg: OperatingHoursResponse): Certainty {
   return reg.operatingHours !== null ? 'manual' : 'unstated';
 }
 
-/** `HoursSection.tsx`'s own "Which clock does it keep?" row. */
-export function hoursTimezoneCert(reg: OperatingHoursResponse): Certainty {
-  return reg.timezone ? 'manual' : 'unstated';
+/**
+ * `HoursSection.tsx`'s own "Which clock does it keep?" row (ADR 0304).
+ *
+ * A zone is `manual` only when the Time zone register has loaded, keeps the
+ * same zone, and shows a person behind THIS zone: its bound source is
+ * `stated`, or it has no recorded source and the newest audit row says `to` =
+ * this exact zone (the gateway returns `statedBy` only then). The second case
+ * is the founder's 2026-10-06 ruling, "Credit the old record" (ADR 0304
+ * Decision 4). A zone the address or the device gave, or one with no source
+ * and no witness, is `inferred`: present, with no person the register can
+ * name behind it. A house with no zone is `unstated`.
+ *
+ * This widens `inferred` past `SectionKit.tsx`'s `Certainty` note ("computed
+ * on read, never written"): a zone kept once with its address or device
+ * source, or one no person can be named for, is stored, yet no person is
+ * recorded as having stated it.
+ * ADR 0304 records that reading; the note's own wording is PR-4's, which
+ * edits this page again (PR-1 stayed inside its 15 files).
+ */
+export function hoursTimezoneCert(
+  reg: OperatingHoursResponse,
+  zone: Remote<HouseTimeZoneRegister> | undefined,
+): Certainty {
+  if (!reg.timezone) return 'unstated';
+  const tz = zone?.status === 'ok' ? zone.data : null;
+  if (tz === null || !tz.readable || tz.zone !== reg.timezone) return 'inferred';
+  const witnessed = (tz.statedBy ?? null) !== null || (tz.statedAt ?? null) !== null;
+  return tz.source === 'stated' || ((tz.source ?? null) === null && witnessed) ? 'manual' : 'inferred';
 }
 
 /**
@@ -107,7 +133,7 @@ export interface CertaintyTally {
 /** Only the fields the tally reads — never the whole data hook. */
 export type CertaintyTallyInput = Pick<
   SettingsNextData,
-  'houseCarryingCost' | 'houseCurrency' | 'hours' | 'digest' | 'notif'
+  'houseCarryingCost' | 'houseCurrency' | 'hours' | 'houseTimeZone' | 'digest' | 'notif'
 >;
 
 /**
@@ -119,7 +145,7 @@ export type CertaintyTallyInput = Pick<
  */
 export function certaintyTags(data: CertaintyTallyInput): Certainty[] {
   const tags: Certainty[] = [];
-  const { houseCarryingCost, houseCurrency, hours, digest, notif } = data;
+  const { houseCarryingCost, houseCurrency, hours, houseTimeZone, digest, notif } = data;
 
   if (houseCarryingCost.status === 'ok' && houseCarryingCost.data !== null && houseCarryingCost.data.readable) {
     tags.push(carryingCostCert(houseCarryingCost.data));
@@ -128,7 +154,7 @@ export function certaintyTags(data: CertaintyTallyInput): Certainty[] {
     tags.push(currencyCert(houseCurrency.data));
   }
   if (hours.status === 'ok' && hours.data !== null) {
-    tags.push(hoursOpenCert(hours.data), hoursTimezoneCert(hours.data));
+    tags.push(hoursOpenCert(hours.data), hoursTimezoneCert(hours.data, houseTimeZone));
   }
   tags.push(digestCert(digest));
   for (let i = 0; i < notifyCertCount(notif); i += 1) tags.push('manual');

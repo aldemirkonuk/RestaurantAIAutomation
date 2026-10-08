@@ -241,6 +241,10 @@ export class HouseCounterService {
               intent: c.detected_intent ?? null,
               aiGenerated: Boolean(c.ai_generated),
               createdAt: c.created_at ?? null,
+              // The key Communications opens a reply by (DASH-W16e). An id,
+              // not text: `order_id` is the row's own column, the embed's id
+              // is the same order (getPendingConversations selects both).
+              orderId: c.procurement_orders?.id ?? c.order_id ?? null,
             })),
           };
         },

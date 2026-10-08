@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 
 /**
  * What the ledger actually recorded, day by day — slice 3 of ADR 0111.
@@ -11,6 +12,18 @@ import { DatabaseService } from "../database/database.service";
  * states the error." This service is the first half of that sentence, and it is
  * deliberately the dullest code in the calendar: it sums two columns and counts
  * rows. There is no model here, no fill, no smoothing.
+ *
+ * THE MONEY IS NET (ADR 0287)
+ * ---------------------------
+ * The money column summed is `pos_checks.subtotal`, before tax and surcharge,
+ * and never `total`: the founder's AW17 answer, *"Net sales (Recommended)"*,
+ * and the figure the day panel prints as "net sales". Before ADR 0287 this
+ * file summed `total` under the name `sales`, and nothing drew it; `total` is
+ * gross (the analytics walk measured it as net + 8.63% tax + 4% surcharge,
+ * AW17). A check that came with no subtotal adds nothing to the day's net and
+ * is COUNTED as missing (`netSalesCheckCount`), so a partial figure says it is
+ * partial. It never falls back to that check's `total`, because a sum of net
+ * and gross is neither.
  *
  * WHY IT IS NOT `GET /analytics/pos-revenue`
  * ------------------------------------------
@@ -38,6 +51,12 @@ import { DatabaseService } from "../database/database.service";
  * `posConnected: false` is the fourth answer and it is about the RESTAURANT,
  * not the window: a house that has never had a check land has no ledger at all,
  * and every day in the window is `unknown` rather than `silent`.
+ *
+ * `posConnected: null` is the register refusing (ADR 0287 §Forks F4, on ADR
+ * 0292): the read that would answer it failed or could not be proved whole, so
+ * whether a check has ever landed is NOT KNOWN, and `refusal` says why. It is
+ * never `false` in that state: false is "this house has no register", and a
+ * register that could not be read is not one that does not exist.
  */
 
 /** One day the ledger can speak about. */
@@ -45,8 +64,18 @@ export interface RecordedDay {
   businessDate: string;
   /** Non-voided checks that closed on this day. */
   checkCount: number;
-  /** Sum of `pos_checks.total`. Null only when no check carried a total. */
-  sales: number | null;
+  /**
+   * The day's NET takings: the sum of `pos_checks.subtotal` (before tax and
+   * surcharge) over the checks that carried one. NULL when no check on the day
+   * carried a subtotal: never 0, and never the gross `total` in its place
+   * (ADR 0287).
+   */
+  netSales: number | null;
+  /**
+   * How many of `checkCount` carried a subtotal. Below `checkCount`, `netSales`
+   * is a partial sum and the page says "from N of M checks".
+   */
+  netSalesCheckCount: number;
   /** Sum of `pos_checks.covers`. NULL when no check on the day carried one. */
   covers: number | null;
   /** True when a human ruled this day out of the baselines. */
@@ -60,9 +89,11 @@ export interface RecordedWindow {
   to: string;
   /**
    * False when this restaurant has never had a POS check land. Every day is
-   * then unknown, and no cell may draw a zero.
+   * then unknown, and no cell may draw a zero. Null exactly when `refusal` is
+   * set: the register could not be read, so whether a check ever landed is
+   * not known (ADR 0287 §Forks F4).
    */
-  posConnected: boolean;
+  posConnected: boolean | null;
   /** Only days with something to say. A day absent here is `silent`. */
   days: RecordedDay[];
   /**
@@ -75,7 +106,8 @@ export interface RecordedWindow {
 interface CheckRow {
   opened_at: string | null;
   closed_at: string | null;
-  total: string | number | null;
+  /** Net of tax and surcharge. `total` is deliberately not read (ADR 0287). */
+  subtotal: string | number | null;
   covers: number | null;
 }
 
@@ -118,7 +150,8 @@ export function foldChecksToDays(rows: CheckRow[]): Map<string, RecordedDay> {
     const day = days.get(date) ?? {
       businessDate: date,
       checkCount: 0,
-      sales: null,
+      netSales: null,
+      netSalesCheckCount: 0,
       covers: null,
       excluded: false,
       exclusionReason: null,
@@ -126,8 +159,14 @@ export function foldChecksToDays(rows: CheckRow[]): Map<string, RecordedDay> {
 
     day.checkCount += 1;
 
-    const total = num(row.total);
-    if (total !== null) day.sales = (day.sales ?? 0) + total;
+    // Net only. A check with no subtotal stays out of the sum and out of the
+    // carried count, so the page can say the figure is partial. It is never
+    // replaced by its `total`: that is gross, and a sum of the two is neither.
+    const subtotal = num(row.subtotal);
+    if (subtotal !== null) {
+      day.netSales = (day.netSales ?? 0) + subtotal;
+      day.netSalesCheckCount += 1;
+    }
 
     // Null covers stay null. A POS that does not send cover counts must not
     // produce a day reading "0 covers" beside a day of real trading.
@@ -160,33 +199,50 @@ export class RecordedDaysService {
     until.setUTCDate(until.getUTCDate() + 1);
     const untilIso = until.toISOString();
 
-    const { data: checks, error: checksError } = await client
-      .from("pos_checks")
-      .select("opened_at, closed_at, total, covers")
-      .eq("restaurant_id", restaurantId)
-      // Voided checks are not trading. The same filter goal progress applies
-      // (goals.service.ts:740), so the two readers cannot drift.
-      .eq("voided", false)
-      .gte("opened_at", `${from}T00:00:00Z`)
-      .lt("opened_at", untilIso);
-
-    if (checksError) {
+    // Read whole or refused (ADR 0292). Unranged, this stopped at PostgREST's
+    // 1,000 rows: a month window holds about 2,000 checks, so half the month's
+    // cells read "covers not recorded" over days that traded (A-031), and a
+    // day's net sales would be a part sum labelled complete (ADR 0287).
+    let rows: CheckRow[];
+    try {
+      rows = await readWholeWindow<CheckRow>(
+        "The sales register for this window",
+        () =>
+          client
+            .from("pos_checks")
+            .select("id, opened_at, closed_at, subtotal, covers", {
+              count: "exact",
+            })
+            .eq("restaurant_id", restaurantId)
+            // Voided checks are not trading. The same filter goal progress
+            // applies (goals.service.ts:740), so the two readers cannot drift.
+            .eq("voided", false)
+            .gte("opened_at", `${from}T00:00:00Z`)
+            .lt("opened_at", untilIso),
+      );
+    } catch (err: any) {
+      if (!(err instanceof WholeReadError)) throw err;
       // Never `days: []`. An unreadable register and a quiet month are the
       // same empty array to a caller reading only `data`, which is the exact
-      // defect ADR 0020 exists to prevent.
+      // defect ADR 0020 exists to prevent. A register read only in part is
+      // refused the same way: half a month drawn would look like closures.
+      // And never `posConnected: false`: that says the house has no register,
+      // and the day's line would then say so over a register that exists but
+      // could not be read. Null is "not known" (ADR 0287 §Forks F4).
       this.logger.warn(
-        `pos_checks unreadable for r=${restaurantId}: ${checksError.message}`,
+        `pos_checks unreadable for r=${restaurantId}: ${err.message}`,
       );
       return {
         from,
         to,
-        posConnected: false,
+        posConnected: null,
         days: [],
-        refusal: "The sales register could not be read.",
+        refusal:
+          err.reason === "read_failed"
+            ? "The sales register could not be read."
+            : "The sales register could not be read whole, so no day is drawn from part of it.",
       };
     }
-
-    const rows = (checks ?? []) as CheckRow[];
     const days = foldChecksToDays(rows);
 
     // Whether this house has EVER had a check land. A window with no rows in a
@@ -201,10 +257,12 @@ export class RecordedDaysService {
         .eq("restaurant_id", restaurantId)
         .limit(1);
       if (anyError) {
+        // The probe is the one read that decides `posConnected`, so when it
+        // fails the answer is not known: null, beside the refusal, never false.
         return {
           from,
           to,
-          posConnected: false,
+          posConnected: null,
           days: [],
           refusal: "The sales register could not be read.",
         };
@@ -234,7 +292,8 @@ export class RecordedDaysService {
       const day = days.get(date) ?? {
         businessDate: date,
         checkCount: 0,
-        sales: null,
+        netSales: null,
+        netSalesCheckCount: 0,
         covers: null,
         excluded: false,
         exclusionReason: null,

@@ -213,14 +213,18 @@ export function OneTapSheet({
   /* The rail's own count, and — when it could not be read — the fact that it
      could not be read. An action written against a rail nobody could count is
      still written; it is the COUNT that is unknown, and it says so. */
+  // DASH-W27: "stands" means pending, as on the desk itself (`OneTapPanel`'s
+  // `pending`); a done or ruled-out action is in the register but no longer
+  // stands, so counting every row said 1 beside a desk that said 0.
+  const standing = register.state === 'ready' ? register.rows.filter((a) => a.status === 'pending').length : 0;
   const railLine =
     register.state === 'ready'
-      ? `${register.rows.length} ${register.rows.length === 1 ? 'action stands' : 'actions stand'} on this rail, read just now.`
+      ? `${standing} ${standing === 1 ? 'action stands' : 'actions stand'} on this rail, read just now.`
       : register.state === 'loading'
         ? 'The rail is still being read, so how many actions stand on it is not known yet.'
         : register.failure.forbidden
-          ? `The rail refused this account (${register.failure.status ?? 'refused'}), so how many actions stand on it is unknown — this is not an empty rail.`
-          : `The rail could not be read (${register.failure.message}), so how many actions stand on it is unknown — this is not an empty rail.`;
+          ? 'This account may not read the rail, so how many actions stand on it is unknown — this is not an empty rail.'
+          : 'The rail couldn’t be reached just now, so how many actions stand on it is unknown — this is not an empty rail.';
 
   return (
     <Sheet
@@ -391,15 +395,15 @@ export function OneTapSheet({
             ))}
           </div>
           <p className="mt-1.5 text-[11px] text-inkm-4" data-testid="one-tap-trigger-note">
+            {/* DASH-W28 (P5): the same fact without our internals. */}
             An action on this rail runs when a person taps it. Running on a threshold or on a
-            clock is not built — the book of actions holds no trigger and nothing watches it — so
-            those two are shut rather than saved and ignored.
+            schedule isn’t built yet, so those two are shut rather than saved and ignored.
           </p>
         </fieldset>
 
         <p className="border-t border-paper-2 pt-2.5 text-[11px] text-inkm-4">
-          {railLine} An action you write is recorded against your name, and the seal still sits on
-          any write it leads to — putting it on the rail buys nothing and sends nothing.
+          {railLine} An action you write is recorded against your name. Putting it on the rail
+          sends nothing and orders nothing; anything it leads to still needs its own seal.
         </p>
 
         {failureNote && (

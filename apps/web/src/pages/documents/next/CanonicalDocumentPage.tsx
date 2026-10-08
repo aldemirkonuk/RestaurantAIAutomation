@@ -47,7 +47,7 @@
  * confident about something it did not read.
  */
 
-import { useMemo, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Wordmark } from '@/components/mudavym'
@@ -67,8 +67,10 @@ import {
   VerdictBlock,
   degradedReasons,
   envelopeAt,
+  printedVintageOf,
   sourceSentence,
 } from '../../../components/documents'
+import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
 import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
@@ -123,8 +125,20 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    *  correction's error so one does not overwrite the other on screen. */
   const [deliveryError, setDeliveryError] = useState<string | null>(null)
 
+  /**
+   * Every key below names the house (ADR 0051). The gateway scopes these reads
+   * by the house header, which a key without the house never sees, so after a
+   * house switch an open sheet kept serving the previous house's rows from the
+   * cache. Receipts' review card reads the sheet under the same key, so the two
+   * still share one request (walk-through RECEIPTS-W47, 2026-10-02). The
+   * context is read directly, not through `useAuth`, so the sheet still renders
+   * where no auth provider wraps it.
+   */
+  const auth = useContext(AuthContext)
+  const rid = auth?.activeRestaurantId || auth?.user?.restaurantId || null
+
   const q = useQuery({
-    queryKey: ['canonical-document', id],
+    queryKey: ['canonical-document', rid, id],
     queryFn: () => canonicalApi.document(id),
     enabled: !!id,
     staleTime: 30_000,
@@ -137,7 +151,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    * the item list are two different facts.
    */
   const itemsQ = useQuery({
-    queryKey: ['canonical-document-items', id],
+    queryKey: ['canonical-document-items', rid, id],
     queryFn: () => getInventory(),
     staleTime: 60_000,
   })
@@ -149,10 +163,16 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     const size = it.bottleSizeMl ? ` · ${it.bottleSizeMl} ml` : ''
     return `${it.wineName}${vintage}${size}`
   }
+  const itemVintage = (inventoryId: string): number | null => {
+    const it = (itemsQ.data ?? []).find((x) => x.id === inventoryId)
+    if (!it) return null
+    const v = Number(it.wineVintage)
+    return printedVintageOf(Number.isFinite(v) && v > 0 ? v : null, it.wineName ?? null)
+  }
 
   /** The append-only who-linked-what log (ADR 0104 D5/D12). */
   const mappingsQ = useQuery({
-    queryKey: ['canonical-document-mappings', id],
+    queryKey: ['canonical-document-mappings', rid, id],
     queryFn: () => canonicalApi.lineMappings(id),
     enabled: !!id,
     staleTime: 30_000,
@@ -610,7 +630,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 320px)',
+          gridTemplateColumns: embedded ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(260px, 320px)',
           gap: 14,
           marginTop: 10,
           alignItems: 'start',
@@ -633,6 +653,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               }}
               onLinkItem={linkItem}
               itemName={itemName}
+              itemVintage={itemVintage}
             />
           ) : (
             <DoorFrame
@@ -715,16 +736,25 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             >
               Provenance
             </span>
+            {/*
+              In the house's words (walk-through W6, 2026-10-01): the model id,
+              "sha256" and "jurisdiction not set" were the machine talking. The
+              model stays on hover for whoever audits a reading; the hash is
+              what it is for a person — the file's fingerprint; and a
+              jurisdiction is named only when one is set.
+            */}
             <p style={{ margin: '2px 0 0' }}>
               Arrived by {res.intake.sourceChannel ?? 'an unrecorded channel'} ·{' '}
-              {res.intake.extractionModel
-                ? `read by ${res.intake.extractionModel}`
-                : 'no extraction model is recorded — either none ran, or nobody recorded which'}
+              {res.intake.extractionModel ? (
+                <span title={res.intake.extractionModel}>read automatically</span>
+              ) : (
+                'no record of how it was read'
+              )}
               .
             </p>
             <p style={{ margin: '2px 0 0', fontFamily: MONO, fontSize: 9.5 }}>
-              revision {doc.revision} · sha256 {res.intake.sha256?.slice(0, 8) ?? '—'}… ·{' '}
-              {doc.jurisdiction ?? 'jurisdiction not set'}
+              version {doc.revision} · file fingerprint {res.intake.sha256?.slice(0, 8) ?? '—'}…
+              {doc.jurisdiction ? ` · ${doc.jurisdiction}` : ''}
             </p>
             <button
               type="button"

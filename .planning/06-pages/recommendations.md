@@ -218,7 +218,9 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 > header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
 > `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
 > "Search or act" trigger, the house (or the branch switcher when there is more
-> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> than one), the bell, ~~the theme menu~~ and the account menu **[2026-10-01: the theme
+> menu left the header — founder, page walk-through DASH-W23; the ground is chosen on
+> `/profile`]**. Chrome is excluded
 > from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
 > note; its motions live in `components/mudavym/MOTIONS.md`, not the table
 > below.
@@ -269,8 +271,8 @@ the same three facts in the same place — **would change · whose hand (and whe
 lands) · standing** — which are exactly the three axes the founder named and the three
 the legacy feed never showed. Urgency stays the engine's own word ("Tonight" / "This
 week" / "This month") and the score stops being the page's organising principle.
-`unfiled` exists on purpose: a rule category this page has no register for shows up as
-unfiled rather than being absorbed into a bucket it was never sorted into.
+`unfiled` exists on purpose: a rule this page has no register for shows up as unfiled rather than being absorbed into a bucket it was never sorted into. **Filing ([ADR 0288](../decisions/0288-a-recommendation-is-filed-by-what-acting-on-it-changes.md), 2026-10-04):** an entry is filed by its rule where the rule's own sentence says what it changes, otherwise by the engine's category, and the working says which (`rec-format.ts` `stakeFilingOf`).
+Four rules are filed by name. `plowhorse_repricing` → Money and `puzzle_activation` → Stock (the founder: *"Money / Stock (Recommended)"*); their category, `efficiency`, filed both under The floor and hid a price change from Money (AW28), and `efficiency` has no category register now, so a new efficiency rule lands in Unfiled. `revenue_concentration` → Stock, not Vendors from `risk` (the founder: *"Stock (Recommended)"*), and `weekday_gap` → The floor by its leading clause, not Money from `sales` (the founder: *"The floor (Recommended)"*). With a register pressed, a docket section's head names its entries filed under other registers ("1 more filed under Stock"). [Changed 2026-10-07 (ADR 0288, the founder: *"Lower-case mid-sentence (Recommended)"*): a register's name inside a sentence is printed lower-case in the page's text: the head reads "1 more filed under stock", the working "Why it would change the floor", and the unfiled why "It is shown under unfiled". The working's label is drawn in capitals by the stylesheet (`.rc-micro`, `rec-next.css:28`), so on screen only the head and the unfiled why read lower-case. The rail, the *Would change* fact and the act headings keep their capitals. Answered the same day, with no code change: a section with nothing under the pressed register stays hidden, and the rail's counts carry it (the founder: *"Keep them hidden, as built (Recommended)"*).]
 
 **Uniqueness, and where it comes from.** Three things exist on no other surface: the
 **denominator in the opening line** ("17 rules were read. 4 entries stand — the rest did
@@ -491,8 +493,8 @@ so any figure scraped back out of it would be invented.
 
 | rule | metric | direction | why that metric |
 |---|---|---|---|
-| `sales_below_weekday_baseline` | `wine_revenue` | at least | the rule compares a day's wine sales with the same weekday's baseline |
-| `weekly_demand_slide` | `wine_revenue` | at least | the same quantity at a longer grain |
+| `sales_below_weekday_baseline` | `wine_revenue` | at least | ~~the rule compares a day's wine sales with the same weekday's baseline~~ **[Corrected 2026-10-03 (ADR 0291, AW20): the rule fires on whole-check sales through the till (`pos_checks.total`, every item on the check), or on bottles sold from the cellar log, in any house that keeps one, never on wine revenue. The goal sits on wine revenue because the prescription (top-margin picks, one by-the-glass feature) moves it, and the basis now says so. The default name is "<day> wine revenue, after a soft <day>", not "… back to baseline". Whether a sales dip should suggest this goal at all is fork F2 in ADR 0291.]** |
+| `weekly_demand_slide` | `wine_revenue` | at least | ~~the same quantity at a longer grain~~ **[Corrected 2026-10-03 (ADR 0291, AW20): the rule fires on a week-over-week fall in whole-check sales, in bottles, or in one wine's bottles, not on wine revenue. The goal sits on wine revenue because the prescription (a staff tasting, a pairing prompt) moves it, and the basis now says so; the default name is "Wine revenue, after a soft week". Fork F2 in ADR 0291.]** |
 | `weekday_gap` | `wine_revenue` | at least | it prescribes an offer on the weakest weekday |
 | `dead_stock_capital` | `bottles_sold` | at least | the act is bottles leaving the shelf; the capital figure is not a supported metric |
 | `plowhorse_repricing` | `wine_revenue` | at least | a price rise at constant volume lands in revenue |
@@ -580,7 +582,7 @@ categorized classified section in order for people to understand what to do as a
 
 | axis | question it answers | where it lives |
 |---|---|---|
-| the register (`stakeOf`) | what acting on it would CHANGE | now the ordering inside a section, and the rail |
+| the register (`stakeOf`; by rule, else category — ADR 0288) | what acting on it would CHANGE | now the ordering inside a section, and the rail; a pressed register's section head names what it leaves out |
 | the hand (`handOf`) | which SURFACE the work lands on | unchanged, on every entry |
 | **the act** (`rec-docket.ts`) | **what the person DOES** | **the docket's sections** |
 
@@ -686,7 +688,7 @@ on each entry:
 | `staff_spread` | stays *Brief the floor* | "Have the top seller run a 15-minute pre-shift" — a pre-shift IS the briefing. Arranging one is not the act; delivering it is. |
 | `puzzle_activation` | stays *Move stock* | "rotate weekly" is a cadence attached to an act of moving stock. |
 | `dead_stock_capital` | stays *Move stock* | "if untouched after two weeks, discount to cost" is a review date attached to an act of moving stock. Real, named on the entry, and not the act. |
-| `sales_below_weekday_baseline` | stays *Brief the floor* | "Tonight: brief the floor…" names a time; nothing in it goes on a day-book. |
+| `sales_below_weekday_baseline` | stays *Brief the floor* | "Tonight: brief the floor…" names a time; nothing in it goes on a day-book. **[2026-10-03 (ADR 0291, AW01): only a dip whose day is 0–1 days old still opens "Tonight:"; an older one opens "Before the next <weekday>:" and names the day, its date and its age. The register in code is unchanged; whether that dated deadline makes this entry *Schedule it* was not re-read by that change.]** |
 
 Each entry there carries **Put it on the day-book** (`rec-daybook.ts`). It prints the
 drafted line in full — title, date, type, note naming the rule — and then opens

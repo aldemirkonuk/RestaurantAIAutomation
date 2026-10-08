@@ -492,6 +492,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
             type="button"
             className="cn-btn cn-ink"
             style={{ marginLeft: 'auto' }}
+            data-tour="calendar-connect"
             onClick={() => setLinkOpen(true)}
           >
             {calLink.link?.connected ? 'My calendar link' : 'Connect my calendar'}
