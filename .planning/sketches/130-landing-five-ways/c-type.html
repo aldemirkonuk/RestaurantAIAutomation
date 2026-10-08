@@ -1,0 +1,817 @@
+<!--
+  Concept C — "The Ledger"
+  Idea: the type IS the motion. A house's ledger book set in Fraunces: no pictures, only letters,
+        hairline rules, figures and the seal. Reading, counting and ordering are shown as typography.
+  Motion techniques:
+    · per-letter Fraunces variable axes (wght / opsz / SOFT / WONK) driven by pointer proximity
+      ("ink spreading"), scroll velocity, and a gentle idle wave on touch
+    · masked rise reveals, letter by letter; the seal full stop lands last as an ink stamp (scale + blot)
+    · scroll-scrubbed FLIP: a wine-list line breaks into tokens that fly into labelled ledger columns
+    · odometer rolling digits + SVG hairlines drawn with stroke-dashoffset
+    · typewriter purchase order + vendor email; a click on "Confirm" lands a seal stamp
+    · velocity-reactive skewed marquee for the roadmap; fit-text close; a running folio that ticks
+  Reduced motion: every line in its final state, no axis animation, no pinning, no loops.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym — The Ledger</title>
+<meta name="description" content="Mudavym is an autonomous back office for restaurants. The house runs itself; a person signs anything that matters.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,100..900,0..100,0..1;1,9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script>document.documentElement.classList.add('js');if(matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('rm');</script>
+<style>
+:root{
+  --paper:#FAF7F1; --paper-2:#F3EFE6; --paper-3:#EAE4D8;
+  --ink:#211C16; --ink-2:#4F473C; --ink-3:#665D50;
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-50:#F1F7F8; --seal-100:#E0EFF1; --seal-300:#8FC4CD;
+  --rule:rgba(33,28,22,.22); --rule-2:rgba(33,28,22,.09);
+  --serif:"Fraunces", Georgia, serif;
+  --sans:"DM Sans", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, monospace;
+  --gut:clamp(16px, 5.6vw, 96px);
+  --ease:cubic-bezier(.2,.8,.1,1);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0;overflow-x:clip}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--seal);outline-offset:3px;border-radius:2px}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* paper: a faint ledger grid + the double margin rule */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    linear-gradient(90deg, transparent calc(var(--gut) - 30px), rgba(26,94,107,.30) calc(var(--gut) - 30px), rgba(26,94,107,.30) calc(var(--gut) - 29px), transparent calc(var(--gut) - 29px), transparent calc(var(--gut) - 26px), rgba(26,94,107,.30) calc(var(--gut) - 26px), rgba(26,94,107,.30) calc(var(--gut) - 25px), transparent calc(var(--gut) - 25px));
+}
+@media (max-width:760px){body::before{display:none}}
+main,header,footer{position:relative;z-index:1}
+
+.sc{font-family:var(--sans);text-transform:uppercase;font-size:.72rem;letter-spacing:.16em;font-weight:500;color:var(--ink-2)}
+.mono{font-family:var(--mono);font-size:.72rem;letter-spacing:.02em;color:var(--ink-3)}
+.wrap{padding-inline:var(--gut);max-width:1600px;margin-inline:auto;position:relative}
+
+/* ——— top bar ——— */
+.top{position:fixed;inset:0 0 auto 0;z-index:30;display:flex;align-items:center;gap:16px;height:60px;padding-inline:var(--gut);
+  background:linear-gradient(var(--paper) 70%, rgba(250,247,241,0))}
+.top .back{font-family:var(--mono);font-size:.74rem;text-decoration:none;color:var(--ink-3)}
+.top .back:hover{color:var(--ink)}
+.top .wm-small{font-family:var(--serif);font-weight:600;font-size:1.2rem;text-decoration:none;font-variation-settings:"opsz" 36;opacity:0;transform:translateY(6px);transition:.5s var(--ease);margin-left:auto;margin-right:auto}
+.top.past .wm-small{opacity:1;transform:none}
+.top nav{display:flex;gap:18px;align-items:center}
+.top nav a{font-size:.88rem;text-decoration:none}
+.top nav a.signin:hover{text-decoration:underline;text-underline-offset:4px}
+.btn{display:inline-flex;align-items:center;gap:.6em;background:var(--seal);color:var(--paper);border-radius:999px;padding:.72em 1.25em;font-weight:500;text-decoration:none;font-size:.95rem;transition:background .25s}
+.btn:hover{background:var(--seal-deep)}
+.btn .ar{transition:transform .3s var(--ease)}
+.btn:hover .ar{transform:translateX(3px)}
+.top .btn{padding:.5em 1em;font-size:.86rem}
+@media (max-width:620px){.top .btn{display:none}.top .wm-small{font-size:1.05rem}}
+
+/* ——— kinetic letters ——— */
+.k .w{display:inline-block;vertical-align:top;white-space:nowrap}
+.k .ch{display:inline-block;font-variation-settings:"wght" var(--bw,420),"opsz" 144,"SOFT" 0,"WONK" 0}
+.rv .w{overflow:hidden;padding:.06em .05em .16em;margin:-.06em -.05em -.16em}
+.rv.done .w{overflow:visible}
+.js:not(.rm) .rv .ch{transform:translateY(112%)}
+.js:not(.rm) .rv.in .ch{transform:none;transition:transform 1s var(--ease) calc(var(--i) * 26ms)}
+
+/* ——— hero ——— */
+.hero{min-height:100svh;display:flex;flex-direction:column;padding-top:76px;position:relative}
+.cols{display:grid;grid-template-columns:repeat(12,1fr);border-bottom:1px solid var(--rule);padding-bottom:6px}
+.cols span{font-family:var(--mono);font-size:.62rem;color:var(--ink-3);opacity:.7}
+.colgrid{position:absolute;inset:76px var(--gut) 0 var(--gut);display:grid;grid-template-columns:repeat(12,1fr);pointer-events:none}
+.colgrid i{border-left:1px solid var(--rule-2)}
+.colgrid i:last-child{border-right:1px solid var(--rule-2)}
+@media (max-width:760px){.cols,.colgrid{grid-template-columns:repeat(6,1fr)}.cols span:nth-child(n+7),.colgrid i:nth-child(n+7){display:none}}
+.mast{display:flex;align-items:center;gap:14px;padding:22px 0 0;flex-wrap:wrap}
+.mast svg{width:34px;height:34px;flex:none}
+.wm{font-family:var(--serif);font-weight:600;font-size:clamp(26px,2.6vw,36px);line-height:1;font-variation-settings:"opsz" 72,"SOFT" 30;letter-spacing:-.01em}
+.wm .p{color:var(--seal)}
+.mast .sc{margin-left:auto}
+.mast .mono{padding-left:14px;border-left:1px solid var(--rule)}
+.js:not(.rm) .mast{opacity:0;transform:translateY(8px);transition:opacity .9s var(--ease) .1s, transform .9s var(--ease) .1s}
+.js:not(.rm) .mast.in{opacity:1;transform:none}
+.h1{font-family:var(--serif);font-weight:400;font-size:clamp(50px,10.6vw,170px);line-height:.9;letter-spacing:-.035em;margin:auto 0 0;padding-top:4vh}
+.h1 .ln{display:block}
+.h1 em{font-style:italic;color:var(--seal-deep)}
+.stop{display:inline-block;position:relative;width:.2em;height:.2em;margin-left:.04em;vertical-align:baseline}
+.stop svg{position:absolute;inset:-12%;width:124%;height:124%;overflow:visible}
+.stop .blot{position:absolute;left:50%;top:50%;width:100%;height:100%;margin:-50% 0 0 -50%;border-radius:50%;border:.02em solid var(--seal);opacity:0}
+.stop .drop{position:absolute;left:50%;top:50%;width:14%;height:14%;border-radius:50%;background:var(--seal);opacity:0}
+.js:not(.rm) .stop svg{transform:scale(3.2) rotate(-20deg);opacity:0}
+.stop.on svg{animation:stamp .62s cubic-bezier(.3,1.5,.5,1) forwards}
+.stop.on .blot{animation:blot 1.1s var(--ease) .12s forwards}
+.stop.on .drop{animation:drop .8s var(--ease) .1s forwards}
+@keyframes stamp{0%{transform:scale(3.2) rotate(-20deg);opacity:0}45%{opacity:1}70%{transform:scale(.86)}100%{transform:scale(1) rotate(0);opacity:1}}
+@keyframes blot{0%{transform:scale(.7);opacity:.55}100%{transform:scale(4.4);opacity:0}}
+@keyframes drop{0%{transform:translate(0,0) scale(1);opacity:.9}100%{transform:translate(var(--dx),var(--dy)) scale(.5);opacity:0}}
+.hero-foot{display:grid;grid-template-columns:repeat(12,1fr);gap:0 0;align-items:end;padding:5vh 0 28px;border-bottom:1px solid var(--rule);margin-top:4vh}
+.hero-foot .note{grid-column:1 / span 4;align-self:end}
+.hero-foot .lede{grid-column:7 / span 6;margin:0}
+.lede p{font-family:var(--serif);font-size:clamp(19px,1.55vw,24px);line-height:1.35;margin:0 0 22px;font-variation-settings:"opsz" 24,"SOFT" 50;color:var(--ink-2);max-width:30em;text-wrap:pretty}
+.ctas{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.ctas .signin{font-size:.95rem;text-underline-offset:5px}
+.js:not(.rm) .hero-foot>*{opacity:0;transform:translateY(12px);transition:opacity .9s var(--ease), transform .9s var(--ease)}
+.js:not(.rm) .hero-foot.in>*{opacity:1;transform:none}
+.js:not(.rm) .hero-foot.in>.lede{transition-delay:.12s}
+@media (max-width:760px){
+  .hero-foot{grid-template-columns:1fr;gap:22px}
+  .hero-foot .note,.hero-foot .lede{grid-column:1}
+  .hero-foot .note{order:2}
+  .mast .sc{display:none}
+  .mast .mono{margin-left:auto}
+  .h1{font-size:20.5vw;padding-top:0}
+  .hero-foot{margin-top:5vh;padding-top:0}
+}
+
+/* ——— section chrome ——— */
+.sec{position:relative}
+.sec-head{display:flex;align-items:center;gap:14px;padding-top:84px}
+.sec-head .rule{flex:1;height:1px;background:var(--rule)}
+.sec-head .no{font-family:var(--serif);font-style:italic;font-size:1rem;color:var(--seal);font-variation-settings:"opsz" 18}
+.h2{font-family:var(--serif);font-weight:400;font-size:clamp(40px,6.4vw,104px);line-height:.95;letter-spacing:-.03em;margin:18px 0 0}
+.h2 em{font-style:italic;color:var(--seal-deep)}
+.cap{font-family:var(--serif);font-style:italic;color:var(--ink-3);font-size:1.02rem;font-variation-settings:"opsz" 14;max-width:34em;margin:0}
+
+/* pinned stages */
+.pin{height:var(--len,300vh)}
+.stage{position:sticky;top:0;height:100svh;overflow:hidden;display:flex;flex-direction:column}
+.stage>.wrap{flex:1;display:flex;flex-direction:column;width:100%}
+.rm .pin{height:auto}
+.rm .stage{position:relative;height:auto;min-height:0;overflow:visible;padding-bottom:64px}
+
+/* ——— 1 · Reading ——— */
+.rawbox{position:relative;margin:auto 0 0;padding:26px 0 18px}
+.raw-ghost{position:absolute;left:0;right:0;pointer-events:none;color:var(--ink-3);opacity:0}
+.raw-ghost .glue{opacity:1!important}
+.raw{font-family:var(--serif);font-style:italic;font-weight:380;font-size:clamp(25px,4.5vw,72px);line-height:1.15;margin:0;font-variation-settings:"opsz" 72,"SOFT" 50;letter-spacing:-.01em;font-variant-numeric:oldstyle-nums}
+.raw .tok{display:inline-block;transform-origin:0 0;will-change:transform;position:relative}
+.raw .glue{color:var(--ink-3)}
+.raw .leader{letter-spacing:.18em}
+.rawbox .src{display:flex;justify-content:space-between;margin-bottom:10px}
+.bracket{position:absolute;width:18px;height:18px;border:1.5px solid var(--seal);opacity:0}
+.bracket.tl{border-right:0;border-bottom:0}.bracket.tr{border-left:0;border-bottom:0}
+.bracket.bl{border-right:0;border-top:0}.bracket.br{border-left:0;border-top:0}
+.ledger{display:grid;grid-template-columns:1fr 1.9fr .8fr 1.1fr 1.1fr .6fr;border-top:1px solid var(--ink);border-bottom:1px solid var(--rule);margin:30px 0 22px;position:relative}
+.ledger::before{content:"";position:absolute;left:0;right:0;top:3px;height:1px;background:var(--ink)}
+.field{padding:16px 14px 18px 0;border-right:1px solid var(--rule-2);min-width:0}
+.field:last-child{border-right:0}
+.field+.field{padding-left:14px}
+.field .lab{display:flex;gap:8px;align-items:baseline;margin-bottom:12px;line-height:1;height:14px}
+.field .lab .mono{font-size:.6rem}
+.slot{font-family:var(--serif);font-style:italic;font-weight:380;font-size:clamp(19px,1.75vw,27px);line-height:1.15;font-variation-settings:"opsz" 72,"SOFT" 50;letter-spacing:-.01em;min-height:1.2em;white-space:nowrap;font-variant-numeric:oldstyle-nums}
+.slot .ghost{opacity:0}
+.slot.inf{color:var(--seal)}
+.slot.inf .c{opacity:0;transition:opacity .2s}
+.slot.inf .c.on{opacity:1}
+.tag{font-family:var(--serif);font-variant-caps:all-small-caps;letter-spacing:.06em;font-size:.95rem;color:var(--seal);opacity:0;transition:opacity .4s;margin-left:auto}
+.tag.on{opacity:1}
+.rm .tag{opacity:1}
+.reading-foot{display:flex;justify-content:space-between;gap:24px;align-items:baseline;padding-bottom:5vh;margin-top:auto}
+@media (max-width:760px){
+  .ledger{grid-template-columns:1fr;margin:20px 0 14px}
+  .field{display:flex;align-items:baseline;gap:12px;padding:9px 0!important;border-right:0;border-bottom:1px solid var(--rule-2)}
+  .field:last-child{border-bottom:0}
+  .field .lab{width:96px;flex:none;margin:0;height:auto;flex-direction:column;align-items:flex-start;gap:4px}
+  .tag{margin-left:0;font-size:.82rem;line-height:1}
+  .rawbox .src span:first-child{display:none}
+  .reading-foot{padding-bottom:48px!important}
+  .field .lab .mono{display:none}
+  .slot{font-size:20px}
+  .tag{font-size:.85rem}
+  .rawbox{padding:16px 0 10px}
+  .reading-foot{flex-direction:column;gap:8px;padding-bottom:3vh}
+  .reading-foot .cap{font-size:.92rem}
+}
+
+/* ——— 2 · Counting ——— */
+.book{margin:auto 0 0;padding-top:28px;position:relative}
+.bk-head,.bk-row{display:grid;grid-template-columns:44px 2.1fr 1fr 110px 2.2fr;gap:0 22px;align-items:baseline;position:relative}
+.bk-head{padding:0 0 10px;border-bottom:1px solid var(--ink)}
+.bk-head .num{text-align:right}
+.bk-row{padding:18px 0 17px}
+.bk-row .n{font-family:var(--mono);font-size:.7rem;color:var(--ink-3)}
+.bk-row .wn{font-family:var(--serif);font-size:clamp(19px,1.6vw,25px);line-height:1.15;font-variation-settings:"opsz" 48,"SOFT" 30;font-weight:430}
+.bk-row .wn small{display:block;font-family:var(--sans);font-size:.8rem;color:var(--ink-3);margin-top:3px;font-weight:400;letter-spacing:.01em}
+.bk-row .loc{font-family:var(--mono);font-size:.74rem;color:var(--ink-2)}
+.bk-row .why{font-family:var(--serif);font-style:italic;color:var(--ink-2);font-size:1.02rem;line-height:1.35;font-variation-settings:"opsz" 16;text-wrap:pretty;transition:opacity .6s var(--ease), transform .6s var(--ease)}
+.bk-row .why .ch-d{font-style:normal;font-family:var(--mono);font-size:.72rem;color:var(--seal);margin-right:.6em;letter-spacing:.02em}
+.js:not(.rm) .bk-row .why{opacity:0;transform:translateY(6px)}
+.js:not(.rm) .bk-row.hit .why{opacity:1;transform:none}
+.hl{position:absolute;left:0;bottom:0;width:100%;height:2px;overflow:visible}
+.hl line{stroke:var(--ink);stroke-opacity:.28;stroke-width:1;stroke-dasharray:1;stroke-dashoffset:1}
+.bk-total .hl line{stroke-opacity:1}
+.rm .hl line{stroke-dashoffset:0!important}
+.odo{letter-spacing:-.04em;font-family:var(--serif);font-size:clamp(30px,2.6vw,42px);font-weight:500;font-variation-settings:"opsz" 72;font-variant-numeric:lining-nums tabular-nums;display:inline-flex;justify-self:end;line-height:1}
+.dg{display:inline-block;height:1.08em;overflow:hidden;line-height:1.08em;transition:opacity .4s}
+.dg.lead{opacity:0}
+.strip{display:block;transition:transform 1.05s cubic-bezier(.35,1.35,.45,1)}
+.strip span{display:block;text-align:center}
+.rm .strip{transition:none}
+.bk-total{display:grid;grid-template-columns:44px 2.1fr 1fr 110px 2.2fr;gap:0 22px;align-items:baseline;padding:18px 0 4px;position:relative}
+.bk-total .lbl{grid-column:2 / span 2;font-family:var(--serif);font-variant-caps:all-small-caps;letter-spacing:.08em;font-size:1.15rem}
+.bk-total .hl{top:0;bottom:auto}
+.bk-total .hl2{top:4px}
+.count-foot{display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:26px 0 5vh}
+@media (max-width:860px){
+  .bk-head{display:none}
+  .bk-row,.bk-total{grid-template-columns:26px 1fr auto;grid-template-areas:"n wn odo" "n loc odo" "n why why";gap:2px 12px;padding:12px 0}
+  .bk-row .n{grid-area:n}.bk-row .wn{grid-area:wn;font-size:18px}.bk-row .loc{grid-area:loc;font-size:.68rem}
+  .bk-row .odo{grid-area:odo;align-self:center;font-size:30px}.bk-row .why{grid-area:why;font-size:.9rem;margin-top:4px}
+  .bk-row .wn small{display:none}
+  .bk-total{grid-template-areas:"n lbl odo"}
+  .bk-total .lbl{grid-area:lbl;font-size:1rem}.bk-total .odo{grid-area:odo}
+  .count-foot{padding:14px 0 48px}
+  .bk-total{padding-top:20px}
+  .count-foot .mono{display:none}
+}
+
+/* ——— 3 · Ordering ——— */
+.order{padding-bottom:110px}
+.order-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:0 0;margin-top:56px;align-items:start}
+.po{grid-column:1 / span 6;padding-right:48px}
+.po-text{font-family:var(--serif);font-size:clamp(23px,2.25vw,34px);line-height:1.28;font-variation-settings:"opsz" 36,"SOFT" 40;font-weight:380;margin:0;text-wrap:pretty;font-variant-numeric:oldstyle-nums}
+.hang{margin-left:-.42em}
+.po-text .t,.mail .t{opacity:0}
+.po-text .t.on,.mail .t.on{opacity:1}
+.rm .po-text .t,.rm .mail .t{opacity:1}
+.t.caret{position:relative}
+.t.caret::after{content:"";position:absolute;right:-2px;top:.12em;bottom:.05em;width:2px;background:var(--seal);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.mail{grid-column:7 / span 6;position:relative;border-top:1px solid var(--ink);padding-top:3px}
+.mail-in{border-top:1px solid var(--ink);padding:18px 0 0}
+.mail .hdr{display:grid;grid-template-columns:72px 1fr;gap:8px 0;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.mail .hdr .k{font-family:var(--sans);text-transform:uppercase;font-size:.66rem;letter-spacing:.16em;color:var(--ink-3);padding-top:.2em}
+.mail .hdr .v{font-family:var(--mono);font-size:.82rem;color:var(--ink)}
+.mail .body{font-family:var(--sans);font-size:1rem;line-height:1.6;color:var(--ink-2);padding:16px 0 18px;margin:0;border-bottom:1px solid var(--rule)}
+.mail .status{display:flex;justify-content:space-between;align-items:center;padding-top:10px}
+.mail .status .st{font-family:var(--mono);font-size:.72rem;color:var(--ink-3)}
+.mail .status .st b{font-weight:500;color:var(--ink)}
+.mail.sent .status .st b{color:var(--seal)}
+.sign{margin-top:44px;display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap}
+.confirm{appearance:none;border:0;background:none;padding:0 0 4px;cursor:pointer;color:var(--seal);font-family:var(--serif);font-style:italic;font-size:clamp(54px,6.6vw,104px);line-height:1;letter-spacing:-.03em;font-variation-settings:"wght" 420,"opsz" 144,"SOFT" 60,"WONK" 1;transition:font-variation-settings .45s var(--ease), color .3s;position:relative}
+.confirm::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:currentColor;transform-origin:left;transform:scaleX(var(--u,1));transition:transform .6s var(--ease)}
+.confirm:hover,.confirm:focus-visible{font-variation-settings:"wght" 720,"opsz" 144,"SOFT" 100,"WONK" 1}
+.confirm[disabled]{color:var(--ink);cursor:default}
+.js:not(.rm) .confirm.wait{opacity:.2;--u:0}
+.confirm{transition:font-variation-settings .45s var(--ease), color .3s, opacity .8s var(--ease), transform .8s var(--ease)}
+.sign .sigline{flex:1;min-width:160px;border-bottom:1px dashed var(--ink-3);height:1px;margin-bottom:14px;position:relative}
+.sign .sigline span{position:absolute;left:0;right:0;top:10px;font-family:var(--mono);font-size:.64rem;color:var(--ink-3)}
+.sign-note{margin-top:30px}
+.reset{background:none;border:0;padding:0;font-family:var(--mono);font-size:.68rem;color:var(--ink-3);text-decoration:underline;cursor:pointer;margin-left:10px;visibility:hidden}
+.reset.on{visibility:visible}
+.seal{position:absolute;right:5%;bottom:-64px;width:clamp(150px,13vw,200px);height:auto;pointer-events:none;opacity:0;transform:scale(2.4) rotate(-26deg);color:var(--seal)}
+.seal.on{animation:sealin .55s cubic-bezier(.3,1.5,.5,1) forwards}
+.rm .seal.on{animation:none;opacity:.92;transform:rotate(-9deg)}
+@keyframes sealin{0%{opacity:0;transform:scale(2.4) rotate(-26deg)}50%{opacity:.95}72%{transform:scale(.92) rotate(-8deg)}100%{opacity:.92;transform:scale(1) rotate(-9deg)}}
+.mail.thud .mail-in{animation:thud .35s ease .28s}
+@keyframes thud{30%{transform:translateY(3px)}60%{transform:translateY(-1px)}}
+@media (max-width:860px){
+  .order-grid{grid-template-columns:1fr;margin-top:32px;gap:40px}
+  .po,.mail{grid-column:1;padding-right:0}
+  .seal{right:2%;bottom:-56px;width:132px}
+  .hang{margin-left:-.36em}
+}
+
+/* ——— 4 · Roadmap marquee ——— */
+.road{padding-bottom:80px}
+.mq{margin-top:48px;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);overflow:hidden;padding:2vh 0 3vh;position:relative}
+.mq::before{content:"";position:absolute;left:0;right:0;top:3px;height:1px;background:var(--ink)}
+.track{display:flex;white-space:nowrap;will-change:transform}
+.seq{display:flex;align-items:baseline;flex:none;padding-right:.3em}
+.seq span{font-family:var(--serif);font-size:clamp(84px,15vw,250px);line-height:1.04;letter-spacing:-.035em;font-variation-settings:"wght" 500,"opsz" 144,"SOFT" 40;padding-right:.22em}
+.seq .solid{color:var(--ink);font-style:italic}
+.seq .solid::after{content:"";display:inline-block;width:.16em;height:.16em;border-radius:50%;background:var(--seal);margin-left:.04em}
+.seq .out{color:transparent;-webkit-text-stroke:1.4px var(--ink);font-variation-settings:"wght" 300,"opsz" 144,"SOFT" 40}
+.seq .dash{color:var(--ink-3);-webkit-text-stroke:0;font-variation-settings:"wght" 200,"opsz" 144}
+.mq-static{display:none}
+.rm .mq .track{display:none}
+.rm .mq-static{display:block}
+.mq-static ol{list-style:none;margin:0;padding:0}
+.mq-static li{font-family:var(--serif);font-size:clamp(44px,8vw,120px);line-height:1.05;letter-spacing:-.03em}
+.mq-static li.out{color:transparent;-webkit-text-stroke:1.2px var(--ink)}
+.road-key{display:grid;grid-template-columns:repeat(4,1fr);margin-top:18px}
+.road-key div{padding-right:18px}
+.road-key .mono{display:block;margin-bottom:6px}
+.road-key p{font-family:var(--serif);font-size:1.05rem;line-height:1.35;margin:0;color:var(--ink-2);font-variation-settings:"opsz" 16}
+.road-key .now p{color:var(--ink)}
+.road-key .now .mono{color:var(--seal)}
+@media (max-width:760px){.road-key{grid-template-columns:1fr 1fr;gap:18px 0}.mq{margin-top:30px}}
+
+/* ——— 5 · Close ——— */
+.close{padding-bottom:40px}
+.fit{width:max-content;font-family:var(--serif);font-weight:400;white-space:nowrap;line-height:.86;letter-spacing:-.045em;margin:6vh 0 0;font-size:200px}
+.fit em{font-style:italic}
+.fit .stop{margin-left:.1em}
+.close-row{display:grid;grid-template-columns:repeat(12,1fr);border-top:1px solid var(--rule);margin-top:max(9vh,60px);padding-top:28px;align-items:start}
+.close-row .lede{grid-column:7 / span 6}
+.close-row .cap{grid-column:1 / span 5}
+@media (max-width:760px){.close-row{grid-template-columns:1fr;gap:26px}.close-row .lede,.close-row .cap{grid-column:1}}
+footer.colophon{border-top:1px solid var(--ink);margin-top:90px;padding:20px 0 90px;display:flex;gap:18px 32px;flex-wrap:wrap;align-items:baseline}
+footer.colophon .wm{font-size:24px}
+footer.colophon .mono{flex:1 1 280px}
+
+/* ——— running folio ——— */
+.folio{position:fixed;right:max(16px, calc(var(--gut) - 40px));bottom:16px;z-index:25;display:flex;align-items:baseline;gap:10px;background:rgba(250,247,241,.92);padding:6px 10px;border:1px solid var(--rule);border-radius:2px}
+.folio .sc{font-size:.62rem}
+.folio .fo{font-family:var(--serif);font-style:italic;font-size:.9rem;color:var(--ink-3)}
+.folio .odo{font-size:1.05rem;font-weight:500;font-family:var(--mono);font-variation-settings:normal}
+.folio .odo .dg{height:1.2em;line-height:1.2em}
+.folio .odo .strip{transition-duration:.45s}
+.folio{transition:opacity .5s, transform .5s var(--ease)}
+.folio.hide{opacity:0;transform:translateY(8px)}
+@media (max-width:760px){.folio{left:0;right:0;bottom:0;border:0;border-top:1px solid var(--rule);border-radius:0;justify-content:flex-end;padding:5px 16px 6px;background:rgba(250,247,241,.96)}.folio .sc{margin-right:auto}.close{padding-bottom:20px}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="ink" x="-30%" y="-30%" width="160%" height="160%">
+      <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.2"/>
+    </filter>
+    <filter id="inkSeal" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency=".75" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.6" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="2.2" numOctaves="1" seed="9" result="g"/>
+      <feColorMatrix in="g" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.4 1.75" result="mask"/>
+      <feComposite in="d" in2="mask" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+
+<header class="top" id="top">
+  <a class="back" href="./index.html">← All five</a>
+  <a class="wm-small" href="#hero" aria-label="Mudavym, back to top">Mudavym<span style="color:var(--seal)">.</span></a>
+  <nav aria-label="Account">
+    <a class="signin" href="https://mudavym.com/login">Sign in</a>
+    <a class="btn" href="https://mudavym.com/get-started">Get started <span class="ar" aria-hidden="true">→</span></a>
+  </nav>
+</header>
+
+<main>
+<!-- ——— Hero ——— -->
+<section class="hero wrap" id="hero" data-name="Title page" aria-label="Mudavym">
+  <div class="colgrid" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="cols" aria-hidden="true"><span>01</span><span>02</span><span>03</span><span>04</span><span>05</span><span>06</span><span>07</span><span>08</span><span>09</span><span>10</span><span>11</span><span>12</span></div>
+  <div class="mast" id="mast">
+    <svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#1A5E6B"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></svg>
+    <span class="wm">Mudavym<span class="p">.</span></span>
+    <span class="sc">The back office of the house</span>
+    <span class="mono">No. 001 · MMXXVI</span>
+  </div>
+  <h1 class="h1 k rv" id="h1" data-kinetic data-amp="1">
+    <span class="ln">The house</span>
+    <span class="ln">runs itself.</span>
+    <span class="ln"><em>You sign</em><span class="stop keep" id="stop" aria-hidden="true"><span class="blot"></span><span class="drop" style="--dx:-.5em;--dy:-.35em"></span><span class="drop" style="--dx:.55em;--dy:-.2em"></span><span class="drop" style="--dx:.35em;--dy:.4em"></span><span class="drop" style="--dx:-.3em;--dy:.45em"></span><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#1A5E6B" filter="url(#ink)"/></svg></span></span>
+  </h1>
+  <div class="hero-foot" id="hfoot">
+    <p class="note mono">fol. 1 — scroll to turn the page ↓</p>
+    <div class="lede">
+      <p>An autonomous back office for restaurants. Agents keep the books behind the dining room; a person confirms anything that matters.</p>
+      <div class="ctas">
+        <a class="btn" href="https://mudavym.com/get-started">Set up your house <span class="ar" aria-hidden="true">→</span></a>
+        <a class="signin" href="https://mudavym.com/login">Sign in</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ——— 1 · Reading ——— -->
+<section class="sec pin" id="reading" data-name="Reading" style="--len:300vh" aria-labelledby="h-read">
+  <div class="stage"><div class="wrap">
+    <div class="sec-head"><span class="no">i.</span><span class="sc">Reading</span><span class="rule"></span><span class="mono">fol. 2</span></div>
+    <h2 class="h2 k rv" id="h-read" data-kinetic data-amp=".8">It reads <em>the list.</em></h2>
+    <div class="rawbox" id="rawbox">
+      <div class="src"><span class="mono">wine list · page 3 · line 14</span><span class="mono" id="readstate">camera · framing</span></div>
+      <span class="bracket tl"></span><span class="bracket tr"></span><span class="bracket bl"></span><span class="bracket br"></span>
+      <p class="raw" id="raw"><span class="tok" data-to="producer">Vietti</span><span class="glue">, </span><span class="tok" data-to="wine">Barolo “Castiglione”</span><span class="glue"> </span><span class="tok" data-to="vintage">2019</span><span class="glue leader"> ······ </span><span class="tok" data-to="price">145</span></p>
+    </div>
+    <div class="ledger" id="ledger" role="table" aria-label="Structured facts read from the line">
+      <div class="field" role="row"><div class="lab" role="rowheader"><span class="sc">Producer</span><span class="mono">c.1</span></div><div class="slot" role="cell" data-key="producer"><span class="ghost">Vietti</span></div></div>
+      <div class="field" role="row"><div class="lab" role="rowheader"><span class="sc">Wine</span><span class="mono">c.2</span></div><div class="slot" role="cell" data-key="wine"><span class="ghost">Barolo “Castiglione”</span></div></div>
+      <div class="field" role="row"><div class="lab" role="rowheader"><span class="sc">Vintage</span><span class="mono">c.3</span></div><div class="slot" role="cell" data-key="vintage"><span class="ghost">2019</span></div></div>
+      <div class="field" role="row"><div class="lab" role="rowheader"><span class="sc">Region</span><span class="tag">inferred</span></div><div class="slot inf" role="cell" data-inf>Piedmont</div></div>
+      <div class="field" role="row"><div class="lab" role="rowheader"><span class="sc">Grape</span><span class="tag">inferred</span></div><div class="slot inf" role="cell" data-inf>Nebbiolo</div></div>
+      <div class="field" role="row"><div class="lab" role="rowheader"><span class="sc">List</span><span class="mono">c.6</span></div><div class="slot" role="cell" data-key="price"><span class="ghost">145</span></div></div>
+    </div>
+    <div class="reading-foot">
+      <p class="cap">Point the phone at a list or a label. Boxes find the lines as you frame; the words are read when you press the shutter. What it inferred is marked, in <span style="color:var(--seal)">teal</span>.</p>
+      <span class="mono">one line in · six facts out</span>
+    </div>
+  </div></div>
+</section>
+
+<!-- ——— 2 · Counting ——— -->
+<section class="sec pin" id="counting" data-name="Counting" style="--len:320vh" aria-labelledby="h-count">
+  <div class="stage"><div class="wrap">
+    <div class="sec-head"><span class="no">ii.</span><span class="sc">Counting</span><span class="rule"></span><span class="mono">fol. 3</span></div>
+    <h2 class="h2 k rv" id="h-count" data-kinetic data-amp=".8">Every bottle,<br> <em>accounted for.</em></h2>
+    <div class="book" id="book">
+      <div class="bk-head" aria-hidden="true"><span class="mono">No.</span><span class="sc">Wine</span><span class="sc">Where</span><span class="sc num">Bottles</span><span class="sc">Why it changed</span></div>
+      <div class="bk-row" data-at=".2"><span class="n">01</span><span class="wn">Barolo “Castiglione” 2019<small>Vietti · Piedmont</small></span><span class="loc">Rack B · Bin 4</span><span class="odo" data-from="6" data-to="4" data-d="2"></span><span class="why"><span class="ch-d">−2</span>Two sold at service, Table 12. Toast sent it over at 22:41.</span><svg class="hl" aria-hidden="true"><line x1="0" y1=".5" x2="100%" y2=".5" pathLength="1"/></svg></div>
+      <div class="bk-row" data-at=".36"><span class="n">02</span><span class="wn">Sancerre Blanc 2022<small>Loire</small></span><span class="loc">Rack A · Bin 2</span><span class="odo" data-from="18" data-to="30" data-d="2"></span><span class="why"><span class="ch-d">+12</span>Delivery checked at the door against PO-0412. Twelve ordered, twelve in.</span><svg class="hl" aria-hidden="true"><line x1="0" y1=".5" x2="100%" y2=".5" pathLength="1"/></svg></div>
+      <div class="bk-row" data-at=".52"><span class="n">03</span><span class="wn">Champagne Brut NV<small>Champagne</small></span><span class="loc">Fridge 1 · Bin 1</span><span class="odo" data-from="9" data-to="8" data-d="2"></span><span class="why"><span class="ch-d">−1</span>One broken in service, logged at close.</span><svg class="hl" aria-hidden="true"><line x1="0" y1=".5" x2="100%" y2=".5" pathLength="1"/></svg></div>
+      <div class="bk-row" data-at=".66"><span class="n">04</span><span class="wn">Rioja Reserva 2016<small>Rioja</small></span><span class="loc">Rack C · Bin 7</span><span class="odo" data-from="3" data-to="3" data-d="2"></span><span class="why"><span class="ch-d">±0</span>Counted Tuesday. Matches the book.</span><svg class="hl" aria-hidden="true"><line x1="0" y1=".5" x2="100%" y2=".5" pathLength="1"/></svg></div>
+      <div class="bk-total" data-at=".8"><span></span><span class="lbl">Bottles in the cellar</span><span class="odo" data-from="412" data-to="421" data-d="3"></span><span></span><svg class="hl" aria-hidden="true"><line x1="0" y1=".5" x2="100%" y2=".5" pathLength="1"/></svg><svg class="hl hl2" aria-hidden="true"><line x1="0" y1=".5" x2="100%" y2=".5" pathLength="1"/></svg></div>
+    </div>
+    <div class="count-foot">
+      <p class="cap">Every bottle counted, located and valued at cost. Every change carries a reason you can read.</p>
+      <span class="mono">demo house · Thursday</span>
+    </div>
+  </div></div>
+</section>
+
+<!-- ——— 3 · Ordering ——— -->
+<section class="sec order wrap" id="ordering" data-name="Ordering" aria-labelledby="h-order">
+  <div class="sec-head"><span class="no">iii.</span><span class="sc">Ordering</span><span class="rule"></span><span class="mono">fol. 4</span></div>
+  <h2 class="h2 k rv" id="h-order" data-kinetic data-amp=".8">It drafts. <em>You sign.</em></h2>
+  <div class="order-grid">
+    <div class="po">
+      <p class="po-text" id="po" data-type><span class="hang">“</span>Barolo ‘Castiglione’ 2019 is down to four; par is twelve. A purchase order for eight is drafted, to the vendor who has delivered complete and on time. The email is written below. Nothing goes out until you confirm.”</p>
+      <div class="sign">
+        <button class="confirm wait" id="confirm" type="button">Confirm</button>
+        <div class="sigline" aria-hidden="true"><span>signed by a person, every time</span></div>
+      </div>
+      <p class="mono sign-note" id="signnote" aria-live="polite">Draft · nothing sent <button class="reset" id="reset" type="button">reset the demo</button></p>
+    </div>
+    <div class="mail" id="mail">
+      <div class="mail-in">
+        <div class="hdr">
+          <span class="k">To</span><span class="v">Your Piedmont vendor</span>
+          <span class="k">Re</span><span class="v">Order · Barolo “Castiglione” 2019 × 8</span>
+          <span class="k">PO</span><span class="v">PO-0413 · for Thursday’s delivery</span>
+        </div>
+        <p class="body" id="mailbody" data-type>Good morning — please send eight bottles of Vietti Barolo “Castiglione” 2019 with Thursday’s delivery, at the price on our last invoice. The purchase order is attached. Thank you.</p>
+        <div class="status"><span class="st" id="mailst"><b>Draft</b> · waiting for a person</span><span class="mono">1 of 1</span></div>
+      </div>
+      <svg class="seal" id="seal" viewBox="0 0 200 200" aria-hidden="true">
+        <g filter="url(#inkSeal)" fill="none" stroke="currentColor">
+          <circle cx="100" cy="100" r="92" stroke-width="5"/>
+          <circle cx="100" cy="100" r="82" stroke-width="1.5"/>
+          <circle cx="100" cy="100" r="52" stroke-width="1.5"/>
+          <path id="sealpath" d="M100 100 m-67 0 a67 67 0 1 1 134 0 a67 67 0 1 1 -134 0" stroke="none"/>
+          <text fill="currentColor" stroke="none" font-family="JetBrains Mono, monospace" font-size="13" font-weight="500" letter-spacing="3.2"><textPath href="#sealpath">CONFIRMED · BY A PERSON · MUDAVYM ·</textPath></text>
+          <g transform="translate(72,72) scale(.56)"><rect width="100" height="100" rx="22" fill="currentColor" stroke="none"/><g transform="translate(22.2,17) scale(0.115)" fill="#FAF7F1" stroke="none"><path d="M0 38H72V540H0Z"/><path d="M15 38H96L460 574H379Z"/><path d="M0 346H305L353 416H0Z"/><path d="M0 470H137V540H0Z"/><path d="M99 0H151L278.7 187.8L284.8 273Z"/><path d="M389.5 40H460.9L284.8 273L251.4 224Z"/><path d="M412 40H483V574H412Z"/><path d="M80 150V192H108Z"/><path d="M142 346H206L174 292Z"/><path d="M404 138L376 157L404 176Z"/><path d="M383 430H404V470Z"/></g></g>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ——— 4 · Roadmap ——— -->
+<section class="sec road" id="road" data-name="The order of things" aria-labelledby="h-road">
+  <div class="wrap">
+    <div class="sec-head"><span class="no">iv.</span><span class="sc">The order of things</span><span class="rule"></span><span class="mono">fol. 5</span></div>
+    <h2 class="h2 k rv" id="h-road" data-kinetic data-amp=".8">Wine first.<br> <em>Then the house.</em></h2>
+  </div>
+  <div class="mq" id="mq">
+    <div class="track" id="track" aria-hidden="true">
+      <div class="seq"><span class="solid">Wine</span><span class="dash">—</span><span class="out">All beverages</span><span class="dash">—</span><span class="out">Bakery</span><span class="dash">—</span><span class="out">The kitchen</span><span class="dash">—</span></div>
+    </div>
+    <div class="mq-static wrap"><ol><li>Wine</li><li class="out">All beverages</li><li class="out">Bakery</li><li class="out">The kitchen</li></ol></div>
+    <p class="vh">The order: wine, then all beverages, then the bakery, then the rest of the kitchen.</p>
+  </div>
+  <div class="wrap">
+    <div class="road-key">
+      <div class="now"><span class="mono">i · now</span><p>Wine. The hardest list in the house, and the bar for everything after it.</p></div>
+      <div><span class="mono">ii · not yet</span><p>All beverages.</p></div>
+      <div><span class="mono">iii · not yet</span><p>The bakery.</p></div>
+      <div><span class="mono">iv · not yet</span><p>The rest of the kitchen.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ——— 5 · Close ——— -->
+<section class="sec close wrap" id="close" data-name="Signature" aria-labelledby="h-close">
+  <div class="sec-head"><span class="no">v.</span><span class="sc">Signature</span><span class="rule"></span><span class="mono">fol. 6</span></div>
+  <h2 class="fit k rv" id="h-close" data-kinetic data-amp=".3"><em>Sign here</em><span class="stop keep" id="stop2" aria-hidden="true"><span class="blot"></span><span class="drop" style="--dx:-.5em;--dy:-.35em"></span><span class="drop" style="--dx:.55em;--dy:-.2em"></span><span class="drop" style="--dx:.35em;--dy:.4em"></span><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#1A5E6B" filter="url(#ink)"/></svg></span></h2>
+  <div class="close-row">
+    <p class="cap">Mudavym keeps the books of the house: reads the lists, counts the cellar, drafts the orders, checks the deliveries. You keep the signature. Pricing — talk to us.</p>
+    <div class="lede">
+      <p>Begin with the cellar. The rest of the house follows, in order.</p>
+      <div class="ctas">
+        <a class="btn" href="https://mudavym.com/get-started">Get started <span class="ar" aria-hidden="true">→</span></a>
+        <a class="signin" href="https://mudavym.com/login">Sign in</a>
+      </div>
+    </div>
+  </div>
+  <footer class="colophon">
+    <span class="wm">Mudavym<span class="p">.</span></span>
+    <span class="mono">Set in Fraunces, DM Sans &amp; JetBrains Mono. Ruled by hand. Every figure on this page belongs to a demo house.</span>
+    <a class="mono" href="./index.html">← All five</a>
+  </footer>
+</section>
+</main>
+
+<div class="folio hide" aria-hidden="true"><span class="sc" id="fsec">Title page</span><span class="fo">fol.</span><span class="odo" id="folio" data-d="3" data-lead="1"></span></div>
+
+<script>
+(() => {
+  const RM = document.documentElement.classList.contains('rm');
+  const TOUCH = matchMedia('(hover: none)').matches;
+  const $ = (s, r=document) => r.querySelector(s), $$ = (s, r=document) => [...r.querySelectorAll(s)];
+  const clamp = (v, a=0, b=1) => Math.max(a, Math.min(b, v));
+  const ease = t => 1 - Math.pow(1 - t, 3);
+  const easeIO = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+
+  /* ---------- split into per-letter spans ---------- */
+  function split(el) {
+    el.setAttribute('aria-label', el.textContent.replace(/\s+/g, ' ').trim());
+    let idx = 0, lastW = null;
+    const walk = node => {
+      [...node.childNodes].forEach(n => {
+        if (n.nodeType === 3) {
+          const frag = document.createDocumentFragment();
+          n.textContent.split(/(\s+)/).forEach(part => {
+            if (!part) return;
+            if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(' ')); lastW = null; return; }
+            const w = document.createElement('span'); w.className = 'w'; w.setAttribute('aria-hidden', 'true');
+            for (const c of part) { const s = document.createElement('span'); s.className = 'ch'; s.textContent = c; s.style.setProperty('--i', idx++); w.appendChild(s); }
+            frag.appendChild(w); lastW = w;
+          });
+          n.replaceWith(frag);
+        } else if (n.nodeType === 1) {
+          if (n.classList.contains('keep')) { if (lastW) lastW.appendChild(n); return; }
+          walk(n);
+        }
+      });
+    };
+    walk(el);
+    return idx;
+  }
+
+  const groups = $$('[data-kinetic]').map(el => {
+    const n = split(el);
+    return { el, n, chars: $$('.ch', el), amp: +(el.dataset.amp || 1), vis: false, st: [] };
+  });
+  groups.forEach(g => g.chars.forEach((c, i) => g.st[i] = { w: 420, s: 0, o: 144, k: 0, last: '' }));
+
+  /* ---------- odometers ---------- */
+  function makeOdo(el) {
+    const d = +el.dataset.d || 2; el.innerHTML = '';
+    el._cols = [];
+    for (let i = 0; i < d; i++) {
+      const c = document.createElement('span'); c.className = 'dg'; c.setAttribute('aria-hidden', 'true');
+      const s = document.createElement('span'); s.className = 'strip';
+      for (let k = 0; k < 10; k++) { const x = document.createElement('span'); x.textContent = k; s.appendChild(x); }
+      c.appendChild(s); el.appendChild(c); el._cols.push(c);
+    }
+    el.setAttribute('role', 'img');
+  }
+  function setOdo(el, v) {
+    if (el._v === v) return; el._v = v;
+    const d = el._cols.length, str = String(v).padStart(d, '0'), lead = el.dataset.lead;
+    el._cols.forEach((c, i) => {
+      c.firstChild.style.transform = `translateY(${-(+str[i]) * 10}%)`;
+      c.classList.toggle('lead', !lead && i < d - String(v).length);
+    });
+    el.setAttribute('aria-label', String(v));
+  }
+  $$('.odo').forEach(o => { makeOdo(o); setOdo(o, RM && o.dataset.to ? +o.dataset.to : +(o.dataset.from || 1)); });
+  const folio = $('#folio'), fsec = $('#fsec');
+
+  /* ---------- hero intro ---------- */
+  const h1 = $('#h1'), stop = $('#stop');
+  function intro() {
+    $('#mast').classList.add('in');
+    if (RM) { h1.classList.add('in', 'done'); $('#hfoot').classList.add('in'); stop.classList.add('on'); return; }
+    requestAnimationFrame(() => h1.classList.add('in'));
+    const n = groups[0].n, total = 1000 + n * 26;
+    setTimeout(() => { h1.classList.add('done'); stop.classList.add('on'); }, total - 120);
+    setTimeout(() => $('#hfoot').classList.add('in'), total - 300);
+  }
+  let started = false;
+  const go = () => { if (!started) { started = true; intro(); } };
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(go); setTimeout(go, 700);
+
+  /* section heading reveals */
+  const rvIO = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const el = e.target; rvIO.unobserve(el);
+    el.classList.add('in');
+    const g = groups.find(g => g.el === el);
+    setTimeout(() => { el.classList.add('done'); const s = $('.stop', el); if (s) s.classList.add('on'); }, RM ? 0 : 900 + (g ? g.n : 10) * 26);
+  }), { threshold: .35 });
+  groups.slice(1).forEach(g => RM ? (g.el.classList.add('in', 'done'), $('.stop', g.el) && $('.stop', g.el).classList.add('on')) : rvIO.observe(g.el));
+
+  /* kinetic visibility */
+  const visIO = new IntersectionObserver(es => es.forEach(e => { const g = groups.find(g => g.el === e.target); if (g) g.vis = e.isIntersecting; kick(); }));
+  groups.forEach(g => visIO.observe(g.el));
+
+  /* ---------- pointer ---------- */
+  let px = -9999, py = -9999, lastMove = 0;
+  addEventListener('pointermove', e => { if (e.pointerType === 'touch') return; px = e.clientX; py = e.clientY; lastMove = performance.now(); kick(); }, { passive: true });
+  document.addEventListener('pointerleave', () => { px = py = -9999; });
+
+  /* ---------- layout cache ---------- */
+  let VH = innerHeight, VW = innerWidth, docTop = {};
+  const pins = $$('.pin'), secs = $$('main > section');
+  function measure() {
+    VH = innerHeight; VW = innerWidth;
+    pins.forEach(p => { p._top = p.getBoundingClientRect().top + scrollY; p._len = p.offsetHeight - VH; });
+    secs.forEach(s => { s._top = s.getBoundingClientRect().top + scrollY; });
+    measureFlip(); fitClose();
+  }
+
+  /* ---------- fit-text close ---------- */
+  const fit = $('#h-close');
+  function fitClose() {
+    fit.style.fontSize = '100px';
+    const avail = fit.parentElement.clientWidth - parseFloat(getComputedStyle(fit.parentElement).paddingLeft) * 2;
+    const w = fit.scrollWidth;
+    const fs = Math.min(100 * avail / w * .965, VH * .42);
+    fit.style.fontSize = fs + 'px';
+  }
+
+  /* ---------- 1 · Reading: scroll-scrubbed FLIP ---------- */
+  const reading = $('#reading'), toks = $$('#raw .tok'), glues = $$('#raw .glue'), brackets = $$('#rawbox .bracket');
+  const infs = $$('#ledger .slot.inf'), tags = $$('#ledger .tag'), readstate = $('#readstate');
+  infs.forEach(s => { const t = s.textContent; s.setAttribute('aria-label', t); s.innerHTML = [...t].map(c => `<span class="c" aria-hidden="true">${c}</span>`).join(''); });
+  const rawEl = $('#raw'), rawGhost = rawEl.cloneNode(true);
+  rawGhost.removeAttribute('id'); rawGhost.classList.add('raw-ghost'); rawGhost.setAttribute('aria-hidden', 'true');
+  rawEl.after(rawGhost);
+  function measureFlip() {
+    rawGhost.style.top = rawEl.offsetTop + 'px';
+    const box = $('#rawbox').getBoundingClientRect();
+    toks.forEach(t => {
+      t.style.transform = 'none';
+      const a = t.getBoundingClientRect();
+      const ghost = $(`#ledger .slot[data-key="${t.dataset.to}"] .ghost`);
+      const b = ghost.getBoundingClientRect();
+      const fa = parseFloat(getComputedStyle(t).fontSize), fb = parseFloat(getComputedStyle(ghost).fontSize);
+      t._dx = b.left - a.left; t._dy = b.top - a.top; t._s = fb / fa;
+    });
+    // camera brackets hug the raw line
+    const raw = $('#raw').getBoundingClientRect(), pad = 12;
+    const L = raw.left - box.left - pad, T = raw.top - box.top - pad, R = raw.right - box.left + pad, B = raw.bottom - box.top + pad;
+    const set = (el, x, y) => { el.style.left = x + 'px'; el.style.top = y + 'px'; };
+    set(brackets[0], L, T); set(brackets[1], R - 18, T); set(brackets[2], L, B - 18); set(brackets[3], R - 18, B - 18);
+    renderReading(RM ? 1 : (reading._p ?? 0), true);
+  }
+  function renderReading(p, force) {
+    if (!force && reading._p === p) return; reading._p = p;
+    const bp = clamp(p / .12), bfade = 1 - clamp((p - .2) / .1);
+    brackets.forEach((b, i) => { b.style.opacity = bp * bfade; b.style.transform = `translate(${(i % 2 ? 1 : -1) * (1 - bp) * 14}px, ${(i < 2 ? -1 : 1) * (1 - bp) * 14}px)`; });
+    readstate.textContent = p < .1 ? 'camera · framing' : p < .2 ? 'shutter · reading' : p < .62 ? 'sorting into the book' : 'read · 4 stated · 2 inferred';
+    glues.forEach(g => g.style.opacity = 1 - clamp((p - .16) / .1));
+    rawGhost.style.opacity = (.26 * clamp((p - .2) / .25)).toFixed(3);
+    toks.forEach((t, i) => {
+      const lt = easeIO(clamp((p - .2 - i * .07) / .3));
+      const arc = Math.sin(lt * Math.PI) * -26;
+      const s = 1 + (t._s - 1) * lt;
+      t.style.transform = `translate(${t._dx * lt}px, ${t._dy * lt + arc}px) scale(${s})`;
+      t.style.color = lt > 0 && lt < 1 ? 'var(--ink)' : '';
+    });
+    infs.forEach((s, j) => {
+      const cs = $$('.c', s), q = clamp((p - .66 - j * .08) / .14);
+      cs.forEach((c, k) => c.classList.toggle('on', k < Math.round(q * cs.length)));
+      tags[j].classList.toggle('on', q > .05);
+    });
+  }
+
+  /* ---------- 2 · Counting ---------- */
+  const counting = $('#counting'), rows = $$('#book .bk-row, #book .bk-total');
+  rows.forEach(r => r._lines = $$('line', r));
+  function renderCounting(p) {
+    rows.forEach((r, i) => {
+      const at = +r.dataset.at;
+      const lp = ease(clamp((p - (at - .14)) / .14));
+      r._lines.forEach((l, j) => l.style.strokeDashoffset = 1 - clamp(lp * 1.15 - j * .15));
+      const hit = p >= at;
+      r.classList.toggle('hit', hit);
+      const o = $('.odo', r); setOdo(o, hit ? +o.dataset.to : +o.dataset.from);
+    });
+  }
+  if (RM) rows.forEach(r => { r.classList.add('hit'); });
+
+  /* ---------- 3 · Ordering: typewriter + seal ---------- */
+  const typed = $$('[data-type]').map(el => {
+    const nodes = [];
+    const walk = n => [...n.childNodes].forEach(c => {
+      if (c.nodeType === 3) {
+        const f = document.createDocumentFragment();
+        for (const ch of c.textContent) { const s = document.createElement('span'); s.className = 't'; s.textContent = ch; f.appendChild(s); nodes.push(s); }
+        c.replaceWith(f);
+      } else if (c.nodeType === 1) walk(c);
+    });
+    walk(el); return nodes;
+  });
+  const confirmBtn = $('#confirm'), seal = $('#seal'), mail = $('#mail'), mailst = $('#mailst'), signnote = $('#signnote'), resetBtn = $('#reset');
+  let typedDone = false;
+  function typeAll() {
+    if (RM) { typed.flat().forEach(s => s.classList.add('on')); confirmBtn.classList.remove('wait'); typedDone = true; return; }
+    const all = typed.flat(); let i = 0, prev = null;
+    const step = () => {
+      const n = all[i] && all[i].textContent.match(/[.;,—]/) ? 1 : 3;
+      for (let k = 0; k < n && i < all.length; k++) all[i++].classList.add('on');
+      if (prev) prev.classList.remove('caret');
+      prev = all[i - 1]; if (prev) prev.classList.add('caret');
+      if (i < all.length) setTimeout(step, /[.;—]/.test(prev.textContent) ? 140 : 16);
+      else { setTimeout(() => prev.classList.remove('caret'), 1400); confirmBtn.classList.remove('wait'); typedDone = true; }
+    };
+    step();
+  }
+  new IntersectionObserver((es, io) => es.forEach(e => { if (e.isIntersecting) { io.disconnect(); typeAll(); } }), { threshold: .3 }).observe($('.order-grid'));
+  confirmBtn.addEventListener('click', () => {
+    if (!typedDone) typed.flat().forEach(s => s.classList.add('on'));
+    seal.classList.remove('on'); void seal.offsetWidth; seal.classList.add('on');
+    mail.classList.add('thud', 'sent');
+    mailst.innerHTML = '<b>Confirmed by you</b> · sent 09:14';
+    confirmBtn.textContent = 'Confirmed'; confirmBtn.disabled = true;
+    signnote.firstChild.textContent = 'Signed · sent because a person said so ';
+    resetBtn.classList.add('on');
+  });
+  resetBtn.addEventListener('click', () => {
+    seal.classList.remove('on'); mail.classList.remove('thud', 'sent');
+    mailst.innerHTML = '<b>Draft</b> · waiting for a person';
+    confirmBtn.textContent = 'Confirm'; confirmBtn.disabled = false;
+    signnote.firstChild.textContent = 'Draft · nothing sent ';
+    resetBtn.classList.remove('on'); confirmBtn.focus();
+  });
+
+  /* ---------- 4 · Marquee ---------- */
+  const track = $('#track'), mq = $('#mq');
+  let mqVis = false, mqX = 0, seqW = 0;
+  function buildMarquee() {
+    const first = $('.seq', track);
+    $$('.seq', track).slice(1).forEach(s => s.remove());
+    seqW = first.getBoundingClientRect().width;
+    if (seqW < 10) { seqW = 0; return; }
+    const copies = Math.max(2, Math.ceil(VW / seqW) + 1);
+    for (let i = 1; i < copies; i++) track.appendChild(first.cloneNode(true));
+  }
+  new IntersectionObserver(es => { mqVis = es[0].isIntersecting; kick(); }).observe(mq);
+
+  /* ---------- main loop ---------- */
+  let lastY = scrollY, vel = 0, raf = 0, t0 = performance.now();
+  function kick() { if (!raf && !RM) raf = requestAnimationFrame(loop); }
+  function scrollWork() {
+    const y = scrollY;
+    $('#top').classList.toggle('past', y > VH * .6);
+    // folio: one leaf every 140px; section name
+    setOdo(folio, Math.min(999, 1 + Math.floor(y / 140)));
+    folio.parentElement.classList.toggle('hide', y < VH * .5);
+    let name = 'Title page'; secs.forEach(s => { if (y + VH * .45 >= s._top) name = s.dataset.name; });
+    if (fsec.textContent !== name) fsec.textContent = name;
+    if (RM) return;
+    pins.forEach(p => {
+      const pr = clamp((y - p._top) / p._len);
+      if (p === reading) renderReading(pr); else if (p === counting) renderCounting(pr);
+    });
+  }
+  function loop(now) {
+    raf = 0;
+    const y = scrollY, dy = y - lastY; lastY = y;
+    vel += (dy - vel) * .18;
+    scrollWork();
+    const t = (now - t0) / 1000;
+    const idle = TOUCH || now - lastMove > 4000;
+    const vb = clamp(Math.abs(vel) / 45);
+    let busy = Math.abs(vel) > .2 || now - lastMove < 1200;
+    // kinetic letters
+    groups.forEach(g => {
+      if (!g.vis) return;
+      busy = busy || idle;
+      const rects = (px > -999) ? g.chars.map(c => c.getBoundingClientRect()) : null;
+      const fs = parseFloat(getComputedStyle(g.el).fontSize), R = Math.max(140, fs * 1.7);
+      g.chars.forEach((c, i) => {
+        let near = 0;
+        if (rects) { const r = rects[i]; const d = Math.hypot(r.left + r.width / 2 - px, r.top + r.height / 2 - py); near = Math.pow(clamp(1 - d / R), 1.6); }
+        const wave = idle ? Math.sin(t * 1.3 - i * .42) * .5 + .5 : 0;
+        const tw = 420 + g.amp * (near * 360 + vb * (TOUCH ? 150 : 230) + wave * 70);
+        const ts = clamp(near * 100 + vb * 70 + wave * 30, 0, 100);
+        const to = 144 - near * 60;
+        const st = g.st[i];
+        st.w += (tw - st.w) * .16; st.s += (ts - st.s) * .16; st.o += (to - st.o) * .16;
+        const k = near > .45 ? 1 : 0;
+        const v = `"wght" ${st.w.toFixed(0)},"opsz" ${st.o.toFixed(0)},"SOFT" ${st.s.toFixed(0)},"WONK" ${k}`;
+        if (v !== st.last) { c.style.fontVariationSettings = v; st.last = v; }
+      });
+    });
+    // marquee
+    if (mqVis && seqW) {
+      mqX -= (1.1 + Math.abs(vel) * .55) * (vel < -.5 ? -1 : 1);
+      if (mqX <= -seqW) mqX += seqW; if (mqX > 0) mqX -= seqW;
+      const sk = clamp(-vel * .35, -14, 14);
+      track.style.transform = `translate3d(${mqX}px,0,0) skewX(${sk.toFixed(2)}deg)`;
+      busy = true;
+    }
+    if (busy) kick();
+  }
+  addEventListener('scroll', () => { if (RM) scrollWork(); else kick(); }, { passive: true });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { measure(); buildMarquee(); scrollWork(); }, 120); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) kick(); });
+
+  const boot = () => { measure(); buildMarquee(); if (RM) { renderCounting(1); } scrollWork(); kick(); };
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(boot);
+  boot();
+})();
+</script>
+</body>
+</html>

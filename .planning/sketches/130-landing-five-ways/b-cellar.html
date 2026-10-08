@@ -1,0 +1,989 @@
+<!--
+  Concept B — "The Cellar"
+  Idea: a candlelit, real-time 3D descent down a vaulted wine cellar. Scrolling is the walk:
+        the cellar is counted, a label is read, the stock is valued, a low bin drafts its own
+        purchase order, and finally the bottles rise and assemble into the Mudavym mark.
+  Motion: three.js r128 scroll-driven camera path (eased keyframes, smoothed scroll) · mouse-parallax
+        look-around · ~3,400 InstancedMesh bottles (LatheGeometry) with a per-instance shader glow ·
+        a teal scan gate sweeping the racks · 3D→HTML projected labels and detection boxes ·
+        staggered instance-matrix morphs (racks → bar sculpture → A+M mark sampled from its 11 paths) ·
+        candle flicker + drifting dust · reduced-motion static stations · SVG fallback without WebGL.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mudavym — The Cellar</title>
+<meta name="description" content="Mudavym is the back office that runs behind your dining room. Every bottle counted, read, valued and reordered — a person confirms anything that matters.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,100..900,0..100,0..1;1,9..144,100..900,0..100,0..1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --c0:#15130F; --c1:#1D1813; --c2:#262019;
+  --ink:#EFE7D9; --ink2:#C0B6A5; --ink3:#ABA294;
+  --seal:#5FB0BC; --seal-600:#1A5E6B; --seal-700:#14515C; --seal-900:#0C343C; --seal-950:#08262C;
+  --amber:#E0A458; --wine:#6B1F2A; --paper:#FAF7F1;
+  --line:rgba(239,231,217,.12); --glass:rgba(29,24,19,.72);
+  --f-d:'Fraunces',Georgia,'Times New Roman',serif;
+  --f-u:'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-m:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --gut:clamp(16px,6vw,104px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{background:var(--c0);-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--c0);color:var(--ink);font-family:var(--f-u);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:clip}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--seal);outline-offset:3px;border-radius:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mono{font-family:var(--f-m);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+
+/* ---------- fixed stage ---------- */
+#fb,#gl,#ov,.scrim,.vig{position:fixed;inset:0}
+#fb{z-index:0}
+#fb svg{width:100%;height:100%;display:block}
+#gl{z-index:1;width:100%;height:100%;display:block;opacity:0;transition:opacity 1.2s ease}
+html.gl-on #gl{opacity:1}
+#ov{z-index:2;pointer-events:none;overflow:hidden}
+.vig{z-index:3;pointer-events:none;background:radial-gradient(120% 90% at 60% 45%,transparent 55%,rgba(10,9,7,.55) 100%)}
+.scrim{z-index:3;pointer-events:none;background:linear-gradient(90deg,rgba(21,19,15,.88) 0%,rgba(21,19,15,.62) 26%,rgba(21,19,15,0) 52%)}
+
+/* ---------- chrome ---------- */
+.top{position:fixed;z-index:20;left:0;right:0;top:0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:18px var(--gut);gap:12px}
+.top::before{content:"";position:absolute;inset:0 0 -30px;background:linear-gradient(rgba(21,19,15,.7),rgba(21,19,15,0));pointer-events:none;z-index:-1}
+.back{justify-self:start;font-family:var(--f-m);font-size:12px;letter-spacing:.06em;color:var(--ink3);text-decoration:none;padding:6px 0}
+.back:hover{color:var(--ink)}
+.wm{justify-self:center;font-family:var(--f-d);font-weight:600;font-size:22px;letter-spacing:-.01em;text-decoration:none;font-variation-settings:"opsz" 72}
+.wm span{color:var(--seal)}
+.top nav{justify-self:end;display:flex;gap:18px;align-items:center}
+.top nav a.link{font-size:14px;color:var(--ink2);text-decoration:none}
+.top nav a.link:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 15px/1 var(--f-u);border-radius:999px;padding:14px 22px;text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .2s,color .2s,border-color .2s,transform .2s}
+.btn.primary{background:var(--seal);color:var(--seal-950)}
+.btn.primary:hover{background:#7cc2cc}
+.btn.ghost{border-color:rgba(239,231,217,.28);color:var(--ink);background:rgba(21,19,15,.35)}
+.btn.ghost:hover{border-color:var(--ink2)}
+.btn.sm{padding:10px 16px;font-size:14px}
+
+.rail{position:fixed;z-index:20;right:var(--gut);top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px;list-style:none;margin:0;padding:0}
+.rail li{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-family:var(--f-m);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.rail li span{opacity:0;transform:translateX(6px);transition:.4s}
+.rail li i{width:6px;height:6px;border-radius:50%;background:rgba(239,231,217,.25);transition:.4s}
+.rail li.on span{opacity:1;transform:none;color:var(--ink2)}
+.rail li.on i{background:var(--seal);box-shadow:0 0 0 4px rgba(95,176,188,.18)}
+
+/* ---------- story ---------- */
+main{position:relative;z-index:10}
+.sec{position:relative;height:240vh}
+.sec.hero{height:160vh}
+.sec.fin{height:210vh}
+.pin{position:sticky;top:0;height:100vh;height:100svh;display:flex;align-items:center;padding:96px var(--gut) 56px}
+.card{max-width:30rem;will-change:opacity,transform}
+.eyebrow{display:flex;align-items:center;gap:10px;color:var(--seal);margin:0 0 18px}
+.eyebrow::before{content:"";width:22px;height:1px;background:currentColor}
+h1,h2{font-family:var(--f-d);font-weight:380;letter-spacing:-.02em;margin:0;font-variation-settings:"opsz" 144,"SOFT" 30;text-wrap:balance}
+h1{font-size:clamp(2.9rem,6.6vw,6.4rem);line-height:.94}
+h2{font-size:clamp(2.1rem,4vw,3.7rem);line-height:1}
+h1 em,h2 em{font-style:italic;color:var(--seal);font-weight:340}
+.lede{color:var(--ink2);margin:22px 0 0;max-width:27rem;text-wrap:pretty}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.cue{margin-top:44px;color:var(--ink3);display:flex;align-items:center;gap:12px}
+.cue i{display:block;width:1px;height:38px;background:linear-gradient(var(--seal),transparent);animation:drip 2.4s ease-in-out infinite}
+@keyframes drip{0%{transform:scaleY(.2);transform-origin:top}50%{transform:scaleY(1);transform-origin:top}100%{transform:scaleY(.2);transform-origin:bottom}}
+
+.panel{margin-top:26px;background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:16px 18px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);max-width:26rem}
+.count{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+.count b{font-family:var(--f-m);font-weight:500;font-size:clamp(28px,3.2vw,40px);color:var(--ink);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.count .mono{color:var(--ink3)}
+.count-sub{margin-top:8px;color:var(--ink3);font-family:var(--f-m);font-size:12px;display:flex;gap:8px;align-items:center}
+.count-sub i{width:7px;height:7px;border-radius:50%;background:var(--seal);box-shadow:0 0 10px var(--seal)}
+
+.fields{display:grid;grid-template-columns:auto 1fr;gap:10px 18px;margin:0}
+.fields dt{font-family:var(--f-m);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);padding-top:3px}
+.fields dd{margin:0;position:relative;font-size:15px;color:var(--ink)}
+.fields dd span{transition:opacity .5s,filter .5s;opacity:0;filter:blur(6px)}
+.fields dd::before{content:"";position:absolute;left:0;top:50%;height:8px;width:70%;margin-top:-4px;border-radius:4px;background:linear-gradient(90deg,rgba(239,231,217,.06),rgba(95,176,188,.25),rgba(239,231,217,.06));background-size:200% 100%;animation:shim 1.4s linear infinite;transition:opacity .4s}
+.fields dd.on span{opacity:1;filter:none}
+.fields dd.on::before{opacity:0}
+@keyframes shim{to{background-position:-200% 0}}
+.panel-h{display:flex;justify-content:space-between;align-items:center;color:var(--ink3);margin-bottom:12px}
+.panel-h .live{display:flex;align-items:center;gap:6px;color:var(--seal)}
+.panel-h .live::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+
+.ledger{list-style:none;margin:0;padding:0}
+.ledger li{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line);font-size:14px;color:var(--ink2);opacity:0;transform:translateY(6px);transition:.5s}
+.ledger li:first-child{border-top:0}
+.ledger li.on{opacity:1;transform:none}
+.ledger time,.ledger b{font-family:var(--f-m);font-size:12px;color:var(--ink3);font-weight:400}
+.ledger b{color:var(--ink)}
+.ledger em{font-style:normal;color:var(--ink)}
+.total{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid rgba(95,176,188,.35);margin-top:6px;padding-top:12px}
+.total b{font-family:var(--f-m);font-weight:500;font-size:20px}
+
+.po-why{margin:0 0 12px;font-size:15px;color:var(--ink)}
+.po-lines{list-style:none;margin:0;padding:0;font-size:14px;color:var(--ink2)}
+.po-lines li{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--line)}
+.po-lines b{font-family:var(--f-m);font-weight:400;font-size:13px;color:var(--ink)}
+.po-status{display:flex;align-items:center;gap:8px;margin:14px 0 14px;font-size:14px;color:var(--amber)}
+.po-status i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor}
+.po.ok .po-status{color:var(--seal)}
+.po-act{display:flex;gap:10px;flex-wrap:wrap}
+.po .btn{padding:11px 18px;font-size:14px}
+
+.order{list-style:none;padding:0;margin:26px 0 0;display:flex;flex-wrap:wrap;gap:8px 0;font-family:var(--f-m);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.order li{display:flex;align-items:center}
+.order li+li::before{content:"→";margin:0 10px;color:rgba(239,231,217,.35)}
+.order li.now{color:var(--seal)}
+.fine{margin-top:18px;color:var(--ink3);font-size:14px;max-width:26rem}
+
+footer{position:relative;z-index:10;padding:40px var(--gut) 48px;border-top:1px solid var(--line);background:var(--c0);display:flex;flex-wrap:wrap;gap:16px 32px;justify-content:space-between;align-items:center;color:var(--ink3);font-size:14px}
+footer .wm{font-size:20px;color:var(--ink)}
+footer nav{display:flex;gap:20px}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+
+/* ---------- projected overlay ---------- */
+.tag,.det,.bar{position:absolute;left:0;top:0;opacity:0;transition:opacity .45s ease;will-change:transform}
+.tag.on,.det.on,.bar.on{opacity:1}
+.tag{display:flex;align-items:center;gap:8px}
+.tag i{flex:none;width:9px;height:9px;border-radius:50%;background:var(--seal);box-shadow:0 0 0 4px rgba(95,176,188,.2),0 0 16px var(--seal);margin-left:-4.5px}
+.tag span{white-space:nowrap;background:rgba(8,38,44,.82);border:1px solid rgba(95,176,188,.45);border-radius:8px;padding:6px 9px;font-size:13px;color:var(--ink);backdrop-filter:blur(6px)}
+.tag span small{display:block;font-family:var(--f-m);font-size:10.5px;letter-spacing:.05em;color:#8FC4CD;margin-top:1px}
+.det{border:1.5px solid var(--seal);border-radius:3px;box-shadow:0 0 0 1px rgba(8,38,44,.5),0 0 18px rgba(95,176,188,.35)}
+.det b{position:absolute;right:100%;top:-1.5px;margin-right:6px;font:500 10px/1 var(--f-m);letter-spacing:.06em;text-transform:uppercase;background:var(--seal);color:var(--seal-950);padding:3px 5px;border-radius:3px;white-space:nowrap}
+.det.r b{right:auto;left:100%;margin:0 0 0 6px}
+.bar{transform-origin:50% 0;text-align:center;width:120px;margin-left:-60px}
+.bar b{display:block;font-family:var(--f-m);font-size:13px;font-weight:500;color:var(--ink)}
+.bar span{display:block;font-family:var(--f-m);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#8FC4CD}
+
+/* ---------- phone ---------- */
+@media (max-width:760px){
+  body{font-size:16px}
+  .top{grid-template-columns:auto 1fr auto;padding:14px 16px}
+  .wm{justify-self:start;font-size:20px}
+  .back{grid-column:3;grid-row:1}
+  .top nav{display:none}
+  .rail{display:none}
+  .scrim{background:linear-gradient(0deg,rgba(21,19,15,.92) 0%,rgba(21,19,15,.55) 40%,rgba(21,19,15,0) 62%)}
+  .vig{background:radial-gradient(120% 70% at 50% 30%,transparent 55%,rgba(10,9,7,.5) 100%)}
+  .pin{align-items:flex-end;padding:72px 16px 16px}
+  .card{max-width:none;width:100%;background:rgba(21,19,15,.78);border:1px solid var(--line);border-radius:18px;padding:20px 18px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .card.hero-card{background:none;border:0;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0 2px 8px}
+  h1{font-size:clamp(2.6rem,12.5vw,3.4rem)}
+  h2{font-size:clamp(1.75rem,8.4vw,2.2rem)}
+  .eyebrow{margin-bottom:10px}
+  .lede{margin-top:12px;font-size:15px}
+  .hide-sm{display:none}
+  .panel{margin-top:14px;padding:12px 14px;background:rgba(38,32,25,.6);backdrop-filter:none;-webkit-backdrop-filter:none}
+  .cta{margin-top:20px}
+  .cta .btn{flex:1 1 auto}
+  .cue{display:none}
+  .ledger li{grid-template-columns:40px 1fr auto;font-size:13px;padding:7px 0}
+  .ledger li:nth-child(3){display:none}
+  .order{margin-top:16px;font-size:10px;letter-spacing:.03em;flex-wrap:nowrap}
+  .order li+li::before{margin:0 6px}
+  .fine{display:none}
+  .tag span{font-size:12px;padding:5px 7px}
+}
+/* ---------- fallback (no WebGL) ---------- */
+html.gl-on #fb{display:none}
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  .card{opacity:1!important;transform:none!important}
+  .fields dd span{opacity:1;filter:none}.fields dd::before{display:none}
+  .ledger li{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Static fallback scene: shown until (and unless) WebGL is running -->
+<div id="fb" aria-hidden="true">
+  <svg viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <radialGradient id="fbG" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#E0A458" stop-opacity=".55"/><stop offset=".35" stop-color="#E0A458" stop-opacity=".16"/><stop offset="1" stop-color="#E0A458" stop-opacity="0"/></radialGradient>
+      <radialGradient id="fbT" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#5FB0BC" stop-opacity=".35"/><stop offset="1" stop-color="#5FB0BC" stop-opacity="0"/></radialGradient>
+      <path id="fbA" d="M120 1200V420A680 680 0 0 1 1480 420V1200" fill="none" stroke="#3b2b20" stroke-width="56"/>
+      <pattern id="fbB" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="8" fill="#1d1712" stroke="#4a3526" stroke-width="1.4"/><circle cx="11" cy="11" r="3" fill="#0f0c09"/></pattern>
+    </defs>
+    <rect width="1600" height="1000" fill="#15130F"/>
+    <g opacity=".95">
+      <path d="M0 160L700 480V600L0 1000Z" fill="url(#fbB)" opacity=".55"/>
+      <path d="M1600 160L900 480V600L1600 1000Z" fill="url(#fbB)" opacity=".55"/>
+      <path d="M0 1000L700 600H900L1600 1000Z" fill="#1d1813"/>
+    </g>
+    <g fill="none">
+      <use href="#fbA" transform="translate(800 520) scale(1.25) translate(-800 -520)" opacity=".9"/>
+      <use href="#fbA" transform="translate(800 520) scale(.82) translate(-800 -520)" opacity=".8"/>
+      <use href="#fbA" transform="translate(800 520) scale(.56) translate(-800 -520)" opacity=".65"/>
+      <use href="#fbA" transform="translate(800 520) scale(.39) translate(-800 -520)" opacity=".5"/>
+      <use href="#fbA" transform="translate(800 520) scale(.27) translate(-800 -520)" opacity=".38"/>
+      <use href="#fbA" transform="translate(800 520) scale(.19) translate(-800 -520)" opacity=".28"/>
+    </g>
+    <circle cx="800" cy="540" r="260" fill="url(#fbG)"/>
+    <circle cx="300" cy="330" r="130" fill="url(#fbG)"/>
+    <circle cx="1300" cy="330" r="130" fill="url(#fbG)"/>
+    <circle cx="1040" cy="560" r="220" fill="url(#fbT)"/>
+    <rect width="1600" height="1000" fill="#15130F" opacity=".25"/>
+  </svg>
+</div>
+
+<canvas id="gl" aria-hidden="true"></canvas>
+<div id="ov" aria-hidden="true"></div>
+<div class="vig" aria-hidden="true"></div>
+<div class="scrim" aria-hidden="true"></div>
+
+<header class="top">
+  <a class="back" href="./index.html">← All five</a>
+  <a class="wm" href="#top" aria-label="Mudavym — back to top">Mudavym<span>.</span></a>
+  <nav aria-label="Account">
+    <a class="link" href="https://mudavym.com/login">Sign in</a>
+    <a class="btn primary sm" href="https://mudavym.com/get-started">Set up your house</a>
+  </nav>
+</header>
+
+<ol class="rail" aria-hidden="true">
+  <li data-i="0"><span>Cellar</span><i></i></li>
+  <li data-i="1"><span>Count</span><i></i></li>
+  <li data-i="2"><span>Read</span><i></i></li>
+  <li data-i="3"><span>Value</span><i></i></li>
+  <li data-i="4"><span>Reorder</span><i></i></li>
+  <li data-i="5"><span>Your house</span><i></i></li>
+</ol>
+
+<main id="top">
+  <section class="sec hero" aria-labelledby="h-hero">
+    <div class="pin"><div class="card hero-card" data-card="0">
+      <p class="eyebrow mono">The back office, run for you</p>
+      <h1 id="h-hero">Every bottle, <em>known.</em></h1>
+      <p class="lede">Mudavym runs the work behind your dining room — counting, reading, valuing, reordering. A person confirms anything that matters.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://mudavym.com/get-started">Set up your house</a>
+        <a class="btn ghost" href="https://mudavym.com/login">Sign in</a>
+      </div>
+      <p class="cue mono"><i></i>Scroll to descend</p>
+    </div></div>
+  </section>
+
+  <section class="sec" aria-labelledby="h-count">
+    <div class="pin"><div class="card" data-card="1">
+      <p class="eyebrow mono">01 · Count</p>
+      <h2 id="h-count">Counted, and <em>placed.</em></h2>
+      <p class="lede">Every bottle gets a rack and a bin. What sells at service flows back from Toast into the count.</p>
+      <div class="panel" role="status" aria-live="off">
+        <div class="count"><span class="mono">In the cellar</span><b id="cnt">0</b></div>
+        <div class="count-sub"><i></i><span id="cntSub">Counting rack A</span></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="sec" aria-labelledby="h-read">
+    <div class="pin"><div class="card" data-card="2">
+      <p class="eyebrow mono">02 · Read</p>
+      <h2 id="h-read">Point the phone. <em>It reads.</em></h2>
+      <p class="lede hide-sm">Boxes find the label live; press the shutter and it becomes facts. Wine lists and menus, too.</p>
+      <div class="panel">
+        <div class="panel-h mono"><span>Label · read</span><span class="live">Camera</span></div>
+        <dl class="fields">
+          <dt>Producer</dt><dd><span>Tenuta Esempio</span></dd>
+          <dt>Vintage</dt><dd><span>2019</span></dd>
+          <dt>Region</dt><dd><span>Barolo DOCG, Piedmont</span></dd>
+          <dt>Grape</dt><dd><span>Nebbiolo</span></dd>
+        </dl>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="sec" aria-labelledby="h-value">
+    <div class="pin"><div class="card" data-card="3">
+      <p class="eyebrow mono">03 · Value</p>
+      <h2 id="h-value">Valued at cost. <em>Every change explained.</em></h2>
+      <div class="panel">
+        <ol class="ledger" aria-label="Ledger, tonight">
+          <li><time>21:42</time><span><em>Sold 2</em> · Barolo 2019 — Table 12, via Toast</span><b>−2</b></li>
+          <li><time>18:10</time><span><em>Received 12</em> · Chablis 1er Cru — checked against the order</span><b>+12</b></li>
+          <li><time>15:05</time><span><em>Breakage</em> · Rioja Reserva 2016 — logged at the bar</span><b>−1</b></li>
+        </ol>
+        <div class="total"><span class="mono" style="color:var(--ink3)">Cellar at cost</span><b>$46,100</b></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="sec" aria-labelledby="h-order">
+    <div class="pin"><div class="card" data-card="4">
+      <p class="eyebrow mono">04 · Reorder</p>
+      <h2 id="h-order">Running low? It drafts. <em>You decide.</em></h2>
+      <p class="lede hide-sm">The order and the vendor email are written for you. Deliveries are checked at the door, and vendors are scored on what actually arrived.</p>
+      <div class="panel po" id="po">
+        <div class="panel-h mono"><span>Purchase order · draft</span><span>PO-0418</span></div>
+        <p class="po-why">Barolo 2019 is down to 4 — Rack F, Bin 6.</p>
+        <ul class="po-lines">
+          <li><span>Barolo 2019 · 750 ml</span><b>× 12</b></li>
+          <li><span>Email to your vendor</span><b>drafted</b></li>
+        </ul>
+        <p class="po-status" role="status"><i></i><span id="poStatus">Drafted. Waiting for you to confirm.</span></p>
+        <div class="po-act"><button class="btn primary" id="poBtn" type="button">Confirm</button></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="sec fin" aria-labelledby="h-fin">
+    <div class="pin"><div class="card" data-card="5">
+      <p class="eyebrow mono">05 · Your house</p>
+      <h2 id="h-fin">The cellar first. <em>Then the house.</em></h2>
+      <ol class="order" aria-label="Expansion order">
+        <li class="now">Wine</li><li>All beverages</li><li>Bakery</li><li>The kitchen</li>
+      </ol>
+      <p class="fine">Wine is the quality bar. Each next part of the house comes only when the last one is right.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://mudavym.com/get-started">Set up your house</a>
+        <a class="btn ghost" href="https://mudavym.com/login">Sign in</a>
+      </div>
+    </div></div>
+  </section>
+</main>
+
+<footer>
+  <a class="wm" href="#top">Mudavym<span>.</span></a>
+  <span>An autonomous back office for restaurants. Pricing: <a href="https://mudavym.com/get-started" style="color:var(--ink2)">talk to us</a>.</span>
+  <nav aria-label="Footer"><a href="https://mudavym.com/login">Sign in</a><a href="https://mudavym.com/get-started">Get started</a><a href="./index.html">All five</a></nav>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const PHONE = () => innerWidth <= 760;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const sm = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* ---------------- scroll → story position s ∈ [0,6] ---------------- */
+const secs = [...document.querySelectorAll('.sec')];
+const cards = [...document.querySelectorAll('[data-card]')];
+const railLis = [...document.querySelectorAll('.rail li')];
+let anchors = [];
+function measure() {
+  anchors = secs.map(s => s.offsetTop);
+  const L = secs[secs.length - 1];
+  anchors.push(L.offsetTop + L.offsetHeight - innerHeight);
+}
+function storyAt(y) {
+  for (let i = 0; i < 6; i++) if (y < anchors[i + 1]) return i + Math.max(0, (y - anchors[i]) / (anchors[i + 1] - anchors[i]));
+  return 6;
+}
+const HOLD = [0.0, 1.86, 2.62, 3.72, 4.6, 6.0];   // reduced-motion stations
+const stationOf = s => clamp(Math.floor(s + 0.25), 0, 5);   // flips as the next card takes the screen
+
+/* ---------------- HTML state (works with or without WebGL) ---------------- */
+const cnt = document.getElementById('cnt'), cntSub = document.getElementById('cntSub');
+const dds = [...document.querySelectorAll('.fields dd')];
+const lis = [...document.querySelectorAll('.ledger li')];
+const po = document.getElementById('po'), poBtn = document.getElementById('poBtn'), poStatus = document.getElementById('poStatus');
+let confirmed = false, dirty = true;
+poBtn.addEventListener('click', () => {
+  confirmed = !confirmed;
+  po.classList.toggle('ok', confirmed);
+  poStatus.textContent = confirmed ? 'Confirmed. The order and email go to your vendor.' : 'Drafted. Waiting for you to confirm.';
+  poBtn.textContent = confirmed ? 'Undo' : 'Confirm';
+  poBtn.className = confirmed ? 'btn ghost' : 'btn primary';
+  dirty = true;
+});
+let TOTAL = 3240, countFn = () => 0;
+function uiUpdate(sRaw, s) {
+  // cards: fade with their section (normal motion only)
+  if (!RM) cards.forEach((c, i) => {
+    const u = sRaw - i;
+    let o = i === 0 ? 1 - sm(0.22, 0.5, u) : sm(-0.38, -0.08, u) * (i === 5 ? 1 : 1 - sm(0.5, 0.66, u));
+    c.style.opacity = o.toFixed(3);
+    c.style.transform = `translate3d(0,${((1 - o) * 14).toFixed(1)}px,0)`;
+    c.style.pointerEvents = o < 0.05 ? 'none' : '';   // stays in the tab order; focusing scrolls it into view
+  });
+  const st = stationOf(sRaw);
+  railLis.forEach((l, i) => l.classList.toggle('on', i === st));
+  const c = countFn(s);
+  cnt.textContent = c.toLocaleString('en-US');
+  const rk = Math.min(23, Math.floor(c / Math.max(1, TOTAL) * 24));
+  cntSub.textContent = c >= TOTAL ? `All ${TOTAL.toLocaleString('en-US')} · 24 racks · located` : `Counting rack ${String.fromCharCode(65 + rk)} · bin by bin`;
+  dds.forEach((d, j) => d.classList.toggle('on', s > 2.3 + j * 0.06));
+  lis.forEach((l, j) => l.classList.toggle('on', s > 2.72 + j * 0.1));
+}
+
+/* ---------------- WebGL ---------------- */
+function hasGL() {
+  try { const c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl'))); } catch (e) { return false; }
+}
+const T3 = window.THREE;
+let gl = null;
+if (T3 && hasGL()) { try { gl = buildScene(T3); } catch (e) { console.warn('cellar: WebGL scene failed, showing fallback', e); gl = null; } }
+if (gl) document.documentElement.classList.add('gl-on');
+else {
+  // fallback count: a plain number roll keyed to scroll
+  countFn = s => Math.round(TOTAL * sm(1.0, 1.85, s));
+}
+
+/* ---------------- loop ---------------- */
+let sCur = 0, sTarget = 0, sRawNow = 0, last = performance.now(), running = true, raf = 0;
+let mx = 0, my = 0, tmx = 0, tmy = 0;
+function readScroll() {
+  sRawNow = storyAt(scrollY);
+  sTarget = RM ? HOLD[stationOf(sRawNow)] : sRawNow;
+  dirty = true;
+}
+function tick(now) {
+  raf = 0;
+  const dt = Math.min(1, (now - last) / 1000); last = now;   // real dt so slow devices still converge
+  if (RM) sCur = sTarget;
+  else {
+    sCur += (sTarget - sCur) * (1 - Math.exp(-dt * 3.2));
+    if (Math.abs(sTarget - sCur) < 1e-4) sCur = sTarget;
+    const km = 1 - Math.exp(-dt * 2.5); mx += (tmx - mx) * km; my += (tmy - my) * km;
+  }
+  uiUpdate(sRawNow, sCur);
+  if (gl) gl.render(sCur, now / 1000, mx, my, confirmed);
+  dirty = false;
+  if (running && !RM) raf = requestAnimationFrame(tick);
+}
+function kick() { if (!raf && running) raf = requestAnimationFrame(tick); }
+measure(); readScroll();
+addEventListener('scroll', () => { readScroll(); if (RM) kick(); }, { passive: true });
+addEventListener('resize', () => { measure(); readScroll(); if (gl) gl.resize(); kick(); });
+addEventListener('pointermove', e => { if (e.pointerType === 'mouse') { tmx = e.clientX / innerWidth * 2 - 1; tmy = e.clientY / innerHeight * 2 - 1; } }, { passive: true });
+document.addEventListener('visibilitychange', () => {
+  running = !document.hidden;
+  if (running) { last = performance.now(); kick(); } else if (raf) { cancelAnimationFrame(raf); raf = 0; }
+});
+if (RM) poBtn.addEventListener('click', kick);
+kick();
+
+/* ====================================================================== */
+function buildScene(THREE) {
+  const canvas = document.getElementById('gl');
+  const phone = PHONE();
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !phone, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, phone ? 1.75 : 2));
+  renderer.setClearColor(0x15130F, 1);
+
+  const scene = new THREE.Scene();
+  const FOG0 = 0.052;
+  scene.fog = new THREE.FogExp2(0x15130F, FOG0);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.04, 120);
+
+  /* ---- dimensions ---- */
+  const COLS = 20, ROWS = phone ? 6 : 9, SEGS = phone ? 8 : 12;
+  const CS = 0.168, RS = 0.2, Y0 = 0.27, WX = 2.98;
+  const ZEND = -4 * SEGS - 2, ZBEG = 7, LEN = ZBEG - ZEND, ZMID = (ZBEG + ZEND) / 2;
+  const WALL_H = 2.4, VR = 2.95;
+
+  /* ---- canvas textures ---- */
+  const rnd = (() => { let x = 1234567; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
+  function mkCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
+  function brick() {
+    const [c, g] = mkCanvas(512, 512);
+    g.fillStyle = '#1a130e'; g.fillRect(0, 0, 512, 512);
+    const bh = 32, bw = 128;
+    for (let r = 0; r < 16; r++) {
+      const off = (r % 2) * bw / 2;
+      for (let x = -bw; x < 512 + bw; x += bw) {
+        const l = 19 + rnd() * 11, h = 16 + rnd() * 12, s = 30 + rnd() * 18;
+        g.fillStyle = `hsl(${h},${s}%,${l}%)`;
+        g.fillRect(x + off + 3, r * bh + 3, bw - 6, bh - 6);
+        g.fillStyle = `rgba(0,0,0,${rnd() * 0.25})`;
+        g.fillRect(x + off + 3, r * bh + bh * 0.55, bw - 6, bh * 0.45 - 3);
+      }
+    }
+    for (let i = 0; i < 9000; i++) { g.fillStyle = rnd() < .5 ? 'rgba(0,0,0,.18)' : 'rgba(255,230,200,.05)'; g.fillRect(rnd() * 512, rnd() * 512, 2, 2); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+  }
+  function flags() {
+    const [c, g] = mkCanvas(512, 512);
+    g.fillStyle = '#0d0b08'; g.fillRect(0, 0, 512, 512);
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 2; x++) {
+      const l = 12 + rnd() * 6; g.fillStyle = `hsl(${28 + rnd() * 8},14%,${l}%)`;
+      const ox = (y % 2) * 128;
+      for (const dx of [-512, 0, 512]) g.fillRect(x * 256 + ox + dx + 4, y * 128 + 4, 248, 120);
+    }
+    for (let i = 0; i < 14000; i++) { g.fillStyle = rnd() < .5 ? 'rgba(0,0,0,.25)' : 'rgba(255,235,210,.04)'; g.fillRect(rnd() * 512, rnd() * 512, 2, 2); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+  }
+  function glowTex() {
+    const [c, g] = mkCanvas(128, 128);
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.2, 'rgba(255,255,255,.55)'); gr.addColorStop(.5, 'rgba(255,255,255,.12)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+  const BR = brick(), FL = flags(), GLOW = glowTex();
+  const tex = (base, rx, ry) => { const t = base.clone(); t.needsUpdate = true; t.repeat.set(rx, ry); return t; };
+
+  /* ---- architecture ---- */
+  const wallMat = new THREE.MeshPhongMaterial({ map: tex(BR, LEN / 2.2, WALL_H / 2.2), color: 0xd8c4b2, shininess: 4, specular: 0x0a0806 });
+  for (const side of [-1, 1]) {
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(LEN, WALL_H), wallMat);
+    w.rotation.y = -side * Math.PI / 2; w.position.set(side * 3.0, WALL_H / 2, ZMID); scene.add(w);
+  }
+  const vaultGeo = new THREE.CylinderGeometry(VR, VR, LEN, 40, 1, true, Math.PI / 2, Math.PI);
+  vaultGeo.rotateX(Math.PI / 2);
+  const vaultMat = new THREE.MeshPhongMaterial({ map: tex(BR, 4.4, LEN / 2.2), color: 0xb8a490, side: THREE.BackSide, shininess: 3, specular: 0x050403, transparent: true });
+  const vault = new THREE.Mesh(vaultGeo, vaultMat); vault.position.set(0, WALL_H, ZMID); scene.add(vault);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(6, LEN), new THREE.MeshPhongMaterial({ map: tex(FL, 3, LEN / 2), color: 0xffffff, shininess: 18, specular: 0x2a2018 }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, ZMID); scene.add(floor);
+  // end wall with arched top
+  const es = new THREE.Shape(); es.moveTo(-3, 0); es.lineTo(3, 0); es.lineTo(3, WALL_H); es.absarc(0, WALL_H, 3, 0, Math.PI, false); es.lineTo(-3, 0);
+  const endMat = new THREE.MeshPhongMaterial({ map: tex(BR, 0.45, 0.45), color: 0xd8c4b2, shininess: 3 });
+  const endW = new THREE.Mesh(new THREE.ShapeGeometry(es, 24), endMat); endW.position.set(0, 0, ZEND); scene.add(endW);
+
+  // pilasters + ribs (instanced)
+  const NP = SEGS + 1;
+  const stoneMat = new THREE.MeshPhongMaterial({ map: tex(BR, 0.5, 2), color: 0x9a8574, shininess: 6, specular: 0x100c08, transparent: true });
+  const pil = new THREE.InstancedMesh(new THREE.BoxGeometry(0.34, WALL_H, 0.34), stoneMat, NP * 2);
+  const ribGeo = new THREE.TorusGeometry(VR - 0.02, 0.13, 8, 40, Math.PI);
+  const ribMat = new THREE.MeshPhongMaterial({ color: 0x5a4636, shininess: 8, specular: 0x140f0a, transparent: true });
+  const ribs = new THREE.InstancedMesh(ribGeo, ribMat, NP);
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S1 = new THREE.Vector3(1, 1, 1);
+  for (let k = 0; k < NP; k++) {
+    const z = -4 * k;
+    M.makeTranslation(-2.92, WALL_H / 2, z); pil.setMatrixAt(k * 2, M);
+    M.makeTranslation(2.92, WALL_H / 2, z); pil.setMatrixAt(k * 2 + 1, M);
+    M.makeTranslation(0, WALL_H, z); ribs.setMatrixAt(k, M);
+  }
+  pil.frustumCulled = ribs.frustumCulled = false; scene.add(pil, ribs);
+
+  /* ---- lights ---- */
+  scene.add(new THREE.HemisphereLight(0x6a5240, 0x120d09, 0.7));
+  const amb = new THREE.AmbientLight(0x2a1f16, 0.5); scene.add(amb);
+  const candles = [];
+  const flameMat = new THREE.SpriteMaterial({ map: GLOW, color: 0xffa452, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.85 });
+  const coreMat = new THREE.SpriteMaterial({ map: GLOW, color: 0xfff1cf, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const waxMat = new THREE.MeshPhongMaterial({ color: 0xe9dcc2, emissive: 0x3a2a14, shininess: 20 });
+  const waxGeo = new THREE.CylinderGeometry(0.035, 0.038, 0.16, 10);
+  for (let k = 0; k < NP; k++) for (const side of [-1, 1]) {
+    if ((k + (side > 0 ? 1 : 0)) % 2) continue;      // alternate sides
+    const x = side * 2.66, z = -4 * k, y = 2.2;
+    const wax = new THREE.Mesh(waxGeo, waxMat); wax.position.set(x, y, z); scene.add(wax);
+    const fl = new THREE.Sprite(flameMat); fl.scale.set(0.7, 0.9, 1); fl.position.set(x, y + 0.16, z); scene.add(fl);
+    const co = new THREE.Sprite(coreMat); co.scale.set(0.09, 0.15, 1); co.position.set(x, y + 0.13, z); scene.add(co);
+    candles.push({ fl, co, ph: rnd() * 10 });
+  }
+  const pl = [];
+  const plZ = []; for (let z = -2; z > ZEND + 2; z -= 7.5) plZ.push(z);
+  plZ.forEach((z, i) => {
+    const p = new THREE.PointLight(0xe0a458, 1.25, 11, 2); p.position.set((i % 2 ? 1 : -1) * 1.9, 2.25, z); scene.add(p); pl.push({ p, base: 1.25, ph: i * 1.7 });
+  });
+  const front = new THREE.PointLight(0xe0a458, 0.8, 9, 2); front.position.set(0.5, 2.6, 4); scene.add(front);
+  const endLight = new THREE.PointLight(0xffb066, 1.6, 10, 2); endLight.position.set(0, 1.8, ZEND + 1.5); scene.add(endLight);
+  const endGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xc77a35, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.55 }));
+  endGlow.scale.set(7, 5, 1); endGlow.position.set(0, 1.6, ZEND + 0.4); scene.add(endGlow);
+  const teal = new THREE.PointLight(0x5fb0bc, 0, 7, 2); scene.add(teal);
+
+  /* ---- racks (wood, instanced) ---- */
+  const BIN_R = 3, BIN_C = 4, NBR = ROWS / BIN_R;
+  const woodMat = new THREE.MeshPhongMaterial({ color: 0x3e2a1c, shininess: 10, specular: 0x1a120c });
+  const wood = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), woodMat, 2 * SEGS * (NBR + 1 + COLS / BIN_C + 1));
+  let wi = 0;
+  const segZ0 = seg => -4 * seg - 0.32;
+  for (let side = 0; side < 2; side++) for (let seg = 0; seg < SEGS; seg++) {
+    const sx = side ? 1 : -1, z0 = segZ0(seg), zl = COLS * CS, xc = sx * (3 - 0.19);
+    for (let b = 0; b <= NBR; b++) {
+      const y = Y0 - RS / 2 - 0.02 + b * BIN_R * RS;
+      M.compose(V.set(xc, y, z0 - zl / 2), Q.identity(), new THREE.Vector3(0.38, 0.03, zl + 0.04)); wood.setMatrixAt(wi++, M);
+    }
+    const h = NBR * BIN_R * RS + 0.03;
+    for (let b = 0; b <= COLS / BIN_C; b++) {
+      M.compose(V.set(xc, Y0 - RS / 2 - 0.02 + h / 2, z0 - b * BIN_C * CS), Q.identity(), new THREE.Vector3(0.38, h, 0.03)); wood.setMatrixAt(wi++, M);
+    }
+  }
+  wood.count = wi; wood.frustumCulled = false; scene.add(wood);
+
+  /* ---- bottles ---- */
+  const prof = [[0, 0], [0.044, 0], [0.05, 0.006], [0.051, 0.03], [0.051, 0.225], [0.046, 0.25], [0.03, 0.272], [0.018, 0.292], [0.0165, 0.34], [0.0195, 0.344], [0.0195, 0.36], [0, 0.36]];
+  const latheOf = segs => new THREE.LatheGeometry(prof.map(p => new THREE.Vector2(p[0], p[1])), segs);
+  const bGeo = latheOf(phone ? 9 : 11); bGeo.rotateZ(-Math.PI / 2);   // axis → +X, base at origin
+  const N = 2 * SEGS * ROWS * COLS;
+  const fx = new Float32Array(N * 3);
+  const fxAttr = new THREE.InstancedBufferAttribute(fx, 3); fxAttr.setUsage(THREE.DynamicDrawUsage);
+  bGeo.setAttribute('aFx', fxAttr);
+  const glassInject = (sh, inst) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + (inst ? 'attribute vec3 aFx;\n' : 'uniform vec3 aFxU;\n') + 'varying vec3 vFx;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vFx = ' + (inst ? 'aFx' : 'aFxU') + ';');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vFx;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        float rim = pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 2.4);
+        totalEmissiveRadiance += rim * vec3(0.42,0.24,0.10) * 0.55;
+        totalEmissiveRadiance += vFx.x * vec3(0.22,0.62,0.68) * (0.5 + rim * 1.8);
+        totalEmissiveRadiance += vFx.y * vec3(0.95,0.52,0.18) * (0.55 + rim * 1.2);
+        totalEmissiveRadiance += vFx.z * vec3(0.98,0.95,0.88) * (0.75 + rim * 0.4);`);
+  };
+  const bMat = new THREE.MeshPhongMaterial({ color: 0xffffff, specular: 0xb8a68a, shininess: 90 });
+  bMat.onBeforeCompile = sh => glassInject(sh, true);
+  const bottles = new THREE.InstancedMesh(bGeo, bMat, N);
+  bottles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  bottles.frustumCulled = false;
+  const glassCols = [0x1f2b20, 0x2b1c12, 0x18181b, 0x3a121a, 0x22281c, 0x301418].map(c => new THREE.Color(c));
+  const home = new Array(N), present = new Uint8Array(N);
+  const qLeft = new THREE.Quaternion(), qRight = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+  const qUp = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+  const idxOf = (side, seg, row, col) => ((side * SEGS + seg) * ROWS + row) * COLS + col;
+  const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+  const HERO = idxOf(0, 3, Math.min(5, ROWS - 1), 8);
+  const LOW = []; // the 4 low-stock bottles
+  for (let side = 0; side < 2; side++) for (let seg = 0; seg < SEGS; seg++) for (let row = 0; row < ROWS; row++) for (let col = 0; col < COLS; col++) {
+    const i = idxOf(side, seg, row, col);
+    const x = side ? WX : -WX, y = Y0 + row * RS + (rnd() - .5) * 0.01, z = segZ0(seg) - (col + 0.5) * CS + (rnd() - .5) * 0.012;
+    const q = (side ? qRight : qLeft).clone();
+    q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler((rnd() - .5) * 0.5, (rnd() - .5) * 0.03, (rnd() - .5) * 0.03)));
+    const pos = new THREE.Vector3(x + (rnd() - .5) * 0.03, y, z);
+    home[i] = { p: pos, q };
+    let keep = rnd() > 0.045;
+    // low-stock bin: right side, seg 2, rows 3..5, cols 4..7 → keep only row 3
+    if (side === 1 && seg === 2 && row >= 3 && row <= 5 && col >= 4 && col <= 7) { keep = row === 3; if (keep) LOW.push(i); }
+    if (i === HERO) keep = true;
+    present[i] = keep ? 1 : 0;
+    bottles.setMatrixAt(i, keep ? M.compose(pos, q, S1) : ZERO);
+    bottles.setColorAt(i, glassCols[Math.floor(rnd() * glassCols.length)]);
+  }
+  bottles.instanceColor.needsUpdate = true;
+  scene.add(bottles);
+  // count order (z descending) for the scan
+  const presentIdx = []; for (let i = 0; i < N; i++) if (present[i]) presentIdx.push(i);
+  const zs = presentIdx.map(i => home[i].p.z).sort((a, b) => b - a);
+  TOTAL = zs.length;
+  const Z_SCAN0 = 2, Z_SCAN1 = -4 * SEGS - 0.5;
+  const zScanAt = s => lerp(Z_SCAN0, Z_SCAN1, clamp((s - 1.0) / 0.84));
+  countFn = s => {
+    if (s < 1.0) return 0; const zc = zScanAt(s);
+    let lo = 0, hi = zs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (zs[m] > zc) lo = m + 1; else hi = m; } return lo;
+  };
+
+  /* ---- scan gate ---- */
+  const gatePts = [];
+  const GX = 2.55;
+  gatePts.push(new THREE.Vector3(-GX, 0.02, 0));
+  gatePts.push(new THREE.Vector3(-GX, WALL_H, 0));
+  for (let a = 1; a < 30; a++) { const t = Math.PI - a / 30 * Math.PI; gatePts.push(new THREE.Vector3(Math.cos(t) * GX, WALL_H + Math.sin(t) * (VR - 0.25), 0)); }
+  gatePts.push(new THREE.Vector3(GX, WALL_H, 0));
+  gatePts.push(new THREE.Vector3(GX, 0.02, 0));
+  gatePts.push(new THREE.Vector3(-GX, 0.02, 0));
+  const gateCurve = new THREE.CatmullRomCurve3(gatePts, false, 'catmullrom', 0.02);
+  const gate = new THREE.Group();
+  const gMat1 = new THREE.MeshBasicMaterial({ color: 0x9fe3ec, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const gMat2 = new THREE.MeshBasicMaterial({ color: 0x3d8794, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  gate.add(new THREE.Mesh(new THREE.TubeGeometry(gateCurve, 160, 0.012, 6), gMat1));
+  gate.add(new THREE.Mesh(new THREE.TubeGeometry(gateCurve, 160, 0.06, 8), gMat2));
+  // a soft light sheet on the floor trailing behind the gate
+  const sheetMat = new THREE.MeshBasicMaterial({ color: 0x5fb0bc, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, map: (() => {
+    const [c, g] = mkCanvas(4, 128); const gr = g.createLinearGradient(0, 0, 0, 128); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.12, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 4, 128); return new THREE.CanvasTexture(c); })() });
+  const sheet = new THREE.Mesh(new THREE.PlaneGeometry(2 * GX, 3), sheetMat); sheet.rotation.x = -Math.PI / 2; sheet.position.set(0, 0.015, 1.5); gate.add(sheet);
+  scene.add(gate);
+
+  /* ---- hero bottle with a label ---- */
+  const heroG = new THREE.Group();
+  const heroInner = new THREE.Group(); heroG.add(heroInner);
+  const hMat = new THREE.MeshPhongMaterial({ color: 0x3a1018, specular: 0xe8dcc8, shininess: 120 });
+  hMat.onBeforeCompile = sh => { sh.uniforms.aFxU = { value: new THREE.Vector3(0, 0, 0) }; hMat.userData.sh = sh; glassInject(sh, false); };
+  heroInner.add(new THREE.Mesh(latheOf(48), hMat));
+  const [lc, lg] = mkCanvas(512, 660);
+  function drawLabel() {
+    const g = lg, W = 512, H = 660;
+    g.fillStyle = '#ece1ca'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 5000; i++) { g.fillStyle = `rgba(90,70,40,${rnd() * 0.06})`; g.fillRect(rnd() * W, rnd() * H, 2, 2); }
+    g.strokeStyle = '#6b1f2a'; g.lineWidth = 3; g.strokeRect(24, 24, W - 48, H - 48); g.lineWidth = 1; g.strokeRect(34, 34, W - 68, H - 68);
+    g.fillStyle = '#2b2118'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = '600 30px "DM Sans", sans-serif'; g.letterSpacing = '6px';
+    g.fillText('TENUTA ESEMPIO', W / 2, H * 0.16);
+    g.fillStyle = '#6b1f2a'; g.font = 'italic 400 108px Fraunces, Georgia, serif'; g.fillText('Barolo', W / 2, H * 0.37);
+    g.fillStyle = '#2b2118'; g.font = '500 24px "DM Sans", sans-serif'; g.fillText('DENOMINAZIONE DI ORIGINE', W / 2, H * 0.5);
+    g.fillText('CONTROLLATA E GARANTITA', W / 2, H * 0.55);
+    g.font = '500 92px Fraunces, Georgia, serif'; g.fillText('2019', W / 2, H * 0.69);
+    g.font = '400 30px "DM Sans", sans-serif'; g.fillText('Nebbiolo · Piemonte', W / 2, H * 0.83);
+    g.font = '400 20px "JetBrains Mono", monospace'; g.fillText('750 ml · 14% vol', W / 2, H * 0.9);
+    labelTex.needsUpdate = true;
+  }
+  const labelTex = new THREE.CanvasTexture(lc); labelTex.anisotropy = 8;
+  drawLabel();
+  if (document.fonts && document.fonts.load) Promise.all([document.fonts.load('italic 400 108px Fraunces'), document.fonts.load('500 92px Fraunces'), document.fonts.load('600 30px "DM Sans"')]).then(drawLabel).catch(() => {});
+  const L_TH = 2.0, L_T0 = Math.PI / 2 - L_TH / 2, L_R = 0.0522, L_Y0 = 0.05, L_H = 0.14;
+  const labelMesh = new THREE.Mesh(new THREE.CylinderGeometry(L_R, L_R, L_H, 40, 1, true, L_T0, L_TH),
+    new THREE.MeshPhongMaterial({ map: labelTex, emissive: 0xffffff, emissiveMap: labelTex, emissiveIntensity: 0.32, shininess: 8, specular: 0x222222 }));
+  labelMesh.position.y = L_Y0 + L_H / 2; heroInner.add(labelMesh);
+  heroG.visible = false; scene.add(heroG);
+  const hq0 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2); // lying, axis +X
+  const heroHome = home[HERO].p.clone();
+  const heroOut = new THREE.Vector3(-2.05, 1.16, -14.0);
+  const labelPt = (u, v, out) => {
+    const th = L_T0 + u * L_TH; out.set(L_R * Math.sin(th), L_Y0 + L_H * (1 - v), L_R * Math.cos(th));
+    return out.applyMatrix4(heroInner.matrixWorld);
+  };
+
+  /* ---- data sculpture (bars by region) ---- */
+  const BARS = [{ n: 'Piedmont', v: '$14,600', L: 9 }, { n: 'Burgundy', v: '$11,200', L: 7 }, { n: 'Bordeaux', v: '$9,100', L: 5.5 }, { n: 'Rioja', v: '$6,300', L: 4 }, { n: 'Mosel', v: '$4,900', L: 3 }];
+  const SZ = -21, LH = 0.375, FP = 0.118;
+  const sculptSlots = [];
+  BARS.forEach((b, bi) => {
+    const bx = -2 + bi;
+    for (let L = 0; L < Math.ceil(b.L); L++) for (let a = -1.5; a <= 1.5; a++) for (let c = -1.5; c <= 1.5; c++) {
+      if (L + 1 > b.L && (a + c + 3) % 2) continue;   // a half-full top layer
+      sculptSlots.push({ p: new THREE.Vector3(bx + a * FP, L * LH, SZ + c * FP), d: L / 9 * 0.45 + rnd() * 0.12, bi });
+    }
+  });
+  /* ---- the mark (A+M), sampled from its 11 paths ---- */
+  const MP = [[[0,38],[72,38],[72,540],[0,540]],[[15,38],[96,38],[460,574],[379,574]],[[0,346],[305,346],[353,416],[0,416]],[[0,470],[137,470],[137,540],[0,540]],[[99,0],[151,0],[278.7,187.8],[284.8,273]],[[389.5,40],[460.9,40],[284.8,273],[251.4,224]],[[412,40],[483,40],[483,574],[412,574]],[[80,150],[80,192],[108,192]],[[142,346],[206,346],[174,292]],[[404,138],[376,157],[404,176]],[[383,430],[404,430],[404,470]]];
+  const inPoly = (x, y, p) => { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) { const [xi, yi] = p[i], [xj, yj] = p[j]; if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) c = !c; } return c; };
+  const TILE = 5.2, KT = TILE / 100, MZ = -20;
+  const markPts = [];
+  const STEP = phone ? 14 : 12.5;
+  for (let r = 0, Y = 4; Y <= 574; r++, Y += STEP * 0.866) for (let X = (r % 2) * STEP / 2; X <= 483; X += STEP) {
+    if (MP.some(p => inPoly(X, Y, p))) markPts.push({ p: new THREE.Vector3(((22.2 + X * 0.115) - 50) * KT, 0.01, MZ + ((17 + Y * 0.115) - 50) * KT), d: Y / 574 * 0.42 + rnd() * 0.12 });
+  }
+  const tileShape = new THREE.Shape();
+  { const h = TILE / 2, r = 0.22 * TILE; tileShape.moveTo(-h + r, -h); tileShape.lineTo(h - r, -h); tileShape.quadraticCurveTo(h, -h, h, -h + r); tileShape.lineTo(h, h - r); tileShape.quadraticCurveTo(h, h, h - r, h); tileShape.lineTo(-h + r, h); tileShape.quadraticCurveTo(-h, h, -h, h - r); tileShape.lineTo(-h, -h + r); tileShape.quadraticCurveTo(-h, -h, -h + r, -h); }
+  const tileMat = new THREE.MeshBasicMaterial({ color: 0x1a5e6b, transparent: true, opacity: 0, depthWrite: false });
+  const tile = new THREE.Mesh(new THREE.ShapeGeometry(tileShape, 12), tileMat);
+  tile.rotation.x = -Math.PI / 2; tile.position.set(0, 0.008, MZ); scene.add(tile);
+  const tileGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0x1a5e6b, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0, depthTest: false }));
+  tileGlow.scale.set(11, 11, 1); tileGlow.position.set(0, 0.2, MZ); scene.add(tileGlow);
+
+  /* ---- movers: pick rack bottles for sculpture and mark ---- */
+  const TAGDEF = [[1, 2, 3, 5, 'Barolo 2019', '4'], [0, 1, 7, 3, 'Chablis 1er Cru 2021', '12'], [1, 1, 2, 10, 'Rioja Reserva 2016', '9'], [0, 4, 6, 9, 'Sancerre 2022', '18'], [1, 4, 4, 2, 'Brunello 2018', '5'], [0, 6, 1, 12, 'Riesling Kabinett 2020', '11']];
+  const reserved = new Set([HERO, ...LOW]);
+  const tagIdx = TAGDEF.map(d => idxOf(d[0], d[1], Math.min(d[2], ROWS - 1), d[3]));
+  tagIdx.forEach(i => { reserved.add(i); if (!present[i]) { present[i] = 1; bottles.setMatrixAt(i, M.compose(home[i].p, home[i].q, S1)); } });
+  const pool = presentIdx.filter(i => !reserved.has(i) && home[i].p.z < -8 && home[i].p.z > -34);
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  const mv = new Map();
+  const getMv = i => { if (!mv.has(i)) mv.set(i, { i, sc: null, sd: 0, mk: null, md: 0, w1: 0, w2: 0 }); return mv.get(i); };
+  // sculpture: prefer bottles nearest the bar region
+  const poolS = pool.slice().sort((a, b) => Math.abs(home[a].p.z - SZ) - Math.abs(home[b].p.z - SZ));
+  sculptSlots.forEach((sl, k) => { if (k < poolS.length) { const m = getMv(poolS[k]); m.sc = sl.p; m.sd = sl.d; } });
+  const poolM = pool.slice().sort((a, b) => Math.abs(home[a].p.z - MZ) - Math.abs(home[b].p.z - MZ));
+  markPts.forEach((mp, k) => { if (k < poolM.length) { const m = getMv(poolM[k]); m.mk = mp.p; m.md = mp.d; } });
+  const movers = [...mv.values()];
+  const isMover = new Uint8Array(N); movers.forEach(m => isMover[m.i] = 1);
+  // glow bookkeeping
+  const glowS = new Float32Array(N), glowM = new Float32Array(N);
+
+  /* ---- dust ---- */
+  const DN = phone ? 160 : 320;
+  const dpos = new Float32Array(DN * 3), dseed = new Float32Array(DN);
+  for (let i = 0; i < DN; i++) { dpos[i * 3] = (rnd() - .5) * 5; dpos[i * 3 + 1] = rnd() * 4.2; dpos[i * 3 + 2] = 6 - rnd() * 36; dseed[i] = rnd() * 100; }
+  const dGeo = new THREE.BufferGeometry(); dGeo.setAttribute('position', new THREE.BufferAttribute(dpos, 3));
+  const dust = new THREE.Points(dGeo, new THREE.PointsMaterial({ size: 0.03, map: GLOW, color: 0xe0a458, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+  dust.frustumCulled = false; scene.add(dust);
+  const dBase = dpos.slice();
+
+  /* ---- overlay elements ---- */
+  const ov = document.getElementById('ov');
+  const rackName = (side, seg) => String.fromCharCode(65 + seg * 2 + side);
+  const binNo = (row, col) => Math.floor(row / BIN_R) * (COLS / BIN_C) + Math.floor(col / BIN_C) + 1;
+  const tags = TAGDEF.map((d, k) => {
+    const el = document.createElement('div'); el.className = 'tag';
+    const row = Math.min(d[2], ROWS - 1);
+    el.innerHTML = `<i></i><span>${d[4]}<small>Rack ${rackName(d[0], d[1])} · Bin ${binNo(row, d[3])} · ${d[5]}</small></span>`;
+    ov.appendChild(el);
+    const hp = home[tagIdx[k]];
+    const tip = hp.p.clone().add(new THREE.Vector3(d[0] ? -0.36 : 0.36, 0, 0));
+    return { el, p: tip, z: hp.p.z, on: false, right: d[0] === 1 };
+  });
+  const DETS = [{ t: 'producer', u0: .2, u1: .8, v0: .1, v1: .22 }, { t: 'appellation', u0: .16, u1: .84, v0: .26, v1: .58, r: 1 }, { t: 'vintage', u0: .3, u1: .7, v0: .61, v1: .77 }, { t: 'grape · region', u0: .14, u1: .86, v0: .78, v1: .88, r: 1 }];
+  const dets = DETS.map(d => { const el = document.createElement('div'); el.className = 'det' + (d.r ? ' r' : ''); el.innerHTML = `<b>${d.t}</b>`; ov.appendChild(el); return { el, d, on: false }; });
+  const bars = BARS.map((b, bi) => { const el = document.createElement('div'); el.className = 'bar'; el.innerHTML = `<b>${b.v}</b><span>${b.n}</span>`; ov.appendChild(el); return { el, p: new THREE.Vector3(-2 + bi, -0.08, SZ + 0.35), on: false }; });
+  const setOn = (o, v) => { if (o.on !== v) { o.on = v; o.el.classList.toggle('on', v); } };
+
+  /* ---- camera path ---- */
+  // [s, px,py,pz, lx,ly,lz]
+  const KD = [
+    [0.00, 0.15, 1.58, 5.4, -0.15, 1.38, -40],
+    [0.55, 0.0, 1.5, 2.6, -0.2, 1.36, -40],
+    [1.00, 0.3, 1.55, 0.6, -0.7, 1.25, -28],
+    [1.62, 0.15, 1.62, -7.0, -0.9, 1.25, -34],
+    [1.98, -0.85, 1.45, -12.4, -2.05, 1.34, -14.0],
+    [2.14, -1.30, 1.37, -13.98, -2.05, 1.335, -14.0],
+    [2.78, -1.38, 1.37, -14.0, -2.05, 1.335, -14.0],
+    [3.12, 0.0, 2.05, -12.2, 0.0, 1.55, -21],
+    [3.80, 0.45, 1.85, -13.6, 0.0, 1.6, -21],
+    [4.08, 0.75, 1.3, -7.5, 2.85, 1.0, -9.55],
+    [4.78, 0.95, 1.28, -8.0, 2.85, 1.0, -9.55],
+    [5.06, 0.0, 2.4, -9.5, 0.0, 1.0, -20],
+    [5.62, 0.0, 6.6, -14.6, 0.0, 0.0, -20],
+    [6.00, 0.0, 9.8, -18.7, 0.0, 0.0, -20.2],
+  ];
+  const KP = [
+    [0.00, 0.0, 1.5, 6.4, 0.0, 1.5, -40],
+    [0.55, 0.0, 1.5, 3.6, 0.0, 1.45, -40],
+    [1.00, 0.25, 1.55, 1.6, -0.5, 1.3, -28],
+    [1.62, 0.1, 1.6, -4.6, -0.6, 1.3, -30],
+    [1.98, -0.8, 1.42, -12.4, -2.05, 1.34, -14.0],
+    [2.14, -1.22, 1.37, -13.98, -2.05, 1.345, -14.0],
+    [2.78, -1.3, 1.37, -14.0, -2.05, 1.345, -14.0],
+    [3.12, 0.0, 2.3, -9.0, 0.0, 1.75, -21],
+    [3.80, 0.0, 2.2, -9.8, 0.0, 1.75, -21],
+    [4.08, 0.1, 1.3, -7.1, 2.85, 1.05, -9.55],
+    [4.78, 0.2, 1.28, -7.5, 2.85, 1.05, -9.55],
+    [5.06, 0.0, 2.6, -9.5, 0.0, 1.0, -20],
+    [5.62, 0.0, 8.5, -14.0, 0.0, 0.0, -20],
+    [6.00, 0.0, 12.8, -18.3, 0.0, 0.0, -20.2],
+  ];
+  const camOut = new Array(7);
+  function camAt(s, K) {
+    if (s <= K[0][0]) return K[0];
+    for (let i = 0; i < K.length - 1; i++) {
+      const a = K[i], b = K[i + 1];
+      if (s <= b[0]) { let f = (s - a[0]) / (b[0] - a[0]); f = f * f * (3 - 2 * f); for (let j = 0; j < 7; j++) camOut[j] = a[j] + (b[j] - a[j]) * f; return camOut; }
+    }
+    return K[K.length - 1];
+  }
+
+  /* ---- resize ---- */
+  let W = 1, H = 1, isPhone = phone;
+  function resize() {
+    W = innerWidth; H = innerHeight; isPhone = PHONE();
+    renderer.setSize(W, H, false);
+    camera.aspect = W / H; camera.fov = isPhone ? 56 : 42;
+    if (isPhone) camera.setViewOffset(W, H, 0, H * 0.2, W, H);
+    else camera.setViewOffset(W, H, -W * 0.13, 0, W, H);
+    camera.updateProjectionMatrix();
+  }
+  resize();
+
+  /* ---- per-frame ---- */
+  const look = new THREE.Vector3(), pv = new THREE.Vector3(), qv = new THREE.Quaternion(), pa = new THREE.Vector3(), pb = new THREE.Vector3();
+  let lastWS = -1, lastWM = -1, lastHero = -1;
+  const proj = (v, out) => { pv.copy(v).project(camera); out.x = (pv.x * 0.5 + 0.5) * W; out.y = (-pv.y * 0.5 + 0.5) * H; out.vis = pv.z < 1 && pv.z > -1; return out; };
+  const scr = { x: 0, y: 0, vis: false }, scr2 = { x: 0, y: 0, vis: false };
+
+  function render(s, t, mx, my, confirmed) {
+    const anim = !RM;
+    /* camera */
+    const c = camAt(s, isPhone ? KP : KD);
+    camera.position.set(c[1], c[2], c[3]);
+    look.set(c[4], c[5], c[6]);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(look);
+    if (anim) { const k = s > 5.2 ? 0.3 : 1; camera.rotateY(-mx * 0.05 * k); camera.rotateX(-my * 0.03 * k); }
+    camera.updateMatrixWorld();
+
+    /* atmosphere */
+    const rise = sm(5.05, 5.7, s);
+    scene.fog.density = lerp(FOG0, 0.014, rise);
+    ribMat.opacity = 1 - sm(5.1, 5.45, s); ribs.visible = ribMat.opacity > 0.01; ribMat.depthWrite = ribMat.opacity > 0.98;
+    vaultMat.opacity = 1 - sm(5.1, 5.4, s); vault.visible = vaultMat.opacity > 0.01; vaultMat.depthWrite = vaultMat.opacity > 0.98;
+    for (const L of pl) L.p.intensity = L.base * (anim ? (0.88 + 0.08 * Math.sin(t * 7.3 + L.ph) + 0.05 * Math.sin(t * 13.1 + L.ph * 2)) : 1) * lerp(1, 1.5, rise);
+    if (anim) for (const cd of candles) { const f = 0.92 + 0.08 * Math.sin(t * 9 + cd.ph) + 0.05 * Math.sin(t * 23 + cd.ph); cd.fl.scale.set(0.7 * f, 0.9 * f, 1); }
+    if (anim) {
+      for (let i = 0; i < DN; i++) {
+        const sd = dseed[i];
+        dpos[i * 3] = dBase[i * 3] + Math.sin(t * 0.13 + sd) * 0.3;
+        dpos[i * 3 + 1] = (dBase[i * 3 + 1] + t * 0.03 + Math.sin(t * 0.2 + sd) * 0.1) % 4.2;
+      }
+      dGeo.attributes.position.needsUpdate = true;
+    }
+    dust.material.opacity = 0.55 * (1 - rise);
+
+    /* scan gate */
+    const scanFade = sm(0.86, 1.0, s) * (1 - sm(1.86, 2.0, s));
+    const zScan = zScanAt(s);
+    gate.visible = scanFade > 0.002;
+    gate.position.z = zScan;
+    gMat1.opacity = scanFade; gMat2.opacity = 0.4 * scanFade; sheetMat.opacity = 0.32 * scanFade;
+
+    /* hero */
+    const hp = sm(1.96, 2.2, s) * (1 - sm(2.84, 3.04, s));
+    if (hp !== lastHero) {
+      heroG.visible = hp > 0.0005;
+      bottles.setMatrixAt(HERO, heroG.visible ? ZERO : M.compose(home[HERO].p, home[HERO].q, S1));
+      bottles.instanceMatrix.needsUpdate = true;
+      const e = ease(hp);
+      heroG.position.lerpVectors(heroHome, heroOut, e);
+      heroG.position.y += Math.sin(e * Math.PI) * 0.05;
+      heroG.position.x += 0;
+      qv.copy(hq0).slerp(new THREE.Quaternion(), e);
+      heroG.quaternion.copy(qv);
+      heroInner.rotation.y = (1 - e) * -1.6;
+      heroG.updateMatrixWorld(true);
+      lastHero = hp;
+    }
+    if (hMat.userData.sh) hMat.userData.sh.uniforms.aFxU.value.set(0.25 * hp, 0, 0);
+
+    /* morphs */
+    const wsRaw = sm(2.96, 3.5, s) * (1 - sm(3.86, 4.22, s));
+    const wmRaw = sm(5.02, 5.74, s);
+    if (wsRaw !== lastWS || wmRaw !== lastWM) {
+      for (const m of movers) {
+        const h = home[m.i];
+        let w1 = m.sc ? ease(clamp(wsRaw * 1.6 - m.sd * 1.0)) : 0;
+        let w2 = m.mk ? ease(clamp(wmRaw * 1.6 - m.md)) : 0;
+        m.w1 = w1; m.w2 = w2;
+        if (w1 === 0 && w2 === 0) { bottles.setMatrixAt(m.i, M.compose(h.p, h.q, S1)); glowS[m.i] = 0; glowM[m.i] = 0; continue; }
+        pa.copy(h.p); qv.copy(h.q);
+        if (w1 > 0) { pa.lerp(m.sc, w1); pa.y += Math.sin(w1 * Math.PI) * 0.9; qv.slerp(qUp, w1); }
+        if (w2 > 0) { pa.lerp(m.mk, w2); pa.y += Math.sin(w2 * Math.PI) * 2.4; qv.slerp(qUp, w2); }
+        bottles.setMatrixAt(m.i, M.compose(pa, qv, V.set(1 - 0.6 * w2, 1, 1)));
+        glowS[m.i] = w1; glowM[m.i] = w2;
+      }
+      bottles.instanceMatrix.needsUpdate = true;
+      lastWS = wsRaw; lastWM = wmRaw;
+    }
+
+    /* glow */
+    const low = sm(3.95, 4.15, s) * (1 - sm(4.85, 5.05, s));
+    const blink = anim ? 0.55 + 0.45 * Math.sin(t * 5.2) : 0.85;
+    const tealHold = 0.0;
+    for (let k = 0; k < presentIdx.length; k++) {
+      const i = presentIdx[k];
+      let a = 0;
+      if (scanFade > 0) { const dz = home[i].p.z - zScan; a = dz > 0 ? scanFade * (0.5 + 1.6 * Math.exp(-dz * 0.7)) : (dz > -0.3 ? scanFade * 0.9 : 0); }
+      a += glowS[i] * 0.55 + tealHold;
+      fx[i * 3] = a; fx[i * 3 + 1] = 0; fx[i * 3 + 2] = glowM[i] * 1.0;
+    }
+    for (const i of LOW) { if (confirmed) { fx[i * 3] += low * 1.2; } else fx[i * 3 + 1] = low * blink * 1.3; }
+    fxAttr.needsUpdate = true;
+
+    /* teal intelligence light */
+    let ti = 0;
+    if (scanFade > 0) { teal.position.set(0, 1.6, zScan + 0.4); ti = 2.2 * scanFade; teal.distance = 6; }
+    else if (hp > 0) { teal.position.set(-1.55, 1.55, -13.6); ti = 1.1 * hp; teal.distance = 2.5; }
+    else if (wsRaw > 0) { teal.position.set(0, 4.2, SZ + 2.2); ti = 2.4 * wsRaw; teal.distance = 9; }
+    else if (low > 0) { teal.position.set(2.2, 1.4, -9.5); ti = confirmed ? 1.0 * low : 0; teal.distance = 3; }
+    else if (wmRaw > 0) { teal.position.set(0, 2.5, MZ); ti = 1.5 * wmRaw; teal.distance = 9; }
+    teal.intensity = ti;
+    tileMat.opacity = sm(0.35, 0.9, wmRaw) * 0.95;
+    tileGlow.material.opacity = 0.5 * sm(0.4, 1, wmRaw);
+
+    renderer.render(scene, camera);
+
+    /* overlays */
+    for (const tg of tags) {
+      const want = s > 1.0 && s < 1.97 && tg.z > zScan + 0.4;
+      let ok = false;
+      if (want) { proj(tg.p, scr); ok = scr.vis && scr.x > (isPhone ? 24 : W * 0.44) && scr.x < W - 200 && scr.y > 80 && scr.y < H - 40; if (ok) tg.el.style.transform = `translate3d(${scr.x.toFixed(1)}px,${(scr.y - 9).toFixed(1)}px,0)`; }
+      if (isPhone && ok) ok = scr.y < H * 0.52;
+      setOn(tg, ok);
+    }
+    for (let k = 0; k < dets.length; k++) {
+      const D = dets[k], d = D.d;
+      const want = hp > 0.98 && s > 2.15 + k * 0.035 && s < 2.8;
+      if (want) {
+        labelPt(d.u0, d.v0, pa); proj(pa, scr); labelPt(d.u1, d.v1, pb); proj(pb, scr2);
+        const x0 = Math.min(scr.x, scr2.x), x1 = Math.max(scr.x, scr2.x), y0 = Math.min(scr.y, scr2.y), y1 = Math.max(scr.y, scr2.y);
+        D.el.style.transform = `translate3d(${x0.toFixed(1)}px,${y0.toFixed(1)}px,0)`;
+        D.el.style.width = (x1 - x0).toFixed(1) + 'px'; D.el.style.height = (y1 - y0).toFixed(1) + 'px';
+      }
+      setOn(D, want);
+    }
+    for (const b of bars) {
+      const want = wsRaw > 0.9;
+      if (want) { proj(b.p, scr); b.el.style.transform = `translate3d(${scr.x.toFixed(1)}px,${scr.y.toFixed(1)}px,0)`; }
+      setOn(b, want);
+    }
+  }
+  return { render, resize };
+}
+})();
+</script>
+</body>
+</html>
