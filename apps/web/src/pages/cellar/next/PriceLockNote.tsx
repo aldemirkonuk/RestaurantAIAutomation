@@ -16,6 +16,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { listPriceLocks, type PriceLock } from '../../../services/api/pricing';
+import { useAuthStore } from '../../../stores';
 import { money } from './cellar-format';
 
 function day(iso: string): string {
@@ -30,7 +31,9 @@ export function lockWords(l: PriceLock, namesReadable = true): string {
 }
 
 export default function PriceLockNote({ inventoryId }: { inventoryId: string }) {
-  const q = useQuery({ queryKey: ['pricing', 'locks'], queryFn: listPriceLocks });
+  // Same key as Menu's Locked prices, house included (MENU-01).
+  const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
+  const q = useQuery({ queryKey: ['pricing', 'locks', house], queryFn: listPriceLocks });
   if (q.isLoading) return null;
   if (q.isError || !q.data || q.data.readable === false) {
     const why = q.data?.reason ?? (q.error instanceof Error ? q.error.message : null);

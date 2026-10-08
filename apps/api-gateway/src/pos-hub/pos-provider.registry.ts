@@ -86,7 +86,8 @@ export const POS_PROVIDERS: PosProviderMeta[] = [
     authModel: "oauth2",
     docsUrl: "https://docs.clover.com/reference",
     notes: "Orders v3 normalizer implemented; needs merchant API token.",
-    capabilities: CAP_FULL,
+    // The order object has an order type and no table field (ADR 0302 method 4).
+    capabilities: CAP_NO_TABLES,
   },
   {
     key: "spoton",

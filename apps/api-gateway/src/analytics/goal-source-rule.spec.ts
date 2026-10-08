@@ -88,6 +88,7 @@ function makeClient(rowsByTable: Rows) {
       builder.single = jest.fn(() =>
         Promise.resolve({ data: rows[0] ?? null, error: null }),
       );
+      builder.maybeSingle = builder.single;
       builder.then = (resolve: any, reject: any) =>
         Promise.resolve({ data: rows, error: null }).then(resolve, reject);
       return builder;
@@ -96,7 +97,12 @@ function makeClient(rowsByTable: Rows) {
 }
 
 function makeGoals(rowsByTable: Rows) {
-  const client = makeClient(rowsByTable);
+  // The baseline is read on the house's days (ADR 0296), so the house carries
+  // a zone; this file is about the source rule, not about the zone.
+  const client = makeClient({
+    restaurants: [{ timezone: "America/Los_Angeles", country: "US" }],
+    ...rowsByTable,
+  });
   const db = { getClient: () => client } as unknown as DatabaseService;
   const service = new GoalsService(
     db,

@@ -26,7 +26,7 @@ import {
   type DayOrdersState,
   type MonthSales,
 } from './useDashboardNextData';
-import { DASH, eventTime, figure, localDateStr, longDay, money, timeAgo } from './format';
+import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, money, timeAgo } from './format';
 import { SERIF } from './fonts';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -36,7 +36,10 @@ const MONO = "'JetBrains Mono', ui-monospace, monospace";
 interface TapeProps {
   daily: DayLedger[];
   selected: string;
-  /** The figure each bar draws: net sales when shown, else vendor spend. */
+  /**
+   * The figure each bar draws: net sales when shown, else vendor spend — or
+   * deliveries for a role that sees no money (DASH-W22).
+   */
   value: (d: DayLedger) => number | null;
   onScrub: (date: string) => void;
 }
@@ -115,14 +118,14 @@ function DayTape({ daily, selected, value, onScrub }: TapeProps) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-3">{title}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-4">{title}</p>
       <div className="mt-2 space-y-1.5">{children}</div>
     </div>
   );
 }
 
 function EmptyLine({ children }: { children: ReactNode }) {
-  return <p className="text-[12px] italic text-inkm-3">{children}</p>;
+  return <p className="text-[12px] italic text-inkm-4">{children}</p>;
 }
 
 function MiniFig({ label, value, note }: { label: string; value: string; note?: string | null }) {
@@ -133,15 +136,15 @@ function MiniFig({ label, value, note }: { label: string; value: string; note?: 
       <p
         className={
           words
-            ? 'text-[14px] italic leading-tight text-inkm-3'
+            ? 'text-[14px] italic leading-tight text-inkm-4'
             : 'text-[19px] font-medium leading-tight text-inkm-1'
         }
         style={words ? undefined : { fontFamily: MONO, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}
       >
         {value}
       </p>
-      <p className="text-[10px] uppercase tracking-[0.1em] text-inkm-3">{label}</p>
-      {note && <p className="text-[11px] text-inkm-3">{note}</p>}
+      <p className="text-[10px] uppercase tracking-[0.1em] text-inkm-4">{label}</p>
+      {note && <p className="text-[11px] text-inkm-4">{note}</p>}
     </div>
   );
 }
@@ -168,7 +171,8 @@ function netSalesValue(day: DayLedger): string {
 /**
  * The figure row: a track is never narrower than 8rem (an eleven-character
  * figure at 19 px), and a row holds at most half the figures, so six read
- * 3 + 3 or 2 + 2 + 2 and four read 2 + 2 — never a lone figure on a row.
+ * 3 + 3 or 2 + 2 + 2 and four read 2 + 2. An odd count leaves one alone: a
+ * role without money (DASH-W22) has three, which read 2 + 1.
  */
 export function figureColumns(count: number): string {
   const most = Math.max(1, Math.ceil(count / 2));
@@ -191,6 +195,10 @@ export interface DayDetailProps {
   activity: ActivityItem[] | undefined;
   onScrub: (date: string) => void;
   onClose: () => void;
+  /** DASH-W22: false for a role that sees counts, not money (staff). */
+  seesAmounts?: boolean;
+  /** The house's today as the calendar decided it, so the panel and the grid agree on "future". */
+  today?: string;
 }
 
 export function DayDetail({
@@ -203,6 +211,8 @@ export function DayDetail({
   activity,
   onScrub,
   onClose,
+  seesAmounts = true,
+  today,
 }: DayDetailProps) {
   if (!day) return <div className="min-h-[1px]" />;
 
@@ -215,10 +225,53 @@ export function DayDetail({
     if (!iso || zone === null) return false;
     if (zone) return houseDateOf(iso, zone) === day.date;
     const t = new Date(iso);
-    return !Number.isNaN(t.getTime()) && localDateStr(t) === day.date;
+    return !Number.isNaN(t.getTime()) && dateIn(t, zone) === day.date;
   };
   const dayAlerts = (alerts ?? []).filter((a) => onThisDay(a.createdAt));
   const dayActivity = (activity ?? []).filter((a) => onThisDay(a.timestamp));
+  // DASH-W13 (founder, 2026-10-01): a future day opens only when something is
+  // on the calendar, and it shows only that — its money, deliveries, alerts
+  // and activity do not exist yet.
+  const isFuture = day.date > (today ?? dateIn(new Date(), zone));
+
+  const calendarSection = (
+    <Section title="On the calendar">
+      {day.events.length === 0 && <EmptyLine>Nothing was on the calendar.</EmptyLine>}
+      {day.events.map((ev, i) => (
+        <div key={ev.id ?? i} className="dn-row flex items-baseline justify-between gap-3 px-3 py-2">
+          {/* DASH-W30/W32: wraps instead of cutting; the kind in words, never a code. */}
+          <span className="min-w-0 break-words leading-snug text-[13px] text-inkm-1">
+            {ev.title ?? 'Untitled event'}
+            {eventKindWords(ev.event_type) ? <span className="text-inkm-4"> · {eventKindWords(ev.event_type)}</span> : null}
+          </span>
+          <span className="shrink-0 text-[12px] text-inkm-4" style={{ fontFamily: MONO }}>
+            {eventTime(ev.event_time) ?? 'all day'}
+          </span>
+        </div>
+      ))}
+    </Section>
+  );
+
+  if (isFuture) {
+    return (
+      <div className="border-t border-paper-2 px-4 pb-4 pt-3 sm:px-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-[20px] font-medium text-inkm-1" style={{ fontFamily: SERIF }}>
+            {longDay(day.date)}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="dn-ink rounded px-2 py-1 text-[11px] uppercase tracking-[0.1em] text-inkm-4 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          >
+            Close
+          </button>
+        </div>
+        <div className="mt-3">{calendarSection}</div>
+      </div>
+    );
+  }
+
   const orderCount = day.order_count ?? 0;
   const noZoneLine = 'Filed by the house’s time zone, which isn’t set.';
 
@@ -231,7 +284,7 @@ export function DayDetail({
         <button
           type="button"
           onClick={onClose}
-          className="dn-ink rounded px-2 py-1 text-[11px] uppercase tracking-[0.1em] text-inkm-3 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          className="dn-ink rounded px-2 py-1 text-[11px] uppercase tracking-[0.1em] text-inkm-4 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
         >
           Close
         </button>
@@ -240,7 +293,8 @@ export function DayDetail({
       <DayTape
         daily={daily}
         selected={day.date}
-        value={(d) => (salesShown ? d.net_sales : d.procurement_spend)}
+        // DASH-W22: a role that sees no money measures deliveries, not spend.
+        value={(d) => (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count)}
         onScrub={onScrub}
       />
 
@@ -253,23 +307,31 @@ export function DayDetail({
       <div
         className="mt-1 grid gap-4"
         data-testid="dn-day-figures"
+        // Without money (DASH-W22) three figures remain. ADR 0290 §9 holds a row
+        // to at most half the figures rounded up, so they read 2 + 1 — three
+        // across would need about 416 px and the panel is 282-294 px (ADR 0290).
         style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : 4) }}
       >
         {salesShown && (
           <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
         )}
         {salesShown && <MiniFig label="Checks" value={figure(day.checks)} />}
-        <MiniFig label="Paid to vendors" value={money(day.procurement_spend)} />
+        {seesAmounts && <MiniFig label="Paid to vendors" value={money(day.procurement_spend)} />}
         <MiniFig label="Deliveries" value={figure(day.order_count)} />
         <MiniFig label="Bottles in" value={figure(day.bottles_sold)} />
         <MiniFig label="On the calendar" value={formatNumber(day.events.length)} />
       </div>
       {sales === 'no-register' && (
-        <p className="mt-2 text-[12px] italic text-inkm-3" data-testid="dn-no-register">
+        <p className="mt-2 text-[12px] italic text-inkm-4" data-testid="dn-no-register">
           No register connected — net sales show once a register sends its first check.
         </p>
       )}
 
+      {/*
+        DASH-W30 (P7): two columns only when the card itself has room. A
+        viewport breakpoint split it at 1024 too, where the calendar card is
+        a narrow column and each half was ~110px.
+      */}
       <div className="mt-4 grid gap-5" data-testid="dn-day-sections" style={{ gridTemplateColumns: SECTION_COLUMNS }}>
         <Section title="Deliveries">
           {dayOrders.state === 'loading' && (
@@ -299,8 +361,8 @@ export function DayDetail({
             dayOrders.orders.map((o) => (
               <Link
                 key={o.id}
-                to={`/orders?highlight=${o.id}`}
-                className="dn-row dn-ink flex items-baseline justify-between gap-3 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+                to={`/orders?order=${o.id}`}
+                className="dn-row dn-ink flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
               >
                 {/*
                   The vendor clause is REAL again. `GET
@@ -315,17 +377,27 @@ export function DayDetail({
                   printed "60 × $0 · $0". `money()` is the em dash for an
                   absent figure.
                 */}
-                <span className="min-w-0 truncate text-[13px] text-inkm-1">
-                  {o.wineName ?? 'Unnamed wine'}
-                  <span className="text-inkm-3"> · {vendorLine(o)}</span>
+                {/*
+                  DASH-W30 (P7): the name and vendor wrap instead of losing the
+                  vendor; in a narrow column the figures drop to their own line
+                  rather than squeezing the name to a letter a line.
+                */}
+                <span className="min-w-0 break-words leading-snug text-[13px] text-inkm-1">
+                  {o.wineName ?? 'Unnamed item'}
+                  <span className="text-inkm-4"> · {vendorLine(o)}</span>
                 </span>
                 <span
-                  className="shrink-0 text-[12px] text-inkm-2"
+                  className="ml-auto shrink-0 text-[12px] text-inkm-2"
                   style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                 >
                   {formatNumber(o.quantity)}
-                  {o.unitType ? ` ${o.unitType}` : ''} × {money(o.finalPrice)} ·{' '}
-                  <span className="text-inkm-1">{money(o.totalCost)}</span>
+                  {o.unitType ? ` ${o.unitType}` : ''}
+                  {seesAmounts && (
+                    <>
+                      {' '}× {money(o.finalPrice)} ·{' '}
+                      <span className="text-inkm-1">{money(o.totalCost)}</span>
+                    </>
+                  )}
                 </span>
               </Link>
             ))}
@@ -338,20 +410,7 @@ export function DayDetail({
             )}
         </Section>
 
-        <Section title="On the calendar">
-          {day.events.length === 0 && <EmptyLine>Nothing was on the calendar.</EmptyLine>}
-          {day.events.map((ev, i) => (
-            <div key={ev.id ?? i} className="dn-row flex items-baseline justify-between gap-3 px-3 py-2">
-              <span className="min-w-0 truncate text-[13px] text-inkm-1">
-                {ev.title ?? 'Untitled event'}
-                {ev.event_type ? <span className="text-inkm-3"> · {ev.event_type}</span> : null}
-              </span>
-              <span className="shrink-0 text-[12px] text-inkm-3" style={{ fontFamily: MONO }}>
-                {eventTime(ev.event_time) ?? 'all day'}
-              </span>
-            </div>
-          ))}
-        </Section>
+        {calendarSection}
 
         <Section title="Alerts raised">
           {dayAlerts.length === 0 && (
@@ -376,11 +435,12 @@ export function DayDetail({
           )}
           {dayActivity.map((a) => (
             <div key={a.id} className="flex items-baseline justify-between gap-3 text-[13px]">
-              <span className="min-w-0 truncate text-inkm-2">
+              {/* DASH-W31 (P7): two lines, then an ellipsis — not one line cut mid-word. */}
+              <span className="min-w-0 line-clamp-2 leading-snug text-inkm-2">
                 <span className="text-inkm-1">{a.title}</span>
                 {a.description ? ` — ${a.description}` : ''}
               </span>
-              <span className="shrink-0 text-[11px] text-inkm-3" style={{ fontFamily: MONO }}>
+              <span className="shrink-0 text-[11px] text-inkm-4" style={{ fontFamily: MONO }}>
                 {timeAgo(a.timestamp)}
               </span>
             </div>

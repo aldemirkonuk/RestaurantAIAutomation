@@ -38,7 +38,7 @@
  * evening for them.
  */
 
-import { EM } from './rec-format';
+import { EM, ownRow } from './rec-format';
 import type { EntryVM, GoalRow } from './useRecommendationsNextData';
 
 /* ── door one: the day-book ──────────────────────────────────────────────── */
@@ -90,7 +90,7 @@ const RULE_DRAFT: Record<string, DraftSpec> = {
  * Nothing here reads a weekday out of the rule's sentence — see the header.
  */
 export function daybookDraftFor(entry: EntryVM, on: string): DayBookDraft {
-  const spec = RULE_DRAFT[entry.ruleKey];
+  const spec = ownRow(RULE_DRAFT, entry.ruleKey);
   return {
     title: spec?.title ?? `Follow up: ${entry.ruleKey}`,
     date: on,
@@ -101,7 +101,7 @@ export function daybookDraftFor(entry: EntryVM, on: string): DayBookDraft {
 
 /** Why this draft carries the type it carries. Null when the rule has no spec. */
 export function daybookBasis(ruleKey: string): string | null {
-  return RULE_DRAFT[ruleKey]?.basis ?? null;
+  return ownRow(RULE_DRAFT, ruleKey)?.basis ?? null;
 }
 
 /**
@@ -226,7 +226,9 @@ export function goalSlipFor(entry: EntryVM, goals: GoalRow[] | null | undefined)
  */
 export function leversFor(slip: GoalSlip, standing: EntryVM[]): EntryVM[] | null {
   if (!slip.metricKey) return null;
-  const cats = METRIC_CATEGORIES[slip.metricKey];
+  // Own rows only (ADR 0288): a stored metric such as `constructor` is one
+  // the gateway does not map, never an inherited function.
+  const cats = ownRow(METRIC_CATEGORIES, slip.metricKey);
   if (!cats) return null;
   return standing.filter((e) => !e.ruleKey.startsWith(GOAL_RULE_PREFIX) && cats.includes(e.category));
 }
@@ -235,7 +237,7 @@ export function leversFor(slip: GoalSlip, standing: EntryVM[]): EntryVM[] | null
 export function leverWords(slip: GoalSlip, levers: EntryVM[] | null): string {
   if (!slip.metricKey)
     return `The rule points at “the insight feed for this goal’s category”, and this page could not read the goal, so it cannot say which category that is ${EM} no lever is named rather than the wrong one.`;
-  const cats = METRIC_CATEGORIES[slip.metricKey];
+  const cats = ownRow(METRIC_CATEGORIES, slip.metricKey);
   if (!cats)
     // The COUNT is read off the table, never written out. It said "six" until
     // 2026-09-04, when the gateway grew a seventh (`days_of_inventory`, ADR

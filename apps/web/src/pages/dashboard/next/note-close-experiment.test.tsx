@@ -151,7 +151,9 @@ describe('the note card draws the arm the gateway gave it', () => {
     draw();
     expect(await screen.findByRole('button', { name: /mark it done/i })).toBeInTheDocument();
     expect(screen.queryByText(/hold to write it down/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/the plain button says so/i)).toBeInTheDocument();
+    expect(
+      screen.getByText('Marking it done records the decision against your name. Nothing else moves.'),
+    ).toBeInTheDocument();
   });
 
   it('draws the hold on the die arm, and no plain button', async () => {
@@ -169,7 +171,7 @@ describe('the note card draws the arm the gateway gave it', () => {
     serve([note], { arm: 'die', recorded: true });
     draw();
     expect(
-      await screen.findByText(/a gesture rather than a seal — nothing is minted and nothing is redeemed/i),
+      await screen.findByText(/this stamp is not a seal and approves nothing\./),
     ).toBeInTheDocument();
   });
 
@@ -202,26 +204,28 @@ describe('the note card draws the arm the gateway gave it', () => {
       return { data: { actions: [note] } };
     });
     draw();
-    expect(
-      await screen.findByText(/reading which closing control this house is on/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Reading…')).toBeInTheDocument();
+    expect(screen.queryByText(/closing control/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /mark it done/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/hold to write it down/i)).not.toBeInTheDocument();
   });
 
-  it('falls back to plain on a failed read AND says it is a fallback', async () => {
+  // DASH-W24 (P5): the fallback is not narrated on the card (that line is
+  // /logs's); what keeps it honest is that nothing about the card is counted.
+  it('falls back to plain on a failed read, counts nothing, and does not narrate the experiment', async () => {
     serve([note], new Error('no route'));
     draw();
     expect(await screen.findByRole('button', { name: /mark it done/i })).toBeInTheDocument();
-    expect(
-      screen.getByText(/could not be read \(no route\), so this is the plain one — a fallback, not an assignment/i),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/closing control|fallback|no route/i)).not.toBeInTheDocument();
+    expect(eventsPosted()).toEqual([]);
   });
 
   it('treats an arm it does not know as unreadable, not as plain', async () => {
     serve([note], { arm: 'wax', recorded: true });
     draw();
-    expect(await screen.findByText(/a fallback, not an assignment/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /mark it done/i })).toBeInTheDocument();
+    // An assigned plain arm records an exposure; an unreadable one records nothing.
+    expect(eventsPosted()).toEqual([]);
   });
 });
 
