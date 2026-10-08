@@ -1,0 +1,854 @@
+/* ============================================================
+   /inventory (INV-W4) page styles. Every class is prefixed `iv-` and
+   used only inside pages/inventory/next/**. Colours come only from the
+   .mudavym tokens (ADR 0042), so paper and Warm Charcoal both resolve
+   without a second rule. The shapes follow cellar-next.css (`cl-`) so the
+   two cellar pages read as one book.
+   ============================================================ */
+
+.iv-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 22px 16px 40px;
+}
+
+/* ── type ──────────────────────────────────────────────────────────────── */
+.iv-crumb {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.iv-h1 {
+  margin: 4px 0 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: var(--ink-1);
+}
+.iv-h2 {
+  margin: 0 0 6px;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  color: var(--ink-1);
+}
+.iv-h3 {
+  margin: 0 0 4px;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink-1);
+}
+.iv-lead {
+  margin: 12px 0 6px;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-1);
+}
+.iv-read {
+  margin: 10px 0 0;
+  max-width: 78ch;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.iv-sec {
+  margin: 0 0 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+/* --ink-4 for captions on paper, as cellar-next.css's `.cl-note` argues. */
+.iv-note {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-4);
+}
+.iv-said,
+.iv-sheet-body .cl-said {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.iv-dim {
+  color: var(--ink-4);
+}
+.iv-num {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+.iv-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.iv-footer {
+  margin: 28px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--paper-2);
+  max-width: 90ch;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-4);
+}
+
+/* ── focus: always on a paper gap, never on the seal fill ──────────────── */
+.iv-focus:focus-visible,
+.iv-sheet-body .cl-focus:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* ── controls ──────────────────────────────────────────────────────────── */
+/* The Order sheet borrows /cellar's OrderCeremony (INV-W26), whose ask row and
+   failure line carry cellar-next.css classes. This page never loads that
+   sheet, so on a fresh visit they drew as bare browser text (INV-W32). Inside
+   a sheet they take this page's own rules: .cl-btn as .iv-btn, .cl-said as
+   .iv-said, and the failure line as .iv-said-alarm. */
+.iv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.iv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.iv-chip:hover:not(:disabled) {
+  border-color: var(--seal-ring);
+}
+.iv-chip[data-on='true'] {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+  color: var(--seal-deep);
+}
+.iv-chip:disabled {
+  cursor: not-allowed;
+  color: var(--ink-4);
+}
+.iv-chip .iv-num {
+  font-size: 11px;
+}
+
+.iv-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+.iv-search {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.iv-search .iv-field {
+  width: 100%;
+}
+.iv-hint {
+  font-size: 10.5px;
+  color: var(--ink-4);
+}
+.iv-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+.iv-field {
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--paper-2);
+  border-radius: 7px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.iv-field:hover {
+  border-color: var(--seal-ring);
+}
+/* The shared sheet stylesheet styles a bare `.mdv-select` as a full-width
+   input box (mudavym/sheet.css), and <Select> puts the same class on its
+   wrapper span. Once any sheet has loaded, every toolbar picker became a
+   boxed, full-width row. Undone here for the toolbar only; the shared
+   collision itself is queued for the coordinator. */
+.iv-toolbar .mdv-select {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.iv-toolbar .mdv-select__control {
+  min-width: 150px;
+  height: 32px;
+  padding: 0 9px;
+  font-size: 12.5px;
+}
+.iv-btn,
+.iv-sheet-body .cl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 7px;
+  background: var(--paper-1);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.iv-btn:hover:not(:disabled),
+.iv-sheet-body .cl-btn:hover:not(:disabled) {
+  border-color: var(--seal-ring);
+  color: var(--seal-deep);
+}
+.iv-btn[data-on='true'] {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+  color: var(--seal-deep);
+}
+.iv-btn[data-seal='true'],
+.iv-sheet-body .cl-btn[data-seal='true'] {
+  border-color: var(--seal);
+  background: var(--seal);
+  color: var(--paper-0);
+}
+.iv-btn[data-seal='true']:hover:not(:disabled),
+.iv-sheet-body .cl-btn[data-seal='true']:hover:not(:disabled) {
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper-0);
+}
+.iv-btn:disabled,
+.iv-sheet-body .cl-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.iv-linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--seal-deep);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.iv-row-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ── the quiet line: shown only when something waits ───────────────────── */
+.iv-quiet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 14px 0 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--paper-2);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ── the table ─────────────────────────────────────────────────────────── */
+.iv-tablewrap {
+  margin-top: 14px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.iv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.iv-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--paper-1);
+  border-bottom: 1px solid var(--paper-2);
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.iv-table th .iv-dim {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.iv-table td {
+  padding: 0 10px;
+  border-bottom: 1px solid var(--paper-2);
+  vertical-align: middle;
+}
+.iv-table .iv-r {
+  text-align: right;
+}
+.iv-row {
+  height: 48px;
+  cursor: pointer;
+}
+.iv-row:hover td {
+  background: var(--paper-1);
+}
+.iv-row[aria-selected='true'] td {
+  background: var(--seal-tint);
+}
+.iv-group td {
+  height: 30px;
+  padding: 0 10px;
+  background: var(--paper-0);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.iv-title {
+  min-width: 200px;
+}
+.iv-titlebtn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.iv-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink-1);
+}
+.iv-producer {
+  font-size: 11px;
+  color: var(--ink-4);
+}
+.iv-status {
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.iv-status[data-standing='out'] {
+  color: var(--alarm);
+}
+.iv-status[data-standing='below'] {
+  color: var(--warn);
+}
+.iv-status[data-standing='unknown'],
+.iv-status[data-standing='nopar'] {
+  color: var(--ink-4);
+  font-weight: 500;
+}
+.iv-parbar {
+  display: block;
+  height: 3px;
+  margin-top: 4px;
+  margin-left: auto;
+  width: 72px;
+  border-radius: 2px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+.iv-parbar > i {
+  display: block;
+  height: 100%;
+  background: var(--seal-ring);
+}
+.iv-parbar > i[data-standing='out'] {
+  background: var(--alarm);
+}
+.iv-parbar > i[data-standing='below'] {
+  background: var(--warn);
+}
+.iv-openrow > td {
+  padding: 0;
+  background: var(--paper-1);
+  cursor: default;
+}
+.iv-none {
+  margin-top: 14px;
+  padding: 18px 14px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+}
+.iv-none .iv-btn {
+  margin-top: 10px;
+}
+.iv-map {
+  margin-top: 14px;
+}
+
+/* ── the dropdown (opens in place, formless) ───────────────────────────── */
+.iv-drop {
+  padding: 14px 16px 16px;
+  border-left: 2px solid var(--seal-ring);
+}
+.iv-head-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0 0 14px;
+}
+.iv-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 8px;
+}
+.iv-kv dt {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.iv-kv dd {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-1);
+}
+.iv-drop-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.iv-col {
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--paper-2);
+}
+.iv-col dl {
+  margin: 0;
+}
+.iv-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 62px;
+}
+.iv-bars > i {
+  flex: 1;
+  min-width: 3px;
+  border-radius: 2px 2px 0 0;
+  background: var(--seal-tint);
+  border-top: 2px solid var(--seal-ring);
+}
+.iv-bars > i[data-peak='true'] {
+  border-top-color: var(--seal);
+}
+.iv-barscale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  color: var(--ink-4);
+}
+.iv-heat {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+}
+.iv-heat-h,
+.iv-heat-d {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  color: var(--ink-4);
+}
+.iv-heat-c {
+  height: 11px;
+  border-radius: 2px;
+  background: var(--seal);
+  outline: 1px solid var(--paper-2);
+}
+.iv-paperwork {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--paper-2);
+}
+.iv-papertable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.iv-papertable th {
+  text-align: left;
+  padding: 4px 8px 4px 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  border-bottom: 1px solid var(--paper-2);
+}
+.iv-papertable td {
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid var(--paper-2);
+  vertical-align: top;
+}
+.iv-paper-acts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.iv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+/* INV-W36: the popover's body scrolls (overflow: auto) with no padding, so the
+   focus ring — 2px out at a 2px offset — was cut off at the menu's edges and
+   showed only as a line between the items. 4px all round and between items
+   keeps the whole ring on paper. */
+.iv-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+}
+.iv-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.iv-menu-item:hover {
+  background: var(--paper-1);
+}
+.iv-sheet-fields {
+  display: grid;
+  gap: 12px;
+}
+
+/* ── the empty house and the tools ─────────────────────────────────────── */
+.iv-card {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-0);
+}
+.iv-card-lead {
+  border-color: var(--seal-ring);
+  background: var(--paper-1);
+}
+.iv-card .iv-btn {
+  margin-top: 10px;
+}
+.iv-card .iv-row-controls .iv-btn {
+  margin-top: 0;
+}
+.iv-starts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.iv-tools {
+  margin-top: 28px;
+  scroll-margin-top: 16px;
+}
+
+/* ── tablet: the dropdown's three columns fold to one ──────────────────── */
+@media (max-width: 900px) {
+  .iv-drop-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── phone: rows stack, nothing scrolls sideways ───────────────────────── */
+@media (max-width: 640px) {
+  .iv-h1 {
+    font-size: 34px;
+  }
+  .iv-tablewrap {
+    border: 0;
+    border-radius: 0;
+  }
+  .iv-table,
+  .iv-table tbody,
+  .iv-table tr,
+  .iv-table td {
+    display: block;
+    width: 100%;
+  }
+  .iv-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .iv-row {
+    height: auto;
+    padding: 10px 2px;
+    border-bottom: 1px solid var(--paper-2);
+  }
+  .iv-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 2px 0;
+    border-bottom: 0;
+    text-align: right;
+  }
+  .iv-table td::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    text-align: left;
+  }
+  .iv-table td.iv-title {
+    min-width: 0;
+    padding-bottom: 4px;
+    text-align: left;
+  }
+  .iv-table td.iv-title::before,
+  .iv-group td::before,
+  .iv-openrow > td::before {
+    content: none;
+  }
+  .iv-table td .iv-num,
+  .iv-table td > span {
+    white-space: normal;
+  }
+  .iv-group td {
+    height: auto;
+    padding: 12px 0 4px;
+  }
+  .iv-openrow > td {
+    display: block;
+    text-align: left;
+  }
+  .iv-drop {
+    padding: 12px 10px;
+  }
+  .iv-papertable,
+  .iv-papertable tbody,
+  .iv-papertable tr,
+  .iv-papertable td {
+    display: block;
+    width: 100%;
+  }
+  .iv-papertable thead {
+    display: none;
+  }
+  .iv-papertable tr {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--paper-2);
+  }
+  .iv-papertable td {
+    border-bottom: 0;
+    padding: 1px 0;
+  }
+  .iv-toolbar > * {
+    flex: 1 1 140px;
+  }
+  .iv-search {
+    flex-basis: 100%;
+  }
+}
+
+/* ── reduced motion: nothing here travels ──────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .iv-page *,
+  .iv-page *::before {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── the email to the vendor, inline in the Order sheet (INV-W26) ───────── */
+.iv-letter {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-0);
+}
+.iv-letter-hint {
+  margin: 0 0 6px;
+}
+.iv-letter-text {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  resize: vertical;
+}
+
+/* ── the sheets, in the house's overlay format (founder 2026-10-01: "match
+   our format") ─────────────────────────────────────────────────────────────
+   `.mdv-ovl__body` carries no padding of its own; every page insets its own
+   sheet content (admin-desk.css:61, team's `.tm-form`). These are the same
+   numbers as sheet.css's `.mdv-form`: 12px 16px 14px, mono capital labels,
+   full-width fields on the overlay's own ground. */
+.iv-sheet-body {
+  padding: 12px 16px 16px;
+}
+.iv-sheet-body .iv-sheet-fields {
+  margin-top: 12px;
+}
+.iv-sheet-body .iv-sec {
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+/* <Select> and <CountInput> wrap their control in a span named `.mdv-select` /
+   `.mdv-count`; sheet.css styles a bare `.mdv-select` as a boxed input and
+   forces its fill with `!important` inside an overlay, so the vendor picker
+   was a box inside a box. Undone for these sheets only; the shared collision
+   is on the coordinator's queue (see `.iv-toolbar .mdv-select` above). */
+html .mdv-ovl .iv-sheet-body .mdv-select,
+html .mdv-ovl .iv-sheet-body .mdv-count {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent !important;
+}
+.iv-sheet-body .mdv-select__label,
+.iv-sheet-body .mdv-count__label,
+.iv-letter-label {
+  display: block;
+  margin: 0 0 4px;
+  font-family: var(--mdv-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+html .mdv-ovl .iv-sheet-body .mdv-select__control {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background-color: var(--paper-0) !important;
+  color: var(--ink-1) !important;
+  -webkit-text-fill-color: var(--ink-1) !important;
+  color-scheme: inherit !important;
+  font-size: 13px;
+}
+.iv-sheet-body .mdv-count__control {
+  align-self: flex-start;
+  background: var(--paper-0);
+}
+/* A refusal or a failure: ink and a rule, never red — the house has one
+   chromatic colour and it is the seal (ADR 0042; sheet.css `.mdv-alert`). */
+.iv-said-alarm,
+.iv-sheet-body .cl-note[role='alert'] {
+  padding: 9px 12px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+}
+/* OrderCeremony's failure line has no .iv-said under it, so it takes its size here. */
+.iv-sheet-body .cl-note[role='alert'] {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* INV-W39: the price cell is borrowed from the legacy page (HousePriceCell),
+   whose grey-400/300 units and "no target set" measured 2.83:1 on this paper.
+   Scoped here, so the legacy page renders as it shipped. --ink-2, not --ink-3:
+   --ink-3 drops to 4.07:1 on the open row's --paper-1. */
+.iv-page [data-testid^='house-price-'] .text-gray-400,
+.iv-page [data-testid^='house-price-'] .text-gray-300 {
+  color: var(--ink-2);
+}
+
+/* INV-W40: "/" focuses the search from a keyboard; a phone has no such key. */
+@media (hover: none) and (pointer: coarse) {
+  .iv-hint .iv-key {
+    display: none;
+  }
+}
