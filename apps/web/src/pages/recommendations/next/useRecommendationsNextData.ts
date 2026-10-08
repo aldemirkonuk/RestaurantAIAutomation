@@ -70,7 +70,8 @@ export interface EntryVM {
   rationale: string | null;
   category: string;
   urgency: string;
-  /** Axis 1 — what acting on it would change. Derived from the category. */
+  /** Axis 1 — what acting on it would change. Filed by the rule where its
+   * prescription says so, otherwise by its category (`stakeFilingOf`, ADR 0288). */
   stake: StakeId;
   /** Axis 3 — whose hand does it, and where the work lands. */
   hand: Hand;
@@ -250,7 +251,7 @@ function toEntry(raw: Record<string, unknown>, fallbackStatus: Disposition): Ent
     rationale: typeof raw.rationale === 'string' && raw.rationale ? raw.rationale : null,
     category,
     urgency: typeof raw.urgency === 'string' ? raw.urgency : '',
-    stake: stakeOf(category),
+    stake: stakeOf(ruleKey, category),
     hand: handOf(ruleKey, category),
     score: num(raw.score),
     pinned: !!raw.pinned,
