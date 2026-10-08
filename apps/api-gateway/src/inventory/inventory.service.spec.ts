@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { HttpException } from "@nestjs/common";
+import { ConflictException, HttpException } from "@nestjs/common";
 import { InventoryService } from "./inventory.service";
 import { DatabaseService } from "../database/database.service";
 import { PhotoCountService } from "./photo-count.service";
@@ -629,6 +629,79 @@ describe("InventoryService", () => {
         }),
       ).rejects.toThrow(HttpException);
       expect(mockRpc).toHaveBeenCalled();
+    });
+  });
+
+  // ADR 0315, mount-line fix (b). `record_glass_pour` looks a key up alone and
+  // answers a replay with the pour it FIRST recorded. A replayed key carrying a
+  // different pour must not come back as "recorded".
+  describe("a replayed pour key must match the pour it recorded", () => {
+    const replay = (event: unknown) => {
+      mockMaybeSingle
+        .mockResolvedValueOnce({ data: { id: "inv-1" }, error: null })
+        .mockResolvedValueOnce(event);
+      mockRpc.mockResolvedValueOnce({
+        data: { idempotent: true, pour_event: "pe-1" },
+        error: null,
+      });
+    };
+    const first = {
+      restaurant_id: "rest-1",
+      inventory_id: "inv-1",
+      pours: 2,
+      pour_ml: 150,
+    };
+
+    it("passes a replay that asks for the same pour", async () => {
+      replay({ data: first, error: null });
+      await expect(
+        service.recordPour("rest-1", "inv-1", {
+          pours: 2,
+          pourMl: 150,
+          idempotencyKey: "k-1",
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it("refuses a replay that asks for a different number of glasses", async () => {
+      replay({ data: first, error: null });
+      await expect(
+        service.recordPour("rest-1", "inv-1", {
+          pours: 3,
+          idempotencyKey: "k-1",
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it("refuses a replay that asks for a different glass size", async () => {
+      replay({ data: first, error: null });
+      await expect(
+        service.recordPour("rest-1", "inv-1", {
+          pours: 2,
+          pourMl: 175,
+          idempotencyKey: "k-1",
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it("refuses a replay whose key was spent on another item", async () => {
+      replay({ data: { ...first, inventory_id: "inv-9" }, error: null });
+      await expect(
+        service.recordPour("rest-1", "inv-1", {
+          pours: 2,
+          idempotencyKey: "k-1",
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it("refuses when the recorded pour cannot be read", async () => {
+      replay({ data: null, error: { message: "boom" } });
+      await expect(
+        service.recordPour("rest-1", "inv-1", {
+          pours: 2,
+          idempotencyKey: "k-1",
+        }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 

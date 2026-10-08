@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ConflictException,
   InternalServerErrorException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
@@ -184,6 +185,32 @@ export class InventoryLedgerService {
       restaurantId,
       data,
     );
+
+    // A replayed key returns the FIRST movement it recorded, whatever this
+    // body says (`apply_stock_movement` looks the key up alone). If this body
+    // asks for a different movement, saying it was recorded would be false:
+    // a write-off of 3 that landed behind a 5xx, retried as 1, would read
+    // "Written off: 1" over a ledger holding 3 (ADR 0315, mount-line fix b).
+    const asked = {
+      inventoryId: dto.inventoryId,
+      transactionType: dto.transactionType,
+      quantityChange: dto.quantityChange,
+      stockType: dto.stockType || StockType.LIVE,
+    };
+    // Compared as values, not as wire shapes: a numeric column or an
+    // upper-cased enum must not turn a fresh write into a refusal.
+    const same = (a: unknown, b: unknown) =>
+      typeof b === "number"
+        ? Number(a) === b
+        : String(a ?? "").toLowerCase() === String(b ?? "").toLowerCase();
+    const differs = (Object.keys(asked) as (keyof typeof asked)[]).filter(
+      (k) => !same(transaction[k], asked[k]),
+    );
+    if (differs.length > 0) {
+      throw new ConflictException(
+        `This request's key was already used for another movement (${transaction.transactionType} ${transaction.quantityChange} on ${transaction.stockType} stock), so nothing new was recorded. Read the item again before writing.`,
+      );
+    }
 
     // Emit event to event ingestion system
     try {
