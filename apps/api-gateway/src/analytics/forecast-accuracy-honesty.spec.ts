@@ -62,6 +62,7 @@ const build = (rows: Rows) =>
 const consumptionRows = (n: number, qty: (i: number) => number) =>
   Array.from({ length: n }, (_, i) => ({
     inventory_id: `inv-${i}`,
+    consumption_type: "bottle",
     quantity: qty(i),
     volume_ml: null,
     created_at: new Date(Date.now() - (n - 1 - i) * 86400000).toISOString(),
