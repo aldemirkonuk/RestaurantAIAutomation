@@ -1801,7 +1801,7 @@ in-degree 1 (`.planning/foundation/PAGE_MAP.md:148`). Not an orphan route.
 - Route: `apps/web/src/App.tsx:260` → `pages/wine-library/index.tsx` (3-line re-export of `pages/WineLibrary.tsx`, 1,901 lines)
 - State/filter hook: `apps/web/src/pages/wine-library/useWineLibraryPage.ts` (353 lines)
 - API→UI mapping: `apps/web/src/lib/wine-library.ts` (`mapApiWinesToUiWines`)
-- Modals: `components/wines/AddWineModal.tsx`, `AddWineSelectionModal.tsx`, `MenuScannerModal.tsx`, `components/scanner/MenuScannerFlow.tsx`, `DevWinePhotoUpload.tsx`, `DevManualWineEntry.tsx`, `AddToInventoryFromLibraryModal.tsx` (imports at `WineLibrary.tsx:4-10`)
+- Modals: `components/wines/AddWineModal.tsx` [deleted 2026-10-03, ADR 0314], `AddWineSelectionModal.tsx`, `MenuScannerModal.tsx`, `components/scanner/MenuScannerFlow.tsx`, `DevWinePhotoUpload.tsx`, `DevManualWineEntry.tsx`, `AddToInventoryFromLibraryModal.tsx` (imports at `WineLibrary.tsx:4-10`)
 
 **Mudavym cellar (flag on)** — five routes, one component:
 - Routes: `apps/web/src/App.tsx:297` (`/wines` → `<CellarNext category="wines"/>`), `:302` (`/cellar`, the bare parent), `:303-305` (`/beer` `/whiskey` `/cocktails`), each wrapped in `<PageGate page="cellar" …>` with the legacy page (or a redirect to `/wines`) behind the flag
