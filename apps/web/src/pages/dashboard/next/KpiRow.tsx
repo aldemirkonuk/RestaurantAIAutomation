@@ -67,10 +67,12 @@ export interface KpiRowProps {
    * deliveries and this month's bottles in; the gateway withholds the spend
    * for that role too, so this is the page agreeing with it, not the guard.
    */
+  // Omitted reads as false (fail closed): a caller that forgets it draws no
+  // money (PR #579 audit note 6). Every production caller passes it.
   seesAmounts?: boolean;
 }
 
-export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true }: KpiRowProps) {
+export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = false }: KpiRowProps) {
   const loading = stats === undefined;
   const s = stats ?? null;
 

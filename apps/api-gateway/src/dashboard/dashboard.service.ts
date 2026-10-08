@@ -1171,20 +1171,33 @@ export class DashboardService {
     try {
       const [inventoryResult, lowStockResult, ordersResult, zoneResult] =
         await Promise.allSettled([
-          client
-            .from("restaurant_inventory")
-            .select("id, stock_live, bottle_size_ml")
-            .eq("restaurant_id", restaurantId)
-            .is("deleted_at", null)
-            .eq("is_active", true),
-          client
-            .from("v_low_stock_items")
-            .select("id")
-            .eq("restaurant_id", restaurantId),
-          client
-            .from("procurement_orders")
-            .select("id, status, total_cost, final_price, bottles_total, quantity, delivered_at")
-            .eq("restaurant_id", restaurantId),
+          // All three reads are whole or refused (ADR 0292). Unranged, each
+          // stopped at PostgREST's 1,000 rows (`supabase/config.toml:18`), so
+          // past that the cellar, low-stock and vendor-spend tiles printed a
+          // slice as the total (DASH-G2's size half; PR #579 audit note 2).
+          readWholeWindow<any>("The cellar for the stat cards", () =>
+            client
+              .from("restaurant_inventory")
+              .select("id, stock_live, bottle_size_ml", { count: "exact" })
+              .eq("restaurant_id", restaurantId)
+              .is("deleted_at", null)
+              .eq("is_active", true),
+          ),
+          readWholeWindow<any>("The low-stock wines for the stat cards", () =>
+            client
+              .from("v_low_stock_items")
+              .select("id", { count: "exact" })
+              .eq("restaurant_id", restaurantId),
+          ),
+          readWholeWindow<any>("The vendor orders for the stat cards", () =>
+            client
+              .from("procurement_orders")
+              .select(
+                "id, status, total_cost, final_price, bottles_total, quantity, delivered_at",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId),
+          ),
           this.houseZone(client, restaurantId),
         ]);
 
@@ -1194,9 +1207,9 @@ export class DashboardService {
       // call, and the page shows its em dash for "unknown". A
       // `wine_consumption_log` read used to ride along here and feed nothing;
       // it is gone (DASH-W8).
-      const inventory = rowsOrThrow(inventoryResult, "restaurant_inventory");
-      const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
-      const orders = rowsOrThrow(ordersResult, "procurement_orders");
+      const inventory = valueOrThrow(inventoryResult);
+      const lowStock = valueOrThrow(lowStockResult);
+      const orders = valueOrThrow(ordersResult);
       const zone = valueOrThrow(zoneResult);
       const totalWines = inventory.length;
       const totalBottles = inventory.reduce(

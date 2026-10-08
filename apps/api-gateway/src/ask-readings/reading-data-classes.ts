@@ -246,8 +246,13 @@ export const ROLE_POLICY_FALLBACK: Role = "staff";
 export function policyRoleFor(role: string | null | undefined, table: RolePolicyTable = ROLE_POLICY): Role {
   const normalized = role ? String(role).trim().toLowerCase() : "";
   if (Object.prototype.hasOwnProperty.call(table, normalized)) return normalized as Role;
-  const alias = ROLE_POLICY_ALIASES[normalized];
-  return alias || ROLE_POLICY_FALLBACK;
+  // Own keys only: "__proto__" or "constructor" would otherwise read
+  // Object.prototype's members as an alias, and policyFor would throw a
+  // TypeError instead of failing closed to the fallback row (PR #579 audit).
+  if (Object.prototype.hasOwnProperty.call(ROLE_POLICY_ALIASES, normalized)) {
+    return ROLE_POLICY_ALIASES[normalized];
+  }
+  return ROLE_POLICY_FALLBACK;
 }
 
 export function policyFor(role: string | null | undefined, table: RolePolicyTable = ROLE_POLICY): RolePolicy {

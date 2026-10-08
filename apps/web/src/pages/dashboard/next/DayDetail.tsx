@@ -196,6 +196,8 @@ export interface DayDetailProps {
   onScrub: (date: string) => void;
   onClose: () => void;
   /** DASH-W22: false for a role that sees counts, not money (staff). */
+  // Omitted reads as false (fail closed): a caller that forgets it draws no
+  // money (PR #579 audit note 6). Every production caller passes it.
   seesAmounts?: boolean;
   /** The house's today as the calendar decided it, so the panel and the grid agree on "future". */
   today?: string;
@@ -211,7 +213,7 @@ export function DayDetail({
   activity,
   onScrub,
   onClose,
-  seesAmounts = true,
+  seesAmounts = false,
   today,
 }: DayDetailProps) {
   if (!day) return <div className="min-h-[1px]" />;
@@ -232,11 +234,16 @@ export function DayDetail({
   // DASH-W13 (founder, 2026-10-01): a future day opens only when something is
   // on the calendar, and it shows only that — its money, deliveries, alerts
   // and activity do not exist yet.
-  const isFuture = day.date > (today ?? dateIn(new Date(), zone));
+  const todayStr = today ?? dateIn(new Date(), zone);
+  const isFuture = day.date > todayStr;
 
   const calendarSection = (
     <Section title="On the calendar">
-      {day.events.length === 0 && <EmptyLine>Nothing was on the calendar.</EmptyLine>}
+      {/* The tense follows the day: a day still to come has nothing on its
+          calendar YET; only a past day "was" empty (PR #579 audit note 1). */}
+      {day.events.length === 0 && (
+        <EmptyLine>{day.date >= todayStr ? 'Nothing is on the calendar yet.' : 'Nothing was on the calendar.'}</EmptyLine>
+      )}
       {day.events.map((ev, i) => (
         <div key={ev.id ?? i} className="dn-row flex items-baseline justify-between gap-3 px-3 py-2">
           {/* DASH-W30/W32: wraps instead of cutting; the kind in words, never a code. */}

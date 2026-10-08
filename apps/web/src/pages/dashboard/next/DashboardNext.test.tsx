@@ -60,8 +60,25 @@ vi.mock('@/contexts/AuthContext', async () => {
 });
 
 import DashboardNext from './DashboardNext';
-import { CELL_SIDE, CELL_WORDS_SIZE, cellFigureSize } from './SalesCalendar';
-import { SECTION_COLUMNS, figureColumns } from './DayDetail';
+import { CELL_SIDE, CELL_WORDS_SIZE, SalesCalendar, cellFigureSize } from './SalesCalendar';
+import { DayDetail, SECTION_COLUMNS, figureColumns } from './DayDetail';
+import { KpiRow } from './KpiRow';
+
+/** One day as DayDetail takes it: no register, so every sales figure is null. */
+type PanelDay = NonNullable<Parameters<typeof DayDetail>[0]['day']>;
+function ledgerDay(date: string, over: Partial<PanelDay> = {}): PanelDay {
+  return {
+    date,
+    procurement_spend: 0,
+    bottles_sold: 0,
+    order_count: 0,
+    net_sales: null,
+    checks: null,
+    net_checks: null,
+    events: [],
+    ...over,
+  } as PanelDay;
+}
 
 /** A real month's worth of days — the shape `getCalendarRevenue` promises on success. */
 function monthLedger() {
@@ -270,6 +287,53 @@ describe('DashboardNext', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // PR #579 audit note 1 (W13/W29): the address cannot open what the grid
+  // disables. A `?day=` naming a future day with nothing on the calendar reads
+  // as closed; a future day WITH an event still opens from its link.
+  it('keeps the panel closed for a ?day= link to an empty future day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+    try {
+      const ledger = monthLedger();
+      ledger.daily[19] = {
+        ...ledger.daily[19],
+        events: [{ id: 'ev1', title: 'Burgundy tasting', event_type: 'tasting', event_time: '18:00' }],
+      } as (typeof ledger.daily)[number];
+      routeGets({ '/dashboard/calendar-revenue/': ledger });
+
+      const { unmount } = mount('/?day=2026-09-21');
+      expect(await screen.findByRole('button', { name: /^Monday, September 21(, today)?:/ })).toBeDisabled();
+      expect(screen.queryByRole('heading', { name: /September 21/ })).not.toBeInTheDocument();
+      expect(document.querySelector('.dn-expand')).toHaveAttribute('data-open', 'false');
+      unmount();
+
+      mount('/?day=2026-09-20');
+      expect(await screen.findByRole('heading', { name: /September 20/ })).toBeInTheDocument();
+      expect(screen.getByText('Burgundy tasting')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // PR #579 audit note 1: the empty line's tense follows the day.
+  it('says an empty future day has nothing on the calendar yet, and a past one had nothing', () => {
+    const blank = (date: string) => ledgerDay(date);
+    const props = {
+      daily: monthLedger().daily.map((d) => ledgerDay(d.date)),
+      zone: 'UTC',
+      today: '2026-09-10',
+      dayOrders: { state: 'loading' } as const,
+      alerts: [],
+      activity: [],
+      onScrub: () => {},
+      onClose: () => {},
+    };
+    const { rerender } = render(<DayDetail {...props} day={blank('2026-09-21')} />);
+    expect(screen.getByText('Nothing is on the calendar yet.')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing was on the calendar.')).not.toBeInTheDocument();
+    rerender(<DayDetail {...props} day={blank('2026-09-05')} />);
+    expect(screen.getByText('Nothing was on the calendar.')).toBeInTheDocument();
   });
 
   // The panel and the grid agree on "future": both read the house's today
@@ -1230,5 +1294,59 @@ describe('DashboardNext — the calendar fits the shell (ADR 0290 §9)', () => {
     expect(figureColumns(6)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 2rem) / 3 - 1px)), 1fr))');
     expect(figureColumns(4)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 1rem) / 2 - 1px)), 1fr))');
     expect(SECTION_COLUMNS).toBe('repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))');
+  });
+});
+
+// PR #579 audit note 6: `seesAmounts` fails closed. A caller that forgets the
+// prop draws counts, never money; every production caller passes it.
+describe('DashboardNext — money is drawn only when the caller says so', () => {
+  it('KpiRow without seesAmounts draws the counts, not the spend', () => {
+    render(
+      <MemoryRouter>
+        <KpiRow
+          stats={{
+            totalWines: 3, totalBottles: 30, lowStockItems: 0, pendingOrders: 0, totalVolumeMl: 0, totalVolumeOz: 0,
+            todayProcurementSpend: 410, monthProcurementSpend: 9120, todayDeliveries: 2, monthBottlesIn: 24,
+          } as Parameters<typeof KpiRow>[0]['stats']}
+          pendingCount={0}
+          lowStockCount={0}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/Paid to vendors/)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\$/);
+  });
+
+  it('DayDetail without seesAmounts draws no paid-to-vendors figure', () => {
+    const day = ledgerDay('2026-09-05', { procurement_spend: 500, order_count: 1 });
+    render(
+      <DayDetail
+        day={day}
+        daily={monthLedger().daily.map((d) => ledgerDay(d.date))}
+        zone="UTC"
+        today="2026-09-10"
+        dayOrders={{ state: 'loading' }}
+        alerts={[]}
+        activity={[]}
+        onScrub={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: /September 5/ })).toBeInTheDocument();
+    expect(screen.queryByText('Paid to vendors')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\$/);
+  });
+
+  it('SalesCalendar without seesAmounts reads as a deliveries calendar', async () => {
+    routeGets();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <SalesCalendar restaurantId="rest-A" alerts={[]} activity={[]} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole('region', { name: 'Month calendar — deliveries per day' })).toBeInTheDocument();
   });
 });
