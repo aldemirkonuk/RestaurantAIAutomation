@@ -320,7 +320,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Demand Value-at-Risk",
     domain: "risk",
     description:
-      "Worst plausible day-on-day drop in units out (wine_consumption_log quantity: a glass or a bottle, as logged) at 95% confidence (historical & parametric), 90d.",
+      "Worst plausible day-on-day drop in bottles out per day (wine_consumption_log, a glass counted as its share of a bottle per ADR 0297, lines with no bottle figure left out) at 95% confidence (historical & parametric), 90d.",
     formula: "VaR = −quantile_{1−c}(returns); CVaR = E[loss | loss ≥ VaR]",
     theorem: "Value at Risk / Expected Shortfall",
     unit: "percent",
@@ -339,7 +339,7 @@ export const METRIC_REGISTRY: MetricDefinition[] = [
     name: "Demand Sharpe Ratio",
     domain: "risk",
     description:
-      "Consistency of day-on-day change in units out (wine_consumption_log quantity: a glass or a bottle, as logged; mean change ÷ volatility), 90d; not money.",
+      "Consistency of day-on-day change in bottles out per day (wine_consumption_log, a glass counted as its share of a bottle per ADR 0297, lines with no bottle figure left out; mean change ÷ volatility), 90d; not money.",
     formula: "(mean return − rf) ÷ stdev(return)",
     theorem: "Sharpe ratio",
     unit: "ratio",
