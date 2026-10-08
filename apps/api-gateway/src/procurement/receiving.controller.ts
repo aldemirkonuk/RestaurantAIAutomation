@@ -40,7 +40,15 @@ import {
 import { ORDER_UNIT_TYPES } from "./order-units";
 import { LINE_HISTORY_CURSOR_RE } from "./receiving-line-history";
 
-type AuthedUser = { userId: string; restaurantId: string };
+/**
+ * `role` is the role IN THE HOUSE THE TOKEN NAMES (jwt.strategy.ts, ADR
+ * 0162/0164), null when the session names no house.
+ */
+type AuthedUser = {
+  userId: string;
+  restaurantId: string;
+  role?: string | null;
+};
 
 export class LineHistoryQueryDto {
   @ApiPropertyOptional({
@@ -176,7 +184,8 @@ export class DoorReceiptDto {
   idempotencyKey?: string;
 
   @ApiPropertyOptional({
-    description: "When the tap happened, if it synced later",
+    description:
+      "When the tap happened, if it synced later. It dates the delivery when it is no more than 72 hours before the server receives it; an older one stands only from an owner or a manager and is marked back-dated; otherwise the server's own time dates it (ADR 0286). It is kept as evidence either way.",
   })
   @IsOptional()
   @IsISO8601()
@@ -251,7 +260,7 @@ export class ReceivingController {
   @ApiOperation({
     summary: "Record a delivery at the door (case count) and book the stock",
     description:
-      "Books the counted quantity to live stock immediately — the wine is physically on the shelf and staff must be able to pour it. No unit cost is written: nobody has seen an invoice yet, so the lot stays cost_provenance='estimated' until verifyReceipt corrects it to landed cost. The order is left PARTIALLY_RECEIVED, never completed, so the bottle count that catches a short case is still expected.",
+      "Books the counted quantity to live stock immediately — the wine is physically on the shelf and staff must be able to pour it. No unit cost is written: nobody has seen an invoice yet, so the lot stays cost_provenance='estimated' until verifyReceipt corrects it to landed cost. The order is left PARTIALLY_RECEIVED, never completed, so the bottle count that catches a short case is still expected. The delivery is dated by `clientCapturedAt` when it is within 72 hours (older only on an owner's or a manager's word, marked back-dated), else by the server; the response's `factTime` says which (ADR 0286).",
   })
   async door(
     @Param("id") orderId: string,
@@ -280,6 +289,9 @@ export class ReceivingController {
         documentId: body.documentId ?? null,
         idempotencyKey: body.idempotencyKey ?? null,
         clientCapturedAt: body.clientCapturedAt ?? null,
+        // Only decides whether a sent time older than 72 hours may stand
+        // (ADR 0286). From the token, never from the body.
+        role: user.role ?? null,
         notes: body.notes ?? null,
         outcome: body.outcome ?? null,
         refusalReason: body.refusalReason ?? null,

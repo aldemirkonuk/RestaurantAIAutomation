@@ -310,14 +310,20 @@ const GOALS = {
   },
 };
 
-/** `GET /analytics/overview/:rid` — the benchmark cutting's one call. */
+/**
+ * `GET /analytics/overview/:rid` — the benchmark cutting's one call.
+ *
+ * `paceDeltaPct` and `trendPerDayPct` are the engine's 0–1 fractions (1200
+ * against 900 is 0.3333). They used to be written here as percentages, the
+ * same mistake `pct` made, so nothing caught +20.7% a day printing "+0.21%".
+ */
 const BENCH = {
   financial: null,
   cashflow: {
     basis: { outflow: 'delivered procurement_orders' },
     spendLast30d: 1200,
     spendPrev30d: 900,
-    paceDeltaPct: 33.3,
+    paceDeltaPct: 0.3333,
     committedOpenOrders: 400,
     openOrderCount: 2,
   },
@@ -326,7 +332,7 @@ const BENCH = {
     bestDay: 'Friday',
     worstDay: 'Monday',
     tie: false,
-    trendPerDayPct: -0.4,
+    trendPerDayPct: -0.004,
     basis: { weekday: 'mean units per weekday over 90d', extremes: 'single weekdays' },
   },
   activeGoals: [
@@ -356,7 +362,7 @@ function base() {
         basis: { outflow: 'delivered procurement_orders' },
         spendLast30d: 1200,
         spendPrev30d: 900,
-        paceDeltaPct: 33.3,
+        paceDeltaPct: 0.3333,
         projectedNext4Weeks: null,
         committedOpenOrders: 400,
         openOrderCount: 2,
@@ -369,7 +375,7 @@ function base() {
         bestDay: 'Friday',
         worstDay: 'Monday',
         tie: false,
-        trendPerDayPct: -0.4,
+        trendPerDayPct: -0.004,
         basis: { weekday: 'mean units per weekday over 90d', extremes: 'single weekdays' },
       }),
       ahead: ok({
@@ -871,7 +877,7 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
         bestDay: null,
         worstDay: null,
         tie: true,
-        trendPerDayPct: 0.2,
+        trendPerDayPct: 0.002,
         basis: {
           weekday: 'mean units per weekday over the last 90 days',
           extremes: 'bestDay/worstDay are null: more than one weekday shares the extreme',
@@ -1498,5 +1504,185 @@ describe('ReportsNext — written up (OD-81)', () => {
     paint();
     arrange();
     expect(screen.queryByRole('region', { name: 'Written up' })).toBeNull();
+  });
+});
+
+describe('ReportsNext — the restock bars keep their ties (A-070, ADR 0272)', () => {
+  /** A reorder row as the gateway sends it, highest risk first. */
+  const row = (id: string, p: number) => ({
+    id,
+    name: `Wine ${id}`,
+    onHand: 1,
+    daysOfCover: 3,
+    reorderPoint: 4,
+    safetyStock: 2,
+    stockoutProbability: p,
+  });
+  const drawn = (list: ReturnType<typeof row>[]) => {
+    const spec = CATALOGUE.restock;
+    const data = spec.select({
+      params: { serviceLevel: 0.95, leadTimeDays: 7, demandWindowDays: 90 },
+      skuCount: 60,
+      reorderCount: list.length,
+      reorderList: list,
+    });
+    return spec.view(data, { days: 30 }).cats!.data.map((d) => d.full);
+  };
+
+  it('draws every wine tied with the 14th bar, not the first of them by row order', () => {
+    const list = [
+      ...Array.from({ length: 12 }, (_, i) => row(`a${i}`, 0.9 - i * 0.02)),
+      // One risk — 26.84% — in the bit patterns the gateway really returns.
+      row('t0', 0.26844096449466426),
+      row('t1', 0.2684409644946637),
+      row('t2', 0.26844096449466437),
+      row('t3', 0.26844096449466415),
+      row('t4', 0.26844096449466381),
+      row('z0', 0.2),
+    ];
+    const bars = drawn(list);
+    expect(bars).toHaveLength(17);
+    for (const t of ['t0', 't1', 't2', 't3', 't4']) expect(bars).toContain(`Wine ${t} · 1 on hand`);
+    expect(bars).not.toContain('Wine z0 · 1 on hand');
+  });
+
+  it('does not call two risks that merely print alike a tie', () => {
+    const list = [
+      ...Array.from({ length: 13 }, (_, i) => row(`a${i}`, 0.9 - i * 0.02)),
+      row('p0', 0.2689), // prints "27%"
+      row('p1', 0.2684), // also prints "27%" — a different risk
+    ];
+    expect(drawn(list)).toHaveLength(14);
+  });
+
+  it('does not draw the whole 0% group when bar 14 falls in it (fork 3 bound)', () => {
+    // 5 risks, then 20 wines with no demand and nothing on hand at exactly 0%.
+    const list = [
+      ...Array.from({ length: 5 }, (_, i) => row(`a${i}`, 0.6 - i * 0.05)),
+      ...Array.from({ length: 20 }, (_, i) => row(`z${String(i).padStart(2, '0')}`, 0)),
+    ];
+    const bars = drawn(list);
+    expect(bars).toHaveLength(14);
+    for (let i = 0; i < 5; i++) expect(bars).toContain(`Wine a${i} · 1 on hand`);
+  });
+});
+
+/**
+ * A-020 (analytics walk, 2026-10-03): the engine's pace and trend are 0–1
+ * fractions, and the page printed them as if already in percent — a measured
+ * 0.2069 trend read "+0.21%". Every figure below fails on that formatter.
+ */
+describe('ReportsNext — a signed change is a fraction, printed in percent (A-020)', () => {
+  const figureIn = (region: string, label: string) => {
+    const r = screen.getByRole('region', { name: region });
+    return within(r).getByText(label).closest('.rp-fig') as HTMLElement;
+  };
+
+  it('prints the pace of 1200 against 900 as +33.3%, on both cuttings that carry it', () => {
+    paint();
+    expect(within(figureIn('Spend pacing', 'Pace')).getByText('+33.3%')).toBeInTheDocument();
+    expect(
+      within(figureIn('Against ourselves', 'Pace against last month')).getByText('+33.3%'),
+    ).toBeInTheDocument();
+  });
+
+  it('prints the 28-day trend as a change per day, and says so', () => {
+    paint();
+    expect(
+      within(figureIn('The week’s shape', '28-day trend, per day')).getByText('-0.4%'),
+    ).toBeInTheDocument();
+    expect(
+      within(figureIn('Against ourselves', 'Trend per day, last 28 days')).getByText('-0.4%'),
+    ).toBeInTheDocument();
+  });
+
+  it('prints the trend the walk measured as +20.7% a day in the benchmark table', () => {
+    const view = CATALOGUE.bench.view(
+      decode('bench', {
+        ...BENCH,
+        seasonality: { ...BENCH.seasonality, trendPerDayPct: 0.20689655 },
+      }),
+      { days: 30 },
+    );
+    const week = view.table?.rows.find((r) => r.key === 'week');
+    expect(week?.cells[3]).toBe('+20.7% a day');
+    expect(view.figures.find((f) => f.label === 'Trend per day, last 28 days')?.value).toBe(
+      '+20.7%',
+    );
+  });
+});
+
+/**
+ * A-040 (analytics walk, 2026-10-03): the room and who served it blamed "an
+ * absent attribution" / "an absent field on the POS feed" whenever no check in
+ * the fixed 90-day window named a table or a server — including a window that
+ * held no check at all because the feed had stopped.
+ */
+describe('ReportsNext — an empty POS window is not an absent field (A-040)', () => {
+  const latest = '2026-08-30T12:00:00.000Z';
+  const service = (extra: Record<string, unknown>) =>
+    CATALOGUE.service.view(
+      CATALOGUE.service.select({
+        sinceDays: 90,
+        dataStatus: 'x',
+        adjusted: null,
+        waiters: [],
+        ...extra,
+      }),
+      { days: 30 },
+    );
+  const seats = (extra: Record<string, unknown>) =>
+    CATALOGUE.seats.view(
+      CATALOGUE.seats.select({
+        sinceDays: 90,
+        dataStatus: 'x',
+        tables: [
+          { tableId: 't1', label: 'T1', zone: null, seats: 4, checks: 0, revenue: 0, covers: 0 },
+        ],
+        ...extra,
+      }),
+      { days: 30 },
+    );
+
+  it('who served it: an empty window over an older feed names the window and the latest day', () => {
+    expect(service({ checksInWindow: 0, latestCheckAt: latest }).say).toBe(
+      'No POS check was opened in the last 90 days — the latest this house has is from Aug 30, 2026. The window is empty; no field is missing.',
+    );
+  });
+
+  it('who served it: a house with no check ever says none has reached Mudavym', () => {
+    const say = service({ checksInWindow: 0, latestCheckAt: null }).say as string;
+    expect(say).toContain('No POS check has reached Mudavym for this house yet');
+    expect(say).not.toMatch(/absent/);
+  });
+
+  it('who served it: checks with no server name are the absent field, with their count', () => {
+    expect(service({ checksInWindow: 7, latestCheckAt: latest }).say).toBe(
+      'None of the 7 checks in the last 90 days carries a server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.',
+    );
+    expect(service({ checksInWindow: 1, latestCheckAt: latest }).say).toMatch(
+      /^The one check in the last 90 days carries no server name/,
+    );
+  });
+
+  it('who served it: an older gateway that sends no count asserts neither cause', () => {
+    const say = service({}).say as string;
+    expect(say).toContain('does not say whether the window held any check');
+    expect(say).not.toMatch(/absent/);
+  });
+
+  it('the room: the same three facts, and "absent attribution" only when checks exist', () => {
+    expect(seats({ checksInWindow: 0, latestCheckAt: latest }).say).toBe(
+      '1 table is mapped. No POS check was opened in the last 90 days — the latest this house has is from Aug 30, 2026. The window is empty; no field is missing.',
+    );
+    expect(seats({ checksInWindow: 0, latestCheckAt: null }).say).toContain(
+      'No POS check has reached Mudavym',
+    );
+    expect(seats({ checksInWindow: 5, latestCheckAt: latest }).say).toBe(
+      '1 table is mapped, and not one of the 5 checks in the last 90 days was attributed to any of them — that is an absent attribution, not an empty room.',
+    );
+    const old = seats({}).say as string;
+    expect(old).toContain('does not say whether the window held any check');
+    expect(old).not.toMatch(/absent/);
   });
 });

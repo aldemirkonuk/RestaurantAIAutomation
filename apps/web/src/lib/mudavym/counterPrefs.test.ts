@@ -24,7 +24,7 @@ afterEach(() => {
 describe('the default before a person has chosen', () => {
   it('is open at a normal width on a normal page', () => {
     expect(counterWidthFor('/orders', 1440, NONE)).toBe('open');
-    expect(counterWidthFor('/', 1280, NONE)).toBe('open');
+    expect(counterWidthFor('/calendar', 1280, NONE)).toBe('open');
   });
 
   it('is tucked below ~1280 px', () => {
@@ -36,6 +36,18 @@ describe('the default before a person has chosen', () => {
     expect(counterWidthFor('/reports', 1920, NONE)).toBe('tucked');
     expect(counterWidthFor('/inventory', 1440, NONE)).toBe('tucked');
     expect(counterWidthFor('/reports?tab=spend', 1440, NONE)).toBe('tucked');
+  });
+
+  it('is tucked on the dashboard at /, while other normal pages stay open (ADR 0290)', () => {
+    expect(counterWidthFor('/', 1280, NONE)).toBe('tucked');
+    expect(counterWidthFor('/', 1920, NONE)).toBe('tucked');
+    expect(counterWidthFor('/?month=2026-10', 1440, NONE)).toBe('tucked');
+    expect(counterWidthFor('/orders', 1440, NONE)).toBe('open');
+    expect(counterWidthFor('/calendar', 1440, NONE)).toBe('open');
+  });
+
+  it("a person who opened the counter keeps it open on the dashboard", () => {
+    expect(counterWidthFor('/', 1440, rememberCounterWidth(NONE, 'open'))).toBe('open');
   });
 });
 

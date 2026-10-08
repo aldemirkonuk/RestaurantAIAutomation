@@ -178,12 +178,11 @@ async def test_decline_tells_a_manager_the_order_is_still_open():
 
 @pytest.mark.asyncio
 async def test_an_out_of_stock_reply_is_still_the_cancel_path_not_the_decline_one():
-    # `unavailable` is a different branch with its own cascade (calendar event,
-    # shadow stock, alternative providers) and it deliberately still CANCELS.
-    # Asserted so a future tidy-up does not fold the two together: a vendor with
-    # none left is not a vendor refusing our price.
+    # `unavailable` is a different branch with its own cascade (shadow stock,
+    # alternative providers) and it deliberately still CANCELS. Asserted so a
+    # future tidy-up does not fold the two together: a vendor with none left is
+    # not a vendor refusing our price.
     agent, updates, _order = _make_agent(status="APPROVED")
-    agent._cancel_order_calendar_event = AsyncMock()
     agent._release_shadow_stock = AsyncMock()
     agent.database.supabase.table.side_effect = lambda name: (
         _OrdersTable({"id": ORDER_ID, "status": "APPROVED"}, updates)
@@ -192,3 +191,32 @@ async def test_an_out_of_stock_reply_is_still_the_cancel_path_not_the_decline_on
     )
     await agent._handle_intent_response(_decline("unavailable"))
     assert updates and updates[0]["status"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
+async def test_an_out_of_stock_cancel_leaves_the_calendar_to_the_table():
+    # ADR 0284. The table cancels the delivery event when the order is
+    # cancelled, for every writer. The agent's own attempt read a `tags` column
+    # calendar_events does not have and swallowed the error, so it never
+    # cancelled anything; it is gone, and the agent must not grow one back. Nor
+    # may the manager be told the delivery was "removed from calendar": it is
+    # marked cancelled there, by the database, not removed by this code.
+    agent, updates, _order = _make_agent(status="APPROVED")
+    agent._release_shadow_stock = AsyncMock()
+    tables: List[str] = []
+
+    def _table(name: str) -> Any:
+        tables.append(name)
+        if name == "procurement_orders":
+            return _OrdersTable({"id": ORDER_ID, "status": "APPROVED"}, updates)
+        return MagicMock()
+
+    agent.database.supabase.table.side_effect = _table
+    await agent._handle_intent_response(_decline("unavailable"))
+
+    assert updates and updates[0]["status"] == "CANCELLED"
+    assert "calendar_events" not in tables
+    assert not hasattr(agent, "_cancel_order_calendar_event")
+    assert agent.publish.await_count == 1
+    message = agent.publish.await_args.kwargs["message_body"]["payload"]["message"]
+    assert "removed from calendar" not in message

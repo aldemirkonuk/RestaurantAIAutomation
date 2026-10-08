@@ -37,7 +37,10 @@ import { isIso4217 } from "../common/iso-4217";
  *     converts: `normalizeUnitPrice` (`analytics/engine/vendor-price-consensus
  *     .ts:115`) is the single place a conversion is allowed to happen, and it
  *     needs the unconverted operands to do it.
- *   * `observed_at` is the event's own date, never `now()`.
+ *   * `observed_at` is the event's own date, never `now()`. For a verified
+ *     receipt that is the issue date of the one invoice the row names
+ *     (`dateReceiptSighting`, ADR 0273), and the moment it was checked only
+ *     when no such date can be read — with a sentence on the row saying why.
  *
  * WHY THE PAYLOAD IS BUILT HERE AND NOT INLINE
  * --------------------------------------------
@@ -103,8 +106,20 @@ export interface OwnPaperSightingInput {
   packSize: number | null | undefined;
   /** The bottle's volume. No default: absent is a refusal. */
   unitVolumeMl: number | null | undefined;
-  /** The event's own date, ISO. Never `now()` supplied by the caller. */
+  /**
+   * The event's own date, ISO. Never `now()` supplied by the caller. Ignored
+   * when `dating` is given: its `observedAt` is the one written.
+   */
   observedAt: string | null | undefined;
+  /**
+   * ADR 0273: which date this price is dated by, and why — the result of
+   * `dateReceiptSighting` for a verified receipt. When present it supplies
+   * `observed_at`, `effective_date` and the day the content hash is keyed on,
+   * and its basis and sentence are written into `raw`. Absent (a confirmed
+   * order), nothing changes: the row is dated by `observedAt` and `raw`
+   * carries no date basis.
+   */
+  dating?: SightingDate | null;
   /**
    * The DOCUMENT's own ISO 4217 code. No default: absent is a refusal (ADR 0117
    * Q25). Never the house's `restaurants.currency` — that is what the house
@@ -346,19 +361,28 @@ export function decideOwnPaperSighting(
     };
   }
 
+  const observedAtInput = input.dating
+    ? input.dating.observedAt
+    : input.observedAt;
   const observedAtRaw =
-    typeof input.observedAt === "string" ? input.observedAt.trim() : "";
+    typeof observedAtInput === "string" ? observedAtInput.trim() : "";
   const observedAt = observedAtRaw ? new Date(observedAtRaw) : null;
   if (!observedAt || Number.isNaN(observedAt.getTime())) {
     return {
       write: false,
       reason:
         `No price sighting written for ${where}: the observation date is ` +
-        `${JSON.stringify(input.observedAt)}. A sighting must carry the date ` +
+        `${JSON.stringify(observedAtInput)}. A sighting must carry the date ` +
         `its own paper carries; stamping it with now() would make an old ` +
         `price look like today's.`,
     };
   }
+  // ADR 0273. The paper's own calendar day when `dating` read one, which is
+  // not always `observed_at`'s UTC day: an issue date one day after the check
+  // is admitted, and `observed_at` is then held at the check so the row never
+  // sits in the future. Without `dating`, the day `observed_at` names.
+  const effectiveDate =
+    input.dating?.effectiveDate ?? observedAt.toISOString().slice(0, 10);
 
   // ADR 0117 Q25, founder 2026-09-05. This was `(input.currency ?? "USD")`:
   // neither caller passes a currency, so every class-A sighting this register
@@ -438,6 +462,11 @@ export function decideOwnPaperSighting(
   // identically and is refused by the database; a re-verification that CHANGED
   // the price hashes differently and is a genuinely new sighting, which is the
   // correct outcome — the disagreement is the information.
+  //
+  // The day is the DATED day (ADR 0273), not the day of the check. While a
+  // receipt was dated by its check, re-checking the same paper at the same
+  // numbers a day later hashed differently and wrote the same evidence twice;
+  // dated by its issue date, the re-check is the same day and is refused.
   const contentHash = createHash("sha256")
     .update(
       JSON.stringify([
@@ -449,7 +478,7 @@ export function decideOwnPaperSighting(
         packSize,
         unitVolumeMl,
         currency,
-        observedAt.toISOString().slice(0, 10),
+        effectiveDate,
       ]),
     )
     .digest("hex");
@@ -512,7 +541,7 @@ export function decideOwnPaperSighting(
       trust_tier: trustTier,
       source_ref: sourceRef,
       observed_at: observedAt.toISOString(),
-      effective_date: observedAt.toISOString().slice(0, 10),
+      effective_date: effectiveDate,
       raw_price: Math.round(price * 100) / 100,
       currency,
       pack_size: packSize,
@@ -549,8 +578,219 @@ export function decideOwnPaperSighting(
         // said rather than only what the platform made of it.
         statedUnit: input.unitLabel ?? null,
         notes: input.notes ?? null,
+        // ADR 0273: which date `observed_at` holds and why, and the two
+        // dates it was chosen from — so the sheet can say "dated by the
+        // invoice" or "dated when it was checked, because …" rather than
+        // leave a reader to guess which clock a row was stamped by.
+        ...(input.dating
+          ? {
+              dateBasis: input.dating.basis,
+              dateSentence: input.dating.sentence,
+              verifiedAt: input.dating.verifiedAt,
+              issueDate: input.dating.issueDate,
+            }
+          : {}),
       },
     },
+  };
+}
+
+/* ── ADR 0273: a verified receipt's price is dated by its invoice ─────────── */
+
+/** Which date a verified receipt's sighting carries. */
+export type SightingDateBasis =
+  | "invoice_issue_date"
+  | "invoice_issue_date_corrected"
+  | "verified_at";
+
+/**
+ * How many calendar days AFTER the check an issue date may fall and still be
+ * used. One, so a house in Türkiye (UTC+3) checking an invoice just after its
+ * own midnight — still the previous day in UTC — is not refused its own
+ * paper's date. Anything later is not a date a person could have checked the
+ * paper against, so it is refused rather than written into the future. A lane
+ * pick recorded in ADR 0273, not a founder answer.
+ */
+export const ISSUE_DATE_FUTURE_TOLERANCE_DAYS = 1;
+
+/**
+ * The newest `correction`-kind `document_corrections` row on the invoice's
+ * `issueDate` path (ADR 0104 D5: append-only, the latest correction wins).
+ * `value` is that row's `after.value`; null means a person corrected the date
+ * to none.
+ */
+export interface IssueDateCorrection {
+  revision: number | null;
+  value: unknown;
+}
+
+export interface SightingDate {
+  /** Written to `observed_at`: the issue date at 12:00 UTC, never later than
+   * the check; or the check itself. */
+  observedAt: string;
+  /** Written to `effective_date` (both registers): the issue date exactly,
+   * or the check's UTC day. Null only when the check time itself is
+   * unreadable, in which case the sighting is refused for its date. */
+  effectiveDate: string | null;
+  basis: SightingDateBasis;
+  /** Why this date and not the other one, in words. */
+  sentence: string;
+  /** When a person checked the receipt (`match_verified_at`). Our clock. */
+  verifiedAt: string;
+  /** The calendar date the invoice states (after any correction), when it
+   * states one that reads as a date — kept even when it is refused for being
+   * after the check, so the row shows what was refused. */
+  issueDate: string | null;
+}
+
+const CALENDAR_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** A strict YYYY-MM-DD that names a real day ("2026-02-30" does not), or null. */
+function calendarDate(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  const m = CALENDAR_DATE_RE.exec(s);
+  if (!m) return null;
+  const t = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return t.toISOString().slice(0, 10) === s ? s : null;
+}
+
+function addCalendarDays(day: string, days: number): string {
+  const t = new Date(`${day}T00:00:00.000Z`);
+  t.setUTCDate(t.getUTCDate() + days);
+  return t.toISOString().slice(0, 10);
+}
+
+/**
+ * The date a verified receipt's price is dated by — ADR 0273.
+ *
+ * WHY. The receipt's sighting used to take `observed_at = match_verified_at`,
+ * the moment a person checked it, on the stated ground that
+ * `procurement_documents` carries no issue-date column. It does
+ * (`doc_date`, `baseline_from_production.sql:4433`), and intake writes it.
+ * Dated by the check, an invoice issued in July and checked in September is
+ * "news" in every 30-day box. The analytics walk measured the same 25
+ * sightings in the 30-, 95- and 365-day windows (A-038); which source wrote
+ * those 25 was not measured, and rows already written are not re-dated.
+ *
+ * THE RULE.
+ *   * The date is read ONLY from the one live invoice `pickReceiptPaper`
+ *     names. No invoice, or several, names no date — the date can never come
+ *     from paper the row does not name.
+ *   * The issue date is the latest `correction` on its `issueDate` path when
+ *     there is one (ADR 0104 D5), else `doc_date` as extracted. A correction
+ *     to null means the invoice states none.
+ *   * It must be a strict YYYY-MM-DD calendar date, and no more than
+ *     `ISSUE_DATE_FUTURE_TOLERANCE_DAYS` after the check's UTC day.
+ *   * `observed_at` is that date at 12:00 UTC — the same calendar day for a
+ *     viewer anywhere from UTC-11 to UTC+11, where midnight UTC would show
+ *     the day before across the Americas — and never later than the check.
+ *     `effective_date` is the issue date exactly.
+ *   * Otherwise the check time, with a sentence naming why. A failed read is
+ *     said as a failed read, never as an invoice without a date.
+ *
+ * Pure: the service reads the paper and its correction, this decides.
+ */
+export function dateReceiptSighting(args: {
+  /** `match_verified_at`, ISO. */
+  verifiedAt: string;
+  paper: Pick<ReceiptPaper, "invoice" | "liveInvoices">;
+  issueDateCorrection?: IssueDateCorrection | null;
+  /** What could not be read — the paper or its correction — or null. */
+  readFailure?: string | null;
+}): SightingDate {
+  const verified = new Date(args.verifiedAt);
+  if (typeof args.verifiedAt !== "string" || Number.isNaN(verified.getTime())) {
+    // Unreachable from `verifyReceipt`, which stamps the check itself. The
+    // sighting is then refused for its date by `decideOwnPaperSighting`.
+    return {
+      observedAt: args.verifiedAt,
+      effectiveDate: null,
+      basis: "verified_at",
+      sentence: `The time this price was checked reads ${JSON.stringify(args.verifiedAt)}, which is not a time, so no date can be placed on it.`,
+      verifiedAt: args.verifiedAt,
+      issueDate: null,
+    };
+  }
+  const verifiedAt = verified.toISOString();
+  const verifiedDay = verifiedAt.slice(0, 10);
+  const byCheck = (
+    why: string,
+    issueDate: string | null = null,
+  ): SightingDate => ({
+    observedAt: verifiedAt,
+    effectiveDate: verifiedDay,
+    basis: "verified_at",
+    // The reason only: `basis: "verified_at"` beside it already says the
+    // row is dated by its check, and the sheet prints that date itself.
+    sentence: why,
+    verifiedAt,
+    issueDate,
+  });
+
+  if (args.readFailure) {
+    return byCheck(
+      `The invoice's issue date could not be read when this price was checked (${args.readFailure}). That is a failed read, not an invoice without a date.`,
+    );
+  }
+
+  const inv = args.paper.invoice;
+  if (!inv) {
+    const n = args.paper.liveInvoices;
+    return byCheck(
+      n !== null && n > 1
+        ? `${n} invoices are attached to this order and none is named, so no single issue date can be read.`
+        : `No live invoice is attached to this order, so there is no issue date to read.`,
+    );
+  }
+
+  const label = inv.docNumber ? `invoice ${inv.docNumber}` : "the invoice";
+  const correction = args.issueDateCorrection ?? null;
+  const corrected = correction !== null;
+  const stated = corrected ? correction.value : inv.docDate;
+
+  if (
+    stated === null ||
+    stated === undefined ||
+    (typeof stated === "string" && !stated.trim())
+  ) {
+    return byCheck(
+      corrected
+        ? `A person corrected the issue date on ${label} to none.`
+        : `No issue date is on record for ${label}.`,
+    );
+  }
+
+  const issueDate = calendarDate(stated);
+  if (!issueDate) {
+    return byCheck(
+      `The issue date on ${label} ${corrected ? "was corrected to" : "reads"} ${JSON.stringify(stated)}, which is not a calendar date (YYYY-MM-DD).`,
+    );
+  }
+
+  if (
+    issueDate > addCalendarDays(verifiedDay, ISSUE_DATE_FUTURE_TOLERANCE_DAYS)
+  ) {
+    return byCheck(
+      `The issue date on ${label}, ${issueDate}, is more than ${ISSUE_DATE_FUTURE_TOLERANCE_DAYS} day after the day this price was checked, so it is not used.`,
+      issueDate,
+    );
+  }
+
+  const noon = new Date(`${issueDate}T12:00:00.000Z`);
+  const observedAt = (
+    noon.getTime() < verified.getTime() ? noon : verified
+  ).toISOString();
+  const status = inv.status ? ` (invoice status: ${inv.status})` : "";
+  return {
+    observedAt,
+    effectiveDate: issueDate,
+    basis: corrected ? "invoice_issue_date_corrected" : "invoice_issue_date",
+    sentence: corrected
+      ? `Dated by the issue date on ${label}, ${issueDate}, as a person corrected it (the paper read ${calendarDate(inv.docDate) ?? "no date"})${status}. The price was checked on ${verifiedDay}.`
+      : `Dated by the issue date on ${label}, ${issueDate}, as read from the paper${status}. The price was checked on ${verifiedDay}.`,
+    verifiedAt,
+    issueDate,
   };
 }
 
@@ -596,7 +836,35 @@ export interface PaperCandidate {
   id: string;
   doc_type: string | null;
   doc_number: string | null;
+  /** The invoice's issue date as stored (`date`, YYYY-MM-DD). ADR 0273.
+   * Optional only so a caller that has not read it says nothing rather than
+   * a null that would read as "the invoice states none". */
+  doc_date?: string | null;
   status: string | null;
+}
+
+/**
+ * What `pickReceiptPaper` names, plus what dating needs from the SAME paper
+ * (ADR 0273). `invoice` is set exactly when `documentId` is: the date is read
+ * only from the invoice the row names.
+ */
+export interface ReceiptPaper extends OwnPaperProvenance {
+  invoice: {
+    docNumber: string | null;
+    docDate: string | null;
+    status: string | null;
+  } | null;
+  /** Live invoices attached to the order; null when the read failed. */
+  liveInvoices: number | null;
+}
+
+/**
+ * `ReceiptPaper` as the service read it: with the invoice's latest issue-date
+ * correction, and what could not be read. Built by `receiptPaperFor`.
+ */
+export interface ReceiptPaperRead extends ReceiptPaper {
+  issueDateCorrection: IssueDateCorrection | null;
+  readFailure: string | null;
 }
 
 /** One `procurement_document_lines` row as `receiptPaperFor` reads it. */
@@ -653,12 +921,14 @@ export function pickReceiptPaper(args: {
   orderLineId: string | null;
   documents: readonly PaperCandidate[];
   lines: readonly PaperLineCandidate[];
-}): OwnPaperProvenance {
+}): ReceiptPaper {
   const invoices = args.documents.filter(isLiveInvoice);
   if (invoices.length === 0) {
     return {
       documentId: null,
       documentLineId: null,
+      invoice: null,
+      liveInvoices: 0,
       sentence:
         args.documents.length === 0
           ? `No document is attached to order ${args.orderId}, so this price names its order but no paper.`
@@ -669,13 +939,25 @@ export function pickReceiptPaper(args: {
     return {
       documentId: null,
       documentLineId: null,
+      invoice: null,
+      liveInvoices: invoices.length,
       sentence: `${invoices.length} invoices are attached to order ${args.orderId}; the price is not tied to one of them rather than to a guess.`,
     };
   }
   const invoice = invoices[0];
   const label = invoice.doc_number ? `invoice ${invoice.doc_number}` : "the invoice";
+  // ADR 0273: the header dating reads, off the one invoice named here.
+  const named = {
+    invoice: {
+      docNumber: invoice.doc_number ?? null,
+      docDate: invoice.doc_date ?? null,
+      status: invoice.status ?? null,
+    },
+    liveInvoices: 1,
+  };
   if (!args.orderLineId) {
     return {
+      ...named,
       documentId: invoice.id,
       documentLineId: null,
       sentence: `Read from ${label} attached to this order. The order has no line row, so no invoice line is named.`,
@@ -687,12 +969,14 @@ export function pickReceiptPaper(args: {
   if (matched.length === 1) {
     const n = matched[0].line_no;
     return {
+      ...named,
       documentId: invoice.id,
       documentLineId: matched[0].id,
       sentence: `Read from ${label}${n != null ? `, line ${n}` : ""}, the line paired with this order's line.`,
     };
   }
   return {
+    ...named,
     documentId: invoice.id,
     documentLineId: null,
     sentence:

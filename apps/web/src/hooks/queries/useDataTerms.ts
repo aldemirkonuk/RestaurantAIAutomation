@@ -45,3 +45,27 @@ export function useInvalidateDataTerms() {
   const { activeRestaurantId } = useAuth();
   return () => qc.invalidateQueries({ queryKey: dataTermsQueryKey(activeRestaurantId) });
 }
+
+/**
+ * Is the sign-in terms sheet up — or about to be? ADR 0169's 2026-10-01
+ * amendment (batch 4): the first-sign-in theme sheet
+ * (`components/mudavym/GroundFirstChoice.tsx`) must never stack on the data
+ * terms' "Hold to accept" sheet, and waits until that one has closed.
+ *
+ * The conditions are `DataTermsSignInGate`'s own, in the same order — change
+ * one, change both. Shares its query key, so it costs no second request. One
+ * addition the gate does not need: while an owner's read is still in flight
+ * the gate may be about to open, so that counts as busy too. A read that
+ * failed, or answered unreadable, shows no terms sheet — so it holds nothing
+ * back here either.
+ */
+export function useDataTermsSignInBusy(): boolean {
+  const auth = useAuth() as { activeRole?: string | null } | null;
+  const isOwner = (auth?.activeRole ?? null) === 'owner';
+  const q = useDataTerms(isOwner);
+  if (!isOwner) return false;
+  if (!q.data) return q.isLoading;
+  if (!q.data.readable) return false;
+  const acceptedByYou = q.data.yours ? q.data.yours.current : q.data.current;
+  return !acceptedByYou;
+}

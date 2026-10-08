@@ -1,6 +1,8 @@
 /**
- * DayDetail — everything that happened on one calendar day: money paid to
- * vendors, the deliveries themselves, calendar events, alerts and activity.
+ * DayDetail — everything that happened on one calendar day: net sales (for an
+ * owner or manager, once a register is connected), money paid to vendors, the
+ * deliveries themselves, calendar events, alerts and activity. The day is the
+ * HOUSE's day (ADR 0290): timestamps are matched to it in the house's zone.
  * Opens under the month grid inside a settle 0fr→1fr expansion (the
  * founder's named favourite; the wrapper lives in SalesCalendar).
  *
@@ -12,15 +14,19 @@
 
 import { KeyboardEvent, PointerEvent, ReactNode, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { formatMoney, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import { vendorLine } from '@/lib/mudavym/vendor';
-import type {
-  ActivityItem,
-  AlertItem,
-  DayLedger,
-  DayOrdersState,
+import {
+  NOT_RECORDED,
+  fromChecks,
+  houseDateOf,
+  type ActivityItem,
+  type AlertItem,
+  type DayLedger,
+  type DayOrdersState,
+  type MonthSales,
 } from './useDashboardNextData';
-import { DASH, eventTime, localDateStr, longDay, money, timeAgo } from './format';
+import { DASH, eventTime, figure, localDateStr, longDay, money, timeAgo } from './format';
 import { SERIF } from './fonts';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -30,12 +36,14 @@ const MONO = "'JetBrains Mono', ui-monospace, monospace";
 interface TapeProps {
   daily: DayLedger[];
   selected: string;
+  /** The figure each bar draws: net sales when shown, else vendor spend. */
+  value: (d: DayLedger) => number | null;
   onScrub: (date: string) => void;
 }
 
-function DayTape({ daily, selected, onScrub }: TapeProps) {
+function DayTape({ daily, selected, value, onScrub }: TapeProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const max = Math.max(1, ...daily.map((d) => d.procurement_spend));
+  const max = Math.max(1, ...daily.map((d) => value(d) ?? 0));
   const idx = daily.findIndex((d) => d.date === selected);
 
   const scrubTo = (clientX: number) => {
@@ -82,14 +90,22 @@ function DayTape({ daily, selected, onScrub }: TapeProps) {
       onPointerMove={onPointerMove}
       onKeyDown={onKeyDown}
     >
-      {daily.map((d) => (
-        <div
-          key={d.date}
-          className="dn-tape-bar"
-          data-on={d.date === selected}
-          style={{ height: `${Math.max(10, Math.round((d.procurement_spend / max) * 100))}%` }}
-        />
-      ))}
+      {daily.map((d) => {
+        const v = value(d);
+        // An unknown day draws as a faint stub, never as a measured bar.
+        return (
+          <div
+            key={d.date}
+            className="dn-tape-bar"
+            data-on={d.date === selected}
+            data-unknown={v == null}
+            style={{
+              height: `${v == null ? 10 : Math.max(10, Math.round((v / max) * 100))}%`,
+              opacity: v == null ? 0.35 : undefined,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -109,25 +125,67 @@ function EmptyLine({ children }: { children: ReactNode }) {
   return <p className="text-[12px] italic text-inkm-3">{children}</p>;
 }
 
-function MiniFig({ label, value }: { label: string; value: string }) {
+function MiniFig({ label, value, note }: { label: string; value: string; note?: string | null }) {
+  // "not recorded" is words, not a figure: the text face, smaller, muted.
+  const words = value === NOT_RECORDED;
   return (
     <div>
       <p
-        className="text-[19px] font-medium leading-tight text-inkm-1"
-        style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}
+        className={
+          words
+            ? 'text-[14px] italic leading-tight text-inkm-3'
+            : 'text-[19px] font-medium leading-tight text-inkm-1'
+        }
+        style={words ? undefined : { fontFamily: MONO, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.015em' }}
       >
         {value}
       </p>
       <p className="text-[10px] uppercase tracking-[0.1em] text-inkm-3">{label}</p>
+      {note && <p className="text-[11px] text-inkm-3">{note}</p>}
     </div>
   );
 }
+
+/**
+ * The day's net sales, counted and said (netsales F1, "Count and say"): the
+ * subtotals the checks carried, "not recorded" when checks came and none
+ * carried one, the dash when the day is not known.
+ */
+function netSalesValue(day: DayLedger): string {
+  if (day.checks != null && day.checks > 0 && day.net_sales == null) return NOT_RECORDED;
+  return money(day.net_sales);
+}
+
+/*
+ * The panel's grids are sized by the PANEL, never the viewport (ADR 0290 §9).
+ * Inside the app shell the panel is about 282 px wide at a 1280 px window (the
+ * rooms rail and the open counter take 552 px), so the viewport's
+ * `lg:grid-cols-6` gave each figure 34 px and "$39,302.5" ran into its
+ * neighbours. A track never narrows below what its content needs; the `- 1px`
+ * keeps sub-pixel rounding from dropping a column.
+ */
+
+/**
+ * The figure row: a track is never narrower than 8rem (an eleven-character
+ * figure at 19 px), and a row holds at most half the figures, so six read
+ * 3 + 3 or 2 + 2 + 2 and four read 2 + 2 — never a lone figure on a row.
+ */
+export function figureColumns(count: number): string {
+  const most = Math.max(1, Math.ceil(count / 2));
+  return `repeat(auto-fill, minmax(max(8rem, calc((100% - ${most - 1}rem) / ${most} - 1px)), 1fr))`;
+}
+
+/** The four lists below: side by side only where each gets 16rem. */
+export const SECTION_COLUMNS = 'repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))';
 
 /* ── the panel ──────────────────────────────────────────────────────────── */
 
 export interface DayDetailProps {
   day: DayLedger | null; // null only while the panel is closing
   daily: DayLedger[];
+  /** The house's zone: null = none set; undefined = an older gateway did not say. */
+  zone?: string | null;
+  sales?: MonthSales;
   dayOrders: DayOrdersState;
   alerts: AlertItem[] | undefined;
   activity: ActivityItem[] | undefined;
@@ -135,18 +193,34 @@ export interface DayDetailProps {
   onClose: () => void;
 }
 
-export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, onClose }: DayDetailProps) {
+export function DayDetail({
+  day,
+  daily,
+  zone,
+  sales,
+  dayOrders,
+  alerts,
+  activity,
+  onScrub,
+  onClose,
+}: DayDetailProps) {
   if (!day) return <div className="min-h-[1px]" />;
 
-  // Timestamps arrive as UTC ISO strings; the calendar's days are LOCAL.
-  // Compare in local time or a 23:00 alert lands on the wrong square.
+  const salesShown = sales === 'shown';
+  // Timestamps arrive as UTC ISO strings; the calendar's days are the
+  // HOUSE's (ADR 0290). Match in the house's zone, or a 23:00 alert lands on
+  // the wrong square. With no zone set nothing can be matched to a day; an
+  // older gateway that does not say keeps the browser's zone, as before.
   const onThisDay = (iso: string | undefined) => {
-    if (!iso) return false;
+    if (!iso || zone === null) return false;
+    if (zone) return houseDateOf(iso, zone) === day.date;
     const t = new Date(iso);
     return !Number.isNaN(t.getTime()) && localDateStr(t) === day.date;
   };
   const dayAlerts = (alerts ?? []).filter((a) => onThisDay(a.createdAt));
   const dayActivity = (activity ?? []).filter((a) => onThisDay(a.timestamp));
+  const orderCount = day.order_count ?? 0;
+  const noZoneLine = 'Filed by the house’s time zone, which isn’t set.';
 
   return (
     <div className="border-t border-paper-2 px-4 pb-4 pt-3 sm:px-5">
@@ -163,17 +237,40 @@ export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, on
         </button>
       </div>
 
-      <DayTape daily={daily} selected={day.date} onScrub={onScrub} />
+      <DayTape
+        daily={daily}
+        selected={day.date}
+        value={(d) => (salesShown ? d.net_sales : d.procurement_spend)}
+        onScrub={onScrub}
+      />
 
-      {/* Figures snap with the tape head — per-day samples, never interpolated. */}
-      <div className="mt-1 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <MiniFig label="Paid to vendors" value={formatMoney(day.procurement_spend, 'full')} />
-        <MiniFig label="Deliveries" value={formatNumber(day.order_count)} />
-        <MiniFig label="Bottles in" value={formatNumber(day.bottles_sold)} />
+      {/* Figures snap with the tape head — per-day samples, never interpolated.
+          Net sales add up the subtotals the checks carried, voided left out
+          (AW17), and say "from N of M checks" when some carried none
+          (netsales F1); it is before tax and surcharge only where the POS
+          adapter sends it so (Square maps net_amounts.total_money, Clover writes
+          null; pos-adapters.ts). Vendor money is money out, never sales. */}
+      <div
+        className="mt-1 grid gap-4"
+        data-testid="dn-day-figures"
+        style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : 4) }}
+      >
+        {salesShown && (
+          <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
+        )}
+        {salesShown && <MiniFig label="Checks" value={figure(day.checks)} />}
+        <MiniFig label="Paid to vendors" value={money(day.procurement_spend)} />
+        <MiniFig label="Deliveries" value={figure(day.order_count)} />
+        <MiniFig label="Bottles in" value={figure(day.bottles_sold)} />
         <MiniFig label="On the calendar" value={formatNumber(day.events.length)} />
       </div>
+      {sales === 'no-register' && (
+        <p className="mt-2 text-[12px] italic text-inkm-3" data-testid="dn-no-register">
+          No register connected — net sales show once a register sends its first check.
+        </p>
+      )}
 
-      <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="mt-4 grid gap-5" data-testid="dn-day-sections" style={{ gridTemplateColumns: SECTION_COLUMNS }}>
         <Section title="Deliveries">
           {dayOrders.state === 'loading' && (
             <>
@@ -186,10 +283,15 @@ export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, on
               {DASH} The order ledger couldn’t be reached; the totals above still stand.
             </EmptyLine>
           )}
+          {dayOrders.state === 'no-zone' && (
+            <EmptyLine>
+              {DASH} {noZoneLine}
+            </EmptyLine>
+          )}
           {dayOrders.state === 'ready' && dayOrders.orders.length === 0 && (
             <EmptyLine>
-              {day.order_count > 0
-                ? `${day.order_count} ${day.order_count === 1 ? 'delivery' : 'deliveries'} landed this day — the line items couldn’t be listed here.`
+              {orderCount > 0
+                ? `${orderCount} ${orderCount === 1 ? 'delivery' : 'deliveries'} landed this day — the line items couldn’t be listed here.`
                 : 'No deliveries landed this day.'}
             </EmptyLine>
           )}
@@ -229,9 +331,9 @@ export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, on
             ))}
           {dayOrders.state === 'ready' &&
             dayOrders.orders.length > 0 &&
-            dayOrders.orders.length < day.order_count && (
+            dayOrders.orders.length < orderCount && (
               <EmptyLine>
-                Showing {dayOrders.orders.length} of the day’s {day.order_count} deliveries.
+                Showing {dayOrders.orders.length} of the day’s {orderCount} deliveries.
               </EmptyLine>
             )}
         </Section>
@@ -252,7 +354,9 @@ export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, on
         </Section>
 
         <Section title="Alerts raised">
-          {dayAlerts.length === 0 && <EmptyLine>No alerts carry this date.</EmptyLine>}
+          {dayAlerts.length === 0 && (
+            <EmptyLine>{zone === null ? noZoneLine : 'No alerts carry this date.'}</EmptyLine>
+          )}
           {dayAlerts.map((a) => (
             <div key={a.id} className="flex items-baseline gap-2 text-[13px]">
               <span
@@ -267,7 +371,9 @@ export function DayDetail({ day, daily, dayOrders, alerts, activity, onScrub, on
         </Section>
 
         <Section title="Activity">
-          {dayActivity.length === 0 && <EmptyLine>No recorded activity for this day.</EmptyLine>}
+          {dayActivity.length === 0 && (
+            <EmptyLine>{zone === null ? noZoneLine : 'No recorded activity for this day.'}</EmptyLine>
+          )}
           {dayActivity.map((a) => (
             <div key={a.id} className="flex items-baseline justify-between gap-3 text-[13px]">
               <span className="min-w-0 truncate text-inkm-2">

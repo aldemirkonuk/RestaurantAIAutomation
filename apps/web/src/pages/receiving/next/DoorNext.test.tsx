@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import DoorNext from './DoorNext'
 
@@ -26,13 +26,14 @@ const pendingDoorCount = vi.hoisted(() => vi.fn())
 const notSentDoorCount = vi.hoisted(() => vi.fn())
 const readDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const clearDroppedDoorReceipts = vi.hoisted(() => vi.fn())
+const submitDoorReceipt = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/doorOutbox', () => ({
   flushDoorOutbox,
   pendingDoorCount,
   notSentDoorCount,
   readDroppedDoorReceipts,
   clearDroppedDoorReceipts,
-  submitDoorReceipt: vi.fn(),
+  submitDoorReceipt,
   newIdempotencyKey: () => 'door:o1:test',
 }))
 
@@ -40,8 +41,10 @@ vi.mock('@/lib/doorOutbox', () => ({
 vi.mock('./useReceivingNextData', () => ({ useActiveRestaurantId: () => 'rest-A' }))
 
 vi.mock('@/services/api/orders', () => ({ getOrder: vi.fn().mockResolvedValue(null) }))
+const recordDoorReceipt = vi.hoisted(() => vi.fn())
 vi.mock('@/services/api/receiving', () => ({
   receivingApi: {
+    recordDoorReceipt,
     doorReceivedSoFar: vi.fn().mockResolvedValue({
       receivedQtyBottles: 0,
       packSize: 12,
@@ -276,5 +279,132 @@ describe('DoorNext raises no standing alarm off a pass result', () => {
     expect(strand()).toBeNull()
     expect(alarm()).toBeNull()
     expect(quiet()?.textContent).toContain('still trying')
+  })
+})
+
+/**
+ * Whose clock dated the delivery. The phone's time is the delivery's when it
+ * is no more than 72 hours old, or older on an owner's or a manager's word
+ * (marked back-dated); otherwise the server's. The screen says so in one quiet
+ * line when it was not the ordinary case, and says nothing when it was.
+ */
+describe('DoorNext — says which clock dated the delivery, only when it matters', () => {
+  const sealWith = async (res: Record<string, unknown>) => {
+    submitDoorReceipt.mockResolvedValue(res)
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+    // The keyboard path: arm, then confirm.
+    const seal = screen.getByRole('button', { name: 'Hold to seal — 1 box in' })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    // The done step proves the response was read, so an absent line below is
+    // a decision and not a render that never happened.
+    await waitFor(() =>
+      expect(document.querySelector('[data-ux-key="door:finish"]')).not.toBeNull(),
+    )
+  }
+  const dated = () => document.querySelector('[data-ux-key="door:dated"]')
+  const sent = '2026-08-20T14:00:00.000Z'
+
+  it('sends the tap time with the receipt', async () => {
+    await sealWith({ synced: true, stockBooked: true })
+    const body = submitDoorReceipt.mock.calls[0][0].body
+    expect(Number.isFinite(Date.parse(body.clientCapturedAt))).toBe(true)
+  })
+
+  it('[REVERT-FAILS] says a time older than 72 hours was refused, and that only an owner or a manager can keep one', async () => {
+    await sealWith({
+      synced: true,
+      stockBooked: true,
+      factTime: { at: '2026-10-04T12:00:00.000Z', basis: 'server', sentAt: sent, reason: 'too_old' },
+    })
+    const line = dated()
+    expect(line?.textContent).toContain(`This phone took it at ${new Date(sent).toLocaleString()}`)
+    expect(line?.textContent).toContain('Only an owner or a manager can keep a time that old')
+    // A record, not an alarm.
+    expect(line?.getAttribute('role')).toBeNull()
+    expect(alarm()).toBeNull()
+  })
+
+  it('[REVERT-FAILS] says a back-dated delivery was marked back-dated', async () => {
+    await sealWith({
+      synced: true,
+      stockBooked: true,
+      factTime: { at: sent, basis: 'back_dated', sentAt: sent, reason: 'back_dated' },
+    })
+    expect(dated()?.textContent).toBe(
+      `Dated ${new Date(sent).toLocaleString()}, more than 72 hours ago — marked back-dated.`,
+    )
+  })
+
+  it("[REVERT-FAILS] says a phone clock that ran ahead was not used", async () => {
+    await sealWith({
+      synced: true,
+      stockBooked: true,
+      factTime: {
+        at: '2026-10-04T12:00:00.000Z',
+        basis: 'server',
+        sentAt: '2026-10-04T13:00:00.000Z',
+        reason: 'ahead',
+      },
+    })
+    expect(dated()?.textContent).toBe("This phone's clock is ahead, so it is dated by ours.")
+  })
+
+  it('says nothing when the phone time stood', async () => {
+    await sealWith({
+      synced: true,
+      stockBooked: true,
+      factTime: { at: sent, basis: 'sent', sentAt: sent, reason: 'within_window' },
+    })
+    expect(dated()).toBeNull()
+  })
+
+  it('says nothing when an older gateway sends no factTime', async () => {
+    await sealWith({ synced: true, stockBooked: true })
+    expect(dated()).toBeNull()
+  })
+
+  it('says nothing when the receipt was only saved on the phone — the bell says it later', async () => {
+    await sealWith({
+      synced: false,
+      factTime: { at: sent, basis: 'server', sentAt: sent, reason: 'too_old' },
+    })
+    expect(dated()).toBeNull()
+  })
+})
+
+/**
+ * The page reads `factTime` off what the outbox hands back, so the outbox must
+ * pass it through. The REAL outbox, not the mock above, against a mocked API.
+ */
+describe('submitDoorReceipt passes the dating through to the page', () => {
+  it('[REVERT-FAILS] returns the gateway factTime on a receipt that sent', async () => {
+    const factTime = {
+      at: '2026-10-04T12:00:00.000Z',
+      basis: 'server',
+      sentAt: '2026-08-20T14:00:00.000Z',
+      reason: 'too_old',
+    }
+    recordDoorReceipt.mockResolvedValue({
+      alreadyRecorded: false,
+      countedQtyBottles: 12,
+      stockBooked: true,
+      factTime,
+    })
+    const real = await vi.importActual<typeof import('@/lib/doorOutbox')>('@/lib/doorOutbox')
+    const res = await real.submitDoorReceipt({
+      orderId: 'o1',
+      orderLabel: 'PO-1',
+      restaurantId: 'rest-A',
+      body: { countedQty: 1, countedUom: 'case', idempotencyKey: 'door:o1:t' },
+    } as Parameters<typeof real.submitDoorReceipt>[0])
+    expect(res.synced).toBe(true)
+    expect(res.factTime).toEqual(factTime)
   })
 })
