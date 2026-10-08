@@ -116,6 +116,17 @@ function ordersData(over: Partial<OrdersNextData> = {}): OrdersNextData {
     approvalGateError: null,
     approvalPolicyNote: null,
     dataUpdatedAt: null,
+    book: {
+      mode: 'whole',
+      total: 1,
+      readCount: 1,
+      openComplete: true,
+      unreadableStates: null,
+      deliveredAtLeast: null,
+      recurringAtLeast: null,
+      older: { canRead: false, reading: false, error: null, read: vi.fn() },
+    },
+    target: { state: 'none' },
     ...over,
   };
 }
@@ -211,9 +222,89 @@ describe('an id the book does not have', () => {
   });
 
   it('says so, once the read has actually come back with no match', async () => {
-    state.current = ordersData({ rows: [row({ id: 'o-1' })], hasData: true });
+    // F-140 PR-B: only after the order was also asked for on its own.
+    state.current = ordersData({
+      rows: [row({ id: 'o-1' })],
+      hasData: true,
+      target: { state: 'unreadable', retry: vi.fn() },
+    });
     harness('/orders/ghost-id');
-    expect(await screen.findByTestId('target-order-missing')).toHaveTextContent('ghost-id');
+    const say = await screen.findByTestId('target-order-missing');
+    // `ghost-id` is 8 characters, so its short form is itself.
+    expect(say).toHaveTextContent('ghost-id');
+    expect(say).toHaveTextContent('could not be read');
+    expect(say).toHaveTextContent("this house's 1 order,");
+    expect(say).toHaveTextContent('reading it on its own failed');
+    expect(say).not.toHaveTextContent('most recently loaded');
+  });
+
+  it('while the order is asked for on its own, says it is looking, not that it is missing', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })], target: { state: 'checking' } });
+    harness('/orders/ghost-id');
+    expect(await screen.findByTestId('target-order-checking')).toHaveTextContent(
+      'Looking for order ghost-id…',
+    );
+    expect(screen.queryByTestId('target-order-missing')).not.toBeInTheDocument();
+  });
+
+  it('once found on its own, the row is listed and opened, and nothing is said missing', async () => {
+    state.current = ordersData({
+      rows: [row({ id: 'o-1' }), row({ id: 'late-1', orderNumber: 'ORD-LATE' })],
+      target: { state: 'found' },
+    });
+    harness('/orders/late-1');
+    const wrapper = await screen.findByTestId('order-row-late-1');
+    expect(wrapper.querySelector('[aria-expanded="true"]')).not.toBeNull();
+    expect(screen.queryByTestId('target-order-missing')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('target-order-checking')).not.toBeInTheDocument();
+  });
+
+  it('in a read that stopped short, counts the orders read so far', async () => {
+    state.current = ordersData({
+      rows: [row({ id: 'o-1' })],
+      book: {
+        mode: 'capped',
+        total: 3412,
+        readCount: 3005,
+        openComplete: true,
+        unreadableStates: 0,
+        deliveredAtLeast: 2980,
+        recurringAtLeast: 4,
+        older: { canRead: true, reading: false, error: null, read: vi.fn() },
+      },
+      target: { state: 'unreadable', retry: vi.fn() },
+    });
+    harness('/orders/ghost-id');
+    const say = await screen.findByTestId('target-order-missing');
+    expect(say).toHaveTextContent('It is not among the 3,005 orders read so far, at');
+    expect(say).not.toHaveTextContent("this house's");
+  });
+
+  it('Try again asks for the order once more', async () => {
+    const retry = vi.fn();
+    state.current = ordersData({ rows: [row({ id: 'o-1' })], target: { state: 'unreadable', retry } });
+    harness('/orders/ghost-id');
+    fireEvent.click(await screen.findByTestId('target-order-retry'));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('names a whole id by its first 8 characters, never in full', async () => {
+    const id = '9f3c2a71-5b8e-4d10-a2c4-7e6f0b1d9a33';
+    state.current = ordersData({ rows: [row({ id: 'o-1' })], target: { state: 'checking' } });
+    const { unmount } = harness(`/orders/${id}`);
+    const looking = await screen.findByTestId('target-order-checking');
+    expect(looking).toHaveTextContent('Looking for order 9f3c2a71…');
+    expect(looking.textContent).not.toContain(id);
+    unmount();
+
+    state.current = ordersData({
+      rows: [row({ id: 'o-1' })],
+      target: { state: 'unreadable', retry: vi.fn() },
+    });
+    harness(`/orders/${id}`);
+    const say = await screen.findByTestId('target-order-missing');
+    expect(say).toHaveTextContent('Order 9f3c2a71 could not be read.');
+    expect(say.textContent).not.toContain(id);
   });
 
   it('says nothing when the read itself failed — that is a different fact', async () => {
