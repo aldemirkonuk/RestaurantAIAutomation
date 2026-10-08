@@ -1377,10 +1377,13 @@ export class AnalyticsController {
   // what a manager did with a card, the other is what the analysis may look at.
   //
   // Ruling a day out and counting it again are an owner's or a manager's
-  // (OPS-04, 2026-10-07). A struck day leaves every baseline the insight
-  // generator builds (`InsightGeneratorService`, the only reader that counts
-  // with it; the calendar only draws it), and sales are owners' and managers'
-  // (ADR 0145's `sales` class, ADR 0290 §5). Both writes carry `RolesGuard`
+  // (OPS-04, 2026-10-07; ADR 0317). Two readers count with a struck day:
+  // (a) every baseline the insight generator builds (`InsightGeneratorService`)
+  // leaves it out; (b) the calendar's forecast/actual pairing does not pair it
+  // on its trading, so a struck day with no weather observation writes no row
+  // to `prediction_outcomes` (`calendar/day-record.service.ts` `keepPairs`).
+  // Sales are owners' and managers' (ADR 0145's `sales` class, ADR 0290 §5).
+  // Both writes carry `RolesGuard`
   // with `@Roles("owner", "manager")`,
   // the pattern the insight-catalog toggle and the table rename above use:
   // the role is the one on the caller's access row in the token's house, and

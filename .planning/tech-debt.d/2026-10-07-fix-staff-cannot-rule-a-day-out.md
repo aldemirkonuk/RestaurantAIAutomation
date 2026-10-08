@@ -5,15 +5,15 @@ Item 4 of M1 in the money-policy audit of 2026-10-07 (OPS-04). The audit lives i
 - Strike a business date out of every baseline the insight generator builds.
 - Put a struck date back.
 
-Either one moves every baseline the insight generator builds (`InsightGeneratorService`, the only reader that counts with the store; the calendar only draws a struck day), and so every "below your usual" figure it writes. `/recommendations` drew the strike, "Count it again" (on the strip and the rail) and the dismissal sheet's "Also exclude" box for everyone. The write also stored `created_by` from a body `createdBy`, so a struck day could name anyone as its author.
+Two readers count with a struck day. (a) Every baseline the insight generator builds (`InsightGeneratorService`) leaves it out, and so every "below your usual" figure it writes moves. (b) The calendar's forecast/actual pairing (`keepPairs`, `apps/api-gateway/src/calendar/day-record.service.ts:519-526`) does not pair a struck day on its trading, so a struck day with no weather observation writes no forecast/actual row to `prediction_outcomes`. A struck day that has an observation is still written, with its trading in the row. That pairing gate was already on `main` before this fix. `/recommendations` drew the strike, "Count it again" (on the strip and the rail) and the dismissal sheet's "Also exclude" box for everyone. The write also stored `created_by` from a body `createdBy`, so a struck day could name anyone as its author.
 
-**Who may do it. This was the coordinator's call under the founder's 2026-10-07T20:04:10Z delegation.** His delegation, verbatim:
+**Who may do it. This was the coordinator's call under the founder's 2026-10-07T20:04:10Z delegation, recorded as [ADR 0317](../decisions/0317-only-an-owner-or-manager-rules-a-day-out.md) (Proposed).** His delegation, verbatim:
 
 > "Do not ask me questions, I allow and approve for you to decide on your own. If its a decision question then research deep, find answers. While you can change decisions, you cannot change any feature we decided unless it breaks everything"
 
 No record names who may rule a day out:
 
-- [ADR 0111](../decisions/0111-the-calendar-is-the-houses-day-book.md) cites the store (`:282`), which landed with it in #289 (`941d9cb40`). It lists "exclude a day from the baselines" among the acts the Ask AI "may act alone" on (`:398`). It names no role.
+- [ADR 0111](../decisions/0111-the-calendar-is-the-houses-day-book.md) cites the store (`:282`), which landed with it in #289 (`941d9cb40`). It lists "exclude a day from the baselines" among the acts the Ask AI "may act alone" on (`:404-406`). It names no role.
 - The migration's own comment says "A day the MANAGER rules out" (`supabase/migrations/20260903091000_days_the_engine_must_not_count.sql:17`). That is a comment, not a ruling.
 
 Three rulings on `main` bear on it:
