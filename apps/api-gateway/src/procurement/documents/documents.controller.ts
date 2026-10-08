@@ -30,6 +30,10 @@ import {
   VerifyFieldDto,
 } from "./dto/documents.dto";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
+import {
+  parsedFromDocumentRows,
+  readSnapshot,
+} from "../canonical/from-document-rows";
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "../canonical/document-correction.service";
 import { createHash } from "node:crypto";
@@ -1120,6 +1124,153 @@ export class DocumentsController {
     });
   }
 
+  /**
+   * THE LIST SAYS WHAT THE SHEET SAYS (founder walk-through, 2026-10-01, W7).
+   *
+   * `ties_out` / `tie_out_delta` are written at intake, on a line edit and on a
+   * currency restatement. A document read before the tie-out rule learned to
+   * count a tax stated only in the VAT breakdown (W5) keeps its old "does not
+   * tie out" in those columns, while the formatted sheet recomputes on read and
+   * says the lines add up. So the list recomputes too, with the same mapping
+   * the sheet uses (`parsedFromDocumentRows` → `applyTieOut`), from one read of
+   * the listed documents' lines. Nothing is written: the stored columns stay as
+   * they are (W5, "leave rows").
+   *
+   * A failed or partial line read keeps the stored verdict for EVERY row and
+   * says so in the log. It never computes from a short READ: a document whose
+   * lines did not all arrive would read as billing less than it does, which is
+   * a wrong verdict, not a missing one.
+   *
+   * A document with NO stored lines is another matter. Its lines may have failed
+   * to save at intake (document-intake.service.ts, "stored but its lines
+   * failed"), and nothing here can tell that apart from a paper with no lines.
+   * It computes as billing nothing, so with a stated total it reads "does not
+   * tie out", the same as its sheet; with no total, `applyTieOut` says nothing
+   * either way (`tiesOut: null`). That over-alarms; it never says "adds up". It stays that way so
+   * the list says what the sheet says (walk-through RECEIPTS-W48b, 2026-10-02).
+   * A "lines not read" state of its own is a follow-up in the tech-debt fragment.
+   */
+  private async tieOutsAsRuledNow(
+    rows: Record<string, unknown>[],
+  ): Promise<
+    Map<
+      string,
+      {
+        ties_out: boolean | null;
+        tie_out_delta: number | null;
+        computed_lines_total: number | null;
+      }
+    >
+  > {
+    const out = new Map<
+      string,
+      {
+        ties_out: boolean | null;
+        tie_out_delta: number | null;
+        computed_lines_total: number | null;
+      }
+    >();
+    const ids = rows.map((r) => r.id as string).filter(Boolean);
+    if (!ids.length) return out;
+
+    // Paged, because PostgREST caps a response at its max-rows setting and a
+    // capped page is indistinguishable from "these are all the lines".
+    const PAGE = 1000;
+    const lineRows: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .select(
+          "document_id, line_no, vendor_sku, description, vintage, format_ml, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, allowance, deposit, price_base_qty, price_base_uom",
+        )
+        .in("document_id", ids)
+        .order("document_id", { ascending: true })
+        .order("line_no", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) {
+        this.logger.warn(
+          `list: the lines could not be read (${error.message}), so every row keeps its stored tie-out verdict`,
+        );
+        return out;
+      }
+      lineRows.push(...((data ?? []) as Record<string, unknown>[]));
+      if (!data || data.length < PAGE) break;
+    }
+
+    const byDoc = new Map<string, Record<string, unknown>[]>();
+    for (const l of lineRows) {
+      const k = l.document_id as string;
+      const list = byDoc.get(k);
+      if (list) list.push(l);
+      else byDoc.set(k, [l]);
+    }
+    for (const row of rows) {
+      const id = row.id as string;
+      const parsed = parsedFromDocumentRows(row, byDoc.get(id) ?? []);
+      out.set(id, {
+        ties_out: parsed.tiesOut,
+        tie_out_delta: parsed.tieOutDelta,
+        computed_lines_total: parsed.computedLinesTotal,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * WHO SENT IT, ON THE LIST (founder walk-through, 2026-10-01, W8).
+   *
+   * Six invoices from one delivery day read "Invoice · Sep 11 · $547.47" and
+   * nothing told them apart but their numbers. The name is the one the sheet
+   * prints as the seller: the linked vendor's `company_name`, else its `name`,
+   * else the name the paper itself carried (`extracted.vendorName`). One read
+   * of the vendors behind the listed documents; nothing is written.
+   *
+   * A failed vendor read falls back to the paper's name for every row and says
+   * so in the log. A row with neither stays `null`, so the screen prints no
+   * name rather than a placeholder (ADR 0020).
+   */
+  private async vendorNamesFor(
+    rows: Record<string, unknown>[],
+  ): Promise<Map<string, string | null>> {
+    const providerIds = [
+      ...new Set(
+        rows
+          .map((r) => r.provider_id as string | null)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const byProvider = new Map<string, string | null>();
+    if (providerIds.length) {
+      const { data, error } = await this.db
+        .getClient()
+        .from("providers")
+        .select("id, name, company_name")
+        .in("id", providerIds);
+      if (error)
+        this.logger.warn(
+          `List: vendors could not be read (${error.message}); rows name the vendor the paper carried.`,
+        );
+      for (const p of (data ?? []) as {
+        id: string;
+        name: string | null;
+        company_name: string | null;
+      }[])
+        byProvider.set(p.id, p.company_name || p.name || null);
+    }
+    const out = new Map<string, string | null>();
+    for (const row of rows) {
+      const fromVendor = row.provider_id
+        ? (byProvider.get(row.provider_id as string) ?? null)
+        : null;
+      out.set(
+        row.id as string,
+        fromVendor ?? readSnapshot(row.extracted).vendorName ?? null,
+      );
+    }
+    return out;
+  }
+
   @Get()
   @ApiOperation({ summary: "List vendor documents, newest first" })
   @ApiQuery({ name: "status", required: false })
@@ -1199,8 +1350,14 @@ export class DocumentsController {
      * order per row on an unfiltered list would be a query per document for a
      * comparison nothing on that screen makes.
      */
+    const [verdicts, vendorNames] = await Promise.all([
+      this.tieOutsAsRuledNow((data ?? []) as Record<string, unknown>[]),
+      this.vendorNamesFor((data ?? []) as Record<string, unknown>[]),
+    ]);
     const items = (data ?? []).map((row) => ({
       ...(row as Record<string, unknown>),
+      ...(verdicts.get((row as { id: string }).id) ?? {}),
+      vendorName: vendorNames.get((row as { id: string }).id) ?? null,
       moneyState: documentMoneyState(
         row as { currency?: string | null; extracted?: unknown },
       ),
@@ -1436,7 +1593,9 @@ export class DocumentsController {
     description:
       "The human half of line matching. Pass orderLineId to accept a suggestion, or null to unlink one that was wrong. " +
       "The answer is APPENDED, never substituted (ADR 0059): a pairing the machine proposed keeps its proposed_confidence / proposed_method untouched, and this endpoint adds confirmed_by / confirmed_at beside them. " +
-      "Only a pairing no machine ever proposed gets match_method 'manual' — there is no proposal there to preserve.",
+      "Only a pairing no machine ever proposed gets match_method 'manual' — there is no proposal there to preserve. " +
+      "An orderLineId that is not a uuid is refused with 400 before any read. " +
+      "A uuid that is not a line of one of this restaurant's orders is refused with 404, the same answer as an id that does not exist.",
   })
   async linkLine(
     @Param("id") documentId: string,
@@ -1446,17 +1605,36 @@ export class DocumentsController {
   ) {
     requireUuid(documentId, "document id");
     requireUuid(lineId, "line id");
+    // The body's id reaches the same uuid column, through the ownership read in
+    // confirmLineMatch. Malformed, it would come back as 22P02 and leave the
+    // catch below as a 500, so it is the caller's 400 here, before any read.
+    const orderLineId = body?.orderLineId ?? null;
+    if (
+      orderLineId !== null &&
+      !(typeof orderLineId === "string" && UUID_RE.test(orderLineId))
+    )
+      throw new HttpException(
+        "The orderLineId in this request is not an id we can read.",
+        HttpStatus.BAD_REQUEST,
+      );
     try {
       return await this.intake.confirmLineMatch(
         documentId,
         lineId,
         user.restaurantId,
         user.userId,
-        body?.orderLineId ?? null,
+        orderLineId,
       );
     } catch (error) {
       if (error?.message === "NOT_FOUND")
         throw new HttpException("Line not found", HttpStatus.NOT_FOUND);
+      // The same answer for another house's order line and for an id that does
+      // not exist (document-intake.service.ts, confirmLineMatch).
+      if (error?.message === "ORDER_LINE_NOT_FOUND")
+        throw new HttpException(
+          "This restaurant has no order line with that id, so the line was not paired.",
+          HttpStatus.NOT_FOUND,
+        );
       throw new HttpException(
         error?.message || "Failed to confirm the pairing",
         HttpStatus.INTERNAL_SERVER_ERROR,

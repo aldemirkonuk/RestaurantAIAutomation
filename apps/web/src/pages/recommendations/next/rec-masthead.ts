@@ -43,8 +43,14 @@ export interface GoalProgressRow {
   target: number | null;
   /** 0..1 as the gateway computes it (current / target). null = not read. */
   progressPct: number | null;
-  /** null = the goal has no deadline, so no pace can be judged. */
+  /**
+   * null = no pace was judged. That is "no deadline" only when `deadline` is
+   * null: a goal with one whose pace the gateway did not judge (a house with
+   * no time zone, ADR 0296) still has its deadline.
+   */
   onTrack: boolean | null;
+  /** The goal's deadline (`YYYY-MM-DD`), or null when it has none. */
+  deadline: string | null;
   daysLeft: number | null;
   /** Why this goal could not be read, or null. */
   unreadable: string | null;
@@ -79,6 +85,7 @@ export function toProgressRow(raw: Record<string, unknown>): GoalProgressRow {
     target: unreadable ? num(g.target_value) : num(raw.target),
     progressPct: unreadable ? null : num(raw.progressPct),
     onTrack: unreadable || typeof raw.onTrack !== 'boolean' ? null : raw.onTrack,
+    deadline: typeof g.deadline === 'string' && g.deadline ? g.deadline : null,
     daysLeft: unreadable ? null : num(raw.daysLeft),
     unreadable: unreadable
       ? typeof raw.reason === 'string' && raw.reason
@@ -113,16 +120,18 @@ export function inUnit(v: number | null, unit: string): string {
   return Math.round(v).toLocaleString('en-US');
 }
 
-export type PaceWord = 'On pace' | 'Behind' | 'No deadline' | 'Not read';
+export type PaceWord = 'On pace' | 'Behind' | 'No deadline' | 'Pace unknown' | 'Not read';
 
 /**
  * The gateway's own pace judgement, in one word. `onTrack` is its linear
  * schedule check (`goals.service.ts` getGoalProgress), with the direction
- * already applied — an at-most goal over its straight line is behind.
+ * already applied — an at-most goal over its straight line is behind. A goal
+ * with a deadline and no judgement is 'Pace unknown', never 'No deadline'
+ * (ADR 0296: the gateway judges no pace for a house with no time zone).
  */
 export function paceOf(g: GoalProgressRow): PaceWord {
   if (g.unreadable) return 'Not read';
-  if (g.onTrack === null) return 'No deadline';
+  if (g.onTrack === null) return g.deadline === null ? 'No deadline' : 'Pace unknown';
   return g.onTrack ? 'On pace' : 'Behind';
 }
 

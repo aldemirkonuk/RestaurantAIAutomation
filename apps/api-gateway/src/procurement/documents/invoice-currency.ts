@@ -1,5 +1,6 @@
 import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { applyTieOut, CurrencySeen, ParsedDocument } from "./parsed-document";
+import { readSnapshot } from "../canonical/from-document-rows";
 
 export type { CurrencySeen };
 
@@ -877,6 +878,9 @@ export function planRefile(args: {
     deliveryFee: header.delivery_fee,
     depositTotal: header.deposit_total,
     tax: header.tax,
+    // Same rule as intake and editLine: a tax read only in the printed VAT
+    // breakdown still counts (RECEIPTS-W5).
+    taxBreakdown: readSnapshot(args.extracted).taxBreakdown,
     otherCharges: header.other_charges,
     discountTotal: header.discount_total,
     total: header.total,

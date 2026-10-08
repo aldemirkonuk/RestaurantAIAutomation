@@ -9,13 +9,20 @@ import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
-import { CanonicalCheck } from "./pos-types";
+import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import {
   PROVIDER_BY_KEY,
   POS_PROVIDERS,
   registrySummary,
 } from "./pos-provider.registry";
+import { NotificationsService } from "../notifications/notifications.service";
+import { AreaRoutingService } from "../areas/area-routing.service";
+import {
+  fileRefusedChecksNote,
+  type RefusedCheck,
+  type RefusedChecksNote,
+} from "./refused-checks-note";
 
 /**
  * `record_glass_pour` COALESCEs a missing `bottle_size_ml` to 750 before it
@@ -31,10 +38,398 @@ const MIN_PLAUSIBLE_SALE_ML = 10;
 const MAX_PLAUSIBLE_SALE_ML = 30000;
 
 /** The inventory facts a depletion needs. Nulls are real: see ADR 0011. */
-interface InventoryVolumes {
+export interface InventoryVolumes {
   bottleMl: number | null;
   pourMl: number | null;
   menuPrice: number | null;
+}
+
+/**
+ * The one rule for reading an inventory row's sizes: a size that is not a
+ * finite positive number is no size at all (null), so `resolveSaleVolume`
+ * queues rather than pouring from a 0ml or negative bottle. Exported so the
+ * sale-unit review reads the row exactly as the import does (ADR 0281).
+ */
+export function inventoryVolumesFromRow(row: {
+  bottle_size_ml?: unknown;
+  pour_size_ml?: unknown;
+  menu_price_current?: unknown;
+}): InventoryVolumes {
+  const positive = (v: unknown) => {
+    // Number(null) is 0 and Number("") is 0, which this rule already refuses.
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  return {
+    bottleMl: positive(row?.bottle_size_ml),
+    pourMl: positive(row?.pour_size_ml),
+    menuPrice: positive(row?.menu_price_current),
+  };
+}
+
+/**
+ * A sale older than this when it reaches the hub is counted as back-dated in
+ * the import result (`stock.backdatedOver72h`). It is still dated by its
+ * check, at any age: the founder ruled that C02's "older needs a manager",
+ * which holds for door receipts, counts and orders, does not hold for a POS
+ * check ("No: trust the till", ADR 0281, fork F1).
+ */
+export const BACKDATED_AFTER_MS = 72 * 60 * 60 * 1000;
+
+/**
+ * When one check is dated (ADR 0281): one reading of its closed_at, made
+ * before the check is stored, and every date the import writes for it.
+ */
+export interface SaleInstant {
+  /**
+   * What `pos_checks.closed_at` receives. When `readClosedAt` reads the till's
+   * closed_at, this is that reading as an ISO-8601 UTC string, not clamped: a
+   * close time in the future stays on the check. When it does not, it is the
+   * value exactly as the till sent it, or null when there is none. ingest()
+   * stores only the null: it refuses a check whose closed_at is present and
+   * not read, so no such value reaches Postgres (ADR 0281, founder ruling F4).
+   */
+  closedAt: unknown;
+  /**
+   * What `p_occurred_at`, `recorded_at` and `created_at` receive, always an
+   * ISO-8601 UTC string: the same string as `closedAt` when that is a reading
+   * not in the future, otherwise import time. Postgres reads a UTC string as
+   * the same instant whatever its session's time zone, so when the two are
+   * the same string, the check and its consumption rows carry one instant.
+   * The ledger rows carry it too unless the database's clock runs behind the
+   * gateway's: they take the earlier of it and the database's now().
+   */
+  at: string;
+  /**
+   * `readClosedAt` did not read closed_at (or there is none), so `at` is
+   * import time while `closedAt` keeps the till's value. `backdatedOver72h` is
+   * false whenever this is true. In ingest() it covers two cases only, and
+   * neither dates anything at import time: an open check (closed_at null or
+   * absent), which moves no stock, and a present closed_at that is not read,
+   * whose check is refused before it is stored.
+   */
+  fellBack: boolean;
+  /** closed_at was later than now, so `at` is now and `closedAt` is not. */
+  clamped: boolean;
+  /** closed_at is more than BACKDATED_AFTER_MS before now (exactly 72h is not). */
+  backdatedOver72h: boolean;
+}
+
+/**
+ * The one closed_at shape the import reads (ADR 0281): an ISO-8601 calendar
+ * date in extended form (`YYYY-MM-DD`), optionally followed by `T` or one
+ * space and a time `hh:mm`, `hh:mm:ss` or `hh:mm:ss.f` (1 to 9 fraction
+ * digits, kept to the millisecond), optionally followed by `Z` or a numeric
+ * offset `±hh`, `±hhmm` or `±hh:mm`. A zone needs a time. RFC 2822 is not in
+ * it (ADR 0281 says why).
+ */
+const ISO_CLOSED_AT =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}(?::?\d{2})?)?)?$/;
+
+/** The widest real UTC offset, +14:00; an offset or a zone reading beyond it is refused. */
+const MAX_OFFSET_MS = 14 * 60 * 60 * 1000;
+
+/**
+ * Read a till's closed_at strictly, as epoch milliseconds, or NaN.
+ *
+ * V8's `Date.parse` reads almost anything: "12" and "Table 12" as
+ * 2001-12-01, "0" as 2000-01-01, "2026-02-30" as 2 March. Postgres refused
+ * all of those, so on main such a check failed loudly; read leniently, it
+ * would date revenue, stock and consumption on an instant the till never
+ * sent (the ADR 0090 audit of PR #603 at 1a7a4137d). So a string is read
+ * only when it matches ISO_CLOSED_AT and its written date and time survive a
+ * round trip through the UTC calendar unchanged: year, month and day, and
+ * hour, minute and second where written. "2026-09-31", 24:00 and a leap
+ * second :60 fail it. Then:
+ *
+ * - with `Z` or an offset, the instant is the written wall clock minus the
+ *   offset, computed here; no `Date.parse`;
+ * - a date alone is UTC midnight, which is how ECMAScript reads a date-only
+ *   form;
+ * - a date and time with no zone is `Date.parse`'s reading in the gateway's
+ *   own zone, kept only when it lies within 14 hours of the written wall
+ *   clock.
+ *
+ * Anything else is NaN: saleInstant falls back, and ingest() refuses the
+ * check.
+ */
+function readClosedAt(raw: string): number {
+  const m = ISO_CLOSED_AT.exec(raw);
+  if (!m) return NaN;
+  const [, yy, mo, dd, hh, mi, ss, frac, zone] = m;
+  const year = Number(yy);
+  const month = Number(mo);
+  const day = Number(dd);
+  const hour = hh === undefined ? 0 : Number(hh);
+  const minute = mi === undefined ? 0 : Number(mi);
+  const second = ss === undefined ? 0 : Number(ss);
+  const millis =
+    frac === undefined ? 0 : Number(frac.slice(0, 3).padEnd(3, "0"));
+  // setUTCFullYear, not Date.UTC: Date.UTC reads a year from 0 to 99 as 19xx.
+  const wall = new Date(0);
+  wall.setUTCFullYear(year, month - 1, day);
+  wall.setUTCHours(hour, minute, second, millis);
+  if (
+    wall.getUTCFullYear() !== year ||
+    wall.getUTCMonth() !== month - 1 ||
+    wall.getUTCDate() !== day ||
+    wall.getUTCHours() !== hour ||
+    wall.getUTCMinutes() !== minute ||
+    wall.getUTCSeconds() !== second
+  ) {
+    return NaN;
+  }
+  const wallMs = wall.getTime();
+  if (hh === undefined || zone === "Z") return wallMs;
+  if (zone !== undefined) {
+    const digits = zone.slice(1).replace(":", "");
+    const offsetMs =
+      (Number(digits.slice(0, 2)) * 60 + Number(digits.slice(2) || "0")) *
+      60 *
+      1000;
+    if (Number(digits.slice(2) || "0") > 59 || offsetMs > MAX_OFFSET_MS) {
+      return NaN;
+    }
+    return zone[0] === "-" ? wallMs + offsetMs : wallMs - offsetMs;
+  }
+  const local = Date.parse(raw);
+  return Number.isFinite(local) && Math.abs(wallMs - local) <= MAX_OFFSET_MS
+    ? local
+    : NaN;
+}
+
+/**
+ * Date a closed check's stock by when it closed, not by when it arrived.
+ *
+ * The string is read once, here, by readClosedAt, and only the result
+ * travels. Handing a string the gateway has read to Postgres as well would
+ * have it read a second time, and where the two readings differ (a zone-less
+ * string when the gateway's zone and the database session's differ; measured
+ * in the ADR 0090 audit of PR #603 at 01ac04eaa) the ledger, the consumption
+ * row and the check could land on different days. So a zone-less string is
+ * read in the gateway's own zone for all of them. A value readClosedAt does
+ * not read (a dotted or slashed date such as "03.10.2026" or
+ * "10/03/2026 3:00 PM", a two-digit year such as "1/1/50", a POSIX-looking
+ * "UTC+3", RFC 2822, "12", "2026-02-30", a number) falls back here, and
+ * ingest() refuses its check: the founder ruled that such a date is not
+ * imported rather than guessed at (ADR 0281, F4).
+ *
+ * Pure, so the boundaries are tested without a database. `nowMs` is the
+ * import's clock, read once per check.
+ */
+export function saleInstant(closedAt: unknown, nowMs: number): SaleInstant {
+  const raw = typeof closedAt === "string" ? closedAt.trim() : "";
+  const parsed = raw ? readClosedAt(raw) : NaN;
+  const importTime = new Date(nowMs).toISOString();
+  if (!Number.isFinite(parsed)) {
+    return {
+      closedAt: closedAt ?? null,
+      at: importTime,
+      fellBack: true,
+      clamped: false,
+      backdatedOver72h: false,
+    };
+  }
+  const read = new Date(parsed).toISOString();
+  if (parsed > nowMs) {
+    return {
+      closedAt: read,
+      at: importTime,
+      fellBack: false,
+      clamped: true,
+      backdatedOver72h: false,
+    };
+  }
+  return {
+    closedAt: read,
+    at: read,
+    fellBack: false,
+    clamped: false,
+    backdatedOver72h: nowMs - parsed > BACKDATED_AFTER_MS,
+  };
+}
+
+/**
+ * What errors[] says about a check refused for its closed_at, worded as the
+ * option the founder picked in ADR 0281's fork F4 ("Refuse, say why").
+ */
+const CLOSED_AT_NOT_READABLE =
+  "date not readable — write it as 2026-10-03 21:00";
+
+/**
+ * At most this many refused checks are named in errors[]; the rest are one
+ * line that counts them. An export written in one such format is refused
+ * check by check, so 800 of its checks are said in 51 lines, not 800.
+ */
+const MAX_REFUSED_CHECK_LINES = 50;
+
+/** The till's closed_at as errors[] quotes it: JSON, cut at 80 characters. */
+function quoteClosedAt(value: unknown): string {
+  const text = JSON.stringify(value) ?? String(value);
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+}
+
+/**
+ * What one import did to stock, line by line (ADR 0281). The counters
+ * partition `lines`: every line counted there lands in exactly one of
+ * notStock, booked, alreadyBooked, queued.* or failed.
+ * `consumptionNotWritten` and `backdatedOver72h` are sub-counts of the lines
+ * that moved stock.
+ */
+export interface StockTally {
+  /**
+   * Every line on a closed check this import stored. A check whose
+   * pos_checks upsert failed (or whose stock step threw before reading its
+   * lines) moves no stock and is not counted here; its own errors[] line
+   * names it. Nor is a check refused for its closed_at, which is never
+   * stored (`refusedUnreadableDate` counts it).
+   */
+  lines: number;
+  /**
+   * Lines with nothing to move by design: not a stock line (kept on
+   * pos_checks.items for the analytics that read it), or a quantity that
+   * rounds to zero.
+   */
+  notStock: number;
+  /**
+   * Stock moved by this import: a sale depleted, or a void returned. A void
+   * replayed is counted here too: apply_stock_movement answers a known key
+   * with the existing transaction, exactly as it answers a new one.
+   */
+  booked: number;
+  /** A replay: an earlier import already moved this line's stock. */
+  alreadyBooked: number;
+  /** Lines in pos_unresolved_lines, by the reason written there. */
+  queued: { unmapped: number; no_sale_volume: number };
+  /**
+   * Moved no stock AND are not in the review queue: the stock write was
+   * refused or threw, or the queue insert failed. errors[] names them.
+   */
+  failed: number;
+  /** Stock moved, but its wine_consumption_log row did not land. */
+  consumptionNotWritten: number;
+  /** Lines this import booked whose check closed more than 72 hours ago. */
+  backdatedOver72h: number;
+}
+
+type StockFailureKind = "stock" | "queue" | "consumption";
+
+/**
+ * The import report a check's stock effects count into (ADR 0281), keyed by
+ * the check object, so two imports running at once never share one. Module
+ * scope rather than an instance field, so a service built without its
+ * constructor (as several specs build it) still has it.
+ */
+const STOCK_REPORTS = new WeakMap<object, StockReport>();
+
+/** Lines that reached an outcome; the rest of a check's lines are notStock. */
+function decidedLines(t: StockTally): number {
+  return (
+    t.booked +
+    t.alreadyBooked +
+    t.queued.unmapped +
+    t.queued.no_sale_volume +
+    t.failed
+  );
+}
+
+/** At most this many grouped stock lines reach errors[]; the rest are summed into one. */
+const MAX_STOCK_ERROR_GROUPS = 50;
+const MAX_STOCK_ERROR_MESSAGE = 300;
+
+/**
+ * Accumulates the stock half of one import: the tally, and the failures
+ * grouped by (kind, item) so errors[] carries one line per group rather than
+ * one per line — a back-fill with 800 refused pours of one wine is one line
+ * with a count, not 800 (ADR 0281).
+ */
+export class StockReport {
+  readonly tally: StockTally = {
+    lines: 0,
+    notStock: 0,
+    booked: 0,
+    alreadyBooked: 0,
+    queued: { unmapped: 0, no_sale_volume: 0 },
+    failed: 0,
+    consumptionNotWritten: 0,
+    backdatedOver72h: 0,
+  };
+
+  private readonly groups = new Map<
+    string,
+    {
+      kind: StockFailureKind;
+      label: string;
+      count: number;
+      message: string;
+      checkId: string;
+    }
+  >();
+  private overflowLines = 0;
+  private readonly overflowKeys = new Set<string>();
+
+  noteFailure(
+    kind: StockFailureKind,
+    label: string,
+    message: string | null | undefined,
+    checkId: string,
+  ): void {
+    const key = `${kind}\u0000${label}`;
+    const group = this.groups.get(key);
+    if (group) {
+      group.count++;
+      return;
+    }
+    if (this.groups.size >= MAX_STOCK_ERROR_GROUPS) {
+      this.overflowLines++;
+      this.overflowKeys.add(key);
+      return;
+    }
+    const text = String(message ?? "no message")
+      .replace(/\s+/g, " ")
+      .trim();
+    this.groups.set(key, {
+      kind,
+      label,
+      count: 1,
+      message:
+        text.length > MAX_STOCK_ERROR_MESSAGE
+          ? `${text.slice(0, MAX_STOCK_ERROR_MESSAGE)}…`
+          : text,
+      checkId,
+    });
+  }
+
+  /** One sentence per group, in the order the groups were first seen. */
+  errorLines(): string[] {
+    const out: string[] = [];
+    for (const g of this.groups.values()) {
+      const lines = `${g.count} line${g.count === 1 ? "" : "s"}`;
+      switch (g.kind) {
+        case "stock":
+          out.push(
+            `stock: "${g.label}" moved no stock on ${lines} and is not in the review queue: ${g.message} (first on check ${g.checkId})`,
+          );
+          break;
+        case "queue":
+          out.push(
+            `stock: "${g.label}" moved no stock on ${lines} and could not be queued for review: ${g.message} (first on check ${g.checkId})`,
+          );
+          break;
+        case "consumption":
+          out.push(
+            `stock: "${g.label}" moved stock on ${lines} but its consumption log row was not written: ${g.message} (first on check ${g.checkId})`,
+          );
+          break;
+      }
+    }
+    if (this.overflowLines > 0) {
+      out.push(
+        `stock: ${this.overflowLines} more failure${this.overflowLines === 1 ? "" : "s"} across ${this.overflowKeys.size} more item${this.overflowKeys.size === 1 ? "" : "s"} are counted in stock but not listed here`,
+      );
+    }
+    return out;
+  }
 }
 
 /**
@@ -195,6 +590,103 @@ export interface WebhookContext {
 }
 
 /**
+ * How many checks received in one import named each channel (ADR 0302). It
+ * is counted before any check is stored, so a check refused for its closed_at
+ * or whose upsert failed is counted too, and the four counts partition
+ * `received`: `none` is a check that named no channel the hub reads (every
+ * Square, Clover or Toast check: see CANONICAL_FEEDS), `unrecognised` one
+ * that named a value outside the vocabulary. Neither writes a channel: a new
+ * row is stored with none, which reads as table service, and a re-send leaves
+ * the stored channel as it was.
+ */
+export type ChannelTally = Record<
+  CheckChannel | "none" | "unrecognised",
+  number
+>;
+
+/** At most this many distinct unrecognised names are quoted in errors[]. */
+const MAX_CHANNEL_NAMES_SAID = 5;
+
+/**
+ * Said, unquoted, in place of a named channel that is not a string. The
+ * vocabulary is strings only (checkChannelOf), so any other JSON value is
+ * unrecognised, and it is never converted to text to quote it: `String()` on
+ * `{"toString":1}` or a deeply nested array throws, and the tally runs before
+ * the per-check try, so one such check aborted the whole import (ADR 0302,
+ * audit at 28c59e9f8).
+ */
+const CHANNEL_NOT_TEXT_SAID = "a value that is not text";
+
+/**
+ * The providers whose `raw` is the canonical row itself (the generic adapter,
+ * under both keys), so a `raw.channel` there is a channel the feed named. A
+ * Square, Clover or Toast `raw` is that provider's own order or check object:
+ * whether any of them carries a top-level `channel`, and what it would mean,
+ * is not verified, and their order types wait for the owner's mapping (ADR
+ * 0302, fork AW24-b). Their checks name no channel here.
+ */
+const CANONICAL_FEEDS: ReadonlySet<string> = new Set([
+  "generic_webhook",
+  "csv_import",
+]);
+
+/**
+ * Count the channels an import named, and say the ones this hub does not
+ * know. On a canonical feed, a name the adapter dropped is read back from the
+ * source row (`raw.channel`, which that feed keeps verbatim): reading it as
+ * "no channel" would report an absence as health (ADR 0302).
+ */
+export function tallyChannels(
+  checks: CanonicalCheck[],
+  providerKey: string,
+): {
+  tally: ChannelTally;
+  said: string | null;
+} {
+  const tally: ChannelTally = {
+    booth_event: 0,
+    table: 0,
+    none: 0,
+    unrecognised: 0,
+  };
+  const readsNamed = CANONICAL_FEEDS.has(providerKey);
+  const names = new Set<string>();
+  let namedNotText = false;
+  for (const c of checks) {
+    if (c.channel) {
+      tally[c.channel]++;
+      continue;
+    }
+    const named = readsNamed
+      ? (c.raw as { channel?: unknown } | null | undefined)?.channel
+      : null;
+    if (named == null || (typeof named === "string" && named.trim() === "")) {
+      tally.none++;
+      continue;
+    }
+    tally.unrecognised++;
+    if (typeof named === "string") names.add(named.trim().slice(0, 40));
+    else namedNotText = true;
+  }
+  if (tally.unrecognised === 0) return { tally, said: null };
+  const n = tally.unrecognised;
+  const shown = [...names].map((v) => JSON.stringify(v));
+  if (namedNotText) shown.push(CHANNEL_NOT_TEXT_SAID);
+  const quoted = shown.slice(0, MAX_CHANNEL_NAMES_SAID).join(", ");
+  const more =
+    shown.length > MAX_CHANNEL_NAMES_SAID
+      ? ` and ${shown.length - MAX_CHANNEL_NAMES_SAID} more`
+      : "";
+  return {
+    tally,
+    said:
+      `channel: ${n} check${n === 1 ? "" : "s"} named a channel this hub does not know ` +
+      `(${quoted}${more}): counted as unrecognised and not written as a channel. ` +
+      `A check with no stored channel reads as table service; the known channels are "table" and "booth_event".`,
+  };
+}
+
+/**
  * PosHubService — the unified ingestion pipeline and the single POS door for
  * stock writes (SimPOS testbed plan, decision B13).
  *
@@ -262,6 +754,15 @@ export class PosHubService {
     @Optional()
     @Inject(forwardRef(() => LowStockAlertsService))
     private readonly lowStockAlerts?: LowStockAlertsService,
+    // ADR 0281 (amended 2026-10-05): refused checks reach the owners' and
+    // managers' bell. Optional for the same reason: the note is a side effect
+    // of an import, never a precondition for it.
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications?: NotificationsService,
+    // ADR 0218: Away applies to that note. Database only, so no cycle.
+    @Optional()
+    private readonly areaRouting?: AreaRoutingService,
   ) {}
 
   getProviders() {
@@ -443,8 +944,30 @@ export class PosHubService {
     provider: string;
     received: number;
     upserted: number;
+    /** Checks per channel this import named (ADR 0302). */
+    channels: ChannelTally;
     wineItemsDetected: number;
+    /**
+     * Checks not imported because their closed_at was present and not read
+     * (ADR 0281, founder ruling F4): no pos_checks row, no stock, no
+     * consumption, and not counted in `upserted`, `wineItemsDetected` or
+     * `stock`. errors[] names the first 50 and counts the rest. Every other
+     * check received is upserted or named in errors[] as not stored.
+     */
+    refusedUnreadableDate: number;
     errors: string[];
+    /**
+     * What the import did to stock (ADR 0281). Before this, a refused or
+     * skipped stock write was only logged and the result read as a clean
+     * import: 811 back-filled pours moved nothing with no word here (A-029).
+     */
+    stock: StockTally;
+    /**
+     * The one bell note for this import's refused checks (ADR 0281, amended
+     * 2026-10-05). Null when nothing was refused, so no note was due;
+     * otherwise whether it was filed, to how many bells, and why not.
+     */
+    bellNote: RefusedChecksNote | null;
   }> {
     const provider = PROVIDER_BY_KEY[providerKey];
     if (!provider) throw new Error(`Unknown POS provider '${providerKey}'`);
@@ -456,13 +979,18 @@ export class PosHubService {
 
     const checks = adapter.normalize(payload);
     const errors: string[] = [];
+    const stock = new StockReport();
     if (!checks.length)
       return {
         provider: providerKey,
         received: 0,
         upserted: 0,
+        channels: tallyChannels([], providerKey).tally,
         wineItemsDetected: 0,
+        refusedUnreadableDate: 0,
         errors: ["No recognizable checks in payload"],
+        stock: stock.tally,
+        bellNote: null,
       };
 
     const [mappingLookup, tableLookup] = await Promise.all([
@@ -477,13 +1005,43 @@ export class PosHubService {
     // through the same `errors` channel a failed check upsert uses, so the
     // ingest can no longer report a clean success over a lookup that failed.
     if (tableLookup.error) errors.push(tableLookup.error);
+    // ADR 0302: a channel the hub does not know is counted as unrecognised
+    // and never written as a channel, and said here rather than dropped in
+    // silence. A row with no stored channel reads as table service.
+    const channels = tallyChannels(checks, providerKey);
+    if (channels.said) errors.push(channels.said);
 
     let upserted = 0;
     let wineItems = 0;
+    let refusedUnreadableDate = 0;
+    const refusedChecks: RefusedCheck[] = [];
     const client = this.dbService.getClient();
 
     for (const check of checks) {
       try {
+        // ADR 0281: the one reading of this check's closed_at, taken before
+        // the check is stored. The check row and every stock and consumption
+        // row below are dated from it (see SaleInstant).
+        const when = saleInstant(check.closedAt, Date.now());
+        // ADR 0281, founder ruling F4 ("Refuse, say why"): a closed_at that is
+        // present but not read is not imported, so it is never guessed at,
+        // here or by Postgres. The check is refused before anything is
+        // written for it. An open check (closed_at null or absent) is stored
+        // as before and moves no stock.
+        if (
+          when.fellBack &&
+          check.closedAt !== null &&
+          check.closedAt !== undefined
+        ) {
+          refusedUnreadableDate++;
+          refusedChecks.push(check);
+          if (refusedUnreadableDate <= MAX_REFUSED_CHECK_LINES) {
+            errors.push(
+              `${check.externalCheckId}: not imported, ${CLOSED_AT_NOT_READABLE} (closed_at was ${quoteClosedAt(check.closedAt)})`,
+            );
+          }
+          continue;
+        }
         const items = check.items.map((it) => {
           const mapped = this.resolveWine(it.name, it.externalItemId, mappings);
           const is_wine =
@@ -508,10 +1066,14 @@ export class PosHubService {
           source: providerKey,
           external_check_id: check.externalCheckId,
           table_id: this.resolveTable(check.tableRef, providerKey, tables),
+          // ADR 0302: written only when the check names a channel the hub
+          // knows, so a re-send that names none, or names one it does not
+          // know, leaves a stored channel alone.
+          ...(check.channel ? { channel: check.channel } : {}),
           server_external_id: check.serverExternalId ?? null,
           server_name: check.serverName ?? null,
           opened_at: check.openedAt,
-          closed_at: check.closedAt ?? null,
+          closed_at: when.closedAt,
           covers: check.covers ?? null,
           subtotal: check.subtotal ?? null,
           total: check.total ?? null,
@@ -541,6 +1103,8 @@ export class PosHubService {
               providerKey,
               check,
               items,
+              stock,
+              when,
             );
           }
         }
@@ -549,15 +1113,43 @@ export class PosHubService {
       }
     }
 
+    if (refusedUnreadableDate > MAX_REFUSED_CHECK_LINES) {
+      const more = refusedUnreadableDate - MAX_REFUSED_CHECK_LINES;
+      errors.push(
+        `${more} more check${more === 1 ? " was" : "s were"} not imported, ${CLOSED_AT_NOT_READABLE}; counted in refusedUnreadableDate, not named here`,
+      );
+    }
+    // Grouped, bounded: one line per (failure kind, item), not one per line.
+    errors.push(...stock.errorLines());
+    const t = stock.tally;
     this.logger.log(
-      `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${wineItems} wine items`,
+      `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${refusedUnreadableDate} refused for an unreadable closed_at, ${wineItems} wine items; ` +
+        `stock booked ${t.booked}, already ${t.alreadyBooked}, queued ${t.queued.unmapped + t.queued.no_sale_volume}, failed ${t.failed}`,
     );
+    // ADR 0281 (amended 2026-10-05): one bell note per import that refused a
+    // check, after the loop, never per check. It never throws.
+    const bellNote =
+      refusedChecks.length > 0
+        ? await fileRefusedChecksNote(
+            {
+              client,
+              notifications: this.notifications,
+              areaRouting: this.areaRouting,
+              logger: this.logger,
+            },
+            { restaurantId, providerKey, refused: refusedChecks },
+          )
+        : null;
     return {
       provider: providerKey,
       received: checks.length,
       upserted,
+      channels: channels.tally,
       wineItemsDetected: wineItems,
+      refusedUnreadableDate,
       errors,
+      stock: t,
+      bellNote,
     };
   }
 
@@ -636,15 +1228,7 @@ export class PosHubService {
           `rather than deplete by a guessed volume: ${error.message}`,
       );
     for (const row of data || []) {
-      const positive = (v: unknown) => {
-        const n = Number(v);
-        return Number.isFinite(n) && n > 0 ? n : null;
-      };
-      out.set(row.id, {
-        bottleMl: positive(row.bottle_size_ml),
-        pourMl: positive(row.pour_size_ml),
-        menuPrice: positive(row.menu_price_current),
-      });
+      out.set(row.id, inventoryVolumesFromRow(row));
     }
     return { volumes: out, error: error ? error.message : null };
   }
@@ -725,10 +1309,33 @@ export class PosHubService {
       sale_unit: string | null;
       sale_volume_ml: number | null;
     }>,
-  ): Promise<void> {
+    report: StockReport = new StockReport(),
+    // ADR 0281: ingest() reads closed_at once, before it stores the check,
+    // and hands that reading here so the check and its stock carry one
+    // instant. The default serves the specs that call this method directly.
+    when: SaleInstant = saleInstant(check.closedAt, Date.now()),
+  ): Promise<StockTally> {
+    // ADR 0281, F4: stock is dated only by a closed_at that was read. ingest()
+    // never calls this for one that was not; a direct caller is refused here
+    // rather than dated at import time.
+    if (when.fellBack) {
+      throw new Error(
+        `closed_at ${quoteClosedAt(check.closedAt ?? null)} was not read, so check ${check.externalCheckId} moves no stock (ADR 0281)`,
+      );
+    }
     const db = this.dbService.getClient();
     const isVoid = check.voided === true;
     const affected = new Set<string>();
+    const tally = report.tally;
+
+    // ADR 0281: the stock and the consumption of this check are dated by when
+    // it closed, not by when it reached the hub. A void is dated by the
+    // closed_at the voided check carries: the sale's own instant only when
+    // the till re-sends it, a later one when the till stamps the void itself.
+    const booked = () => {
+      tally.booked++;
+      if (when.backdatedOver72h) tally.backdatedOver72h++;
+    };
 
     // One read for the whole check (ADR 0011): resolving a sale volume needs
     // the inventory row's bottle/pour sizes before any RPC is issued.
@@ -740,6 +1347,11 @@ export class PosHubService {
       ),
     ]);
     const inventories = inventoryRead.volumes;
+    // queueUnresolvedLine counts its own outcome into this check's report, so
+    // the three queue call sites below stay exactly as they were.
+    STOCK_REPORTS.set(check, report);
+    tally.lines += items.length;
+    const decidedBefore = decidedLines(tally);
 
     for (let lineNo = 0; lineNo < items.length; lineNo++) {
       const it = items[lineNo];
@@ -833,6 +1445,8 @@ export class PosHubService {
             p_source: "pos",
             p_reason: `POS sale (${label}): ${it.name}`,
             p_idempotency_key: idem,
+            // ADR 0281: dated by the check, not by its arrival.
+            p_occurred_at: when.at,
           }));
         } else {
           // Whole-bottle sales, and every void.
@@ -874,6 +1488,11 @@ export class PosHubService {
             // here, and a mis-seeded mapping used to move another house's
             // shelf on every sale.
             p_restaurant_id: restaurantId,
+            // ADR 0281: a sale and its void are both dated by the closed_at
+            // their check carries. A void lands on the sale's day only when
+            // the till re-sends the sale's closed_at on it; a till that
+            // stamps the void with its own time dates the return then.
+            p_occurred_at: when.at,
           }));
         }
 
@@ -881,25 +1500,61 @@ export class PosHubService {
           this.logger.warn(
             `Stock effect failed for ${it.name} (${label}) on check ${check.externalCheckId}: ${rpcError.message}`,
           );
+          tally.failed++;
+          report.noteFailure(
+            "stock",
+            it.name,
+            rpcError.message,
+            check.externalCheckId,
+          );
         } else {
           affected.add(it.inventory_id);
           if (!isVoid) {
-            await this.recordConsumption(
+            const consumption = await this.recordConsumption(
               restaurantId,
               it,
               resolved,
               inv,
               qty,
               idem,
+              when.at,
             );
+            if (consumption === "already") {
+              // The consumption row under this key exists, so an earlier
+              // import booked this line; the RPC answered with that booking.
+              tally.alreadyBooked++;
+            } else {
+              booked();
+              if (consumption === "failed") {
+                tally.consumptionNotWritten++;
+                report.noteFailure(
+                  "consumption",
+                  it.name,
+                  "the stock moved; see the gateway log for the database error",
+                  check.externalCheckId,
+                );
+              }
+            }
+          } else {
+            booked();
           }
         }
       } catch (err: any) {
         this.logger.warn(
           `Stock effect threw for ${it.name} on check ${check.externalCheckId}: ${err?.message}`,
         );
+        tally.failed++;
+        report.noteFailure(
+          "stock",
+          it.name,
+          err?.message ?? String(err),
+          check.externalCheckId,
+        );
       }
     }
+    // Every line that reached no outcome above was skipped by design.
+    tally.notStock += items.length - (decidedLines(tally) - decidedBefore);
+    STOCK_REPORTS.delete(check);
 
     if (affected.size > 0) {
       this.logger.debug(
@@ -917,6 +1572,7 @@ export class PosHubService {
           .catch(() => undefined);
       }
     }
+    return tally;
   }
 
   /**
@@ -933,6 +1589,11 @@ export class PosHubService {
    * partial unique index on (restaurant_id, source, external_check_id,
    * external_item_id, reason) WHERE NOT resolved means a 23505 here just means
    * it is already queued and open — not a real failure.
+   *
+   * ADR 0281: the outcome is returned, and counted into the import report of
+   * the check when applyStockEffects is running one. A line that moved no
+   * stock and also failed to queue is lost from every list a person reads, so
+   * it is counted as failed, never as queued.
    */
   private async queueUnresolvedLine(
     restaurantId: string,
@@ -949,7 +1610,7 @@ export class PosHubService {
       mappedInventoryId: string | null;
       detail: string;
     },
-  ): Promise<void> {
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
     const { error } = await this.dbService
       .getClient()
       .from("pos_unresolved_lines")
@@ -965,11 +1626,24 @@ export class PosHubService {
         mapped_inventory_id: opts.mappedInventoryId,
         raw: { ...it, unresolved_detail: opts.detail },
       });
+    const report = STOCK_REPORTS.get(check);
     if (error && error.code !== "23505") {
       this.logger.warn(
         `Failed to queue unresolved line ${it.name} (${opts.reason}): ${error.message}`,
       );
+      if (report) {
+        report.tally.failed++;
+        report.noteFailure(
+          "queue",
+          it.name,
+          error.message,
+          check.externalCheckId,
+        );
+      }
+      return { ok: false, message: error.message ?? "no message" };
     }
+    if (report) report.tally.queued[opts.reason]++;
+    return { ok: true };
   }
 
   /**
@@ -1002,8 +1676,9 @@ export class PosHubService {
     inv: InventoryVolumes | null,
     qty: number,
     idempotencyKey: string,
-  ): Promise<void> {
-    if (!item.inventory_id) return;
+    occurredAt: string,
+  ): Promise<"logged" | "already" | "failed"> {
+    if (!item.inventory_id) return "failed";
     try {
       const db = this.dbService.getClient();
 
@@ -1063,10 +1738,15 @@ export class PosHubService {
         total_revenue: unitPrice != null ? unitPrice * qty : null,
         source: "pos",
         notes: idempotencyKey,
+        // ADR 0281: the sale's instant, not the import's. Both columns, because
+        // the readers of this series filter on created_at today and moving them
+        // to recorded_at is another lane's change.
+        recorded_at: occurredAt,
+        created_at: occurredAt,
       });
       if (error?.code === "23505") {
         // Already mirrored under this key — a webhook replay. Nothing to add.
-        return;
+        return "already";
       }
 
       // This result used to be discarded, which made the comment above a claim
@@ -1087,11 +1767,14 @@ export class PosHubService {
             `[${error.code ?? "no-code"}] — the demand series is now short one ` +
             `event and nothing else records that.`,
         );
+        return "failed";
       }
+      return "logged";
     } catch (err: any) {
       this.logger.warn(
         `Consumption log write failed for ${item.name}: ${err?.message}`,
       );
+      return "failed";
     }
   }
 

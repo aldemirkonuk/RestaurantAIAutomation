@@ -11,16 +11,25 @@
  * account answers, a read that fails, a write that fails, and a shared device.
  * The rule this file exists to enforce is that none of those is ever reported
  * as "paper, chosen" (CLAUDE.md §9; memory `absence-reported-as-health`).
+ *
+ * [2026-10-01, ADR 0169 amendment batch 4: the person may now CHOOSE System —
+ * "Paper / Charcoal / System". Half (1) still holds for anyone who has not
+ * chosen; the device is read only while the stored setting is `system`. The
+ * last describe block below is that rule.]
  */
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import {
   GROUND_CHOICE_ATTR,
+  GROUND_OPTIONS,
   applyAccountGround,
   getGroundChoice,
   getGroundState,
+  groundIsKnown,
   groundMirrorKey,
+  groundNote,
+  groundPaintFor,
   registerGroundWriter,
   reportGroundReadFailure,
   resetGroundChoiceForTests,
@@ -28,6 +37,7 @@ import {
   setGroundOwner,
   useGroundChoice,
   useGroundState,
+  type GroundState,
 } from './groundChoice';
 
 const ALICE = 'user-alice';
@@ -84,8 +94,9 @@ describe('ADR 0169 — first visit is paper, and never the device\'s setting', (
   });
 
   it('ignores the OS setting entirely — a dark-mode device still opens on paper', () => {
-    // The founder's answer has no third "match my device" option, so nothing
-    // on this path may consult one. `window.matchMedia` is replaced (not
+    // Nobody who has not chosen System is ever matched to their device
+    // (2026-09-21, restated 2026-10-01 — "paper at first always"), so nothing
+    // on this path may consult it. `window.matchMedia` is replaced (not
     // spied — `__tests__/setup.ts` defines it non-configurable) with a
     // recorder that reports a dark-mode machine.
     const original = window.matchMedia;
@@ -368,5 +379,301 @@ describe('ADR 0169 — a save that failed is never reported as saved', () => {
     expect(getGroundChoice()).toBe('charcoal');
     expect(getGroundState().writeError).toContain('no one is signed in');
     expect(window.localStorage.getItem(groundMirrorKey(ALICE))).toBeNull();
+  });
+});
+
+/**
+ * What a control says — `groundIsKnown` / `groundNote` / `GROUND_OPTIONS`.
+ * These moved here from the deleted header `ThemeMenu` when the control moved
+ * to `/profile` (founder, 2026-10-01, page walk-through DASH-W23); the
+ * assertions are ported from `ThemeMenu.test.tsx`'s ground branch, with the
+ * note texts pinned EXACTLY rather than by a fragment.
+ */
+describe('ADR 0169 — what the ground control says', () => {
+  const state = (over: Partial<GroundState>): GroundState => ({
+    choice: 'paper',
+    setting: 'paper',
+    source: 'default',
+    readFailed: false,
+    writeError: null,
+    detail: null,
+    ...over,
+  });
+
+  it('offers Paper, Charcoal and System, in that order — the founder\'s words, 2026-10-01', () => {
+    expect(GROUND_OPTIONS.map((o) => o.value)).toEqual(['paper', 'charcoal', 'system']);
+    expect(GROUND_OPTIONS.map((o) => o.label)).toEqual(['Paper', 'Charcoal', 'System']);
+    // System is the one that needs saying; it says it in plain words.
+    expect(GROUND_OPTIONS.find((o) => o.value === 'system')?.hint).toBe(
+      'Follows this device’s light or dark setting.',
+    );
+  });
+
+  it('counts nothing as chosen under `unknown` and `unreadable`', () => {
+    expect(groundIsKnown(state({ source: 'unknown' }))).toBe(false);
+    expect(groundIsKnown(state({ source: 'unreadable', readFailed: true, detail: 'x' }))).toBe(false);
+  });
+
+  it('counts paper-by-default (`default`) as a real, known answer — and `account` and `device-cache` too', () => {
+    expect(groundIsKnown(state({ source: 'default' }))).toBe(true);
+    expect(groundIsKnown(state({ source: 'account', choice: 'charcoal' }))).toBe(true);
+    expect(groundIsKnown(state({ source: 'device-cache', choice: 'charcoal' }))).toBe(true);
+  });
+
+  it('says nothing for a confirmed answer', () => {
+    expect(groundNote(state({ source: 'default' }))).toBeNull();
+    expect(groundNote(state({ source: 'account', choice: 'charcoal' }))).toBeNull();
+  });
+
+  it('says it is still reading under `unknown`', () => {
+    expect(groundNote(state({ source: 'unknown' }))).toBe(
+      'Reading the ground you saved to your account. Paper until it answers.',
+    );
+  });
+
+  it('says the saved ground could not be read under `unreadable`, with and without a reason', () => {
+    expect(groundNote(state({ source: 'unreadable', readFailed: true, detail: 'Network Error' }))).toBe(
+      'The ground you saved could not be read (Network Error). Paper until it can be.',
+    );
+    expect(groundNote(state({ source: 'unreadable', readFailed: true, detail: null }))).toBe(
+      'The ground you saved could not be read (unknown reason). Paper until it can be.',
+    );
+    expect(groundNote(state({ source: 'unreadable', readFailed: false }))).toBe(
+      'The ground you saved could not be read. Paper until it can be.',
+    );
+  });
+
+  it("names this device's copy under `device-cache`, and says whether the account was reached", () => {
+    expect(
+      groundNote(state({ source: 'device-cache', choice: 'charcoal', readFailed: true, detail: 'Network Error' })),
+    ).toBe(
+      'Your account could not be reached (Network Error). This is the last ground this device saw you choose.',
+    );
+    expect(groundNote(state({ source: 'device-cache', choice: 'charcoal', readFailed: true }))).toBe(
+      'Your account could not be reached (unknown reason). This is the last ground this device saw you choose.',
+    );
+    expect(groundNote(state({ source: 'device-cache', choice: 'charcoal' }))).toBe(
+      'This is the last ground this device saw you choose, while your account answers.',
+    );
+  });
+
+  it('a write error outranks a read error — it is the thing that just happened', () => {
+    const writeError = 'This ground is not saved to your account (503). It will go back on your next visit.';
+    expect(
+      groundNote(state({ source: 'unreadable', readFailed: true, detail: 'Network Error', writeError })),
+    ).toBe(writeError);
+    expect(groundNote(state({ source: 'device-cache', readFailed: true, detail: 'x', writeError }))).toBe(
+      writeError,
+    );
+    expect(groundNote(state({ source: 'account', writeError }))).toBe(writeError);
+  });
+
+  it('the store\'s own failed save reaches the note word for word', async () => {
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+    refusingWriter('Request failed with status code 503');
+    setGroundChoice('charcoal');
+    await settle();
+    expect(groundNote(getGroundState())).toBe(
+      'This ground is not saved to your account (Request failed with status code 503). It will go back on your next visit.',
+    );
+    expect(groundIsKnown(getGroundState())).toBe(true);
+  });
+});
+
+/**
+ * ADR 0169 amendment 2026-10-01 (batch 4) — the founder: "Paper / Charcoal /
+ * System". System is stored as itself and painted as the device's light/dark,
+ * live; and it is the ONLY setting under which the device is read.
+ */
+describe('ADR 0169 batch 4 — System follows the device, and only System reads it', () => {
+  /** Replaces `window.matchMedia` with a device whose light/dark can be
+   *  flipped, and which records every query and every live listener. */
+  function fakeDevice(dark: boolean) {
+    const original = window.matchMedia;
+    const asked: string[] = [];
+    const listeners = new Set<() => void>();
+    let matches = dark;
+    window.matchMedia = ((query: string) => {
+      asked.push(query);
+      return {
+        get matches() {
+          return matches;
+        },
+        media: query,
+        onchange: null,
+        addListener: (fn: () => void) => listeners.add(fn),
+        removeListener: (fn: () => void) => listeners.delete(fn),
+        addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+        removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+        dispatchEvent: () => false,
+      } as unknown as MediaQueryList;
+    }) as typeof window.matchMedia;
+    return {
+      asked,
+      listeners,
+      flip(next: boolean) {
+        matches = next;
+        for (const fn of [...listeners]) fn();
+      },
+      restore() {
+        window.matchMedia = original;
+      },
+    };
+  }
+
+  let device: ReturnType<typeof fakeDevice> | null = null;
+  afterEach(() => {
+    device?.restore();
+    device = null;
+  });
+
+  it('a stored System resolves to the device, and follows it when it changes', () => {
+    device = fakeDevice(true);
+    setGroundOwner(ALICE);
+    applyAccountGround('system');
+    expect(getGroundState()).toMatchObject({ setting: 'system', choice: 'charcoal', source: 'account' });
+    // The attribute is always a ground, never the word "system".
+    expect(document.documentElement.getAttribute(GROUND_CHOICE_ATTR)).toBe('charcoal');
+    expect(device.asked).toEqual(['(prefers-color-scheme: dark)']);
+
+    act(() => device!.flip(false));
+    expect(getGroundChoice()).toBe('paper');
+    expect(document.documentElement.getAttribute(GROUND_CHOICE_ATTR)).toBe('paper');
+    expect(getGroundState().setting).toBe('system');
+
+    act(() => device!.flip(true));
+    expect(getGroundChoice()).toBe('charcoal');
+    // Followed through one listener the whole time, not one per repaint.
+    expect(device.listeners.size).toBe(1);
+  });
+
+  it('a mounted useGroundChoice() repaints when the device flips', () => {
+    device = fakeDevice(false);
+    setGroundOwner(ALICE);
+    applyAccountGround('system');
+    const { result, unmount } = renderHook(() => useGroundChoice());
+    expect(result.current[0]).toBe('paper');
+    act(() => device!.flip(true));
+    expect(result.current[0]).toBe('charcoal');
+    unmount();
+  });
+
+  it('the mirror keeps "system", not the ground it painted — so the next load follows the device too', () => {
+    device = fakeDevice(true);
+    setGroundOwner(ALICE);
+    applyAccountGround('system');
+    expect(window.localStorage.getItem(groundMirrorKey(ALICE))).toBe('system');
+
+    // Next load on a light device: the mirror applies System before the account answers.
+    resetGroundChoiceForTests();
+    device.restore();
+    device = fakeDevice(false);
+    setGroundOwner(ALICE);
+    expect(getGroundState()).toMatchObject({ setting: 'system', choice: 'paper', source: 'device-cache' });
+    expect(device.asked).toHaveLength(1);
+  });
+
+  it('never reads the device for default, unknown, unreadable, Paper or Charcoal', async () => {
+    device = fakeDevice(true);
+    acceptingWriter();
+    // default — nobody signed in
+    expect(getGroundChoice()).toBe('paper');
+    setGroundOwner(null);
+    // unknown — signed in, the account has not answered
+    setGroundOwner(ALICE);
+    expect(getGroundState().source).toBe('unknown');
+    // unreadable — the read failed, no mirror
+    reportGroundReadFailure('Network Error');
+    expect(getGroundState().source).toBe('unreadable');
+    // default — the account answered "never chosen"
+    applyAccountGround(undefined);
+    expect(getGroundState().source).toBe('default');
+    // an account value this app does not know
+    applyAccountGround('neon');
+    // Paper and Charcoal, from the account and from the control
+    applyAccountGround('paper');
+    applyAccountGround('charcoal');
+    setGroundChoice('paper');
+    setGroundChoice('charcoal');
+    await settle();
+    expect(groundPaintFor('paper')).toBe('paper');
+    expect(groundPaintFor('charcoal')).toBe('charcoal');
+    // And a fresh person on this device with no mirror at all.
+    setGroundOwner(BOB);
+    expect(getGroundChoice()).toBe('paper');
+    expect(device.asked).toEqual([]);
+    expect(device.listeners.size).toBe(0);
+  });
+
+  it('choosing System saves "system", and choosing away from it stops following', async () => {
+    device = fakeDevice(true);
+    const saved = acceptingWriter();
+    setGroundOwner(ALICE);
+    applyAccountGround(undefined);
+
+    setGroundChoice('system');
+    await settle();
+    expect(saved).toEqual(['system']);
+    expect(getGroundState()).toMatchObject({ setting: 'system', choice: 'charcoal', source: 'account' });
+    expect(device.listeners.size).toBe(1);
+
+    setGroundChoice('paper');
+    await settle();
+    expect(saved).toEqual(['system', 'paper']);
+    expect(device.listeners.size).toBe(0);
+    act(() => device!.flip(true));
+    expect(getGroundChoice()).toBe('paper');
+  });
+
+  it('a change of person stops following the previous person\'s device setting', () => {
+    device = fakeDevice(true);
+    setGroundOwner(ALICE);
+    applyAccountGround('system');
+    expect(device.listeners.size).toBe(1);
+
+    setGroundOwner(BOB);
+    expect(device.listeners.size).toBe(0);
+    act(() => device!.flip(false));
+    act(() => device!.flip(true));
+    // Bob never chose System — a dark device does not reach him.
+    expect(getGroundChoice()).toBe('paper');
+
+    // Signing out stops it too.
+    setGroundOwner(ALICE);
+    expect(device.listeners.size).toBe(1);
+    setGroundOwner(null);
+    expect(device.listeners.size).toBe(0);
+  });
+
+  it('a person switch between two System people follows once, not twice', () => {
+    device = fakeDevice(true);
+    window.localStorage.setItem(groundMirrorKey(BOB), 'system');
+    setGroundOwner(ALICE);
+    applyAccountGround('system');
+    setGroundOwner(BOB);
+    expect(getGroundState()).toMatchObject({ setting: 'system', choice: 'charcoal', source: 'device-cache' });
+    expect(device.listeners.size).toBe(1);
+  });
+
+  it('a browser with no media queries paints System as paper rather than failing', () => {
+    const original = window.matchMedia;
+    (window as unknown as { matchMedia: unknown }).matchMedia = undefined;
+    try {
+      setGroundOwner(ALICE);
+      expect(() => applyAccountGround('system')).not.toThrow();
+      expect(getGroundState()).toMatchObject({ setting: 'system', choice: 'paper', source: 'account' });
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it('the preview reads the device only when handed System', () => {
+    device = fakeDevice(true);
+    expect(groundPaintFor('paper')).toBe('paper');
+    expect(groundPaintFor('charcoal')).toBe('charcoal');
+    expect(device.asked).toEqual([]);
+    expect(groundPaintFor('system')).toBe('charcoal');
+    expect(device.asked).toHaveLength(1);
   });
 });

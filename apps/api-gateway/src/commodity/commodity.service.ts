@@ -17,11 +17,12 @@
  *
  * THE JURISDICTION RESOLVER IS IMPORTED, NOT REWRITTEN
  * ----------------------------------------------------
- * `normalizeJurisdiction` comes from `price-index/price-index.registry.ts` —
- * the same free-text-to-ISO reading, including the province-then-country
- * fallback that the Antalya house forced on 2026-09-05. A second normaliser
- * would mean `/price-index/me` and this endpoint could disagree about which
- * country a house is in, which is worse than either being wrong.
+ * `resolveHouseJurisdiction` comes from `price-index/house-jurisdiction.ts` —
+ * the same reading `/price-index/me` uses: the country first, the state read
+ * only inside it (ADR 0305), and the country alone when no state reads there,
+ * as the Antalya house forced on 2026-09-05. A second normaliser would mean
+ * `/price-index/me` and this endpoint could disagree about which country a
+ * house is in, which is worse than either being wrong.
  *
  * A WORLD SERIES SPEAKS FOR A HOUSE WITH NO JURISDICTION AT ALL, and that is
  * deliberate: the FAO index is not scoped to anywhere, so a house whose address
@@ -31,7 +32,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { normalizeJurisdiction } from "../price-index/price-index.registry";
+import { resolveHouseJurisdiction } from "../price-index/house-jurisdiction";
 import { refuseStale } from "../price-index/staleness";
 import {
   SERIES,
@@ -181,6 +182,13 @@ export interface HouseCommodityResult {
    * the series list and a sentence, rather than pretending the mapping exists.
    */
   noExposureRecorded: boolean;
+  /**
+   * True only when the house's address was read and records no country
+   * (ADR 0305). Its state is then not read, and only the world series
+   * answer. False on a read that failed: an unread address is not a missing
+   * one.
+   */
+  countryNotRecorded: boolean;
 }
 
 @Injectable()
@@ -195,19 +203,23 @@ export class CommodityService {
   /**
    * The series register for the CALLER's own house.
    *
-   * Province first, then country. Both are free text on `restaurants`
-   * (`'CA'` / `'California'` / `'Muğla'` / `'Türkiye'`), and reading only the
-   * province was measured wrong on this estate: the Antalya house records no
-   * province and country `'Türkiye'`.
+   * The country first, then the state read inside it (ADR 0305). Both are
+   * free text on `restaurants` (`'CA'` / `'California'` / `'Muğla'` /
+   * `'Türkiye'`); a bare `'MI'` is Michigan only on a United States house,
+   * and a house with no country has no state read at all. The Antalya house
+   * records no province and country `'Türkiye'`, so the country still
+   * answers when no state reads inside it.
    */
   async forHouse(restaurantId: string | null): Promise<HouseCommodityResult> {
     const fetchArmed = commodityFetchArmed(process.env[COMMODITY_FETCH_FLAG]);
     let requested: string | null = null;
     let jurisdiction: string | null = null;
+    let countryNotRecorded = false;
 
     if (restaurantId) {
       let rawState: string | null = null;
       let rawCountry: string | null = null;
+      let readFailed = false;
       try {
         const { data, error } = await this.db.client
           .from("restaurants")
@@ -225,15 +237,16 @@ export class CommodityService {
         // A read that failed is NOT a house with no address. Both leave
         // `jurisdiction` null, so the reason is logged and the WORLD series
         // still answers, which it can do without knowing where the house is.
+        readFailed = true;
         this.logger.warn(
           `could not read this house's jurisdiction for the commodity register: ${(err as Error).message}`,
         );
       }
-      requested = rawState?.trim() || rawCountry?.trim() || null;
-      jurisdiction =
-        (rawState && normalizeJurisdiction(rawState)) ||
-        (rawCountry && normalizeJurisdiction(rawCountry)) ||
-        null;
+      const house = resolveHouseJurisdiction(rawState, rawCountry);
+      requested = house.requested;
+      jurisdiction = house.kind === "resolved" ? house.jurisdiction : null;
+      countryNotRecorded =
+        !readFailed && house.kind === "country_not_recorded";
     }
 
     const entries = seriesForJurisdiction(jurisdiction);
@@ -256,6 +269,7 @@ export class CommodityService {
           ? "No index series in this register speaks for this house's jurisdiction, and none speaks for everywhere either. That is a register with nothing in it for you, not a market that is quiet."
           : null,
       noExposureRecorded: !anyExposure,
+      countryNotRecorded,
     };
   }
 

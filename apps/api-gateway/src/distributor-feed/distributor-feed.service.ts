@@ -7,14 +7,20 @@
  * carries `offerable: false` and the reason, and this service's whole job is to
  * hand the page the sentence rather than a control that would fail.
  *
- * The jurisdiction is resolved the same way the price index resolves it —
- * `normalizeJurisdiction`, province first and country as the fallback — because
- * a house being told two different things about its own state by two panels on
- * the same page is a defect, and the second copy is where it would start.
+ * The house's jurisdiction is resolved the same way the price index resolves
+ * it — `resolveHouseJurisdiction`, the country first and the state read only
+ * inside it (ADR 0305) — because a house being told two different things about
+ * its own state by two panels on the same page is a defect, and the second copy
+ * is where it would start. A jurisdiction named in the URL is still read by
+ * `normalizeJurisdiction`: it is a question about a place, not about a house.
  */
 
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import {
+  COUNTRY_NOT_RECORDED_SENTENCE,
+  resolveHouseJurisdiction,
+} from "../price-index/house-jurisdiction";
 import { normalizeJurisdiction } from "../price-index/price-index.registry";
 import {
   DISTRIBUTOR_FEED_CONNECTION,
@@ -45,6 +51,11 @@ export interface DistributorCatalogue {
   distributors: DistributorCatalogueRow[];
   /** Words, never an empty list left to be read as "there is nothing here". */
   silence: string | null;
+  /**
+   * True only when the caller's own house records no country (ADR 0305): its
+   * state is not read, and the page is asked to send the owner to Settings.
+   */
+  countryNotRecorded: boolean;
 }
 
 @Injectable()
@@ -63,28 +74,41 @@ export class DistributorFeedService {
         distributors: Object.values(DISTRIBUTORS).map(toRow),
         silence:
           "No jurisdiction was named, so this is every distributor this register has measured — not the ones near any one house.",
+        countryNotRecorded: false,
       };
     }
-    const jurisdiction = normalizeJurisdiction(rawJurisdiction);
+    return this.catalogueFor(
+      rawJurisdiction,
+      normalizeJurisdiction(rawJurisdiction),
+    );
+  }
+
+  /** One jurisdiction, already resolved: `requested` is the text it came from. */
+  private catalogueFor(
+    requested: string,
+    jurisdiction: string | null,
+  ): DistributorCatalogue {
     if (!jurisdiction) {
       return {
         connection: DISTRIBUTOR_FEED_CONNECTION,
-        requested: rawJurisdiction,
+        requested,
         jurisdiction: null,
         distributors: [],
-        silence: `"${rawJurisdiction}" is not a jurisdiction this register recognises. No distributor list is drawn rather than guessing a state.`,
+        silence: `"${requested}" is not a jurisdiction this register recognises. No distributor list is drawn rather than guessing a state.`,
+        countryNotRecorded: false,
       };
     }
     const entries = distributorsFor(jurisdiction);
     return {
       connection: DISTRIBUTOR_FEED_CONNECTION,
-      requested: rawJurisdiction,
+      requested,
       jurisdiction,
       distributors: entries.map(toRow),
       silence:
         entries.length === 0
           ? `No distributor has been measured for ${jurisdiction}. This register is silent because nobody has looked, not because it is known that nothing is connectable there.`
           : distributorSilenceFor(jurisdiction),
+      countryNotRecorded: false,
     };
   }
 
@@ -104,6 +128,7 @@ export class DistributorFeedService {
         distributors: [],
         silence:
           "No active restaurant on this session, so there is no jurisdiction to scope a distributor list to.",
+        countryNotRecorded: false,
       };
     }
     let rawState: string | null = null;
@@ -136,23 +161,26 @@ export class DistributorFeedService {
         distributors: [],
         silence:
           "This house's jurisdiction could not be read. This is unknown, not empty.",
+        countryNotRecorded: false,
       };
     }
-    if (rawState && rawState.trim() && normalizeJurisdiction(rawState)) {
-      return this.forJurisdiction(rawState);
+    // The country first, the state only inside it (ADR 0305): "MI" on an
+    // Italian house is Milano, and must not be shown Michigan's distributors.
+    const house = resolveHouseJurisdiction(rawState, rawCountry);
+    if (house.kind === "country_not_recorded") {
+      return {
+        connection: DISTRIBUTOR_FEED_CONNECTION,
+        requested: "me",
+        jurisdiction: null,
+        distributors: [],
+        silence: COUNTRY_NOT_RECORDED_SENTENCE,
+        countryNotRecorded: true,
+      };
     }
-    if (rawCountry && rawCountry.trim() && normalizeJurisdiction(rawCountry)) {
-      return this.forJurisdiction(rawCountry);
-    }
-    if (rawState && rawState.trim()) return this.forJurisdiction(rawState);
-    return {
-      connection: DISTRIBUTOR_FEED_CONNECTION,
-      requested: "me",
-      jurisdiction: null,
-      distributors: [],
-      silence:
-        "This house records neither a state nor a country, so no jurisdiction can be scoped. Set the address in Settings to see which distributors were measured here.",
-    };
+    return this.catalogueFor(
+      house.requested,
+      house.kind === "resolved" ? house.jurisdiction : null,
+    );
   }
 }
 

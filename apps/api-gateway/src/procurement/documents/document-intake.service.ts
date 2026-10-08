@@ -17,6 +17,7 @@ import {
   type RefileSource,
 } from "./invoice-currency";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
+import { readSnapshot } from "../canonical/from-document-rows";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 // A pure reader, no Nest dependency and no network: the 832 the document door
@@ -1940,6 +1941,31 @@ export class DocumentIntakeService {
       return data;
     }
 
+    // The order line must be THIS house's. The read above proves only that the
+    // DOCUMENT line is; `order_line_id` carries nothing but a foreign key to
+    // procurement_order_items, so without this read a caller could name another
+    // house's order line and the line would carry it. Ownership is read through
+    // the ORDER: procurement_orders.restaurant_id is NOT NULL, while the item's
+    // own restaurant_id column is nullable. Another house's line and an id that
+    // does not exist get the same answer, so the refusal says nothing about
+    // other houses.
+    const { data: orderLine, error: orderLineErr } = await client
+      .from("procurement_order_items")
+      .select("id, procurement_orders!inner(restaurant_id)")
+      .eq("id", orderLineId)
+      .eq("procurement_orders.restaurant_id", restaurantId)
+      .maybeSingle();
+    if (orderLineErr) throw new Error(orderLineErr.message);
+    const embedded = (orderLine as Record<string, unknown> | null)
+      ?.procurement_orders as
+      | { restaurant_id?: unknown }
+      | Array<{ restaurant_id?: unknown }>
+      | null
+      | undefined;
+    const owner = Array.isArray(embedded) ? embedded[0] : embedded;
+    if (!orderLine || owner?.restaurant_id !== restaurantId)
+      throw new Error("ORDER_LINE_NOT_FOUND");
+
     // Was this pairing proposed? Either it is already on the line (the matcher
     // applied it) or it is sitting in the suggestions table.
     const alreadyProposed = before.proposed_method != null;
@@ -2511,7 +2537,7 @@ export class DocumentIntakeService {
     const { data: doc, error: docErr } = await client
       .from("procurement_documents")
       .select(
-        "id, status, total, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total",
+        "id, status, total, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total, extracted",
       )
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId)
@@ -2654,6 +2680,9 @@ export class DocumentIntakeService {
       deliveryFee: doc.delivery_fee,
       depositTotal: doc.deposit_total,
       tax: doc.tax,
+      // The printed VAT breakdown rides along, so a document whose tax was read
+      // only there is not "off by" its tax after an edit (RECEIPTS-W5).
+      taxBreakdown: readSnapshot(doc.extracted).taxBreakdown,
       otherCharges: doc.other_charges,
       discountTotal: doc.discount_total,
       lines: (allLines ?? []).map((l) => ({

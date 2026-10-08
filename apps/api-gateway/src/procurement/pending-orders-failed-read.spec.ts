@@ -129,7 +129,9 @@ describe("GET /procurement/orders/pending/count", () => {
 
   it("keeps a 500 for an unexpected non-HTTP throw", async () => {
     const svc = {
-      listPendingOrders: jest.fn().mockRejectedValue(new Error("mapper exploded")),
+      countPendingOrders: jest
+        .fn()
+        .mockRejectedValue(new Error("mapper exploded")),
     } as unknown as ProcurementService;
     const controller = new ProcurementController(svc);
 

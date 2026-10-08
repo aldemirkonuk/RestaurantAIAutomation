@@ -563,7 +563,6 @@ export default function ProvidersNext() {
         <UsualCurrencyCoveragePanel
           knownIds={knownIds}
           onOpenVendor={openById}
-          houseId={house}
           bookSettled={data.hasData || data.isError}
         />
         </div>

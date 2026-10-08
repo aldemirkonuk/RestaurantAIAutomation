@@ -47,7 +47,9 @@
  * editing seventeen pages: above `next`, on the branch that is already showing
  * the redesign, so a legacy page can never see it. `HouseHeader` declines to
  * render for `receiving_door` (chrome-free by decision, App.tsx:227-240) and
- * outside an AuthProvider.
+ * outside an AuthProvider. [2026-10-01: the theme switch has since left the
+ * header (founder, page walk-through DASH-W23); the person's ground is chosen
+ * on `/profile` — ADR 0169's 2026-10-01 amendment.]
  */
 
 import { ReactNode, useEffect, useRef, useState } from 'react';

@@ -579,7 +579,8 @@ export function strandedPrompt(id: RegisterId, n: number): string {
  *    invoice dated the 2nd showing as the 1st is precisely the class of quiet
  *    error this whole register exists to refuse, so a date-only string is
  *    formatted in UTC and stays the day the document says.
- *  - an INSTANT — `pos_unresolved_lines.created_at` is a `timestamptz` and
+ *  - an INSTANT — a till line's time (`pos_checks.closed_at`, else
+ *    `opened_at`, else a queued line's `created_at`) is a `timestamptz` and
  *    names a moment. That one IS rendered in the reader's own timezone,
  *    because "when did we last sell it" is a question about their evening.
  */
@@ -619,8 +620,40 @@ export const BOOK_SOURCE: Record<HouseBookId, string> = {
   invoice: 'procurement_document_lines, on documents of type invoice',
   order: 'procurement_order_items',
   quote: 'vendor_price_observations, this restaurant’s rows only',
-  pos: 'pos_unresolved_lines + pos_checks.items — unresolved wine lines, and live non-wine sales (Q9)',
+  pos: 'pos_checks.items + pos_unresolved_lines — every line of every check not voided, and the queued lines no check holds',
 };
+
+/**
+ * ADR 0301 §2 (AW14), the founder's pick: "Door-checked, labelled". An order
+ * whose price was checked against the delivery at the door, and to which no
+ * invoice is linked (none linked to the order, no line paired with its line),
+ * counts toward First bought and Paid — and every figure it fills says so.
+ * An invoice filed but not linked does not take over: it counts alongside,
+ * so one delivery can count twice (ADR 0301, Harder / given up). The
+ * `invoice` book above stays the paper's alone: a door check is not an
+ * invoice, so it never lights the "invoiced" mark.
+ */
+export const DOOR_CHECKED_LABEL = 'door-checked';
+
+export const DOOR_CHECKED_SOURCE =
+  'procurement_orders.match_verified_at + price_history (source receipt_verified, per bottle) × the bottles accepted, on orders with no invoice linked to the order or paired with its line';
+
+export const DOOR_CHECKED_NOTE =
+  'Checked against the delivery at the door. No invoice is linked to this order yet; once one is, the invoice takes over. An invoice filed but not linked to it counts alongside, so the same delivery can count twice.';
+
+/**
+ * ADR 0301, Harder / given up: the coordinator's decision of 2026-10-07 under
+ * the founder's delegation, amendment 1 (not the founder's pick). The Paid
+ * cell's mark (`cellFor` in registerCells.tsx) when that Paid adds both books,
+ * invoice lines and door-checked orders. The words say both on the cell
+ * itself, because a title never shows on touch and 'door-checked' alone named
+ * only the door. A Paid only the door fills keeps DOOR_CHECKED_LABEL, and so
+ * do every First bought mark and every mark on the record's stand.
+ */
+export const DOOR_CHECKED_INVOICED_LABEL = 'door-checked + invoiced';
+
+export const DOOR_CHECKED_INVOICED_NOTE =
+  'Adds invoice lines and orders checked against the delivery at the door with no invoice linked to them. If one of these invoices is for the same delivery as a door-checked order, that delivery is counted twice until the invoice is linked to the order or its line is paired with the order’s line.';
 
 /**
  * `vendor_price_observations.source_type`, in the vocabulary `/vendor-prices`

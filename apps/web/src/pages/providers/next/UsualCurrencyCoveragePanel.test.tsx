@@ -18,8 +18,9 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useAuthStore } from '../../../stores';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 
@@ -95,7 +96,7 @@ describe('the usual-currency coverage panel', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const panel = (ids: string[], bookSettled: boolean) => (
       <QueryClientProvider client={client}>
-        <UsualCurrencyCoveragePanel knownIds={new Set(ids)} onOpenVendor={() => {}} houseId="h1" bookSettled={bookSettled} />
+        <UsualCurrencyCoveragePanel knownIds={new Set(ids)} onOpenVendor={() => {}} bookSettled={bookSettled} />
       </QueryClientProvider>
     );
     const { rerender } = render(panel([], false));
@@ -112,14 +113,15 @@ describe('the usual-currency coverage panel', () => {
       .mockResolvedValueOnce({ data: { stated: 1, total: 2, unstated: [], sentence: 'House one: 1 of 2.' } })
       .mockResolvedValueOnce({ data: { stated: 2, total: 2, unstated: [], sentence: 'House two: 2 of 2.' } });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const panel = (house: string) => (
+    const panel = (
       <QueryClientProvider client={client}>
-        <UsualCurrencyCoveragePanel knownIds={new Set(['a', 'b'])} onOpenVendor={() => {}} houseId={house} />
+        <UsualCurrencyCoveragePanel knownIds={new Set(['a', 'b'])} onOpenVendor={() => {}} />
       </QueryClientProvider>
     );
-    const { rerender } = render(panel('h1'));
+    act(() => useAuthStore.setState({ activeRestaurantId: 'h1' }));
+    render(panel);
     expect(await screen.findByText('House one: 1 of 2.')).toBeInTheDocument();
-    rerender(panel('h2'));
+    act(() => useAuthStore.setState({ activeRestaurantId: 'h2' }));
     expect(await screen.findByText('House two: 2 of 2.')).toBeInTheDocument();
     expect(screen.queryByText('House one: 1 of 2.')).not.toBeInTheDocument();
   });

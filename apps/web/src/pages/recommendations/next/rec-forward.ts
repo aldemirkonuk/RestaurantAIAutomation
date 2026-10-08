@@ -39,7 +39,7 @@
  *    not import each other's modules (page brief §"Legacy untouched").
  */
 
-import { EM } from './rec-format';
+import { EM, ownRow } from './rec-format';
 
 /* ── Door one: the goal ──────────────────────────────────────────────────── */
 
@@ -128,19 +128,24 @@ interface RuleGoal {
  * inventing a metric for them would be the fake button the house forbids.
  */
 const RULE_GOAL: Record<string, RuleGoal> = {
+  // ADR 0291: these two rules fire on whole-check sales or on bottles, never
+  // on wine revenue, so the basis says what fired and why the goal sits on
+  // wine revenue anyway (the prescription moves it), and the default name no
+  // longer claims wine revenue is what fell. Same reading as ADR 0120's
+  // scenario book, which pairs both rules with wine-revenue scenarios.
   sales_below_weekday_baseline: {
     metricKey: 'wine_revenue',
     direction: 'at_least',
-    name: (s) => (s ? `${s} wine revenue back to baseline` : 'Wine revenue back to baseline'),
+    name: (s) => (s ? `${s} wine revenue, after a soft ${s}` : 'Wine revenue, after a soft day'),
     basis:
-      'The rule compares a day’s wine sales with the same weekday’s baseline, so wine revenue is the figure that records the recovery.',
+      'The rule fires when one day’s sales fall below the same weekday’s baseline: whole-check sales through the till (every item on the check, not only wine), or bottles sold from the cellar log, in any house that keeps one. The entry’s own sentence says which. A goal cannot be held on whole-check sales, so this one is held on wine revenue, the figure the prescription (top-margin picks, one by-the-glass feature) moves. It records part of what fell, not all of it.',
   },
   weekly_demand_slide: {
     metricKey: 'wine_revenue',
     direction: 'at_least',
-    name: () => 'Wine revenue back to last week’s level',
+    name: () => 'Wine revenue, after a soft week',
     basis:
-      'The rule reads a week-over-week fall in sales; wine revenue is the same quantity at a longer grain.',
+      'The rule fires on a week-over-week fall in whole-check sales through the till, in bottles sold, or in one wine’s bottles. The entry’s own sentence says which. A goal cannot be held on whole-check sales, so this one is held on wine revenue, the figure the prescription (a staff tasting on high-margin slow movers, a pairing prompt) moves. It records part of what fell, not all of it.',
   },
   weekday_gap: {
     metricKey: 'wine_revenue',
@@ -244,9 +249,11 @@ export function goalOfferFor(entry: ForwardEntry): GoalOffer {
       kind: 'refused',
       why: 'This entry is already about a goal you set — it fired because that goal is behind its pace. Making a second goal from it would double-count the same target.',
     };
-  const refusal = GOAL_REFUSAL[entry.ruleKey];
+  // Own rows only (`ownRow`, ADR 0288): a stored key such as `__proto__` is a
+  // rule this page has no metric for, never an inherited "refusal".
+  const refusal = ownRow(GOAL_REFUSAL, entry.ruleKey);
   if (refusal) return { kind: 'refused', why: refusal };
-  const spec = RULE_GOAL[entry.ruleKey];
+  const spec = ownRow(RULE_GOAL, entry.ruleKey);
   if (!spec)
     return {
       kind: 'refused',
@@ -388,9 +395,10 @@ export function cuttingFor(entry: ForwardEntry): CuttingOffer {
       kind: 'refused',
       why: 'No cutting answers this one: goal progress is read from `/analytics/goals/:rid/:goalId/progress`, which is not among the eleven analyses the reports sheet can lay down.',
     };
-  const refusal = CUTTING_REFUSAL[entry.ruleKey];
+  // Own rows only, as in `goalOfferFor` (ADR 0288).
+  const refusal = ownRow(CUTTING_REFUSAL, entry.ruleKey);
   if (refusal) return { kind: 'refused', why: refusal };
-  const spec = RULE_CUTTING[entry.ruleKey];
+  const spec = ownRow(RULE_CUTTING, entry.ruleKey);
   if (!spec)
     return {
       kind: 'refused',

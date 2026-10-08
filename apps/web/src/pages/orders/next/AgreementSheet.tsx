@@ -430,7 +430,7 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
               onChange={(e) => setInventoryId(e.target.value)}
             >
               <option value="">
-                {inventory.isLoading ? 'Reading the shelf…' : 'Choose a wine'}
+                {inventory.isLoading ? 'Reading the shelf…' : 'Choose an item'}
               </option>
               {(inventory.data ?? []).map((item) => (
                 <option key={item.id} value={item.id}>
