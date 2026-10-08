@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -110,6 +110,14 @@ const submit = () =>
 /** The match inputs, addressed by their accessible names. */
 const invoiceQtyInput = () => screen.getByLabelText('Quantity invoiced')
 const invoicePriceInput = () => screen.getByLabelText('Invoice unit price')
+// The banner renders a beat before the pre-fill effect commits its values, so
+// "Read from their paperwork" alone does not mean the inputs hold the paper's
+// figures. Clearing before that commit let the effect refill the field mid-type
+// ("2224" for "24" on main-based CI, 2026-10-08). Wait for the value itself.
+const prefillLanded = async (qty: number) => {
+  await screen.findByText(/Read from their paperwork/)
+  await waitFor(() => expect(invoiceQtyInput()).toHaveValue(qty))
+}
 const currencySelect = () =>
   screen.getByLabelText('Invoice currency') as HTMLSelectElement
 
@@ -341,7 +349,7 @@ describe('reading the vendor’s own paperwork', () => {
     ])
     renderWorkspace()
 
-    await screen.findByText(/Read from their paperwork/)
+    await prefillLanded(24)
     // 25 in hand, 24 billed, 1 of them free -> a clean match, not qty_over.
     const user = userEvent.setup()
     await user.click(plusButtons()[0])
@@ -368,11 +376,13 @@ describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
     // The paper says 22. The manager, holding the cases, says 24.
     forOrder.mockResolvedValue([doc('invoice', [{ qtyBottles: 22, unitPrice: 22 }])])
     renderWorkspace()
-    await screen.findByText(/Read from their paperwork/)
+    await prefillLanded(22)
 
     const user = userEvent.setup()
     await user.clear(invoiceQtyInput())
+    expect(invoiceQtyInput()).toHaveValue(null)
     await user.type(invoiceQtyInput(), '24')
+    expect(invoiceQtyInput()).toHaveValue(24)
     await user.selectOptions(currencySelect(), 'USD')
     await user.click(submit())
 
@@ -388,7 +398,7 @@ describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
   it('records agreement too, not only correction', async () => {
     forOrder.mockResolvedValue([doc('invoice', [{ qtyBottles: 24, unitPrice: 22 }])])
     renderWorkspace()
-    await screen.findByText(/Read from their paperwork/)
+    await prefillLanded(24)
 
     const user = userEvent.setup()
     await user.selectOptions(currencySelect(), 'USD')
