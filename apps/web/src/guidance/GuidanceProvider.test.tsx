@@ -29,7 +29,7 @@ vi.mock('../hooks/useUserPreferences', async (importOriginal) => {
     ...actual,
     useUserPreferences: () =>
       // `realHook` is fixed for the whole of a test, so the hooks run in the same order every render.
-      // eslint-disable-next-line react-hooks/rules-of-hooks
+      // The hooks lint does not flag a hook called inside a mock factory, so no directive is needed.
       realHook ? actual.useUserPreferences() : { ...account, updatePreferences },
   };
 });
