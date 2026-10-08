@@ -935,6 +935,8 @@ the house's Gmail grant. Being built; producers stay off until armed.
 
 ## 14. Founder walk-through — 2026-10-01 (branch fix/review-dashboard)
 
+> [2026-10-08, PR #579 at merge] This section is dated 2026-10-01 walk-through evidence. Its file:line citations, apart from those inside 2026-10-08 brackets, predate #579's merges of main (#622, #609, #654), which moved many of them; re-measure before acting.
+
 Session R1 (wt-review-1b, web :5311, gateway :4111 as the founder's own account, house ALDEMIR, production data, timers off). Rows are added when proposed; rulings go to this page's walk-through ADR.
 
 **[changed 2026-10-01: every row below tagged "(uncommitted)" was committed and opened as PR #579; the tag records the state when the row was written.]**

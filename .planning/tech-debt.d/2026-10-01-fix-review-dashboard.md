@@ -1,3 +1,5 @@
+> [2026-10-08, PR #579 at merge] Line citations in this file, apart from those inside 2026-10-08 brackets, were measured before #579 merged main (#622, #609, #654), either at the commit an entry names or on that entry's date. That merge moved many of them. The round-4g audit found the behaviour each OPEN entry describes still holds at merge. Re-measure the lines before acting on an entry.
+
 ## A page load reads `/auth/me` twice against a ten-a-minute per-IP auth bucket — OPEN — 2026-10-01
 
 Found in the dashboard walk-through, P9 (`06-pages/dashboard.md` §14). Line citations are at `1c1a676f8`.
