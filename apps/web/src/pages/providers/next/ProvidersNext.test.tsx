@@ -289,12 +289,14 @@ describe('ProvidersNext', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
-  it('says a gateway failure in words with a retry', () => {
+  it('says a failed vendor read in words with a retry', () => {
     mockData.current = { ...base, hasData: false, isError: true, errorMessage: 'boom', cards: [] };
     render(<ProvidersNext />);
-    expect(screen.getByRole('alert')).toHaveTextContent('could not be reached');
+    expect(screen.getByRole('alert')).toHaveTextContent('could not be read just now');
     fireEvent.click(screen.getByText('Try again'));
     expect(base.refetch).toHaveBeenCalled();
+    expect(screen.getByText('Vendors not known')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('boom');
   });
 
   it('opens a vendor’s sheet from the currency prompt panel’s link', async () => {

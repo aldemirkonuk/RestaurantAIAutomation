@@ -340,7 +340,9 @@ export default function ProvidersNext() {
             <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
               {data.hasData
                 ? `${data.cards.length} ${data.cards.length === 1 ? 'vendor' : 'vendors'}`
-                : 'Reaching the gateway…'}
+                : data.isError
+                  ? 'Vendors not known'
+                  : 'Reading your vendors…'}
             </span>
             <button
               type="button"
@@ -374,8 +376,8 @@ export default function ProvidersNext() {
           >
             <span style={{ fontSize: 12.5, color: "var(--ink-2, #4F473C)" }}>
               {data.hasData
-                ? `The vendor book could not be refreshed (${data.errorMessage}) — the cards show the last answer, not the present.`
-                : `The gateway could not be reached (${data.errorMessage}). The vendor book is unknown — nothing below is claimed.`}
+                ? 'Your vendors could not be refreshed just now. The cards show the last answer, not the present.'
+                : 'Your vendors could not be read just now, so nothing below is claimed about them.'}
             </span>
             <button
               type="button"
