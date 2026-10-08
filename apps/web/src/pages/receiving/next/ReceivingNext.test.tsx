@@ -1197,6 +1197,15 @@ describe('PROCURE-03 — money on /receiving is in its own currency, never summe
     const { container } = harness(Drafts)
 
     expect(screen.getAllByText(/TRY 250\.00/).length).toBeGreaterThan(0)
+    // The card's headline amount — the figure next to the "unsent" stamp — is
+    // pinned on its own: the folded "claimed …" line and the hold label also
+    // carry "TRY 250.00", so a page-wide match cannot tell if the headline lost
+    // its currency.
+    const headlines = screen
+      .getAllByText('Drafted by the house · unsent')
+      .map((stamp) => stamp.nextElementSibling as HTMLElement)
+    expect(headlines[0]).toHaveTextContent(/^TRY\s250\.00$/)
+    expect(headlines[1]).toHaveTextContent(/^88\.50 \(currency not recorded\)$/)
     // `Intl` puts a no-break space between the code and the number, hence `\s`.
     expect(screen.getByRole('button', { name: /^Hold to send the request — TRY\s250\.00$/ })).toBeInTheDocument()
     expect(screen.getAllByText(/88\.50 \(currency not recorded\)/).length).toBeGreaterThan(0)
