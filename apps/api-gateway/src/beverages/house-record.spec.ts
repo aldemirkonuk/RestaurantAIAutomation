@@ -103,13 +103,82 @@ describe("toHouseRecord", () => {
     const r = toHouseRecord(ledger());
     expect(r.bought).toEqual({
       lines: 3,
+      doorChecked: 0,
       first: "2026-03-02",
+      firstDoorChecked: false,
       last: "2026-08-19",
+      lastDoorChecked: false,
       bottles: 72,
       paidTotal: 618.4,
       lastUnitPrice: 8.6,
       lastFrom: "Anadolu Içecek",
     });
+  });
+
+  // ADR 0301 §2 (AW14), his pick: "Door-checked, labelled (Recommended)". A
+  // house that files no paper still has a checked price for what it bought;
+  // the record carries it and says which figures came from the door.
+  it("keeps a bottle bought only at the door, and says so", () => {
+    const r = toHouseRecord(
+      ledger({
+        books: ["order"],
+        invoice_lines: 0,
+        order_lines: 1,
+        door_checked_lines: 1,
+        first_bought: "2026-08-03",
+        last_bought: "2026-08-03",
+        bottles_bought: 10,
+        paid_total: 265,
+        last_unit_price: 26.5,
+        last_bought_from: "Zqdc Door Vendor",
+        first_bought_door_checked: true,
+        last_bought_door_checked: true,
+      }),
+    );
+    expect(r.bought).toEqual({
+      lines: 0,
+      doorChecked: 1,
+      first: "2026-08-03",
+      firstDoorChecked: true,
+      last: "2026-08-03",
+      lastDoorChecked: true,
+      bottles: 10,
+      paidTotal: 265,
+      lastUnitPrice: 26.5,
+      lastFrom: "Zqdc Door Vendor",
+    });
+    // The invoice book is still the paper's alone.
+    expect(r.books).toEqual(["order"]);
+  });
+
+  it("marks only the end that came from the door", () => {
+    const r = toHouseRecord(
+      ledger({
+        door_checked_lines: 1,
+        first_bought_door_checked: false,
+        last_bought_door_checked: true,
+      }),
+    );
+    expect(r.bought).toMatchObject({
+      lines: 3,
+      doorChecked: 1,
+      firstDoorChecked: false,
+      lastDoorChecked: true,
+    });
+  });
+
+  it("reads a ledger without the door columns as no door check", () => {
+    const row = ledger();
+    delete row.door_checked_lines;
+    delete row.first_bought_door_checked;
+    delete row.last_bought_door_checked;
+    expect(toHouseRecord(row).bought).toMatchObject({
+      lines: 3,
+      doorChecked: 0,
+      firstDoorChecked: false,
+      lastDoorChecked: false,
+    });
+    expect(toHouseRecord(ledger({ invoice_lines: 0 })).bought).toBeNull();
   });
 
   it("drops a book that names it nowhere instead of zeroing it", () => {
