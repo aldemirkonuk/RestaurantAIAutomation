@@ -665,18 +665,25 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
     try {
       // 1. Find provider by email (scoped to the attributed restaurant when we know it).
-      let providerQuery = this.databaseService.supabase
-        .from("providers")
-        .select("id, restaurant_id, name")
-        .ilike("contact_email", senderEmail);
-      if (restaurantIdFromEvent) {
-        providerQuery = providerQuery.eq(
-          "restaurant_id",
-          restaurantIdFromEvent,
-        );
+      //
+      // A FAILED lookup is not an unknown sender (ADR 0067, ADR 0310).
+      // supabase-js resolves a failed read with { data: null, error }, and
+      // reading that as "no provider" sent a known vendor's reply down the
+      // cold-email path below: filed as a prospect, or dropped as "not
+      // leaded". Returning would lose it too: the consumer acks before this
+      // handler settles and every producer advances its cursor once the
+      // publish resolves, so nothing redelivers it. So the read is tried
+      // again, briefly, and a lookup that still fails parks the mail in
+      // dead_letter_queue (parkUnattributedInbound) and goes no further.
+      const lookup = await this.readProviderForSender(
+        senderEmail,
+        restaurantIdFromEvent,
+      );
+      if (!lookup.ok) {
+        await this.parkUnattributedInbound(msg, payload, lookup, correlationId);
+        return;
       }
-      const { data: providers } = await providerQuery.limit(1);
-      const provider = providers?.[0];
+      const provider = lookup.provider;
       if (!provider) {
         // D1 — cold email from an unknown sender. Capture GENUINE vendor outreach (a personal
         // intro / catalogue / wine offer, usually with an attachment) as a digest-only Prospect;
@@ -941,6 +948,144 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     } catch (err: any) {
       this.logger.error(
         `handleInboundEmail: unexpected error — ${err?.message}`,
+      );
+    }
+  }
+
+  /**
+   * Waits before the second and third provider lookups, in ms, before
+   * jitter. The handler is not awaited by the consumer, so the wait holds up
+   * nothing else. A field so a test can set it to zero.
+   */
+  private providerReadRetryDelaysMs: number[] = [250, 1000];
+
+  /**
+   * The inbound sender's provider, or the reason it could not be read.
+   * `{ ok: true, provider: undefined }` means the read worked and no provider
+   * matched. A throw is treated as a failed read: the outer catch in
+   * handleInboundEmail would otherwise log it and lose the mail.
+   */
+  private async readProviderForSender(
+    senderEmail: string,
+    restaurantId: string | null,
+  ): Promise<
+    | {
+        ok: true;
+        provider:
+          | { id: string; restaurant_id: string; name: string | null }
+          | undefined;
+      }
+    | { ok: false; error: string; attempts: number }
+  > {
+    const delays = this.providerReadRetryDelaysMs;
+    let lastError = "";
+    for (let attempt = 0; attempt <= delays.length; attempt++) {
+      if (attempt > 0) {
+        const wait = delays[attempt - 1];
+        await new Promise((resolve) =>
+          setTimeout(resolve, wait + Math.floor((Math.random() * wait) / 2)),
+        );
+      }
+      try {
+        // A supabase-js builder is a single-use thenable, so every attempt
+        // builds its own.
+        let providerQuery = this.databaseService.supabase
+          .from("providers")
+          .select("id, restaurant_id, name")
+          .ilike("contact_email", senderEmail);
+        if (restaurantId) {
+          providerQuery = providerQuery.eq("restaurant_id", restaurantId);
+        }
+        const { data: providers, error } = await providerQuery.limit(1);
+        if (!error) return { ok: true, provider: providers?.[0] };
+        lastError = error.message || String(error);
+      } catch (err: any) {
+        lastError = err?.message || String(err);
+      }
+      this.logger.warn(
+        `handleInboundEmail: providers read failed (attempt ${attempt + 1} of ${delays.length + 1}) — ${lastError}`,
+      );
+    }
+    return { ok: false, error: lastError, attempts: delays.length + 1 };
+  }
+
+  /**
+   * Keep an inbound mail whose sender could not be looked up, so it is not
+   * lost, without filing it anywhere a house reads (ADR 0310).
+   *
+   * `dead_letter_queue` is the table the Python agents already park a
+   * message in after their retries (base_agent.py `_send_to_dlq`); nothing
+   * replays its rows today, so recovering one is an operator's job.
+   *
+   * Mail that came through Gmail (the shared mailbox, or a person's mailbox
+   * mirrored under a grant) is parked as a POINTER: its Gmail ids, the grant,
+   * the restaurant and the attachment count, and no sender, subject, body,
+   * headers or bytes. The message is still in that mailbox to fetch again,
+   * and a pointer carries none of the raw mail that ADR 0118's retention and
+   * revocation sweeps delete from procurement_conversations, which is the
+   * only table they read. Mail from the dedicated-domain webhook has no
+   * Gmail id and no mailbox to fetch it from again, so its whole envelope is
+   * kept; that mail is not under those sweeps in procurement_conversations
+   * either, since both select by mirrored_by_grant_id.
+   *
+   * If the park itself fails (the database that refused the read refuses
+   * this too), the mail is lost, and the log line says so with the ids an
+   * operator needs to find it again.
+   */
+  private async parkUnattributedInbound(
+    msg: any,
+    payload: any,
+    failure: { error: string; attempts: number },
+    correlationId: string,
+  ): Promise<void> {
+    const gmailMessageId: string | null = payload.gmail_message_id || null;
+    const ids =
+      `gmail_message_id=${gmailMessageId ?? "-"} ` +
+      `message_id=${payload.message_id_header || "-"} ` +
+      `restaurant=${payload.restaurant_id || "-"} ` +
+      `source=${payload.source || "-"} correlation=${correlationId}`;
+    const message = gmailMessageId
+      ? {
+          parked: "pointer",
+          reason: "provider_read_failed",
+          gmail_message_id: gmailMessageId,
+          gmail_thread_id: payload.gmail_thread_id || null,
+          message_id_header: payload.message_id_header || null,
+          restaurant_id: payload.restaurant_id || null,
+          mirrored_by_grant_id: payload.mirrored_by_grant_id || null,
+          source: payload.source || null,
+          received_at: payload.received_at || null,
+          correlation_id: correlationId,
+          attachment_count: Array.isArray(payload.attachments)
+            ? payload.attachments.length
+            : 0,
+        }
+      : {
+          parked: "envelope",
+          reason: "provider_read_failed",
+          correlation_id: correlationId,
+          envelope: msg,
+        };
+    try {
+      const { data: parked, error } = await this.databaseService.supabase
+        .from("dead_letter_queue")
+        .insert({
+          agent_name: "api-gateway.rabbitmq-bridge",
+          original_exchange: "email.events",
+          original_routing_key: "email.inbound.received",
+          message,
+          error: `providers read failed after ${failure.attempts} attempts: ${failure.error}`,
+          retry_count: failure.attempts,
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      this.logger.error(
+        `handleInboundEmail: providers read failed after ${failure.attempts} attempts (${failure.error}); the mail is parked as dead_letter_queue ${parked?.id} (${message.parked}), not filed as a prospect and not shown to the house — ${ids}`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `handleInboundEmail: providers read failed after ${failure.attempts} attempts (${failure.error}) and parking the mail failed too (${err?.message}); the mail is NOT STORED — ${ids}`,
       );
     }
   }
