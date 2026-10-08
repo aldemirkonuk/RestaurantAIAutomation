@@ -32,7 +32,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { animate, settle } from '@/lib/mudavym';
 import type { ActivityItem, AlertItem } from './useDashboardNextData';
 import {
@@ -44,16 +44,49 @@ import {
   type DayLedger,
   type MonthLedger,
 } from './useDashboardNextData';
-import { DASH, figure, localDateStr, money, monthName } from './format';
+import { DASH, dateIn, figure, longDay, money, monthName } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
+import { TryAgain } from './TryAgain';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const MONTH_PARAM = /^(\d{4})-(0[1-9]|1[0-2])$/;
+const DAY_PARAM = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/**
+ * DASH-W29 (P7; ADR 0160, "the URL holds it"): the month on show and the day
+ * opened live in the address — `?month=YYYY-MM` (absent for the house's
+ * current month) and `?day=YYYY-MM-DD` — so a reload, a shared link or a
+ * phone coming back to the tab lands on the same day. A day names its own
+ * month; anything malformed is ignored rather than guessed at.
+ *
+ * DASH-W36: not exported — a component file that also exports a plain
+ * function cannot be Fast Refreshed, so every save reloaded the page.
+ */
+function readCalendarParams(params: URLSearchParams): {
+  month: { year: number; month: number } | null;
+  day: string | null;
+} {
+  const d = params.get('day');
+  const day = d && DAY_PARAM.test(d) ? d : null;
+  if (day) return { month: { year: Number(day.slice(0, 4)), month: Number(day.slice(5, 7)) }, day };
+  const m = MONTH_PARAM.exec(params.get('month') ?? '');
+  return { month: m ? { year: Number(m[1]), month: Number(m[2]) } : null, day: null };
+}
 
 export interface SalesCalendarProps {
   restaurantId: string | null;
   alerts: AlertItem[] | undefined;
   activity: ActivityItem[] | undefined;
+  /** DASH-W20: the house's IANA zone; null until the stats answer. */
+  zone?: string | null;
+  /**
+   * DASH-W22 (founder, 2026-10-01, "A: hide amounts for staff"): false for a
+   * role that sees counts, not money. The squares then carry deliveries and
+   * their shade measures deliveries; no dollar figure is drawn.
+   */
+  seesAmounts?: boolean;
 }
 
 const MONO_FIG = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' } as const;
@@ -118,13 +151,26 @@ const NOT_RECORDED_FIG: CSSProperties = {
   color: 'var(--ink-4, #665D50)',
 };
 
-/** What a cell says. `salesShown` picks the headline (F2, ADR 0290). */
-function cellFigure(day: DayLedger | undefined, salesShown: boolean, zoneUnset: boolean): string {
+/**
+ * What a cell says. `salesShown` picks the headline (F2, ADR 0290); a role
+ * that sees no money (DASH-W22) gets no figure on a day with deliveries — its
+ * count is in the cell's marks.
+ */
+function cellFigure(
+  day: DayLedger | undefined,
+  salesShown: boolean,
+  zoneUnset: boolean,
+  seesAmounts: boolean,
+): string {
   if (!day || zoneUnset) return DASH;
   if (salesShown) {
     if (day.checks == null) return DASH;
     if (day.checks === 0) return '·';
     return day.net_sales == null ? NOT_RECORDED : money(day.net_sales, 'compact');
+  }
+  if (!seesAmounts) {
+    if (day.order_count == null) return DASH;
+    return day.order_count > 0 ? '' : '·';
   }
   if (day.procurement_spend == null) return DASH;
   return day.procurement_spend > 0 ? money(day.procurement_spend, 'compact') : '·';
@@ -161,67 +207,109 @@ function monthSalesSaid(ledger: MonthLedger | null): { figure: string; from: str
   return { figure: money(ledger.monthlyNetSales), from };
 }
 
-function cellLabel(dateStr: string, day: DayLedger | undefined, salesShown: boolean, zoneUnset: boolean): string {
-  if (!day) return dateStr;
+/**
+ * DASH-W35: the square is named in words — the day, then what it holds — and
+ * says which day is today. The figures follow ADR 0290: sales when shown,
+ * "unknown" for a figure the gateway could not file.
+ */
+function cellLabel(
+  dateStr: string,
+  day: DayLedger | undefined,
+  o: { salesShown: boolean; zoneUnset: boolean; seesAmounts: boolean; isToday: boolean },
+): string {
+  const head = `${longDay(dateStr)}${o.isToday ? ', today' : ''}`;
+  if (!day) return head;
   const parts: string[] = [];
-  if (zoneUnset) parts.push('figures unknown, the house time zone is not set');
+  if (o.zoneUnset) parts.push('figures unknown, the house time zone is not set');
   else {
-    if (salesShown) parts.push(salesSaid(day));
-    parts.push(
-      day.procurement_spend == null
-        ? 'paid to vendors unknown'
-        : day.procurement_spend > 0
-          ? `paid to vendors ${money(day.procurement_spend)}`
-          : 'no deliveries',
-    );
+    if (o.salesShown) parts.push(salesSaid(day));
+    if (o.seesAmounts) {
+      parts.push(
+        day.procurement_spend == null
+          ? 'paid to vendors unknown'
+          : day.procurement_spend > 0
+            ? `${money(day.procurement_spend)} paid to vendors`
+            : 'no deliveries',
+      );
+    } else {
+      parts.push(
+        day.order_count == null
+          ? 'deliveries unknown'
+          : day.order_count > 0
+            ? `${day.order_count} ${day.order_count === 1 ? 'delivery' : 'deliveries'}`
+            : 'no deliveries',
+      );
+    }
   }
-  parts.push(`${day.events.length} events`);
-  return `${dateStr}: ${parts.join(', ')}`;
+  parts.push(day.events.length === 0 ? 'nothing on the calendar' : `${day.events.length} on the calendar`);
+  return `${head}: ${parts.join(', ')}`;
 }
 
-export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarProps) {
+export function SalesCalendar({ restaurantId, alerts, activity, zone = null, seesAmounts: mayShow = true }: SalesCalendarProps) {
   const now = new Date();
-  const browserToday = localDateStr(now);
-  const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
-  const [selected, setSelected] = useState<string | null>(null);
-  const { month } = useMonthLedger(restaurantId, cursor.year, cursor.month);
+  // DASH-W20: the clock's today is the house's (the stats' zone) — it picks the
+  // month the address leaves out. ADR 0290: once the month answers, its own
+  // `today` (null when the house has no zone) decides past, future and the mark.
+  const clockToday = dateIn(now, zone);
+  // The house's today as a month last said it: a string, null (no zone), or
+  // undefined (not said yet / an older gateway). Kept across months, so the
+  // grid opens on the house's month even when the browser's has turned.
+  const [saidToday, setSaidToday] = useState<string | null | undefined>(undefined);
+  const openOn = saidToday ?? clockToday;
+  const [todayYear, todayMonth] = openOn.split('-').map(Number);
+  const [params, setParams] = useSearchParams();
+  const fromUrl = readCalendarParams(params);
+  // With no month in the address the grid follows the house's today, so a
+  // zone that lands a beat after the first paint still opens the right month.
+  const cursor = fromUrl.month ?? { year: todayYear, month: todayMonth };
+  const selected = fromUrl.day;
+  // Replace, not push: paging months or opening days does not stack history.
+  const show = (month: { year: number; month: number } | null, day: string | null) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (day || !month || (month.year === todayYear && month.month === todayMonth)) next.delete('month');
+        else next.set('month', `${month.year}-${String(month.month).padStart(2, '0')}`);
+        if (day) next.set('day', day);
+        else next.delete('day');
+        return next;
+      },
+      { replace: true },
+    );
+  const { month, refetch: refetchMonth } = useMonthLedger(restaurantId, cursor.year, cursor.month);
   const ledger = month.state === 'ready' ? month.ledger : null;
-  const dayOrders = useDayOrders(restaurantId, selected, ledger?.timezone);
+  useEffect(() => {
+    if (ledger && ledger.today !== undefined) setSaidToday(ledger.today);
+  }, [ledger]);
+  const houseToday = ledger && ledger.today !== undefined ? ledger.today : saidToday;
+  const todayStr = houseToday ?? clockToday;
+  // A future day has no deliveries to list; don't ask the ledger for them
+  // (DASH-W13). Deliveries are matched in the zone the month is filed in.
+  const dayOrders = useDayOrders(restaurantId, selected && selected <= todayStr ? selected : null, ledger?.timezone);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
-  // The house's today, once the gateway has said it: a string, null (no zone),
-  // or undefined (not said yet / an older gateway). Kept across months.
-  const [houseToday, setHouseToday] = useState<string | null | undefined>(undefined);
-  const landed = useRef(false);
-  useEffect(() => {
-    if (!ledger || ledger.today === undefined) return;
-    setHouseToday(ledger.today);
-    // Open on the house's month, once, unless the reader has already moved.
-    if (!landed.current && ledger.today) {
-      const [y, m] = ledger.today.split('-').map(Number);
-      if (y !== cursor.year || m !== cursor.month) setCursor({ year: y, month: m });
-    }
-    landed.current = true;
-  }, [ledger, cursor.year, cursor.month]);
-
-  // Which days are past is the house's call; with no zone the browser date
-  // only greys out the future (every figure is a dash anyway). The today mark
-  // is drawn only when the house has a today.
-  const futureFrom = houseToday ?? browserToday;
-  const todayMark = houseToday === undefined ? browserToday : houseToday;
   const monthKey = `${cursor.year}-${cursor.month}`;
-  const [todayY, todayM] = futureFrom.split('-').map(Number);
+  const [todayY, todayM] = todayStr.split('-').map(Number);
   const isCurrentMonth = cursor.year === todayY && cursor.month === todayM;
 
   const daily: DayLedger[] = useMemo(() => ledger?.daily ?? [], [ledger]);
-  const salesShown = ledger?.sales === 'shown';
+  // A month the gateway sent without its money reads as counts even if the
+  // caller's role was expected to see it: a withheld figure is never a $0.
+  const seesAmounts = mayShow && ledger?.amounts !== 'withheld';
+  // G5: a role the page has not read yet sees no sales either — the gateway
+  // gates sales and amounts on the same roles (owner, manager).
+  const salesShown = seesAmounts && ledger?.sales === 'shown';
   const zoneUnset = ledger?.zoneUnset === true;
   const monthSales = monthSalesSaid(ledger);
   const headline = (d: DayLedger | undefined): number | null =>
-    d ? (salesShown ? d.net_sales : d.procurement_spend) : null;
+    d ? (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count) : null;
   const maxHead = useMemo(
-    () => Math.max(1, ...daily.map((d) => (salesShown ? d.net_sales : d.procurement_spend) ?? 0)),
-    [daily, salesShown],
+    () =>
+      Math.max(
+        1,
+        ...daily.map((d) => (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count) ?? 0),
+      ),
+    [daily, salesShown, seesAmounts],
   );
   // The month's longest headline sets the one figure size every cell uses.
   const figSize = useMemo(
@@ -230,12 +318,12 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
         Math.max(
           0,
           ...daily.map((d) => {
-            const f = cellFigure(d, salesShown, zoneUnset);
+            const f = cellFigure(d, salesShown, zoneUnset, seesAmounts);
             return f === NOT_RECORDED ? 0 : f.length;
           }),
         ),
       ),
-    [daily, salesShown, zoneUnset],
+    [daily, salesShown, zoneUnset, seesAmounts],
   );
 
   // Monday-first leading blanks.
@@ -266,47 +354,43 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
   }, [month.state, monthKey]);
 
   const nav = (delta: number) => {
-    landed.current = true;
-    setSelected(null);
-    setCursor((c) => {
-      const d = new Date(c.year, c.month - 1 + delta, 1);
-      return { year: d.getFullYear(), month: d.getMonth() + 1 };
-    });
+    const d = new Date(cursor.year, cursor.month - 1 + delta, 1);
+    show({ year: d.getFullYear(), month: d.getMonth() + 1 }, null);
   };
 
-  const pick = (date: string) => setSelected((cur) => (cur === date ? null : date));
+  const pick = (date: string) => show(cursor, selected === date ? null : date);
 
   return (
     <section
       className="rounded-lg border border-paper-2 bg-paper-0"
-      aria-label={salesShown ? 'Sales calendar — net sales per day' : 'Month calendar — paid to vendors per day'}
+      aria-label={salesShown ? 'Sales calendar — net sales per day' : seesAmounts ? 'Month calendar — paid to vendors per day' : 'Month calendar — deliveries per day'}
     >
       {/* header */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4 sm:px-5">
         <div className="flex items-baseline gap-3">
           <h2 className="text-[22px] font-medium text-inkm-1" style={{ fontFamily: SERIF }}>
             {monthName(cursor.month)}{' '}
-            <span className="text-inkm-3">{cursor.year}</span>
+            <span className="text-inkm-4">{cursor.year}</span>
           </h2>
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => nav(-1)} aria-label="Previous month"
-              className="dn-ink rounded px-2 py-0.5 text-inkm-3 hover:bg-paper-1 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal">
+              className="dn-ink rounded px-2 py-0.5 text-inkm-4 hover:bg-paper-1 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal">
               ‹
             </button>
             {!isCurrentMonth && (
               <button type="button"
-                onClick={() => { landed.current = true; setSelected(null); setCursor({ year: todayY, month: todayM }); }}
-                className="dn-ink rounded px-2 py-0.5 text-[11px] uppercase tracking-[0.1em] text-inkm-3 hover:bg-paper-1 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal">
+                onClick={() => show(null, null)}
+                className="dn-ink rounded px-2 py-0.5 text-[11px] uppercase tracking-[0.1em] text-inkm-4 hover:bg-paper-1 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal">
                 Today
               </button>
             )}
             <button type="button" onClick={() => nav(1)} aria-label="Next month"
-              className="dn-ink rounded px-2 py-0.5 text-inkm-3 hover:bg-paper-1 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal">
+              className="dn-ink rounded px-2 py-0.5 text-inkm-4 hover:bg-paper-1 hover:text-inkm-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal">
               ›
             </button>
           </div>
         </div>
-        <p className="text-[12px] text-inkm-3" data-testid="dn-month-totals">
+        <p className="text-[12px] text-inkm-4" data-testid="dn-month-totals">
           {salesShown && (
             <>
               net sales{' '}
@@ -322,20 +406,24 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
               {' · '}
             </>
           )}
-          paid to vendors{' '}
-          <span className="text-inkm-1" style={MONO_FIG}>
-            {money(ledger?.monthlySpend)}
-          </span>
-          {' · '}
+          {seesAmounts && (
+            <>
+              paid to vendors{' '}
+              <span className="text-inkm-1" style={MONO_FIG}>
+                {money(ledger?.monthlySpend)}
+              </span>
+              {' · '}
+            </>
+          )}
           <span className="text-inkm-1" style={MONO_FIG}>
             {figure(ledger?.monthlyBottles)}
           </span>{' '}
-          bottles in
+          {month.state === 'ready' && month.ledger.monthlyBottles === 1 ? 'bottle' : 'bottles'} in
         </p>
       </div>
 
       {zoneUnset && (
-        <p className="px-4 pt-2 text-[12px] italic text-inkm-3 sm:px-5" data-testid="dn-zone-unset">
+        <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-zone-unset">
           {DASH} This house’s time zone isn’t set, so no day’s figures can be filed yet.{' '}
           <Link
             to="/settings?tab=time-zone"
@@ -349,7 +437,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
       {/* weekday header */}
       <div className="dn-cal-grid px-4 pt-3 sm:px-5" aria-hidden>
         {WEEKDAYS.map((w) => (
-          <p key={w} className="pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-3">
+          <p key={w} className="pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-inkm-4">
             {w}
           </p>
         ))}
@@ -364,11 +452,12 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
           const dayNum = i + 1;
           const dateStr = `${cursor.year}-${String(cursor.month).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
           const day = daily.find((d) => d.date === dateStr);
-          const isFuture = dateStr > futureFrom;
-          const isToday = todayMark !== null && dateStr === todayMark;
+          const isFuture = dateStr > todayStr;
+          // No today mark when the house has no zone (ADR 0290).
+          const isToday = houseToday !== null && dateStr === todayStr;
           const head = zoneUnset ? null : headline(day);
           const heat = head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead) : 0;
-          const fig = cellFigure(day, salesShown, zoneUnset);
+          const fig = cellFigure(day, salesShown, zoneUnset, seesAmounts);
           // Count and say: a figure short of its day's checks says so here.
           const from = salesShown && !zoneUnset && day ? fromChecks(day.net_checks, day.checks) : null;
           return (
@@ -376,12 +465,18 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
               key={dateStr}
               type="button"
               className="dn-cell dn-ink"
+              data-date={dateStr}
               data-selected={selected === dateStr}
               data-today={isToday}
+              data-past={dateStr < todayStr}
               data-future={isFuture}
-              disabled={isFuture}
+              disabled={isFuture && !(day && day.events.length > 0)}
               onClick={() => pick(dateStr)}
-              aria-label={cellLabel(dateStr, day, salesShown, zoneUnset)}
+              // DASH-W35: the square is named in words — the day, then what it
+              // holds — and says which day is open and which is today.
+              aria-pressed={selected === dateStr}
+              aria-current={isToday ? 'date' : undefined}
+              aria-label={cellLabel(dateStr, day, { salesShown, zoneUnset, seesAmounts, isToday })}
               // color-mix keeps the heat on the seal TOKEN, so both grounds
               // (İznik on paper, lifted teal on charcoal) resolve correctly;
               // browsers without color-mix quietly keep the paper-1 ground.
@@ -395,7 +490,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
               <span className="dn-cell-marks" style={{ flexWrap: 'wrap' }}>
                 {day && day.events.length > 0 && <span className="dn-dot" aria-hidden />}
                 {day && day.order_count != null && day.order_count > 0 && (
-                  <span className="dn-cell-orders text-inkm-3" style={{ ...CELL_WORDS, fontVariantNumeric: 'tabular-nums' }}>
+                  <span className="dn-cell-orders text-inkm-4" style={{ ...CELL_WORDS, fontVariantNumeric: 'tabular-nums' }}>
                     {day.order_count} {day.order_count === 1 ? 'order' : 'orders'}
                   </span>
                 )}
@@ -413,7 +508,7 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
                 </span>
               )}
               {!isFuture && month.state !== 'loading' && from && (
-                <span className="dn-cell-from text-inkm-3" style={CELL_WORDS} aria-hidden>
+                <span className="dn-cell-from text-inkm-4" style={CELL_WORDS} aria-hidden>
                   {from}
                 </span>
               )}
@@ -423,9 +518,9 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
       </div>
 
       {month.state === 'unknown' && (
-        <p className="px-4 pb-4 text-[12px] italic text-inkm-3 sm:px-5">
-          {DASH} This month’s ledger couldn’t be reached. The days keep their places; figures will
-          land when the connection returns.
+        <p className="px-4 pb-4 text-[12px] italic text-inkm-4 sm:px-5">
+          {DASH} This month’s ledger couldn’t be reached. The days keep their places.
+          <TryAgain onRetry={refetchMonth} />
         </p>
       )}
 
@@ -436,12 +531,20 @@ export function SalesCalendar({ restaurantId, alerts, activity }: SalesCalendarP
             day={selectedDay}
             daily={daily}
             zone={ledger?.timezone}
-            sales={ledger?.sales}
+            sales={seesAmounts ? ledger?.sales : undefined}
+            today={todayStr}
             dayOrders={dayOrders}
+            seesAmounts={seesAmounts}
             alerts={alerts}
             activity={activity}
-            onScrub={(d) => setSelected(d)}
-            onClose={() => setSelected(null)}
+            onScrub={(d) => show(cursor, d)}
+            onClose={() => {
+              const closing = selected;
+              show(cursor, null);
+              // DASH-W34: hand focus back to the square that opened the panel,
+              // so a keyboard isn't sent back to the top of the page.
+              if (closing) gridRef.current?.querySelector<HTMLButtonElement>(`[data-date="${closing}"]`)?.focus();
+            }}
           />
         </div>
       </div>
