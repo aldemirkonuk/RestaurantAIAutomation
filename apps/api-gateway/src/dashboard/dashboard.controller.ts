@@ -26,10 +26,18 @@ import {
 } from "./dto/dashboard-summary.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import {
+  assertSeesHouseAmounts,
+  calendarForRole,
+  statsForRole,
+} from "./amounts-for-role";
 import { policyFor } from "../ask-readings/reading-data-classes";
 
-/** The caller's role IN THE HOUSE THE TOKEN NAMES (jwt.strategy.ts). */
-type Caller = { role?: string | null } | undefined;
+/**
+ * The caller as jwt.strategy.ts builds it: the role IN THE HOUSE THE TOKEN
+ * NAMES, and `userId`, the person's `public.users.user_id`.
+ */
+type Caller = { role?: string | null; userId?: string | null } | undefined;
 
 /**
  * Does this role see the house's sales? Read from the /ask role table, so
@@ -122,9 +130,16 @@ export class DashboardController {
   })
   async getDashboardSummary(
     @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: Caller,
   ): Promise<DashboardSummaryDto> {
+    // DASH-W22: the summary carries vendor spend and whole order rows.
+    assertSeesHouseAmounts(user?.role);
     try {
-      return await this.dashboardService.getDashboardSummary(restaurantId);
+      // The notices leg reads only the caller's own rows, as the bell does.
+      return await this.dashboardService.getDashboardSummary(
+        restaurantId,
+        user?.userId ?? null,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch dashboard summary",
@@ -172,11 +187,16 @@ export class DashboardController {
     const year = calendarPart(yearStr, "year", 1970, 9999);
     const month = calendarPart(monthStr, "month", 1, 12);
     try {
-      return await this.dashboardService.getCalendarRevenue(
-        restaurantId,
-        year,
-        month,
-        { withSales: seesHouseSales(user?.role) },
+      // DASH-W22: staff keep the days, deliveries and bottles, not the spend.
+      // ADR 0290 §5: sales are read only for a role that sees them.
+      return calendarForRole(
+        await this.dashboardService.getCalendarRevenue(
+          restaurantId,
+          year,
+          month,
+          { withSales: seesHouseSales(user?.role) },
+        ),
+        user?.role,
       );
     } catch (error) {
       throw new HttpException(
@@ -204,9 +224,11 @@ export class DashboardController {
   })
   async getStats(
     @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: Caller,
   ): Promise<DashboardStatsDto> {
     try {
-      return await this.dashboardService.getStats(restaurantId);
+      // DASH-W22: staff keep the counts, not the spend.
+      return statsForRole(await this.dashboardService.getStats(restaurantId), user?.role);
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch dashboard stats",
@@ -300,7 +322,10 @@ export class DashboardController {
   async getSalesChart(
     @Param("restaurantId") restaurantId: string,
     @Query("period") period?: "day" | "week" | "month" | "year",
+    @CurrentUser() user?: Caller,
   ): Promise<SalesChartPointDto[]> {
+    // DASH-W22: a vendor-spend series is nothing but money.
+    assertSeesHouseAmounts(user?.role);
     try {
       return await this.dashboardService.getSalesChart(
         restaurantId,
@@ -330,7 +355,10 @@ export class DashboardController {
   })
   async getInventoryBreakdown(
     @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: Caller,
   ): Promise<InventoryBreakdownDto> {
+    // DASH-W22: its per-type value is menu price times stock.
+    assertSeesHouseAmounts(user?.role);
     try {
       return await this.dashboardService.getInventoryBreakdown(restaurantId);
     } catch (error) {

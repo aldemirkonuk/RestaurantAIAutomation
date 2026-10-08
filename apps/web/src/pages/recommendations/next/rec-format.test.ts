@@ -12,7 +12,22 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { handOf, heldBy, receiptFor } from './rec-format';
+import {
+  handOf,
+  heldBy,
+  receiptFor,
+  STAKE_LABEL,
+  STAKE_ORDER,
+  stakeFilingOf,
+  stakeInSentence,
+  stakeOf,
+  urgencyLabel,
+  type StakeId,
+} from './rec-format';
+import { actOf } from './rec-docket';
+import { cuttingFor, goalOfferFor } from './rec-forward';
+import { daybookBasis, daybookDraftFor, leverWords, leversFor, METRIC_CATEGORIES } from './rec-daybook';
+import type { EntryVM } from './useRecommendationsNextData';
 
 function entry(over: Partial<Parameters<typeof receiptFor>[0]> = {}) {
   return {
@@ -113,5 +128,216 @@ describe('heldBy — whose hand, for the person looking (founder item 87, OD-176
     for (const h of hands.filter((x) => x.where !== 'Promotions')) {
       expect(heldBy(h, 'staff')).toEqual({ yours: true, words: `Yours, in ${h.where}`, opens: null });
     }
+  });
+});
+
+/**
+ * ADR 0288 (AW28). The register promises "what acting on an entry would
+ * change". The engine's category is a different fact, and for its two
+ * `efficiency` rules it filed a price change and a bottle moved under The
+ * floor — so with Money pressed, "Price it" left out a price change. The
+ * founder, 2026-10-04: "Money / Stock (Recommended)"; and for the two rules
+ * the lane asked about next, revenue_concentration "Stock (Recommended)" and
+ * weekday_gap "The floor (Recommended)".
+ */
+describe('the register — filed by what acting on it changes (ADR 0288)', () => {
+  /**
+   * Every rule the engine names, with the category it emits, read from
+   * `apps/api-gateway/src/analytics/recommendations.service.ts` (`rule(…)`
+   * and its `category:`), plus one of the goal-behind family. The claim row
+   * ADR-0288-PRICE-AND-STOCK-FILED-BY-WHAT-THEY-CHANGE re-reads the engine
+   * itself, so a new rule with an unmapped category fails CI, not only here.
+   */
+  const ENGINE_RULES: Array<[string, string]> = [
+    ['sales_below_weekday_baseline', 'sales'],
+    ['weekly_demand_slide', 'sales'],
+    ['stockout_imminent', 'inventory'],
+    ['dead_stock_capital', 'inventory'],
+    ['plowhorse_repricing', 'efficiency'],
+    ['puzzle_activation', 'efficiency'],
+    ['margin_target_unset', 'pricing'],
+    ['margin_to_target', 'pricing'],
+    ['pour_size_unconfirmed', 'pricing'],
+    ['price_locks_to_review', 'pricing'],
+    ['margin_advice_blind', 'pricing'],
+    ['vendor_concentration', 'risk'],
+    ['revenue_concentration', 'risk'],
+    ['weekday_gap', 'sales'],
+    ['spend_acceleration', 'purchasing'],
+    ['staff_spread', 'staff'],
+    ['pairing_promotion', 'basket'],
+    ['goal_behind_x', 'goals'],
+  ];
+
+  it('files the price change under Money and the bottle moved under Stock, not The floor', () => {
+    expect(stakeOf('plowhorse_repricing', 'efficiency')).toBe('money');
+    expect(stakeOf('puzzle_activation', 'efficiency')).toBe('stock');
+  });
+
+  it('files the top sellers’ buffer under Stock and the weekday move under The floor, by name', () => {
+    // The founder, 2026-10-04: "Stock (Recommended)" and "The floor (Recommended)".
+    expect(stakeOf('revenue_concentration', 'risk')).toBe('stock');
+    expect(stakeOf('weekday_gap', 'sales')).toBe('floor');
+    expect(stakeOf('weekday_gap#*#fire:week:2026-W40', null)).toBe('floor');
+    const buffer = stakeFilingOf('revenue_concentration', 'risk');
+    expect(buffer.by).toBe('rule');
+    expect(buffer.why).toMatch(/Protect the top sellers’ stock first/);
+    const gap = stakeFilingOf('weekday_gap', 'sales');
+    expect(gap.by).toBe('rule');
+    expect(gap.why).toMatch(/leads with “Move staff training, deliveries, and inventory counts/);
+    // their categories still file every other rule as before
+    expect(stakeOf('vendor_concentration', 'risk')).toBe('vendors');
+    expect(stakeOf('sales_below_weekday_baseline', 'sales')).toBe('money');
+    expect(stakeOf('weekly_demand_slide', 'sales')).toBe('money');
+  });
+
+  it('reads the rule out of a composite stored key, so the leaves file as the book does', () => {
+    // A row on Snoozed / Dismissed / History carries the stored key (ADR 0191).
+    expect(stakeOf('plowhorse_repricing#*#fire:week:2026-W40', 'efficiency')).toBe('money');
+    expect(stakeOf('plowhorse_repricing#*#fire:week:2026-W40', '')).toBe('money');
+    expect(stakeOf('puzzle_activation#*#fire:week:2026-W40', null)).toBe('stock');
+  });
+
+  it('a new efficiency rule lands in Unfiled, never in a register nobody sorted it into', () => {
+    expect(stakeOf('a_new_efficiency_rule', 'efficiency')).toBe('unfiled');
+    expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').by).toBe('unfiled');
+    expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').why).toMatch(/no register for the rule a_new_efficiency_rule/);
+  });
+
+  it('names a register lower-case inside a sentence, and keeps the rail’s capitals in STAKE_LABEL', () => {
+    // The founder, 2026-10-07: "Lower-case mid-sentence (Recommended)".
+    expect(STAKE_ORDER.map(stakeInSentence)).toEqual(['money', 'stock', 'vendors', 'the floor', 'unfiled']);
+    expect(STAKE_ORDER.map((s) => STAKE_LABEL[s])).toEqual(['Money', 'Stock', 'Vendors', 'The floor', 'Unfiled']);
+    // both unfiled whys name the register inside their sentence
+    for (const why of [
+      stakeFilingOf('a_new_efficiency_rule', 'efficiency').why,
+      stakeFilingOf('a_new_efficiency_rule', null).why,
+    ]) {
+      expect(why).toContain('It is shown under unfiled rather than sorted by guesswork.');
+      expect(why).not.toContain('Unfiled');
+    }
+  });
+
+  it('prints a stake it does not know as its own word, lower-case, never a throw', () => {
+    // `stakeOf` always returns a register; only a hand-built entry carries one.
+    expect(stakeInSentence('Cash' as StakeId)).toBe('cash');
+    expect(stakeInSentence('constructor' as StakeId)).toBe('constructor');
+  });
+
+  it('no engine rule is unfiled; every Price it rule is Money and every Move stock rule is Stock', () => {
+    const priced = ENGINE_RULES.filter(([k]) => actOf(k).act === 'price');
+    const moved = ENGINE_RULES.filter(([k]) => actOf(k).act === 'stock');
+    // not vacuous: the two rules the founder ruled on are in the two sets
+    expect(priced.map(([k]) => k)).toContain('plowhorse_repricing');
+    expect(moved.map(([k]) => k)).toContain('puzzle_activation');
+    for (const [k, c] of ENGINE_RULES) expect([k, stakeOf(k, c)]).not.toEqual([k, 'unfiled']);
+    for (const [k, c] of priced) expect([k, stakeOf(k, c)]).toEqual([k, 'money']);
+    for (const [k, c] of moved) expect([k, stakeOf(k, c)]).toEqual([k, 'stock']);
+  });
+
+  it('says why: the rule’s own sentence when filed by name, the category when it fell back', () => {
+    const plow = stakeFilingOf('plowhorse_repricing', 'efficiency');
+    expect(plow.by).toBe('rule');
+    expect(plow.why).toMatch(/Raise those prices/);
+    const puzzle = stakeFilingOf('puzzle_activation', 'efficiency');
+    expect(puzzle.by).toBe('rule');
+    expect(puzzle.why).toMatch(/by-the-glass/);
+    const stockout = stakeFilingOf('stockout_imminent', 'inventory');
+    expect(stockout).toMatchObject({ stake: 'stock', by: 'category' });
+    expect(stockout.why).toMatch(/category, inventory/);
+  });
+});
+
+/**
+ * ADR 0288, audit of PR #611. The tables are object literals, so a plain
+ * `table[key]` answers a stored key that names something on
+ * `Object.prototype` (`constructor`, `__proto__`, `toString`, `valueOf`) with
+ * an inherited value instead of nothing. The register then filed such an
+ * entry as `{ stake: undefined, why: undefined }`: the working read "Why it
+ * would change undefined" and the entry fell out of every register count,
+ * Unfiled included. `setAction` rejects only an empty `ruleKey`, so such a
+ * key can reach the Snoozed, Dismissed and History leaves. Each table is now
+ * read by its own rows only, and such a key is an unknown rule.
+ */
+describe('a key named on Object.prototype is an unknown rule, never an inherited row (ADR 0288)', () => {
+  const PROTO_KEYS = ['constructor', '__proto__', 'toString', 'valueOf'];
+
+  it.each(PROTO_KEYS)('the register files the rule %s under Unfiled, with a why', (key) => {
+    const filing = stakeFilingOf(key, null);
+    expect(filing).toEqual({ stake: 'unfiled', by: 'unfiled', why: expect.any(String) });
+    expect(filing.why).toContain(`no register for the rule ${key}`);
+    // a category no register knows changes nothing
+    expect(stakeFilingOf(key, 'efficiency')).toMatchObject({ stake: 'unfiled', by: 'unfiled' });
+    // nor does a composite stored key on the leaves (ADR 0191)
+    expect(stakeOf(`${key}#*#fire:week:2026-W40`, null)).toBe('unfiled');
+  });
+
+  it('a rule key named on Object.prototype still files by a category the page knows', () => {
+    expect(stakeFilingOf('valueOf', 'inventory')).toMatchObject({ stake: 'stock', by: 'category' });
+    expect(stakeFilingOf('constructor', 'pricing')).toMatchObject({ stake: 'money', by: 'category' });
+  });
+
+  it.each(['constructor', '__proto__', 'toString'])('a category named %s files under Unfiled, with a why', (cat) => {
+    const filing = stakeFilingOf('a_rule_not_filed_by_name', cat);
+    expect(filing).toEqual({ stake: 'unfiled', by: 'unfiled', why: expect.any(String) });
+    expect(filing.why).toContain(`or for its category, ${cat}`);
+  });
+
+  it.each(PROTO_KEYS)('the docket files the rule %s under its unfiled act, with a why', (key) => {
+    const filing = actOf(key);
+    expect(filing.act).toBe('unfiled');
+    expect(filing.why).toContain(`no act filed for the rule ${key}`);
+  });
+
+  it.each(PROTO_KEYS)('the hand of the rule %s falls back to its category, then Reports', (key) => {
+    expect(handOf(key, 'inventory')).toMatchObject({ label: 'Open Inventory', where: 'Inventory' });
+    expect(handOf(key, 'inventory').href).toMatch(/^\/inventory\?rec=/);
+    expect(handOf(key, key)).toMatchObject({ label: 'Open Reports', where: 'Reports' });
+    expect(handOf(key, key).href).toMatch(/^\/reports\?rec=/);
+  });
+
+  /*
+   * 2026-10-06, the PR #611 audit at 9d1d9fa53: the page's other tables keyed
+   * by a stored rule, urgency or goal metric read a plain `table[key]` too.
+   * `__proto__` gave the goal and cutting doors `Object.prototype` as a
+   * refusal's why, and the page threw rendering it. They read own rows now.
+   */
+  const forward = (ruleKey: string) => ({ ruleKey, category: 'efficiency', urgency: 'now', subject: null });
+
+  it.each(PROTO_KEYS)('the goal door refuses the rule %s in words', (key) => {
+    expect(goalOfferFor(forward(key))).toEqual({
+      kind: 'refused',
+      why: expect.stringContaining(`no metric filed for the rule ${key}`),
+    });
+  });
+
+  it.each(PROTO_KEYS)('the cutting door refuses the rule %s in words', (key) => {
+    expect(cuttingFor(forward(key))).toEqual({
+      kind: 'refused',
+      why: expect.stringContaining(`no cutting filed for the rule ${key}`),
+    });
+  });
+
+  it.each(PROTO_KEYS)('the day-book drafts the rule %s as a rule it has no spec for', (key) => {
+    const draft = daybookDraftFor({ ruleKey: key, recommendation: 'Do it.' } as EntryVM, '2026-10-06');
+    expect(draft).toEqual({
+      title: `Follow up: ${key}`,
+      date: '2026-10-06',
+      type: 'custom',
+      note: `From the recommendations book — rule ${key}. Do it.`,
+    });
+    expect(daybookBasis(key)).toBeNull();
+  });
+
+  it.each(PROTO_KEYS)('the urgency %s is said as its own word', (key) => {
+    expect(urgencyLabel(key)).toBe(key);
+  });
+
+  it.each(PROTO_KEYS)('a goal held on %s names no levers, and says the metric is not mapped', (key) => {
+    const slip = { goalId: 'g-1', name: 'A goal', metricKey: key, href: '/reports', landing: '' };
+    expect(leversFor(slip, [])).toBeNull();
+    expect(leverWords(slip, null)).toBe(
+      `This goal is held on ${key}, which is not one of the ${Object.keys(METRIC_CATEGORIES).length} metrics the gateway maps to insight categories, so the rule’s “this goal’s category” has no answer here.`,
+    );
   });
 });
