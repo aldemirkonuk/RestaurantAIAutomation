@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   actsWaiting,
   counterHead,
+  roomForAct,
   verbMark,
   type CounterRegister,
 } from './counterRead';
@@ -107,5 +108,22 @@ describe('the dot: something waits on YOU, or cannot say', () => {
   it('null — not false — when a register was not read', () => {
     const quiet = [answered('orders', 'seal', 0), unread('threads', 'reply')];
     expect(actsWaiting(quiet)).toBeNull();
+  });
+});
+
+describe('roomForAct — an act opens the record it names (DASH-W16e)', () => {
+  const thread = { id: 't-1', vendor: null, orderNumber: null, channel: null, intent: null, aiGenerated: false, createdAt: null };
+  it('deep-links every register that has a room, and none that has not', () => {
+    expect(roomForAct('orders', { id: 'o-1' } as never)).toEqual({ name: 'Orders', path: '/orders?order=o-1' });
+    expect(roomForAct('deliveries', { orderId: 'o-2' } as never)).toEqual({ name: 'Receiving', path: '/receiving?order=o-2' });
+    expect(roomForAct('credits', { id: 'c-1' } as never)).toEqual({ name: 'Receipts & Credits', path: '/receipts?tab=credits&credit=c-1' });
+    expect(roomForAct('threads', { ...thread, orderId: 'o-3' })).toEqual({ name: 'Communications', path: '/communications?reply=o-3' });
+    expect(roomForAct('threads', { ...thread, orderId: null })).toEqual({ name: 'Communications', path: '/communications' });
+    expect(roomForAct('invitations', { id: 'i-1' } as never)).toEqual({ name: 'Team', path: '/team' });
+    expect(roomForAct('identities', { id: 'x' } as never)).toBeNull();
+    expect(roomForAct('proposals', { id: 'x' } as never)).toBeNull();
+  });
+  it('encodes the id', () => {
+    expect(roomForAct('orders', { id: 'a&b=c d' } as never)?.path).toBe('/orders?order=a%26b%3Dc%20d');
   });
 });

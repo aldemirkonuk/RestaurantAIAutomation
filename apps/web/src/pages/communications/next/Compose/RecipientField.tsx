@@ -181,8 +181,8 @@ export function RecipientField({
           />
           {book.length === 0 && (
             <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
-              This house has no vendor address on record yet. Add one on /providers, or add a
-              contact below — a letter is never sent to an address the book does not hold.
+              This house has no vendor address on record yet. Add one on the Vendors page, or add a
+              contact below. A letter only goes to an address in the house's book.
             </p>
           )}
           {matches.length > 0 && (

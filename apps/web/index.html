@@ -8,8 +8,14 @@
 
          PAPER UNLESS THE ACCOUNT SAID OTHERWISE (founder, 2026-09-21). The
          default needs no lookup at all and is NEVER the device's light/dark
-         setting — there is deliberately no `matchMedia` or
-         `prefers-color-scheme` read anywhere on this path.
+         setting. [2026-10-01, ADR 0169 amendment batch 4: the person may now
+         choose System — "Paper / Charcoal / System". So the device IS read on
+         exactly one branch: a mirror that says `system` resolves through
+         `prefers-color-scheme` here, before paint, so a System person on a
+         dark device does not flash paper. No other branch reads it — no
+         token, no mirror, paper or charcoal never touch `matchMedia`, and
+         ADR 0169's CLAIMS row fails if a line here reads it without
+         `=== 'system'` on it.]
 
          The choice itself lives on the person's account
          (`user_preferences.preferences.ground`), which cannot be read before
@@ -23,9 +29,11 @@
          person's.
 
          Keep this in sync BY HAND with `src/lib/mudavym/groundChoice.ts`
-         (same key prefix, same attribute) — there is no bundler step that
-         shares code into a static HTML file. `groundChoiceNoFlash.test.ts`
-         checks that they still agree. -->
+         (same key prefix, same attribute, the same three stored values, and
+         `system` resolved through the same media query as its
+         `deviceQueryFor`) — there is no bundler step that shares code into a
+         static HTML file. `groundChoiceNoFlash.test.ts` checks that they
+         still agree. -->
     <script>
       (function () {
         var ground = 'paper';
@@ -39,6 +47,7 @@
             if (sub) {
               var mirrored = window.localStorage.getItem('mudavym.ground.' + sub);
               if (mirrored === 'charcoal' || mirrored === 'paper') ground = mirrored;
+              else if (mirrored === 'system' && window.matchMedia) ground = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'charcoal' : 'paper';
             }
           }
         } catch (e) {

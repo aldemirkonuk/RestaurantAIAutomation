@@ -218,7 +218,18 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
    `house-header.css`), mounted by `PageGate` above every `next` tree — one
    place, no page edits, and structurally incapable of appearing over a legacy
    page. The legacy `Header` is untouched and stays for legacy pages until they
-   are retired.
+   are retired. **[2026-10-01: the theme switch has left BOTH headers — founder,
+   2026-10-01, page walk-through DASH-W23: "approve + remove the system theme from
+   top bar into settings". `ThemeMenu.tsx` is deleted, and with it the legacy
+   Light/Dark/System app-theme menu; the person's ground (Paper / Charcoal, ADR
+   0169) is chosen in `/profile`'s Preferences card, which every role can reach.
+   ADR 0169 §Amendment 2026-10-01.]** **[2026-10-01 (batch 4): "Paper / Charcoal" is now
+   Paper / Charcoal / System — founder, 2026-10-01: "Paper / Charcoal / System". System
+   follows the device live; paper stays the default for anyone who never chose, and a
+   one-time `Panel` sheet asks them at first sign-in, mounted once in `DashboardLayout`
+   and never over the data-terms sheet. The old app theme is reset to light once more
+   (`wineops-theme-v3`); the ground choice never drives it. ADR 0169 §Amendment
+   2026-10-01 (batch 4).]**
 
    - **The chrome-free list is now two, and both are decided, not accidental:**
      `receiving_door` (routed outside `DashboardLayout` on purpose — "used at a
@@ -297,6 +308,10 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      one control, the counter's toggle, with a dot when acts wait (a hollow dot
      when a register was not read — never a number). Under the shell `PageGate`
      mounts no second header and the legacy `Header` keeps only its title.
+     **[2026-10-01, DASH-W23: the header's right-hand controls are the house (or
+     branch switcher), the counter's toggle, Ask, the bell and the account menu —
+     no theme control. The ground is chosen on `/profile` (founder, 2026-10-01,
+     page walk-through DASH-W23).]**
    - **The counter** — a 320 px right column holding what waits on the signed-in
      person, by verb: **Seal** (orders awaiting the seal), **Verify** (deliveries
      counted by case, credits promised), **Reply** (vendor replies waiting),
@@ -318,12 +333,21 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      (`POST /ask-ai/actions/:id/seal-challenge` then `sealed-confirm`, subject
      kind `ai_proposed_action`, migration `20260921114400`) — applied only by the
      seal, never by a click. Verify, Reply and invitations open their own page;
-     identity candidates say no page decides them yet.
+     identity candidates say no page decides them yet. A sheet's *Open in
+     <Room>* lands on the record the act names, not the bare room
+     (`roomForAct`, `lib/mudavym/counterRead.ts`; founder, 2026-10-01, page
+     walk-through DASH-W16e): `/orders?order=`, `/receiving?order=`,
+     `/receipts?tab=credits&credit=`, `/communications?reply=<order id>`;
+     invitations stay on bare `/team`, and *N more on <Room>* opens the whole
+     room.
    - **The width rule, "Open first, then remember"** — open at normal widths on a
      person's first visits; tucked below 1280 px and on `/reports` and
-     `/inventory` to a ~52 px strip that still shows each verb with its count (a
+     `/inventory` [Amended 2026-10-07: and on the dashboard at `/`, ADR 0290's
+     *"Counter starts tucked"*, `fix/dashboard-counter-starts-tucked`] to a ~52 px strip that still shows each verb with its count (a
      ring for a verb with a register not read, a dash for one refused — never a
-     blank edge); after that each person's choice per page wins. Kept per device
+     blank edge); after that each person's choice per page wins [Corrected
+     2026-10-07: one choice, kept for every page, since the founder's
+     2026-10-01 narrowing (`counterPrefs.ts`'s header); not one per page]. Kept per device
      in localStorage keyed by the person (`lib/mudavym/counterPrefs.ts` says why
      not the server route).
    - **The house said** — the sitting's own log of what the house sealed,

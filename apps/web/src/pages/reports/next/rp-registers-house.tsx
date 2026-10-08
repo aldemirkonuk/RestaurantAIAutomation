@@ -250,11 +250,70 @@ const ledger = analysis<LedgerRegister>({
   },
 });
 
+/* ──────────────────────────── 8–9. what an empty POS window means ──── */
+
+/**
+ * The two POS registers below (the room, who served it) used to read "no check
+ * in the window names a table / a server" as a fault in the feed — "an absent
+ * field on the POS feed", "an absent attribution". The page is fixed at 90
+ * days, so a window that simply holds no check (the feed stopped, the house
+ * closed for a season) printed the same accusation. Analytics walk, 2026-10-03
+ * (A-040): a window starting after Aug 30 on Tuzlu Rüzgar holds 0 checks
+ * because the feed stops there, not because a field is missing.
+ *
+ * The gateway now says which it is (`table-analytics.service.ts` feedStatus):
+ * `checksInWindow` counts the non-voided checks it read, and `latestCheckAt`
+ * is the newest one this house has — null only when it has none at all. An
+ * older gateway sends neither, and then this page asserts neither cause.
+ */
+export interface PosWindow {
+  sinceDays: number;
+  /** null: the gateway did not say (it predates the field). */
+  checksInWindow: number | null;
+  /** The newest non-voided check's `opened_at`; null when none is on record. */
+  latestCheckAt: string | null;
+}
+
+function posWindowOf(d: Record<string, unknown>): PosWindow {
+  return {
+    sinceDays: num(d.sinceDays) ?? 90,
+    checksInWindow: num(d.checksInWindow),
+    latestCheckAt: typeof d.latestCheckAt === 'string' && d.latestCheckAt ? d.latestCheckAt : null,
+  };
+}
+
+/** "Aug 30, 2026" from an ISO timestamp, in the reader's own calendar. */
+function onDay(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * The sentence for a window that holds NO check, or null when it holds some
+ * (or the gateway did not say). Only the caller's `checksInWindow > 0` branch
+ * may blame a missing field — there are checks, and none of them carries it.
+ */
+export function emptyWindowLine(w: PosWindow): string | null {
+  if (w.checksInWindow !== 0) return null;
+  return w.latestCheckAt
+    ? `No POS check was opened in the last ${w.sinceDays} days — the latest this house has is from ${onDay(w.latestCheckAt)}. The window is empty; no field is missing.`
+    : 'No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.';
+}
+
 /* ──────────────────────────────────────────────────────── 8. the room ─── */
 
-export interface SeatsRegister {
-  sinceDays: number;
+export interface SeatsRegister extends PosWindow {
   dataStatus: string;
+  /** Checks in the window with no table: the till named none, or a word no table answers (ADR 0303); null from an older gateway. */
+  checksWithoutTable: number | null;
+  /** Checks in the window at a hidden (or retired) table; null from an older gateway. */
+  checksAtHiddenTables: number | null;
+  /** How many hidden (or retired) tables those checks were at. */
+  hiddenTables: number | null;
+  /** The house's tables hidden now, whatever the window held; null from an older gateway. */
+  hiddenTablesInHouse: number | null;
   tables: Array<{
     tableId: string;
     label: string;
@@ -282,8 +341,12 @@ const seats = analysis<SeatsRegister>({
   select: (raw) => {
     const d = obj(raw);
     return {
-      sinceDays: num(d.sinceDays) ?? 90,
+      ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
+      checksWithoutTable: num(d.checksWithoutTable),
+      checksAtHiddenTables: num(d.checksAtHiddenTables),
+      hiddenTables: num(d.hiddenTables),
+      hiddenTablesInHouse: num(d.hiddenTablesInHouse),
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
         label: str(t.label),
@@ -301,16 +364,39 @@ const seats = analysis<SeatsRegister>({
   },
   view: (s) => {
     const basis = [
-      `Non-voided pos_checks attributed to a table over the last ${s.sinceDays} days.`,
+      `Non-voided pos_checks the till attributed to a shown table over the last ${s.sinceDays} days.`,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
     ];
+    // ADR 0303: tables are learned from the till, so nothing is drawn. A check
+    // the till sent without a table, or one at a table the owner hid, is in
+    // takings and in no table's figure; the register says how many.
+    const withoutTable = s.checksWithoutTable ?? 0;
+    const atHidden = s.checksAtHiddenTables ?? 0;
+    const hiddenInHouse = s.hiddenTablesInHouse ?? 0;
+    const hiddenNote =
+      atHidden > 0
+        ? `${countOf(atHidden, 'check was', 'checks were')} at ${countOf(s.hiddenTables ?? 0, 'hidden table', 'hidden tables')}: counted in takings, not shown here.`
+        : null;
     if (s.tables.length === 0)
       return {
-        say: 'No table is mapped for this restaurant yet, so no check can be attributed to a seat. The room has to be drawn before it can be read.',
+        say:
+          withoutTable > 0
+            ? `${countOf(withoutTable, 'check in this window has', 'checks in this window have')} no table, so none can be attributed to a seat. They are in takings. A till word with no number in it, such as Booth or a name, makes no table.`
+            : atHidden > 0
+              ? 'No shown table took a check in this window; show a table again under Settings → Point of sale.'
+              : hiddenInHouse > 0
+                ? 'Every table in this house is hidden, and this window held no check. Show a table again under Settings → Point of sale.'
+                : 'This house has no table yet, so no check can be attributed to a seat. A table is learned when a check arrives naming one with a number in it, such as T12, 12 or Patio 3; rename or hide it under Settings → Point of sale.',
         figures: [],
-        notes: [],
+        notes: hiddenNote ? [hiddenNote] : [],
         basis,
       };
+    const roomNotes = [
+      withoutTable > 0
+        ? `${countOf(withoutTable, 'check has', 'checks have')} no table: counted in takings, not in the room.`
+        : null,
+      hiddenNote,
+    ].filter((n): n is string => n !== null);
     const served = s.tables.filter((t) => t.checks > 0);
     const figures = [
       { label: 'Tables in the room', value: figure(s.tables.length) },
@@ -321,13 +407,27 @@ const seats = analysis<SeatsRegister>({
         note: 'No check has been attributed to any table',
       },
     ];
-    if (served.length === 0)
+    if (served.length === 0) {
+      const mapped = `${countOf(s.tables.length, 'table is', 'tables are')} mapped`;
+      const empty = emptyWindowLine(s);
+      const n = s.checksInWindow;
+      const none =
+        n === 1
+          ? `the one check in the last ${s.sinceDays} days was not`
+          : `not one of the ${countOf(n, 'check', 'checks')} in the last ${s.sinceDays} days was`;
       return {
-        say: `${countOf(s.tables.length, 'table is', 'tables are')} mapped, and not one check in the last ${s.sinceDays} days was attributed to any of them — that is an absent attribution, not an empty room.`,
+        say: empty
+          ? `${mapped}. ${empty}`
+          : n !== null && n > 0
+            ? atHidden > 0
+              ? `${mapped}, and ${none} attributed to any of them.`
+              : `${mapped}, and ${none} attributed to any of them — that is an absent attribution, not an empty room.`
+            : `${mapped}, and no check in the last ${s.sinceDays} days was attributed to any of them. This register does not say whether the window held any check, so an empty window and checks that name no table cannot be told apart here.`,
         figures,
-        notes: [],
+        notes: roomNotes,
         basis,
       };
+    }
     const withCheck = served.filter((t) => t.avgCheck != null && t.seats != null);
     return {
       cats: {
@@ -374,12 +474,14 @@ const seats = analysis<SeatsRegister>({
         })),
       },
       figures,
-      notes:
-        s.tables.length > served.length
+      notes: [
+        ...(s.tables.length > served.length
           ? [
               `${countOf(s.tables.length - served.length, 'mapped table', 'mapped tables')} took no check in the window, and is drawn at no height rather than left off the chart.`,
             ]
-          : [],
+          : []),
+        ...roomNotes,
+      ],
       basis,
     };
   },
@@ -387,8 +489,7 @@ const seats = analysis<SeatsRegister>({
 
 /* ────────────────────────────────────────────────── 9. who served it ──── */
 
-export interface ServiceRegister {
-  sinceDays: number;
+export interface ServiceRegister extends PosWindow {
   dataStatus: string;
   adjusted: { method?: string; r2?: number | null } | null;
   waiters: Array<{
@@ -415,7 +516,7 @@ const service = analysis<ServiceRegister>({
     const d = obj(raw);
     const adj = d.adjusted ? obj(d.adjusted) : null;
     return {
-      sinceDays: num(d.sinceDays) ?? 90,
+      ...posWindowOf(d),
       dataStatus: str(d.dataStatus),
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       waiters: arr(d.waiters).map((w) => ({
@@ -443,13 +544,23 @@ const service = analysis<ServiceRegister>({
         note: 'Needs 10 checks across at least two tables before a server can be separated from their section',
       },
     ];
-    if (s.waiters.length === 0)
+    if (s.waiters.length === 0) {
+      const n = s.checksInWindow;
+      const none =
+        n === 1
+          ? `The one check in the last ${s.sinceDays} days carries no`
+          : `None of the ${countOf(n, 'check', 'checks')} in the last ${s.sinceDays} days carries a`;
       return {
-        say: 'No check in the window carries a server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.',
+        say:
+          emptyWindowLine(s) ??
+          (n !== null && n > 0
+            ? `${none} server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.`
+            : `No check in the last ${s.sinceDays} days names a server. This register does not say whether the window held any check, so an empty window and checks that carry no server name cannot be told apart here.`),
         figures,
         notes: [],
         basis,
       };
+    }
     return {
       cats: {
         data: s.waiters.slice(0, 14).map((w) => ({
@@ -508,6 +619,35 @@ export interface RestockRegister {
   }>;
 }
 
+/**
+ * The first `n` bars, extended through every row tied with bar `n` (ADR 0272).
+ *
+ * The register arrives highest risk first, and a plain `slice(0, 14)` drew
+ * some wines of a tie and dropped the rest by row order — a ranking the data
+ * did not make. A tie is the same computed risk, to within floating-point
+ * noise (one part in a billion, the gateway's own `sameValue`); two risks that
+ * merely PRINT alike (26.8% and 26.9%, both "27%") are not tied.
+ *
+ * A tie at 0% is never extended, as on the gateway's cut: it is the wines with
+ * no demand and nothing on hand, a group with no risk to rank and no height to
+ * draw, and extending through it drew every one of them.
+ */
+function barsKeepingTies(
+  rows: RestockRegister['reorderList'],
+  n: number,
+): RestockRegister['reorderList'] {
+  if (rows.length <= n) return rows;
+  const same = (a: number | null, b: number | null) =>
+    a == null || b == null
+      ? a == null && b == null
+      : Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+  const edge = rows[n - 1].stockoutProbability;
+  if (edge == null || edge <= 0 || same(edge, 0)) return rows.slice(0, n);
+  let end = n;
+  while (end < rows.length && same(rows[end].stockoutProbability, edge)) end++;
+  return rows.slice(0, end);
+}
+
 const restock = analysis<RestockRegister>({
   title: 'What to buy back',
   register: 'reorder register',
@@ -564,7 +704,7 @@ const restock = analysis<RestockRegister>({
       };
     return {
       cats: {
-        data: r.reorderList.slice(0, 14).map((s) => ({
+        data: barsKeepingTies(r.reorderList, 14).map((s) => ({
           label: s.name.length > 12 ? `${s.name.slice(0, 11)}…` : s.name,
           value: s.stockoutProbability,
           full: `${s.name} · ${figure(s.onHand)} on hand`,

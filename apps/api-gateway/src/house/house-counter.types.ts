@@ -103,6 +103,7 @@ export interface CounterThreadRow {
   intent: string | null;
   aiGenerated: boolean;
   createdAt: string | null;
+  orderId: string | null;
 }
 
 export interface CounterIdentityRow {

@@ -90,7 +90,9 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 > header — `apps/web/src/components/mudavym/HouseHeader.tsx`, mounted by
 > `PageGate` above every `next` tree: the A+M mark, this page's name, the ⌘K
 > "Search or act" trigger, the house (or the branch switcher when there is more
-> than one), the bell, the theme menu and the account menu. Chrome is excluded
+> than one), the bell, ~~the theme menu~~ and the account menu **[2026-10-01: the theme
+> menu left the header — founder, page walk-through DASH-W23; the ground is chosen on
+> `/profile`]**. Chrome is excluded
 > from §Surface by PAGE-CONTRACT, so it is named here and nowhere else in this
 > note; its motions live in `components/mudavym/MOTIONS.md`, not the table
 > below.

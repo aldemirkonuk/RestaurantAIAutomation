@@ -43,6 +43,7 @@ import {
   type RaiseOutcome,
 } from "./delivery-item-to-name";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { assertProviderBelongsToRestaurant } from "../common/tenant/assert-provider-belongs-to-restaurant";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
@@ -84,6 +85,10 @@ import {
   OwnPaperProvenance,
   PaperCandidate,
   PaperLineCandidate,
+  ReceiptPaper,
+  ReceiptPaperRead,
+  SightingDate,
+  dateReceiptSighting,
   decideOwnPaperSighting,
   isOutlierAgainstPriors,
   isOwnPaperSource,
@@ -137,6 +142,7 @@ import {
   decideApproval,
   type ApprovalDecision,
   type OrderUnderTest,
+  type ThresholdRow,
 } from "../settings/approval-thresholds";
 import { OrganizationsService } from "../organizations/organizations.service";
 import {
@@ -145,6 +151,11 @@ import {
   refusalSentence,
   roleSatisfies,
 } from "./order-approval-gate";
+import {
+  flaggedFirst,
+  pendingOrderPriority,
+  type PendingOrderPriority,
+} from "./pending-order-priority";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { escapeHtml, textToEmailHtml } from "../common/html/escape-html";
 import {
@@ -184,6 +195,7 @@ import {
   verdictFor as cancelReasonVerdictFor,
 } from "./cancel-reason";
 import { deadlineOf } from "./delivery-deadline";
+import { type BlanksAtSend, signatureSlotRe, unfilledSlotsRefusal, unfilledTemplateSlots } from "./unfilled-slots";
 import { houseFrame } from "../common/house-frame";
 import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
@@ -220,13 +232,27 @@ const UUID_RE =
  */
 const MASTER_WINE_LIBRARY_NAMESPACE = "mudavym:master_wine_library";
 
-// The two terminal states of a calendar event, built from `CalendarEventStatus`
-// rather than restated as literals so a divergence is a compile error (ADR
-// 0066).
-const TERMINAL_CALENDAR_STATUSES = [
-  CalendarEventStatus.COMPLETED,
-  CalendarEventStatus.CANCELLED,
-] as const;
+/**
+ * The day an order says its delivery is due, or `null` when it states none.
+ *
+ * `procurement_orders.expected_delivery_date` is a `date` column, which
+ * PostgREST returns as `YYYY-MM-DD`; a timestamp-shaped value is cut to its
+ * day rather than refused, and anything that is not a day at all is treated as
+ * no date, so the event falls back to the labelled estimate instead of landing
+ * on a day nobody stated (ADR 0284).
+ */
+export function statedDeliveryDayOf(
+  value: string | null | undefined,
+): string | null {
+  if (typeof value !== "string") return null;
+  const day = value.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  // `2026-02-30` has the shape of a day and is not one; a `date` column
+  // could not hold it, so it never came from the order.
+  const parsed = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10) === day ? day : null;
+}
 
 /**
  * The statuses an order can be in while it is still waiting for a signature.
@@ -249,6 +275,17 @@ const PENDING_APPROVAL_STATUSES = new Set<string>([
  * judged over a different one would make that number a different question.
  */
 const APPROVAL_GATE_WINDOW_DAYS = 365;
+
+/**
+ * The facts handed to `decideApproval` when the house has no rule switched on:
+ * nothing is tested, so nothing is read. Every field is "unknown", and with no
+ * enabled rule `decideApproval` neither fires nor reports anything untestable.
+ */
+const NO_RULE_FACTS: OrderUnderTest = {
+  total: null,
+  isFirstOrderToVendor: null,
+  pricePremiumPct: null,
+};
 
 /**
  * `numeric` comes back from PostgREST as a string. A value that is not a finite
@@ -913,30 +950,19 @@ export class ProcurementService {
     // `POST /procurement/orders`, Ask-AI's reorder, the recurrences and the
     // retroactive order — passes through here, so the fence is here. Another
     // house's vendor, a vendor row with no house, and a missing id are the same
-    // 404 (ADR 0147: a 403 would confirm the id exists). A failed read refuses:
-    // the absence of an answer is not a yes (ADR 0051).
-    const { count: ownVendor, error: vendorError } = await this.databaseService.supabase
-      .from("providers")
-      .select("id", { count: "exact", head: true })
-      .eq("id", dto.providerId)
-      .eq("restaurant_id", restaurantId);
-    if (vendorError) {
-      this.logger.error("createOrder could not confirm the vendor's house", {
-        restaurantId,
-        providerId: dto.providerId,
-        error: vendorError.message,
-      });
-      throw new ServiceUnavailableException(
-        "Could not confirm this vendor belongs to this restaurant, so no order was placed. Please try again.",
-      );
-    }
-    if (!ownVendor) {
-      this.logger.warn("createOrder refused a vendor that is not this house's", {
-        restaurantId,
-        providerId: dto.providerId,
-      });
-      throw new NotFoundException("Vendor not found");
-    }
+    // 404 (ADR 0147: a 403 would confirm the id exists). A failed read refuses
+    // with a 503: the absence of an answer is not a yes (ADR 0051). The check
+    // now lives in `common/tenant/assert-provider-belongs-to-restaurant.ts`
+    // with the same query, logs and answers, so the recurring schedule routes
+    // run the same one (ADR 0249).
+    await assertProviderBelongsToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      dto.providerId,
+      "createOrder",
+      "no order was placed",
+      this.logger,
+    );
 
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =
@@ -1717,6 +1743,13 @@ export class ProcurementService {
       unitVolumeMl?: number | null;
       observedAt?: string | null;
       currency?: string | null;
+      /**
+       * ADR 0273: the date this price is dated by and why
+       * (`dateReceiptSighting`). Given on the receipt path only; it dates the
+       * sighting AND this event's `price_history` row, so the two records of
+       * one event name one day.
+       */
+      dating?: SightingDate | null;
     };
     /**
      * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
@@ -1837,7 +1870,15 @@ export class ProcurementService {
           // The key is named explicitly even when the value is null so the
           // capture-contract guard can read what this write claims.
           currency: seriesCurrency.code,
-          effective_date: new Date().toISOString().slice(0, 10),
+          // ADR 0273: the sighting's `effective_date` — the invoice's issue
+          // date when one was read, the check's UTC day otherwise — so this
+          // row and the sighting name one day for one event. A build-lane
+          // pick, not a founder answer: it moves what the two price_history
+          // readers return (ADR 0273, Consequences). A confirmed order passes
+          // no dating and keeps today, which is the day it was confirmed.
+          effective_date:
+            args.sighting?.dating?.effectiveDate ??
+            new Date().toISOString().slice(0, 10),
           source: args.source,
           order_id: args.orderId,
           notes,
@@ -2046,6 +2087,13 @@ export class ProcurementService {
       unitVolumeMl?: number | null;
       observedAt?: string | null;
       currency?: string | null;
+      /**
+       * ADR 0273: the date this price is dated by and why
+       * (`dateReceiptSighting`). Given on the receipt path only; it dates the
+       * sighting AND this event's `price_history` row, so the two records of
+       * one event name one day.
+       */
+      dating?: SightingDate | null;
     };
     /**
      * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
@@ -2091,6 +2139,7 @@ export class ProcurementService {
       packSize: s.packSize,
       unitVolumeMl: s.unitVolumeMl,
       observedAt: s.observedAt,
+      dating: s.dating ?? null,
       currency: s.currency ?? null,
       notes: args.notes ?? null,
       provenance: args.provenance ?? null,
@@ -2169,6 +2218,7 @@ export class ProcurementService {
           packSize: s.packSize,
           unitVolumeMl: s.unitVolumeMl,
           observedAt: s.observedAt,
+          dating: s.dating ?? null,
           currency: s.currency ?? null,
           notes: args.notes ?? null,
           provenance: args.provenance ?? null,
@@ -2756,13 +2806,18 @@ export class ProcurementService {
    * attached": that sentence would be a claim about the order the read could
    * not make. Best-effort like the sighting it rides on — a delivery that has
    * been counted is not failed over provenance.
+   *
+   * ADR 0273: it also reads what dates the price — the named invoice's
+   * `doc_date` and its latest `issueDate` correction — off the SAME paper it
+   * names, and says what it could not read (`readFailure`), so a failed read
+   * dates the price by its check in words that say so.
    */
   private async receiptPaperFor(
     restaurantId: string,
     orderId: string,
     orderLineId: string | null,
-  ): Promise<OwnPaperProvenance> {
-    const failed = (what: string, message: string): OwnPaperProvenance => {
+  ): Promise<ReceiptPaperRead> {
+    const failed = (what: string, message: string): ReceiptPaperRead => {
       this.logger.warn(
         `Price provenance for order ${orderId}: ${what} could not be read (${message}); the sighting names no paper.`,
       );
@@ -2770,6 +2825,12 @@ export class ProcurementService {
         documentId: null,
         documentLineId: null,
         sentence: `The paper for order ${orderId} could not be read when this price was recorded (${what}), so none is named. That is a failed read, not an order without paper.`,
+        invoice: null,
+        liveInvoices: null,
+        issueDateCorrection: null,
+        // `what` only: the database's own error text stays in the log line
+        // above and never reaches a stored row or the sighting sheet.
+        readFailure: what,
       };
     };
 
@@ -2789,7 +2850,7 @@ export class ProcurementService {
     if (ids.length) {
       const { data: docs, error: docError } = await this.databaseService.supabase
         .from("procurement_documents")
-        .select("id, doc_type, doc_number, status")
+        .select("id, doc_type, doc_number, doc_date, status")
         .eq("restaurant_id", restaurantId)
         .in("id", ids);
       if (docError) return failed("the order's documents", docError.message);
@@ -2815,15 +2876,69 @@ export class ProcurementService {
         this.logger.warn(
           `Price provenance for order ${orderId}: the invoice's lines could not be read (${lineError.message}); the paper is named without a line.`,
         );
-        return {
+        return this.withIssueDateCorrection(orderId, {
           ...paper,
           sentence: `${paper.documentId ? "Read from the invoice attached to this order." : paper.sentence} Its lines could not be read when this price was recorded, so no line is named — a failed read, not an unpaired line.`,
-        };
+        });
       }
       lines = (lineRows ?? []) as PaperLineCandidate[];
     }
 
-    return pickReceiptPaper({ orderId, orderLineId, documents, lines });
+    return this.withIssueDateCorrection(
+      orderId,
+      pickReceiptPaper({ orderId, orderLineId, documents, lines }),
+    );
+  }
+
+  /**
+   * ADR 0273: the latest `correction` on the named invoice's `issueDate`,
+   * which wins over the extracted `doc_date` (ADR 0104 D5, the same overlay
+   * `CanonicalDocumentService` applies). One bounded read, made only when an
+   * invoice is named, on the `document_corrections_document` index; the
+   * document id was read house-scoped above, and this table has no house
+   * column of its own.
+   *
+   * A failed read keeps the paper named — only its date could not be read —
+   * and says so, rather than reading as an invoice nobody corrected.
+   */
+  private async withIssueDateCorrection(
+    orderId: string,
+    paper: ReceiptPaper,
+  ): Promise<ReceiptPaperRead> {
+    if (!paper.documentId || !paper.invoice)
+      return { ...paper, issueDateCorrection: null, readFailure: null };
+    const { data, error } = await this.databaseService.supabase
+      .from("document_corrections")
+      .select("revision, kind, after")
+      .eq("document_id", paper.documentId)
+      .eq("field_path", "issueDate")
+      .eq("kind", "correction")
+      .order("revision", { ascending: false })
+      .limit(1);
+    if (error) {
+      this.logger.warn(
+        `Price date for order ${orderId}: the invoice's issue-date corrections could not be read (${error.message}); the price is dated when it was checked.`,
+      );
+      return {
+        ...paper,
+        issueDateCorrection: null,
+        // The error text is in the log line above, not on the row.
+        readFailure: "the invoice's issue-date corrections",
+      };
+    }
+    const latest = (
+      (data ?? []) as Array<{ revision?: number | null; after?: any }>
+    )[0];
+    return {
+      ...paper,
+      issueDateCorrection: latest
+        ? {
+            revision: latest.revision ?? null,
+            value: latest.after?.value ?? null,
+          }
+        : null,
+      readFailure: null,
+    };
   }
 
   /**
@@ -3710,8 +3825,8 @@ export class ProcurementService {
       );
     }
 
-    // Cancel any pending calendar delivery event linked to this order.
-    await this.cancelCalendarEventForOrder(restaurantId, orderId, order);
+    // The delivery calendar event is cancelled by the table, for every writer:
+    // migration `a_delivery_event_follows_its_order` (ADR 0284).
 
     // Release shadow stock if the order had already been approved/sent and
     // inventory was reserved (shadow_stock was incremented for this order).
@@ -3848,146 +3963,6 @@ export class ProcurementService {
           `Order ${record.orderId} IS cancelled and the log does not say so.`,
       );
     }
-  }
-
-  /**
-   * Close the open delivery calendar event for an order — the one
-   * implementation behind both `cancelCalendarEventForOrder` and
-   * `updateCalendarEventForDelivery`.
-   *
-   * Those two are the same job in two directions, and before this they were
-   * the same job written twice. Both were broken the same two ways, and
-   * neither fault could be seen. They are the read/update counterparts of the
-   * write ADR 0066 repaired:
-   *
-   *  1. Each located the event with `.select("id, tags")` and JSON-parsed
-   *     `tags` looking for an `order_id`. `calendar_events` has no `tags`
-   *     column, so PostgREST answered 42703 for the whole query — and the
-   *     destructure took only `data`, so the error was never read. Supabase
-   *     *returns* `{data, error}` rather than throwing, which made the
-   *     wrapping `try`/`catch` inert for exactly the failure that was
-   *     occurring. `events` came back `undefined`, `(events || [])` was empty,
-   *     and the function returned having done nothing — indistinguishable
-   *     from a run that legitimately found no event. `order_id` is a real
-   *     uuid column with an FK to `procurement_orders`, and since ADR 0066 it
-   *     is written, so the scan is replaced by `.eq("order_id", orderId)`.
-   *  2. Each wrote and filtered on uppercase `COMPLETED`/`CANCELLED`. The
-   *     column carries no CHECK, so the write would have *succeeded* and
-   *     produced a row no reader recognises, while the filters matched
-   *     nothing. The real vocabulary is `CalendarEventStatus` — all lowercase;
-   *     production holds `active`, `completed`, `pending` — and it is
-   *     imported, not restated.
-   *
-   * Until ADR 0066 there was never an event to find, so failing cost nothing.
-   * Now that events are created for real, an unclosed event leaves a `pending`
-   * delivery on `/calendar` for an order that has long since arrived or been
-   * cancelled.
-   *
-   * Sharing one body is not only deduplication. Written twice, the two drifted:
-   * one excluded the terminal statuses with `.not("status", "in", ...)` and the
-   * other with `.neq(...)`, for no reason either recorded. Here the one thing
-   * that legitimately differs — which statuses are already closed and must not
-   * be reopened — is an argument with a name, so the difference is a decision
-   * instead of an accident.
-   *
-   * One statement, not select-then-update: it cannot match a row it then fails
-   * to write, and `.select("id")` makes the success branch unreachable without
-   * rows to name. All three outcomes are reported, and "nothing matched" is
-   * stated rather than being indistinguishable from success.
-   */
-  private async closeDeliveryCalendarEvent(
-    restaurantId: string,
-    orderId: string,
-    order: OrderResponseDto,
-    close: {
-      /** The status to write. Also reads as the verb in every log line. */
-      status: CalendarEventStatus;
-      /** Statuses already closed for this transition; never reopened. */
-      leaveAlone: readonly CalendarEventStatus[];
-      description: string;
-    },
-  ): Promise<void> {
-    // PostgREST wants an `in` value as a parenthesised, quoted list. A
-    // one-element list is valid, so this covers both callers.
-    const alreadyClosed = `(${close.leaveAlone.map((s) => `"${s}"`).join(",")})`;
-
-    const context = {
-      restaurantId,
-      orderId,
-      orderNumber: order.orderNumber,
-    };
-
-    try {
-      const { data, error } = await this.databaseService.supabase
-        .from("calendar_events")
-        .update({
-          status: close.status,
-          description: close.description,
-        })
-        .eq("restaurant_id", restaurantId)
-        .eq("order_id", orderId)
-        .eq("event_type", CalendarEventType.DELIVERY)
-        .not("status", "in", alreadyClosed)
-        .select("id");
-
-      if (error) {
-        this.logger.error(
-          `Calendar delivery event NOT ${close.status} for order ${order.orderNumber}`,
-          {
-            ...context,
-            code: (error as { code?: string }).code,
-            error: error.message,
-          },
-        );
-        return;
-      }
-
-      const ids = (data ?? []).map((row: { id: string }) => row.id);
-      if (ids.length === 0) {
-        // Legitimate in two known cases: an order cancelled before approval
-        // never had an event, and any order approved before ADR 0066 shipped
-        // never got one either. Said out loud regardless — reporting nothing
-        // here is precisely what kept the 42703 above invisible for the whole
-        // life of both functions.
-        this.logger.warn(
-          `No open delivery calendar event matched this order — nothing was ${close.status}`,
-          context,
-        );
-        return;
-      }
-
-      this.logger.log(
-        `Calendar event(s) ${ids.join(", ")} ${close.status} for order ${order.orderNumber}`,
-      );
-    } catch (e: any) {
-      this.logger.error(
-        `Calendar delivery event NOT ${close.status} for order ${order.orderNumber}`,
-        { ...context, error: e?.message },
-      );
-    }
-  }
-
-  /**
-   * Close the delivery event when its order is cancelled (non-fatal — the
-   * order is already cancelled by the time this runs).
-   *
-   * A **completed** event is left alone: a recorded delivery is a physical
-   * fact, and a later administrative cancellation should not erase it. That is
-   * why `leaveAlone` here is both terminal statuses and only one of them in
-   * `updateCalendarEventForDelivery` — see that function for the other side.
-   */
-  private async cancelCalendarEventForOrder(
-    restaurantId: string,
-    orderId: string,
-    order: OrderResponseDto,
-  ): Promise<void> {
-    return this.closeDeliveryCalendarEvent(restaurantId, orderId, order, {
-      status: CalendarEventStatus.CANCELLED,
-      leaveAlone: TERMINAL_CALENDAR_STATUSES,
-      // The pre-fix text was the raw uuid, which is nothing a manager reading
-      // /calendar can use. The order number is already in hand at the caller.
-      description: `Order ${order.orderNumber} was cancelled — this delivery is not coming.`,
-    });
   }
 
   /** Subtract order quantity from shadow_stock + in_transit_quantity, flooring at 0. Non-fatal. */
@@ -4434,20 +4409,13 @@ export class ProcurementService {
       status: string | null;
     };
 
-    const order: OrderUnderTest = {
-      total: toFiniteNumber(row.total_cost),
-      isFirstOrderToVendor: await this.isFirstOrderToVendor(
-        restaurantId,
-        orderId,
-        row.provider_id,
-      ),
-      pricePremiumPct: await this.pricePremiumPct(
-        restaurantId,
-        orderId,
-        row.inventory_id,
-        toFiniteNumber(row.final_price),
-      ),
-    };
+    // The same facts "Waiting on you" flags from (ADR 0256): one builder, so
+    // the flag and the gate cannot learn two different answers.
+    const { test: order } = await this.orderUnderTest(
+      restaurantId,
+      orderId,
+      row,
+    );
 
     const decision = decideApproval(readout.thresholds, order);
     if (!decision.requiredRole) return; // No rule fired — seal as before.
@@ -4674,18 +4642,64 @@ export class ProcurementService {
   }
 
   /**
+   * The facts the house's rules test for ONE order — the approve gate's and
+   * "Waiting on you"'s, from this one builder (ADR 0256).
+   *
+   * `priceUnread` is the one thing the gate does not use: it says the last-price
+   * read FAILED, where `pricePremiumPct: null` alone cannot tell that from
+   * "there is no earlier price". The gate keeps its pre-existing reading (both
+   * are `null`, and `price_jump` does not fire); the flag reports the first as
+   * unknown. Awaited in the gate's original order.
+   */
+  private async orderUnderTest(
+    restaurantId: string,
+    orderId: string,
+    row: {
+      total_cost: string | number | null;
+      provider_id: string | null;
+      inventory_id: string | null;
+      final_price: string | number | null;
+    },
+  ): Promise<{ test: OrderUnderTest; priceUnread: boolean }> {
+    const isFirstOrderToVendor = await this.isFirstOrderToVendor(
+      restaurantId,
+      orderId,
+      row.provider_id,
+    );
+    const premium = await this.readPricePremium(
+      restaurantId,
+      orderId,
+      row.inventory_id,
+      toFiniteNumber(row.final_price),
+    );
+    return {
+      test: {
+        total: toFiniteNumber(row.total_cost),
+        isFirstOrderToVendor,
+        pricePremiumPct: premium.pct,
+      },
+      priceUnread: premium.unread,
+    };
+  }
+
+  /**
    * How far above the last unit price this house paid for the same item.
    *
-   * `null` when there is no earlier price — a first purchase has no premium, it
-   * has no comparison at all, and `new_vendor` is the rule that covers it.
+   * `pct: null` when there is no earlier price — a first purchase has no
+   * premium, it has no comparison at all, and `new_vendor` is the rule that
+   * covers it. `unread: true` when the read itself failed, which is a different
+   * fact and is kept apart (the arithmetic is unchanged from the gate's
+   * original `pricePremiumPct`).
    */
-  private async pricePremiumPct(
+  private async readPricePremium(
     restaurantId: string,
     orderId: string,
     inventoryId: string | null,
     unitPrice: number | null,
-  ): Promise<number | null> {
-    if (!inventoryId || unitPrice === null || unitPrice <= 0) return null;
+  ): Promise<{ pct: number | null; unread: boolean }> {
+    if (!inventoryId || unitPrice === null || unitPrice <= 0) {
+      return { pct: null, unread: false };
+    }
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
@@ -4695,15 +4709,15 @@ export class ProcurementService {
         .neq("id", orderId)
         .order("requested_at", { ascending: false })
         .limit(1);
-      if (error) return null;
+      if (error) return { pct: null, unread: true };
       const prior = toFiniteNumber(
         (data as Array<{ final_price: string | number | null }> | null)?.[0]
           ?.final_price ?? null,
       );
-      if (prior === null || prior <= 0) return null;
-      return ((unitPrice - prior) / prior) * 100;
+      if (prior === null || prior <= 0) return { pct: null, unread: false };
+      return { pct: ((unitPrice - prior) / prior) * 100, unread: false };
     } catch {
-      return null;
+      return { pct: null, unread: true };
     }
   }
 
@@ -5591,8 +5605,8 @@ export class ProcurementService {
       }
     }
 
-    // Update calendar event to COMPLETED on delivery
-    await this.updateCalendarEventForDelivery(restaurantId, orderId, order);
+    // The delivery calendar event is completed, on the day the goods arrived,
+    // by the table: migration `a_delivery_event_follows_its_order` (ADR 0284).
 
     // Emit order_change event for cross-page sync (triggers inventory update)
     await this.emitOrderChangeEvent(restaurantId, userId, order, "delivered");
@@ -6798,6 +6812,16 @@ export class ProcurementService {
         orderId,
         agreedLine.id,
       );
+      // ADR 0273: the price is dated by the issue date of the invoice named
+      // just above — never by paper the row does not name — and by the
+      // moment it was checked only when no such date can be read, with the
+      // reason written on the row.
+      const receiptDate = dateReceiptSighting({
+        verifiedAt: update.match_verified_at ?? new Date().toISOString(),
+        paper: receiptPaper,
+        issueDateCorrection: receiptPaper.issueDateCorrection,
+        readFailure: receiptPaper.readFailure,
+      });
       await this.recordPriceHistory({
         restaurantId,
         orderId,
@@ -6855,11 +6879,14 @@ export class ProcurementService {
           // it — never `restaurants.currency`, which is what the house REPORTS
           // in (ADR 0117 Q25).
           currency: body.invoiceCurrency ?? null,
-          // The receipt's own moment. `procurement_documents` carries no
-          // issued-date column this path can read, so the date recorded is the
-          // one this event actually has: when a person checked the paper. It is
-          // an event date, never `now()` stamped onto an undated number.
-          observedAt: update.match_verified_at ?? new Date().toISOString(),
+          // ADR 0273. The invoice's issue date — `doc_date` with its latest
+          // correction laid over it — when the one invoice named above states
+          // one; the moment a person checked the paper otherwise. This used
+          // to say `procurement_documents` carries no issued-date column; it
+          // does (`baseline_from_production.sql:4433`), and every window was
+          // counting a July invoice checked in September as September's.
+          observedAt: receiptDate.observedAt,
+          dating: receiptDate,
         },
       });
     }
@@ -6955,16 +6982,37 @@ export class ProcurementService {
    * at — a bare insert cannot tell "wrote a row" from "wrote nothing", and
    * reporting the second as the first is how this went unnoticed. The id (or
    * `null`) is returned so the omission is enumerable by a caller.
+   *
+   * WHERE IT GOES (ADR 0284). On the date the order states
+   * (`procurement_orders.expected_delivery_date`) when it states one. Before
+   * this every event went to approval + 7 days whether or not its order stated
+   * a date; on Tuzlu Rüzgar all 534 October events sat on 9 October (F-152).
+   * With no stated date it still goes to approval + 7, an estimate and not a
+   * vendor commitment, and its text now says so rather than reading as a date
+   * somebody gave.
+   *
+   * WHAT CLOSES IT is no longer this file. The table does, for every writer:
+   * migration `a_delivery_event_follows_its_order` completes the event on the
+   * arrival or cancels it when the order will not come, and an event written
+   * here for an order that has already arrived or been cancelled is closed at
+   * birth.
    */
   private async createCalendarEventForOrder(
     restaurantId: string,
     order: OrderResponseDto,
     trigger: "approved" | "created",
+    statedDeliveryDate: string | null,
   ): Promise<string | null> {
-    // Expected delivery: 7 days out. An estimate, not a vendor commitment.
-    const expectedDate = new Date();
-    expectedDate.setDate(expectedDate.getDate() + 7);
-    const eventDate = expectedDate.toISOString().split("T")[0];
+    const stated = statedDeliveryDayOf(statedDeliveryDate);
+    let eventDate: string;
+    if (stated) {
+      eventDate = stated;
+    } else {
+      // Expected delivery: 7 days out. An estimate, not a vendor commitment.
+      const expectedDate = new Date();
+      expectedDate.setDate(expectedDate.getDate() + 7);
+      eventDate = expectedDate.toISOString().split("T")[0];
+    }
 
     // `calendar_events` has no priority column and this change must not add
     // one, so the emergency flag rides in the two human-visible text columns
@@ -6977,7 +7025,11 @@ export class ProcurementService {
 
     const description =
       `Expected delivery for order ${order.orderNumber} ` +
-      `(${describeOrderedQuantity(order)}). Created on order ${trigger}.` +
+      `(${describeOrderedQuantity(order)}), ` +
+      (stated
+        ? "on the date the order states. "
+        : "estimated 7 days after approval; the order states no date. ") +
+      `Created on order ${trigger}.` +
       (order.isEmergency ? " Emergency order." : "");
 
     try {
@@ -7053,30 +7105,6 @@ export class ProcurementService {
   }
 
   /**
-   * Close the delivery event when its order arrives (non-fatal).
-   *
-   * Only a **completed** event is left alone here, so a `cancelled` one is
-   * still eligible. That asymmetry with `cancelCalendarEventForOrder` is
-   * deliberate and it is the pre-fix intent preserved: an arrival is a
-   * physical fact and outranks an earlier administrative cancellation.
-   * `markDelivered` does not require the order to be un-cancelled either, so
-   * refusing here would leave a delivered order facing a `cancelled` event
-   * with nothing to reconcile the two. Cancellation is the weaker claim and
-   * yields; delivery is the stronger one and wins.
-   */
-  private async updateCalendarEventForDelivery(
-    restaurantId: string,
-    orderId: string,
-    order: OrderResponseDto,
-  ): Promise<void> {
-    return this.closeDeliveryCalendarEvent(restaurantId, orderId, order, {
-      status: CalendarEventStatus.COMPLETED,
-      leaveAlone: [CalendarEventStatus.COMPLETED],
-      description: `Delivered: ${order.orderNumber} (${describeOrderedQuantity(order)}). Actual delivery: ${order.deliveredAt}`,
-    });
-  }
-
-  /**
    * `GET /procurement/orders/pending` — the dashboard's approvals queue.
    *
    * It joins `providers` for the same reason `listOrders` does, and this is
@@ -7084,19 +7112,100 @@ export class ProcurementService {
    * panel a manager approves money from, and it named the wine and the total
    * without ever naming who was being paid. The status filter caps the page,
    * so the to-one join is over a handful of rows.
+   *
+   * ORDER (ADR 0256, founder 2026-10-01: "oldest first, flag priority ones";
+   * "Flagged first, then oldest"). Read oldest first, then flagged rows moved
+   * to the top without reordering either group. Every row carries `priority`
+   * — the reasons as words, and the checks that could not be made — built by
+   * `pendingOrderPriority` from the approve gate's own facts and the house's
+   * own stock predicate. A flag that cannot be computed is reported as
+   * `unknown`; it never fails the queue and never reads as "not flagged".
    */
   async listPendingOrders(restaurantId: string): Promise<OrderResponseDto[]> {
+    const rows = await this.readPendingOrderRows(restaurantId);
+    const policy = await this.pendingFlagPolicy(restaurantId);
+
+    const flagged: Array<
+      OrderResponseDto & { priority: PendingOrderPriority }
+    > = [];
+    // With no rule switched on there is nothing for the facts to decide, so
+    // the per-order reads are skipped; `decideApproval` fires nothing either way.
+    const anyRuleOn = Boolean(policy?.some((p) => p.enabled));
+    for (const row of rows) {
+      const facts = anyRuleOn
+        ? await this.orderUnderTest(restaurantId, row.id, row)
+        : { test: NO_RULE_FACTS, priceUnread: false };
+      const inventory = Array.isArray(row.inventory)
+        ? row.inventory[0]
+        : row.inventory;
+      flagged.push({
+        ...this.mapPendingRow(row),
+        priority: pendingOrderPriority({
+          parked:
+            (row.status ?? "").toUpperCase() ===
+            ProcurementOrderStatus.APPROVAL_NEEDED,
+          policy,
+          test: facts.test,
+          priceUnread: facts.priceUnread,
+          // The item as the SAME read joined it. No item, or no stock on it,
+          // is a check not made — `itemRunningOut` answers null for it.
+          stock: inventory
+            ? {
+                stockLive: inventory.stock_live,
+                parLevel: inventory.threshold_min,
+              }
+            : null,
+        }),
+      });
+    }
+    return flaggedFirst(flagged);
+  }
+
+  /**
+   * `GET /procurement/orders/pending/count` — the sidebar badge, polled every
+   * 30 s on every page. The same read as the queue, without the flags: a count
+   * does not need the house's rules, and asking them twice a minute per tab to
+   * produce a number that ignores them would be waste. A failed read is still
+   * a 503, never `{ count: 0 }`.
+   */
+  async countPendingOrders(restaurantId: string): Promise<number> {
+    return (await this.readPendingOrderRows(restaurantId)).length;
+  }
+
+  /**
+   * The house's rules as the approve gate reads them, or `null` when they
+   * could not be read — so every rule-based flag becomes unknown rather than
+   * absent. Never throws: the queue is still the queue without its flags.
+   */
+  private async pendingFlagPolicy(
+    restaurantId: string,
+  ): Promise<ThresholdRow[] | null> {
+    if (!this.approvalThresholds) return null;
+    try {
+      const readout = await this.approvalThresholds.read(restaurantId);
+      return readout.readable ? readout.thresholds : null;
+    } catch (err: any) {
+      this.logger.warn(
+        `pending-order flags: approval rules unreadable for ${restaurantId}: ${err?.message}`,
+      );
+      return null;
+    }
+  }
+
+  /** The pending rows, oldest first. A failed read is a 503, never `[]`. */
+  private async readPendingOrderRows(restaurantId: string): Promise<any[]> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+        "*, inventory:inventory_id(wine_name, stock_live, threshold_min), provider:provider_id(name)",
       )
       .eq("restaurant_id", restaurantId)
       .in("status", [
         ProcurementOrderStatus.PENDING,
         ProcurementOrderStatus.APPROVAL_NEEDED,
       ])
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
 
     if (error) {
       this.logger.error("Failed to list pending orders", {
@@ -7109,17 +7218,18 @@ export class ProcurementService {
       throw new ServiceUnavailableException("Could not read pending orders");
     }
 
-    return (data || []).map((row: any) => {
-      const orderRow: ProcurementOrderRow = {
-        ...row,
-        wine_name:
-          row.inventory?.wine_name ||
-          (row.inventory as any)?.wine?.name ||
-          null,
-        provider_name: embeddedProviderName(row.provider),
-      };
-      return this.mapOrderRow(orderRow);
-    });
+    return data || [];
+  }
+
+  /** One pending row as the API states it — the stock join is not sent. */
+  private mapPendingRow(row: any): OrderResponseDto {
+    const orderRow: ProcurementOrderRow = {
+      ...row,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+      provider_name: embeddedProviderName(row.provider),
+    };
+    return this.mapOrderRow(orderRow);
   }
 
   /**
@@ -7293,7 +7403,7 @@ export class ProcurementService {
 
     const { data: pending, error } = await this.databaseService.supabase
       .from("procurement_conversations")
-      .select("id, content, providers!inner(contact_email, restaurant_id)")
+      .select("id, content, providers!inner(contact_email, restaurant_id, name, contact_first_name, primary_contact)")
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("status", "PENDING_APPROVAL")
@@ -7319,6 +7429,10 @@ export class ProcurementService {
       throw new BadRequestException("The vendor address changed or could not be confirmed. Review the draft before holding again.");
     }
     if (!letter.body?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    // ORD-W7: a template blank the send cannot fill is refused before a seal
+    // is issued over it, the same as an empty letter.
+    const blanks = (await this.draftBlanksAtSend(restaurantId, letter.body, provider)).unfillable;
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "No seal was issued and nothing was sent."));
     const issued = await this.sealChallenges.issue({
       restaurantId,
       actorUserId: userId,
@@ -7436,7 +7550,7 @@ export class ProcurementService {
 
     const { data: pending, error: pendingError } = await this.databaseService.supabase
       .from("procurement_conversations")
-      .select("id, providers!left(name, restaurant_id)")
+      .select("id, providers!left(name, restaurant_id, contact_first_name, primary_contact)")
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .eq("status", "PENDING_APPROVAL")
@@ -7446,10 +7560,17 @@ export class ProcurementService {
         `Whether a draft is waiting on this order could not be read (${pendingError.message}), so nothing was asked.`,
       );
     }
+    // ORD-W7: the letter a manager would release, checked as approveDraft
+    // will send it — a blank the send cannot fill is not asked for.
+    const refuseBlanks = async (provider: any) => {
+      const blanks = (await this.draftBlanksAtSend(restaurantId, content, provider)).unfillable;
+      if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was asked."));
+    };
 
     let conversationId: string;
     let vendorName: string | null;
     if (pending) {
+      await refuseBlanks(Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers);
       const { data: saved, error: saveError } = await this.databaseService.supabase
         .from("procurement_conversations")
         .update({
@@ -7485,7 +7606,7 @@ export class ProcurementService {
       // row the release will send, threaded the way manualReply threads.
       const { data: order, error: orderError } = await this.databaseService.supabase
         .from("procurement_orders")
-        .select("id, provider_id, providers!left(name, contact_email, restaurant_id), restaurant_inventory:inventory_id(wine_name)")
+        .select("id, provider_id, providers!left(name, contact_email, restaurant_id, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)")
         .eq("id", orderId)
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
@@ -7496,6 +7617,7 @@ export class ProcurementService {
       if (!(order as any).providers?.contact_email) {
         throw new BadRequestException("This vendor has no email address on file, so there is nowhere to send. Nothing was asked.");
       }
+      await refuseBlanks((order as any).providers);
       const { data: lastInbound, error: inboundError } = await this.databaseService.supabase
         .from("procurement_conversations")
         .select("gmail_thread_id, message_id, email_headers")
@@ -7652,6 +7774,10 @@ export class ProcurementService {
     }
 
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
+    // ORD-W7: the last door before the mail leaves. Checked before the seal is
+    // spent, so a refusal here leaves the hold unspent and nothing sent.
+    const blanks = (await this.draftBlanksAtSend(restaurantId, rawEmailBody, (conv as any).providers)).unfillable;
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was sent."));
     const providerEmail = (conv as any).providers?.contact_email ?? null;
     const rawOrder = (conv as any).procurement_orders;
     const wineName =
@@ -7887,10 +8013,13 @@ export class ProcurementService {
           ...raw,
           wine_name: raw.inventory?.wine_name || null,
         };
+        // The order's own stated date, read from the row: `OrderResponseDto`
+        // does not carry `expected_delivery_date` (ADR 0284).
         await this.createCalendarEventForOrder(
           restaurantId,
           this.mapOrderRow(mappedRow),
           "approved",
+          raw.expected_delivery_date ?? null,
         );
       }
     } catch (e: any) {
@@ -8108,10 +8237,52 @@ export class ProcurementService {
     const sig = escapeHtml((senderName || "").trim());
     // Replace any leftover [Manager Name] / [Your Name] / [Name] / [Signature] placeholder.
     out = out.replace(
-      /\[\s*(manager\s*name|your\s*name|name|signature|manager)\s*\]/gi,
+      signatureSlotRe(),
       () => sig,
     );
     return out;
+  }
+
+  /**
+   * ORD-W7, reworked (founder, 2026-10-01: "Only unfillable"). The send fills
+   * the greeting with the vendor's first name and the signature with the
+   * house's sender name, so a blank is refused only when it would still stand
+   * in the letter as sent. The letter is rendered here the way
+   * `sendProviderEmail` renders it and read back; each caller passes exactly
+   * the first name and sender name its own send passes.
+   */
+  private blanksAtSend(
+    body: string,
+    fill: { firstName?: string; senderName?: string },
+  ): BlanksAtSend {
+    // escapeHtml leaves "[" and "]" alone; only an apostrophe inside a slot changes.
+    const readBack = (html: string) => unfilledTemplateSlots(html.replace(/&#39;/g, "'"));
+    const greeted = this.personalizeGreeting(this.buildEmailHtml(body), fill.firstName);
+    const sender = (fill.senderName ?? "").trim();
+    // An empty sender name turns a signature blank into nothing at all. That
+    // is not a fill, so the blank stays standing and is refused.
+    const sent = sender ? greeted.replace(signatureSlotRe(), () => escapeHtml(sender)) : greeted;
+    const unfillable = readBack(sent);
+    const afterGreeting = readBack(greeted);
+    const fills = unfilledTemplateSlots(body)
+      .filter((slot) => !unfillable.includes(slot))
+      .map((slot) => ({
+        slot,
+        value: afterGreeting.includes(slot) ? sender : (fill.firstName ?? "").trim(),
+      }));
+    return { unfillable, fills };
+  }
+
+  /** The blanks of the draft waiting on an order, as approveDraft would send it. */
+  private async draftBlanksAtSend(
+    restaurantId: string,
+    body: string,
+    provider: any,
+  ): Promise<BlanksAtSend> {
+    return this.blanksAtSend(body, {
+      firstName: this.resolveFirstName(provider),
+      senderName: await this.resolveSenderName(restaurantId),
+    });
   }
 
   /**
@@ -8401,17 +8572,58 @@ export class ProcurementService {
           continue;
         }
 
+        // ORD-W7 (founder, 2026-10-01: "Add sweep + manual"): a blank the
+        // send cannot fill holds the letter unsent and back on the card, and
+        // the house is told which blanks — the same rule as a held approval.
+        const sweepBody = row.content ?? row.message_text ?? "";
+        const sweepFirstName = this.resolveFirstName((order as any)?.providers);
+        const sweepSender = await this.resolveSenderName(row.restaurant_id);
+        const sweepBlanks = this.blanksAtSend(sweepBody, {
+          firstName: sweepFirstName,
+          senderName: sweepSender,
+        }).unfillable;
+        if (sweepBlanks.length) {
+          await this.revertScheduledToDraft(row.id, `unfilled blanks: ${sweepBlanks.join(", ")}`);
+          const held = unfilledSlotsRefusal(sweepBlanks, "Mudavym held it unsent; fill the blanks on the order's card, then approve it.");
+          try {
+            this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {
+              id: row.id,
+              title: "A scheduled reply was held — it still has blanks",
+              message: held,
+              type: "warning",
+              action_url: `/orders?order=${row.order_id}`,
+            });
+            void this.inboundResponder?.persistManagerNotification(row.restaurant_id, {
+              type: "vendor_reply",
+              title: "A scheduled reply was held — it still has blanks",
+              message: held,
+              priority: "high",
+              actionUrl: `/orders?order=${row.order_id}`,
+              metadata: {
+                order_id: row.order_id,
+                draft_id: row.id,
+                provider_id: row.provider_id,
+                reason: "unfilled_blanks",
+              },
+            });
+          } catch {
+            /* best-effort */
+          }
+          this.emitConvUpdate(row.restaurant_id, row.order_id, row.provider_id, row.id);
+          continue;
+        }
+
         const headers = (row.email_headers ?? {}) as Record<string, any>;
         const ids = await this.sendProviderEmail({
           to: providerEmail,
           subject: headers.subject || `Re: Order Request: ${wineName}`,
-          html: this.buildEmailHtml(row.content ?? row.message_text ?? ""),
+          html: this.buildEmailHtml(sweepBody),
           restaurantId: row.restaurant_id,
           threadId: row.gmail_thread_id || undefined,
           inReplyTo: headers.in_reply_to || undefined,
           references: headers.references || undefined,
-          recipientFirstName: this.resolveFirstName((order as any)?.providers),
-          senderName: await this.resolveSenderName(row.restaurant_id),
+          recipientFirstName: sweepFirstName,
+          senderName: sweepSender,
         });
 
         await this.databaseService.supabase
@@ -8572,6 +8784,16 @@ export class ProcurementService {
   }
 
   /**
+   * ORD-W7 on the hand-written door. Its send passes no first name and no
+   * sender name (see `manualReply`), so it fills no greeting, and a signature
+   * blank would go out empty: every blank is unfillable here.
+   */
+  private refuseManualReplyBlanks(content: string, nothing: string): void {
+    const blanks = this.blanksAtSend(content, {}).unfillable;
+    if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, nothing));
+  }
+
+  /**
    * Mint the seal a hand-written reply must carry back (ADR 0175 D9, the
    * `manual-reply` door). Same shape as the drafted-reply mint: WHO first, then
    * the vendor's address on file, then a seal over the words, that address and
@@ -8585,6 +8807,8 @@ export class ProcurementService {
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
     await this.requireSendAuthority(userId, restaurantId, "send this letter", { canAsk: true });
     if (!letter.content?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    // ORD-W7 (founder, 2026-10-01: "Add sweep + manual").
+    this.refuseManualReplyBlanks(letter.content, "No seal was issued and nothing was sent.");
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
         "The seal could not be issued (the seal service is not wired into procurement), so nothing can be sent.",
@@ -8628,6 +8852,8 @@ export class ProcurementService {
     const standing = await this.requireSendAuthority(userId, restaurantId, "send this letter", {
       canAsk: true,
     });
+    // Before the seal is spent, so a refusal leaves it unspent and nothing sent.
+    this.refuseManualReplyBlanks(content, "Nothing was sent.");
 
     const { order, providerEmail, wineName } = await this.manualReplyTarget(restaurantId, orderId);
     if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
@@ -9743,7 +9969,7 @@ export class ProcurementService {
         `
         id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at,
         send_requested_by, send_requested_at, send_requested_sha256, send_requested_cc,
-        providers!left(name, contact_email),
+        providers!left(name, contact_email, contact_first_name, primary_contact),
         procurement_orders!inner(
           order_number,
           inventory:inventory_id(wine_name)
@@ -9772,8 +9998,12 @@ export class ProcurementService {
       send_requested_cc: _cc,
       ...rest
     } = row;
+    // The first-name columns are read for `at_send` only; the page gets the
+    // vendor's name and address as before, never its whole primary_contact.
+    const { contact_first_name: _first, primary_contact: _contact, ...vendor } = row.providers ?? {};
     return {
       ...rest,
+      providers: row.providers ? vendor : row.providers,
       content,
       provider_name: row.providers?.name ?? null,
       provider_email: row.providers?.contact_email ?? null,
@@ -9781,6 +10011,9 @@ export class ProcurementService {
       order_number: row.procurement_orders?.order_number ?? null,
       // A staff member's request on this draft (founder, 2026-09-21), or null.
       send_request: request,
+      // ORD-W7: which blanks the send fills (and with what) and which it
+      // cannot, so the card refuses only those (founder, 2026-10-01).
+      at_send: await this.draftBlanksAtSend(restaurantId, content ?? "", row.providers),
     };
   }
 

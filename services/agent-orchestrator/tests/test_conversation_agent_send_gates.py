@@ -646,6 +646,40 @@ class TestHouseLettersAreNeverClaimed:
         assert "reapproval_required" not in row["constraint_flags"]
         assert agent.sends == [] and agent.db.notifications == []
 
+    @pytest.mark.parametrize("status", ["DISCARDED", "CANCELLED"])
+    async def test_fresh_approval_does_not_send_a_closed_draft(self, status):
+        """ADR 0266, F-106: a replaced duplicate (DISCARDED) or a draft whose
+        order was cancelled (CANCELLED) is never claimed for a send."""
+        agent = _agent(status=status)
+        await ProviderConversationAgent.process_message(
+            agent,
+            _message(
+                "conversation.approved",
+                {"conversation_id": CONV_ID},
+                timestamp=_iso(timedelta(minutes=5)),
+            ),
+        )
+        assert agent.sends == []
+        assert agent.db.tables["procurement_conversations"][0]["status"] == status
+
+    @pytest.mark.parametrize("status", ["DISCARDED", "CANCELLED"])
+    async def test_stale_approval_does_not_revive_a_closed_draft(self, status):
+        """A return to the manager would make a replaced draft wait again,
+        beside the one that replaced it."""
+        agent = _agent(status=status)
+        await ProviderConversationAgent.process_message(
+            agent,
+            _message(
+                "conversation.approved",
+                {"conversation_id": CONV_ID},
+                timestamp=_iso(timedelta(days=3)),
+            ),
+        )
+        row = agent.db.tables["procurement_conversations"][0]
+        assert row["status"] == status
+        assert "reapproval_required" not in row["constraint_flags"]
+        assert agent.sends == [] and agent.db.notifications == []
+
     def test_every_house_word_in_letter_status_is_refused(self):
         """The four HOUSE_* words of the gateway's LETTER_STATUS, read from source."""
         from pathlib import Path
