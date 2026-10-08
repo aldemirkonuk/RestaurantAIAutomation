@@ -29,9 +29,19 @@ import type {
   BottleVM,
   CellarRegistersVM,
   RegisterReadoutVM,
+  RegisterRowVM,
 } from './useCellarNextData';
-import { registerHref } from './cellar-format';
+import { sortValueFor } from './registerCells';
+import {
+  registerHref,
+  DOOR_CHECKED_INVOICED_LABEL,
+  DOOR_CHECKED_INVOICED_NOTE,
+  DOOR_CHECKED_LABEL,
+  DOOR_CHECKED_NOTE,
+  DOOR_CHECKED_SOURCE,
+} from './cellar-format';
 import type { RegisterId } from './cellar-format';
+import { HOUSE_SPINE } from './cellar-columns';
 
 const mock = vi.hoisted(() => ({
   current: {} as Record<string, unknown>,
@@ -782,6 +792,310 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(leaf).toHaveTextContent(/pos_unresolved_lines/);
     // The books that name it nowhere are absent, not zeroed.
     expect(leaf).not.toHaveTextContent(/quoted/i);
+  });
+
+  // ADR 0301 §2 (AW14), his pick: "Door-checked, labelled (Recommended)". A
+  // house that files no paper still has a checked price for what it bought; the
+  // row and the stand show it, and say every time that it came from the door.
+  it('labels a price checked at the door, in the row and on the stand', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({
+        rows: [
+          houseRow({
+            house: {
+              ...houseRow().house,
+              books: ['order'],
+              bought: {
+                lines: 0,
+                doorChecked: 1,
+                first: '2026-08-03',
+                firstDoorChecked: true,
+                last: '2026-08-03',
+                lastDoorChecked: true,
+                bottles: 10,
+                paidTotal: 265,
+                lastUnitPrice: 26.5,
+                lastFrom: 'Zqdc Door Vendor',
+              },
+              poured: null,
+            },
+          }),
+        ],
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).getByText('3 Aug 2026')).toBeInTheDocument();
+    expect(within(row).getByText('$265.00')).toBeInTheDocument();
+    // One mark on First bought, one on Paid.
+    expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(2);
+    // Its reason on hover is the narrowed note (ADR 0301, Harder / given up).
+    for (const mark of within(row).getAllByTestId('door-checked-mark')) {
+      expect(mark).toHaveAttribute('title', DOOR_CHECKED_NOTE);
+    }
+
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const leaf = screen.getByTestId('house-leaf');
+    const book = within(leaf).getByTestId('bought-book');
+    // No invoice names it, so the block is not headed "invoiced".
+    expect(within(book).getByRole('heading')).toHaveTextContent('door-checked');
+    expect(book).not.toHaveTextContent(/invoiced/);
+    expect(book).toHaveTextContent(/match_verified_at/);
+    expect(book).toHaveTextContent(/receipt_verified/);
+    expect(book).not.toHaveTextContent(/procurement_document_lines/);
+    expect(within(book).getByText('Zqdc Door Vendor')).toBeInTheDocument();
+  });
+
+  it('marks only the figures the door gave when an invoice is filed too', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({
+        rows: [
+          houseRow({
+            house: {
+              ...houseRow().house,
+              bought: {
+                ...houseRow().house.bought,
+                doorChecked: 1,
+                firstDoorChecked: false,
+                lastDoorChecked: true,
+              },
+            },
+          }),
+        ],
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    // First bought came from an invoice; Paid holds a door-checked order.
+    expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(1);
+
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
+    expect(within(book).getByRole('heading')).toHaveTextContent('invoiced');
+    // Last bought, Bottles, Paid, Last unit price and From; not First bought.
+    expect(within(book).getAllByTestId('door-checked-mark')).toHaveLength(5);
+    const first = within(book).getByText('First bought').parentElement!;
+    expect(within(first).queryByTestId('door-checked-mark')).toBeNull();
+    expect(book).toHaveTextContent(/procurement_document_lines/);
+    expect(book).toHaveTextContent(/receipt_verified/);
+  });
+
+  // ADR 0301 §2, the founder's pick of 2026-10-07: "Count it as a book
+  // (Recommended)". A door check lifts a row in the most-books-first order
+  // as one book, however many door rows it has; the pin at the end checks the
+  // books cell, First bought, Paid and the two door-checked marks.
+  function doorRows() {
+    const plain = houseRow({
+      key: 'b-plain',
+      name: 'Anadolu Plain',
+      house: { ...houseRow().house, books: ['order'], bought: null, poured: null },
+    });
+    const door = houseRow({
+      key: 'b-door',
+      name: 'Zeytin Door',
+      house: {
+        ...houseRow().house,
+        books: ['order'],
+        bought: {
+          lines: 0, doorChecked: 1,
+          first: '2026-08-03', firstDoorChecked: true,
+          last: '2026-08-03', lastDoorChecked: true,
+          bottles: 10, paidTotal: 265, lastUnitPrice: 26.5, lastFrom: 'Zqdc Door Vendor',
+        },
+        poured: null,
+      },
+    });
+    const richer = houseRow({ key: 'b-rich', name: 'Rich Three' }); // invoice + pos
+    const fuller = houseRow({
+      key: 'b-full',
+      name: 'Full Three',
+      house: { ...houseRow().house, books: ['invoice', 'order', 'pos'] },
+    });
+    return { plain, door, richer, fuller };
+  }
+  function drawRows(rows: unknown[]) {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({ rows }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    return ['Anadolu Plain', 'Zeytin Door', 'Rich Three', 'Full Three']
+      .map((n) => screen.queryByText(n))
+      .filter((el): el is HTMLElement => el !== null)
+      .sort((a, z) => (a.compareDocumentPosition(z) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+      .map((el) => el.textContent);
+  }
+
+  it('sorts a door-only row above a row with fewer books (a door check is one book)', () => {
+    const { plain, door, richer, fuller } = doorRows();
+    // Fed plain first, and "Zeytin" sorts last by name: only the door book
+    // can lift it. Two books (the order + the door) tie with Rich Three's
+    // two, so the input order keeps Rich Three first; Full Three's three stay on top.
+    expect(drawRows([plain, richer, door, fuller])).toEqual([
+      'Full Three', 'Rich Three', 'Zeytin Door', 'Anadolu Plain',
+    ]);
+  });
+
+  // Three door-checked lines are still one door book: the sort counts whether a
+  // row has a door row, never how many (ADR 0301 §2). Fed plain first, so a
+  // tie with Anadolu Plain's one book would keep Zeytin Door below it, and
+  // fed after Full Three, so a count of 4 (the lines) would lift it above.
+  it('counts a row with three door-checked lines as one more book, not three', () => {
+    const { plain, fuller } = doorRows();
+    const door3 = houseRow({
+      key: 'b-door3',
+      name: 'Zeytin Door',
+      house: {
+        ...houseRow().house,
+        books: ['order'],
+        bought: {
+          lines: 0, doorChecked: 3,
+          first: '2026-08-03', firstDoorChecked: true,
+          last: '2026-08-10', lastDoorChecked: true,
+          bottles: 30, paidTotal: 795, lastUnitPrice: 26.5, lastFrom: 'Zqdc Door Vendor',
+        },
+        poured: null,
+      },
+    });
+    // The order book's one, plus one for the door: 2, not 1 + 3 = 4.
+    expect(sortValueFor(door3 as unknown as RegisterRowVM, 'books')).toBe(2);
+    expect(drawRows([plain, fuller, door3])).toEqual([
+      'Full Three', 'Zeytin Door', 'Anadolu Plain',
+    ]);
+  });
+
+  // A pin, not a fix test: it passes with or without the ruling. It fails if
+  // the door book lights a mark of its own in the books cell, or if the row's
+  // First bought date, its Paid or its two door-checked marks stop showing.
+  it("lights only the order's mark in a door-only row's books cell, and still shows its First bought, Paid and two door-checked marks", () => {
+    const { plain, door } = doorRows();
+    drawRows([plain, door]);
+    const row = screen.getByText('Zeytin Door').closest('tr')!;
+    // The books cell still lights one mark, the order's: the door has no mark.
+    const marks = row.querySelectorAll('.cl-mark[data-on="true"]');
+    expect(marks).toHaveLength(1);
+    expect(marks[0]).toHaveAttribute('aria-label', 'ordered');
+    // The figures are the door row's own, as before the ruling.
+    expect(within(row).getByText('3 Aug 2026')).toBeInTheDocument();
+    expect(within(row).getByText('$265.00')).toBeInTheDocument();
+    expect(within(row).getAllByTestId('door-checked-mark')).toHaveLength(2);
+  });
+
+  it('carries no door mark on a record the invoices alone fill', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).queryByTestId('door-checked-mark')).toBeNull();
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+    const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
+    expect(within(book).queryByTestId('door-checked-mark')).toBeNull();
+    expect(book).not.toHaveTextContent(/receipt_verified/);
+  });
+
+  it('says a door check stands until an invoice is linked, and that one filed but not linked counts alongside', () => {
+    // ADR 0301, Harder / given up (2026-10-07): a door row steps aside only
+    // for an invoice linked to the order or paired with its line. An invoice
+    // filed any other way counts alongside it (SQL test T18), so the words
+    // must not say "no invoice has been filed".
+    const said = HOUSE_SPINE.filter((c) => c.id === 'first' || c.id === 'paid');
+    expect(said.map((c) => c.id)).toEqual(['first', 'paid']);
+    for (const c of said) {
+      expect(c.meaning).toMatch(/no invoice (is )?linked to/);
+      expect(c.meaning).toMatch(/An invoice filed but not linked to the order counts alongside the door check/);
+      expect(`${c.meaning} ${c.source}`).not.toMatch(/been filed for|no invoice filed|invoice filed yet/);
+    }
+    expect(DOOR_CHECKED_NOTE).toMatch(/No invoice is linked to this order yet/);
+    expect(DOOR_CHECKED_NOTE).toMatch(/An invoice filed but not linked to it counts alongside/);
+    expect(DOOR_CHECKED_NOTE).not.toMatch(/has been filed/);
+    expect(DOOR_CHECKED_SOURCE).toMatch(/no invoice linked to the order or paired with its line/);
+  });
+
+  // ADR 0301, Harder / given up: the coordinator's decision of 2026-10-07
+  // (amendment 1), not the founder's pick. A Paid that adds invoice lines and a
+  // door check says both on the cell, not only in a title (a title never shows
+  // on touch), and its note names the double count. A Paid only the door fills
+  // keeps 'door-checked', and so does First bought. On the record's stand,
+  // Bottles and Paid add both books too and read the same; its dates do not.
+  it('marks a Paid that adds invoice lines and a door check "door-checked + invoiced", and a door-only Paid "door-checked"', () => {
+    const both = houseRow({
+      key: 'b-both',
+      name: 'Both Books',
+      house: {
+        ...houseRow().house,
+        bought: {
+          ...houseRow().house.bought, // lines: 3
+          doorChecked: 1,
+          firstDoorChecked: true,
+          lastDoorChecked: true,
+          paidTotal: 828.4,
+        },
+      },
+    });
+    const doorOnly = houseRow({
+      key: 'b-door-only',
+      name: 'Door Only',
+      house: {
+        ...houseRow().house,
+        books: ['order'],
+        bought: {
+          lines: 0, doorChecked: 1,
+          first: '2026-08-03', firstDoorChecked: true,
+          last: '2026-08-03', lastDoorChecked: true,
+          bottles: 10, paidTotal: 265, lastUnitPrice: 26.5, lastFrom: 'Zqdc Door Vendor',
+        },
+        poured: null,
+      },
+    });
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({ rows: [both, doorOnly] }), loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+
+    // Both books: the Paid cell's visible words name both, its note the double count.
+    const bothRow = screen.getByText('Both Books').closest('tr')!;
+    expect(within(bothRow).getAllByTestId('door-checked-mark')).toHaveLength(2);
+    const bothPaid = within(within(bothRow).getByText('$828.40')).getByTestId('door-checked-mark');
+    expect(DOOR_CHECKED_INVOICED_LABEL).toBe('door-checked + invoiced');
+    expect(bothPaid.textContent?.trim()).toBe('door-checked + invoiced');
+    expect(bothPaid).toHaveAttribute('title', DOOR_CHECKED_INVOICED_NOTE);
+    expect(DOOR_CHECKED_INVOICED_NOTE).toMatch(
+      /same delivery as a door-checked order, that delivery is counted twice until the invoice is linked to the order or its line is paired/,
+    );
+    // Its First bought holds one date, the door's: still 'door-checked'.
+    const bothFirst = within(within(bothRow).getByText('2 Mar 2026')).getByTestId('door-checked-mark');
+    expect(bothFirst.textContent?.trim()).toBe(DOOR_CHECKED_LABEL);
+    expect(bothFirst).toHaveAttribute('title', DOOR_CHECKED_NOTE);
+
+    // Door only: the Paid mark is unchanged.
+    const doorRow = screen.getByText('Door Only').closest('tr')!;
+    const doorPaid = within(within(doorRow).getByText('$265.00')).getByTestId('door-checked-mark');
+    expect(doorPaid.textContent?.trim()).toBe('door-checked');
+    expect(doorPaid).toHaveAttribute('title', DOOR_CHECKED_NOTE);
+    expect(doorRow).not.toHaveTextContent(/invoiced/);
+
+    // The record's stand: Bottles and Paid add both books, so they read
+    // 'door-checked + invoiced' with the double-count note; First bought, Last
+    // bought, Last unit price and From are one row's each and keep 'door-checked'.
+    fireEvent.click(screen.getByText('Both Books'));
+    const book = within(screen.getByTestId('house-leaf')).getByTestId('bought-book');
+    const standMarks = within(book).getAllByTestId('door-checked-mark');
+    expect(standMarks.map((m) => m.textContent?.trim())).toEqual([
+      DOOR_CHECKED_LABEL, // First bought
+      DOOR_CHECKED_LABEL, // Last bought
+      DOOR_CHECKED_INVOICED_LABEL, // Bottles
+      DOOR_CHECKED_INVOICED_LABEL, // Paid, in total
+      DOOR_CHECKED_LABEL, // Last unit price
+      DOOR_CHECKED_LABEL, // From
+    ]);
+    for (const m of standMarks.slice(2, 4)) expect(m).toHaveAttribute('title', DOOR_CHECKED_INVOICED_NOTE);
   });
 
   it('renders add-to-inventory disabled, with the OD-113 sentence beside it', () => {
