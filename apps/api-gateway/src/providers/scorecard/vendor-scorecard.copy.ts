@@ -19,6 +19,7 @@
 
 import type { HouseFrame } from "../../common/house-frame";
 import { INCOMPLETE_AFTER_DAYS } from "../../procurement/overdue-order";
+import { creditReasonLabel } from "../../procurement/documents/credit-ledger";
 
 const INCOMPLETE_DAYS = INCOMPLETE_AFTER_DAYS;
 
@@ -318,8 +319,10 @@ export const COPY = {
 
   entry: {
     order: (id: string): string => `Order ${id.slice(0, 8)}`,
+    // The claim's reason in its one wording (W54, ADR 0267 option 8), the
+    // same words /receipts › Credits and the vendor letter use.
     claim: (id: string, reason: string | null): string =>
-      `Claim ${id.slice(0, 8)}${reason ? ` · ${reason.replace(/_/g, " ")}` : ""}`,
+      `Claim ${id.slice(0, 8)}${reason ? ` · ${creditReasonLabel(reason)}` : ""}`,
     ourMessage: "Our message",
 
     noExpectedDate: "no expected date",

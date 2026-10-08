@@ -73,7 +73,12 @@ import {
   shelfUnreadable,
   type ShelfReceived,
 } from "./shelf-received";
-import { draftClaimFromMatch } from "./documents/credit-ledger";
+import {
+  type CreditReason,
+  type DoorRejectionFact,
+  doorReason,
+  draftClaimFromMatch,
+} from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import {
   OrderSource,
@@ -5674,6 +5679,35 @@ export class ProcurementService {
   }
 
   /**
+   * The one reason the door gave for what it turned away on this order
+   * (`doorReason`; W54 / F-158, ADR 0267 option 8), read from the door's own
+   * `case_count` events — never the desk's `reconciled` one, which carries no
+   * reason. Null when it gave none, gave two, or could not be read: the claim
+   * is then filed `damaged` ("refused or broken at the door") rather than not
+   * filed at all, because a lost read must not cost the house its claim.
+   */
+  private async readDoorReason(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<CreditReason | null> {
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .select("outcome, refusal_reason, rejected_qty, rejected_qty_bottles")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("stage", "case_count");
+      if (error) throw new Error(error.message);
+      return doorReason((data ?? []) as DoorRejectionFact[]);
+    } catch (err: any) {
+      this.logger.warn(
+        `openCreditClaim could not read the door's reason for order ${orderId}: ${err?.message}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Apply one signed correction to live stock through the ledger.
    * The idempotency key is per (order, inventory) so a replayed request — the mobile
    * outbox retries — can never double-count.
@@ -5710,7 +5744,18 @@ export class ProcurementService {
     order?: { provider_id?: string | null; currency?: string | null } | null,
   ): Promise<void> {
     try {
-      const claim = draftClaimFromMatch(match);
+      // KEEP THE DOOR'S REASON (founder, 2026-10-02, W54 / F-158, ADR 0267
+      // option 8). A `rejected` verdict used to be filed as `damaged` whatever
+      // the door said, so a wrong item read "damaged" on /receiving and
+      // "Refused at the door" on /receipts. The door's own words live on its
+      // receipt events; read them only when the verdict is a rejection, and
+      // when they cannot be read file the claim as before (`damaged`, now
+      // worded "refused or broken at the door") rather than strand it.
+      const fromDoor =
+        match.verdict === "rejected"
+          ? await this.readDoorReason(restaurantId, orderId)
+          : null;
+      const claim = draftClaimFromMatch(match, fromDoor);
       if (!claim) return;
 
       const insertRow: Record<string, unknown> = {
@@ -5731,13 +5776,32 @@ export class ProcurementService {
       };
       if (order?.currency) insertRow.currency = order.currency;
 
-      const { error } = await this.databaseService.supabase
+      let { error } = await this.databaseService.supabase
         .from("procurement_credits")
         .insert(insertRow);
 
-      // 23505 = a claim for this line and reason is already open. Re-running the
-      // match must not manufacture a second claim for money already being
-      // chased — that would double-count recovery and embarrass the restaurant.
+      // 23514 = procurement_credits_reason_check refused the reason — the
+      // door's new reasons (wrong_item, broken, temperature) exist only once
+      // migration a_claim_keeps_the_door_reason has landed, and the gateway can
+      // deploy before it. File the claim once more as `damaged` ("refused or
+      // broken at the door"), the reason every database knows, so the money is
+      // still chased; the lost precision is logged, never silent.
+      if (error?.code === "23514" && insertRow.reason !== "damaged") {
+        this.logger.warn(
+          `openCreditClaim: the database refused reason "${String(insertRow.reason)}" for order ${orderId} ` +
+            `(${error.message}); filing the claim as "damaged" instead`,
+        );
+        ({ error } = await this.databaseService.supabase
+          .from("procurement_credits")
+          .insert({ ...insertRow, reason: "damaged" }));
+      }
+
+      // 23505 is ignored as a duplicate, but NOTHING here can raise it today:
+      // the only unique index on this path, uq_pc_line_reason, is keyed on
+      // (document_line_id, reason) WHERE document_line_id IS NOT NULL, and this
+      // insert never sets document_line_id. So a re-verify of the same order
+      // CAN open a second claim for money already being chased (pre-existing;
+      // disclosed in .planning/tech-debt.d/2026-10-08-fix-claim-keeps-the-door-reason.md).
       if (error && error.code !== "23505")
         this.logger.warn(
           `openCreditClaim failed for order ${orderId}: ${error.message}`,

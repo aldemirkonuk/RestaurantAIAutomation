@@ -58,15 +58,29 @@ import {
 
 /* ─────────────────────────────────────────────────────────────── words ── */
 
-/** The reason codes (`procurement_credits_reason_check`) in the house's words. */
+/**
+ * The reason codes (`procurement_credits_reason_check`) in the house's words —
+ * the ONE wording every page and the vendor letter use (W54 / F-158, ADR 0267
+ * option 8: "Keep the door's reason"). A mirror of the gateway's
+ * `CREDIT_REASON_WORDING` labels (`procurement/documents/credit-ledger.ts`);
+ * `credit-reason-words.test.ts` fails when the two differ. /receiving's
+ * drafted card reads it through `reasonWords` too.
+ *
+ * `damaged` is old rows, and a rejection whose reason the door did not give:
+ * refused or broken, and the claim does not know which.
+ */
 export const REASON_WORDS: Record<string, string> = {
   overbilled_vs_ship: 'Billed for more than their packing slip shipped',
   qty_short: 'Billed for more than arrived',
   short_shipped: 'Lost between their warehouse and the door',
-  damaged: 'Refused at the door',
+  damaged: 'Refused or broken at the door',
   price_variance: 'Billed above the agreed price',
   never_ordered: 'Billed for something never ordered',
   other: 'Another reason',
+  never_arrived: 'Paid for, never arrived',
+  wrong_item: 'Wrong item, refused at the door',
+  broken: 'Arrived broken',
+  temperature: 'Wrong temperature, refused at the door',
 };
 
 export function reasonWords(code: string | null | undefined): string {
