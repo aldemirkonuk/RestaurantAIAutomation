@@ -2566,9 +2566,9 @@ the onboarding step for every house on a database missing the migration.
 
 The founder decided it on 2026-09-03, on this page's own question: **one house
 item id across all beverages.** It is written up as
-[[0115-the-house-item-is-the-ledgers-key]] — *Proposed*, the founder locks —
+[[0115-the-house-item-is-the-ledgers-key]] — *Proposed*, the founder locks [CORRECTED 2026-10-02: locked on 2026-10-02, with a table per kind in place of one id across all beverages; see ADR 0115 §2026-10-02] —
 with migration `supabase/migrations/20260903171000_the_house_item_is_the_ledgers_key.sql`
-**written and NOT applied** and `scripts/check_house_item_invariants.py` beside
+**written and NOT applied** [CORRECTED 2026-10-02: applied with PR #289 on 2026-09-12] and `scripts/check_house_item_invariants.py` beside
 it. That closes the blocker under every OD-113 line above: roadmap item 4 ("Decide
 the inventory identity axis"), item 5 ("Deplete a base spirit from a poured
 cocktail"), item 8 (`/menu` as a real surface), the beverages roadmap's item 8
