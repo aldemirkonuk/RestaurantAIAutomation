@@ -96,6 +96,12 @@ describe("receiving queue and credit ledger: owner or manager only (ADR 0167)", 
               receivingCalls.listUnverified += 1;
               return [];
             },
+            paperOwed: async () => {
+              // Tallied with the queue: the refusal tests below read this one
+              // counter to prove no desk handler ran.
+              receivingCalls.managerQueue += 1;
+              return { count: 0, complete: true, checkedRead: 0, oldestAt: null, items: [], listMax: 20, vendorNamesUnavailable: false };
+            },
           },
         },
         { provide: DatabaseService, useValue: emptyLedger(touched) },
@@ -147,8 +153,10 @@ describe("receiving queue and credit ledger: owner or manager only (ADR 0167)", 
       ...(method === "POST" ? { body: JSON.stringify({ to: "requested" }) } : {}),
     });
 
-  const FOUR_ROUTES: Array<[string, string, string]> = [
+  const DESK_ROUTES: Array<[string, string, string]> = [
     ["the receiving decision queue", "GET", "/procurement/receiving/queue"],
+    // F-160 / RECEIPTS-W53: checked deliveries with no invoice filed.
+    ["the checked deliveries with no invoice filed", "GET", "/procurement/receiving/paper-owed"],
     ["the credit chase list", "GET", "/procurement/credits"],
     ["the recovery figures", "GET", "/procurement/credits/stats"],
     [
@@ -158,7 +166,7 @@ describe("receiving queue and credit ledger: owner or manager only (ADR 0167)", 
     ],
   ];
 
-  describe.each(FOUR_ROUTES)("%s (%s %s)", (_what, method, path) => {
+  describe.each(DESK_ROUTES)("%s (%s %s)", (_what, method, path) => {
     it("refuses a staff caller with 403, and reads nothing", async () => {
       const res = await call(method, path, "staff");
       expect(res.status).toBe(403);
@@ -235,8 +243,10 @@ describe("the gate is on the right handlers and only those (metadata)", () => {
   // The desk's two handlers: the decision queue (ADR 0167) and, since PR
   // #480, one line's history (the same rule applied to the desk's newest
   // route). Both on the method; the door routes stay open to staff.
-  it("gates the desk handlers, queue and lineHistory, on the method", () => {
-    for (const name of ["queue", "lineHistory"] as const) {
+  it("gates the desk handlers, queue, lineHistory and paperOwed, on the method", () => {
+    // paperOwed: F-160 / RECEIPTS-W53, the checked deliveries with no invoice
+    // filed — a desk read, so the same rule.
+    for (const name of ["queue", "lineHistory", "paperOwed"] as const) {
       expect(rolesOn(ReceivingController.prototype, name)).toEqual([
         "owner",
         "manager",
@@ -251,7 +261,7 @@ describe("the gate is on the right handlers and only those (metadata)", () => {
 
   it("leaves every other ReceivingController handler open to staff", () => {
     const others = methodsOf(ReceivingController).filter(
-      (n) => n !== "queue" && n !== "lineHistory",
+      (n) => n !== "queue" && n !== "lineHistory" && n !== "paperOwed",
     );
     // If this list is empty the test is looking at nothing.
     expect(others.sort()).toEqual([

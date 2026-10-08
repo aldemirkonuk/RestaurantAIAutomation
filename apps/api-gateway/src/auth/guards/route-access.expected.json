@@ -407,6 +407,10 @@
     "manager"
   ],
   "GET /procurement/receiving/orders/:id/received (ReceivingController.receivedSoFar)": "open",
+  "GET /procurement/receiving/paper-owed (ReceivingController.paperOwed)": [
+    "owner",
+    "manager"
+  ],
   "GET /procurement/receiving/queue (ReceivingController.queue)": [
     "owner",
     "manager"

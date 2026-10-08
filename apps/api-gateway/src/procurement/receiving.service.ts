@@ -13,6 +13,7 @@ import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
 import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
+import { readPaperOwed, type PaperOwed } from "./paper-owed";
 import {
   explainStoredFactTime,
   resolveFactTime,
@@ -1113,6 +1114,15 @@ export class ReceivingService {
       })
       .sort((a, b) => b.ageHours - a.ageHours);
     return { rows, capped };
+  }
+
+  /**
+   * Checked deliveries with no invoice filed (F-160, RECEIPTS-W53): the count,
+   * whether it is a floor, the oldest date and the first twenty, oldest first.
+   * The rule and every read are in `paper-owed.ts`; a failed read throws.
+   */
+  async paperOwed(restaurantId: string): Promise<PaperOwed> {
+    return readPaperOwed(this.db.getClient(), restaurantId);
   }
 
   /**
