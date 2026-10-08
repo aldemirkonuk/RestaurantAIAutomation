@@ -173,7 +173,7 @@ export class ProvidersController {
       typeof country === "string" ? country.trim().toUpperCase() : "";
     if (!/^[A-Z]{2}$/.test(code)) {
       throw new BadRequestException(
-        "country must be a two-letter ISO 3166-1 code.",
+        "Type the country as two letters, like US or TR.",
       );
     }
     return this.providersService.catalogueWineListers(

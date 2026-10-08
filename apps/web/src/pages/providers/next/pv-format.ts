@@ -29,8 +29,12 @@ export function houseMessage(e: unknown, fallback: string): string {
     r.status < 500 &&
     typeof msg === 'string' &&
     msg.trim()
-  )
-    return msg.trim();
+  ) {
+    // Every caller sets more words after this one; a server sentence with no
+    // full stop ran into them ("…not found That is a failed read", VEN-W31).
+    const said = msg.trim();
+    return /[.!?…)]$/.test(said) ? said : `${said}.`;
+  }
   return fallback;
 }
 

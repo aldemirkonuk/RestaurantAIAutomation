@@ -172,7 +172,7 @@ export class ProvidersService {
 
       if (vendorError || !vendor) {
         throw new NotFoundException(
-          `Vendor catalogue entry not found: ${dto.catalogue_vendor_id}`,
+          "That vendor is no longer in the curated catalogue, so nothing was added.",
         );
       }
 
@@ -204,14 +204,14 @@ export class ProvidersService {
         // silent failure would create.
         if (dupeCheckError) {
           throw new ServiceUnavailableException(
-            "Could not verify whether this vendor is already in your providers. " +
+            "Could not verify whether this vendor is already in your vendors. " +
               "Nothing was added — please try again.",
           );
         }
 
         if (alreadyLinked) {
           throw new ConflictException(
-            `${alreadyLinked.name} is already in your providers`,
+            `${alreadyLinked.name} is already in your vendors.`,
           );
         }
       }
@@ -245,7 +245,7 @@ export class ProvidersService {
       // Mode B: custom provider — requires name
       if (!dto.name) {
         throw new BadRequestException(
-          "name is required when catalogue_vendor_id is not provided",
+          "A vendor needs a name, so nothing was added.",
         );
       }
 
@@ -474,7 +474,7 @@ export class ProvidersService {
 
     if (!data)
       throw new NotFoundException(
-        `No provider with id ${providerId} belongs to this restaurant.`,
+        "That vendor is not in this house's book; it may have been removed.",
       );
 
     return this.mapProviderRow(data as ProviderRow);
@@ -550,7 +550,7 @@ export class ProvidersService {
         providerId,
         restaurantId,
       });
-      throw new NotFoundException(`Provider ${providerId} not found`);
+      throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
     }
 
     const provider = this.mapProviderRow(data as ProviderRow);
@@ -833,7 +833,7 @@ export class ProvidersService {
     // not a PGRST116 500.
     if (!data) {
       throw new NotFoundException(
-        `No contact with id ${contactId} belongs to this vendor.`,
+        "That contact is no longer on this vendor; it may have been removed.",
       );
     }
 
@@ -1040,7 +1040,7 @@ export class ProvidersService {
     }
     if (!data) {
       throw new NotFoundException(
-        `No provider with id ${providerId} belongs to this restaurant.`,
+        "That vendor is not in this house's book; it may have been removed.",
       );
     }
 
@@ -1317,7 +1317,7 @@ export class ProvidersService {
     }
     if (data !== true) {
       throw new NotFoundException(
-        `No location with id ${locationId} belongs to this vendor.`,
+        "That branch is no longer on this vendor; it may have been removed.",
       );
     }
   }
@@ -1422,7 +1422,7 @@ export class ProvidersService {
     }
     if (!found) {
       throw new NotFoundException(
-        `No location with id ${locationId} belongs to this vendor.`,
+        "That branch is no longer on this vendor; it may have been removed.",
       );
     }
 
@@ -1494,7 +1494,7 @@ export class ProvidersService {
     }
     if (!data) {
       throw new NotFoundException(
-        `No location with id ${locationId} belongs to this vendor.`,
+        "That branch is no longer on this vendor; it may have been removed.",
       );
     }
 
@@ -1544,7 +1544,7 @@ export class ProvidersService {
     const out = (data ?? {}) as { removed?: boolean; promotedId?: string | null };
     if (out.removed !== true) {
       throw new NotFoundException(
-        `No location with id ${locationId} belongs to this vendor.`,
+        "That branch is no longer on this vendor; it may have been removed.",
       );
     }
     return { promotedId: out.promotedId ?? null };
@@ -1740,7 +1740,7 @@ export class ProvidersService {
         `This vendor's usual currency could not be read (${error.message}). That is a failed read, not an empty field — nothing here says the vendor has stated no currency.`,
       );
     }
-    if (!data) throw new NotFoundException(`Provider ${providerId} not found`);
+    if (!data) throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
 
     const row = data as unknown as {
       name?: string | null;
@@ -1909,7 +1909,7 @@ export class ProvidersService {
       );
     }
     if (!data)
-      throw new NotFoundException(`Provider ${args.providerId} not found`);
+      throw new NotFoundException("That vendor is not in this house's book; it may have been removed.");
 
     return {
       code: (data as { usual_currency: string }).usual_currency,

@@ -172,7 +172,7 @@ export class ProviderIntelligenceService {
 
     if (!data) {
       throw new NotFoundException(
-        `No knowledge fact with id ${knowledgeId} belongs to this restaurant.`,
+        "That fact from their mail is no longer in this house's book; it may have been removed.",
       );
     }
 
@@ -513,7 +513,7 @@ export class ProviderIntelligenceService {
     }
     if (!data) {
       throw new NotFoundException(
-        `No provider with id ${providerId} belongs to this restaurant.`,
+        "That vendor is not in this house's book; it may have been removed.",
       );
     }
   }

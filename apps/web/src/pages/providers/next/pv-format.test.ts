@@ -28,3 +28,14 @@ describe('houseMessage (VEN-W27)', () => {
     expect(houseMessage({ response: { status: 404, data: {} } }, fb)).toBe(fb);
   });
 });
+
+describe('houseMessage ends its sentence (VEN-W31)', () => {
+  const said = (message: string) => ({ response: { status: 404, data: { message } } });
+  it('adds a full stop to a server sentence that has none, so the next words do not run into it', () => {
+    expect(houseMessage(said('That branch is gone'), 'x')).toBe('That branch is gone.');
+  });
+  it('leaves a sentence that already ends', () => {
+    expect(houseMessage(said('Nothing was added.'), 'x')).toBe('Nothing was added.');
+    expect(houseMessage(said('Is it yours?'), 'x')).toBe('Is it yours?');
+  });
+});
