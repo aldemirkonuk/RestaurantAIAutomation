@@ -124,6 +124,22 @@ export const HOUSE_LETTER_STATUSES: ReadonlySet<string> = new Set([
   "HOUSE_FAILED",
 ]);
 
+/**
+ * A draft that was closed without being sent: `DISCARDED` (replaced by a newer
+ * draft for its order, or thrown away by a regenerate) and `CANCELLED` (its
+ * order was cancelled, `procurement.service.ts` cancelOrder's cascade). Neither
+ * may be approved: the order holds at most one waiting draft (ADR 0266, F-106),
+ * and approving a closed one would send the letter the house replaced. A
+ * deny-list, not "PENDING_APPROVAL only", because a conversation with no status
+ * at all is this route's ordinary case. The agent refuses the same two words
+ * when it claims a send (provider_conversation_agent.py
+ * `_CLOSED_DRAFT_STATUSES`); the spec pins the two lists together.
+ */
+export const CLOSED_DRAFT_STATUSES: ReadonlySet<string> = new Set([
+  "DISCARDED",
+  "CANCELLED",
+]);
+
 function houseLetterApproveRefusal(status: string | null | undefined): string {
   switch (status) {
     case "HOUSE_DRAFT":
@@ -1079,6 +1095,20 @@ export class ConversationsService {
           success: false,
           messageSent: false,
           error: houseLetterApproveRefusal(conversation.status),
+        };
+      }
+
+      // A closed draft is not waiting on anyone (ADR 0266, F-106). Read from
+      // this second fetch, not `target`, so a draft replaced between the two
+      // reads is still caught.
+      if (CLOSED_DRAFT_STATUSES.has(conversation.status)) {
+        return {
+          success: false,
+          messageSent: false,
+          error:
+            conversation.status === "CANCELLED"
+              ? "This draft was closed when its order was cancelled and cannot be approved."
+              : "This draft was replaced or discarded and cannot be approved. Open the order's waiting draft instead.",
         };
       }
 

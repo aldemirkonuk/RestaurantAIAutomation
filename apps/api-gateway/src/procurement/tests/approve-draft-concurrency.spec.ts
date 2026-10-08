@@ -372,7 +372,9 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     expect(send).not.toHaveBeenCalled();
     // Closed, with the gateway's own sentence kept on the row; not re-approvable.
     expect(conversationRow(store).status).toBe("SEND_REFUSED");
-    expect(conversationRow(store).send_refusal_reason).toMatch(/Refusing to write the To header/);
+    expect(conversationRow(store).send_refusal_reason).toMatch(
+      /Refusing to write the To header/,
+    );
     await expect(
       service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
     ).rejects.toThrow(/No pending draft/);
@@ -682,5 +684,56 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     // The email is at the vendor. PENDING_APPROVAL here is what caused the bug.
     expect(conversationRow(store).status).not.toBe("PENDING_APPROVAL");
     expect(conversationRow(store).status).toBe("SEND_UNCONFIRMED");
+  });
+});
+
+// ADR 0284. The delivery event approveDraft writes goes on the date the order
+// states. `OrderResponseDto` does not carry `expected_delivery_date`, so the
+// date has to be read off the row here and handed over; dropping it puts every
+// event back on approval + 7 days (F-152).
+describe("approveDraft — the delivery event goes on the order's own date", () => {
+  function seedOrder(
+    store: Record<string, Row[]>,
+    expectedDeliveryDate: string | null,
+  ) {
+    store.procurement_orders.push({
+      id: ORDER_ID,
+      restaurant_id: RESTAURANT_ID,
+      order_number: "ORD-0284",
+      status: "APPROVED",
+      quantity: 6,
+      unit_type: "bottle",
+      expected_delivery_date: expectedDeliveryDate,
+      inventory: { wine_name: "Chateau Margaux 2018" },
+    });
+  }
+
+  async function approveAndCapture(expectedDeliveryDate: string | null) {
+    const store = makeStore();
+    seedOrder(store, expectedDeliveryDate);
+    const service = await buildService(store, slowSendEmail());
+    const create = jest
+      .spyOn(service as any, "createCalendarEventForOrder")
+      .mockResolvedValue("cal-event-1");
+
+    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR);
+
+    expect(conversationRow(store).status).toBe("SENT");
+    expect(create).toHaveBeenCalledTimes(1);
+    return create.mock.calls[0];
+  }
+
+  it("hands the order's expected_delivery_date to the calendar writer", async () => {
+    const [restaurantId, order, trigger, stated] =
+      await approveAndCapture("2026-10-21");
+    expect(restaurantId).toBe(RESTAURANT_ID);
+    expect(order).toMatchObject({ id: ORDER_ID, orderNumber: "ORD-0284" });
+    expect(trigger).toBe("approved");
+    expect(stated).toBe("2026-10-21");
+  });
+
+  it("hands over null, not undefined, when the order states no date", async () => {
+    const [, , , stated] = await approveAndCapture(null);
+    expect(stated).toBeNull();
   });
 });

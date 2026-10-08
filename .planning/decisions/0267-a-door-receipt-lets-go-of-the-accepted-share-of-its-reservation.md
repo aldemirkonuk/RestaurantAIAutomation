@@ -80,7 +80,7 @@ The other five findings came from the same sim and are recorded here so R3's sim
    - The move is clamped to the item's present shadow stock. The `in_transit_quantity` display counter is clamped to shadow.
 4. **Guards.** Nothing is let go on an order that is cancelled or rejected, or that carries `cancelled_at` or a cancel reason. cancelOrder already let go without an order id, and doing it again would take another order's reservation.
    - Nothing is let go for a legacy case or pack order whose bottle total is not above its quantity. Its reservation was counted in cases and is let go at close (W58).
-5. **Never fails the receipt.** The release runs only after the order's status write succeeded. A failed status write, or a failed or ambiguous release, comes back as `reservationIssue` beside `stockBooked: true` and is logged. It never turns a booked receipt into an error.
+5. **Never fails the receipt.** The release runs only after the order's status write succeeded. Since #612 (ADR 0286) a status write that fails retryably answers 503 and the outbox re-sends, so the retry reaches the release; a status the order's own rules refuse (SQLSTATE class 23) leaves the order as it was and lets go of nothing. That refusal, or a failed or ambiguous release, comes back as `reservationIssue` beside `stockBooked: true` and is logged. The release never turns a booked receipt into an error. *(Rebased onto `c4005eb09` on 2026-10-08.)*
 
 The rulings W53–W57b are decided here and built on their own branches, one PR at a time:
 
@@ -107,7 +107,7 @@ The rulings W53–W57b are decided here and built on their own branches, one PR 
   - W58's close release;
   - the delivery-model door path.
 - Not fixed and recorded in the tech-debt fragment:
-  - a door receipt on a CANCELLED order still books and flips its status;
+  - a door receipt on a CANCELLED order still books its stock (since #612 the status trigger refuses the flip, so the order stays CANCELLED and nothing is let go);
   - a downward correction or a reversal does not re-reserve;
   - editing an order's quantity after approval does not move its reservation.
 - Revisit the time-window matching once approveOrder passes the order id. After that, every new reservation carries the order's id, and the window serves only the rows written before it.

@@ -15,6 +15,12 @@ import { releaseAcceptedShare, type ReservationRelease } from "./order-reservati
 import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
 import {
+  explainStoredFactTime,
+  resolveFactTime,
+  type FactTimeBasis,
+  type FactTimeReason,
+} from "../common/fact-time";
+import {
   LINE_HISTORY_PAGE,
   formatLineHistoryCursor,
   lineHistoryCursorFilter,
@@ -139,8 +145,18 @@ export interface DoorReceiptInput {
   documentId?: string | null;
   /** Client-generated, stable across offline retries. */
   idempotencyKey?: string | null;
-  /** When the tap actually happened, which may be well before it synced. */
+  /**
+   * When the tap actually happened, which may be well before it synced. It is
+   * the delivery's time when it is no more than 72 hours old, or older on an
+   * owner's or a manager's word (ADR 0286); it is kept as evidence either way.
+   */
   clientCapturedAt?: string | null;
+  /**
+   * The receiver's role IN THE HOUSE THE TOKEN NAMES (ADR 0162/0164). It only
+   * decides whether a sent time older than 72 hours may stand (ADR 0286).
+   * Null is no role, and no role never back-dates.
+   */
+  role?: string | null;
   notes?: string | null;
   /** The receiver's word on how the delivery stands. */
   outcome?: DoorOutcome | null;
@@ -187,6 +203,21 @@ export interface DoorReceiptResult {
   reservationIssue?: string;
   /** A sentence when the item could not be queued for research. The stock stands. */
   researchIssue?: string;
+  /** Whose clock dated this delivery, and why (ADR 0286). */
+  factTime: DoorFactTime;
+}
+
+/**
+ * Whose clock dated a door receipt (ADR 0286). `at` is the event's
+ * `occurred_at`, which the order's `delivered_at` follows.
+ */
+export interface DoorFactTime {
+  at: string;
+  /** Null only for a receipt recorded before the rule, read back on a retry. */
+  basis: FactTimeBasis | null;
+  /** What the phone sent, or null when it sent nothing readable. */
+  sentAt: string | null;
+  reason: FactTimeReason | null;
 }
 
 export interface UnverifiedDelivery {
@@ -226,6 +257,21 @@ export class ReceivingService {
    * vendor claim.
    */
   async recordDoorReceipt(input: DoorReceiptInput): Promise<DoorReceiptResult> {
+    // WHOSE CLOCK DATES THIS DELIVERY — ADR 0286, decided ONCE, here.
+    //
+    // The phone sends the moment of the tap. This used to be kept only on the
+    // event row while the order's `delivered_at` took the moment the request
+    // arrived, so a receipt that synced late was dated on the day it was
+    // entered (the owner-quarter sim: the 100 newest of 549 door deliveries
+    // read 2 October, 31-44 days after their tap times, and the vendor
+    // scorecard read 0 of 548 on time). The
+    // 72 hours are measured from now, the server's receipt of this request.
+    const fact = resolveFactTime({
+      sentAt: input.clientCapturedAt,
+      receivedAt: new Date(),
+      role: input.role ?? null,
+    });
+
     const { data: order, error: orderErr } = await this.db
       .getClient()
       .from("procurement_orders")
@@ -322,7 +368,15 @@ export class ReceivingService {
       rejected_qty_bottles: rejectedBottles,
       damage_photo_path: input.damagePhotoPath ?? null,
       received_by: input.userId,
+      // Kept as sent, whether or not it became the delivery's time: the
+      // evidence of what the phone said.
       client_captured_at: input.clientCapturedAt ?? null,
+      // The fact's time and the mark of which clock gave it (ADR 0286). A
+      // server-dated receipt sends no `occurred_at`, so the database's own
+      // DEFAULT now() stamps it and it equals `created_at`, the entry time,
+      // exactly. `undefined` is dropped from the JSON body by supabase-js.
+      occurred_at: fact.basis === "server" ? undefined : fact.at.toISOString(),
+      occurred_at_basis: fact.basis,
       idempotency_key: idempotencyKey,
       notes: input.notes ?? null,
       // The door's structured facts, in columns rather than in prose nothing
@@ -344,6 +398,15 @@ export class ReceivingService {
 
     let eventId = event?.id ?? null;
     let alreadyRecorded = false;
+    // What the database dated the event, which the order follows. The
+    // fallback is the same server clock the database would have used; a
+    // successful insert always returns the column (it is NOT NULL).
+    let factTime: DoorFactTime = {
+      at: event?.occurred_at ?? fact.at.toISOString(),
+      basis: fact.basis,
+      sentAt: fact.sentAt ? fact.sentAt.toISOString() : null,
+      reason: fact.reason,
+    };
 
     if (evErr) {
       if (evErr.code !== "23505") throw new Error(evErr.message);
@@ -365,10 +428,14 @@ export class ReceivingService {
       // without this, a transient read failure is reported to the operator as
       // "the unique index fired but the row is not visible" — a data-integrity
       // accusation standing in for a query that simply did not run.
+      //
+      // The existing event's TIME is read back too, and reused. A retry never
+      // decides the date again: one that arrives after the 72-hour line would
+      // otherwise re-date a delivery the first attempt already dated (ADR 0286).
       const { data: existing, error: existingError } = await this.db
         .getClient()
         .from("procurement_receipt_events")
-        .select("id")
+        .select("id, occurred_at, occurred_at_basis, client_captured_at")
         .eq("restaurant_id", input.restaurantId)
         .eq("idempotency_key", idempotencyKey)
         .maybeSingle();
@@ -381,7 +448,7 @@ export class ReceivingService {
         );
       }
       eventId = existing?.id ?? null;
-      if (!eventId) {
+      if (!eventId || !existing?.occurred_at) {
         // The unique index fired but the row is not visible to this query. That
         // is a contradiction, not a retry, and reporting a receipt off the back
         // of it would be a guess.
@@ -390,6 +457,18 @@ export class ReceivingService {
             `but the existing event could not be read back — nothing was booked.`,
         );
       }
+      const basis = (existing.occurred_at_basis ??
+        null) as FactTimeBasis | null;
+      factTime = {
+        at: String(existing.occurred_at),
+        basis,
+        sentAt: existing.client_captured_at ?? null,
+        reason: explainStoredFactTime({
+          basis,
+          sentAt: existing.client_captured_at,
+          at: existing.occurred_at,
+        }),
+      };
     }
 
     // THE RUNNING TOTAL COMES FROM THE EVENTS, NOT FROM A MUTABLE COLUMN.
@@ -521,6 +600,9 @@ export class ReceivingService {
           // so the ITEM does not follow from that. The primitive is told which
           // house the movement is for and refuses if the item is not its.
           p_restaurant_id: input.restaurantId,
+          // ADR 0286: the ledger row is dated by the event's stored time, as
+          // the order is (ADR 0281's shared argument; never later than now).
+          p_occurred_at: factTime.at,
         });
       if (rpcErr) {
         // THE FAILURE IS MADE REAL, AND IT IS MADE RETRYABLE.
@@ -563,36 +645,84 @@ export class ReceivingService {
     // count on a failed movement is what made the screen agree with a ledger
     // that had never been touched — and since ADR 0192 no received count is
     // written here at all: what the order received IS the ledger.
-    const orderUpdate: Record<string, unknown> = {
-      // The order is NOT completed here. A case count is not a verified
-      // receipt, and closing on it would strand the bottle count that catches
-      // the short case.
-      status: "PARTIALLY_RECEIVED",
-      delivered_at: new Date().toISOString(),
-      received_by: input.userId,
-    };
-
-    const statusWrite: any = await this.db
+    //
+    // TWO WRITES, AND NEITHER IS SWALLOWED ANY MORE.
+    //
+    // (1) The status. The order is NOT completed here. A case count is not a
+    // verified receipt, and closing on it would strand the bottle count that
+    // catches the short case. This write's error used to be ignored. A refusal
+    // from the order's own transition rules (SQLSTATE class 23 — the 23514 the
+    // status trigger raises on, say, a CANCELLED order) is permanent: a 503
+    // would only make the outbox re-send it forever, and the stock is already
+    // booked. So it is logged loudly and the order is left as it was, which is
+    // exactly what happened before, minus the silence. Anything else is a
+    // failed write a retry can fix, and says so.
+    const { error: statusErr } = await this.db
       .getClient()
       .from("procurement_orders")
-      .update(orderUpdate)
+      .update({ status: "PARTIALLY_RECEIVED", received_by: input.userId })
       .eq("restaurant_id", input.restaurantId)
       .eq("id", input.orderId);
+    let statusWritten = true;
+    if (statusErr) {
+      if (String(statusErr.code ?? "").startsWith("23")) {
+        statusWritten = false;
+        this.logger.error(
+          `door receipt for order ${input.orderId} booked, but the order refused ` +
+            `PARTIALLY_RECEIVED from ${order.status} (${statusErr.code}: ` +
+            `${statusErr.message}); the order and its delivered_at are unchanged.`,
+        );
+      } else {
+        throw new ServiceUnavailableException({
+          reason: "order_write_failed",
+          message:
+            `The delivery and the stock are recorded, but the order could not be ` +
+            `marked as received (${statusErr.message}). This will be retried.`,
+        });
+      }
+    }
+
+    // (2) `delivered_at` is the EVENT's time (ADR 0286), never this request's.
+    // It was `new Date()`, which dated a receipt that synced late on the day it
+    // was entered. It only moves FORWARD: a late-syncing earlier truck must not
+    // pull back the time a later one already set, which is what writing "now"
+    // on every receipt always did. A retry writes the same stored time, so it
+    // converges. Rows dated wrongly before this change are left as they are
+    // (forward-only: the founder declined a backfill, ADR 0286 follow-up 3).
+    if (statusWritten) {
+      const at = `"${factTime.at}"`;
+      const { error: deliveredErr } = await this.db
+        .getClient()
+        .from("procurement_orders")
+        .update({ delivered_at: factTime.at })
+        .eq("restaurant_id", input.restaurantId)
+        .eq("id", input.orderId)
+        .or(`delivered_at.is.null,delivered_at.lt.${at}`);
+      if (deliveredErr) {
+        throw new ServiceUnavailableException({
+          reason: "order_delivered_at_failed",
+          message:
+            `The delivery and the stock are recorded, but the order's delivery ` +
+            `time could not be written (${deliveredErr.message}). This will be retried.`,
+        });
+      }
+    }
 
     // THE RESERVATION IS LET GO AT THE DOOR (F-143; founder, 2026-10-02,
     // verbatim pick "At the door (Recommended)"): the accepted share of what
     // approval reserved stops counting as on hand; a short stays reserved as a
     // backorder. After the status write and only if it landed — an order the
-    // write left APPROVED can still be cancelled, and the cancel lets go of the
-    // whole reservation again. Never a throw: the live booking above stands
-    // either way, and a failure here is said in the response, not hidden.
+    // write left as it was can still be cancelled, and the cancel lets go of
+    // the whole reservation again. A status write that failed retryably threw
+    // above, so the retry reaches here. Never a throw: the live booking above
+    // stands either way, and a failure here is said in the response, not hidden.
     let reservation: ReservationRelease | undefined;
     if (order.inventory_id) {
-      if (statusWrite?.error) {
+      if (!statusWritten) {
         reservation = {
           released: 0,
           target: null,
-          issue: `the order's status could not be written (${statusWrite.error.message ?? String(statusWrite.error)}), so its reservation was not let go`,
+          issue: `the order refused the received status, so its reservation was not let go`,
         };
         this.logger.warn(`door receipt for order ${input.orderId}: ${reservation.issue}`);
       } else {
@@ -654,6 +784,7 @@ export class ReceivingService {
       // number to make when the movement did not happen (ADR 0016).
       stockDelta: stockBooked ? delta : null,
       stockBooked,
+      factTime,
       ...(stockIssue ? { stockIssue } : {}),
       ...(research ? { research } : {}),
       ...(researchIssue ? { researchIssue } : {}),
