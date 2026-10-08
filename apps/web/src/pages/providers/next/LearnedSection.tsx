@@ -43,7 +43,7 @@ import {
   type Promotion,
 } from '../../../services/api/provider-intelligence';
 import { useAuth } from '../../../contexts/AuthContext';
-import { MONO, SANS } from './pv-format';
+import { houseMessage, MONO, SANS } from './pv-format';
 
 interface Props {
   providerId: string;
@@ -191,10 +191,7 @@ function excerpt(text: string, max = 160): string {
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
 }
 
-function serverMessage(e: unknown, fallback: string): string {
-  const msg = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
-  return typeof msg === 'string' && msg.trim() ? msg : fallback;
-}
+const serverMessage = houseMessage;
 
 // ── styles (the sibling sections' tokens) ────────────────────────────────
 

@@ -211,13 +211,15 @@ describe('the Roll Call', () => {
   it('says a failed read in words and claims no vendor', async () => {
     api.get.mockRejectedValue({
       response: {
+        status: 503,
         data: { message: 'The vendor book could not be read (57014).' },
       },
     });
     renderIt();
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'The vendor book could not be read (57014). That is a failed read, not a table of clean vendors',
+      'The scorecard could not be read. That is a failed read, not a table of clean vendors',
     );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('57014');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 });

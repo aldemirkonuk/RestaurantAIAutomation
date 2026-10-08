@@ -21,6 +21,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../../services/api/client';
 import { useAuth } from '../../../../contexts/AuthContext';
+import { houseMessage } from '../pv-format';
 import type {
   Docket,
   MailToneSection,
@@ -30,12 +31,7 @@ import type {
   WindowDays,
 } from './scorecard-types';
 
-export function serverMessage(e: unknown, fallback: string): string {
-  const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-  if (typeof msg === 'string' && msg.trim()) return msg;
-  if (e instanceof Error && e.message) return `${fallback} (${e.message})`;
-  return fallback;
-}
+export const serverMessage = houseMessage;
 
 export function useRollCall(window: WindowDays, enabled = true) {
   const { activeRestaurantId } = useAuth();

@@ -45,7 +45,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
 import { CURRENCY_CODES, currencyLabel } from '../../../lib/currency';
 import { houseDay } from './house-day';
-import { EM, MONO, SANS } from './pv-format';
+import { EM, houseMessage, MONO, SANS } from './pv-format';
 
 type SheetState = 'A' | 'B' | 'C' | 'D' | 'E' | 'stated';
 
@@ -104,11 +104,7 @@ function oneTapsFor(data: UsualCurrency | undefined): OneTap[] {
   return [];
 }
 
-function serverMessage(e: unknown, fallback: string): string {
-  const msg = (e as { response?: { data?: { message?: string } } })?.response?.data
-    ?.message;
-  return typeof msg === 'string' && msg.trim() ? msg : fallback;
-}
+const serverMessage = houseMessage;
 
 export function UsualCurrencySection({
   providerId,

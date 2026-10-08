@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { visibleRegions } from './pv-format';
+import { houseMessage, visibleRegions } from './pv-format';
 
 describe('visibleRegions (VEN-W8)', () => {
   it('hides bare weekday names the old picker left behind', () => {
@@ -12,5 +12,19 @@ describe('visibleRegions (VEN-W8)', () => {
 
   it('is empty when only weekdays were stored, so the sheet draws its dash', () => {
     expect(visibleRegions(['Monday', 'Friday'])).toEqual([]);
+  });
+});
+
+describe('houseMessage (VEN-W27)', () => {
+  const fb = 'The scorecard could not be read.';
+  it('passes on a refusal the gateway wrote for a person', () => {
+    const e = { response: { status: 403, data: { message: 'Only an owner or manager can confirm this.' } } };
+    expect(houseMessage(e, fb)).toBe('Only an owner or manager can confirm this.');
+  });
+  it('never shows a server failure or a transport error code', () => {
+    expect(houseMessage({ response: { status: 500, data: { message: 'Internal server error' } } }, fb)).toBe(fb);
+    expect(houseMessage(new Error('Request failed with status code 500'), fb)).toBe(fb);
+    expect(houseMessage(new Error('Network Error'), fb)).toBe(fb);
+    expect(houseMessage({ response: { status: 404, data: {} } }, fb)).toBe(fb);
   });
 });

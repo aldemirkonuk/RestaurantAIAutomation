@@ -253,7 +253,7 @@ describe('UsualCurrencySection', () => {
     api.get.mockResolvedValue({ data: UNSTATED });
     api.patch.mockRejectedValue(
       Object.assign(new Error('boom'), {
-        response: { data: { message: 'This vendor was NOT changed (write refused).' } },
+        response: { status: 503, data: { message: 'This vendor was NOT changed (write refused).' } },
       }),
     );
     renderIt();
@@ -262,7 +262,9 @@ describe('UsualCurrencySection', () => {
     fireEvent.change(select, { target: { value: 'EUR' } });
     fireEvent.click(screen.getByTestId('vendor-usual-currency-save'));
 
-    expect(await screen.findByText(/NOT changed/)).toBeInTheDocument();
+    // A 5xx sentence is not passed on (VEN-W27): the page's own words stand.
+    expect(await screen.findByText('The currency was not changed.')).toBeInTheDocument();
+    expect(screen.queryByText(/NOT changed/)).not.toBeInTheDocument();
     expect(screen.getByTestId('vendor-usual-currency-code')).toHaveTextContent('—');
   });
 });

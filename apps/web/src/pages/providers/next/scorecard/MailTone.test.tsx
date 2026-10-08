@@ -162,7 +162,7 @@ describe('how their mail reads', () => {
   });
 
   it('says the gateway’s refusal when the read itself fails', async () => {
-    renderWith(Object.assign(new Error('403'), { response: { data: { message: 'Only managers and owners can read how a vendor’s mail reads' } } }));
+    renderWith(Object.assign(new Error('403'), { response: { status: 403, data: { message: 'Only managers and owners can read how a vendor’s mail reads' } } }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Only managers and owners');
   });
 

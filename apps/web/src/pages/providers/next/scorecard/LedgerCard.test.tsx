@@ -171,17 +171,19 @@ describe('the ledger card', () => {
     expect(loading).not.toHaveTextContent(/\d/);
   });
 
-  it('says a failed read in words, with the gateway’s reason, and claims no line', async () => {
+  it('says a failed read in the page’s words, never the server’s, and claims no line', async () => {
     api.get.mockRejectedValue({
       response: {
+        status: 503,
         data: { message: 'The vendor book could not be read (timeout).' },
       },
     });
     renderIt();
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(
-      'The vendor book could not be read (timeout). That is a failed read, not a clean record',
+      'The scorecard could not be read. That is a failed read, not a clean record',
     );
+    expect(alert).not.toHaveTextContent('timeout');
     expect(screen.queryByTestId('ledger-line-onTime')).not.toBeInTheDocument();
   });
 

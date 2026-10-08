@@ -262,7 +262,8 @@ describe('no menu → All my vendors, with a banner', () => {
     renderPage();
     // The hook retries once (as in production) before it calls the read failed.
     const banner = await screen.findByTestId('scope-widened', {}, { timeout: 4000 });
-    expect(banner).toHaveTextContent('could not be worked out (The price history could not be read (timeout))');
+    expect(banner).toHaveTextContent('Which vendors supply your menu could not be worked out — showing all your vendors');
+    expect(banner).not.toHaveTextContent('timeout');
     fireEvent.click(screen.getByTestId('scope-menu'));
     expect(screen.getByRole('alert')).toHaveTextContent('Nothing below is claimed about who supplies it.');
     expect(screen.queryByText('Bodega Álvaro')).not.toBeInTheDocument();

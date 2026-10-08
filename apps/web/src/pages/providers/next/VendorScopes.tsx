@@ -20,7 +20,7 @@ import {
   addProviderFromCatalogue,
   type VendorCatalogueEntry,
 } from '../../../services/api/vendors';
-import { EM, MONO, SANS } from './pv-format';
+import { EM, houseMessage, MONO, SANS } from './pv-format';
 import { SCOPE_LABEL, listedTag, wineSearchable, type VendorScope } from './vendor-scope';
 import type { VendorScopes, CatalogueSearch, BookSearch } from './useVendorScopes';
 
@@ -148,7 +148,7 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
       : reason === 'menu-unlinked'
         ? 'None of your current menu’s lines is linked to a wine yet, so no vendor can be matched to it'
         : reason === 'unreadable' && supply.status === 'error'
-          ? `Which vendors supply your menu could not be worked out (${supply.message})`
+          ? `Which vendors supply your menu could not be worked out${supply.message ? ` (${supply.message})` : ''}`
           : null;
 
   if (scope === 'all') {
@@ -247,7 +247,7 @@ export function BookSearchBar({ book, shown }: { book: BookSearch; shown: number
     } else if (w.status === 'error') {
       line = (
         <p role="alert" data-testid="book-wine-failed" style={note}>
-          The wine search could not run ({w.message}) — only vendor names are matched below. That is a failed
+          The wine search could not run{w.message ? ` (${w.message})` : ''} — only vendor names are matched below. That is a failed
           search, not a wine nobody sold you.
         </p>
       );
@@ -343,8 +343,8 @@ export function FindNewVendors({
       if (status === 409) {
         setAdded((s) => new Set(s).add(v.id));
       } else {
-        const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-        setAddError(`${v.name} could not be added (${typeof msg === 'string' && msg ? msg : 'unknown error'}).`);
+        const msg = houseMessage(e, '');
+        setAddError(`${v.name} could not be added${msg ? ` (${msg})` : ''}. Nothing was added; try again.`);
       }
     } finally {
       setAdding(null);
@@ -405,7 +405,7 @@ export function FindNewVendors({
       {find.status === 'loading' && !result && <p style={quiet}>Searching the catalogue…</p>}
       {find.status === 'error' && (
         <p role="alert" style={note}>
-          The catalogue could not be searched ({find.message}). That is a failed search, not an empty
+          The catalogue could not be searched{find.message ? ` (${find.message})` : ''}. That is a failed search, not an empty
           catalogue.
         </p>
       )}
@@ -554,7 +554,7 @@ function CatalogueWineResults({
   if (w.status === 'error') {
     return (
       <p role="alert" data-testid="find-wine-failed" style={note}>
-        The wine search could not run ({w.message}). That is a failed search, not a wine no vendor lists.
+        The wine search could not run{w.message ? ` (${w.message})` : ''}. That is a failed search, not a wine no vendor lists.
       </p>
     );
   }

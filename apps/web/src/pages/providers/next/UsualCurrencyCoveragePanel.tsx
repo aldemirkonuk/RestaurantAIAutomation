@@ -27,7 +27,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { apiClient } from '../../../services/api/client';
-import { MONO, SANS } from './pv-format';
+import { houseMessage, MONO, SANS } from './pv-format';
 
 export interface UsualCurrencyCoverage {
   stated: number;
@@ -36,11 +36,7 @@ export interface UsualCurrencyCoverage {
   sentence: string;
 }
 
-function serverMessage(e: unknown, fallback: string): string {
-  const msg = (e as { response?: { data?: { message?: string } } })?.response?.data
-    ?.message;
-  return typeof msg === 'string' && msg.trim() ? msg : fallback;
-}
+const serverMessage = houseMessage;
 
 const shell: React.CSSProperties = {
   fontFamily: SANS,
