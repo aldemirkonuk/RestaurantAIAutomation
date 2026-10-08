@@ -504,15 +504,23 @@ end $$;
 -- five columns; house_till_lines gains sold_as; the new overload is
 -- service_role only, like every till function.
 -- [CHANGED 2026-10-06, F2: six columns, with tied_names. Was: five, 36.]
+-- [CHANGED 2026-10-08, merge of origin/main 62f8967b4 (#628): the ledger
+-- this migration re-creates carries the_cellar_counts_the_door_checked_price's
+-- three door columns as 32-34, and this migration's six come after them, as
+-- 35-40. Was: 37, the six as 32-37.]
 do $$
-declare args text; ncols integer; f text;
+declare args text; ncols integer; f text; names text[];
 begin
-  select pg_get_function_identity_arguments(p.oid), coalesce(array_length(p.proallargtypes, 1), 0) - p.pronargs
-    into args, ncols
+  select pg_get_function_identity_arguments(p.oid), coalesce(array_length(p.proallargtypes, 1), 0) - p.pronargs,
+         p.proargnames[p.pronargs + 1 : array_length(p.proargnames, 1)]
+    into args, ncols, names
     from pg_proc p
    where p.oid = 'public.house_beverage_ledger(uuid, integer)'::regprocedure;
   assert args = 'p_restaurant_id uuid, p_limit integer', format('S9 FAIL the ledger''s signature changed: %s', args);
-  assert ncols = 37, format('S9 FAIL the ledger returns %s columns, expected 37', ncols);
+  assert ncols = 40, format('S9 FAIL the ledger returns %s columns, expected 40', ncols);
+  assert names[32:40] = array['door_checked_lines','first_bought_door_checked','last_bought_door_checked',
+      'poured_bottles','poured_glasses','poured_unit_unknown','tied_lines','till_names','tied_names'],
+    format('S9 FAIL the appended columns are %s', names[32:40]);
   foreach f in array array['public.house_till_lines(uuid, text[])',
                            'public.house_till_names(uuid)',
                            'public.house_till_names(uuid, text)',

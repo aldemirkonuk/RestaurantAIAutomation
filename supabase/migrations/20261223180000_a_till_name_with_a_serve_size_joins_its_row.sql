@@ -102,6 +102,15 @@
 -- Its body is migration the_cellar_reads_the_tills_own_record's verbatim,
 -- the menu CTE included, except where marked CHANGED or ADDED below. No
 -- applied migration is edited. Reads only; this migration changes no row.
+-- [CHANGED 2026-10-08, merge of origin/main 62f8967b4 (#628): this migration
+-- now sorts after the_cellar_counts_the_door_checked_price (20261223060000),
+-- which re-created the ledger with a bought block (invoice lines plus
+-- house_door_checked) and three columns after the 31. Dropping and creating
+-- the ledger again from the_cellar_reads_the_tills_own_record's body would undo
+-- that on db reset and on apply, so the body here is the door-checked
+-- migration's, its CHANGED and ADDED marks kept, plus this migration's; its
+-- three columns stay 32-34, and the six above are 35-40, so the shape is 40.
+-- house_door_checked itself is not touched.]
 
 -- ---------------------------------------------------------------------------
 -- 1. The till's own record, one row per line, now with what one of it is.
@@ -309,6 +318,16 @@ RETURNS TABLE (
   last_poured         timestamptz,
   beverage_id         uuid,
   match_method        text,
+  -- ADDED the_cellar_counts_the_door_checked_price (ADR 0301 §2), appended so
+  -- the first 31 columns keep their names, types and places.
+  door_checked_lines        integer,
+  first_bought_door_checked boolean,
+  last_bought_door_checked  boolean,
+  -- [CHANGED 2026-10-08, merge of origin/main 62f8967b4 (#628): this
+  -- migration sorts after the_cellar_counts_the_door_checked_price and
+  -- re-creates the ledger, so it carries that migration's three columns, in
+  -- their places (32-34), and the bought block they come from; the six below
+  -- come after them (35-40).]
   -- ADDED a_till_name_with_a_serve_size_joins_its_row (ADR 0301, the
   -- 2026-10-05 ruling): Sold split by what one of each line is. The three sum
   -- to poured_qty.
@@ -358,8 +377,13 @@ menu AS (
     -- off the menu, not still on it.
     AND mi.status <> 'discarded'
 ),
--- Invoices only. A purchase order is what we asked for; an invoice is what we
--- were charged, and "what we have paid" is a claim only the invoice supports.
+-- Invoices. A purchase order is what we asked for; an invoice is what we were
+-- charged. CHANGED the_cellar_counts_the_door_checked_price (ADR 0301 §2): the
+-- door check, where a person checked the bill against the delivery, is the
+-- other record of a charge. It joins below as `door`, labelled, and an
+-- invoice linked to the order, or paired with its line, takes over from it;
+-- one filed but neither linked nor paired counts alongside it (ADR 0301,
+-- Harder / given up, 2026-10-07).
 inv AS (
   SELECT public.beverage_house_key(NULL, l.description) AS k,
          l.description                                  AS label,
@@ -372,6 +396,15 @@ inv AS (
   WHERE l.restaurant_id = p_restaurant_id
     AND d.doc_type = 'invoice'
     AND btrim(coalesce(l.description, '')) <> ''
+),
+-- ADDED the_cellar_counts_the_door_checked_price (ADR 0301 §2): each
+-- door-checked order no linked or paired invoice covers, at its checked price and its
+-- accepted bottles. Keyed exactly as the order book keys the same line, so it
+-- never makes a key the order book does not already make.
+door AS (
+  SELECT dc.house_key AS k, dc.door_checked_on, dc.unit_price, dc.paid,
+         dc.bottles, dc.provider_name
+  FROM public.house_door_checked(p_restaurant_id) dc
 ),
 ord AS (
   SELECT public.beverage_house_key(oi.producer, oi.wine_name) AS k,
@@ -457,18 +490,42 @@ menu_agg AS (
          (array_agg(label ORDER BY length(label) DESC))[1] AS label
   FROM menu WHERE k IS NOT NULL GROUP BY k
 ),
-inv_agg AS (
+-- CHANGED the_cellar_counts_the_door_checked_price (ADR 0301 §2): bought is
+-- the invoice lines plus the door rows. `lines` stays the invoice count, so the
+-- 'invoice' book and invoice_lines mean what they meant; the door rows are
+-- counted apart, and a first or last date a door row gave is marked. Labels
+-- and first sightings still come from invoice lines alone.
+bought AS (
+  SELECT k, label, doc_date AS bought_on, unit_price,
+         coalesce(line_total, unit_price * qty_bottles) AS paid,
+         qty_bottles AS bottles, provider_name, created_at, false AS door
+  FROM inv
+  UNION ALL
+  SELECT k, NULL, door_checked_on, unit_price, paid, bottles, provider_name,
+         NULL, true
+  FROM door
+),
+bought_agg AS (
   SELECT k,
-         count(*)::integer                                              AS lines,
-         min(doc_date)                                                  AS first_bought,
-         max(doc_date)                                                  AS last_bought,
-         sum(coalesce(qty_bottles, 0))                                  AS bottles,
-         sum(coalesce(line_total, unit_price * qty_bottles, 0))         AS paid,
-         (array_agg(unit_price    ORDER BY doc_date DESC NULLS LAST))[1] AS last_unit_price,
-         (array_agg(provider_name ORDER BY doc_date DESC NULLS LAST))[1] AS last_from,
-         min(created_at)                                                AS first_at,
-         (array_agg(label ORDER BY length(label) DESC))[1]              AS label
-  FROM inv WHERE k IS NOT NULL GROUP BY k
+         (count(*) FILTER (WHERE NOT door))::integer                            AS lines,
+         (count(*) FILTER (WHERE door))::integer                                AS door_lines,
+         min(bought_on)                                                         AS first_bought,
+         max(bought_on)                                                         AS last_bought,
+         sum(coalesce(bottles, 0))                                              AS bottles,
+         sum(coalesce(paid, 0))                                                 AS paid,
+         (array_agg(unit_price    ORDER BY bought_on DESC NULLS LAST, door))[1] AS last_unit_price,
+         (array_agg(provider_name ORDER BY bought_on DESC NULLS LAST, door))[1] AS last_from,
+         -- Whether the first and the last date came from a door row. On the
+         -- same day an invoice line wins (false sorts first): paper outranks
+         -- the door.
+         ((array_agg(door ORDER BY bought_on ASC  NULLS LAST, door))[1]
+           AND min(bought_on) IS NOT NULL)                                      AS first_door,
+         ((array_agg(door ORDER BY bought_on DESC NULLS LAST, door))[1]
+           AND max(bought_on) IS NOT NULL)                                      AS last_door,
+         min(created_at)                                                        AS first_at,
+         (array_agg(label ORDER BY length(label) DESC)
+            FILTER (WHERE NOT door))[1]                                         AS label
+  FROM bought WHERE k IS NOT NULL GROUP BY k
 ),
 ord_agg AS (
   SELECT k,
@@ -504,7 +561,10 @@ book AS (
   SELECT k, 1 AS tier FROM menu_agg
   UNION ALL
   SELECT x.k, 2 AS tier
-  FROM (SELECT k FROM inv_agg
+  -- [CHANGED 2026-10-08, merge of #628: inv_agg is bought_agg there. A
+  -- door row's key is its order line's key, already in ord_agg, so this adds
+  -- exactly the keys inv_agg did.]
+  FROM (SELECT k FROM bought_agg
         UNION SELECT k FROM ord_agg
         UNION SELECT k FROM quo_agg) x
   WHERE NOT EXISTS (SELECT 1 FROM menu_agg m WHERE m.k = x.k)
@@ -700,7 +760,9 @@ pour_agg AS (
 -- ── every product this house's own books name ───────────────────────────────
 keys AS (
   SELECT k FROM menu_agg
-  UNION SELECT k FROM inv_agg
+  -- A door row's key is its order line's key, already in ord_agg; so this
+  -- line adds exactly the keys it added before.
+  UNION SELECT k FROM bought_agg
   UNION SELECT k FROM ord_agg
   UNION SELECT k FROM quo_agg
   -- CHANGED the_cellar_reads_the_tills_own_record: a name only the till
@@ -731,7 +793,10 @@ base AS MATERIALIZED (
     coalesce(m.label, i.label, o.label, q.label, po.label)     AS label,
     array_remove(ARRAY[
       CASE WHEN m.k  IS NOT NULL THEN 'menu'    END,
-      CASE WHEN i.k  IS NOT NULL THEN 'invoice' END,
+      -- CHANGED the_cellar_counts_the_door_checked_price: the invoice book
+      -- names a product only when an invoice line does; a door check alone
+      -- is not an invoice.
+      CASE WHEN i.lines > 0      THEN 'invoice' END,
       CASE WHEN o.k  IS NOT NULL THEN 'order'   END,
       CASE WHEN q.k  IS NOT NULL THEN 'quote'   END,
       CASE WHEN po.k IS NOT NULL THEN 'pos'     END
@@ -757,6 +822,9 @@ base AS MATERIALIZED (
     i.paid                                                     AS paid_total,
     i.last_unit_price                                          AS last_unit_price,
     i.last_from                                                AS last_bought_from,
+    coalesce(i.door_lines, 0)                                  AS door_checked_lines,
+    coalesce(i.first_door, false)                              AS first_bought_door_checked,
+    coalesce(i.last_door, false)                               AS last_bought_door_checked,
     coalesce(o.lines, 0)                                       AS order_lines,
     o.last_at                                                  AS last_ordered_at,
     o.last_price                                               AS last_order_price,
@@ -781,7 +849,7 @@ base AS MATERIALIZED (
     tz.names                                                   AS tied_names
   FROM keys ky
   LEFT JOIN menu_agg m  ON m.k  = ky.k
-  LEFT JOIN inv_agg  i  ON i.k  = ky.k
+  LEFT JOIN bought_agg i ON i.k = ky.k
   LEFT JOIN ord_agg  o  ON o.k  = ky.k
   LEFT JOIN quo_agg  q  ON q.k  = ky.k
   LEFT JOIN pour_agg po ON po.k = ky.k
@@ -807,6 +875,7 @@ SELECT
   b.pos_lines, b.poured_qty, b.poured_revenue, b.first_poured, b.last_poured,
   m.id     AS beverage_id,
   m.method AS match_method,
+  b.door_checked_lines, b.first_bought_door_checked, b.last_bought_door_checked,
   -- ADDED a_till_name_with_a_serve_size_joins_its_row.
   b.poured_bottles, b.poured_glasses, b.poured_unit_unknown,
   b.tied_lines, b.till_names,
@@ -827,8 +896,14 @@ LEFT JOIN LATERAL (
 ) m ON true
 -- The richest record first: a bottle with an invoice, a quote and a sale behind
 -- it is the one an operator opened this register to find.
-ORDER BY (b.pos_lines + b.invoice_lines + b.order_lines
-          + b.quote_count + b.menu_lines) DESC,
+-- CHANGED the_cellar_counts_the_door_checked_price (ADR 0301 §2): a row with
+-- at least one door row adds 1, however many it has, the founder's pick of
+-- 2026-10-07, "Count it as a book (Recommended)": one book, as the register's
+-- books sort counts it. The other terms still count lines. It moves only a
+-- row's place (and so which rows p_limit keeps), never a figure.
+ORDER BY (b.pos_lines + b.invoice_lines
+          + (CASE WHEN b.door_checked_lines > 0 THEN 1 ELSE 0 END)
+          + b.order_lines + b.quote_count + b.menu_lines) DESC,
          b.label ASC
 LIMIT greatest(p_limit, 1);
 $function$;
@@ -853,7 +928,12 @@ COMMENT ON FUNCTION public.house_beverage_ledger(uuid, integer) IS
   'row is a row of its own when the queue ever held it. Sold is split into '
   'poured_bottles, poured_glasses and poured_unit_unknown; till_names lists '
   'the names counted on the row, tied_names the names that tied on it '
-  '(ADR 0301).';
+  '(ADR 0301). '
+  'Bought is the invoice lines plus house_door_checked, the door-checked '
+  'orders no linked or paired invoice covers, at the checked price times the accepted '
+  'bottles; invoice_lines and the invoice book count invoice lines only, and '
+  'door_checked_lines, first_bought_door_checked and last_bought_door_checked '
+  'say what came from the door (ADR 0301 §2). service_role only.';
 
 REVOKE ALL ON FUNCTION public.house_beverage_ledger(uuid, integer)
   FROM PUBLIC, anon, authenticated;

@@ -463,9 +463,19 @@ export interface OnMenuVM {
   sections: string[];
 }
 export interface BoughtVM {
+  /** Invoice lines naming it. 0 when only door checks do. */
   lines: number;
+  /**
+   * Door-checked orders with no invoice linked (ADR 0301 §2). Optional so a
+   * gateway that predates them reads as none.
+   */
+  doorChecked?: number;
   first: string | null;
+  /** True when `first` is a door check's date. */
+  firstDoorChecked?: boolean;
   last: string | null;
+  /** True when `last`, `lastUnitPrice` and `lastFrom` came from a door check. */
+  lastDoorChecked?: boolean;
   bottles: number | null;
   paidTotal: number | null;
   lastUnitPrice: number | null;

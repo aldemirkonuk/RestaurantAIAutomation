@@ -75,18 +75,36 @@ end $$;
 -- caller that reads them by name needs no change. Was: 31.]
 -- [CHANGED 2026-10-06, the same migration, F2 "List tied names on the row":
 -- a sixth, tied_names, so 37. Was: 36.]
+-- [CORRECTED 2026-10-05, the_cellar_counts_the_door_checked_price (ADR 0301
+-- §2): that migration appends three columns after the 31, so this block now
+-- pins the 31 by name and place rather than the count.]
+-- [CHANGED 2026-10-08, merge of origin/main 62f8967b4 (#628) into
+-- a_till_name_with_a_serve_size_joins_its_row: that migration now re-creates
+-- the function with #628's three columns (door_checked_lines,
+-- first_bought_door_checked, last_bought_door_checked) as 32-34 and its own six
+-- after them, so the shape is 40. The 31 are pinned by name and place below,
+-- as #628 pins them. Was: 37.]
 do $$
 declare
   args text;
   ncols integer;
+  names text[];
 begin
-  select pg_get_function_identity_arguments(p.oid), coalesce(array_length(p.proallargtypes, 1), 0) - p.pronargs
-    into args, ncols
+  select pg_get_function_identity_arguments(p.oid), coalesce(array_length(p.proallargtypes, 1), 0) - p.pronargs,
+         p.proargnames[p.pronargs + 1 : p.pronargs + 31]
+    into args, ncols, names
     from pg_proc p
    where p.oid = 'public.house_beverage_ledger(uuid, integer)'::regprocedure;
   assert args = 'p_restaurant_id uuid, p_limit integer',
     format('T4 FAIL the signature changed: %s', args);
-  assert ncols = 37, format('T4 FAIL the return shape has %s columns, expected 37', ncols);
+  assert ncols = 40, format('T4 FAIL the return shape has %s columns, expected 40', ncols);
+  assert names = array['house_key','label','books','first_seen','menu_lines','menu_bottle_price',
+      'menu_glass_price','menu_sections','invoice_lines','first_bought','last_bought','bottles_bought',
+      'paid_total','last_unit_price','last_bought_from','order_lines','last_ordered_at','last_order_price',
+      'last_ordered_from','quote_count','last_quote_at','last_quote_price','last_quote_source',
+      'last_quote_from','pos_lines','poured_qty','poured_revenue','first_poured','last_poured',
+      'beverage_id','match_method'],
+    format('T4 FAIL the 31 columns moved: %s', names);
 end $$;
 
 rollback;

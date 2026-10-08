@@ -59,15 +59,34 @@ export interface OnMenu {
 }
 
 export interface Bought {
+  /** Invoice lines naming it. 0 when only door checks do. */
   lines: number;
-  /** First invoice line naming it. The founder's "first bought". */
+  /**
+   * Orders whose price was checked at the door and that no linked or paired
+   * invoice has taken over yet (ADR 0301 §2: "Door-checked, labelled"; an
+   * invoice filed but not linked counts alongside). Their figures are
+   * in `first`, `last`, `bottles`, `paidTotal` and `lastUnitPrice`, so a
+   * surface that shows those must say so when this is above 0.
+   */
+  doorChecked: number;
+  /** First invoice line or door check naming it. The founder's "first bought". */
   first: string | null;
+  /** True when `first` is a door check's date, not an invoice's. */
+  firstDoorChecked: boolean;
   last: string | null;
+  /**
+   * True when `last` — and with it `lastUnitPrice` and `lastFrom`, read from
+   * the same row — is a door check. On the same day an invoice wins.
+   */
+  lastDoorChecked: boolean;
   bottles: number | null;
-  /** What the house has actually been charged, summed over invoice lines. */
+  /**
+   * What the house has actually been charged: invoice lines, plus each
+   * door-checked order's checked bottle price × the bottles it accepted.
+   */
   paidTotal: number | null;
   lastUnitPrice: number | null;
-  /** The vendor on the most recent invoice. Null when the doc names none. */
+  /** The vendor on the most recent invoice or door check. Null when it names none. */
   lastFrom: string | null;
 }
 
@@ -246,6 +265,14 @@ export interface LedgerRow {
   last_poured: string | null;
   beverage_id: string | null;
   match_method: string | null;
+  /**
+   * Appended by migration `the_cellar_counts_the_door_checked_price`. Optional
+   * so a ledger read before that migration lands still parses: absent reads
+   * as no door check.
+   */
+  door_checked_lines?: number | null;
+  first_bought_door_checked?: boolean | null;
+  last_bought_door_checked?: boolean | null;
   // Added by migration a_till_name_with_a_serve_size_joins_its_row (ADR
   // 0301, 2026-10-05). Optional: a database before it does not return them.
   poured_bottles?: number | null;
@@ -313,6 +340,7 @@ export function toHouseRecord(r: LedgerRow): HouseRecord {
   );
   const menuLines = positive(r.menu_lines);
   const invoiceLines = positive(r.invoice_lines);
+  const doorChecked = positive(r.door_checked_lines);
   const orderLines = positive(r.order_lines);
   const quotes = positive(r.quote_count);
   const posLines = positive(r.pos_lines);
@@ -333,15 +361,19 @@ export function toHouseRecord(r: LedgerRow): HouseRecord {
             ),
           },
     bought:
-      invoiceLines === null
+      invoiceLines === null && doorChecked === null
         ? null
         : {
-            lines: invoiceLines,
+            lines: invoiceLines ?? 0,
+            doorChecked: doorChecked ?? 0,
             first: str(r.first_bought),
+            firstDoorChecked: r.first_bought_door_checked === true,
             last: str(r.last_bought),
+            lastDoorChecked: r.last_bought_door_checked === true,
             bottles: num(r.bottles_bought),
             // A paid total of 0 is not "free": it is an invoice whose line
-            // total and unit price were both blank. Reported as unknown.
+            // total and unit price were both blank. Reported as unknown. A
+            // door check always carries a price, so it never makes a 0.
             paidTotal: positive(r.paid_total),
             lastUnitPrice: positive(r.last_unit_price),
             lastFrom: str(r.last_bought_from),
@@ -532,7 +564,7 @@ export function composeRegister(input: ComposeInput): RegisterResult {
       reason: STOCKING_WITHHELD,
     },
     scopeNote:
-      "Rows with a record are this house's own, read from its menu, invoices, orders, quotes and till. Rows without one are the shared reference catalogue (public.beverages has no restaurant_id) and belong to nobody.",
+      "Rows with a record are this house's own, read from its menu, invoices, the prices checked at its door, orders, quotes and till. Rows without one are the shared reference catalogue (public.beverages has no restaurant_id) and belong to nobody.",
   };
 }
 
