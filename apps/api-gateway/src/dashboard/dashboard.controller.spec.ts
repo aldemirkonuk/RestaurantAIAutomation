@@ -384,6 +384,24 @@ describe("DashboardController", () => {
       expect(result.amounts).toBe("withheld");
     });
 
+    // ADR 0290: sales go to the roles amounts go to; an unknown or missing
+    // role is read as staff, so it is asked for no sales either.
+    it("asks the month for sales only for a role that sees them", async () => {
+      const read = jest.fn().mockResolvedValue({
+        year: 2026, month: 10, restaurant_id: restaurantId, daily: [],
+        monthly_procurement_spend: 0, monthly_bottles: 0,
+      });
+      (mockDashboardService as any).getCalendarRevenue = read;
+      for (const [user, withSales] of [
+        [{ role: "staff" }, false], [{ role: "bogus" }, false], [{}, false], [undefined, false],
+        [{ role: "owner" }, true], [{ role: "manager" }, true], [{ role: "admin" }, true],
+      ] as const) {
+        read.mockClear();
+        await controller.getCalendarRevenue(restaurantId, "2026", "10", user as any);
+        expect(read).toHaveBeenCalledWith(restaurantId, 2026, 10, { withSales });
+      }
+    });
+
     it("refuses the money-only routes to staff, in words, before reading anything", async () => {
       (mockDashboardService as any).getDashboardSummary = jest.fn();
       const staff = { role: "staff" };

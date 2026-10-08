@@ -171,11 +171,10 @@ function netSalesValue(day: DayLedger): string {
 /**
  * The figure row: a track is never narrower than 8rem (an eleven-character
  * figure at 19 px), and a row holds at most half the figures, so six read
- * 3 + 3 or 2 + 2 + 2, four read 2 + 2 and three read 3 — never a lone figure
- * on a row while the container is wide enough.
+ * 3 + 3 or 2 + 2 + 2 and four read 2 + 2 — never a lone figure on a row.
  */
 export function figureColumns(count: number): string {
-  const most = count === 3 ? 3 : Math.max(1, Math.ceil(count / 2));
+  const most = Math.max(1, Math.ceil(count / 2));
   return `repeat(auto-fill, minmax(max(8rem, calc((100% - ${most - 1}rem) / ${most} - 1px)), 1fr))`;
 }
 
@@ -307,8 +306,10 @@ export function DayDetail({
       <div
         className="mt-1 grid gap-4"
         data-testid="dn-day-figures"
-        // Without money (DASH-W22) three figures remain; they read three across.
-        style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : seesAmounts ? 4 : 3) }}
+        // Without money (DASH-W22) three figures remain. ADR 0290 §9 holds a row
+        // to at most half the figures rounded up, so they read 2 + 1 — three
+        // across would need about 416 px and the panel is 282-294 px (ADR 0290).
+        style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : 4) }}
       >
         {salesShown && (
           <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />

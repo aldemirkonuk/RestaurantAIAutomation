@@ -272,6 +272,23 @@ describe('DashboardNext', () => {
     }
   });
 
+  // The panel and the grid agree on "future": both read the house's today
+  // from the gateway, not the device clock (round-4 gate of #579).
+  it("opens a day the house has lived even when the device clock is behind it", async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+    try {
+      routeGets({ '/dashboard/calendar-revenue/': { ...monthLedger(), timezone: 'UTC', today: '2026-09-15' } });
+
+      mount();
+
+      await waitFor(() => expect(dayCell('2026-09-14')).not.toBeDisabled());
+      fireEvent.click(dayCell('2026-09-14'));
+      expect(await screen.findByTestId('dn-day-figures')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // DASH-W17 (founder, 2026-10-01): "past days must be lowered in color" —
   // the cell carries data-past, which dashboard-next.css fades (variant A).
   it('marks only the days before today as past', async () => {
@@ -489,6 +506,8 @@ describe('DashboardNext', () => {
 
         expect(screen.queryByText(/Paid to vendors/i)).not.toBeInTheDocument();
         expect(container.textContent).not.toMatch(/\$/);
+        // Its name says what the cells hold for this role.
+        expect(container.querySelector('section[aria-label="Month calendar — deliveries per day"]')).not.toBeNull();
       } finally {
         vi.useRealTimers();
       }
@@ -960,7 +979,7 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     const figures = await screen.findByTestId('dn-day-figures');
     expect(figures.children).toHaveLength(3);
     expect(figures.textContent).not.toMatch(/Net sales|Paid to vendors/);
-    expect(figures.style.gridTemplateColumns).toBe(figureColumns(3));
+    expect(figures.style.gridTemplateColumns).toBe(figureColumns(4));
     expect(container.textContent).not.toMatch(/\$|net sales/i);
   });
 
@@ -1210,8 +1229,6 @@ describe('DashboardNext — the calendar fits the shell (ADR 0290 §9)', () => {
   it('never narrows a figure track below 8rem, and holds at most half the figures to a row', () => {
     expect(figureColumns(6)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 2rem) / 3 - 1px)), 1fr))');
     expect(figureColumns(4)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 1rem) / 2 - 1px)), 1fr))');
-    // Three never read 2 + 1.
-    expect(figureColumns(3)).toBe(figureColumns(6));
     expect(SECTION_COLUMNS).toBe('repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))');
   });
 });
