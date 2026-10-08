@@ -2309,7 +2309,7 @@ class ProviderConversationAgent(BaseAgent):
             # A house-only figure in the draft (the model can still meet one in
             # memories or history) replaces the draft with a fixed order letter
             # that names the wine, quantity and target, and nothing else. The
-            # drop is kept in the audit trail the manager reads.
+            # drop is recorded in constraint_flags.audit_trail.
             withheld = withheld_figures_in(draft_text, intent)
             if withheld:
                 self.logger.warning(

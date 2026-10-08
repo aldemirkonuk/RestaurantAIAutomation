@@ -23,8 +23,9 @@ Not covered: a figure in words ("eleven hundred"), a rounded one ("about
 1,200", "1.2k"), and a figure the model works out from others ("ten percent
 over our target"). An exact match is not proof of a leak: a quantity or a
 date can equal the ceiling. That is why the replacement still says
-everything the order needs, and why the drop is recorded in the audit trail
-the manager reads.
+everything the order needs, and why the drop is recorded in
+`constraint_flags.audit_trail` on the conversation row (no screen reads that
+field yet).
 """
 
 from __future__ import annotations
@@ -89,10 +90,20 @@ def _readings(token: str) -> List[float]:
     out: List[float] = []
     for i in range(len(parts)):
         out.extend(_plain_readings(parts[i]))
-        for j in range(i + 2, len(parts) + 1):
-            run = " ".join(parts[i:j])
-            if _SPACE_GROUPED.fullmatch(run):
-                out.append(float(re.sub(r"[\u00a0\u202f ]", "", run).replace(",", ".")))
+        if not 1 <= len(parts[i]) <= 3 or not parts[i].isdigit():
+            continue
+        # Extend the run while each next part is a three-digit group (the last
+        # may carry decimals), at most five groups: no ceiling is larger.
+        value = float(parts[i])
+        for group in parts[i + 1 : i + 6]:
+            tail = re.fullmatch(r"(\d{3})[.,](\d+)", group)
+            if tail:
+                out.append(value * 1000 + float(f"{tail.group(1)}.{tail.group(2)}"))
+                break
+            if not (len(group) == 3 and group.isdigit()):
+                break
+            value = value * 1000 + int(group)
+            out.append(value)
     return out
 
 
@@ -124,18 +135,19 @@ def _price(value: Any) -> str | None:
 def order_letter_without_ceiling(intent: Mapping[str, Any] | None) -> str:
     """The letter staged in place of a draft that stated a house-only figure.
 
-    It says what the order needs (the wine, the quantity and the target
-    price, when the intent has them) and nothing the house keeps to itself.
+    It asks for a quote on what the order needs (the wine, the quantity and
+    the target price, when the intent has them) and says nothing the house
+    keeps to itself. It is an inquiry, worded to stay clear of the commitment
+    phrases in core/commitment_patterns.py. It is English only and names no
+    currency, because the intent carries neither a language nor a currency.
     """
     intent = intent or {}
     wine = str(intent.get("wine_name") or "").strip()
     quantity = str(intent.get("quantity") or "").strip()
     target = _price(intent.get("target_price"))
-    what = " of ".join(x for x in (quantity, wine) if x) or "an order"
-    ask = f"We would like to order {what}"
-    if target is not None:
-        ask += f", at {target} per bottle if that works for you"
+    what = " of ".join(x for x in (quantity, wine) if x) or "our next order"
+    target_line = f" Our target is {target} per bottle." if target is not None else ""
     return (
-        f"Hello, {ask}. Could you confirm availability, price and the "
-        f"earliest delivery date? Thank you."
+        f"Hello, could you quote us for {what}?{target_line} Please let us "
+        f"know availability, price and the earliest delivery date. Thank you."
     )

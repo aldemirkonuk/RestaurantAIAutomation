@@ -164,8 +164,24 @@ async def test_a_draft_that_states_the_ceiling_is_replaced_by_the_order_letter()
 
 def test_the_order_letter_names_the_order_and_not_the_ceiling():
     text = order_letter_without_ceiling(INTENT)
-    assert text.startswith("Hello, We would like to order 6 of Example Riserva 2010")
+    assert text.startswith("Hello, could you quote us for 6 of Example Riserva 2010?")
     assert "1,090.00" in text and withheld_figures_in(text, INTENT) == []
+
+
+def test_the_order_letter_is_not_commitment_language():
+    from core.commitment_patterns import COMPILED_COMMITMENT_PATTERNS
+
+    text = order_letter_without_ceiling(INTENT)
+    assert not any(p.search(text) for p in COMPILED_COMMITMENT_PATTERNS)
+
+
+def test_a_long_run_of_spaced_numbers_reads_quickly():
+    import time
+
+    t0 = time.perf_counter()
+    for text in ("1 " * 2000, "123 " * 2000, "1 199 " * 1000):
+        withheld_figures_in(text, INTENT)
+    assert time.perf_counter() - t0 < 1.0
 
 
 @pytest.mark.parametrize(
@@ -180,7 +196,7 @@ def test_the_order_letter_names_the_order_and_not_the_ceiling():
 )
 def test_the_order_letter_never_raises_on_a_thin_intent(intent):
     text = order_letter_without_ceiling(intent)
-    assert text.startswith("Hello, We would like to order")
+    assert text.startswith("Hello, could you quote us for")
 
 
 @pytest.mark.parametrize("target", [None, "1090", "", "n/a"])
