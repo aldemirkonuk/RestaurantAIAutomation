@@ -1,4 +1,4 @@
-## /inventory rebuild (InventoryNext): what the walk-through found and left for other branches — OPEN (8 items) — 2026-10-08
+## /inventory rebuild (InventoryNext): what the walk-through found and left for other branches — OPEN (7 of 8 items; item 1 fixed) — 2026-10-08
 
 Filed by `fix/review-inventory` ([ADR 0315](../decisions/0315-inventory-is-rebuilt-as-inventorynext-on-makeover-b.md)). Claims: `../decisions/claims.d/fix-review-inventory.jsonl:1-2`. Rows and evidence are in `.planning/06-pages/inventory.md` §14.
 
@@ -13,7 +13,7 @@ Filed by `fix/review-inventory` ([ADR 0315](../decisions/0315-inventory-is-rebui
 5. **`?filter=low-stock` and `?rec=` are sent to /inventory but read by no page,** the legacy page included (found in P7). The senders need either a target or removal.
 6. **The shared shell reads twice on every load:** `auth/me` 3×, `auth/me/role` 2×, `organizations/branches` 2×, `users/:id/preferences` 2× (P9, 2026-10-08). Already queued from other pages, and repeated here as measured on /inventory.
 
-7. **The mount line waits on three server fixes** (from the #677 security review, 2026-10-08; ADR 0315 Consequences): (a) the write-off role guard on the ledger `POST` (`inventory-ledger.controller.ts:39-50`, which has only `JwtAuthGuard`); (b) a retry with the same idempotency key and an edited amount confirms the new amount while the ledger keeps the first (`apply_stock_movement` and `record_glass_pour` look up by key alone; the sheet fields stay editable after an error); (c) `approveOrder` has no status check (`procurement.service.ts:4132-4200`), so a second approve reserves shadow stock again. (a) and (c) belong in the gateway F-10 PR. (b) is a page fix or a server refusal.
+7. **The mount line waits on three server fixes** (from the #677 security review, 2026-10-08; ADR 0315 Consequences): (a) the write-off role guard on the ledger `POST` (`inventory-ledger.controller.ts:39-50`, which has only `JwtAuthGuard`); (b) a retry with the same idempotency key and an edited amount confirms the new amount while the ledger keeps the first (`apply_stock_movement` and `record_glass_pour` look up by key alone; the sheet fields stay editable after an error); (c) `approveOrder` has no status check (`procurement.service.ts:4132-4200`), so a second approve reserves shadow stock again. (a) and (c) belong in the gateway F-10 PR. (b) is a page fix or a server refusal. [changed 2026-10-08: all three are in PR #685 (`fix/inventory-mount-line-server-guards`); (b) is the server refusal.]
 8. **A violet (reconcile) tile on the Cellar map loses its severity tint** in the side panel (INV-W19, live at merge on the legacy page). Disclosed, not fixed.
 
 **Owed records:** the phone-first counting fork (INV-W11: barcode, level tap, voice) was meant for `OPEN-DECISIONS.md`. It is NOT filed on this branch, because a new row at the top of Open re-anchors about 173 citations across about 89 files. It needs its own docs branch.
