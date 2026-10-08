@@ -946,6 +946,24 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     expect(screen.getByText('Paid to vendors').previousElementSibling?.textContent).toBe('$500');
   });
 
+  // DASH-G5: a role the page has not read yet sees no sales either, even
+  // when the month says them — sales go to the roles amounts go to.
+  it('draws no sales while the role is unknown', async () => {
+    auth.role = null;
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() => houseMonth({ days: TRADING_DAY, monthly_net_sales: 800 }));
+    const { container } = mount();
+
+    await waitFor(() => expect(dayCell('2026-10-02').getAttribute('aria-label')).toMatch(/2 deliveries/));
+    expect(cellFig('2026-10-02')).toBe('');
+    fireEvent.click(dayCell('2026-10-02'));
+    const figures = await screen.findByTestId('dn-day-figures');
+    expect(figures.children).toHaveLength(3);
+    expect(figures.textContent).not.toMatch(/Net sales|Paid to vendors/);
+    expect(figures.style.gridTemplateColumns).toBe(figureColumns(3));
+    expect(container.textContent).not.toMatch(/\$|net sales/i);
+  });
+
   it('says no register is connected instead of drawing zero sales', async () => {
     browserAt('2026-10-03T19:00:00Z');
     routeMonth(() =>
@@ -1192,6 +1210,8 @@ describe('DashboardNext — the calendar fits the shell (ADR 0290 §9)', () => {
   it('never narrows a figure track below 8rem, and holds at most half the figures to a row', () => {
     expect(figureColumns(6)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 2rem) / 3 - 1px)), 1fr))');
     expect(figureColumns(4)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 1rem) / 2 - 1px)), 1fr))');
+    // Three never read 2 + 1.
+    expect(figureColumns(3)).toBe(figureColumns(6));
     expect(SECTION_COLUMNS).toBe('repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))');
   });
 });

@@ -296,7 +296,9 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
   // A month the gateway sent without its money reads as counts even if the
   // caller's role was expected to see it: a withheld figure is never a $0.
   const seesAmounts = mayShow && ledger?.amounts !== 'withheld';
-  const salesShown = ledger?.sales === 'shown';
+  // G5: a role the page has not read yet sees no sales either — the gateway
+  // gates sales and amounts on the same roles (owner, manager).
+  const salesShown = seesAmounts && ledger?.sales === 'shown';
   const zoneUnset = ledger?.zoneUnset === true;
   const monthSales = monthSalesSaid(ledger);
   const headline = (d: DayLedger | undefined): number | null =>
@@ -361,7 +363,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
   return (
     <section
       className="rounded-lg border border-paper-2 bg-paper-0"
-      aria-label={salesShown ? 'Sales calendar — net sales per day' : 'Month calendar — paid to vendors per day'}
+      aria-label={salesShown ? 'Sales calendar — net sales per day' : seesAmounts ? 'Month calendar — paid to vendors per day' : 'Month calendar — deliveries per day'}
     >
       {/* header */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4 sm:px-5">
@@ -529,7 +531,8 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
             day={selectedDay}
             daily={daily}
             zone={ledger?.timezone}
-            sales={ledger?.sales}
+            sales={seesAmounts ? ledger?.sales : undefined}
+            today={todayStr}
             dayOrders={dayOrders}
             seesAmounts={seesAmounts}
             alerts={alerts}

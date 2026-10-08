@@ -171,10 +171,11 @@ function netSalesValue(day: DayLedger): string {
 /**
  * The figure row: a track is never narrower than 8rem (an eleven-character
  * figure at 19 px), and a row holds at most half the figures, so six read
- * 3 + 3 or 2 + 2 + 2 and four read 2 + 2 — never a lone figure on a row.
+ * 3 + 3 or 2 + 2 + 2, four read 2 + 2 and three read 3 — never a lone figure
+ * on a row while the container is wide enough.
  */
 export function figureColumns(count: number): string {
-  const most = Math.max(1, Math.ceil(count / 2));
+  const most = count === 3 ? 3 : Math.max(1, Math.ceil(count / 2));
   return `repeat(auto-fill, minmax(max(8rem, calc((100% - ${most - 1}rem) / ${most} - 1px)), 1fr))`;
 }
 
@@ -196,6 +197,8 @@ export interface DayDetailProps {
   onClose: () => void;
   /** DASH-W22: false for a role that sees counts, not money (staff). */
   seesAmounts?: boolean;
+  /** The house's today as the calendar decided it, so the panel and the grid agree on "future". */
+  today?: string;
 }
 
 export function DayDetail({
@@ -209,6 +212,7 @@ export function DayDetail({
   onScrub,
   onClose,
   seesAmounts = true,
+  today,
 }: DayDetailProps) {
   if (!day) return <div className="min-h-[1px]" />;
 
@@ -228,7 +232,7 @@ export function DayDetail({
   // DASH-W13 (founder, 2026-10-01): a future day opens only when something is
   // on the calendar, and it shows only that — its money, deliveries, alerts
   // and activity do not exist yet.
-  const isFuture = day.date > dateIn(new Date(), zone);
+  const isFuture = day.date > (today ?? dateIn(new Date(), zone));
 
   const calendarSection = (
     <Section title="On the calendar">
@@ -303,9 +307,8 @@ export function DayDetail({
       <div
         className="mt-1 grid gap-4"
         data-testid="dn-day-figures"
-        // Without money (DASH-W22) three figures remain; they lay out as four
-        // do, at most two across.
-        style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : 4) }}
+        // Without money (DASH-W22) three figures remain; they read three across.
+        style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : seesAmounts ? 4 : 3) }}
       >
         {salesShown && (
           <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />

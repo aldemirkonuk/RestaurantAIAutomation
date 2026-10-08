@@ -92,7 +92,7 @@ These were built as approved. *What follows is my synthesis, proposed. It is not
   - The unused read is gone (W8), and the cellar tile reads the low-stock view rather than every row (W10).
 - **Roles.**
   - On the dashboard's own routes, staff see counts, never amounts. The gateway withholds the amount fields there and says `amounts: "withheld"`, so a withheld figure never reads as a failed one (W22).
-  - Free text is not withheld: an event's description, on the calendar and in Lately, can hold a figure someone wrote (G6).
+  - Free text is not withheld: an event's description, on the calendar and in Lately, can hold a figure someone wrote (G6). [2026-10-08, #579 merging main: since ADR 0290 the month's events read no description (`dashboard.service.ts`, `calendar_events` select), so this now holds for Lately only.]
   - A role the page has not read yet sees no amounts, so a failed role read never opens the prices (G5).
   - Not yet everywhere: the page also reads `/procurement/orders/pending` and `/procurement/orders/history`, which still send prices to staff. The page hides them; the server does not yet. This is queued with the /orders session.
   - The approval hold is offered only to a role that may approve (W21).
@@ -144,7 +144,7 @@ These were built as approved. *What follows is my synthesis, proposed. It is not
 - **Queued for the shared batch (G9).** Clear the role on a house switch, and read roles as the gateway does (any case, `admin` as owner).
 - **Audit reports (G10).** The local copies are dropped. The record cites the PR comments: round 2 https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/579#issuecomment-5945095412, round 3 https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/579#issuecomment-5962344610.
 - **Free text and staff (G6).** The claim is narrowed to the amount fields; descriptions still reach staff, as before this PR. This is recorded here, not as a debt entry, because the founder named only the claim and gave a direction that redraws the line: once the POS is integrated and floor-coverage software runs, each waiter's stats are saved and waiters will be able to see table invoices. The staff-and-money line (W22) is to be redrawn then, not hardened now.
-- **A house with no time zone (G2)** still reads as UTC on this branch. The fix, "—" and a line saying the zone is not set, is a follow-up PR, sketched first. It is tracked as an open claim and debt entry.
+- **A house with no time zone (G2)** still reads as UTC on this branch. The fix, "—" and a line saying the zone is not set, is a follow-up PR, sketched first. It is tracked as an open claim and debt entry. [2026-10-08, #579 merging main: half closed by #622 (ADR 0290) — the month calendar now says the zone is unset; the stat cards still read UTC. See the DASH-G2 debt entry.]
 - **Not verified:**
   - real touch;
   - a real screen reader;
