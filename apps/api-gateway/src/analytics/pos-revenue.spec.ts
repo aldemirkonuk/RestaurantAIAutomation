@@ -792,6 +792,7 @@ describe("the goal reads file every row on the house's day (ADR 0296)", () => {
         // 22:00 LA on Aug 30, which is 05:00 UTC on Aug 31.
         {
           id: "w1",
+          consumption_type: "bottle",
           quantity: 2,
           volume_ml: null,
           created_at: "2026-08-31T05:00:00Z",
@@ -799,6 +800,7 @@ describe("the goal reads file every row on the house's day (ADR 0296)", () => {
         // 10:00 LA on Aug 31.
         {
           id: "w2",
+          consumption_type: "bottle",
           quantity: 1,
           volume_ml: null,
           created_at: "2026-08-31T17:00:00Z",

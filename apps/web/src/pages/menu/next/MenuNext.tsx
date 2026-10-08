@@ -71,9 +71,11 @@ function money(v: number | null, currency: string | null): string {
  * unanswered read resolves to `null`, which `formatMoney` renders as
  * "currency not recorded" rather than a silent dollar-sign default.
  */
-function useHouseCurrency(): string | null {
+function useHouseCurrency(restaurantId: string | null): string | null {
   const { data } = useQuery({
-    queryKey: ['settings', 'currency'],
+    // The house is in the key: one house's currency never prices another's
+    // menu (MENU-01).
+    queryKey: ['settings', 'currency', restaurantId],
     queryFn: () => settingsApi.houseCurrency(),
     staleTime: 5 * 60_000,
   });
@@ -261,7 +263,7 @@ export default function MenuNext() {
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
-  const currency = useHouseCurrency();
+  const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
 
   return (
