@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsArray,
   IsEmail,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -125,7 +126,7 @@ export class UpsertLetterTemplateDto {
 
   @ApiProperty({
     description:
-      "One of the vendor purposes. A staff broadcast is deliberately not one of them (founder, 2026-09-04): the composer writes to the vendor book only.",
+      "One of the vendor purposes. `order_request` is the house's one order letter (ADR 0313): owner or manager only, checked against the STORED purpose of an edited row, its words checked by the order letter's prose rules, and saved as a draft that renders nothing until it is previewed and published. A staff broadcast is deliberately not one of them (founder, 2026-09-04): the composer writes to the vendor book only.",
   })
   @IsString()
   @MaxLength(60)
@@ -142,4 +143,63 @@ export class UpsertLetterTemplateDto {
   @MinLength(1)
   @MaxLength(20000)
   body: string;
+}
+
+/** The two languages an order letter is written in (ADR 0313 R4, F3). */
+export const ORDER_LETTER_LOCALES = ["en", "tr"] as const;
+
+/**
+ * Preview the house's order letter (ADR 0313, 0173 D2: draft, preview,
+ * publish). Without `body`, the saved draft is previewed; with one, the
+ * words given (the sheet previews what is being typed). The answer carries a
+ * `previewHash`, and publish refuses unless the hash it is given is the one
+ * the SAVED draft previews to.
+ */
+export class PreviewOrderLetterDto {
+  @ApiPropertyOptional({ description: "Words to preview instead of the saved draft." })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20000)
+  body?: string;
+
+  @ApiPropertyOptional({
+    enum: ORDER_LETTER_LOCALES,
+    description: "The letter's language. Default: the house's own (restaurants.country, ADR 0313).",
+  })
+  @IsOptional()
+  @IsIn(ORDER_LETTER_LOCALES as unknown as string[])
+  locale?: "en" | "tr";
+}
+
+/** Publish the saved draft as a new version. Owner or manager only. */
+export class PublishOrderLetterDto {
+  @ApiProperty({
+    description:
+      "The previewHash the preview of the saved draft answered. A draft saved after that preview, or another language, does not match and nothing is published.",
+  })
+  @IsString()
+  @MinLength(64)
+  @MaxLength(64)
+  previewHash: string;
+
+  @ApiPropertyOptional({ enum: ORDER_LETTER_LOCALES })
+  @IsOptional()
+  @IsIn(ORDER_LETTER_LOCALES as unknown as string[])
+  locale?: "en" | "tr";
+}
+
+/** Publish Mudavym's default words as a new version (0173 D2: a reset is a version). */
+export class ResetOrderLetterDto {
+  @ApiPropertyOptional({ enum: ORDER_LETTER_LOCALES })
+  @IsOptional()
+  @IsIn(ORDER_LETTER_LOCALES as unknown as string[])
+  locale?: "en" | "tr";
+}
+
+/** Copy an earlier version's words into the draft. Nothing is published. */
+export class RestoreOrderLetterDto {
+  @ApiProperty({ description: "letter_template_versions.id of this house's order letter." })
+  @IsUUID()
+  versionId: string;
 }
