@@ -6,6 +6,7 @@ import {
   toastAdapter,
 } from "./pos-adapters";
 import { POS_PROVIDERS, registrySummary } from "./pos-provider.registry";
+import { CHECK_CHANNELS, checkChannelOf } from "./pos-types";
 
 describe("POS provider registry", () => {
   it("covers 25+ providers across all tiers incl. Türkiye", () => {
@@ -200,5 +201,91 @@ describe("canonical adapter — a field a POS cannot supply stays null", () => {
       items: [{ name: "Akakies", qty: null }],
     });
     expect(check.items[0].qty).toBe(1);
+  });
+});
+
+/**
+ * ADR 0302 (AW24, analytics walk on Tuzlu Rüzgar, 2026-10-03). A check carried
+ * no channel, so a street-fair booth's checks were scored as a server's table
+ * service. The founder's ruling: *"Own row, POS field (Recommended)"* — the
+ * channel comes from the POS, *"else the check counts as table service"*.
+ * Fork AW24-b, his pick *"Wait, then owner maps (Recommended)"*: no POS order
+ * type is mapped to a channel yet, and the order type stays in `raw`.
+ */
+describe("a check carries its channel (ADR 0302)", () => {
+  const base = {
+    externalCheckId: "TR-2026-08-22-BOOTH",
+    openedAt: "2026-08-22T16:00:00.000Z",
+    tableRef: "BOOTH",
+    serverName: "Kerem",
+    items: [],
+  };
+
+  it("the canonical feed names it exactly: booth_event and table are read, case and spaces aside", () => {
+    expect(
+      genericAdapter.normalize({ ...base, channel: "booth_event" })[0].channel,
+    ).toBe("booth_event");
+    expect(
+      genericAdapter.normalize({ ...base, channel: " Booth_Event " })[0]
+        .channel,
+    ).toBe("booth_event");
+    expect(
+      genericAdapter.normalize({ ...base, channel: "table" })[0].channel,
+    ).toBe("table");
+    // csv_import is the generic adapter under another key: Tuzlu posts through it.
+    expect(
+      ADAPTERS.csv_import.normalize({ ...base, channel: "booth_event" })[0]
+        .channel,
+    ).toBe("booth_event");
+  });
+
+  it("a check that names no channel, or one outside the vocabulary, carries none", () => {
+    expect(genericAdapter.normalize(base)[0].channel).toBeNull();
+    expect(
+      genericAdapter.normalize({ ...base, channel: "catering" })[0].channel,
+    ).toBeNull();
+    expect(
+      genericAdapter.normalize({ ...base, channel: 3 })[0].channel,
+    ).toBeNull();
+  });
+
+  it("a table called BOOTH is not a channel: nothing is guessed from the table ref", () => {
+    const [check] = genericAdapter.normalize(base);
+    expect(check.tableRef).toBe("BOOTH");
+    expect(check.channel).toBeNull();
+  });
+
+  it("checkChannelOf takes only an exact member of the vocabulary", () => {
+    expect(CHECK_CHANNELS).toEqual(["table", "booth_event"]);
+    expect(checkChannelOf("BOOTH_EVENT")).toBe("booth_event");
+    expect(checkChannelOf("booth")).toBeNull();
+    expect(checkChannelOf("booth event")).toBeNull();
+    expect(checkChannelOf("")).toBeNull();
+    expect(checkChannelOf(null)).toBeNull();
+    expect(checkChannelOf(undefined)).toBeNull();
+  });
+
+  it("a Clover order type is not a table, and is not mapped to a channel yet (fork AW24-b)", () => {
+    const order = {
+      id: "clv-2",
+      state: "paid",
+      createdTime: 1784750400000,
+      modifiedTime: 1784757600000,
+      total: 12000,
+      orderType: { id: "OT1", label: "Dine In" },
+      employee: { id: "emp1", name: "Ada" },
+      lineItems: { elements: [] },
+    };
+    const [check] = cloverAdapter.normalize(order);
+    // Before ADR 0302 the order type was folded into the table slot.
+    expect(check.tableRef).toBeNull();
+    expect(check.channel).toBeNull();
+    // The order type is kept, so the owner's mapping can read it later.
+    expect((check.raw as any).orderType.label).toBe("Dine In");
+  });
+
+  it("the registry says Clover sends no table", () => {
+    const clover = POS_PROVIDERS.find((p) => p.key === "clover");
+    expect(clover?.capabilities.tables).toBe(false);
   });
 });
