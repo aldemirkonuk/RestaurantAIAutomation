@@ -27,6 +27,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { apiClient } from '../../../services/api/client';
+import { useAuthStore } from '../../../stores';
 import { MONO, SANS } from './pv-format';
 
 export interface UsualCurrencyCoverage {
@@ -75,8 +76,11 @@ export function UsualCurrencyCoveragePanel({
   knownIds: Set<string>;
   onOpenVendor: (providerId: string) => void;
 }) {
+  // The house is in the key: the gateway reads it from the token, and one
+  // house's coverage must never stand under another's name (PROCURE-04).
+  const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
   const coverage = useQuery({
-    queryKey: ['vendor-usual-currency-coverage'],
+    queryKey: ['vendor-usual-currency-coverage', house],
     queryFn: async () => {
       const { data } = await apiClient.get<UsualCurrencyCoverage>(
         '/providers/usual-currency/coverage',

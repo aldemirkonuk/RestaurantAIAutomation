@@ -65,6 +65,7 @@ vi.mock('../../../services/api/calendar', async (importOriginal) => {
 
 import CalendarNext from './CalendarNext';
 import { SEAL_HEX } from './cal-format';
+import { formatMoney } from '@/lib/currency';
 import type { CalEvent } from './useCalendarNextData';
 
 /* ── fixtures ─────────────────────────────────────────────────────────────── */
@@ -193,7 +194,8 @@ function reconciled(over: Record<string, unknown> = {}) {
     businessDate: '2026-09-08',
     recorded: {
       covers: 41,
-      sales: 3400,
+      netSales: 3100,
+      netSalesCheckCount: 12,
       checkCount: 12,
       excluded: false,
       exclusionReason: null,
@@ -221,6 +223,8 @@ function recordWindow(over: Record<string, unknown> = {}) {
       from: '2026-08-31',
       to: '2026-10-04',
       days,
+      // The house's own money, sent with the takings (ADR 0287).
+      currency: { code: 'USD', readable: true },
       posConnected: true,
       recordedRefusal: null,
       weatherRefusal: null,
@@ -943,7 +947,14 @@ describe('CalendarNext — a passed day holds the record', () => {
       record: recordWindow({
         days: [
           reconciled({
-            recorded: { covers: null, sales: 3400, checkCount: 12, excluded: false, exclusionReason: null },
+            recorded: {
+              covers: null,
+              netSales: 3100,
+              netSalesCheckCount: 12,
+              checkCount: 12,
+              excluded: false,
+              exclusionReason: null,
+            },
             line: 'Covers were not recorded on this day, so the forecast beside it cannot be scored.',
           }),
         ],
@@ -961,7 +972,14 @@ describe('CalendarNext — a passed day holds the record', () => {
       record: recordWindow({
         days: [
           reconciled({
-            recorded: { covers: null, sales: null, checkCount: 0, excluded: true, exclusionReason: 'Labor Day' },
+            recorded: {
+              covers: null,
+              netSales: null,
+              netSalesCheckCount: 0,
+              checkCount: 0,
+              excluded: true,
+              exclusionReason: 'Labor Day',
+            },
             line: 'Closed — Labor Day. Ruled out of the baselines.',
           }),
         ],
@@ -992,6 +1010,284 @@ describe('CalendarNext — a passed day holds the record', () => {
     });
     draw();
     expect(screen.getByText('The sales register could not be read.')).toBeInTheDocument();
+  });
+});
+
+/* ── a passed day's net takings, in the opened day only (ADR 0287) ─────────── */
+
+describe('CalendarNext — the opened day shows what it took, net', () => {
+  // 2026-09-08 is the fixture's passed day: 41 covers, 3,100 net from all 12
+  // checks, in a USD house. The fake clock stands on 2026-09-15.
+  const SEPT_8 = /Tuesday, September 8/;
+  const NET = () => formatMoney(3100, 'USD');
+
+  const openDay = () => {
+    fireEvent.click(screen.getByLabelText(SEPT_8));
+    const panel = document.querySelector('.cn-ledger') as HTMLElement | null;
+    expect(panel).toBeTruthy();
+    return panel!;
+  };
+
+  const withRecorded = (recorded: Record<string, unknown>, window: Record<string, unknown> = {}) =>
+    mkData({
+      record: recordWindow({
+        days: [
+          reconciled({
+            recorded: {
+              covers: 41,
+              netSales: 3100,
+              netSalesCheckCount: 12,
+              checkCount: 12,
+              excluded: false,
+              exclusionReason: null,
+              ...recorded,
+            },
+          }),
+        ],
+        window,
+      }),
+    });
+
+  it('shows the net takings in the house currency beside the covers', () => {
+    draw();
+    const panel = openDay();
+    const mark = within(panel).getByText(NET()).closest('.cn-record') as HTMLElement;
+    expect(mark).toHaveAttribute('data-takings', 'complete');
+    expect(within(mark).getByText('net sales · recorded')).toBeInTheDocument();
+    expect(mark.getAttribute('title')).toContain('from all 12 checks');
+    // and the covers mark is still there beside it
+    expect(within(panel).getByText('covers · recorded')).toBeInTheDocument();
+  });
+
+  it('keeps the month cell covers-only, before and after the day is opened', () => {
+    draw();
+    const cell = screen.getByLabelText(SEPT_8);
+    const before = cell.textContent ?? '';
+    expect(before).toContain('41');
+    expect(before).not.toContain(NET());
+    expect(before).not.toMatch(/net sales/);
+
+    // the takings are in the opened day...
+    expect(within(openDay()).getByText(NET())).toBeInTheDocument();
+    // ...and still not in the cell
+    const after = screen.getByLabelText(SEPT_8);
+    expect(after.textContent).not.toContain(NET());
+    expect(after.textContent).not.toMatch(/net sales/);
+    // nor on hover: the cell's record mark carries only the gateway's line
+    expect(after.querySelector('[data-takings]')).toBeNull();
+    expect(after.querySelector('.cn-record')?.getAttribute('title') ?? '').not.toContain(NET());
+  });
+
+  it('says a partial figure is partial — from N of M checks', () => {
+    state.current = withRecorded({ netSales: 1800, netSalesCheckCount: 3, checkCount: 5 });
+    draw();
+    const panel = openDay();
+    const mark = within(panel).getByText(formatMoney(1800, 'USD')).closest('.cn-record') as HTMLElement;
+    expect(mark).toHaveAttribute('data-takings', 'partial');
+    expect(within(mark).getByText('net sales · from 3 of 5 checks')).toBeInTheDocument();
+    expect(mark.getAttribute('title')).toContain('the day took more than this');
+  });
+
+  it('prints an em dash, never a zero, when no check carried a net figure', () => {
+    state.current = withRecorded({ netSales: null, netSalesCheckCount: 0, checkCount: 12 });
+    draw();
+    const panel = openDay();
+    const mark = panel.querySelector('[data-takings]') as HTMLElement;
+    expect(mark).toHaveAttribute('data-takings', 'none');
+    expect(within(mark).getByText('—')).toBeInTheDocument();
+    expect(within(mark).getByText('net sales not recorded')).toBeInTheDocument();
+    expect(mark.textContent).not.toMatch(/\$\s?0|0\.00/);
+  });
+
+  it('names a house with no recorded currency instead of printing dollars', () => {
+    state.current = withRecorded({}, { currency: { code: null, readable: true } });
+    draw();
+    const mark = openDay().querySelector('[data-takings]') as HTMLElement;
+    expect(mark.textContent).toContain('(currency not recorded)');
+    expect(mark.textContent).not.toContain('$');
+  });
+
+  it('keeps a currency that could not be read apart from one never recorded', () => {
+    state.current = withRecorded({}, { currency: { code: null, readable: false } });
+    draw();
+    const mark = openDay().querySelector('[data-takings]') as HTMLElement;
+    expect(mark.textContent).toContain('(currency could not be read)');
+    expect(mark.textContent).not.toContain('not recorded');
+    expect(mark.textContent).not.toContain('$');
+  });
+
+  it('shows the same takings in the Day view', () => {
+    draw();
+    fireEvent.click(screen.getByLabelText(SEPT_8));
+    fireEvent.click(screen.getByRole('button', { name: 'Day' }));
+    expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
+    const mark = screen.getByText(NET()).closest('.cn-record') as HTMLElement;
+    expect(within(mark).getByText('net sales · recorded')).toBeInTheDocument();
+  });
+
+  it('draws no takings for a payload that carries no net figure at all', () => {
+    // A gateway from before ADR 0287 sent the gross `sales` and no `netSales`.
+    // Saying "net sales not recorded" there would answer a question nobody
+    // asked, and printing `sales` would print gross as net.
+    state.current = mkData({
+      record: recordWindow({
+        days: [
+          reconciled({
+            recorded: {
+              covers: 41,
+              netSales: undefined,
+              netSalesCheckCount: undefined,
+              sales: 3400,
+              checkCount: 12,
+              excluded: false,
+              exclusionReason: null,
+            },
+          }),
+        ],
+      }),
+    });
+    draw();
+    const panel = openDay();
+    expect(panel.querySelector('[data-takings]')).toBeNull();
+    expect(panel.textContent).not.toMatch(/net sales/);
+    expect(panel.textContent).not.toContain('3,400');
+  });
+
+  it('draws no takings on a day no check landed on', () => {
+    state.current = withRecorded({
+      covers: null,
+      netSales: null,
+      netSalesCheckCount: 0,
+      checkCount: 0,
+      excluded: true,
+      exclusionReason: 'Labor Day',
+    });
+    draw();
+    expect(openDay().querySelector('[data-takings]')).toBeNull();
+  });
+
+  it('still shows what a ruled-out day took when checks landed on it (ADR 0287 Decision 3)', () => {
+    // A ruling-out takes the day out of the baselines; it does not unmake its
+    // checks. The money that was taken is drawn beside "closed · ruled out",
+    // never hidden behind it.
+    state.current = withRecorded({ excluded: true, exclusionReason: 'Private event' });
+    draw();
+    const panel = openDay();
+    expect(within(panel).getByText('ruled out')).toBeInTheDocument();
+    const mark = panel.querySelector('[data-takings]') as HTMLElement;
+    expect(mark).toHaveAttribute('data-takings', 'complete');
+    expect(within(mark).getByText(NET())).toBeInTheDocument();
+  });
+
+  // ADR 0287 F1, option (b), which follows the founder's money rule (ADR 0253
+  // rounds 10-11): owners and managers see the house's takings; every other role gets the days with `netSales`,
+  // `netSalesCheckCount` and `currency` LEFT OUT, and `takingsWithheld: true`.
+  it('draws no takings for a viewer the house money is withheld from, and keeps the covers', () => {
+    const data = mkData({
+      record: recordWindow({
+        days: [
+          reconciled({
+            recorded: { covers: 41, checkCount: 12, excluded: false, exclusionReason: null },
+          }),
+        ],
+        window: { takingsWithheld: true },
+      }),
+    });
+    delete (data.record.window as unknown as Record<string, unknown>).currency;
+    state.current = data;
+    draw();
+    const panel = openDay();
+    expect(panel.querySelector('[data-takings]')).toBeNull();
+    expect(panel.textContent).not.toMatch(/net sales|currency/);
+    expect(within(panel).getByText('covers · recorded')).toBeInTheDocument();
+  });
+
+  it('draws no takings from a withheld window even if a figure reached it', () => {
+    state.current = withRecorded({}, { takingsWithheld: true });
+    draw();
+    const panel = openDay();
+    expect(panel.querySelector('[data-takings]')).toBeNull();
+    expect(panel.textContent).not.toContain(NET());
+    // and the Day view agrees
+    fireEvent.click(screen.getByRole('button', { name: 'Day' }));
+    expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText(NET())).toBeNull();
+    expect(document.querySelector('[data-takings]')).toBeNull();
+  });
+
+  // ADR 0292 on ADR 0287: the sales register is read whole or refused. A
+  // refused window carries no recorded day. ADR 0287 F3: the opened day then
+  // says its net sales could not be read (an em dash, never a figure), after
+  // the founder's "Say 'could not be read'" for refused figures (ADR 0292
+  // fork 3).
+  it('says net sales could not be read under a sales-register refusal, and draws no figure even if one reached it', () => {
+    const refusal =
+      'The sales register could not be read whole, so no day is drawn from part of it.';
+    state.current = withRecorded({}, { recordedRefusal: refusal });
+    draw();
+    expect(screen.getByText(refusal)).toBeInTheDocument();
+    const panel = openDay();
+    const mark = panel.querySelector('[data-takings]') as HTMLElement;
+    expect(mark).toHaveAttribute('data-takings', 'unreadable');
+    expect(within(mark).getByText('—')).toBeInTheDocument();
+    expect(within(mark).getByText('net sales could not be read')).toBeInTheDocument();
+    expect(panel.textContent).not.toContain(NET());
+    expect(panel.textContent).not.toMatch(/net sales · |net sales not recorded/);
+    expect(mark.textContent).not.toMatch(/\$\s?0|0\.00/);
+    // The covers beside it are not known either (ADR 0287 F4): the em dash and
+    // "covers could not be read", never the 41 that reached the page.
+    const covers = panel.querySelector('[data-record="unreadable"]') as HTMLElement;
+    expect(covers).toBeTruthy();
+    expect(within(covers).getByText('covers could not be read')).toBeInTheDocument();
+    expect(within(covers).getByText('—')).toBeInTheDocument();
+    expect(panel.textContent).not.toMatch(/covers · recorded|covers not recorded/);
+    // and the Day view agrees
+    fireEvent.click(screen.getByRole('button', { name: 'Day' }));
+    expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText(NET())).toBeNull();
+    const dayMark = document.querySelector('[data-takings]') as HTMLElement;
+    expect(dayMark).toHaveAttribute('data-takings', 'unreadable');
+    expect(within(dayMark).getByText('net sales could not be read')).toBeInTheDocument();
+  });
+
+  it('says it on a refused day with no recorded half too, where the gateway sends only the weather', () => {
+    // The day as the gateway sends it under a refusal since ADR 0287 F4:
+    // weather only, `posConnected: null`, and the refused line.
+    const line = "The sales register could not be read, so this day's trading is not known.";
+    state.current = mkData({
+      record: recordWindow({
+        days: [reconciled({ recorded: null, line })],
+        window: { recordedRefusal: 'The sales register could not be read.', posConnected: null },
+      }),
+    });
+    draw();
+    // The month cell's covers mark already says it, not "covers not recorded".
+    const cellMark = document.querySelector('.cn-cell [data-record="unreadable"]') as HTMLElement;
+    expect(cellMark).toBeTruthy();
+    expect(within(cellMark).getByText('covers could not be read')).toBeInTheDocument();
+    const panel = openDay();
+    const mark = panel.querySelector('[data-takings]') as HTMLElement;
+    expect(mark).toHaveAttribute('data-takings', 'unreadable');
+    expect(within(mark).getByText('net sales could not be read')).toBeInTheDocument();
+    // Three marks, one fact: the covers, the takings and the line all say the
+    // register could not be read, and nothing says there is no register.
+    expect(within(panel).getByText('covers could not be read')).toBeInTheDocument();
+    expect(within(panel).getByText(line)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/covers not recorded|No sales register is connected/);
+  });
+
+  it('draws no takings at all for a withheld viewer under a refusal (F1 before F3)', () => {
+    state.current = withRecorded(
+      {},
+      { takingsWithheld: true, recordedRefusal: 'The sales register could not be read.' },
+    );
+    draw();
+    const panel = openDay();
+    expect(panel.querySelector('[data-takings]')).toBeNull();
+    expect(panel.textContent).not.toMatch(/net sales/);
+    // Covers are not house money: the withheld viewer is told they could not
+    // be read, like everyone else (ADR 0287 F4).
+    expect(within(panel).getByText('covers could not be read')).toBeInTheDocument();
   });
 });
 

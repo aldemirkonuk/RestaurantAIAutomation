@@ -394,6 +394,7 @@ describe("an insight that takes a name from a read that could not be made does n
       rows.push({
         id: `c${String(d).padStart(3, "0")}`,
         inventory_id: "inv-1",
+        consumption_type: "bottle",
         quantity: d <= 7 ? 6 : 2,
         volume_ml: null,
         created_at: dayBack(d),
