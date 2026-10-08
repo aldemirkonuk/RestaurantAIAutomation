@@ -328,6 +328,12 @@ too, with its own sentence — *"Your role at this restaurant has not been read 
 whether you may cancel an order is unknown. It is not assumed."* Collapsing `null` into
 `staff` would accuse a manager; collapsing it into "allowed" would be
 [[absence-reported-as-health]] on a destructive write.
+[Corrected 2026-10-01, PR #562: the sentence now reads *"Your role at this restaurant is
+not confirmed here, so cancelling this order is not available. Ask a manager or an
+owner."* `null` also covers a read that finds no role: `/auth/me/role` answers no role in
+cases including an active access row whose `role` is NULL and a failure of its own read of
+that row. A NULL role does not clear on a reload, so the sentence no longer says to reload
+or that it will clear.]
 
 ### Q2 — *"Enforce the table as a database trigger."*
 

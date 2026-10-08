@@ -65,8 +65,9 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 
 /**
  * The role, as the page sees it. `activeRole` comes from `/auth/me/role` and is
- * `null` both while it loads and when that read FAILED — the browser cannot tell
- * the two apart, and neither is permission.
+ * `null` in more than one state, including before the first read returns,
+ * after a failed read, and when the read finds no role for this person here.
+ * None of them is permission.
  */
 const roleMock = vi.hoisted(() => ({
   current: 'manager' as 'owner' | 'manager' | 'staff' | null,
@@ -132,7 +133,7 @@ describe('who may end an order', () => {
     expect(die()).toBeDisabled();
     expect(box()).toBeDisabled();
     expect(screen.getByTestId('legacy-reject-role-note')).toHaveTextContent(
-      REJECT_NEEDS_A_MANAGER.slice(0, 40),
+      REJECT_NEEDS_A_MANAGER,
     );
   });
 
@@ -143,17 +144,26 @@ describe('who may end an order', () => {
     expect(screen.queryByTestId('legacy-reject-needs-reason')).toBeNull();
   });
 
-  it('treats an UNRESOLVED role as "not yet", never as permission', () => {
+  it('treats a role that is not known as not confirmed, and disables the hold', () => {
     roleMock.current = null;
     render(<SealedRejectDie orderId="ord-1" />);
     expect(die()).toBeDisabled();
-    expect(screen.getByTestId('legacy-reject-role-note')).toHaveTextContent(
-      REJECT_ROLE_UNKNOWN.slice(0, 40),
+    const note = screen.getByTestId('legacy-reject-role-note');
+    expect(note).toHaveTextContent(REJECT_ROLE_UNKNOWN);
+    // Not the staff sentence, which would accuse the person.
+    expect(note).not.toHaveTextContent(/as staff/i);
+  });
+
+  it('[REVERT-FAILS] does not tell a person whose role is not known that it will clear, or to reload', () => {
+    // `null` includes an active access row whose role is NULL, which does not
+    // clear on its own, so the sentence promises nothing about later.
+    roleMock.current = null;
+    render(<SealedRejectDie orderId="ord-1" />);
+    const note = screen.getByTestId('legacy-reject-role-note');
+    expect(note).toHaveTextContent(
+      'Your role at this restaurant is not confirmed here, so cancelling this order is not available. Ask a manager or an owner.',
     );
-    // And it says which of the two it is, rather than accusing the person.
-    expect(screen.getByTestId('legacy-reject-role-note')).not.toHaveTextContent(
-      /your role here is not one of those/i,
-    );
+    expect(note).not.toHaveTextContent(/reload|not been read|in a moment|yet/i);
   });
 
   it.each(['staff', null] as const)(
