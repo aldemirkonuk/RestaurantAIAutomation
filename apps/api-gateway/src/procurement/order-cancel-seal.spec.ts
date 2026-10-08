@@ -432,8 +432,13 @@ describe("a cancelled order does not email its vendor", () => {
   });
 });
 
-describe("the PATCH route is held to the same table", () => {
-  it("refuses a status this house does not allow from here", async () => {
+// 2026-09-29: the PATCH moves no order at all — not even along an edge the
+// table permits. Each move has its own act that checks more than the table
+// (`order-patch-is-not-a-side-door.spec.ts` walks every one over HTTP). The
+// two cases below used to say "held to the table" and "still allows
+// APPROVED -> CONFIRMED" (the legacy desk's Mark as Ordered, deleted in #494).
+describe("the PATCH route moves no order", () => {
+  it("refuses a status the table would refuse, before the table is asked", async () => {
     const h = await makeService({ status: ProcurementOrderStatus.DELIVERED });
     const err = await refusal(() =>
       h.service.updateOrder(HOUSE, ORDER_ID, {
@@ -441,17 +446,25 @@ describe("the PATCH route is held to the same table", () => {
       } as any),
     );
     expect(err.getStatus()).toBe(422);
-    expect(String(err.message?.message ?? err.message)).toMatch(
-      /cannot be moved to pending/,
-    );
+    expect(err.getResponse().reason).toBe("status_through_its_act");
+    expect(h.order.status).toBe(ProcurementOrderStatus.DELIVERED);
   });
 
-  it("still allows a move the house makes today", async () => {
+  it("refuses a move the table permits, too", async () => {
     const h = await makeService({ status: ProcurementOrderStatus.APPROVED });
-    await h.service.updateOrder(HOUSE, ORDER_ID, {
-      status: ProcurementOrderStatus.CONFIRMED,
-    } as any);
-    expect(h.order.status).toBe(ProcurementOrderStatus.CONFIRMED);
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, {
+        status: ProcurementOrderStatus.CONFIRMED,
+      } as any),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(String(err.getResponse().message)).toMatch(
+      /vendor's own confirmation/,
+    );
+    expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
+    expect(
+      h.updates.filter((u) => u.table === "procurement_orders"),
+    ).toHaveLength(0);
   });
 
   // ADR 0207 round 4 (last call, 2026-09-22): a cancel by PATCH skipped the

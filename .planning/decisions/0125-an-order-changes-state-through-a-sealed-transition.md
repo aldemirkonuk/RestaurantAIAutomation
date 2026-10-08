@@ -228,6 +228,15 @@ did it and the audit row names them. **Founder question Q1 below.**
   has been using cancellation as an "undo delivery", that habit breaks loudly.
 - **`PATCH` with a status is now refusable.** Any client moving an order in a way the table
   does not name gets a 422 with a sentence.
+  **[Amended 2026-09-29, founder ruling "fix these verified live holes now",
+  `fix/order-approval-and-alert-relays`: `PATCH` now refuses EVERY status, 422
+  `status_through_its_act`, naming the act that makes the move. The table let it write
+  PENDING/APPROVAL_NEEDED/NEGOTIATING -> APPROVED with no seal, rule, `approved_by` or
+  reservation, and REJECTED, FAILED, DELIVERED, CONFIRMED and COMPLETED the same way. No client
+  sends a status there (the legacy "Mark as Ordered" went with #494); `cancelOrder` is the one
+  caller that writes a status through `updateOrder`. Its price fields now need a manager or an
+  owner and file `order_price_changed`. Recorded as [ADR 0244](0244-an-order-edit-is-not-a-side-door-and-uncalled-relays-are-closed.md)
+  D1/D2; claim `SEC-2026-09-29-ORDER-PATCH-AND-ALERT-RELAYS`.]**
 - **The Python orchestrator is not covered.** `procurement_agent.py` writes REJECTED and
   CANCELLED straight to Supabase, bypassing the gateway, so no table, seal or audit row
   reaches it. **Stated, not fixed** — it is a service boundary and a separate pass.

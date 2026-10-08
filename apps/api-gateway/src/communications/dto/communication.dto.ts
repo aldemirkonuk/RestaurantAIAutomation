@@ -253,28 +253,10 @@ export class LowStockAlertDto {
   restaurantId?: string;
 }
 
-export class DailySummaryDto {
-  @ApiProperty({ description: "Recipient phone number" })
-  @IsString()
-  recipientPhone: string;
-
-  @ApiProperty({ description: "Restaurant name" })
-  @IsString()
-  restaurantName: string;
-
-  @ApiProperty({ description: "Number of low stock items" })
-  @IsNumber()
-  lowStockCount: number;
-
-  @ApiProperty({ description: "Number of pending orders" })
-  @IsNumber()
-  pendingOrders: number;
-
-  // `deliveriesToday` was removed 2026-09-02 (ADR 0084). The scheduled sender
-  // fed it a hardcoded 0 and the SMS printed it beside two measured figures.
-  // The field is gone rather than made optional: an accepted-and-ignored
-  // parameter is the next reader's false lead.
-}
+// `DailySummaryDto` was DELETED 2026-09-29 with `POST /communications/alerts/
+// daily-summary`, the route it was the only validation of (the same posture
+// as `SendSmsDto` in ADR 0084). The scheduled sender calls
+// `CommunicationsService.sendDailySummary` with a typed object, not a body.
 
 export class WeeklyReportDto {
   @ApiProperty({ description: "Recipient email addresses" })
