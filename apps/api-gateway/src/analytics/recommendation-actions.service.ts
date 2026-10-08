@@ -436,15 +436,15 @@ export class RecommendationActionsService {
 
   /**
    * An assignee id is a row of THIS house's roster, whatever that row's
-   * status (OPS-03; ADR 0306). Before, `assignedTo` was written as sent, so
-   * an id from another house, an id on no roster or any string landed on the
-   * card. The row's status is not read: a `trial` or `inactive` person is
-   * still on the roster (ADR 0215 item 19, "Only removal counts"), the
-   * page's roster is the team's (the founder, 2026-09-06, F4), and an
-   * assignment sends nothing and grants nothing (ADR 0191, a note, not an
-   * act). A roster that could not be read refuses the write instead of
-   * letting it through unchecked. Only the id is checked: an
-   * `assignedName` is written as sent.
+   * status (OPS-03). Before, `assignedTo` was written as sent, so an id
+   * from another house, an id on no roster or any string landed on the
+   * card. The status is not read: ADR 0306, the coordinator's call under
+   * the founder's delegation, reads F4's "the roster it reads is the
+   * team's" as every row, as main's page offered; ADR 0215 reads an
+   * inactive person as still on the roster; and an assignment is a note
+   * (ADR 0191) that sends and grants nothing. A roster that could not be
+   * read refuses the write instead of letting it through unchecked. Only
+   * the id is checked: an `assignedName` is written as sent.
    */
   private async assertAssigneeOnRoster(
     restaurantId: string,
@@ -483,9 +483,9 @@ export class RecommendationActionsService {
     createdBy?: string,
   ): Promise<RecommendationActionRow> {
     if (!ruleKey?.trim()) throw new Error("ruleKey is required");
-    // This is the only write of `assigned_to` (the bulk route passes no
-    // `assignedTo`): its id is checked here, after the permission gates and
-    // before anything is written. An `assignedName` alone is not checked.
+    // The only non-test write of `assigned_to` under apps/, services/,
+    // packages/, scripts/ and supabase/migrations (a git grep; the bulk route
+    // sends no `assignedTo`). The id is checked here, before any write.
     if (patch.assignedTo)
       await this.assertAssigneeOnRoster(restaurantId, patch.assignedTo);
     const row: Record<string, any> = {
