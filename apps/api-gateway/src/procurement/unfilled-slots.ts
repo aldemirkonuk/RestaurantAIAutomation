@@ -17,6 +17,12 @@
  * The same pattern as `unfilledSlots` in apps/web/src/pages/orders/next/
  * DraftRail.tsx: a bracketed run of one to four Capitalised words. A lower-case
  * bracket ("[sic]", "[1]") is not a slot and is left alone.
+ * [corrected 2026-10-08, PR #672: this pattern is not the whole check. When
+ * the sender name is empty, `blanksAtSend` (procurement.service.ts) also
+ * refuses any signature blank `SIGNATURE_SLOT_SOURCE` below matches, in any
+ * case or spacing ("[your name]", "[ signature ]"), because the send would
+ * erase it. On the two hand-written-reply routes the sender name is always
+ * empty.]
  */
 const SLOT_RE = /\[(?:[A-Z][A-Za-z']*)(?: [A-Z][A-Za-z']*){0,3}\]/g;
 

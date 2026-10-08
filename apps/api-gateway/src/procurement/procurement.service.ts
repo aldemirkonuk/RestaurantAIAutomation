@@ -7776,9 +7776,11 @@ export class ProcurementService {
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
     // ORD-W7: the last door before the mail leaves. Checked before the seal is
     // spent, so a refusal here leaves the hold unspent and nothing sent. The
-    // sender name is read ONCE and the same value is checked and sent: a
-    // second read that failed transiently ("") would erase a signature blank
-    // that passed the check.
+    // sender name is read ONCE and the same value is checked and sent. A
+    // second read can answer differently: resolveSenderName turns a thrown
+    // error into "" (which would erase a signature blank that passed the
+    // check) and ignores a read's returned error, so a failed read falls
+    // through to the next source and can sign with a different name.
     const senderName = await this.resolveSenderName(restaurantId);
     const recipientFirstName = this.resolveFirstName((conv as any).providers);
     const blanks = this.blanksAtSend(rawEmailBody, { firstName: recipientFirstName, senderName }).unfillable;

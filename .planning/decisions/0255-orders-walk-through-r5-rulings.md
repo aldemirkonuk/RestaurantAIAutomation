@@ -42,7 +42,7 @@ The founder's words, verbatim, per item:
 These were built as approved:
 
 - The draft card serves the order that is open. W8 marks the open order's card, W10 lets its words be edited, and W11 opens the vendor's answers from it.
-- A `[Bracketed Blank]` the send cannot fill is refused by six procurement routes (W7, reworked): the seal, a staff request, approveDraft, the automatic send sweep (it holds the letter unsent and tells the house), and the hand-written reply's seal and send. Senders outside procurement are not checked: the communications service's house letters, the relay, and `confirmDeal`, whose words are built in code (tech-debt). A hand-written reply's send fills nothing, so every blank there is refused. The card shows what the send will fill, and with what. The check only sees one to four Capitalised ASCII words in brackets: see the tech-debt fragment for what it misses and what it wrongly refuses.
+- A `[Bracketed Blank]` the send cannot fill is refused by six procurement routes (W7, reworked): the seal, a staff request, approveDraft, the automatic send sweep (it holds the letter unsent and tells the house), and the hand-written reply's seal and send. Senders outside procurement are not checked: the communications service's house letters, the relay, and `confirmDeal`, whose words are built in code (tech-debt). A hand-written reply's send fills nothing, so every blank there is refused. The card shows what the send will fill, and with what. The check only sees one to four Capitalised ASCII words in brackets: see the tech-debt fragment for what it misses and what it wrongly refuses. [corrected 2026-10-08, PR #672: when the sender name is empty, the check also refuses a signature blank in any spelling the signature pattern (`SIGNATURE_SLOT_SOURCE`) matches, such as `[your name]`, because the send would erase it to an empty signature. The two hand-written-reply routes always send with no sender name, so there every such spelling is refused. Other blanks are still seen only in the one Capitalised shape.]
 - The page says only what it knows:
   - W4: the vendor name is read from the order.
   - W15: a failed re-read is no longer called "unknown" over rows that are still drawn.
@@ -71,8 +71,23 @@ These were built as approved:
   - The 50-order list cap, and the senders outside procurement that do not check for blanks, in tech-debt. [corrected 2026-10-01: this line first listed `issueManualReplySeal` as unchecked; the W7 rework made it refuse blanks.]
 - Revisit when: the AI-draft authority check lands in `common/` (unparks W8's add-on), or the founder answers the OD.
 
+## Addendum 2026-10-08 — the PR #672 follow-ups, and three forks left open
+
+PR #672 (fix/orders-send-blank-followups) built follow-ups 1-4 of the #578 pr-audit (`.planning/07-reference/pr-audits/578-a2275b4.md`, "Owed follow-ups"):
+
+- `blanksAtSend` refuses a signature blank in any spelling `SIGNATURE_SLOT_SOURCE` matches when the sender name is empty (bracket on the W7 bullet above).
+- `approveDraft` reads the sender name once and checks and sends that one value (`procurement.service.ts:7784-7786`, `:7899`).
+- `getPendingDraft` compares the vendor's `providers.restaurant_id` with the house (`:10012`).
+
+Three forks came out of that work. Each is built one way, the most conservative reading the fixer found. **None is decided: each is open, pending the coordinator's ruling.**
+
+1. **A vendor of another house on the draft read.** Built: `getPendingDraft` reads the draft as having no vendor (`:10012-10015`). The card still loads, gets no vendor name, address or first name, and `at_send` reports `[Provider First Name]` as unfillable. The alternative is to refuse the whole read, as `approveDraft` refuses the send (`:7821`, 403). Open, pending the coordinator's ruling.
+2. **What a refused signature blank says.** Built: the refusal reuses `unfilledSlotsRefusal`'s existing sentence, quoting the blank as written ("…did not fill: [your name]. Nothing was sent."). It does not say that the house has no sender name, or where one is set. Open, pending the coordinator's ruling.
+3. **A vendor with no house (`providers.restaurant_id` null).** Built: `getPendingDraft` treats it as another house's vendor. That agrees with the seal (`:7427`) and `approveDraft` (`:7821`), which also compare with a strict `!==` and so refuse a null house. Among the routes that compare at all, only `manualReply` (`:8875`) lets a null house through. `confirmDeal` (`:9534`) does too, but it is not one of the six W7 routes. `requestDraftSend` and the sweep do not compare at all: filed as OD-TBD of 2026-10-08 in `OPEN-DECISIONS.md` ("filed 2026-10-08 from fix/orders-send-blank-followups"). The fork: should `manualReply` refuse a null house too, or should a null house be allowed everywhere? Open, pending the coordinator's ruling.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-01 | — | Created, session R5, branch fix/review-orders |
+| 2026-10-08 | PR #672 (fix/orders-send-blank-followups) | Brackets on W7 (line 45); addendum recording three open forks |
