@@ -5,9 +5,10 @@
  *
  * The gateway decides the flags and the order; this only says them. It prints
  * the reasons as WORDS and never a figure, so the same line holds for a role
- * that does not see money (DASH-W22, recorded on `origin/fix/review-dashboard`,
- * not yet on main). A reason the gateway could not check is
- * said as such — it is not a quiet "no" (ADR 0020).
+ * that does not see money (DASH-W22, ADR 0257; [2026-10-02: it was "recorded on
+ * `origin/fix/review-dashboard`, not yet on main" — it lands with PR #579]). A reason
+ * the gateway could not check is said as such — it is not a quiet "no"
+ * (ADR 0020).
  *
  * Spans only: it renders inside the row's button.
  */
