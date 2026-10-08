@@ -38,7 +38,7 @@ import {
   Sun,
   Wind,
 } from 'lucide-react';
-import { EM } from './cal-format';
+import { EM, takings, type HouseCurrency } from './cal-format';
 import type { ReconciledDay, WeatherReading } from './useCalendarNextData';
 
 /**
@@ -146,26 +146,47 @@ export function SkyMark({ reading }: SkyMarkProps) {
  * never says "out by N": scoring the forecast would need either an observation
  * (nothing records one) or a covers model (slice 9, withheld below ninety
  * observed service days). The pair is kept; the score is not claimed.
+ *
+ * When the sales register refused (`refused`, the window's `recordedRefusal`),
+ * the day's covers are not known: the em dash and "covers could not be read",
+ * never "covers not recorded", which says the register sent none (ADR 0287
+ * §Forks F4, after the founder's "Say 'could not be read'", ADR 0292 fork 3).
+ * It never draws a covers figure in that state, even one that reached the
+ * page. Covers are not house money, so every role sees this.
  */
-export function DayRecordMark({ day }: { day: ReconciledDay }) {
+export function DayRecordMark({
+  day,
+  refused = false,
+}: {
+  day: ReconciledDay;
+  refused?: boolean;
+}) {
   const record = day.recorded;
   const advance = day.forecastInAdvance;
 
   return (
-    <span className="cn-record" title={day.line}>
+    <span
+      className="cn-record"
+      title={day.line}
+      data-record={refused ? 'unreadable' : undefined}
+    >
       <span className="cn-record-figure">
-        {record?.excluded
-          ? 'closed'
-          : record && record.covers !== null
-            ? record.covers
-            : EM}
+        {refused
+          ? EM
+          : record?.excluded
+            ? 'closed'
+            : record && record.covers !== null
+              ? record.covers
+              : EM}
       </span>
       <span className="cn-record-tag">
-        {record?.excluded
-          ? 'ruled out'
-          : record && record.covers !== null
-            ? 'covers · recorded'
-            : 'covers not recorded'}
+        {refused
+          ? 'covers could not be read'
+          : record?.excluded
+            ? 'ruled out'
+            : record && record.covers !== null
+              ? 'covers · recorded'
+              : 'covers not recorded'}
       </span>
       {advance && (
         <span className="cn-record-said">
@@ -173,6 +194,108 @@ export function DayRecordMark({ day }: { day: ReconciledDay }) {
           {advance.leadDays > 0 ? `, ${advance.leadDays}d ahead` : ', same day'}
         </span>
       )}
+    </span>
+  );
+}
+
+/**
+ * What a passed day TOOK, net — ADR 0287. Drawn in the day panel only.
+ *
+ * The founder's answers, 2026-10-04 (UTC): AW22 *"Day panel only
+ * (Recommended)"*, so the month cell stays covers-only (ADR 0111 §2b) and this
+ * mark lives beside `DayRecordMark` in `DayLedger` and nowhere else; and AW17
+ * *"Net sales (Recommended)"*, so the figure is the sum of the checks'
+ * subtotals, before tax and surcharge, and it says "net".
+ *
+ * Four states, none of them a zero:
+ *   complete — every check carried a net figure: the amount, "net sales · recorded".
+ *   partial  — some did not: the amount, "net sales · from N of M checks". The
+ *              day took MORE than this, and the title says why.
+ *   none     — no check carried one: the em dash, "net sales not recorded".
+ *   unreadable — the sales register refused: the em dash, "net sales could
+ *              not be read" (below).
+ *
+ * Outside a refusal, it draws nothing for a day with no checks (the record
+ * mark beside it reads "covers not recorded" and the line under it "Nothing
+ * was recorded on this day."), and nothing when the payload carries no net
+ * figure at all: a gateway from before ADR 0287 sent no such key, and "not
+ * recorded" would then be a claim about a question nobody asked.
+ *
+ * And it draws nothing when the window says `takingsWithheld`: owners and
+ * managers see the house's takings, nobody else does (ADR 0287 F1, option (b),
+ * which follows the founder's money rule, ADR 0253 rounds 10-11: "owners and
+ * managers get it and some authorized staff"; the per-person right is not
+ * built, so the role decides). The gateway already leaves the figure out; the
+ * flag is checked here too, so a figure that reached this viewer anyway is
+ * still not drawn. It is checked first, so a withheld viewer gets no takings
+ * mark under a refusal either.
+ *
+ * When the sales register refused (`refused`, the window's `recordedRefusal`),
+ * it draws the em dash and "net sales could not be read" (ADR 0287 F3, after
+ * the founder's "Say 'could not be read'" for refused figures, ADR 0292 fork
+ * 3). The gateway refuses rather than answer from part of a window (ADR 0292)
+ * and sends no recorded day with a refusal; the mark never draws a figure in
+ * that state, even one that reached the page anyway.
+ */
+export function TakingsMark({
+  day,
+  currency,
+  withheld = false,
+  refused = false,
+}: {
+  day: ReconciledDay;
+  currency: HouseCurrency | null | undefined;
+  withheld?: boolean;
+  refused?: boolean;
+}) {
+  if (withheld) return null;
+  if (refused) {
+    return (
+      <span
+        className="cn-record"
+        data-takings="unreadable"
+        title="The sales register could not be read for this window, so this day's net sales are not known. This is not a zero."
+      >
+        <span className="cn-record-figure">{EM}</span>
+        <span className="cn-record-tag">net sales could not be read</span>
+      </span>
+    );
+  }
+  const record = day.recorded;
+  if (!record || record.checkCount <= 0) return null;
+  const { netSales, netSalesCheckCount: carried, checkCount } = record;
+  if (netSales === undefined || typeof carried !== 'number') return null;
+
+  const checks = (n: number) => `${n} check${n === 1 ? '' : 's'}`;
+
+  if (netSales === null) {
+    return (
+      <span
+        className="cn-record"
+        data-takings="none"
+        title={`None of this day's ${checks(checkCount)} came from the register with a net figure (before tax and surcharge), so the day's net sales are unknown.`}
+      >
+        <span className="cn-record-figure">{EM}</span>
+        <span className="cn-record-tag">net sales not recorded</span>
+      </span>
+    );
+  }
+
+  const partial = carried < checkCount;
+  return (
+    <span
+      className="cn-record"
+      data-takings={partial ? 'partial' : 'complete'}
+      title={
+        partial
+          ? `Net sales, before tax and surcharge, from ${carried} of this day's ${checks(checkCount)}. The other ${checks(checkCount - carried)} came from the register with no net figure, so the day took more than this.`
+          : `Net sales, before tax and surcharge, from all ${checks(checkCount)} on this day.`
+      }
+    >
+      <span className="cn-record-figure">{takings(netSales, currency)}</span>
+      <span className="cn-record-tag">
+        {partial ? `net sales · from ${carried} of ${checkCount} checks` : 'net sales · recorded'}
+      </span>
     </span>
   );
 }

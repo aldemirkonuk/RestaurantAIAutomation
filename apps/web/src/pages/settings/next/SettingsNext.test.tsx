@@ -933,6 +933,15 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(within(section).queryByRole('switch', { name: / register$/i })).not.toBeInTheDocument();
   });
 
+  it('names the off-library measure as the cellar tile does — rows with no wine-library link (ADR 0293)', () => {
+    // The founder, 2026-10-05: "Rename, small follow-up (Recommended)". The
+    // switch and the cellar tile read the same words; the id is unchanged.
+    mount('/settings?tab=cellar');
+    const section = screen.getByTestId('st-section-cellar');
+    expect(within(section).getByRole('switch', { name: 'Carried, not in the wine library' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(section).queryByText('Carried but off this read')).not.toBeInTheDocument();
+  });
+
   it('stamps no client-side date on the POS connector', () => {
     // Audit NIT 8: the first pass wrote `new Date()` into the stored blob and
     // read it back as provenance. The row now carries the record's own date.

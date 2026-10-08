@@ -280,3 +280,55 @@ describe('SightingSheet — fork 6(a): the paper, the message and the person', (
     expect(screen.getByText(/deleted on 2026-09-22 under this house's mail retention/)).toBeInTheDocument()
   })
 })
+
+describe('SightingSheet — the Seen row says which date a receipt price carries (ADR 0273)', () => {
+  // The label stays "Seen" (what observed_at means for class A is ADR 0273
+  // fork F3); the words beside it say which date it is.
+  const receipt = { sourceType: 'invoice' as const, sourceRef: 'receipt_verified:order-9', comparisonClass: 'quoted' as const }
+
+  function seenWords() {
+    const dd = screen.getByText('Seen').nextElementSibling
+    expect(dd?.tagName).toBe('DD')
+    return dd?.textContent
+  }
+
+  it("prints the invoice's issue date and when it was checked", () => {
+    render(
+      <SightingSheet
+        row={row({
+          ...receipt,
+          observedAt: '2026-07-15T12:00:00.000Z',
+          dateBasis: 'invoice_issue_date',
+          issueDate: '2026-07-15',
+          verifiedAt: '2026-09-03T10:00:00.000Z',
+        })}
+        productName="Chablis"
+        productRef={null}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(seenWords()).toBe("dated 15 Jul 2026, the invoice's issue date (checked 3 Sept 2026)")
+  })
+
+  it('prints a fallback as dated when it was checked, with the reason, never as an issue date', () => {
+    render(
+      <SightingSheet
+        row={row({
+          ...receipt,
+          observedAt: '2026-09-03T10:00:00.000Z',
+          dateBasis: 'verified_at',
+          dateSentence:
+            "The invoice's issue date could not be read when this price was checked (the order's documents). That is a failed read, not an invoice without a date.",
+          verifiedAt: '2026-09-03T10:00:00.000Z',
+        })}
+        productName="Chablis"
+        productRef={null}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(seenWords()).toBe(
+      "dated when it was checked, 3 Sept 2026: The invoice's issue date could not be read when this price was checked (the order's documents). That is a failed read, not an invoice without a date.",
+    )
+    expect(seenWords()).not.toMatch(/the invoice's issue date \(/)
+  })
+})

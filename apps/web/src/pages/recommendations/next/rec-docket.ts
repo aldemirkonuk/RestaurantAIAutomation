@@ -39,7 +39,7 @@
  * field that would fix it.
  */
 
-import { EM } from './rec-format';
+import { EM, ownRow } from './rec-format';
 
 export type ActId =
   | 'order'
@@ -139,6 +139,11 @@ interface ActFiling {
  *   sales_below_weekday   "Tonight: brief the floor …" names a time, and its
  *                         third clause pairs a server with a section. Both sit
  *                         inside a pre-shift; nothing here goes on a day-book.
+ *                         Since ADR 0291 only a dip about yesterday or today
+ *                         opens "Tonight:"; an older one opens "Before the
+ *                         next <weekday>:" (or "Before today's <weekday>
+ *                         service:"). Still a time inside a pre-shift, so the
+ *                         refusal stands.
  */
 const RULE_ACT: Record<string, ActFiling> = {
   stockout_imminent: {
@@ -233,9 +238,11 @@ const UNKNOWN_FILING = (ruleKey: string): ActFiling => ({
   why: `This page has no act filed for the rule ${ruleKey}. A rule it does not recognise is shown here rather than sorted into a heading by guesswork.`,
 });
 
+/** `RULE_ACT` is read by its own rows only (`ownRow`, ADR 0288), so a stored
+ * key such as `constructor` or `__proto__` is a rule this file does not know. */
 export function actOf(ruleKey: string): ActFiling {
   if (ruleKey.startsWith(GOAL_RULE_PREFIX)) return GOAL_BEHIND_FILING;
-  return RULE_ACT[ruleKey] ?? UNKNOWN_FILING(ruleKey);
+  return ownRow(RULE_ACT, ruleKey) ?? UNKNOWN_FILING(ruleKey);
 }
 
 /**

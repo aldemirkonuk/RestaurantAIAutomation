@@ -19,6 +19,7 @@ import { Request } from "express";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubService } from "./pos-hub.service";
 import { PosMappingReviewService } from "./pos-mapping-review.service";
+import { bellNoteForTill } from "./refused-checks-note";
 import {
   ListSaleUnitReviewQueryDto,
   SetSaleUnitBatchDto,
@@ -111,7 +112,12 @@ export class PosHubController {
       );
     }
     try {
-      return await this.posHub.ingest(restaurantId, provider, payload);
+      const result = await this.posHub.ingest(restaurantId, provider, payload);
+      // ADR 0281 (amended 2026-10-05): the till is told whether its refusals
+      // reached the bell, never how many owners and managers there are, who
+      // is Away or quiet, or a database's words. The legacy secret binds no
+      // house, so this answer may reach someone outside it.
+      return { ...result, bellNote: bellNoteForTill(result.bellNote) };
     } catch (error) {
       throw new HttpException(
         error.message || "Ingestion failed",
@@ -131,7 +137,14 @@ export class PosHubController {
     @Body() payload: unknown,
   ) {
     try {
-      return await this.posHub.ingest(restaurantId, "csv_import", payload);
+      const result = await this.posHub.ingest(
+        restaurantId,
+        "csv_import",
+        payload,
+      );
+      // ADR 0281, founder 2026-10-05: "Only 'the bell was rung'". Any member
+      // of the house can run this import, so it is told what the till is told.
+      return { ...result, bellNote: bellNoteForTill(result.bellNote) };
     } catch (error) {
       throw new HttpException(
         error.message || "Import failed",
@@ -182,9 +195,10 @@ export class PosHubController {
 
   @Get("mappings/:restaurantId/sale-unit-review")
   @ApiOperation({
-    summary: "Mappings still missing a sale_unit, with the evidence to decide",
+    summary:
+      "Mappings whose sale volume the import cannot resolve, with the evidence to decide",
     description:
-      "Every mapping whose sale_unit is null, each carrying: the POS identity (item_name, external_item_id, source), the linked restaurant_inventory row (wine_name, bottle_size_ml, pour_size_ml, menu_price_current, menu_price_glass) or an inventory_link of 'unmapped'/'dangling' when there isn't one, and the observed POS line price from recent closed checks (count, min, max, latest). Observed price and bottle price are returned as separate raw numbers — no ratio, no suggested unit: sale_unit is never inferred (decision B36). `unit_if_unanswered` states what applyStockEffects books today if the row stays null; it is a description of current behaviour, not a recommendation.",
+      "By default, every mapping whose sale volume the import cannot resolve now (no usable sale_volume_ml, and no sale_unit the linked inventory row can turn into one); with includeAnswered=true, every mapping. Each carries: the POS identity (item_name, external_item_id, source), its sale_unit and sale_volume_ml, the linked restaurant_inventory row (wine_name, bottle_size_ml, pour_size_ml, menu_price_current, menu_price_glass) or an inventory_link of 'unmapped'/'dangling' when there isn't one, and the observed POS line price from recent closed checks (count, min, max, latest). Observed price and bottle price are returned as separate raw numbers — no ratio, no suggested unit: sale_unit is never inferred (decision B36). `next_sale` states what applyStockEffects does to stock on the row's next sale as things stand: whole_bottle, volume (with its ml), or depletes_nothing with a reason and, when the line is queued, the pos_unresolved_lines reason it is queued under. It is a description of current behaviour, not a recommendation.",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
   async saleUnitReview(

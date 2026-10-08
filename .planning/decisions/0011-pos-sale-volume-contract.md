@@ -114,6 +114,18 @@ Two guards were added beyond the brief, and both are load-bearing:
   750ml row sets `inventory_lots.open_bottle_ml` to **−750** — it does not
   raise. That is silent lot corruption, a different and worse failure than
   under-depletion, so it queues rather than fails closed *into* the RPC.
+  **[Corrected 2026-10-04, in place, by [[0285-a-short-pour-opens-the-next-bottle]].**
+  It did raise. The CHECK `inventory_lots_open_bottle_ml_check`
+  (`open_bottle_ml >= 0`, `baseline:3189`) refused the write as 23514. That
+  was measured on a PGlite build of every migration at `8c673db4b`: a 1000ml
+  pour against two 750ml bottles failed, and nothing moved. Wherever that
+  CHECK held, the CHECK would have refused such a write; no production rows
+  were read to confirm it. The queue still stands, because such a line
+  usually means the mapping points at the wrong row. Since migration
+  `a_short_pour_opens_the_next_bottle`, the RPC opens as many bottles as a
+  larger pour needs. The POS hub queues such a line, so it reaches the RPC
+  from the manual route, or from Toast only when an item's `pour_size_ml`
+  exceeds its `bottle_size_ml`.**]**
 - **A plausibility band of 10–30 000 ml on `sale_volume_ml`.** A bare `> 0`
   check accepts `1.5` from someone who meant 1.5 **litres**, and the item then
   pours 1.5ml per sale forever — the same silent-wrong-number failure this ADR
@@ -234,3 +246,4 @@ can, and 5x is not a rounding error.
 | 2026-08-25 | Claude | Design implemented as specified. Added two guards the brief did not name — the pour-exceeds-container check (silent negative `open_bottle_ml`, not an under-depletion) and the 10–30 000ml plausibility band (litres-into-an-ml-field). Answered the queue-contract question as **yes, it needs a distinct `reason`**, with the dedupe index widened to match |
 | 2026-08-25 | Claude | Declined to auto-fill `sale_volume_ml` from `normalizeDescription()` despite the pointer: a by-the-glass SKU carries the size of the bottle it is poured from, so parsing it rebuilds the bottle default under a new name |
 | 2026-08-25 | Claude | Left B19 (glass voids return whole bottles) and the Toast door untouched and raised both rather than fixing them silently — both change recorded/live behaviour and are the founder's call. OD-64 |
+| 2026-10-04 | Claude | Corrected 1b in place ([[0285-a-short-pour-opens-the-next-bottle]]): the over-container pour never wrote a negative `open_bottle_ml`. The CHECK refused it as 23514, measured on PGlite at `8c673db4b`. The queue guard is unchanged |

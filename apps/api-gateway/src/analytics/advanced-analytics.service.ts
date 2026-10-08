@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
 import { AnalyticsService } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -10,6 +11,11 @@ import {
   resolveUnitCost,
   summarizeCostBasis,
 } from "./inventory-cost";
+import {
+  bottlesOf,
+  summarizeUnits,
+  unitsBasisSentence,
+} from "./consumption-units";
 import {
   ORDER_ARRIVED_STATUSES,
   ORDER_OPEN_WITH_VENDOR_STATUSES,
@@ -110,23 +116,65 @@ export class AdvancedAnalyticsService {
     });
   }
 
+  /**
+   * Consumption lines of the last `sinceDays` days, read WHOLE or refused
+   * (ADR 0292). The unranged select this replaces stopped at PostgREST's 1,000
+   * rows: menu engineering classified the list on 752 of about 8,445 units,
+   * and seasonality and Wine 360 read the same slice (A-032, A-033).
+   *
+   * A refusal (`WholeReadError`, a 503) PROPAGATES. It used to log and return
+   * the empty list, which menu engineering, seasonality and Wine 360 then drew
+   * as a house that sold nothing. The overview's `allSettled` turns it into a
+   * null lens (`getOverview`), as it does for any lens that throws.
+   */
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("wine_consumption_log")
-      // No master_wine_id column on this table — resolve via the inventory FK.
-      .select(
-        "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
-    if (error) this.logQueryFailure("wine_consumption_log", error);
-    return (data || []).map((c: any) => ({
-      wineId: c.restaurant_inventory?.master_wine_id ?? null,
-      qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
-      date: (c.created_at || "").substring(0, 10),
-    }));
+    const client = this.dbService.getClient();
+    let data: any[];
+    try {
+      data = await readWholeWindow<any>(
+        "The consumption lines in this window",
+        () =>
+          client
+            .from("wine_consumption_log")
+            // No master_wine_id column on this table — resolve via the inventory FK.
+            .select(
+              "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("created_at", since),
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `analytics query on wine_consumption_log refused — this lens says it ` +
+          `could not be read rather than drawing part of the window: ${err?.message ?? err}`,
+      );
+      throw err;
+    }
+    // Bottles by each line's own mode (ADR 0297): `quantity` counts
+    // servings, so a glass is its millilitres over the item's stated size,
+    // and a line with no bottle figure carries null rather than a guess.
+    return data.map((c: any) => {
+      const { bottles, how } = bottlesOf(c);
+      return {
+        wineId: c.restaurant_inventory?.master_wine_id ?? null,
+        inventoryId: c.inventory_id ?? null,
+        qty: bottles,
+        how,
+        date: (c.created_at || "").substring(0, 10),
+      };
+    });
+  }
+
+  /** Wines with at least one line that carries no bottle figure. */
+  private uncountedWines(
+    consumption: Array<{ wineId: string | null; how: string }>,
+  ) {
+    const out = new Set<string>();
+    for (const c of consumption)
+      if (c.wineId && c.how === "uncounted") out.add(c.wineId);
+    return out;
   }
 
   /**
@@ -216,24 +264,35 @@ export class AdvancedAnalyticsService {
       this.loadConsumption(restaurantId, sinceDays),
     ]);
     const soldByWine = new Map<string, number>();
+    const standInWines = new Set<string>();
     for (const c of consumption) {
-      if (!c.wineId) continue;
+      if (!c.wineId || c.qty == null) continue;
       soldByWine.set(c.wineId, (soldByWine.get(c.wineId) || 0) + c.qty);
+      if (c.how === "stand_in") standInWines.add(c.wineId);
     }
+    // A wine with any line that carries no bottle figure has no velocity:
+    // summing the rest would report it slower than it sold (ADR 0297).
+    const unmeasuredWines = this.uncountedWines(consumption);
+    const unitsCoverage = summarizeUnits(consumption);
     const priced = inventory.filter((i) => i.unitPrice > 0);
     const costCoverage = summarizeCostBasis(priced);
     const items = priced.map((i) => ({
       id: i.id,
       name: i.name,
       type: i.type,
-      velocityPerDay: (soldByWine.get(i.masterWineId) || 0) / sinceDays,
+      velocityPerDay: unmeasuredWines.has(i.masterWineId)
+        ? null
+        : (soldByWine.get(i.masterWineId) || 0) / sinceDays,
+      sizeStandIn: standInWines.has(i.masterWineId),
       marginPerBottle: i.marginPerBottle,
       costBasis: i.costBasis,
       marginPct:
         i.unitCost == null ? null : E.grossMargin(i.unitCost, i.unitPrice),
     }));
 
-    const velocities = items.map((i) => i.velocityPerDay);
+    const velocities = items
+      .map((i) => i.velocityPerDay)
+      .filter((v): v is number => v != null);
     // The margin cutoff is a median over the wines that HAVE a margin. Rows
     // with an unknown cost cannot be on either side of it, so they are left
     // unclassified below rather than dragged to one side by a stand-in 0.
@@ -258,6 +317,9 @@ export class AdvancedAnalyticsService {
     const classified = items.map((i) => {
       if (i.marginPerBottle == null || medMargin == null)
         return { ...i, quadrant: null, action: null };
+      // Same for the other axis: no bottle figure, no velocity, no quadrant.
+      if (i.velocityPerDay == null)
+        return { ...i, quadrant: null, action: null };
       const highVel = i.velocityPerDay > medVel;
       const highMargin = i.marginPerBottle > medMargin;
       const quadrant = highVel
@@ -270,22 +332,29 @@ export class AdvancedAnalyticsService {
       return { ...i, quadrant, action: ACTIONS[quadrant] };
     });
 
-    const counts: Record<string, number> = { unclassified: 0 };
+    // `unclassified` stays "no recorded cost"; a costed wine with no bottle
+    // figure is `unmeasured`, so neither count claims the other's reason.
+    const counts: Record<string, number> = { unclassified: 0, unmeasured: 0 };
     for (const c of classified)
-      if (c.quadrant == null) counts.unclassified += 1;
+      if (c.marginPerBottle == null || medMargin == null)
+        counts.unclassified += 1;
+      else if (c.quadrant == null) counts.unmeasured += 1;
       else counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
 
     return {
       basis: {
-        velocity: `wine_consumption_log units/day over ${sinceDays}d`,
+        velocity: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}`,
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.
         margin: `menu_price_current − unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
           "items[].marginPerBottle, items[].marginPct, items[].quadrant, items[].action and medians.marginPerBottle are null for rows with no recorded cost; those rows are counted under counts.unclassified (ADR 0051)",
+        unitsDerived:
+          "items[].velocityPerDay, items[].quadrant and items[].action are null for a costed wine with any line that carries no bottle figure; those rows are counted under counts.unmeasured, and medians.velocityPerDay is over the known velocities only (ADR 0297)",
       },
       costCoverage,
+      unitsCoverage,
       medians: { velocityPerDay: medVel, marginPerBottle: medMargin },
       counts,
       // Unclassified rows sort after every classified one — ordering them by
@@ -293,17 +362,19 @@ export class AdvancedAnalyticsService {
       // would interleave them as if they had a known margin of zero.
       items: classified.sort((a, b) => {
         const av =
-          a.marginPerBottle == null
+          a.marginPerBottle == null || a.velocityPerDay == null
             ? null
             : a.velocityPerDay * a.marginPerBottle;
         const bv =
-          b.marginPerBottle == null
+          b.marginPerBottle == null || b.velocityPerDay == null
             ? null
             : b.velocityPerDay * b.marginPerBottle;
         if (av == null || bv == null)
           return (
             (av == null ? 1 : 0) - (bv == null ? 1 : 0) ||
-            b.velocityPerDay - a.velocityPerDay
+            (a.velocityPerDay == null ? 1 : 0) -
+              (b.velocityPerDay == null ? 1 : 0) ||
+            (b.velocityPerDay ?? 0) - (a.velocityPerDay ?? 0)
           );
         return bv - av;
       }),
@@ -500,7 +571,14 @@ export class AdvancedAnalyticsService {
 
   async getSeasonality(restaurantId: string, sinceDays = 90) {
     const consumption = await this.loadConsumption(restaurantId, sinceDays);
-    const rows = consumption.map((c) => ({ date: c.date, value: c.qty }));
+    // Counted lines only, zero-filled: a line with no bottle figure is left
+    // out, so a day holding one counts only its other lines and reads 0 if
+    // it has none. `basis.units` says so in those words (ADR 0297); the day
+    // is short, and the basis is what keeps it from passing as a quiet one.
+    const unitsCoverage = summarizeUnits(consumption);
+    const rows = consumption
+      .filter((c) => c.qty != null)
+      .map((c) => ({ date: c.date, value: c.qty as number }));
     const byDay = new Map<string, number>();
     for (const r of rows)
       if (r.date) byDay.set(r.date, (byDay.get(r.date) || 0) + r.value);
@@ -539,6 +617,7 @@ export class AdvancedAnalyticsService {
       ]),
     );
     for (const c of consumption) {
+      if (c.qty == null) continue;
       const t = typeByWine.get(c.wineId) || "unknown";
       const arr = byType.get(t) || [];
       arr.push({ date: c.date, value: c.qty });
@@ -571,7 +650,8 @@ export class AdvancedAnalyticsService {
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
       basis: {
-        weekday: `mean units per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        units: unitsBasisSentence(unitsCoverage, "series"),
         extremes: extremes.tie
           ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
           : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
@@ -662,14 +742,22 @@ export class AdvancedAnalyticsService {
     ]);
     const item = inventory.find((i) => i.masterWineId === masterWineId);
     const mine = consumption.filter((c) => c.wineId === masterWineId);
+    // A wine with any line that carries no bottle figure has no demand: its
+    // counted lines alone would understate it (ADR 0297). Every figure that
+    // rests on demand goes null with it, and the basis says why.
+    const myUnits = summarizeUnits(mine);
     const daily = this.toDaily(
-      mine.map((c) => ({ date: c.date, value: c.qty })),
+      mine
+        .filter((c) => c.qty != null)
+        .map((c) => ({ date: c.date, value: c.qty as number })),
       90,
     );
-    const profile = E.demandProfile(daily);
+    const profile = myUnits.complete ? E.demandProfile(daily) : null;
+    const unmeasured = this.uncountedWines(consumption);
     const totals = new Map<string, number>();
     for (const c of consumption)
-      if (c.wineId) totals.set(c.wineId, (totals.get(c.wineId) || 0) + c.qty);
+      if (c.wineId && c.qty != null && !unmeasured.has(c.wineId))
+        totals.set(c.wineId, (totals.get(c.wineId) || 0) + c.qty);
     const standings = E.peerComparison(
       Array.from(totals.entries()).map(([id, v]) => ({ entity: id, value: v })),
     );
@@ -691,7 +779,7 @@ export class AdvancedAnalyticsService {
       // This endpoint carried no `basis` at all, so `unitCost` arrived with no
       // way to tell an invoiced number from the 0.6 × menu price fabrication.
       basis: {
-        demand: "wine_consumption_log units/day over 90d",
+        demand: `bottles/day over 90d — ${unitsBasisSentence(myUnits)}`,
         unitCost: item
           ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — unitCost and marginPerBottle are null (ADR 0051)" : ""}`
           : "wine not found in active inventory",
@@ -720,9 +808,11 @@ export class AdvancedAnalyticsService {
       safetyStock: rop?.safetyStock ?? null,
       rankByVolume: standing?.rank ?? null,
       peerCount: standings.length,
-      forecast14d: forecast.totalForecastDemand,
-      forecastModel: forecast.model,
-      trendPerDayPct: E.trendPerPeriodPct(daily.slice(-28)),
+      forecast14d: myUnits.complete ? forecast.totalForecastDemand : null,
+      forecastModel: myUnits.complete ? forecast.model : null,
+      trendPerDayPct: myUnits.complete
+        ? E.trendPerPeriodPct(daily.slice(-28))
+        : null,
       generatedAt: new Date().toISOString(),
     };
   }

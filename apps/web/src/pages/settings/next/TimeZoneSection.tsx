@@ -13,7 +13,17 @@
  *   2. Offered, never applied — the country's zones come first in the list;
  *      nothing is written by opening this page.
  *   3. Three states — a failed read, an unanswered question, and an answer
- *      with who stated it.
+ *      with where it came from.
+ *
+ * WHERE IT CAME FROM (ADR 0304; the founder, 2026-10-04: the address "also
+ * shows which time zone they are in. Unless they are want to change", and
+ * with no address the owner's device, "labelled 'from your device'"). A zone
+ * is an answer only when it is attributable (ADR 0116), so the provenance line
+ * names its source: from the address, from the device, stated by a person, or
+ * "source not recorded". A person is named only as the witness of the zone
+ * the house keeps now (`zoneProvenance`). The label says "the device", not
+ * "your device": every owner and manager reads this row, and the device was
+ * the creator's.
  *
  * The role check is the gateway's (`PUT /settings/time-zone`, owner or
  * manager); the control is disabled for anyone else and says so.
@@ -26,6 +36,56 @@ import { EM, MONO, SANS } from './st-format';
 import type { HouseTimeZoneRegister, SettingsNextData } from './useSettingsNextData';
 
 const NO_DATE = 'no change to it has been recorded here — it was set before this register existed, or never set';
+
+/**
+ * The provenance line for the zone, by its source (ADR 0304). Each case says
+ * why it has no date in its own words; none borrows another's.
+ */
+export function zoneProvenance(reg: HouseTimeZoneRegister): {
+  verb: string;
+  when: string | null;
+  whenUnknown: string;
+  /** The person to name as the witness of THIS zone, or null. */
+  by: string | null;
+} {
+  const witnessed = (reg.statedBy ?? null) !== null || (reg.statedAt ?? null) !== null;
+  const by = reg.statedBy?.name ?? null;
+  if (!reg.zone) return { verb: 'stated', when: reg.statedAt, whenUnknown: NO_DATE, by: null };
+  switch (reg.source ?? null) {
+    case 'address':
+      return {
+        verb: 'from the address',
+        when: null,
+        whenUnknown: 'worked out from this house’s address when it was entered; no person chose it',
+        by: null,
+      };
+    case 'device':
+      return {
+        verb: 'from the device',
+        when: null,
+        whenUnknown: 'the zone of the device the house was created on; no person chose it',
+        by: null,
+      };
+    case 'stated':
+      return witnessed
+        ? { verb: 'stated', when: reg.statedAt, whenUnknown: 'when was not recorded', by }
+        : { verb: 'stated', when: null, whenUnknown: 'who and when were not recorded', by: null };
+    default:
+      // No recorded source: a zone saved before ADR 0304, or one a blind
+      // writer unbound. When the newest audit row says `to` = this exact zone
+      // it reads "stated" with that row's date, and its actor is named when
+      // the name can be read (ADR 0304 Decision 4, the founder's 2026-10-06
+      // ruling "Credit the old record").
+      return witnessed
+        ? { verb: 'stated', when: reg.statedAt, whenUnknown: 'when was not recorded', by }
+        : {
+            verb: 'source not recorded',
+            when: null,
+            whenUnknown: 'nothing records who or what chose it (a zone saved at sign-up or by a seed carries no record)',
+            by: null,
+          };
+  }
+}
 
 /** Every zone this browser knows, plus UTC. Derived, never typed. */
 export function allZones(): string[] {
@@ -76,6 +136,7 @@ function Body({
 
   const busy = writer.busy === 'time-zone';
   const dirty = choice !== '' && choice !== reg.zone;
+  const origin = zoneProvenance(reg);
 
   if (!reg.readable) {
     return (
@@ -119,7 +180,7 @@ function Body({
             </>
           )
         }
-        provenance={{ kept: 'restaurant', when: reg.statedAt, whenUnknown: NO_DATE, verb: 'stated' }}
+        provenance={{ kept: 'restaurant', when: origin.when, whenUnknown: origin.whenUnknown, verb: origin.verb }}
         control={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <label htmlFor="st-time-zone" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
@@ -160,9 +221,9 @@ function Body({
         <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
           {statement}
         </p>
-        {reg.statedBy?.name && (
+        {origin.by && (
           <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '3px 0 0' }}>
-            stated by · {reg.statedBy.name}
+            stated by · {origin.by}
           </p>
         )}
         {!canManage && (
