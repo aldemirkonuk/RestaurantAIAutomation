@@ -166,6 +166,15 @@ interface JoinViaInviteData {
   emailSecret?: string;
 }
 
+/**
+ * A house that opened. `detailsLoaded` is false when the house and its
+ * session are in place but the `/auth/me` read after them failed (F-006).
+ */
+export interface HouseOpened {
+  restaurantId: string;
+  detailsLoaded: boolean;
+}
+
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -186,7 +195,7 @@ export interface AuthContextType {
   register: (data: RegisterData) => Promise<void>;
   registerAccount: (data: RegisterAccountData) => Promise<void>;
   registerAccountWithGoogle: (token: string) => Promise<void>;
-  createFirstHouse: (data: CreateFirstHouseData) => Promise<string>;
+  createFirstHouse: (data: CreateFirstHouseData) => Promise<HouseOpened>;
   registerRestaurant: (data: RegisterRestaurantData) => Promise<void>;
   joinViaInvite: (data: JoinViaInviteData) => Promise<void>;
   loginWithGoogle: (token: string) => Promise<void>;
@@ -763,11 +772,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         const userResponse = await api.get("/api/v1/auth/me");
         setUser(userFrom(userResponse.data.user, accessToken));
-      } catch (err: any) {
-        const message = err.response?.data?.message || "Registration failed";
-        setError(message);
-        throw new Error(message);
       } finally {
+        // No catch: the error reaches Register.tsx whole, status and all, and
+        // the gateway's own text is never stored to be shown (F-006).
         setLoading(false);
       }
     },
@@ -827,7 +834,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const createFirstHouse = useCallback(
-    async (data: CreateFirstHouseData): Promise<string> => {
+    async (data: CreateFirstHouseData): Promise<HouseOpened> => {
       const response = await api.post("/api/v1/auth/register/house", data);
       const { restaurantId, accessToken, refreshToken: refresh } = response.data;
       // `activeRestaurantId` follows the TOKEN's house (ADR 0164), and the
@@ -838,9 +845,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearHouseEnded();
       setActiveRestaurantIdState(house);
       useAuthStore.getState().setActiveRestaurantId(house);
-      const userResponse = await api.get("/api/v1/auth/me");
-      setUser(userFrom(userResponse.data.user, accessToken));
-      return house;
+      // The house is open by here. A failed `/auth/me` is said as that, not
+      // as a house that failed to open (F-006, scope item 5).
+      try {
+        const userResponse = await api.get("/api/v1/auth/me");
+        setUser(userFrom(userResponse.data.user, accessToken));
+        return { restaurantId: house, detailsLoaded: true };
+      } catch (err) {
+        console.warn("house opened; /auth/me did not load", err);
+        // The role in the new house is the token's too, so a page that asks
+        // for the owner opens before `/auth/me` catches up.
+        const role = (tokenClaims(accessToken)?.role ?? null) as User["role"];
+        setUser((prev) =>
+          prev ? { ...prev, restaurantId: house, role } : prev,
+        );
+        return { restaurantId: house, detailsLoaded: false };
+      }
     },
     [],
   );

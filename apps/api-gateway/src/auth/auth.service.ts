@@ -40,6 +40,13 @@ import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { RegisterAccountDto } from "./dto/register-account.dto";
 import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
 import { resolveSignUpTimezone } from "./sign-up-timezone";
+import {
+  houseWriteError,
+  isSharedPlace,
+  refuseHouseOpening,
+  slugBase,
+  type HouseRowAnswer,
+} from "./house-opening";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
@@ -1544,6 +1551,58 @@ export class AuthService {
   }
 
   /**
+   * Opens a house row for both sign-up writers. A place another house
+   * already holds opens the house anyway, with its pin and without the place
+   * id -- the founder, 2026-10-02: "Open it, keep the pin (Recommended)".
+   * Whether one house per place is a rule at all is still OPEN (ADR 0265,
+   * amendment 2026-10-03).
+   *
+   * Nothing may tell a held place from a free one, the time taken included:
+   * the public register route would otherwise let a caller learn that a house
+   * exists at a place. So a row with a place id always costs the same two
+   * calls, a look-up of the place and one insert, with the id or without it.
+   * A place taken between the two (a 23505 on idx_restaurants_google_place_id,
+   * which `isSharedPlace` reads) is inserted once more without the id; only a
+   * race reaches that. Only the server log says the place was held.
+   *
+   * `insert` is the writer's own `.from("restaurants").insert({...})`, kept
+   * inline there so the capture-contract guard reads its columns; it is called
+   * with the place id to write, or undefined. The look-up and both inserts
+   * select `id` only: nothing reads the place id back (claim
+   * F006-NO-ROUTE-READS-THE-PLACE-ID).
+   */
+  private async insertHouseRow(
+    placeId: string | undefined,
+    insert: (googlePlaceId: string | undefined) => PromiseLike<HouseRowAnswer>,
+  ): Promise<HouseRowAnswer> {
+    let keep = placeId;
+    if (placeId) {
+      const held = await this.databaseService.supabase
+        .from("restaurants")
+        .select("id")
+        .eq("google_place_id", placeId)
+        .maybeSingle();
+      if (held.error)
+        throw houseWriteError(
+          "place look-up",
+          held.error,
+          "the place was not looked up",
+        );
+      if (held.data) keep = undefined;
+    }
+    let answer = await insert(keep);
+    if (keep && isSharedPlace(answer.error)) {
+      keep = undefined;
+      answer = await insert(undefined);
+    }
+    if (placeId && !keep && !answer.error)
+      this.logger.log(
+        `House ${answer.data?.id} opened without its place id: the place is already held (F-006).`,
+      );
+    return answer;
+  }
+
+  /**
    * Creates only an identity. The first restaurant is deliberately created
    * after verification, from the restaurant screen in the arrival flow.
    */
@@ -1670,16 +1729,17 @@ export class AuthService {
         .select()
         .single();
       if (orgError || !org)
-        throw new Error(orgError?.message ?? "organization was not created");
+        throw houseWriteError(
+          "organization",
+          orgError,
+          "organization was not created",
+        );
       orgId = org.id;
 
-      const baseSlug = dto.restaurantName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
+      const baseSlug = slugBase(dto.restaurantName);
       const coords = this.coordinateColumns(dto);
-      const { data: restaurant, error: restaurantError } =
-        await this.databaseService.supabase
+      const insertRow = (google_place_id: string | undefined) =>
+        this.databaseService.supabase
           .from("restaurants")
           .insert({
             name: dto.restaurantName,
@@ -1700,13 +1760,17 @@ export class AuthService {
             organization_id: orgId,
             latitude: coords.latitude,
             longitude: coords.longitude,
-            google_place_id: coords.google_place_id,
+            google_place_id,
           })
-          .select()
+          .select("id")
           .single();
+      const { data: restaurant, error: restaurantError } =
+        await this.insertHouseRow(coords.google_place_id, insertRow);
       if (restaurantError || !restaurant)
-        throw new Error(
-          restaurantError?.message ?? "restaurant was not created",
+        throw houseWriteError(
+          "restaurant",
+          restaurantError,
+          "restaurant was not created",
         );
       restaurantId = restaurant.id;
 
@@ -1732,7 +1796,12 @@ export class AuthService {
           .insert({ user_id: userId, restaurant_id: restaurantId }),
       ]);
       const failed = writes.find((write) => write.error);
-      if (failed?.error) throw new Error(failed.error.message);
+      if (failed?.error)
+        throw houseWriteError(
+          "access rows",
+          failed.error,
+          "an access row was not written",
+        );
 
       // The membership row above is written before this mint, so
       // generateTokens finds it and names the new house with its owner role
@@ -1755,11 +1824,7 @@ export class AuthService {
           .from("organizations")
           .delete()
           .eq("id", orgId);
-      throw new BadRequestException(
-        `House creation failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      throw refuseHouseOpening("createFirstHouse", error, this.logger);
     }
   }
 
@@ -1783,14 +1848,11 @@ export class AuthService {
         .select()
         .single();
       if (orgErr || !org)
-        throw new Error(orgErr?.message || "Org creation failed");
+        throw houseWriteError("organization", orgErr, "Org creation failed");
       orgId = org.id;
 
       // Generate URL-safe slug: "The Oak Room" → "the-oak-room-a3f2"
-      const baseSlug = dto.restaurantName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
+      const baseSlug = slugBase(dto.restaurantName);
       const slug = `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`;
 
       // The point the house asserted at sign-up, or nothing at all: a
@@ -1800,8 +1862,8 @@ export class AuthService {
       // column this insert writes — a conditional spread is unreadable to it.
       const coords = this.coordinateColumns(dto);
 
-      const { data: restaurant, error: restErr } =
-        await this.databaseService.supabase
+      const insertRow = (google_place_id: string | undefined) =>
+        this.databaseService.supabase
           .from("restaurants")
           .insert({
             name: dto.restaurantName,
@@ -1843,12 +1905,20 @@ export class AuthService {
             organization_id: org.id,
             latitude: coords.latitude,
             longitude: coords.longitude,
-            google_place_id: coords.google_place_id,
+            google_place_id,
           })
-          .select()
+          .select("id")
           .single();
+      const { data: restaurant, error: restErr } = await this.insertHouseRow(
+        coords.google_place_id,
+        insertRow,
+      );
       if (restErr || !restaurant)
-        throw new Error(restErr?.message || "Restaurant creation failed");
+        throw houseWriteError(
+          "restaurant",
+          restErr,
+          "Restaurant creation failed",
+        );
       restaurantId = restaurant.id;
 
       const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
@@ -1865,7 +1935,7 @@ export class AuthService {
         .select()
         .single();
       if (userErr || !user)
-        throw new Error(userErr?.message || "User creation failed");
+        throw houseWriteError("user", userErr, "User creation failed");
       userId = user.user_id;
 
       await this.databaseService.supabase
@@ -1953,10 +2023,7 @@ export class AuthService {
           .from("organizations")
           .delete()
           .eq("id", orgId);
-      this.logger.error(
-        `registerRestaurant rollback triggered: ${err.message}`,
-      );
-      throw new BadRequestException("Registration failed: " + err.message);
+      throw refuseHouseOpening("registerRestaurant", err, this.logger);
     }
   }
 
