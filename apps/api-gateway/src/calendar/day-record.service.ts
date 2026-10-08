@@ -61,7 +61,13 @@ export interface ReconciledDay {
   /** What the ledger recorded. Null fields are unknowns, never zeros. */
   recorded: {
     covers: number | null;
-    sales: number | null;
+    /**
+     * NET takings: the sum of `pos_checks.subtotal`, before tax and surcharge,
+     * over the checks that carried one (ADR 0287). Null when none did.
+     */
+    netSales: number | null;
+    /** How many of `checkCount` carried a subtotal; fewer means a partial sum. */
+    netSalesCheckCount: number;
     checkCount: number;
     excluded: boolean;
     exclusionReason: string | null;
@@ -102,18 +108,113 @@ export interface ReconciledDay {
   line: string;
 }
 
+/**
+ * The house's currency, sent with its money (ADR 0117 Q25, ADR 0287).
+ *
+ * `code: null` with `readable: true` is a house that never recorded one. A
+ * failed read is `readable: false`, and the page says the currency could not
+ * be read rather than that it was never recorded.
+ */
+export interface HouseCurrency {
+  code: string | null;
+  readable: boolean;
+}
+
 export interface DayRecordWindow {
   from: string;
   to: string;
   days: ReconciledDay[];
-  /** Passed through from the ledger read; false means no POS has ever landed. */
-  posConnected: boolean;
+  /** The currency every `netSales` in `days` is in. */
+  currency: HouseCurrency;
+  /**
+   * Passed through from the ledger read; false means no POS has ever landed.
+   * Null when the ledger refused (`recordedRefusal` is set): whether one has
+   * is then not known, and no day's line says "no register" (ADR 0287 §Forks F4).
+   */
+  posConnected: boolean | null;
   /** The ledger's refusal, when it could not be read. */
   recordedRefusal: string | null;
   /** The weather register's refusal, when it could not be read. */
   weatherRefusal: string | null;
   /** Pairs actually written to `prediction_outcomes` on this call. */
   pairsWritten: number;
+}
+
+/**
+ * Who is asking, as far as the house's money goes (ADR 0287 F1).
+ *
+ * The founder, 2026-10-04 ~02:10Z: *"everyone owners and managers, authorized
+ * ones see everything others only see actions, goals dedicated to them"*.
+ * Owners and managers see the day's takings; every other role, and a session
+ * holding no role in this house, does not. That is F1 option (b), which
+ * follows his money rule (ADR 0253 rounds 10-11: "owners and managers get it
+ * and some authorized staff"); the per-person right that rule names is not
+ * built yet, so the role decides (ADR 0287 §Forks F1).
+ */
+export interface DayRecordViewer {
+  seesHouseMoney: boolean;
+}
+
+/** A passed day with the house's money left out: covers, count, closure, line. */
+export interface WithheldDay extends Omit<ReconciledDay, "recorded"> {
+  recorded: Omit<
+    NonNullable<ReconciledDay["recorded"]>,
+    "netSales" | "netSalesCheckCount"
+  > | null;
+}
+
+/**
+ * The window a viewer who does not see house money receives.
+ *
+ * `netSales`, `netSalesCheckCount` and `currency` are LEFT OUT, never set to
+ * null or 0: null already means "no check carried a net figure", and 0 would be
+ * a quiet day. `takingsWithheld` says so outright, so the absence is never read
+ * as a gateway from before ADR 0287 or as a register that is empty.
+ */
+export interface WithheldDayRecordWindow extends Omit<
+  DayRecordWindow,
+  "days" | "currency"
+> {
+  days: WithheldDay[];
+  takingsWithheld: true;
+}
+
+/**
+ * Strip the house's money from a window (ADR 0287 F1).
+ *
+ * Built as an allowlist, not by deleting the money keys: a field added to a
+ * day later stays out of a staff payload until someone decides it belongs
+ * there, which is the safe way for that mistake to fail. `line` stays: it is
+ * built by `reconciliationLine`, which never names money.
+ */
+export function withholdHouseMoney(
+  window: DayRecordWindow,
+): WithheldDayRecordWindow {
+  return {
+    from: window.from,
+    to: window.to,
+    days: window.days.map((day) => ({
+      businessDate: day.businessDate,
+      recorded: day.recorded
+        ? {
+            covers: day.recorded.covers,
+            checkCount: day.recorded.checkCount,
+            excluded: day.recorded.excluded,
+            exclusionReason: day.recorded.exclusionReason,
+          }
+        : null,
+      forecastInAdvance: day.forecastInAdvance,
+      observed: day.observed,
+      forecastErrorC: day.forecastErrorC,
+      scoreWithheld: day.scoreWithheld,
+      line: day.line,
+    })),
+    posConnected: window.posConnected,
+    recordedRefusal: window.recordedRefusal,
+    weatherRefusal: window.weatherRefusal,
+    pairsWritten: window.pairsWritten,
+    takingsWithheld: true,
+  };
 }
 
 /** Fahrenheit → Celsius. The only unit conversion in this module. */
@@ -170,21 +271,18 @@ export function leadDaysFor(issuedAt: string, businessDate: string): number {
  *
  * Every branch is a different fact, and none of them is a zero. The order
  * matters: an excluded day says so first, because a closure that reads as a
- * quiet day is the most damaging thing this grid could show.
+ * quiet day is the most damaging thing this grid could show. Only a refused
+ * sales register comes before it, and a refused window carries no record and
+ * no closure to say (`RecordedDaysService` returns before it reads them).
  */
 export function reconciliationLine(
   recorded: RecordedDay | null,
   hadForecast: boolean,
-  posConnected: boolean,
+  /** False: no register has ever landed a check. Null: the register refused. */
+  posConnected: boolean | null,
   /** The weather forecast's error in °C, when both sides existed. */
   forecastErrorC: number | null = null,
 ): string {
-  if (recorded?.excluded) {
-    return recorded.exclusionReason
-      ? `Closed — ${recorded.exclusionReason}. Ruled out of the baselines.`
-      : "Closed. Ruled out of the baselines.";
-  }
-
   // The weather half is scoreable independently of the trading half, so it is
   // said first when it exists: it is the only number on this page that is a
   // measured error rather than a record.
@@ -195,7 +293,21 @@ export function reconciliationLine(
         ? " The forecast called the high exactly."
         : ` The forecast was out by ${forecastErrorC.toFixed(1)} °C on the high.`;
 
-  if (!posConnected) {
+  // The sales register refused (ADR 0292), so nothing about this day's
+  // trading is known: not that the house has no register, and not that the
+  // day was quiet. Said before anything read off the record, because under a
+  // refusal there is no record to read (ADR 0287 §Forks F4).
+  if (posConnected === null) {
+    return `The sales register could not be read, so this day's trading is not known.${weather}`;
+  }
+
+  if (recorded?.excluded) {
+    return recorded.exclusionReason
+      ? `Closed — ${recorded.exclusionReason}. Ruled out of the baselines.`
+      : "Closed. Ruled out of the baselines.";
+  }
+
+  if (posConnected === false) {
     return `No sales register is connected, so this day has no record.${weather}`;
   }
   if (!recorded || recorded.checkCount === 0) {
@@ -221,16 +333,52 @@ export class DayRecordService {
     private readonly weather: WeatherService,
   ) {}
 
+  /**
+   * The passed days in a window, for one viewer.
+   *
+   * The viewer is a required argument so no caller can get the house's money
+   * by forgetting to say who is asking. The evidence pairs are written in full
+   * either way, currency included: they are the house's record, not the
+   * viewer's, and a pair must not depend on who happened to open the page.
+   */
+  windowFor(
+    restaurantId: string,
+    from: string,
+    to: string,
+    viewer: { seesHouseMoney: true },
+  ): Promise<DayRecordWindow>;
+  windowFor(
+    restaurantId: string,
+    from: string,
+    to: string,
+    viewer: DayRecordViewer,
+  ): Promise<DayRecordWindow | WithheldDayRecordWindow>;
   async windowFor(
     restaurantId: string,
     from: string,
     to: string,
+    viewer: DayRecordViewer,
+  ): Promise<DayRecordWindow | WithheldDayRecordWindow> {
+    const window = await this.fullWindow(restaurantId, from, to);
+    return viewer.seesHouseMoney === true ? window : withholdHouseMoney(window);
+  }
+
+  private async fullWindow(
+    restaurantId: string,
+    from: string,
+    to: string,
   ): Promise<DayRecordWindow> {
-    const [ledger, weather] = await Promise.all([
+    const [ledger, weather, currency] = await Promise.all([
       this.recorded.windowFor(restaurantId, from, to),
       this.weather.windowFor(restaurantId, from, to),
+      this.houseCurrency(restaurantId),
     ]);
 
+    // A refused ledger answers nothing about the register, so the window says
+    // "not known" (null), never "no register" (false), whatever the ledger
+    // object carried (ADR 0287 §Forks F4). The same `refusal` that gates the
+    // pairs below gates this.
+    const posConnected = ledger.refusal === null ? ledger.posConnected : null;
     const recordedByDay = new Map(ledger.days.map((d) => [d.businessDate, d]));
     const advanceByDay = new Map(
       weather.forecastInAdvance.map((r) => [r.businessDate, r]),
@@ -265,7 +413,8 @@ export class DayRecordService {
         recorded: record
           ? {
               covers: record.covers,
-              sales: record.sales,
+              netSales: record.netSales,
+              netSalesCheckCount: record.netSalesCheckCount,
               checkCount: record.checkCount,
               excluded: record.excluded,
               exclusionReason: record.exclusionReason,
@@ -296,12 +445,7 @@ export class DayRecordService {
           : null,
         forecastErrorC: errorC,
         scoreWithheld: withheld,
-        line: reconciliationLine(
-          record,
-          advance !== null,
-          ledger.posConnected,
-          errorC,
-        ),
+        line: reconciliationLine(record, advance !== null, posConnected, errorC),
       };
     });
 
@@ -309,10 +453,46 @@ export class DayRecordService {
       from,
       to,
       days,
-      posConnected: ledger.posConnected,
+      currency,
+      posConnected,
       recordedRefusal: ledger.refusal,
       weatherRefusal: weather.refusal,
-      pairsWritten: await this.keepPairs(restaurantId, days),
+      // A pair is written once per day and never again (`keepPairs`), so one
+      // written while the sales register refused would freeze "0 checks, no
+      // net sales" over a day that traded. The register refuses rather than
+      // answer from part of the window (ADR 0292), and nothing is paired from
+      // a refusal either: the forecasts are kept in `weather_readings`, so the
+      // next whole read writes these days in full (ADR 0287).
+      pairsWritten:
+        ledger.refusal === null
+          ? await this.keepPairs(restaurantId, days, currency)
+          : 0,
+    };
+  }
+
+  /**
+   * The house's own currency, so the day's takings print in its money.
+   *
+   * One primary-key read, run beside the two registers. `code: null` is "not
+   * recorded" (ADR 0117 Q25), never dollars. A failed read is logged and comes
+   * back `readable: false`, so it can never pass for a house that never said.
+   */
+  private async houseCurrency(restaurantId: string): Promise<HouseCurrency> {
+    const { data, error } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `restaurants.currency unreadable for r=${restaurantId}: ${error.message}`,
+      );
+      return { code: null, readable: false };
+    }
+    const code = (data as { currency?: unknown } | null)?.currency;
+    return {
+      code: typeof code === "string" && code.trim() ? code.trim() : null,
+      readable: true,
     };
   }
 
@@ -330,6 +510,7 @@ export class DayRecordService {
   private async keepPairs(
     restaurantId: string,
     days: ReconciledDay[],
+    currency: HouseCurrency,
   ): Promise<number> {
     // A day is worth keeping when a forecast stood before it AND there is
     // something to hold it against — trading, or a station's measurement, or
@@ -389,7 +570,12 @@ export class DayRecordService {
         },
         actual_value: {
           covers: d.recorded?.covers ?? null,
-          sales: d.recorded?.sales ?? null,
+          // NET takings, named for their basis (ADR 0287). Rows written before
+          // it carry `sales`, which was the gross `total`; the new key keeps
+          // the two from ever being read as one series.
+          netSales: d.recorded?.netSales ?? null,
+          netSalesCheckCount: d.recorded?.netSalesCheckCount ?? 0,
+          netSalesCurrency: currency,
           checkCount: d.recorded?.checkCount ?? 0,
           // The measurement the score is computed against, kept beside the
           // trading so the number can always be recomputed from the row.

@@ -171,6 +171,25 @@ unchanged with the flag off):
   was forecast *before* the day" recoverable later
 - **A passed day holds the record.** Covers and sales from `pos_checks` beside the forecast
   that stood before the day began, with its lead time in days
+  **[CORRECTED 2026-10-03, [ADR 0287](../decisions/0287-a-passed-days-panel-shows-its-net-takings-the-cell-stays-covers.md):
+  until then the page drew covers only, and the "sales" the gateway sent was the gross
+  `total`, read by nothing. Now: covers in the cell; NET takings (the sum of
+  `pos_checks.subtotal`) in the opened day's panel, with their currency, and a partial
+  figure says "from N of M checks". Owners and managers see the figure; any other role
+  gets the day's covers without it (0287 F1, founder 2026-10-04). A check sits under the
+  UTC day it closed on (F-086, lane tz) and a month read stops at 1,000 rows (C15, lane
+  cap); 0287 §Consequences says what that does to a late check.]** **[2026-10-07, corrected
+  2026-10-08: F1 is option (b), by citation of the founder's money rule (ADR 0253 rounds
+  10-11, "owners and managers get it and some authorized staff"); no confirmation is owed
+  (0287 §Forks F1). The month read no longer stops at 1,000 rows: #609 (ADR 0292) reads it
+  whole or refuses, and under a refusal the opened day draws no takings figure, says "net
+  sales could not be read" to owners and managers on a day that holds a record (0287 F3,
+  decided 2026-10-08 under the founder's delegation), and no evidence pair is written (0287
+  §Decision 8). This bracket said "his confirmation is owed" and "draws no takings".]**
+  **[2026-10-08, round 3: under a refusal the day's covers read "covers could not be read"
+  and its line says the sales register could not be read, never "No sales register is
+  connected" (`posConnected: null`; 0287 §Forks F4, decided under the founder's delegation).
+  A ruled-out day that has checks still shows its takings (0287 §Decision 3).]**
 - **A passed day states the forecast's error, from 2026-09-04.** The nearest reporting
   station's observations are recorded beside the forecast, so `prediction_outcomes` now
   receives the **first real `accuracy_score` this product has ever produced**: the absolute
@@ -418,7 +437,7 @@ and never pooled**, and the Google app **goes for verification now**.
 |---|---|---|
 | 1 — the coordinate | The Google Places selection's point captured at sign-up and written with the restaurant; a backfill script for the 13 existing rows with a dry run, keyed on `google_place_id` | `apps/web/src/pages/Register.tsx`, `components/ui/PlacesAutocomplete.tsx`, `contexts/AuthContext.tsx`, `apps/api-gateway/src/auth/auth.service.ts` `coordinateColumns`, `auth/dto/register-restaurant.dto.ts`, `scripts/backfill_restaurant_coordinates.py` |
 | 2 — the weather overlay | `WeatherProvider` interface + `NwsWeatherProvider` (points → gridpoint → forecast, cached point resolution, descriptive User-Agent, `/alerts/active`), `weather_readings`, `GET /calendar/weather`, and the cell mark | `apps/api-gateway/src/weather/`, `supabase/migrations/20260903162000_a_forecast_names_its_issuer.sql`, `pages/calendar/next/SkyMark.tsx` |
-| 3 — the passed day | Covers/sales per day from `pos_checks` with closures hatched, paired with the forecast that stood *before* the day, written to `prediction_outcomes` with a NULL score | `apps/api-gateway/src/calendar/recorded-days.service.ts`, `day-record.service.ts`, `GET /calendar/day-record` |
+| 3 — the passed day | Covers/sales per day from `pos_checks` **[2026-10-03, ADR 0287: covers in the cell; net takings in the day panel, for owners and managers]** with closures hatched, paired with the forecast that stood *before* the day, written to `prediction_outcomes` with a NULL score | `apps/api-gateway/src/calendar/recorded-days.service.ts`, `day-record.service.ts`, `GET /calendar/day-record` |
 | — the iCal one-liners | `inline` not `attachment`; the restaurant's IANA zone not the server's; `X-PUBLISHED-TTL`/`REFRESH-INTERVAL`; absolute + `webcal://` URL | `calendar.controller.ts`, `calendar.service.ts`, `calendar/zoned-time.ts` |
 
 **The structural idea, and why it is not the veto DESIGN-FOUNDATION §6 wrote.** §6 forbids

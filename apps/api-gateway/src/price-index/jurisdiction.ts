@@ -93,6 +93,11 @@ const COUNTRIES: Record<string, string> = {
   turkey: "TR",
   tr: "TR",
   tur: "TR",
+  // The web's one country table (apps/web/src/lib/countries.ts, ADR 0117 Q33)
+  // records this alias and "U.S." below; the house's market is now read from
+  // its country first (ADR 0305), so a spelling missed here would drop a real
+  // house's state. `house-jurisdiction.spec.ts` keeps the two in step.
+  "republic of turkiye": "TR",
   "united kingdom": "GB",
   "united kingdom of great britain and northern ireland": "GB",
   "great britain": "GB",
@@ -103,6 +108,7 @@ const COUNTRIES: Record<string, string> = {
   "united states of america": "US",
   usa: "US",
   us: "US",
+  "u.s.": "US",
 };
 
 /**
