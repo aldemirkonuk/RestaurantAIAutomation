@@ -852,8 +852,9 @@ describe("A table list that could not be read leaves every table insight silent 
 
 describe("The stored insight cache", () => {
   // [2026-10-08, merge of be9a16ccf (#652): was "version 8 or later"; #652
-  // landed 10 on main first, so this change is 11.]
-  it("is at version 11 or later, so a row that ranked a hidden table is recomputed", () => {
-    expect(INSIGHT_GENERATOR_VERSION).toBeGreaterThanOrEqual(11);
+  // landed 10 on main first, so this change is 11.] [2026-10-08, merge of
+  // 8b22448dc: #626 (ADR 0297) landed 11 on main first, so this change is 12.]
+  it("is at version 12 or later, so a row that ranked a hidden table is recomputed", () => {
+    expect(INSIGHT_GENERATOR_VERSION).toBeGreaterThanOrEqual(12);
   });
 });
