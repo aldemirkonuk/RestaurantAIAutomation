@@ -254,7 +254,7 @@ PR-B (`fix/orders-wire-order-book-f140`, #671) moves /orders onto the book: `use
 
     Both are carried to the follow-up PR on useOrderBook.ts (see the handovers); the code is unchanged here.
   - **Mobile shares the bucket.** The phone reads `/history` too (`apps/mobile/src/api/queries.ts:111`). A phone behind the same network address shares the bucket.
-  - **The dashboard shares the bucket.** The dashboard reads `/history` (`useDayOrders`, `useDashboardNextData.ts:415-470`, its `getOrderHistory` call at `:447`; `useOrderQueries.ts:93`) from the same browser, outside this runner's window.
+  - **The dashboard shares the bucket.** The dashboard reads `/history` (`useDayOrders`, `useDashboardNextData.ts:431-486`, its `getOrderHistory` call at `:463`; `useOrderQueries.ts:93`) from the same browser, outside this runner's window.
   - **The window does not cover them.** The 40-per-tab window counts only book reads, so book reads, dashboard reads and a second tab can still reach 100 together. The 429 path absorbs that; it does not prevent it.
   - **Request cost.** A capped read costs at least 42 requests: 30 pages, 8 open sweeps and 4 counts. Under the 40-per-60s window it spans more than a minute. A read that does not hold still reads its pages twice and then degrades: at least 2 × its pages + 12.
   - **A status this client cannot name, in a degraded read.** Such an order is kept only as the unfiltered pages the read went through showed it. One those pages did not show is in no count (C2 above) unless a surplus cancels it (C3).
@@ -269,11 +269,10 @@ PR-B (`fix/orders-wire-order-book-f140`, #671) moves /orders onto the book: `use
 | What | To | Note |
 |---|---|---|
 | G2: add `.order('id')` after `.order('created_at')` in `listOrders` (`procurement.service.ts:3207`) | O4 | Tracked as an `open` claim row in this PR's claims fragment; it flips when G2 lands |
-| Dashboard in-transit count; `useDayOrders` (`useDashboardNextData.ts:415`) | R1b | The ruling names the in-transit count. This PR did not locate its line |
+| Dashboard in-transit count; `useDayOrders` (`useDashboardNextData.ts:431`) | R1b | The ruling names the in-transit count. This PR did not locate its line |
 | Scorecard overdue list | vendors lane | `scorecard-types.ts:57` declares the field. Its source read was not traced here |
 | /receiving door lane | R3 | DELIVERED orders are open ("Not counted yet") and are not listed on /receiving today, per the ruling's record |
 | Phone /orders | this lane, a later PR | Mobile is not touched here |
-| `pages/dashboard/next/DayDetail.tsx:302` links `/orders?highlight=` | follow-up | Check whether /orders reads `?highlight=` or `?order=` |
 | `markBackground` from `lib/websocket.tsx:646`/`:664` | follow-up (one PR on useOrderBook.ts and its test, beside the fork-6 listener) | Until wired, websocket-triggered book reads are urgent (settled, not gapped) |
 | Abort or ignore the in-flight read on a forget (e.g. abort `inFlight` or bump `writeEpoch` on forget, or a session generation), and reset `run.freshness`; cover a switch from house A to B and back to A with no B subscriber (`stopOtherHouses` runs only from `subscribeOrderBook`, `useOrderBook.ts:368-369`) and a read mid-HTTP at the sign-out (`order-book.ts:413-423`); pin each with a test | follow-up (one PR on useOrderBook.ts and its test, beside the fork-6 listener) | `forgetHouseReads` resets the cached book; the module-level runner's in-flight read and `run.freshness` are not reset by it (see Weaknesses, "The runner outlives a forget") |
 | Handle a backwards clock step in the keep rule and the stale timer (`useOrderBook.ts:264`, `:451-459`): for example a per-run read sequence number or `performance.now` in place of wall-clock `readStartedAt` for the keep, negative ages in the stale check, and a timer that re-arms or recomputes after a step; and make the keep rule hold for two overlapping reads of one house (a second module instance in a dev hot reload) | follow-up (one PR on useOrderBook.ts and its test, beside the fork-6 listener) | Owed; no committed test pins a clock step or two module instances. Reviewer runs that reached them: `p4-scratch/audits/598-152c893/adversary.md`, `p4-scratch/audits/598-4fb013e/adversary.md`, `p4-scratch/audits/598-4fb013e/auditor.md` |

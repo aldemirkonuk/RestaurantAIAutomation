@@ -70,6 +70,7 @@ import {
   type ArmRegister,
 } from './note-close-experiment';
 import { timeAgo } from './format';
+import { TryAgain } from './TryAgain';
 import OneTapSheet, {
   EMPTY_DRAFT,
   draftHasWords,
@@ -138,6 +139,18 @@ export type Register =
   | { state: 'loading' }
   | { state: 'unreadable'; failure: FailureVM }
   | { state: 'ready'; rows: OneTapAction[] };
+
+/**
+ * DASH-W24 (P5 words): why something did not land, in the house's words. A
+ * transport string ("Network Error") or a status code is never shown; a 400
+ * or 403 sentence the gateway wrote for people is still printed as itself by
+ * the callers that already do so.
+ */
+function notDone(what: string, failure: FailureVM, outcome: string): string {
+  if (failure.status === null) return `${what} didn’t go through — it couldn’t be reached just now. ${outcome}`;
+  if (failure.status >= 500) return `${what} didn’t go through — something went wrong on our side. ${outcome}`;
+  return `${what} wasn’t accepted. ${outcome}`;
+}
 
 function failureOf(error: unknown): FailureVM {
   const raw = (error as { response?: { status?: unknown } } | null)?.response?.status;
@@ -251,7 +264,7 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
       setFailureNote(
         failure.status === 400 || failure.status === 403
           ? failure.message
-          : `The seal could not be issued (${failure.message}) — nothing was confirmed.`,
+          : notDone('The seal', failure, 'Nothing was confirmed.'),
       );
       return null;
     }
@@ -293,7 +306,7 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         setFailureNote(
           failure.status === 400 || failure.status === 403
             ? failure.message
-            : `Marking it done was refused (${failure.message}) — the action is unchanged.`,
+            : notDone('Marking it done', failure, 'The action is unchanged.'),
         );
         throw err;
       }
@@ -309,7 +322,7 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         await read();
       } catch (err) {
         setFailureNote(
-          `Ruling it out was refused (${failureOf(err).message}) — the action is unchanged.`,
+          notDone('Ruling it out', failureOf(err), 'The action is unchanged.'),
         );
         throw err;
       }
@@ -334,7 +347,7 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         });
         await read();
       } catch (err) {
-        setFailureNote(`The action was not saved (${failureOf(err).message}) — nothing was created.`);
+        setFailureNote(notDone('Saving the action', failureOf(err), 'Nothing was created.'));
         throw err;
       }
     },
@@ -364,8 +377,8 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         const failure = failureOf(err);
         setFailureNote(
           failure.forbidden
-            ? `This account may not change actions on this rail (${failure.status}). The action is unchanged.`
-            : `The change was not saved (${failure.message}) — the action is unchanged.`,
+            ? 'This account may not change actions on this rail. The action is unchanged.'
+            : notDone('The change', failure, 'The action is unchanged.'),
         );
         throw err;
       }
@@ -383,8 +396,8 @@ export function useOneTapActions(restaurantId: string | null): OneTapDesk {
         const failure = failureOf(err);
         setFailureNote(
           failure.forbidden
-            ? `This account may not take actions off this rail (${failure.status}). It is still there.`
-            : `Taking it off the rail was refused (${failure.message}) — it is still there.`,
+            ? 'This account may not take actions off this rail. It is still there.'
+            : notDone('Taking it off the rail', failure, 'It is still there.'),
         );
         throw err;
       }
@@ -538,16 +551,19 @@ export function ActionCard({
   /** What this card's "done" is, said before it is pressed rather than after. */
   const promise =
     disposition.kind === 'workflow'
-      ? 'Confirming this books the delivery into stock through the order it names. The hold mints a seal the write has to carry back, so an order edited in the meantime is refused rather than booked.'
+      ? // DASH-W24 (P5): said in the house's words. The mechanism (a seal minted
+        // when the hold begins, redeemed by the write) is ADR 0116's; the house
+        // needs only its consequence.
+        'Confirming this books the delivery into stock against the order it names. If the order changed while you held, nothing is booked.'
       : drawnArm === 'die'
         ? // The die on a note is a GESTURE, NOT A SEAL, and the card has to say
           // so. ADR 0116's addendum made an order approval a REDEEMED seal —
           // minted when the hold begins, spent by the write. Nothing is minted
           // here and nothing is redeemed, and a wax impression that looked the
           // same in both places would empty the word.
-          'Holding records the decision against your name. Nothing else moves, and this die is a gesture rather than a seal — nothing is minted and nothing is redeemed.'
+          'Holding records the decision against your name. Nothing else moves — this stamp is not a seal and approves nothing.'
         : drawnArm === 'plain'
-          ? 'Marking it done records the decision against your name. Nothing else moves — a written action has no workflow behind it, and the plain button says so.'
+          ? 'Marking it done records the decision against your name. Nothing else moves.'
           : null;
 
   return (
@@ -670,9 +686,7 @@ export function ActionCard({
           </div>
         )}
         {isNote && drawnArm === null && (
-          <p className="text-[11px] italic text-inkm-4">
-            Reading which closing control this house is on.
-          </p>
+          <p className="text-[11px] italic text-inkm-4">Reading…</p>
         )}
 
         {/* Nothing to press. Disabled, and the sentence above says why. */}
@@ -689,16 +703,11 @@ export function ActionCard({
           </button>
         )}
       </div>
-      {/* A failed read is never dressed as an assignment. The control below is
-          the plain one because plain is the product as built, and this line
-          says that is a fallback rather than what this house was given. */}
-      {isNote && noteArm.state === 'unreadable' && (
-        <p role="status" className="mt-1.5 text-[11px] text-inkm-4">
-          Which closing control this house should see could not be read (
-          {noteArm.message}), so this is the plain one — a fallback, not an
-          assignment. Nothing about this card is being counted.
-        </p>
-      )}
+      {/* A failed read is never dressed as an assignment: the control is the
+          plain one (the product as built) and nothing on the card is counted
+          (`measurable` above). DASH-W24 (P5): the card no longer narrates the
+          experiment to the house — that standing line lives on /logs
+          (`noteCloseReportLine`, DASH-W5). */}
       {outcome && (
         <p role="status" className="mt-1.5 text-[11.5px] text-inkm-2">
           {outcome}
@@ -818,9 +827,15 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
 
         {desk.register.state === 'unreadable' && (
           <p role="status" className="text-[12px] text-inkm-2">
-            {desk.register.failure.forbidden
-              ? `The one-tap register refused this account (${desk.register.failure.status ?? 'refused'}). Nothing is listed because nothing could be read — an owner or manager account can read it.`
-              : `The one-tap register could not be read (${desk.register.failure.message}). Nothing is listed because nothing could be read — this is not an empty desk.`}
+            {desk.register.failure.forbidden ? (
+              'This account may not read the one-tap desk; an owner or manager can. Nothing is listed because nothing could be read.'
+            ) : (
+              <>
+                The one-tap desk couldn’t be reached just now. Nothing is listed because nothing could be
+                read — this is not an empty desk.
+                <TryAgain onRetry={desk.refresh} />
+              </>
+            )}
           </p>
         )}
 
@@ -897,12 +912,14 @@ export function OneTapPanel({ restaurantId }: OneTapPanelProps) {
         />
 
         <p className="mt-3 border-t border-paper-2 pt-2 text-[11px] text-inkm-4">
-          One act on this desk is real: confirming a delivery books the stock through the order it
-          names, and it is the only control here that carries a SEAL — minted when the hold begins
-          and spent by the write. A written action is recorded against your name and nothing else
-          moves; how it is closed is being tried both ways, and where that is a hold it is a
-          gesture rather than a seal. Every other kind of action is disabled and says what is not
-          built — no control here sends a mail or places an order.
+          {/* DASH-W24 (P5): the same facts in the house's words — no seal
+              mechanics, and the note-control experiment is not narrated to the
+              house it is measuring (ADR 0127). */}
+          One act on this desk is real: confirming a delivery books the stock against the order it
+          names, and it is the only control here that moves stock. A written action is recorded
+          against your name and nothing else moves. Any other kind of action shows what it would
+          do but can’t be carried out from here yet — no control here sends a mail or places an
+          order.
         </p>
       </div>
     </section>
