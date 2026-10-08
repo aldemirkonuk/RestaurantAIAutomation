@@ -465,6 +465,7 @@ describe("GoalsService — the till and goal progress read the whole window", ()
   it("bottles_sold sums 1,500 consumption lines, not 1,000", async () => {
     const lines = spread(1500, 40, 1, (_i, daysAgo) => ({
       restaurant_id: "r1",
+      consumption_type: "bottle",
       quantity: 2,
       volume_ml: null,
       created_at: at(daysAgo),
@@ -598,6 +599,7 @@ describe("AdvancedAnalyticsService — menu engineering and seasonality count ev
   const lines = spread(8445, 60, 1, (i, daysAgo) => ({
     restaurant_id: "r1",
     inventory_id: `inv-${i % 5}`,
+    consumption_type: "bottle",
     quantity: 1,
     volume_ml: null,
     created_at: at(daysAgo, i % 300),
@@ -675,6 +677,7 @@ describe("AnalyticsService — loadConsumption reads every line, or refuses (for
   const lines = spread(1500, 20, 1, (_i, daysAgo) => ({
     restaurant_id: "r1",
     inventory_id: "inv-1",
+    consumption_type: "bottle",
     quantity: 1,
     volume_ml: null,
     created_at: at(daysAgo),
