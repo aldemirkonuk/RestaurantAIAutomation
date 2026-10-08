@@ -182,14 +182,34 @@ export class DashboardStatsDto {
   // is what the web dashboard rendered under the heading "Total Revenue". They
   // are sums of `procurement_orders.total_cost` for delivered orders — vendor
   // invoices, i.e. money leaving the restaurant. No sale is involved.
-  @ApiProperty({ description: "Vendor spend on orders delivered today" })
-  todayProcurementSpend: number;
+  // DASH-W22: null when the caller's role does not see the house's money
+  // (staff); `amounts` says which, so a withheld figure never reads as a
+  // failed read.
+  @ApiProperty({ description: "Vendor spend on orders delivered today; null when withheld for the caller's role", nullable: true, type: Number })
+  todayProcurementSpend: number | null;
 
-  @ApiProperty({ description: "Vendor spend on orders delivered in the last 7 days" })
-  weekProcurementSpend: number;
+  @ApiProperty({ description: "Vendor spend on orders delivered in the last 7 days; null when withheld for the caller's role", nullable: true, type: Number })
+  weekProcurementSpend: number | null;
 
-  @ApiProperty({ description: "Vendor spend on orders delivered in the last 30 days" })
-  monthProcurementSpend: number;
+  @ApiProperty({ description: "Vendor spend on orders delivered this calendar month, on the house's days; null when withheld for the caller's role", nullable: true, type: Number })
+  monthProcurementSpend: number | null;
+
+  @ApiProperty({ description: "Orders delivered today, on the house's day" })
+  todayDeliveries: number;
+
+  @ApiProperty({ description: "Bottles on orders delivered this calendar month, on the house's days" })
+  monthBottlesIn: number;
+
+  @ApiProperty({ enum: ["shown", "withheld"], required: false, description: "Whether the spend figures are the house's, or withheld for the caller's role" })
+  amounts?: "shown" | "withheld";
+
+  // DASH-W20: the page's "today", greeting and calendar read this clock, so
+  // they agree with the figures above instead of with the viewer's device.
+  @ApiProperty({
+    description:
+      "The IANA zone every figure above was bucketed in: the house's own, or UTC when none is recorded",
+  })
+  timezone: string;
 }
 
 // ============================================================================

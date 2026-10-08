@@ -7,6 +7,11 @@ import React, {
   useRef,
 } from "react";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import {
+  QueryClientContext,
+  notifyManager,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { errorTracking } from "../lib/error-tracking";
 import { getBrowserTimezone } from "../lib/browserTimezone";
 import { useAuthStore } from "../stores";
@@ -32,6 +37,33 @@ import { ensurePersisted } from "../lib/deviceStorage";
 
 /** How long sign-out waits for the read-cache clear before finishing anyway. */
 export const SIGN_OUT_CACHE_CLEAR_MAX_MS = 2000;
+
+/**
+ * Forget every read the page holds. Called when the session stops naming the
+ * house those reads came from: a house switch (once the new token is stored)
+ * and sign-out. Many reads are keyed without the house, so without this the
+ * page kept showing the last house's promotions, locks, versions and roster
+ * under the new house's name, and refetched them only on a later focus
+ * (PROCURE-04, MENU-01, OPS-03).
+ *
+ * Each query is reset, not merely dropped: `reset()` cancels a read still in
+ * flight and tells every component watching it, so none goes on drawing the
+ * old house's figures, and an old query a component still holds a reference
+ * to (keepPreviousData) has no data left to lend. A query nobody watches is
+ * then removed. Nothing refetches here: the caller decides when the new
+ * house's reads start. Without a QueryClientProvider (tests that mount the
+ * provider bare) there is no cache to forget.
+ */
+export function forgetHouseReads(client: QueryClient | undefined): void {
+  if (!client) return;
+  const cache = client.getQueryCache();
+  notifyManager.batch(() => {
+    for (const query of cache.getAll()) {
+      query.reset();
+      if (query.getObserversCount() === 0) cache.remove(query);
+    }
+  });
+}
 
 /**
  * Thrown by `login()` for backend auth failures. `code`/`provider` carry the
@@ -166,6 +198,15 @@ interface JoinViaInviteData {
   emailSecret?: string;
 }
 
+/**
+ * A house that opened. `detailsLoaded` is false when the house and its
+ * session are in place but the `/auth/me` read after them failed (F-006).
+ */
+export interface HouseOpened {
+  restaurantId: string;
+  detailsLoaded: boolean;
+}
+
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -186,7 +227,7 @@ export interface AuthContextType {
   register: (data: RegisterData) => Promise<void>;
   registerAccount: (data: RegisterAccountData) => Promise<void>;
   registerAccountWithGoogle: (token: string) => Promise<void>;
-  createFirstHouse: (data: CreateFirstHouseData) => Promise<string>;
+  createFirstHouse: (data: CreateFirstHouseData) => Promise<HouseOpened>;
   registerRestaurant: (data: RegisterRestaurantData) => Promise<void>;
   joinViaInvite: (data: JoinViaInviteData) => Promise<void>;
   loginWithGoogle: (token: string) => Promise<void>;
@@ -330,6 +371,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     "owner" | "manager" | "staff" | null
   >(null);
   const branchFetchSeq = React.useRef(0);
+  // Optional on purpose: the app nests this provider inside
+  // QueryClientProvider (App.tsx), but `useQueryClient()` throws without one.
+  const queryClient = useContext(QueryClientContext);
+  // Bumped each time a switch forgets the last house's reads; the effect
+  // below then refetches what is still on screen, under the new token.
+  const [houseReadsForgotten, setHouseReadsForgotten] = useState(0);
 
   // Configure axios defaults
   useEffect(() => {
@@ -622,11 +669,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { accessToken, refreshToken } = response.data;
         if (!accessToken || !refreshToken)
           throw new Error("The branch switch returned no session.");
+        // The device read cache: providers and calendar rows are keyed by
+        // house, but notifications are keyed by person only, and a failed
+        // read falls back to them. Cleared before the new session is stored,
+        // bounded as at sign-out (IndexedDB's open has hung on WebKit).
+        try {
+          await Promise.race([
+            offlineStorage.clearEntityCache(),
+            new Promise<void>((resolve) =>
+              setTimeout(resolve, SIGN_OUT_CACHE_CLEAR_MAX_MS),
+            ),
+          ]);
+        } catch (err) {
+          console.error("Could not clear the read cache at a house switch:", err);
+        }
+        if (sequence !== branchSwitchSequence.current) return false;
         const house = storeSession(accessToken, refreshToken);
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         if (house !== restaurantId) return false;
         clearHouseEnded();
 
+        // The token now names the new house: forget the last house's reads
+        // before anything renders under the new name (PROCURE-04, MENU-01,
+        // OPS-03). Same tick as the state below, so no read lands between.
+        forgetHouseReads(queryClient);
+        setHouseReadsForgotten((n) => n + 1);
         setActiveRestaurantIdState(house);
         api.defaults.headers.common["X-Restaurant-Id"] = house;
         // Sync Zustand store so all consumers (Providers, Dashboard, etc.) re-render immediately
@@ -646,8 +713,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
     },
-    [],
+    [queryClient],
   );
+
+  // After a switch forgot the last house's reads, read again what is still
+  // on screen. Child effects run before this one, so a component whose key
+  // carries the house has already moved to the new house's key; only the
+  // reads still watched are refetched, and the old house's keys are not.
+  // `cancelRefetch: false` joins a read already started instead of
+  // restarting it.
+  useEffect(() => {
+    if (houseReadsForgotten === 0 || !queryClient) return;
+    void queryClient.refetchQueries(
+      { type: "active" },
+      { cancelRefetch: false },
+    );
+  }, [houseReadsForgotten, queryClient]);
 
   const login = useCallback(async (email: string, password: string) => {
     try {
@@ -763,11 +844,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         const userResponse = await api.get("/api/v1/auth/me");
         setUser(userFrom(userResponse.data.user, accessToken));
-      } catch (err: any) {
-        const message = err.response?.data?.message || "Registration failed";
-        setError(message);
-        throw new Error(message);
       } finally {
+        // No catch: the error reaches Register.tsx whole, status and all, and
+        // the gateway's own text is never stored to be shown (F-006).
         setLoading(false);
       }
     },
@@ -827,22 +906,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const createFirstHouse = useCallback(
-    async (data: CreateFirstHouseData): Promise<string> => {
+    async (data: CreateFirstHouseData): Promise<HouseOpened> => {
       const response = await api.post("/api/v1/auth/register/house", data);
       const { restaurantId, accessToken, refreshToken: refresh } = response.data;
+      // A person who already had a house moves into the new one, so the
+      // device read cache goes as at a switch: notifications are keyed by
+      // person only, and a failed read falls back to them. Cleared before
+      // the new session is stored, bounded as at sign-out.
+      try {
+        await Promise.race([
+          offlineStorage.clearEntityCache(),
+          new Promise<void>((resolve) =>
+            setTimeout(resolve, SIGN_OUT_CACHE_CLEAR_MAX_MS),
+          ),
+        ]);
+      } catch (err) {
+        console.error("Could not clear the read cache for a new house:", err);
+      }
       // `activeRestaurantId` follows the TOKEN's house (ADR 0164), and the
       // device remembers it as this person's last house.
       const house = storeSession(accessToken, refresh) ?? restaurantId;
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
       api.defaults.headers.common["X-Restaurant-Id"] = house;
       clearHouseEnded();
+      // A person who already had a house moves into the new one: its reads
+      // start empty, as at a switch.
+      forgetHouseReads(queryClient);
+      setHouseReadsForgotten((n) => n + 1);
       setActiveRestaurantIdState(house);
       useAuthStore.getState().setActiveRestaurantId(house);
-      const userResponse = await api.get("/api/v1/auth/me");
-      setUser(userFrom(userResponse.data.user, accessToken));
-      return house;
+      // The house is open by here. A failed `/auth/me` is said as that, not
+      // as a house that failed to open (F-006, scope item 5).
+      try {
+        const userResponse = await api.get("/api/v1/auth/me");
+        setUser(userFrom(userResponse.data.user, accessToken));
+        return { restaurantId: house, detailsLoaded: true };
+      } catch (err) {
+        console.warn("house opened; /auth/me did not load", err);
+        // The role in the new house is the token's too, so a page that asks
+        // for the owner opens before `/auth/me` catches up.
+        const role = (tokenClaims(accessToken)?.role ?? null) as User["role"];
+        setUser((prev) =>
+          prev ? { ...prev, restaurantId: house, role } : prev,
+        );
+        return { restaurantId: house, detailsLoaded: false };
+      }
     },
-    [],
+    [queryClient],
   );
 
   const joinViaInvite = useCallback(async (data: JoinViaInviteData) => {
@@ -983,12 +1093,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error("Could not clear the read cache at sign-out:", err);
       }
+      // The in-memory reads too, and the changes this session made: none of
+      // it is the next person's to see.
+      forgetHouseReads(queryClient);
+      queryClient?.getMutationCache().clear();
       delete api.defaults.headers.common["Authorization"];
       delete api.defaults.headers.common["X-Restaurant-Id"];
       setUser(null);
       setActiveRole(null);
     }
-  }, []);
+  }, [queryClient]);
 
   // The founder, 2026-09-29 (OD-203): "If the person signs out, however, the
   // data is lose, lost, right? This is the best way since it's basically cache

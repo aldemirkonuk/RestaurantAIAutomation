@@ -37,6 +37,10 @@ import {
   priceScopeOf,
   unarmedDisplaySilenceFor,
 } from "./jurisdiction";
+import {
+  COUNTRY_NOT_RECORDED_SENTENCE,
+  resolveHouseJurisdiction,
+} from "./house-jurisdiction";
 import { noSourceSentence } from "./silence-notes";
 import { priceIndexFetchArmed, PRICE_INDEX_FETCH_FLAG } from "./staleness";
 // The hold's LENGTH, imported rather than repeated. A number the panel prints
@@ -176,6 +180,13 @@ export interface StateIndexResult {
   carriedBooks: CarriedBook[] | null;
   /** Words, never an empty list mistaken for "nothing costs anything". */
   silence: string | null;
+  /**
+   * True only when the caller's own house records no country (ADR 0305). Its
+   * state is then not read at all, and the panel asks for the country with a
+   * link to Settings, the way a house with no time zone is asked. False on a
+   * read that failed: an unread address is not a missing one.
+   */
+  countryNotRecorded: boolean;
 }
 
 /** One hand-carried book that is in the market, and how it got there. */
@@ -224,8 +235,9 @@ export class PriceIndexService {
   /**
    * The index for the CALLER's own house — resolves the restaurant's state
    * server-side so the web never has to carry it. `restaurants.state_province`
-   * is free text ('CA' / 'California'), normalised the same way as `:state`. A
-   * house with no state recorded (2 of 14 tenants) gets WORDS, not a guess.
+   * is free text ('CA' / 'California'); it is read INSIDE the house's country
+   * (`house-jurisdiction.ts`, ADR 0305). A house with no country gets WORDS
+   * and a flag, never a guess.
    */
   async forHouse(restaurantId: string | null): Promise<StateIndexResult> {
     if (!restaurantId) {
@@ -238,18 +250,17 @@ export class PriceIndexService {
         heldBookHoldHours: ESCALATION_HOURS,
         carriedBooks: [],
         silence: "No active restaurant on this session, so no state to scope the index to.",
+        countryNotRecorded: false,
       };
     }
-    // REGION FIRST, THEN COUNTRY (2026-09-05). `state_province` is free text
-    // ('CA' / 'California' / 'Muğla' / 'England'); `country` is free text too
-    // ('Türkiye' / 'USA' / 'united States'). Reading only the province was
-    // measured wrong on this estate: The Old House Pub in Antalya records NO
-    // province and country 'Türkiye', so it was told "this house has no state
-    // recorded" when its country is known and is the level Türkiye publishes
-    // at. The country is the FALLBACK, never the override — a province is the
-    // more specific fact and wins whenever it resolves.
+    // COUNTRY FIRST, THEN THE STATE INSIDE IT (ADR 0305, 2026-10-07). Until
+    // then this read the province first and the country only as a fallback
+    // (2026-09-05, when The Old House Pub in Antalya recorded no province), so
+    // a bare 'MI' was Michigan on an Italian house too. The country still
+    // answers when no state reads inside it, as the Antalya house needs.
     let rawState: string | null = null;
     let rawCountry: string | null = null;
+    let readFailed = false;
     try {
       const { data, error } = await this.db.client
         .from("restaurants")
@@ -264,22 +275,12 @@ export class PriceIndexService {
       rawState = row?.state_province ?? null;
       rawCountry = row?.country ?? null;
     } catch (err) {
+      readFailed = true;
       this.logger.warn(
         `could not read this house's jurisdiction for the price index: ${(err as Error).message}`,
       );
     }
-    if (rawState && rawState.trim() && normalizeJurisdiction(rawState)) {
-      return this.forState(rawState);
-    }
-    if (rawCountry && rawCountry.trim() && normalizeJurisdiction(rawCountry)) {
-      return this.forState(rawCountry);
-    }
-    // A province WAS recorded and this register does not recognise it: say
-    // that, rather than "no state recorded", which would be false.
-    if (rawState && rawState.trim()) {
-      return this.forState(rawState);
-    }
-    return {
+    const empty = {
       requested: "me",
       state: null,
       lines: [],
@@ -287,9 +288,31 @@ export class PriceIndexService {
       heldBooks: 0,
       heldBookHoldHours: ESCALATION_HOURS,
       carriedBooks: [],
-      silence:
-        "This house records neither a state nor a country, so no jurisdiction can be scoped. Set the address in Settings to draw an index line.",
     };
+    // A read that failed is not a house with no country, and must not be told
+    // to go and set one (ADR 0067).
+    if (readFailed) {
+      return {
+        ...empty,
+        silence:
+          "This house's address could not be read, so no jurisdiction is scoped. This is unknown, not empty.",
+        countryNotRecorded: false,
+      };
+    }
+    const house = resolveHouseJurisdiction(rawState, rawCountry);
+    if (house.kind === "country_not_recorded") {
+      return {
+        ...empty,
+        silence: COUNTRY_NOT_RECORDED_SENTENCE,
+        countryNotRecorded: true,
+      };
+    }
+    // A country this register has no list for: its own name is what is not
+    // recognised, never the state beside it.
+    return this.indexFor(
+      house.requested,
+      house.kind === "resolved" ? house.jurisdiction : null,
+    );
   }
 
   /** The index lines for one state, plus who publishes there and why it is quiet. */
@@ -299,7 +322,23 @@ export class PriceIndexService {
     basis?: string,
     limit = 25,
   ): Promise<StateIndexResult> {
-    const state = normalizeJurisdiction(rawState);
+    return this.indexFor(
+      rawState,
+      normalizeJurisdiction(rawState),
+      product,
+      basis,
+      limit,
+    );
+  }
+
+  /** One jurisdiction, already resolved: `requested` is the text it came from. */
+  private async indexFor(
+    requested: string,
+    state: string | null,
+    product?: string,
+    basis?: string,
+    limit = 25,
+  ): Promise<StateIndexResult> {
     // Coverage is CONTAINMENT, not equality (2026-09-05): a national
     // instrument speaks for a house in one of its provinces, and an
     // England-and-Wales series speaks for a house in England. It does NOT
@@ -312,14 +351,15 @@ export class PriceIndexService {
 
     if (!state) {
       return {
-        requested: rawState,
+        requested,
         state: null,
         lines: [],
         sources: [],
         heldBooks: 0,
         heldBookHoldHours: ESCALATION_HOURS,
         carriedBooks: [],
-        silence: `"${rawState}" is not a jurisdiction this register recognises. No index line is drawn rather than guessing a state.`,
+        silence: `"${requested}" is not a jurisdiction this register recognises. No index line is drawn rather than guessing a state.`,
+        countryNotRecorded: false,
       };
     }
 
@@ -370,7 +410,7 @@ export class PriceIndexService {
       : await this.carriedBooksFor(state);
     const heldBooks = carried.held;
     return {
-      requested: rawState,
+      requested,
       state,
       lines,
       sources,
@@ -384,6 +424,7 @@ export class PriceIndexService {
         readFailed,
         heldBooks,
       ),
+      countryNotRecorded: false,
     };
   }
 

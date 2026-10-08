@@ -156,6 +156,14 @@ export interface HouseCommodityVM {
   silence: string | null;
   /** True when no series has a mapping. The panel then shows the list + a sentence. */
   noExposureRecorded: boolean;
+  /**
+   * The house's address was read and records no country, so the gateway read
+   * no state or country and only the series that speak for everywhere answer
+   * (ADR 0305). The section then asks for the country with a link to
+   * Settings. Only a `true` on the wire sets it: an unread answer is not a
+   * missing country.
+   */
+  countryNotRecorded: boolean;
 }
 
 const LOADING: HouseCommodityVM = {
@@ -167,6 +175,7 @@ const LOADING: HouseCommodityVM = {
   fetchArmed: false,
   silence: null,
   noExposureRecorded: false,
+  countryNotRecorded: false,
 };
 
 /** A monthly index moves once a month. Five minutes is more than ample. */
@@ -326,6 +335,7 @@ export function useHouseCommodity(): HouseCommodityVM & { refresh: () => void } 
         fetchArmed: d.fetchArmed === true,
         silence: str(d.silence),
         noExposureRecorded: d.noExposureRecorded === true,
+        countryNotRecorded: d.countryNotRecorded === true,
       });
     } catch (err) {
       if (tenant.current !== forTenant) return;
