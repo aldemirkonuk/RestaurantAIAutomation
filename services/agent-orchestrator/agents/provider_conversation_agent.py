@@ -2317,7 +2317,12 @@ class ProviderConversationAgent(BaseAgent):
                     f"({', '.join(withheld)}); using the fixed order letter instead"
                 )
                 audit.withheld_figure_dropped = True
-                return order_letter_without_ceiling(intent), audit
+                letter = order_letter_without_ceiling(intent)
+                # The letter interpolates the intent's wine name and quantity,
+                # so it gets the same commitment check as a model draft.
+                if self._check_commitment_language(letter):
+                    audit.commitment_language_detected = True
+                return letter, audit
 
             # AI-SPEC §6: Check commitment language — log warning; caller must force pending_approval
             if self._check_commitment_language(draft_text):

@@ -1,4 +1,6 @@
-"""The house's price ceiling never reaches a vendor-facing draft.
+"""The house's price ceiling (max_acceptable_price in the intent passed to
+the drafting call) is kept out of the prompt, and a draft that states its
+exact figure in a covered form is replaced.
 
 Found by the F-106 production dry run, 2026-10-08: a waiting draft said
 "My target price ... is around $1,090 per bottle, with a maximum acceptable
@@ -83,6 +85,33 @@ def test_the_ceiling_figure_is_found_in_every_form(text):
     ],
 )
 def test_other_figures_are_not_the_ceiling(text):
+    assert withheld_figures_in(text, INTENT) == []
+
+
+@pytest.mark.parametrize(
+    "space",
+    [
+        "\u2009",  # THIN SPACE
+        "\u2007",  # FIGURE SPACE
+        "\u200a",  # HAIR SPACE
+        "\u2008",  # PUNCTUATION SPACE
+        "\u205f",  # MEDIUM MATHEMATICAL SPACE
+        "\u3000",  # IDEOGRAPHIC SPACE
+        "\u202f",  # NARROW NO-BREAK SPACE
+    ],
+)
+def test_any_unicode_space_between_groups_is_read_as_a_space(space):
+    text = f"Our maximum is $1{space}199 per bottle."
+    assert withheld_figures_in(text, INTENT) == ["max_acceptable_price"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["1, 199", "1\n199", "1\t199", "1.199.00", "6,1199", "1 1 99", "1\u066c199"],
+)
+def test_the_disclosed_misses_are_still_misses(text):
+    # Listed under "Not covered" in the module docstring and the tech-debt
+    # fragment; if one starts matching, update both.
     assert withheld_figures_in(text, INTENT) == []
 
 
@@ -210,7 +239,17 @@ def test_the_negotiate_template_survives_a_missing_or_text_target(target):
         assert "X" in text
 
 
-def test_the_drop_is_kept_in_the_audit_trail_the_manager_reads():
+@pytest.mark.asyncio
+async def test_the_replacement_letter_gets_the_commitment_check():
+    agent = _agent("Target $1,090, with a maximum acceptable price of $1,199.")
+    checked = []
+    agent._check_commitment_language = lambda t: checked.append(t) or True
+    text, audit = await _draft(agent)
+    assert checked == [text]
+    assert audit.commitment_language_detected is True
+
+
+def test_the_drop_flag_is_written_into_the_audit_trail_source():
     import inspect
 
     src = inspect.getsource(pca)

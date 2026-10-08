@@ -1,4 +1,8 @@
-"""Figures the house keeps to itself never reach a vendor-facing draft.
+"""Withhold the house's price ceiling from a vendor-facing draft.
+
+Scope: one house-only key, `max_acceptable_price`, read from the intent
+passed to the drafting call. It is stripped from the prompt, and a draft
+that states its exact figure (in the forms listed below) is replaced.
 
 A procurement intent carries `max_acceptable_price`, the house's ceiling.
 The agent uses it only for its own accept test
@@ -11,35 +15,50 @@ target and the ceiling. That draft was never sent (tech-debt.d
 
 There are two layers here:
   1. `vendor_safe_intent` removes the house-only keys before the prompt is
-     built, so the model never sees the ceiling.
+     built, so the intent in the prompt never carries the ceiling. The model
+     can still meet the figure in memories or history.
   2. `withheld_figures_in` checks the drafted text for the ceiling figure in
-     the forms a model writes it: 1199, 1,199, 1.199, 1 199, 1'199, 1199.00
-     and 1.199,00, also when another number follows it in the same sentence
-     ("$1,199. 6 bottles"). The caller replaces a draft that holds it with
+     these forms: 1199, 1,199, 1.199, 1 199 (any Unicode space separator,
+     category Zs, between the groups), 1'199, 1199.00 and 1.199,00, also
+     when another number follows it in the same sentence ("$1,199. 6
+     bottles"). The caller replaces a draft that holds it with
      `order_letter_without_ceiling`. A ceiling equal to the target is not
      withheld, because the target is the price the house means to propose.
 
 Not covered: a figure in words ("eleven hundred"), a rounded one ("about
-1,200", "1.2k"), and a figure the model works out from others ("ten percent
-over our target"). An exact match is not proof of a leak: a quantity or a
-date can equal the ceiling. That is why the replacement still says
-everything the order needs, and why the drop is recorded in
-`constraint_flags.audit_trail` on the conversation row (no screen reads that
-field yet).
+1,200", "1.2k"), a figure the model works out from others ("ten percent
+over our target"), and shapes the tokenizer does not join: "1, 199", the
+groups split by a tab or line break, "1.199.00", "1 1 99", the figure run
+into other digits ("6,1199"), and the Arabic separators U+066C and U+066B.
+An exact match is not proof of a leak: a quantity or a date can equal the
+ceiling. That is why the replacement still says everything the order needs,
+and why the drop is recorded in `constraint_flags.audit_trail` on the
+conversation row (no screen reads that field yet).
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any, Dict, List, Mapping
 
 # Intent keys that are for the house's own decisions and never for a vendor.
 HOUSE_ONLY_INTENT_KEYS = frozenset({"max_acceptable_price"})
 
-# A number as a model writes one: digit runs joined by a single , . ' or a
-# space (incl. no-break and thin spaces). A separator must sit between digits,
-# so a sentence's own comma or full stop ends the number ("$1,199. 6").
-_NUMBER = re.compile(r"\d+(?:[,.'\u2019\u00a0\u202f ]\d+)*")
+# Every Unicode space separator (category Zs: U+0020, U+00A0, U+1680,
+# U+2000-U+200A, U+202F, U+205F, U+3000) is read as a plain space, so a
+# no-break, thin, figure or hair space between digit groups counts like " ".
+# All Zs code points are in the BMP.
+_ZS_TO_SPACE = {
+    cp: " "
+    for cp in range(0x10000)
+    if cp != 0x20 and unicodedata.category(chr(cp)) == "Zs"
+}
+
+# A number: digit runs joined by a single , . ' or space (after the Zs
+# mapping above). A separator must sit between digits, so a sentence's own
+# comma or full stop ends the number ("$1,199. 6").
+_NUMBER = re.compile(r"\d+(?:[,.'\u2019 ]\d+)*")
 
 
 def vendor_safe_intent(intent: Mapping[str, Any] | None) -> Dict[str, Any]:
@@ -55,11 +74,9 @@ def _as_number(value: Any) -> float | None:
     return n if n > 0 else None
 
 
-_SPACES = "\u00a0\u202f "
 _EN = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 _TR = re.compile(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?")
 _APOSTROPHE = re.compile(r"\d{1,3}(?:['\u2019]\d{3})+(?:\.\d+)?")
-_SPACE_GROUPED = re.compile(r"\d{1,3}(?:[\u00a0\u202f ]\d{3})+(?:[.,]\d+)?")
 
 
 def _plain_readings(token: str) -> List[float]:
@@ -84,7 +101,7 @@ def _readings(token: str) -> List[float]:
     A token with spaces may be one space-grouped figure ("1 199") or several
     figures side by side ("1 199 1 090"), so every run of its parts is read.
     """
-    parts = re.split(r"[\u00a0\u202f ]+", token)
+    parts = token.split(" ")
     if len(parts) == 1:
         return _plain_readings(token)
     out: List[float] = []
@@ -116,7 +133,8 @@ def withheld_figures_in(text: str, intent: Mapping[str, Any] | None) -> List[str
     if not text or not intent:
         return []
     target = _as_number(intent.get("target_price"))
-    values = [_readings(m.group(0)) for m in _NUMBER.finditer(text)]
+    spaced = text.translate(_ZS_TO_SPACE)
+    values = [_readings(m.group(0)) for m in _NUMBER.finditer(spaced)]
     hits: List[str] = []
     for key in sorted(HOUSE_ONLY_INTENT_KEYS):
         ceiling = _as_number(intent.get(key))
