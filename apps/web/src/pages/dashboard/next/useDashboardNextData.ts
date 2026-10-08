@@ -113,6 +113,11 @@ export interface MonthLedger {
   /** The house's own today, YYYY-MM-DD; null with no zone; undefined = not said. */
   today: string | null | undefined;
   sales: MonthSales;
+  /**
+   * DASH-W22: 'withheld' when the gateway stripped the money for the caller's
+   * role. The spend fields then read null here and must not be drawn as money.
+   */
+  amounts: "shown" | "withheld";
 }
 
 const num = (v: unknown): number | null =>
@@ -200,6 +205,16 @@ async function settle<T>(p: Promise<T>): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * DASH-W20: the zone the gateway bucketed the figures in (`stats.timezone`),
+ * or null until the stats answer. Read here rather than added to the shared
+ * `DashboardStats` type, which this page branch does not own.
+ */
+export function houseZoneOf(stats: DashboardStats | null | undefined): string | null {
+  const z = (stats as { timezone?: unknown } | null | undefined)?.timezone;
+  return typeof z === "string" && z.length > 0 ? z : null;
 }
 
 export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
@@ -328,7 +343,7 @@ export function useMonthLedger(
             net_checks: num(raw.net_checks),
           };
         });
-        const legacyTotals = res as unknown as { monthly_total?: number };
+        const legacyTotals = res as unknown as { monthly_total?: number; amounts?: string };
         const summedSpend = daily.every((d) => d.procurement_spend !== null)
           ? daily.reduce((sum, d) => sum + (d.procurement_spend ?? 0), 0)
           : null;
@@ -359,6 +374,7 @@ export function useMonthLedger(
                 : res.pos_connected === false
                   ? "no-register"
                   : "unknown",
+          amounts: legacyTotals.amounts === "withheld" ? "withheld" : "shown",
         };
         cache.current.set(key, ledger);
         setState({ state: "ready", ledger });
