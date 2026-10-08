@@ -18,13 +18,17 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../../services/api/client';
+import { useAuthStore } from '../../../stores';
 import type { PromotionsReadDto } from './promotions-format';
 
 const KEY = ['promotions-next', 'read'] as const;
 
 export function usePromotionsRead(includeDismissed: boolean) {
+  // The gateway reads the house from the token; the key carries it so one
+  // house's offers are never shown under another's name (PROCURE-04).
+  const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
   return useQuery({
-    queryKey: [...KEY, includeDismissed],
+    queryKey: [...KEY, house, includeDismissed],
     queryFn: () =>
       apiClient
         .get('/promotions', { params: includeDismissed ? { includeDismissed: 'true' } : undefined })
