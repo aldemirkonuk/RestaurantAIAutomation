@@ -86,4 +86,4 @@ No ADR, no `PROJECT.md` key decision and no founder ruling records 2b. PR #661's
 | 2026-10-07 | lane mailguess research and refutation pass (`wf_2456624f-fb4`) | Design B chosen; A, C, D rejected; E left to the founder |
 | 2026-10-08 | ADR 0090 audit of PR #661 at `b240df31d` | BLOCK: rulings not in an ADR, 2b called "decided", design E not in the register |
 | 2026-10-08 | — | Created (Proposed) |
-| 2026-10-08 | ADR 0090 audit of PR #661 at `0d88b070b` | BLOCK: ADR 0301 `:182` and amendment 3 still described the guessed-order link this PR removes. Both are now bracketed, ADR 0301 is linked here, and the 2b keep/remove and confidence-1.0 questions are filed as OD-226 |
+| 2026-10-08 | ADR 0090 audit of PR #661 at `0d88b070b` | BLOCK: the guessed-order link this PR takes out was still described in ADR 0301, at `:182` and in amendment 3. Both are now bracketed, ADR 0301 is linked here, and the 2b keep/remove and confidence-1.0 questions are filed as OD-226 |
