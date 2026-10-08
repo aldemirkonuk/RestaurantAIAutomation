@@ -88,6 +88,42 @@ describe('the usual-currency coverage panel', () => {
     expect(api.get).toHaveBeenCalledTimes(2);
   });
 
+  // VEN-W38: one read per page load. Before the book answered, the size was 0
+  // and the panel asked anyway, then asked again when the cards arrived.
+  it('waits for the book before counting, so a page load reads it once', async () => {
+    api.get.mockResolvedValue({ data: { stated: 1, total: 3, unstated: [], sentence: '1 of your 3 vendors has one.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (ids: string[], bookSettled: boolean) => (
+      <QueryClientProvider client={client}>
+        <UsualCurrencyCoveragePanel knownIds={new Set(ids)} onOpenVendor={() => {}} houseId="h1" bookSettled={bookSettled} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(panel([], false));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.get).not.toHaveBeenCalled();
+    rerender(panel(['a', 'b', 'c'], true));
+    expect(await screen.findByText('1 of your 3 vendors has one.')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  // VEN-W38: two houses with the same number of vendors must not share a count.
+  it('counts again on a house switch even when the book is the same size', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { stated: 1, total: 2, unstated: [], sentence: 'House one: 1 of 2.' } })
+      .mockResolvedValueOnce({ data: { stated: 2, total: 2, unstated: [], sentence: 'House two: 2 of 2.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (house: string) => (
+      <QueryClientProvider client={client}>
+        <UsualCurrencyCoveragePanel knownIds={new Set(['a', 'b'])} onOpenVendor={() => {}} houseId={house} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(panel('h1'));
+    expect(await screen.findByText('House one: 1 of 2.')).toBeInTheDocument();
+    rerender(panel('h2'));
+    expect(await screen.findByText('House two: 2 of 2.')).toBeInTheDocument();
+    expect(screen.queryByText('House one: 1 of 2.')).not.toBeInTheDocument();
+  });
+
   it('says NONE of them in words rather than rendering an empty panel', async () => {
     // A panel that draws nothing when the answer is "none of them" cannot be
     // told apart from one that failed to load.

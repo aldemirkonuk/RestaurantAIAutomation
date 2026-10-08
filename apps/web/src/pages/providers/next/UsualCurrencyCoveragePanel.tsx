@@ -66,15 +66,30 @@ const heading = (
 export function UsualCurrencyCoveragePanel({
   knownIds,
   onOpenVendor,
+  houseId = '',
+  bookSettled = true,
 }: {
   /** The vendors the grid actually holds — the ones a click here can open. */
   knownIds: Set<string>;
   onOpenVendor: (providerId: string) => void;
+  /**
+   * VEN-W38: the house this count belongs to. Without it in the key, two houses
+   * with the same number of vendors shared one cache entry, and a house switch
+   * drew the previous house's vendor names until the refetch landed.
+   */
+  houseId?: string;
+  /**
+   * VEN-W38: the book's own read has answered (or failed). Until then the size
+   * below is 0, not the book's size, and asking then cost a second read the
+   * moment the cards arrived — two calls on every page load.
+   */
+  bookSettled?: boolean;
 }) {
   const coverage = useQuery({
     // Keyed on the book's size too: a vendor added or retired on this page
     // changes the denominator ("1 of your 3"), and nothing else would refetch it.
-    queryKey: ['vendor-usual-currency-coverage', knownIds.size],
+    queryKey: ['vendor-usual-currency-coverage', houseId, knownIds.size],
+    enabled: bookSettled,
     queryFn: async () => {
       const { data } = await apiClient.get<UsualCurrencyCoverage>(
         '/providers/usual-currency/coverage',
