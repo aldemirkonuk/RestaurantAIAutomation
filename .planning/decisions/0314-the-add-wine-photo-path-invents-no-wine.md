@@ -21,7 +21,7 @@
 
 ## Context
 
-`/inventory` mounts the add sheet: `App.tsx:370` → `InventoryCommandPage.tsx:1667` →
+`/inventory` mounts the add sheet: `App.tsx:370` → `pages/inventory/command/InventoryCommandPage.tsx:1667` →
 `AddWineToInventoryModal`. Its Photo tab had two buttons. "Open Camera / Upload Image"
 opens `MenuScannerFlow`, the real scanner. "Single Wine Label Scan" opened `AddWineModal`
 (imported at `AddWineToInventoryModal.tsx:21` on `8c673db4b`). That modal had no detection
@@ -41,7 +41,7 @@ backend. Two defects followed, both measured on `8c673db4b`.
 
 **Downstream, measured.** No invented value reached a save payload or a DTO. The add
 callback sends `createInventoryItem` only `wineId`, stock, threshold, location and
-volume/price fields (`InventoryCommandPage.tsx:1677-1703`). `CreateInventoryItemDto` takes
+volume/price fields (`pages/inventory/command/InventoryCommandPage.tsx:1677-1703`). `CreateInventoryItemDto` takes
 `wineId` with `@IsUUID()` (`inventory.dto.ts:35`), under a `whitelist` +
 `forbidNonWhitelisted` ValidationPipe (`main.ts:53-56`). So the photo path's
 `WINE_<timestamp>` id was refused with a 400. `handleAddToInventory` does not await
@@ -54,7 +54,7 @@ display only: a person was shown a wine nobody read, and the add then failed sil
    opened it ("Single Wine Label Scan", "Scan Another Wine"), `handlePhotoWineDetected` with
    its defaults, the `detectedWine` state, the "Wine Detected Successfully!" pane and the
    "AI Detected" badge. The Photo tab keeps the real scanner. This follows ADR 0020's
-   *"deleted, not labelled"* and leaves no dead end.
+   *"deleted, not labelled"* and leaves no dead end. [The "Single Wine" card that opens this sheet (`AddWineSelectionModal.tsx:88-91`) still promises "Scan one wine label at a time"; its Photo tab now opens only the Menu Scanner, whose own copy disagrees on the detector (the sheet's info box `:437-440` says YOLOv8, `MenuScannerFlow.tsx:47-50` says RF-DETR). Whether that scanner reads a lone bottle label well was not checked. The card copy is pre-existing and listed under Out of scope.]
 2. **Keep it, and say detection is unavailable.** This was the brief as written: the mock
    goes, a photo returns "not available", and the result screen renders nulls as "Not
    recorded". Rejected. Nothing could reach that result screen, so it would be dead code. A
@@ -66,7 +66,7 @@ display only: a person was shown a wine nobody read, and the add then failed sil
 ## Decision
 
 **The add sheet builds no wine from a photo. It adds only a library wine, by its real id.
-A photo goes to the real scanner.** With no builder left, nothing fills a missing field.
+A photo goes to the real scanner.** With no builder left, the sheet itself fills no missing field. [The Search tab still *shows* values the shared mapper `mapApiWineToUiWine` fills in — type coerced to red, "Unknown, Unknown" for region and country (`AddWineToInventoryModal.tsx:380-384`), and `$0/bottle` (`:388`, from the mapper's `price: … : 0`). They are display only and never reach the save payload; they are the mapper's defect, listed under Out of scope.]
 
 ## Consequences
 
@@ -84,11 +84,14 @@ A photo goes to the real scanner.** With no builder left, nothing fills a missin
     `"medium"` and alcohol 0. Its own `coerceWineType` (`:6-14`) maps an unknown category
     to `"red"`. The register entry at `v3.0-TECH-DEBT.md:3293-3296` says that red default is
     FIXED, which is true only of `wineData.ts`'s copy. This modal draws `type`, `region`
-    and `country` from that mapper.
+    and `country` from that mapper, and the Search tab's `$0/bottle` (`:388`) comes from its
+    `price: … : 0`.
   - A failed add closes the sheet with no error, because `handleAddToInventory` does not
     await `onAddWine` and `useCreateInventoryItem` has no `onError`.
   - `AddWineUnifiedModal.tsx` has no importer, and its `:20` comment still names
     `AddWineModal`.
+  - The "Single Wine" card copy (`AddWineSelectionModal.tsx:88-91`) and the detector names in the
+    sheet's info box versus `MenuScannerFlow.tsx:47-50` (see Options, 1).
   - `components/wines/WineValidationModal.tsx:69` sets `alcohol: wineData.alcohol || 0`,
     so a scan that read no strength shows 0 % ABV. It is reached through `MenuScannerModal`
     (imported by `cellar/next/WineRegister.tsx`), not through this sheet.
