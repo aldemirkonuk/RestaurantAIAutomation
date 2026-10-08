@@ -567,8 +567,10 @@ the real control.
 **Given up, stated plainly.** The legacy Light / Dark / System app-theme menu went with
 `ThemeMenu.tsx`, and nothing replaces it (the ruling was to remove it, not move it). After this
 change no rendered control sets `ThemeContext` (`components/layout/ThemeToggle.tsx` exists but
-has no importer) **[2026-10-03: the file was deleted in `fix/remove-dead-theme-toggle`; `setTheme`
-and `toggleTheme` in `ThemeContext.tsx` now have no caller outside their own test]**. A browser that had stored `dark` or `system` under `wineops-theme` keeps
+has no importer) **[2026-10-03: the file was deleted in `fix/remove-dead-theme-toggle`
+(#594); `useTheme()` now has no consumer outside `ThemeContext.test.tsx`, so `ThemeContext`'s
+`setTheme` and `toggleTheme` are reachable only from that test]**. A browser that had stored
+`dark` or `system` under `wineops-theme` keeps
 that class on `<html>` with no control to clear it. Mudavym pages ignore it (ADR 0138 D1); only
 a surface that still uses Tailwind `dark:` utilities could show it. **[2026-10-02: the last
 sentence names the wrong mechanism — #576's audit, note 2. `html.dark` has more readers than
