@@ -33,8 +33,11 @@ import {
 } from "./amounts-for-role";
 import { policyFor } from "../ask-readings/reading-data-classes";
 
-/** The caller's role IN THE HOUSE THE TOKEN NAMES (jwt.strategy.ts). */
-type Caller = { role?: string | null } | undefined;
+/**
+ * The caller as jwt.strategy.ts builds it: the role IN THE HOUSE THE TOKEN
+ * NAMES, and `userId`, the person's `public.users.user_id`.
+ */
+type Caller = { role?: string | null; userId?: string | null } | undefined;
 
 /**
  * Does this role see the house's sales? Read from the /ask role table, so
@@ -132,7 +135,11 @@ export class DashboardController {
     // DASH-W22: the summary carries vendor spend and whole order rows.
     assertSeesHouseAmounts(user?.role);
     try {
-      return await this.dashboardService.getDashboardSummary(restaurantId);
+      // The notices leg reads only the caller's own rows, as the bell does.
+      return await this.dashboardService.getDashboardSummary(
+        restaurantId,
+        user?.userId ?? null,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch dashboard summary",

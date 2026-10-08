@@ -58,8 +58,12 @@ import { WeatherService } from "../weather/weather.service";
 import type { WeatherWindow } from "../weather/weather.service";
 import { GetWeatherQueryDto } from "../weather/dto/weather.dto";
 import { DayRecordService } from "./day-record.service";
-import type { DayRecordWindow } from "./day-record.service";
+import type {
+  DayRecordWindow,
+  WithheldDayRecordWindow,
+} from "./day-record.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+import { roleSatisfies } from "../procurement/order-approval-gate";
 
 @ApiTags("calendar")
 @Controller("calendar")
@@ -716,16 +720,36 @@ export class CalendarController {
     summary:
       "Passed days: what the ledger recorded, beside the forecast that stood before the day",
   })
-  @ApiResponse({ status: 200, description: "Reconciled days" })
+  @ApiResponse({
+    status: 200,
+    description:
+      "Reconciled days. Owners and managers also get each day's net takings " +
+      "and the house currency; any other role gets the days without them and " +
+      "`takingsWithheld: true` (ADR 0287 F1).",
+  })
   async getDayRecord(
     @Query() query: GetWeatherQueryDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<DayRecordWindow> {
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
+  ): Promise<DayRecordWindow | WithheldDayRecordWindow> {
     const today = new Date().toISOString().slice(0, 10);
     const from = query.from?.slice(0, 10) || today;
     const to = query.to?.slice(0, 10) || from;
+    // Who sees the house's takings (ADR 0287 F1; the founder, 2026-10-04
+    // ~02:10Z: "authorized ones see everything others only see actions"):
+    // owners and managers. That is F1 option (b), which follows his money rule
+    // (ADR 0253 rounds 10-11: "owners and managers get it and some authorized
+    // staff"); the per-person right is not built yet, so the role decides.
+    // `user.role` is the role in THIS token's house,
+    // re-read from the access row on every request (jwt.strategy.ts), the
+    // field RolesGuard trusts. Null, "staff" and any unknown role rank below
+    // manager in `roleSatisfies`, so a session that cannot be shown to hold a
+    // role here gets the days without the money, never with it.
+    const seesHouseMoney = roleSatisfies(user.role, "manager");
     try {
-      return await this.dayRecord.windowFor(user.restaurantId, from, to);
+      return await this.dayRecord.windowFor(user.restaurantId, from, to, {
+        seesHouseMoney,
+      });
     } catch (error) {
       this.logger.error({
         message: "Day record read failed",

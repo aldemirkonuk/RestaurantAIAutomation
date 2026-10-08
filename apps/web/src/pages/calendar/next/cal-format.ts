@@ -11,6 +11,8 @@
  * `lib/calendar-dates.ts` exists for the same reason).
  */
 
+import { formatMoney } from '@/lib/currency';
+
 export const EM = '—';
 
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
@@ -105,6 +107,34 @@ export function relDay(key: string, today = new Date()): string {
   if (diff === 1) return 'Tomorrow';
   if (diff === -1) return 'Yesterday';
   return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+/* ── Money ────────────────────────────────────────────────────────────────── */
+
+/** The house currency as `GET /calendar/day-record` sends it (ADR 0287). */
+export interface HouseCurrency {
+  code: string | null;
+  readable: boolean;
+}
+
+/**
+ * A day's takings in the house's own money, or the number with the reason it
+ * has no currency beside it.
+ *
+ * Never a bare `$` and never a dollar default (ADR 0117 Q25): `formatMoney`
+ * prints "(currency not recorded)" for a house that never said. A currency the
+ * gateway could NOT READ is a different fact and says so; printing it as "not
+ * recorded" would tell an owner who did record it that they had not.
+ */
+export function takings(amount: number, currency: HouseCurrency | null | undefined): string {
+  if (!currency || !currency.readable) {
+    // No code to take decimal places from, so two, as `formatMoney` does.
+    return `${amount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} (currency could not be read)`;
+  }
+  return formatMoney(amount, currency.code);
 }
 
 /* ── Clocks ───────────────────────────────────────────────────────────────── */
