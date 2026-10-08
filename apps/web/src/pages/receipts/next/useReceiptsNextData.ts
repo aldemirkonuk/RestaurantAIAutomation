@@ -63,6 +63,11 @@ export const RECEIPTS_SERVER_WINDOWS = {
   /** documents.controller.ts:117 — the credit memos a settlement can name. */
   CREDIT_MEMOS: 100,
   /**
+   * documents.controller.ts list, `docType=unknown` — the papers nothing has
+   * classed, which a person may mark as the credit memo (F-159).
+   */
+  UNCLASSED_PAPERS: 50,
+  /**
    * house-letters.service.ts:892 — `lettersForCredits`' read of every claim's
    * house letters, across the WHOLE batch of claims on this page, not per
    * claim. Past this many rows a claim's own letter can fall out of the
@@ -261,7 +266,8 @@ export function useReceiptsNextData(): ReceiptsNextData {
  * from a refused claim the server would have let a manager press.
  */
 export const CREDIT_MOVES: Record<CreditState, readonly CreditState[]> = {
-  open: ['requested', 'written_off', 'rejected'],
+  // open -> credited: an unasked memo settles the claim (ADR 0267 item 9, F-159).
+  open: ['requested', 'credited', 'written_off', 'rejected'],
   requested: ['promised', 'credited', 'rejected', 'written_off'],
   promised: ['credited', 'rejected', 'written_off'],
   credited: [],
@@ -283,6 +289,9 @@ export interface ReceiptsCreditsData {
   /** The house's credit memos; null until that list answers. */
   memos: ProcurementDocument[] | null;
   memosCapped: boolean;
+  /** Papers nothing has classed (`unknown`), any of which may be the memo; null until read. */
+  unclassed: ProcurementDocument[] | null;
+  unclassedCapped: boolean;
   /** One sentence per source that failed, so a dead endpoint is never silent. */
   failures: string[];
   /** The gateway refused the ledger to this person (ADR 0167). */
@@ -324,6 +333,14 @@ export function useReceiptsCreditsData(enabled: boolean): ReceiptsCreditsData {
     staleTime: 60_000,
   });
 
+  const unclassedQ = useQuery<ProcurementDocument[]>({
+    queryKey: ['receipts-next', 'unclassed-papers', rid],
+    queryFn: () =>
+      documentsApi.list({ docType: 'unknown', limit: RECEIPTS_SERVER_WINDOWS.UNCLASSED_PAPERS }),
+    enabled: on,
+    staleTime: 60_000,
+  });
+
   const refused = [claimsQ.error, statsQ.error].some((e) => httpStatus(e) === 403);
 
   const failures = useMemo(() => {
@@ -333,11 +350,22 @@ export function useReceiptsCreditsData(enabled: boolean): ReceiptsCreditsData {
     if (statsQ.isError && httpStatus(statsQ.error) !== 403)
       out.push(`the recovery figures (${msg(statsQ.error)})`);
     if (memosQ.isError) out.push(`the credit memos on file (${msg(memosQ.error)})`);
+    if (unclassedQ.isError) out.push(`the unread papers (${msg(unclassedQ.error)})`);
     return out;
-  }, [claimsQ.isError, claimsQ.error, statsQ.isError, statsQ.error, memosQ.isError, memosQ.error]);
+  }, [
+    claimsQ.isError,
+    claimsQ.error,
+    statsQ.isError,
+    statsQ.error,
+    memosQ.isError,
+    memosQ.error,
+    unclassedQ.isError,
+    unclassedQ.error,
+  ]);
 
   const claims = claimsQ.data === undefined ? null : claimsQ.data;
   const memos = memosQ.data === undefined ? null : memosQ.data;
+  const unclassed = unclassedQ.data === undefined ? null : unclassedQ.data;
   const stats = statsQ.data === undefined ? null : statsQ.data;
 
   return {
@@ -347,6 +375,8 @@ export function useReceiptsCreditsData(enabled: boolean): ReceiptsCreditsData {
     statsFloor: stats?.capped !== false,
     memos,
     memosCapped: (memos?.length ?? 0) >= RECEIPTS_SERVER_WINDOWS.CREDIT_MEMOS,
+    unclassed,
+    unclassedCapped: (unclassed?.length ?? 0) >= RECEIPTS_SERVER_WINDOWS.UNCLASSED_PAPERS,
     failures,
     refused,
     noRestaurant: rid === null,
@@ -354,6 +384,7 @@ export function useReceiptsCreditsData(enabled: boolean): ReceiptsCreditsData {
       void claimsQ.refetch();
       void statsQ.refetch();
       void memosQ.refetch();
+      void unclassedQ.refetch();
     },
   };
 }
@@ -370,6 +401,25 @@ export interface CreditMove {
  * this page's three reads and /receiving's drafts, recovery figures and credited
  * list — so a settlement recorded here is not contradicted there.
  */
+/**
+ * Mark a paper as the credit memo (F-159). Refreshes both paper lists, so the
+ * marked paper leaves "unread" and appears among the memos a settlement can name.
+ */
+export function useMarkMemo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => creditsApi.markMemo(documentId),
+    onSettled: async () => {
+      await Promise.all(
+        [
+          ['receipts-next', 'credit-memos'],
+          ['receipts-next', 'unclassed-papers'],
+        ].map((key) => qc.invalidateQueries({ queryKey: key })),
+      );
+    },
+  });
+}
+
 export function useCreditMove() {
   const qc = useQueryClient();
   return useMutation({

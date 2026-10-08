@@ -375,3 +375,46 @@ letter", tracked by the open CLAIMS row
 | 2026-09-27 | PR #476 audit fix (BLOCK at 16d995c33, round 6) | Approve refuses every house letter by type or by any of the four `HOUSE_*` words; the agent's send claim refuses the same four. CLAIMS `ADR-0230-APPROVE-REFUSES-EVERY-HOUSE-LETTER` |
 | 2026-09-27 | audit round 6 merge of main | Migration renamed `20260930250000` → `20261003100000`: `20261001000000` (#483) landed on `origin/main` first, and open branches already claim `20261001090000`, `20261001090100` and `20261002000000`. Citations updated in `CLAIMS.jsonl`, the two conversations source files, and this record (bracketed, not rewritten). |
 | 2026-09-27 | PR #476 fix after the 4c79b8978 audit (BLOCK: head DIRTY against main) | Merged `origin/main` at `ce3147d4d` (#474). Migration renamed `20261003100000` → `20261016000000`: #474's `20261015000000` and `20261015000100` landed on `origin/main` first; `20261016000000` is past that ceiling and below every version the open PRs claimed on 2026-09-27 (`20261020000000` and later). The route-access census and its CLAIMS row now count #474's promotions controller as the seventeenth and HouseLettersController as the eighteenth, 190 fixture rows (177 + 3 + 1 + 9). Citations updated in `CLAIMS.jsonl`, the two conversations source files, and this record (bracketed, not rewritten). |
+
+## Amendment 2026-10-08 (ADR 0267 item 9, F-159)
+
+**[founder, W55, 2026-10-02; recorded in ADR 0267 item 9]** He chose to
+settle from open plus mark memo. Rejected: settle-from-open only (without AI,
+F-013, no paper is ever classed `credit_memo`, so there would be nothing to
+settle against) and keep ask-first (it records an ask nobody made).
+
+This ADR made `requested` the only road to `credited`, and its consequences
+accepted that `requested` stands in for "I asked by phone". That acceptance
+does not cover a vendor who sends the credit memo **before anyone asks**:
+moving the claim through `requested` to reach the settle button stamped
+`requested_at` / `requested_by` and drafted a letter for an ask that never
+happened. From this amendment, built on `fix/settle-an-unasked-memo`:
+
+- **`open → credited` is legal** (`TRANSITIONS` in `credit-ledger.ts`, mirrored
+  by `CREDIT_MOVES` in `useReceiptsNextData.ts`). The proof rule is unchanged:
+  `credited` needs the memo document id and the amount the vendor allowed, in
+  the app (`transition`) and in the database (CHECK
+  `procurement_credits_credited_needs_proof`). Settling from `open` stamps no
+  `requested_at`, no `requested_by`, and drafts no letter — only `requested`
+  does either, as above.
+- **The memo must be this house's credit memo.** The settle now reads the
+  named document in the caller's house and refuses (422) one that is not on
+  file there or is not filed as `credit_memo`. The foreign key alone admitted
+  any document id, another house's included.
+- **A person may mark a paper as the memo.**
+  `POST /procurement/credits/mark-memo/:documentId` (owner or manager, the
+  class gate of ADR 0167) changes one paper's type from `unknown` to
+  `credit_memo` and nothing else: it settles nothing and sends nothing. Only
+  `unknown` may be marked — an invoice, a delivery paper, a purchase order, a
+  statement or a price list keeps the role it has (`MEMO_MARKABLE_FROM`). The
+  update is conditional on the type it was read with; who and when go to
+  `system_audit_log` (`document_marked_credit_memo`), and the answer says
+  `audited: false` when that row could not be written.
+- The /receipts settle form lists the house's unread papers under "Is the memo
+  one of these unread papers?" with a "This is the credit memo" button; a
+  marked paper is chosen in the memo list and the settlement is still recorded
+  by its own button.
+
+`requested` keeps every meaning this ADR gave it; this amendment only adds a
+second road to `credited` that does not pass through it. Deferred items are in
+`tech-debt.d/2026-10-08-fix-settle-an-unasked-memo.md`.

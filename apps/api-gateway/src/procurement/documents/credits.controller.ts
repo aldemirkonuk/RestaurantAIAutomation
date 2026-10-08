@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
@@ -38,6 +39,7 @@ import {
 import {
   Credit,
   CreditState,
+  memoMarkRefusal,
   recoveryStats,
   recoveryStatsByCurrency,
   transition,
@@ -224,6 +226,97 @@ export class CreditsController {
     return { letter: await draftLetter(this.letters, user, id) };
   }
 
+  @Post("mark-memo/:documentId")
+  @ApiOperation({
+    summary:
+      "Mark a paper this house holds as a credit memo (ADR 0267 item 9, F-159)",
+    description:
+      "Changes one document's type from `unknown` (a paper nothing has classed) to `credit_memo`, so a claim can be settled against it. Settles nothing and sends nothing. Refuses any other type — an invoice or a delivery paper keeps its role — and a superseded or rejected paper. Files a `system_audit_log` row (`document_marked_credit_memo`) naming who and when; `audited: false` with `auditReason` says when that row could not be written.",
+  })
+  async markMemo(
+    @Param("documentId", new ParseUUIDPipe()) documentId: string,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const client = this.db.getClient();
+    const { data: paper, error } = await client
+      .from("procurement_documents")
+      .select("id, doc_type, status, direction")
+      .eq("id", documentId)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (error)
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    if (!paper)
+      throw new HttpException(
+        "That paper is not on file at this house.",
+        HttpStatus.NOT_FOUND,
+      );
+
+    const verdict = memoMarkRefusal(paper);
+    if (!verdict.ok)
+      throw new HttpException(verdict.error, HttpStatus.CONFLICT);
+    if (verdict.already)
+      return {
+        documentId,
+        docType: "credit_memo",
+        changed: false,
+        audited: false,
+        auditReason: "it was already a credit memo; nothing changed",
+      };
+
+    // Conditional on the type it was read with, so a classifier that lands in
+    // between is never overwritten by a person's older view of the paper.
+    const { data: updated, error: updErr } = await client
+      .from("procurement_documents")
+      .update({ doc_type: "credit_memo" })
+      .eq("id", documentId)
+      .eq("restaurant_id", user.restaurantId)
+      .eq("doc_type", paper.doc_type)
+      .select("id, doc_type, updated_at")
+      .maybeSingle();
+    if (updErr)
+      throw new HttpException(
+        `${updErr.message}. Nothing was changed.`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!updated)
+      throw new HttpException(
+        "This paper changed while you were looking at it. Nothing was changed; read it again.",
+        HttpStatus.CONFLICT,
+      );
+
+    // Who and when. procurement_documents has no "classified by" column, so
+    // the trail is the house's audit log, as the settings writes keep theirs.
+    // The mark stands if this row fails, and the answer says so.
+    let audited = false;
+    let auditReason: string | null = null;
+    try {
+      const { error: auditErr } = await client.from("system_audit_log").insert({
+        actor_type: "user",
+        actor_id: user.userId,
+        action: "document_marked_credit_memo",
+        entity_type: "procurement_document",
+        entity_id: documentId,
+        changes: {
+          fields: { doc_type: { from: paper.doc_type, to: "credit_memo" } },
+        },
+        restaurant_id: user.restaurantId,
+      });
+      if (auditErr) auditReason = auditErr.message;
+      else audited = true;
+    } catch (err) {
+      auditReason = err instanceof Error ? err.message : String(err);
+    }
+
+    return {
+      documentId,
+      docType: "credit_memo",
+      changed: true,
+      audited,
+      auditReason,
+    };
+  }
+
   @Get("stats")
   @ApiOperation({
     summary: "Recovery figures",
@@ -318,6 +411,35 @@ export class CreditsController {
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
 
+    // THE MEMO IS THIS HOUSE'S CREDIT MEMO (ADR 0267 item 9, F-159). The
+    // foreign key admits any document id, another house's included, and any
+    // type. Now that a claim can be settled straight from `open`, and a person
+    // can mark a paper as a memo, the proof has to be the thing it says it is.
+    if (outcome.next.state === "credited") {
+      const { data: memo, error: memoErr } = await this.db
+        .getClient()
+        .from("procurement_documents")
+        .select("id, doc_type")
+        .eq("id", outcome.next.creditDocumentId as string)
+        .eq("restaurant_id", user.restaurantId)
+        .maybeSingle();
+      if (memoErr)
+        throw new HttpException(
+          `The credit memo could not be read (${memoErr.message}). Nothing was recorded.`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      if (!memo)
+        throw new HttpException(
+          "That credit memo is not on file at this house. Nothing was recorded.",
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      if (memo.doc_type !== "credit_memo")
+        throw new HttpException(
+          "That paper is not filed as a credit memo. Mark it as one first; nothing was recorded.",
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+    }
+
     const now = new Date().toISOString();
     const patch: Record<string, unknown> = {
       state: outcome.next.state,
@@ -330,6 +452,9 @@ export class CreditsController {
 
     // Timestamps are the aging data. Without them a chase list cannot say which
     // claim has been sitting with a distributor for three weeks.
+    // Only `requested` stamps an ask. A claim settled straight from `open`
+    // (ADR 0267 item 9) was never asked for, and gets no `requested_at`, no
+    // `requested_by` and no letter: the memo came unasked.
     if (outcome.next.state === "requested") {
       patch.requested_at = now;
       patch.requested_by = user.userId;

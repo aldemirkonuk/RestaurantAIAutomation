@@ -9,6 +9,8 @@ import {
   CURRENCY_UNRECORDED,
   recoveryStats,
   recoveryStatsByCurrency,
+  memoMarkRefusal,
+  MEMO_MARKABLE_FROM,
   transition,
 } from "./credit-ledger";
 
@@ -75,10 +77,92 @@ describe("transitions", () => {
   });
 
   it("refuses a nonsensical jump", () => {
-    expect(transition(credit(), { to: "credited" }).ok).toBe(false);
+    // `open -> credited` is no longer one (ADR 0267 item 9); a written-off
+    // claim pressed again is.
+    expect(
+      transition(credit({ state: "written_off" }), { to: "requested" }).ok,
+    ).toBe(false);
     expect(transition(credit({ state: "open" }), { to: "open" }).ok).toBe(
       false,
     );
+  });
+});
+
+describe("settling an unasked memo (ADR 0267 item 9, W55 / F-159)", () => {
+  it("lets an open claim settle straight against a memo, with the full proof", () => {
+    expect(canTransition("open", "credited")).toBe(true);
+    const r = transition(credit({ state: "open" }), {
+      to: "credited",
+      creditedAmount: 30,
+      creditDocumentId: "memo-1",
+    });
+    expect(r.ok).toBe(true);
+    expect(r.next).toEqual({
+      state: "credited",
+      creditedAmount: 30,
+      creditDocumentId: "memo-1",
+    });
+  });
+
+  it("still refuses open -> credited without the memo", () => {
+    const r = transition(credit({ state: "open" }), {
+      to: "credited",
+      creditedAmount: 30,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/credit memo/i);
+  });
+
+  it("still refuses open -> credited without the amount allowed", () => {
+    const r = transition(credit({ state: "open" }), {
+      to: "credited",
+      creditDocumentId: "memo-1",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/amount the vendor actually allowed/i);
+  });
+
+  it("marks only a paper nothing has classed", () => {
+    expect(MEMO_MARKABLE_FROM).toEqual(["unknown"]);
+    expect(
+      memoMarkRefusal({ doc_type: "unknown", status: "received" }),
+    ).toEqual({ ok: true, already: false });
+    expect(
+      memoMarkRefusal({ doc_type: "credit_memo", status: "verified" }),
+    ).toEqual({ ok: true, already: true });
+  });
+
+  it.each([
+    "invoice",
+    "packing_slip",
+    "delivery_receipt",
+    "delivery_note",
+    "receiving_advice",
+    "purchase_order",
+    "statement",
+    "price_list",
+    "informal_note",
+    "portal_export",
+  ])("never takes a %s's role away", (docType) => {
+    const r = memoMarkRefusal({ doc_type: docType, status: "received" });
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toMatch(/Nothing was changed/);
+  });
+
+  it("refuses a superseded or rejected paper, and one the house issued", () => {
+    expect(
+      memoMarkRefusal({ doc_type: "unknown", status: "superseded" }).ok,
+    ).toBe(false);
+    expect(
+      memoMarkRefusal({ doc_type: "unknown", status: "rejected" }).ok,
+    ).toBe(false);
+    expect(
+      memoMarkRefusal({
+        doc_type: "unknown",
+        status: "received",
+        direction: "issued_by_us",
+      }).ok,
+    ).toBe(false);
   });
 });
 

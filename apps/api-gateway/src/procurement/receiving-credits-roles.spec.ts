@@ -226,6 +226,7 @@ describe("the gate is on the right handlers and only those (metadata)", () => {
     // naming what the class has.
     expect(methodsOf(CreditsController).sort()).toEqual([
       "list",
+      "markMemo",
       "requestLetter",
       "stats",
       "transition",

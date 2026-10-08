@@ -27,8 +27,10 @@ const api = vi.hoisted(() => ({
   stats: null as CreditStats | null,
   statsFail: null as unknown,
   memos: [] as ProcurementDocument[],
+  unclassed: [] as ProcurementDocument[],
   list: vi.fn(),
   transition: vi.fn(),
+  markMemo: vi.fn(),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -53,6 +55,7 @@ vi.mock('../../../services/api/credits', () => ({
     },
     stats: () => (api.statsFail ? Promise.reject(api.statsFail) : Promise.resolve(api.stats)),
     transition: (...a: unknown[]) => api.transition(...a),
+    markMemo: (...a: unknown[]) => api.markMemo(...a),
   },
 }));
 
@@ -63,7 +66,9 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
     documentsApi: {
       ...mod.documentsApi,
       list: (opts: { docType?: string }) =>
-        Promise.resolve(opts.docType === 'credit_memo' ? api.memos : []),
+        Promise.resolve(
+          opts.docType === 'credit_memo' ? api.memos : opts.docType === 'unknown' ? api.unclassed : [],
+        ),
     },
   };
 });
@@ -159,8 +164,10 @@ beforeEach(() => {
   api.stats = stats();
   api.statsFail = null;
   api.memos = [];
+  api.unclassed = [];
   api.list.mockReset();
   api.transition.mockReset();
+  api.markMemo.mockReset();
 });
 
 describe('who is offered the ledger (ADR 0167)', () => {
@@ -456,6 +463,75 @@ describe('moves', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Settle against a credit memo' }));
     expect(await screen.findByText(/No credit memo is on file at this house/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Record the settlement' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('settles an open claim straight against a memo the vendor sent unasked (F-159)', async () => {
+    api.claims = [claim({ state: 'open' })];
+    api.memos = [memo()];
+    api.transition.mockResolvedValue(claim({ state: 'credited' }));
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    expect(await screen.findByText(/If the vendor already sent the credit memo, settle against it; no ask is recorded/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Settle against a credit memo' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Credit memo CM-7/ }));
+    fireEvent.change(screen.getByPlaceholderText(/claimed/), { target: { value: '90' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record the settlement' }));
+    await waitFor(() =>
+      expect(api.transition).toHaveBeenCalledWith('c1', {
+        to: 'credited',
+        creditedAmount: 90,
+        creditDocumentId: 'memo-1',
+      }),
+    );
+  });
+
+  it('marks an unread paper as the memo, chooses it, and settles nothing by itself (F-159)', async () => {
+    const paper = memo({ id: 'paper-1', doc_type: 'unknown', doc_number: null, status: 'received', total: null, filename: 'scan-0412.pdf', created_at: '2026-10-02T09:00:00.000Z' });
+    api.claims = [claim({ state: 'open' })];
+    api.unclassed = [paper];
+    api.markMemo.mockImplementation(async () => {
+      api.unclassed = [];
+      api.memos = [{ ...paper, doc_type: 'credit_memo' }];
+      return { documentId: 'paper-1', docType: 'credit_memo', changed: true, audited: true, auditReason: null };
+    });
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Settle against a credit memo' }));
+    expect(await screen.findByText(/If it is one of the unread papers below, mark it/)).toBeTruthy();
+    expect(screen.getByText(/scan-0412\.pdf · received/)).toBeTruthy();
+    expect(screen.getByText(/it settles nothing by itself/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'This is the credit memo' }));
+    await waitFor(() => expect(api.markMemo).toHaveBeenCalledWith('paper-1'));
+    expect(await screen.findByText(/Filed as a credit memo and chosen above\. Nothing is settled/)).toBeTruthy();
+    const radio = (await screen.findByRole('radio', { name: /Credit memo/ })) as HTMLInputElement;
+    expect(radio.checked).toBe(true);
+    expect(api.transition).not.toHaveBeenCalled();
+  });
+
+  it("says so when the mark's audit row was not written (F-159)", async () => {
+    const paper = memo({ id: 'paper-1', doc_type: 'unknown', status: 'received', created_at: '2026-10-02T09:00:00.000Z' });
+    api.claims = [claim({ state: 'open' })];
+    api.unclassed = [paper];
+    api.markMemo.mockResolvedValue({ documentId: 'paper-1', docType: 'credit_memo', changed: true, audited: false, auditReason: 'audit down' });
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Settle against a credit memo' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'This is the credit memo' }));
+    expect(await screen.findByText(/did not record who marked it \(audit down\)/)).toBeTruthy();
+  });
+
+  it('states a refused mark in the gateway\'s words and leaves the paper unread (F-159)', async () => {
+    const paper = memo({ id: 'paper-1', doc_type: 'unknown', status: 'received', created_at: '2026-10-02T09:00:00.000Z' });
+    api.claims = [claim({ state: 'open' })];
+    api.unclassed = [paper];
+    api.markMemo.mockRejectedValue({ response: { status: 409, data: { message: 'This paper changed while you were looking at it.' } } });
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Settle against a credit memo' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'This is the credit memo' }));
+    expect(await screen.findByText(/This paper changed while you were looking at it\. The paper is unchanged\./)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'This is the credit memo' })).toBeTruthy();
   });
 
   it('offers "ask again" on a refused claim, as the gateway allows', async () => {

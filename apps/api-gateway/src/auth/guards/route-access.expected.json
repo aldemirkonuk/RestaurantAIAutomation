@@ -401,6 +401,10 @@
     "owner",
     "manager"
   ],
+  "POST /procurement/credits/mark-memo/:documentId (CreditsController.markMemo)": [
+    "owner",
+    "manager"
+  ],
   "POST /procurement/receiving/orders/:id/door (ReceivingController.door)": "open",
   "GET /procurement/receiving/orders/:id/history (ReceivingController.lineHistory)": [
     "owner",

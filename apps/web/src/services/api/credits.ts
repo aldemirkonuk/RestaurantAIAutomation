@@ -136,6 +136,25 @@ export const creditsApi = {
     return data
   },
 
+  /**
+   * Mark a paper this house holds as a credit memo (ADR 0267 item 9, F-159).
+   * Only a paper nothing has classed (`unknown`); the gateway refuses every
+   * other type. Settles nothing and sends nothing. `audited: false` means the
+   * mark stands but the audit log could not record who made it.
+   */
+  async markMemo(documentId: string): Promise<{
+    documentId: string
+    docType: 'credit_memo'
+    changed: boolean
+    audited: boolean
+    auditReason: string | null
+  }> {
+    const { data } = await apiClient.post(
+      `/procurement/credits/mark-memo/${encodeURIComponent(documentId)}`,
+    )
+    return data
+  },
+
   /** Draft the letter again for a claim already asked for (ADR 0230). */
   async requestLetter(id: string): Promise<CreditLetterOutcome> {
     const { data } = await apiClient.post(`/procurement/credits/${id}/request-letter`)
