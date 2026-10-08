@@ -23,11 +23,11 @@ Found on `fix/a-guessed-order-does-not-link-the-paper`. Same as on main; the bra
 
 **Consequence.** An invoice for a different order Y that the vendor sends by replying in X's thread is linked to X.
 
-**Fix shape (design E), the founder's fork.** Pass the thread's order to intake as a hint and let the document's own PO number win. Recording that link needs a new `link_method` value, which `procurement_document_links_method_check` forbids today (`supabase/migrations/20260805000000_baseline_from_production.sql:4418`), so it needs a migration. Not filed in `OPEN-DECISIONS.md` by this branch.
+**Fix shape (design E), the founder's fork.** Pass the thread's order to intake as a hint and let the document's own PO number win. Recording that link needs a new `link_method` value, which `procurement_document_links_method_check` forbids today (`supabase/migrations/20260805000000_baseline_from_production.sql:4418`), so it needs a migration. ~~Not filed in `OPEN-DECISIONS.md` by this branch.~~ [CORRECTED 2026-10-08: filed as OD-225 in `OPEN-DECISIONS.md`, in the section appended for this branch; see [ADR 0318](../decisions/0318-a-guessed-order-does-not-name-the-thread-or-link-the-paper.md).]
 
-## Ruling on this branch: a reply on a guessed order does not make the thread name that order — RECORDED (coordinator, not in an ADR) — 2026-10-07
+## Ruling on this branch: a reply on a guessed order does not make the thread name that order — RECORDED (coordinator; in [ADR 0318](../decisions/0318-a-guessed-order-does-not-name-the-thread-or-link-the-paper.md) since 2026-10-08) — 2026-10-07
 
-Approving or auto-sending a reply on a guessed order does not make the thread name that order. The coordinator decided this under the founder's 2026-10-07T20:04:10Z delegation. It is not the founder's pick, and it is not in an ADR.
+Approving or auto-sending a reply on a guessed order does not make the thread name that order. The coordinator decided this under the founder's 2026-10-07T20:04:10Z delegation. It is not the founder's pick. ~~It is not in an ADR.~~ [CORRECTED 2026-10-08: recorded as ruling 2 of [ADR 0318](../decisions/0318-a-guessed-order-does-not-name-the-thread-or-link-the-paper.md) (Proposed), with design B as ruling 1.]
 
 The bridge holds to it in two ways (`rabbitmq-bridge.service.ts:798-846`). In a thread the vendor opened, a reply is stored after the vendor's own row, so it is never the thread's earliest row. A reply that opens a new thread is that thread's earliest row, and its `in_reply_to` refuses it. So in a thread the vendor opened, an invoice sent after the house replied on the guess carries no order, and intake links it only by an exact PO number (`autoLink`, `po_number` at 0.95). The first entry above is the known exception.
 
@@ -37,7 +37,7 @@ Found when CI's read-error guard (`scripts/check_read_errors_not_swallowed.py`) 
 
 **What.** The read now binds it (`rabbitmq-bridge.service.ts:816-834`). On a failed read the bridge logs it, does not run the 2b fallback (`:856`), and stores the reply with `order_id` null, `thread_id` null, `confidence_score` null and `email_headers.order_match: "thread_read_failed"` (`:929`). The row still joins its thread in the house's view, which groups on `thread_key` (`conversations.service.ts:716-719`), set from `gmail_thread_id` by the insert trigger. Nothing reads `order_match` yet: no page shows it and no sweep re-links marked rows. Until a person links it, the reply joins no order, gets no responder draft, and its notice carries no order link. Any invoice on it reaches intake with no order, so only `autoLink` (exact PO number) can file it.
 
-**Ruling.** Decided by the coordinator under the founder's 2026-10-07T20:04:10Z delegation. It is not the founder's pick and not in an ADR. Rejected:
+**Ruling.** Decided by the coordinator under the founder's 2026-10-07T20:04:10Z delegation. It is not the founder's pick. ~~not in an ADR.~~ [CORRECTED 2026-10-08: recorded as ruling 3 of [ADR 0318](../decisions/0318-a-guessed-order-does-not-name-the-thread-or-link-the-paper.md) (Proposed).] Rejected:
 - storing it unlinked with no mark: the row would read the same as a reply nothing matched;
 - throwing into the outer catch, or returning early: either loses the mail. It is not redelivered, because the consumer acks before the handler settles (`rabbitmq-bridge.service.ts:368-383`) and the producers advance their cursors once the publish resolves (`house-inbox.service.ts:519-523`);
 - letting 2b guess: the responder can stage `AUTO_SEND_SCHEDULED` on the order it is handed (`inbound-responder.service.ts:561`).
