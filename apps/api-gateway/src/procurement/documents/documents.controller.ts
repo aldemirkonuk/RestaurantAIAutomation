@@ -155,13 +155,25 @@ function requireUuid(value: string, label: string): void {
  *
  * THE DOOR IS OPEN; THE DESK IS NOT. `JwtAuthGuard` is the only class guard,
  * because the upload and the door count are the delivery door and staff use
- * them. Every act that writes the document's money — field corrections and
- * ticks, line edits, extraction, match, line pairing, verify, and the seals
- * those take — refuses a session that does not hold the house's money
+ * them. Eleven handlers here — the field-correct and field-verify seal mints
+ * and their writes, `extraction`, `match`, the order-line `link`, the
+ * line-edit seal mint and its write, and the verify seal mint and its write —
+ * refuse a session that does not hold the house's money
  * (`assertHoldsHouseMoney`, `document-money-gate.ts`) before any seal is
  * minted, redeemed or read. The upload answers a non-holder with the door's
- * keys only and `amountsWithheld: true`. `link-item` stays open: it names a
- * shelf and carries no price.
+ * keys only and `amountsWithheld: true`.
+ *
+ * NOT COVERED, for every caller staff included:
+ * - The upload still pairs. `ingest` → `linkAndMatch` links the document to a
+ *   caller-supplied `orderId` (or, without one, to the order whose number the
+ *   paper prints) and persists exact-SKU line pairings. `link()` does not check
+ *   that the `orderId` is this house's order. Filed OPEN in
+ *   `.planning/tech-debt.d/2026-10-07-fix-document-money-writes-for-holders.md`.
+ * - `link-item` stays open, but it is not price-free: the `inventory_id` it
+ *   writes decides which item `finalise_delivery_cost` prices
+ *   (`line-mapping.service.ts`, the link door's doc). Leaving it open is safe
+ *   only once the deliveries verify is a holder's act, which is still OPEN in
+ *   the same file.
  */
 @ApiTags("procurement-documents")
 @ApiBearerAuth()

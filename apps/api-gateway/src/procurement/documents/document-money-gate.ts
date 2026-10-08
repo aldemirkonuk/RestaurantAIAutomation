@@ -20,6 +20,9 @@ import { policyFor } from "../../ask-readings/reading-data-classes";
  * no role at this house do not. The role is the token's, which `JwtStrategy`
  * re-derives from the access row on every request.
  *
+ * Not every pairing goes through here: the upload still links and matches for
+ * every caller, staff included (see `DocumentsController`'s class doc).
+ *
  * Pure: no database, no Nest container. The controller calls it before any
  * seal is minted, redeemed or read, so a refusal spends nothing.
  */

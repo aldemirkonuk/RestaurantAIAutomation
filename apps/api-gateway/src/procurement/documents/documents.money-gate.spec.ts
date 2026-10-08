@@ -226,7 +226,7 @@ describe("document money writes go to the people who hold the house's money", ()
 });
 
 describe("the door stays open to staff", () => {
-  it("lets staff name a shelf for a line (link-item carries no price)", async () => {
+  it("lets staff name a shelf for a line (link-item stays open; its cost steering is filed OPEN)", async () => {
     const h = harness();
     const r = await settle(
       h.controller.linkLineToItem(
@@ -363,6 +363,33 @@ describe("POST /procurement/documents answers a non-holder without the money", (
       "1.185,18",
     ])
       expect(wire).not.toContain(leak);
+  });
+
+  // OPEN, pinned as it stands rather than as wanted: the upload hands a staff
+  // caller's orderId to intake unchanged, and intake's linkAndMatch links the
+  // paper to that order and persists exact-SKU pairings. The gate on
+  // POST :id/match does not reach this path. See the class doc and the
+  // tech-debt fragment's upload-pairing entry. When that entry is fixed, this
+  // test is meant to change.
+  it("still forwards a staff caller's orderId to intake, which pairs against it (OPEN)", async () => {
+    const ORDER = "66666666-6666-4666-8666-666666666666";
+    const ingest = jest.fn(async (_input: Record<string, unknown>) => ({
+      documentId: DOC,
+      duplicate: false,
+      parsed: PARSE,
+      vendor: VENDOR,
+    }));
+    const h = harness({ ingest });
+    const res = (await h.controller.upload(
+      { ...PHOTO, orderId: ORDER } as never,
+      staff as never,
+    )) as Record<string, any>;
+    expect(res.amountsWithheld).toBe(true);
+    expect(ingest).toHaveBeenCalledTimes(1);
+    expect(ingest.mock.calls[0][0]).toMatchObject({
+      restaurantId: HOUSE,
+      orderId: ORDER,
+    });
   });
 
   it("withholds the same way for a session with no role, an empty role or an unknown one", async () => {

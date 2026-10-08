@@ -1,4 +1,4 @@
-## Vendor-document money writes went to any signed-in person; now to owners and managers — FIXED — 2026-10-07
+## Eleven vendor-document money handlers went to any signed-in person; now to owners and managers — FIXED — 2026-10-07
 
 Branch `fix/document-money-writes-for-holders`. `DocumentsController` (`apps/api-gateway/src/procurement/documents/documents.controller.ts`) carried `JwtAuthGuard` only. `SealChallengeService` leaves the role to its caller (`apps/api-gateway/src/common/seal/seal-challenge.service.ts:86`). So a staff token could do all of these:
 
@@ -11,6 +11,8 @@ Branch `fix/document-money-writes-for-holders`. `DocumentsController` (`apps/api
 
 Separately, the upload returned the whole parse to every caller, prices and totals included. Eleven handlers now call `assertHoldsHouseMoney` (`document-money-gate.ts`) before any seal, read or write, and the upload answers a non-holder with the door's keys and `amountsWithheld: true`. Pinned by `documents.money-gate.spec.ts`, `documents.seal.spec.ts` (case 28 rewritten) and two rows in `.planning/decisions/claims.d/fix-document-money-writes-for-holders.jsonl`.
 
+Scope: FIXED covers those eleven handlers (`mintFieldCorrectSeal`, `correctField`, `mintFieldVerifySeal`, `verifyFieldTick`, `applyExtraction`, `match`, `linkLine`, `mintLineEditSeal`, `editLine`, `mintVerifySeal`, `verify`) and the upload's answer, nothing more. A staff caller can still pair a document's lines with an order through the upload, and can still steer which item an invoice price lands on through `link-item`; both are OPEN below. [ADDED 2026-10-08, fixer, after the ADR 0090 audit of `8b5849388` ruled the heading broader than the code.]
+
 ## Forks decided in this branch — DECIDED — 2026-10-07
 
 Each of these is the coordinator's call under the founder's 2026-10-07T20:04:10Z delegation. None is in an ADR.
@@ -18,9 +20,11 @@ Each of these is the coordinator's call under the founder's 2026-10-07T20:04:10Z
 1. **The gate reads the token's role, through ADR 0145's `ROLE_POLICY` money row.** It does not read the house's role row through `OrganizationsService`, which the currency write still uses. `JwtStrategy` re-derives the role from the access row on every request (`apps/api-gateway/src/auth/strategies/jwt.strategy.ts:60-74`), so a demotion between a seal's mint and its write is refused at the write in the role's words, with the seal unspent (pinned in `documents.seal.spec.ts`). Rejected:
    - `@Roles` + `RolesGuard`. This would move `route-access.expected.json`, which open PR #564 touches.
    - A database read per call. This would add a second source of "who holds money" beside ADR 0145's table.
+
+   The two gates now disagree on `admin`. The currency gate (`OrganizationsService.assertManagerOrOwner`, `apps/api-gateway/src/organizations/organizations.service.ts:273`) admits exactly `owner` and `manager`, so it refuses `admin`; this gate admits `admin` through `ROLE_POLICY`, the same rule `RolesGuard` uses. Whether `admin` can be stored as a house role was not checked. [ADDED 2026-10-08, fixer, after the ADR 0090 audit of `8b5849388`.]
 2. **`PATCH :id/lines/:lineId` is gated whole, not split by payload.** The task said to split a route only if it serves both a door step and a money edit. This route's one caller is the `/receipts` desk (`apps/web/src/pages/receipts/next/ReceiptsNext.tsx:926`), which corrects one figure per PATCH: qty, unit price or line total (`:712-717`). The door's quantity travels through `POST door-count`, which stays open. A qty-only correction moves the document's tie-out and the quantity the match compares, so it is desk work on the paid record. Rejected: opening qty-only patches to staff. That would have to open the `line_edit` seal mint by payload too, for an act no door screen performs.
 3. **`corrections` and `fields/verify` are gated whole, non-money paths included** (`documentNumber`, `seller.name`). Their one caller is the formatted sheet (`apps/web/src/pages/documents/next/CanonicalDocumentPage.tsx:260`, `:300`), a desk page, not the door. Same reasoning as 2.
-4. **`POST :id/lines/:lineId/link-item` stays open.** It names a shelf and returns no price, which matches ADR 0124's "staff may confirm" posture for identity candidates (`.planning/decisions/0124-a-bottle-has-one-identity-and-every-price-names-it.md:881`). `POST :id/lines/:lineId/link`, the order-line pairing, is gated: `match`'s own description says a wrong pairing writes one wine's invoice price onto another wine's cost lot. [ADDED 2026-10-07 23:11Z, coordinator, after the verifier's pass: the shelf a line names is still a consequence for money. `procurement_document_lines.inventory_id` is what `finalise_delivery_cost` reads to decide which item the invoice price lands on (`line-mapping.service.ts:346-349`). That price lands only when the delivery is verified (`delivery.service.ts:965`, `finaliseAtVerified`), and `POST /procurement/deliveries/:id/verify` is open to every signed-in member today: see the OPEN entry below. So keeping `link-item` open is safe only once the verify is a holder's act.]
+4. **`POST :id/lines/:lineId/link-item` stays open.** It names a shelf and returns no price. By analogy, not by ruling, this follows ADR 0124's "staff may confirm" posture for identity candidates; that ruling is about identity candidates, not this route (`.planning/decisions/0124-a-bottle-has-one-identity-and-every-price-names-it.md:881`). `POST :id/lines/:lineId/link`, the order-line pairing, is gated: `match`'s own description says a wrong pairing writes one wine's invoice price onto another wine's cost lot. [ADDED 2026-10-07 23:11Z, coordinator, after the verifier's pass: the shelf a line names is still a consequence for money. `procurement_document_lines.inventory_id` is what `finalise_delivery_cost` reads to decide which item the invoice price lands on (`line-mapping.service.ts:346-349`). That price lands only when the delivery is verified (`delivery.service.ts:965`, `finaliseAtVerified`), and `POST /procurement/deliveries/:id/verify` is open to every signed-in member today: see the OPEN entry below. So keeping `link-item` open is safe only once the verify is a holder's act.]
 5. **The upload echo is an allowlist of exactly what `DoorModel.readPaper` reads:**
    - document keys: `docType`, `docNumber`, `lines`;
    - line keys: `lineNo`, `qty`, `uom`, `packSize`, `qtyBottles`.
@@ -28,6 +32,22 @@ Each of these is the coordinator's call under the founder's 2026-10-07T20:04:10Z
    `warnings` is left out because tie-out warnings print the figures they compared, and the door never renders them; `readPaper` counts them, and that count now reads 0. `confidence`, the dates and the vendor fields are left out because the door does not read them. Keys are omitted, never nulled, because a null price would claim the paper printed none. `catalog` and `vendor` pass unchanged:
    - `catalog`'s price admission already refuses a non-manager without figures (`CatalogIngestService.admit`).
    - `vendor` carries no money.
+
+## The upload still pairs a document with an order for every caller — OPEN — 2026-10-08
+
+Found by the ADR 0090 audit of `8b5849388`. Not fixed on this branch.
+
+`POST /procurement/documents` (`DocumentsController.upload`) passes the caller's `body.orderId` to `DocumentIntakeService.ingest`. `ingest` calls `linkAndMatch` (`apps/api-gateway/src/procurement/documents/document-intake.service.ts:1175`, `:1363`).
+
+- With an `orderId`, it calls `link(documentId, orderId, restaurantId, "manual", 1)`, so the caller chooses the order.
+- Without one, `autoLink` links to the order whose `order_number` equals the PO number the paper prints, filtered by house (`:2080`).
+- Either way `matchDocumentLines` then writes `order_line_id` onto every line the matcher applies (`:1641`, the `result.applied` loop).
+
+So a staff caller does through the upload what `POST :id/match` and `POST :id/lines/:lineId/link` now refuse them. This was the upload's behaviour before this branch; the branch did not add it, and did not close it.
+
+Separately, `link()` (`:2050`) inserts the `orderId` it is given into `procurement_document_links` with no check that the order is this house's. Not verified here: whether `matchDocumentLines`' house filters stop a foreign order's lines from pairing. A stray link row can be written either way.
+
+Pinned as it stands by `documents.money-gate.spec.ts` ("still forwards a staff caller's orderId to intake…"), which shows the controller forwards the order, not what intake then writes. The ownership half has an `open` row in `.planning/decisions/claims.d/fix-document-money-writes-for-holders.jsonl` (`SEC-2026-10-08-DOCUMENT-LINK-ORDER-OWNERSHIP`). The staff half has no row: whether a staff upload should pair at all (drop the `orderId`, skip the match, or keep machine pairing) is an open fork, and a check cannot be written before its fix is chosen.
 
 ## Reads still return money to staff — OPEN — 2026-10-07
 
