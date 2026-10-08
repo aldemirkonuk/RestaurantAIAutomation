@@ -87,7 +87,7 @@ export interface BookFreshness {
   asOf: number | null
   /** A read failed (not an abort or house change); none has succeeded past the fence since. */
   failing: boolean
-  /** Older than twice the interval, or a refresh is failing. */
+  /** Over twice the interval since `asOf` by the wall clock, or a read is failing. */
   stale: boolean
 }
 
@@ -257,8 +257,8 @@ function finish(run: HouseRun, flight: InFlight, book: OrderBook | null, error: 
     settle((w) => batch.waiters.add(w))
     return
   }
-  // A book read later than this one stays in the cache. Its callers get the
-  // kept book too, since TanStack writes whatever the query function returns.
+  // Keep the book with the larger readStartedAt: wall clock, so a backwards clock step keeps
+  // the older one. Callers get the kept book too; TanStack writes what the query returns.
   let kept = book
   run.client?.setQueryData<OrderBook>(queryKeys.orders.book(run.house), (old) => {
     kept = old && old.readStartedAt > book.readStartedAt ? old : book
