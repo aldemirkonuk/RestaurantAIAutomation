@@ -1,0 +1,111 @@
+diff --git a/.planning/decisions/0297-a-glass-is-not-a-bottle.md b/.planning/decisions/0297-a-glass-is-not-a-bottle.md
+index b4f195efc..c719e2915 100644
+--- a/.planning/decisions/0297-a-glass-is-not-a-bottle.md
++++ b/.planning/decisions/0297-a-glass-is-not-a-bottle.md
+@@ -3,8 +3,8 @@
+ - **Status:** Proposed. Forks 1 and 2 are answered by the founder (2026-10-04, quoted verbatim below); the record as a whole waits on his word.
+ - **Date:** 2026-10-05
+ - **Decider:** Aldemir (founder). Decisions are locked by the founder, never by an agent.
+-- **Keywords:** AW02, A-032, A-025, glass, single, pour, carafe, bottle-equivalent, consumption_type, quantity, volume_ml, bottle_size_ml, 750 ml stand-in, STOCK_STAND_IN_BOTTLE_ML, bottlesOf, consumption-units, unitsCoverage, counts.unmeasured, sizeStandIn, demandUnknown, unassessed, UncountedConsumptionError, menu engineering, quadrant, restock, inventory science, Wine 360, seasonality, demand forecast, risk, insight bundle, Bottles sold goal, INSIGHT_GENERATOR_VERSION 8 [Corrected 2026-10-08, coordinator: the code has 9 (`insight-generator.service.ts:224`); the coordinator renumbers `INSIGHT_GENERATOR_VERSION` at merge above every value on `main`]
+-- **Links:** [[0011-pos-sale-volume-contract]] (what `quantity` is), [[0124-a-bottle-has-one-identity-and-every-price-names-it]] (the library's 750 is a default, not a reading), [[0115-the-house-item-is-the-ledgers-key]] (R7, on PR #589, unmerged), [[0020-no-fabricated-answers]], [[0051-rebuilt-pages-show-live-data-only]], [[0086-a-count-confesses-what-it-could-not-count]], [[0292-analytics-reads-the-whole-window-or-refuses]] (this change stacks on its PR #609) [Corrected 2026-10-08, coordinator: #609 merged as b270a45b8 and this branch merged `origin/main` at a95cb520c, so it no longer stacks; its base is `main`], [[0285-a-short-pour-opens-the-next-bottle]] (`record_glass_pour`). Claims: [`claims.d/fix-a-glass-is-not-a-bottle.jsonl`](claims.d/fix-a-glass-is-not-a-bottle.jsonl).
++- **Keywords:** AW02, A-032, A-025, glass, single, pour, carafe, bottle-equivalent, consumption_type, quantity, volume_ml, bottle_size_ml, 750 ml stand-in, STOCK_STAND_IN_BOTTLE_ML, bottlesOf, consumption-units, unitsCoverage, counts.unmeasured, sizeStandIn, demandUnknown, unassessed, UncountedConsumptionError, menu engineering, quadrant, restock, inventory science, Wine 360, seasonality, demand forecast, risk, insight bundle, Bottles sold goal, INSIGHT_GENERATOR_VERSION 8 [Corrected 2026-10-08, coordinator: the code has 9 (`insight-generator.service.ts:224`); the coordinator renumbers `INSIGHT_GENERATOR_VERSION` at merge above every value on `main`] [Corrected 2026-10-08, re-sync onto `origin/main` be9a16ccf: the code has 11 (`insight-generator.service.ts:232`); `main` is at 10 (#652), and this PR sets 11]
++- **Links:** [[0011-pos-sale-volume-contract]] (what `quantity` is), [[0124-a-bottle-has-one-identity-and-every-price-names-it]] (the library's 750 is a default, not a reading), [[0115-the-house-item-is-the-ledgers-key]] (R7, on PR #589, unmerged), [[0020-no-fabricated-answers]], [[0051-rebuilt-pages-show-live-data-only]], [[0086-a-count-confesses-what-it-could-not-count]], [[0292-analytics-reads-the-whole-window-or-refuses]] (this change stacks on its PR #609) [Corrected 2026-10-08, coordinator: #609 merged as b270a45b8 and this branch merged `origin/main` at a95cb520c, so it no longer stacks; its base is `main`] [Corrected 2026-10-08, re-sync: "its base is `main`" is true of the branch's content, which carries `main` (merged be9a16ccf); on GitHub, PR #626's base stays #609's branch until the coordinator retargets it to `main`], [[0285-a-short-pour-opens-the-next-bottle]] (`record_glass_pour`). Claims: [`claims.d/fix-a-glass-is-not-a-bottle.jsonl`](claims.d/fix-a-glass-is-not-a-bottle.jsonl).
+ 
+ ## Context
+ 
+@@ -163,7 +163,7 @@ The POS writer never writes such a line, because it fails closed on an explicit
+   - Insight bundle: `units`, and `insights[].evidence.units`.
+   - Goals: `basis.units`, and `units` on each goal's progress.
+   - Demand forecast: no new field; `basis.demand` and `basis.model` name the coverage.
+-- **Generator version:** `INSIGHT_GENERATOR_VERSION` is 8. Version 7 belongs to the stockout change (ADR 0299, PR #619), whose history line lands with it. [2026-10-07: now 9, not 8. `main` is at 6 (ADR 0292, #609), #619 holds 7 and #625 (lane tablesins, the ADR 0303 amendment) also holds 8, so this change moved to 9 and no two open PRs share a version. The history line for 8 is #625's and lands with it. The number is re-checked at merge: of #619, #625 and this change, whichever merges later must be above the version on `main` at its merge, by later-truth. The claim AW02-GENERATOR-VERSION-9 reads a version of 9 or more and this record's history line, so a later bump keeps it true.]
++- **Generator version:** `INSIGHT_GENERATOR_VERSION` is 8. Version 7 belongs to the stockout change (ADR 0299, PR #619), whose history line lands with it. [2026-10-07: now 9, not 8. `main` is at 6 (ADR 0292, #609), #619 holds 7 and #625 (lane tablesins, the ADR 0303 amendment) also holds 8, so this change moved to 9 and no two open PRs share a version. The history line for 8 is #625's and lands with it. The number is re-checked at merge: of #619, #625 and this change, whichever merges later must be above the version on `main` at its merge, by later-truth. The claim AW02-GENERATOR-VERSION-9 reads a version of 9 or more and this record's history line, so a later bump keeps it true.] [Corrected 2026-10-08, re-sync onto `origin/main` be9a16ccf: now 11, not 9. `main` is at 10 (#652, the ADR 0292 fork 3 follow-on), not 6, and this PR sets 11, with floor "A row below 11". The code's history lists 10 (`main`'s) then 11 (this change); the lane's placeholder lines for 7 and 8 are gone, since `main`'s 10 line records that #619/#624 and #625/#626 held them, and none of 7, 8 or 9 was ever on `main`. The claim is renamed AW02-GENERATOR-VERSION-11 and reads a version of 11 or more and the 11 history line.]
+ - **Given up:**
+   - An unsized glass seller's figures carry the stand-in's residual error, labelled. A 70 cl item reads 7% low, a 100 cl one 33% high, and a 37.5 cl one 50% low.
+   - An item with a line that has no bottle figure leaves the per-item figures named above until the line is corrected.
+@@ -206,3 +206,4 @@ Cite an audit as `audit of PR #M, round N` with its report path under `.planning
+ | 2026-10-05 | — | Created by the `units` fix lane (branch `fix/a-glass-is-not-a-bottle`, stacked on PR #609). Forks 1 and 2 answered by the founder on 2026-10-04. |
+ | 2026-10-07 | — (fix round, lane `units`, on d9b87752d) | Merged `origin/main` ca3582988 (a95cb520c), which carries #609 squashed as b270a45b8; never rebased. Nine files conflicted. #609's own three (ADR 0292, its claims and its tech-debt note) were taken from `main` whole. Four lane files were re-merged three-way against the lane's own pre-state; the lines this lane adds or removes in them are unchanged. `analytics.service.ts` loadConsumption keeps `main`'s read, which now propagates a refusal (ADR 0292 fork 3), with this lane's columns and bottle mapping on top; the lane's earlier catch that degraded a refused read to no lines is gone. The index keeps `main`'s rows plus 0297's. `INSIGHT_GENERATOR_VERSION` moved 8 → 9 (bracket under *Consequences*; claim AW02-GENERATOR-VERSION-9), re-checked at merge. The consumption stub in `consumption-units.spec.ts` now returns only the columns a reader selects, and four stated-size cases fail when any reader stops selecting `bottle_size_ml`. The pos-hub, dashboard, `analytics.service.ts` and register cites that `main` moved are re-pinned in brackets. The founder's #619 bottle-size answer (2026-10-07T13:51:58Z) is quoted under *Earlier answers*. AW02-STAND-IN-IS-THE-STOCKS's text now names the newer `record_glass_pour` migration (`:318`); its check already reads the newest one, and all three numbers are still 750. No new founder fork. |
+ | 2026-10-08 | — (fix round, lane `units`, on 762916d0f) | Four shoulds from the 2026-10-07 verify. `consumption-units.ts` comment cites re-pointed (pos-hub writer `:1583-1587`/`:1625`, `RPC_DEFAULT_BOTTLE_ML` `:33`, `inventoryVolumesFromRow` `:58-62`, `record_glass_pour` in `20261222100000_a_pos_sale_is_dated_by_its_check.sql:318`) and its rule list now names the negative bottle line this record already states (*Decision*). Keywords and Links bracket-corrected (version 9 in code, renumbered by the coordinator at merge; #609 merged, no longer stacked). New cases: R6b pins that a glass line with no millilitres still counts as movement for dead stock (kills A05); H7b and R5b pin that a negative bottle line has no bottle figure and refuses a Bottles sold total (kills U07). Behaviour unchanged. |
++| 2026-10-08 | — (fix round 2, lane `units`, on 57fc2c668) | Merged `origin/main` be9a16ccf (#652) by hand; never rebased. Only `insight-generator.service.ts` conflicted, in three hunks: `main`'s version-10 history line, `BUNDLE_READ_WORDS`, `readWasRefused` and `sourcesUnread` kept; the wine mover keeps `main`'s inventory-list gate with this lane's mover shape; `INSIGHT_GENERATOR_VERSION` 9 → 11 (bracket under *Consequences*; claim renamed AW02-GENERATOR-VERSION-11). `unitsBasisSentence` and the Bottles sold refusal (`UncountedConsumptionError`) now name every cause `bottlesOf` has for a line with no bottle figure, the bottle line with no quantity of 0 or more among them; the basis sentence named only two, and the refusal named none. R6b's comment names `getFinancialSummary`'s dead-stock join, where it named loadConsumption. #652's `insight-unread-sources.spec.ts` "with the inventory list read, the mover fires" fails on this branch: its consumption rows carry no `consumption_type`, so every line has no bottle figure and the mover never fires. Its one-line fixture fix would be a 16th file (ADR 0231), so it is owed, not made. No new founder fork. |
+diff --git a/.planning/decisions/claims.d/fix-a-glass-is-not-a-bottle.jsonl b/.planning/decisions/claims.d/fix-a-glass-is-not-a-bottle.jsonl
+index e12c5939c..036bbe537 100644
+--- a/.planning/decisions/claims.d/fix-a-glass-is-not-a-bottle.jsonl
++++ b/.planning/decisions/claims.d/fix-a-glass-is-not-a-bottle.jsonl
+@@ -3,4 +3,4 @@
+ {"id": "AW02-STAND-IN-IS-THE-STOCKS", "status": "resolved", "claim": "ADR 0297 fork 1 (\"750 ml stand-in (Recommended)\"): the demand stand-in for an unsized item's glass line is the stock's own. STOCK_STAND_IN_BOTTLE_ML in consumption-units.ts equals the COALESCE(ri.bottle_size_ml, N) in the newest migration that creates record_glass_pour (today supabase/migrations/20261217112500_a_short_pour_opens_the_next_bottle.sql:102 [2026-10-07: now supabase/migrations/20261222100000_a_pos_sale_is_dated_by_its_check.sql:318, from #603; still 750]) and pos-hub's RPC_DEFAULT_BOTTLE_ML. When R7's second half (ADR 0115) redefines record_glass_pour's default, this fails until the analytics follow it. [2026-10-07: the founder's answer on #619, 2026-10-07T13:51:58Z, \"Standard 75 cl, as built (Recommended)\", keeps the same 75 cl for the stock side of a row that states no size (ADR 0299 rule 1); this row ties the demand side.]", "verify": "python3 -c \"import re,sys,glob; D=re.compile(r'(?i)create\\s+(or\\s+replace\\s+)?function\\s+(public[.])?record_glass_pour\\s*[(]'); fs=sorted(f for f in glob.glob('supabase/migrations/*.sql') if D.search(open(f).read())); src=open(fs[-1]).read(); i=[m.start() for m in D.finditer(src)][-1]; c=re.search(r'COALESCE[(]ri[.]bottle_size_ml,\\s*(\\d+)[)]', src[i:]); u=re.search(r'export const STOCK_STAND_IN_BOTTLE_ML = (\\d+);', open('apps/api-gateway/src/analytics/consumption-units.ts').read()); p=re.search(r'const RPC_DEFAULT_BOTTLE_ML = (\\d+);', open('apps/api-gateway/src/pos-hub/pos-hub.service.ts').read()); got=[x and x.group(1) for x in (c,u,p)]; print(fs[-1], got); sys.exit(0 if None not in got and len(set(got))==1 else 1)\"", "verified": "2026-10-07"}
+ {"id": "AW02-DASH-CHART-GLASSES", "status": "open", "claim": "ADR 0297, not fixed here: dashboard.service.ts getSalesChart adds every consumption line's quantity into `glasses` (`existing.glasses += c.quantity`, :893 at fix/a-glass-is-not-a-bottle [2026-10-07: :1386 after the merge of origin/main ca3582988]), bottle lines included, and its select carries no consumption_type. Open until that sum reads the line's mode (consumption_type appears within the 400 characters before each such sum) or the sum is gone. No page calls GET /dashboard/sales-chart today.", "verify": "python3 -c \"import re,sys; R=lambda t: re.sub(r'(?m)^[ \\t]*//.*','',re.sub(r'/[*][\\s\\S]*?[*]/','',t)); s=R(open('apps/api-gateway/src/dashboard/dashboard.service.ts').read()); bad=[m.start() for m in re.finditer(r'glasses\\s*[+]=\\s*c[.]quantity', s) if 'consumption_type' not in s[max(0,m.start()-400):m.start()]]; print(bad); sys.exit(1 if bad else 0)\"", "verified": "2026-10-07"}
+ {"id": "AW02-WEEKLY-SOLD-MIXED", "status": "open", "claim": "ADR 0297 fork 2, owed: the weekly report's Sold column adds glasses and bottles into one number (communications/scheduled-tasks.service.ts:1285, `acc.sold += Number(row.quantity)`). The founder's answer is \"Bottles · glasses (Recommended)\", as its own PR in /communications after R2's pause lifts. Open until that sum is gone.", "verify": "python3 -c \"import re,sys; R=lambda t: re.sub(r'(?m)^[ \\t]*//.*','',re.sub(r'/[*][\\s\\S]*?[*]/','',t)); s=R(open('apps/api-gateway/src/communications/scheduled-tasks.service.ts').read()); sys.exit(1 if re.search(r'sold\\s*[+]=\\s*Number[(]row[.]quantity[)]', s) else 0)\"", "verified": "2026-10-07"}
+-{"id": "AW02-GENERATOR-VERSION-9", "status": "resolved", "claim": "ADR 0297 (AW02): INSIGHT_GENERATOR_VERSION is at least 9, and its history records version 9 as the 2026-10-05 glass-is-not-a-bottle change with 'A row below 9' as its refusal floor, so every stored row computed before it (which may hold a sentence counted in pours) is refused and recomputed. Drafted as 8; renumbered 9 on 2026-10-07 because main is at 6, #619 holds 7 and #625 holds 8, so no two open PRs share a version. The number is re-checked at merge: whichever of #619, #625 and #626 merges later must be above main's version at its merge. The check reads a version of 9 or more, so a later bump keeps it true, and fails on 8 or lower, on a lost ADR 0297 history line, or on a history line still numbered 8.", "verify": "python3 -c 'import sys,re;g=open(\"apps/api-gateway/src/analytics/insights/insight-generator.service.ts\").read();m=re.search(\"export const INSIGHT_GENERATOR_VERSION = ([0-9]+);\",g);h=re.search(r\"[*] +9 \\S 2026-10-05 [(]ADR 0297[)]: a glass is not a bottle[.]\",g);sys.exit(0 if m and int(m.group(1))>=9 and h and \"A row below 9 may hold a sentence\" in g else 1)'", "verified": "2026-10-07"}
++{"id": "AW02-GENERATOR-VERSION-11", "status": "resolved", "claim": "ADR 0297 (AW02): INSIGHT_GENERATOR_VERSION is at least 11, and its history records version 11 as the 2026-10-05 glass-is-not-a-bottle change with 'A row below 11' as its refusal floor, so every stored row computed before it (which may hold a sentence counted in pours) is refused and recomputed. Drafted as 8; renumbered 9 on 2026-10-07 (main at 6, #619 holding 7, #625 holding 8), and 11 on 2026-10-08 at the re-sync onto origin/main be9a16ccf, because #652 took 10 on main. Renamed from AW02-GENERATOR-VERSION-9 on 2026-10-08. The number is re-checked at merge: of the open PRs that move it, whichever merges later must be above main's version at its merge. The check reads a version of 11 or more, so a later bump keeps it true, and fails on 10 or lower, on a lost ADR 0297 history line, or on a history line still numbered 9.", "verify": "python3 -c 'import sys,re;g=open(\"apps/api-gateway/src/analytics/insights/insight-generator.service.ts\").read();m=re.search(\"export const INSIGHT_GENERATOR_VERSION = ([0-9]+);\",g);h=re.search(r\"[*] +11 \\S 2026-10-05 [(]ADR 0297[)]: a glass is not a bottle[.]\",g);sys.exit(0 if m and int(m.group(1))>=11 and h and \"A row below 11 may hold a sentence\" in g else 1)'", "verified": "2026-10-08"}
+diff --git a/apps/api-gateway/src/analytics/consumption-units.spec.ts b/apps/api-gateway/src/analytics/consumption-units.spec.ts
+index 9cb1bcd3b..731b75cdd 100644
+--- a/apps/api-gateway/src/analytics/consumption-units.spec.ts
++++ b/apps/api-gateway/src/analytics/consumption-units.spec.ts
+@@ -180,6 +180,10 @@ describe("bottlesOf — a line's bottles come from its own mode", () => {
+     expect(s).toContain("3 glass lines across 2 items");
+     expect(s).toContain("750 ml stand-in");
+     expect(s).toContain("1 line across 1 item carries no bottle figure");
++    // Every cause bottlesOf has, the negative bottle line among them.
++    expect(s).toContain(
++      "(no bottle or glass mode, a bottle line with no quantity of 0 or more, or a glass line with no millilitres above 0)",
++    );
+ 
+     const sized = summarizeUnits([
+       { how: "bottle", inventoryId: "a" },
+@@ -434,7 +438,7 @@ describe("the restock list counts bottles, not pours", () => {
+ 
+   it("R6b: a glass line with no millilitres has no bottle figure, but its servings are still movement", async () => {
+     // Movement is a serving or a millilitre, not a bottle figure
+-    // (analytics.service.ts loadConsumption's dead-stock join): Item 1 poured
++    // (analytics.service.ts getFinancialSummary's dead-stock join): Item 1 poured
+     // two glasses whose millilitres were not recorded, so it moved, and only
+     // the untouched Item 3 is idle. Item 2's bottle line gives the window a
+     // movement signal of its own, so the case does not rest on Item 1 alone.
+@@ -534,6 +538,10 @@ describe("the Bottles sold goal counts bottles, or refuses", () => {
+     expect((err as Error).message).toContain(
+       "1 consumption line across 1 item",
+     );
++    // The refusal names the negative bottle line among its causes.
++    expect((err as Error).message).toContain(
++      "a bottle line with no quantity of 0 or more",
++    );
+   });
+ });
+ 
+diff --git a/apps/api-gateway/src/analytics/consumption-units.ts b/apps/api-gateway/src/analytics/consumption-units.ts
+index 235b49664..4aff7b16c 100644
+--- a/apps/api-gateway/src/analytics/consumption-units.ts
++++ b/apps/api-gateway/src/analytics/consumption-units.ts
+@@ -150,6 +150,14 @@ export function summarizeUnits(
+   };
+ }
+ 
++/**
++ * Every cause `bottlesOf` has for a line with no bottle figure. A sentence
++ * that names the cause names all three: a bottle line with a quantity below
++ * 0 is one, as much as a glass line with no millilitres (ADR 0297).
++ */
++const UNCOUNTED_CAUSES =
++  "no bottle or glass mode, a bottle line with no quantity of 0 or more, or a glass line with no millilitres above 0";
++
+ function n(count: number, one: string, many: string): string {
+   return `${count} ${count === 1 ? one : many}`;
+ }
+@@ -172,7 +180,7 @@ export function unitsBasisSentence(cov: UnitsCoverage): string {
+     parts.push("every glass line's item states its bottle size");
+   if (cov.uncountedLines > 0)
+     parts.push(
+-      `${n(cov.uncountedLines, "line", "lines")} across ${n(cov.uncountedItems, "item", "items")} ${cov.uncountedLines === 1 ? "carries" : "carry"} no bottle figure (no mode, or a glass line with no millilitres), so every figure resting on ${cov.uncountedLines === 1 ? "it" : "them"} is null rather than guessed`,
++      `${n(cov.uncountedLines, "line", "lines")} across ${n(cov.uncountedItems, "item", "items")} ${cov.uncountedLines === 1 ? "carries" : "carry"} no bottle figure (${UNCOUNTED_CAUSES}), so every figure resting on ${cov.uncountedLines === 1 ? "it" : "them"} is null rather than guessed`,
+     );
+   else parts.push("every line has a bottle figure");
+   return parts.join("; ");
+@@ -204,7 +212,7 @@ export function unitsLabel(
+ export class UncountedConsumptionError extends Error {
+   constructor(readonly coverage: UnitsCoverage) {
+     super(
+-      `Bottles sold could not be counted: ${n(coverage.uncountedLines, "consumption line", "consumption lines")} across ${n(coverage.uncountedItems, "item", "items")} ${coverage.uncountedLines === 1 ? "has" : "have"} no bottle figure, so a total would be short rather than true.`,
++      `Bottles sold could not be counted: ${n(coverage.uncountedLines, "consumption line", "consumption lines")} across ${n(coverage.uncountedItems, "item", "items")} ${coverage.uncountedLines === 1 ? "has" : "have"} no bottle figure (${UNCOUNTED_CAUSES}), so a total would be short rather than true.`,
+     );
+     this.name = "UncountedConsumptionError";
+   }

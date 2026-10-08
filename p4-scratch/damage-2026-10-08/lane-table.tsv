@@ -1,0 +1,59 @@
+lane	branch	local	origin	ahead	dirty	pr	prhead	state	last_audit	verdict
+a045index	docs/the-a045-index-row-says-what-the-cellar-counts	623ee73dc	623ee73dc	0	0	658	623ee73dc	BEHIND		
+addtable	feat/add-a-table-by-hand	75678fa12	none	-	0					
+assignadr	docs/who-takes-an-entry-reads-the-house-roster	e85965716	none	-	0					
+bellnote	fix/pos-import-refusals-ring-the-bell	ddc471751	ddc471751	0	0	644	1c0e8a696	MERGED 2026-10-06T01:09	644-ddc471751	PASS
+bellweb	fix/bell-files-refused-checks	1281f9113	1281f9113	0	0	645	155960b59	MERGED 2026-10-05T16:19	645-1281f9113	PASS
+booth	feat/a-check-carries-its-channel	e0634267a	4faa00cf3	6	0	618	4faa00cf3	BEHIND	618-28c59e9f8	PASS
+caltakings	fix/calendar-day-panel-takings	4862cc72e	31c5ec562	19	7	610	31c5ec562	DIRTY	610-31c5ec562	BLOCK
+cap	fix/analytics-reads-past-row-cap	5a8bda603	5a8bda603	0	0	609	b270a45b8	MERGED 2026-10-07T13:11	609-5a8bda603	PASS
+capreads	fix/a-capped-list-says-it-is-capped	eadda4b15	none	-	0					
+cellar	fix/cellar-invoice-book-and-menu-copy	093416f16	093416f16	0	0	606	8fdb819b4	MERGED 2026-10-05T15:01	606-093416f16	PASS
+cellardoor	fix/cellar-door-checked-cost	c21caa2c9	c21caa2c9	0	0	628	62f8967b4	MERGED 2026-10-08T00:05	628-c21caa2c9	PASS
+cellarledger	fix/cellar-till-and-door-checked-cost	ab0f599a4	ab0f599a4	0	0	627	54f833e4b	MERGED 2026-10-06T03:39	627-ab0f599a4	PASS
+countryfirst	fix/market-readers-read-inside-the-country	b49008c4e	none	-	2					
+dash	fix/dashboard-tells-the-day-true	34098a128	34098a128	0	0	622	5c07cfb23	MERGED 2026-10-06T05:03	622-34098a128	PASS
+dashtuck	fix/dashboard-counter-starts-tucked	5f99edfb3	5f99edfb3	0	0	623	5f99edfb3	CLEAN	623-5f99edfb3	PASS
+dayexclude	fix/staff-cannot-rule-a-day-out	90501d105	90501d105	0	0	660	90501d105	BEHIND		
+delivverify	fix/the-delivery-desk-is-for-holders	cac2a6266	none	-	0					
+delivverify-b	fix/the-delivery-desk-says-what-verify-posts	8a132f08c	none	-	0					
+docwrites	fix/document-money-writes-for-holders	10642298c	10642298c	0	0	659	10642298c	BEHIND		
+doortime	fix/door-keeps-the-arrival-time	3b0e69b8c	3b0e69b8c	0	0	612	214779a76	MERGED 2026-10-07T21:57	612-3b0e69b8c	PASS
+events	fix/delivery-events-follow-the-order	b217713e3	b217713e3	0	0	604	1aa4dcb8c	MERGED 2026-10-04T21:43	604-b217713e3	PASS
+f2redate	fix/old-pos-rows-carry-their-check-date	3426a3fcf	3426a3fcf	0	0	647	8e16fbcef	MERGED 2026-10-05T22:29	647-3426a3fcf	PASS
+f9race	fix/receiving-f9-test-race	fd4001395	fd4001395	0	0	651	42fe1252b	MERGED 2026-10-06T19:53	651-fd4001395	PASS
+firstmenu	fix/the-first-menu-reads-from-the-house	7f4576516	2d81f8a5d	4	0	656	2d81f8a5d	BEHIND	656-2d81f8a5d	BLOCK
+fmt	fix/reports-fractions-and-empty-register	f74f156f2	f74f156f2	0	0	599	c3b1a227e	MERGED 2026-10-04T17:38	599-f74f156f2	PASS
+fmt2	fix/team-performance-units	559d86bb7	559d86bb7	0	0	614	559d86bb7	CLEAN	614-559d86bb7	(no report)
+glasspour	fix/a-short-pour-opens-the-next-bottle	23c520dda	23c520dda	0	0	600	fb862aa57	MERGED 2026-10-04T18:30	600-23c520dda	PASS
+houseswitch	fix/a-house-switch-clears-the-last-house	c50e54d4c	505a03400	5	3	654	505a03400	BEHIND	654-505a03400	BLOCK
+iswine	fix/wine-is-not-moves-stock	c3b1a227e	none	-	0					
+linepair	fix/a-line-pairs-only-with-its-own-house	2a9ea6928	2a9ea6928	0	0	653	b30ca260e	MERGED 2026-10-07T23:06	653-2a9ea6928	PASS
+logs	fix/logs-jump-to-a-date	0fcbdec47	0fcbdec47	0	0	601	e2cbe426a	MERGED 2026-10-04T20:38	601-0fcbdec47	PASS
+mailguess	fix/a-guessed-order-does-not-link-the-paper	de8717937	de8717937	0	0	661	de8717937	CLEAN		
+moneybell	fix/bell-reads-only-your-notices	8c362c73f	e27f41d22	2	0	657	e27f41d22	BEHIND	657-e27f41d22	PASS
+netsales	fix/owner-sales-read-net	6d0b4f194	6f2f063ef	16	0	615	6f2f063ef	DIRTY	615-6f2f063ef	BLOCK
+offbook	fix/offbook-tile-names-the-library	eb605580f	eb605580f	0	0	646	63ce97e62	MERGED 2026-10-06T00:16	646-eb605580f	PASS
+ordersccy	fix/orders-print-their-own-currency	5b93fe07e	none	-	0					
+p0net	fix/tables-claim-ready-for-net-sales	7fb476a37	7fb476a37	0	0	649	ca3582988	MERGED 2026-10-07T14:45	649-7fb476a37	PASS
+postime	fix/pos-sales-dated-at-sale-time	af7e68990	af7e68990	0	0	603	2b6782291	MERGED 2026-10-05T06:18	603-af7e68990	PASS
+promogate	fix/promotions-gate-every-route	d66af175e	none	-	0					
+proxies	fix/cost-and-revenue-from-the-pos	2d3ec34b8	d6da23311	6	0	617	d6da23311	BEHIND	617-f013a3aa6	PASS
+rawline	fix/a-menu-line-carries-its-raw-line	18c2de14e	220e3747d	4	0	655	220e3747d	BEHIND	655-220e3747d	BLOCK
+rec	fix/recommendations-say-when-and-what	aa1c00479	aa1c00479	0	0	607	1884dea38	MERGED 2026-10-05T21:55	607-aa1c00479	PASS
+receivingccy	fix/receiving-prints-its-own-currency	2b7dd64a1	none	-	0					
+recregisters	fix/recommendations-file-by-what-changes	6e1ea69bb	6e1ea69bb	0	0	611	6e1ea69bb	CLEAN	611-6e1ea69bb	(no report)
+seatsnote	fix/seats-chart-says-why-it-is-empty	ef8c08605	none	-	0					
+servesize	fix/cellar-till-names-with-a-serve-size	a1a1e86a5	3f3689307	26	0	650	3f3689307	DIRTY	650-3f3689307	BLOCK
+sig	fix/insights-significance-gates	6272ff411	6272ff411	0	0	602	f5f658934	MERGED 2026-10-04T21:13	602-6272ff411	PASS
+sighting	fix/price-sighting-dated-by-issue	3f17bc311	3f17bc311	0	0	608	eaa479c93	MERGED 2026-10-05T15:44	608-3f17bc311	PASS
+sourcesunread	fix/recommendations-name-a-refused-read	f581912c4	f581912c4	0	0	652	be9a16ccf	MERGED 2026-10-08T00:55	652-f581912c4	?
+stateeditor	feat/house-state-in-location-editor	50c9f69fb	50c9f69fb	0	0	613	a323cc80b	MERGED 2026-10-07T20:54	613-50c9f69fb	PASS
+stockcut	fix/what-to-buy-back-runs-out-first	7f78fd109	8d2a225b5	28	0	624	8d2a225b5	DIRTY		
+stockout	fix/stockout-counts-open-ml	4234b3a8f	d96dcbf56	27	0	619	d96dcbf56	DIRTY	619-d96dcbf56	BLOCK
+t11	fix/short-pour-test-pins-dated-pour	69c70e323	69c70e323	0	0	605	e1d65b3ad	MERGED 2026-10-05T14:06	605-69c70e323	PASS
+tables	feat/tables-learned-from-the-pos	cc0935f18	cc0935f18	0	0	621	4528b9689	MERGED 2026-10-06T04:32	621-cc0935f18	PASS
+tablesins	fix/hidden-tables-leave-insights	69b059bb3	1a62bec78	58	0	625	1a62bec78	DIRTY		
+tz	fix/sales-belong-to-the-house-day	e9776478a	ae079c377	29	0	616	ae079c377	DIRTY	616-ae079c377	BLOCK
+units	fix/a-glass-is-not-a-bottle	5168c70f9	d9b87752d	28	4	626	d9b87752d	DIRTY		
+zoneaddr	feat/zone-from-the-address	c8b7761ce	c8b7761ce	0	0	620	5e6c0684e	MERGED 2026-10-07T12:18	620-c8b7761ce	PASS

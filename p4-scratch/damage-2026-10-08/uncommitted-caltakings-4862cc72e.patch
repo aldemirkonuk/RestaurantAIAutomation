@@ -1,0 +1,450 @@
+diff --git a/apps/api-gateway/src/calendar/day-record.service.ts b/apps/api-gateway/src/calendar/day-record.service.ts
+index 511ad9a16..a38d6b6e8 100644
+--- a/apps/api-gateway/src/calendar/day-record.service.ts
++++ b/apps/api-gateway/src/calendar/day-record.service.ts
+@@ -126,8 +126,12 @@ export interface DayRecordWindow {
+   days: ReconciledDay[];
+   /** The currency every `netSales` in `days` is in. */
+   currency: HouseCurrency;
+-  /** Passed through from the ledger read; false means no POS has ever landed. */
+-  posConnected: boolean;
++  /**
++   * Passed through from the ledger read; false means no POS has ever landed.
++   * Null when the ledger refused (`recordedRefusal` is set): whether one has
++   * is then not known, and no day's line says "no register" (ADR 0287 §Forks F4).
++   */
++  posConnected: boolean | null;
+   /** The ledger's refusal, when it could not be read. */
+   recordedRefusal: string | null;
+   /** The weather register's refusal, when it could not be read. */
+@@ -267,21 +271,18 @@ export function leadDaysFor(issuedAt: string, businessDate: string): number {
+  *
+  * Every branch is a different fact, and none of them is a zero. The order
+  * matters: an excluded day says so first, because a closure that reads as a
+- * quiet day is the most damaging thing this grid could show.
++ * quiet day is the most damaging thing this grid could show. Only a refused
++ * sales register comes before it, and a refused window carries no record and
++ * no closure to say (`RecordedDaysService` returns before it reads them).
+  */
+ export function reconciliationLine(
+   recorded: RecordedDay | null,
+   hadForecast: boolean,
+-  posConnected: boolean,
++  /** False: no register has ever landed a check. Null: the register refused. */
++  posConnected: boolean | null,
+   /** The weather forecast's error in °C, when both sides existed. */
+   forecastErrorC: number | null = null,
+ ): string {
+-  if (recorded?.excluded) {
+-    return recorded.exclusionReason
+-      ? `Closed — ${recorded.exclusionReason}. Ruled out of the baselines.`
+-      : "Closed. Ruled out of the baselines.";
+-  }
+-
+   // The weather half is scoreable independently of the trading half, so it is
+   // said first when it exists: it is the only number on this page that is a
+   // measured error rather than a record.
+@@ -292,7 +293,21 @@ export function reconciliationLine(
+         ? " The forecast called the high exactly."
+         : ` The forecast was out by ${forecastErrorC.toFixed(1)} °C on the high.`;
+ 
+-  if (!posConnected) {
++  // The sales register refused (ADR 0292), so nothing about this day's
++  // trading is known: not that the house has no register, and not that the
++  // day was quiet. Said before anything read off the record, because under a
++  // refusal there is no record to read (ADR 0287 §Forks F4).
++  if (posConnected === null) {
++    return `The sales register could not be read, so this day's trading is not known.${weather}`;
++  }
++
++  if (recorded?.excluded) {
++    return recorded.exclusionReason
++      ? `Closed — ${recorded.exclusionReason}. Ruled out of the baselines.`
++      : "Closed. Ruled out of the baselines.";
++  }
++
++  if (posConnected === false) {
+     return `No sales register is connected, so this day has no record.${weather}`;
+   }
+   if (!recorded || recorded.checkCount === 0) {
+@@ -359,6 +374,11 @@ export class DayRecordService {
+       this.houseCurrency(restaurantId),
+     ]);
+ 
++    // A refused ledger answers nothing about the register, so the window says
++    // "not known" (null), never "no register" (false), whatever the ledger
++    // object carried (ADR 0287 §Forks F4). The same `refusal` that gates the
++    // pairs below gates this.
++    const posConnected = ledger.refusal === null ? ledger.posConnected : null;
+     const recordedByDay = new Map(ledger.days.map((d) => [d.businessDate, d]));
+     const advanceByDay = new Map(
+       weather.forecastInAdvance.map((r) => [r.businessDate, r]),
+@@ -425,12 +445,7 @@ export class DayRecordService {
+           : null,
+         forecastErrorC: errorC,
+         scoreWithheld: withheld,
+-        line: reconciliationLine(
+-          record,
+-          advance !== null,
+-          ledger.posConnected,
+-          errorC,
+-        ),
++        line: reconciliationLine(record, advance !== null, posConnected, errorC),
+       };
+     });
+ 
+@@ -439,7 +454,7 @@ export class DayRecordService {
+       to,
+       days,
+       currency,
+-      posConnected: ledger.posConnected,
++      posConnected,
+       recordedRefusal: ledger.refusal,
+       weatherRefusal: weather.refusal,
+       // A pair is written once per day and never again (`keepPairs`), so one
+diff --git a/apps/api-gateway/src/calendar/day-record.spec.ts b/apps/api-gateway/src/calendar/day-record.spec.ts
+index 922e5c9e5..9a16df09d 100644
+--- a/apps/api-gateway/src/calendar/day-record.spec.ts
++++ b/apps/api-gateway/src/calendar/day-record.spec.ts
+@@ -223,6 +223,23 @@ describe("reconciliationLine", () => {
+     );
+   });
+ 
++  it("says a refused register could not be read, never that there is none (ADR 0287 F4)", () => {
++    // posConnected null is the register refusing (ADR 0292). The line must not
++    // say "no register" over one that exists, nor "nothing recorded" over a
++    // day whose checks could not be read.
++    const line = reconciliationLine(null, true, null);
++    expect(line).toBe(
++      "The sales register could not be read, so this day's trading is not known.",
++    );
++    expect(line).not.toMatch(/No sales register is connected|Nothing was recorded/);
++    // The weather half is still said: it does not depend on the register.
++    expect(reconciliationLine(null, true, null, 1.11)).toContain("out by 1.1 °C");
++    // and `false` still means no register at all
++    expect(reconciliationLine(null, false, false)).toContain(
++      "No sales register is connected",
++    );
++  });
++
+   it("distinguishes a day with no checks from a day with no covers", () => {
+     expect(reconciliationLine(null, false, true)).toBe(
+       "Nothing was recorded on this day.",
+@@ -445,6 +462,10 @@ describe("DayRecordService", () => {
+     const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
+     expect(out.recordedRefusal).toContain("sales register");
+     expect(out.weatherRefusal).toContain("No location is set");
++    // The ledger double carried `posConnected: true` beside its refusal; the
++    // window still says "not known", because a refusal answers nothing about
++    // the register (ADR 0287 F4).
++    expect(out.posConnected).toBeNull();
+   });
+ 
+   it("leaves today and the future out — a day still running has no record", async () => {
+@@ -685,12 +706,13 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
+    * size of the set past the `.gt("id", …)` cursor, `order` / `limit` are
+    * honoured, and a row carries only the columns the select named.
+    * `ignoreCursor` is a server that drops the cursor, so the read can never be
+-   * proved whole. Filters other than the cursor are not applied:
++   * proved whole. `probeError` fails the `select("id")` probe that asks whether
++   * the house has ever had a check. Filters other than the cursor are not applied:
+    * every row handed in belongs to the window.
+    */
+   function pagedDb(
+     checks: Array<Record<string, unknown>>,
+-    opts: { ignoreCursor?: boolean } = {},
++    opts: { ignoreCursor?: boolean; probeError?: boolean } = {},
+   ) {
+     const CAP = 1000;
+     const reads: Array<{
+@@ -730,6 +752,13 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
+           if (table !== "pos_checks") {
+             return Promise.resolve({ data: [], error: null }).then(resolve);
+           }
++          // The `select("id")` probe: has this house EVER had a check land?
++          if (opts.probeError && req.columns === "id") {
++            return Promise.resolve({
++              data: null,
++              error: { message: "connection reset" },
++            }).then(resolve);
++          }
+           const sorted = [...checks].sort((a, b) =>
+             String(a.id).localeCompare(String(b.id)),
+           );
+@@ -839,6 +868,22 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
+     expect(out.refusal).toBe(
+       "The sales register could not be read whole, so no day is drawn from part of it.",
+     );
++    // Not known, never "no register" (ADR 0287 F4).
++    expect(out.posConnected).toBeNull();
++  });
++
++  it("a probe that fails says the register could not be read, and posConnected is not known", async () => {
++    // A window with no checks asks whether the house has EVER had one. When
++    // that one read fails, the answer is neither yes nor no.
++    const { db } = pagedDb([], { probeError: true });
++    const out = await new RecordedDaysService(db).windowFor(
++      "r1",
++      "2026-08-01",
++      "2026-08-31",
++    );
++    expect(out.days).toEqual([]);
++    expect(out.refusal).toBe("The sales register could not be read.");
++    expect(out.posConnected).toBeNull();
+   });
+ 
+   it("the refusal reaches the day record as a refusal, with no takings and no pair frozen", async () => {
+@@ -880,6 +925,21 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
+     expect(out.days[0].recorded).toBeNull();
+     expect(out.pairsWritten).toBe(0);
+     expect(inserted).toHaveLength(0);
++    // The day's line says the register could not be read, not that the house
++    // has none (ADR 0287 F4); the weather half is still scored.
++    expect(out.posConnected).toBeNull();
++    expect(out.days[0].line).toBe(
++      "The sales register could not be read, so this day's trading is not known. " +
++        "The forecast was out by 1.1 °C on the high.",
++    );
++    expect(out.days[0].line).not.toMatch(/No sales register is connected/);
++    // A viewer the money is withheld from gets the same line and the same
++    // null: neither carries a figure.
++    const staff = await service.windowFor("r1", YESTERDAY, YESTERDAY, {
++      seesHouseMoney: false,
++    });
++    expect(staff.posConnected).toBeNull();
++    expect(staff.days[0].line).toBe(out.days[0].line);
+   });
+ 
+   it("the same day, read whole, is paired with its net takings", async () => {
+diff --git a/apps/api-gateway/src/calendar/recorded-days.service.ts b/apps/api-gateway/src/calendar/recorded-days.service.ts
+index 9b3d17239..977537f39 100644
+--- a/apps/api-gateway/src/calendar/recorded-days.service.ts
++++ b/apps/api-gateway/src/calendar/recorded-days.service.ts
+@@ -51,6 +51,12 @@ import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
+  * `posConnected: false` is the fourth answer and it is about the RESTAURANT,
+  * not the window: a house that has never had a check land has no ledger at all,
+  * and every day in the window is `unknown` rather than `silent`.
++ *
++ * `posConnected: null` is the register refusing (ADR 0287 §Forks F4, on ADR
++ * 0292): the read that would answer it failed or could not be proved whole, so
++ * whether a check has ever landed is NOT KNOWN, and `refusal` says why. It is
++ * never `false` in that state: false is "this house has no register", and a
++ * register that could not be read is not one that does not exist.
+  */
+ 
+ /** One day the ledger can speak about. */
+@@ -83,9 +89,11 @@ export interface RecordedWindow {
+   to: string;
+   /**
+    * False when this restaurant has never had a POS check land. Every day is
+-   * then unknown, and no cell may draw a zero.
++   * then unknown, and no cell may draw a zero. Null exactly when `refusal` is
++   * set: the register could not be read, so whether a check ever landed is
++   * not known (ADR 0287 §Forks F4).
+    */
+-  posConnected: boolean;
++  posConnected: boolean | null;
+   /** Only days with something to say. A day absent here is `silent`. */
+   days: RecordedDay[];
+   /**
+@@ -218,13 +226,16 @@ export class RecordedDaysService {
+       // same empty array to a caller reading only `data`, which is the exact
+       // defect ADR 0020 exists to prevent. A register read only in part is
+       // refused the same way: half a month drawn would look like closures.
++      // And never `posConnected: false`: that says the house has no register,
++      // and the day's line would then say so over a register that exists but
++      // could not be read. Null is "not known" (ADR 0287 §Forks F4).
+       this.logger.warn(
+         `pos_checks unreadable for r=${restaurantId}: ${err.message}`,
+       );
+       return {
+         from,
+         to,
+-        posConnected: false,
++        posConnected: null,
+         days: [],
+         refusal:
+           err.reason === "read_failed"
+@@ -246,10 +257,12 @@ export class RecordedDaysService {
+         .eq("restaurant_id", restaurantId)
+         .limit(1);
+       if (anyError) {
++        // The probe is the one read that decides `posConnected`, so when it
++        // fails the answer is not known: null, beside the refusal, never false.
+         return {
+           from,
+           to,
+-          posConnected: false,
++          posConnected: null,
+           days: [],
+           refusal: "The sales register could not be read.",
+         };
+diff --git a/apps/web/src/pages/calendar/next/CalendarNext.test.tsx b/apps/web/src/pages/calendar/next/CalendarNext.test.tsx
+index fa0ac5f84..ccfcfeeed 100644
+--- a/apps/web/src/pages/calendar/next/CalendarNext.test.tsx
++++ b/apps/web/src/pages/calendar/next/CalendarNext.test.tsx
+@@ -1221,6 +1221,13 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
+     expect(panel.textContent).not.toContain(NET());
+     expect(panel.textContent).not.toMatch(/net sales · |net sales not recorded/);
+     expect(mark.textContent).not.toMatch(/\$\s?0|0\.00/);
++    // The covers beside it are not known either (ADR 0287 F4): the em dash and
++    // "covers could not be read", never the 41 that reached the page.
++    const covers = panel.querySelector('[data-record="unreadable"]') as HTMLElement;
++    expect(covers).toBeTruthy();
++    expect(within(covers).getByText('covers could not be read')).toBeInTheDocument();
++    expect(within(covers).getByText('—')).toBeInTheDocument();
++    expect(panel.textContent).not.toMatch(/covers · recorded|covers not recorded/);
+     // and the Day view agrees
+     fireEvent.click(screen.getByRole('button', { name: 'Day' }));
+     expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
+@@ -1231,16 +1238,29 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
+   });
+ 
+   it('says it on a refused day with no recorded half too, where the gateway sends only the weather', () => {
++    // The day as the gateway sends it under a refusal since ADR 0287 F4:
++    // weather only, `posConnected: null`, and the refused line.
++    const line = "The sales register could not be read, so this day's trading is not known.";
+     state.current = mkData({
+       record: recordWindow({
+-        days: [reconciled({ recorded: null })],
+-        window: { recordedRefusal: 'The sales register could not be read.' },
++        days: [reconciled({ recorded: null, line })],
++        window: { recordedRefusal: 'The sales register could not be read.', posConnected: null },
+       }),
+     });
+     draw();
+-    const mark = openDay().querySelector('[data-takings]') as HTMLElement;
++    // The month cell's covers mark already says it, not "covers not recorded".
++    const cellMark = document.querySelector('.cn-cell [data-record="unreadable"]') as HTMLElement;
++    expect(cellMark).toBeTruthy();
++    expect(within(cellMark).getByText('covers could not be read')).toBeInTheDocument();
++    const panel = openDay();
++    const mark = panel.querySelector('[data-takings]') as HTMLElement;
+     expect(mark).toHaveAttribute('data-takings', 'unreadable');
+     expect(within(mark).getByText('net sales could not be read')).toBeInTheDocument();
++    // Three marks, one fact: the covers, the takings and the line all say the
++    // register could not be read, and nothing says there is no register.
++    expect(within(panel).getByText('covers could not be read')).toBeInTheDocument();
++    expect(within(panel).getByText(line)).toBeInTheDocument();
++    expect(document.body.textContent).not.toMatch(/covers not recorded|No sales register is connected/);
+   });
+ 
+   it('draws no takings at all for a withheld viewer under a refusal (F1 before F3)', () => {
+@@ -1252,6 +1272,9 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
+     const panel = openDay();
+     expect(panel.querySelector('[data-takings]')).toBeNull();
+     expect(panel.textContent).not.toMatch(/net sales/);
++    // Covers are not house money: the withheld viewer is told they could not
++    // be read, like everyone else (ADR 0287 F4).
++    expect(within(panel).getByText('covers could not be read')).toBeInTheDocument();
+   });
+ });
+ 
+diff --git a/apps/web/src/pages/calendar/next/MonthLedger.tsx b/apps/web/src/pages/calendar/next/MonthLedger.tsx
+index 5f1319308..ad0f91c09 100644
+--- a/apps/web/src/pages/calendar/next/MonthLedger.tsx
++++ b/apps/web/src/pages/calendar/next/MonthLedger.tsx
+@@ -157,7 +157,7 @@ export function DayLedger({
+           day only; the month cell stays covers-only (ADR 0287). */}
+       <div className="cn-row" style={{ gap: 12, marginBottom: 6 }}>
+         {record ? (
+-          <DayRecordMark day={record} />
++          <DayRecordMark day={record} refused={!!data.record.window?.recordedRefusal} />
+         ) : (
+           <SkyMark reading={sky} />
+         )}
+@@ -321,7 +321,10 @@ export default function MonthLedger({
+               <span className="cn-daynum">{d.getDate()}</span>
+               {past ? (
+                 record ? (
+-                  <DayRecordMark day={record} />
++                  <DayRecordMark
++                    day={record}
++                    refused={!!data.record.window?.recordedRefusal}
++                  />
+                 ) : (
+                   <SkyMark reading={sky} />
+                 )
+diff --git a/apps/web/src/pages/calendar/next/SkyMark.tsx b/apps/web/src/pages/calendar/next/SkyMark.tsx
+index 71f13e387..cb8169722 100644
+--- a/apps/web/src/pages/calendar/next/SkyMark.tsx
++++ b/apps/web/src/pages/calendar/next/SkyMark.tsx
+@@ -146,26 +146,47 @@ export function SkyMark({ reading }: SkyMarkProps) {
+  * never says "out by N": scoring the forecast would need either an observation
+  * (nothing records one) or a covers model (slice 9, withheld below ninety
+  * observed service days). The pair is kept; the score is not claimed.
++ *
++ * When the sales register refused (`refused`, the window's `recordedRefusal`),
++ * the day's covers are not known: the em dash and "covers could not be read",
++ * never "covers not recorded", which says the register sent none (ADR 0287
++ * §Forks F4, after the founder's "Say 'could not be read'", ADR 0292 fork 3).
++ * It never draws a covers figure in that state, even one that reached the
++ * page. Covers are not house money, so every role sees this.
+  */
+-export function DayRecordMark({ day }: { day: ReconciledDay }) {
++export function DayRecordMark({
++  day,
++  refused = false,
++}: {
++  day: ReconciledDay;
++  refused?: boolean;
++}) {
+   const record = day.recorded;
+   const advance = day.forecastInAdvance;
+ 
+   return (
+-    <span className="cn-record" title={day.line}>
++    <span
++      className="cn-record"
++      title={day.line}
++      data-record={refused ? 'unreadable' : undefined}
++    >
+       <span className="cn-record-figure">
+-        {record?.excluded
+-          ? 'closed'
+-          : record && record.covers !== null
+-            ? record.covers
+-            : EM}
++        {refused
++          ? EM
++          : record?.excluded
++            ? 'closed'
++            : record && record.covers !== null
++              ? record.covers
++              : EM}
+       </span>
+       <span className="cn-record-tag">
+-        {record?.excluded
+-          ? 'ruled out'
+-          : record && record.covers !== null
+-            ? 'covers · recorded'
+-            : 'covers not recorded'}
++        {refused
++          ? 'covers could not be read'
++          : record?.excluded
++            ? 'ruled out'
++            : record && record.covers !== null
++              ? 'covers · recorded'
++              : 'covers not recorded'}
+       </span>
+       {advance && (
+         <span className="cn-record-said">
+diff --git a/apps/web/src/pages/calendar/next/useCalendarNextData.ts b/apps/web/src/pages/calendar/next/useCalendarNextData.ts
+index ca06ecb10..43fe95d65 100644
+--- a/apps/web/src/pages/calendar/next/useCalendarNextData.ts
++++ b/apps/web/src/pages/calendar/next/useCalendarNextData.ts
+@@ -264,7 +264,13 @@ export interface DayRecordWindow {
+    * takings at all, not "not recorded".
+    */
+   takingsWithheld?: true;
+-  posConnected: boolean;
++  /**
++   * False: this house has never had a POS check land. Null: the sales register
++   * refused (`recordedRefusal` is set), so that is not known, and no line may
++   * say "no register" (ADR 0287 §Forks F4). A gateway from before F4 sent
++   * `false` beside a refusal; the page reads `recordedRefusal` first either way.
++   */
++  posConnected: boolean | null;
+   recordedRefusal: string | null;
+   weatherRefusal: string | null;
+   pairsWritten: number;

@@ -1,0 +1,201 @@
+diff --git a/.planning/decisions/0305-a-state-is-read-inside-its-house-country.md b/.planning/decisions/0305-a-state-is-read-inside-its-house-country.md
+index 54c2d4e30..383a7a4c7 100644
+--- a/.planning/decisions/0305-a-state-is-read-inside-its-house-country.md
++++ b/.planning/decisions/0305-a-state-is-read-inside-its-house-country.md
+@@ -42,7 +42,7 @@ Asked 2026-10-07 with AskUserQuestion, answered at **19:48:13Z**. Recorded at `a
+ 
+ ## Decision
+ 
+-**A house's state is read only inside its recorded country. A house with no country has no state read, and its panel asks for the country with a link to Settings.**
++**A house's state is read only inside its recorded country. A house with no country has no state read, and its panel asks for the country with a link to Settings** [Added 2026-10-08, coordinator: on the market panel; `/connections` does not ask yet, see Consequences]**.**
+ 
+ The rule lives in one function, `resolveHouseJurisdiction(stateProvince, country)` in `apps/api-gateway/src/price-index/house-jurisdiction.ts:72-92`:
+ 
+@@ -61,7 +61,7 @@ All five call sites now read through it. Four call `resolveHouseJurisdiction(raw
+ - The commodity register returns only the world series. FAO speaks for everywhere and is not a state-based price. It also returns the flag.
+ - The review service puts the house in no pool. For such a house `GET /price-index/uploads` keeps its existing sentence, "This house records no jurisdiction this register recognises… Set the address in Settings."
+ 
+-On the web, `MarketIndexPanel` draws *"This house's country isn't recorded, so its state isn't read and no state-based price is shown…"* with a link, **Set the country in Settings**, to `/settings?tab=locations`, in place of the generic silence. This is the shape of the dashboard's no-time-zone line (`SalesCalendar.tsx:338`, `dn-zone-unset`, ADR 0290). `useHouseIndex` sets the flag only on a literal `true` from the wire. [Added 2026-10-08, coordinator: the panel's commodity section asks too. When `useHouseCommodity` reads a literal `true` from `GET /commodity-index/me`, the section draws *"This house's country isn't recorded, so no country's or state's series is read here, and only a series that speaks for everywhere is listed."* with the same link, **Set the country in Settings**, to `/settings?tab=locations` (`data-testid="mi-commodity-country-unset"`). The register still lists the world series, which `seriesForJurisdiction(null)` returns (`commodity.registry.ts:721-727`). `/connections` does not yet: see Consequences.]
++On the web, `MarketIndexPanel` draws *"This house's country isn't recorded, so its state isn't read and no state-based price is shown…"* with a link, **Set the country in Settings**, to `/settings?tab=locations`, in place of the generic silence. This is the shape of the dashboard's no-time-zone line (`SalesCalendar.tsx:338`, `dn-zone-unset`, ADR 0290). `useHouseIndex` sets the flag only on a literal `true` from the wire. [Added 2026-10-08, coordinator: the panel's commodity section asks too. When `useHouseCommodity` reads a literal `true` from `GET /commodity-index/me`, the section draws *"This house's country isn't recorded, so no country's or state's series is read here, and only a series that speaks for everywhere is listed."* with the same link, **Set the country in Settings**, to `/settings?tab=locations` (`data-testid="mi-commodity-country-unset"`). The register still lists the world series, which `seriesForJurisdiction(null)` returns (`commodity.registry.ts:721-727`). `/connections` does not yet: see Consequences.] [Added 2026-10-08, coordinator: a house both endpoints flag is asked once in the box, not twice. Both read the same `restaurants` row, so a house with no country is normally flagged by both, and the box drew two near-identical sentences with two links named **Set the country in Settings**. Now, when the register's ask (`mi-country-unset`) is drawn and the commodity section is flagged too, that one ask adds *"No country's or state's commodity series is read either, so the commodity and market index section lists only a series that speaks for everywhere."* and the section draws no ask of its own. The section still asks by itself when the register is not asking: its read failed, it is still loading, or it is not flagged.]
+ 
+ **A failed read is not a missing country.** `forHouse` in the price index and in commodity now tracks `readFailed`. A `restaurants` read that throws keeps "could not be read… unknown, not empty" and never sets `countryNotRecorded` ([[0067-a-failed-read-is-never-an-empty-one]]). Without that, a database fault would have sent an owner to Settings to fix an address that was never wrong. The distributor feed already returned early on a failed read.
+ 
+@@ -98,7 +98,7 @@ It must land after this PR, or the editor writes rows the old readers take for M
+ - **Owed follow-ups, not in this PR:**
+   - `/connections` prints the distributor feed's sentence as plain text and has no link to Settings. [Corrected 2026-10-08, coordinator: still owed, and so the founder's pick *"The panels say the country isn't recorded and link to Settings"* is built on the market panel only. The fix needs three files this PR cannot hold under its 15-file cap: `DistributorFeedPanel.tsx` (draw the link when the catalogue's `countryNotRecorded` is a literal `true`), `useConnectionsNextData.ts` (the field on `DistributorCatalogueVM`) and `DistributorFeedPanel.test.tsx`. The gateway already sends the flag (`distributor-feed.service.ts:177`).]
+   - The commodity section of `MarketIndexPanel` does not read the flag. The index register above it carries the ask. [Corrected 2026-10-08, coordinator: built in this PR. `useHouseCommodity.ts` reads the flag and the section asks with a link (Decision, "What a house with no country gets").]
+-  - [Added 2026-10-08, coordinator: this ADR's index row in `.planning/decisions/README.md` moved to the next PR, to keep this one at 15 files. No guard requires the row.]
++  - [Added 2026-10-08, coordinator: this ADR's index row in `.planning/decisions/README.md` moved to the next PR, to keep this one at 15 files. No guard requires the row.] [Corrected 2026-10-08, coordinator: ADR 0305 ships with no index row, because this PR is at the 15-file cap. Adding the row later is not free: `scripts/pr_audit_gate.py` `_index_pure_append` (`:1218-1247`) frees a README edit only when the same PR adds that ADR, so a later PR adding row 0305 while 0305 is already on `main` makes a gate-owned edit and needs the founder's word. It is not the only ADR without a row: 22 ADR numbers in `.planning/decisions/` on `origin/main` `c4005eb09` appear nowhere in `README.md` (measured by grepping the file for each number).]
+   - `GET /price-index/uploads` keeps one sentence for no country, an unrecognised country and a failed read (`jurisdictionOfHouse` returns null for all three, as before).
+ - **Switching the country step to `HOUSE_COUNTRIES`** (now on `main`, `organizations/house-state-country.ts`, `resolveHouseCountry`) is owed, then retiring the mirror test. It is not a pure swap: that table lists "England", "Scotland", "Wales" and "Northern Ireland" as aliases of the United Kingdom, so a house whose country reads "England" would resolve to `GB`, where `jurisdiction.ts` reads it as `GB-ENG` today. The follow-up has to keep the nation when no state is written.
+ - **Revisit when:** the country step moves to `HOUSE_COUNTRIES`, the register gains a fourth country with a subdivision list, or a house's country is found written in a spelling the web's table does not hold.
+@@ -109,3 +109,4 @@ It must land after this PR, or the editor writes rows the old readers take for M
+ |---|---|---|
+ | 2026-10-07 | — | Created by lane countryfirst on `fix/market-readers-read-inside-the-country` from `origin/main` `ca3582988`. 20 mutations were run against the tests, one per new behaviour, and every one failed the suite. Every claim row was also run by hand and mutated until it failed. Unaudited. |
+ | 2026-10-08 | coordinator | Verifier's shoulds answered: the Links cite for the no-time-zone line is corrected to ADR 0290; the commodity section now asks for the country, with 5 mutations killed; `/connections` is named as still owed; the README row moved to the next PR. Merged `origin/main`. Unaudited. |
++| 2026-10-08 | coordinator | Second round: the Decision rule names the market panel; the owed README row is worded as a gate-owned edit needing the founder's word; a house flagged by both endpoints is asked once in the box (3 new test cases, 4 mutations killed). Merged `origin/main` `c4005eb09`. Unaudited. |
+diff --git a/apps/web/src/pages/notifications/next/MarketIndexPanel.test.tsx b/apps/web/src/pages/notifications/next/MarketIndexPanel.test.tsx
+index bb72e13c2..8ed6931d5 100644
+--- a/apps/web/src/pages/notifications/next/MarketIndexPanel.test.tsx
++++ b/apps/web/src/pages/notifications/next/MarketIndexPanel.test.tsx
+@@ -307,6 +307,8 @@ describe('MarketIndexPanel — a house with no country is asked for it', () => {
+     ).toHaveAttribute('href', '/settings?tab=locations');
+     // One sentence, not two: the generic silence is not drawn beside it.
+     expect(screen.getAllByRole('status')).toHaveLength(1);
++    // The commodity register is not flagged here, so the ask says nothing of it.
++    expect(asked.textContent).not.toContain('commodity');
+   });
+ 
+   it('a house whose country is recorded is not asked for it', () => {
+@@ -400,6 +402,53 @@ describe('MarketIndexPanel — the commodity section asks a house with no countr
+     expect(screen.queryByTestId('mi-country-unset')).toBeNull();
+   });
+ 
++  it('a house both registers flag is asked once, and the one ask says what the commodity section lists', () => {
++    // Both endpoints read the same `restaurants` row, so a real house with no
++    // country is flagged by both. Two asks with two identically named links in
++    // one box would say one thing twice.
++    mockIndex.current = { ...READY, countryNotRecorded: true };
++    mockCommodity.current = { ...READY_COMMODITY, countryNotRecorded: true };
++    render(
++      <MemoryRouter>
++        <MarketIndexPanel />
++      </MemoryRouter>,
++    );
++    expect(screen.queryByTestId('mi-commodity-country-unset')).toBeNull();
++    expect(screen.getAllByText(/country isn’t recorded/)).toHaveLength(1);
++    const links = screen.getAllByRole('link', { name: 'Set the country in Settings' });
++    expect(links).toHaveLength(1);
++    expect(links[0]).toHaveAttribute('href', '/settings?tab=locations');
++    const asked = screen.getByTestId('mi-country-unset');
++    expect(asked).toContainElement(links[0]);
++    // Both asks' meaning, in the one line.
++    expect(asked.textContent).toContain('no state-based price is shown');
++    expect(asked.textContent).toContain(
++      'the commodity and market index section lists only a series that speaks for everywhere',
++    );
++  });
++
++  it('the commodity section still asks when the register could not be read', () => {
++    // The flag is set here although useHouseIndex clears it on a failed read, so
++    // the panel's own `state === 'ready'` guard is what this pins.
++    mockIndex.current = {
++      ...READY,
++      countryNotRecorded: true,
++      state: 'unreadable',
++      failure: { message: 'boom', forbidden: false, status: 500 },
++    };
++    mockCommodity.current = { ...READY_COMMODITY, countryNotRecorded: true };
++    render(
++      <MemoryRouter>
++        <MarketIndexPanel />
++      </MemoryRouter>,
++    );
++    const asked = screen.getByTestId('mi-commodity-country-unset');
++    expect(
++      within(asked).getByRole('link', { name: 'Set the country in Settings' }),
++    ).toHaveAttribute('href', '/settings?tab=locations');
++    expect(screen.queryByTestId('mi-country-unset')).toBeNull();
++  });
++
+   it('a house whose country is recorded is not asked for it', () => {
+     mockCommodity.current = { ...READY_COMMODITY };
+     render(
+diff --git a/apps/web/src/pages/notifications/next/MarketIndexPanel.tsx b/apps/web/src/pages/notifications/next/MarketIndexPanel.tsx
+index 76a848dee..c7921217f 100644
+--- a/apps/web/src/pages/notifications/next/MarketIndexPanel.tsx
++++ b/apps/web/src/pages/notifications/next/MarketIndexPanel.tsx
+@@ -59,7 +59,7 @@ import {
+ import { Link } from 'react-router-dom';
+ import { EM, MONO, SANS, SERIF } from './nt-format';
+ import { HouseIndexLine, HouseIndexSource, useHouseIndex } from './useHouseIndex';
+-import { CommoditySeriesVM, useHouseCommodity } from './useHouseCommodity';
++import { CommoditySeriesVM, HouseCommodityVM, useHouseCommodity } from './useHouseCommodity';
+ 
+ /** The class, in the words a reader knows. An unmapped class prints its key. */
+ const CLASS_LABEL: Record<string, string> = {
+@@ -506,10 +506,14 @@ function dayOfUtc(iso: string): string {
+   });
+ }
+ 
+-/** The commodity section: every series that speaks for this house. */
+-function CommoditySection() {
+-  const c = useHouseCommodity();
+-
++/**
++ * The commodity section: every series that speaks for this house.
++ *
++ * `askForCountry` is decided by the box around it (ADR 0305): this section asks
++ * for the country only when the register's own ask is not drawn, so a house with
++ * no country is asked once per box, not twice.
++ */
++function CommoditySection({ c, askForCountry }: { c: HouseCommodityVM; askForCountry: boolean }) {
+   if (c.state === 'loading') return <div className="nt-skel mt-3 h-12" aria-hidden />;
+ 
+   return (
+@@ -554,8 +558,9 @@ function CommoditySection() {
+           "The panels say the country isn't recorded and link to Settings").
+           The gateway read no state or country for this house, so only a
+           series that speaks for everywhere is listed below; this says so and
+-          asks for the country, as the register above does. */}
+-      {c.state === 'ready' && c.countryNotRecorded && (
++          asks for the country. When the register's ask is drawn too, that one
++          ask carries this sentence's meaning and this one is not drawn. */}
++      {askForCountry && (
+         <p
+           role="status"
+           data-testid="mi-commodity-country-unset"
+@@ -625,8 +630,19 @@ function Withheld({ source }: { source: HouseIndexSource }) {
+ 
+ export function MarketIndexPanel() {
+   const m = useHouseIndex();
++  const c = useHouseCommodity();
+   const withheld = m.sources.filter((s) => s.withheld);
+ 
++  // A house with no country (ADR 0305). Both registers read the same
++  // `restaurants` row, so such a house is usually flagged by both, and two asks
++  // with two identical links in one box would say one thing twice. The box then
++  // asks once, in the register's line, which also says what the commodity
++  // section lists. The commodity section asks on its own only when the
++  // register is not asking (its read failed, it is still loading, or it is not
++  // flagged).
++  const indexAsks = m.state === 'ready' && m.countryNotRecorded;
++  const commodityAsks = c.state === 'ready' && c.countryNotRecorded;
++
+   // Only the carried books whose lines are actually on this screen (ADR 0128
+   // Q4). A basis note beside a book the reader cannot see would be an answer to
+   // a question nobody asked; a book with no drawn line is either held (the
+@@ -730,7 +746,7 @@ export function MarketIndexPanel() {
+           read: the two are separate endpoints over separate tables, and hiding
+           one behind the other's failure would make a working register look
+           silent. */}
+-      <CommoditySection />
++      <CommoditySection c={c} askForCountry={commodityAsks && !indexAsks} />
+ 
+       {/* A book somebody carried in that nobody has admitted yet (ADR 0128).
+           Drawn whether or not there are lines: a jurisdiction can hold a new
+@@ -802,7 +818,9 @@ export function MarketIndexPanel() {
+           "Ask for the country (Recommended)"). The house's state was not read,
+           because a code names different places in different countries, so the
+           box asks for the country with a link, the way a house with no time
+-          zone is asked (SalesCalendar's `dn-zone-unset`). */}
++          zone is asked (SalesCalendar's `dn-zone-unset`). When the commodity
++          register is flagged too, this one ask also says what that section
++          lists, and the section draws no ask of its own. */}
+       {m.state === 'ready' && m.countryNotRecorded && (
+         <p
+           role="status"
+@@ -811,8 +829,11 @@ export function MarketIndexPanel() {
+           style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+         >
+           This house’s country isn’t recorded, so its state isn’t read and no state-based price
+-          is shown. A state code names different places in different countries (MI is Michigan
+-          in the United States and Milano in Italy), so nothing is guessed.{' '}
++          is shown.{' '}
++          {commodityAsks &&
++            'No country’s or state’s commodity series is read either, so the commodity and market index section lists only a series that speaks for everywhere. '}
++          A state code names different places in different countries (MI is Michigan in the
++          United States and Milano in Italy), so nothing is guessed.{' '}
+           <Link
+             to="/settings?tab=locations"
+             className="underline underline-offset-2"

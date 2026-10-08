@@ -1,0 +1,51 @@
+612 doortime f930e69584967e9366c89cb9523689a512b95b71 prior PASS 78c0f16e5d4998c28554b7502640e49b0fc2f5f7 audits/612-78c0f16e5/report.md
+613 stateeditor 50c9f69fb716be27548a05fda0fd233a7d49e430 prior PASS c5f27f7a8886bd772187832b35ee8c393ffea6c3 audits/613-c5f27f7a8/report.md
+614 fmt2 506247199422d1bd295b8a5ac8d67ee8906e25bf prior PASS f6b57edae4dd65d33d1216bcffda08d74e44be70 audits/614-f6b57edae/report.md
+617 proxies f013a3aa66bd167236a563c0091b4ee7b5ad6e64 prior PASS 22a192cf2a2d24add912d7da48f45dd19f08404e audits/617-22a192cf2/report.md
+618 booth 28c59e9f8ec00086a1eff7dbd32b1da35012793d prior PASS 764d605546bcd3457646d837998659d62fc21aca audits/618-764d60554/report.md
+628 cellardoor 84aec1eeaff7a32a7e3a82f46e40caf192739c8a prior NONE (first full audit)
+#612 12a1c6b6ff62608a13adfc8614f24e9aa73820b0 prior BLOCK f930e69584967e9366c89cb9523689a512b95b71 report audits/612-f930e6958/report.md (docs-only fix; audit when CI green)
+#612 NOW 3b0e69b8caafc5f864897c1e4c8ddd2850fa86c3 (supersedes 12a1c6b6f) prior BLOCK f930e69584967e9366c89cb9523689a512b95b71 — fresh full audit when CI green
+#617 local d6da23311 (re-sync a323cc80b + ADR 0298 bracket) prior PASS f013a3aa66bd167236a563c0091b4ee7b5ad6e64 report audits/617-f013a3aa6/report.md — push after claims, delta audit
+#614 local 899075ddc (re-sync a323cc80b) prior PASS f6b57edae4dd65d33d1216bcffda08d74e44be70 report audits/614-f6b57edae/report.md — push after claims, delta audit
+#618 PUSHED 4faa00cf30899bd02e3ab34e918815b9e66ac7ee (f518d76ea merge a323cc80b + f59920612 tally fix + 4faa00cf3 wording) prior PASS 28c59e9f8ec00086a1eff7dbd32b1da35012793d report audits/618-28c59e9f8/report.md — DELTA audit with a code change (fixes security Finding 1) when CI green
+#652 sourcesunread 787eed9f9 (synced b30ca260e) — first full audit owed
+#654 houseswitch 505a03400 (synced b30ca260e) — first full audit when CI green (23:18Z bundle: CI pending)
+#653 linepair MERGED b30ca260e (PASS at 2a9ea6928, 23:06Z); deploy re-read owed
+#628 cellardoor c21caa2c9 after BLOCK 0c5e3b55e (fbdbbd51f bundle refused: owned README) — FRESH full audit when CI green
+#656 firstmenu 2d81f8a5d (synced) — first full audit when CI green (23:18Z bundle: CI pending)
+#655 rawline 220e3747d (synced) — first full audit owed (pairs with #656)
+#657 moneybell 483921c84 (synced) — first full audit owed
+#658 a045index OPENED 623ee73dc — OWNED (README row): founder's word required before any merge
+#659 docwrites 81599fcf4 OPENED 23:39Z — audit when CI green (fresh)
+#654/#656/#655/#652 audits RUNNING 23:39Z (wf_390910f2-51c / wf_17f8b2df-03b / wf_a87a50a3-0a0 / wf_92fca043-ee3)
+#655 BLOCK 220e3747d — research wf_4b1156ad-fce, then rework, then FRESH full audit
+#654 BLOCK 505a03400 — research wf_77969892-96f, then ADR + prose, then FRESH full audit
+#660 dayexclude 0fff84f08 OPENED 23:47Z — audit when CI green (fresh)
+#628 cellardoor MERGED 62f8967b4 00:05Z (PASS c21caa2c9) — deploy_check owed; #658 needs founder's word
+#661 mailguess 64a7e6758 OPENED 00:11Z — first full audit when CI green
+#652 sourcesunread f581912c4 00:16Z — DELTA vs PASS 787eed9f9 when CI green
+#611 recregisters ada37ebb1 00:22Z — DELTA vs PASS 5608cb36a when CI green
+#650/#619/#625/#616 — round-2 fixes wf_3c959116-1fe running
+#654 — rule refute+ADR+rework wf_a31683b8-96d running; ADR docs PR merges first; then FRESH full audit
+#657 e27f41d22 / #659 10642298c / #660 90501d105 / #623 5c68139e5 — re-synced 00:38Z; first full audits when CI green
+#652 DELTA wf_dd77a366-843 RUNNING; #611 DELTA wf_ca8d564c-f44 RUNNING
+#655/#656 rework wf_23152dcd-96f RUNNING (then FRESH full audits, #655 first)
+delivverify build wf_2d077ab7-d6c RUNNING (PR after #659 merges)
+#650/#619/#625/#616 — round-2 shoulds wf_18c1deb3-0e2 RUNNING 00:52Z; then push + FRESH full audits (#625 retarget to main)
+#661 CI RED 00:54Z (read-error guard) — fix agent running; audit after re-push + green
+#657 FULL audit wf_069268fe-f98 RUNNING 00:54Z; #623 FULL audit wf_b288b163-c0a RUNNING 00:54Z
+#652 MERGED be9a16ccf 00:55Z (delta PASS f581912c4) — deploy_check running; version on main = 10, later merges set 11+; #626 semantic re-audit owed
+#611 PASS ada37ebb1 posted 00:59Z; re-synced 6e1ea69bb (#652 overlap 2 files, clean merge) — push, then DELTA vs PASS ada37ebb1
+#623 BLOCK 5c68139e5 01:03Z (ADR 0290:109 prose) — fixed 8c964cbd2, re-sync running; FRESH full audit after push + green
+#611 PUSHED 6e1ea69bb 01:12Z — DELTA vs PASS ada37ebb1 when CI green
+#623 PUSHED 5f99edfb3 01:17Z — FRESH full audit when green
+#614 PUSHED 559d86bb7 01:17Z — DELTA vs PASS f6b57edae when green
+#661 PUSHED de8717937 01:29Z — FIRST full audit when green
+#654 — ADR 0306 round-2 wf_ca4f970c-b77 RUNNING 01:31Z; ADR docs PR merges first; then #654 FRESH full audit
+servesize/capreads SPLIT + ordersccy/promogate/receivingccy musts — wf_62b33fab-349 RUNNING 01:34Z
+#611 DELTA vs PASS ada37ebb1 at 6e1ea69bb wf_6347f52e-98f RUNNING ~01:50Z [time corrected 2026-10-08: written by 01:38:59Z (file mtime), stamped ahead of the clock]; KILLED by the 01:47:48Z reboot, see p4-scratch/damage-2026-10-08/README.md
+#614 DELTA vs PASS f6b57edae at 559d86bb7 wf_28aa02b7-e80 RUNNING ~01:50Z [time corrected 2026-10-08: written by 01:38:59Z (file mtime), stamped ahead of the clock]; KILLED by the 01:47:48Z reboot, see p4-scratch/damage-2026-10-08/README.md
+#623 FRESH full (after BLOCK 5c68139e5) at 5f99edfb3 wf_ddb50b0d-61b RUNNING ~01:50Z [time corrected 2026-10-08: written by 01:38:59Z (file mtime), stamped ahead of the clock]; KILLED by the 01:47:48Z reboot, see p4-scratch/damage-2026-10-08/README.md
+units #626 / countryfirst / caltakings #610 round 3 (shoulds + re-sync be9a16ccf, units version 11) wf_0a6948c2-be9 RUNNING ~01:48Z [time corrected 2026-10-08: written by 01:38:59Z (file mtime), stamped ahead of the clock]; KILLED by the 01:47:48Z reboot, see p4-scratch/damage-2026-10-08/README.md
+#623 PASS at 5f99edfb3 POSTED 01:55Z (assembled from the wf_ddb50b0d-61b journal after the reboot killed the post step)

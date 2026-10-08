@@ -1,0 +1,2 @@
+> **[2026-10-07 21:07Z, coordinator, push] Pushed head `3b0e69b8c`.** It merges origin/main `a323cc80b` (#613, the location editor) onto `12a1c6b6f`; the only conflict was the README index (both rows kept by `merge_main.sh`). At this head: the six fast guards exit 0, gate ownership `[]`, files 15, decision claims **936/936** (Python 3.11). The fresh audit owed after the BLOCK at `f930e6958` runs on this head.
+

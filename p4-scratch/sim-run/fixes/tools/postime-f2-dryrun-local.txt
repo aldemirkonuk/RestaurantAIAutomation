@@ -1,0 +1,404 @@
+ADR 0281 F2 dry run: LOCAL proof on synthetic fixtures. Never production.
+Run 2026-10-05 ~12:07Z, PostgreSQL 17.11 (container fixlane-pg, 127.0.0.1:55440).
+Database f2dry_603 = CREATE DATABASE ... TEMPLATE main_tpl (main_tpl at 28d32de36, untouched),
+then the two migrations main_tpl lacks, from wt-fix-t11 HEAD (main 2b6782291 + one test file):
+  20261221093000_an_order_letter_is_staged_once.sql
+  20261222100000_a_pos_sale_is_dated_by_its_check.sql
+Fixtures: postime-f2-dryrun-fixtures.sql (sha1 5e4dc519). Dry run: postime-f2-dryrun.sql (sha1 9d45e422),
+run as: PGOPTIONS='-c default_transaction_read_only=on' psql -X -v ON_ERROR_STOP=1 < postime-f2-dryrun.sql
+The scratch database was dropped after the run.
+
+================ RAW OUTPUT (verbatim) ================
+Pager usage is off.
+BEGIN
+SET
+            run_at             | session_zone | read_only |   role   | row_security | restaurants_visible | pos_checks_visible | ledger_pos_keys_visible | pour_events_pos_keys_visible | consumption_pos_notes_visible 
+-------------------------------+--------------+-----------+----------+--------------+---------------------+--------------------+-------------------------+------------------------------+-------------------------------
+ 2026-10-05 12:07:19.157025+00 | Etc/UTC      | on        | postgres | on           |                   4 |                 25 |                      26 |                            4 |                            13
+(1 row)
+
+Expanded display is on.
+-[ RECORD 1 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000001
+restaurant              | dry-f2 H1 Istanbul
+zone                    | Europe/Istanbul
+table                   | consumption
+rows_scanned            | 8
+would_change            | 4
+already_match           | 2
+no_check                | 1
+check_open              | 0
+unreadable_closed_at    | 1
+ambiguous               | 0
+partition_ok            | t
+bucket_unit             | house days
+b0                      | 1
+b1                      | 1
+b2_7                    | 0
+b8_30                   | 1
+b_gt30                  | 1
+shift_min               | -39 days -13:00:00
+shift_max               | -08:30:00
+void_rows               | 0
+legacy_pos_pos_notes    | 1
+recorded_ne_created     | 1
+change_till_not_kept    | 0
+change_till_no_zone     | 1
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 0
+-[ RECORD 2 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000001
+restaurant              | dry-f2 H1 Istanbul
+zone                    | Europe/Istanbul
+table                   | ledger (glass pour)
+rows_scanned            | 1
+would_change            | 1
+already_match           | 0
+no_check                | 0
+check_open              | 0
+unreadable_closed_at    | 0
+ambiguous               | 0
+partition_ok            | t
+bucket_unit             | house days
+b0                      | 0
+b1                      | 0
+b2_7                    | 0
+b8_30                   | 0
+b_gt30                  | 1
+shift_min               | -40 days -00:00:00.001652
+shift_max               | -40 days -00:00:00.001652
+void_rows               | 0
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 0
+change_till_no_zone     | 0
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 1
+-[ RECORD 3 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000001
+restaurant              | dry-f2 H1 Istanbul
+zone                    | Europe/Istanbul
+table                   | ledger (key)
+rows_scanned            | 18
+would_change            | 9
+already_match           | 2
+no_check                | 2
+check_open              | 1
+unreadable_closed_at    | 3
+ambiguous               | 1
+partition_ok            | t
+bucket_unit             | house days
+b0                      | 1
+b1                      | 2
+b2_7                    | 3
+b8_30                   | 1
+b_gt30                  | 2
+shift_min               | -39 days -13:00:00
+shift_max               | -08:30:00
+void_rows               | 1
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 1
+change_till_no_zone     | 1
+no_check_other_house    | 1
+pour_rows_not_pos_keyed | 0
+-[ RECORD 4 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000002
+restaurant              | dry-f2 H2 Los Angeles
+zone                    | America/Los_Angeles
+table                   | consumption
+rows_scanned            | 3
+would_change            | 2
+already_match           | 1
+no_check                | 0
+check_open              | 0
+unreadable_closed_at    | 0
+ambiguous               | 0
+partition_ok            | t
+bucket_unit             | house days
+b0                      | 0
+b1                      | 0
+b2_7                    | 1
+b8_30                   | 1
+b_gt30                  | 0
+shift_min               | -12 days -10:30:00
+shift_max               | -4 days -14:00:00
+void_rows               | 0
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 0
+change_till_no_zone     | 0
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 0
+-[ RECORD 5 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000002
+restaurant              | dry-f2 H2 Los Angeles
+zone                    | America/Los_Angeles
+table                   | ledger (glass pour)
+rows_scanned            | 2
+would_change            | 1
+already_match           | 0
+no_check                | 0
+check_open              | 0
+unreadable_closed_at    | 0
+ambiguous               | 1
+partition_ok            | t
+bucket_unit             | house days
+b0                      | 0
+b1                      | 1
+b2_7                    | 0
+b8_30                   | 0
+b_gt30                  | 0
+shift_min               | -1 days -01:00:00
+shift_max               | -1 days -01:00:00
+void_rows               | 0
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 0
+change_till_no_zone     | 0
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 0
+-[ RECORD 6 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000002
+restaurant              | dry-f2 H2 Los Angeles
+zone                    | America/Los_Angeles
+table                   | ledger (key)
+rows_scanned            | 4
+would_change            | 3
+already_match           | 1
+no_check                | 0
+check_open              | 0
+unreadable_closed_at    | 0
+ambiguous               | 0
+partition_ok            | t
+bucket_unit             | house days
+b0                      | 0
+b1                      | 0
+b2_7                    | 2
+b8_30                   | 1
+b_gt30                  | 0
+shift_min               | -12 days -10:30:00
+shift_max               | -1 days -22:00:00
+void_rows               | 0
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 0
+change_till_no_zone     | 0
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 0
+-[ RECORD 7 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000003
+restaurant              | dry-f2 H3 no zone
+zone                    | zone not set
+table                   | consumption
+rows_scanned            | 2
+would_change            | 2
+already_match           | 0
+no_check                | 0
+check_open              | 0
+unreadable_closed_at    | 0
+ambiguous               | 0
+partition_ok            | t
+bucket_unit             | 24 h steps (zone not set)
+b0                      | 1
+b1                      | 0
+b2_7                    | 0
+b8_30                   | 0
+b_gt30                  | 1
+shift_min               | -39 days -13:00:00
+shift_max               | -01:30:00
+void_rows               | 0
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 0
+change_till_no_zone     | 0
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 0
+-[ RECORD 8 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000003
+restaurant              | dry-f2 H3 no zone
+zone                    | zone not set
+table                   | ledger (key)
+rows_scanned            | 3
+would_change            | 3
+already_match           | 0
+no_check                | 0
+check_open              | 0
+unreadable_closed_at    | 0
+ambiguous               | 0
+partition_ok            | t
+bucket_unit             | 24 h steps (zone not set)
+b0                      | 1
+b1                      | 1
+b2_7                    | 0
+b8_30                   | 0
+b_gt30                  | 1
+shift_min               | -39 days -13:00:00
+shift_max               | -01:30:00
+void_rows               | 0
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 0
+change_till_no_zone     | 0
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 0
+-[ RECORD 9 ]-----------+--------------------------------------------------
+restaurant_id           | d0f20000-0000-4000-8000-000000000004
+restaurant              | dry-f2 H4 bad zone
+zone                    | zone not readable: Mars/Olympus_Mons
+table                   | ledger (key)
+rows_scanned            | 1
+would_change            | 1
+already_match           | 0
+no_check                | 0
+check_open              | 0
+unreadable_closed_at    | 0
+ambiguous               | 0
+partition_ok            | t
+bucket_unit             | 24 h steps (zone not readable: Mars/Olympus_Mons)
+b0                      | 0
+b1                      | 1
+b2_7                    | 0
+b8_30                   | 0
+b_gt30                  | 0
+shift_min               | -1 days -06:00:00
+shift_max               | -1 days -06:00:00
+void_rows               | 0
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 0
+change_till_no_zone     | 0
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 0
+-[ RECORD 10 ]----------+--------------------------------------------------
+restaurant_id           | ALL HOUSES
+restaurant              | 
+zone                    | 
+table                   | ledger (glass pour)
+rows_scanned            | 3
+would_change            | 2
+already_match           | 0
+no_check                | 0
+check_open              | 0
+unreadable_closed_at    | 0
+ambiguous               | 1
+partition_ok            | t
+bucket_unit             | per house only
+b0                      | 
+b1                      | 
+b2_7                    | 
+b8_30                   | 
+b_gt30                  | 
+shift_min               | -40 days -00:00:00.001652
+shift_max               | -1 days -01:00:00
+void_rows               | 0
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 0
+change_till_no_zone     | 0
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 1
+-[ RECORD 11 ]----------+--------------------------------------------------
+restaurant_id           | ALL HOUSES
+restaurant              | 
+zone                    | 
+table                   | consumption
+rows_scanned            | 13
+would_change            | 8
+already_match           | 3
+no_check                | 1
+check_open              | 0
+unreadable_closed_at    | 1
+ambiguous               | 0
+partition_ok            | t
+bucket_unit             | per house only
+b0                      | 
+b1                      | 
+b2_7                    | 
+b8_30                   | 
+b_gt30                  | 
+shift_min               | -39 days -13:00:00
+shift_max               | -01:30:00
+void_rows               | 0
+legacy_pos_pos_notes    | 1
+recorded_ne_created     | 1
+change_till_not_kept    | 0
+change_till_no_zone     | 1
+no_check_other_house    | 0
+pour_rows_not_pos_keyed | 0
+-[ RECORD 12 ]----------+--------------------------------------------------
+restaurant_id           | ALL HOUSES
+restaurant              | 
+zone                    | 
+table                   | ledger (key)
+rows_scanned            | 26
+would_change            | 16
+already_match           | 3
+no_check                | 2
+check_open              | 1
+unreadable_closed_at    | 3
+ambiguous               | 1
+partition_ok            | t
+bucket_unit             | per house only
+b0                      | 
+b1                      | 
+b2_7                    | 
+b8_30                   | 
+b_gt30                  | 
+shift_min               | -39 days -13:00:00
+shift_max               | -01:30:00
+void_rows               | 1
+legacy_pos_pos_notes    | 0
+recorded_ne_created     | 0
+change_till_not_kept    | 1
+change_till_no_zone     | 1
+no_check_other_house    | 1
+pour_rows_not_pos_keyed | 0
+
+ROLLBACK
+
+================ HAND CHECK, every number against the fixtures ================
+Import instants: H1/H3/H4 rows 2026-10-02 07:00Z (Istanbul 10:00); H2 rows 2026-10-02 17:00Z (LA 10:00 PDT).
+Target = LEAST(check closed_at, row created_at). Shift = target - today's value. All match the output above.
+
+H1 Istanbul, ledger (key), 18 rows
+  change 9:  h1-one  Oct 1 23:30 Ist -> Oct 2: 1 day, -10:30         | h1-same Oct 2 01:30 Ist: 0 days, -08:30 (UTC date differs, house day does not)
+             h1-forty Aug 23 21:00 Ist: 40 days, -39d13h            | h1-forty:void: same, 40 days (void_rows 1)
+             amb:w:2 -> only check 'amb' (Sep 25 13:00 Ist): 7 days, -6d21h
+             h1-nozone stored Sep 20 21:00Z = Sep 21 00:00 Ist: 11 days (change_till_no_zone 1)
+             h1-noraw Sep 30 15:00 Ist: 2 days (raw NULL: change_till_not_kept 1)
+             h1-off3 '+03:00' -> Sep 30 21:00 Ist: 2 days       | h1-rpc-bottle (real apply_stock_movement, no p_occurred_at): 1 day, -1 day
+             => b0 1, b1 2, b2_7 3, b8_30 1, b_gt30 2; min -39d13h (h1-forty), max -08:30 (h1-same)
+  already 2: h1-right (post-#603 shape), h1-future (closes Oct 5 > entry Oct 2: clamped to entry = today's value)
+  no_check 2: h1-gone; h2-only:w:1 (that check exists only in H2: no_check_other_house 1)
+  check_open 1: h1-open.  unreadable 3: h1-ddmm '03.10.2026', h1-epoch (a number), h1-off15 '+15:00'.
+  ambiguous 1: amb:x:w:1 (checks 'amb' and 'amb:x' both answer).   9+2+2+1+3+1 = 18
+H1 ledger (glass pour): real record_glass_pour, no key on the ledger row; linked through pour_events
+  by created_at (both 12:07:11.841142). Check closed now()-40 days: 40 days, b_gt30, -40d (+1.6 ms between
+  statements). The 'toast_sale_f2_x' pour (source pos, not 'pos:' keyed): pour_rows_not_pos_keyed 1, not scanned.
+H1 consumption, 8 rows: change 4 = h1-one (1 day), legacy 'pos:pos:' h1-same (0 days; legacy 1),
+  h1-forty (40), h1-nozone (11; recorded_at 06:55 != created_at: recorded_ne_created 1, change_till_no_zone 1)
+  => b0 1 b1 1 b8_30 1 b_gt30 1; already 2 (right, future); no_check 1 (gone); unreadable 1 (ddmm). 4+2+1+1 = 8
+H2 Los Angeles, ledger (key), 4: h2-five Sep 27 20:00 LA -> Oct 2 = 5 LA days (UTC dates differ by 4), -4d14h;
+  h2-thirteen Sep 19 23:30 LA = 13 days, -12d10h30; h2-only:w:2 Sep 30 12:00 LA = 2 days, -1d22h; h2-right already.
+  => change 3 (b2_7 2, b8_30 1), already 1; min -12d10:30, max -1d22h
+H2 ledger (glass pour), 2: inserted pre-#603 shape; Oct 1 09:00 LA -> Oct 2 = 1 day, -1d01h (b1);
+  the 17:05 row has two 'pos:' pour events at its instant -> ambiguous 1.
+H2 consumption, 3: five (b2_7), thirteen (b8_30), right (already); min -12d10:30, max -4d14h.
+H3 zone not set (24 h steps): ledger h3-forty 949 h -> b_gt30; h3-short 1.5 h -> b0; h3-30h 30 h -> b1;
+  consumption forty + short -> b_gt30 1, b0 1; min -39d13h, max -01:30.
+H4 zone 'Mars/Olympus_Mons' (not in pg_timezone_names): h4-30h 30 h -> b1 in 24 h steps, -1d06h.
+ALL HOUSES: ledger (key) 18+4+3+1 = 26 = change 9+3+3+1 = 16, already 2+1 = 3, no_check 2, open 1, unreadable 3,
+  ambiguous 1; min -39d13h, max -01:30 (H3). glass pour 1+2 = 3 = change 2 + ambiguous 1 (+1 out of scope).
+  consumption 8+3+2 = 13 = change 4+2+2 = 8, already 3, no_check 1, unreadable 1.
+Result 1: 4 houses, 25 checks (23 listed + 2 rpc), 26 ledger 'pos:' keys, 4 'pos:' pour events, 13 'pos:' notes. read_only on.
+
+================ STRICT-READ PARITY (SQL vs #603's own readClosedAt) ================
+readClosedAt and ISO_CLOSED_AT were cut verbatim from pos-hub.service.ts (wt-fix-t11 HEAD, types stripped)
+and run in node on 41 strings (ADR 0281's audit strings: 03.10.2026, 10/03/2026 3:00 PM, 1/1/50, UTC+3,
+RFC 2822, 12, Table 12, 0, 2026-02-30, 2026-09-31T21:00:00Z, 24:00, :60, +14:00/+14:01/+15:00/+03:60,
+leap days 1900/2000/2028/0000, 9 and 10 fraction digits, lower-case t/z, padded, empty, ...).
+The dry run's reading block, extracted from postime-f2-dryrun.sql by awk, gave the same verdict on all 41
+(15 read, 26 unreadable): diff empty. Four mutations of the SQL block (month <= 13, offset <= 900 min,
+leap 29 -> 28, hour <= 24) each changed 1-3 verdicts, so the comparison is not vacuous.
+Scale check (same day, before the drop): 30k checks, 60k keyed ledger rows, 30k consumption rows, 10k pour rows added to H1; the dry run took 18 s and every partition_ok was t.

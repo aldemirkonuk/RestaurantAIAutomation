@@ -1,0 +1,54 @@
+533	docs/census-followups-2026-09-29	b49b6304e	DIRTY	false	docs: close the #528/#529 record gaps — index ADRs 0241/0242, trace 75
+538	fix/order-approval-and-alert-relays	33d302973	BEHIND	false	fix(gateway): the order edit is not a side door, and the alert relays 
+539	docs/endpoints-regenerate	cc505322f	BEHIND	false	docs: ENDPOINTS.md is generated from the controllers and a trace of ev
+540	fix/receiving-next-f9-flaky-await	b362871b7	DIRTY	false	test(web): de-flake ReceivingNext F9 (await the /stats figure)
+541	fix/order-price-recheck	d06aa4de4	DIRTY	false	fix(gateway): a price change on an approved order waits for a signatur
+542	fix/approve-act-effective-total	9c20fd0e3	CLEAN	false	fix(gateway): the approve act tests the same money as the price re-che
+543	fix/approval-reads-one-price	37d044e18	CLEAN	false	fix(gateway): every approval reader reads one price, and the approval 
+547	docs/adr-0231-fix-round-waivers-2026-09-30	a78435307	BEHIND	false	docs(adr-0231): record the three fix-round waivers of 2026-09-30
+549	fix/adr-0243-followups	d66cda0d1	BEHIND	false	fix(gateway): pin the tenant-change route's number/boolean refusal, an
+550	fix/recurring-schedule-edits-need-a-manager	02ad65ed0	BEHIND	false	fix(gateway): editing or deactivating a recurring-order schedule needs
+558	fix/order-recurrence-needs-a-manager	e266b8519	BEHIND	false	fix: who may set, pause, resume, end or replace an order's recurrence 
+561	fix/role-read-error-means-no-role	566c49653	DIRTY	false	A person's access row decides their role alone, an unreadable one give
+562	fix/cancel-role-unknown-wording	95a62cc9d	BEHIND	false	Say a role that is not known is not confirmed, on the cancel control a
+564	fix/goal-writes-need-a-manager	eadb562df	BEHIND	false	Goal writes need an owner or a manager, and a goal's author is the tok
+565	fix/review-shared-batch-1	e31e60333	DIRTY	false	fix: say failed dashboard reads failed; move the note-control count to
+566	docs/houses-decisions-0251-0253	de4e8cade	BEHIND	false	Record tips and tours, All houses, and jobs and rights (ADRs 0251-0253
+569	feat/rail-room-hints	168ad3217	BEHIND	false	The rail says what each room is for
+570	feat/tips-margin-note-and-tour-card	37841f602	BEHIND	false	Tips as a margin note, one switch for all tips, and the tour card
+573	docs/sketch-125-all-houses-people-tips	a3bb980ba	BEHIND	false	Sketch 125: all houses, people and tips
+574	docs/sketch-126-jobs-packages-currency	101caeaf8	BEHIND	false	Sketch 126: jobs, packages and the all-houses currency popover
+577	fix/order-patch-cannot-approve	d7ea20cb7	BEHIND	false	fix: PATCH orders/:id cannot approve an order, nor reprice an approved
+579	fix/review-dashboard	48877640d	DIRTY	false	fix(dashboard): build the / walk-through rulings (DASH-W1–W37)
+582	fix/phone-feed-no-money-for-staff	1c8c93581	BEHIND	false	fix: close the house's money to staff on the Today feed
+583	fix/phone-feed-own-grant-limit	e68bd3cdf	DIRTY	false	fix: show a grantee their own grant limit on the Today feed
+584	fix/ask-close-no-second-spend	541dbfb70	BEHIND	false	fix: closing the Ask panel keeps the question and its request id, whic
+589	docs/adr-0115-drinks-lock	d54f2de90	BEHIND	false	docs: lock ADR 0115 with the founder's drinks rulings and a migrations
+590	claude/mudavym-landing-concepts-erssi2	dcfc2d79e	BEHIND	true	Sketch 130: five mudavym.com landing concepts
+594	fix/remove-dead-theme-toggle	f89a2869b	BEHIND	false	fix: delete ThemeToggle, which no file imports
+596	docs/scratch-outside-tmp	57dced37b	BEHIND	false	docs: nothing you need tomorrow lives in /tmp (ADR 0268)
+597	claude/project-thread-qx8y81	0f4eafaf9	CLEAN	true	Sketch 130 F2: A Day, read back (analytics ending)
+598	fix/orders-paged-fetch-f140	7a4b54df0	DIRTY	false	feat(orders): read the whole order book page by page (F-140 PR-A, ADR 
+610	fix/calendar-day-panel-takings	31c5ec562	DIRTY	false	fix(calendar): opened day shows net takings to owners and managers
+611	fix/recommendations-file-by-what-changes	6e1ea69bb	CLEAN	false	fix(recommendations): file by what acting on an entry changes (ADR 028
+614	fix/team-performance-units	559d86bb7	CLEAN	false	fix(team): the Performance card prints every figure with its unit (A-0
+615	fix/owner-sales-read-net	6f2f063ef	DIRTY	false	fix(analytics): owner sales figures read net sales (AW17, A-019, A-047
+616	fix/sales-belong-to-the-house-day	ae079c377	DIRTY	false	fix(analytics): file every sale on the house's day, not the UTC date (
+617	fix/cost-and-revenue-from-the-pos	d6da23311	BEHIND	false	fix(analytics): cost of goods is what sold, and concentration reads th
+618	feat/a-check-carries-its-channel	4faa00cf3	BEHIND	false	feat(pos): a check carries its channel (AW24, ADR 0302) - booth PR 1 o
+619	fix/stockout-counts-open-ml	d96dcbf56	DIRTY	false	fix(analytics): a stockout risk counts the open bottle and needs a mea
+623	fix/dashboard-counter-starts-tucked	5f99edfb3	CLEAN	false	fix(shell): start the counter tucked on the dashboard (ADR 0290)
+624	fix/what-to-buy-back-runs-out-first	8d2a225b5	DIRTY	false	fix: list what to buy back soonest to run out first, and count the win
+625	fix/hidden-tables-leave-insights	1a62bec78	DIRTY	false	fix(insights): hidden tables leave every table insight; drivers read o
+626	fix/a-glass-is-not-a-bottle	d9b87752d	DIRTY	false	fix: count a glass as its share of a bottle in every demand reader (AW
+629	fix/html-to-text-redos-test-flake	d873a8d18	BEHIND	false	fix(test): the redos growth-curve check survives CI noise (ADR 0100)
+648	docs/adr-0281-index-row	61f4c625a	BEHIND	false	docs: the decision index says ADR 0281's repair ran and the bell amend
+650	fix/cellar-till-names-with-a-serve-size	3f3689307	DIRTY	false	fix(cellar): a till name with a serve size joins its row, and Sold say
+654	fix/a-house-switch-clears-the-last-house	505a03400	BEHIND	false	fix: a house switch clears the last house's reads, and an assignee mus
+655	fix/a-menu-line-carries-its-raw-line	220e3747d	BEHIND	false	fix: a menu line read back carries the raw line the house keeps
+656	fix/the-first-menu-reads-from-the-house	2d81f8a5d	BEHIND	false	fix: the first menu reads from the house, and a housed account is neve
+657	fix/bell-reads-only-your-notices	e27f41d22	BEHIND	false	fix(dashboard): the summary's notices are the caller's own, as the bel
+658	docs/the-a045-index-row-says-what-the-cellar-counts	623ee73dc	BEHIND	false	docs(decisions): say what the cellar counts in ADR 0301's index row
+659	fix/document-money-writes-for-holders	10642298c	BEHIND	false	fix(documents): keep vendor-document money writes for owners and manag
+660	fix/staff-cannot-rule-a-day-out	90501d105	BEHIND	false	fix: only owners and managers rule a day out of the analysis
+661	fix/a-guessed-order-does-not-link-the-paper	de8717937	CLEAN	false	fix(mail): a guessed order no longer links the paper

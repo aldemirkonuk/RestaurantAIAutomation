@@ -1,0 +1,92 @@
+# PR #626 (lane `units`, ADR 0297) — coordinator note, 2026-10-08T00:54Z (`date -u`)
+
+**Not pushed.** New local head **`57fc2c668`** (`57fc2c668b58ec2ec902c390fb2c2e44d4a60de7`) in `/Users/aldemirkonuk/Projects/wt-fix-units`: `f14d42559` (the four shoulds) plus a clean merge of `origin/main` **62f8967b4** (only `.planning/decisions/README.md` was touched on both sides; auto-merged, one 0297 row). **15 files** vs `origin/main`. #609 merged as b270a45b8; the coordinator retargets the base to `main` after push.
+
+Shoulds from the 2026-10-07 verify at 762916d0f, and how each was answered:
+
+1. **Stale line cites in `consumption-units.ts`** (and the spec header): re-pointed at 57fc2c668 — pos-hub writer `pos-hub.service.ts:1583-1587`, `:1625`; `RPC_DEFAULT_BOTTLE_ML` `:33`; `inventoryVolumesFromRow` `:58-62`; `record_glass_pour` in `20261222100000_a_pos_sale_is_dated_by_its_check.sql:318` (the newest migration that defines it). The header's rule list now names the negative bottle line, which `bottlesOf` already treats as uncounted and ADR 0297 already states (`:78`, `:104`); the header had been narrower than the code.
+2. **ADR 0297 Keywords and Links**: bracket-corrected in place. Keywords: the code has 9 (`insight-generator.service.ts:224`) and the coordinator renumbers `INSIGHT_GENERATOR_VERSION` at merge above every value on `main` (constant unchanged; `main` has 6). Links: #609 merged as b270a45b8, the branch merged `main`, no longer stacked. Review-trail row added for 2026-10-08.
+3. **Mutant A05**: new case R6b (`consumption-units.spec.ts`, restock describe) — a glass line with no millilitres has no bottle figure but its servings still count as movement, so only the untouched item is dead stock. Killed: the condition reduced to millilitres only → R6b fails; reduced to the bottle figure → R6b fails.
+4. **Mutant U07**: new cases H7b (`bottlesOf` of a bottle line with quantity -1, -0.5, "-2" is `{bottles: null, how: "uncounted"}`; 0 is still a count of 0 bottles) and R5b (a negative bottle line makes the Bottles sold goal refuse with `UncountedConsumptionError`). Killed: `q >= 0` → `q > -1e9` fails H7b and R5b. Behaviour unchanged and not a defect: the POS mirror clamps and skips a count of 0 (`pos-hub.service.ts:1257-1258`), so only a `manual` or `ai_agent` row can carry one; `quantity` has no CHECK (`baseline_from_production.sql:6385`); refusing is what ADR 0297 decided.
+
+Evidence at 57fc2c668: `consumption-units.spec.ts` 45/45; jest `src/analytics` + `src/common/read-whole-window.spec.ts` + `src/reports` 64/64 suites, 1066/1066 tests; tsc `tsconfig.json` and `tsconfig.spec.json` only the 2 `@simplewebauthn/server` errors; eslint on the two changed files 0 problems; decision claims 948 checked, 948 holding; `check_quantity_units` and `check_read_errors_not_swallowed` rc=0; lanecheck all six rc=0, files=15, ownership `[]`. Each mutant run from a `cp -p` snapshot, restored and `cmp`'d.
+
+Not re-run this round: the reverted-readers check, the full `src/common` suite, the other guards, the 61-guard sweep, the neighbouring suites. The user-facing basis sentence in `unitsBasisSentence` (`consumption-units.ts:175`) still names only "no mode, or a glass line with no millilitres" as the reasons a line has no figure; a negative bottle line also lands there. Left as is (text change is behaviour, outside the four shoulds).
+
+---
+
+# PR #626 (lane `units`, ADR 0297) — push note, 2026-10-07T20:36Z (`date -u`)
+
+**Not pushed.** Live head `d9b87752d` → local head **`762916d0f`** [Corrected 2026-10-08, coordinator: local head is now **`57fc2c668`** (f14d42559 + merge of `origin/main` 62f8967b4); see the 2026-10-08 note above] in `/Users/aldemirkonuk/Projects/wt-fix-units` (`fix/a-glass-is-not-a-bottle`). GitHub base is still `fix/analytics-reads-past-row-cap` (#609's branch, merged as `b270a45b8`); the coordinator retargets it to `main`. **15 files** vs `origin/main` `ca3582988` (`git diff --name-only origin/main...HEAD | wc -l`). [Corrected 2026-10-08, coordinator: still 15 files, now vs `origin/main` 62f8967b4]
+
+## Commits since the live head
+
+1. `a95cb520c` Merge `origin/main` (`ca3582988`). `merge_main.sh` reported a manual conflict, so the merge was done by hand (never rebased). Nine files conflicted, each resolved by later-truth:
+   - ADR 0292, `claims.d/fix-analytics-reads-past-row-cap.jsonl`, `tech-debt.d/2026-10-03-fix-analytics-reads-past-row-cap.md`: #609's own files, untouched by this lane; taken whole from `main`.
+   - `advanced-analytics.service.ts`, `goals.service.ts`, `insight-generator.service.ts`, `read-whole-window.spec.ts`: re-merged three-way with the lane's own pre-state `efd8de7ea` (equal to #609's `12d1d9e6f` for these files) as base; clean. Checked afterwards for all 15 lane paths by comparing the sorted +/- lines of `efd8de7ea..d9b87752d` with those of `origin/main..a95cb520c`: 14 are identical; only `analytics.service.ts` differs (the loadConsumption resolution below; 115 changed lines on each side).
+   - `analytics.service.ts` loadConsumption: `main`'s read stays, which **propagates** a refusal (ADR 0292 fork 3, "Say 'could not be read'"); the lane's old try/catch that degraded a refused read to `[]` is gone. The lane's select columns (`consumption_type`, `restaurant_inventory(master_wine_id, bottle_size_ml)`), its `bottlesOf` map and `uncountedWines` helper sit on top.
+   - `decisions/README.md`: `main`'s rows (0290–0304, 0292 Locked) kept, the lane's 0297 row inserted by number, the lane's stale 0292 row dropped.
+   - After resolving, every file outside the lane's 15 equals `origin/main` (checked on the staged tree before committing).
+2. `313b72c03` test: the consumption stub in `consumption-units.spec.ts` returns only the columns a reader selects; four stated-size (1.5 l) cases through menu engineering, the restock list, the insight bundle and the Bottles sold goal. Closes the body's *Not covered* #5 for these four readers.
+3. `723a0e093` fix: `INSIGHT_GENERATOR_VERSION` 8 → **9** (main 6, #619 7, #625 8), history lines for 7 and 8 left to their lanes, floor "A row below 9"; new claim `AW02-GENERATOR-VERSION-9`; ADR 0297 version line bracketed (old words kept). Re-checked at merge: whichever of #619, #625, #626 merges later must be above `main`'s version.
+4. `762916d0f` docs: ADR 0297 cites re-pinned in dated brackets (pos-hub writer/tests/`RPC_DEFAULT_BOTTLE_ML` `:33`, dashboard `:1386`, `analytics.service.ts:627-643`, register `:700`, `getSalesChartData` also in `dashboardApi` `dashboard.ts:349`); the founder's #619 answer of 2026-10-07T13:51:58Z quoted under *Earlier answers*; claim texts of `AW02-STAND-IN-IS-THE-STOCKS` (newest migration now `20261222100000_a_pos_sale_is_dated_by_its_check.sql:318`) and `AW02-DASH-CHART-GLASSES` (`:1386`) bracketed; review-trail row for this round.
+
+## Results (at `762916d0f`)
+
+- **Jest** `src/common/read-whole-window.spec.ts`: 44/44. `consumption-units.spec.ts`: 42/42. [Corrected 2026-10-08, coordinator: 45/45 at 57fc2c668 (R6b, H7b, R5b added)]
+- **Jest** `src/analytics src/common src/reports`: 107/107 suites, 1768/1768 on the first run. A later run had 1 failure in `src/common/html/html-to-text.spec.ts` "stays linear on many '<style' prefixes", a wall-clock timing test in a file this PR does not touch (re-run alone: pass, pass, fail; #629, open, touches that spec as its flake fix).
+- **Reverted readers**: with the five reader files set to `origin/main`'s, `consumption-units.spec.ts` fails 32 of 42; the 10 that pass test the pure module. Snapshotted, restored, `cmp`'d, worktree clean.
+- **Mutations** (each `cp -p` snapshot, mutate, run, restore, `cmp`):
+  - loadConsumption re-wrapped in the old degrade-to-`[]` catch → `read-whole-window.spec.ts` 9 failures (the fork-3 refusal cases).
+  - loadConsumption `qty` reverted to `quantity || volume_ml/750` → 2 failures in `consumption-units.spec.ts`.
+  - each reader's select without `consumption_type` → 4 / 7 / 8 / 3 failures (analytics / advanced / insight / goals).
+  - each reader's select without `bottle_size_ml` → that reader's new stated-size case fails (1 each); with the stub's projection removed the same drop is green 42/42 (the projection is load-bearing).
+  - `AW02-GENERATOR-VERSION-9`: version 8 → exit 1; history line numbered 8 → exit 1; floor "below 8" → exit 1; version 10 → exit 0.
+  - `AW02-STAND-IN-IS-THE-STOCKS`: newest migration COALESCE 700, `STOCK_STAND_IN_BOTTLE_ML` 700, `RPC_DEFAULT_BOTTLE_ML` 700 → each exit 1.
+- **tsc** `--noEmit` (`tsconfig.json` and `tsconfig.spec.json`): only the 2 pre-existing `@simplewebauthn/server` module errors.
+- **eslint** on the 6 changed source files + the spec: 0 errors, 64 warnings, none of them in the spec. `analytics.service.ts`'s one prettier warning (`:480`) is on `main` too.
+- **lanecheck**: migration_order, migration_versions_unique, od_ids_exist, no_conflict_markers, citation_pairing, adr_numbers_unique all rc=0; files=15; ownership `[]`.
+- **Guards** run + `--self-test`, all 0: quantity_units, windowed_figures, analytics_cost_honesty, read_columns_exist, web_reads_gateway_dto_keys, read_errors_not_swallowed, queried_tables_exist. The other 61-guard sweep was not re-run.
+- **Decision claims** (alone): 927 checked, 927 holding. [Corrected 2026-10-08, coordinator: 948 checked, 948 holding at 57fc2c668]
+- **Local Postgres**: not applicable (no migration, no SQL function change).
+- **Conflicts** (`git merge-tree` against each open PR head, intersected with this PR's 15 files): #619 and #624 — README, advanced-analytics, analytics, insight-generator, insight-rankings-significance spec; #625 — README, insight-generator, report-export-cuttings; #616 — README, analytics, goals, report-export-cuttings; #615 — README, goals, report-export-cuttings; #617 — README, analytics, cost-honesty spec; #614, #623 — README only; #610, #611, #612, #613, #618, #628, #629, #648, #650 — none in this PR's files. #619, #623, #624, #625, #615, #616, #610 are behind `main`, so part of their overlap may clear when they merge `main`.
+
+## Not done / unverified
+
+- Not pushed; PR body and base not edited (coordinator).
+- No production read. No browser check (gateway-only).
+- The builder's original mutation sweep and the 61-guard sweep were not re-run; only the cases above.
+- The web /reports registers, the dashboard chart and the weekly Sold column stay owed as before (ADR 0297 *Not fixed here*).
+
+## Founder forks
+
+None open. The 13:51:58Z "Standard 75 cl, as built (Recommended)" on #619 covers the stock side of a row with no size; fork 1 (a) already covers the demand side here. All three 750s still tie.
+
+## Stale lines in the live body → replacements
+
+- **L3** *"**Stacked on #609** (`fix/analytics-reads-past-row-cap`, ADR 0292). Open or rebase this PR after #609 merges; until then the diff against `main` also carries #609's files (23 files, not 15). See *Merge order*."* → **"#609 (ADR 0292) merged as b270a45b8; this branch merged `origin/main` ca3582988 at a95cb520c, so the diff against `main` is 15 files. The base is retargeted to `main`. See *Merge order*."**
+- **L9** *"(ADR 0011, `pos-hub.service.ts:1018-1022`, `:1060`)"* → **"(ADR 0011, `pos-hub.service.ts:1583-1587`, `:1625` at a95cb520c)"**
+- **L49** *"`INSIGHT_GENERATOR_VERSION` goes to 8, so stored rows below 8 are recomputed, not served."* → **"`INSIGHT_GENERATOR_VERSION` goes to 9, so stored rows below 9 are recomputed, not served."**
+- **L57** * [Corrected 2026-10-08, coordinator: use head 57fc2c668 and `origin/main` 62f8967b4]"These were measured at the PR head, after merging `origin/main` 1c9eeff00 into the branch:"* → **"These were measured at the PR head 762916d0f, after merging `origin/main` ca3582988 into the branch:"**
+- **L59** * [Corrected 2026-10-08, coordinator: the replacement's counts are now 45 of 45 passing at 57fc2c668; the reverted-readers 32-of-42 figure is from 762916d0f and was not re-run (the three new cases do not exercise a reverted reader's own conversion, so it is not restated)]"**New spec** `consumption-units.spec.ts`: 38 of 38 pass. With the five reader files reverted to the stack base efd8de7ea, **28 of 38 fail**. The 10 that still pass test the new pure module itself. …"* → **"**New spec** `consumption-units.spec.ts`: 42 of 42 pass. With the five reader files set to `origin/main`'s, **32 of 42 fail**; the 10 that still pass test the pure module. The files were snapshotted first, restored byte-identical, and the worktree was clean afterwards."**
+- **L60** * [Corrected 2026-10-08, coordinator: at 57fc2c668 the run was `src/analytics`, `src/common/read-whole-window.spec.ts` and `src/reports`: 64 of 64 suites, 1066 of 1066 tests; the 107-suite figure is from 762916d0f]"105 of 105 suites, 1704 of 1704 tests pass."* → **"107 of 107 suites, 1768 of 1768 tests pass (one later run failed only `html-to-text.spec.ts`'s wall-clock 'stays linear' case, a file this PR does not touch; #629 is its flake fix). `read-whole-window.spec.ts`: 44 of 44."**
+- **L61** *"The verifier also ran the neighbouring suites: communications, procurement, inventory and pos-hub, 169 suites and 3337 tests, plus 67 more suites and 1182 tests, all passing."* → **"Measured at d9b87752d and not re-run after the merge: the neighbouring suites (communications, procurement, inventory, pos-hub)."**
+- **L62** * [Corrected 2026-10-08, coordinator: also add: "At 57fc2c668: A05 (dead-stock movement condition reduced to millilitres only, or to the bottle figure) fails R6b; U07 (`q >= 0` → `q > -1e9` in bottlesOf) fails H7b and R5b."]"**Mutation testing** was the builder's scratchpad runner. Every mutant was killed except M5a and M7a. …"* → keep, prefixed **"At d9b87752d:"**, and add: **"At 762916d0f: loadConsumption re-wrapped in a degrade-to-[] catch fails 9 (fork-3 refusals); its qty reverted to quantity-as-bottles fails 2; each reader's select without `consumption_type` fails 4/7/8/3, without `bottle_size_ml` fails that reader's stated-size case; the generator and stand-in claims fail on 8 / a renumbered history line / a 700 in any of the three stand-ins."** (L62's `analytics.service.ts:295` zero-fill cite is `:286` at 762916d0f.)
+- **L63** *"`--noEmit -p tsconfig.spec.json` is clean apart from…"* → unchanged in substance; re-measured at 762916d0f: same 2 errors.
+- **L64** *"**eslint** on the 7 changed source files: 0 errors, 64 prettier warnings. The builder measured each file's count equal to the base."* → **"**eslint** at 762916d0f on the 6 changed source files plus `consumption-units.spec.ts`: 0 errors, 64 warnings, none in the spec. The per-file equal-to-base count is the builder's, at d9b87752d."**
+- **L65** *"869 checked, 869 holding."* → **"927 checked, 927 holding."** [Corrected 2026-10-08, coordinator: use "948 checked, 948 holding" (57fc2c668)]
+- **L66–68** guards → **"At 762916d0f: the six lanecheck guards and quantity_units, windowed_figures, analytics_cost_honesty, read_columns_exist, web_reads_gateway_dto_keys, read_errors_not_swallowed, queried_tables_exist exit 0 with `--self-test` 0. The 61-guard sweep was the builder's at d9b87752d and was not re-run."**
+- **L75** *"`claims.d/fix-a-glass-is-not-a-bottle.jsonl` adds 5 rows:"* → **"adds 6 rows:"** plus a bullet **"`AW02-GENERATOR-VERSION-9` (resolved): the version is 9 or more and its history line says 9 with a 'below 9' floor."**
+- **L78** *"the constant equals `record_glass_pour`'s and pos-hub's 750, so it fails if R7 changes the stock's stand-in."* → append **"It reads the newest migration that defines `record_glass_pour` (now `20261222100000_a_pos_sale_is_dated_by_its_check.sql:318`, from #603). The founder's #619 answer of 2026-10-07T13:51:58Z, "Standard 75 cl, as built (Recommended)", keeps the same 75 cl on the stock side; it is quoted in ADR 0297."**
+- **L97** *"Stored insight rows below version 8 are recomputed…"* → **"below version 9"**.
+- **L123** *"**After #609.** This branch carries #609 at 12d1d9e6f, its current head, through merge efd8de7ea. Against `main` + #609 the diff is **15 files**. Against `main` alone it is 23."* → **"#609 merged (b270a45b8); `origin/main` ca3582988 is merged in at a95cb520c. Nine files conflicted and were resolved by later-truth (#609's whole-or-refuse reads kept, this lane's glass-share logic on top; loadConsumption now propagates a refused read instead of this lane's old degrade to no lines). Against `main` the diff is 15 files."**
+- **L124–131** (conflict list against #607, #619, #615, #616, #617, README-only #612–#621, clean #603–#611) → replace with the **Conflicts** bullet under *Results* above (#603, #605, #607, #608, #620, #621 are merged, read with `gh pr view` at 20:37Z; #612, #613, #618 are open and clean against this PR's files).
+- **L132** *"The sequence is `main` 4, #607 5, #609 6, #619 7, this PR 8. Whichever of #619 and this PR merges later takes one past `main`'s version at its merge."* → **"`main` is at 6; #619 holds 7, #625 holds 8, this PR 9, so no two open PRs share a version. Re-checked at merge: of #619, #625 and this PR, whichever merges later must be above `main`'s version at its merge."**
+- **L133** trailer → append **"The four new commits (a95cb520c, 313b72c03, 723a0e093, 762916d0f) carry `Co-Authored-By: Claude Opus 5`."** [Corrected 2026-10-08, coordinator: six commits now: add f14d42559 and the merge 57fc2c668]
+- **L140** *"(\"…a real answer about N wines\", `:661`)"* → **"`:700`"**.
+- **L143** *"(`dashboard.service.ts:893`)"* → **"(`dashboard.service.ts:1386`)"**.
+- **L147** *"(`analytics.service.ts:635-651`)"* → **"(`:627-643`)"**.
+- **L149–152** *"**No test pins the select column lists.** The specs' fake client ignores `select`. …"* → **"**Select columns are pinned for the four consumption readers only.** Since 313b72c03 the stub in `consumption-units.spec.ts` returns only the selected consumption columns, so dropping `consumption_type` or `bottle_size_ml` from any of the four readers fails a case. Other tables' selects, and the other specs' fake clients, still ignore `select`; `check_read_columns_exist` proves the columns exist, not that they are selected."**
+- **L156** *"Mutation testing was the builder's run; the last call re-ran only the reverted-readers check."* → **"The builder's mutation sweep and 61-guard sweep are at d9b87752d; this round re-ran the reverted-readers check and the mutations listed under Tests."**
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
