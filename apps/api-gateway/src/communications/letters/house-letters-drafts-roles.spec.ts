@@ -44,6 +44,7 @@ describe("HouseLettersController.drafts / .discard: owner or manager only (ADR 0
   let app: INestApplication;
   let base: string;
   const calls = { drafts: 0, discardDraft: 0, queued: 0, orderLetter: 0 };
+  const upsertRoles: unknown[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -83,6 +84,10 @@ describe("HouseLettersController.drafts / .discard: owner or manager only (ADR 0
             orderLetter: async () => {
               calls.orderLetter += 1;
               return { mayEdit: false };
+            },
+            upsertTemplate: async (params: { role?: unknown }) => {
+              upsertRoles.push(params.role);
+              return { id: "t", saved: true };
             },
           },
         },
@@ -124,6 +129,7 @@ describe("HouseLettersController.drafts / .discard: owner or manager only (ADR 0
     calls.discardDraft = 0;
     calls.queued = 0;
     calls.orderLetter = 0;
+    upsertRoles.length = 0;
   });
 
   const call = (method: string, path: string, role?: string, body?: unknown) =>
@@ -192,6 +198,14 @@ describe("HouseLettersController.drafts / .discard: owner or manager only (ADR 0
         expect(res.status).toBe(ok);
       },
     );
+  });
+
+  it("the template save hands the service the caller's role, which decides the order letter (ADR 0313 R2)", async () => {
+    const body = { name: "Ours", category: "order_request", body: "{{greeting}}" };
+    const asStaff = await call("POST", "/communications/letters/templates", "staff", body);
+    const noRole = await call("POST", "/communications/letters/templates", "none", body);
+    expect([asStaff.status, noRole.status]).toEqual([201, 201]);
+    expect(upsertRoles).toEqual(["staff", null]);
   });
 
   it("the order letter's READ answers a staff caller (staff see it read-only)", async () => {

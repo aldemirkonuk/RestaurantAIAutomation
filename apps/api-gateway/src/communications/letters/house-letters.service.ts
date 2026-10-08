@@ -1846,10 +1846,34 @@ export class HouseLettersService {
       }
       versions = (data ?? []) as Record<string, unknown>[];
     }
+    // The history shows the newest 50; the LIVE version is read by its own id,
+    // so a house with a longer history is never told nothing is published
+    // while vendors receive its words.
+    let publishedRow: Record<string, unknown> | null = null;
+    if (row?.publishedVersionId) {
+      publishedRow = versions.find((v) => String(v.id) === row.publishedVersionId) ?? null;
+      if (!publishedRow) {
+        const { data, error } = await this.db.client
+          .from("letter_template_versions")
+          .select("id, version, locale, kind, body, body_hash, author, created_at")
+          .eq("id", row.publishedVersionId)
+          .eq("restaurant_id", restaurantId)
+          .eq("template_id", row.id)
+          .maybeSingle();
+        if (error || !data) {
+          throw new InternalServerErrorException(
+            `The order letter's published version could not be read (${error ? error.message : "it was not found"}). Vendors may still receive it; this page cannot say which words.`,
+          );
+        }
+        publishedRow = data as Record<string, unknown>;
+      }
+    }
     const people = new Map<string, string>();
     const ids = Array.from(
       new Set(
-        [row?.updatedBy, ...versions.map((v) => v.author)].filter(Boolean).map(String),
+        [row?.updatedBy, ...versions.map((v) => v.author), publishedRow?.author]
+          .filter(Boolean)
+          .map(String),
       ),
     );
     if (ids.length > 0) {
@@ -1866,7 +1890,7 @@ export class HouseLettersService {
         if (u.name) people.set(String(u.user_id), String(u.name));
       }
     }
-    const view = versions.map((v) => ({
+    const asView = (v: Record<string, unknown>) => ({
       id: String(v.id),
       version: Number(v.version),
       locale: String(v.locale),
@@ -1875,10 +1899,9 @@ export class HouseLettersService {
       bodyHash: String(v.body_hash ?? ""),
       by: v.author ? (people.get(String(v.author)) ?? null) : null,
       at: (v.created_at as string | null) ?? null,
-    }));
-    const published = row?.publishedVersionId
-      ? (view.find((v) => v.id === row.publishedVersionId) ?? null)
-      : null;
+    });
+    const view = versions.map(asView);
+    const published = publishedRow ? asView(publishedRow) : null;
     return {
       key: ORDER_REQUEST_TEMPLATE_KEY,
       locale: house.locale,

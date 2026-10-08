@@ -16,6 +16,7 @@ import {
   ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import type { DatabaseService } from "../../database/database.service";
@@ -28,6 +29,7 @@ import {
 } from "./house-letters.service";
 import { OrderRequestService } from "./order-request.service";
 import { DEFAULT_ORDER_REQUEST_TEMPLATES } from "./order-request-letter";
+import { RestaurantTemplatesService } from "../../restaurant-templates/restaurant-templates.service";
 
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const OTHER = "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb";
@@ -464,6 +466,73 @@ describe("the order letter's read", () => {
     await expect(
       svc(store(world(), { failing: ["communication_templates"] }).db).orderLetter(HOUSE, "owner"),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
+  });
+});
+
+describe("the read names the live version even past the newest 50", () => {
+  it("a published version older than the history page is still the one shown as live", async () => {
+    const versions = Array.from({ length: 51 }, (_, i) => ({
+      id: `v${i + 1}`,
+      template_id: LETTER,
+      restaurant_id: HOUSE,
+      locale: "en",
+      version: i + 1,
+      kind: "publish",
+      body: HOUSE_WORDS,
+      body_hash: "h",
+      author: OWNER,
+      created_at: `2026-10-${String(1 + Math.floor(i / 24)).padStart(2, "0")}T${String(i % 24).padStart(2, "0")}:00:00Z`,
+    }));
+    const r = await svc(store(world({ letter: { published_version_id: "v1" }, versions })).db).orderLetter(HOUSE, "owner");
+    expect(r.versions).toHaveLength(50);
+    expect(r.versions.some((v) => v.id === "v1")).toBe(false);
+    expect(r.published).toMatchObject({ id: "v1", version: 1, by: "Deniz" });
+    expect(r.rendersFrom).toBe("house");
+  });
+
+  it("a live version that cannot be read is a failure, never 'nothing published'", async () => {
+    const r = svc(store(world({ letter: { published_version_id: "gone" } })).db).orderLetter(HOUSE, "owner");
+    await expect(r).rejects.toBeInstanceOf(InternalServerErrorException);
+  });
+});
+
+describe("the legacy /restaurants/:id/templates CRUD never writes the order letter (ADR 0313, 4a-ii)", () => {
+  const legacy = (db: DatabaseService) => new RestaurantTemplatesService(db);
+
+  it.each([
+    ["its words", { body: "Hello" }],
+    ["its type, which would hide it from the renderer", { type: "email" }],
+    ["its name", { name: "x" }],
+  ])("refuses changing %s, writing nothing", async (_what, dto) => {
+    const { db, writes, tables } = store(world());
+    await expect(legacy(db).updateTemplate(HOUSE, LETTER, dto as any)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(writes).toEqual([]);
+    expect(tables.communication_templates.find((r) => r.id === LETTER)).toMatchObject({ type: "letter", body: HOUSE_WORDS });
+  });
+
+  it("refuses removing it, writing nothing", async () => {
+    const { db, writes } = store(world());
+    await expect(legacy(db).deleteTemplate(HOUSE, LETTER)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(writes).toEqual([]);
+  });
+
+  it("decides by the stored row, not the house in the path: another house's id is not found", async () => {
+    const { db, writes } = store(world());
+    await expect(legacy(db).updateTemplate(OTHER, LETTER, { body: "x" } as any)).rejects.toBeInstanceOf(NotFoundException);
+    expect(writes).toEqual([]);
+  });
+
+  it("a failed read refuses instead of writing", async () => {
+    const { db, writes } = store(world(), { failing: ["communication_templates"] });
+    await expect(legacy(db).deleteTemplate(HOUSE, LETTER)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(writes).toEqual([]);
+  });
+
+  it("other templates are written as before", async () => {
+    const { db, writes } = store(world());
+    await legacy(db).updateTemplate(HOUSE, PRICE_TPL, { body: "Hello again" } as any);
+    await legacy(db).deleteTemplate(HOUSE, PRICE_TPL);
+    expect(writes.map((w) => w.op)).toEqual(["update", "update"]);
   });
 });
 
