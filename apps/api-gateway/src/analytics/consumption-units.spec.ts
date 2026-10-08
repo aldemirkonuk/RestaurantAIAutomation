@@ -180,6 +180,10 @@ describe("bottlesOf — a line's bottles come from its own mode", () => {
     expect(s).toContain("3 glass lines across 2 items");
     expect(s).toContain("750 ml stand-in");
     expect(s).toContain("1 line across 1 item carries no bottle figure");
+    // Every cause bottlesOf has, the negative bottle line among them.
+    expect(s).toContain(
+      "(no bottle or glass mode, a bottle line with no quantity of 0 or more, or a glass line with no millilitres above 0)",
+    );
 
     const sized = summarizeUnits([
       { how: "bottle", inventoryId: "a" },
@@ -434,7 +438,7 @@ describe("the restock list counts bottles, not pours", () => {
 
   it("R6b: a glass line with no millilitres has no bottle figure, but its servings are still movement", async () => {
     // Movement is a serving or a millilitre, not a bottle figure
-    // (analytics.service.ts loadConsumption's dead-stock join): Item 1 poured
+    // (analytics.service.ts getFinancialSummary's dead-stock join): Item 1 poured
     // two glasses whose millilitres were not recorded, so it moved, and only
     // the untouched Item 3 is idle. Item 2's bottle line gives the window a
     // movement signal of its own, so the case does not rest on Item 1 alone.
@@ -533,6 +537,10 @@ describe("the Bottles sold goal counts bottles, or refuses", () => {
     expect(err).toBeInstanceOf(UncountedConsumptionError);
     expect((err as Error).message).toContain(
       "1 consumption line across 1 item",
+    );
+    // The refusal names the negative bottle line among its causes.
+    expect((err as Error).message).toContain(
+      "a bottle line with no quantity of 0 or more",
     );
   });
 });

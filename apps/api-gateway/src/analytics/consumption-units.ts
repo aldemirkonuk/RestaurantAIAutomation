@@ -150,6 +150,14 @@ export function summarizeUnits(
   };
 }
 
+/**
+ * Every cause `bottlesOf` has for a line with no bottle figure. A sentence
+ * that names the cause names all three: a bottle line with a quantity below
+ * 0 is one, as much as a glass line with no millilitres (ADR 0297).
+ */
+const UNCOUNTED_CAUSES =
+  "no bottle or glass mode, a bottle line with no quantity of 0 or more, or a glass line with no millilitres above 0";
+
 function n(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
@@ -172,7 +180,7 @@ export function unitsBasisSentence(cov: UnitsCoverage): string {
     parts.push("every glass line's item states its bottle size");
   if (cov.uncountedLines > 0)
     parts.push(
-      `${n(cov.uncountedLines, "line", "lines")} across ${n(cov.uncountedItems, "item", "items")} ${cov.uncountedLines === 1 ? "carries" : "carry"} no bottle figure (no mode, or a glass line with no millilitres), so every figure resting on ${cov.uncountedLines === 1 ? "it" : "them"} is null rather than guessed`,
+      `${n(cov.uncountedLines, "line", "lines")} across ${n(cov.uncountedItems, "item", "items")} ${cov.uncountedLines === 1 ? "carries" : "carry"} no bottle figure (${UNCOUNTED_CAUSES}), so every figure resting on ${cov.uncountedLines === 1 ? "it" : "them"} is null rather than guessed`,
     );
   else parts.push("every line has a bottle figure");
   return parts.join("; ");
@@ -204,7 +212,7 @@ export function unitsLabel(
 export class UncountedConsumptionError extends Error {
   constructor(readonly coverage: UnitsCoverage) {
     super(
-      `Bottles sold could not be counted: ${n(coverage.uncountedLines, "consumption line", "consumption lines")} across ${n(coverage.uncountedItems, "item", "items")} ${coverage.uncountedLines === 1 ? "has" : "have"} no bottle figure, so a total would be short rather than true.`,
+      `Bottles sold could not be counted: ${n(coverage.uncountedLines, "consumption line", "consumption lines")} across ${n(coverage.uncountedItems, "item", "items")} ${coverage.uncountedLines === 1 ? "has" : "have"} no bottle figure (${UNCOUNTED_CAUSES}), so a total would be short rather than true.`,
     );
     this.name = "UncountedConsumptionError";
   }
