@@ -3,8 +3,8 @@
 - **Status:** Proposed
 - **Date:** 2026-10-03
 - **Decider:** Aldemir (founder). Decisions are locked by the founder, never by an agent.
-- **Keywords:** F-140, F-117, orders, paging, order book, hasMore, open orders, backorder, partially received, delivered, rate limit, 429, single-flight, fence
-- **Links:** [[0255-orders-walk-through-r5-rulings]], [[0256-waiting-on-you-is-flagged-first-then-oldest-by-the-houses-own-rules]], [[0192-received-is-the-shelf-count-from-the-ledger]] (the `received` block); lane 3 (wt-review-11), PR-A of two; claims in `claims.d/fix-orders-paged-fetch-f140.jsonl`
+- **Keywords:** F-140, F-117, orders, paging, order book, hasMore, open orders, backorder, partially received, delivered, rate limit, 429, single-flight, fence, Show older, PR-B, hold
+- **Links:** [[0255-orders-walk-through-r5-rulings]], [[0256-waiting-on-you-is-flagged-first-then-oldest-by-the-houses-own-rules]], [[0192-received-is-the-shelf-count-from-the-ledger]] (the `received` block); lane 3 (wt-review-11), PR-A of two; claims in `claims.d/fix-orders-paged-fetch-f140.jsonl`; PR-B on `fix/orders-wire-order-book-f140`, claims in `claims.d/fix-orders-wire-order-book-f140.jsonl`
 
 ## Context
 
@@ -69,6 +69,15 @@ Asked by the lane coordinator through AskUserQuestion. The labels in quotes are 
 
 Why the superseded answer could not stand (this session's reading, not in the record): `PARTIALLY_RECEIVED` covers the three states listed under Context, so "marked backorder" would have labelled every door-counted order and every order awaiting its invoice as a backorder.
 
+**2026-10-03 (PR-B forks; re-asked after the reboot lost the first ask):**
+
+Labels quoted verbatim from the coordinator's record (project memory `founder-answers-2026-10-02-sim-share-out.md`, "F-140 PR-B forks, answered 2026-10-03"); the sentences are that record's. The questions and previews are saved in `p4-scratch/f140/prb-forks-asked-2026-10-03.json`. They close forks 1–3 below.
+
+- **Station:** "Top of Delivered (Recommended)". The four open arrivals (not counted yet, counted but not checked, waiting on the invoice, backorder) stay in Delivered, listed first with their mark and always shown. Finished deliveries sit below, behind 'Show older'. No new tab, and no backorder moved to Ordered. (PR-B's design input had placed backorders under Ordered; this ruling overrides it.)
+- **Empty tab:** "Newest 50 at once (Recommended)". A station with nothing open opens on its newest 50 finished orders, with 'Show older' below. It never looks empty when it isn't.
+- **Cancelled:** "Keep them out (Recommended)". 'Show older' leaves cancelled and rejected orders out, as today, and the separate cancelled count stays.
+- **Fork 4** was **not** ruled. PR-B keeps PR-A's reading; it stays open below.
+
 ## Options considered
 
 1. **A per-status reader** (ask the gateway for each open status, and read closed orders lazily). Rejected.
@@ -129,12 +138,12 @@ Why the superseded answer could not stand (this session's reading, not in the re
 - **Urgent by default.** A read is background only when `markBackground(house)` is called in the same tick. The runner owns its 60 s interval and the tab-visibility refresh, and treats both as background.
   - Only background reads wait out the 30 s gap after the last read.
   - Background reads wait while the tab is hidden, including one that was timed before the tab was hidden.
-  - This PR wires no outside caller to `markBackground`, so every websocket-triggered read is urgent until PR-B.
+  - This PR wires no outside caller to `markBackground`, so every websocket-triggered read is urgent until PR-B. [PR-B, 2026-10-03: `lib/websocket.tsx` is not changed, and still no caller is wired to `markBackground`. Fork 6 (how soon a realtime push re-reads) was not answered before the build, so `useOrderBook` does **not** yet hear the window `order_change` itself, and no option of fork 6 was built. A websocket order event still reaches the book, urgent, through its `orders.all` invalidation (`websocket.tsx:646`, `:664`). An `order_change` from `RealtimeContext.tsx` alone (the cross-device bridge, `:288-306`, and `dispatchOrderUpdate`, `:394`) reached /orders through `useOrders` (`useOrderQueries.ts:32-38`) and now reaches it only at the runner's 60 s interval. See "PR-B" below.]
 - **The fence.** `noteLocalWrite(house)` bumps the house's write epoch. A read that started before the bump is not written to the cache; an urgent read replaces it.
 - **A house switch** aborts the other house's read. A book is only written under `orders.book(<the house it read>)`.
 - **`useOrderBookFreshness(house)`** returns `{asOf, failing, stale}`. `stale` means older than twice the interval, or failing. `asOf` null means the book has not been read yet, not that it is fresh.
 - **Retries.** `retryOrderBook` turns off TanStack's retry for 429s, house changes, rows of another house and bad pages.
-- **The approve write stays where it is.** The optimistic approve write on `orders.list` (`useOrderQueries.ts:147-182`) is unchanged.
+- **The approve write stays where it is.** The optimistic approve write on `orders.list` (`useOrderQueries.ts:147-182`) is unchanged. [PR-B, 2026-10-03: the list write stays byte for byte. The approve also patches its one row in the book and holds the house's book reads (`holdLocalWrite`): a read under way stops, and its callers wait for the next one; no read starts until the approve settles, or 35 s at most. Past 35 s reads run again, but the row keeps the approve's status until it settles. A failed approve puts back only that row, only while it still reads as this tab wrote it. See "PR-B" below.]
 - **The key** is `queryKeys.orders.book(house)`. It sits under `['orders']`, so every existing invalidation reaches it.
 
 **Tests and mutation proof.** `order-book.test.ts` (47 tests) and `useOrderBook.test.tsx` (24 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Mutations were run from `cp -p` snapshots, never `git stash`, and every restore was compared byte for byte. 36 were run; 35 each failed at least one test and passed again when restored:
@@ -144,6 +153,47 @@ Why the superseded answer could not stand (this session's reading, not in the re
 - 15 more in the runner: no 429 gate; a background mark that never clears; a fence that does not move its waiters; the aborted branch off; `HouseChangedError` counted as failing; no staleness guard; callers resolved with the book read instead of the book kept; freshness dated from the book read instead of the book kept; a read nobody waits for started anyway; `retry: 1`, `refetchOnWindowFocus: true` or the default `refetchOnReconnect` in `useQuery`; `start()` ignoring a hidden tab; a hidden tab deferring an urgent read too; `retryOrderBook` retrying `ForeignRowError`.
 
 One survives, re-run against the final tests: removing `run.next = null` from `stopOtherHouses`, so the house switched away from keeps its queued read. It gets no test. In the app the token is stored before the house changes (`AuthContext.tsx:625` before `:630`, `:835` before `:839`), and `assertHouse` runs before every GET, so that queued read sends nothing for the old house; its cost is one window slot and a swallowed `HouseChangedError`.
+
+## PR-B: what /orders shows (2026-10-03)
+
+PR-B (`fix/orders-wire-order-book-f140`) moves /orders onto the book: `useOrdersNextData` reads `useOrderBook()` in place of `useOrders()`. Reverting PR-B puts the page back on the newest 50.
+
+**Each view, from the rulings.**
+- **Pending, Approved, Ordered** hold open orders only (`stageOf`), so each lists every order it holds, newest first.
+- **Delivered** lists every open arrival first, newest first, each with its mark (the Mark ruling; 'Receipt could not be read' also covers fork 4's rows). Finished deliveries follow under "Finished deliveries", 50 per tap of Show older. With no open arrival, the newest 50 show at once; once shown, they stay when an open order arrives (fork 8).
+- **The All view** follows the same rule over every one-time order (fork 7).
+- **Recurring** lists as before (fork 5): every order that carries a rule, open, finished and cancelled, newest first, an open arrival with its mark. Such an order is listed only there, even when it is open and owed; a child occurrence carries no rule and stays in its own stage.
+- **Cancelled and rejected one-time orders** are in no list and not under Show older; the line under the list still counts them. Recurring lists its cancelled orders, as before (fork 5). A deep-linked cancelled order is said to be unlisted only when it is one-time.
+- Show older says how many are not shown yet only in a whole read. A tap that needs older orders read counts only once they are in; a failed read leaves the tap unspent. Changing station or house starts again. A deep-linked order is always listed.
+
+**Counts.** A whole read counts every order read. In a capped or partial read, Pending, Approved and Ordered are exact only when `openComplete`, and show — otherwise; Delivered, Recurring and both month figures show —, with a sentence giving the floor read; the cancelled count is the per-status count (CANCELLED + REJECTED + FAILED). A notice says which kind of read it was, one fact per line. At Recurring, a capped or partial read with nothing listed says it cannot tell whether any order repeats. These capped figures are fork 9: the List ruling says the figures cover every order, and past the cap they cannot.
+
+**Show older past the cap** reads on from `nextClosedPage`, at most five pages a tap, through the same window and 429 gate as the book (`readOlderPage`). Rows already seen are skipped by id; a house switch aborts it.
+
+**Deep links.** An id not among the rows read is asked for on its own (`fetchOrderById`, a query outside `['orders']`, per house and id) before the page says anything: up to three tries, about 3 s, since the reader folds a 429, a timeout and the gateway's not-found 500 into one 'unreadable'. Found, it is listed but not counted, and it is not refreshed while the page stays open. Not readable, the page says it could not be read and how many orders it was checked against, never that it does not exist, and offers Try again. The order is named by the first 8 characters of its id.
+
+**Freshness and errors.** Rows are dated by `useOrderBookFreshness(house).asOf`, the start of the kept read. A failed refresh, the runner's own included, shows as a failed re-read over the kept rows. Reader errors are said in the house's words, never their own messages.
+
+**Writes.** The approve patches its row and holds the house's reads until it settles. A read under way when it begins is stopped (`abort(HELD)`) and its callers wait for the read after the hold, so the page shows no error; the requests it already sent are spent. Without the hold, a read that starts after the optimistic write but before the gateway commits writes the old status back while the approve button is live again; the fence alone catches only reads already in flight. The hold lets reads run again after 35 s (past the client's 30 s timeout), but until the approve settles every read is written with the approve's row patched in, only while that row still has the status it had before; so a paused (offline) approve is not undone by a read. A bulk approve runs its approves one after another, and the next hold begins before the last release's read can start, so the whole batch costs one read. Cancel and mark-delivered write nothing optimistically and are not held. The two order sheets no longer ask for a second read after the one their own invalidation starts.
+
+**Realtime: not built (fork 6 unanswered).** Fork 6 was to be asked before the build and was not answered, so PR-B adds **no** `order_change` listener to `useOrderBook`, wires no `markBackground` caller and adds no `notePush`; every option of fork 6 needs the listener, and a listener without `notePush` is option (a), so building one would have answered the fork. `lib/websocket.tsx` is not changed. What this costs until fork 6 is answered: a websocket order event (`websocket.tsx:646`, `:664`) still reaches the book through its `orders.all` invalidation and re-reads it urgently, as before; but an `order_change` dispatched by `RealtimeContext.tsx` alone (the cross-device bridge, `:288-306`, and `dispatchOrderUpdate`, `:394`) used to reach /orders through `useOrders`' subscription (`useOrderQueries.ts:32-38`) and now reaches it only at the runner's 60 s interval. The builder of fork 6's answer adds the listener in `useOrderBook.ts`, its test, and its claim rows (`BOOK-KEEPS-REALTIME-PUSHES`, and `NO-BACKGROUND-CALLER-WHILE-FORK-6-OPEN` under (a) or `PUSH-WAITS-PAST-ONE-REQUEST` under (b) or (c)); both drafted rows are in `.scratch/ecb5eae2/prb-revise/fix-orders-wire-order-book-f140.jsonl`.
+
+**Weaknesses, stated.**
+- Until fork 6 is answered, a change pushed only through `RealtimeContext` (another device, a local `dispatchOrderUpdate`) shows on /orders up to 60 s later (above).
+- The hold pauses all of that house's book reads, pushes and the interval included, for one approve (at most 35 s).
+- A status this app cannot name is still filed as pending (`normalizeOrderStatus`), so in a whole read it is listed at Pending with a live Approve.
+- The order sheets still wait, before closing, for the whole read their invalidation starts.
+- In a capped read the month figures show — even when the newest 3,000 cover the month: the read is ordered by `created_at`, the month by `requestedAt`.
+- Show older past the cap is offset paging: an order placed meanwhile pushes later pages down (repeats are skipped by id); an order removed meanwhile would skip one.
+- "Newest" is by `requestedAt`, as before; an order without one sorts last.
+- No line says the rows are old while reads succeed but lag (a tab just brought back); only a failed read is said.
+- During a failing refresh, a deep link that cannot be read is said only by the error alert.
+- In a capped or partial read, Show older gives no count.
+- A capped house's first read is at least 42 list requests against the tab's 40 a minute, so the list first shows after more than a minute; so does an unstable read above about 1,400 orders (2 tries plus the sweeps). Show older waits on the same window. The fix needs `order-book.ts` (open sweeps before closed pages, or a lower ceiling): PR-C.
+- The 40-a-minute window is per tab. The gateway's 100 a minute is per address and route, and `/history` is shared with the dashboard and the phone. PR-A's 429 gate learns only from this tab's own 429s. A window shared across tabs is PR-C.
+- Rewording Recurring's existing sentences, which say "page" and "book" (`recurrence.ts:141`, `:261`, `:268`, `:278`), was left to a later PR to keep PR-B at 15 files.
+
+**Tests and mutation proof (PR-B).** 67 new tests: `useOrdersNextData.book.test.tsx` (29: the pure `stationView` and `figuresFor` cases, the hook's freshness, errors, Show older and deep-link cases, A15 (a)–(f)), `OrdersNext.older.test.tsx` (18), `OrdersNext.deep-link.test.tsx` (15 → 20) and `useOrderBook.test.tsx` (24 → 39: holds, overlays, `readOlderPage` and `useApproveOrder`). E3, the listener's test, is not written (fork 6). The full web suite passes, 5,438 with 11 skipped, against 5,371 and 11 at `86224761d`; `tsc --noEmit` is clean. 55 mutations of the five source files, each made from a `cp -p` copy and restored from it, the worktree diff hashed equal after every run: 52 fail a test. Two failed only after a test was added for them: asking for a deep-linked order over a failed re-read of kept rows (A15 (f)), and a hold that its timer already let go letting go again when released (H3b). Three survive, each a second guard behind one a test holds: the release's own `released` flag (`unblock`'s `blocking` flag keeps the count right), `resetOrderBookRunnerForTests` zeroing `holds` (`runs.clear()` drops the run) and the hold bumping `writeEpoch` (the `HELD` abort stops the read the fence would catch). The 11 claim rows hold, and 21 named mutations each make one fail. /orders was not opened in a browser: every user-visible claim above rests on jsdom tests.
 
 ## Consequences
 
@@ -180,23 +230,46 @@ One survives, re-run against the final tests: removing `run.next = null` from `s
 | /receiving door lane | R3 | DELIVERED orders are open ("Not counted yet") and are not listed on /receiving today, per the ruling's record |
 | Phone /orders | this lane, a later PR | Mobile is not touched here |
 | `DayDetail.tsx:200` links `/orders?highlight=` | follow-up | Check whether /orders reads `?highlight=` or `?order=` |
-| `markBackground` from `lib/websocket.tsx:646`/`:664` | PR-B | Until wired, websocket-triggered book reads are urgent (settled, not gapped) |
+| `markBackground` for realtime pushes, and the `order_change` listener | the founder (fork 6, unanswered at the build) | Neither is built in PR-B. Websocket-triggered book reads stay urgent (settled, not gapped); an `order_change` from `RealtimeContext` alone reaches /orders only at the 60 s interval. Fork 6's answer brings the listener, its test and its claim rows (see "PR-B") |
+| `useOrders` still reads the newest 50 for /calendar (`useCalendarNextData.ts:538`) and /vendors (`useProvidersNextData.ts:51`) | their lanes | Outside /orders, so outside PR-B by the Scope ruling |
+| The sheets await a whole read after a save (`AgreementSheet.tsx:333`, `NewOrderSheet.tsx:380`, `RecurrenceSheet.tsx:210`) | this lane, a later PR | About 400 ms more under 100 orders; a capped house can keep a sheet saving past a minute. Stop awaiting the invalidation |
+| An unknown wire status reads as pending with a live approve die | O4 | Pre-existing; PR-B lists every such order now, so it shows more often |
+| First paint of a capped house (≥ 42 list requests against 40 a minute per tab) and of an unstable read above about 1,400 orders; a request window shared across tabs | this lane, PR-C | Needs `order-book.ts` (open sweeps before closed pages, or a lower ceiling) and, for the shared window, the runner and a cross-tab channel. Outside PR-B's 15 files |
+| Recurring's sentences that say "page" or "book" (`recurrence.ts:141`, `:261`, `:268`, `:278`) | this lane, a later PR | Named for founder review in PR-B; rewording them would be a 16th file |
 
-## Open forks for PR-B (not decided; asked before PR-B builds)
+## Forks for PR-B (1–3 closed by the founder on 2026-10-03; 4–9 open)
 
 1. **Which station holds open delivered and partly received orders?**
    - `stageOf` (`useOrdersNextData.ts:49-70`) files DELIVERED and PARTIALLY_RECEIVED under `delivered`, together with VERIFIED and COMPLETED.
    - Sketch: (a) they stay at `delivered`, and the station splits into open and closed; (b) a new "At the door" station sits before `delivered`; (c) they show at `ordered` with their mark.
+   - **Closed 2026-10-03 by the Station ruling: (a), top of Delivered; no new tab, no backorder at Ordered.**
 2. **Do cancelled orders appear under Show older?**
    - Sketch: (a) yes, mixed in date order with a cancelled mark; (b) only behind their own filter; (c) a count only.
+   - **Closed 2026-10-03 by the Cancelled ruling: kept out of Show older, with the separate count.**
 3. **What does a station with no open rows show?**
    - Sketch: (a) "Nothing open", with Show older under it; (b) the station is hidden until it has rows; (c) the latest closed row, dimmed.
+   - **Closed 2026-10-03 by the Empty tab ruling: none of the sketches — the newest 50 finished at once, with Show older below.**
 4. **What do undecidable `PARTIALLY_RECEIVED` rows read as?** These are rows whose `received` block cannot tell the three states apart: absent, `verifiedAt` not sent, or checked with `backorderBottles` null (not a bottle count).
    - `markFor` reads them as 'Receipt could not be read'.
    - The ruling names that text for `readable: false` only, so this extension is a default for review, not a ruling.
+   - **Not ruled (2026-10-03). PR-B keeps PR-A's reading: these rows show 'Receipt could not be read'.**
+5. **Does the Recurring station follow the open-first rule, and where do open recurring orders show?** It lists every order that carries a rule — open, finished and cancelled — newest first, as before, now over every order read; in a capped read its count shows —. Such an order is listed only there, so a recurring order that arrived and is not counted, or a recurring backorder, is not at the top of Delivered (the Station ruling does not name recurring orders). A child occurrence carries no rule and stays in its stage.
+   - Sketch: (a) as before (PR-B builds this); (b) open first, finished behind Show older, cancelled out, like the one-time stations; (c) as (a), and an open recurring arrival is also listed at the top of Delivered with its mark.
+6. **How soon does a realtime push re-read the orders?** Before PR-B a push re-read one request of 50. A book read is about 6 list requests at Tuzlu (about 525 orders, sim ledger, not re-measured), and 42 or more past 3,000. The tab's window allows 40 list requests a minute; the gateway allows 100 a minute per address on `/history`, a bucket the dashboard and the phone share.
+   - (a) **Urgent:** a push re-reads after the 400 ms settle. A change shows within about half a second. A steady stream costs up to 40 list requests a minute per open tab, so three tabs or devices on one address can ask 120 against 100, and the 429 is said as "too many reads in a short time".
+   - (b) **Background:** every push waits out the 30 s gap after the last read. About 2 reads a minute, about 12 list requests a minute per device at Tuzlu. A change made elsewhere can show up to 30 s later, in every house.
+   - (c) **Background only where a read costs more than one request** (the plan's recommendation): a house of 100 orders or fewer keeps (a), at 1 request a read as before; a bigger house gets (b).
+   - **Not answered at the build (2026-10-03), so none is built:** PR-B has no `order_change` listener (see "PR-B: Realtime"). Each option is a change to `useOrderBook.ts` only; `lib/websocket.tsx` stays unchanged.
+7. **Does the All view follow the Empty tab ruling?** The rulings name stations. PR-B treats the All view as one: every open order first; with nothing open, the newest 50 finished at once; Show older below.
+   - Sketch: (a) as PR-B does; (b) only open orders until Show older is tapped.
+8. **Once a station has opened on its newest 50, does an open order arriving fold them away?** The Empty tab ruling covers a station with nothing open; it does not say what happens when an open order then arrives (a push, another device).
+   - Sketch: (a) the 50 stay shown, the open order on top (PR-B builds this); (b) they fold back behind Show older, as if the station had opened with that order.
+9. **Past the cap, what do the figures show?** The List ruling says the figures cover every order; past 3,000 orders, or in a read that kept changing, they cannot.
+   - Sketch: (a) Delivered, Recurring and both month figures show — with a floor sentence; open stations exact when every open order was read; cancelled from the per-status totals (PR-B builds this); (b) Delivered from the per-status totals, which also count recurring orders, so Delivered would mean something different in a whole and a capped read; (c) a count route at the gateway, outside PR-B (no gateway change).
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-03 | — | Created (Proposed) with PR-A on `fix/orders-paged-fetch-f140` |
+| 2026-10-03 | — | PR-B on `fix/orders-wire-order-book-f140` (stacked on #598): /orders reads the book. Records the Station, Empty tab and Cancelled rulings; forks 1–3 closed, fork 4 kept open, forks 5–9 added. Fork 6 was not answered before the build, so no `order_change` listener was built. Still Proposed |

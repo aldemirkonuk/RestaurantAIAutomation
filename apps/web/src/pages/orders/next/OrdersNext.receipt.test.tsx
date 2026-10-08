@@ -104,6 +104,17 @@ function ordersData(rows: OrderRowVM[]): OrdersNextData {
     approvalGateError: null,
     approvalPolicyNote: null,
     dataUpdatedAt: null,
+    book: {
+      mode: 'whole',
+      total: rows.length,
+      readCount: rows.length,
+      openComplete: true,
+      unreadableStates: null,
+      deliveredAtLeast: null,
+      recurringAtLeast: null,
+      older: { canRead: false, reading: false, error: null, read: vi.fn() },
+    },
+    target: { state: 'none' },
   };
 }
 

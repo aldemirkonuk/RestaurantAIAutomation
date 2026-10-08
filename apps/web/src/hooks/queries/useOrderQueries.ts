@@ -9,10 +9,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../../lib/query-keys'
 import { ordersApi } from '../../services/api'
-import type { Order, OrderStatus, CreateOrderRequest } from '../../services/api/types'
+import type { Order, OrderStatus, OrderWireStatus, CreateOrderRequest } from '../../services/api/types'
 import { useAuth } from '../../contexts/AuthContext'
 import { useOrdersSubscription } from '../../contexts/RealtimeContext'
 import { useCallback } from 'react'
+import { holdLocalWrite } from './useOrderBook'
+import type { OrderBook } from '../../services/api/order-book'
+
+/** The status this tab writes optimistically. Lower case, which the wire never sends
+ *  (ORDER_WIRE_STATUSES, order-book.ts:69-82), so a revert can tell its own write from a fresh read. */
+const OPTIMISTIC_APPROVED = 'approved' as OrderWireStatus
 
 // ---------------------------------------------------------------------------
 // Query: Fetch all orders
@@ -166,17 +172,50 @@ export function useApproveOrder() {
           ),
         )
       }
-      return { prevOrders }
+      let prevBookStatus: OrderWireStatus | null = null
+      let release: (() => void) | null = null
+      if (activeRestaurantId) {
+        const bookKey = queryKeys.orders.book(activeRestaurantId)
+        const book = queryClient.getQueryData<OrderBook>(bookKey)
+        const before = book?.rows.find((o) => o.id === orderId)?.status ?? null
+        prevBookStatus = before
+        const patch = (b: OrderBook): OrderBook => ({
+          ...b,
+          rows: b.rows.map((o) =>
+            o.id === orderId && o.status === before ? { ...o, status: OPTIMISTIC_APPROVED } : o,
+          ),
+        })
+        if (book && before !== null) queryClient.setQueryData<OrderBook>(bookKey, patch(book))
+        // Last, so nothing after it can throw and lose the release (ADR 0269, PR-B).
+        release = holdLocalWrite(activeRestaurantId, before !== null ? patch : undefined)
+      }
+      return { prevOrders, prevBookStatus, release }
     },
-    onError: (_err, _orderId, context) => {
+    onError: (_err, input, context) => {
+      context?.release?.()
       if (context?.prevOrders) {
         queryClient.setQueryData(
           queryKeys.orders.list(activeRestaurantId ?? ''),
           context.prevOrders,
         )
       }
+      const before = context?.prevBookStatus
+      if (activeRestaurantId && before) {
+        const { orderId } = readApproveInput(input)
+        queryClient.setQueryData<OrderBook>(queryKeys.orders.book(activeRestaurantId), (book) =>
+          book
+            ? {
+                ...book,
+                rows: book.rows.map((o) =>
+                  o.id === orderId && o.status === OPTIMISTIC_APPROVED ? { ...o, status: before } : o,
+                ),
+              }
+            : book,
+        )
+      }
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _input, context) => {
+      context?.release?.()
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
     },
   })
