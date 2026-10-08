@@ -371,7 +371,7 @@ describe("POST /procurement/documents answers a non-holder without the money", (
   // POST :id/match does not reach this path. See the class doc and the
   // tech-debt fragment's upload-pairing entry. When that entry is fixed, this
   // test is meant to change.
-  it("still forwards a staff caller's orderId to intake, which pairs against it (OPEN)", async () => {
+  it("still forwards a staff caller's orderId to intake (OPEN)", async () => {
     const ORDER = "66666666-6666-4666-8666-666666666666";
     const ingest = jest.fn(async (_input: Record<string, unknown>) => ({
       documentId: DOC,
