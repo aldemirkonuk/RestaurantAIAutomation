@@ -20,12 +20,13 @@
  *  - ready    — the book.
  * A figure that is pending or failed is "—", never 0.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Select } from '@/components/mudavym';
 import { DeliveriesToName } from '@/components/mudavym/DeliveriesToName';
+import { readView, writeView, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
 import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
@@ -181,21 +182,35 @@ async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], filename
 export default function InventoryNext() {
   const data = useInventoryNextData();
   const queryClient = useQueryClient();
-  const [chip, setChip] = useState<ChipId>('all');
-  const [query, setQuery] = useState('');
-  const [zone, setZone] = useState('');
-  const [type, setType] = useState('');
-  const [sort, setSort] = useState<SortId>('needs');
-  const [view, setView] = useState<'table' | 'map'>('table');
-  const [openId, setOpenId] = useState<string | null>(null);
+  // INV-W38: the view is the URL (iv-url.ts), so a reload, Back or a sent
+  // link keeps it, and the links other pages send here land where they say.
+  const [params, setParams] = useSearchParams();
+  const { chip, q: query, zone, type, sort, view, open: openParam } = useMemo(() => readView(params), [params]);
+  const setV = useCallback(
+    (patch: Partial<IvView>) => setParams((cur) => writeView(cur, { ...readView(cur), ...patch }), { replace: true }),
+    [setParams],
+  );
   const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos'>(null);
-  const [naming, setNaming] = useState(false);
+  // The delivered-order bell links to ?name-delivery=<order>; the card opens for it.
+  const [naming, setNaming] = useState(() => params.has('name-delivery'));
   const searchRef = useRef<HTMLInputElement>(null);
   const toolsRef = useRef<HTMLElement>(null);
   const ladder = useLadder(data.state === 'reading');
 
   const rows = data.rows;
   const locs = data.locations;
+  // ?highlight= may carry a wine id; the open row is always a row id.
+  const openId = useMemo(() => {
+    if (openParam === null || !rows) return openParam;
+    return (rows.find((r) => r.id === openParam) ?? rows.find((r) => r.wineId === openParam))?.id ?? openParam;
+  }, [openParam, rows]);
+  // A title opened by a link is brought into view once, when its row is drawn.
+  const linkedOpen = useRef(openParam);
+  useEffect(() => {
+    if (linkedOpen.current === null || openId === null || !rows?.some((r) => r.id === openId)) return;
+    linkedOpen.current = null;
+    document.getElementById(`iv-row-${openId}`)?.scrollIntoView?.({ block: 'center' });
+  }, [openId, rows]);
   const zoneName = (id: string | null): string => {
     if (id === null) return 'Unassigned';
     // Failed or still reading: either way the names are unread, so "not on the list" would be a guess.
@@ -281,10 +296,7 @@ export default function InventoryNext() {
     .join(' · ');
 
   const clearFilters = () => {
-    setChip('all');
-    setZone('');
-    setType('');
-    setQuery('');
+    setV({ chip: 'all', zone: '', type: '', q: '' });
   };
 
   const refreshStock = () => {
@@ -345,6 +357,11 @@ export default function InventoryNext() {
   const nameable = useMemo(() => data.rawItems.map((i) => ({ inventoryId: i.id, name: i.wineName ?? null })), [data.rawItems]);
 
   const crumb = rows === null ? null : latestCount(rows);
+
+  // The bell's older ?verify=<order> link: a delivery is checked at the door
+  // now, on Receiving, which opens that order (ReceivingNext reads ?order=).
+  const verifyOrder = params.get('verify');
+  if (verifyOrder) return <Navigate to={`/receiving?order=${encodeURIComponent(verifyOrder)}`} replace />;
 
   return (
     <div className="mudavym iv-page min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
@@ -484,7 +501,7 @@ export default function InventoryNext() {
                     className="iv-chip iv-focus"
                     aria-pressed={activeChip === c.id}
                     data-on={activeChip === c.id}
-                    onClick={() => setChip(c.id)}
+                    onClick={() => setV({ chip: c.id })}
                   >
                     {c.label} <span className="iv-num">{chipCount(c.id)}</span>
                   </button>
@@ -501,14 +518,14 @@ export default function InventoryNext() {
                   className="iv-field iv-focus"
                   placeholder="Search titles, producers, grapes"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => setV({ q: e.target.value })}
                 />
                 <span className="iv-hint">accents ignored · /</span>
               </label>
               <Select
                 label="Zone"
                 value={zone}
-                onChange={setZone}
+                onChange={(v) => setV({ zone: v })}
                 placeholder="All"
                 disabled={locs.unavailable || locs.loading}
                 options={[
@@ -519,7 +536,7 @@ export default function InventoryNext() {
               <Select
                 label="Type"
                 value={type}
-                onChange={setType}
+                onChange={(v) => setV({ type: v })}
                 placeholder="All"
                 disabled={!data.libraryAnswered}
                 options={typeOptions}
@@ -527,7 +544,7 @@ export default function InventoryNext() {
               <Select
                 label="Sort"
                 value={sort}
-                onChange={(v) => setSort((v || 'needs') as SortId)}
+                onChange={(v) => setV({ sort: (v || 'needs') as SortId })}
                 options={[
                   { value: 'needs', label: 'Needs you first' },
                   { value: 'name', label: 'Name' },
@@ -535,10 +552,10 @@ export default function InventoryNext() {
                 ]}
               />
               <span className="iv-toggle" role="group" aria-label="View">
-                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'table'} data-on={view === 'table'} onClick={() => setView('table')}>
+                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'table'} data-on={view === 'table'} onClick={() => setV({ view: 'table' })}>
                   Table
                 </button>
-                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'map'} data-on={view === 'map'} onClick={() => setView('map')}>
+                <button type="button" className="iv-btn iv-focus" aria-pressed={view === 'map'} data-on={view === 'map'} onClick={() => setV({ view: 'map' })}>
                   Cellar map
                 </button>
               </span>
@@ -579,10 +596,7 @@ export default function InventoryNext() {
                   locations={locs.list}
                   locationsLoading={locs.loading}
                   locationsUnavailable={locs.unavailable}
-                  onOpenInTable={(locationId) => {
-                    setZone(locationId);
-                    setView('table');
-                  }}
+                  onOpenInTable={(locationId) => setV({ zone: locationId, view: 'table' })}
                   onManageLocations={() => setPanel('locations')}
                   toneOf={mapTone}
                   toneWords={MAP_WORDS}
@@ -606,7 +620,7 @@ export default function InventoryNext() {
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
                 openId={openId}
-                onToggle={(id) => setOpenId((cur) => (cur === id ? null : id))}
+                onToggle={(id) => setV({ open: openId === id ? null : id })}
                 canManage={data.canManage}
                 currency={data.currency}
                 zoneName={zoneName}
@@ -709,8 +723,7 @@ export default function InventoryNext() {
             shadowStock: r.shadow ?? undefined,
           }))}
           onSelectLocation={(location) => {
-            setZone(location.id);
-            setView('table');
+            setV({ zone: location.id, view: 'table' });
             setPanel(null);
           }}
           onLocationsChange={(updated) => locs.setLocations(updated)}
