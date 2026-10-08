@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { SimposService } from "./simpos.service";
 import { GoalsService } from "../analytics/goals.service";
+import { HOUSE_ZONE_UNSET } from "../common/house-day";
 import { TableAnalyticsService } from "../analytics/table-analytics.service";
 import { InsightGeneratorService } from "../analytics/insights/insight-generator.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
@@ -1592,7 +1593,12 @@ export class ScenarioVerifyService {
       );
       return;
     }
-    const span = daysBackInclusive(date);
+    // The window counts back from the HOUSE's today (ADR 0296), which can be
+    // a day ahead of the UTC date this span is measured on (Istanbul after
+    // 21:00 UTC). One spare day keeps service_date inside the window either
+    // way; the day is read by its key, so the spare never enters the figure.
+    const back = daysBackInclusive(date);
+    const span = back == null ? null : back + 1;
     if (span == null || span > 365) {
       push(
         "analytics.pos_revenue",
@@ -1601,7 +1607,7 @@ export class ScenarioVerifyService {
         null,
         span == null
           ? `service_date '${date}' is not a date this verifier can window`
-          : `service_date '${date}' is ${span} days back; the POS revenue endpoint windows at 365 days`,
+          : `service_date '${date}' is ${back} days back; the POS revenue endpoint windows at 365 days, one of them held spare for the house's clock`,
       );
       return;
     }
@@ -1617,6 +1623,16 @@ export class ScenarioVerifyService {
           want,
           null,
           "GoalsService reports posConnected: false — no POS check has ever landed for this restaurant, so revenue is null, not 0",
+        );
+        return;
+      }
+      if (window.zoneUnset) {
+        push(
+          "analytics.pos_revenue",
+          "unverifiable",
+          want,
+          null,
+          `GoalsService reports zoneUnset: true — ${HOUSE_ZONE_UNSET}`,
         );
         return;
       }
@@ -1642,7 +1658,7 @@ export class ScenarioVerifyService {
           "unverifiable",
           want,
           { [date]: onDate, [next as string]: spill },
-          `the revenue is all present but split across two UTC day buckets (${onDate.toFixed(2)} + ${spill.toFixed(2)}). GoalsService buckets on the UTC date of closed_at, while service_date is local to ${run.timezone ?? "an unrecorded timezone"} — so this cannot be decided here, and is not reported as a mismatch`,
+          `the revenue is all present but split across two house days (${onDate.toFixed(2)} + ${spill.toFixed(2)}). GoalsService files each check on its house day in ${window.timezone}, while service_date is local to ${run.timezone ?? "an unrecorded timezone"} — the run and the house keep different clocks, so this cannot be decided here, and is not reported as a mismatch`,
         );
         return;
       }
@@ -1651,7 +1667,7 @@ export class ScenarioVerifyService {
         "fail",
         want,
         onDate,
-        `pos-revenue booked ${onDate.toFixed(2)} on ${date}, expected ${Number(want).toFixed(2)} (next UTC day holds ${spill.toFixed(2)})`,
+        `pos-revenue booked ${onDate.toFixed(2)} on ${date}, expected ${Number(want).toFixed(2)} (the next house day holds ${spill.toFixed(2)})`,
       );
     } catch (e: any) {
       push(
