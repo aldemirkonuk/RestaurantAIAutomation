@@ -62,7 +62,7 @@ function entry(over: Record<string, unknown> = {}) {
     rationale: 'Lead time is 2 days; the cover is gone before the case lands.',
     category,
     urgency: 'now',
-    stake: stakeOf(category),
+    stake: stakeOf(ruleKey, category),
     hand: handOf(ruleKey, category),
     score: 3,
     pinned: false,
@@ -300,6 +300,238 @@ describe('RecommendationsNext — the standing book', () => {
     // the hand names where the work actually lands
     expect(within(rows[0]).getByText(/Yours, in Orders/)).toBeInTheDocument();
     expect(within(rows[1]).getByText(/Yours, in Team/)).toBeInTheDocument();
+  });
+
+  /**
+   * ADR 0288 (AW28): the register files by what acting on an entry changes,
+   * and a pressed register's section head names what it leaves out. The
+   * founder, 2026-10-04: "Money / Stock (Recommended)".
+   */
+  const headOf = (act: string) => screen.getByRole('heading', { name: act }).parentElement as HTMLElement;
+
+  it('files a price change under Money, and a pressed head names the entries filed elsewhere', () => {
+    mockData.current = {
+      ...base,
+      entries: [
+        entry({ ruleKey: 'plowhorse_repricing', category: 'efficiency' }),
+        entry({ ruleKey: 'margin_to_target', category: 'pricing' }),
+        entry({ ruleKey: 'pairing_promotion', category: 'basket' }),
+        entry({ ruleKey: 'stockout_imminent', category: 'inventory' }),
+        entry({ ruleKey: 'margin_advice_blind', category: 'pricing' }),
+        entry({ ruleKey: 'staff_spread', category: 'staff' }),
+      ],
+    };
+    draw();
+
+    const money = screen.getByRole('button', { name: /^Money\s*\d+$/ });
+    expect(within(money).getByText('4')).toBeInTheDocument();
+    fireEvent.click(money);
+    expect(money).toHaveAttribute('aria-pressed', 'true');
+
+    // all three price changes stand under Money, none filed elsewhere
+    expect(within(headOf('Price it')).getByText('3 entries')).toBeInTheDocument();
+    expect(within(headOf('Price it')).queryByTestId('rc-act-elsewhere')).toBeNull();
+    // the stockout is an order that changes stock: the head says so
+    expect(within(headOf('Order it')).getByText('1 entry')).toBeInTheDocument();
+    expect(within(headOf('Order it')).getByTestId('rc-act-elsewhere')).toHaveTextContent(
+      '· 1 more filed under stock',
+    );
+    // the hook the phone layout keys on (rec-next.css: the count drops to its own line)
+    expect(headOf('Order it')).toHaveAttribute('data-elsewhere');
+    expect(headOf('Price it')).not.toHaveAttribute('data-elsewhere');
+    // a section with nothing under Money stays hidden; the rail carries it
+    expect(screen.queryByRole('heading', { name: 'Brief the floor' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /^All\s*\d+$/ }));
+    expect(screen.queryAllByTestId('rc-act-elsewhere')).toHaveLength(0);
+  });
+
+  it('files the bottle moved by-the-glass under Stock, beside the idle stock', () => {
+    mockData.current = {
+      ...base,
+      entries: [
+        entry({ ruleKey: 'puzzle_activation', category: 'efficiency' }),
+        entry({ ruleKey: 'dead_stock_capital', category: 'inventory' }),
+      ],
+    };
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: /^Stock\s*\d+$/ }));
+    expect(within(headOf('Move stock')).getByText('2 entries')).toBeInTheDocument();
+    expect(screen.queryAllByTestId('rc-act-elsewhere')).toHaveLength(0);
+  });
+
+  it('files the top sellers’ buffer under Stock beside the stockout, and the weekday move under The floor', () => {
+    // The founder, 2026-10-04: "Stock (Recommended)" and "The floor (Recommended)".
+    mockData.current = {
+      ...base,
+      entries: [
+        entry({ ruleKey: 'stockout_imminent', category: 'inventory' }),
+        entry({ ruleKey: 'revenue_concentration', category: 'risk' }),
+        entry({ ruleKey: 'spend_acceleration', category: 'purchasing' }),
+        entry({ ruleKey: 'weekday_gap', category: 'sales' }),
+      ],
+    };
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: /^Stock\s*\d+$/ }));
+    expect(within(headOf('Order it')).getByText('2 entries')).toBeInTheDocument();
+    expect(within(headOf('Order it')).getByTestId('rc-act-elsewhere')).toHaveTextContent(
+      '· 1 more filed under vendors',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^The floor\s*\d+$/ }));
+    expect(within(headOf('Schedule it')).getByText('1 entry')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Order it' })).toBeNull();
+  });
+
+  it('says in the working why an entry would change what it says, from the rule’s own words', () => {
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: 'plowhorse_repricing', category: 'efficiency' })],
+    };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent('Money');
+    fireEvent.click(within(row).getByText('The working'));
+    expect(screen.getByText('Why it would change money')).toBeInTheDocument();
+    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/Raise those prices/);
+  });
+
+  /**
+   * ADR 0288, the founder 2026-10-07: "Lower-case mid-sentence (Recommended)".
+   * A register's name inside a sentence is lower-case; the rail, the "Would
+   * change" fact and the act headings keep their capitals.
+   */
+  it('prints a register name lower-case inside a sentence, and as it is on the rail and the fact', () => {
+    mockData.current = {
+      ...base,
+      entries: [
+        // one act (Not yet filed: no rule is known by name), five registers
+        entry({ ruleKey: 'a_rule_on_sales', category: 'sales' }),
+        entry({ ruleKey: 'a_rule_on_inventory', category: 'inventory' }),
+        entry({ ruleKey: 'a_rule_on_purchasing', category: 'purchasing' }),
+        entry({ ruleKey: 'a_rule_on_staff', category: 'staff' }),
+        entry({ ruleKey: 'a_rule_on_nothing', category: 'efficiency' }),
+      ],
+    };
+    draw();
+    // the rail keeps its capitals
+    for (const name of ['Money', 'Stock', 'Vendors', 'The floor', 'Unfiled'])
+      expect(screen.getByRole('button', { name: new RegExp(`^${name}\\s*\\d+$`) })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Money\s*\d+$/ }));
+    // the head's sentence names the other four lower-case, in rail order
+    expect(within(headOf('Not yet filed')).getByTestId('rc-act-elsewhere')).toHaveTextContent(
+      '· 4 more filed under stock, vendors, the floor and unfiled',
+    );
+    // the act heading keeps its own capital
+    expect(screen.getByRole('heading', { name: 'Not yet filed' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^The floor\s*\d+$/ }));
+    const row = screen.getByTestId('rc-entry');
+    // the fact is a value on its own, not a sentence: it keeps the capital
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent(/^The floor$/);
+    fireEvent.click(within(row).getByText('The working'));
+    expect(screen.getByText('Why it would change the floor')).toBeInTheDocument();
+    expect(screen.queryByText('Why it would change The floor')).toBeNull();
+  });
+
+  it('says an unfiled entry is shown under unfiled, lower-case, inside its why', () => {
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: 'a_new_efficiency_rule', category: 'efficiency' })],
+    };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent(/^Unfiled$/);
+    fireEvent.click(within(row).getByText('The working'));
+    const why = screen.getByTestId('rc-register-why');
+    expect(why).toHaveTextContent('It is shown under unfiled rather than sorted by guesswork.');
+    expect(why.textContent).not.toMatch(/Unfiled/);
+  });
+
+  it('a stored key named on Object.prototype stands under Unfiled and says why, never "undefined"', () => {
+    // ADR 0288, audit of PR #611: `setAction` rejects only an empty key, so a
+    // leaf row can carry `constructor`. It is an unknown rule, not an
+    // inherited table row.
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: 'constructor', category: 'efficiency' })],
+    };
+    draw();
+    const unfiled = screen.getByRole('button', { name: /^Unfiled\s*\d+$/ });
+    expect(within(unfiled).getByText('1')).toBeInTheDocument();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent('Unfiled');
+    fireEvent.click(within(row).getByText('The working'));
+    expect(screen.getByText('Why it is unfiled')).toBeInTheDocument();
+    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/no register for the rule constructor/);
+    expect(screen.queryByText(/undefined/)).toBeNull();
+  });
+
+  it('a stored rule key `__proto__` renders: Unfiled, and both forward doors refuse in words', () => {
+    // ADR 0288, audit of PR #611 at 9d1d9fa53: `__proto__` read from the goal
+    // and cutting tables by a plain `table[key]` is `Object.prototype`, a
+    // truthy "refusal" that React cannot render, so the page threw.
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: '__proto__', category: 'efficiency' })],
+    };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent('Unfiled');
+    expect(screen.getByTestId('rc-goal-dark')).toHaveAttribute(
+      'title',
+      expect.stringContaining('no metric filed for the rule __proto__'),
+    );
+    expect(screen.getByTestId('rc-cutting-dark')).toHaveAttribute(
+      'title',
+      expect.stringContaining('no cutting filed for the rule __proto__'),
+    );
+    const note = row.querySelector('.rc-forward-note');
+    expect(note).toHaveTextContent(/no metric filed for the rule __proto__/);
+    expect(note).toHaveTextContent(/no cutting filed for the rule __proto__/);
+    fireEvent.click(within(row).getByText('The working'));
+    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/no register for the rule __proto__/);
+    expect(document.body.textContent).not.toMatch(/undefined|\[object Object\]/);
+  });
+
+  it('a stored urgency `__proto__` renders as its own word, never an inherited value', () => {
+    mockData.current = {
+      ...base,
+      entries: [entry({ urgency: '__proto__' })],
+    };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByText('__proto__')).toHaveClass('rc-micro');
+    expect(document.body.textContent).not.toMatch(/undefined|\[object Object\]/);
+  });
+
+  it('a stored urgency named on Object.prototype ranks as an unknown urgency, after Tonight', () => {
+    // `URGENCY_RANK['constructor']` was the `Object` function: the comparator
+    // returned NaN and the entry kept its place above a Tonight entry.
+    mockData.current = {
+      ...base,
+      entries: [
+        entry({
+          ruleKey: 'revenue_concentration',
+          category: 'risk',
+          urgency: 'constructor',
+          score: 9,
+          observation: 'Three wines carry most of the revenue.',
+        }),
+        entry({ ruleKey: 'stockout_imminent', category: 'inventory', urgency: 'now', score: 1 }),
+      ],
+    };
+    draw();
+    const rows = screen.getAllByTestId('rc-entry');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent(/Chablis 2021 runs out/);
+    expect(rows[1]).toHaveTextContent(/Three wines carry most of the revenue/);
+    expect(within(rows[1]).getByText('constructor')).toHaveClass('rc-micro');
+  });
+
+  it('the rail says the register is filed by the rule where it says so, not only by category', () => {
+    draw();
+    expect(screen.queryByText(/Filed from the rule’s own category\./)).toBeNull();
+    expect(screen.getByText(/Filed by the rule where its prescription\s+says so/)).toBeInTheDocument();
   });
 
   it('prints the denominator so a short book is a proven absence', () => {

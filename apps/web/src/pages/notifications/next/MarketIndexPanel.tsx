@@ -18,6 +18,8 @@
  * shapes that must not be allowed to look alike:
  *
  *   • the call itself failed / was refused → say which, name the status
+ *   • the house has no COUNTRY recorded    → ask for it, with a link to
+ *                                             Settings (ADR 0305)
  *   • the house has no state recorded      → the endpoint's own sentence
  *   • the jurisdiction is not one the register knows (Türkiye, the UK)
  *                                           → the endpoint's own sentence
@@ -54,9 +56,10 @@ import {
   Sprout,
   TriangleAlert,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { EM, MONO, SANS, SERIF } from './nt-format';
 import { HouseIndexLine, HouseIndexSource, useHouseIndex } from './useHouseIndex';
-import { CommoditySeriesVM, useHouseCommodity } from './useHouseCommodity';
+import { CommoditySeriesVM, HouseCommodityVM, useHouseCommodity } from './useHouseCommodity';
 
 /** The class, in the words a reader knows. An unmapped class prints its key. */
 const CLASS_LABEL: Record<string, string> = {
@@ -503,10 +506,14 @@ function dayOfUtc(iso: string): string {
   });
 }
 
-/** The commodity section: every series that speaks for this house. */
-function CommoditySection() {
-  const c = useHouseCommodity();
-
+/**
+ * The commodity section: every series that speaks for this house.
+ *
+ * `askForCountry` is decided by the box around it (ADR 0305): this section asks
+ * for the country only when the register's own ask is not drawn, so a house with
+ * no country is asked once per box, not twice.
+ */
+function CommoditySection({ c, askForCountry }: { c: HouseCommodityVM; askForCountry: boolean }) {
   if (c.state === 'loading') return <div className="nt-skel mt-3 h-12" aria-hidden />;
 
   return (
@@ -544,6 +551,31 @@ function CommoditySection() {
           {c.failure?.forbidden
             ? `The index-series register refused this account (${c.failure.status ?? 'refused'}). It is owner and manager only, so nothing is claimed here either way.`
             : `The index-series register could not be read (${c.failure?.message ?? 'no reason given'}). This section is unknown, not empty.`}
+        </p>
+      )}
+
+      {/* No country recorded (ADR 0305; the founder, 2026-10-07T19:48:13Z:
+          "The panels say the country isn't recorded and link to Settings").
+          The gateway read no state or country for this house, so only a
+          series that speaks for everywhere is listed below; this says so and
+          asks for the country. When the register's ask is drawn too, that one
+          ask carries this sentence's meaning and this one is not drawn. */}
+      {askForCountry && (
+        <p
+          role="status"
+          data-testid="mi-commodity-country-unset"
+          className="mt-1.5 text-[11.5px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+        >
+          This house’s country isn’t recorded, so no country’s or state’s series is read here,
+          and only a series that speaks for everywhere is listed.{' '}
+          <Link
+            to="/settings?tab=locations"
+            className="underline underline-offset-2"
+            style={{ color: 'var(--ink-1)' }}
+          >
+            Set the country in Settings
+          </Link>
         </p>
       )}
 
@@ -598,7 +630,18 @@ function Withheld({ source }: { source: HouseIndexSource }) {
 
 export function MarketIndexPanel() {
   const m = useHouseIndex();
+  const c = useHouseCommodity();
   const withheld = m.sources.filter((s) => s.withheld);
+
+  // A house with no country (ADR 0305). Both registers read the same
+  // `restaurants` row, so such a house is usually flagged by both, and two asks
+  // with two identical links in one box would say one thing twice. The box then
+  // asks once, in the register's line, which also says what the commodity
+  // section lists. The commodity section asks on its own only when the
+  // register is not asking (its read failed, it is still loading, or it is not
+  // flagged).
+  const indexAsks = m.state === 'ready' && m.countryNotRecorded;
+  const commodityAsks = c.state === 'ready' && c.countryNotRecorded;
 
   // Only the carried books whose lines are actually on this screen (ADR 0128
   // Q4). A basis note beside a book the reader cannot see would be an answer to
@@ -703,7 +746,7 @@ export function MarketIndexPanel() {
           read: the two are separate endpoints over separate tables, and hiding
           one behind the other's failure would make a working register look
           silent. */}
-      <CommoditySection />
+      <CommoditySection c={c} askForCountry={commodityAsks && !indexAsks} />
 
       {/* A book somebody carried in that nobody has admitted yet (ADR 0128).
           Drawn whether or not there are lines: a jurisdiction can hold a new
@@ -771,7 +814,37 @@ export function MarketIndexPanel() {
         </ul>
       )}
 
-      {m.state === 'ready' && m.lines.length === 0 && (
+      {/* No country recorded (ADR 0305; the founder, 2026-10-07T19:48:13Z:
+          "Ask for the country (Recommended)"). The house's state was not read,
+          because a code names different places in different countries, so the
+          box asks for the country with a link, the way a house with no time
+          zone is asked (SalesCalendar's `dn-zone-unset`). When the commodity
+          register is flagged too, this one ask also says what that section
+          lists, and the section draws no ask of its own. */}
+      {m.state === 'ready' && m.countryNotRecorded && (
+        <p
+          role="status"
+          data-testid="mi-country-unset"
+          className="mt-1.5 text-[11.5px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+        >
+          This house’s country isn’t recorded, so its state isn’t read and no state-based price
+          is shown.{' '}
+          {commodityAsks &&
+            'No country’s or state’s commodity series is read either, so the commodity and market index section lists only a series that speaks for everywhere. '}
+          A state code names different places in different countries (MI is Michigan in the
+          United States and Milano in Italy), so nothing is guessed.{' '}
+          <Link
+            to="/settings?tab=locations"
+            className="underline underline-offset-2"
+            style={{ color: 'var(--ink-1)' }}
+          >
+            Set the country in Settings
+          </Link>
+        </p>
+      )}
+
+      {m.state === 'ready' && !m.countryNotRecorded && m.lines.length === 0 && (
         <p
           role="status"
           className="mt-1.5 text-[11.5px]"
