@@ -68,18 +68,30 @@ end $$;
 
 -- T4 the signature and return shape did not change: the function still takes
 -- (uuid, integer) and returns the same 31 columns, so callers need no change.
+-- [CORRECTED 2026-10-05, the_cellar_counts_the_door_checked_price (ADR 0301
+-- §2): that migration appends three columns after the 31, so this block now
+-- pins the 31 by name and place rather than the count.]
 do $$
 declare
   args text;
   ncols integer;
+  names text[];
 begin
-  select pg_get_function_identity_arguments(p.oid), coalesce(array_length(p.proallargtypes, 1), 0) - p.pronargs
-    into args, ncols
+  select pg_get_function_identity_arguments(p.oid), coalesce(array_length(p.proallargtypes, 1), 0) - p.pronargs,
+         p.proargnames[p.pronargs + 1 : p.pronargs + 31]
+    into args, ncols, names
     from pg_proc p
    where p.oid = 'public.house_beverage_ledger(uuid, integer)'::regprocedure;
   assert args = 'p_restaurant_id uuid, p_limit integer',
     format('T4 FAIL the signature changed: %s', args);
-  assert ncols = 31, format('T4 FAIL the return shape has %s columns, expected 31', ncols);
+  assert ncols >= 31, format('T4 FAIL the return shape has %s columns, expected at least 31', ncols);
+  assert names = array['house_key','label','books','first_seen','menu_lines','menu_bottle_price',
+      'menu_glass_price','menu_sections','invoice_lines','first_bought','last_bought','bottles_bought',
+      'paid_total','last_unit_price','last_bought_from','order_lines','last_ordered_at','last_order_price',
+      'last_ordered_from','quote_count','last_quote_at','last_quote_price','last_quote_source',
+      'last_quote_from','pos_lines','poured_qty','poured_revenue','first_poured','last_poured',
+      'beverage_id','match_method'],
+    format('T4 FAIL the 31 columns moved: %s', names);
 end $$;
 
 rollback;
