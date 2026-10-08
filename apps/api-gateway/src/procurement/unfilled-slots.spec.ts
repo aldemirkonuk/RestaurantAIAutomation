@@ -279,4 +279,19 @@ describe("getPendingDraft never lets another house's vendor speak for the draft"
       fills: [{ slot: "[Your Name]", value: "Meyhouse" }],
     });
   });
+
+  it("logs the foreign vendor once per draft, not on every read of the card", async () => {
+    const foreign = { ...pendingRow, providers: { ...pendingRow.providers, restaurant_id: "rest-2" } };
+    const { service } = serviceWith(foreign);
+    jest.spyOn(service as any, "sendRequestViews").mockResolvedValue([null]);
+    const warn = jest.spyOn((service as any).logger, "warn").mockImplementation(() => undefined);
+    // The fake read hands back the same object each time and the read nulls
+    // its providers, so each read gets the foreign vendor back first.
+    for (let read = 0; read < 3; read++) {
+      (foreign as any).providers = { ...pendingRow.providers, restaurant_id: "rest-2" };
+      const draft = await service.getPendingDraft(REST, ORDER);
+      expect(draft?.providers).toBeNull();
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
 });

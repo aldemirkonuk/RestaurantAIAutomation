@@ -10008,9 +10008,9 @@ export class ProcurementService {
     // A vendor of another house never speaks for this draft: not its name or
     // address on the card, and not the first name the card is told the send
     // fills (`at_send.fills`). approveDraft refuses such a send outright; here
-    // the draft reads as having no vendor, so the greeting blank is unfillable.
+    // the draft reads as having no vendor, so a greeting blank, if any, is unfillable.
     if (row.providers && row.providers.restaurant_id !== restaurantId) {
-      this.logger.warn(`getPendingDraft: the draft ${row.id} on order ${orderId} names a vendor of another house; it is read as having none.`);
+      if (this.firstForeignVendorSighting(row.id)) this.logger.warn(`getPendingDraft: the draft ${row.id} on order ${orderId} names a vendor of another house; it is read as having none.`);
       row.providers = null;
     }
     const content = row.content ?? row.message_text ?? null;
@@ -10039,6 +10039,19 @@ export class ProcurementService {
       // cannot, so the card refuses only those (founder, 2026-10-01).
       at_send: await this.draftBlanksAtSend(restaurantId, content ?? "", row.providers),
     };
+  }
+
+  /**
+   * getPendingDraft runs on every read of the order's card, so its
+   * foreign-vendor warning is logged once per draft id per process, not on
+   * every read. The memory is capped: past 1000 ids it starts over.
+   */
+  private readonly foreignVendorDraftsWarned = new Set<string>();
+  private firstForeignVendorSighting(draftId: string): boolean {
+    if (this.foreignVendorDraftsWarned.has(draftId)) return false;
+    if (this.foreignVendorDraftsWarned.size >= 1000) this.foreignVendorDraftsWarned.clear();
+    this.foreignVendorDraftsWarned.add(draftId);
+    return true;
   }
 
   /**

@@ -73,7 +73,7 @@ These were built as approved:
 
 ## Addendum 2026-10-08 — the PR #672 follow-ups, and three forks left open
 
-PR #672 (fix/orders-send-blank-followups) built follow-ups 1-4 of the #578 pr-audit (`.planning/07-reference/pr-audits/578-a2275b4.md`, "Owed follow-ups"):
+PR #672 (fix/orders-send-blank-followups) built follow-ups 1-4 of the #578 pr-audit (`.planning/07-reference/pr-audits/578-a2275b4.md`, "Owed follow-ups"; that file is on PR #663, unmerged on 2026-10-08):
 
 - `blanksAtSend` refuses a signature blank in any spelling `SIGNATURE_SLOT_SOURCE` matches when the sender name is empty (bracket on the W7 bullet above).
 - `approveDraft` reads the sender name once and checks and sends that one value (`procurement.service.ts:7784-7786`, `:7899`).
@@ -81,9 +81,9 @@ PR #672 (fix/orders-send-blank-followups) built follow-ups 1-4 of the #578 pr-au
 
 Three forks came out of that work. Each is built one way, the most conservative reading the fixer found. **None is decided: each is open, pending the coordinator's ruling.**
 
-1. **A vendor of another house on the draft read.** Built: `getPendingDraft` reads the draft as having no vendor (`:10012-10015`). The card still loads, gets no vendor name, address or first name, and `at_send` reports `[Provider First Name]` as unfillable. The alternative is to refuse the whole read, as `approveDraft` refuses the send (`:7821`, 403). Open, pending the coordinator's ruling.
+1. **A vendor of another house on the draft read.** Built: `getPendingDraft` reads the draft as having no vendor (`:10012-10015`). The card still loads and gets no vendor name, address or first name. If the letter has a greeting blank such as `[Provider First Name]`, `at_send` reports it as unfillable; a letter without one is unaffected by the missing first name. The alternative is to refuse the whole read, as `approveDraft` refuses the send (`:7821`, 403). Open, pending the coordinator's ruling.
 2. **What a refused signature blank says.** Built: the refusal reuses `unfilledSlotsRefusal`'s existing sentence, quoting the blank as written ("…did not fill: [your name]. Nothing was sent."). It does not say that the house has no sender name, or where one is set. Open, pending the coordinator's ruling.
-3. **A vendor with no house (`providers.restaurant_id` null).** Built: `getPendingDraft` treats it as another house's vendor. That agrees with the seal (`:7427`) and `approveDraft` (`:7821`), which also compare with a strict `!==` and so refuse a null house. Among the routes that compare at all, only `manualReply` (`:8875`) lets a null house through. `confirmDeal` (`:9534`) does too, but it is not one of the six W7 routes. `requestDraftSend` and the sweep do not compare at all: filed as OD-TBD of 2026-10-08 in `OPEN-DECISIONS.md` ("filed 2026-10-08 from fix/orders-send-blank-followups"). The fork: should `manualReply` refuse a null house too, or should a null house be allowed everywhere? Open, pending the coordinator's ruling.
+3. **A vendor with no house (`providers.restaurant_id` null).** Built: `getPendingDraft` treats it as another house's vendor. That agrees with the seal (`:7427`) and `approveDraft` (`:7821`), which also compare with a strict `!==` and so refuse a null house. Among the routes that compare at all, only `manualReply` (`:8875`) lets a null house through. `confirmDeal` (`:9534`) does too, but it is not one of the six W7 routes. `requestDraftSend`, the sweep and `issueManualReplySeal` do not compare at all: filed as OD-TBD of 2026-10-08 in `OPEN-DECISIONS.md` ("filed 2026-10-08 from fix/orders-send-blank-followups"), CLAIMS `ORD-2026-10-08-DRAFT-VENDOR-HOUSE-UNCHECKED`. The fork: should `manualReply` refuse a null house too, or should a null house be allowed everywhere? Open, pending the coordinator's ruling.
 
 ## Review trail
 
