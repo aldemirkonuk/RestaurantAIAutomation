@@ -41,7 +41,7 @@ bell's own list. Claims: `claims.d/fix-bell-reads-only-your-notices.jsonl:1-2`.
    five legs of the summary, and a missing user must never fall back to the
    house's notices.
 
-## GET /dashboard/summary still hands every member vendor spend and whole order rows — OPEN — 2026-10-07
+## GET /dashboard/summary still hands every member vendor spend and whole order rows — CLOSED on `fix/review-dashboard` — 2026-10-07
 
 Found while fixing the notices leg above, and not fixed on that branch. The
 same route returns `procurementSpend` and `orders.pending` / `orders.inTransit`
@@ -55,6 +55,8 @@ above), so only a direct API call reaches it. When #579 resumes it will
 conflict with this branch's two-line change to the same handler and the same
 leg (its copy of the query is at `dashboard.service.ts:319`). Resolve that
 conflict by keeping both changes.
+
+**[2026-10-08, PR #579 merging main 87dafc064] CLOSED by #579.** Both changes are kept: the handler now refuses any role that does not see amounts with `assertSeesHouseAmounts` before it reads anything (DASH-W22), and an owner's or manager's notices leg still reads only their own rows. The merge left no textual conflict. The semantic one sat in `dashboard.notices-are-the-callers.spec.ts`: its waiter case and its no-user case now expect the refusal, with no read, and the columns case runs as the owner.
 
 ## email_intel_agent.py's `_notify` still inserts without the legacy NOT NULL columns — OPEN — 2026-10-07
 
