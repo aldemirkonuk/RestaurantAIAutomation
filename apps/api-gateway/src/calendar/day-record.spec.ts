@@ -240,6 +240,21 @@ describe("reconciliationLine", () => {
     );
   });
 
+  it("says a refusal before a closure: an excluded record under a refused register is not read", () => {
+    // The order is the contract (ADR 0287 F4): under a refusal there is no
+    // record to read, so even a record marked excluded must not print
+    // "Closed". This pins `posConnected === null` ahead of `recorded.excluded`.
+    const line = reconciliationLine(
+      day({ excluded: true, exclusionReason: "Labor Day" }),
+      true,
+      null,
+    );
+    expect(line).toBe(
+      "The sales register could not be read, so this day's trading is not known.",
+    );
+    expect(line).not.toMatch(/Closed/);
+  });
+
   it("distinguishes a day with no checks from a day with no covers", () => {
     expect(reconciliationLine(null, false, true)).toBe(
       "Nothing was recorded on this day.",
