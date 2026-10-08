@@ -45,10 +45,25 @@ export function ratioPct(v: unknown, digits = 1): string {
   return n === null ? EM : `${(n * 100).toFixed(digits)}%`;
 }
 
-/** A figure the engine already returns in percent (e.g. `trendPerDayPct`). */
+/**
+ * A signed change the engine returns as a 0–1 fraction, rendered as a
+ * percentage with its sign: 0.2069 → "+20.7%", -0.004 → "-0.4%".
+ *
+ * The `…Pct` names mislead: `trendPerDayPct` is OLS slope ÷ |mean|
+ * (`api-gateway/src/analytics/engine/statistics.ts` trendPerPeriodPct) and
+ * `paceDeltaPct` is (current − previous) ÷ |previous| (`engine/comparisons.ts`
+ * periodOverPeriod) — both fractions, which is how the recommendations and the
+ * insight generator already read them. Until 2026-10-03 this helper printed the
+ * fraction as if it were already a percentage, so +20.7% a day read "+0.21%".
+ *
+ * A change that rounds to zero at `digits` prints unsigned, never "-0.0%".
+ */
 export function pct(v: unknown, digits = 1): string {
   const n = num(v);
-  return n === null ? EM : `${n > 0 ? '+' : ''}${n.toFixed(digits)}%`;
+  if (n === null) return EM;
+  const shown = (n * 100).toFixed(digits);
+  if (Number(shown) === 0) return `${(0).toFixed(digits)}%`;
+  return `${n > 0 ? '+' : ''}${shown}%`;
 }
 
 /** A count with its noun, or the dash — "1 wine" / "6 wines" / "—". */

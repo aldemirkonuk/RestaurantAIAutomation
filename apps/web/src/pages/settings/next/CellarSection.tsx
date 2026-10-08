@@ -51,7 +51,7 @@ const MEASURE_LABEL: Record<GazetteerMeasureId, string> = {
   bottles: 'Bottles on hand',
   titles: 'Titles carried',
   par: 'At or under their own par',
-  offbook: 'Carried but off this read',
+  offbook: 'Carried, not in the wine library',
   parUnset: 'No par recorded',
   registers: 'Registers carried',
 };

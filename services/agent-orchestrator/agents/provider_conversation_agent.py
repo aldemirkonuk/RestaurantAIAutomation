@@ -46,6 +46,11 @@ from services.email_composer_service import GATEWAY_REFUSAL_KINDS, EmailComposer
 from services.spend_logger import estimate_llm_cost, get_spend_logger
 from config.settings import Settings, get_settings
 from services.model_clients import get_haiku_client
+from services.order_letter_door import (
+    OrderLetterDoorMissing,
+    live_order_letter_id,
+    stage_order_letter,
+)
 from services.plivo_voice_client import APPROVAL_MAX_AGE_SECONDS
 
 logger = setup_logger("agent.provider_conversation")
@@ -833,6 +838,31 @@ class ProviderConversationAgent(BaseAgent):
             f"order {order_id}"
         )
 
+        # The approval-time order letter (approveOrder always publishes
+        # `order_inquiry`) is the order's letter only if the create-time agent
+        # did not already write one (ADR 0266, F-106). Checked before any model
+        # call or session write; the database door in _create_approval_request
+        # stays the authority, because the create-time letter can land between
+        # this read and that write.
+        is_order_letter = intent_type == "order_inquiry" and bool(order_id)
+        if is_order_letter and restaurant_id:
+            try:
+                existing = live_order_letter_id(
+                    self.database.supabase, restaurant_id, order_id
+                )
+            except Exception as exc:
+                existing = None
+                self.logger.warning(
+                    f"Could not read order {order_id}'s letters before drafting "
+                    f"({exc}); the staging door still decides."
+                )
+            if existing:
+                self.logger.info(
+                    f"Order {order_id} already has its vendor letter ({existing}); "
+                    "no approval-time draft (ADR 0266)."
+                )
+                return
+
         async with self._session_semaphore:
             session = await self._get_or_create_session(
                 provider_id=provider_id,
@@ -883,7 +913,13 @@ class ProviderConversationAgent(BaseAgent):
                 restaurant_id=restaurant_id,
                 audit=audit,
                 order_id=order_id,
+                order_letter=is_order_letter,
             )
+            if is_order_letter and not conversation_id:
+                # Nothing was staged (the order's letter already existed, or
+                # the write failed): there is no draft for this session to
+                # wait on.
+                return
 
             session.status = "paused_for_approval"
             session.context["pending_conversation_id"] = conversation_id
@@ -2780,8 +2816,15 @@ class ProviderConversationAgent(BaseAgent):
         restaurant_id: str,
         audit: AuditEntry,
         order_id: Optional[str] = None,
+        order_letter: bool = False,
     ) -> Optional[str]:
-        """Create a conversation record pending manager approval."""
+        """Create a conversation record pending manager approval.
+
+        ``order_letter`` marks the approval-time order letter. It is staged
+        through ``stage_order_letter`` (ADR 0266, F-106), which writes nothing
+        when the order already has a live outbound letter; then this returns
+        None and nobody is notified.
+        """
         try:
             convo_data = {
                 "order_id": order_id,
@@ -2819,13 +2862,35 @@ class ProviderConversationAgent(BaseAgent):
                 },
             }
 
-            result = (
-                self.database.supabase.table("procurement_conversations")
-                .insert(convo_data)
-                .execute()
-            )
-
-            conversation_id = result.data[0]["id"] if result.data else None
+            conversation_id = None
+            staged = True
+            if order_letter and order_id:
+                try:
+                    conversation_id, staged = stage_order_letter(
+                        self.database.supabase, convo_data
+                    )
+                except OrderLetterDoorMissing as exc:
+                    # Only between this code deploying and its migration
+                    # applying: fall through to the plain insert below.
+                    self.logger.error(
+                        f"stage_order_letter is not deployed yet ({exc}); "
+                        f"inserting order {order_id}'s letter without the fence."
+                    )
+                    conversation_id = None
+            if order_letter and order_id and not staged:
+                self.logger.info(
+                    f"Order {order_id} already has its vendor letter "
+                    f"({conversation_id}); the approval-time draft was not staged "
+                    "(ADR 0266)."
+                )
+                return None
+            if conversation_id is None:
+                result = (
+                    self.database.supabase.table("procurement_conversations")
+                    .insert(convo_data)
+                    .execute()
+                )
+                conversation_id = result.data[0]["id"] if result.data else None
 
             if conversation_id:
                 # Get provider name for notification
@@ -2910,8 +2975,24 @@ class ProviderConversationAgent(BaseAgent):
         "HOUSE_FAILED",
     )
 
+    # A draft closed without being sent: DISCARDED (replaced by a newer draft
+    # for its order — the database keeps one waiting draft per order, ADR 0266,
+    # F-106 — or thrown away by a regenerate) and CANCELLED (its order was
+    # cancelled; the gateway's cancelOrder cascade). Before ADR 0266 the claim
+    # accepted both, so a replayed or by-id approval of a replaced duplicate
+    # would have sent the letter the house replaced, and a return to the
+    # manager would have revived it as a second waiting draft. The gateway
+    # refuses the same words at POST /conversations/:id/approve
+    # (conversations.service.ts CLOSED_DRAFT_STATUSES; its spec pins the lists).
+    _CLOSED_DRAFT_STATUSES = (
+        "DISCARDED",
+        "CANCELLED",
+    )
+
     # Every status a send claim — or a return to the manager — must not touch.
-    _CLAIM_REFUSED_STATUSES = _SEND_TERMINAL_STATUSES + _HOUSE_LETTER_STATUSES
+    _CLAIM_REFUSED_STATUSES = (
+        _SEND_TERMINAL_STATUSES + _HOUSE_LETTER_STATUSES + _CLOSED_DRAFT_STATUSES
+    )
 
     def _mint_rfc822_message_id(self) -> str:
         """Mint an RFC822 Message-ID BEFORE the send.

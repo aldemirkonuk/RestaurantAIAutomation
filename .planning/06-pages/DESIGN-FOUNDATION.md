@@ -342,10 +342,12 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      room.
    - **The width rule, "Open first, then remember"** — open at normal widths on a
      person's first visits; tucked below 1280 px and on `/reports` and
-     `/inventory` to a ~52 px strip that still shows each verb with its count (a
+     `/inventory` [Amended 2026-10-07: and on the dashboard at `/`, ADR 0290's
+     *"Counter starts tucked"*, `fix/dashboard-counter-starts-tucked`] to a ~52 px strip that still shows each verb with its count (a
      ring for a verb with a register not read, a dash for one refused — never a
-     blank edge); after that each person's choice per page wins. **[2026-10-01: one
-     choice for every page, not one per page; ADR 0160 §(10) amendment, PR #568.]**
+     blank edge); after that each person's choice per page wins [Corrected
+     2026-10-07: one choice, kept for every page, since the founder's
+     2026-10-01 narrowing (`counterPrefs.ts`'s header); not one per page].
      **[Added 2026-10-02, PR #566 gate round 2 (audit at `65ddb2cd2`): one exception,
      merged as PR #575 (`5a330a88e`). While Ask is docked in the counter's slot (1280
      px and wider, never on a phone), the counter shows tucked and its control closes

@@ -1,5 +1,7 @@
+import { HttpException, HttpStatus } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { DocumentIntakeService } from "./document-intake.service";
+import { DocumentsController } from "./documents.controller";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
@@ -147,6 +149,46 @@ const settle = () => new Promise((r) => setImmediate(r));
 
 const LINES_TABLE = "procurement_document_lines";
 const SUGGESTIONS_TABLE = "procurement_line_match_suggestions";
+const ORDER_ITEMS_TABLE = "procurement_order_items";
+
+/**
+ * Which house's order each order line hangs off. `ol-b` is another house's,
+ * and so is OTHER_HOUSE_LINE, a uuid for the route, which refuses a body id
+ * that is not one. Any id not listed does not exist.
+ */
+const OTHER_HOUSE_LINE = "22222222-2222-4222-8222-222222222222";
+const ORDER_LINE_HOUSE: Record<string, string> = {
+  "ol-1": "rest-1",
+  "ol-9": "rest-1",
+  "ol-b": "rest-2",
+  [OTHER_HOUSE_LINE]: "rest-2",
+};
+
+/**
+ * Answer the order-line ownership read the way PostgREST would, including the
+ * embed: with `procurement_orders!inner(...)` a row whose order fails the
+ * `procurement_orders.restaurant_id` filter is dropped; without `!inner` the
+ * row comes back with `procurement_orders: null`. A fixture that cannot
+ * express the join cannot fail on it (conversation-ledger.spec.ts).
+ */
+function answerOrderLineRead(call: DbCall): { data: any; error: any } {
+  const filter = (col: string) =>
+    call.filters.find(([op, c]) => op === "eq" && c === col)?.[2];
+  const id = filter("id") as string | undefined;
+  const owner = id ? ORDER_LINE_HOUSE[id] : undefined;
+  if (!owner) return { data: null, error: null };
+  const wanted = filter("procurement_orders.restaurant_id");
+  const embedMatches = wanted === undefined || wanted === owner;
+  const inner = (call.columns ?? "").includes("procurement_orders!inner");
+  if (inner && !embedMatches) return { data: null, error: null };
+  return {
+    data: {
+      id,
+      procurement_orders: embedMatches ? { restaurant_id: owner } : null,
+    },
+    error: null,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // L2 — the suggestions the matcher did not write
@@ -328,6 +370,8 @@ describe("ADR 0059 L1 — the confirmation is appended, never substituted", () =
         return { data: { id: "dl-1", ...call.payload }, error: null };
       if (call.table === SUGGESTIONS_TABLE && call.verb === "select")
         return { data: suggestion, error: null };
+      if (call.table === ORDER_ITEMS_TABLE && call.verb === "select")
+        return answerOrderLineRead(call);
       return { data: null, error: null };
     });
   }
@@ -477,6 +521,170 @@ describe("ADR 0059 L1 — the confirmation is appended, never substituted", () =
     expect(db.written(SUGGESTIONS_TABLE, "update")).toContainEqual(
       expect.objectContaining({ resolved_as: "rejected" }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A document line pairs only with an order line of its own house
+//
+// Against origin/main a323cc80b's service and controller, the refusal, the
+// same-answer, the ownership-read and the 404 cases fail: confirmLineMatch
+// read only the DOCUMENT line's house and wrote any order line id it was
+// given. The accept and unpair cases pass there; they pin that the check
+// leaves both as they were.
+// ---------------------------------------------------------------------------
+
+describe("confirmLineMatch — a line pairs only with its own house's order line", () => {
+  /** rest-1's document line, never paired and never proposed. */
+  function houseFixture() {
+    return makeDb((call) => {
+      if (call.table === LINES_TABLE && call.verb === "select")
+        return {
+          data: {
+            id: "dl-1",
+            order_line_id: null,
+            proposed_confidence: null,
+            proposed_method: null,
+          },
+          error: null,
+        };
+      if (call.table === LINES_TABLE && call.verb === "update")
+        return { data: { id: "dl-1", ...call.payload }, error: null };
+      if (call.table === ORDER_ITEMS_TABLE && call.verb === "select")
+        return answerOrderLineRead(call);
+      return { data: null, error: null };
+    });
+  }
+
+  const noExtractor = { available: () => false, extract: jest.fn() };
+
+  it("refuses another house's order line and writes nothing", async () => {
+    const db = houseFixture();
+    const service = await buildService(db, noExtractor);
+
+    await expect(
+      service.confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", "ol-b"),
+    ).rejects.toThrow("ORDER_LINE_NOT_FOUND");
+    await settle();
+
+    expect(db.written(LINES_TABLE, "update")).toHaveLength(0);
+    expect(db.written(SUGGESTIONS_TABLE, "update")).toHaveLength(0);
+  });
+
+  it("answers an id that does not exist exactly as it answers another house's", async () => {
+    const db = houseFixture();
+    const service = await buildService(db, noExtractor);
+
+    const other = await service
+      .confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", "ol-b")
+      .catch((e: Error) => e.message);
+    const missing = await service
+      .confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", "ol-none")
+      .catch((e: Error) => e.message);
+
+    expect(other).toBe("ORDER_LINE_NOT_FOUND");
+    expect(missing).toBe(other);
+  });
+
+  it("reads ownership through the order, filtered to the caller's house", async () => {
+    const db = houseFixture();
+    const service = await buildService(db, noExtractor);
+
+    await service.confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", "ol-1");
+
+    const read = db.calls.find(
+      (c) => c.table === ORDER_ITEMS_TABLE && c.verb === "select",
+    )!;
+    expect(read.columns).toContain("procurement_orders!inner(restaurant_id)");
+    expect(read.filters).toContainEqual(["eq", "id", "ol-1"]);
+    expect(read.filters).toContainEqual([
+      "eq",
+      "procurement_orders.restaurant_id",
+      "rest-1",
+    ]);
+  });
+
+  it("accepts the house's own order line", async () => {
+    const db = houseFixture();
+    const service = await buildService(db, noExtractor);
+
+    const out = await service.confirmLineMatch(
+      "doc-1",
+      "dl-1",
+      "rest-1",
+      "user-1",
+      "ol-1",
+    );
+
+    expect(out).toMatchObject({ order_line_id: "ol-1" });
+    const [payload] = db.written(LINES_TABLE, "update");
+    expect(payload).toMatchObject({
+      order_line_id: "ol-1",
+      confirmed_by: "user-1",
+    });
+  });
+
+  it("unpairing (null) reads no order line and still clears the line", async () => {
+    const db = houseFixture();
+    const service = await buildService(db, noExtractor);
+
+    await service.confirmLineMatch("doc-1", "dl-1", "rest-1", "user-1", null);
+
+    expect(db.calls.filter((c) => c.table === ORDER_ITEMS_TABLE)).toHaveLength(
+      0,
+    );
+    const [payload] = db.written(LINES_TABLE, "update");
+    expect(payload).toMatchObject({ order_line_id: null, confirmed_by: null });
+  });
+
+  // Only the intake service is on this route's path; the other ten
+  // collaborators, in constructor order, are never reached.
+  function routeFor(service: DocumentIntakeService) {
+    const unused = null as never;
+    return new DocumentsController(
+      service,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+      unused,
+    );
+  }
+  const UUID = "11111111-1111-4111-8111-111111111111";
+  const caller = { userId: "user-1", restaurantId: "rest-1" } as never;
+
+  it("the route answers 404 for another house's order line", async () => {
+    const db = houseFixture();
+    const controller = routeFor(await buildService(db, noExtractor));
+
+    const err = await controller
+      .linkLine(UUID, UUID, { orderLineId: OTHER_HOUSE_LINE }, caller)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(HttpStatus.NOT_FOUND);
+    expect(db.written(LINES_TABLE, "update")).toHaveLength(0);
+  });
+
+  // Postgres would answer 22P02 for it, which the route's catch-all makes a 500
+  // (documents.controller.ts, requireUuid's note).
+  it("the route answers 400 for a body orderLineId that is not a uuid, before any read", async () => {
+    const db = houseFixture();
+    const controller = routeFor(await buildService(db, noExtractor));
+
+    for (const bad of ["ol-b", "not-a-uuid", 42]) {
+      const err = await controller
+        .linkLine(UUID, UUID, { orderLineId: bad as never }, caller)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(HttpException);
+      expect((err as HttpException).getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    }
+    expect(db.calls).toHaveLength(0);
   });
 });
 
