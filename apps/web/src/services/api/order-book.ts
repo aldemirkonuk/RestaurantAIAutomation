@@ -231,10 +231,13 @@ export interface OrderBook {
    * whole: the distinct ids matched the total, and the total did not move
    * between pages. capped: the house has more than CEILING_PAGES pages; `rows`
    * are the newest 3,000 plus the open orders its sweeps found. partial: the
-   * read did not hold still after one more try; `rows` are the closed rows it
-   * saw, and any of a status no sweep can ask for, plus the open orders its
-   * sweeps found. In both, `openComplete` false says some open orders may be
-   * missing. `openComplete` true does not prove the opposite (see below).
+   * read did not hold still after one more try; `rows` are the closed rows its
+   * last unfiltered read saw, and any of a status no sweep can ask for, plus the
+   * open orders its sweeps found. In both, a row the unfiltered pages saw open
+   * and that closed before its old status was swept is in no row, though the
+   * closed status's count in `statusTotals` includes it. In both,
+   * `openComplete` false says some open orders may be missing. `openComplete`
+   * true does not prove the opposite (see below).
    */
   mode: 'whole' | 'capped' | 'partial'
   reason: 'ceiling' | 'unstable' | null
@@ -486,10 +489,13 @@ async function degrade(
     const one = await session.page({ page: 1, limit: 1, status })
     statusTotals[status] = one.total
   }
-  // A prefix row of a swept status comes from the sweep: if the sweep does not
-  // have it, it has left that status since the prefix was read, and its old
-  // status would be a lie. Closed rows come from the prefix, and so do rows of
-  // a status no sweep can ask for: open (isOpenOrderStatus), as last read.
+  // For a swept status the sweep is trusted over the prefix: a prefix row of a
+  // swept status is dropped, and only what the sweep found is kept. If the order
+  // left that status, its old status would be a lie; if it closed before the
+  // sweep, it is now in no row, while the closed status's count includes it. If
+  // the sweep skipped a row it should have read (S4 in ADR 0269), that order is
+  // lost. Closed rows come from the prefix, and so do rows of a status no sweep
+  // can ask for: open (isOpenOrderStatus), as last read.
   const swept = new Set<string>(OPEN_WIRE_STATUSES)
   const rows = new Map<string, Order>()
   for (const row of prefix.values()) if (!swept.has(row.status)) rows.set(row.id, row)
