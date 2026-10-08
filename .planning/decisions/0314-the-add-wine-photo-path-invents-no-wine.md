@@ -3,7 +3,7 @@
 - **Status:** Locked 2026-10-03, by the founder. This branch had one fork: what the
   "Single Wine Label Scan" button becomes. The founder answered *"Delete it"*.
 - **Date:** 2026-10-03
-- **Number:** written as 0271 on 2026-10-03, uncommitted. Renumbered to 0314 on 2026-10-08, before its first push. 0271 had been taken by another lane, and `check_adr_numbers_unique.py` gave 0313 as the next free number, but an uncommitted 0313 sits in another worktree.
+- **Number:** written as 0271 on 2026-10-03, uncommitted. Renumbered to 0314 on 2026-10-08, before its first push. 0271 is below main's newest number (0306 on 2026-10-08), so landing it would put the record out of order; no other ADR holds 0271 (only this one's own backup ref, `backup/local-2026-10-08/addwine`). `check_adr_numbers_unique.py` gave 0313 as the next free number, but an uncommitted 0313 sits in another worktree.
 - **Decider:** Aldemir (founder)
 - **Keywords:** AddWineModal, AddWineToInventoryModal, label scan, photo, mock detection,
   Château Latour, handlePhotoWineDetected, sweetness, dry, ABV, alcohol 0, fabricated id,
@@ -89,6 +89,9 @@ A photo goes to the real scanner.** With no builder left, nothing fills a missin
     await `onAddWine` and `useCreateInventoryItem` has no `onError`.
   - `AddWineUnifiedModal.tsx` has no importer, and its `:20` comment still names
     `AddWineModal`.
+  - `components/wines/WineValidationModal.tsx:69` sets `alcohol: wineData.alcohol || 0`,
+    so a scan that read no strength shows 0 % ABV. It is reached through `MenuScannerModal`
+    (imported by `cellar/next/WineRegister.tsx`), not through this sheet.
 - **Revisit when** a real single-label reader exists. It enters through "Is this the
   bottle?" (`IsThisTheBottlePanel.tsx`, `POST /wines/submissions`), not through a wine
   object built in the sheet.
@@ -107,7 +110,7 @@ A photo goes to the real scanner.** With no builder left, nothing fills a missin
   - Mutations on this tree each turn exactly one test red. One adds a second button beside
     the scanner. The other makes the scanner button open nothing.
   - vitest `src/components/inventory src/pages/inventory src/components/wines src/pages/cellar`:
-    466/466.
+    466/466 [measured at 8c673db4b; 483/483 on 2026-10-08 after merging main 87dafc064].
   - Full web suite: 5230/5230 tests pass. 2 files fail to load, `Login.signInNote` and
     `authPages.publicDesign`, because `@simplewebauthn/browser` is missing from the linked
     `node_modules`. This branch does not touch them.
@@ -122,7 +125,7 @@ A photo goes to the real scanner.** With no builder left, nothing fills a missin
     - a token in a comment only, which must still hold;
     - a spec deleted;
     - the Latour assertion weakened.
-  - `check_decision_claims.sh`: 839/839 holding.
+  - `check_decision_claims.sh`: 839/839 holding [measured at 8c673db4b; 978/978 on 2026-10-08 after merging main 87dafc064].
 - **Browser.** The page was a throwaway harness on the worktree's dev server. It rendered
   the modal with no session and a seeded library cache, under a CSP that allows only
   localhost. The harness was deleted after the check.
