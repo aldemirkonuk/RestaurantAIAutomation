@@ -70,7 +70,8 @@ export interface EntryVM {
   rationale: string | null;
   category: string;
   urgency: string;
-  /** Axis 1 — what acting on it would change. Derived from the category. */
+  /** Axis 1 — what acting on it would change. Filed by the rule where its
+   * prescription says so, otherwise by its category (`stakeFilingOf`, ADR 0288). */
   stake: StakeId;
   /** Axis 3 — whose hand does it, and where the work lands. */
   hand: Hand;
@@ -250,7 +251,7 @@ function toEntry(raw: Record<string, unknown>, fallbackStatus: Disposition): Ent
     rationale: typeof raw.rationale === 'string' && raw.rationale ? raw.rationale : null,
     category,
     urgency: typeof raw.urgency === 'string' ? raw.urgency : '',
-    stake: stakeOf(category),
+    stake: stakeOf(ruleKey, category),
     hand: handOf(ruleKey, category),
     score: num(raw.score),
     pinned: !!raw.pinned,
@@ -499,7 +500,19 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [personalSnoozesReadable, setPersonalSnoozesReadable] = useState(true);
   const [personalProblem, setPersonalProblem] = useState<string | null>(null);
   const [exclusions, setExclusions] = useState<ExclusionsVM | undefined>(undefined);
-  const [team, setTeam] = useState<TeamOption[] | null | undefined>(undefined);
+  /**
+   * The roster, tagged with the house it was read for, so a switch never
+   * offers the last house's people (OPS-03). `team` below is `undefined`
+   * (not read, or being read) until this house's read answers.
+   */
+  const [teamOf, setTeamOf] = useState<{
+    rid: string;
+    rows: TeamOption[] | null | undefined;
+  } | null>(null);
+  const team: TeamOption[] | null | undefined =
+    teamOf && teamOf.rid === rid ? teamOf.rows : undefined;
+  const teamSeq = useRef(0);
+  const teamReading = useRef<string | null>(null);
   const [goals, setGoals] = useState<GoalsVM>(undefined);
   /**
    * The book of goal scenarios (ADR 0120) — `undefined` not read yet, `null`
@@ -519,6 +532,30 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [goalBook, setGoalBook] = useState<GoalBookVM>(undefined);
   const seq = useRef(0);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The figures the Standing read sets (the tab counts, rules evaluated,
+  // the house's and your own hidden counts and whether each was readable,
+  // read-at, sources unread), and the Snoozed leaf's note on your own
+  // snoozes, belong to the house that answered. On a switch they go back to
+  // "not read" in the same render, so no frame shows the last house's
+  // figures under the new name, and a leaf other than Standing (which never
+  // reads them) does not keep them either (OPS-03). The sequence moves too,
+  // so a read of the last house that answers before the new read starts is
+  // dropped.
+  const [figuresOf, setFiguresOf] = useState<string | null>(rid);
+  if (figuresOf !== rid) {
+    setFiguresOf(rid);
+    seq.current += 1;
+    setCounts(null);
+    setRulesEvaluated(null);
+    setGeneratedAt(null);
+    setSuppressed(null);
+    setSuppressionsReadable(true);
+    setHiddenForYou(null);
+    setPersonalSnoozesReadable(true);
+    setPersonalProblem(null);
+    setSourcesUnread(null);
+  }
 
   const load = useCallback(
     async (which: Leaf) => {
@@ -770,21 +807,41 @@ export function useRecommendationsNextData(): RecommendationsData {
     [rid, say],
   );
 
-  // The roster is only fetched when someone opens an assign menu.
+  // The roster is only fetched when someone opens an assign menu, for the
+  // house on screen. While it is read it stays `undefined` ("Reading the
+  // roster…"), never `null`, which says the read failed. A failed read is
+  // read again the next time the menu is opened; a read already answered
+  // for this house, or still being read, is not repeated. Every row of the
+  // roster is offered, whatever its status, as /team lists it; the gateway
+  // accepts the same rows (`assertAssigneeOnRoster`, ADR 0306).
   const loadTeam = useCallback(() => {
-    if (!rid || team !== undefined) return;
-    setTeam(null);
+    if (!rid) return;
+    if (teamReading.current === rid) return;
+    if (teamOf?.rid === rid && Array.isArray(teamOf.rows)) return;
+    const mine = ++teamSeq.current;
+    teamReading.current = rid;
+    setTeamOf({ rid, rows: undefined });
     getTeamMembers(rid)
-      .then((rows) =>
-        setTeam(
-          (rows ?? []).map((m) => ({
-            id: String((m as { id?: unknown }).id ?? ''),
-            name: String((m as { display_name?: unknown }).display_name ?? 'Unnamed'),
-          })),
-        ),
-      )
-      .catch(() => setTeam(null));
-  }, [rid, team]);
+      .then((rows) => {
+        if (mine !== teamSeq.current) return;
+        setTeamOf({
+          rid,
+          // A body that is not a list is a failed read, not an empty team.
+          rows: Array.isArray(rows)
+            ? rows.map((m) => ({
+                id: String((m as { id?: unknown }).id ?? ''),
+                name: String((m as { display_name?: unknown }).display_name ?? 'Unnamed'),
+              }))
+            : null,
+        });
+      })
+      .catch(() => {
+        if (mine === teamSeq.current) setTeamOf({ rid, rows: null });
+      })
+      .finally(() => {
+        if (mine === teamSeq.current) teamReading.current = null;
+      });
+  }, [rid, teamOf]);
 
   /* ── the book of scenarios (2026-09-04) ──────────────────────────────── */
 

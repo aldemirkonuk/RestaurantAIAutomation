@@ -50,6 +50,8 @@ import {
   receiptFor,
   scopeLabel,
   scopePromise,
+  stakeFilingOf,
+  stakeInSentence,
   standingOf,
   urgencyLabel,
   type DismissChoiceId,
@@ -662,6 +664,8 @@ export default function Entry(props: EntryProps) {
 
   /** Where the docket files this entry, and the sentence it was read from. */
   const filing = useMemo(() => actOf(e.ruleKey), [e.ruleKey]);
+  /** Where the register files it, and why — the rule's words or its category (ADR 0288). */
+  const register = useMemo(() => stakeFilingOf(e.ruleKey, e.category), [e.ruleKey, e.category]);
 
   /**
    * Live goals that name THIS rule as their source — the watched state.
@@ -1387,6 +1391,18 @@ export default function Entry(props: EntryProps) {
               <div className="rc-workblock">
                 <span className="rc-micro">Why it is filed under {ACT_LABEL[filing.act]}</span>
                 <p className="rc-prose" data-testid="rc-filing-why">{filing.why}</p>
+              </div>
+
+              {/*
+                The register's filing, said the same way (ADR 0288): by the
+                rule's own sentence where it is filed by name, otherwise by the
+                category it fell back on — so "Would change" is checkable.
+              */}
+              <div className="rc-workblock">
+                <span className="rc-micro">
+                  {e.stake === 'unfiled' ? 'Why it is unfiled' : `Why it would change ${stakeInSentence(e.stake)}`}
+                </span>
+                <p className="rc-prose" data-testid="rc-register-why">{register.why}</p>
               </div>
 
               <div className="rc-workblock">
