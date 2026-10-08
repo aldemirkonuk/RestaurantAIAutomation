@@ -1,7 +1,7 @@
 /**
  * A fake of the gateway's order list, for the order-book tests (ADR 0269).
  *
- * It answers the way `listOrders` does (procurement.service.ts:3043-3164):
+ * It answers the way `listOrders` does (procurement.service.ts:3150-3271):
  * `limit ?? 50`, a 400 above 100 (`OrderFilterDto`'s `@Max(100)`), an exact
  * count, `hasMore = from + rows < total`, newest `created_at` first, and the
  * `status` filter. It also answers `GET /procurement/orders/:id`, with a 500

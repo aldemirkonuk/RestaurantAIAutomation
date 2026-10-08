@@ -296,6 +296,18 @@ describe('fetchOrderBook: 429', () => {
     expect(waited).toBeLessThan(RATE_WINDOW_MS + 30_000)
   })
 
+  it('waits no longer than one window when the body names a longer retryAfter', async () => {
+    install(makeOrders(HOUSE_A, 10))
+    // Past ~2.1M s, seconds * 1000 overflows setTimeout and fires at once.
+    gw.before = limitedAt(1, 1, 3_000_000)
+    const onRateLimited = vi.fn()
+    const book = await fetchOrderBook(HOUSE_A, signal(), { ...noWait, onRateLimited })
+
+    expect(onRateLimited).toHaveBeenCalledWith(RATE_WINDOW_MS)
+    expect(noWait.sleep.mock.calls[0][0]).toBe(RATE_WINDOW_MS + 0.5 * RATE_JITTER_MAX_MS)
+    expect(book.mode).toBe('whole')
+  })
+
   it('gives up with RateLimitedError after the third 429 on one page', async () => {
     install(makeOrders(HOUSE_A, 10))
     gw.before = limitedAt(1, 3, 2)
@@ -344,6 +356,27 @@ describe('fetchOrderBook: past the ceiling', () => {
     expect(book.unclassifiedCount).toBe(1)
     expect(book.openComplete).toBe(false)
     expect(book.requests).toBe(42)
+  })
+
+  it('does not call the open set complete when the per-status counts add up to more than the total', async () => {
+    // An order moved into COMPLETED between the sweeps and the counts is counted
+    // twice; the surplus would cancel out the ON_HOLD row the sweeps cannot ask
+    // for, and a floor at 0 would then read "nothing unclassified".
+    const rows = makeOrders(HOUSE_A, 3001, (i) =>
+      i === 5 ? ('ON_HOLD' as OrderWireStatus) : 'COMPLETED',
+    )
+    install(rows)
+    const completed = rows.find((r) => r.status === 'COMPLETED')!
+    gw.before = (call) =>
+      call.params.status === 'COMPLETED' && call.params.limit === 1
+        ? { data: { orders: [completed], total: 3002, page: 1, limit: 1, hasMore: true } }
+        : undefined
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('capped')
+    expect(book.statusTotals?.COMPLETED).toBe(3002)
+    expect(book.unclassifiedCount).toBe(0)
+    expect(book.openComplete).toBe(false)
   })
 })
 

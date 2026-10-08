@@ -3,7 +3,7 @@
  *
  * WHY THIS FILE EXISTS
  * `getOrders` (orders.ts) sends no page and no limit, so the gateway answers
- * with its default page of 50 (`procurement.service.ts:3048`). Every screen
+ * with its default page of 50 (`procurement.service.ts:3155`). Every screen
  * built on it has been reading the newest 50 orders as if they were all of
  * them. This reader asks for 100 at a time (the DTO's `@Max(100)`,
  * `procurement.dto.ts:839`) until the gateway says there are no more.
@@ -238,15 +238,17 @@ export interface OrderBook {
   total: number
   /**
    * True when every open order is in `rows`. Always true for a whole book. A
-   * degraded book sets it only when every open sweep held still and
-   * `unclassifiedCount` is 0: a status no sweep can ask for may hold open orders
-   * the unfiltered pages did not show, and the reader cannot tell, so it is
-   * false even when they showed all of them.
+   * degraded book sets it only when every open sweep held still and the
+   * per-status counts add up to `total` exactly. Below it, a status no sweep can
+   * ask for may hold open orders the unfiltered pages did not show, and the
+   * reader cannot tell, so it is false even when they showed all of them. Above
+   * it, the counts were taken while orders moved, and the surplus can hide such
+   * an order, so it is false too.
    */
   openComplete: boolean
   /** Per wire status, the gateway's count. Read only when the book is not whole. */
   statusTotals: Partial<Record<OrderWireStatus, number>> | null
-  /** `total` less the per-status counts: rows of a status no sweep can ask for. */
+  /** `total` less the per-status counts, floored at 0: rows of a status no sweep can ask for. */
   unclassifiedCount: number | null
   /** The next page (at PAGE_LIMIT) not read, for "Show older" past the cap. */
   nextClosedPage: number | null
@@ -311,9 +313,11 @@ function rateLimitedFrom(error: unknown): RateLimitedError | null {
   if (getErrorStatus(error) !== 429) return null
   const body = (error as { response?: { data?: { retryAfter?: unknown } } }).response?.data
   const seconds = body?.retryAfter
+  // Clamped to the guard's window: a wait longer than that buys nothing, and an
+  // unbounded one overflows setTimeout (past ~2.1M s) into a read that spins.
   const ms =
     typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0
-      ? seconds * 1000
+      ? Math.min(seconds * 1000, RATE_WINDOW_MS)
       : RATE_WINDOW_MS
   return new RateLimitedError(ms)
 }
@@ -457,13 +461,18 @@ async function degrade(
   for (const row of open.values()) rows.set(row.id, row)
   const counted = Object.values(statusTotals).reduce((sum, n) => sum + (n ?? 0), 0)
   const unclassifiedCount = Math.max(0, total - counted)
+  // The open set is proven only when the per-status totals add up to `total`
+  // exactly. Above it, an order moved status between sweeps (or one was placed
+  // mid-sweep), and that surplus can hide an order of a status no sweep can
+  // name, so the clamp above would read 0. Either way the read did not hold still.
+  const totalsAddUp = counted === total
   return {
     house,
     mode: reason === 'ceiling' ? 'capped' : 'partial',
     reason,
     rows: [...rows.values()],
     total,
-    openComplete: openComplete && unclassifiedCount === 0,
+    openComplete: openComplete && totalsAddUp,
     statusTotals,
     unclassifiedCount,
     nextClosedPage: reason === 'ceiling' ? CEILING_PAGES + 1 : null,
@@ -496,7 +505,7 @@ export async function fetchOrderBook(
 
   // Two attempts. A created_at tie across a page boundary can show one order
   // twice and skip another (listOrders orders by created_at alone,
-  // procurement.service.ts:3100), and an order placed mid-read shifts every
+  // procurement.service.ts:3207), and an order placed mid-read shifts every
   // later page by one. Both leave fewer distinct ids than `total`.
   for (let attempt = 0; attempt < 2; attempt++) {
     const seen = new Map<string, Order>()
@@ -553,7 +562,7 @@ export type OrderByIdResult = { state: 'read'; order: Order } | { state: 'unread
 /**
  * Confirm one order before a screen says it is not in the book. EVERY failure
  * reads as "could not be read", never as "does not exist": the gateway turns
- * not-found into a 500 (`getOrder` uses `.single()`, procurement.service.ts:3181,
+ * not-found into a 500 (`getOrder` uses `.single()`, procurement.service.ts:3288,
  * and the controller rewraps it at procurement.controller.ts:236-251).
  */
 export async function fetchOrderById(

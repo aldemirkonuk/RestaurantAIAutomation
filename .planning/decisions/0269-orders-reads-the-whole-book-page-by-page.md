@@ -11,8 +11,8 @@
 The /orders page lists only the house's newest 50 orders, and counts only them too.
 
 - `useOrdersNextData.ts:401` reads `useOrders()`. That calls `getOrders` (`services/api/orders.ts:47-59`), which sends no `page` and no `limit`. A body with no `.orders` is returned as it is, cast to `Order[]`; only a missing body (null or undefined) becomes `[]` (`:58`).
-- The gateway's `listOrders` then answers its default page: `const limit = query.limit ?? 50` (`procurement.service.ts:3048`).
-- It orders by `created_at` alone (`:3100`), counts exactly, and reports `hasMore: fromIndex + orders.length < total` (`:3162`).
+- The gateway's `listOrders` then answers its default page: `const limit = query.limit ?? 50` (`procurement.service.ts:3155`).
+- It orders by `created_at` alone (`:3207`), counts exactly, and reports `hasMore: fromIndex + orders.length < total` (`:3269`).
 - `OrderFilterDto.limit` is `@Max(100)` (`procurement.dto.ts:839`).
 
 A house with 51 orders loses its oldest from the page, its counts and its month figures. The sim's F-140 (and F-117) found this.
@@ -37,10 +37,10 @@ Facts that shaped the design:
   - While a screen using `useOrders` is mounted, its subscription (`useOrderQueries.ts:26-32`) turns that event into a second `['orders']` invalidation.
 - **The app's query defaults** are a 5 s staleTime, focus refetch, `refetchOnMount: 'always'` and one retry (`App.tsx:150-161`).
 - **`PARTIALLY_RECEIVED` covers three states, not one.**
-  - It is written at the door on every door receipt (`receiving.service.ts:565`).
-  - It is also written at the check when `backorderQty > 0 || awaitingInvoice` (`procurement.service.ts:6690-6694`).
+  - It is written at the door on every door receipt (`procurement/receiving.service.ts:658`).
+  - It is also written at the check when `backorderQty > 0 || awaitingInvoice` (`procurement.service.ts:6657-6660`).
   - So it means counted-not-checked, checked-in-full-awaiting-the-invoice, or checked-and-short.
-- **`getOrder` uses `.single()`** (`procurement.service.ts:3166-3190`), so an id that does not exist comes back as a 500, not a 404.
+- **`getOrder` uses `.single()`** (`procurement.service.ts:3273-3288`), so an id that does not exist comes back as a 500, not a 404.
 
 ## The founder's rulings (option labels quoted; the rest paraphrased)
 
@@ -51,6 +51,7 @@ Asked by the lane coordinator through AskUserQuestion. The labels in quotes are 
 - **List:** "Open always, older on tap (Recommended)".
   - Every open order is always listed. Closed orders sit behind 'Show older', 50 per tap.
   - Counts and month figures cover the whole book.
+  - This build narrows that ruling past 3,000 orders (the ceiling, below). There only the per-status counts (`statusTotals`) cover the whole book. Month figures past the 3,000th order need a gateway aggregate, which is not built.
 - **Partly received:** "Open, marked backorder (Recommended)". It counts as open everywhere and is listed with the open orders. **Superseded on 2026-10-03.**
   - The record says the question's premise was wrong: it said `PARTIALLY_RECEIVED` meant short.
 
@@ -117,14 +118,16 @@ Labels quoted verbatim from the coordinator's record (project memory `founder-an
   - Otherwise it reads once more.
   - Then it **degrades**: every open status this client can name is swept on its own, and every closed status is counted with a `limit=1` read.
   - The result is marked `partial`, with the reason `unstable`.
-  - A status this client cannot read is filed open, and a whole read lists it with the open orders. The sweep cannot ask for a status it cannot name, so a degraded read keeps such an order only as the unfiltered pages it read showed it, counts the rest in `unclassifiedCount`, and sets `openComplete` false whenever that count is above 0.
+  - A status this client cannot read is filed open, and a whole read lists it with the open orders. The sweep cannot ask for a status it cannot name, so a degraded read keeps such an order only as the unfiltered pages it read showed it, and counts the rest in `unclassifiedCount` (`total` less the per-status counts, floored at 0).
+  - `openComplete` is true for a degraded read only when the per-status counts add up to `total` exactly. Below it, orders of a status no sweep can name may be missing. Above it, an order moved status (or was placed) between the sweeps and the counts, and the surplus can hide such an order while the floor reads 0.
   - `openComplete` is also false when an open sweep does not hold still after two tries.
+- **The build's picks, not the founder's.** The ceiling (30 pages), the 40-per-60 s window, the 400 ms settle, the 60 s interval, the 30 s background gap, the 0 to 30 s jitter and the 60 s cap on a 429's wait were picked by the agent that built PR-A. None of them is a founder ruling.
 - **The ceiling** is 30 pages (3,000 orders). Past it the result is `capped`. It holds:
   - the 3,000-row prefix;
   - the open sweep (complete only when `openComplete` is true);
   - per-status totals;
   - `nextClosedPage: 31`, for Show older through `fetchOrderBookPage`.
-- **429:** the reader waits the body's `retryAfter` plus a uniform 0 to 30 s of jitter, then asks for the **same** page again. It gives up with `RateLimitedError` after the third 429 on one page.
+- **429:** the reader waits the body's `retryAfter`, capped at one 60 s window, plus a uniform 0 to 30 s of jitter, then asks for the **same** page again. It gives up with `RateLimitedError` after the third 429 on one page.
 - **`fetchOrderById`** confirms one order before a screen says it is not in the book. Every failure reads as "could not be read", never as "does not exist".
 - **Open and closed:** closed is COMPLETED, VERIFIED, CANCELLED, REJECTED, and FAILED (which `canonicalStatus` reads as cancelled, `lib/mudavym/status.ts:18`). Everything else is open, including DELIVERED and PARTIALLY_RECEIVED.
 - **`markFor(row)`** returns the ruling's marks. For `PARTIALLY_RECEIVED` it reads the mark from the row's `received` block, never from the status alone.
@@ -146,10 +149,10 @@ Labels quoted verbatim from the coordinator's record (project memory `founder-an
 - **The approve write stays where it is.** The optimistic approve write on `orders.list` (`useOrderQueries.ts:147-182`) is unchanged. [PR-B, 2026-10-03: the list write stays byte for byte. The approve also patches its one row in the book and holds the house's book reads (`holdLocalWrite`): a read under way stops, and its callers wait for the next one; no read starts until the approve settles, or 35 s at most. Past 35 s reads run again, but the row keeps the approve's status until it settles. A failed approve puts back only that row, only while it still reads as this tab wrote it. See "PR-B" below.]
 - **The key** is `queryKeys.orders.book(house)`. It sits under `['orders']`, so every existing invalidation reaches it.
 
-**Tests and mutation proof.** `order-book.test.ts` (47 tests) and `useOrderBook.test.tsx` (24 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Mutations were run from `cp -p` snapshots, never `git stash`, and every restore was compared byte for byte. 36 were run; 35 each failed at least one test and passed again when restored:
+**Tests and mutation proof.** `order-book.test.ts` (49 tests) and `useOrderBook.test.tsx` (24 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Mutations were run from `cp -p` snapshots, never `git stash`, and every restore was compared byte for byte. 38 were run; 37 each failed at least one test and passed again when restored:
 
 - the six the design rests on: dropping the paging loop; dropping the `restaurantId` check; pointing the reader at `/procurement/orders`; removing the fence; making background the default; restarting from page 1 on a 429;
-- 14 more in the reader: no house check after a page; no rows-over-limit, total-is-a-count, `hasMore`-is-boolean or status-echo check; `sweepStatus` always complete, or one attempt; `degrade` keeping every prefix row, or dropping prefix rows of a status it cannot name; `openComplete` ignoring `unclassifiedCount`; a row of another house read as `HouseChangedError`; `fetchOrderById` without its id check, its house check before the GET, or its house check after it;
+- 16 more in the reader: `openComplete` set from the floored `unclassifiedCount` instead of an exact sum (the per-status counts above `total`); `retryAfter` not capped at the window; no house check after a page; no rows-over-limit, total-is-a-count, `hasMore`-is-boolean or status-echo check; `sweepStatus` always complete, or one attempt; `degrade` keeping every prefix row, or dropping prefix rows of a status it cannot name; `openComplete` ignoring `unclassifiedCount`; a row of another house read as `HouseChangedError`; `fetchOrderById` without its id check, its house check before the GET, or its house check after it;
 - 15 more in the runner: no 429 gate; a background mark that never clears; a fence that does not move its waiters; the aborted branch off; `HouseChangedError` counted as failing; no staleness guard; callers resolved with the book read instead of the book kept; freshness dated from the book read instead of the book kept; a read nobody waits for started anyway; `retry: 1`, `refetchOnWindowFocus: true` or the default `refetchOnReconnect` in `useQuery`; `start()` ignoring a hidden tab; a hidden tab deferring an urgent read too; `retryOrderBook` retrying `ForeignRowError`.
 
 One survives, re-run against the final tests: removing `run.next = null` from `stopOtherHouses`, so the house switched away from keeps its queued read. It gets no test. In the app the token is stored before the house changes (`AuthContext.tsx:625` before `:630`, `:835` before `:839`), and `assertHouse` runs before every GET, so that queued read sends nothing for the old house; its cost is one window slot and a swallowed `HouseChangedError`.
@@ -198,7 +201,8 @@ PR-B (`fix/orders-wire-order-book-f140`) moves /orders onto the book: `useOrders
 ## Consequences
 
 - **Easier.**
-  - PR-B can show every open order, when `openComplete` is true, and whole-book counts from one cached value; when it is false, the book says the open list may be short.
+  - PR-B can show every open order when `openComplete` is true; when it is false, the book says the open list may be short.
+  - Per-status counts cover the whole book in every mode: from the rows of a whole read, or from `statusTotals` in a capped or partial one. A whole read's counts come from one cached value. A degraded read's counts are separate reads taken at different moments. Month figures cover the whole book only in a whole read (see the narrowed ruling above).
   - Every later screen that needs the whole book has a reader with a 429 path, a house check and a completeness check, instead of `?? []`.
 - **Weaknesses, stated.**
   - **`created_at` ties.** Until G2 adds `.order('id')` as a tiebreak, two orders with one `created_at` can swap across a page boundary.
@@ -210,8 +214,11 @@ PR-B (`fix/orders-wire-order-book-f140`) moves /orders onto the book: `useOrders
       - `DELETE orders/:id`, the only `@Delete("orders` route in `apps/api-gateway/src`, is documented as a cancel (`procurement.controller.ts:307-310`); its service body was not read;
       - a grep of `.from("procurement_orders")` call sites in `apps/api-gateway/src` and `services/` found one `.delete(` within three lines, in an e2e test's cleanup (`communications/tests/email-convo-flow.e2e.spec.ts:129`), and none outside spec files.
     - That is evidence, not proof. SQL functions and crons were not swept.
+  - **A null count passes as whole.** `listOrders` sets `total = count ?? orders.length` (`procurement.service.ts:3262`). If the exact count ever came back null, a first page of 100 would report `total` 100 and `hasMore` false, and the reader would accept it as the whole book. With `count: "exact"` this is not expected; it is not guarded.
+  - **100 per page is transport only.** The reader asks for 100 rows a page. The ruling's "50 per tap" is display, and PR-B slices 50 per tap from what was read.
+  - **The cached book outlives a sign-out.** Nothing clears the React Query cache on sign-out. A second user who signs in to the same house in the same tab could see the first user's cached book until it is refreshed (up to the 60 s interval). `orders.list(house)` has the same hole today; the book holds more rows.
   - **Mobile shares the bucket.** The phone reads `/history` too (`apps/mobile/src/api/queries.ts:111`). A phone behind the same network address shares the bucket.
-  - **The dashboard shares the bucket.** The dashboard reads `/history` (`useDashboardNextData.ts:265-299`, `useOrderQueries.ts:93`) from the same browser, outside this runner's window.
+  - **The dashboard shares the bucket.** The dashboard reads `/history` (`useDayOrders`, `useDashboardNextData.ts:415-470`, its `getOrderHistory` call at `:447`; `useOrderQueries.ts:93`) from the same browser, outside this runner's window.
   - **The window does not cover them.** The 40-per-tab window counts only book reads, so book reads, dashboard reads and a second tab can still reach 100 together. The 429 path absorbs that; it does not prevent it.
   - **Request cost.** A capped read costs at least 42 requests: 30 pages, 8 open sweeps and 4 counts. Under the 40-per-60s window it spans more than a minute. A read that does not hold still reads its pages twice and then degrades: at least 2 × its pages + 12.
   - **A status this client cannot name, in a degraded read.** Such an order is kept only as the unfiltered pages the read went through showed it. One those pages did not show (past the ceiling, or skipped by a read that did not hold still) is not listed at all, and the book says so (`unclassifiedCount`, `openComplete` false). The gateway references only the twelve enum members (a grep of `ProcurementOrderStatus.` in `apps/api-gateway/src`); string-literal and SQL writers were not swept.
@@ -224,12 +231,12 @@ PR-B (`fix/orders-wire-order-book-f140`) moves /orders onto the book: `useOrders
 
 | What | To | Note |
 |---|---|---|
-| G2: add `.order('id')` after `.order('created_at')` in `listOrders` (`procurement.service.ts:3100`) | O4 | Tracked as an `open` claim row in this PR's claims fragment; it flips when G2 lands |
-| Dashboard in-transit count; `useDayOrders` (`useDashboardNextData.ts:273`) | R1b | The ruling names the in-transit count. This PR did not locate its line |
+| G2: add `.order('id')` after `.order('created_at')` in `listOrders` (`procurement.service.ts:3207`) | O4 | Tracked as an `open` claim row in this PR's claims fragment; it flips when G2 lands |
+| Dashboard in-transit count; `useDayOrders` (`useDashboardNextData.ts:415`) | R1b | The ruling names the in-transit count. This PR did not locate its line |
 | Scorecard overdue list | vendors lane | `scorecard-types.ts:57` declares the field. Its source read was not traced here |
 | /receiving door lane | R3 | DELIVERED orders are open ("Not counted yet") and are not listed on /receiving today, per the ruling's record |
 | Phone /orders | this lane, a later PR | Mobile is not touched here |
-| `DayDetail.tsx:200` links `/orders?highlight=` | follow-up | Check whether /orders reads `?highlight=` or `?order=` |
+| `pages/dashboard/next/DayDetail.tsx:302` links `/orders?highlight=` | follow-up | Check whether /orders reads `?highlight=` or `?order=` |
 | `markBackground` for realtime pushes, and the `order_change` listener | the founder (fork 6, unanswered at the build) | Neither is built in PR-B. Websocket-triggered book reads stay urgent (settled, not gapped); an `order_change` from `RealtimeContext` alone reaches /orders only at the 60 s interval. Fork 6's answer brings the listener, its test and its claim rows (see "PR-B") |
 | `useOrders` still reads the newest 50 for /calendar (`useCalendarNextData.ts:538`) and /vendors (`useProvidersNextData.ts:51`) | their lanes | Outside /orders, so outside PR-B by the Scope ruling |
 | The sheets await a whole read after a save (`AgreementSheet.tsx:333`, `NewOrderSheet.tsx:380`, `RecurrenceSheet.tsx:210`) | this lane, a later PR | About 400 ms more under 100 orders; a capped house can keep a sheet saving past a minute. Stop awaiting the invalidation |
@@ -237,19 +244,21 @@ PR-B (`fix/orders-wire-order-book-f140`) moves /orders onto the book: `useOrders
 | First paint of a capped house (≥ 42 list requests against 40 a minute per tab) and of an unstable read above about 1,400 orders; a request window shared across tabs | this lane, PR-C | Needs `order-book.ts` (open sweeps before closed pages, or a lower ceiling) and, for the shared window, the runner and a cross-tab channel. Outside PR-B's 15 files |
 | Recurring's sentences that say "page" or "book" (`recurrence.ts:141`, `:261`, `:268`, `:278`) | this lane, a later PR | Named for founder review in PR-B; rewording them would be a 16th file |
 
-## Forks for PR-B (1–3 closed by the founder on 2026-10-03; 4–9 open)
+## Forks for PR-B (1–3 answered by the founder on 2026-10-03; 4–9 open)
 
-1. **Which station holds open delivered and partly received orders?**
-   - `stageOf` (`useOrdersNextData.ts:49-70`) files DELIVERED and PARTIALLY_RECEIVED under `delivered`, together with VERIFIED and COMPLETED.
-   - Sketch: (a) they stay at `delivered`, and the station splits into open and closed; (b) a new "At the door" station sits before `delivered`; (c) they show at `ordered` with their mark.
-   - **Closed 2026-10-03 by the Station ruling: (a), top of Delivered; no new tab, no backorder at Ordered.**
-2. **Do cancelled orders appear under Show older?**
-   - Sketch: (a) yes, mixed in date order with a cancelled mark; (b) only behind their own filter; (c) a count only.
-   - **Closed 2026-10-03 by the Cancelled ruling: kept out of Show older, with the separate count.**
-3. **What does a station with no open rows show?**
-   - Sketch: (a) "Nothing open", with Show older under it; (b) the station is hidden until it has rows; (c) the latest closed row, dimmed.
-   - **Closed 2026-10-03 by the Empty tab ruling: none of the sketches — the newest 50 finished at once, with Show older below.**
-4. **What do undecidable `PARTIALLY_RECEIVED` rows read as?** These are rows whose `received` block cannot tell the three states apart: absent, `verifiedAt` not sent, or checked with `backorderBottles` null (not a bottle count).
+Forks 1 to 3 were asked through AskUserQuestion and answered by the founder on 2026-10-03 (re-asked after a reboot lost the first ask). The labels are verbatim; the text after each paraphrases the coordinator's record (project memory `founder-answers-2026-10-02-sim-share-out.md`, "F-140 PR-B forks, answered 2026-10-03"). The questions and their previews are saved in `p4-scratch/f140/prb-forks-asked-2026-10-03.json`. This session did not see the exchange itself.
+
+1. **Station:** "Top of Delivered (Recommended)".
+   - The four open arrivals (not counted yet, counted but not checked, waiting on the invoice, backorder) stay in Delivered, listed first with their mark and always shown.
+   - Finished deliveries sit below, behind 'Show older'.
+   - No new tab, and no backorder moved to Ordered.
+   - Today `stageOf` (`useOrdersNextData.ts:49-70`) files DELIVERED and PARTIALLY_RECEIVED under `delivered`, together with VERIFIED and COMPLETED.
+2. **Empty tab:** "Newest 50 at once (Recommended)".
+   - A station with nothing open opens on its newest 50 finished orders, with 'Show older' below.
+   - The sketch this ADR first offered, "Nothing open" over Show older, was not picked.
+3. **Cancelled:** "Keep them out (Recommended)".
+   - 'Show older' leaves cancelled and rejected orders out, as today. The separate cancelled count stays.
+4. **Open, not decided: what do undecidable `PARTIALLY_RECEIVED` rows read as?** These are rows whose `received` block cannot tell the three states apart: absent, `verifiedAt` not sent, or checked with `backorderBottles` null (not a bottle count).
    - `markFor` reads them as 'Receipt could not be read'.
    - The ruling names that text for `readable: false` only, so this extension is a default for review, not a ruling.
    - **Not ruled (2026-10-03). PR-B keeps PR-A's reading: these rows show 'Receipt could not be read'.**
@@ -272,4 +281,7 @@ PR-B (`fix/orders-wire-order-book-f140`) moves /orders onto the book: `useOrders
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-10-03 | — | Created (Proposed) with PR-A on `fix/orders-paged-fetch-f140` |
+| 2026-10-03 | Internal audit (correctness and adversarial), branch head `752189ac2` | Findings fixed in `833776ac9` |
+| 2026-10-03 | Internal re-audit, branch head `833776ac9` | Findings fixed in `86224761d` |
 | 2026-10-03 | — | PR-B on `fix/orders-wire-order-book-f140` (stacked on #598): /orders reads the book. Records the Station, Empty tab and Cancelled rulings; forks 1–3 closed, fork 4 kept open, forks 5–9 added. Fork 6 was not answered before the build, so no `order_change` listener was built. Still Proposed |
+| 2026-10-08 | PR audit gate (ADR 0090), head `1e5f3bae3` | BLOCK, on the record only: forks 1 to 3 shown open, stale citations, the cap narrowing the ruling unstated. Two code findings (the `openComplete` sum, the `retryAfter` cap) fixed with tests in the same round |
