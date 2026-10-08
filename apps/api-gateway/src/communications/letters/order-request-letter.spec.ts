@@ -29,7 +29,9 @@ import { IS_PUBLIC_KEY } from "../../auth/decorators/public.decorator";
 import type { DatabaseService } from "../../database/database.service";
 import {
   DEFAULT_ORDER_REQUEST_TEMPLATE,
+  DEFAULT_ORDER_REQUEST_TEMPLATE_TR,
   ORDER_REQUEST_TOKENS,
+  houseLocale,
   OrderRequestTemplateRefused,
   courtesyLineOrNull,
   orderRequestProseRefusals,
@@ -51,7 +53,7 @@ function facts(over: Partial<OrderRequestFacts> = {}): OrderRequestFacts {
         quantity: 2,
         unit: "cases",
         bottlesPerUnit: 6,
-        price: { amount: 25, currency: "EUR", per: "bottle" },
+        price: { amount: 25, currency: "EUR", uom: "bottle", packSize: null },
       },
     ],
     placer: { userId: "u-1", name: "Deniz", role: "owner" },
@@ -84,7 +86,7 @@ describe("who may see money (W12b F6)", () => {
 
   it("a price with no currency says so rather than guessing one", () => {
     const f = facts();
-    f.lines[0].price = { amount: 25, currency: null, per: "bottle" };
+    f.lines[0].price = { amount: 25, currency: null, uom: "bottle", packSize: null };
     expect(renderOrderRequest(f).body).toContain("25.00 (currency not recorded) per bottle");
   });
 
@@ -121,7 +123,7 @@ describe("no price on file", () => {
 
   it("a zero price is no price: no 0.00 shown, and the price ask", () => {
     const f = facts();
-    f.lines[0].price = { amount: 0, currency: "EUR", per: "bottle" };
+    f.lines[0].price = { amount: 0, currency: "EUR", uom: "bottle", packSize: null };
     const r = renderOrderRequest(f);
     expect(r.ask).toBe("price");
     expect(r.body).not.toMatch(/0\.00|confirm/i);
@@ -227,7 +229,7 @@ describe("determinism and the facts hash", () => {
     const qty = facts();
     qty.lines[0].quantity = 3;
     const price = facts();
-    price.lines[0].price = { amount: 26, currency: "EUR", per: "bottle" };
+    price.lines[0].price = { amount: 26, currency: "EUR", uom: "bottle", packSize: null };
     expect(renderOrderRequest(qty).factsHash).not.toBe(base);
     expect(renderOrderRequest(price).factsHash).not.toBe(base);
     expect(renderOrderRequest(facts({ placer: { ...facts().placer, role: "staff" } })).factsHash).not.toBe(base);
@@ -300,6 +302,138 @@ describe("the prose predicate", () => {
 
 // ── The service door and the route ──────────────────────────────────────────
 
+// ── Turkish (F3, answered 2026-10-08: "Approve + Turkish now") ─────────────
+
+const TR_LINES = [
+  {
+    name: "Kavaklıdere Yakut 2021",
+    vendorSku: "KY-75",
+    quantity: 3,
+    unit: "case",
+    bottlesPerUnit: 6,
+    price: { amount: 25, currency: "EUR", uom: "bottle", packSize: null },
+  },
+  {
+    name: "Sevilen Majestik Rosé",
+    vendorSku: null,
+    quantity: 12,
+    unit: "bottle",
+    bottlesPerUnit: null,
+    price: { amount: 1250.5, currency: "TRY", uom: "case", packSize: 12 },
+  },
+];
+const tr = (over: Partial<OrderRequestFacts> = {}) =>
+  facts({ locale: "tr", lines: TR_LINES.map((l) => ({ ...l, price: l.price && { ...l.price } })), ...over });
+
+describe("the Turkish letter (DRAFT words)", () => {
+  it("an owner's letter: Turkish blocks, decimal comma, price per unit", () => {
+    const r = renderOrderRequest(tr());
+    expect(r.locale).toBe("tr");
+    expect(r.subject).toBe("Sipariş PO-1042 — Tuzlu Rüzgar");
+    expect(r.body).toContain("Merhaba Ayşe,");
+    expect(r.body).toContain("Sipariş talebimiz aşağıdadır:");
+    expect(r.body).toContain(
+      "- Kavaklıdere Yakut 2021 (sizdeki kod: KY-75): 3 koli, her biri 6 şişe; şişe başına 25,00 EUR",
+    );
+    expect(r.body).toContain("- Sevilen Majestik Rosé: 12 şişe; koli (12 adet) başına 1.250,50 TRY");
+    expect(r.body).toContain("Teslimat adresi: Moda Cd., Istanbul");
+    expect(r.body).toContain("İstenen teslim tarihi: 20.10.2026");
+    expect(r.body).toContain("Bize bildirdiğiniz ödeme koşulları: Net 30");
+    expect(r.body).toContain(
+      "Lütfen bu siparişi ve teslim tarihini, PO-1042 sipariş numarasını belirterek yanıtınızla onaylayınız.",
+    );
+    expect(r.body).toContain("Teşekkür ederiz.\nSaygılarımızla,\nDeniz\nTuzlu Rüzgar");
+    expect(r.body.endsWith("—\nBu mesaj Mudavym tarafından Tuzlu Rüzgar adına hazırlanmıştır.")).toBe(true);
+    expect(r.body).not.toMatch(/Hello|Order |Thank you|drafted by/);
+  });
+
+  it("a staff placer's Turkish letter carries no money", () => {
+    const r = renderOrderRequest(tr({ placer: STAFF }));
+    expect(r.priceShown).toBe(false);
+    expect(r.body).toContain("3 koli, her biri 6 şişe\n");
+    expect(r.body).not.toMatch(/\d+,\d{2}|EUR|TRY|başına|birim fiyat/);
+    expect(r.ask).toBe("confirm");
+  });
+
+  it("no price on file asks for a price, never to confirm", () => {
+    const r = renderOrderRequest(tr({ lines: [{ ...NO_PRICE_LINE, unit: "case" }, { ...NO_PRICE_LINE, name: "İkinci" }] }));
+    expect(r.ask).toBe("price");
+    expect(r.body).toContain(
+      "Bu sipariş için kayıtlı bir fiyatımız bulunmuyor. Lütfen her kalem için fiyatınızı, PO-1042 sipariş numarasını belirterek yanıtınızla bildiriniz.",
+    );
+    expect(r.body).not.toContain("onaylayınız");
+  });
+
+  it("a one-line order names its item in the subject; no date asks for one", () => {
+    const r = renderOrderRequest(tr({ lines: [TR_LINES[0]], neededBy: null, vendorFirstName: null }));
+    expect(r.subject).toBe("Sipariş PO-1042 — Tuzlu Rüzgar — Kavaklıdere Yakut 2021");
+    expect(r.body).toContain("Merhaba,");
+    expect(r.body).toContain("Lütfen yapabileceğiniz teslim tarihini bize bildiriniz.");
+  });
+
+  it("an unknown unit passes through as stored; a missing one says so", () => {
+    const one = { ...TR_LINES[0], unit: "magnum", bottlesPerUnit: null };
+    expect(renderOrderRequest(tr({ lines: [one] })).body).toContain(": 3 magnum;");
+    expect(renderOrderRequest(tr({ lines: [{ ...one, unit: null }] })).body).toContain(": 3 (birim kayıtlı değil);");
+    expect(renderOrderRequest(facts({ lines: [{ ...one, unit: "magnum" }] })).body).toContain(": 3 magnum at");
+  });
+
+  it("English writes the stored unit code in English words (one and many)", () => {
+    const one = { ...TR_LINES[0], quantity: 1, bottlesPerUnit: null };
+    expect(renderOrderRequest(facts({ lines: [{ ...one, unit: "case" }] })).body).toContain(": 1 case at");
+    expect(renderOrderRequest(facts({ lines: [{ ...one, quantity: 3, unit: "case" }] })).body).toContain(": 3 cases at");
+    expect(renderOrderRequest(facts({ lines: [{ ...one, unit: "split_case" }] })).body).toContain(": 1 split case at");
+  });
+
+  it("the Turkish default passes the prose predicate", () => {
+    expect(orderRequestProseRefusals(DEFAULT_ORDER_REQUEST_TEMPLATE_TR)).toEqual([]);
+  });
+
+  it("the predicate and the courtesy rules are the same in Turkish", () => {
+    const r = renderOrderRequest(tr(), { courtesySentence: "Yarın görüşmek dileğiyle." });
+    expect(r.courtesyDropped).toBe(true);
+    expect(() =>
+      renderOrderRequest(tr(), { template: DEFAULT_ORDER_REQUEST_TEMPLATE_TR + "\nFiyatlar sabit kalsın." }),
+    ).toThrow(OrderRequestTemplateRefused);
+  });
+
+  it.each([
+    ["owner with a price", tr()],
+    ["staff", tr({ placer: STAFF })],
+    ["no price", tr({ lines: [NO_PRICE_LINE] })],
+    ["one line, no placer", tr({ lines: [TR_LINES[0]], placer: NOBODY })],
+  ])("the queue's guardrails trip nothing (%s)", (_label, f) => {
+    const r = renderOrderRequest(f, { courtesySentence: "Hasadın iyi geçtiğini umuyoruz." });
+    expect(r.courtesyDropped).toBe(false);
+    expect(composerGuardrails({ body: r.body, subject: r.subject, priorOutboundOnOrder: 0 })).toEqual([]);
+  });
+
+  it("the facts hash moves with the locale", () => {
+    expect(renderOrderRequest(facts({ locale: "tr" })).factsHash).not.toBe(renderOrderRequest(facts()).factsHash);
+    expect(renderOrderRequest(facts({ locale: "en" })).factsHash).toBe(renderOrderRequest(facts()).factsHash);
+  });
+});
+
+describe("houseLocale: the letter's language from restaurants.country", () => {
+  it.each([
+    ["TR", "tr"],
+    [" tr ", "tr"],
+    ["Turkey", "tr"],
+    ["TURKEY", "tr"],
+    ["Türkiye", "tr"],
+    ["TÜRKİYE", "tr"],
+    ["TURKIYE", "tr"],
+    ["turkiye", "tr"],
+    ["Norway", "en"],
+    ["Turkmenistan", "en"],
+    ["", "en"],
+    [null, "en"],
+    [undefined, "en"],
+  ])("%p is %p", (country, want) => {
+    expect(houseLocale(country as string | null | undefined)).toBe(want);
+  });
+});
+
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const OTHER = "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb";
 const VENDOR = "cccccccc-0000-4000-8000-cccccccccccc";
@@ -356,7 +490,9 @@ function store(tables: Record<string, Row[]>, opts: { failing?: string[]; rpc?: 
   return { db: { supabase } as unknown as DatabaseService, rpcCalls };
 }
 
-function world(over: { createdBy?: string | null; linePrice?: number | null; staffRole?: string } = {}) {
+function world(
+  over: { createdBy?: string | null; linePrice?: number | null; staffRole?: string; country?: string | null } = {},
+) {
   return {
     procurement_orders: [
       {
@@ -392,7 +528,13 @@ function world(over: { createdBy?: string | null; linePrice?: number | null; sta
       { order_id: ORDER, restaurant_id: OTHER, wine_name: "Leak", quantity: 9, unit_type: "cases", line_no: 0 },
     ],
     restaurants: [
-      { id: HOUSE, name: "Tuzlu Rüzgar", address: { street: "Moda Cd." }, city: "Istanbul" },
+      {
+        id: HOUSE,
+        name: "Tuzlu Rüzgar",
+        address: { street: "Moda Cd." },
+        city: "Istanbul",
+        country: over.country === undefined ? null : over.country,
+      },
       { id: OTHER, name: "Other House" },
     ],
     providers: [
@@ -426,6 +568,20 @@ describe("OrderRequestService — facts under the order row's house", () => {
     expect(r.body).toContain("Deliver to: Moda Cd., Istanbul");
     expect(r.body).not.toMatch(/Leak|Wrong|Cash|Other House/);
     expect(r.template).toEqual({ key: "order_request", source: "default" });
+  });
+
+  it("a Turkish house's letter is Turkish; a NULL country is English", async () => {
+    const trHouse = await new OrderRequestService(store(world({ country: "Türkiye" })).db).render({
+      orderId: ORDER,
+      stage: false,
+    });
+    expect(trHouse.locale).toBe("tr");
+    expect(trHouse.subject).toBe("Sipariş PO-7 — Tuzlu Rüzgar — Yakut");
+    expect(trHouse.body).toContain("3 koli, her biri 6 şişe; şişe başına 25,00 EUR");
+    expect(trHouse.body).toContain("Sipariş talebimiz aşağıdadır:");
+    const en = await new OrderRequestService(store(world({ country: null })).db).render({ orderId: ORDER, stage: false });
+    expect(en.locale).toBe("en");
+    expect(en.factsHash).not.toBe(trHouse.factsHash);
   });
 
   it("an order of another house is a 404, the same as no order", async () => {

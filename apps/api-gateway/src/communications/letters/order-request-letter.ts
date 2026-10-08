@@ -34,13 +34,23 @@
  *     phrases in the house's prose. It does NOT stop a figure by reference
  *     ("same price as last time") or a term in a language it does not list;
  *     the house's own reading is the backstop (0173:48, ADR 0313).
+ *
+ * LOCALE (F3, answered 2026-10-08: "Approve + Turkish now"). Every string the
+ * renderer owns (subject, greeting, block texts, the Mudavym line, number and
+ * date formats) is keyed by `locale`, "en" or "tr". The English words are
+ * LOCKED as the founder approved them; the Turkish default is a DRAFT until he
+ * approves it. The service picks the locale from the house's country with
+ * `houseLocale` below (ADR 0313). Turkish text never puts a suffix on a fact
+ * value (a name, an order number, a figure): the sentence is built so the
+ * suffix lands on a word the renderer owns ("PO-1042 sipariş numarasını").
  */
 
 import { createHash } from "node:crypto";
 import { COMMITMENT_PATTERN_SOURCES } from "../../common/orchestrator/commitment-patterns";
 
 /** Bumped whenever the same facts and template would render different text. */
-export const RENDERER_VERSION = "order_request/1";
+// 2: locale-keyed words, and the line unit written from its stored code.
+export const RENDERER_VERSION = "order_request/2";
 
 /** The `communication_templates.category` key, agreed with R4 (OrderLetter). */
 export const ORDER_REQUEST_TEMPLATE_KEY = "order_request";
@@ -76,12 +86,43 @@ export const ORDER_REQUEST_TOKENS = {
 
 export type OrderRequestToken = keyof typeof ORDER_REQUEST_TOKENS;
 
+// ── Locale ──────────────────────────────────────────────────────────────────
+
+export type OrderRequestLocale = "en" | "tr";
+
+/** The country spellings that mean Turkey, after `foldCountry`. */
+const TURKEY = new Set(["tr", "turkey", "turkiye"]);
+
+function foldCountry(country: string): string {
+  return country
+    .trim()
+    .toLocaleLowerCase("tr")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/ı/g, "i");
+}
+
 /**
- * The default words. F3 DRAFT — the founder has not approved them (W25 F3,
- * OPEN-DECISIONS OD-TBD). Written in the token form so 4a-ii can publish a
- * house version over it without the renderer changing.
+ * The letter's locale, from the house's `restaurants.country` (ADR 0313, F3):
+ * trimmed, lower-cased the Turkish way, diacritics folded (and dotless ı read
+ * as i), then "tr", "turkey" or "türkiye"/"turkiye" is "tr". Anything else,
+ * NULL and empty included, is "en". There is no locale column on restaurants
+ * or providers; 0313 R4's `locale` key lands with 4a-ii's versions.
  */
-export const DEFAULT_ORDER_REQUEST_TEMPLATE_STATUS = "draft (W25 F3 open)";
+export function houseLocale(country: string | null | undefined): OrderRequestLocale {
+  if (typeof country !== "string") return "en";
+  return TURKEY.has(foldCountry(country)) ? "tr" : "en";
+}
+
+/**
+ * The default words, in the token form so 4a-ii can publish a house version
+ * over them without the renderer changing. English: LOCKED (F3 answered
+ * 2026-10-08, "Approve + Turkish now"). Turkish: DRAFT until he approves it.
+ */
+export const DEFAULT_ORDER_REQUEST_TEMPLATE_STATUS = {
+  en: "locked (W25 F3, approved 2026-10-08)",
+  tr: "draft (W25 F3 Turkish half open)",
+} as const;
 export const DEFAULT_ORDER_REQUEST_TEMPLATE = [
   "{{greeting}}",
   "",
@@ -101,6 +142,31 @@ export const DEFAULT_ORDER_REQUEST_TEMPLATE = [
   "{{signer}}",
 ].join("\n");
 
+export const DEFAULT_ORDER_REQUEST_TEMPLATE_TR = [
+  "{{greeting}}",
+  "",
+  "{{courtesy_line}}",
+  "",
+  "Sipariş talebimiz aşağıdadır:",
+  "",
+  "{{order_lines}}",
+  "",
+  "{{deliver_to}}",
+  "{{needed_by}}",
+  "{{payment_terms}}",
+  "",
+  "{{ask}}",
+  "",
+  "Teşekkür ederiz.",
+  "Saygılarımızla,",
+  "{{signer}}",
+].join("\n");
+
+export const DEFAULT_ORDER_REQUEST_TEMPLATES: Record<OrderRequestLocale, string> = {
+  en: DEFAULT_ORDER_REQUEST_TEMPLATE,
+  tr: DEFAULT_ORDER_REQUEST_TEMPLATE_TR,
+};
+
 /**
  * Where this letter would sit in ADR 0173 D1's catalogue. The catalogue itself
  * is not built (0173:3); the row appears when it is.
@@ -111,7 +177,7 @@ export const ORDER_REQUEST_CATALOGUE = {
   when: "An order is placed with a vendor",
   who: "The vendor on the order; drafted for the house to approve before it is sent",
   channel: "email",
-  // PR-4b's flag ORDER_REQUEST_LETTER, off until F3 is answered and 4a-ii merges.
+  // PR-4b's flag ORDER_REQUEST_LETTER, off until the Turkish default is approved (F3) and 4a-ii merges.
   armed: false,
   kind: ORDER_REQUEST_KIND,
 } as const;
@@ -122,8 +188,10 @@ export interface OrderRequestPrice {
   amount: number;
   /** ISO code, or null when the line stated none. Never filled in. */
   currency: string | null;
-  /** What one price buys ("bottle", "case of 6"), or null when unstated. */
-  per: string | null;
+  /** The stored unit one price buys (`price_uom`: bottle, case, …), or null. */
+  uom: string | null;
+  /** `price_pack_size`: how many a priced pack holds, or null. */
+  packSize: number | null;
 }
 
 export interface OrderRequestLine {
@@ -152,6 +220,8 @@ export interface OrderRequestFacts {
   /** ISO date (YYYY-MM-DD) or null. */
   neededBy: string | null;
   paymentTerms: string | null;
+  /** The letter's language; "en" when absent. The service sets it (houseLocale). */
+  locale?: OrderRequestLocale;
 }
 
 // ── The prose predicate ─────────────────────────────────────────────────────
@@ -421,6 +491,7 @@ export function orderRequestFactsHash(f: OrderRequestFacts): string {
     houseName: f.houseName,
     vendorFirstName: f.vendorFirstName,
     lines: f.lines,
+    locale: f.locale ?? "en",
     placer: { userId: f.placer.userId, name: f.placer.name, role: f.placer.role },
     priceShown: placerMayShowPrice(f.placer),
     deliverTo: f.deliverTo,
@@ -430,27 +501,153 @@ export function orderRequestFactsHash(f: OrderRequestFacts): string {
   return createHash("sha256").update(JSON.stringify(canonical(facts))).digest("hex");
 }
 
-function money(p: OrderRequestPrice): string {
-  const fixed = p.amount.toFixed(2);
-  const amount = p.currency ? `${fixed} ${p.currency}` : `${fixed} (currency not recorded)`;
-  return p.per ? `${amount} per ${p.per}` : amount;
+// ── Words, per locale ───────────────────────────────────────────────────────
+
+/** The stored unit codes (`order_line_capture_and_units`, `an_agreed_price_states_its_unit`). */
+const UNIT_WORDS: Record<OrderRequestLocale, Record<string, [string, string]>> = {
+  // [one, many]
+  en: {
+    bottle: ["bottle", "bottles"],
+    case: ["case", "cases"],
+    keg: ["keg", "kegs"],
+    pack: ["pack", "packs"],
+    split_case: ["split case", "split cases"],
+    each: ["each", "each"],
+    liter: ["liter", "liters"],
+  },
+  // A Turkish noun after a number stays singular ("3 koli", "12 şişe").
+  tr: {
+    bottle: ["şişe", "şişe"],
+    case: ["koli", "koli"],
+    keg: ["fıçı", "fıçı"],
+    pack: ["paket", "paket"],
+    split_case: ["karışık koli", "karışık koli"],
+    each: ["adet", "adet"],
+    liter: ["litre", "litre"],
+  },
+};
+
+/** Legacy plural spellings, read as the code they were normalised to. */
+const UNIT_ALIASES: Record<string, string> = {
+  bottles: "bottle",
+  cases: "case",
+  kegs: "keg",
+  packs: "pack",
+  split_cases: "split_case",
+  "split cases": "split_case",
+  litre: "liter",
+  litres: "liter",
+  liters: "liter",
+};
+
+/** A unit in the letter's words; an unknown unit is written as stored. */
+function unitWord(unit: string, quantity: number, locale: OrderRequestLocale): string {
+  const key = unit.trim().toLowerCase();
+  const words = UNIT_WORDS[locale][UNIT_ALIASES[key] ?? key];
+  if (!words) return unit.trim();
+  return quantity === 1 ? words[0] : words[1];
 }
 
-function lineText(l: OrderRequestLine, showPrice: boolean): string {
-  const ref = l.vendorSku ? ` (your ref ${l.vendorSku})` : "";
-  const unit = l.unit ? ` ${l.unit}` : " (unit not recorded)";
-  const pack =
-    l.bottlesPerUnit != null && l.bottlesPerUnit > 1 ? `, ${l.bottlesPerUnit} bottles each` : "";
+/** Turkish figures: decimal comma, thousands dot ("1.250,00"). */
+function trNumber(n: number, decimals: number | null): string {
+  const fixed = decimals == null ? String(n) : n.toFixed(decimals);
+  const [int, frac] = fixed.split(".");
+  const sign = int.startsWith("-") ? "-" : "";
+  const digits = sign ? int.slice(1) : int;
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${sign}${grouped}${frac ? `,${frac}` : ""}`;
+}
+
+interface LetterWords {
+  subject: (orderNumber: string, house: string) => string;
+  greeting: (name: string | null) => string;
+  ref: (sku: string) => string;
+  unitMissing: string;
+  pack: (n: number) => string;
+  quantity: (n: number) => string;
+  amount: (n: number) => string;
+  currencyMissing: string;
+  price: (amount: string, per: string | null) => string;
+  per: (uom: string, packSize: number | null) => string;
+  deliverTo: (address: string) => string;
+  neededBy: (isoDate: string) => string;
+  noDate: string;
+  terms: (terms: string) => string;
+  askConfirm: (orderNumber: string) => string;
+  askPrice: (orderNumber: string) => string;
+  mudavym: (house: string) => string;
+}
+
+const WORDS: Record<OrderRequestLocale, LetterWords> = {
+  // LOCKED: the words the founder approved on 2026-10-08.
+  en: {
+    subject: (no, house) => `Order ${no} — ${house}`,
+    greeting: (name) => (name ? `Hello ${name},` : "Hello,"),
+    ref: (sku) => ` (your ref ${sku})`,
+    unitMissing: " (unit not recorded)",
+    pack: (n) => `, ${n} bottles each`,
+    quantity: (n) => String(n),
+    amount: (n) => n.toFixed(2),
+    currencyMissing: "(currency not recorded)",
+    price: (amount, per) => ` at ${amount}${per ? ` per ${per}` : ""}`,
+    per: (uom, pack) => (pack && pack > 1 ? `${uom} of ${pack}` : uom),
+    deliverTo: (a) => `Deliver to: ${a}`,
+    neededBy: (d) => `Needed by: ${d}`,
+    noDate: "Please tell us the delivery date you can make.",
+    terms: (t) => `Payment terms you gave us: ${t}`,
+    askConfirm: (no) => `Please confirm this order and the delivery date by reply, quoting ${no}.`,
+    askPrice: (no) =>
+      `We have no price on file for this order. Please reply with your price for each line, quoting ${no}.`,
+    mudavym: (house) => `—\nThis message was drafted by Mudavym on behalf of ${house}.`,
+  },
+  // DRAFT until the founder approves it. "siz" throughout; no suffix on a fact.
+  tr: {
+    subject: (no, house) => `Sipariş ${no} — ${house}`,
+    greeting: (name) => (name ? `Merhaba ${name},` : "Merhaba,"),
+    ref: (sku) => ` (sizdeki kod: ${sku})`,
+    unitMissing: " (birim kayıtlı değil)",
+    pack: (n) => `, her biri ${trNumber(n, null)} şişe`,
+    quantity: (n) => trNumber(n, null),
+    amount: (n) => trNumber(n, 2),
+    currencyMissing: "(para birimi kayıtlı değil)",
+    price: (amount, per) => `; ${per ? `${per} başına` : "birim fiyat"} ${amount}`,
+    per: (uom, pack) => (pack && pack > 1 ? `${uom} (${trNumber(pack, null)} adet)` : uom),
+    deliverTo: (a) => `Teslimat adresi: ${a}`,
+    neededBy: (d) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+      return `İstenen teslim tarihi: ${m ? `${m[3]}.${m[2]}.${m[1]}` : d}`;
+    },
+    noDate: "Lütfen yapabileceğiniz teslim tarihini bize bildiriniz.",
+    terms: (t) => `Bize bildirdiğiniz ödeme koşulları: ${t}`,
+    askConfirm: (no) =>
+      `Lütfen bu siparişi ve teslim tarihini, ${no} sipariş numarasını belirterek yanıtınızla onaylayınız.`,
+    askPrice: (no) =>
+      `Bu sipariş için kayıtlı bir fiyatımız bulunmuyor. Lütfen her kalem için fiyatınızı, ${no} sipariş numarasını belirterek yanıtınızla bildiriniz.`,
+    mudavym: (house) => `—\nBu mesaj Mudavym tarafından ${house} adına hazırlanmıştır.`,
+  },
+};
+
+function money(p: OrderRequestPrice, w: LetterWords, locale: OrderRequestLocale): string {
+  const amount = `${w.amount(p.amount)} ${p.currency ?? w.currencyMissing}`;
+  const uom = p.uom?.trim() ? unitWord(p.uom, 1, locale) : null;
+  return w.price(amount, uom ? w.per(uom, p.packSize) : null);
+}
+
+function lineText(l: OrderRequestLine, showPrice: boolean, locale: OrderRequestLocale): string {
+  const w = WORDS[locale];
+  const ref = l.vendorSku ? w.ref(l.vendorSku) : "";
+  const unit = l.unit?.trim() ? ` ${unitWord(l.unit, l.quantity, locale)}` : w.unitMissing;
+  const pack = l.bottlesPerUnit != null && l.bottlesPerUnit > 1 ? w.pack(l.bottlesPerUnit) : "";
   const price =
     showPrice && l.price && Number.isFinite(l.price.amount) && l.price.amount > 0
-      ? ` at ${money(l.price)}`
+      ? money(l.price, w, locale)
       : "";
-  return `- ${l.name}${ref}: ${l.quantity}${unit}${pack}${price}`;
+  return `- ${l.name}${ref}: ${w.quantity(l.quantity)}${unit}${pack}${price}`;
 }
 
-/** The Mudavym line (F4, ADR 0266): today's words, always present. */
-export function mudavymLine(houseName: string): string {
-  return `—\nThis message was drafted by Mudavym on behalf of ${houseName}.`;
+/** The Mudavym line (F4, ADR 0266): always present, in the letter's language. */
+export function mudavymLine(houseName: string, locale: OrderRequestLocale = "en"): string {
+  return WORDS[locale].mudavym(houseName);
 }
 
 export interface OrderRequestRender {
@@ -459,6 +656,7 @@ export interface OrderRequestRender {
   /** Each block as rendered; "" for an optional block with nothing to say. */
   parts: Record<OrderRequestToken, string>;
   rendererVersion: string;
+  locale: OrderRequestLocale;
   factsHash: string;
   priceShown: boolean;
   ask: "confirm" | "price";
@@ -475,7 +673,9 @@ export function renderOrderRequest(
   f: OrderRequestFacts,
   opts: { template?: string; courtesySentence?: string | null } = {},
 ): OrderRequestRender {
-  const template = opts.template ?? DEFAULT_ORDER_REQUEST_TEMPLATE;
+  const locale: OrderRequestLocale = f.locale ?? "en";
+  const w = WORDS[locale];
+  const template = opts.template ?? DEFAULT_ORDER_REQUEST_TEMPLATES[locale];
   const refused = orderRequestProseRefusals(template);
   if (refused.length > 0) throw new OrderRequestTemplateRefused(refused);
   if (f.lines.length === 0) {
@@ -490,19 +690,15 @@ export function renderOrderRequest(
   const knownPlacer = f.placer.userId != null && f.placer.role != null && !!f.placer.name?.trim();
 
   const parts: Record<OrderRequestToken, string> = {
-    greeting: f.vendorFirstName?.trim() ? `Hello ${f.vendorFirstName.trim()},` : "Hello,",
+    greeting: w.greeting(f.vendorFirstName?.trim() || null),
     courtesy_line: courtesy ?? "",
-    order_lines: f.lines.map((l) => lineText(l, showPrice)).join("\n"),
-    deliver_to: f.deliverTo?.trim() ? `Deliver to: ${f.deliverTo.trim()}` : "",
-    needed_by: f.neededBy
-      ? `Needed by: ${f.neededBy}`
-      : "Please tell us the delivery date you can make.",
-    payment_terms: f.paymentTerms?.trim() ? `Payment terms you gave us: ${f.paymentTerms.trim()}` : "",
+    order_lines: f.lines.map((l) => lineText(l, showPrice, locale)).join("\n"),
+    deliver_to: f.deliverTo?.trim() ? w.deliverTo(f.deliverTo.trim()) : "",
+    needed_by: f.neededBy ? w.neededBy(f.neededBy) : w.noDate,
+    payment_terms: f.paymentTerms?.trim() ? w.terms(f.paymentTerms.trim()) : "",
     // Only a letter with a price on file asks the vendor to confirm; with no
     // price it asks for one (last-agreement.ts:141-143, "nothing is assumed").
-    ask: hasPrice
-      ? `Please confirm this order and the delivery date by reply, quoting ${f.orderNumber}.`
-      : `We have no price on file for this order. Please reply with your price for each line, quoting ${f.orderNumber}.`,
+    ask: hasPrice ? w.askConfirm(f.orderNumber) : w.askPrice(f.orderNumber),
     signer: knownPlacer ? `${f.placer.name!.trim()}\n${f.houseName}` : f.houseName,
   };
   // A line that holds nothing but an empty optional block goes, with it.
@@ -518,12 +714,13 @@ export function renderOrderRequest(
     .trim();
 
   const subject =
-    `Order ${f.orderNumber} — ${f.houseName}` +
+    w.subject(f.orderNumber, f.houseName) +
     (f.lines.length === 1 ? ` — ${f.lines[0].name}` : "");
 
   return {
     subject,
-    body: `${filled}\n\n${mudavymLine(f.houseName)}`,
+    body: `${filled}\n\n${mudavymLine(f.houseName, locale)}`,
+    locale,
     parts,
     rendererVersion: RENDERER_VERSION,
     factsHash: orderRequestFactsHash(f),

@@ -11,9 +11,10 @@ import { DatabaseService } from "../../database/database.service";
 import { lookupRestaurantRole } from "../../organizations/organizations.service";
 import { currencyCode } from "../../common/iso-4217";
 import {
-  DEFAULT_ORDER_REQUEST_TEMPLATE,
+  DEFAULT_ORDER_REQUEST_TEMPLATES,
   ORDER_REQUEST_KIND,
   ORDER_REQUEST_TEMPLATE_KEY,
+  houseLocale,
   renderOrderRequest,
   type OrderRequestFacts,
   type OrderRequestLine,
@@ -40,6 +41,12 @@ import {
  * one exception is the placer's role: a role that cannot be read is treated
  * as no role, which only ever removes money and the placer's name (fail
  * closed, W12b F6).
+ *
+ * LOCALE (ADR 0313, F3). The letter's language comes from the house's
+ * `restaurants.country`: trimmed, lower-cased the Turkish way, diacritics
+ * folded; "tr", "turkey" or "türkiye"/"turkiye" writes Turkish, anything else
+ * (NULL included) writes English. No locale column exists on restaurants or
+ * providers; `houseLocale` in order-request-letter.ts is the one rule.
  */
 export interface OrderRequestResult extends OrderRequestRender {
   orderId: string;
@@ -79,7 +86,7 @@ export class OrderRequestService {
     let rendered: OrderRequestRender;
     try {
       rendered = renderOrderRequest(facts.facts, {
-        template: DEFAULT_ORDER_REQUEST_TEMPLATE,
+        template: DEFAULT_ORDER_REQUEST_TEMPLATES[facts.facts.locale ?? "en"],
         courtesySentence: params.courtesySentence ?? null,
       });
     } catch (e: any) {
@@ -220,16 +227,21 @@ export class OrderRequestService {
           positive(row.negotiated_unit_price) ??
           positive(row.quoted_unit_price);
         const unit = text(row.unit_type);
-        const uom = text(row.price_uom);
-        const pack = positive(row.price_pack_size);
-        const per = uom ? (pack && pack > 1 ? `${uom} of ${pack}` : uom) : null;
         return {
           name: text(row.wine_name) ?? "Unnamed line",
           vendorSku: text(row.vendor_sku),
           quantity: Number(row.quantity),
           unit,
           bottlesPerUnit: positive(row.bottles_per_unit),
-          price: amount == null ? null : { amount, currency: currencyCode(row.currency), per },
+          price:
+            amount == null
+              ? null
+              : {
+                  amount,
+                  currency: currencyCode(row.currency),
+                  uom: text(row.price_uom),
+                  packSize: positive(row.price_pack_size),
+                },
         };
       },
     );
@@ -290,6 +302,7 @@ export class OrderRequestService {
         deliverTo: addressParts.length > 0 ? addressParts.join(", ") : null,
         neededBy: text(o.expected_delivery_date)?.slice(0, 10) ?? null,
         paymentTerms: text((terms.data as { payment_terms?: string } | null)?.payment_terms),
+        locale: houseLocale(text(h.country)),
       },
     };
   }
