@@ -259,20 +259,18 @@ const ids = (rows: Array<{ id: string }>) => rows.map((r) => r.id);
 const ALLOWED_KEYS = RECENT_NOTICE_COLUMNS.split(",").map((c) => c.trim());
 
 describe("the dashboard summary's notices are the caller's own, as the bell's are", () => {
-  it("a waiter reads only their own five newest, never an owner's, a manager's or an unaddressed one", async () => {
-    const { summary, bell } = await summaryFor(STAFF, "staff");
-    const recent = summary.notifications.recent;
-
-    expect(ids(recent)).toEqual(["s6", "s5", "s4", "s3", "s2"]);
-    expect(ids(recent)).toEqual(ids(bell.data).slice(0, 5));
-    expect(summary.notifications.unreadCount).toBe(4);
-
-    const text = JSON.stringify(summary.notifications);
-    expect(text).not.toContain("own-wage");
-    expect(text).not.toContain("₺320");
-    expect(text).not.toContain("mgr-limit");
-    expect(text).not.toContain("Deal: Rioja");
-    expect(text).not.toContain("staff-other-house");
+  // DASH-W22 (#579, merged with this spec): the summary carries vendor spend
+  // and whole order rows, so it is refused to a waiter outright, in words,
+  // before anything is read; the waiter's own notices are the bell's.
+  it("a waiter is refused the summary before anything is read, never handed the house's notices", async () => {
+    const h = harness();
+    const user = asNestWould(await userFromToken(STAFF, "staff"));
+    await expect(h.controller.getDashboardSummary(HOUSE, user)).rejects.toThrow(
+      "Amounts are for the house's owners and managers.",
+    );
+    expect(h.reads).toEqual([]);
+    const bell = await h.bell.getNotifications({ userId: user.userId, restaurantId: user.restaurantId });
+    expect(ids(bell.data).slice(0, 5)).toEqual(["s6", "s5", "s4", "s3", "s2"]);
   });
 
   it("an owner on the same fixture reads only the owner's own notices", async () => {
@@ -294,7 +292,7 @@ describe("the dashboard summary's notices are the caller's own, as the bell's ar
   });
 
   it("carries only the columns a bell row draws, never metadata", async () => {
-    const { summary, reads } = await summaryFor(STAFF, "staff");
+    const { summary, reads } = await summaryFor(OWNER, "owner");
     const read = reads.find(
       (r) => r.table === "notifications" && r.select !== "*",
     );
@@ -306,17 +304,15 @@ describe("the dashboard summary's notices are the caller's own, as the bell's ar
     for (const notice of summary.notifications.recent) {
       expect(Object.keys(notice).sort()).toEqual([...ALLOWED_KEYS].sort());
     }
-    expect(JSON.stringify(summary)).not.toContain("1840.5");
+    expect(JSON.stringify(summary.notifications)).not.toContain("hourly_wage");
   });
 
   it("with no user on the call reads no notices at all, never the house's", async () => {
     const h = harness();
-    const summary: any = await h.controller.getDashboardSummary(
-      HOUSE,
-      asNestWould(undefined),
-    );
-
-    expect(summary.notifications).toEqual({ recent: [], unreadCount: 0 });
+    // No role reads as staff (DASH-W22), so the call is refused before any read.
+    await expect(
+      h.controller.getDashboardSummary(HOUSE, asNestWould(undefined)),
+    ).rejects.toThrow("Amounts are for the house's owners and managers.");
     expect(h.reads.some((r) => r.table === "notifications")).toBe(false);
   });
 });
