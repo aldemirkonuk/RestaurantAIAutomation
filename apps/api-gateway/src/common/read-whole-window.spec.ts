@@ -432,9 +432,12 @@ function goalsOver(db: any): GoalsService {
 
 describe("GoalsService — the till and goal progress read the whole window", () => {
   const rows = checks(3313, 56, 0);
+  // Every goal series is filed on the house's day (ADR 0296), so the house
+  // needs a zone; "UTC" keeps these cases on the UTC days `at` writes.
+  const restaurants = [{ id: "r1", timezone: "UTC", country: null }];
 
   it("getPosRevenueWindow(90) counts 3,313 checks, the full sum and the newest day", async () => {
-    const { db } = cappedDb({ pos_checks: rows });
+    const { db } = cappedDb({ pos_checks: rows, restaurants });
     const w = await goalsOver(db).getPosRevenueWindow("r1", 90);
     expect(w.checkCount).toBe(3313);
     expect(w.revenue).toBe(sum(rows.map((r) => r.total)));
@@ -443,7 +446,7 @@ describe("GoalsService — the till and goal progress read the whole window", ()
   });
 
   it("asks for `items` only for the metrics that read them", async () => {
-    const { db, requests } = cappedDb({ pos_checks: rows });
+    const { db, requests } = cappedDb({ pos_checks: rows, restaurants });
     await goalsOver(db).getPosRevenueWindow("r1", 90);
     const window = requests.filter((r) => r.order === "id");
     expect(window.length).toBeGreaterThan(0);
@@ -451,11 +454,16 @@ describe("GoalsService — the till and goal progress read the whole window", ()
       expect(r.select).toBe("id, total, opened_at, closed_at");
       expect(r.count).toBe("exact");
     }
-    const { db: db2, requests: req2 } = cappedDb({ pos_checks: rows });
+    const { db: db2, requests: req2 } = cappedDb({
+      pos_checks: rows,
+      restaurants,
+    });
     await (goalsOver(db2) as any).computeMetricWithSeries(
       "r1",
       "wine_revenue",
       at(80).slice(0, 10),
+      undefined,
+      "UTC",
     );
     expect(req2.filter((r) => r.order === "id")[0].select).toBe(
       "id, total, opened_at, closed_at, items",
@@ -470,11 +478,13 @@ describe("GoalsService — the till and goal progress read the whole window", ()
       volume_ml: null,
       created_at: at(daysAgo),
     }));
-    const { db } = cappedDb({ wine_consumption_log: lines });
+    const { db } = cappedDb({ wine_consumption_log: lines, restaurants });
     const out = await (goalsOver(db) as any).computeMetricWithSeries(
       "r1",
       "bottles_sold",
       at(60).slice(0, 10),
+      undefined,
+      "UTC",
     );
     expect(out.rowCount).toBe(1500);
     expect(out.current).toBe(3000);
@@ -483,7 +493,7 @@ describe("GoalsService — the till and goal progress read the whole window", ()
   it("a page-2 error throws WholeReadError instead of a partial revenue", async () => {
     // Request 1 is the "ever had a check" probe; 2 is page 0; 3 is page 1.
     const { db } = cappedDb(
-      { pos_checks: rows },
+      { pos_checks: rows, restaurants },
       { pos_checks: { failOn: [3] } },
     );
     const err = await goalsOver(db)
@@ -508,6 +518,7 @@ describe("GoalsService — the till and goal progress read the whole window", ()
     const { db, writes } = cappedDb({
       pos_checks: rows,
       analytics_goals: [goal],
+      restaurants,
     });
     const out: any = await goalsOver(db).getGoalProgress("r1", "g1");
     expect(out.current).toBe(3313);
@@ -519,7 +530,7 @@ describe("GoalsService — the till and goal progress read the whole window", ()
   it("getGoalProgress writes no current_value from a refused read", async () => {
     // Request 1 is the "ever had a check" probe; request 2 is page 0.
     const { db, writes } = cappedDb(
-      { pos_checks: rows, analytics_goals: [goal] },
+      { pos_checks: rows, analytics_goals: [goal], restaurants },
       { pos_checks: { failOn: [2] } },
     );
     const err = await goalsOver(db)
@@ -660,10 +671,13 @@ describe("AnalyticsService — the till list sums every consumption line", () =>
     const { db } = cappedDb({ wine_consumption_log: lines });
     const from = at(30).slice(0, 10);
     const to = at(0).slice(0, 10);
+    // The dates are house dates and the caller hands the house's zone (ADR
+    // 0296). "UTC" keeps this case's window on the UTC days `at` writes.
     const out = await new AnalyticsService(db).getPosConsumptionBreakdown(
       "r1",
       from,
       to,
+      "UTC",
     );
     expect(sum(out.map((r) => r.bottlesSold))).toBe(1500);
     expect(sum(out.map((r) => r.bottleRevenue ?? 0))).toBe(1500 * 40);

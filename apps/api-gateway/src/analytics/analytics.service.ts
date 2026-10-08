@@ -16,6 +16,7 @@ import {
   volumeMlOf,
 } from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import { houseDayBounds } from "../common/house-day";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -306,19 +307,28 @@ export class AnalyticsService {
    * Nulls are load-bearing. `bottleRevenue: null` means no line carried a price,
    * which is not the same as $0; `costPerBottle: null` means the margin column
    * cannot be computed at all, which is not the same as a 100% margin.
+   *
+   * `fromDate`/`toDate` are HOUSE dates and `zone` the house's zone — the same
+   * window the till beside it reads (ADR 0296) — so the range runs from the
+   * midnight that opens `fromDate` to the one that ends `toDate`, on the
+   * house's clock, never UTC's. The caller holds the zone; with none it does
+   * not ask.
    */
   async getPosConsumptionBreakdown(
     restaurantId: string,
     fromDate: string,
     toDate: string,
+    zone: string,
   ): Promise<PosConsumptionRow[]> {
     const client = this.dbService.getClient();
+    const { startIso, endIso } = houseDayBounds(fromDate, toDate, zone);
     // `created_at` (not `recorded_at`) is what pos-hub writes through and what
     // loadConsumption above already filters on — keep the two consistent.
     //
     // Read whole or refused (ADR 0292). Unranged, this stopped at PostgREST's
     // 1,000 rows and the till list summed a slice of the window (A-033). A
-    // refusal throws, as a failed read already did.
+    // refusal throws, as a failed read already did. The window is the house
+    // days' half-open range (ADR 0296), not UTC's.
     const data = await readWholeWindow<any>(
       "The consumption lines in this window",
       () =>
@@ -329,8 +339,8 @@ export class AnalyticsService {
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
-          .gte("created_at", `${fromDate}T00:00:00Z`)
-          .lte("created_at", `${toDate}T23:59:59.999Z`),
+          .gte("created_at", startIso)
+          .lt("created_at", endIso),
     );
 
     type Acc = PosConsumptionRow & {
