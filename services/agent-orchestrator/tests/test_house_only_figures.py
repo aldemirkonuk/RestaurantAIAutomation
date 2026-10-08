@@ -10,6 +10,7 @@ included (tech-debt.d 2026-10-08-data-f106-reconcile-pending-drafts).
 """
 
 import types
+import unicodedata
 from unittest.mock import MagicMock
 
 import pytest
@@ -106,8 +107,96 @@ def test_any_unicode_space_between_groups_is_read_as_a_space(space):
 
 
 @pytest.mark.parametrize(
+    "char",
+    [
+        "\u200b",  # ZERO WIDTH SPACE
+        "\u2060",  # WORD JOINER
+        "\ufeff",  # ZERO WIDTH NO-BREAK SPACE (BOM)
+        "\u00ad",  # SOFT HYPHEN
+    ],
+)
+def test_an_invisible_format_character_between_groups_is_deleted(char):
+    # category Cf: the vendor sees "$1199"
+    text = f"Our maximum is $1{char}199 per bottle."
+    assert withheld_figures_in(text, INTENT) == ["max_acceptable_price"]
+    assert withheld_figures_in(f"$11{char}99", INTENT) == ["max_acceptable_price"]
+
+
+@pytest.mark.parametrize("char", ["\u2028", "\u2029"])
+def test_the_line_and_paragraph_separators_are_read_as_a_space(char):
+    # category Zl / Zp: read like " ", unlike LF, CR and tab (category Cc)
+    text = f"Our maximum is $1{char}199 per bottle."
+    assert withheld_figures_in(text, INTENT) == ["max_acceptable_price"]
+
+
+def _bmp(predicate):
+    return [
+        chr(cp) for cp in range(0x10000) if predicate(unicodedata.category(chr(cp)))
+    ]
+
+
+def test_every_format_character_in_the_bmp_is_deleted_between_groups():
+    chars = _bmp(lambda cat: cat == "Cf")
+    assert len(chars) > 40  # 43 in Python 3.11's Unicode 14 tables
+    missed = [
+        f"U+{ord(c):04X}"
+        for c in chars
+        if withheld_figures_in(f"$1{c}199 per bottle", INTENT)
+        != ["max_acceptable_price"]
+    ]
+    assert missed == []
+
+
+def test_every_separator_character_in_the_bmp_is_read_as_a_space():
+    chars = _bmp(lambda cat: cat.startswith("Z"))
+    assert len(chars) > 15
+    missed = [
+        f"U+{ord(c):04X}"
+        for c in chars
+        if withheld_figures_in(f"$1{c}199 per bottle", INTENT)
+        != ["max_acceptable_price"]
+    ]
+    assert missed == []
+    # mapped to a space, not deleted: two figures stay two figures
+    for c in chars:
+        assert withheld_figures_in(f"11{c}99", INTENT) == []
+
+
+@pytest.mark.parametrize(
     "text",
-    ["1, 199", "1\n199", "1\t199", "1.199.00", "6,1199", "1 1 99", "1\u066c199"],
+    [
+        "up to 1\uff0c199 per bottle",  # FULLWIDTH COMMA, NFKC -> ","
+        "up to \uff11\uff0c\uff11\uff19\uff19 per bottle",  # full-width digits
+    ],
+)
+def test_compatibility_forms_are_folded_by_nfkc(text):
+    assert withheld_figures_in(text, INTENT) == ["max_acceptable_price"]
+
+
+@pytest.mark.parametrize("apostrophe", ["'", "\u2019", "\u2018", "\u02bc"])
+def test_swiss_grouping_with_any_of_the_apostrophes(apostrophe):
+    assert withheld_figures_in(f"CHF 1{apostrophe}199.00", INTENT) == [
+        "max_acceptable_price"
+    ]
+    # still only before exactly three digits
+    assert withheld_figures_in(f"11{apostrophe}99", INTENT) == []
+    assert withheld_figures_in(f"1{apostrophe}1990", INTENT) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "1, 199",
+        "1\n199",
+        "1\r199",
+        "1\u0085199",
+        "1\t199",
+        "1_199",
+        "1.199.00",
+        "6,1199",
+        "1 1 99",
+        "1\u066c199",
+    ],
 )
 def test_the_disclosed_misses_are_still_misses(text):
     # Listed under "Not covered" in the module docstring and the tech-debt
@@ -165,7 +254,7 @@ def _no_level4(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_the_prompt_never_carries_the_ceiling():
+async def test_the_intent_in_the_prompt_never_carries_the_ceiling():
     agent = _agent("Could you do $1,090 per bottle?")
     text, audit = await _draft(agent)
     prompt = agent.llm_client.generate_content.call_args.args[0]
@@ -211,6 +300,20 @@ def test_a_long_run_of_spaced_numbers_reads_quickly():
     for text in ("1 " * 2000, "123 " * 2000, "1 199 " * 1000):
         withheld_figures_in(text, INTENT)
     assert time.perf_counter() - t0 < 1.0
+
+
+def test_a_long_run_of_invisible_and_space_characters_reads_quickly():
+    import time
+
+    texts = (
+        "1\u200b\u2009" * 87_000,  # 261k chars of digits, Cf and Zs
+        "123\u2060\u202f\u00ad" * 52_000,
+        "\u200b\u2028\u3000" * 87_000,
+    )
+    t0 = time.perf_counter()
+    for text in texts:
+        withheld_figures_in(text, INTENT)
+    assert time.perf_counter() - t0 < 2.0
 
 
 @pytest.mark.parametrize(

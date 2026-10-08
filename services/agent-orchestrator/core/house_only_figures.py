@@ -15,21 +15,30 @@ target and the ceiling. That draft was never sent (tech-debt.d
 
 There are two layers here:
   1. `vendor_safe_intent` removes the house-only keys before the prompt is
-     built, so the intent in the prompt never carries the ceiling. The model
-     can still meet the figure in memories or history.
+     built, so the intent in the prompt no longer carries the top-level
+     `max_acceptable_price` key. The model can still meet the figure in
+     memories or history.
   2. `withheld_figures_in` checks the drafted text for the ceiling figure in
-     these forms: 1199, 1,199, 1.199, 1 199 (any Unicode space separator,
-     category Zs, between the groups), 1'199, 1199.00 and 1.199,00, also
-     when another number follows it in the same sentence ("$1,199. 6
-     bottles"). The caller replaces a draft that holds it with
+     these forms: 1199, 1,199, 1.199, 1 199, 1'199 (also with U+2019, U+2018
+     or U+02BC as the apostrophe), 1199.00 and 1.199,00, also when another
+     number follows it in the same sentence ("$1,199. 6 bottles"). The text
+     is normalised first: NFKC (so "1，199" with a full-width comma
+     counts as "1,199"), then every format character (category Cf, e.g.
+     zero-width space, word joiner, BOM, soft hyphen) is deleted, then every
+     separator character (category Z: any Unicode space, and also the line
+     and paragraph separators U+2028 and U+2029) is read as a plain space.
+     The caller replaces a draft that holds it with
      `order_letter_without_ceiling`. A ceiling equal to the target is not
      withheld, because the target is the price the house means to propose.
 
 Not covered: a figure in words ("eleven hundred"), a rounded one ("about
 1,200", "1.2k"), a figure the model works out from others ("ten percent
 over our target"), and shapes the tokenizer does not join: "1, 199", the
-groups split by a tab or line break, "1.199.00", "1 1 99", the figure run
-into other digits ("6,1199"), and the Arabic separators U+066C and U+066B.
+groups split by a tab or by a line break that is a control character (LF,
+CR, U+0085: category Cc, not Z, so unlike U+2028 they are not read as a
+space), "1_199", "1.199.00", "1 1 99", the figure run into other digits
+("6,1199"), and the Arabic separators U+066C and U+066B.
+
 An exact match is not proof of a leak: a quantity or a date can equal the
 ceiling. That is why the replacement still says everything the order needs,
 and why the drop is recorded in `constraint_flags.audit_trail` on the
@@ -39,26 +48,54 @@ conversation row (no screen reads that field yet).
 from __future__ import annotations
 
 import re
+import sys
 import unicodedata
 from typing import Any, Dict, List, Mapping
 
-# Intent keys that are for the house's own decisions and never for a vendor.
+# Top-level intent keys that hold the house's own decision figures; they are
+# kept out of the drafting prompt.
 HOUSE_ONLY_INTENT_KEYS = frozenset({"max_acceptable_price"})
 
-# Every Unicode space separator (category Zs: U+0020, U+00A0, U+1680,
-# U+2000-U+200A, U+202F, U+205F, U+3000) is read as a plain space, so a
-# no-break, thin, figure or hair space between digit groups counts like " ".
-# All Zs code points are in the BMP.
-_ZS_TO_SPACE = {
-    cp: " "
-    for cp in range(0x10000)
-    if cp != 0x20 and unicodedata.category(chr(cp)) == "Zs"
-}
+# Before matching, the text is normalised so that characters a reader does
+# not see as separate from the digits cannot hide the figure:
+#   1. NFKC normalisation, so compatibility forms fold to the plain ones
+#      (the full-width comma U+FF0C becomes ",", full-width digits become
+#      ASCII digits);
+#   2. every format character (category Cf: zero-width space U+200B, word
+#      joiner U+2060, BOM U+FEFF, soft hyphen U+00AD, the bidi marks and the
+#      rest) is deleted, because it is invisible: "1<U+200B>199" shows as 1199;
+#   3. every separator character (category Z: the space separators Zs, the
+#      line separator U+2028 and the paragraph separator U+2029) becomes a
+#      plain space. They are mapped, not deleted, so two figures side by side
+#      stay two figures ("6 1199").
+# Tab, \n, \r and U+0085 are control characters (Cc), not Z, and are left
+# alone, so a figure split by them is not joined (disclosed in the docstring).
 
-# A number: digit runs joined by a single , . ' or space (after the Zs
-# mapping above). A separator must sit between digits, so a sentence's own
+
+def _format_and_separator_table() -> Dict[int, str | None]:
+    table: Dict[int, str | None] = {}
+    for cp in range(sys.maxunicode + 1):
+        cat = unicodedata.category(chr(cp))
+        if cat == "Cf":
+            table[cp] = None
+        elif cat[0] == "Z" and cp != 0x20:
+            table[cp] = " "
+    return table
+
+
+_FORMAT_AND_SEPARATORS = _format_and_separator_table()
+
+# The apostrophes used for Swiss-style grouping: ', U+2019, U+2018, U+02BC.
+_APOS = "'\u2019\u2018\u02bc"
+
+# A number: digit runs joined by a single , . apostrophe or space (after the
+# reading above). A separator must sit between digits, so a sentence's own
 # comma or full stop ends the number ("$1,199. 6").
-_NUMBER = re.compile(r"\d+(?:[,.'\u2019 ]\d+)*")
+_NUMBER = re.compile(rf"\d+(?:[,.{_APOS} ]\d+)*")
+
+
+def _as_the_vendor_sees_it(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).translate(_FORMAT_AND_SEPARATORS)
 
 
 def vendor_safe_intent(intent: Mapping[str, Any] | None) -> Dict[str, Any]:
@@ -76,14 +113,14 @@ def _as_number(value: Any) -> float | None:
 
 _EN = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 _TR = re.compile(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?")
-_APOSTROPHE = re.compile(r"\d{1,3}(?:['\u2019]\d{3})+(?:\.\d+)?")
+_APOSTROPHE = re.compile(rf"\d{{1,3}}(?:[{_APOS}]\d{{3}})+(?:\.\d+)?")
 
 
 def _plain_readings(token: str) -> List[float]:
     """Values of a token with no spaces, in English, Turkish or Swiss grouping.
 
     A separator counts as grouping only before exactly three digits, so
-    "11,99" reads 11.99 and never 1199.
+    "11,99" reads 11.99, not 1199.
     """
     out: List[float] = []
     if _EN.fullmatch(token):
@@ -91,7 +128,7 @@ def _plain_readings(token: str) -> List[float]:
     if _TR.fullmatch(token):
         out.append(float(token.replace(".", "").replace(",", ".")))
     if _APOSTROPHE.fullmatch(token):
-        out.append(float(re.sub(r"['\u2019]", "", token)))
+        out.append(float(re.sub(rf"[{_APOS}]", "", token)))
     return out
 
 
@@ -99,7 +136,8 @@ def _readings(token: str) -> List[float]:
     """Every value the token could mean.
 
     A token with spaces may be one space-grouped figure ("1 199") or several
-    figures side by side ("1 199 1 090"), so every run of its parts is read.
+    figures side by side ("1 199 1 090"), so each run of up to six parts that
+    starts with a one- to three-digit part is read.
     """
     parts = token.split(" ")
     if len(parts) == 1:
@@ -133,7 +171,7 @@ def withheld_figures_in(text: str, intent: Mapping[str, Any] | None) -> List[str
     if not text or not intent:
         return []
     target = _as_number(intent.get("target_price"))
-    spaced = text.translate(_ZS_TO_SPACE)
+    spaced = _as_the_vendor_sees_it(text)
     values = [_readings(m.group(0)) for m in _NUMBER.finditer(spaced)]
     hits: List[str] = []
     for key in sorted(HOUSE_ONLY_INTENT_KEYS):
@@ -154,8 +192,8 @@ def order_letter_without_ceiling(intent: Mapping[str, Any] | None) -> str:
     """The letter staged in place of a draft that stated a house-only figure.
 
     It asks for a quote on what the order needs (the wine, the quantity and
-    the target price, when the intent has them) and says nothing the house
-    keeps to itself. It is an inquiry, worded to stay clear of the commitment
+    the target price, when the intent has them) and is built without the
+    house-only keys. It is an inquiry, worded to stay clear of the commitment
     phrases in core/commitment_patterns.py. It is English only and names no
     currency, because the intent carries neither a language nor a currency.
     """

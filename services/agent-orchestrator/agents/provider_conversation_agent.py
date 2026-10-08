@@ -2277,7 +2277,8 @@ class ProviderConversationAgent(BaseAgent):
                 style_profile=style_summary,
                 last_5_messages=msg_history or "No prior messages in this session",
                 top_5_relevant_memories=mem_text or "No relevant memories found",
-                # The ceiling is the house's own; the model never sees it.
+                # The ceiling is the house's own, so it is left out of the
+                # intent in the prompt (memories or history may still hold it).
                 intent_description=json.dumps(vendor_safe_intent(intent), default=str),
                 active_promos=promo_text,
                 tone_instruction=tone_instruction,
@@ -2308,8 +2309,9 @@ class ProviderConversationAgent(BaseAgent):
 
             # A house-only figure in the draft (the model can still meet one in
             # memories or history) replaces the draft with a fixed order letter
-            # that names the wine, quantity and target, and nothing else. The
-            # drop is recorded in constraint_flags.audit_trail.
+            # built from the wine, quantity and target fields, without the
+            # house-only keys. The drop is recorded in
+            # constraint_flags.audit_trail.
             withheld = withheld_figures_in(draft_text, intent)
             if withheld:
                 self.logger.warning(
