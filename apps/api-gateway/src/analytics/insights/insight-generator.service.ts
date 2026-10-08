@@ -203,25 +203,84 @@ export const BASKET_MIN_LIFT = 1.3;
  *       Lane cap first took 4 on its branch; sig (ADR 0272) landed 4 first
  *       and rec (ADR 0291) takes 5, so this change is 6: a row written by
  *       either earlier change predates it.
- *   7 — lane stockout's (ADR 0299, PR #619); its own history line lands
- *       with it.
- *   8 — lane tablesins' (ADR 0303 amendment, PR #625); its own history
- *       line lands with it.
- *   9 — 2026-10-05 (ADR 0297): a glass is not a bottle. The bundle counts a
+ *  10 — 2026-10-07 (ADR 0292, fork 3 follow-on): two new withholding rules.
+ *       The table "#1" (`table.avg_check.peer_rank`) and the live surge
+ *       (`table.revenue.hot_entity_live`) do not fire when the table list
+ *       could not be read, where they fired as "Top table" and "A table";
+ *       and the wine mover (`wine.bottles.vs_prev_period_7d`) does not fire
+ *       when the inventory list could not be read, where it printed the
+ *       wine's raw id as its name. A version-6 row written after such a read
+ *       may hold one of those sentences, and every stored reader prefers it
+ *       to a fresh compute, so it is refused and recomputed. Numbered 10,
+ *       not 7: open PRs hold 7 (#619, #624) and 8 (#625, #626) on their
+ *       branches (2026-10-07), and the coordinator renumbers at merge.
+ *  11 — 2026-10-05 (ADR 0297): a glass is not a bottle. The bundle counts a
  *       consumption line's bottles by its own mode, where it read `quantity`
  *       (servings) as bottles: ten 150 ml glasses were "10 bottles sold", a
  *       50 ml single fifteen times what it poured. A day holding a line with
  *       no bottle figure is unobserved, and a wine holding one is left out of
  *       the movers and the stockout #1. Every record built on consumption
  *       carries `evidence.units`: how many of its lines and items rest on
- *       the 750 ml stand-in. A row below 9 may hold a sentence
+ *       the 750 ml stand-in. A row below 11 may hold a sentence
  *       counted in pours, so it is recomputed, not served. (Drafted as 8;
- *       renumbered 9 on 2026-10-07 because #625 also holds 8, so no two open
- *       PRs share a version.) The number is re-checked at merge: of stockout
- *       (7), tablesins (8) and this, whichever merges later takes one past
- *       the version on `main` at its merge.
+ *       renumbered 9 on 2026-10-07 because #625 also holds 8, and 11 on
+ *       2026-10-08 because #652 took 10 on `main`; neither 8 nor 9 was ever
+ *       on `main`.) The number is re-checked at merge: of the open PRs that
+ *       move it, whichever merges later takes one past the version on `main`
+ *       at its merge.
  */
-export const INSIGHT_GENERATOR_VERSION = 9;
+export const INSIGHT_GENERATOR_VERSION = 11;
+
+/**
+ * Each of the bundle's reads, in the words the house uses for it.
+ *
+ * A read that was refused (`readWholeWindow`'s `WholeReadError`) or that
+ * failed (a Supabase error) leaves its slice empty, so no insight states a
+ * figure from it. Each family is gated on the slice it is built on, and the
+ * two groups of insights that also read a second slice are gated on that
+ * read too:
+ * the checks family's per-table insights (the table "#1" and the live surge)
+ * on the table list, and the consumption family's wine mover on the
+ * inventory list, which holds the wine's name (`readWasRefused`). That is
+ * not enough on its own: an empty feed then looks like a quiet week. The
+ * founder, 2026-10-07 (ADR 0292, fork 3 follow-on): *"Say it couldn't be
+ * read (Recommended)"*. So `generate()` names every such read in its
+ * `sourcesUnread`, and /recommendations' quiet tier prints the name. The
+ * weekly digest prints it only in a letter that carries entries: in a week
+ * where nothing stands it sends nothing, as before, and the name is only in
+ * its log row's reason.
+ *
+ * Names, not table names; and a read that answered with no rows is never
+ * named (an empty read is not a refused one). `goals` is the word the
+ * recommendations feed already uses for its own read of the same goals, so
+ * the two collapse into one name there.
+ *
+ * Not a sentence: no stored row carries these names, so they do not move
+ * `INSIGHT_GENERATOR_VERSION`. The two gates above withhold sentences, and
+ * they do (10).
+ */
+export const BUNDLE_READ_WORDS = {
+  wine_consumption_log: "pour history",
+  procurement_orders: "order history",
+  restaurant_inventory: "inventory list",
+  pos_checks: "till checks",
+  restaurant_tables: "table list",
+  restaurant_venue_profiles: "venue profile",
+  analytics_goals: "goals",
+} as const;
+type BundleRead = keyof typeof BUNDLE_READ_WORDS;
+
+/**
+ * Whether this bundle read was refused or failed: its slice is `[]` because
+ * nothing could be read, not because the house has no rows. An insight that
+ * takes a name from a slice other than its own family's (a table's label, a
+ * wine's name) checks this, never the slice's length, before it fires. An
+ * insight that names things from its own family's slice is gated on that
+ * slice's length, which is empty when the read failed.
+ */
+function readWasRefused(bundle: Bundle, read: BundleRead): boolean {
+  return bundle.unread.includes(BUNDLE_READ_WORDS[read]);
+}
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -444,6 +503,13 @@ export class InsightGeneratorService {
       // carry no bottle figure (ADR 0297). Each record built on them carries
       // its own count in `evidence.units`.
       units: this.unitsOf(bundle.consumption),
+      // The bundle's reads that were refused or failed, in house words
+      // (`BUNDLE_READ_WORDS`). Empty = every read answered, rows or none. A
+      // name here means every insight that reads it said nothing because
+      // nothing could be read, not because nothing happened: the families
+      // built on it, and the per-table and wine-mover insights that take a
+      // label or a name from it (`readWasRefused`; ADR 0292).
+      sourcesUnread: bundle.unread,
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };
@@ -673,7 +739,8 @@ export class InsightGeneratorService {
     // Saturday Aug 15 as $274 against a $10.8k average, "97% lower", over a
     // day the feed puts about 15% down (A-004). The whole rows are put back
     // into the `{ data, error }` shape `ok()` reads; a refusal REJECTS, which
-    // the loop below logs, and the family stays silent rather than wrong.
+    // the loop below logs and names in `unread`: the family states no figure,
+    // and the feed says which read it could not make (ADR 0292, 2026-10-07).
     const whole = (rows: unknown[]) => ({ data: rows, error: null });
     const [cons, ords, inv, checks, tables, venue, goals] =
       await Promise.allSettled([
@@ -743,8 +810,9 @@ export class InsightGeneratorService {
     // whole insight run down. But it must not do so SILENTLY: an empty array
     // from a 42703 is indistinguishable from an empty array from a quiet
     // restaurant, which is precisely how the provider_name drift above stayed
-    // invisible. Every failure now names itself in the logs.
-    const slices: Array<[string, PromiseSettledResult<any>]> = [
+    // invisible. Every failure now names itself in the logs, and in `unread`,
+    // which `generate()` returns as `sourcesUnread` (ADR 0292, 2026-10-07).
+    const slices: Array<[BundleRead, PromiseSettledResult<any>]> = [
       ["wine_consumption_log", cons],
       ["procurement_orders", ords],
       ["restaurant_inventory", inv],
@@ -753,16 +821,20 @@ export class InsightGeneratorService {
       ["restaurant_venue_profiles", venue],
       ["analytics_goals", goals],
     ];
+    const unread: string[] = [];
     for (const [table, r] of slices) {
-      if (r.status === "rejected")
+      if (r.status === "rejected") {
         this.logger.error(
           `insight bundle query on ${table} rejected: ${r.reason}`,
         );
-      else if (r.value?.error)
+        unread.push(BUNDLE_READ_WORDS[table]);
+      } else if (r.value?.error) {
         this.logger.error(
-          `insight bundle query on ${table} failed — this family will be ` +
-            `silent rather than wrong: ${r.value.error.code ?? "?"} ${r.value.error.message ?? r.value.error}`,
+          `insight bundle query on ${table} failed — this family states no ` +
+            `figure and is named as unread: ${r.value.error.code ?? "?"} ${r.value.error.message ?? r.value.error}`,
         );
+        unread.push(BUNDLE_READ_WORDS[table]);
+      }
     }
 
     const ok = <T>(r: PromiseSettledResult<any>): T[] =>
@@ -801,6 +873,7 @@ export class InsightGeneratorService {
       availability: new Set<DataRequirement>(),
       excludedDates: exclusions.dates,
       exclusionsReadable: exclusions.readable,
+      unread,
     };
 
     if (bundle.consumption.length) bundle.availability.add("consumption");
@@ -925,14 +998,18 @@ export class InsightGeneratorService {
       byWine.set(c.wineId, arr);
     }
 
-    // Wine week-over-week movers.
+    // Wine week-over-week movers. The sentence names the wine, and the name
+    // is the inventory list's: when that read was refused or failed there is
+    // no name to print, so the mover does not fire, rather than print the
+    // wine's raw id as its name (ADR 0292, 2026-10-07; version 10).
     let bestMove: {
       wine: string;
       wineId: string;
       days: string[];
       cmp: E.PeriodComparison;
     } | null = null;
-    for (const [wineId, wineRows] of byWine) {
+    const namesUnread = readWasRefused(bundle, "restaurant_inventory");
+    for (const [wineId, wineRows] of namesUnread ? [] : byWine) {
       const daily = this.toDaily(wineRows, 28);
       const s = daily.values;
       const cmp = E.periodOverPeriod(s, 7);
@@ -1265,6 +1342,14 @@ export class InsightGeneratorService {
     });
 
     const tableById = new Map(bundle.tables.map((t: any) => [t.id, t]));
+    // The per-table insights (the table "#1", its attribute and driver
+    // readings, and the live surge) take each table's label and attributes
+    // from the table list. When that read was refused or failed they do not
+    // fire, where the "#1" printed "Top table" and the surge "A table" over a
+    // list nobody could read (ADR 0292, 2026-10-07; version 10). The insights
+    // built on the checks alone (the till's series, the server "#1", the
+    // basket) still may: a check carries its own `table_id`.
+    const tablesUnread = readWasRefused(bundle, "restaurant_tables");
 
     // ---- per-table aggregates --------------------------------------------
     // `sumSq` is the sum of squared check totals: with `revenue` and
@@ -1350,7 +1435,7 @@ export class InsightGeneratorService {
     }
 
     // Table peer ranking on avg check, with distance attribution.
-    if (byTable.size >= 3) {
+    if (!tablesUnread && byTable.size >= 3) {
       const entries = Array.from(byTable.entries())
         .filter(([, v]) => v.checks >= 3)
         .map(([id, v]) => ({
@@ -1594,7 +1679,9 @@ export class InsightGeneratorService {
 
     // Hot tables — live surge detection on OPEN checks (no closed_at).
     const now = Date.now();
-    const open = checks.filter((c: any) => !c.closed_at && c.opened_at);
+    const open = tablesUnread
+      ? []
+      : checks.filter((c: any) => !c.closed_at && c.opened_at);
     for (const c of open) {
       const t: any = c.table_id ? tableById.get(c.table_id) : null;
       const minutes = Math.max(
@@ -2051,4 +2138,11 @@ interface Bundle {
   excludedDates: Set<string>;
   /** False when that list could not be read — never the same as "empty". */
   exclusionsReadable: boolean;
+  /**
+   * The reads above that were refused or failed, in `BUNDLE_READ_WORDS`'
+   * words. Their slices hold `[]`, which is NOT a house with no rows: an
+   * insight that takes a name from one of them, other than its own family's
+   * slice, asks `readWasRefused` first.
+   */
+  unread: string[];
 }
