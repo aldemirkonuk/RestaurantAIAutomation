@@ -42,7 +42,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Camera, CloudOff, Loader2, X } from 'lucide-react';
 import { Seal } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
-import { receivingApi } from '@/services/api/receiving';
+import { receivingApi, type DoorFactTime } from '@/services/api/receiving';
 import { getOrder } from '@/services/api/orders';
 import {
   clearDroppedDoorReceipts,
@@ -84,6 +84,33 @@ type Step = 'paper' | 'count' | 'done';
 
 /** Thumb-sized. 56px is the smallest a cold, gloved hand hits reliably. */
 const TAP = 'min-h-[56px] min-w-[56px]';
+
+/**
+ * Which clock dated the delivery, in one quiet sentence, when that is not the
+ * ordinary case. The phone's time is the delivery's when it is no more than 72
+ * hours old, or older on an owner's or a manager's word, marked back-dated;
+ * otherwise the server's. A sent time inside the window says nothing: it is
+ * what the receiver expects. Times read in this phone's own locale and clock.
+ */
+function datedSentence(factTime: DoorFactTime | undefined): string | null {
+  if (!factTime) return null;
+  const sent = factTime.sentAt ? new Date(factTime.sentAt) : null;
+  const when = sent && Number.isFinite(sent.getTime()) ? sent.toLocaleString() : null;
+  switch (factTime.reason) {
+    case 'back_dated':
+      return when
+        ? `Dated ${when}, more than 72 hours ago — marked back-dated.`
+        : 'Dated more than 72 hours ago — marked back-dated.';
+    case 'too_old':
+      return when
+        ? `This phone took it at ${when}, more than 72 hours ago. Only an owner or a manager can keep a time that old, so it is dated when it reached us.`
+        : null;
+    case 'ahead':
+      return "This phone's clock is ahead, so it is dated by ours.";
+    default:
+      return null;
+  }
+}
 
 /**
  * Page-scoped CSS: the settle expansion (+ its reduced-motion collapse), and
@@ -148,6 +175,7 @@ export default function DoorNext() {
   const [submitting, setSubmitting] = useState(false);
   const [queued, setQueued] = useState(false);
   const [stockIssue, setStockIssue] = useState<string | null>(null);
+  const [dated, setDated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sealAttempt, setSealAttempt] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
@@ -446,6 +474,9 @@ export default function DoorNext() {
       // with no inventory link books nothing. Say so rather than showing the
       // ordinary "someone will count the bottles" ending.
       setStockIssue(res.synced && res.stockBooked === false ? (res.stockIssue ?? null) : null);
+      // Said only when the server answered while this screen is open. A
+      // receipt that sends later from the queue is said by the bell instead.
+      setDated(res.synced ? datedSentence(res.factTime) : null);
       setStep('done');
     } catch (e) {
       // A gateway refusal resets the die, with the refusal stated in place —
@@ -827,6 +858,13 @@ export default function DoorNext() {
                 className="max-w-xs rounded-xl border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-200"
               >
                 {stockIssue}
+              </p>
+            )}
+            {/* Which clock dated it, when it was not the phone's within 72
+                hours. A record, not an alarm: nothing for the receiver to do. */}
+            {dated !== null && (
+              <p data-ux-key="door:dated" className="max-w-xs text-center text-sm text-inkm-3">
+                {dated}
               </p>
             )}
             {draft !== null && (
