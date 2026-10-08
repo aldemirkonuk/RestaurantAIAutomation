@@ -9,6 +9,7 @@ import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
+import { houseNotOpened } from '../lib/houseOpeningWords'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
@@ -1104,7 +1105,7 @@ export function Register() {
       })
       navigate('/verify-email', { replace: true })
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Registration failed')
+      setError(houseNotOpened(err, 'register'))
     } finally {
       setLoading(false)
     }
