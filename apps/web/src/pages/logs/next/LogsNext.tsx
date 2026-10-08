@@ -241,7 +241,9 @@ const PAGE_CSS = `
 /* The day a row belongs to stays on screen while its rows are on screen. A
    hundred rows is four or five days deep; a heading that scrolls away makes
    every timestamp below it a time with no date. */
-.mudavym .lg-day { position: sticky; top: 0; z-index: 1; margin: 18px 0 0; padding: 6px 8px 5px; background: var(--paper-0); border-bottom: 1px solid var(--paper-2); }
+/* It sticks under the house header (53 px, 83 offline — house-shell.css), not
+   at the window's top, where the header covered it. */
+.mudavym .lg-day { position: sticky; top: var(--mdv-shell-top, 53px); z-index: 1; margin: 18px 0 0; padding: 6px 8px 5px; background: var(--paper-0); border-bottom: 1px solid var(--paper-2); }
 .mudavym .lg-list { list-style: none; margin: 0; padding: 0; }
 .mudavym .lg-row { display: grid; grid-template-columns: 74px 52px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 8px 6px 8px 8px; border-top: 1px solid var(--paper-2); border-left: 2px solid transparent; scroll-margin-top: 34px; }
 .mudavym .lg-row:hover { background: var(--paper-1); }

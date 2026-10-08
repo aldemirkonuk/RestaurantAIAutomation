@@ -167,6 +167,7 @@
 
 .mdv-ovl--popover .mdv-ovl__panel {
   position: fixed;
+  max-width: calc(100vw - 32px);
   max-height: 72vh;
   border: 1px solid var(--paper-2);
   border-radius: 14px;

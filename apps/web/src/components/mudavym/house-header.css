@@ -206,6 +206,15 @@
     border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* A thumb needs 44 px; on a phone the bell is the only way to the notices. */
+@media (max-width: 767px) {
+  .mdv-hdr__btn {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+}
+
 .mdv-hdr__btn:hover {
   background: var(--paper-1);
   border-color: var(--paper-2);

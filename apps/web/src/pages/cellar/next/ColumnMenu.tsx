@@ -61,6 +61,16 @@ export interface ColumnMenuProps {
   onClose: () => void;
 }
 
+/** `.cl-menu`'s width (cellar-next.css: 320 px, at most 100vw − 16). */
+const MENU_WIDTH = 320;
+
+/* Opened from a caret halfway across a phone, a left edge taken as-is put
+   half the menu off the right edge. Keep 8 px clear on both sides. */
+function clampLeft(x: number): number {
+  const w = Math.min(MENU_WIDTH, window.innerWidth - 16);
+  return Math.max(8, Math.min(x, window.innerWidth - w - 8));
+}
+
 export default function ColumnMenu({
   column,
   at,
@@ -117,7 +127,7 @@ export default function ColumnMenu({
       aria-label={`${column.label} column`}
       data-testid="column-menu"
       className="cl-menu"
-      style={{ left: Math.max(8, at.x), top: Math.max(8, at.y) }}
+      style={{ left: clampLeft(at.x), top: Math.max(8, at.y) }}
     >
       <p className="cl-crumb" style={{ margin: '0 0 6px' }}>
         {column.label}

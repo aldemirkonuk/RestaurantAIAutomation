@@ -1495,6 +1495,24 @@ describe('the gesture set — the header owns the column, the cell owns the reco
     expect(screen.getByTestId('column-menu')).toHaveTextContent(/procurement_document_lines/);
   });
 
+  /* F-225: a caret at x≈200 on a 375 px phone put a 320 px menu at 200→520. */
+  it('keeps the column menu on a phone screen when its caret is far to the right', () => {
+    const was = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
+    try {
+      draw({ category: 'beer' });
+      const caret = screen.getAllByRole('button', { name: /What Paid is/ })[0];
+      vi.spyOn(caret, 'getBoundingClientRect').mockReturnValue(
+        { left: 200, right: 212, top: 100, bottom: 112, width: 12, height: 12, x: 200, y: 100, toJSON: () => ({}) } as DOMRect,
+      );
+      fireEvent.click(caret);
+      // 375 − 320 − 8: the menu's right edge stays 8 px inside the screen.
+      expect(screen.getByTestId('column-menu').style.left).toBe('47px');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: was });
+    }
+  });
+
   it('a column with no series says so rather than offering an empty graph', () => {
     draw({ category: 'beer' });
     const head = screen.getAllByRole('columnheader').find((h) => /Type/.test(h.textContent ?? ''))!;
@@ -1644,6 +1662,28 @@ describe('the whole cellar at once — direction B, merged in', () => {
     expect(heads).toMatch(/Taken/);
     expect(heads).not.toMatch(/On hand/);
     expect(screen.getByTestId('whole-cellar')).toHaveTextContent(/Wines are not in this list/);
+  });
+
+  /* F-225: the whole cellar opened its column menu on right-click only, which
+     a phone cannot make. */
+  it('opens a column’s menu from a tap on the whole cellar too', () => {
+    mock.current = { ...base, registers: readout({ registers: [
+      reg('wines', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('beer', { carried: true, decidedBy: 'confirmed', confidence: 'certain' }),
+      reg('whiskey'), reg('cocktails'), reg('spirits'), reg('non_alcoholic'), reg('soft_drinks'),
+    ] }) };
+    mock.whole = {
+      rows: [{ ...houseRow(), register: 'beer' }],
+      reads: [{ register: 'beer', loading: false, error: null, rows: 1 }],
+      loading: false,
+      partial: false,
+    };
+    draw();
+    const whole = screen.getByTestId('whole-cellar');
+    const caret = within(whole).getByRole('button', { name: /What Register is/ });
+    expect(caret).toHaveAttribute('aria-haspopup', 'menu');
+    fireEvent.click(caret);
+    expect(screen.getByTestId('column-menu')).toHaveAccessibleName('Register column');
   });
 });
 

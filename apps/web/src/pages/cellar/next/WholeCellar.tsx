@@ -23,7 +23,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, LayoutList } from 'lucide-react';
+import { AlertTriangle, ChevronDown, LayoutList } from 'lucide-react';
 import ColumnMenu from './ColumnMenu';
 import SeriesPanel from './SeriesPanel';
 import { REGISTER_TITLE, count, type RegisterId } from './cellar-format';
@@ -196,29 +196,52 @@ export default function WholeCellar({
                           setMenu({ column: c, x: e.clientX, y: e.clientY });
                         }}
                       >
-                        <button
-                          type="button"
-                          className="cl-focus"
-                          onClick={() => {
-                            if (c.id === sortKey) setAsc((v) => !v);
-                            else {
-                              setSortKey(c.id);
-                              setAsc(c.kind === 'word');
-                            }
-                          }}
-                          aria-label={`Sort by ${c.label}`}
+                        <span
                           style={{
-                            background: 'none',
-                            border: 0,
-                            padding: 0,
-                            font: 'inherit',
-                            cursor: 'pointer',
-                            color: sortKey === c.id ? 'var(--seal-deep)' : 'inherit',
+                            display: 'inline-flex',
+                            gap: 3,
+                            alignItems: 'center',
+                            flexDirection: c.kind === 'figure' ? 'row-reverse' : 'row',
                           }}
                         >
-                          {c.label}
-                          {sortKey === c.id ? (asc ? ' ▲' : ' ▼') : ''}
-                        </button>
+                          <button
+                            type="button"
+                            className="cl-focus"
+                            onClick={() => {
+                              if (c.id === sortKey) setAsc((v) => !v);
+                              else {
+                                setSortKey(c.id);
+                                setAsc(c.kind === 'word');
+                              }
+                            }}
+                            aria-label={`Sort by ${c.label}`}
+                            style={{
+                              background: 'none',
+                              border: 0,
+                              padding: 0,
+                              font: 'inherit',
+                              cursor: 'pointer',
+                              color: sortKey === c.id ? 'var(--seal-deep)' : 'inherit',
+                            }}
+                          >
+                            {c.label}
+                            {sortKey === c.id ? (asc ? ' ▲' : ' ▼') : ''}
+                          </button>
+                          {/* Right-click's tap twin, as on every register: a
+                              phone has no right-click (ColumnMenu.tsx). */}
+                          <button
+                            type="button"
+                            className="cl-caret cl-focus"
+                            aria-haspopup="menu"
+                            aria-label={`What ${c.label} is, and how to sort it`}
+                            onClick={(e) => {
+                              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              setMenu({ column: c, x: r.left, y: r.bottom + 4 });
+                            }}
+                          >
+                            <ChevronDown size={11} aria-hidden />
+                          </button>
+                        </span>
                       </th>
                     ))}
                   </tr>
