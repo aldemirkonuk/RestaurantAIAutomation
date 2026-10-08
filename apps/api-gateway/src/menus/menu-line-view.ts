@@ -28,7 +28,7 @@ import { policyFor } from "../ask-readings/reading-data-classes";
  * (`apps/web/src/lib/firstProof.ts`); a CLAIMS row keeps the two lists equal.
  * 'dessert' is also a drink section, so a dessert wine counts as a kitchen
  * line: a known defect, filed in
- * `.planning/tech-debt.d/2026-10-07-fix-a-menu-line-carries-its-raw-line.md`.
+ * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`.
  */
 export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"];
 
