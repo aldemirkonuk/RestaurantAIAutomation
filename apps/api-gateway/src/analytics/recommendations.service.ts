@@ -295,7 +295,11 @@ export class RecommendationsService {
     suppressionsReadable: boolean;
     priceAdviceReadable: boolean;
     priceAdviceReason: string | null;
-    /** Engine sources that rejected on this read, by name. Empty = all answered. */
+    /**
+     * Engine sources that rejected on this read, by name, and the insight
+     * generator's own reads that were refused or failed ("pour history",
+     * "till checks", …). Empty = all answered.
+     */
     sourcesUnread: string[];
     /** Standing cards withheld because this viewer snoozed them for themselves. */
     hiddenForYou: number;
@@ -343,25 +347,48 @@ export class RecommendationsService {
     // and a rule over `null` does not fire — so without this list "nothing
     // fired" and "nothing could be read" are the same result. The digest
     // sender (analytics/digest) says which it was; the page may too.
-    const sourcesUnread = (
-      [
-        ["financial summary", financial],
-        ["risk profile", risk],
-        ["inventory science", invSci],
-        ["menu engineering", menu],
-        ["seasonality", seasonality],
-        ["cashflow", cashflow],
-        ["insights", insightsRes],
-        ["goals", goals],
-        // ADR 0193: price advice is a source like the others; the digest's
-        // "could not read" note names it when it rejected.
-        ["price advice", priceAdviceRes],
-        // ADR 0193 round 3: the price locks, likewise.
-        ["price locks", priceLocksRes],
-      ] as Array<[string, PromiseSettledResult<unknown>]>
-    )
-      .filter(([, r]) => r.status === "rejected")
-      .map(([name]) => name);
+    //
+    // The insight generator is the one source that answers when part of it
+    // could not be read: a refused or failed bundle read leaves its families
+    // silent and `generate()` still resolves. So it names those reads itself
+    // (`sourcesUnread`, in house words such as "pour history"), and they are
+    // listed here in its place. The founder, 2026-10-07 (ADR 0292): *"Say it
+    // couldn't be read (Recommended)"*. "insights" is still the name when
+    // `generate()` itself rejected. A name two sources share ("goals") is
+    // listed once.
+    const insightReadsUnread = (r: PromiseSettledResult<any>): string[] =>
+      r.status === "fulfilled" && Array.isArray(r.value?.sourcesUnread)
+        ? (r.value.sourcesUnread as unknown[]).map(String)
+        : [];
+    const sourcesUnread = Array.from(
+      new Set(
+        (
+          [
+            ["financial summary", financial],
+            ["risk profile", risk],
+            ["inventory science", invSci],
+            ["menu engineering", menu],
+            ["seasonality", seasonality],
+            ["cashflow", cashflow],
+            ["insights", insightsRes, insightReadsUnread],
+            ["goals", goals],
+            // ADR 0193: price advice is a source like the others; the digest's
+            // "could not read" note names it when it rejected.
+            ["price advice", priceAdviceRes],
+            // ADR 0193 round 3: the price locks, likewise.
+            ["price locks", priceLocksRes],
+          ] as Array<
+            [
+              string,
+              PromiseSettledResult<unknown>,
+              ((r: PromiseSettledResult<unknown>) => string[])?,
+            ]
+          >
+        ).flatMap(([name, r, partsUnread]) =>
+          r.status === "rejected" ? [name] : (partsUnread?.(r) ?? []),
+        ),
+      ),
+    );
 
     const ctx = {
       financial: ok(financial),
