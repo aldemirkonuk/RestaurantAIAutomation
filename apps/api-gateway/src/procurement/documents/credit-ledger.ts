@@ -33,15 +33,6 @@ export type CreditReason =
   | "never_ordered"
   | "other"
   /**
-   * The house paid for an order that was then cancelled `never_arrived`
-   * (ADR 0207 round 5). Distinct from `never_ordered` (a vendor billed for
-   * something the house never placed at all) — this is the reverse: the
-   * house placed it, paid for it, and it never came. Opened only from
-   * `ProcurementService.openNeverArrivedCreditClaim`, never from
-   * `draftClaimFromMatch` (an invoice-match verdict is never this reason).
-   */
-  | "never_arrived"
-  /**
    * The door's own reason, kept on the claim (founder, 2026-10-02, W54 /
    * F-158, ADR 0267 option 8: "Keep the door's reason"). Before this a
    * `rejected` verdict was always filed as `damaged`, so a wrong item, a
@@ -51,7 +42,16 @@ export type CreditReason =
    */
   | "wrong_item"
   | "broken"
-  | "temperature";
+  | "temperature"
+  /**
+   * The house paid for an order that was then cancelled `never_arrived`
+   * (ADR 0207 round 5). Distinct from `never_ordered` (a vendor billed for
+   * something the house never placed at all) — this is the reverse: the
+   * house placed it, paid for it, and it never came. Opened only from
+   * `ProcurementService.openNeverArrivedCreditClaim`, never from
+   * `draftClaimFromMatch` (an invoice-match verdict is never this reason).
+   */
+  | "never_arrived";
 
 /**
  * Every claim reason in the house's words — ONE wording, used by every page
