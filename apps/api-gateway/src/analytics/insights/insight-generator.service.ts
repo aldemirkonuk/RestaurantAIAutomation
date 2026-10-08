@@ -228,7 +228,9 @@ export const BASKET_MIN_LIFT = 1.3;
  *       2026-10-08 because #652 took 10 on `main`; neither 8 nor 9 was ever
  *       on `main`.) The number is re-checked at merge: of the open PRs that
  *       move it, whichever merges later takes one past the version on `main`
- *       at its merge.
+ *       at its merge. [2026-10-08: 11 also covers the bundle's own wording
+ *       for `evidence.units.basis` (ADR 0297 round 4b); not bumped, since 11
+ *       has never been on `main`.]
  */
 export const INSIGHT_GENERATOR_VERSION = 11;
 
@@ -887,10 +889,15 @@ export class InsightGeneratorService {
     return bundle;
   }
 
-  /** The bottle basis of these consumption lines (ADR 0297). */
+  /**
+   * The bottle basis of these consumption lines (ADR 0297), in the bundle's
+   * words: a line with no bottle figure is not "null" here, its day is
+   * unobserved and its wine is left out (`unitsBasisSentence` "bundle").
+   */
   private unitsOf(lines: Bundle["consumption"]): UnitsLabel {
     return unitsLabel(
       lines.map((c) => ({ how: c.how, inventoryId: c.itemId })),
+      "bundle",
     );
   }
 

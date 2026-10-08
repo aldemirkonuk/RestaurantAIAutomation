@@ -169,19 +169,24 @@ function n(count: number, one: string, many: string): string {
  *
  * `reads` says what the reader does with a line that has no bottle figure,
  * because the sentence must say no more than the reader does (ADR 0297):
- *  - "figures" (the default; menu engineering, Wine 360 and inventory
- *    science): the item's figures resting on such a line are null. The
- *    insight bundle's label (`unitsLabel`) also uses it; what the bundle
- *    withholds is in ADR 0297's Decision.
+ *  - "figures" (the default; menu engineering, Wine 360, inventory science
+ *    and the Bottles sold goal, which refuses its total instead): the item's
+ *    figures resting on such a line are null.
  *  - "series" (seasonality, the risk profile, the demand forecast): the
  *    daily series is zero-filled from counted lines, so such a line is left
  *    out, a day holding it counts only its other lines, and a day holding
  *    nothing else reads 0. The figures are short, not null, and the sentence
  *    says so.
+ *  - "bundle" (the insight bundle, `InsightGeneratorService.unitsOf`): a day
+ *    holding such a line is unobserved, so the same-weekday, trend and
+ *    anomaly readings skip it, but the dense values keep its counted lines,
+ *    so a week-over-week total is short by it; a wine holding one leaves the
+ *    wine mover and the stockout #1; concentration is withheld while any such
+ *    line names a wine, and the forecast gap while any is dated (ADR 0297).
  */
 export function unitsBasisSentence(
   cov: UnitsCoverage,
-  reads: "figures" | "series" = "figures",
+  reads: "figures" | "series" | "bundle" = "figures",
 ): string {
   if (cov.lines === 0) return "no consumption lines in this window";
   const parts = [
@@ -196,10 +201,13 @@ export function unitsBasisSentence(
   if (cov.uncountedLines > 0) {
     const one = cov.uncountedLines === 1;
     const lead = `${n(cov.uncountedLines, "line", "lines")} across ${n(cov.uncountedItems, "item", "items")} ${one ? "carries" : "carry"} no bottle figure (${UNCOUNTED_CAUSES})`;
+    const pr = one ? "it" : "them";
     parts.push(
       reads === "series"
-        ? `${lead}, so ${one ? "it is" : "they are"} left out of this series: a day holding ${one ? "it" : "them"} counts only its other lines, and reads 0 if it has none, so the series is short by ${one ? "that line" : "those lines"} rather than guessed`
-        : `${lead}, so every figure resting on ${one ? "it" : "them"} is null rather than guessed`,
+        ? `${lead}, so ${one ? "it is" : "they are"} left out of this series: a day holding ${pr} counts only its other lines, and reads 0 if it has none, so the series is short by ${one ? "that line" : "those lines"} rather than guessed`
+        : reads === "bundle"
+          ? `${lead}, so ${one ? "it is" : "they are"} left out: a day holding ${pr} is marked unobserved, so the same-weekday, trend and anomaly readings skip that day, but a week-over-week total counts its other lines and is short by ${one ? "that line" : "those lines"} rather than guessed; a wine holding ${pr} leaves the wine mover and the stockout #1; concentration is withheld while any such line names a wine, and the forecast gap while any is dated`
+          : `${lead}, so every figure resting on ${pr} is null rather than guessed`,
     );
   } else parts.push("every line has a bottle figure");
   return parts.join("; ");
@@ -218,9 +226,10 @@ export interface UnitsLabel extends UnitsCoverage {
 
 export function unitsLabel(
   lines: Array<{ how: BottleHow; inventoryId?: string | null }>,
+  reads: "figures" | "bundle" = "figures",
 ): UnitsLabel {
   const cov = summarizeUnits(lines);
-  return { ...cov, basis: unitsBasisSentence(cov) };
+  return { ...cov, basis: unitsBasisSentence(cov, reads) };
 }
 
 /**

@@ -1018,7 +1018,7 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}`,
+        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
         model: projection
           ? `${model} fitted on ${values.length} days of history`
           : unmeasuredWine

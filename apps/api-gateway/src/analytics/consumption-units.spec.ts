@@ -1032,6 +1032,32 @@ describe("a series reader's basis says what it does with a line with no bottle f
     const cov = summarizeUnits([{ how: "uncounted", inventoryId: "inv-1" }]);
     expect(unitsBasisSentence(cov)).toContain("is null rather than guessed");
   });
+
+  it("SB5: the insight bundle's series records say the day is unobserved, not that figures are null", async () => {
+    // Two bottles a day this week, one a day last week, and a line with no
+    // bottle figure on day 3 beside that day's counted lines: the day is
+    // unobserved, but the dense values keep its two counted bottles.
+    const rows = [
+      ...everyDay(1, 1, 7, BOTTLE, 750, 2),
+      ...everyDay(1, 8, 14, BOTTLE),
+      on(2, 3, NO_FIGURE),
+    ];
+    const out = await familyOver(
+      { restaurant_inventory: [item(1), item(2)], wine_consumption_log: rows },
+      "computeConsumptionFamily",
+    );
+    const series = out.filter((r) =>
+      r.candidateKey.startsWith("overall.bottles."),
+    );
+    expect(series.length).toBeGreaterThan(0);
+    for (const r of series) {
+      expect(r.evidence.units.uncountedLines).toBe(1);
+      expect(r.evidence.units.basis).toContain(
+        "so it is left out: a day holding it is marked unobserved, so the same-weekday, trend and anomaly readings skip that day, but a week-over-week total counts its other lines and is short by that line rather than guessed",
+      );
+      expect(r.evidence.units.basis).not.toContain("is null");
+    }
+  });
 });
 
 describe("Wine 360 ranks only wines whose every line has a bottle figure", () => {
@@ -1105,6 +1131,10 @@ describe("the demand forecast does not project one wine from a history it cannot
     expect(out.totalForecastDemand).toBeNull();
     expect(out.accuracy).toBeNull();
     expect(out.basis.model).toContain("carry no bottle figure");
+    // Its demand basis does not read as a short projection (ADR 0297).
+    expect(out.basis.demand).toContain(
+      "nothing is projected from this short series",
+    );
   });
 
   it("F2: the house series still projects, from counted lines, and names the gap", async () => {
@@ -1113,6 +1143,7 @@ describe("the demand forecast does not project one wine from a history it cannot
     expect(out.basis.demand).toContain(
       "1 line across 1 item carries no bottle figure",
     );
+    expect(out.basis.demand).not.toContain("nothing is projected");
   });
 });
 
