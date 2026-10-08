@@ -122,6 +122,14 @@ export interface HouseIndexVM {
    * then drawn with no basis rather than with a guessed one.
    */
   carriedBooks: CarriedBookVM[] | null;
+  /**
+   * The house records no country, so its state was not read and no
+   * state-based price is drawn (ADR 0305; the founder, 2026-10-07: *"Ask for
+   * the country"*). The panel then asks for the country with a link to
+   * Settings. Only a `true` on the wire sets it: an unread answer is not a
+   * missing country.
+   */
+  countryNotRecorded: boolean;
 }
 
 /** One hand-carried book that is in the market, and how it got there. */
@@ -146,6 +154,7 @@ const LOADING: HouseIndexVM = {
   heldBooks: null,
   heldBookHoldHours: null,
   carriedBooks: null,
+  countryNotRecorded: false,
 };
 
 /** A posted list changes on a monthly-to-weekly cadence; five minutes is ample. */
@@ -247,6 +256,7 @@ export function useHouseIndex(): HouseIndexVM & { refresh: () => void } {
               admittedAt: typeof b.admittedAt === 'string' ? b.admittedAt : null,
             }))
           : null,
+        countryNotRecorded: d.countryNotRecorded === true,
       });
     } catch (err) {
       if (tenant.current !== forTenant) return;
