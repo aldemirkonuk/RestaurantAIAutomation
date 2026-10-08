@@ -39,7 +39,11 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
 from core.commitment_patterns import contains_commitment_language
-from core.house_only_figures import vendor_safe_intent, withheld_figures_in
+from core.house_only_figures import (
+    order_letter_without_ceiling,
+    vendor_safe_intent,
+    withheld_figures_in,
+)
 from core.base_agent import BaseAgent
 from core.notifications import notify_restaurant
 from utils.logger import setup_logger
@@ -2303,16 +2307,17 @@ class ProviderConversationAgent(BaseAgent):
             draft_text = response.text.strip()
 
             # A house-only figure in the draft (the model can still meet one in
-            # memories or history) drops the draft for the fixed template, which
-            # says only the target.
+            # memories or history) replaces the draft with a fixed order letter
+            # that names the wine, quantity and target, and nothing else. The
+            # drop is kept in the audit trail the manager reads.
             withheld = withheld_figures_in(draft_text, intent)
             if withheld:
                 self.logger.warning(
                     f"Draft for provider {provider_id} held a house-only figure "
-                    f"({', '.join(withheld)}); using the fixed template instead"
+                    f"({', '.join(withheld)}); using the fixed order letter instead"
                 )
                 audit.withheld_figure_dropped = True
-                return self._mock_generate_response(intent, style_profile), audit
+                return order_letter_without_ceiling(intent), audit
 
             # AI-SPEC §6: Check commitment language — log warning; caller must force pending_approval
             if self._check_commitment_language(draft_text):
@@ -2356,17 +2361,33 @@ class ProviderConversationAgent(BaseAgent):
         formality = style.get("formality", "semi-formal")
 
         if intent_type == "negotiate_price":
+            # A missing or non-numeric target asks for the vendor's price
+            # instead of raising on the format spec.
+            try:
+                price = float(target_price)
+            except (TypeError, ValueError):
+                price = None
             if formality == "casual":
+                at = (
+                    f"at ${price:.2f}/bottle"
+                    if price is not None
+                    else "and at what price"
+                )
                 return (
                     f"Hey! Quick question — could you do "
                     f"{quantity} bottles of {wine} "
-                    f"at ${target_price:.2f}/bottle? "
+                    f"{at}? "
                     f"Let me know what you think!"
                 )
+            ask = (
+                f"Would ${price:.2f} per bottle work for you? "
+                if price is not None
+                else "What would your best price per bottle be? "
+            )
             return (
                 f"I hope this message finds you well. "
                 f"We're looking to order {quantity} bottles of {wine}. "
-                f"Would ${target_price:.2f} per bottle work for you? "
+                f"{ask}"
                 f"I'd appreciate your thoughts on this."
             )
 
@@ -2875,6 +2896,7 @@ class ProviderConversationAgent(BaseAgent):
                         "style_adaptations": audit.style_adaptations,
                         "active_promos_referenced": audit.active_promos_referenced,
                         "intent_source": audit.intent_source,
+                        "withheld_figure_dropped": audit.withheld_figure_dropped,
                     },
                 },
             }

@@ -16,6 +16,7 @@ import agents.provider_conversation_agent as pca
 from agents.provider_conversation_agent import ProviderConversationAgent
 from core.house_only_figures import (
     HOUSE_ONLY_INTENT_KEYS,
+    order_letter_without_ceiling,
     vendor_safe_intent,
     withheld_figures_in,
 )
@@ -54,6 +55,16 @@ def test_vendor_safe_intent_drops_the_ceiling_and_keeps_the_rest():
         "up to 1 199 per bottle",
         "up to $1199.00",
         "en fazla 1.199,00 EUR",
+        "up to 1'199 per bottle",
+        "up to 1,199,- per bottle",
+        # another number in the same sentence (gate review of f16882e)
+        "Our maximum is $1,199. 6 bottles would suit us.",
+        "We could go to $1,199. 2 weeks delivery?",
+        "up to $1,199, 6 bottles",
+        "1199, 1090",
+        "1,199, 1,090",
+        "1 199 1 090",
+        "6 1199",
     ],
 )
 def test_the_ceiling_figure_is_found_in_every_form(text):
@@ -66,6 +77,8 @@ def test_the_ceiling_figure_is_found_in_every_form(text):
         "Could you do $1,090 per bottle?",
         "6 bottles of the 2010",
         "11,99 a glass",  # 11.99, not 1199
+        "1 1 9 9",
+        "11 99",
         "",
     ],
 )
@@ -135,11 +148,54 @@ async def test_the_prompt_never_carries_the_ceiling():
 
 
 @pytest.mark.asyncio
-async def test_a_draft_that_states_the_ceiling_is_replaced():
+async def test_a_draft_that_states_the_ceiling_is_replaced_by_the_order_letter():
     leaky = "Target $1,090, with a maximum acceptable price of $1,199."
     agent = _agent(leaky)
     text, audit = await _draft(agent)
     assert audit.withheld_figure_dropped is True
     assert withheld_figures_in(text, INTENT) == []
-    assert text != leaky
     assert "1,199" not in text and "1199" not in text
+    # the replacement still says what the order needs
+    assert INTENT["wine_name"] in text and "6" in text and "1,090.00" in text
+
+
+# ── the replacement letter ──────────────────────────────────────────────────
+
+
+def test_the_order_letter_names_the_order_and_not_the_ceiling():
+    text = order_letter_without_ceiling(INTENT)
+    assert text.startswith("Hello, We would like to order 6 of Example Riserva 2010")
+    assert "1,090.00" in text and withheld_figures_in(text, INTENT) == []
+
+
+@pytest.mark.parametrize(
+    "intent",
+    [
+        {},
+        None,
+        {"wine_name": "X"},
+        {"quantity": 3, "target_price": "n/a"},
+        {"target_price_per_bottle": 12.5},
+    ],
+)
+def test_the_order_letter_never_raises_on_a_thin_intent(intent):
+    text = order_letter_without_ceiling(intent)
+    assert text.startswith("Hello, We would like to order")
+
+
+@pytest.mark.parametrize("target", [None, "1090", "", "n/a"])
+def test_the_negotiate_template_survives_a_missing_or_text_target(target):
+    agent = object.__new__(ProviderConversationAgent)
+    intent = {"intent_type": "negotiate_price", "wine_name": "X", "quantity": 6}
+    if target is not None:
+        intent["target_price"] = target
+    for formality in ("casual", "semi-formal"):
+        text = agent._mock_generate_response(intent, {"formality": formality})
+        assert "X" in text
+
+
+def test_the_drop_is_kept_in_the_audit_trail_the_manager_reads():
+    import inspect
+
+    src = inspect.getsource(pca)
+    assert '"withheld_figure_dropped": audit.withheld_figure_dropped' in src
