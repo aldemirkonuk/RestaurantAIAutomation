@@ -375,6 +375,16 @@ async function readMonthTakings(
 }
 
 /**
+ * The columns the summary's `recent` notices carry: what a bell row draws
+ * (kind, title, text, urgency, link, read state, time). Never `metadata`,
+ * where a producer may file figures, and never the addressee or delivery
+ * columns. Every one of them is in what the bell itself returns to the same
+ * person (`NotificationsService.mapNotificationRow`), so this is never more.
+ */
+export const RECENT_NOTICE_COLUMNS =
+  "id, type, title, message, priority, status, action_url, action_label, read_at, created_at";
+
+/**
  * Dashboard Service - Aggregates data from multiple services in parallel
  *
  * This implements the API Bus/Aggregator pattern to:
@@ -392,9 +402,13 @@ export class DashboardService {
   /**
    * Get aggregated dashboard summary with parallel service calls
    * Uses Promise.allSettled for graceful degradation
+   *
+   * `userId` is the caller's (`public.users.user_id`, from the token): the
+   * notices leg reads only that person's rows. Without it the leg reads none.
    */
   async getDashboardSummary(
     restaurantId: string,
+    userId?: string | null,
   ): Promise<DashboardSummaryDto> {
     this.logger.log(
       `Fetching dashboard summary for restaurant: ${restaurantId}`,
@@ -405,7 +419,7 @@ export class DashboardService {
     const results = await Promise.allSettled([
       this.getInventorySummary(restaurantId),
       this.getOrdersSummary(restaurantId),
-      this.getNotificationsSummary(restaurantId),
+      this.getNotificationsSummary(restaurantId, userId),
       this.getReportsSummary(restaurantId),
       this.getCalendarSummary(restaurantId),
       this.getProcurementSpendSummary(restaurantId),
@@ -512,21 +526,39 @@ export class DashboardService {
   }
 
   /**
-   * Get notifications summary optimized for dashboard
+   * The caller's own five newest notices, scoped exactly as the bell scopes
+   * its list (`NotificationsService.getNotifications`): `user_id` is the
+   * token's user, `restaurant_id` the house, newest `created_at` first.
+   *
+   * It read every row in the house (`select("*")` by restaurant_id alone), so
+   * any member read notices addressed to someone else: the owners' own-wage
+   * notice with its figures (ADR 0215, round 5 item 32), a notice the area
+   * routing kept to one area or held for someone Away (ADR 0218), and rows a
+   * producer filed with no addressee. A row with no `user_id` is in nobody's
+   * bell (`eq` never matches null), so it is in nobody's summary either.
+   *
+   * Ordered as the bell orders: no gateway writer sets `sent_at`, and under
+   * DESC its NULLs sort first, so ordering by it picked an arbitrary five.
    */
   private async getNotificationsSummary(
     restaurantId: string,
+    userId: string | null | undefined,
   ): Promise<NotificationSummaryDto> {
-    // For now, get notifications from the database
-    // In production, this would be scoped to the restaurant's managers
+    const own = typeof userId === "string" ? userId.trim() : "";
+    if (own === "") {
+      // Never the house's notices in place of the person's.
+      this.logger.warn("Notifications summary: no user on the call; none read");
+      return { recent: [], unreadCount: 0 };
+    }
     const client = this.dbService.getClient();
 
     try {
       const { data: notifications, error } = await client
         .from("notifications")
-        .select("*")
+        .select(RECENT_NOTICE_COLUMNS)
+        .eq("user_id", own)
         .eq("restaurant_id", restaurantId)
-        .order("sent_at", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(5);
 
       if (error) {
