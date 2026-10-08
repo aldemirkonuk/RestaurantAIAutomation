@@ -91,6 +91,8 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.orders.all, 'detail', id] as const,
     pending: (restaurantId: string) => [...queryKeys.orders.all, 'pending', restaurantId] as const,
     history: (restaurantId: string) => [...queryKeys.orders.all, 'history', restaurantId] as const,
+    /** The whole book, read page by page (useOrderBook, ADR 0269). Under `all`, so every orders invalidation reaches it. */
+    book: (restaurantId: string) => [...queryKeys.orders.all, 'book', restaurantId] as const,
   },
   
   // Wine Library
