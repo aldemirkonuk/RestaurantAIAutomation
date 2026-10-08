@@ -223,8 +223,9 @@ describe('four states, honestly', () => {
     fireEvent.change(screen.getByTestId('one-tap-title'), { target: { value: 'Rack the Rioja' } });
     fireEvent.click(screen.getByTestId('one-tap-save'));
     await waitFor(() =>
-      expect(screen.getByTestId('one-tap-failure')).toHaveTextContent(/nothing was created/),
+      expect(screen.getByTestId('one-tap-failure')).toHaveTextContent('Saving the action wasn’t accepted. Nothing was created.'),
     );
+    expect(screen.getByTestId('one-tap-failure')).not.toHaveTextContent(/400|duplicate title/);
     // The sheet is still open and still holds the words — a refusal never
     // empties the form on the way out.
     expect((screen.getByTestId('one-tap-title') as HTMLInputElement).value).toBe('Rack the Rioja');
@@ -239,7 +240,7 @@ describe('four states, honestly', () => {
     fireEvent.click(screen.getByTestId('one-tap-save'));
     await waitFor(() =>
       expect(screen.getByTestId('one-tap-failure')).toHaveTextContent(
-        /may not change actions on this rail \(403\)\. The action is unchanged\./,
+        /may not change actions on this rail\. The action is unchanged\./,
       ),
     );
   });
@@ -264,7 +265,25 @@ describe('what is not built says so', () => {
       const chip = within(dialog).getByRole('button', { name: label });
       expect(chip).toBeDisabled();
     }
-    expect(within(dialog).getByTestId('one-tap-trigger-note')).toHaveTextContent(/is not built/);
+    expect(within(dialog).getByTestId('one-tap-trigger-note')).toHaveTextContent(/isn’t built yet/);
+    // DASH-W28: no internals in the sheet's own sentences.
+    expect(dialog).not.toHaveTextContent(/book of actions|trigger|the seal still sits|any write/);
+  });
+
+  // DASH-W27: "stands" means pending, as on the desk. A done action is still in
+  // the register but no longer stands; the sheet said 1 beside a desk at 0.
+  it('counts only the actions that still stand, as the desk does', async () => {
+    serve([mine, { ...mine, id: 'done-1', title: 'Counted the Öküzgözü', status: 'completed' as const }]);
+    draw();
+    const dialog = await openSheet();
+    expect(within(dialog).getByText(/^1 action stands on this rail, read just now\./)).toBeInTheDocument();
+  });
+
+  it('says none stand when every action on the register is done', async () => {
+    serve([{ ...mine, status: 'completed' as const }]);
+    draw();
+    const dialog = await openSheet();
+    expect(within(dialog).getByText(/^0 actions stand on this rail, read just now\./)).toBeInTheDocument();
   });
 
   it('carries no colour theme — this house has one chromatic colour', async () => {
