@@ -27,8 +27,134 @@ import { houseFrame } from "../common/house-frame";
 import {
   localDateIn,
   localMidnight,
+  shiftLocalDate,
 } from "../notifications/producers/service-day";
 import { readAll } from "../providers/vendor-menu-supply";
+
+/**
+ * The rows of a settled read, or a throw. Supabase reports most failures in
+ * `error` rather than by rejecting, so a check on `status` alone let a refused
+ * query through as `data: null` → `[]` — and an empty list renders as an empty
+ * cellar (DASH-W3, DASH-W6).
+ */
+function rowsOrThrow(result: PromiseSettledResult<any>, table: string): any[] {
+  if (result.status === "rejected") throw result.reason;
+  if (result.value.error) {
+    throw new Error(`${table} read failed: ${result.value.error.message}`);
+  }
+  return result.value.data || [];
+}
+
+/** The value of a settled call that is not a Supabase read, or its throw. */
+function valueOrThrow<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === "rejected") throw result.reason;
+  return result.value;
+}
+
+/** An embedded PostgREST relation arrives as an object or a one-row array. */
+function one<T>(rel: T | T[] | null | undefined): T | undefined {
+  return Array.isArray(rel) ? rel[0] : (rel ?? undefined);
+}
+
+/** "1 bottle", "6 bottles"; nothing when the count is unknown. */
+function bottles(n: unknown): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "";
+  return `${n} ${n === 1 ? "bottle" : "bottles"}`;
+}
+
+/** The wine as the house names it, with its vintage when the library has one. */
+function wineLabel(row: any): string {
+  if (!row) return "";
+  const lib = one(row.master_wine_library) as any;
+  const name = row.display_name || row.wine_name || lib?.name || "";
+  const vintage = lib?.vintage ? String(lib.vintage) : "";
+  return vintage && name && !name.endsWith(vintage)
+    ? `${name} ${vintage}`
+    : name;
+}
+
+/** What an alert says when a cellar row has no name: an item, never a wine (DASH-W37, DASH-G7). */
+const UNNAMED_ITEM = "An item with no name";
+
+/** Where an order stands, in the words Lately uses. */
+const ORDER_VERB: Record<string, string> = {
+  PENDING: "waiting on you",
+  APPROVAL_NEEDED: "waiting on you",
+  NEGOTIATING: "in talks with the vendor",
+  APPROVED: "approved",
+  CONFIRMED: "confirmed by the vendor",
+  IN_TRANSIT: "on its way",
+  DELIVERED: "delivered",
+  PARTIALLY_RECEIVED: "partly received",
+  COMPLETED: "closed",
+  CANCELLED: "cancelled",
+  REJECTED: "turned down",
+  FAILED: "failed",
+};
+
+/**
+ * One line per `events` row, from the payload shapes production actually holds
+ * (queried 2026-10-01: order_change, provider_change, inventory_change,
+ * calendar_event, report_event). Null means "leave it out": a kind with no
+ * sentence is never shown as its code.
+ */
+export function eventSentence(
+  eventType: string,
+  p: Record<string, any>,
+): { title: string; description: string } | null {
+  switch (eventType) {
+    case "order_change": {
+      const verb = {
+        created: "placed",
+        approved: "approved",
+        cancelled: "cancelled",
+        delivered: "delivered",
+      }[p.type as string];
+      if (!verb) return null;
+      const title = p.orderNumber
+        ? `Order ${p.orderNumber} ${verb}`
+        : `Order ${verb}`;
+      return { title, description: bottles(p.quantity) };
+    }
+    case "provider_change": {
+      const title = {
+        added: "Vendor added",
+        updated: "Vendor details changed",
+        removed: "Vendor removed",
+      }[p.type as string];
+      if (!title) return null;
+      return { title, description: p.providerName || "" };
+    }
+    case "inventory_change": {
+      if (!p.wineName) return null;
+      if (p.type === "add") {
+        return {
+          title: p.wineName,
+          // An add with no count reads "added", never "added, ".
+          description: ["added", bottles(p.quantity)].filter(Boolean).join(", "),
+        };
+      }
+      if (typeof p.quantity !== "number") return null;
+      return {
+        title: p.wineName,
+        description:
+          typeof p.previousQuantity === "number"
+            ? `${p.previousQuantity} → ${bottles(p.quantity)}`
+            : `now ${bottles(p.quantity)}`,
+      };
+    }
+    case "calendar_event":
+      return p.title
+        ? { title: p.title, description: p.description || "" }
+        : null;
+    case "report_event":
+      return p.type === "generated"
+        ? { title: "Report ready", description: "" }
+        : null;
+    default:
+      return null;
+  }
+}
 
 /* ── The month calendar (GET /dashboard/calendar-revenue/:id, ADR 0290) ──── */
 
@@ -398,6 +524,20 @@ export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
 
   constructor(private readonly dbService: DatabaseService) {}
+
+  /**
+   * The house's IANA zone. A house with none recorded falls back to UTC, the
+   * clock these figures always used; a failed read throws.
+   */
+  private async houseZone(client: any, restaurantId: string): Promise<string> {
+    const { data, error } = await client
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", restaurantId)
+      .limit(1);
+    if (error) throw new Error(`restaurants read failed: ${error.message}`);
+    return (data && data[0]?.timezone) || "UTC";
+  }
 
   /**
    * Get aggregated dashboard summary with parallel service calls
@@ -1029,43 +1169,35 @@ export class DashboardService {
     const client = this.dbService.getClient();
 
     try {
-      const [inventoryResult, lowStockResult, ordersResult, consumptionResult] =
+      const [inventoryResult, lowStockResult, ordersResult, zoneResult] =
         await Promise.allSettled([
           client
             .from("restaurant_inventory")
             .select("id, stock_live, bottle_size_ml")
-            .eq("restaurant_id", restaurantId),
+            .eq("restaurant_id", restaurantId)
+            .is("deleted_at", null)
+            .eq("is_active", true),
           client
             .from("v_low_stock_items")
             .select("id")
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
-            .select("id, status, total_cost, final_price, created_at")
+            .select("id, status, total_cost, final_price, bottles_total, quantity, delivered_at")
             .eq("restaurant_id", restaurantId),
-          client
-            .from("wine_consumption_log")
-            .select("id, volume_ml, created_at")
-            .eq("restaurant_id", restaurantId),
+          this.houseZone(client, restaurantId),
         ]);
 
-      const inventory =
-        inventoryResult.status === "fulfilled"
-          ? inventoryResult.value.data || []
-          : [];
-      const lowStock =
-        lowStockResult.status === "fulfilled"
-          ? lowStockResult.value.data || []
-          : [];
-      const orders =
-        ordersResult.status === "fulfilled"
-          ? ordersResult.value.data || []
-          : [];
-      const consumption =
-        consumptionResult.status === "fulfilled"
-          ? consumptionResult.value.data || []
-          : [];
-
+      // A failed read used to become an empty list, so a cellar that could
+      // not be read rendered "0 · across 0 wines" — absence reported as
+      // health (DASH-W3). The cellar, low-stock and order reads now fail the
+      // call, and the page shows its em dash for "unknown". A
+      // `wine_consumption_log` read used to ride along here and feed nothing;
+      // it is gone (DASH-W8).
+      const inventory = rowsOrThrow(inventoryResult, "restaurant_inventory");
+      const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
+      const orders = rowsOrThrow(ordersResult, "procurement_orders");
+      const zone = valueOrThrow(zoneResult);
       const totalWines = inventory.length;
       const totalBottles = inventory.reduce(
         (sum, i) => sum + (i.stock_live || 0),
@@ -1081,27 +1213,39 @@ export class DashboardService {
         hasStatus(o.status, ORDER_AWAITING_APPROVAL_STATUSES),
       ).length;
 
-      const now = new Date();
-      const todayStr = now.toISOString().split("T")[0];
-      const weekAgo = new Date(now.getTime() - 7 * 86400000)
-        .toISOString()
-        .split("T")[0];
-      const monthAgo = new Date(now.getTime() - 30 * 86400000)
-        .toISOString()
-        .split("T")[0];
+      // Same rule as the calendar (DASH-W2): money counts on the day it was
+      // DELIVERED, on the house's wall clock, and "month" is this calendar
+      // month. These cards counted by `created_at` on the UTC date over a
+      // rolling 30 days, so an order placed last week and delivered today was
+      // in neither card while the calendar put it on today.
+      const todayLocal = localDateIn(new Date(), zone);
+      const weekStartLocal = shiftLocalDate(todayLocal, -6);
+      const monthLocal = todayLocal.slice(0, 7);
 
       // Sums vendor invoices on delivered procurement orders. This was named
       // `salesFrom` and published as todaySales/weekSales/monthSales, which the
       // web dashboard rendered as "Total Revenue" — the exact opposite of what
       // the number is. Nothing here is a sale.
-      const spendSince = (items: any[], since: string) =>
+      const spendWhere = (items: any[], onDay: (day: string) => boolean) =>
         items
-          .filter((o) => o.created_at && o.created_at >= since)
+          .filter(
+            (o) =>
+              o.delivered_at &&
+              onDay(localDateIn(new Date(o.delivered_at), zone)),
+          )
           .reduce((sum, o) => sum + (o.total_cost || o.final_price || 0), 0);
 
       const deliveredOrders = orders.filter((o) =>
         hasStatus(o.status, ORDER_SPEND_STATUSES),
       );
+      // DASH-W22: the counts staff read in place of the two money cards, on
+      // the same days and the same orders as the spend.
+      const deliveredOn = (onDay: (day: string) => boolean) =>
+        deliveredOrders.filter(
+          (o) =>
+            o.delivered_at &&
+            onDay(localDateIn(new Date(o.delivered_at), zone)),
+        );
 
       return {
         totalWines,
@@ -1110,9 +1254,24 @@ export class DashboardService {
         totalVolumeOz,
         lowStockItems,
         pendingOrders,
-        todayProcurementSpend: spendSince(deliveredOrders, todayStr),
-        weekProcurementSpend: spendSince(deliveredOrders, weekAgo),
-        monthProcurementSpend: spendSince(deliveredOrders, monthAgo),
+        todayProcurementSpend: spendWhere(
+          deliveredOrders,
+          (day) => day === todayLocal,
+        ),
+        weekProcurementSpend: spendWhere(
+          deliveredOrders,
+          (day) => day >= weekStartLocal && day <= todayLocal,
+        ),
+        monthProcurementSpend: spendWhere(
+          deliveredOrders,
+          (day) => day.slice(0, 7) === monthLocal,
+        ),
+        todayDeliveries: deliveredOn((day) => day === todayLocal).length,
+        monthBottlesIn: deliveredOn((day) => day.slice(0, 7) === monthLocal).reduce(
+          (sum, o) => sum + (o.bottles_total || o.quantity || 0),
+          0,
+        ),
+        timezone: zone,
       };
     } catch (error) {
       this.logger.error(`Stats fetch failed: ${error.message}`);
@@ -1135,7 +1294,11 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from("procurement_orders")
-            .select("id, status, created_at, updated_at")
+            .select(
+              `id, order_number, status, bottles_total, quantity, created_at, updated_at,
+               restaurant_inventory(display_name, wine_name, master_wine_library(name, vintage)),
+               providers(name)`,
+            )
             .eq("restaurant_id", restaurantId)
             .order("updated_at", { ascending: false })
             .limit(limit),
@@ -1147,58 +1310,83 @@ export class DashboardService {
             .limit(limit),
           client
             .from("restaurant_inventory")
-            .select("id, master_wine_id, stock_live, updated_at")
+            .select(
+              "id, display_name, wine_name, stock_live, updated_at, master_wine_library(name, vintage)",
+            )
             .eq("restaurant_id", restaurantId)
+            .is("deleted_at", null)
+            .eq("is_active", true)
             .order("updated_at", { ascending: false })
             .limit(limit),
         ]);
 
+      // Lately printed internal codes (DASH-W4): it read `payload.title`, which
+      // only calendar events carry, so every other event came out as
+      // "provider_change — provider_change". Each kind now gets one sentence in
+      // the house's words, naming the wine or vendor; an unknown kind is left
+      // out rather than shown as its code. A failed read fails the call
+      // (DASH-W3) instead of quietly thinning the list.
       const activities: ActivityItemDto[] = [];
 
-      const orders =
-        ordersResult.status === "fulfilled"
-          ? ordersResult.value.data || []
-          : [];
+      const orders = rowsOrThrow(ordersResult, "procurement_orders");
+      const orderIds = new Set<string>();
       for (const o of orders) {
+        orderIds.add(o.id);
+        const verb = ORDER_VERB[o.status as string];
+        if (!verb) continue;
+        const inv = one(o.restaurant_inventory);
+        const what = [
+          wineLabel(inv),
+          bottles(o.bottles_total ?? o.quantity),
+        ].filter(Boolean);
+        const vendor = one(o.providers)?.name;
         activities.push({
           id: `order-${o.id}`,
           type: "order",
-          title: `Order ${o.status}`,
-          description: `Order ${o.status}`,
+          title: `Order ${o.order_number} ${verb}`,
+          description: what.join(", ") + (vendor ? ` from ${vendor}` : ""),
           timestamp: o.updated_at || o.created_at,
           entityId: o.id,
           entityType: "procurement_order",
         });
       }
 
-      const events =
-        eventsResult.status === "fulfilled"
-          ? eventsResult.value.data || []
-          : [];
+      const events = rowsOrThrow(eventsResult, "events");
       for (const e of events) {
         const payload =
           typeof e.payload === "string" ? JSON.parse(e.payload) : e.payload;
+        // Each order once: its own row above already says where it stands.
+        if (
+          e.event_type === "order_change" &&
+          payload?.orderId &&
+          orderIds.has(payload.orderId)
+        ) {
+          continue;
+        }
+        const line = eventSentence(e.event_type, payload ?? {});
+        if (!line) continue;
         activities.push({
           id: `event-${e.id}`,
           type: e.event_type || "event",
-          title: payload?.title || e.event_type || "Event",
-          description: payload?.description || payload?.action || e.event_type,
+          title: line.title,
+          description: line.description,
           timestamp: e.created_at,
           entityId: e.id,
           entityType: "event",
         });
       }
 
-      const inventory =
-        inventoryResult.status === "fulfilled"
-          ? inventoryResult.value.data || []
-          : [];
+      // A wine row's last edit. It is not an event — the row says only when
+      // it last changed and what it holds now — so the line says exactly that.
+      const inventory = rowsOrThrow(inventoryResult, "restaurant_inventory");
       for (const i of inventory) {
+        const name = wineLabel(i);
+        if (!name || i.stock_live == null) continue;
         activities.push({
           id: `inv-${i.id}`,
           type: "inventory_change",
-          title: "Inventory updated",
-          description: `Stock: ${i.stock_live} bottles`,
+          title: name,
+          description: `${bottles(i.stock_live)} on hand`,
           timestamp: i.updated_at,
           entityId: i.id,
           entityType: "inventory",
@@ -1230,7 +1418,7 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from("v_low_stock_items")
-            .select("id, master_wine_id, stock_live, threshold_min, wine_name")
+            .select("id, stock_live, threshold_min, wine_name, vintage")
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
@@ -1239,31 +1427,42 @@ export class DashboardService {
             .in("status", ORDER_OUTSTANDING_STATUSES),
           client
             .from("restaurant_inventory")
-            .select("id, master_wine_id, stock_live, updated_at, wine_name")
+            .select(
+              "id, display_name, wine_name, stock_live, updated_at, master_wine_library(name, vintage)",
+            )
             .eq("restaurant_id", restaurantId)
+            .is("deleted_at", null)
+            .eq("is_active", true)
             .eq("stock_live", 0),
         ]);
 
-      const lowStock =
-        lowStockResult.status === "fulfilled"
-          ? lowStockResult.value.data || []
-          : [];
+      // The cellar is the active, undeleted wines — the rule
+      // `v_low_stock_items` already applies (DASH-W10). A failed read fails
+      // the call: an empty alert list would read as "nothing is wrong"
+      // (DASH-W11, as DASH-W3 for stats and Lately).
+      const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
+      // Alerts name the wine as Lately does and never fall back to its id
+      // (DASH-W7). The view carries the library's name and vintage, not the
+      // house's display name; no house renames a wine today (production,
+      // 2026-10-01: 0 of 183 rows differ).
       for (const item of lowStock) {
+        const label =
+          wineLabel({
+            wine_name: item.wine_name,
+            master_wine_library: { vintage: item.vintage },
+          }) || UNNAMED_ITEM;
         alerts.push({
           id: `low-stock-${item.id}`,
           type: "low_stock",
           severity: item.stock_live === 0 ? "critical" : "warning",
           title: "Low Stock",
-          message: `${item.wine_name || item.master_wine_id} has ${item.stock_live} bottles (min: ${item.threshold_min || 0})`,
+          message: `${label} — ${bottles(item.stock_live)} left, you keep at least ${item.threshold_min}`,
           actionUrl: `/inventory?highlight=${item.id}`,
           createdAt: new Date().toISOString(),
         });
       }
 
-      const overdue =
-        overdueResult.status === "fulfilled"
-          ? overdueResult.value.data || []
-          : [];
+      const overdue = rowsOrThrow(overdueResult, "procurement_orders");
       const now = new Date();
       for (const order of overdue) {
         if (
@@ -1282,10 +1481,7 @@ export class DashboardService {
         }
       }
 
-      const outOfStock =
-        inventoryResult.status === "fulfilled"
-          ? inventoryResult.value.data || []
-          : [];
+      const outOfStock = rowsOrThrow(inventoryResult, "restaurant_inventory");
       for (const item of outOfStock) {
         if (!lowStock.find((ls) => ls.id === item.id)) {
           alerts.push({
@@ -1293,7 +1489,7 @@ export class DashboardService {
             type: "out_of_stock",
             severity: "critical",
             title: "Out of Stock",
-            message: `${item.wine_name || item.master_wine_id} is completely out of stock`,
+            message: `${wineLabel(item) || UNNAMED_ITEM} — out of stock`,
             actionUrl: `/inventory?highlight=${item.id}`,
             createdAt: item.updated_at || new Date().toISOString(),
           });
