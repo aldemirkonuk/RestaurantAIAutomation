@@ -110,7 +110,38 @@ export type SettingsRegister =
    * opt-out per house). Its own register: it is the house's consent, not a
    * preference, and only the owner may change it.
    */
-  | "ask-training";
+  | "ask-training"
+  /**
+   * Where the house is: `restaurants.country` and `restaurants.state_province`
+   * (ADR 0289). Its own register: the pair scopes the market index, the
+   * commodity and distributor panels and mail retention, and pools the
+   * house's owners and managers with a jurisdiction's price-book admitters.
+   * The founder, 2026-10-04: *"Add it to the editor (Recommended)"* —
+   * changed by owners only and recorded in the log.
+   */
+  | "state-and-country";
+
+/**
+ * Every member of `SettingsRegister`, as a record the compiler holds to the
+ * union in both directions: a register added to the type and missing here is
+ * TS2741, one here and not in the type is an excess property. `readRegister`
+ * reads through it, so a new register reads back by name the day it is added.
+ */
+const KNOWN_REGISTERS: Record<SettingsRegister, true> = {
+  features: true,
+  "vendor-terms": true,
+  thresholds: true,
+  notifications: true,
+  preferences: true,
+  currency: true,
+  "carrying-cost": true,
+  "time-zone": true,
+  "tone-scoring": true,
+  "data-terms": true,
+  "target-margin": true,
+  "ask-training": true,
+  "state-and-country": true,
+};
 
 /**
  * The action strings this service writes, and the ones it reads back.
@@ -174,6 +205,12 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * questions. Added 2026-09-21 (ADR 0145, round 6r).
    */
   "ask_training_opt_out_changed",
+  /**
+   * An owner changed the house's state or country in the location editor.
+   * Added 2026-10-04 (ADR 0289): until then nothing a person could reach
+   * wrote either column on a house that already existed.
+   */
+  "house_state_country_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [
@@ -611,16 +648,15 @@ export class SettingsAuditService {
   }
 
   private readRegister(action: string, stored: unknown): SettingsRegister | null {
+    // Every register the union admits, by the compiler's count (ADR 0289 R5).
+    // Until 2026-10-04 this was a hand-typed list of the first five, so a row
+    // filed under any of the seven added since (currency through ask-training)
+    // read back with `register: null` and `?register=` filtered it away:
+    // ConsentPanel's ask-training trail showed nothing it had recorded.
     if (typeof stored === "string") {
-      return (
-        [
-          "features",
-          "vendor-terms",
-          "thresholds",
-          "notifications",
-          "preferences",
-        ] as SettingsRegister[]
-      ).find((r) => r === stored) ?? null;
+      return Object.prototype.hasOwnProperty.call(KNOWN_REGISTERS, stored)
+        ? (stored as SettingsRegister)
+        : null;
     }
     // The two pre-existing access actions carry no register; they belong to the
     // team roster and are labelled as such rather than left unfiled.
