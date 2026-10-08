@@ -209,6 +209,7 @@ describe('/vendors opens on Supplies my menu', () => {
     expect(screen.getByText('3 wines on your menu · priced, ordered')).toBeInTheDocument();
     expect(screen.getByText('1 wine on your menu · stocked')).toBeInTheDocument();
     expect(screen.getByTestId('scope-menu-basis')).toHaveTextContent('9 wines on your current menu');
+    expect(screen.getByTestId('scope-menu-basis')).toHaveTextContent('Only wines are matched so far');
     expect(screen.queryByTestId('scope-widened')).not.toBeInTheDocument();
   });
 
@@ -259,6 +260,8 @@ describe('no menu → All my vendors, with a banner', () => {
     renderPage();
     const banner = await screen.findByTestId('scope-widened');
     expect(banner).toHaveTextContent('None of your current menu’s lines is linked to a wine yet');
+    // VEN-W33: the match reads wines only, and says so.
+    expect(banner).toHaveTextContent('Only wines are matched so far — beer, spirits, other drinks and food');
   });
 
   it('a failed evidence read widens, prints the failure, and the menu rung claims nothing', async () => {

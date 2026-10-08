@@ -129,6 +129,14 @@ function fmtReadAt(iso: string | null): string | null {
  * showing what the person expected. Never silent: a widened default says so, an
  * unanswerable menu rung says why, and a failed read says it failed.
  */
+/**
+ * The menu match reads wines only (`vendor-menu-supply.ts` keys every piece of
+ * evidence on `master_wine_id`), and the house sells every drink and then food
+ * (founder 2026-10-01). Said, so a beer vendor missing from "Supplies my menu"
+ * does not read as a vendor who supplies nothing on it (VEN-W33).
+ */
+const WINES_ONLY = 'Only wines are matched so far — beer, spirits, other drinks and food on the menu are not counted yet.';
+
 export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
   const { scope, reason, supply } = scopes;
   if (scope === 'find') return null;
@@ -159,6 +167,7 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
     return (
       <p role="status" data-testid="scope-widened" style={note}>
         {why} — showing all your vendors.{' '}
+        {reason === 'menu-unlinked' && <>{WINES_ONLY} </>}
         {reason === 'no-menu' && readMenu}
         {reason === 'unreadable' && retry}
       </p>
@@ -189,7 +198,7 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
     return (
       <p role="status" data-testid="scope-menu-empty" style={note}>
         None of your vendors has a price in the last {windowDays} days, an order, or a stock line
-        for any of the {menu.wines} wine{menu.wines === 1 ? '' : 's'} on your current menu.{' '}
+        for any of the {menu.wines} wine{menu.wines === 1 ? '' : 's'} on your current menu. {WINES_ONLY}{' '}
         <button type="button" style={linkBtn} onClick={() => scopes.choose('all')}>
           See all your vendors
         </button>
@@ -201,7 +210,7 @@ export function ScopeNotice<T>({ scopes }: { scopes: VendorScopes<T> }) {
       Vendors with a price in the last {windowDays} days, an order, or a stock line for one of the{' '}
       {menu.wines} wine{menu.wines === 1 ? '' : 's'} on your current menu
       {menu.menus > 1 ? ` (${menu.menus} menus are marked current; all are read)` : ''}
-      {readAt ? `, current since ${readAt}` : ''}.
+      {readAt ? `, current since ${readAt}` : ''}. {WINES_ONLY}
     </p>
   );
 }
