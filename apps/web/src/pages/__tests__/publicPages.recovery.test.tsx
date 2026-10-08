@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { type ReactElement } from 'react'
 const h = vi.hoisted(() => ({
@@ -421,7 +421,7 @@ it('only offers a new reset link for a server-confirmed token failure, not a cli
   ).not.toBeInTheDocument()
 
   h.axiosPost.mockRejectedValueOnce({
-    response: { data: { message: 'This reset link has expired.' } },
+    response: { status: 400, data: { message: 'This reset link has expired.' } },
   })
   fireEvent.change(screen.getByLabelText('Confirm new password'), {
     target: { value: 'password-one' },
@@ -429,6 +429,60 @@ it('only offers a new reset link for a server-confirmed token failure, not a cli
   fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'This reset link has expired.',
+  )
+  expect(
+    screen.getByRole('link', { name: 'Request a new link' }),
+  ).toHaveAttribute('href', '/forgot-password')
+})
+
+it('a reset that fails for any reason but the link says what happened and does not offer to burn the link (F-214)', async () => {
+  mount(<ResetPassword />, '/reset-password?token=example-token')
+  fireEvent.change(screen.getByLabelText('New password'), {
+    target: { value: 'password-one' },
+  })
+  fireEvent.change(screen.getByLabelText('Confirm new password'), {
+    target: { value: 'password-one' },
+  })
+  const submit = () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
+  const cases: Array<[unknown, string]> = [
+    [{ message: 'Network Error' }, 'Could not reach Mudavym'],
+    [{ response: { status: 503, data: {} } }, 'could not save your new password'],
+    [{ response: { status: 429, data: {} } }, 'Too many tries'],
+    [
+      {
+        response: {
+          status: 400,
+          data: { message: ['Password must be at least 8 characters'] },
+        },
+      },
+      'Password must be at least 8 characters',
+    ],
+  ]
+  for (const [failure, text] of cases) {
+    h.axiosPost.mockRejectedValueOnce(failure)
+    submit()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(text),
+    )
+    expect(
+      screen.queryByRole('link', { name: 'Request a new link' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/invalid or has expired/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('New password')).toBeInTheDocument()
+  }
+
+  h.axiosPost.mockRejectedValueOnce({
+    response: {
+      status: 400,
+      data: { message: ['Invalid or expired reset token'] },
+    },
+  })
+  submit()
+  await waitFor(() =>
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Invalid or expired reset token',
+    ),
   )
   expect(
     screen.getByRole('link', { name: 'Request a new link' }),
