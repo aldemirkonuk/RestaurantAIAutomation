@@ -10,6 +10,33 @@ import { TeamService } from "./team.service";
 import { IngestSalesDto } from "./dto/team.dto";
 
 /**
+ * Why the house benchmark has a median, or why it has none (ADR 0294).
+ *
+ * - `computed`: at least one other server's service is in it.
+ * - `self-only`: every per-cover figure in the window is this member's own.
+ *   The founder's pick, 2026-10-04: refuse the comparison. A median of
+ *   someone's own services is not a benchmark for them, so none is sent.
+ * - `no-covers`: no service in the window records covers with its sales.
+ * - `unreadable`: the read failed. Never shown as one of the above.
+ */
+export type BenchmarkState =
+  | "computed"
+  | "self-only"
+  | "no-covers"
+  | "unreadable";
+
+/**
+ * A service has a per-cover figure only when it records covers AND sales.
+ * `server_sales` stores a blank as 0 (both columns `DEFAULT 0 NOT NULL`, and
+ * both ingest routes write `?? 0`), so a 0 here means "not recorded". This is
+ * the predicate the benchmark has always used (`covers > 0`, then `> 0`); the
+ * member's own per-cover figure now uses it too, so the two are comparable.
+ */
+function recordsPerCover(r: any): boolean {
+  return Number(r.covers) > 0 && Number(r.net_sales) > 0;
+}
+
+/**
  * Per-server sales attribution. There is NO POS/guest-check source in the
  * product today, so this ingests manual/CSV/POS-webhook rows and the
  * Performance panel renders "no data yet" until rows exist — never mock data.
@@ -193,24 +220,69 @@ export class PerformanceService {
     const totalWine = series.reduce((s, r) => s + Number(r.wine_sales), 0);
     const totalChecks = series.reduce((s, r) => s + Number(r.checks), 0);
     const salesPerShift = avg(series.map((r) => Number(r.net_sales)));
-    // Blended (sum/sum) rather than avg-of-ratios, so uneven services weight correctly.
-    const avgCheck = totalChecks > 0 ? totalNet / totalChecks : 0;
-    const wineAttach = totalNet > 0 ? totalWine / totalNet : 0;
+    // Blended (sum/sum) rather than avg-of-ratios, so uneven services weight
+    // correctly. `null`, never 0, when none of these services records a
+    // check: an average over no checks is unknown, and ADR 0051 prints
+    // unknown as the em dash. It used to answer 0, which the card printed as
+    // "$0". The same goes for the wine share over no sales.
+    const avgCheck = totalChecks > 0 ? totalNet / totalChecks : null;
+    // A SHARE OF SALES (wine_sales / net_sales), not an attach rate: /reports
+    // keeps "wine attach" for checks-with-wine / checks. The card labels this
+    // "Wine share of sales" (founder, 2026-10-04: "Rename on the card"). The
+    // key keeps its old name so a page built before ADR 0294 still reads it.
+    const wineShare = totalNet > 0 ? totalWine / totalNet : null;
+    // This member's sales per cover, set beside the house median below
+    // (A-048: the median was printed beside nothing it could be compared
+    // with). Blended over the services that record covers with their sales,
+    // the services the median itself is taken over.
+    const coverRows = series.filter(recordsPerCover);
+    const coverNet = coverRows.reduce((s, r) => s + Number(r.net_sales), 0);
+    const covers = coverRows.reduce((s, r) => s + Number(r.covers), 0);
+    const salesPerCover = covers > 0 ? coverNet / covers : null;
 
-    // Team benchmark (same recent window, all members).
+    // The house's money, so every figure on the card prints in the house's
+    // currency and locale. These are sales, not pay, so ADR 0215's owner-only
+    // rule does not govern them; a currency code and a country are not money.
+    // Unreadable is its own state ("currency could not be read"), never a
+    // guessed dollar (ADR 0117 Q25).
+    const { data: house, error: houseError } = await this.sb
+      .from("restaurants")
+      .select("currency, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (houseError) {
+      this.logger.warn(
+        `performance: the currency of r=${restaurantId} could not be read, so ` +
+          `the card prints its figures without one: ${houseError.code ?? "?"} ${houseError.message}`,
+      );
+    }
+    const money = houseError
+      ? { currency: null, country: null, readable: false }
+      : {
+          currency: (house as any)?.currency ?? null,
+          country: (house as any)?.country ?? null,
+          readable: true,
+        };
+
+    // House benchmark: every server's recent services, this member's own
+    // included. The founder kept that over a peer median, 2026-10-04:
+    // "House median (Recommended)" (ADR 0294).
     //
     // The error used to be discarded, and `percentile([])` returned 0 — so a
     // failed benchmark query rendered a peer median of $0/cover and a band of
     // [0, 0], which puts EVERY server above their team. A comparison that
     // flatters everyone is worse than no comparison. Per ADR 0051 an unknown
-    // figure is the em dash, never a zero, so the benchmark is now `null` both
-    // when the read fails and when the restaurant genuinely has no peer rows,
-    // and the caller draws no median line for either.
+    // figure is the em dash, never a zero, so the median is `null` when the
+    // read fails, when no recent service records covers, and when the only
+    // per-cover figures are this member's own; `benchmark.state` says which.
     const { data: teamRows, error: teamError } = await this.sb
       .from("server_sales")
       .select("member_id, net_sales, covers")
       .eq("restaurant_id", restaurantId)
       .order("service_date", { ascending: false })
+      // The house benchmark's window: the web declares it as
+      // TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES and prints it as a ceiling
+      // ("≤200"); check_windowed_figures.py W1 reads this literal.
       .limit(200);
     if (teamError) {
       this.logger.error(
@@ -219,12 +291,26 @@ export class PerformanceService {
           `one: ${teamError.code ?? "?"} ${teamError.message}`,
       );
     }
-    const teamPerCover = teamError
+    const contributing = teamError
       ? []
-      : (teamRows ?? [])
-          .map((r: any) => (r.covers > 0 ? Number(r.net_sales) / r.covers : 0))
-          .filter((n) => n > 0)
-          .sort((a, b) => a - b);
+      : (teamRows ?? []).filter(recordsPerCover);
+    const servers = new Set(contributing.map((r: any) => r.member_id));
+    const includesMember = contributing.some(
+      (r: any) => r.member_id === memberId,
+    );
+    const state: BenchmarkState = teamError
+      ? "unreadable"
+      : contributing.length === 0
+        ? "no-covers"
+        : servers.size === 1 && includesMember
+          ? "self-only"
+          : "computed";
+    const teamPerCover =
+      state === "computed"
+        ? contributing
+            .map((r: any) => Number(r.net_sales) / Number(r.covers))
+            .sort((a, b) => a - b)
+        : [];
     const median = percentile(teamPerCover, 0.5);
     const band: [number, number] | null =
       median == null
@@ -233,10 +319,14 @@ export class PerformanceService {
 
     return {
       hasData: true,
+      money,
       metrics: {
         salesPerShift: round(salesPerShift),
-        avgCheck: round(avgCheck),
-        wineAttachPct: round(wineAttach * 100),
+        avgCheck: avgCheck == null ? null : round(avgCheck),
+        salesPerCover: salesPerCover == null ? null : round(salesPerCover),
+        // Of this member's `services`, how many record covers with sales.
+        coverServices: coverRows.length,
+        wineAttachPct: wineShare == null ? null : round(wineShare * 100),
       },
       analytic: {
         unit: "/cover",
@@ -245,6 +335,15 @@ export class PerformanceService {
         // no median line and no band rather than a flattering one at zero.
         median: median == null ? null : round(median),
         band: band == null ? null : ([round(band[0]), round(band[1])] as const),
+        // What the median is taken over, so the card can say it: services
+        // that record covers among the house's ≤200 newest,
+        // the servers they belong to, and whether this member is one.
+        benchmark: {
+          state,
+          services: contributing.length,
+          servers: servers.size,
+          includesMember,
+        },
       },
       services: series.map((r) => ({ date: r.service_date, covers: r.covers })),
     };

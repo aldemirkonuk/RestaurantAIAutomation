@@ -1,4 +1,4 @@
-import { CanonicalCheck, CanonicalItem } from "./pos-types";
+import { CanonicalCheck, CanonicalItem, checkChannelOf } from "./pos-types";
 
 /**
  * POS adapters — one function per provider: raw payload → CanonicalCheck.
@@ -59,6 +59,8 @@ export const genericAdapter: PosAdapter = {
         closedAt: r.closedAt ?? r.closed_at ?? null,
         voided: Boolean(r.voided ?? r.is_voided ?? false),
         tableRef: r.tableRef ?? r.table_ref ?? r.table ?? null,
+        // ADR 0302: read exactly, never guessed from the table ref.
+        channel: checkChannelOf(r.channel),
         serverExternalId: r.serverExternalId ?? r.server_external_id ?? null,
         serverName: r.serverName ?? r.server_name ?? r.server ?? null,
         covers: num(r.covers),
@@ -152,7 +154,16 @@ export const cloverAdapter: PosAdapter = {
               ? new Date(o.modifiedTime).toISOString()
               : null
             : null,
-        tableRef: o.orderType?.label ?? null,
+        // An order type ("Dine In", "To Go", a house's own "Street Fair") is
+        // not a table. Clover's order object has no table field (its field
+        // list at docs.clover.com/dev/reference/ordercreateorder, read
+        // 2026-10-04); `title` and `note` are free text, and reading either
+        // as a table would be a guess. Which order types are booth or event
+        // checks is the owner's to map once a Clover house connects (ADR
+        // 0302, fork AW24-b: "Wait, then owner maps"), so the channel stays
+        // null and the order type stays in `raw`.
+        tableRef: null,
+        channel: null,
         serverExternalId: o.employee?.id ?? null,
         serverName: o.employee?.name ?? null,
         covers: num(o.customers?.elements?.length),

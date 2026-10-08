@@ -39,7 +39,7 @@
  *    not import each other's modules (page brief §"Legacy untouched").
  */
 
-import { EM } from './rec-format';
+import { EM, ownRow } from './rec-format';
 
 /* ── Door one: the goal ──────────────────────────────────────────────────── */
 
@@ -249,9 +249,11 @@ export function goalOfferFor(entry: ForwardEntry): GoalOffer {
       kind: 'refused',
       why: 'This entry is already about a goal you set — it fired because that goal is behind its pace. Making a second goal from it would double-count the same target.',
     };
-  const refusal = GOAL_REFUSAL[entry.ruleKey];
+  // Own rows only (`ownRow`, ADR 0288): a stored key such as `__proto__` is a
+  // rule this page has no metric for, never an inherited "refusal".
+  const refusal = ownRow(GOAL_REFUSAL, entry.ruleKey);
   if (refusal) return { kind: 'refused', why: refusal };
-  const spec = RULE_GOAL[entry.ruleKey];
+  const spec = ownRow(RULE_GOAL, entry.ruleKey);
   if (!spec)
     return {
       kind: 'refused',
@@ -393,9 +395,10 @@ export function cuttingFor(entry: ForwardEntry): CuttingOffer {
       kind: 'refused',
       why: 'No cutting answers this one: goal progress is read from `/analytics/goals/:rid/:goalId/progress`, which is not among the eleven analyses the reports sheet can lay down.',
     };
-  const refusal = CUTTING_REFUSAL[entry.ruleKey];
+  // Own rows only, as in `goalOfferFor` (ADR 0288).
+  const refusal = ownRow(CUTTING_REFUSAL, entry.ruleKey);
   if (refusal) return { kind: 'refused', why: refusal };
-  const spec = RULE_CUTTING[entry.ruleKey];
+  const spec = ownRow(RULE_CUTTING, entry.ruleKey);
   if (!spec)
     return {
       kind: 'refused',
