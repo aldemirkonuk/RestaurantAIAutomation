@@ -66,12 +66,14 @@ describe('FAQ entries — re-checkable claims', () => {
     }
   });
   it('says tips come back in the tab that turned them back on, not in every browser or tab', () => {
-    // The gateway deep-merges the save, so another browser keeps a page's
-    // "Not now" snooze (tech-debt fragment 2026-10-02-feat-tips-margin-note-and-tour-card),
-    // and the two-turned-away limit is counted per tab, in sessionStorage.
+    // The two-turned-away limit is counted per tab, in sessionStorage, and
+    // another browser reads the account again only when its query refetches.
+    // "Turn tips back on" now takes each page's snooze off the account too
+    // (GuidanceProvider.test.tsx, the two-browser tests), so the answer no
+    // longer warns that another browser keeps one.
     const a = findFaq('page-tours')!.answer;
     expect(a).toMatch(/Every page’s tip then comes back in this tab/);
-    expect(a).toMatch(/In another browser, a tip you put off with "Not now" can stay hidden for up to four hours/);
+    expect(a).not.toMatch(/can stay hidden for up to four hours/);
     expect(a).toMatch(/two tips or tours in one tab are put off, stopped or cannot start, that tab shows no more tips until it is closed, or until you press "Turn tips back on" on this page in that tab/);
     expect(a).not.toMatch(/: every page’s tip returns|In this browser every page’s tip returns/);
   });

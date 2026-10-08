@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Link, MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -19,9 +19,20 @@ let account: { preferences: Record<string, unknown>; isAccountRead: boolean; err
   isAccountRead: true,
   error: null,
 };
-vi.mock('../hooks/useUserPreferences', () => ({
-  useUserPreferences: () => ({ ...account, updatePreferences }),
-}));
+// Every test stands the hook in with `account` above, except the two-browser
+// ones at the end, which set `realHook` and run the real one, with only the
+// request itself (`apiClient`) stood in.
+let realHook = false;
+vi.mock('../hooks/useUserPreferences', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useUserPreferences')>();
+  return {
+    ...actual,
+    useUserPreferences: () =>
+      // `realHook` is fixed for the whole of a test, so the hooks run in the same order every render.
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      realHook ? actual.useUserPreferences() : { ...account, updatePreferences },
+  };
+});
 vi.mock('../stores', () => ({
   useAuthStore: (sel: (s: { user: { userId: string } }) => unknown) => sel({ user: { userId: 'u-1' } }),
 }));
@@ -47,6 +58,9 @@ vi.mock('./tours/registry', async (importOriginal) => {
 
 import { GuidanceProvider, useGuidance } from './GuidanceProvider';
 import { PageTipStrip } from './components/PageTipStrip';
+import { PAGE_TOUR_IDS } from './types';
+import { apiClient } from '../services/api/client';
+import { queryKeys } from '../lib/query-keys';
 
 function TipsSwitch() {
   const g = useGuidance();
@@ -232,18 +246,12 @@ describe('the newer copy wins, across browsers', () => {
     expect(tip()).toBeNull();
   });
 
-  it('on a tie, this browser\'s copy stays on top of what the gateway merged in', () => {
-    const later = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    keep({ global: { hide_all_tips: false }, pages: { calendar: { tip: 'unseen', tour: 'unseen' } }, saved_at: LATE });
-    account.preferences = {
-      guidance: {
-        global: { hide_all_tips: false },
-        pages: { calendar: { tip: 'unseen', tour: 'unseen', snooze_until: later } },
-        saved_at: LATE,
-      },
-    };
+  it('on a tie, this browser\'s own saves stay on top of the account\'s copy', () => {
+    // The phone app saves with no stamp, so a save made there leaves the tie.
+    keep({ global: { hide_all_tips: true }, saved_at: LATE });
+    account.preferences = { guidance: { global: { hide_all_tips: false }, pages: {}, saved_at: LATE } };
     mount('/calendar');
-    expect(tip()).toBeTruthy();
+    expect(tip()).toBeNull();
   });
 
   it('every save carries its time, in this browser\'s copy and in the one sent to the account', () => {
@@ -254,6 +262,44 @@ describe('the newer copy wins, across browsers', () => {
     expect(updatePreferences).toHaveBeenCalledWith({
       guidance: expect.objectContaining({ saved_at: kept.saved_at }),
     });
+  });
+});
+
+describe('a save sends only what its action changed', () => {
+  const sent = () => updatePreferences.mock.calls.at(-1)?.[0];
+
+  it('"Not now" sends that page\'s snooze and the time', () => {
+    mount('/orders');
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(sent()).toEqual({
+      guidance: { pages: { orders: { tip: 'snoozed', snooze_until: expect.any(String) } }, saved_at: expect.any(String) },
+    });
+  });
+
+  it('"Don\'t show tips again" sends the switch, that page\'s tip and the time', () => {
+    mount('/orders');
+    fireEvent.click(screen.getByRole('button', { name: "Don't show tips again" }));
+    expect(sent()).toEqual({
+      guidance: { global: { hide_all_tips: true }, pages: { orders: { tip: 'dismissed' } }, saved_at: expect.any(String) },
+    });
+  });
+
+  it('"Turn tips back on" sends every page\'s tip back with its snooze taken away, and leaves tours alone', () => {
+    const later = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    account.preferences = {
+      guidance: {
+        global: { hide_all_tips: true },
+        pages: { calendar: { tip: 'snoozed', tour: 'completed', snooze_until: later } },
+        saved_at: '2026-10-02T08:00:00.000Z',
+      },
+    };
+    mount('/calendar');
+    fireEvent.click(screen.getByRole('button', { name: 'tips off' }));
+    const pages = Object.fromEntries(PAGE_TOUR_IDS.map((id) => [id, { tip: 'unseen', snooze_until: null }]));
+    expect(sent()).toEqual({
+      guidance: { global: { hide_all_tips: false, tips_snoozed_until: null }, pages, saved_at: expect.any(String) },
+    });
+    expect(tip()).toBeTruthy();
   });
 });
 
@@ -369,5 +415,151 @@ describe('two tips or tours turned away in one tab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'start orders tour' }));
     await waitFor(() => expect(screen.getByTestId('paused')).toHaveTextContent('true'));
     expect(tip()).toBeNull();
+  });
+});
+
+describe('two browsers, one account, with the real preferences hook and the gateway\'s merge', () => {
+  // PR #570's gate round-7 audit (at 37841f602) ran this sequence, as
+  // reviewer B's throwaway test: one browser holds a read made before the
+  // other's "Don't show tips again", presses "Not now", and the off is
+  // undone. Each browser has its own QueryClient and its own copy of
+  // guidance; jsdom has one localStorage, so a browser's copy is put in it
+  // while that browser acts and reads.
+  const T = (s: number) => `2026-10-03T12:00:${String(s).padStart(2, '0')}.000Z`;
+  let server: Record<string, unknown>;
+
+  // The gateway's merge (apps/api-gateway/src/user-preferences/user-preferences.service.ts:32-53).
+  function deepMerge(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
+    const result = { ...target };
+    for (const key of Object.keys(source)) {
+      if (['__proto__', 'constructor', 'prototype'].includes(key)) continue;
+      if (
+        source[key] && typeof source[key] === 'object' && !Array.isArray(source[key]) &&
+        target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])
+      ) {
+        result[key] = deepMerge(target[key], source[key]);
+      } else {
+        result[key] = source[key];
+      }
+    }
+    return result;
+  }
+  const serverGlobal = () => (server.guidance as { global: { hide_all_tips: boolean } }).global;
+
+  type Browser = { qc: QueryClient; view: ReturnType<typeof render>; copy: string | null };
+  let current: Browser | null = null;
+
+  // Put this browser's own copy of guidance in localStorage, keeping the
+  // other's aside. The browser in use already has its copy there.
+  function use(b: Browser) {
+    if (current === b) return;
+    if (current) current.copy = window.localStorage.getItem(LOCAL_KEY);
+    if (b.copy === null) window.localStorage.removeItem(LOCAL_KEY);
+    else window.localStorage.setItem(LOCAL_KEY, b.copy);
+    current = b;
+  }
+  const settle = (b: Browser) => waitFor(() => expect(b.qc.isFetching() + b.qc.isMutating()).toBe(0));
+  async function open(path: string): Promise<Browser> {
+    const qc = new QueryClient();
+    const b: Browser = { qc, view: undefined as unknown as Browser['view'], copy: null };
+    use(b);
+    b.view = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[path]}>
+          <GuidanceProvider>
+            <PageTipStrip />
+            <Link to="/calendar">calendar</Link>
+            <Link to="/inventory">inventory</Link>
+            <TipsSwitch />
+          </GuidanceProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await settle(b);
+    return b;
+  }
+  const inB = (b: Browser) => within(b.view.container);
+  const tipIn = (b: Browser) => inB(b).queryByRole('region', { name: 'Page tip' });
+  async function press(b: Browser, name: string, at: number) {
+    vi.setSystemTime(new Date(T(at)));
+    use(b);
+    fireEvent.click(inB(b).getByRole('button', { name }));
+    await settle(b);
+  }
+  async function readAgain(b: Browser, at: number) {
+    vi.setSystemTime(new Date(T(at)));
+    use(b);
+    await act(() => b.qc.invalidateQueries());
+    await settle(b);
+  }
+
+  beforeEach(() => {
+    realHook = true;
+    current = null;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(T(0)));
+    server = { guidance: { global: { hide_all_tips: false }, pages: {}, saved_at: T(0) } };
+    vi.spyOn(apiClient, 'get').mockImplementation(async () => ({ data: { preferences: structuredClone(server) } }));
+    vi.spyOn(apiClient, 'patch').mockImplementation(async (_url: string, body?: unknown) => {
+      server = deepMerge(server, (body as { preferences: Record<string, unknown> }).preferences);
+      return { data: { preferences: structuredClone(server) } };
+    });
+  });
+  afterEach(() => {
+    realHook = false;
+    vi.useRealTimers();
+  });
+
+  it('"Not now" in a browser holding an old read does not undo "Don\'t show tips again" made in the other', async () => {
+    const x = await open('/orders');
+    const y = await open('/calendar');
+    expect(tipIn(x)).toBeTruthy();
+    expect(tipIn(y)).toBeTruthy();
+    // Y has saved the switch before, so its own copy holds `hide_all_tips: false`.
+    await press(y, 'tips on', 5);
+
+    await press(x, "Don't show tips again", 10);
+    expect(serverGlobal().hide_all_tips).toBe(true);
+
+    // Y has not read again: it still shows its tip from the read after its 12:00:05 save.
+    use(y);
+    expect(tipIn(y)).toBeTruthy();
+    await press(y, 'Not now', 20);
+    expect(serverGlobal().hide_all_tips).toBe(true);
+    // Y's save is followed by a read, and the off made in X now shows in Y.
+    expect(inB(y).getByRole('button', { name: /^tips (on|off)$/ })).toHaveTextContent('tips off');
+
+    await readAgain(x, 30);
+    expect(inB(x).getByRole('button', { name: /^tips (on|off)$/ })).toHaveTextContent('tips off');
+    fireEvent.click(inB(x).getByRole('link', { name: 'inventory' }));
+    expect(tipIn(x)).toBeNull();
+  });
+
+  it('while a save is on its way, the cached copy keeps every key the save does not name', async () => {
+    server = { guidance: { global: { hide_all_tips: true }, pages: {}, saved_at: T(0) } };
+    const x = await open('/orders');
+    vi.mocked(apiClient.patch).mockImplementation(() => new Promise(() => {}));
+    vi.setSystemTime(new Date(T(10)));
+    fireEvent.click(inB(x).getByRole('button', { name: 'nudge shown' }));
+    await waitFor(() =>
+      expect(
+        (x.qc.getQueryData(queryKeys.user.preferences('u-1')) as { guidance: { saved_at: string } }).guidance.saved_at,
+      ).toBe(T(10)),
+    );
+    expect(inB(x).getByRole('button', { name: /^tips (on|off)$/ })).toHaveTextContent('tips off');
+    expect(tipIn(x)).toBeNull();
+  });
+
+  it('"Turn tips back on" in one browser brings back a tip put off with "Not now" in the other', async () => {
+    const x = await open('/calendar');
+    const y = await open('/orders');
+    await press(x, 'Not now', 10);
+    expect(tipIn(x)).toBeNull();
+
+    await readAgain(y, 15);
+    await press(y, 'tips on', 20);
+
+    await readAgain(x, 30);
+    expect(tipIn(x)).toBeTruthy();
   });
 });
