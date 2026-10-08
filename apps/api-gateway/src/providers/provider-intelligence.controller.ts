@@ -63,9 +63,9 @@ function rethrow(error: unknown, fallback: string): never {
  * only, staff never see it) and the cross-vendor compare and leverage reads.
  * A staff caller gets the guard's 403 before the handler runs.
  *
- * `outreach` and `onboard` stay open: they return no figure, and who may start
- * a vendor conversation is a send-authority question (ADR 0175 D9/D10: a grant
- * is a row, not a token role), not this gate's.
+ * `outreach` and `onboard` stay open: they insert a session row, send nothing
+ * and return no figure, and no locked rule gates them by role. ADR 0175 D9/D10
+ * seal and gate four named vendor-send routes; these two are not among them.
  */
 @ApiTags("provider-intelligence")
 @Controller("providers")
