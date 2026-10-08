@@ -53,6 +53,8 @@ export interface WaitingOnYouProps {
   /** DASH-W21: the active house, whose approval rules the gate reads. */
   restaurantId?: string | null;
   /** DASH-W22: false for a role that sees counts, not money (staff). */
+  // Omitted reads as false (fail closed): a caller that forgets it draws no
+  // money (PR #579 audit note 6). Every production caller passes it.
   seesAmounts?: boolean;
 }
 
@@ -92,7 +94,7 @@ function useApprovalGate(restaurantId: string | null | undefined, waitingKey: st
   return gate;
 }
 
-export function WaitingOnYou({ pending, onChanged, restaurantId, seesAmounts = true }: WaitingOnYouProps) {
+export function WaitingOnYou({ pending, onChanged, restaurantId, seesAmounts = false }: WaitingOnYouProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [sealedIds, setSealedIds] = useState<Set<string>>(new Set());
 
