@@ -39,6 +39,12 @@ vi.mock('@/services/api/orders', () => ({
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
   useApproveOrder: () => approveMock,
 }));
+// DASH-W21: the card reads the house's approval rules. Only `get` is replaced.
+const gateGet = vi.hoisted(() => vi.fn());
+vi.mock('@/services/api/client', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/services/api/client')>();
+  return { ...real, apiClient: { ...real.apiClient, get: (...a: unknown[]) => gateGet(...a) } };
+});
 
 import { WaitingOnYou } from './WaitingOnYou';
 import type { Order } from '@/services/api/types';
@@ -71,12 +77,38 @@ function order(over: Partial<Order> = {}): Order {
   } as Order;
 }
 
-function mount(pending: Order[] | null | undefined, onChanged = vi.fn()) {
+function mount(pending: Order[] | null | undefined, onChanged = vi.fn(), restaurantId?: string) {
   return render(
     <MemoryRouter>
-      <WaitingOnYou pending={pending} onChanged={onChanged} />
+      <WaitingOnYou pending={pending} onChanged={onChanged} restaurantId={restaurantId} />
     </MemoryRouter>,
   );
+}
+
+/** The gate readout for one order, as `GET /procurement/order-approval-gate` sends it. */
+function gateFor(over: Record<string, unknown> = {}, house = 'r-1') {
+  return {
+    data: {
+      restaurantId: house,
+      callerRole: 'staff',
+      policySet: true,
+      policyNote: '',
+      readable: true,
+      reason: null,
+      orders: [
+        {
+          orderId: 'o-1',
+          requiredRole: 'manager',
+          firedBy: ['amount'],
+          reasons: ['over $500'],
+          untestable: [],
+          mayApprove: false,
+          sentence: 'Orders over $500 need a manager’s seal.',
+          ...over,
+        },
+      ],
+    },
+  };
 }
 
 /** Open the row so the ceremony is in the tree. */
@@ -98,6 +130,8 @@ function seal() {
 }
 
 beforeEach(() => {
+  gateGet.mockReset();
+  gateGet.mockResolvedValue(gateFor({ mayApprove: true, sentence: null }));
   approveMock.mutateAsync.mockReset();
   approveMock.mutateAsync.mockResolvedValue({});
   mintMock.mockReset();
@@ -236,6 +270,65 @@ describe('the states that are not an approval', () => {
     mount(null);
     expect(screen.getByText(/couldn’t be reached/i)).toBeInTheDocument();
     expect(screen.getByText(/Nothing has been approved or lost/i)).toBeInTheDocument();
+    // DASH-W19: the line offers to read the queue again.
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+
+  // DASH-W21: /orders shuts the die for a role the house's rules do not let
+  // seal an order; the dashboard now reads the same gate and does the same.
+  describe('who may seal it', () => {
+    it('shuts the die, says who to ask, and seals nothing on a held order', async () => {
+      gateGet.mockResolvedValue(gateFor());
+      mount([order()], vi.fn(), 'r-1');
+      openRow();
+      expect(await screen.findByText(/Waiting on a manager\. Orders over \$500 need a manager’s seal\./)).toBeInTheDocument();
+      expect(die()).toBeDisabled();
+      seal();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mintMock).not.toHaveBeenCalled();
+      expect(approveMock.mutateAsync).not.toHaveBeenCalled();
+      expect(gateGet).toHaveBeenCalledWith('/procurement/order-approval-gate');
+    });
+
+    it('leaves the die live for a role that may seal it', async () => {
+      mount([order()], vi.fn(), 'r-1');
+      openRow();
+      await waitFor(() => expect(gateGet).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 0));
+      expect(die()).not.toBeDisabled();
+      expect(screen.queryByText(/Waiting on a/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the die live and says so when the rules cannot be read, or are another house’s', async () => {
+      gateGet.mockRejectedValue(new Error('Network Error'));
+      const { unmount } = mount([order()], vi.fn(), 'r-1');
+      openRow();
+      expect(await screen.findByText(/approval rules couldn’t be read just now/)).toBeInTheDocument();
+      expect(die()).not.toBeDisabled();
+      unmount();
+
+      gateGet.mockResolvedValue(gateFor({}, 'r-OTHER'));
+      const second = mount([order()], vi.fn(), 'r-1');
+      openRow();
+      expect(await screen.findByText(/approval rules couldn’t be read just now/)).toBeInTheDocument();
+      expect(die()).not.toBeDisabled();
+      second.unmount();
+
+      // The route answered, but said it could not read the rules.
+      const unreadable = gateFor();
+      unreadable.data.readable = false;
+      gateGet.mockResolvedValue(unreadable);
+      mount([order()], vi.fn(), 'r-1');
+      openRow();
+      expect(await screen.findByText(/approval rules couldn’t be read just now/)).toBeInTheDocument();
+      expect(die()).not.toBeDisabled();
+    });
+
+    it('does not ask the gate when nothing is waiting', async () => {
+      mount([], vi.fn(), 'r-1');
+      await new Promise((r) => setTimeout(r, 0));
+      expect(gateGet).not.toHaveBeenCalled();
+    });
   });
 
   it('tells "measured, none" apart from "not asked yet"', () => {
