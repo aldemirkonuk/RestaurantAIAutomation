@@ -94,6 +94,13 @@ export const NOTIFICATION_AUDIENCE_BY_KEY: Readonly<
   "notification.wine_type_mismatch": "house",
 };
 
+/**
+ * How many rows handleInboundEmail reads when it resolves an inbound message's
+ * house from its thread or its sender. A read that fills the limit may hide a
+ * second house, so it is treated as naming no house (fail closed).
+ */
+export const INBOUND_HOUSE_ROWS_READ = 100;
+
 export function notificationAudience(
   deliveredKey: string | undefined,
 ): "house" | "owner_manager" {
@@ -663,20 +670,126 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const mirroredByGrantId: string | null =
       payload.mirrored_by_grant_id || null;
 
+    // Mail the dedicated-domain webhook could not tie to a house (its recipient
+    // address resolved to none) belongs to no house. It takes the unknown-sender
+    // path below, as inbound-email.controller.ts says it does, and is never
+    // filed under the house of whichever vendor row shares the sender address.
+    const unresolvedDomainMail =
+      payload.source === "inbound-domain" && !restaurantIdFromEvent;
+
     try {
-      // 1. Find provider by email (scoped to the attributed restaurant when we know it).
-      let providerQuery = this.databaseService.supabase
-        .from("providers")
-        .select("id, restaurant_id, name")
-        .ilike("contact_email", senderEmail);
-      if (restaurantIdFromEvent) {
-        providerQuery = providerQuery.eq(
-          "restaurant_id",
-          restaurantIdFromEvent,
+      // 1. Resolve the house first, then look the sender up ONLY among that
+      //    house's vendors (ADR 0221: a vendor row belongs to one house; a row
+      //    with no house is an orphan and belongs to none). The house is, in
+      //    order:
+      //    a) the house the transport stamped on the event;
+      //    b) else the house of the stored conversation rows that share this
+      //       gmail_thread_id, when they all name one house;
+      //    c) else the house of the sender's vendor rows, when they all belong
+      //       to exactly one house.
+      //    A thread match is read inside (a) when (a) is known, so it can never
+      //    move the message to another house. Before this, the vendor was looked
+      //    up across every house (limit 1) and a thread match then overwrote the
+      //    house, which could pair house B's conversation with house A's vendor.
+      let orderId: string | null = null;
+      let threadId: string | null = null;
+      let threadHouse: string | null = null;
+      // A thread read that failed may have hidden the house the message
+      // belongs to, so the sender's own house (step c) is not used then.
+      let threadReadFailed = false;
+
+      if (gmailThreadId && !unresolvedDomainMail) {
+        let threadQuery = this.databaseService.supabase
+          .from("procurement_conversations")
+          .select("id, order_id, thread_id, restaurant_id")
+          .eq("gmail_thread_id", gmailThreadId);
+        if (restaurantIdFromEvent) {
+          threadQuery = threadQuery.eq("restaurant_id", restaurantIdFromEvent);
+        }
+        const { data: threadRows, error: threadError } =
+          await threadQuery.limit(INBOUND_HOUSE_ROWS_READ);
+        if (threadError) {
+          threadReadFailed = true;
+          this.logger.error(
+            `handleInboundEmail: thread read failed for gmail_thread_id=${gmailThreadId}; the thread names no house: ${threadError.message}`,
+          );
+        }
+        const rows = (threadRows ?? []) as Array<{
+          order_id: string | null;
+          thread_id: string | null;
+          restaurant_id: string | null;
+        }>;
+        const houses = new Set(
+          rows.map((r) => r.restaurant_id).filter((h): h is string => !!h),
         );
+        if (houses.size === 1 && rows.length < INBOUND_HOUSE_ROWS_READ) {
+          const [house] = [...houses];
+          const row = rows.find((r) => r.restaurant_id === house)!;
+          threadHouse = house;
+          orderId = row.order_id;
+          threadId = row.thread_id;
+        } else if (houses.size > 1 || rows.length >= INBOUND_HOUSE_ROWS_READ) {
+          this.logger.warn(
+            `handleInboundEmail: gmail_thread_id=${gmailThreadId} is held by more than one house; the thread names no house`,
+          );
+        }
       }
-      const { data: providers } = await providerQuery.limit(1);
-      const provider = providers?.[0];
+
+      const knownHouse: string | null = restaurantIdFromEvent ?? threadHouse;
+      let restaurantId: string | null = knownHouse;
+      let provider: {
+        id: string;
+        restaurant_id: string;
+        name?: string;
+      } | null = null;
+
+      if (!unresolvedDomainMail) {
+        let providerQuery = this.databaseService.supabase
+          .from("providers")
+          .select("id, restaurant_id, name")
+          .ilike("contact_email", senderEmail);
+        if (knownHouse) {
+          providerQuery = providerQuery.eq("restaurant_id", knownHouse);
+        }
+        const { data: providerRows, error: providerError } =
+          await providerQuery.limit(INBOUND_HOUSE_ROWS_READ);
+        if (providerError) {
+          // Read as no match: the message takes the unknown-sender path, as
+          // it did before this read bound its error, and the failure is said.
+          this.logger.error(
+            `handleInboundEmail: vendor read failed for ${senderEmail}; treated as an unknown sender: ${providerError.message}`,
+          );
+        }
+        const fetched = (providerRows ?? []) as Array<{
+          id: string;
+          restaurant_id: string | null;
+          name?: string;
+        }>;
+        // Orphans (no house) are never a match; a row of another house is
+        // never a match once the house is known.
+        const candidates = fetched.filter(
+          (p): p is { id: string; restaurant_id: string; name?: string } =>
+            !!p.restaurant_id &&
+            (!knownHouse || p.restaurant_id === knownHouse),
+        );
+        if (knownHouse) {
+          provider = candidates[0] ?? null;
+        } else if (!threadReadFailed) {
+          const senderHouses = new Set(candidates.map((p) => p.restaurant_id));
+          if (
+            senderHouses.size === 1 &&
+            fetched.length < INBOUND_HOUSE_ROWS_READ
+          ) {
+            provider = candidates[0];
+            restaurantId = provider.restaurant_id;
+          } else if (senderHouses.size > 1) {
+            this.logger.warn(
+              `handleInboundEmail: ${senderEmail} is a vendor of more than one house and the message names none; treated as an unknown sender`,
+            );
+          }
+        }
+      }
+
       if (!provider) {
         // D1 — cold email from an unknown sender. Capture GENUINE vendor outreach (a personal
         // intro / catalogue / wine offer, usually with an attachment) as a digest-only Prospect;
@@ -765,23 +878,8 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // 2. Match order via gmail_thread_id on existing outbound conversation
-      let orderId: string | null = null;
-      let threadId: string | null = null;
-      let restaurantId: string = provider.restaurant_id;
-
-      if (gmailThreadId) {
-        const { data: outbound } = await this.databaseService.supabase
-          .from("procurement_conversations")
-          .select("id, order_id, thread_id, restaurant_id")
-          .eq("gmail_thread_id", gmailThreadId)
-          .limit(1);
-        if (outbound?.[0]) {
-          orderId = outbound[0].order_id;
-          threadId = outbound[0].thread_id;
-          restaurantId = outbound[0].restaurant_id || restaurantId;
-        }
-      }
+      // 2. The order, when the thread named one, was read in step 1 inside
+      //    this house.
 
       // 2b. Fallback — vendors often reply in a fresh thread/subject rather than
       // hitting "reply", so the exact gmail_thread_id match above can miss even
@@ -804,12 +902,14 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           .from("procurement_orders")
           .select("id, restaurant_id")
           .eq("provider_id", provider.id)
+          // Only this house's orders: the fallback never moves the message
+          // to another house (ADR 0221).
+          .eq("restaurant_id", restaurantId)
           .not("status", "in", `(${TERMINAL_ORDER_STATUSES.join(",")})`)
           .order("requested_at", { ascending: false })
           .limit(1);
         if (openOrders?.[0]) {
           orderId = openOrders[0].id;
-          restaurantId = openOrders[0].restaurant_id || restaurantId;
           this.logger.log(
             `handleInboundEmail: fallback-matched order ${orderId} for provider ${provider.id} (no gmail_thread_id hit)`,
           );
