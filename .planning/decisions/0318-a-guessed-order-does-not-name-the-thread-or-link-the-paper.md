@@ -4,7 +4,7 @@
 - **Date:** 2026-10-08
 - **Decider:** the coordinator, under the delegation below. Built by lane mailguess on `fix/a-guessed-order-does-not-link-the-paper` (PR #661).
 - **Keywords:** 2b fallback, guessed order, handleInboundEmail, threadOrderId, orderId, earliest row, in_reply_to, thread_read_failed, order_match, conversation_attachments.order_id, linkAndMatch, manual/1, autoLink, confirmDeal, design B, design E
-- **Links:** PR #661; `.planning/tech-debt.d/2026-10-07-fix-a-guessed-order-does-not-link-the-paper.md`; CLAIMS rows `FIX-2026-10-07-A-GUESSED-ORDER-DOES-NOT-LINK-THE-PAPER` and `FIX-2026-10-08-A-FAILED-THREAD-READ-DOES-NOT-BECOME-A-GUESS` in `claims.d/fix-a-guessed-order-does-not-link-the-paper.jsonl`; [[0261-receipts-walk-through-r3-rulings]] W42 (`0261-receipts-walk-through-r3-rulings.md:186`); OD-225 (the design E fork, filed with this ADR); the ADR 0090 audit of PR #661 at `b240df31d` (report under `p4-scratch/sim-run/fixes/audits/661-b240df31d/`, outside the repo)
+- **Links:** PR #661; [ADR 0301](0301-the-cellar-reads-the-tills-record-and-counts-the-door-checked-price.md) (`:182` and amendment 3, bracketed 2026-10-08); OD-225; OD-226; `.planning/tech-debt.d/2026-10-07-fix-a-guessed-order-does-not-link-the-paper.md`; CLAIMS rows `FIX-2026-10-07-A-GUESSED-ORDER-DOES-NOT-LINK-THE-PAPER` and `FIX-2026-10-08-A-FAILED-THREAD-READ-DOES-NOT-BECOME-A-GUESS` in `claims.d/fix-a-guessed-order-does-not-link-the-paper.jsonl`; [[0261-receipts-walk-through-r3-rulings]] W42 (`0261-receipts-walk-through-r3-rulings.md:186`); OD-225 (the design E fork, filed with this ADR); the ADR 0090 audit of PR #661 at `b240df31d` (report under `p4-scratch/sim-run/fixes/audits/661-b240df31d/`, outside the repo)
 
 ## Context
 
@@ -70,7 +70,7 @@ When step 2's read returns an error, the bridge logs it, does **not** run 2b (`:
 
 2b came in with commit `4de692709` (2026-07-09, *"fix(procurement): stop price changes from spawning duplicate orders"*). When step 2 finds no order, it takes the newest `procurement_orders` row (by `requested_at`) on the sender's provider row whose status is not terminal, and uses it as `orderId`. It filters on `provider_id` only; provider rows are per house (ADR 0221). The commit's reason: vendors often reply in a new thread or subject, the exact thread match missed, and the price change had nowhere to attach. The inbound row on a guessed order is written with `confidence_score` 1.0 (`:931`).
 
-No ADR, no `PROJECT.md` key decision and no founder ruling records 2b. PR #661's body called it "decided", and that was wrong. This ADR records what it does; it decides nothing about it. This branch narrows it in two ways only: its guess no longer reaches the attachment (ruling 1), and it does not run after a failed thread read (ruling 3). Whether 2b should stay, and whether its row should say confidence 1.0, are open.
+No ADR, no `PROJECT.md` key decision and no founder ruling records 2b. PR #661's body called it "decided", and that was wrong. This ADR records what it does; it decides nothing about it. This branch narrows it in two ways only: its guess no longer reaches the attachment (ruling 1), and it does not run after a failed thread read (ruling 3). Whether 2b should stay, and whether its row should say confidence 1.0, are open, filed as OD-226.
 
 ## Consequences
 
@@ -86,3 +86,4 @@ No ADR, no `PROJECT.md` key decision and no founder ruling records 2b. PR #661's
 | 2026-10-07 | lane mailguess research and refutation pass (`wf_2456624f-fb4`) | Design B chosen; A, C, D rejected; E left to the founder |
 | 2026-10-08 | ADR 0090 audit of PR #661 at `b240df31d` | BLOCK: rulings not in an ADR, 2b called "decided", design E not in the register |
 | 2026-10-08 | — | Created (Proposed) |
+| 2026-10-08 | ADR 0090 audit of PR #661 at `0d88b070b` | BLOCK: ADR 0301 `:182` and amendment 3 still described the guessed-order link this PR removes. Both are now bracketed, ADR 0301 is linked here, and the 2b keep/remove and confidence-1.0 questions are filed as OD-226 |
