@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { fmtPace, MAP_WORDS, mapTone, sold30 } from './useInventoryNextData';
@@ -34,6 +34,10 @@ vi.mock('../command/HousePriceCell', () => ({
 }));
 vi.mock('../../../components/inventory/PosMappingPanel', () => ({ PosMappingPanel: () => null, default: () => null }));
 vi.mock('../../../components/inventory/StorageLocationManager', () => ({ StorageLocationManager: () => null }));
+vi.mock('./RowDropdown', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  default: () => <tr data-testid="row-dropdown" />,
+}));
 vi.mock('../../../components/scanner/MenuScannerFlow', () => ({ MenuScannerFlow: () => null }));
 vi.mock('@/components/mudavym/DeliveriesToName', () => ({
   DELIVERIES_TO_NAME_KEY: ['deliveries-to-name'],
@@ -42,6 +46,7 @@ vi.mock('@/components/mudavym/DeliveriesToName', () => ({
 
 import { toast } from 'sonner';
 import InventoryNext from './InventoryNext';
+import { IV_DEFAULT, readView, writeView } from './iv-url';
 import { fold, matchesSearch, needsYouFirst, readSentence, sortRows, sortWords, toRow, typeLabel, typeOf } from './useInventoryNextData';
 
 function row(over: Partial<InvRow> = {}): InvRow {
@@ -882,5 +887,83 @@ describe('a title no zone holds reads "none on hand" or "Unassigned" (INV-W34)',
     const loc = file.columns.find((c) => c.header === 'Location')!;
     const byId = Object.fromEntries(file.rows.map((r) => [r.id, loc.value(r)]));
     expect(byId).toEqual({ cave: 'Cave', loose: 'Unassigned', split: 'Cave', nolots: 'Unassigned', empty: 'none on hand', unread: '', unreadloose: 'Unassigned' });
+  });
+});
+
+describe('INV-W38 — the view is the URL', () => {
+  function renderAt(url: string) {
+    const seen: { path: string; search: string } = { path: '', search: '' };
+    function Probe() {
+      const loc = useLocation();
+      seen.path = loc.pathname;
+      seen.search = loc.search;
+      return null;
+    }
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[url]}>
+          <Routes>
+            <Route path="/inventory" element={<InventoryNext />} />
+            <Route path="/receiving" element={<div data-testid="receiving" />} />
+          </Routes>
+          <Probe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return seen;
+  }
+  const two = () => [row({ id: 'a', wineId: 'wa', name: 'Ankara Red', producer: 'A', grape: 'Kalecik' }), row({ id: 'b', wineId: 'wb', name: 'Istanbul White', producer: 'B', grape: 'Narince' })];
+
+  it('reads and writes only what differs from the default', () => {
+    expect(readView(new URLSearchParams(''))).toEqual(IV_DEFAULT);
+    const v = readView(new URLSearchParams('chip=bogus&sort=bogus&view=bogus'));
+    expect([v.chip, v.sort, v.view]).toEqual([IV_DEFAULT.chip, IV_DEFAULT.sort, IV_DEFAULT.view]);
+    expect(writeView(new URLSearchParams('from=bell'), IV_DEFAULT).toString()).toBe('from=bell');
+    expect(writeView(new URLSearchParams('wine=x&highlight=y'), { ...IV_DEFAULT, q: 'x', open: 'r1' }).toString()).toBe('q=x&open=r1');
+  });
+
+  it('lands a ?wine= link on that search, and folds it into q on the next change', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory?wine=istanbul');
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+    expect(screen.getByTestId('inv-row-b')).toBeTruthy();
+    expect((screen.getByPlaceholderText('Search titles, producers, grapes') as HTMLInputElement).value).toBe('istanbul');
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(new URLSearchParams(seen.search).get('q')).toBe('istanbul');
+    expect(new URLSearchParams(seen.search).has('wine')).toBe(false);
+    expect(new URLSearchParams(seen.search).get('open')).toBe('b');
+  });
+
+  it('opens the title a ?highlight= link names, by row id or by wine id', () => {
+    mock.data = data({ rows: two() });
+    renderAt('/inventory?highlight=wb');
+    expect(screen.getByTestId('inv-row-b').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByTestId('inv-row-a').getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('keeps what a person narrowed to in the URL, and drops it again at the default', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory');
+    fireEvent.change(screen.getByPlaceholderText('Search titles, producers, grapes'), { target: { value: 'ankara' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cellar map' }));
+    expect(Object.fromEntries(new URLSearchParams(seen.search))).toEqual({ q: 'ankara', view: 'map' });
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+    fireEvent.change(screen.getByPlaceholderText('Search titles, producers, grapes'), { target: { value: '' } });
+    expect(seen.search).toBe('');
+  });
+
+  it('opens the naming card for a ?name-delivery= link', () => {
+    mock.data = data({ rows: two(), waiting: { invoices: { n: 0, failed: false }, deliveries: { n: 1, failed: false }, outbox: { n: 0, failed: false } } });
+    renderAt('/inventory?name-delivery=o1');
+    expect(screen.getByTestId('deliveries-to-name')).toBeTruthy();
+  });
+
+  it('sends the older ?verify= link to Receiving, on that order', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory?verify=o%2F7');
+    expect(screen.getByTestId('receiving')).toBeTruthy();
+    expect(seen.path).toBe('/receiving');
+    expect(new URLSearchParams(seen.search).get('order')).toBe('o/7');
   });
 });

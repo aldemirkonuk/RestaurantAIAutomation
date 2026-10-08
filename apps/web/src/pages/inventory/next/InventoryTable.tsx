@@ -111,6 +111,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                   </tr>
                 ) : null}
                 <tr
+                  id={`iv-row-${row.id}`}
                   className="iv-row"
                   data-testid={`inv-row-${row.id}`}
                   data-standing={row.standing}
