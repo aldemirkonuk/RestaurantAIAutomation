@@ -29,7 +29,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const state = vi.hoisted(() => ({ current: null as unknown, drafts: [] as unknown[] }));
+const state = vi.hoisted(() => ({ current: null as unknown, drafts: [] as unknown[], reducedMotion: true }));
 
 vi.mock('./useOrdersNextData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./useOrdersNextData')>();
@@ -52,10 +52,11 @@ vi.mock('@/hooks/queries/useDraftEmailQueries', () => ({
 }));
 
 // jsdom has no Element.animate; the draft card's reveal is skipped under
-// reduced motion (as DraftRail.test.tsx does).
+// reduced motion (as DraftRail.test.tsx does). One month-figure case turns
+// motion on, with no drafts on the page, to watch the Tally.
 vi.mock('@/lib/mudavym/motion', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/mudavym/motion')>()),
-  useReducedMotion: () => true,
+  useReducedMotion: () => state.reducedMotion,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -122,7 +123,7 @@ function ordersData(over: Partial<OrdersNextData> = {}): OrdersNextData {
 
 function harness(initialPath: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const tree = () => (
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
@@ -130,13 +131,17 @@ function harness(initialPath: string) {
           <Route path="/orders" element={<OrdersNext />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(tree());
+  // Re-renders the same tree, so the page reads `state.current` again.
+  return { ...view, again: () => view.rerender(tree()) };
 }
 
 beforeEach(() => {
   state.current = null;
   state.drafts = [];
+  state.reducedMotion = true;
 });
 
 afterEach(() => {
@@ -420,5 +425,24 @@ describe('the month figure, per currency', () => {
     });
     harness('/orders');
     expect((await screen.findByTestId('month-figure')).textContent).toBe('—');
+  });
+
+  it('gives a new currency a new Tally, so the figure never runs one currency into another', async () => {
+    // Motion is on here. A Tally handed a new value starts from its old one,
+    // so a Tally kept across the change would first show the euro amount in
+    // lira ("TRY 1,500"). Keyed by currency, the lira line mounts fresh, and
+    // a Tally never animates on first paint.
+    state.reducedMotion = false;
+    state.current = ordersData({
+      month: { thisMonth: [{ currency: 'EUR', amount: 1500 }], lastMonth: [], unpricedThisMonth: 0 },
+    });
+    const view = harness('/orders');
+    expect(flat((await screen.findByTestId('month-figure')).textContent)).toBe('€1,500');
+
+    state.current = ordersData({
+      month: { thisMonth: [{ currency: 'TRY', amount: 12480 }], lastMonth: [], unpricedThisMonth: 0 },
+    });
+    view.again();
+    expect(flat(screen.getByTestId('month-figure').textContent)).toBe('TRY 12,480');
   });
 });

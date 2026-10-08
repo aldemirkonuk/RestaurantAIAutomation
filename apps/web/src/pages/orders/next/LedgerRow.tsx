@@ -399,7 +399,7 @@ export function LedgerRow({
                 {/*
                   The AGREED PRICE, with the unit it is stated in — ADR 0119.
 
-                  This is the number the whole ADR is about: "$420.00" beside a
+                  This is the number the whole ADR is about: "420.00" beside a
                   quantity in cases reads as per-bottle to the code and per-case
                   to the desk, and the two differ by the pack in the direction
                   that looks like a bargain. `describeStatedPrice` is the same
@@ -436,8 +436,8 @@ export function LedgerRow({
                       No working, and the two reasons are different facts.
                       An UNSTATED unit is the ordinary case for every order
                       placed before ADR 0119, and the page must not fill the
-                      gap with the per-bottle convention: totalling $420 per
-                      case as $420 per bottle prints a figure twelve times the
+                      gap with the per-bottle convention: totalling 420 per
+                      case as 420 per bottle prints a figure twelve times the
                       truth, in bold, beside the right one. It prints the
                       ledger's own number and nothing of its own.
                     */
@@ -484,10 +484,11 @@ export function LedgerRow({
                   THE MONEY OUTSIDE THE PRICE OF THE WINE — ADR 0119 Q3.
 
                   Where there IS a working, the fees are already inside it —
-                  "Goods $2100.00, less allowance $100.00, plus deposit $30.00"
-                  — and this line would print the same three amounts a second
-                  time. The first capture of this pass did exactly that
-                  (`$SP/shots-price-unit-2/`), so this line now exists for the
+                  "Goods 2,100.00, less allowance 100.00, plus deposit 30.00",
+                  each in the order's own currency — and this line would print
+                  the same three amounts a second time. The first capture of
+                  this pass did exactly that (`$SP/shots-price-unit-2/`), so
+                  this line now exists for the
                   case where there is NO working: an agreement whose price unit
                   is unstated shows no arithmetic at all, and without this its
                   deposit would be invisible on the row that a manager approves
