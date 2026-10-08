@@ -126,8 +126,12 @@ export interface DayRecordWindow {
   days: ReconciledDay[];
   /** The currency every `netSales` in `days` is in. */
   currency: HouseCurrency;
-  /** Passed through from the ledger read; false means no POS has ever landed. */
-  posConnected: boolean;
+  /**
+   * Passed through from the ledger read; false means no POS has ever landed.
+   * Null when the ledger refused (`recordedRefusal` is set): whether one has
+   * is then not known, and no day's line says "no register" (ADR 0287 §Forks F4).
+   */
+  posConnected: boolean | null;
   /** The ledger's refusal, when it could not be read. */
   recordedRefusal: string | null;
   /** The weather register's refusal, when it could not be read. */
@@ -267,21 +271,18 @@ export function leadDaysFor(issuedAt: string, businessDate: string): number {
  *
  * Every branch is a different fact, and none of them is a zero. The order
  * matters: an excluded day says so first, because a closure that reads as a
- * quiet day is the most damaging thing this grid could show.
+ * quiet day is the most damaging thing this grid could show. Only a refused
+ * sales register comes before it, and a refused window carries no record and
+ * no closure to say (`RecordedDaysService` returns before it reads them).
  */
 export function reconciliationLine(
   recorded: RecordedDay | null,
   hadForecast: boolean,
-  posConnected: boolean,
+  /** False: no register has ever landed a check. Null: the register refused. */
+  posConnected: boolean | null,
   /** The weather forecast's error in °C, when both sides existed. */
   forecastErrorC: number | null = null,
 ): string {
-  if (recorded?.excluded) {
-    return recorded.exclusionReason
-      ? `Closed — ${recorded.exclusionReason}. Ruled out of the baselines.`
-      : "Closed. Ruled out of the baselines.";
-  }
-
   // The weather half is scoreable independently of the trading half, so it is
   // said first when it exists: it is the only number on this page that is a
   // measured error rather than a record.
@@ -292,7 +293,21 @@ export function reconciliationLine(
         ? " The forecast called the high exactly."
         : ` The forecast was out by ${forecastErrorC.toFixed(1)} °C on the high.`;
 
-  if (!posConnected) {
+  // The sales register refused (ADR 0292), so nothing about this day's
+  // trading is known: not that the house has no register, and not that the
+  // day was quiet. Said before anything read off the record, because under a
+  // refusal there is no record to read (ADR 0287 §Forks F4).
+  if (posConnected === null) {
+    return `The sales register could not be read, so this day's trading is not known.${weather}`;
+  }
+
+  if (recorded?.excluded) {
+    return recorded.exclusionReason
+      ? `Closed — ${recorded.exclusionReason}. Ruled out of the baselines.`
+      : "Closed. Ruled out of the baselines.";
+  }
+
+  if (posConnected === false) {
     return `No sales register is connected, so this day has no record.${weather}`;
   }
   if (!recorded || recorded.checkCount === 0) {
@@ -359,6 +374,11 @@ export class DayRecordService {
       this.houseCurrency(restaurantId),
     ]);
 
+    // A refused ledger answers nothing about the register, so the window says
+    // "not known" (null), never "no register" (false), whatever the ledger
+    // object carried (ADR 0287 §Forks F4). The same `refusal` that gates the
+    // pairs below gates this.
+    const posConnected = ledger.refusal === null ? ledger.posConnected : null;
     const recordedByDay = new Map(ledger.days.map((d) => [d.businessDate, d]));
     const advanceByDay = new Map(
       weather.forecastInAdvance.map((r) => [r.businessDate, r]),
@@ -425,12 +445,7 @@ export class DayRecordService {
           : null,
         forecastErrorC: errorC,
         scoreWithheld: withheld,
-        line: reconciliationLine(
-          record,
-          advance !== null,
-          ledger.posConnected,
-          errorC,
-        ),
+        line: reconciliationLine(record, advance !== null, posConnected, errorC),
       };
     });
 
@@ -439,7 +454,7 @@ export class DayRecordService {
       to,
       days,
       currency,
-      posConnected: ledger.posConnected,
+      posConnected,
       recordedRefusal: ledger.refusal,
       weatherRefusal: weather.refusal,
       // A pair is written once per day and never again (`keepPairs`), so one

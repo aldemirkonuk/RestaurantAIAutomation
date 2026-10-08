@@ -157,7 +157,7 @@ export function DayLedger({
           day only; the month cell stays covers-only (ADR 0287). */}
       <div className="cn-row" style={{ gap: 12, marginBottom: 6 }}>
         {record ? (
-          <DayRecordMark day={record} />
+          <DayRecordMark day={record} refused={!!data.record.window?.recordedRefusal} />
         ) : (
           <SkyMark reading={sky} />
         )}
@@ -321,7 +321,10 @@ export default function MonthLedger({
               <span className="cn-daynum">{d.getDate()}</span>
               {past ? (
                 record ? (
-                  <DayRecordMark day={record} />
+                  <DayRecordMark
+                    day={record}
+                    refused={!!data.record.window?.recordedRefusal}
+                  />
                 ) : (
                   <SkyMark reading={sky} />
                 )

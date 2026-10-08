@@ -146,26 +146,47 @@ export function SkyMark({ reading }: SkyMarkProps) {
  * never says "out by N": scoring the forecast would need either an observation
  * (nothing records one) or a covers model (slice 9, withheld below ninety
  * observed service days). The pair is kept; the score is not claimed.
+ *
+ * When the sales register refused (`refused`, the window's `recordedRefusal`),
+ * the day's covers are not known: the em dash and "covers could not be read",
+ * never "covers not recorded", which says the register sent none (ADR 0287
+ * §Forks F4, after the founder's "Say 'could not be read'", ADR 0292 fork 3).
+ * It never draws a covers figure in that state, even one that reached the
+ * page. Covers are not house money, so every role sees this.
  */
-export function DayRecordMark({ day }: { day: ReconciledDay }) {
+export function DayRecordMark({
+  day,
+  refused = false,
+}: {
+  day: ReconciledDay;
+  refused?: boolean;
+}) {
   const record = day.recorded;
   const advance = day.forecastInAdvance;
 
   return (
-    <span className="cn-record" title={day.line}>
+    <span
+      className="cn-record"
+      title={day.line}
+      data-record={refused ? 'unreadable' : undefined}
+    >
       <span className="cn-record-figure">
-        {record?.excluded
-          ? 'closed'
-          : record && record.covers !== null
-            ? record.covers
-            : EM}
+        {refused
+          ? EM
+          : record?.excluded
+            ? 'closed'
+            : record && record.covers !== null
+              ? record.covers
+              : EM}
       </span>
       <span className="cn-record-tag">
-        {record?.excluded
-          ? 'ruled out'
-          : record && record.covers !== null
-            ? 'covers · recorded'
-            : 'covers not recorded'}
+        {refused
+          ? 'covers could not be read'
+          : record?.excluded
+            ? 'ruled out'
+            : record && record.covers !== null
+              ? 'covers · recorded'
+              : 'covers not recorded'}
       </span>
       {advance && (
         <span className="cn-record-said">

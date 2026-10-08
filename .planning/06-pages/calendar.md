@@ -183,9 +183,13 @@ unchanged with the flag off):
   10-11, "owners and managers get it and some authorized staff"); no confirmation is owed
   (0287 §Forks F1). The month read no longer stops at 1,000 rows: #609 (ADR 0292) reads it
   whole or refuses, and under a refusal the opened day draws no takings figure, says "net
-  sales could not be read" to owners and managers (0287 F3, decided 2026-10-08 under the
-  founder's delegation), and no evidence pair is written (0287 §Decision 8). This bracket
-  said "his confirmation is owed" and "draws no takings".]**
+  sales could not be read" to owners and managers on a day that holds a record (0287 F3,
+  decided 2026-10-08 under the founder's delegation), and no evidence pair is written (0287
+  §Decision 8). This bracket said "his confirmation is owed" and "draws no takings".]**
+  **[2026-10-08, round 3: under a refusal the day's covers read "covers could not be read"
+  and its line says the sales register could not be read, never "No sales register is
+  connected" (`posConnected: null`; 0287 §Forks F4, decided under the founder's delegation).
+  A ruled-out day that has checks still shows its takings (0287 §Decision 3).]**
 - **A passed day states the forecast's error, from 2026-09-04.** The nearest reporting
   station's observations are recorded beside the forecast, so `prediction_outcomes` now
   receives the **first real `accuracy_score` this product has ever produced**: the absolute

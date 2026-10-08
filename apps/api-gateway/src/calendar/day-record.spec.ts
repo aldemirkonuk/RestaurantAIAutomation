@@ -223,6 +223,23 @@ describe("reconciliationLine", () => {
     );
   });
 
+  it("says a refused register could not be read, never that there is none (ADR 0287 F4)", () => {
+    // posConnected null is the register refusing (ADR 0292). The line must not
+    // say "no register" over one that exists, nor "nothing recorded" over a
+    // day whose checks could not be read.
+    const line = reconciliationLine(null, true, null);
+    expect(line).toBe(
+      "The sales register could not be read, so this day's trading is not known.",
+    );
+    expect(line).not.toMatch(/No sales register is connected|Nothing was recorded/);
+    // The weather half is still said: it does not depend on the register.
+    expect(reconciliationLine(null, true, null, 1.11)).toContain("out by 1.1 °C");
+    // and `false` still means no register at all
+    expect(reconciliationLine(null, false, false)).toContain(
+      "No sales register is connected",
+    );
+  });
+
   it("distinguishes a day with no checks from a day with no covers", () => {
     expect(reconciliationLine(null, false, true)).toBe(
       "Nothing was recorded on this day.",
@@ -445,6 +462,10 @@ describe("DayRecordService", () => {
     const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
     expect(out.recordedRefusal).toContain("sales register");
     expect(out.weatherRefusal).toContain("No location is set");
+    // The ledger double carried `posConnected: true` beside its refusal; the
+    // window still says "not known", because a refusal answers nothing about
+    // the register (ADR 0287 F4).
+    expect(out.posConnected).toBeNull();
   });
 
   it("leaves today and the future out — a day still running has no record", async () => {
@@ -685,12 +706,13 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
    * size of the set past the `.gt("id", …)` cursor, `order` / `limit` are
    * honoured, and a row carries only the columns the select named.
    * `ignoreCursor` is a server that drops the cursor, so the read can never be
-   * proved whole. Filters other than the cursor are not applied:
+   * proved whole. `probeError` fails the `select("id")` probe that asks whether
+   * the house has ever had a check. Filters other than the cursor are not applied:
    * every row handed in belongs to the window.
    */
   function pagedDb(
     checks: Array<Record<string, unknown>>,
-    opts: { ignoreCursor?: boolean } = {},
+    opts: { ignoreCursor?: boolean; probeError?: boolean } = {},
   ) {
     const CAP = 1000;
     const reads: Array<{
@@ -729,6 +751,13 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
         then: (resolve: (v: unknown) => unknown) => {
           if (table !== "pos_checks") {
             return Promise.resolve({ data: [], error: null }).then(resolve);
+          }
+          // The `select("id")` probe: has this house EVER had a check land?
+          if (opts.probeError && req.columns === "id") {
+            return Promise.resolve({
+              data: null,
+              error: { message: "connection reset" },
+            }).then(resolve);
           }
           const sorted = [...checks].sort((a, b) =>
             String(a.id).localeCompare(String(b.id)),
@@ -839,6 +868,22 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
     expect(out.refusal).toBe(
       "The sales register could not be read whole, so no day is drawn from part of it.",
     );
+    // Not known, never "no register" (ADR 0287 F4).
+    expect(out.posConnected).toBeNull();
+  });
+
+  it("a probe that fails says the register could not be read, and posConnected is not known", async () => {
+    // A window with no checks asks whether the house has EVER had one. When
+    // that one read fails, the answer is neither yes nor no.
+    const { db } = pagedDb([], { probeError: true });
+    const out = await new RecordedDaysService(db).windowFor(
+      "r1",
+      "2026-08-01",
+      "2026-08-31",
+    );
+    expect(out.days).toEqual([]);
+    expect(out.refusal).toBe("The sales register could not be read.");
+    expect(out.posConnected).toBeNull();
   });
 
   it("the refusal reaches the day record as a refusal, with no takings and no pair frozen", async () => {
@@ -880,6 +925,21 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
     expect(out.days[0].recorded).toBeNull();
     expect(out.pairsWritten).toBe(0);
     expect(inserted).toHaveLength(0);
+    // The day's line says the register could not be read, not that the house
+    // has none (ADR 0287 F4); the weather half is still scored.
+    expect(out.posConnected).toBeNull();
+    expect(out.days[0].line).toBe(
+      "The sales register could not be read, so this day's trading is not known. " +
+        "The forecast was out by 1.1 °C on the high.",
+    );
+    expect(out.days[0].line).not.toMatch(/No sales register is connected/);
+    // A viewer the money is withheld from gets the same line and the same
+    // null: neither carries a figure.
+    const staff = await service.windowFor("r1", YESTERDAY, YESTERDAY, {
+      seesHouseMoney: false,
+    });
+    expect(staff.posConnected).toBeNull();
+    expect(staff.days[0].line).toBe(out.days[0].line);
   });
 
   it("the same day, read whole, is paired with its net takings", async () => {

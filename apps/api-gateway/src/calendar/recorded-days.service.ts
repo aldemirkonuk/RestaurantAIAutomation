@@ -51,6 +51,12 @@ import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
  * `posConnected: false` is the fourth answer and it is about the RESTAURANT,
  * not the window: a house that has never had a check land has no ledger at all,
  * and every day in the window is `unknown` rather than `silent`.
+ *
+ * `posConnected: null` is the register refusing (ADR 0287 §Forks F4, on ADR
+ * 0292): the read that would answer it failed or could not be proved whole, so
+ * whether a check has ever landed is NOT KNOWN, and `refusal` says why. It is
+ * never `false` in that state: false is "this house has no register", and a
+ * register that could not be read is not one that does not exist.
  */
 
 /** One day the ledger can speak about. */
@@ -83,9 +89,11 @@ export interface RecordedWindow {
   to: string;
   /**
    * False when this restaurant has never had a POS check land. Every day is
-   * then unknown, and no cell may draw a zero.
+   * then unknown, and no cell may draw a zero. Null exactly when `refusal` is
+   * set: the register could not be read, so whether a check ever landed is
+   * not known (ADR 0287 §Forks F4).
    */
-  posConnected: boolean;
+  posConnected: boolean | null;
   /** Only days with something to say. A day absent here is `silent`. */
   days: RecordedDay[];
   /**
@@ -218,13 +226,16 @@ export class RecordedDaysService {
       // same empty array to a caller reading only `data`, which is the exact
       // defect ADR 0020 exists to prevent. A register read only in part is
       // refused the same way: half a month drawn would look like closures.
+      // And never `posConnected: false`: that says the house has no register,
+      // and the day's line would then say so over a register that exists but
+      // could not be read. Null is "not known" (ADR 0287 §Forks F4).
       this.logger.warn(
         `pos_checks unreadable for r=${restaurantId}: ${err.message}`,
       );
       return {
         from,
         to,
-        posConnected: false,
+        posConnected: null,
         days: [],
         refusal:
           err.reason === "read_failed"
@@ -246,10 +257,12 @@ export class RecordedDaysService {
         .eq("restaurant_id", restaurantId)
         .limit(1);
       if (anyError) {
+        // The probe is the one read that decides `posConnected`, so when it
+        // fails the answer is not known: null, beside the refusal, never false.
         return {
           from,
           to,
-          posConnected: false,
+          posConnected: null,
           days: [],
           refusal: "The sales register could not be read.",
         };
