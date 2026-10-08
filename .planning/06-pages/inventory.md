@@ -35,6 +35,7 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 
 ## 1a. Features
 [changed 2026-10-01, R4 P3 (INV-W20–W27): on InventoryNext the row's five sheets (order, count, transfer, write off, pour) use the house sheet format. Order more places a PENDING order and then shows the AI's email to the vendor inline, to read, edit and approve-and-send with one hold (`OrderLetter.tsx`). The count field opens blank. Transfer says when a house has no zones. Filters can be cleared at any time. The legacy page below is unchanged.]
+[changed 2026-10-08, R4 P4–P10 (INV-W28–W40): a read that fails is named with one Read again, and a pending figure is "—", never 0 (W28, W29). Every drink type is typed, and failures read in the house's words (W30, W31). The view (chip, search, zone, type, sort, table or map, open row) lives in the URL, and the links other pages send are honoured: `?wine=`, `?highlight=`, `?name-delivery=`, and `?verify=`, which goes to Receiving (W38). The More menu has arrow keys (W36). The order letter skips a closed letter (W37). The price cell reads at 4.5:1 and the book's table has a name (W39). Rows and evidence are in §14; the record is ADR 0315.]
 - 9-column live stock table; expand a row for detail: live vs shadow stock, par/reorder bar, velocity, busy-hours heatmap, order history, manual entry (🚧 market-price columns render "—" until price enrichment exists)
 - **Item activity names both directions (fixed 2026-09-06, V6).** The row's velocity series carries `out` AND `in`: a delivery booked at the door, a POS void/return, a positive manual adjustment. Before this it was depletion-only, so a shelf that had just gained ten bottles rendered identically to one nothing had touched. The payload's `includes` block states what was counted, and a failed ledger read is a 500, never an empty chart.
 - **Carry this bottle · an auction lot — the FOURTH START** (built 2026-09-06, packet 2
@@ -250,6 +251,7 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
 
 ## 9. Gaps
 [changed 2026-10-01, R4 P3: four gaps were found that the page cannot close, queued in `p4-scratch/review-shared-queue.md`. (1) No merged flag on `POST /procurement/orders`: a merge replaces the quantity, even on an APPROVED order, and drafts no email. (2) `approveDraft` does not check the order's status. (3) A possible second draft after `approveOrder`, unverified. (4) /cellar `BottleLeaf.tsx:219` still says "Order sent to the vendor".]
+[changed 2026-10-08, R4 P7–P9: six more gaps are left for other branches, listed in `.planning/tech-debt.d/2026-10-08-fix-review-inventory.md`: `RowDropdown`'s unguarded `books`, the three Tools overlays failing the key check, the currency key with no house id, hour tiles on the viewer's clock, `?filter=low-stock` and `?rec=` read by no page, and the shell's duplicate reads.]
 
 - ~~**An auction lot's own details have nowhere to live**~~ **CLOSED 2026-09-21**
   (founder answer 2, "Build all now"). Found 2026-09-06 while building the fourth
@@ -295,6 +297,7 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
 
 ## 10. Maturity
 [changed 2026-10-01, R4 P3: the order flow on InventoryNext now ends at the vendor's email rather than at "go to Orders". It is verified on the fixture harness only (17 + 21 unit tests, 14 mutations); it is not yet verified against the live composer or a real vendor.]
+[changed 2026-10-08, R4: passes P1–P10 are done on InventoryNext (§14 Passes; P7–P10 on the real page as the Sim owner, behind a read-only guard). The page is built and dark. origin/main and production still render `InventoryCommandPage` on both sides of the gate, and merging the `App.tsx` mount line, on the founder's word, is the go-live (ADR 0315).]
 
 **partial.** The stock spine is real and the writes land in a ledger; the market
 column has no producer and one embedded panel is dead. The two capability gaps that
@@ -377,6 +380,7 @@ keep it true — count what drifted, verify what arrived.
 
 ## 13. Roadmap
 [changed 2026-10-01, R4 P3: the inline order email uses the composer's free text until the comms session's *Order request* template lands on its own branch. The gateway merged flag (§9) replaces the page's 2-minute merge heuristic.]
+[changed 2026-10-08, R4: next on this page are the mount line (the founder's word), then the gateway F-10 PR (ledger DTO `@Type`, the write-off role guard, a merged flag on `POST /procurement/orders`, `approveDraft` checking the order's status), then deleting the legacy page once (ADR 0149). The phone-first counting fork (INV-W11) still needs its `OPEN-DECISIONS.md` row on its own docs branch.]
 
 1. **Fix the insights rail's auth** — move `ContextualInsights` off raw `fetch` onto
    `apiClient` (which stamps the bearer token, `services/api/client.ts:62`). One-line
