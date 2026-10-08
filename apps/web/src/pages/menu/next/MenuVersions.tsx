@@ -34,6 +34,7 @@ import {
   type MenuImportResult,
   type MenuVersion,
 } from '../../../services/api/menus';
+import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 
 const EM = '—';
@@ -327,7 +328,10 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [planFor, setPlanFor] = useState<string | null>(null);
-  const q = useQuery({ queryKey: ['menu', 'versions'], queryFn: listMenuVersions });
+  // The house is in the key: one house's versions never stand under
+  // another's name (MENU-01).
+  const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
+  const q = useQuery({ queryKey: ['menu', 'versions', house], queryFn: listMenuVersions });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
 
   return (

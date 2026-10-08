@@ -108,12 +108,16 @@ describe("forHouse", () => {
     expect(r.jurisdiction).toBeNull();
   });
 
+  // Updated 2026-10-07 (ADR 0305): the country is read first, so a house with
+  // no country is asked for it, whatever its state says.
   it("tells a house with no address to set one, rather than showing an empty list", async () => {
     const svc = new DistributorFeedService(
       houseDb({ state_province: null, country: null }) as never,
     );
     const r = await svc.forHouse("a-house");
-    expect(r.silence).toContain("neither a state nor a country");
+    expect(r.silence).toContain("country isn't recorded");
+    expect(r.silence).toContain("Settings");
+    expect(r.countryNotRecorded).toBe(true);
   });
 
   it("has no state to scope to without a session restaurant, and says so", async () => {
