@@ -38,8 +38,8 @@
  * LOCALE (F3, answered 2026-10-08: "Approve + Turkish now"). Every string the
  * renderer owns (subject, greeting, block texts, the Mudavym line, number and
  * date formats) is keyed by `locale`, "en" or "tr". The English words are
- * LOCKED as the founder approved them; the Turkish default is a DRAFT until he
- * approves it. The service picks the locale from the house's country with
+ * LOCKED as the founder approved them, and so are the Turkish words (approved
+ * 2026-10-08, "Approve as drafted"). The service picks the locale from the house's country with
  * `houseLocale` below (ADR 0313). Turkish text never puts a suffix on a fact
  * value (a name, an order number, a figure): the sentence is built so the
  * suffix lands on a word the renderer owns ("PO-1042 sipariş numarasını").
@@ -117,11 +117,12 @@ export function houseLocale(country: string | null | undefined): OrderRequestLoc
 /**
  * The default words, in the token form so 4a-ii can publish a house version
  * over them without the renderer changing. English: LOCKED (F3 answered
- * 2026-10-08, "Approve + Turkish now"). Turkish: DRAFT until he approves it.
+ * 2026-10-08, "Approve + Turkish now"). Turkish: LOCKED (2026-10-08, "Approve as
+ * drafted").
  */
 export const DEFAULT_ORDER_REQUEST_TEMPLATE_STATUS = {
   en: "locked (W25 F3, approved 2026-10-08)",
-  tr: "draft (W25 F3 Turkish half open)",
+  tr: "locked (W25 F3, approved 2026-10-08)",
 } as const;
 export const DEFAULT_ORDER_REQUEST_TEMPLATE = [
   "{{greeting}}",
@@ -600,7 +601,7 @@ const WORDS: Record<OrderRequestLocale, LetterWords> = {
       `We have no price on file for this order. Please reply with your price for each line, quoting ${no}.`,
     mudavym: (house) => `—\nThis message was drafted by Mudavym on behalf of ${house}.`,
   },
-  // DRAFT until the founder approves it. "siz" throughout; no suffix on a fact.
+  // LOCKED: approved by the founder 2026-10-08. "siz" throughout; no suffix on a fact.
   tr: {
     subject: (no, house) => `Sipariş ${no} — ${house}`,
     greeting: (name) => (name ? `Merhaba ${name},` : "Merhaba,"),
