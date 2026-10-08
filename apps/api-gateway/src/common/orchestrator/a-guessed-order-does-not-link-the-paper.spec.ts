@@ -99,9 +99,15 @@ function answeringClient(
  * (inserted by the bridge, or seeded by a test in place of the responder and
  * the staff writers) gets an increasing created_at, and a read applies its
  * eq filters, its order keys in turn, and its limit. With no order key a read
- * returns the newest row first. Other tables answer from `answer`.
+ * returns the newest row first. Other tables answer from `answer`. With
+ * `threadReadError` set, a read filtered on gmail_thread_id resolves the way
+ * supabase-js resolves a failed read, { data: null, error }; other reads of
+ * the table (the gmail_message_id dedupe) still answer.
  */
-function threadStore(answer: (table: string) => unknown) {
+function threadStore(
+  answer: (table: string) => unknown,
+  threadReadError: { message: string } | null = null,
+) {
   let clock = 0;
   const stamp = () =>
     new Date(Date.UTC(2026, 9, 7, 12, 0, clock++)).toISOString();
@@ -154,6 +160,12 @@ function threadStore(answer: (table: string) => unknown) {
     const result = () => {
       if (insertedRow)
         return { data: { id: insertedRow.id ?? null }, error: null };
+      if (
+        table === "procurement_conversations" &&
+        threadReadError &&
+        calls.some((c) => c[0] === "eq" && c[1] === "gmail_thread_id")
+      )
+        return { data: null, error: threadReadError };
       if (table === "procurement_conversations")
         return { data: read(calls), error: null };
       return answer(table);
@@ -187,6 +199,8 @@ function bridgeWorld(opts: {
    * Message-ID.
    */
   responderStages?: "AUTO_SEND_SCHEDULED" | "PENDING_APPROVAL";
+  /** When set, step 2's thread read resolves { data: null, error }. */
+  threadReadError?: { message: string };
 }) {
   const store = threadStore((table) => {
     if (table === "providers")
@@ -202,7 +216,7 @@ function bridgeWorld(opts: {
         error: null,
       };
     return { data: [], error: null };
-  });
+  }, opts.threadReadError ?? null);
   const upload = jest.fn(async () => ({ data: { path: "ok" }, error: null }));
   const db = {
     supabase: {
@@ -286,6 +300,8 @@ function bridgeWorld(opts: {
       ...extra,
     });
   return {
+    bridge,
+    gateway,
     store,
     responder,
     drafts,
@@ -524,6 +540,68 @@ describe("a thread the house opened names the letter's order for every message i
     await w.deliver({ thread: "house-thread", invoice: true });
 
     expect(w.attachmentOrders()).toEqual([THREAD_ORDER]);
+  });
+});
+
+describe("a failed thread read is not an empty thread, and does not become a guess", () => {
+  it("the thread read fails: the reply is stored with no order, marked, and the fallback never runs", async () => {
+    const w = bridgeWorld({
+      openOrder: GUESSED_ORDER,
+      threadReadError: { message: "connection reset by peer" },
+    });
+    const logged = jest
+      .spyOn((w.bridge as any).logger, "error")
+      .mockImplementation(() => undefined);
+    // The house's letter IS in the thread; the read just cannot see it.
+    w.letter("house-thread", THREAD_ORDER);
+    await w.deliver({ thread: "house-thread", invoice: true });
+
+    // The mail is kept: one inbound row, on this house and vendor.
+    expect(w.inbound()).toHaveLength(1);
+    const row = w.inbound()[0];
+    expect(row).toMatchObject({
+      restaurant_id: HOUSE,
+      provider_id: PROVIDER,
+      gmail_thread_id: "house-thread",
+    });
+    // No guessed order, and no thread order either.
+    expect(row.order_id).toBeNull();
+    expect(row.thread_id).toBeNull();
+    expect(row.confidence_score).toBeNull();
+    // It says the match could not be read, not that nothing matched.
+    expect(row.email_headers.order_match).toBe("thread_read_failed");
+    // 2b never read the vendor's open orders, so it could not link one.
+    expect(w.store.chains.some((c) => c.table === "procurement_orders")).toBe(
+      false,
+    );
+    // No order, so no responder draft and no order link on the notice.
+    expect(w.responder.analyzeAndDraftReply).not.toHaveBeenCalled();
+    expect(w.gateway.emitRestaurantNotification).toHaveBeenCalledWith(
+      HOUSE,
+      expect.objectContaining({ action_url: undefined }),
+    );
+    // The invoice reaches intake with no order, so only autoLink can file it.
+    expect(w.attachmentOrders()).toEqual([null]);
+    // The failure is logged, with the read's own error.
+    expect(logged).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "thread read failed for gmail_thread_id=house-thread",
+      ),
+    );
+    expect(logged).toHaveBeenCalledWith(
+      expect.stringContaining("connection reset by peer"),
+    );
+  });
+
+  it("a thread read that answers carries no order_match mark, and 2b still runs when the thread names no order", async () => {
+    const w = bridgeWorld({ openOrder: GUESSED_ORDER });
+    await w.deliver({ thread: "fresh-thread", invoice: true });
+
+    expect(w.inbound()[0].order_id).toBe(GUESSED_ORDER);
+    expect(w.inbound()[0].email_headers).not.toHaveProperty("order_match");
+    expect(w.store.chains.some((c) => c.table === "procurement_orders")).toBe(
+      true,
+    );
   });
 });
 

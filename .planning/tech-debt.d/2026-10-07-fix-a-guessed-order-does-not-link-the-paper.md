@@ -2,7 +2,7 @@
 
 Found by the adversarial pass on `fix/a-guessed-order-does-not-link-the-paper` (hole H3).
 
-**What.** The mail bridge lets a Gmail thread name an order only when the thread's earliest row is outbound and has no `email_headers.in_reply_to` (`apps/api-gateway/src/common/orchestrator/rabbitmq-bridge.service.ts:798-824`, the test at `:816-820`). A reply that has no `in_reply_to` passes that test. These writers store a reply with no `in_reply_to` when the inbound message they answer had no Message-ID:
+**What.** The mail bridge lets a Gmail thread name an order only when the thread's earliest row is outbound and has no `email_headers.in_reply_to` (`apps/api-gateway/src/common/orchestrator/rabbitmq-bridge.service.ts:798-846`, the test at `:838-842`). A reply that has no `in_reply_to` passes that test. These writers store a reply with no `in_reply_to` when the inbound message they answer had no Message-ID:
 - the responder, `inbound-responder.service.ts:571`;
 - `requestDraftSend`, `procurement.service.ts:7653`;
 - `manualReply`, `procurement.service.ts:8935`;
@@ -19,7 +19,7 @@ Deal confirmation rows written before this branch also store `{subject}` only.
 
 Found on `fix/a-guessed-order-does-not-link-the-paper`. Same as on main; the branch does not change it.
 
-**What.** A thread the house opened with its letter for order X names X for every message in it (`rabbitmq-bridge.service.ts:798-824`). The attachment takes that order (`:939-945`), and `linkAndMatch` files a document that arrives with an order as `link_method` manual, confidence 1, without reading its PO number (`document-intake.service.ts:1363-1371`).
+**What.** A thread the house opened with its letter for order X names X for every message in it (`rabbitmq-bridge.service.ts:798-846`). The attachment takes that order (`:963-969`), and `linkAndMatch` files a document that arrives with an order as `link_method` manual, confidence 1, without reading its PO number (`document-intake.service.ts:1363-1371`).
 
 **Consequence.** An invoice for a different order Y that the vendor sends by replying in X's thread is linked to X.
 
@@ -29,4 +29,19 @@ Found on `fix/a-guessed-order-does-not-link-the-paper`. Same as on main; the bra
 
 Approving or auto-sending a reply on a guessed order does not make the thread name that order. The coordinator decided this under the founder's 2026-10-07T20:04:10Z delegation. It is not the founder's pick, and it is not in an ADR.
 
-The bridge holds to it in two ways (`rabbitmq-bridge.service.ts:798-824`). In a thread the vendor opened, a reply is stored after the vendor's own row, so it is never the thread's earliest row. A reply that opens a new thread is that thread's earliest row, and its `in_reply_to` refuses it. So in a thread the vendor opened, an invoice sent after the house replied on the guess carries no order, and intake links it only by an exact PO number (`autoLink`, `po_number` at 0.95). The first entry above is the known exception.
+The bridge holds to it in two ways (`rabbitmq-bridge.service.ts:798-846`). In a thread the vendor opened, a reply is stored after the vendor's own row, so it is never the thread's earliest row. A reply that opens a new thread is that thread's earliest row, and its `in_reply_to` refuses it. So in a thread the vendor opened, an invoice sent after the house replied on the guess carries no order, and intake links it only by an exact PO number (`autoLink`, `po_number` at 0.95). The first entry above is the known exception.
+
+## A failed thread read stores the reply with no order, marked, and nothing reads the mark yet — OPEN — 2026-10-08
+
+Found when CI's read-error guard (`scripts/check_read_errors_not_swallowed.py`) failed on #661 at `64a7e6758`: step 2's thread read discarded its error.
+
+**What.** The read now binds it (`rabbitmq-bridge.service.ts:816-834`). On a failed read the bridge logs it, does not run the 2b fallback (`:856`), and stores the reply with `order_id` null, `thread_id` null, `confidence_score` null and `email_headers.order_match: "thread_read_failed"` (`:929`). The row still joins its thread in the house's view, which groups on `thread_key` (`conversations.service.ts:716-719`), set from `gmail_thread_id` by the insert trigger. Nothing reads `order_match` yet: no page shows it and no sweep re-links marked rows. Until a person links it, the reply joins no order, gets no responder draft, and its notice carries no order link. Any invoice on it reaches intake with no order, so only `autoLink` (exact PO number) can file it.
+
+**Ruling.** Decided by the coordinator under the founder's 2026-10-07T20:04:10Z delegation. It is not the founder's pick and not in an ADR. Rejected:
+- storing it unlinked with no mark: the row would read the same as a reply nothing matched;
+- throwing into the outer catch, or returning early: either loses the mail. It is not redelivered, because the consumer acks before the handler settles (`rabbitmq-bridge.service.ts:368-383`) and the producers advance their cursors once the publish resolves (`house-inbox.service.ts:519-523`);
+- letting 2b guess: the responder can stage `AUTO_SEND_SCHEDULED` on the order it is handed (`inbound-responder.service.ts:561`).
+
+Claim: `FIX-2026-10-08-A-FAILED-THREAD-READ-DOES-NOT-BECOME-A-GUESS` in `claims.d/fix-a-guessed-order-does-not-link-the-paper.jsonl`.
+
+**Fix shape, not chosen.** A sweep that re-runs step 2 for rows marked `thread_read_failed` and links them once the read answers, or a "needs linking" view that lists them.
