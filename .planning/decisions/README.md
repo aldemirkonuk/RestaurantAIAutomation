@@ -196,6 +196,7 @@
 | [0180](0180-house-mail-is-a-composition-grammar.md) | House mail is a typed composition grammar (amends 0173 D2) | 2026-09-20 |
 | [0181](0181-guests-are-reserved-in-the-tree-not-built.md) | Guests / reservations / waitlist are reserved in the tree, not built; U10 first | 2026-09-20 |
 | [0265](0265-a-google-place-id-is-text-bounded-in-bytes.md) | **A Google place id is text, bounded in bytes below what its index can hold** (Proposed 2026-10-02; the 2048-byte bound is the coordinator's pick and fork F1 waits on the founder). F-006: a measured 128-character address id overflowed `restaurants.google_place_id varchar(100)`. The column becomes `text` with CHECK `octet_length <= 2048`, under the unique index's 2704-byte btree limit | 2026-10-02 |
+| [0271](0271-the-add-wine-photo-path-invents-no-wine.md) | **The add-wine photo path invents no wine** (Locked, founder 2026-10-03, "Delete it"). `/inventory`'s add sheet had a "Single Wine Label Scan" that opened `AddWineModal`, which answered any photo with a hard-coded Château Latour 2010 (94%, Pauillac, taste profile, 13.5% ABV, $1,200); `handlePhotoWineDetected` then filled every missing field with "dry"/"medium"/"red"/"Unknown"/0% ABV and badged it "AI Detected". Both are deleted, not labelled (ADR 0020); the Photo tab keeps the real scanner. Nothing invented reached a DTO: the `WINE_<timestamp>` id fails `@IsUUID()`, and that add failed silently. Mapper defaults in `lib/wine-library.ts` are out of scope | 2026-10-03 |
 
 ## Locked — recorded elsewhere (pre-log)
 

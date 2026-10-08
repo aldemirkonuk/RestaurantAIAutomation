@@ -9,7 +9,9 @@
  * `WineRegister.tsx` says so in words rather than pretending. The legacy page's
  * question — `WineValidationModal.tsx:162`, and `AddWineModal.tsx:148`'s "Wine
  * detected" — was the only place a person ever confirmed a reading, and it
- * confirmed it into nothing.
+ * confirmed it into nothing. [AddWineModal was deleted by ADR 0271: its
+ * "reading" was a hard-coded Château Latour 2010 for any photo. Last at
+ * 8c673db4b.]
  *
  * So this panel is the question AND the write it was always missing:
  *

@@ -18,7 +18,6 @@ import {
 import { Wine as WineType, getWineTypeColor } from "../../data/wineData";
 import { useWines } from "../../hooks/queries";
 import { mapApiWinesToUiWines } from "../../lib/wine-library";
-import { AddWineModal } from "../wines/AddWineModal";
 import { MenuScannerFlow } from "../scanner/MenuScannerFlow";
 import { summarizeMenuScanPersist } from "../../lib/menuScannerPersistence";
 import { useStorageLocations } from "../../hooks/useStorageLocations";
@@ -87,9 +86,7 @@ export function AddWineToInventoryModal({
    */
   const [costPerBottle, setCostPerBottle] = useState<number | null>(null);
   const [isSample, setIsSample] = useState(false);
-  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [showScannerFlow, setShowScannerFlow] = useState(false);
-  const [detectedWine, setDetectedWine] = useState<WineType | null>(null);
   const [selectedStorageLocationId, setSelectedStorageLocationId] = useState<
     string | undefined
   >(undefined);
@@ -158,7 +155,6 @@ export function AddWineToInventoryModal({
     setActiveTab("search");
     setSearchQuery("");
     setSelectedWine(null);
-    setDetectedWine(null);
     setQuantity(1);
     setThreshold(10);
     setCostPerBottle(0);
@@ -175,7 +171,6 @@ export function AddWineToInventoryModal({
     setMenuPriceBottle(null);
     setCostPerBottle(null);
     setIsSample(false);
-    setShowPhotoModal(false);
     onClose();
   };
 
@@ -229,43 +224,6 @@ export function AddWineToInventoryModal({
       );
       handleClose();
     }
-  };
-
-  const handlePhotoWineDetected = (result: any) => {
-    // Convert detection result to Wine format
-    const newWine: WineType = {
-      id: `WINE_${Date.now()}`,
-      name: result.name || "Unknown Wine",
-      producer: result.producer || "Unknown Producer",
-      vintage: result.vintage || null,
-      type: result.type || "red",
-      grape: result.grape || "Unknown",
-      country: result.country || "Unknown",
-      region: result.region || "Unknown",
-      appellation: result.appellation || result.region || "Unknown",
-      body: result.body || "medium",
-      sweetness: result.sweetness || "dry",
-      acidity: result.acidity || "medium",
-      alcohol: result.alcohol || 0,
-      aromas: result.aromas || [],
-      flavors: result.flavors || [],
-      price: result.suggestedPrice || 0,
-      liveStock: null, // Will be set when added to inventory
-      threshold: 10, // Default threshold
-      bottleSizeMl: 750, // Standard bottle size
-      provider: {
-        name: "TBD",
-        contact: "N/A",
-        phone: "N/A",
-      },
-    };
-    // Select the detected wine for configuration (keep photo tab active)
-    setDetectedWine(newWine);
-    setSelectedWine(newWine);
-    setQuantity(1);
-    setThreshold(10);
-    setShowPhotoModal(false);
-    // Keep photo tab active to show the detected wine
   };
 
   if (!isOpen) return null;
@@ -440,8 +398,12 @@ export function AddWineToInventoryModal({
                 </div>
               )}
 
-              {/* Photo Tab */}
-              {activeTab === "photo" && !detectedWine && (
+              {/* Photo Tab. Its one action is the real scanner. The "Single Wine
+                  Label Scan" beside it opened AddWineModal, which answered every
+                  photo with the same hard-coded Château Latour 2010, and its
+                  result was then filled with "dry"/"medium"/0% ABV wherever a
+                  field was missing. Deleted, not labelled (ADR 0020, ADR 0271). */}
+              {activeTab === "photo" && (
                 <div className="flex-1 flex flex-col items-center justify-center p-8">
                   <div className="text-center max-w-md">
                     <div className="w-20 h-20 bg-wine-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
@@ -461,13 +423,6 @@ export function AddWineToInventoryModal({
                       >
                         <Camera className="w-5 h-5" />
                         Open Camera / Upload Image
-                      </button>
-                      <button
-                        onClick={() => setShowPhotoModal(true)}
-                        className="px-4 py-2 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-xl hover:bg-gray-100 transition-all flex items-center gap-2 mx-auto"
-                      >
-                        <Sparkles className="w-4 h-4" />
-                        Single Wine Label Scan
                       </button>
                     </div>
                     <div className="mt-6 p-4 bg-purple-50 border border-purple-100 rounded-xl">
@@ -490,29 +445,6 @@ export function AddWineToInventoryModal({
                 </div>
               )}
 
-              {/* Photo Tab - After Detection (when sidebar is showing) */}
-              {activeTab === "photo" && selectedWine && detectedWine && (
-                <div className="flex-1 flex flex-col items-center justify-center p-8">
-                  <div className="text-center max-w-md">
-                    <div className="w-20 h-20 bg-purple-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                      <Check className="w-10 h-10 text-purple-600" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                      Wine Detected Successfully!
-                    </h3>
-                    <p className="text-gray-500 mb-4">
-                      Configure inventory settings in the sidebar on the right →
-                    </p>
-                    <button
-                      onClick={() => setShowPhotoModal(true)}
-                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 font-medium"
-                    >
-                      Scan Another Wine
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Selected Wine Configuration Sidebar - Shows when wine is selected */}
               {selectedWine && (
                 <div className="w-96 border-l border-gray-200 bg-gray-50 flex flex-col">
@@ -526,25 +458,14 @@ export function AddWineToInventoryModal({
                     {/* Wine Preview */}
                     <div className="p-4 bg-white rounded-xl border border-gray-200">
                       <div className="flex items-center gap-3 mb-3">
-                        <div
-                          className={`w-12 h-16 rounded-lg flex items-center justify-center ${
-                            detectedWine ? "bg-purple-100" : "bg-gray-100"
-                          }`}
-                        >
-                          <Wine
-                            className={`w-6 h-6 ${detectedWine ? "text-purple-600" : "text-gray-400"}`}
-                          />
+                        <div className="w-12 h-16 rounded-lg flex items-center justify-center bg-gray-100">
+                          <Wine className="w-6 h-6 text-gray-400" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <p className="font-semibold text-gray-900 text-sm truncate">
                               {selectedWine.name}
                             </p>
-                            {detectedWine && (
-                              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-medium">
-                                AI Detected
-                              </span>
-                            )}
                           </div>
                           <p className="text-xs text-gray-500">
                             {selectedWine.producer}
@@ -1005,21 +926,6 @@ export function AddWineToInventoryModal({
           </motion.div>
         </motion.div>
       </AnimatePresence>
-
-      {/* Photo Upload Modal - Rendered via Portal to ensure it appears above parent modal */}
-      {typeof document !== "undefined" &&
-        showPhotoModal &&
-        createPortal(
-          <AddWineModal
-            isOpen={showPhotoModal}
-            onClose={() => setShowPhotoModal(false)}
-            onSave={(result) => {
-              handlePhotoWineDetected(result);
-            }}
-            zIndex={60}
-          />,
-          document.body,
-        )}
 
       {/* Full Menu Scanner Flow - Camera + YOLO + Results */}
       {typeof document !== "undefined" &&
