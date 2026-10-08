@@ -17,6 +17,7 @@ Filed from fix/review-orders (/orders walk-through, ADR 0255).
 
 **What.** `unfilledTemplateSlots` (`apps/api-gateway/src/procurement/unfilled-slots.ts`, mirrored in `apps/web/src/pages/orders/next/unfilledSlots.ts`) matches one to four Capitalised ASCII words in square brackets. From the #578 pr-audit:
 - **Missed (a blank still reaches the vendor):** lowercase or underscored blanks (`[vendor name]`, `[VENDOR_NAME]`), `{{x}}`, blanks with digits, and Turkish or other non-ASCII blanks (`[Şirket Adı]`).
+  [corrected 2026-10-08: the signature spellings among these (`[your name]`, `[Your  Name]`, `[ signature ]` — anything `SIGNATURE_SLOT_SOURCE` in `unfilled-slots.ts` matches) never reached the vendor raw. The send erased them to an empty signature when the house had no sender name, and filled them when it had one. Since fix/orders-send-blank-followups, `blanksAtSend` refuses every such spelling when the sender name is empty, on all six routes, so none is erased any more. The non-signature spellings listed above are still missed.]
 - **Wrongly refused (a sound letter is blocked):** quoted-thread markers such as `[EXTERNAL]` and `[Quoted Text Hidden]`, and a bracketed wine term such as `[Riserva]`.
 
 **Fix.** The draft generator should mark its own slots (for example `{{slot:name}}`), so nobody has to guess blanks from brackets. Until then, any wider pattern trades one list above for the other, so it needs the founder's call with real drafts in hand.

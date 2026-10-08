@@ -48,7 +48,7 @@ describe("unfilledTemplateSlots", () => {
 /** A one-row `procurement_conversations` read: every filter returns the chain. */
 function dbReturning(row: Record<string, unknown>) {
   const chain: any = {};
-  for (const m of ["select", "eq", "in", "order", "limit"]) chain[m] = () => chain;
+  for (const m of ["select", "eq", "in", "order", "limit", "update", "insert", "is", "neq"]) chain[m] = () => chain;
   chain.single = async () => ({ data: row, error: null });
   chain.maybeSingle = async () => ({ data: row, error: null });
   const client = { from: () => chain };
@@ -122,6 +122,18 @@ describe("what the send fills, and what it cannot", () => {
     expect(blanksAtSend(BLANKED, { firstName: "Hasan", senderName: "  " }).unfillable).toEqual(["[Your Name]"]);
   });
 
+  it("refuses every spelling of a signature blank the send would erase when the house has no sender name", () => {
+    // The detector's pattern misses these; the signature pattern erases them.
+    const body = "Dear Hasan,\n\nSix cases.\n\n[your name] / [Your  Name] / [ signature ]";
+    expect(blanksAtSend(body, { firstName: "Hasan", senderName: "" }).unfillable).toEqual([
+      "[your name]",
+      "[Your  Name]",
+      "[ signature ]",
+    ]);
+    // With a sender name the send fills them, so nothing is refused.
+    expect(blanksAtSend(body, { firstName: "Hasan", senderName: "Meyhouse" }).unfillable).toEqual([]);
+  });
+
   it("reads a blank with an apostrophe through the HTML escaping", () => {
     expect(blanksAtSend("Hi Hasan,\n\nSee [Vendor's Terms].", { firstName: "Hasan", senderName: "M" }).unfillable).toEqual([
       "[Vendor's Terms]",
@@ -188,13 +200,83 @@ describe("the gateway refuses a letter with a blank the send cannot fill", () =>
     jest.spyOn(service as any, "sendRequestViews").mockResolvedValue([null]);
     const draft = await service.getPendingDraft(REST, ORDER);
     // The first name is read for the check, not handed to the page.
-    expect(draft?.providers).toEqual({ name: "Vendor", contact_email: VENDOR, restaurant_id: REST });
+    expect(draft?.providers).toEqual({ name: "Vendor", contact_email: VENDOR });
     expect(draft?.at_send).toEqual({
       unfillable: [],
       fills: [
         { slot: "[Provider First Name]", value: "Hasan" },
         { slot: "[Your Name]", value: "Meyhouse" },
       ],
+    });
+  });
+});
+
+/** Signed with a spelling only the signature pattern sees. */
+const LOWER_SIGNED = "Dear [Provider First Name],\n\nSix cases, please.\n\n[your name]";
+
+describe("a signature blank in any spelling is refused when the house has no sender name", () => {
+  it("at the seal, the staff request and the send", async () => {
+    const { service, seal } = serviceWith({ ...pendingRow, content: LOWER_SIGNED }, "");
+    await expect(
+      service.issueDraftSendSeal(REST, ORDER, "u1", { body: LOWER_SIGNED, to: VENDOR }),
+    ).rejects.toThrow(/did not fill: \[your name\]\. No seal was issued/);
+    await expect(
+      service.requestDraftSend(REST, ORDER, "u1", { content: LOWER_SIGNED }),
+    ).rejects.toThrow(/did not fill: \[your name\]\. Nothing was asked\./);
+    await expect(
+      service.approveDraft(REST, ORDER, {} as any, { userId: "u1", challenge: "c", grantId: null }),
+    ).rejects.toThrow(/did not fill: \[your name\]\. Nothing was sent\./);
+    expect(seal.issue).not.toHaveBeenCalled();
+    expect(seal.redeem).not.toHaveBeenCalled();
+  });
+
+  it("on the hand-written reply's seal and send", async () => {
+    const { service, seal } = serviceWith(pendingRow);
+    await expect(
+      service.issueManualReplySeal(REST, ORDER, "u1", { content: "Thanks.\n\n[ your  name ]" }),
+    ).rejects.toThrow(/did not fill: \[ your  name \]\. No seal was issued/);
+    await expect(
+      service.manualReply(REST, ORDER, "u1", "Thanks.\n\n[ your  name ]", undefined, "c"),
+    ).rejects.toThrow(/did not fill: \[ your  name \]\. Nothing was sent\./);
+    expect(seal.issue).not.toHaveBeenCalled();
+    expect(seal.redeem).not.toHaveBeenCalled();
+  });
+});
+
+describe("approveDraft checks and sends the same sender name", () => {
+  it("reads it once, so a failed second read cannot erase a signature that passed the check", async () => {
+    const { service } = serviceWith(pendingRow);
+    (service as any).vendorSendAuthority.witnessGrantUse = jest.fn().mockResolvedValue(undefined);
+    // The first read finds the name; a second read would fail to "" (resolveSenderName's catch).
+    const resolve = jest
+      .spyOn(service as any, "resolveSenderName")
+      .mockResolvedValueOnce("Meyhouse")
+      .mockResolvedValue("");
+    const send = jest
+      .spyOn(service as any, "sendProviderEmail")
+      .mockRejectedValue(new Error("stop after the send was attempted"));
+    await service
+      .approveDraft(REST, ORDER, {} as any, { userId: "u1", challenge: "c", grantId: null })
+      .catch(() => undefined);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((send.mock.calls[0][0] as any).senderName).toBe("Meyhouse");
+    expect((send.mock.calls[0][0] as any).recipientFirstName).toBe("Hasan");
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getPendingDraft never lets another house's vendor speak for the draft", () => {
+  it("reads a foreign vendor as no vendor: no name, no address, no first name at send", async () => {
+    const foreign = { ...pendingRow, providers: { ...pendingRow.providers, restaurant_id: "rest-2" } };
+    const { service } = serviceWith(foreign);
+    jest.spyOn(service as any, "sendRequestViews").mockResolvedValue([null]);
+    const draft = await service.getPendingDraft(REST, ORDER);
+    expect(draft?.providers).toBeNull();
+    expect(draft?.provider_name).toBeNull();
+    expect(draft?.provider_email).toBeNull();
+    expect(draft?.at_send).toEqual({
+      unfillable: ["[Provider First Name]"],
+      fills: [{ slot: "[Your Name]", value: "Meyhouse" }],
     });
   });
 });

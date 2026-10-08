@@ -7775,8 +7775,13 @@ export class ProcurementService {
 
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
     // ORD-W7: the last door before the mail leaves. Checked before the seal is
-    // spent, so a refusal here leaves the hold unspent and nothing sent.
-    const blanks = (await this.draftBlanksAtSend(restaurantId, rawEmailBody, (conv as any).providers)).unfillable;
+    // spent, so a refusal here leaves the hold unspent and nothing sent. The
+    // sender name is read ONCE and the same value is checked and sent: a
+    // second read that failed transiently ("") would erase a signature blank
+    // that passed the check.
+    const senderName = await this.resolveSenderName(restaurantId);
+    const recipientFirstName = this.resolveFirstName((conv as any).providers);
+    const blanks = this.blanksAtSend(rawEmailBody, { firstName: recipientFirstName, senderName }).unfillable;
     if (blanks.length) throw new BadRequestException(unfilledSlotsRefusal(blanks, "Nothing was sent."));
     const providerEmail = (conv as any).providers?.contact_email ?? null;
     const rawOrder = (conv as any).procurement_orders;
@@ -7888,8 +7893,8 @@ export class ProcurementService {
           threadId: replyThreadId,
           inReplyTo: replyInReplyTo,
           references: replyReferences,
-          recipientFirstName: this.resolveFirstName((conv as any).providers),
-          senderName: await this.resolveSenderName(restaurantId),
+          recipientFirstName,
+          senderName,
           messageId: outboundMessageId,
         }));
     } catch (sendError: any) {
@@ -8259,10 +8264,19 @@ export class ProcurementService {
     const readBack = (html: string) => unfilledTemplateSlots(html.replace(/&#39;/g, "'"));
     const greeted = this.personalizeGreeting(this.buildEmailHtml(body), fill.firstName);
     const sender = (fill.senderName ?? "").trim();
-    // An empty sender name turns a signature blank into nothing at all. That
-    // is not a fill, so the blank stays standing and is refused.
+    // An empty sender name would turn a signature blank into nothing at all
+    // (`applyEmailPlaceholders` replaces it with ""). That is not a fill, so
+    // the blank stays standing and is refused — every spelling the signature
+    // pattern erases, including the ones the detector's narrower pattern does
+    // not see ("[your name]", "[Your  Name]", "[ signature ]"). Before
+    // 2026-10-08 those were erased to an empty signature and sent.
     const sent = sender ? greeted.replace(signatureSlotRe(), () => escapeHtml(sender)) : greeted;
     const unfillable = readBack(sent);
+    if (!sender) {
+      for (const slot of greeted.replace(/&#39;/g, "'").match(signatureSlotRe()) ?? []) {
+        if (!unfillable.includes(slot)) unfillable.push(slot);
+      }
+    }
     const afterGreeting = readBack(greeted);
     const fills = unfilledTemplateSlots(body)
       .filter((slot) => !unfillable.includes(slot))
@@ -9969,7 +9983,7 @@ export class ProcurementService {
         `
         id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at,
         send_requested_by, send_requested_at, send_requested_sha256, send_requested_cc,
-        providers!left(name, contact_email, contact_first_name, primary_contact),
+        providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id),
         procurement_orders!inner(
           order_number,
           inventory:inventory_id(wine_name)
@@ -9989,6 +10003,14 @@ export class ProcurementService {
     if (error) return null;
     if (!data) return null;
     const row = data as any;
+    // A vendor of another house never speaks for this draft: not its name or
+    // address on the card, and not the first name the card is told the send
+    // fills (`at_send.fills`). approveDraft refuses such a send outright; here
+    // the draft reads as having no vendor, so the greeting blank is unfillable.
+    if (row.providers && row.providers.restaurant_id !== restaurantId) {
+      this.logger.warn(`getPendingDraft: the draft ${row.id} on order ${orderId} names a vendor of another house; it is read as having none.`);
+      row.providers = null;
+    }
     const content = row.content ?? row.message_text ?? null;
     const [request] = await this.sendRequestViews([{ ...row, content }]);
     const {
@@ -10000,7 +10022,7 @@ export class ProcurementService {
     } = row;
     // The first-name columns are read for `at_send` only; the page gets the
     // vendor's name and address as before, never its whole primary_contact.
-    const { contact_first_name: _first, primary_contact: _contact, ...vendor } = row.providers ?? {};
+    const { contact_first_name: _first, primary_contact: _contact, restaurant_id: _house, ...vendor } = row.providers ?? {};
     return {
       ...rest,
       providers: row.providers ? vendor : row.providers,
