@@ -211,9 +211,16 @@ export interface Credit {
  *
  * `credited` is terminal. A settled claim that could be reopened would let the
  * same money be counted twice across periods.
+ *
+ * `open -> credited` (ADR 0267 item 9, founder W55 2026-10-02, F-159): a vendor
+ * often sends the credit memo before anyone asks. Making the house move the
+ * claim through `requested` first recorded an ask nobody made. Settling from
+ * `open` needs exactly the proof every settlement needs — the memo and the
+ * amount allowed (`transition` below, and the DB CHECK
+ * `procurement_credits_credited_needs_proof`) — and stamps no ask.
  */
 const TRANSITIONS: Record<CreditState, CreditState[]> = {
-  open: ["requested", "written_off", "rejected"],
+  open: ["requested", "credited", "written_off", "rejected"],
   requested: ["promised", "credited", "rejected", "written_off"],
   promised: ["credited", "rejected", "written_off"],
   credited: [],
@@ -283,6 +290,59 @@ export function transition(
   }
 
   return { ok: true, next: { state: input.to } };
+}
+
+/**
+ * The paper types a person may mark as a credit memo (ADR 0267 item 9, F-159).
+ *
+ * ONLY `unknown`: a paper the house holds that nothing has classed. Without AI
+ * (F-013) every upload lands there, so this is the one door through which an
+ * unasked memo becomes something a claim can be settled against.
+ *
+ * Every other type already plays a role a retype would silently take away: an
+ * `invoice` is what claims are raised on, what invoice-match reads and what
+ * "paper owed" counts as the order's bill; a packing slip, delivery receipt,
+ * delivery note or receiving advice is a leg of the three-way match; a
+ * purchase order is ours; a statement ties out a period; a price list feeds
+ * prices. A credit memo misread as one of those is a reclassification with
+ * consequences, not a mark — it is not offered here.
+ */
+export const MEMO_MARKABLE_FROM: readonly string[] = ["unknown"];
+
+/** Paper states a mark refuses: a newer version exists, or a person rejected it. */
+const MEMO_UNMARKABLE_STATUS: readonly string[] = ["superseded", "rejected"];
+
+export interface MarkablePaper {
+  doc_type: string | null;
+  status: string | null;
+  direction?: string | null;
+}
+
+/**
+ * May this paper be marked as a credit memo? `already` is a paper that is a
+ * credit memo now: nothing to write, and not an error.
+ */
+export function memoMarkRefusal(
+  paper: MarkablePaper,
+): { ok: true; already: boolean } | { ok: false; error: string } {
+  if (paper.doc_type === "credit_memo") return { ok: true, already: true };
+  if (!paper.doc_type || !MEMO_MARKABLE_FROM.includes(paper.doc_type))
+    return {
+      ok: false,
+      error: `This paper is filed as “${(paper.doc_type ?? "no type").replace(/_/g, " ")}”. Only a paper nothing has classed can be marked as a credit memo here; an invoice or a delivery paper keeps the role it has. Nothing was changed.`,
+    };
+  if (paper.status && MEMO_UNMARKABLE_STATUS.includes(paper.status))
+    return {
+      ok: false,
+      error: `This paper is ${paper.status}, so it cannot be marked as a credit memo. Nothing was changed.`,
+    };
+  if (paper.direction === "issued_by_us")
+    return {
+      ok: false,
+      error:
+        "This paper was issued by this house, and a credit memo comes from the vendor. Nothing was changed.",
+    };
+  return { ok: true, already: false };
 }
 
 /**

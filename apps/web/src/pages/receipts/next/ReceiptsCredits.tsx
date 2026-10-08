@@ -52,6 +52,7 @@ import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
   useCreditMove,
+  useMarkMemo,
   useReceiptsCreditsData,
   type ReceiptsCreditsData,
 } from './useReceiptsNextData';
@@ -410,11 +411,20 @@ function ClaimRow({
 
 /* ────────────────────────────────────────────────────────── the sheet ── */
 
+/** How a paper nothing has read is named: whatever it carries, else when it came. */
+function paperName(p: ProcurementDocument): string {
+  const name = p.filename?.trim() || (p.doc_number ? `number ${p.doc_number}` : '');
+  const when = `received ${fmtDate(p.created_at)}`;
+  return name ? `${name} · ${when}` : `A paper ${when}`;
+}
+
 function SettleForm({
   claim,
   memos,
   memosCapped,
   memosFailed,
+  unclassed,
+  unclassedCapped,
   settledBy,
   pending,
   onSettle,
@@ -426,11 +436,36 @@ function SettleForm({
   settledBy: Map<string, number>;
   memosCapped: boolean;
   memosFailed: boolean;
+  /** Papers nothing has classed; any may be the memo (F-159). null = not read. */
+  unclassed: ProcurementDocument[] | null;
+  unclassedCapped: boolean;
   pending: boolean;
   onSettle: (amount: number, memoId: string) => void;
   onCancel: () => void;
 }) {
   const [memoId, setMemoId] = useState<string | null>(null);
+  const mark = useMarkMemo();
+  const [markSaid, setMarkSaid] = useState<string | null>(null);
+
+  // ADR 0267 item 9 (F-159): a memo the vendor sent unasked, sitting among the
+  // papers nothing has read, is marked here and then chosen above. The mark
+  // writes the paper's type and nothing else — the settlement is still the
+  // button at the bottom.
+  const markPaper = (id: string) => {
+    setMarkSaid(null);
+    mark.mutate(id, {
+      onSuccess: (r) => {
+        setMemoId(id);
+        setMarkSaid(
+          r.audited || !r.changed
+            ? 'Filed as a credit memo and chosen above. Nothing is settled until you record the settlement.'
+            : `Filed as a credit memo and chosen above, but the house's audit log did not record who marked it (${r.auditReason ?? 'no reason given'}). Nothing is settled until you record the settlement.`,
+        );
+      },
+      onError: (e) =>
+        setMarkSaid(`${sentence(serverMessage(e, 'The paper was not marked.'))} The paper is unchanged.`),
+    });
+  };
   const [amountRaw, setAmountRaw] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -481,6 +516,9 @@ function SettleForm({
           <p style={NOTE}>
             No credit memo is on file at this house. When the vendor sends it, it lands in Receipts;
             the claim can be settled then. Until then it stays unrecovered, however firm the promise.
+            {unclassed && unclassed.length > 0
+              ? ' If it is one of the unread papers below, mark it.'
+              : ''}
           </p>
         ) : (
           <div style={{ display: 'grid', gap: 4 }}>
@@ -530,6 +568,42 @@ function SettleForm({
           </div>
         )}
       </fieldset>
+
+      {unclassed && unclassed.length > 0 && (
+        <section aria-label="Unread papers" style={{ display: 'grid', gap: 6 }}>
+          <span style={CAP}>Is the memo one of these unread papers?</span>
+          <p style={NOTE}>
+            Papers at this house nothing has read yet. Marking one files it as a credit memo; it
+            settles nothing by itself.
+            {unclassedCapped
+              ? ` Showing the newest ${RECEIPTS_SERVER_WINDOWS.UNCLASSED_PAPERS}.`
+              : ''}
+          </p>
+          {unclassed.map((p) => (
+            <div
+              key={p.id}
+              style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', fontFamily: SANS, fontSize: 12 }}
+            >
+              <Link to={`/documents/${p.id}`} style={{ color: 'var(--seal-deep, #14515C)' }}>
+                {paperName(p)}
+              </Link>
+              <button
+                type="button"
+                onClick={() => markPaper(p.id)}
+                disabled={mark.isPending || pending}
+                style={MOVE_BUTTON}
+              >
+                {mark.isPending && mark.variables === p.id ? 'Marking…' : 'This is the credit memo'}
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+      {markSaid && (
+        <p role="status" style={{ ...NOTE, color: 'var(--ink-1, #211C16)' }}>
+          {markSaid}
+        </p>
+      )}
 
       <label style={{ display: 'grid', gap: 4, fontFamily: SANS, fontSize: 12 }}>
         <span style={CAP}>What the vendor allowed</span>
@@ -707,7 +781,7 @@ function ClaimSheet({
     <Sheet
       open
       onClose={onClose}
-      label="One vendor credit claim. Each move below writes the claim's new state to the ledger; closing writes nothing."
+      label="One vendor credit claim. Each move below writes the claim's new state to the ledger, and marking a paper as the credit memo writes that paper's type; closing writes nothing."
       eyebrow="Credit claim"
       title={reasonWords(claim.reason)}
       closeLabel="Close"
@@ -770,6 +844,8 @@ function ClaimSheet({
             memos={data.memos}
             memosCapped={data.memosCapped}
             memosFailed={data.memos === null && data.failures.some((f) => f.startsWith('the credit memos'))}
+            unclassed={data.unclassed}
+            unclassedCapped={data.unclassedCapped}
             settledBy={settledByMemo(data.claims, claim.id)}
             pending={move.isPending}
             onSettle={(amount, memoId) => run('credited', { creditedAmount: amount, creditDocumentId: memoId })}
@@ -813,6 +889,7 @@ function ClaimSheet({
             {claim.state === 'open' && (
               <p style={NOTE}>
                 Asking drafts a letter to the vendor in Communications. Nothing is sent until someone there sends it.
+                If the vendor already sent the credit memo, settle against it; no ask is recorded.
               </p>
             )}
           </div>
