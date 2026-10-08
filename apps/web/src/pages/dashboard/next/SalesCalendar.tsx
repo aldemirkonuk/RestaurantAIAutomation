@@ -4,12 +4,25 @@
  * and clicking a day opens everything that happened on it (DayDetail, inside
  * the settle 0fr→1fr expansion).
  *
- * Honesty rules encoded here:
- *  - The per-day figure is procurement SPEND — money paid to vendors — from
- *    the frozen `calendar-revenue` endpoint. The header says so; nothing on
- *    this surface is labelled "sales" or "revenue".
- *  - A past day with no deliveries is a quiet blank, not "$0 of results";
- *    a FUTURE day carries no figure at all (its result does not exist yet).
+ * Honesty rules encoded here (ADR 0290):
+ *  - Days are the HOUSE's days. "Today" and "future" come from the gateway's
+ *    `today` (the house's clock), not the browser's; the browser date is a
+ *    fallback only for a gateway older than ADR 0290.
+ *  - With net sales shown (an owner or manager, a register connected), each
+ *    cell headlines the day's NET sales — the checks' stated subtotals,
+ *    voided left out (before tax and surcharge where the POS adapter sends
+ *    it so; ADR 0290 §8) — and is shaded by them; the delivery mark
+ *    stays. Otherwise the cell carries money paid to vendors, labelled so.
+ *    The cell is the founder's F2, "Sales in the cell (Recommended)".
+ *  - Count and say (netsales F1): a day where only some checks carried a
+ *    subtotal says "from N of M checks" under its figure; a day whose checks
+ *    carried none reads "not recorded", never $0. The month line sums the
+ *    days the register counted and says "from N of M days" when that is
+ *    short of the days begun (the founder, 2026-10-05).
+ *  - A quiet day is a quiet blank ('·'), not "$0 of results"; an unknown day
+ *    is the em dash; a FUTURE day carries no figure at all.
+ *  - A house with no time zone gets em dashes and one line saying so, with
+ *    the way to set it (DASH-G2) — never a UTC guess.
  *  - When the endpoint is unreachable the grid keeps its day numbers and the
  *    figures are skeletons/em dashes — never fabricated zeros.
  *
@@ -18,13 +31,20 @@
  * All of it collapses under prefers-reduced-motion via lib/mudavym.animate.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { animate, settle } from '@/lib/mudavym';
-import { formatMoney, formatNumber } from '@/lib/utils';
 import type { ActivityItem, AlertItem } from './useDashboardNextData';
-import { useDayOrders, useMonthLedger, type DayLedger } from './useDashboardNextData';
-import { DASH, dateIn, longDay, monthName } from './format';
+import {
+  NOT_RECORDED,
+  fromChecks,
+  fromDays,
+  useDayOrders,
+  useMonthLedger,
+  type DayLedger,
+  type MonthLedger,
+} from './useDashboardNextData';
+import { DASH, dateIn, figure, longDay, money, monthName } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
 import { TryAgain } from './TryAgain';
@@ -69,11 +89,174 @@ export interface SalesCalendarProps {
   seesAmounts?: boolean;
 }
 
+const MONO_FIG = { fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' } as const;
+
+/*
+ * A cell sizes what it holds by its OWN width, never the viewport's (ADR 0290
+ * §9). Inside the app shell the rooms rail (232 px) and the open counter
+ * (320 px from a 1280 px window) leave a cell 36.9 px wide at 1280 px —
+ * narrower than on a phone — so `dashboard-next.css`'s 720 px breakpoint
+ * never sees it, and a 12 px "$4.2K" drew as "$4.2". So the cell is a size
+ * container; its side padding narrows from 7 px to 3 px with it (a grid
+ * item's percentage padding reads its own track), and its figure and words
+ * are sized in `cqi`, hundredths of the cell's inner width.
+ */
+export const CELL_SIDE = 'clamp(3px, calc(25% - 6px), 7px)';
+const CELL_BOX = { containerType: 'inline-size', paddingLeft: CELL_SIDE, paddingRight: CELL_SIDE } as const;
+
+/** JetBrains Mono advances 0.6 em a character; the cell sets -0.01 em. */
+const MONO_ADVANCE_EM = 0.59;
+
+/**
+ * The cell headline's size: 12 px where it fits, else the size at which the
+ * month's longest headline exactly fills the cell's inner width. One size for
+ * the whole month, so a figure's size never stands in for its magnitude.
+ */
+export function cellFigureSize(longest: number): string {
+  if (longest <= 1) return '12px';
+  const cqi = Math.floor((100 / (MONO_ADVANCE_EM * longest)) * 100) / 100;
+  return `min(12px, ${cqi}cqi)`;
+}
+
+/**
+ * The cell's words ("from N of M checks", "not recorded", "N orders"): 9 px
+ * where the longest of their words fits, else the size at which "checks"
+ * (3.45 em in the text face) fills the cell. They wrap between words, and a
+ * word wider than the cell still breaks rather than run off its edge.
+ */
+export const CELL_WORDS_SIZE = 'min(9px, 28.5cqi)';
+
+/**
+ * A size, carried as `--dn-cell-size` and read back as the font size: the
+ * custom property keeps the `cqi` value inspectable where a CSS parser does
+ * not know the unit (jsdom drops it from `font-size`).
+ */
+function cellSized(size: string): CSSProperties {
+  return { ['--dn-cell-size' as string]: size, fontSize: 'var(--dn-cell-size)' };
+}
+
+const CELL_WORDS: CSSProperties = {
+  ...cellSized(CELL_WORDS_SIZE),
+  lineHeight: 1.15,
+  overflowWrap: 'anywhere',
+};
+// "recorded" breaks inside the word ("record" / "ed") in every cell measured up
+// to 49.4 px wide and reads whole from 59.7 px. The founder kept his words
+// over a shorter cell form (ADR 0290 §9).
+const NOT_RECORDED_FIG: CSSProperties = {
+  ...CELL_WORDS,
+  fontFamily: 'inherit',
+  fontStyle: 'italic',
+  fontWeight: 400,
+  color: 'var(--ink-4, #665D50)',
+};
+
+/**
+ * What a cell says. `salesShown` picks the headline (F2, ADR 0290); a role
+ * that sees no money (DASH-W22) gets no figure on a day with deliveries — its
+ * count is in the cell's marks.
+ */
+function cellFigure(
+  day: DayLedger | undefined,
+  salesShown: boolean,
+  zoneUnset: boolean,
+  seesAmounts: boolean,
+): string {
+  if (!day || zoneUnset) return DASH;
+  if (salesShown) {
+    if (day.checks == null) return DASH;
+    if (day.checks === 0) return '·';
+    return day.net_sales == null ? NOT_RECORDED : money(day.net_sales, 'compact');
+  }
+  if (!seesAmounts) {
+    if (day.order_count == null) return DASH;
+    return day.order_count > 0 ? '' : '·';
+  }
+  if (day.procurement_spend == null) return DASH;
+  return day.procurement_spend > 0 ? money(day.procurement_spend, 'compact') : '·';
+}
+
+/** A day's net sales in words, for its label (count and say, netsales F1). */
+function salesSaid(day: DayLedger): string {
+  if (day.checks == null) return 'net sales unknown';
+  if (day.checks === 0) return 'no sales';
+  if (day.net_sales == null) return `net sales ${NOT_RECORDED}`;
+  const from = fromChecks(day.net_checks, day.checks);
+  return `net sales ${money(day.net_sales)}${from ? ` ${from}` : ''}`;
+}
+
+/**
+ * The month's net sales in words: the figure, then how much of the month it
+ * covers. "not recorded" when the counted days' checks carried no subtotal.
+ */
+function monthSalesSaid(ledger: MonthLedger | null): { figure: string; from: string[] } {
+  if (!ledger) return { figure: DASH, from: [] };
+  if (
+    ledger.monthlyNetSales == null &&
+    ledger.monthlyChecks != null &&
+    ledger.monthlyChecks > 0 &&
+    ledger.monthlyNetChecks === 0
+  ) {
+    return { figure: NOT_RECORDED, from: [] };
+  }
+  if (ledger.monthlyNetSales == null) return { figure: DASH, from: [] };
+  const from = [
+    fromDays(ledger.monthlyDaysCounted, ledger.monthlyDaysBegun),
+    fromChecks(ledger.monthlyNetChecks, ledger.monthlyChecks),
+  ].filter((x): x is string => x !== null);
+  return { figure: money(ledger.monthlyNetSales), from };
+}
+
+/**
+ * DASH-W35: the square is named in words — the day, then what it holds — and
+ * says which day is today. The figures follow ADR 0290: sales when shown,
+ * "unknown" for a figure the gateway could not file.
+ */
+function cellLabel(
+  dateStr: string,
+  day: DayLedger | undefined,
+  o: { salesShown: boolean; zoneUnset: boolean; seesAmounts: boolean; isToday: boolean },
+): string {
+  const head = `${longDay(dateStr)}${o.isToday ? ', today' : ''}`;
+  if (!day) return head;
+  const parts: string[] = [];
+  if (o.zoneUnset) parts.push('figures unknown, the house time zone is not set');
+  else {
+    if (o.salesShown) parts.push(salesSaid(day));
+    if (o.seesAmounts) {
+      parts.push(
+        day.procurement_spend == null
+          ? 'paid to vendors unknown'
+          : day.procurement_spend > 0
+            ? `${money(day.procurement_spend)} paid to vendors`
+            : 'no deliveries',
+      );
+    } else {
+      parts.push(
+        day.order_count == null
+          ? 'deliveries unknown'
+          : day.order_count > 0
+            ? `${day.order_count} ${day.order_count === 1 ? 'delivery' : 'deliveries'}`
+            : 'no deliveries',
+      );
+    }
+  }
+  parts.push(day.events.length === 0 ? 'nothing on the calendar' : `${day.events.length} on the calendar`);
+  return `${head}: ${parts.join(', ')}`;
+}
+
 export function SalesCalendar({ restaurantId, alerts, activity, zone = null, seesAmounts: mayShow = true }: SalesCalendarProps) {
   const now = new Date();
-  // DASH-W20: today is the house's, the clock the ledger is bucketed in.
-  const todayStr = dateIn(now, zone);
-  const [todayYear, todayMonth] = todayStr.split('-').map(Number);
+  // DASH-W20: the clock's today is the house's (the stats' zone) — it picks the
+  // month the address leaves out. ADR 0290: once the month answers, its own
+  // `today` (null when the house has no zone) decides past, future and the mark.
+  const clockToday = dateIn(now, zone);
+  // The house's today as a month last said it: a string, null (no zone), or
+  // undefined (not said yet / an older gateway). Kept across months, so the
+  // grid opens on the house's month even when the browser's has turned.
+  const [saidToday, setSaidToday] = useState<string | null | undefined>(undefined);
+  const openOn = saidToday ?? clockToday;
+  const [todayYear, todayMonth] = openOn.split('-').map(Number);
   const [params, setParams] = useSearchParams();
   const fromUrl = readCalendarParams(params);
   // With no month in the address the grid follows the house's today, so a
@@ -94,21 +277,51 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
       { replace: true },
     );
   const { month, refetch: refetchMonth } = useMonthLedger(restaurantId, cursor.year, cursor.month);
-  // A future day has no deliveries to list; don't ask the ledger for them.
-  const dayOrders = useDayOrders(restaurantId, selected && selected <= todayStr ? selected : null, zone);
+  const ledger = month.state === 'ready' ? month.ledger : null;
+  useEffect(() => {
+    if (ledger && ledger.today !== undefined) setSaidToday(ledger.today);
+  }, [ledger]);
+  const houseToday = ledger && ledger.today !== undefined ? ledger.today : saidToday;
+  const todayStr = houseToday ?? clockToday;
+  // A future day has no deliveries to list; don't ask the ledger for them
+  // (DASH-W13). Deliveries are matched in the zone the month is filed in.
+  const dayOrders = useDayOrders(restaurantId, selected && selected <= todayStr ? selected : null, ledger?.timezone);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   const monthKey = `${cursor.year}-${cursor.month}`;
-  const isCurrentMonth = cursor.year === todayYear && cursor.month === todayMonth;
+  const [todayY, todayM] = todayStr.split('-').map(Number);
+  const isCurrentMonth = cursor.year === todayY && cursor.month === todayM;
 
-  const daily: DayLedger[] = month.state === 'ready' ? month.ledger.daily : [];
+  const daily: DayLedger[] = useMemo(() => ledger?.daily ?? [], [ledger]);
   // A month the gateway sent without its money reads as counts even if the
   // caller's role was expected to see it: a withheld figure is never a $0.
-  const seesAmounts = mayShow && !(month.state === 'ready' && month.ledger.amounts === 'withheld');
-  const measure = (d: DayLedger) => (seesAmounts ? d.procurement_spend : d.order_count);
-  const maxSpend = useMemo(
-    () => Math.max(1, ...daily.map((d) => (seesAmounts ? d.procurement_spend : d.order_count))),
-    [daily, seesAmounts],
+  const seesAmounts = mayShow && ledger?.amounts !== 'withheld';
+  const salesShown = ledger?.sales === 'shown';
+  const zoneUnset = ledger?.zoneUnset === true;
+  const monthSales = monthSalesSaid(ledger);
+  const headline = (d: DayLedger | undefined): number | null =>
+    d ? (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count) : null;
+  const maxHead = useMemo(
+    () =>
+      Math.max(
+        1,
+        ...daily.map((d) => (salesShown ? d.net_sales : seesAmounts ? d.procurement_spend : d.order_count) ?? 0),
+      ),
+    [daily, salesShown, seesAmounts],
+  );
+  // The month's longest headline sets the one figure size every cell uses.
+  const figSize = useMemo(
+    () =>
+      cellFigureSize(
+        Math.max(
+          0,
+          ...daily.map((d) => {
+            const f = cellFigure(d, salesShown, zoneUnset, seesAmounts);
+            return f === NOT_RECORDED ? 0 : f.length;
+          }),
+        ),
+      ),
+    [daily, salesShown, zoneUnset, seesAmounts],
   );
 
   // Monday-first leading blanks.
@@ -148,7 +361,7 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
   return (
     <section
       className="rounded-lg border border-paper-2 bg-paper-0"
-      aria-label="Sales calendar — one result per day"
+      aria-label={salesShown ? 'Sales calendar — net sales per day' : 'Month calendar — paid to vendors per day'}
     >
       {/* header */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4 sm:px-5">
@@ -175,28 +388,49 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
             </button>
           </div>
         </div>
-        <p className="text-[12px] text-inkm-4">
+        <p className="text-[12px] text-inkm-4" data-testid="dn-month-totals">
+          {salesShown && (
+            <>
+              net sales{' '}
+              <span className="text-inkm-1" style={monthSales.figure === NOT_RECORDED ? undefined : MONO_FIG}>
+                {monthSales.figure}
+              </span>
+              {monthSales.from.map((f) => (
+                <span key={f} data-testid="dn-month-from">
+                  {' · '}
+                  {f}
+                </span>
+              ))}
+              {' · '}
+            </>
+          )}
           {seesAmounts && (
             <>
               paid to vendors{' '}
-              <span
-                className="text-inkm-1"
-                style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' }}
-              >
-                {month.state === 'ready' ? formatMoney(month.ledger.monthlySpend, 'full') : DASH}
+              <span className="text-inkm-1" style={MONO_FIG}>
+                {money(ledger?.monthlySpend)}
               </span>
               {' · '}
             </>
           )}
-          <span
-            className="text-inkm-1"
-            style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontVariantNumeric: 'tabular-nums' }}
-          >
-            {month.state === 'ready' ? formatNumber(month.ledger.monthlyBottles) : DASH}
+          <span className="text-inkm-1" style={MONO_FIG}>
+            {figure(ledger?.monthlyBottles)}
           </span>{' '}
           {month.state === 'ready' && month.ledger.monthlyBottles === 1 ? 'bottle' : 'bottles'} in
         </p>
       </div>
+
+      {zoneUnset && (
+        <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-zone-unset">
+          {DASH} This house’s time zone isn’t set, so no day’s figures can be filed yet.{' '}
+          <Link
+            to="/settings?tab=time-zone"
+            className="not-italic text-inkm-1 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          >
+            Set the time zone
+          </Link>
+        </p>
+      )}
 
       {/* weekday header */}
       <div className="dn-cal-grid px-4 pt-3 sm:px-5" aria-hidden>
@@ -217,10 +451,13 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
           const dateStr = `${cursor.year}-${String(cursor.month).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
           const day = daily.find((d) => d.date === dateStr);
           const isFuture = dateStr > todayStr;
-          const isToday = dateStr === todayStr;
-          const spend = day?.procurement_spend ?? 0;
-          const weight = day ? measure(day) : 0;
-          const heat = day && weight > 0 ? 0.06 + 0.3 * (weight / maxSpend) : 0;
+          // No today mark when the house has no zone (ADR 0290).
+          const isToday = houseToday !== null && dateStr === todayStr;
+          const head = zoneUnset ? null : headline(day);
+          const heat = head != null && head > 0 ? 0.06 + 0.3 * (head / maxHead) : 0;
+          const fig = cellFigure(day, salesShown, zoneUnset, seesAmounts);
+          // Count and say: a figure short of its day's checks says so here.
+          const from = salesShown && !zoneUnset && day ? fromChecks(day.net_checks, day.checks) : null;
           return (
             <button
               key={dateStr}
@@ -237,37 +474,21 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
               // holds — and says which day is open and which is today.
               aria-pressed={selected === dateStr}
               aria-current={isToday ? 'date' : undefined}
-              aria-label={`${longDay(dateStr)}${isToday ? ', today' : ''}${
-                day
-                  ? `: ${
-                      seesAmounts
-                        ? spend > 0
-                          ? `${formatMoney(spend, 'full')} paid to vendors`
-                          : 'no deliveries'
-                        : day.order_count > 0
-                          ? `${day.order_count} ${day.order_count === 1 ? 'delivery' : 'deliveries'}`
-                          : 'no deliveries'
-                    }, ${
-                      day.events.length === 0
-                        ? 'nothing on the calendar'
-                        : `${day.events.length} on the calendar`
-                    }`
-                  : ''
-              }`}
+              aria-label={cellLabel(dateStr, day, { salesShown, zoneUnset, seesAmounts, isToday })}
               // color-mix keeps the heat on the seal TOKEN, so both grounds
               // (İznik on paper, lifted teal on charcoal) resolve correctly;
               // browsers without color-mix quietly keep the paper-1 ground.
               style={
                 heat > 0
-                  ? { backgroundColor: `color-mix(in srgb, var(--seal) ${Math.round(heat * 100)}%, transparent)` }
-                  : undefined
+                  ? { ...CELL_BOX, backgroundColor: `color-mix(in srgb, var(--seal) ${Math.round(heat * 100)}%, transparent)` }
+                  : CELL_BOX
               }
             >
               <span className="dn-cell-num">{dayNum}</span>
-              <span className="dn-cell-marks">
+              <span className="dn-cell-marks" style={{ flexWrap: 'wrap' }}>
                 {day && day.events.length > 0 && <span className="dn-dot" aria-hidden />}
-                {day && day.order_count > 0 && (
-                  <span className="text-[9px] text-inkm-4" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {day && day.order_count != null && day.order_count > 0 && (
+                  <span className="dn-cell-orders text-inkm-4" style={{ ...CELL_WORDS, fontVariantNumeric: 'tabular-nums' }}>
                     {day.order_count} {day.order_count === 1 ? 'order' : 'orders'}
                   </span>
                 )}
@@ -275,18 +496,18 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
               {month.state === 'loading' && !isFuture ? (
                 <span className="dn-skel h-3 w-8" aria-hidden />
               ) : (
-                <span className="dn-cell-fig">
-                  {isFuture
-                    ? ''
-                    : day
-                      ? seesAmounts
-                        ? spend > 0
-                          ? formatMoney(spend, 'compact')
-                          : '·'
-                        : day.order_count > 0
-                          ? ''
-                          : '·'
-                      : DASH}
+                <span
+                  className="dn-cell-fig"
+                  // "not recorded" is words, not a figure: the text face, the
+                  // cell's word size, free to wrap inside a narrow cell.
+                  style={!isFuture && fig === NOT_RECORDED ? NOT_RECORDED_FIG : cellSized(figSize)}
+                >
+                  {isFuture ? '' : fig}
+                </span>
+              )}
+              {!isFuture && month.state !== 'loading' && from && (
+                <span className="dn-cell-from text-inkm-4" style={CELL_WORDS} aria-hidden>
+                  {from}
                 </span>
               )}
             </button>
@@ -307,8 +528,9 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
           <DayDetail
             day={selectedDay}
             daily={daily}
+            zone={ledger?.timezone}
+            sales={ledger?.sales}
             dayOrders={dayOrders}
-            zone={zone}
             seesAmounts={seesAmounts}
             alerts={alerts}
             activity={activity}

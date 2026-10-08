@@ -212,7 +212,7 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
         ),
       );
       await expect(service.getCalendarRevenue("r1", 2026, 10)).rejects.toThrow(
-        /procurement_orders read failed/,
+        /The month's deliveries could not be read/,
       );
     });
   });

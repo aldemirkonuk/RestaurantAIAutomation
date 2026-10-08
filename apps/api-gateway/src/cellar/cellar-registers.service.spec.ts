@@ -26,7 +26,7 @@ function chain(result: TableResult) {
   const self: Record<string, unknown> = {};
   const passthrough = () => self;
   for (const m of [
-    "select", "eq", "neq", "is", "in", "or", "ilike", "gte", "lte", "order", "limit", "range", "not",
+    "select", "eq", "neq", "is", "in", "gt", "or", "ilike", "gte", "lte", "order", "limit", "range", "not",
   ]) {
     self[m] = jest.fn(passthrough);
   }
@@ -39,11 +39,22 @@ function chain(result: TableResult) {
   return self;
 }
 
+/**
+ * The house's one current menu (ADR 0193 `status = 'active'`). Every fake
+ * serves it unless a test says otherwise, because the menu lines are now read
+ * only from the current menu: with no `restaurant_menus` row, `menu_items` is
+ * never asked at all.
+ */
+const ONE_CURRENT_MENU: TableResult = { data: [{ id: "menu-live" }] };
+
 function dbWith(tables: Record<string, TableResult>, upsert?: jest.Mock) {
   return {
     getClient: () => ({
       from: (table: string) => {
-        const built = chain(tables[table] ?? { data: [] });
+        const built = chain(
+          tables[table] ??
+            (table === "restaurant_menus" ? ONE_CURRENT_MENU : { data: [] }),
+        );
         built.upsert = upsert ?? jest.fn(async () => ({ error: null }));
         return built;
       },
@@ -166,7 +177,13 @@ describe("CellarRegistersService.read", () => {
                 from: (table: string) =>
                   table === "menu_items"
                     ? menuChain
-                    : chain(table === "cocktails" ? { count: 0 } : { data: [] }),
+                    : chain(
+                        table === "cocktails"
+                          ? { count: 0 }
+                          : table === "restaurant_menus"
+                            ? ONE_CURRENT_MENU
+                            : { data: [] },
+                      ),
               }),
             },
           },
@@ -216,7 +233,7 @@ describe("CellarRegistersService.read", () => {
     });
 
     const out = await service.read(RID);
-    expect(out.menuLines).toEqual({ read: 5, placed: 3, notPlaced: 2 });
+    expect(out.menuLines).toEqual({ read: 5, placed: 3, notPlaced: 2, currentMenus: 1 });
     // The same pass: the placed lines are exactly the lines credited to a
     // register below, so the headline cannot drift from the body.
     expect(out.sources.menu.rows).toBe(5);
@@ -246,7 +263,7 @@ describe("CellarRegistersService.read", () => {
       cocktails: { count: 0 },
     });
     const out = await service.read(RID);
-    expect(out.menuLines).toEqual({ read: 0, placed: 0, notPlaced: 0 });
+    expect(out.menuLines).toEqual({ read: 0, placed: 0, notPlaced: 0, currentMenus: 1 });
   });
 
   it("a house with nothing in any book gets UNKNOWN on every register, not false", async () => {
@@ -433,7 +450,14 @@ describe("CellarRegistersService.readUnplaced", () => {
     const recording = {
       getClient: () => ({
         from: (table: string) => {
-          const result = table === "menu_items" ? { data: MENU } : table === "cocktails" ? { count: 0 } : { data: [] };
+          const result =
+            table === "menu_items"
+              ? { data: MENU }
+              : table === "cocktails"
+                ? { count: 0 }
+                : table === "restaurant_menus"
+                  ? ONE_CURRENT_MENU
+                  : { data: [] };
           const built = chain(result);
           if (table === "menu_items") {
             const log: Array<[string, unknown[]]> = [];
@@ -467,7 +491,7 @@ describe("CellarRegistersService.readUnplaced", () => {
   it("returns an empty list when the reader placed every line", async () => {
     const service = await serviceWith(tablesFor({ data: [MENU[0], MENU[1]] }));
     const unplaced = await service.readUnplaced(RID);
-    expect(unplaced).toEqual({ restaurantId: RID, read: 2, lines: [] });
+    expect(unplaced).toEqual({ restaurantId: RID, currentMenus: 1, read: 2, lines: [] });
   });
 
   it("THROWS when the menu cannot be read — never an empty list", async () => {
@@ -476,6 +500,153 @@ describe("CellarRegistersService.readUnplaced", () => {
     const service = await serviceWith(
       tablesFor({ error: { code: "57014", message: "statement timeout" } }),
     );
+    await expect(service.readUnplaced(RID)).rejects.toThrow(/could not be read.*statement timeout/);
+  });
+});
+
+/* ── only the CURRENT menu is on the menu (A-028, F-148) ─────────────────────
+   A house keeps every menu it reads (ADR 0193), and each kept version keeps
+   its own menu_items lines. The 2026-10-03 walk measured 267 lines read for a
+   134-line menu: the archived copy was counted too. These fakes FILTER, so a
+   read that forgets the current-menu scope is served the archived copy, as
+   PostgREST would serve it.                                                 */
+
+type FakeRow = Record<string, unknown>;
+
+function filteringDb(tables: Record<string, { rows?: FakeRow[]; error?: unknown; count?: number }>) {
+  const reads: string[] = [];
+  return {
+    reads,
+    db: {
+      getClient: () => ({
+        from: (table: string) => {
+          reads.push(table);
+          const keep: Array<(r: FakeRow) => boolean> = [];
+          let limit: number | null = null;
+          const self: Record<string, unknown> = {};
+          const on = (m: string, effect: (...a: any[]) => void = () => undefined) => {
+            self[m] = jest.fn((...a: unknown[]) => {
+              effect(...a);
+              return self;
+            });
+          };
+          for (const m of ["select", "is", "order", "or", "ilike", "not"]) on(m);
+          on("eq", (c: string, v: unknown) => keep.push((r) => !(c in r) || r[c] === v));
+          on("neq", (c: string, v: unknown) => keep.push((r) => r[c] !== v));
+          on("in", (c: string, vs: unknown[]) => keep.push((r) => vs.includes(r[c])));
+          on("gt", (c: string, v: unknown) => keep.push((r) => String(r[c]) > String(v)));
+          on("limit", (n: number) => (limit = n));
+          self.then = (resolve: (v: unknown) => unknown) => {
+            const t = tables[table] ?? {};
+            let out = (t.rows ?? []).filter((r) => keep.every((k) => k(r)));
+            if (limit !== null) out = out.slice(0, limit);
+            return Promise.resolve({
+              data: t.error ? null : out,
+              error: t.error ?? null,
+              count: t.count ?? null,
+            }).then(resolve);
+          };
+          return self;
+        },
+      }),
+    },
+  };
+}
+
+async function filteringService(
+  tables: Record<string, { rows?: FakeRow[]; error?: unknown; count?: number }>,
+) {
+  const { db, reads } = filteringDb(tables);
+  const moduleRef = await Test.createTestingModule({
+    providers: [CellarRegistersService, { provide: DatabaseService, useValue: db }],
+  }).compile();
+  return { service: moduleRef.get(CellarRegistersService), reads };
+}
+
+describe("CellarRegistersService — only the CURRENT menu is on the menu (A-028)", () => {
+  const MENUS: FakeRow[] = [
+    { id: "live", restaurant_id: RID, status: "active" },
+    { id: "old", restaurant_id: RID, status: "archived" },
+    { id: "scan", restaurant_id: RID, status: "draft" },
+  ];
+  // The current menu: two beers, one raki, one line the reader cannot place.
+  const LIVE: FakeRow[] = [
+    { id: "l1", category: "Draft Beer", name: "Efes" },
+    { id: "l2", category: "Draft Beer", name: "Tuborg" },
+    { id: "l3", category: "Spirits", name: "Yeni Raki" },
+    { id: "l4", category: "Kitchen", name: "Mixed olives" },
+  ];
+  const on = (menuId: string, rows: FakeRow[], prefix: string): FakeRow[] =>
+    rows.map((r) => ({
+      ...r,
+      id: `${prefix}${r.id}`,
+      menu_id: menuId,
+      restaurant_id: RID,
+      status: "approved",
+    }));
+  // The archived copy repeats every line of the current menu, and a draft
+  // that was read and never chosen carries one more.
+  const ITEMS = [
+    ...on("live", LIVE, "a-"),
+    ...on("old", LIVE, "b-"),
+    ...on("scan", [{ id: "d1", category: "Cocktails", name: "Negroni" }], "c-"),
+  ];
+  const tables = {
+    restaurant_cellar_registers: { rows: [] },
+    restaurant_inventory: { rows: [] },
+    restaurant_menus: { rows: MENUS },
+    menu_items: { rows: ITEMS },
+    cocktails: { count: 0 },
+  };
+
+  it("counts each line of the current menu once — never its archived copy or a draft", async () => {
+    const { service } = await filteringService(tables);
+    const out = await service.read(RID);
+    expect(out.menuLines).toEqual({ read: 4, placed: 3, notPlaced: 1, currentMenus: 1 });
+    expect(out.sources.menu.rows).toBe(4);
+    expect(out.registers.find((r) => r.id === "beer")!.evidence.menuRows).toBe(2);
+    expect(out.registers.find((r) => r.id === "spirits")!.evidence.menuRows).toBe(1);
+    // The draft's cocktail is not on the menu.
+    expect(out.registers.find((r) => r.id === "cocktails")!.evidence.menuRows).toBe(0);
+  });
+
+  it("lists the unplaced lines of the current menu once, and as many as the readout counts (OD-140)", async () => {
+    const { service } = await filteringService(tables);
+    const readout = await service.read(RID);
+    const unplaced = await service.readUnplaced(RID);
+    expect(unplaced.lines).toEqual([{ id: "a-l4", category: "Kitchen", name: "Mixed olives" }]);
+    expect(unplaced.lines.length).toBe(readout.menuLines!.notPlaced);
+    expect(unplaced.read).toBe(readout.menuLines!.read);
+    expect(unplaced.currentMenus).toBe(1);
+  });
+
+  it("says a house with no current menu has none — readable, zero lines, and its kept lines unread", async () => {
+    const { service, reads } = await filteringService({
+      ...tables,
+      restaurant_menus: { rows: MENUS.filter((m) => m.status !== "active") },
+    });
+    const out = await service.read(RID);
+    expect(out.menuLines).toEqual({ read: 0, placed: 0, notPlaced: 0, currentMenus: 0 });
+    expect(out.sources.menu).toEqual({ readable: true, reason: null, rows: 0 });
+    expect(reads).not.toContain("menu_items");
+    await expect(service.readUnplaced(RID)).resolves.toEqual({
+      restaurantId: RID,
+      currentMenus: 0,
+      read: 0,
+      lines: [],
+    });
+  });
+
+  it("leaves the tally NULL — unknown, not zero — when the current menu cannot be read", async () => {
+    const { service } = await filteringService({
+      ...tables,
+      restaurant_menus: { error: { code: "57014", message: "statement timeout" } },
+    });
+    const out = await service.read(RID);
+    expect(out.menuLines).toBeNull();
+    expect(out.sources.menu.readable).toBe(false);
+    expect(out.sources.menu.rows).toBeNull();
+    expect(out.sources.menu.reason).toMatch(/statement timeout/);
     await expect(service.readUnplaced(RID)).rejects.toThrow(/could not be read.*statement timeout/);
   });
 });

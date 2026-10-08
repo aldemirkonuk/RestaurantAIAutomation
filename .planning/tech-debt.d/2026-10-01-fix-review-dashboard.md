@@ -101,3 +101,5 @@ Found by the PR #579 audit; the founder ruled on it as DASH-G2.
 - ALDEMIR has its zone set (America/Chicago).
 
 **Ruling (DASH-G2, 2026-10-01).** "Follow rule, follow-up PR (Recommended)": those figures show "—" and the page says the house has no time zone set, sketched before it is built.
+
+**[2026-10-08, merging main `c4005eb09` into #579] Half closed by #622 (ADR 0290).** The month calendar now reads `houseZoneOrNull` and, with no zone, files every day figure as null with `zone_unset: true`. The stat cards still read `houseZone`, which answers `"UTC"` (`apps/api-gateway/src/dashboard/dashboard.service.ts`, `private async houseZone`). That half stays open for the G2 follow-up PR.
