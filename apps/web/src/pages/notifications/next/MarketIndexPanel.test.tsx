@@ -307,6 +307,8 @@ describe('MarketIndexPanel — a house with no country is asked for it', () => {
     ).toHaveAttribute('href', '/settings?tab=locations');
     // One sentence, not two: the generic silence is not drawn beside it.
     expect(screen.getAllByRole('status')).toHaveLength(1);
+    // The commodity register is not flagged here, so the ask says nothing of it.
+    expect(asked.textContent).not.toContain('commodity');
   });
 
   it('a house whose country is recorded is not asked for it', () => {
@@ -397,6 +399,53 @@ describe('MarketIndexPanel — the commodity section asks a house with no countr
       within(asked).getByRole('link', { name: 'Set the country in Settings' }),
     ).toHaveAttribute('href', '/settings?tab=locations');
     // The index register above is not flagged here, so this is the only ask.
+    expect(screen.queryByTestId('mi-country-unset')).toBeNull();
+  });
+
+  it('a house both registers flag is asked once, and the one ask says what the commodity section lists', () => {
+    // Both endpoints read the same `restaurants` row, so a real house with no
+    // country is flagged by both. Two asks with two identically named links in
+    // one box would say one thing twice.
+    mockIndex.current = { ...READY, countryNotRecorded: true };
+    mockCommodity.current = { ...READY_COMMODITY, countryNotRecorded: true };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('mi-commodity-country-unset')).toBeNull();
+    expect(screen.getAllByText(/country isn’t recorded/)).toHaveLength(1);
+    const links = screen.getAllByRole('link', { name: 'Set the country in Settings' });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/settings?tab=locations');
+    const asked = screen.getByTestId('mi-country-unset');
+    expect(asked).toContainElement(links[0]);
+    // Both asks' meaning, in the one line.
+    expect(asked.textContent).toContain('no state-based price is shown');
+    expect(asked.textContent).toContain(
+      'the commodity and market index section lists only a series that speaks for everywhere',
+    );
+  });
+
+  it('the commodity section still asks when the register could not be read', () => {
+    // The flag is set here although useHouseIndex clears it on a failed read, so
+    // the panel's own `state === 'ready'` guard is what this pins.
+    mockIndex.current = {
+      ...READY,
+      countryNotRecorded: true,
+      state: 'unreadable',
+      failure: { message: 'boom', forbidden: false, status: 500 },
+    };
+    mockCommodity.current = { ...READY_COMMODITY, countryNotRecorded: true };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    const asked = screen.getByTestId('mi-commodity-country-unset');
+    expect(
+      within(asked).getByRole('link', { name: 'Set the country in Settings' }),
+    ).toHaveAttribute('href', '/settings?tab=locations');
     expect(screen.queryByTestId('mi-country-unset')).toBeNull();
   });
 
