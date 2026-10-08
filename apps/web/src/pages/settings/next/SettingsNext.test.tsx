@@ -501,11 +501,13 @@ describe('SettingsNext — the editorial spine', () => {
     expect(screen.getByRole('heading', { name: 'Questions and training' })).toBeInTheDocument();
     expect(screen.getByText('Should it mail a recommendations digest?')).toBeInTheDocument();
     expect(screen.getByText(/fourteen kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
-    // The standing honesty statement, now that SIX registers DO record an
-    // author: it names which six — Currency joined them 2026-09-05, Time zone
-    // and Mail reading 2026-09-21 (ADR 0207) — and admits the other eight still do not.
-    expect(screen.getByText(/Six of these registers now record/i)).toBeInTheDocument();
-    expect(screen.getByText(/other eight write through services this pass did not touch/i)).toBeInTheDocument();
+    // The standing honesty statement (F-180): which registers record an
+    // author and how many do not, derived from the register list so the two
+    // counts plus "What changed here" add up to the eighteen above.
+    expect(screen.getByText(/Eight of these record/i)).toBeInTheDocument();
+    expect(screen.getByText(/Team, Features, Vendor terms, Approval thresholds, Currency, Carrying cost, Time zone and Mail reading/)).toBeInTheDocument();
+    expect(screen.getByText(/The other nine do not keep that record yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/services this pass|naming the file/i)).not.toBeInTheDocument();
   });
 
   /**
@@ -781,8 +783,10 @@ describe('SettingsNext — provenance and unknowns', () => {
     // The window itself is editable only while the switch is on.
     expect(screen.getByLabelText(/Quiet hours start/i)).toHaveValue('23:00');
     fireEvent.click(toggle);
+    // Only the switch is sent (F-215): turning it off carries no window that
+    // could overwrite one saved a moment earlier.
     expect(saveNotif).toHaveBeenCalledWith('quiet.enabled', {
-      quietHours: { enabled: false, startTime: '23:00', endTime: '07:00' },
+      quietHours: { enabled: false },
     });
     // And it is honest about the half that does NOT honour it.
     expect(screen.getByText(/consult this window and sends on its own clock/i)).toBeInTheDocument();
@@ -1228,8 +1232,11 @@ describe('SettingsNext — the settings record', () => {
     // page now (e.g. "Email sign-off" is both this list's item and its own
     // register's `<h3>`), since the interview renders all sixteen together.
     const section = screen.getByTestId('st-section-ledger');
-    expect(within(section).getByText(/Eight registers write through services this pass did not touch/i)).toBeInTheDocument();
-    for (const label of ['Email sign-off', 'Locations & chains', 'Cellar registers']) {
+    // F-180: counted from the register list (nine with /connections off), in
+    // the owner's words, with no file names beside them.
+    expect(within(section).getByText(/Nine settings do not keep this record yet/i)).toBeInTheDocument();
+    expect(within(section).queryByText(/this pass|\.service\.ts/i)).not.toBeInTheDocument();
+    for (const label of ['Email sign-off', 'Locations & chains', 'Cellar registers', 'Notifications', 'Measurement & recipes']) {
       expect(within(section).getByText(label)).toBeInTheDocument();
     }
   });
@@ -1277,6 +1284,10 @@ describe('the collapse — four connection tabs become one line', () => {
     // so this line is the only place that says so.
     expect(screen.getByText(/^Fourteen registers — /)).toBeInTheDocument();
     expect(screen.queryByText(/^18 registers/)).not.toBeInTheDocument();
+    // F-180: eight recorded + five not yet + "What changed here" = fourteen.
+    // It used to say "the other four" here, a literal that added up to ten.
+    expect(screen.getByText(/Eight of these record/i)).toBeInTheDocument();
+    expect(screen.getByText(/The other five do not keep that record yet/i)).toBeInTheDocument();
   });
 
   it('offers one line out, naming the four registers it replaces', () => {
