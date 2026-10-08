@@ -45,6 +45,7 @@ import {
   type ExportTable,
   type Unit,
 } from "./report-export-doc";
+import { HOUSE_ZONE_UNSET } from "../../common/house-day";
 
 export const EXPORTABLE_CUTTINGS = [
   "reading",
@@ -208,6 +209,7 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
   const d = obj(payload);
   const from = str(d.from);
   const to = str(d.to);
+  const timezone = str(d.timezone);
   const days = num(d.days) ?? ctx.days;
   const noFeed =
     "No POS check has ever landed for this restaurant — an absent feed, not a day of zero";
@@ -221,6 +223,21 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
         f("Average check", withheld(noFeed), "money"),
       ],
       basis: [`Window ${from || "—"} to ${to || "—"}.`],
+    });
+
+  // A house with no time zone has no days to file a check on (ADR 0296): the
+  // till answered with no figures, and the sheet says why rather than reading
+  // the gap as a quiet till. A payload from before ADR 0296 carries no
+  // `zoneUnset` and is read as it always was.
+  if (d.zoneUnset === true)
+    return doc({
+      say: HOUSE_ZONE_UNSET,
+      figures: [
+        f("Taken", withheld(HOUSE_ZONE_UNSET), "money"),
+        f("Checks", withheld(HOUSE_ZONE_UNSET), "count"),
+        f("Average check", withheld(HOUSE_ZONE_UNSET), "money"),
+      ],
+      basis: [],
     });
 
   const revenue = num(d.revenue);
@@ -269,7 +286,9 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
             },
           ],
     basis: [
-      `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}.`,
+      timezone
+        ? `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}, each check filed on the house's day in ${timezone} by when it closed, else when it opened.`
+        : `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}.`,
       "The series is sparse on purpose: a day with no check is absent, not written as zero.",
     ],
   });
@@ -983,6 +1002,7 @@ function writeGoals(payload: unknown): ExportDoc {
       target: num(entry.target),
       progress: num(entry.progressPct),
       onTrack: typeof entry.onTrack === "boolean" ? entry.onTrack : null,
+      paceUnread: str(entry.paceUnread) || null,
       // A Bottles sold goal's lines on the 750 ml stand-in (ADR 0297).
       standInLines: num(obj(entry.units).standInLines) ?? 0,
       standInItems: num(obj(entry.units).standInItems) ?? 0,
@@ -990,7 +1010,12 @@ function writeGoals(payload: unknown): ExportDoc {
   });
   const total = num(d.total) ?? goals.length;
   const paced = goals.some((g) => g.onTrack !== null);
-  const noPace = "no goal carries a deadline, so none has a pace";
+  // "No deadline" only when no goal carries one. A goal with a deadline and no
+  // pace (a house with no time zone, ADR 0296; a goal that could not be read)
+  // is not a goal without a deadline.
+  const noPace = goals.some((g) => g.deadline !== null)
+    ? "no goal's pace was judged; each goal's row says why"
+    : "no goal carries a deadline, so none has a pace";
   return doc({
     say:
       goals.length === 0
@@ -1027,7 +1052,7 @@ function writeGoals(payload: unknown): ExportDoc {
                   unreadable ? withheld(unreadable) : typed(g.current, g.unit, "the goal's current value was not computed"),
                   typed(g.target, g.unit, "no target recorded"),
                   unreadable ? withheld(unreadable) : figure(g.progress, "the goal's progress was not computed"),
-                  g.onTrack === null ? withheld(g.deadline ? "the pace was not computed" : "no deadline, so no pace") : g.onTrack ? "on pace" : "behind",
+                  g.onTrack === null ? withheld(g.paceUnread ?? (g.deadline ? "the pace was not computed" : "no deadline, so no pace")) : g.onTrack ? "on pace" : "behind",
                   g.deadline,
                 ];
               }),
