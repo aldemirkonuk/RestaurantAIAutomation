@@ -178,6 +178,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
       wine_consumption_log: [
         {
           inventory_id: RECORDED.id,
+          consumption_type: "bottle",
           quantity: 3,
           created_at: recently,
           restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
@@ -305,6 +306,7 @@ describe("getInventoryScience", () => {
       wine_consumption_log: [
         {
           inventory_id: RECORDED.id,
+          consumption_type: "bottle",
           quantity: 2,
           created_at: recently,
           restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
@@ -362,6 +364,7 @@ describe("getMenuEngineering", () => {
       wine_consumption_log: [
         {
           inventory_id: RECORDED.id,
+          consumption_type: "bottle",
           quantity: 4,
           created_at: recently,
           restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
