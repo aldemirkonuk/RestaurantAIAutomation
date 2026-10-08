@@ -26,9 +26,15 @@ const TABS: { key: Tab; label: string }[] = [
 interface Props {
   providerId: string
   providerName?: string
+  // false: the header and its Actions menu only, no tab is mounted and no read
+  // is made. The vendor sheet passes false for anyone but an owner or a
+  // manager, because every tab's read is owner/manager at the gateway since
+  // 2026-10-07 while outreach and onboarding still answer any member of the
+  // house (provider-intelligence.controller.ts, fix/promotions-gate-every-route).
+  learned?: boolean
 }
 
-export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
+export function ProviderIntelligencePanel({ providerId, providerName, learned = true }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('knowledge')
   const [showActions, setShowActions] = useState(false)
 
@@ -94,31 +100,35 @@ export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="px-6 border-b border-gray-200">
-        <nav className="flex gap-6">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.key
-                  ? 'border-gray-900 text-gray-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
+      {learned && (
+        <>
+          {/* Tab Navigation */}
+          <div className="px-6 border-b border-gray-200">
+            <nav className="flex gap-6">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === tab.key
+                      ? 'border-gray-900 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
 
-      {/* Tab Content */}
-      <div className="p-6">
-        {activeTab === 'knowledge' && <ProviderKnowledgePanel providerId={providerId} />}
-        {activeTab === 'promotions' && <ProviderPromotionsPanel providerId={providerId} mode="provider" />}
-        {activeTab === 'conversations' && <ProviderConversationMemory providerId={providerId} />}
-      </div>
+          {/* Tab Content */}
+          <div className="p-6">
+            {activeTab === 'knowledge' && <ProviderKnowledgePanel providerId={providerId} />}
+            {activeTab === 'promotions' && <ProviderPromotionsPanel providerId={providerId} mode="provider" />}
+            {activeTab === 'conversations' && <ProviderConversationMemory providerId={providerId} />}
+          </div>
+        </>
+      )}
     </div>
   )
 }

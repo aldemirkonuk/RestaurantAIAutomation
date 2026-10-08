@@ -18,9 +18,18 @@ vi.mock('./useProvidersNextData', () => ({
 }));
 
 vi.mock('../../../components/providers/ProviderIntelligencePanel', () => ({
-  ProviderIntelligencePanel: ({ providerName }: { providerName: string }) => (
-    <div data-testid="twin-panel">twin of {providerName}</div>
-  ),
+  ProviderIntelligencePanel: ({
+    providerName,
+    learned = true,
+  }: {
+    providerName: string;
+    learned?: boolean;
+  }) =>
+    learned ? (
+      <div data-testid="twin-panel">twin of {providerName}</div>
+    ) : (
+      <div data-testid="twin-actions-only">actions for {providerName}</div>
+    ),
 }));
 
 // The sheet now carries the terms register; this file is about the GRID and the
@@ -455,9 +464,10 @@ describe('ProvidersNext', () => {
       auth.role = 'owner';
     });
 
-    // Every read of the twin panel (twin, promotions, conversations) is
+    // Every read of the twin panel's tabs (twin, promotions, conversations) is
     // owner/manager at the gateway since 2026-10-07 (the GET /promotions gate,
-    // ADR 0124:357-362). Mounted for staff it would draw empty tabs over 403s.
+    // ADR 0124:357-362). Mounted for staff they would draw empty tabs over 403s.
+    // The Actions menu (outreach, onboarding) is not gated and stays for staff.
     it('carries what the platform has learned for an owner and a manager, and never for staff', async () => {
       for (const role of ['owner', 'manager'] as const) {
         auth.role = role;
@@ -465,6 +475,7 @@ describe('ProvidersNext', () => {
         const { unmount } = render(<ProvidersNext />);
         fireEvent.click(screen.getByText('Bodega Álvaro'));
         expect(await screen.findByTestId('twin-panel')).toHaveTextContent('twin of Bodega Álvaro');
+        expect(screen.queryByTestId('twin-actions-only')).not.toBeInTheDocument();
         unmount();
       }
       for (const role of ['staff', null] as const) {
@@ -475,6 +486,8 @@ describe('ProvidersNext', () => {
         await screen.findByTestId('ledger-stub');
         expect(screen.queryByTestId('twin-panel')).not.toBeInTheDocument();
         expect(screen.queryByText('What the platform has learned')).not.toBeInTheDocument();
+        // staff keep the panel's Actions menu, its only door to outreach and onboarding
+        expect(screen.getByTestId('twin-actions-only')).toHaveTextContent('actions for Bodega Álvaro');
         unmount();
       }
       auth.role = 'owner';
