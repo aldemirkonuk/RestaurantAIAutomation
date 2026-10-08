@@ -28,7 +28,7 @@
  * - A house switch aborts the other house's read; a read is only ever written
  *   under `book(<the house it read>)`.
  *
- * PR-A (this file) has no consumer: no screen calls `useOrderBook` yet.
+ * Since PR-B, /orders reads it (`useOrdersNextData.ts`); no other screen does yet.
  */
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
@@ -39,10 +39,12 @@ import {
   abortableSleep,
   BookShapeError,
   fetchOrderBook,
+  fetchOrderBookPage,
   ForeignRowError,
   HouseChangedError,
   RateLimitedError,
   type OrderBook,
+  type OrderListPage,
 } from '../../services/api/order-book'
 
 /** Requests that land within this of the first are read once. */
@@ -105,7 +107,18 @@ interface HouseRun {
   interval: ReturnType<typeof setInterval> | null
   freshness: FreshnessState
   listeners: Set<() => void>
+  /** Optimistic writes holding this house's reads (holdLocalWrite). */
+  holds: number
+  /** Optimistic writes still on their way; finish() applies each to what it writes. */
+  overlays: Set<Overlay>
 }
+
+interface Overlay {
+  patch: ((book: OrderBook) => OrderBook) | null
+}
+
+/** The abort reason holdLocalWrite gives a read it stops. */
+const HELD = Symbol('held for a local write')
 
 const NO_FRESHNESS: FreshnessState = { asOf: null, failing: false }
 
@@ -129,6 +142,8 @@ function runFor(house: string): HouseRun {
       interval: null,
       freshness: NO_FRESHNESS,
       listeners: new Set(),
+      holds: 0,
+      overlays: new Set(),
     }
     runs.set(house, run)
   }
@@ -159,6 +174,11 @@ async function acquireSlot(signal: AbortSignal): Promise<void> {
     }
     await abortableSleep(requestStamps[0] + BOOK_WINDOW_MS - now, signal)
   }
+}
+
+/** A 429 shuts this tab's gate until retryAfter has passed, for book reads and older pages alike. */
+function noteRateLimited(ms: number): void {
+  gateUntil = Math.max(gateUntil, Date.now() + ms)
 }
 
 function enqueue(
@@ -201,6 +221,9 @@ function start(run: HouseRun): void {
   const batch = run.next
   if (!batch || run.inFlight) return
   batch.timer = null
+  // An optimistic write holds this house's reads (holdLocalWrite). The batch
+  // stays queued, its callers with it, and the release schedules it.
+  if (run.holds > 0) return
   // A background read in a hidden tab waits, still queued, for the tab to be
   // seen: the visibility handler times it again. This is checked when the
   // timer fires, not when it is set, since the tab may hide in between.
@@ -218,9 +241,7 @@ function start(run: HouseRun): void {
   run.inFlight = flight
   fetchOrderBook(run.house, flight.controller.signal, {
     beforeRequest: acquireSlot,
-    onRateLimited: (ms) => {
-      gateUntil = Math.max(gateUntil, Date.now() + ms)
-    },
+    onRateLimited: noteRateLimited,
   }).then(
     (book) => finish(run, flight, book, null),
     (error) => finish(run, flight, null, error),
@@ -232,6 +253,13 @@ function finish(run: HouseRun, flight: InFlight, book: OrderBook | null, error: 
   run.lastFinishedAt = Date.now()
   const settle = (fn: (w: Waiter) => void) => flight.waiters.forEach((w) => !w.done && fn(w))
 
+  if (flight.controller.signal.aborted && flight.controller.signal.reason === HELD) {
+    // Stopped by holdLocalWrite: neither a failure nor a house switch. Its
+    // callers wait for the read after the hold.
+    const batch = enqueue(run, { urgent: true, fromRunner: true })
+    settle((w) => batch.waiters.add(w))
+    return
+  }
   if (flight.controller.signal.aborted) {
     // Stopped by a house switch. Not a failed refresh, and nothing is written.
     const stopped = new HouseChangedError()
@@ -258,15 +286,24 @@ function finish(run: HouseRun, flight: InFlight, book: OrderBook | null, error: 
     return
   }
   // The cached book if its readStartedAt is larger than this one's, else this one,
-  // is written, set as `asOf`, and resolved to the waiters.
+  // is written, set as `asOf`, and resolved to the waiters. A written read gets
+  // every optimistic write still on its way (withOverlays).
   let kept = book
   run.client?.setQueryData<OrderBook>(queryKeys.orders.book(run.house), (old) => {
-    kept = old && old.readStartedAt > book.readStartedAt ? old : book
+    kept = old && old.readStartedAt > book.readStartedAt ? old : withOverlays(run, book)
     return kept
   })
   setFreshness(run, { asOf: kept.readStartedAt, failing: false })
   settle((w) => w.resolve(kept))
   schedule(run)
+}
+
+function withOverlays(run: HouseRun, book: OrderBook): OrderBook {
+  let out = book
+  run.overlays.forEach((o) => {
+    if (o.patch) out = o.patch(out)
+  })
+  return out
 }
 
 /** Every house but `house` stops: its read is aborted and its queued callers are told. */
@@ -358,10 +395,72 @@ export function markBackground(house: string): void {
 /**
  * This tab just wrote an order in `house` optimistically. A read that started
  * before now is not written to the cache. Call it where the optimistic write
- * lands and again when the write settles.
+ * lands and again when the write settles. An optimistic write that awaits the
+ * gateway takes `holdLocalWrite` instead.
  */
 export function noteLocalWrite(house: string): void {
   runFor(house).writeEpoch++
+}
+
+/**
+ * How long a hold stops reads: past the client's 30 s timeout (client.ts:66).
+ * The write's row stays as written after it, until the release.
+ */
+export const BOOK_HOLD_MAX_MS = 35_000
+
+/**
+ * An optimistic write in `house` is on its way. Without this, a read that
+ * starts after the optimistic write but before the gateway commits writes
+ * the old status back while the write's own button is live again
+ * (ADR 0269, PR-B). Until the returned release is called:
+ * - a read under way is stopped, and its callers wait for the next read;
+ * - no read starts, for BOOK_HOLD_MAX_MS at most;
+ * - every read written to the cache gets `patch` first, however long the
+ *   write takes (a 401 refresh has no timeout; an offline mutation is paused).
+ */
+export function holdLocalWrite(
+  house: string,
+  patch?: (book: OrderBook) => OrderBook,
+): () => void {
+  const run = runFor(house)
+  const overlay: Overlay = { patch: patch ?? null }
+  run.overlays.add(overlay)
+  run.holds++
+  run.writeEpoch++
+  // A read under way may predate the write, and the fence would throw it away:
+  // stop it now, so it sends no more requests. finish() re-queues its callers.
+  run.inFlight?.controller.abort(HELD)
+  let blocking = true
+  const unblock = () => {
+    if (!blocking) return
+    blocking = false
+    clearTimeout(timer)
+    run.holds = Math.max(0, run.holds - 1)
+    if (run.holds === 0) schedule(run)
+  }
+  // Past BOOK_HOLD_MAX_MS reads run again; the written row stays until release.
+  const timer = setTimeout(unblock, BOOK_HOLD_MAX_MS)
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    run.overlays.delete(overlay)
+    // A read that started after the timer let go may predate the gateway's commit.
+    run.writeEpoch++
+    unblock()
+  }
+}
+
+/** One page past the cap, for Show older: through this tab's window and 429 gate. */
+export function readOlderPage(
+  house: string,
+  page: number,
+  signal: AbortSignal,
+): Promise<OrderListPage> {
+  return fetchOrderBookPage(house, page, signal, {
+    beforeRequest: acquireSlot,
+    onRateLimited: noteRateLimited,
+  })
 }
 
 /** Starts the house's interval; aborts every other house's read. */
@@ -410,6 +509,9 @@ export function useOrderBook() {
   const house = activeRestaurantId ?? ''
   const enabled = !!house && isAuthenticated
 
+  // ADR 0269 fork 6: the window `order_change` listener is left to a later
+  // PR, so none is wired here. A websocket order event still reaches the book
+  // through its `orders.all` invalidation.
   useEffect(() => {
     if (!enabled) return
     return subscribeOrderBook(house, queryClient)
@@ -465,6 +567,10 @@ export function resetOrderBookRunnerForTests(): void {
   for (const run of runs.values()) {
     if (run.interval) clearInterval(run.interval)
     if (run.next?.timer) clearTimeout(run.next.timer)
+    // A hold's timer that outlives the test then finds nothing to read.
+    run.holds = 0
+    run.next = null
+    run.overlays.clear()
     run.inFlight?.controller.abort()
   }
   runs.clear()

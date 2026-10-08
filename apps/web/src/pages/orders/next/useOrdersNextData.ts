@@ -1,8 +1,9 @@
 /**
  * OrdersNext view model — live data only, assembled from the EXISTING hooks
- * (useOrders, useProviders); nothing here invents a number. The five-stage
- * spine the founder kept (pending · approved · ordered · delivered · recurring)
- * is derived from the canonical OrderStatus set via normalizeOrderStatus, with
+ * (useOrderBook since PR-B of ADR 0269, useProviders); nothing here invents a
+ * number. The five-stage spine the founder kept (pending · approved · ordered ·
+ * delivered · recurring) is derived from the canonical OrderStatus set via
+ * normalizeOrderStatus, with
  * `recurring` orthogonal: a repeating order sits in the recurring station
  * whatever its current status, exactly as the legacy page bucketed it.
  *
@@ -10,12 +11,24 @@
  * an empty ledger, and a missing price is not $0.00.
  */
 
-import { useMemo } from 'react';
+import axios from 'axios';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { apiClient } from '@/services/api/client';
-import { useOrders } from '@/hooks/queries/useOrderQueries';
+import { apiClient, getErrorStatus } from '@/services/api/client';
+import { readOlderPage, useOrderBook, useOrderBookFreshness } from '@/hooks/queries/useOrderBook';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
+import {
+  BookShapeError,
+  fetchOrderById,
+  ForeignRowError,
+  HouseChangedError,
+  isOpenOrderStatus,
+  markFor,
+  RateLimitedError,
+  type OrderBook,
+  type OrderMark,
+} from '@/services/api/order-book';
 import { type Order, type OrderStatus } from '@/services/api/types';
 import { num } from './format';
 import {
@@ -151,6 +164,13 @@ export interface OrderRowVM {
   stage: Stage | 'cancelled';
   status: OrderStatus;
   /**
+   * What an open arrival still owes, in the founder's words (2026-10-03, ADR
+   * 0269), from `markFor`; null for every order that is not an open arrival.
+   * Always set by `toRow`; optional only so a row built by hand in a test need
+   * not name it.
+   */
+  mark?: OrderMark | null;
+  /**
    * Does this order repeat? A MEASURED fact since 2026-09-05 — it was a
    * hardcoded `false` before that, because the route sent nothing. False here
    * now means either "read, and it does not" or "this route did not say"; read
@@ -211,6 +231,8 @@ export interface OrdersNextData {
   rows: OrderRowVM[];
   /** Station counts. Null while unknown (loading with no cache, or errored). */
   counts: Record<Stage, number | null>;
+  /** True when `counts` are floors, the orders read in a capped or partial read (shown "N+"). */
+  countsAreFloors?: boolean;
   recurringCount: number | null;
   /**
    * How many rows CARRIED a recurrence reading, out of `rows.length`. Null
@@ -248,7 +270,42 @@ export interface OrdersNextData {
   approvalGateError: string | null;
   /** The house's policy in one sentence, once the gate has answered. */
   approvalPolicyNote: string | null;
+  /** What the read covered, so the page can say so. */
+  book: BookStateView;
+  /** A deep-linked order not among the rows read, asked for on its own. */
+  target: TargetLookup;
 }
+
+export interface OlderReads {
+  /** True while a page past those read is known to exist (capped read only). */
+  canRead: boolean;
+  reading: boolean;
+  /** House words, or null. */
+  error: string | null;
+  /**
+   * Read until `need` more finished one-time orders arrived, at most OLDER_PAGES_PER_TAP pages.
+   * Resolves true when the read ended without an error (it may have found fewer, at the end),
+   * false on an error or an abort. The page counts a tap only on true (Attack ledger 5).
+   */
+  read: (need: number) => Promise<boolean>;
+}
+
+export interface BookStateView {
+  mode: 'whole' | 'capped' | 'partial' | null; // null: not read yet
+  total: number | null;
+  readCount: number;
+  openComplete: boolean | null;
+  unreadableStates: number | null; // OrderBook.unclassifiedCount
+  deliveredAtLeast: number | null;
+  recurringAtLeast: number | null;
+  older: OlderReads;
+}
+
+export type TargetLookup =
+  | { state: 'none' }
+  | { state: 'checking' }
+  | { state: 'found' }
+  | { state: 'unreadable'; /** Asks again, with the same retries. */ retry: () => void };
 
 /** The order's own quantity unit, when it is one of the seven the schema allows. */
 function readUnitType(v: unknown): PriceUom | null {
@@ -385,6 +442,7 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
     total: listedTotal ?? computedTotal,
     stage: stageOf(status),
     status,
+    mark: markFor(o),
     recurring,
     recurrence,
     recurrenceLabel: recurrenceLabel(recurrence),
@@ -395,10 +453,267 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
   };
 }
 
-export function useOrdersNextData(): OrdersNextData {
+/**
+ * Finished orders Show older adds per tap, and how many a station with nothing
+ * open opens on (founder, 2026-10-02 List and 2026-10-03 Empty tab).
+ */
+export const OLDER_STEP = 50;
+
+/** Pages one Show older tap reads past the cap, at most. */
+const OLDER_PAGES_PER_TAP = 5;
+
+export interface StationView {
+  /** Open orders here, newest first: always every one. */
+  open: OrderRowVM[];
+  /** Finished orders shown, newest first, plus a deep-linked one wherever it falls. */
+  finished: OrderRowVM[];
+  /** Finished orders here that are read but not shown yet. */
+  hiddenFinished: number;
+}
+
+/**
+ * What one station lists (ADR 0269, PR-B). Every open order is shown; finished
+ * ones come in under Show older, `OLDER_STEP` a tap. Openness is computed from
+ * the status here, never stored.
+ */
+export function stationView(
+  rows: OrderRowVM[],
+  station: Stage | 'recurring' | null,
+  taps: number,
+  targetId: string | null,
+  keepFirstFifty: boolean,
+): StationView {
+  const byDate = (a: OrderRowVM, b: OrderRowVM) =>
+    new Date(b.requestedAt ?? 0).getTime() - new Date(a.requestedAt ?? 0).getTime();
+  // Fork 5 (ADR 0269): the Recurring station lists as before.
+  if (station === 'recurring') {
+    return { open: rows.filter((r) => r.recurring).sort(byDate), finished: [], hiddenFinished: 0 };
+  }
+  // Fork 5 (ADR 0269, coordinator 2026-10-08): a recurring order that is an
+  // open arrival is also listed first in Delivered. Elsewhere, recurring
+  // orders stay out of the one-time views.
+  const openRecurringArrival = (r: OrderRowVM) =>
+    station === 'delivered' && r.recurring && r.stage === 'delivered' && isOpenOrderStatus(r.status);
+  const listed = rows.filter(
+    (r) => (!r.recurring || openRecurringArrival(r)) && r.stage !== 'cancelled',
+  );
+  const here = station === null ? listed : listed.filter((r) => r.stage === station);
+  const open = here.filter((r) => isOpenOrderStatus(r.status)).sort(byDate);
+  const allFinished = here.filter((r) => !isOpenOrderStatus(r.status)).sort(byDate);
+  // Empty tab ruling: nothing open opens on the newest 50; fork 8: once shown, kept.
+  const shown = OLDER_STEP * taps + (open.length === 0 || keepFirstFifty ? OLDER_STEP : 0);
+  const finished = allFinished.filter((r, i) => i < shown || r.id === targetId);
+  return { open, finished, hiddenFinished: allFinished.length - finished.length };
+}
+
+export interface BookFigures {
+  /** Station counts. Null while unknown, or when the read cannot back them. */
+  counts: Record<Stage, number | null>;
+  /** Capped or partial read: Pending, Approved and Ordered are floors, the orders read. */
+  countsAreFloors: boolean;
+  recurringCount: number | null;
+  cancelledCount: number | null;
+  month: MonthFigure;
+  /** Capped or partial read: delivered one-time orders read, a floor. Null in a whole read. */
+  deliveredAtLeast: number | null;
+  /** Capped or partial read: recurring orders read, a floor. Null in a whole read. */
+  recurringAtLeast: number | null;
+}
+
+const UNKNOWN_FIGURES: BookFigures = {
+  counts: { pending: null, approved: null, ordered: null, delivered: null },
+  countsAreFloors: false,
+  recurringCount: null,
+  cancelledCount: null,
+  month: { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 },
+  deliveredAtLeast: null,
+  recurringAtLeast: null,
+};
+
+/**
+ * The spine's counts and the month figures from the book's own rows (never
+ * older or looked-up rows). A whole read counts every order. A capped or
+ * partial read did not see every order, so a figure it cannot back is null
+ * and the page says the floor it read instead (ADR 0269 fork 9).
+ */
+export function figuresFor(book: OrderBook, rows: OrderRowVM[], now: Date): BookFigures {
+  const oneTime = rows.filter((r) => !r.recurring);
+  const seen = (s: Stage) => oneTime.filter((r) => r.stage === s).length;
+
+  if (book.mode === 'whole') {
+    const counts: Record<Stage, number | null> = {
+      pending: null,
+      approved: null,
+      ordered: null,
+      delivered: null,
+    };
+    for (const s of STAGES) counts[s] = seen(s);
+    const recurringCount = rows.filter((r) => r.recurring).length;
+    const cancelledCount = rows.filter((r) => r.stage === 'cancelled').length;
+
+    const month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
+    const inMonth = (iso: string | null, ref: Date) => {
+      if (!iso) return false;
+      const d = new Date(iso);
+      return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
+    };
+    const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const active = rows.filter((r) => r.stage !== 'cancelled');
+    const sumKnown = (rs: OrderRowVM[]) =>
+      rs.reduce((s, r) => s + (r.total ?? 0), 0);
+    const thisRows = active.filter((r) => inMonth(r.requestedAt, now));
+    const lastRows = active.filter((r) => inMonth(r.requestedAt, lastRef));
+    month.thisMonth = sumKnown(thisRows);
+    month.lastMonth = sumKnown(lastRows);
+    month.unpricedThisMonth = thisRows.filter((r) => r.total === null).length;
+    return { counts, countsAreFloors: false, recurringCount, cancelledCount, month, deliveredAtLeast: null, recurringAtLeast: null };
+  }
+
+  // Capped or partial: the cancelled count is the gateway's per-status count.
+  // Pending, Approved and Ordered are floors, the orders read, whatever
+  // `openComplete` says: it is not proof (ADR 0269 rule (d)).
+  const t = book.statusTotals;
+  const parts = t ? [t.CANCELLED, t.REJECTED, t.FAILED] : [];
+  const cancelledCount =
+    parts.length === 3 && parts.every((n) => Number.isInteger(n))
+      ? parts.reduce<number>((sum, n) => sum + (n as number), 0)
+      : null;
+  return {
+    counts: { pending: seen('pending'), approved: seen('approved'), ordered: seen('ordered'), delivered: null },
+    countsAreFloors: true,
+    recurringCount: null,
+    cancelledCount,
+    month: { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 },
+    deliveredAtLeast: seen('delivered'),
+    recurringAtLeast: rows.filter((r) => r.recurring).length,
+  };
+}
+
+/**
+ * A reader error in the house's words. Never the error's own message: the
+ * reader's messages say "order book" and "page" (order-book.ts:170-217).
+ */
+export function orderBookErrorWords(error: unknown): string {
+  if (error instanceof RateLimitedError) return 'too many reads in a short time';
+  if (error instanceof ForeignRowError) return 'an order of another house came back, so nothing from that read was used';
+  if (error instanceof BookShapeError) return 'an answer came back that this screen cannot read';
+  if (error instanceof HouseChangedError) return 'the house was switched during the read';
+  const status = getErrorStatus(error);
+  if (status !== null) return `an error came back, code ${status}`;
+  if (axios.isAxiosError(error) && !error.response) return 'no answer came back';
+  return 'something unexpected went wrong while reading';
+}
+
+interface OlderState {
+  house: string;
+  /** The next page past those read; null until the first older read. */
+  cursor: number | null;
+  orders: Order[];
+  reading: boolean;
+  error: string | null;
+  done: boolean;
+}
+
+const noOlder = (house: string): OlderState => ({
+  house,
+  cursor: null,
+  orders: [],
+  reading: false,
+  error: null,
+  done: false,
+});
+
+const NO_ORDERS: Order[] = [];
+
+/**
+ * Show older past the cap (ADR 0269, PR-B): pages after the newest 3,000, read
+ * on from `book.nextClosedPage` through the runner's window and 429 gate
+ * (`readOlderPage`). Kept per house; a house switch or unmount aborts a read
+ * under way, and a book that is no longer capped starts again at none.
+ */
+function useOlderReads(
+  house: string,
+  book: OrderBook | undefined,
+  providerNameById: Map<string, string>,
+): { orders: Order[]; older: OlderReads } {
+  const [state, setState] = useState<OlderState>(() => noOlder(house));
+  const controller = useRef<AbortController | null>(null);
+  const capped = book?.mode === 'capped';
+  const live = state.house === house && capped ? state : null;
+
+  useEffect(() => {
+    if (state.house !== house || (!capped && state.cursor !== null)) setState(noOlder(house));
+  }, [house, capped, state.house, state.cursor]);
+  useEffect(
+    () => () => {
+      controller.current?.abort();
+    },
+    [house, capped],
+  );
+
+  const cursor = live?.cursor ?? book?.nextClosedPage ?? null;
+  const canRead = capped && cursor !== null && !live?.done;
+
+  const read = useCallback(
+    async (need: number): Promise<boolean> => {
+      if (!book || book.mode !== 'capped' || cursor === null || live?.done) return false;
+      controller.current?.abort();
+      const ctl = new AbortController();
+      controller.current = ctl;
+      const { signal } = ctl;
+      const forHouse = house;
+      const known = new Set<string>(book.rows.map((o) => o.id));
+      live?.orders.forEach((o) => known.add(o.id));
+      const mine = (s: OlderState) => s.house === forHouse;
+      setState((s) => ({ ...(mine(s) ? s : noOlder(forHouse)), reading: true, error: null }));
+      let page = cursor;
+      let found = 0;
+      try {
+        for (let i = 0; i < OLDER_PAGES_PER_TAP && found < need; i++) {
+          const answer = await readOlderPage(forHouse, page, signal);
+          if (signal.aborted) return false;
+          const added = answer.orders.filter((o) => !known.has(o.id));
+          for (const o of added) {
+            known.add(o.id);
+            const r = toRow(o, providerNameById);
+            if (!r.recurring && r.stage !== 'cancelled' && !isOpenOrderStatus(r.status)) found++;
+          }
+          page = answer.page + 1;
+          const done = !answer.hasMore;
+          const next = page;
+          // Pages that landed stay, even when a later one fails.
+          setState((s) =>
+            mine(s) ? { ...s, cursor: next, orders: [...s.orders, ...added], done } : s,
+          );
+          if (done) break;
+        }
+        setState((s) => (mine(s) ? { ...s, reading: false } : s));
+        return true;
+      } catch (error) {
+        if (signal.aborted) return false;
+        setState((s) => (mine(s) ? { ...s, reading: false, error: orderBookErrorWords(error) } : s));
+        return false;
+      }
+    },
+    [book, cursor, live, house, providerNameById],
+  );
+
+  const reading = live?.reading ?? false;
+  const error = live?.error ?? null;
+  const older = useMemo<OlderReads>(
+    () => ({ canRead, reading, error, read }),
+    [canRead, reading, error, read],
+  );
+  return { orders: live?.orders ?? NO_ORDERS, older };
+}
+
+export function useOrdersNextData(targetOrderId: string | null = null): OrdersNextData {
   const { activeRestaurantId, user } = useAuth();
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
-  const ordersQuery = useOrders();
+  // The key useOrderBook reads under (useOrderBook.ts), not `restaurantId`.
+  const house = activeRestaurantId ?? '';
+  const bookQuery = useOrderBook();
+  const freshness = useOrderBookFreshness(house);
   const providersQuery = useProviders(restaurantId);
 
   // Tenant-keyed: a restaurant switch must never carry the previous house's
@@ -425,57 +740,77 @@ export function useOrdersNextData(): OrdersNextData {
     return map;
   }, [providersQuery.data]);
 
+  const book = bookQuery.data;
+  const bookRefetch = bookQuery.refetch;
+  const { orders: olderOrders, older } = useOlderReads(house, book, providerNameById);
+
+  /*
+   * A deep-linked order that is not among the rows read is asked for on its
+   * own before the page says anything about it. Found, it is listed but never
+   * counted, and it is not refreshed while the page stays open.
+   */
+  const inBook = !!targetOrderId && !!book && book.rows.some((o) => o.id === targetOrderId);
+  const lookupQuery = useQuery({
+    // Outside ['orders'] on purpose: every orders invalidation would re-ask for it.
+    queryKey: ['order-lookup', house, targetOrderId],
+    enabled: !!house && !!targetOrderId && !!book && !inBook && !bookQuery.isError,
+    queryFn: async ({ signal }) => {
+      const found = await fetchOrderById(house, targetOrderId as string, signal);
+      // fetchOrderById reads an abort as 'unreadable'; never keep that.
+      if (signal.aborted) throw signal.reason ?? new Error('aborted');
+      // It also folds a 429, a timeout and the gateway's not-found 500 into
+      // 'unreadable' (order-book.ts:552-577), so none of them is final: throw,
+      // and let the query try again.
+      if (found.state !== 'read') throw new Error('order lookup unreadable');
+      return found.order;
+    },
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: 2, // TanStack's default delay: 1 s, then 2 s
+  });
+  const foundOrder = lookupQuery.data;
+  const lookupRefetch = lookupQuery.refetch;
+  const lookupFailed = lookupQuery.isError && !lookupQuery.isFetching;
+  const target = useMemo<TargetLookup>(
+    () =>
+      !targetOrderId || !book || inBook || bookQuery.isError
+        ? { state: 'none' }
+        : foundOrder
+          ? { state: 'found' }
+          : lookupFailed
+            ? { state: 'unreadable', retry: () => void lookupRefetch() }
+            : { state: 'checking' },
+    [targetOrderId, book, inBook, bookQuery.isError, foundOrder, lookupFailed, lookupRefetch],
+  );
+
   return useMemo(() => {
-    const raw = ordersQuery.data;
-    const known = Array.isArray(raw);
-    const rows = known ? raw.map((o) => toRow(o, providerNameById)) : [];
+    const known = !!book;
+    const bookRows = book ? book.rows.map((o) => toRow(o, providerNameById)) : [];
+    // Counts come from the book's rows only: never older or looked-up rows.
+    const figures = book ? figuresFor(book, bookRows, new Date()) : UNKNOWN_FIGURES;
 
-    const counts: Record<Stage, number | null> = {
-      pending: null,
-      approved: null,
-      ordered: null,
-      delivered: null,
-    };
-    let recurringCount: number | null = null;
-    let recurrenceReadCount: number | null = null;
-    let cancelledCount: number | null = null;
-    const month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
-
-    if (known) {
-      const oneTime = rows.filter((r) => !r.recurring);
-      for (const s of STAGES) counts[s] = oneTime.filter((r) => r.stage === s).length;
-      recurringCount = rows.filter((r) => r.recurring).length;
-      /*
-       * HOW MANY ROWS ACTUALLY ANSWERED THE QUESTION.
-       *
-       * `recurringCount === 0` on its own has two meanings — "none of these
-       * repeats" and "this route never said" — and the station is not allowed
-       * to print the first when it only has grounds for the second. This count
-       * is what tells them apart, and `emptyStationSentence` is what turns it
-       * into words. Before 2026-09-05 the answer was ALWAYS the second one and
-       * the station showed nothing without saying so.
-       */
-      recurrenceReadCount = rows.filter((r) => r.recurrence.read).length;
-      cancelledCount = rows.filter((r) => r.stage === 'cancelled').length;
-
-      const now = new Date();
-      const inMonth = (iso: string | null, ref: Date) => {
-        if (!iso) return false;
-        const d = new Date(iso);
-        return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
-      };
-      const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const active = rows.filter((r) => r.stage !== 'cancelled');
-      const sumKnown = (rs: OrderRowVM[]) =>
-        rs.reduce((s, r) => s + (r.total ?? 0), 0);
-      const thisRows = active.filter((r) => inMonth(r.requestedAt, now));
-      const lastRows = active.filter((r) => inMonth(r.requestedAt, lastRef));
-      month.thisMonth = sumKnown(thisRows);
-      month.lastMonth = sumKnown(lastRows);
-      month.unpricedThisMonth = thisRows.filter((r) => r.total === null).length;
+    const rows = [...bookRows];
+    const present = new Set(rows.map((r) => r.id));
+    for (const o of olderOrders) {
+      if (present.has(o.id)) continue;
+      present.add(o.id);
+      rows.push(toRow(o, providerNameById));
     }
+    if (foundOrder && !present.has(foundOrder.id)) rows.push(toRow(foundOrder, providerNameById));
 
-    const err = ordersQuery.error as { message?: string } | null;
+    /*
+     * HOW MANY ROWS ACTUALLY ANSWERED THE QUESTION.
+     *
+     * `recurringCount === 0` on its own has two meanings — "none of these
+     * repeats" and "this route never said" — and the station is not allowed
+     * to print the first when it only has grounds for the second. This count
+     * is what tells them apart, and `emptyStationSentence` is what turns it
+     * into words. Before 2026-09-05 the answer was ALWAYS the second one and
+     * the station showed nothing without saying so. It counts the same rows
+     * the page compares it with (`data.rows.length`), older and looked-up
+     * ones included (ADR 0269, PR-B).
+     */
+    const recurrenceReadCount = known ? rows.filter((r) => r.recurrence.read).length : null;
 
     // A gate that has not answered is `null`, not an empty map: an empty map
     // reads as "every order is unrestricted", which is the one thing an
@@ -497,17 +832,35 @@ export function useOrdersNextData(): OrdersNextData {
       approvalGateError,
       approvalPolicyNote: gate?.readable ? gate.policyNote : null,
       rows,
-      counts,
-      recurringCount,
+      counts: figures.counts,
+      countsAreFloors: figures.countsAreFloors,
+      recurringCount: figures.recurringCount,
       recurrenceReadCount,
-      cancelledCount,
-      month,
+      cancelledCount: figures.cancelledCount,
+      month: figures.month,
       hasData: known,
-      dataUpdatedAt: known && ordersQuery.dataUpdatedAt ? ordersQuery.dataUpdatedAt : null,
-      isLoading: ordersQuery.isLoading,
-      isError: ordersQuery.isError,
-      errorMessage: ordersQuery.isError ? err?.message ?? 'request failed' : null,
-      refetch: () => void ordersQuery.refetch(),
+      // The kept read's start (ADR 0269): an optimistic write stamps a query's
+      // own update time, and "the last read, from HH:MM" must name a read.
+      dataUpdatedAt: known ? freshness.asOf : null,
+      isLoading: bookQuery.isLoading,
+      // A failed runner refresh (its interval included) holds no query error;
+      // it is said as a failed re-read only over rows it can date.
+      isError: bookQuery.isError || (freshness.failing && known),
+      errorMessage: bookQuery.isError
+        ? orderBookErrorWords(bookQuery.error)
+        : freshness.failing && known ? 'the latest refresh failed' : null,
+      refetch: () => void bookRefetch(),
+      book: {
+        mode: book?.mode ?? null,
+        total: book?.total ?? null,
+        readCount: book?.rows.length ?? 0,
+        openComplete: book?.openComplete ?? null,
+        unreadableStates: book?.unclassifiedCount ?? null,
+        deliveredAtLeast: figures.deliveredAtLeast,
+        recurringAtLeast: figures.recurringAtLeast,
+        older,
+      },
+      target,
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
+  }, [book, bookQuery.isLoading, bookQuery.isError, bookQuery.error, bookRefetch, freshness.asOf, freshness.failing, olderOrders, older, foundOrder, target, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
 }

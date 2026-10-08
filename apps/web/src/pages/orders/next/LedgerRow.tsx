@@ -296,6 +296,18 @@ export function LedgerRow({
                 ? ` · one occurrence of a recurring order`
                 : ''}
             </span>
+            {/* What an open arrival still owes, in the founder's words
+                (2026-10-03, ADR 0269); null for every other order. */}
+            {row.mark && (
+              <span
+                className="block break-words"
+                data-testid="order-mark"
+                data-mark={row.mark.kind}
+                style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+              >
+                {row.mark.text}
+              </span>
+            )}
           </span>
           <span
             style={{

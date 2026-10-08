@@ -39,15 +39,21 @@ import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
 import { EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
 import { emptyStationSentence } from './recurrence';
-import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
+import {
+  OLDER_STEP,
+  STAGES,
+  stationView,
+  useOrdersNextData,
+  type OrderRowVM,
+} from './useOrdersNextData';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
+import { CEILING_PAGES, PAGE_LIMIT } from '@/services/api/order-book';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
 const VALID_STATIONS = new Set<string>([...STAGES, 'recurring']);
 
 export default function OrdersNext() {
-  const data = useOrdersNextData();
   const { activeRestaurantId, user } = useAuth();
   /* Read here as well as inside the sheet so the guard can fire BEFORE the
      composer opens — the legacy desk's `openCreateOrderFlow` rule
@@ -65,6 +71,9 @@ export default function OrdersNext() {
   const { id: routeOrderId } = useParams<{ id?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const targetOrderId = routeOrderId ?? searchParams.get('order');
+  // Handed the deep-linked id, so an order that is not among the rows read
+  // is asked for on its own before the page says anything about it.
+  const data = useOrdersNextData(targetOrderId);
   /** Which target id this page has already acted on, so a manual collapse by
    *  the person afterwards is not fought by re-expanding on every render. */
   const handledTargetRef = useRef<string | null>(null);
@@ -81,6 +90,30 @@ export default function OrdersNext() {
     return requested && VALID_STATIONS.has(requested) ? (requested as SpineStation) : null;
   });
   /**
+   * Show older, per house and station (founder, 2026-10-02 List): finished
+   * orders come in `OLDER_STEP` a tap. A station with nothing open opens on
+   * its newest 50 (2026-10-03 Empty tab), and once it has, `firstFifty` keeps
+   * them (fork 8, ADR 0269).
+   */
+  const [older, setOlder] = useState<{ key: string; taps: number }>({ key: '', taps: 0 });
+  const [firstFifty, setFirstFifty] = useState('');
+  const viewKey = `${activeRestaurantId ?? ''}|${station ?? 'all'}`;
+  const taps = older.key === viewKey ? older.taps : 0;
+  const keepFirstFifty = firstFifty === viewKey;
+  // Bumped in selectStation and on a house change, so an older read that lands after either counts for nothing.
+  const tapGen = useRef(0);
+  // A house change starts Show older again, so A to B to A opens A afresh
+  // (test B18 in OrdersNext.older.test.tsx).
+  const [olderHouse, setOlderHouse] = useState(activeRestaurantId ?? '');
+  if (olderHouse !== (activeRestaurantId ?? '')) {
+    setOlderHouse(activeRestaurantId ?? '');
+    setOlder({ key: '', taps: 0 });
+    setFirstFifty('');
+  }
+  useEffect(() => {
+    tapGen.current++;
+  }, [activeRestaurantId]);
+  /**
    * The chosen station lives in the URL (ADR 0160, ORD-W5): a reload, a shared
    * link or Back returns to the same station. `replace`, so stepping through
    * stations does not stack history entries; a deep-link `order` is dropped,
@@ -88,6 +121,9 @@ export default function OrdersNext() {
    */
   const selectStation = (next: SpineStation | null) => {
     setStation(next);
+    setOlder({ key: '', taps: 0 });
+    setFirstFifty('');
+    tapGen.current++;
     setSearchParams(
       (prev) => {
         const p = new URLSearchParams(prev);
@@ -118,13 +154,17 @@ export default function OrdersNext() {
   /** Which order's receipt is open. One sheet for the page, as above. */
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
 
-  const visibleRows = useMemo(() => {
-    const byDate = (a: OrderRowVM, b: OrderRowVM) =>
-      new Date(b.requestedAt ?? 0).getTime() - new Date(a.requestedAt ?? 0).getTime();
-    if (station === 'recurring') return data.rows.filter((r) => r.recurring).sort(byDate);
-    const oneTime = data.rows.filter((r) => !r.recurring && r.stage !== 'cancelled');
-    return (station === null ? oneTime : oneTime.filter((r) => r.stage === station)).sort(byDate);
-  }, [data.rows, station]);
+  const view = useMemo(
+    () => stationView(data.rows, station, taps, targetOrderId, keepFirstFifty),
+    [data.rows, station, taps, targetOrderId, keepFirstFifty],
+  );
+  // Fork 8 (ADR 0269): once a station has opened on its newest 50, an open
+  // order arriving later does not fold them back behind Show older.
+  const opensOnFifty =
+    data.hasData && station !== 'recurring' && view.open.length === 0 && view.finished.length > 0;
+  useEffect(() => {
+    if (opensOnFifty && !keepFirstFifty) setFirstFifty(viewKey);
+  }, [opensOnFifty, keepFirstFifty, viewKey]);
 
   const responsesRow = useMemo(
     () => (responsesFor === null ? null : (data.rows.find((r) => r.id === responsesFor) ?? null)),
@@ -151,19 +191,26 @@ export default function OrdersNext() {
     [data.rows, targetOrderId],
   );
   /**
-   * A read that CAME BACK with rows, found nothing matching — not "still
-   * loading" and not "the fetch failed" (both are said elsewhere).
+   * A read that CAME BACK with rows, found nothing matching, and the order
+   * then asked for on its own did not come back either — not "still loading",
+   * not "still asking" and not "the read failed" (each is said elsewhere).
    *
-   * This does NOT mean the order does not exist or is foreign: `data.rows` is
-   * only the first page the list endpoint returns (`services/api/orders.ts`
-   * sends no `limit`; the gateway defaults to 50, newest first —
-   * `procurement.service.ts`), so a real order of this house that is merely
-   * older than the 50 most recent looks identical, from here, to one that
-   * truly does not exist or belongs to another house. The banner below says
-   * only what was actually checked — how many rows were loaded, not a claim
+   * This does NOT mean the order does not exist or is foreign: asked for on
+   * its own, a missing order, a foreign one, a refused read and a timeout all
+   * come back alike (`fetchOrderById`, ADR 0269), and a capped read lists only
+   * the newest orders. The banner below says only what was actually checked —
+   * how many orders were read and that reading this one failed, not a claim
    * about the order's existence or ownership.
    */
-  const targetMissing = Boolean(targetOrderId) && data.hasData && !data.isError && !targetRow;
+  const targetMissing =
+    Boolean(targetOrderId) &&
+    data.hasData &&
+    !data.isError &&
+    !targetRow &&
+    data.target.state === 'unreadable';
+  const targetChecking = Boolean(targetOrderId) && data.target.state === 'checking';
+  /** The short form the cancelled banner falls back to; there is no row to number it. */
+  const targetRef = (targetOrderId ?? '').slice(0, 8);
 
   useEffect(() => {
     if (!targetOrderId || !targetRow) return;
@@ -197,6 +244,69 @@ export default function OrdersNext() {
     });
 
   const now = new Date();
+
+  // The id a deep link scrolls to (see the targetOrderId effect above) — on
+  // this wrapper, not LedgerRow itself, so the row component stays free of a
+  // concern that is this page's, not its rows'.
+  const renderRow = (row: OrderRowVM) => (
+    <div key={row.id} id={`order-row-${row.id}`} data-testid={`order-row-${row.id}`}>
+      <LedgerRow
+        row={row}
+        expanded={expandedId === row.id}
+        onToggle={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
+        selected={selected.has(row.id)}
+        onSelectChange={(next) => setRowSelected(row.id, next)}
+        bulkRunning={bulkRunning}
+        approval={data.approvalByOrder?.get(row.id)}
+        onOpenResponses={() => setResponsesFor(row.id)}
+        onOpenRecurrence={() => setRecurrenceFor(row.id)}
+        onOpenReceipt={() => setReceiptFor(row.id)}
+        approvalGateError={data.approvalGateError}
+      />
+    </div>
+  );
+
+  /* An empty station off a read that did not cover every order says so, and
+     never "nothing sits here" or "none of the {n} repeats" about orders that
+     were never read (ADR 0269, PR-B). */
+  const emptyIncomplete =
+    station === 'recurring'
+      ? data.book.mode === 'capped' || data.book.mode === 'partial'
+        ? 'Not every order was read, so it cannot be said whether any order repeats.'
+        : null
+      : data.book.openComplete === false
+        ? 'Nothing here among the orders read. Some open orders may be missing.'
+        : null;
+
+  /* Show older (founder, 2026-10-02 List): finished orders read but not shown,
+     or, past the newest 3,000, older ones still to be read. */
+  const canShowOlder =
+    station !== 'recurring' &&
+    (view.hiddenFinished > 0 ||
+      (data.book.older.canRead && (station === null || station === 'delivered')));
+  const onShowOlder = () => {
+    const next = taps + 1;
+    const want = OLDER_STEP * next + (view.open.length === 0 || keepFirstFifty ? OLDER_STEP : 0);
+    const have = view.finished.length + view.hiddenFinished;
+    if (want <= have || !data.book.older.canRead) {
+      setOlder({ key: viewKey, taps: next });
+      return;
+    }
+    // A tap that needs older orders counts only once they are in; a failed read
+    // leaves it to be tapped again (Attack ledger 5). A house switch aborts the
+    // read, which resolves false.
+    const key = viewKey;
+    const gen = tapGen.current;
+    void data.book.older.read(want - have).then((ok) => {
+      if (ok && gen === tapGen.current) setOlder({ key, taps: next });
+    });
+  };
+  // The count only in a whole read: otherwise it counts rows read, not the house's.
+  const olderLabel = data.book.older.reading
+    ? 'Reading older orders…'
+    : data.book.mode === 'whole' && view.hiddenFinished > 0
+      ? `Show older (${view.hiddenFinished.toLocaleString('en-GB')} more)`
+      : 'Show older';
 
   /* An empty vendor list stops the composer; an UNREADABLE one does not.
      A failed read drawn as "you have no vendors" would send a person off to add
@@ -308,10 +418,12 @@ export default function OrdersNext() {
         {/* The composer. Its own overlay so the ledger under it never moves,
             and so the two units — the order's and the price's — are read
             together in one place (ADR 0119 phase 1). */}
+        {/* Neither sheet is handed a refetch: each already awaits the orders
+            invalidation (AgreementSheet.tsx:333, NewOrderSheet.tsx:380), which
+            re-reads the orders, and a second call started a second whole read. */}
         <AgreementSheet
           open={writing}
           onClose={() => setWriting(false)}
-          onSaved={() => data.refetch()}
         />
 
         {/* The manual entry (fork F5, 2026-09-05). Several lines placed
@@ -322,7 +434,6 @@ export default function OrdersNext() {
           open={ordering}
           onClose={() => setOrdering(false)}
           onNoVendors={() => setVendorGuard('refused')}
-          onPlaced={() => data.refetch()}
         />
 
         {/* The guard travels with it: caught before the composer opens, and
@@ -414,10 +525,77 @@ export default function OrdersNext() {
           </div>
         )}
 
-        {/* ── a link asked for ONE order, and it is not among the rows this
-            page loaded ── says only what was checked (§ targetMissing
-            above): the list read is one page, so "not loaded here" is never
-            widened into "does not exist" or "not this house's". */}
+        {/* ── a read that did not cover every order says so, one true
+            sentence per fact (ADR 0269 fork 9): which orders were read,
+            whether every open one is listed, and which figures it cannot
+            back ──────────────────────────────────────────────────────── */}
+        {(data.book.mode === 'capped' || data.book.mode === 'partial') && (
+          <div
+            role="status"
+            data-testid="orders-read-notice"
+            className="mb-4 rounded-xl px-4 py-3"
+            style={{
+              fontFamily: SANS,
+              fontSize: 12.5,
+              color: 'var(--ink-2, #4F473C)',
+              border: '1px solid var(--paper-2, #EAE4D8)',
+              background: 'var(--paper-1, #F3EFE6)',
+            }}
+          >
+            <p>
+              {data.book.mode === 'capped'
+                ? `This house has ${(data.book.total ?? 0).toLocaleString('en-GB')} orders, more than this screen reads at once. The newest ${(CEILING_PAGES * PAGE_LIMIT).toLocaleString('en-GB')} are read; older finished orders come in under Show older.`
+                : 'The orders kept changing while they were read, so some finished orders may be missing from this list.'}
+            </p>
+            <p>
+              {/* Rule (d), ADR 0269: openComplete true is not proof, so this
+                  line never promises every open order. */}
+              {data.book.openComplete
+                ? 'The open orders read are listed. One that changed while the orders were read may still be missing.'
+                : 'Some open orders may be missing.'}
+            </p>
+            {data.book.unreadableStates !== null && data.book.unreadableStates > 0 && (
+              <p>
+                {data.book.unreadableStates === 1
+                  ? '1 order is in a state this screen cannot read.'
+                  : `${data.book.unreadableStates.toLocaleString('en-GB')} orders are in a state this screen cannot read.`}
+              </p>
+            )}
+            <p>
+              {/* Rule (d), ADR 0269: Pending, Approved and Ordered are floors
+                  here whatever openComplete says (figuresFor). */}
+              Pending, Approved and Ordered count the orders read, so each is shown with a +.
+              Delivered, Recurring and the month figures show {EM} because not every order was
+              read. At least{' '}
+              {(data.book.deliveredAtLeast ?? 0).toLocaleString('en-GB')} delivered and{' '}
+              {(data.book.recurringAtLeast ?? 0).toLocaleString('en-GB')} recurring orders were
+              read.
+            </p>
+          </div>
+        )}
+
+        {/* ── a link asked for ONE order that is not among the rows read: it
+            is asked for on its own first (up to three tries) ─────────── */}
+        {targetChecking && (
+          <p
+            role="status"
+            data-testid="target-order-checking"
+            className="mb-4 rounded-xl px-4 py-3"
+            style={{
+              fontFamily: SANS,
+              fontSize: 12.5,
+              color: 'var(--ink-2, #4F473C)',
+              border: '1px solid var(--paper-2, #EAE4D8)',
+              background: 'var(--paper-1, #F3EFE6)',
+            }}
+          >
+            Looking for order {targetRef}…
+          </p>
+        )}
+
+        {/* ── …and it did not come back either ── says only what was
+            checked (§ targetMissing above): "not read here" is never widened
+            into "does not exist" or "not this house's". */}
         {targetMissing && (
           <div
             role="alert"
@@ -431,15 +609,53 @@ export default function OrdersNext() {
               background: 'var(--paper-1, #F3EFE6)',
             }}
           >
-            Order {targetOrderId} was not among the {data.rows.length} most recently loaded
-            orders — it may exist further back, or belong to a different house. Showing every
-            loaded order below instead.
+            {data.book.mode === 'whole' ? (
+              <>
+                Order {targetRef} could not be read. It is not among{' '}
+                {data.book.total === 1
+                  ? "this house's 1 order"
+                  : `this house's ${(data.book.total ?? 0).toLocaleString('en-GB')} orders`}
+                , read at {data.dataUpdatedAt !== null ? fmtReadTime(data.dataUpdatedAt) : EM}, and
+                reading it on its own failed; it may belong to another house, or the read may have
+                failed. The list is shown below instead.
+              </>
+            ) : (
+              <>
+                Order {targetRef} could not be read. It is not among{' '}
+                {data.book.readCount === 1
+                  ? 'the 1 order read so far'
+                  : `the ${data.book.readCount.toLocaleString('en-GB')} orders read so far`}
+                , at {data.dataUpdatedAt !== null ? fmtReadTime(data.dataUpdatedAt) : EM}, and
+                reading it on its own failed; it may belong to another house, or the read may have
+                failed. The list is shown below instead.
+              </>
+            )}{' '}
+            <button
+              type="button"
+              data-testid="target-order-retry"
+              onClick={() => {
+                if (data.target.state === 'unreadable') data.target.retry();
+              }}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                padding: '5px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: 'transparent',
+                color: 'var(--seal-deep, #14515C)',
+                cursor: 'pointer',
+              }}
+            >
+              Try again
+            </button>
           </div>
         )}
 
         {/* ── the one asked for exists, but the ledger never lists a
-            cancelled order — the count above is where it is kept ──────── */}
-        {targetRow && targetRow.stage === 'cancelled' && (
+            cancelled one-time order — the count above is where it is kept.
+            A cancelled recurring order IS listed, under Recurring. ────── */}
+        {targetRow && targetRow.stage === 'cancelled' && !targetRow.recurring && (
           <div
             role="status"
             data-testid="target-order-cancelled"
@@ -460,6 +676,7 @@ export default function OrdersNext() {
         {/* ── the five-stage spine the founder kept ────────────────────── */}
         <StageSpine
           counts={data.counts}
+          countsAreFloors={data.countsAreFloors}
           recurringCount={data.recurringCount}
           active={station}
           onSelect={selectStation}
@@ -485,53 +702,99 @@ export default function OrdersNext() {
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 Reading the order book…
               </p>
-            ) : visibleRows.length === 0 && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                {/*
-                  * THE RECURRING STATION SAYS "NONE" ONLY FROM A MEASURED READ.
-                  *
-                  * Until 2026-09-05 this station was structurally empty — the
-                  * route sent no recurrence and `toRow` set `recurring = false`
-                  * for every order — and it printed "Nothing sits at recurring
-                  * right now", which is a claim about the ORDERS made from a
-                  * fact about the ROUTE. `emptyStationSentence` is handed the
-                  * two counts and says which of the four cases this actually
-                  * is; the one it will not say is "there are none" off a book
-                  * that never answered.
-                  */}
-                {station === 'recurring'
-                  ? emptyStationSentence(
-                      data.hasData,
-                      data.rows.length,
-                      data.recurrenceReadCount ?? 0,
-                    )
-                  : station === null
-                    ? 'The book is open and empty — no active orders.'
-                    : `Nothing sits at ${station} right now.`}
-              </p>
+            ) : view.open.length === 0 && view.finished.length === 0 && !data.isError ? (
+              emptyIncomplete !== null ? (
+                <p
+                  data-testid="orders-empty-incomplete"
+                  style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}
+                >
+                  {emptyIncomplete}
+                </p>
+              ) : (
+                <p
+                  data-testid="orders-empty"
+                  style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}
+                >
+                  {/*
+                    * THE RECURRING STATION SAYS "NONE" ONLY FROM A MEASURED READ.
+                    *
+                    * Until 2026-09-05 this station was structurally empty — the
+                    * route sent no recurrence and `toRow` set `recurring = false`
+                    * for every order — and it printed "Nothing sits at recurring
+                    * right now", which is a claim about the ORDERS made from a
+                    * fact about the ROUTE. `emptyStationSentence` is handed the
+                    * two counts and says which of the four cases this actually
+                    * is; the one it will not say is "there are none" off a book
+                    * that never answered.
+                    */}
+                  {station === 'recurring'
+                    ? emptyStationSentence(
+                        data.hasData,
+                        data.rows.length,
+                        data.recurrenceReadCount ?? 0,
+                      )
+                    : /* Rule (d), ADR 0269: said of the orders read, never "nothing open". */
+                      station === null
+                      ? 'No active orders among those read.'
+                      : `Nothing at ${station} among the orders read.`}
+                </p>
+              )
             ) : (
+              // Every open order first, then the finished ones shown so far
+              // (founder, 2026-10-03 Station): no new tab, nothing moved.
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-                {visibleRows.map((row) => (
-                  // The id a deep link scrolls to (see the targetOrderId
-                  // effect above) — on this wrapper, not LedgerRow itself, so
-                  // the row component stays free of a concern that is this
-                  // page's, not its rows'.
-                  <div key={row.id} id={`order-row-${row.id}`} data-testid={`order-row-${row.id}`}>
-                    <LedgerRow
-                      row={row}
-                      expanded={expandedId === row.id}
-                      onToggle={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
-                      selected={selected.has(row.id)}
-                      onSelectChange={(next) => setRowSelected(row.id, next)}
-                      bulkRunning={bulkRunning}
-                      approval={data.approvalByOrder?.get(row.id)}
-                      onOpenResponses={() => setResponsesFor(row.id)}
-                      onOpenRecurrence={() => setRecurrenceFor(row.id)}
-                      onOpenReceipt={() => setReceiptFor(row.id)}
-                      approvalGateError={data.approvalGateError}
-                    />
-                  </div>
-                ))}
+                {view.open.map(renderRow)}
+                {view.finished.length > 0 && station !== 'recurring' && (
+                  <p
+                    data-testid="finished-label"
+                    style={{
+                      fontFamily: MONO,
+                      fontSize: 9.5,
+                      fontWeight: 500,
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      color: 'var(--ink-4, #665D50)',
+                      margin: 0,
+                      padding: '14px 0 6px',
+                    }}
+                  >
+                    Finished deliveries
+                  </p>
+                )}
+                {view.finished.map(renderRow)}
+              </div>
+            )}
+
+            {canShowOlder && (
+              <div style={{ fontFamily: SANS, marginTop: 10 }}>
+                <button
+                  type="button"
+                  data-testid="show-older"
+                  disabled={data.book.older.reading}
+                  onClick={onShowOlder}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: '5px 12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    cursor: data.book.older.reading ? 'progress' : 'pointer',
+                  }}
+                >
+                  {olderLabel}
+                </button>
+                {data.book.older.error && (
+                  <p
+                    role="status"
+                    data-testid="show-older-error"
+                    style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', marginTop: 6 }}
+                  >
+                    Older orders could not be read ({data.book.older.error}). Show older tries
+                    again.
+                  </p>
+                )}
               </div>
             )}
 
