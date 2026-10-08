@@ -23,8 +23,9 @@
  *   reads again once, and then falls back to reading every open status it can
  *   name on its own, marked `partial`, with `openComplete` false when it can
  *   tell that read may have missed an open order. It cannot always tell: ADR
- *   0269 lists the known ways it can miss one, each detected or pinned by a
- *   "KNOWN GAP" test (see `OrderBook.openComplete`).
+ *   0269 lists the known ways it can miss one, each detected, pinned by a
+ *   "KNOWN GAP" test, or marked "reasoned, not tested" there (see
+ *   `OrderBook.openComplete`).
  * - It never returns a row from another house. The token's house is checked
  *   before and after every page, and every row's `restaurantId` is compared
  *   with the house asked for.
@@ -272,7 +273,9 @@ export interface OrderBook {
   statusTotals: Partial<Record<OrderWireStatus, number>> | null
   /**
    * `total` less the per-status counts, floored at 0: a shortfall, from rows of
-   * a status no sweep can ask for or from orders that moved between the counts.
+   * a status no sweep can ask for, from orders that moved between the counts,
+   * or from a sweep whose count the gateway returned null (it then reports the
+   * page's own rows as the count, `procurement.service.ts:3262`).
    * 0 does not prove there are none (see `openComplete`).
    */
   unclassifiedCount: number | null
