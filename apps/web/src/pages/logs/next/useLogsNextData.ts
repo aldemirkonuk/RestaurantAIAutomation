@@ -19,6 +19,12 @@
  *     `source:id`. A page whose every row shares one timestamp, or holds no
  *     dated row at all, cannot advance; that is `stalled`, said in words by
  *     the page rather than looping or pretending it is the end.
+ *   - WHERE IT STARTS. `from` seeds the first `before`: the end of a day the
+ *     reader named (`parseDay` in lg-format.ts), so a day months back is one
+ *     bounded read instead of dozens of "Read older entries". It is part of
+ *     the key — a jumped reading must never be served the newest page from
+ *     cache — and a first page whose `nextCursor` equals the seed is a stall
+ *     like any other.
  *
  * Every read is keyed by `activeRestaurantId` (W6: a bare key serves the
  * previous house's rows after a switch) and lands in one of three states:
@@ -124,11 +130,11 @@ function unionOf(
   return known ? [...set] : null;
 }
 
-export function useLogsNextData(correlationId: string | null): LogsNextData {
+export function useLogsNextData(correlationId: string | null, from: string | null = null): LogsNextData {
   const rid = useAuth().activeRestaurantId ?? '';
 
   const q = useInfiniteQuery({
-    queryKey: ['logs-next', 'timeline', rid, correlationId ?? ''],
+    queryKey: ['logs-next', 'timeline', rid, correlationId ?? '', from ?? ''],
     queryFn: async ({ pageParam }) => {
       const { data } = await apiClient.get<TimelinePage>(`/logs/timeline/${rid}`, {
         params: {
@@ -139,7 +145,8 @@ export function useLogsNextData(correlationId: string | null): LogsNextData {
       });
       return data;
     },
-    initialPageParam: null as string | null,
+    // The first `before` is the seed: null reads from the newest entry.
+    initialPageParam: from,
     // A next page exists only when the gateway SAID so (`hasMore === true`
     // — never inferred from a full page), handed over a cursor, and that
     // cursor moves. The same cursor twice is a stall, not a next page.

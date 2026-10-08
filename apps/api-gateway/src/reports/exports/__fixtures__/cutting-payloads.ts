@@ -8,6 +8,11 @@
  * advanced-analytics.service.ts getCashflow / getSeasonality / getOverview /
  * getMenuEngineering, goals.service.ts getPosRevenueWindow /
  * listGoalsWithProgress, table-analytics.service.ts, insight-generator.service.ts).
+ *
+ * `paceDeltaPct` and `trendPerDayPct` are 0–1 fractions, as the engine returns
+ * them: 1200 against 900 is 0.3333, not 33.3. These fixtures used to hold
+ * percentages — the same mistake the writers made — so no test could see a
+ * 0.2069 trend written as "0.2%" (analytics walk 2026-10-03, A-020).
  */
 import type { ExportableCutting } from "../report-export-cuttings";
 
@@ -55,14 +60,14 @@ export const PAYLOADS: Record<ExportableCutting, unknown> = {
     basis: { current: "recomputed from the engine's query", peers: "no other restaurant's books" },
   },
   bench: {
-    cashflow: { spendLast30d: 1200, spendPrev30d: 900, paceDeltaPct: 33.3, committedOpenOrders: 400, openOrderCount: 2, basis: { outflow: "delivered procurement_orders" } },
+    cashflow: { spendLast30d: 1200, spendPrev30d: 900, paceDeltaPct: 0.3333, committedOpenOrders: 400, openOrderCount: 2, basis: { outflow: "delivered procurement_orders" } },
     seasonality: null,
     activeGoals: [{ name: "Lift wine attach", metric_key: "wine_attach_rate", baseline_value: 0.2, current_value: 0.24, target_value: 0.3 }],
   },
   pacing: {
     spendLast30d: 1200,
     spendPrev30d: 900,
-    paceDeltaPct: 33.3,
+    paceDeltaPct: 0.3333,
     projectedNext4Weeks: null,
     committedOpenOrders: 400,
     openOrderCount: 2,
@@ -78,7 +83,7 @@ export const PAYLOADS: Record<ExportableCutting, unknown> = {
     bestDay: null,
     worstDay: null,
     tie: true,
-    trendPerDayPct: -0.4,
+    trendPerDayPct: -0.004,
     basis: { weekday: "mean units per weekday over 90d", extremes: "withheld on a tie" },
   },
   ahead: {
@@ -117,6 +122,8 @@ export const PAYLOADS: Record<ExportableCutting, unknown> = {
   seats: {
     sinceDays: 90,
     dataStatus: "live",
+    checksInWindow: 12,
+    latestCheckAt: "2026-08-30T19:00:00.000Z",
     tables: [
       { tableId: "t1", label: "T1", zone: "Terrace", seats: 4, checks: 12, revenue: 900, covers: 30, avgCheck: 75, revenuePerSeat: 225, seatUtilization: 0.4, wineAttachRate: 0.5 },
       { tableId: "t2", label: "T2", zone: null, seats: null, checks: 0, revenue: 0, covers: 0, avgCheck: null, revenuePerSeat: null, seatUtilization: null, wineAttachRate: null },
@@ -125,6 +132,8 @@ export const PAYLOADS: Record<ExportableCutting, unknown> = {
   service: {
     sinceDays: 90,
     dataStatus: "live",
+    checksInWindow: 40,
+    latestCheckAt: "2026-08-30T19:00:00.000Z",
     adjusted: null,
     waiters: [{ name: "Ayşe", checks: 40, revenue: 3000, avgCheck: 75, wineAttachRate: 0.4, tipPct: null, revenuePerCover: 30 }],
   },

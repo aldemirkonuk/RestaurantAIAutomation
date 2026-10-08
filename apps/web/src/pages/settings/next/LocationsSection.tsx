@@ -114,7 +114,8 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
       <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '14px 0 0' }}>
         A branch’s date moves for <em>any</em> change to it — a rename, a city, a chain assignment, and also a new
         calendar feed token, which is a column on the same row. It says when the row was last written, not what was
-        written, and no table here records who wrote it.
+        written. Of the edits made here, only an owner’s change to the state or country is recorded with a name, in
+        the settings log (ADR 0289); nothing records who renamed a branch, moved its city or changed its chain.
       </p>
 
       <AddLocationDialog
