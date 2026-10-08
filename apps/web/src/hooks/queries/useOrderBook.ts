@@ -82,14 +82,14 @@ interface InFlight {
 
 export interface BookFreshness {
   /**
-   * When the book in the cache was read (its readStartedAt). Null means the
-   * book has not been read yet, NOT that it is fresh: `failing` and `stale`
-   * are both false then and say nothing, so a screen reads `asOf` first.
+   * The `asOf` that `finish` last passed to `setFreshness`: `kept.readStartedAt` from the
+   * write branch, the unchanged `asOf` from the failure branch. Null before the first call
+   * (`NO_FRESHNESS`).
    */
   asOf: number | null
-  /** The last refresh failed. */
+  /** The `failing` that `finish` last passed to `setFreshness`; false before the first call. */
   failing: boolean
-  /** Older than twice the interval, or a refresh is failing. */
+  /** `failing`, or `asOf` non-null and `Date.now() - asOf` over twice the interval. */
   stale: boolean
 }
 
@@ -285,9 +285,9 @@ function finish(run: HouseRun, flight: InFlight, book: OrderBook | null, error: 
     settle((w) => batch.waiters.add(w))
     return
   }
-  // A book read later than this one stays in the cache. Its callers get the
-  // kept book too, since TanStack writes whatever the query function returns.
-  // A read that is written gets every optimistic write still on its way.
+  // The cached book if its readStartedAt is larger than this one's, else this one,
+  // is written, set as `asOf`, and resolved to the waiters. A written read gets
+  // every optimistic write still on its way (withOverlays).
   let kept = book
   run.client?.setQueryData<OrderBook>(queryKeys.orders.book(run.house), (old) => {
     kept = old && old.readStartedAt > book.readStartedAt ? old : withOverlays(run, book)
@@ -509,9 +509,9 @@ export function useOrderBook() {
   const house = activeRestaurantId ?? ''
   const enabled = !!house && isAuthenticated
 
-  // ADR 0269 fork 6 (how soon a realtime push re-reads) is not answered, so
-  // no window `order_change` listener is wired here yet: a websocket order
-  // event still reaches the book through its `orders.all` invalidation.
+  // ADR 0269 fork 6: the window `order_change` listener is left to a later
+  // PR, so none is wired here. A websocket order event still reaches the book
+  // through its `orders.all` invalidation.
   useEffect(() => {
     if (!enabled) return
     return subscribeOrderBook(house, queryClient)

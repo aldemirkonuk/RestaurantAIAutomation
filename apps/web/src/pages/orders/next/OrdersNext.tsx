@@ -537,8 +537,10 @@ export default function OrdersNext() {
                 : 'The orders kept changing while they were read, so some finished orders may be missing from this list.'}
             </p>
             <p>
+              {/* Rule (d), ADR 0269: openComplete true is not proof, so this
+                  line never promises every open order. */}
               {data.book.openComplete
-                ? 'Every open order is listed.'
+                ? 'The open orders read are listed. One that changed while the orders were read may still be missing.'
                 : 'Some open orders may be missing.'}
             </p>
             {data.book.unreadableStates !== null && data.book.unreadableStates > 0 && (
@@ -696,7 +698,10 @@ export default function OrdersNext() {
                   {emptyIncomplete}
                 </p>
               ) : (
-                <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
+                <p
+                  data-testid="orders-empty"
+                  style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}
+                >
                   {/*
                     * THE RECURRING STATION SAYS "NONE" ONLY FROM A MEASURED READ.
                     *
@@ -715,9 +720,10 @@ export default function OrdersNext() {
                         data.rows.length,
                         data.recurrenceReadCount ?? 0,
                       )
-                    : station === null
-                      ? 'The book is open and empty — no active orders.'
-                      : `Nothing sits at ${station} right now.`}
+                    : /* Rule (d), ADR 0269: said of the orders read, never "nothing open". */
+                      station === null
+                      ? 'No active orders among those read.'
+                      : `Nothing at ${station} among the orders read.`}
                 </p>
               )
             ) : (

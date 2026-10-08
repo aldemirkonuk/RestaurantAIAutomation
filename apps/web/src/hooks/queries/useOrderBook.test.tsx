@@ -172,7 +172,7 @@ describe('useOrderBook: reading', () => {
     expect(reads()).toBe(2)
   })
 
-  it('a book read later than the one finishing stays in the cache, and the query gets it', async () => {
+  it('a book dated later than the one finishing stays in the cache, and the query gets it', async () => {
     const client = appClient()
     const later: OrderBook = {
       house: HOUSE_A,

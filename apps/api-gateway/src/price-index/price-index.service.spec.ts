@@ -177,10 +177,14 @@ describe("PriceIndexService.forState — state scoping", () => {
 });
 
 describe("PriceIndexService.forHouse — resolves the caller's own state", () => {
+  // Updated 2026-10-07 (ADR 0305): the state is read inside the house's
+  // country, so this row now names its country. A state with no country is
+  // covered in `house-jurisdiction.spec.ts`: it is not read at all.
   it("reads restaurants.state_province and scopes to that state", async () => {
     const svc = new PriceIndexService(
       makeDb((ctx) => {
-        if (ctx.table === "restaurants") return { data: [{ state_province: "California" }] };
+        if (ctx.table === "restaurants")
+          return { data: [{ state_province: "California", country: "United States" }] };
         return isCount(ctx) ? { count: 1 } : { data: [CA_ROW] };
       }),
     );
@@ -192,7 +196,8 @@ describe("PriceIndexService.forHouse — resolves the caller's own state", () =>
   // Updated 2026-09-05: `forHouse` now falls back to `restaurants.country`, so
   // the sentence for a house with NEITHER names both columns. A house with a
   // country but no state is a different case, covered in
-  // `price-index.nonus.spec.ts`.
+  // `price-index.nonus.spec.ts`. Updated 2026-10-07 (ADR 0305): a house with
+  // no country is asked for its country, whatever its state says.
   it("says WORDS when the house records neither a state nor a country", async () => {
     const svc = new PriceIndexService(
       makeDb((ctx) =>
@@ -203,7 +208,8 @@ describe("PriceIndexService.forHouse — resolves the caller's own state", () =>
     );
     const res = await svc.forHouse("r-2");
     expect(res.state).toBeNull();
-    expect(res.silence).toContain("neither a state nor a country");
+    expect(res.silence).toContain("country isn't recorded");
+    expect(res.countryNotRecorded).toBe(true);
   });
 
   it("says WORDS when there is no active restaurant", async () => {

@@ -487,8 +487,15 @@ export function stationView(
   if (station === 'recurring') {
     return { open: rows.filter((r) => r.recurring).sort(byDate), finished: [], hiddenFinished: 0 };
   }
-  const oneTime = rows.filter((r) => !r.recurring && r.stage !== 'cancelled');
-  const here = station === null ? oneTime : oneTime.filter((r) => r.stage === station);
+  // Fork 5 (ADR 0269, coordinator 2026-10-08): a recurring order that is an
+  // open arrival is also listed first in Delivered. Elsewhere, recurring
+  // orders stay out of the one-time views.
+  const openRecurringArrival = (r: OrderRowVM) =>
+    station === 'delivered' && r.recurring && r.stage === 'delivered' && isOpenOrderStatus(r.status);
+  const listed = rows.filter(
+    (r) => (!r.recurring || openRecurringArrival(r)) && r.stage !== 'cancelled',
+  );
+  const here = station === null ? listed : listed.filter((r) => r.stage === station);
   const open = here.filter((r) => isOpenOrderStatus(r.status)).sort(byDate);
   const allFinished = here.filter((r) => !isOpenOrderStatus(r.status)).sort(byDate);
   // Empty tab ruling: nothing open opens on the newest 50; fork 8: once shown, kept.
@@ -728,6 +735,7 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
   }, [providersQuery.data]);
 
   const book = bookQuery.data;
+  const bookRefetch = bookQuery.refetch;
   const { orders: olderOrders, older } = useOlderReads(house, book, providerNameById);
 
   /*
@@ -834,7 +842,7 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
       errorMessage: bookQuery.isError
         ? orderBookErrorWords(bookQuery.error)
         : freshness.failing && known ? 'the latest refresh failed' : null,
-      refetch: () => void bookQuery.refetch(),
+      refetch: () => void bookRefetch(),
       book: {
         mode: book?.mode ?? null,
         total: book?.total ?? null,
@@ -847,5 +855,5 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
       },
       target,
     };
-  }, [book, bookQuery.isLoading, bookQuery.isError, bookQuery.error, bookQuery.refetch, freshness.asOf, freshness.failing, olderOrders, older, foundOrder, target, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
+  }, [book, bookQuery.isLoading, bookQuery.isError, bookQuery.error, bookRefetch, freshness.asOf, freshness.failing, olderOrders, older, foundOrder, target, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);
 }

@@ -373,7 +373,7 @@ describe('cancelled orders, other stations and the All view', () => {
 });
 
 describe('a read that did not cover every order', () => {
-  it('B8: capped, every open order read: says so a fact a line, and Show older names no count', () => {
+  it('B8: capped, open counts adding up: a fact a line, no promise of every open order, and Show older names no count', () => {
     state.current = ordersData(finished(60), {
       book: capped(),
       counts: { pending: 0, approved: 0, ordered: 0, delivered: null },
@@ -385,7 +385,9 @@ describe('a read that did not cover every order', () => {
     expect(notice).toHaveTextContent(
       'This house has 3,412 orders, more than this screen reads at once. The newest 3,000 are read; older finished orders come in under Show older.',
     );
-    expect(notice).toHaveTextContent('Every open order is listed.');
+    expect(notice).toHaveTextContent(
+      'The open orders read are listed. One that changed while the orders were read may still be missing.',
+    );
     expect(notice).toHaveTextContent(
       'Delivered, Recurring and the month figures show — because not every order was read. At least 2,980 delivered and 4 recurring orders were read.',
     );
@@ -502,6 +504,37 @@ describe('a read that did not cover every order', () => {
     harness('/orders?station=recurring');
     expect(screen.getByText('None of the 3000 orders in this book repeats.')).toBeInTheDocument();
     expect(screen.queryByTestId('orders-empty-incomplete')).not.toBeInTheDocument();
+  });
+});
+
+describe('B17: rule (d), no completeness promise on openComplete alone', () => {
+  // ADR 0269 handover "No completeness promise on openComplete alone":
+  // openComplete true can still hide an open order (W4, W5, S4, C3).
+  const PROMISE =
+    /every open order|all (the )?open orders|nothing else (is )?open|no (active|open) orders(?! among those read)|nothing sits at/i;
+  it('no notice or empty sentence promises every open order, in any read, at any station', () => {
+    const books = [
+      whole(0),
+      capped({ openComplete: true, deliveredAtLeast: 0, recurringAtLeast: 0 }),
+      whole(0, { mode: 'partial', total: 40, openComplete: true, deliveredAtLeast: 0, recurringAtLeast: 0 }),
+    ];
+    const paths = ['/orders', ...['pending', 'approved', 'ordered', 'delivered'].map((s) => `/orders?station=${s}`)];
+    let notices = 0;
+    let empties = 0;
+    for (const book of books) {
+      for (const path of paths) {
+        state.current = ordersData([], { book, counts: { pending: 0, approved: 0, ordered: 0, delivered: null } });
+        const page = harness(path);
+        notices += screen.queryAllByTestId('orders-read-notice').length;
+        empties += screen.queryAllByTestId('orders-empty').length;
+        expect(document.body.textContent ?? '').not.toMatch(PROMISE);
+        page.unmount();
+      }
+    }
+    // The sweep reached both sentences it guards: 2 degraded books × 5 paths
+    // carry the notice, and every one of the 15 renders is an empty station.
+    expect(notices).toBe(10);
+    expect(empties).toBe(15);
   });
 });
 

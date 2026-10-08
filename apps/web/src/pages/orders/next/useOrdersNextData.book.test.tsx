@@ -330,7 +330,7 @@ describe('stationView', () => {
     expect(v.hiddenFinished).toBe(0);
   });
 
-  it('A10c: a recurring arrival is marked under Recurring only; its occurrence is first in Delivered', () => {
+  it('A10c: a recurring open arrival is first in Delivered and under Recurring; not in All (fork 5)', () => {
     const rows = [
       ...finished(5),
       old('r-1', 'DELIVERED', WEEKLY),
@@ -344,8 +344,26 @@ describe('stationView', () => {
     expect(ids(recurring.open)).toEqual(['r-1']);
     expect(recurring.open[0].mark?.text).toBe('Not counted yet');
     const delivered = stationView(rows, 'delivered', 0, null, false);
-    expect(ids(delivered.open)).toEqual(['occ-1']);
+    expect(ids(delivered.open)).toEqual(['r-1', 'occ-1']);
+    expect(delivered.open[0].mark?.text).toBe('Not counted yet');
     expect(ids(stationView(rows, null, 0, null, false).open)).toEqual(['occ-1']);
+  });
+
+  it('A10d: a recurring backorder is first in Delivered; a finished recurring delivery is not (fork 5)', () => {
+    const rows = [
+      ...finished(5),
+      old('r-pr', 'PARTIALLY_RECEIVED', WEEKLY),
+      old('r-done', 'COMPLETED', WEEKLY),
+    ];
+    const delivered = stationView(rows, 'delivered', 5, null, false);
+    expect(ids(delivered.open)).toEqual(['r-pr']);
+    expect(ids(delivered.finished)).not.toContain('r-done');
+    expect(delivered.hiddenFinished + delivered.finished.length).toBe(5);
+    expect(ids(stationView(rows, 'recurring', 0, null, false).open).sort()).toEqual(['r-done', 'r-pr']);
+    for (const station of [null, 'pending', 'approved', 'ordered'] as const) {
+      const v = stationView(rows, station, 5, null, false);
+      expect(ids([...v.open, ...v.finished])).not.toContain('r-pr');
+    }
   });
 });
 
