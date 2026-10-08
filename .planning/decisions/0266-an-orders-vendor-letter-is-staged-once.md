@@ -104,7 +104,7 @@ The order's letter is decided in the database. Both agents stage it through `pub
 |---|---|---|
 | PR-1 | `fix/f106-one-letter-per-order` | this ADR's mechanism |
 | PR-2 | `fix/f126-cap-notice-once-a-day` | the cap notice once a day; the cap is unchanged |
-| PR-3 | `data/f106-reconcile-pending-drafts` | first-written survives (F0); unique index; after the dry-run and R4's confirmation |
+| PR-3 | `data/f106-reconcile-pending-drafts` | first-written survives (F0); unique index; after the dry-run and R4's confirmation [2026-10-08: built. Migration `an_order_holds_one_pending_draft`: table lock first (lock_timeout 5s), the F0 reconcile, the index, strict asserts. Production dry run done (no pairs); R4's skip (4c0c5c816) is on #677, which this branch carries.] |
 | PR-4a | `feat/w25-order-request-renderer` | renderer, internal route, `ORDER_REQUEST` type, F5's editable purpose |
 | PR-4b | `feat/w25-order-request-draft` | both agents draft from it, behind `ORDER_REQUEST_LETTER` (off; the flip is the founder's) |
 | PR-5a / 5b | `fix/w25-approve-draft-lookup`, `fix/w25-order-subject-fallbacks` | `procurement.service.ts`, in the O4 queue |
@@ -124,3 +124,4 @@ The order's letter is decided in the database. Both agents stage it through `pub
 | 2026-10-04 | PR #591 gate at 0c363b4a2 (correctness and security reviews) | Three points nobody had ruled on were asked; founder ruled all three as recommended (Founder forks, 2026-10-04). Recorded at a new head, so a full re-gate follows |
 | 2026-10-08 | — | PR-3 production dry run, read-only SELECTs (founder: "Yes, I'll run /mcp auth"). No order has two waiting drafts, the reconcile would discard 0 rows, and the PR-1 trigger has settled 0. Query 4 found one stray approval-time `order_inquiry` whose order's letter had already been sent; it was discarded on his word ("analyze draft decide what to do"). That draft was never sent, but its text named the house's ceiling price; the defect is filed in `tech-debt.d/2026-10-08-data-f106-reconcile-pending-drafts.md` |
 | 2026-10-08 | — | Branch data/f106-reconcile-pending-drafts (PR-3): recorded the founder's 2026-10-05 "Leave until F1" cap-notice ruling, F1 in Status, and the disclosure that #595's notice is broader than the door (owed from the #591 gate) |
+| 2026-10-08 | — | PR-3 built on data/f106-reconcile-pending-drafts: migration `an_order_holds_one_pending_draft`, test file, claims F106-RECONCILE-FIRST-WRITTEN and F106-ONE-PENDING-INDEX-SHAPE (F106-EXISTING-DUPLICATES-RECONCILED resolved). PGlite proof over 295 earlier migrations with seeded pairs: all checks pass, and 4 of 4 mutations are caught |

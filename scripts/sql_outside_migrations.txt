@@ -13,6 +13,7 @@ Supabase_SQL_Files/SQL_editor6_sku_additions.sql
 Supabase_SQL_Files/supabase_sql_file_v1.sql
 Supabase_SQL_Files/supabase_sql_file_v2.sql
 datasets/library/repair-2026-09-05.sql
+scripts/f106_reconcile_dry_run.sql
 scripts/fix_uuid_migration.sql
 scripts/init_database_local.sql
 scripts/sql/d15_vendor_identity_assertions.sql
@@ -162,3 +163,4 @@ supabase/tests/20261222100000_a_pos_sale_is_dated_by_its_check_test.sql
 supabase/tests/20261222170000_the_cellar_reads_the_tills_own_record_test.sql
 supabase/tests/20261222140000_old_pos_rows_carry_their_check_date_test.sql
 supabase/tests/20261223060000_the_cellar_counts_the_door_checked_price_test.sql
+supabase/tests/20261224110000_an_order_holds_one_pending_draft_test.sql
