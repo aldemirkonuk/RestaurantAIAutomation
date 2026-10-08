@@ -274,8 +274,8 @@ export interface OrderBook {
   /**
    * `total` less the per-status counts, floored at 0: a shortfall, from rows of
    * a status no sweep can ask for, from orders that moved between the counts,
-   * or from a sweep whose count the gateway returned null (it then reports the
-   * page's own rows as the count, `procurement.service.ts:3262`).
+   * or from a count the gateway returned null (it then reports the page's own
+   * rows as the count, `procurement.service.ts:3262`).
    * 0 does not prove there are none (see `openComplete`).
    */
   unclassifiedCount: number | null
