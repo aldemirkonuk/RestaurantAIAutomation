@@ -583,9 +583,19 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
         : `${n} ${n === 1 ? 'entry' : 'entries'} on ${REGISTER_NAME[leaf]}.`;
   } else {
     const read = data.rulesEvaluated === null ? `An unknown number of rules (${EM})` : `${data.rulesEvaluated} rules`;
+    // A read that could not be made is never "nothing to recommend" (ADR 0292,
+    // the founder 2026-10-07: "Say it couldn't be read"). "Clear" is said only
+    // when the engine says every source answered; the quiet tier names the rest.
+    const unread = data.sourcesUnread;
     voice =
       n === 0
-        ? `${read} were read, and none of them stands. The book is clear.`
+        ? Array.isArray(unread) && unread.length > 0
+          ? `${read} were read, and none of them stands, but the engine could not read ${
+              unread.length === 1 ? 'one of its sources' : `${unread.length} of its sources`
+            }, so the book is not proven clear.`
+          : Array.isArray(unread)
+            ? `${read} were read, and none of them stands. The book is clear.`
+            : `${read} were read, and none of them stands.`
         : `${read} were read. ${n} ${n === 1 ? 'entry stands' : 'entries stand'}, and ${
             kinds === 1 ? 'they are one kind of work' : `they are ${kinds} kinds of work`
           } — the rest did not fire, or you have already ruled them off.`;
@@ -870,9 +880,21 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                   {day
                     ? 'Nothing on the docket touches that day.'
                     : leaf === 'standing'
-                      ? stake === 'all'
-                        ? 'Nothing stands against tonight’s numbers.'
-                        : `Nothing on this leaf would change ${STAKE_BLURB[stake as StakeId]}.`
+                      ? // "Tonight's numbers" only when the engine says every
+                        // source answered. A source it could not read leaves its
+                        // rules silent, so the empty book is only what it could
+                        // read; a feed that does not say proves neither.
+                        !Array.isArray(data.sourcesUnread)
+                        ? stake === 'all'
+                          ? 'Nothing stands against what the engine read.'
+                          : `Nothing the engine read would change ${STAKE_BLURB[stake as StakeId]}.`
+                        : data.sourcesUnread.length > 0
+                          ? stake === 'all'
+                            ? 'Nothing stands against what the engine could read.'
+                            : `Nothing the engine could read would change ${STAKE_BLURB[stake as StakeId]}.`
+                          : stake === 'all'
+                            ? 'Nothing stands against tonight’s numbers.'
+                            : `Nothing on this leaf would change ${STAKE_BLURB[stake as StakeId]}.`
                       : `Nothing on ${REGISTER_NAME[leaf]}.`}
                 </p>
                 {day ? (
