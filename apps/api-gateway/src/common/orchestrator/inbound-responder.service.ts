@@ -248,6 +248,9 @@ export class InboundResponderService {
         `,
         )
         .eq("id", ctx.orderId)
+        // The order, and so the vendor address a draft goes to, must be this
+        // house's (ADR 0221). An order of another house reads as not found.
+        .eq("restaurant_id", ctx.restaurantId)
         .single();
 
       if (!order) {
