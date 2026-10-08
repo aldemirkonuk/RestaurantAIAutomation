@@ -29,12 +29,24 @@
   "POST /analytics/goal-scenarios/requests/:restaurantId (AnalyticsController.requestGoalScenario)": "open",
   "GET /analytics/goal-scenarios/requests (AnalyticsController.listGoalScenarioRequests)": "open",
   "GET /analytics/goals/:restaurantId (AnalyticsController.listGoals)": "open",
-  "POST /analytics/goals/:restaurantId (AnalyticsController.createGoal)": "open",
+  "POST /analytics/goals/:restaurantId (AnalyticsController.createGoal)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/goals/:restaurantId/progress (AnalyticsController.listGoalsWithProgress)": "open",
-  "PATCH /analytics/goals/:restaurantId/:goalId (AnalyticsController.updateGoal)": "open",
-  "POST /analytics/goals/:restaurantId/:goalId/cutting-spec (AnalyticsController.proposeGoalCuttingSpec)": "open",
+  "PATCH /analytics/goals/:restaurantId/:goalId (AnalyticsController.updateGoal)": [
+    "owner",
+    "manager"
+  ],
+  "POST /analytics/goals/:restaurantId/:goalId/cutting-spec (AnalyticsController.proposeGoalCuttingSpec)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/goals/:restaurantId/:goalId/progress (AnalyticsController.getGoalProgress)": "open",
-  "PUT /analytics/goals/:restaurantId/:goalId/status (AnalyticsController.updateGoalStatus)": "open",
+  "PUT /analytics/goals/:restaurantId/:goalId/status (AnalyticsController.updateGoalStatus)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/consultants/:restaurantId (AnalyticsController.getConsultants)": "open",
   "PUT /analytics/consultants/:restaurantId/toggle (AnalyticsController.toggleConsultants)": "open",
   "POST /analytics/consult/:restaurantId (AnalyticsController.consult)": "open",

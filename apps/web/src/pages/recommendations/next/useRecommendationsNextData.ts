@@ -38,6 +38,7 @@ import { apiClient } from '@/services/api/client';
 import { decodeBook, type GoalScenarioBook } from '@/hooks/useGoalScenarios';
 import { toGoalBook, type GoalBookVM } from './rec-masthead';
 import { getTeamMembers } from '@/services/api/team';
+import { goalWriteRoleRefusal } from '@/pages/reports/next/useGoalsDesk';
 import {
   failureOf,
   handOf,
@@ -130,6 +131,31 @@ export interface EntryVM {
  */
 export function mayActRuleWide(role: string | null | undefined): boolean {
   return mayActForTheHouse(role);
+}
+
+/** Why this person is not offered a goal write, for staff (ADR 0250). */
+export const GOAL_ROLE_STAFF = 'Goals are set by owners and managers.';
+/** The same, when this person's role at this house is not confirmed: not offered, never permission. */
+export const GOAL_ROLE_UNCONFIRMED =
+  'Your role at this restaurant is not confirmed here, so setting a goal is not offered. ' +
+  'Ask a manager or an owner to set one.';
+
+/**
+ * Why "Make this a goal" and "Set a goal →" are not offered to this person,
+ * or null when they are (ADR 0250, the founder 2026-10-01: "Disabled with a
+ * reason").
+ *
+ * Read from `activeRole` ALONE — the role on this house's active access row,
+ * the same row `JwtStrategy` reads for the gateway's `RolesGuard`. Never the
+ * account-wide `user.role` the shell falls back to while the branch role
+ * resolves (`role` below): the gateway does not read it, so a control drawn
+ * from it would be offered and then refused. Null or anything unknown is "not
+ * confirmed", not permission.
+ */
+export function goalRoleReasonFor(activeRole: string | null | undefined): string | null {
+  if (activeRole === 'owner' || activeRole === 'manager') return null;
+  if (activeRole === 'staff') return GOAL_ROLE_STAFF;
+  return GOAL_ROLE_UNCONFIRMED;
 }
 
 /**
@@ -428,6 +454,11 @@ export interface RecommendationsData {
    */
   canSnoozeForEveryone: boolean;
   /**
+   * Why this person may not set a goal here, or null when they may
+   * (`goalRoleReasonFor`, ADR 0250). From `activeRole` alone.
+   */
+  goalRoleReason: string | null;
+  /**
    * This person's role in this house, read exactly as the shell reads it
    * (`shellRoleFlags.ts` `normalRole`: the branch role first, the account
    * role while it resolves; anything but owner, manager or staff is null).
@@ -473,6 +504,7 @@ export function useRecommendationsNextData(): RecommendationsData {
   const rid = activeRestaurantId ?? null;
   const canActRuleWide = mayActRuleWide(activeRole ?? user?.role ?? null);
   const canSnoozeForEveryone = maySnoozeForEveryone(activeRole ?? user?.role ?? null);
+  const goalRoleReason = goalRoleReasonFor(activeRole);
   const role = normalRole(activeRole ?? user?.role ?? null);
 
   const [leaf, setLeaf] = useState<Leaf>('standing');
@@ -973,12 +1005,15 @@ export function useRecommendationsNextData(): RecommendationsData {
         return { ok: true, goal };
       } catch (err) {
         const f = failureOf(err);
+        // ADR 0250: the gateway's role refusal is "Forbidden resource", a
+        // sentence about the server. Say who may set a goal instead.
+        const message = goalWriteRoleRefusal(err) ?? f.message;
         say(
           f.expired
             ? 'Your session has expired — no goal was set. Sign in again.'
-            : `No goal was set (${f.message}).`,
+            : `No goal was set (${message}).`,
         );
-        return { ok: false, message: f.message, expired: f.expired };
+        return { ok: false, message, expired: f.expired };
       }
     },
     [rid, say],
@@ -1247,6 +1282,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     bulk,
     canActRuleWide,
     canSnoozeForEveryone,
+    goalRoleReason,
     role,
     hiddenForYou,
     personalSnoozesReadable,

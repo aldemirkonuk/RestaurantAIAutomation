@@ -27,11 +27,19 @@ export default function GoalsMargin({
   book,
   suggestion,
   onSuggest,
+  roleReason,
 }: {
   book: GoalBookVM;
   suggestion: GoalSuggestion | null;
   /** Opens the suggested entry's own goal sheet — the target stays blank. */
   onSuggest: (s: GoalSuggestion) => void;
+  /**
+   * Why this person may not set a goal, or null when they may (ADR 0250, the
+   * founder 2026-10-01: "Disabled with a reason"). "Set a goal →" is then
+   * drawn disabled, and the reason replaces "The target is yours to type."
+   * Required, so a render site that forgets it is a type error.
+   */
+  roleReason: string | null;
 }) {
   const shown = book ? book.goals.slice(0, MARGIN_ROWS) : [];
   const more = book ? book.total - shown.length : 0;
@@ -108,12 +116,24 @@ export default function GoalsMargin({
           <div className="rc-micro rc-micro-seal">Mudavym suggests</div>
           <div className="rc-mgoal-name">{suggestion.plan.name}</div>
           <p className="rc-why">
-            No goal watches {suggestion.plan.metricLabel.toLowerCase()} yet. The target is yours to
-            type.
+            No goal watches {suggestion.plan.metricLabel.toLowerCase()} yet.{' '}
+            {roleReason ?? 'The target is yours to type.'}
           </p>
-          <button type="button" className="rc-mini" onClick={() => onSuggest(suggestion)}>
-            Set a goal →
-          </button>
+          {roleReason ? (
+            <button
+              type="button"
+              className="rc-dark rc-dark-inline"
+              disabled
+              title={roleReason}
+              data-testid="rc-mgoal-suggest-role"
+            >
+              Set a goal →
+            </button>
+          ) : (
+            <button type="button" className="rc-mini" onClick={() => onSuggest(suggestion)}>
+              Set a goal →
+            </button>
+          )}
         </div>
       )}
     </aside>

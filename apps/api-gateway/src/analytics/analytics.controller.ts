@@ -801,19 +801,38 @@ export class AnalyticsController {
     return this.goalsService.listGoals(restaurantId, status || "active");
   }
 
+  /**
+   * Goal writes are an owner's or a manager's (ADR 0250, the founder,
+   * 2026-10-01). Create, edit, status and "Ask the book" below each carry
+   * `RolesGuard` with `@Roles("owner", "manager")`, the pattern the
+   * insight-catalog toggle above and the report exports use: the role is the
+   * one `JwtStrategy` reads from the caller's active access row in the token's
+   * house, the same row the web's `activeRole` reads. Anyone else gets 403
+   * before the handler runs. The reads stay open to every member.
+   */
   @Post("goals/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Create a metric-linked goal",
+    summary: "Create a metric-linked goal (owner/manager)",
     description:
       "Body: { name, metricKey (wine_revenue|bottles_sold|purchase_spend|checks|avg_check|wine_attach_rate), targetValue, deadline?, period?, direction?, sourceRuleKey? }. " +
-      "`sourceRuleKey` records which recommendation the goal came from; it is validated against the rule catalogue and an unknown key is a 400, never a stored string nothing resolves. Absent means a person typed it.",
+      "`sourceRuleKey` records which recommendation the goal came from; it is validated against the rule catalogue and an unknown key is a 400, never a stored string nothing resolves. Absent means a person typed it. " +
+      "Owner or manager of this house only; anyone else is 403. The goal's created_by is the signed-in caller; a body `createdBy` is ignored.",
   })
   async createGoal(
     @Param("restaurantId") restaurantId: string,
     @Body() body: any,
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
-      return await this.goalsService.createGoal(restaurantId, body || {});
+      return await this.goalsService.createGoal(restaurantId, {
+        ...(body || {}),
+        // ADR 0250: the author is the person on the token, never a body
+        // field. A client-supplied id is an unverified claim about someone.
+        createdBy:
+          typeof user?.userId === "string" && user.userId ? user.userId : null,
+      });
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to create goal",
@@ -847,10 +866,13 @@ export class AnalyticsController {
   }
 
   @Patch("goals/:restaurantId/:goalId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Edit a goal (name, targetValue, deadline, direction, period)",
+    summary:
+      "Edit a goal (name, targetValue, deadline, direction, period) (owner/manager)",
     description:
-      "metricKey is deliberately not editable: baseline_value was measured against the old metric and every progress figure is computed against that baseline. Archive and set a new goal instead.",
+      "metricKey is deliberately not editable: baseline_value was measured against the old metric and every progress figure is computed against that baseline. Archive and set a new goal instead. Owner or manager of this house only; anyone else is 403.",
   })
   async updateGoal(
     @Param("restaurantId") restaurantId: string,
@@ -868,10 +890,13 @@ export class AnalyticsController {
   }
 
   @Post("goals/:restaurantId/:goalId/cutting-spec")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Ask the assistant which catalogued analysis shows this goal",
+    summary:
+      "Ask the assistant which catalogued analysis shows this goal (owner/manager)",
     description:
-      "The model CONFIGURES the deterministic engine — it returns an analysis id, a drawing and a window, every one of them validated against a closed catalogue server-side (report-cuttings.ts). It never writes a figure, a sentence on a chart, or a new analysis. Without ANTHROPIC_API_KEY the route answers `available:false` with the reason and proposes nothing.",
+      "The model CONFIGURES the deterministic engine — it returns an analysis id, a drawing and a window, every one of them validated against a closed catalogue server-side (report-cuttings.ts). It never writes a figure, a sentence on a chart, or a new analysis. Without ANTHROPIC_API_KEY the route answers `available:false` with the reason and proposes nothing. Owner or manager of this house only (it calls the paid model); anyone else is 403.",
   })
   async proposeGoalCuttingSpec(
     @Param("restaurantId") restaurantId: string,
@@ -916,8 +941,12 @@ export class AnalyticsController {
   }
 
   @Put("goals/:restaurantId/:goalId/status")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Update goal status (active|achieved|missed|archived)",
+    summary:
+      "Update goal status (active|achieved|missed|archived) (owner/manager)",
+    description: "Owner or manager of this house only; anyone else is 403.",
   })
   async updateGoalStatus(
     @Param("restaurantId") restaurantId: string,

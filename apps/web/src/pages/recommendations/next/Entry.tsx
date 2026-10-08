@@ -166,6 +166,15 @@ export interface EntryProps {
   }) => Promise<GoalWrite>;
   onSeeInReports: (href: string) => void;
   /**
+   * Why this person may not set a goal, or null when they may (ADR 0250, the
+   * founder 2026-10-01: "Disabled with a reason"). The gateway refuses goal
+   * writes to anyone but an owner or a manager; the page reads
+   * `goalRoleReasonFor(activeRole)` so "Make this a goal" is drawn dark with
+   * this reason instead of opening a sheet that would be refused. Required, so
+   * a render site that forgets it is a type error rather than an open door.
+   */
+  goalRoleReason: string | null;
+  /**
    * *Schedule it* only — the day-book draft for this entry, or null.
    *
    * Built by the page (`rec-daybook.ts`) because the date it opens on is the
@@ -721,15 +730,17 @@ export default function Entry(props: EntryProps) {
 
   // The masthead's "Set a goal →" (sketch 122 direction B) opens THIS entry's
   // own goal sheet — the same sheet, target blank, never a second form.
-  const { openGoal, onGoalOpened, onWantGoals } = props;
+  const { openGoal, onGoalOpened, onWantGoals, goalRoleReason } = props;
+  /** The sheet opens only for a rule with a goal plan AND a person who may set one. */
+  const mayOpenGoal = goalOffer.kind === 'plan' && !goalRoleReason;
   useEffect(() => {
     if (!openGoal) return;
-    if (goalOffer.kind === 'plan') {
+    if (mayOpenGoal) {
       onWantGoals();
       setMenu('goal');
     }
     onGoalOpened?.();
-  }, [openGoal, onGoalOpened, onWantGoals, goalOffer.kind]);
+  }, [openGoal, onGoalOpened, onWantGoals, mayOpenGoal]);
 
   /** Sketch 122 Q7, "Keep both verbs": the floor's act is done now, here. */
   const briefs = filing.act === 'floor' && !!props.onBrief;
@@ -892,7 +903,7 @@ export default function Entry(props: EntryProps) {
                   See where the goal stands
                 </Quiet>
               )}
-              {goalOffer.kind === 'plan' ? (
+              {mayOpenGoal ? (
                 <Quiet
                   onClick={() => {
                     props.onWantGoals();
@@ -902,6 +913,19 @@ export default function Entry(props: EntryProps) {
                 >
                   Make this a goal
                 </Quiet>
+              ) : goalOffer.kind === 'plan' ? (
+                // ADR 0250: a rule that has a goal, for a person who may not
+                // set one — dark, with the reason, never a sheet the gateway
+                // would refuse.
+                <button
+                  type="button"
+                  className="rc-dark rc-dark-inline"
+                  disabled
+                  title={goalRoleReason ?? undefined}
+                  data-testid="rc-goal-role"
+                >
+                  Make this a goal
+                </button>
               ) : (
                 <button
                   type="button"
@@ -1120,7 +1144,7 @@ export default function Entry(props: EntryProps) {
           </div>
         )}
 
-        {menu === 'goal' && goalOffer.kind === 'plan' && (
+        {menu === 'goal' && mayOpenGoal && goalOffer.kind === 'plan' && (
           <GoalSheet
             plan={goalOffer.plan}
             goals={props.goals}

@@ -650,7 +650,12 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                 </p>
               )}
             </div>
-            <GoalsMargin book={data.goalBook} suggestion={suggestion} onSuggest={openSuggested} />
+            <GoalsMargin
+              book={data.goalBook}
+              suggestion={suggestion}
+              onSuggest={openSuggested}
+              roleReason={data.goalRoleReason}
+            />
           </div>
           <DoubleRule />
           {/*
@@ -965,6 +970,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         scenarios={data.scenarios}
                         onWantGoals={data.loadGoals}
                         onMakeGoal={data.createGoal}
+                        goalRoleReason={data.goalRoleReason}
                         onSeeInReports={(href) => navigate(href)}
                         daybook={
                           a === 'schedule' && leaf === 'standing'
