@@ -206,8 +206,8 @@ export const BASKET_MIN_LIFT = 1.3;
  *       wine's raw id as its name. A version-6 row written after such a read
  *       may hold one of those sentences, and every stored reader prefers it
  *       to a fresh compute, so it is refused and recomputed. Numbered 10,
- *       not 7: other open PRs take numbers above 6 on their branches, and
- *       the coordinator renumbers at merge.
+ *       not 7: open PRs hold 7 (#619, #624) and 8 (#625, #626) on their
+ *       branches (2026-10-07), and the coordinator renumbers at merge.
  */
 export const INSIGHT_GENERATOR_VERSION = 10;
 
