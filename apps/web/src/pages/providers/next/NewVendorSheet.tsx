@@ -534,7 +534,10 @@ export function NewVendorSheet({ open, onClose, onAdded, initialDraft, onTear }:
           </div>
         }
       >
-        <div style={{ fontFamily: SANS, fontSize: 12.5 }}>
+        {/* VEN-W37: `.mdv-ovl__body` carries no padding by design; every page
+            insets its own sheet (TwinSheet does with px-4). This one never did,
+            so every field touched both edges of the sheet. */}
+        <div className="px-4 py-3" style={{ fontFamily: SANS, fontSize: 12.5 }}>
           {/* ── door one: the catalogue ──────────────────────────────── */}
           <label style={legend} htmlFor="nv-catalogue">
             Search the catalogue

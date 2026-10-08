@@ -120,6 +120,11 @@ describe('the shape and the primitive', () => {
     expect(screen.getByRole('dialog', { name: /Add a vendor to this house/ })).toBeInTheDocument();
   });
 
+  it('VEN-W37: the form is inset from the sheet edges like every other sheet body', () => {
+    draw();
+    expect(screen.getByTestId('vendor-name').closest('.px-4')).not.toBeNull();
+  });
+
   it('the duplicate question is a panel that sits above the sheet', () => {
     render(
       <VendorTwinPanel
