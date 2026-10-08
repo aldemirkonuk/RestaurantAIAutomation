@@ -15,8 +15,9 @@
  *  - it never prints an empty box and never prints a zero.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeAll, describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 const mockIndex = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 vi.mock('./useHouseIndex', () => ({
@@ -28,12 +29,28 @@ vi.mock('./useHouseIndex', () => ({
  * The commodity context section draws inside this box (2026-09-05). It is
  * stubbed to a ready-and-empty register here so that these assertions stay
  * about the POSTED-PRICE register they were written for; the commodity
- * section's own contract is tested in `MarketIndexPanel.commodity.test.tsx`.
+ * section's own contract is tested in `MarketIndexPanel.commodity.test.tsx`,
+ * except its no-country ask (ADR 0305), which is tested below.
  */
 const mockCommodity = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 vi.mock('./useHouseCommodity', () => ({
   COMMODITY_POLL_MS: 300_000,
   useHouseCommodity: () => mockCommodity.current,
+}));
+
+/**
+ * The real hooks (`useHouseIndex`, `useHouseCommodity`) are each read once
+ * below (`vi.importActual`), for the one field the panel's mocks cannot vouch
+ * for: `countryNotRecorded` off the wire. Their two imports that reach the
+ * network and the session are stubbed here.
+ */
+const mockGet = vi.hoisted(() => vi.fn());
+vi.mock('@/services/api/client', () => ({
+  apiClient: { get: mockGet },
+  getErrorMessage: (e: unknown) => String(e),
+}));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: null, activeRestaurantId: 'r1' }),
 }));
 
 import MarketIndexPanel from './MarketIndexPanel';
@@ -49,6 +66,7 @@ const READY = {
   heldBooks: 0 as number | null,
   heldBookHoldHours: 24 as number | null,
   carriedBooks: [] as Array<Record<string, unknown>> | null,
+  countryNotRecorded: false,
   refresh: vi.fn(),
 };
 
@@ -259,6 +277,248 @@ describe('MarketIndexPanel — the four silences, each in the endpoint’s own w
     expect(screen.getByRole('status').textContent).toMatch(
       /gave no reason. That is unknown, not "nothing is posted"/,
     );
+  });
+});
+
+/**
+ * A house with no country recorded (ADR 0305). The founder, 2026-10-07T19:48:13Z:
+ * *"The panels say the country isn't recorded and link to Settings, the same way
+ * a house with no time zone is handled. Nothing is guessed."*
+ */
+describe('MarketIndexPanel — a house with no country is asked for it', () => {
+  it('says the country is not recorded and links to Settings, under Locations', () => {
+    mockIndex.current = {
+      ...READY,
+      countryNotRecorded: true,
+      silence: 'the gateway sentence, which this box replaces with a link',
+    };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    const asked = screen.getByTestId('mi-country-unset');
+    expect(asked.textContent).toContain('This house’s country isn’t recorded');
+    expect(asked.textContent).toContain(
+      'MI is Michigan in the United States and Milano in Italy',
+    );
+    expect(
+      within(asked).getByRole('link', { name: 'Set the country in Settings' }),
+    ).toHaveAttribute('href', '/settings?tab=locations');
+    // One sentence, not two: the generic silence is not drawn beside it.
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    // The commodity register is not flagged here, so the ask says nothing of it.
+    expect(asked.textContent).not.toContain('commodity');
+  });
+
+  it('a house whose country is recorded is not asked for it', () => {
+    const silence =
+      '"Italy" is not a jurisdiction this register recognises. No index line is drawn rather than guessing a state.';
+    mockIndex.current = { ...READY, requested: 'Italy', silence };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('mi-country-unset')).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: 'Set the country in Settings' }),
+    ).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain(silence);
+  });
+});
+
+describe('useHouseIndex — countryNotRecorded off the wire', () => {
+  // The real module is loaded once, outside any test's 5 s budget: its first
+  // transform is slow when the suite runs beside others, and a timeout there
+  // would say nothing about the flag.
+  let useRealHouseIndex: typeof import('./useHouseIndex').useHouseIndex;
+  beforeAll(async () => {
+    ({ useHouseIndex: useRealHouseIndex } = await vi.importActual<
+      typeof import('./useHouseIndex')
+    >('./useHouseIndex'));
+  }, 60_000);
+
+  async function readWith(data: Record<string, unknown>) {
+    mockGet.mockResolvedValueOnce({ data });
+    const { result, unmount } = renderHook(() => useRealHouseIndex());
+    await waitFor(() => expect(result.current.state).toBe('ready'));
+    const flag = result.current.countryNotRecorded;
+    unmount();
+    return flag;
+  }
+
+  it('is set by a true from the gateway', async () => {
+    expect(await readWith({ countryNotRecorded: true, lines: [] })).toBe(true);
+  });
+
+  it('is not set by a false', async () => {
+    expect(await readWith({ countryNotRecorded: false, lines: [] })).toBe(false);
+  });
+
+  it('is not set when an older gateway does not send it', async () => {
+    // An older gateway that does not send it is not a house with no country.
+    expect(await readWith({ lines: [] })).toBe(false);
+  });
+
+  it('is not set by a truthy string', async () => {
+    expect(await readWith({ countryNotRecorded: 'true', lines: [] })).toBe(false);
+  });
+});
+
+/**
+ * The commodity section asks too (ADR 0305). With no country the gateway reads
+ * no jurisdiction, so only a WORLD series answers (`seriesForJurisdiction(null)`,
+ * `commodity.registry.ts`); the section says so and links to Settings.
+ */
+describe('MarketIndexPanel — the commodity section asks a house with no country', () => {
+  const READY_COMMODITY = {
+    state: 'ready',
+    failure: null,
+    jurisdiction: null,
+    requested: null,
+    series: [],
+    fetchArmed: false,
+    silence: 'the gateway sentence for an empty register',
+    noExposureRecorded: false,
+    countryNotRecorded: false,
+    refresh: vi.fn(),
+  };
+
+  it('says the country is not recorded and links to Settings, under Locations', () => {
+    mockCommodity.current = { ...READY_COMMODITY, countryNotRecorded: true };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    const asked = screen.getByTestId('mi-commodity-country-unset');
+    expect(asked.textContent).toContain('This house’s country isn’t recorded');
+    expect(asked.textContent).toContain('only a series that speaks for everywhere is listed');
+    expect(
+      within(asked).getByRole('link', { name: 'Set the country in Settings' }),
+    ).toHaveAttribute('href', '/settings?tab=locations');
+    // The index register above is not flagged here, so this is the only ask.
+    expect(screen.queryByTestId('mi-country-unset')).toBeNull();
+  });
+
+  it('a house both registers flag is asked once, and the one ask says what the commodity section lists', () => {
+    // Both endpoints read the same `restaurants` row, so a real house with no
+    // country is flagged by both. Two asks with two identically named links in
+    // one box would say one thing twice.
+    mockIndex.current = { ...READY, countryNotRecorded: true };
+    mockCommodity.current = { ...READY_COMMODITY, countryNotRecorded: true };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('mi-commodity-country-unset')).toBeNull();
+    expect(screen.getAllByText(/country isn’t recorded/)).toHaveLength(1);
+    const links = screen.getAllByRole('link', { name: 'Set the country in Settings' });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/settings?tab=locations');
+    const asked = screen.getByTestId('mi-country-unset');
+    expect(asked).toContainElement(links[0]);
+    // Both asks' meaning, in the one line.
+    expect(asked.textContent).toContain('no state-based price is shown');
+    expect(asked.textContent).toContain(
+      'the commodity and market index section lists only a series that speaks for everywhere',
+    );
+  });
+
+  it('the commodity section still asks when the register could not be read', () => {
+    // The flag is set here although useHouseIndex clears it on a failed read, so
+    // the panel's own `state === 'ready'` guard is what this pins.
+    mockIndex.current = {
+      ...READY,
+      countryNotRecorded: true,
+      state: 'unreadable',
+      failure: { message: 'boom', forbidden: false, status: 500 },
+    };
+    mockCommodity.current = { ...READY_COMMODITY, countryNotRecorded: true };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    const asked = screen.getByTestId('mi-commodity-country-unset');
+    expect(
+      within(asked).getByRole('link', { name: 'Set the country in Settings' }),
+    ).toHaveAttribute('href', '/settings?tab=locations');
+    expect(screen.queryByTestId('mi-country-unset')).toBeNull();
+  });
+
+  it('the register’s ask says nothing of the commodity section when that section could not be read', () => {
+    // The flag is set here although useHouseCommodity clears it on a failed
+    // read, so the panel's own `c.state === 'ready'` guard is what this pins:
+    // an unreadable section is unknown, and the one ask must not describe it.
+    mockIndex.current = { ...READY, countryNotRecorded: true };
+    mockCommodity.current = {
+      ...READY_COMMODITY,
+      countryNotRecorded: true,
+      state: 'unreadable',
+      failure: { message: 'boom', forbidden: false, status: 500 },
+    };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('mi-commodity-country-unset')).toBeNull();
+    const asked = screen.getByTestId('mi-country-unset');
+    expect(asked.textContent).not.toContain('commodity');
+    expect(
+      screen.getAllByRole('link', { name: 'Set the country in Settings' }),
+    ).toHaveLength(1);
+  });
+
+  it('a house whose country is recorded is not asked for it', () => {
+    mockCommodity.current = { ...READY_COMMODITY };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('mi-commodity-country-unset')).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: 'Set the country in Settings' }),
+    ).toBeNull();
+  });
+});
+
+describe('useHouseCommodity — countryNotRecorded off the wire', () => {
+  // Loaded once, outside any test's 5 s budget, as for useHouseIndex above.
+  let useRealHouseCommodity: typeof import('./useHouseCommodity').useHouseCommodity;
+  beforeAll(async () => {
+    ({ useHouseCommodity: useRealHouseCommodity } = await vi.importActual<
+      typeof import('./useHouseCommodity')
+    >('./useHouseCommodity'));
+  }, 60_000);
+
+  async function readWith(data: Record<string, unknown>) {
+    mockGet.mockResolvedValueOnce({ data });
+    const { result, unmount } = renderHook(() => useRealHouseCommodity());
+    await waitFor(() => expect(result.current.state).toBe('ready'));
+    const flag = result.current.countryNotRecorded;
+    unmount();
+    return flag;
+  }
+
+  it('is set by a true from the gateway', async () => {
+    expect(await readWith({ countryNotRecorded: true, series: [] })).toBe(true);
+  });
+
+  it('is not set by a false', async () => {
+    expect(await readWith({ countryNotRecorded: false, series: [] })).toBe(false);
+  });
+
+  it('is not set when an older gateway does not send it', async () => {
+    expect(await readWith({ series: [] })).toBe(false);
+  });
+
+  it('is not set by a truthy string', async () => {
+    expect(await readWith({ countryNotRecorded: 'true', series: [] })).toBe(false);
   });
 });
 

@@ -3,7 +3,8 @@
  * 2026-09-21, sketch 119 fork 10), narrowed 2026-10-01 to ONE choice.
  *
  *   - Open on a person's first visits and at normal widths.
- *   - Tucked below ~1280 px, and on the wide pages (/reports, /inventory), to a
+ *   - Tucked below ~1280 px, and on the wide pages (/reports, /inventory and
+ *     the dashboard at /), to a
  *     ~52 px strip that still shows each verb with its count — never a blank
  *     edge.
  *   - After that, the person's choice is remembered and wins on EVERY page.
@@ -32,8 +33,13 @@
 /** Below this viewport width the counter starts tucked. */
 export const TUCK_BELOW_PX = 1280;
 
-/** Pages whose own layout wants the width (reports-next.css asks 1280). */
-export const WIDE_PAGES: readonly string[] = ['/reports', '/inventory'];
+/**
+ * Pages whose own layout wants the width (reports-next.css asks 1280). The
+ * dashboard (`/`) joined them on 2026-10-05: its month needs the room for a
+ * 12 px figure, and the founder chose this over stacking its side rail or
+ * no change ("Counter starts tucked", ADR 0290).
+ */
+export const WIDE_PAGES: readonly string[] = ['/reports', '/inventory', '/'];
 
 export type CounterWidth = 'open' | 'tucked';
 
