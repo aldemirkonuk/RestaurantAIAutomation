@@ -1631,9 +1631,9 @@ export class RecommendationActionsService {
     status: RecommendationStatus | "all",
     viewer?: RecommendationActor,
   ): Promise<Array<RecommendationActionRow & { undoableByYou?: boolean | null }>> {
-    // Read whole or refused (ADR 0292), never the newest 1000: a leaf must
-    // list every entry its count says it holds, or say it could not be read
-    // (OPS-02). The helper pages on `id`, so the leaf's newest-first order is
+    // Read whole or refused (ADR 0292), never the newest 1000: a leaf lists
+    // every row the read counted, or the read throws `WholeReadError` (past
+    // `WHOLE_READ_CEILING`, or when the count will not hold still) (OPS-02). The helper pages on `id`, so the leaf's newest-first order is
     // applied here, after the read.
     const data = await this.readActionRows(
       status === "all"
