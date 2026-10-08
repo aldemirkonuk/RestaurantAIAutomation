@@ -331,7 +331,8 @@ export function TrailSheet({
           {TEAM_SERVER_WINDOWS.TRAIL_ROWS} changes on this restaurant, from the same trail
           `/settings` reads, filtered to the actions that are about people: access, areas,
           leads, and Away set for someone else. A ceiling,
-          not a total: the route caps the read and offers no count of what is behind it.
+          not a total: the route caps the read, and this sheet does not read the count it
+          returns.
           There is no write route and no delete route — a log a manager can edit is not a
           log.
         </span>

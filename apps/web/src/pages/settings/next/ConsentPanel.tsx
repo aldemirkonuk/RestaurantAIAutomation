@@ -106,7 +106,19 @@ export function ConsentTrail({ spec }: { spec: ConsentSwitchSpec }) {
       </p>
     );
   }
-  const { entries, recordingSince } = q.data;
+  const { entries, recordingSince, complete, limit } = q.data;
+  // The gateway caps the trail across every register BEFORE it filters by
+  // `register` (`settings-audit.service.ts` `list`), so an empty filtered page
+  // means "none in the house's latest N", not "none at all" — unless the read
+  // was proven whole (`complete`). Absent ⇒ an older gateway ⇒ not proven.
+  if (entries.length === 0 && complete !== true) {
+    return (
+      <p style={line}>
+        No change to it among the latest {limit ?? TRAIL_ROWS} recorded changes on this house.
+        Older changes are not read here, so this is not the same as nobody having changed it.
+      </p>
+    );
+  }
   if (entries.length === 0) {
     return (
       <p style={line}>

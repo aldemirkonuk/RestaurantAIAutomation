@@ -76,8 +76,9 @@ export const TEAM_SERVER_WINDOWS = {
    * settings-audit.service.ts:252,270 — the trail read is
    * `Math.min(200, limit)` then `.limit(capped)`. `/team` asks for 100, so the
    * sheet holds at most that many rows and says so: "the last ≤100 changes",
-   * never "everything that has happened here". The server offers no total to
-   * read back, which is exactly why the cap has to be declared instead.
+   * never "everything that has happened here". Since 2026-10-07 the readout
+   * also carries `total` and `complete` (SETUP-05), but this hook does not read
+   * them, so the cap is still declared rather than measured here.
    */
   TRAIL_ROWS: 100,
 } as const;

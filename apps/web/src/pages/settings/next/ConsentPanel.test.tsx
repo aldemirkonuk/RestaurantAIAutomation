@@ -96,8 +96,22 @@ describe('the consent panel', () => {
   });
 
   it('says an empty trail is empty since recording began, not "never changed"', async () => {
+    http.get.mockResolvedValue({ data: trail({ complete: true, total: 0, limit: 10 }) });
     draw();
     expect(await screen.findByText(/Nobody has changed it since changes started being recorded on 2026-09-03\./)).toBeInTheDocument();
+  });
+
+  it('never says "nobody" when the capped window did not reach the whole trail', async () => {
+    http.get.mockResolvedValue({ data: trail({ complete: false, total: 57, limit: 10 }) });
+    draw();
+    expect(await screen.findByText(/No change to it among the latest 10 recorded changes on this house\. Older changes are not read here/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nobody has changed it/)).toBeNull();
+  });
+
+  it('treats a readout with no completeness flag as not proven whole', async () => {
+    draw();
+    expect(await screen.findByText(/No change to it among the latest 10 recorded changes/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nobody has changed it/)).toBeNull();
   });
 
   it('never draws an unreadable trail as an empty one', async () => {
