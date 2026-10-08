@@ -2727,16 +2727,24 @@ export class ProcurementService {
       // written from at least three of their invoices — and it is the ONLY
       // rung the ORDER's own field is pre-filled from. The source decides
       // whose word the sheet's sentence credits.
-      const readProvider = (cols: string) =>
-        this.databaseService.supabase
-          .from("providers")
-          .select(cols)
-          .eq("id", providerId)
-          .eq("restaurant_id", restaurantId)
-          .maybeSingle();
-      let { data: provider, error: providerError } = await readProvider(
-        "name, usual_currency, usual_currency_source, usual_currency_invoice_count",
-      );
+      // Two literal selects so the read-columns guard (ADR 0074) sees both.
+      const readProvider = (withSource: boolean) =>
+        withSource
+          ? this.databaseService.supabase
+              .from("providers")
+              .select(
+                "name, usual_currency, usual_currency_source, usual_currency_invoice_count",
+              )
+              .eq("id", providerId)
+              .eq("restaurant_id", restaurantId)
+              .maybeSingle()
+          : this.databaseService.supabase
+              .from("providers")
+              .select("name, usual_currency")
+              .eq("id", providerId)
+              .eq("restaurant_id", restaurantId)
+              .maybeSingle();
+      let { data: provider, error: providerError } = await readProvider(true);
       // Before the VEN-W13 migration is applied the two columns are absent
       // (42703); every code then was a person's.
       if (
@@ -2744,7 +2752,7 @@ export class ProcurementService {
         (providerError as { code?: string }).code === "42703"
       )
         ({ data: provider, error: providerError } =
-          await readProvider("name, usual_currency"));
+          await readProvider(false));
       if (providerError) {
         // A failed read is not an empty one: the default sentence must not
         // print "the vendor" as if no vendor were known, and it must not print

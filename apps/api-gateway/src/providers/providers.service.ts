@@ -1714,23 +1714,32 @@ export class ProvidersService {
     houseZone: string | null;
   }> {
     const client = this.databaseService.supabase;
-    const read = (cols: string) =>
-      client
-        .from("providers")
-        .select(cols)
-        .eq("id", providerId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
-    let { data, error } = await read(
-      "name, usual_currency, usual_currency_set_by, usual_currency_set_at, usual_currency_source, usual_currency_invoice_count",
-    );
+    // Two literal selects, not one select of a runtime string, so the
+    // read-columns guard (ADR 0074) can check every column named here.
+    const read = (withSource: boolean) =>
+      withSource
+        ? client
+            .from("providers")
+            .select(
+              "name, usual_currency, usual_currency_set_by, usual_currency_set_at, usual_currency_source, usual_currency_invoice_count",
+            )
+            .eq("id", providerId)
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle()
+        : client
+            .from("providers")
+            .select(
+              "name, usual_currency, usual_currency_set_by, usual_currency_set_at",
+            )
+            .eq("id", providerId)
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle();
+    let { data, error } = await read(true);
     // THE COLUMNS ARRIVE WITH THEIR MIGRATION. Until it is applied PostgREST
     // answers 42703 for the whole select; read the three columns that exist
     // and treat every code as a person's (before VEN-W13 every one was).
     if (error && (error as { code?: string }).code === "42703")
-      ({ data, error } = await read(
-        "name, usual_currency, usual_currency_set_by, usual_currency_set_at",
-      ));
+      ({ data, error } = await read(false));
     if (error) {
       this.logger.error("Failed to read a vendor's usual currency", {
         providerId,
@@ -1954,20 +1963,24 @@ export class ProvidersService {
     fromInvoices: number;
     unstated: { id: string; name: string; recorded: string | null }[];
   }> {
-    const read = (cols: string) =>
-      this.databaseService.supabase
-        .from("providers")
-        .select(cols)
-        .eq("restaurant_id", restaurantId);
-    let { data, error } = await read(
-      "id, name, usual_currency, usual_currency_source, is_active, deleted_at",
-    );
+    // Two literal selects so the read-columns guard (ADR 0074) sees both.
+    const read = (withSource: boolean) =>
+      withSource
+        ? this.databaseService.supabase
+            .from("providers")
+            .select(
+              "id, name, usual_currency, usual_currency_source, is_active, deleted_at",
+            )
+            .eq("restaurant_id", restaurantId)
+        : this.databaseService.supabase
+            .from("providers")
+            .select("id, name, usual_currency, is_active, deleted_at")
+            .eq("restaurant_id", restaurantId);
+    let { data, error } = await read(true);
     // Before the VEN-W13 migration is applied the source column is absent
     // (42703); every code then was a person's.
     if (error && (error as { code?: string }).code === "42703")
-      ({ data, error } = await read(
-        "id, name, usual_currency, is_active, deleted_at",
-      ));
+      ({ data, error } = await read(false));
 
     if (error) {
       this.logger.error("Failed to count stated vendor currencies", {

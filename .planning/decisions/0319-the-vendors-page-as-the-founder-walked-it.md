@@ -25,7 +25,7 @@ The founder walked `/vendors` pass by pass (P1–P10 of `p4-scratch/PAGE-REVIEW-
 
 ## Approvals by row (no fork; the words were "Approve" or "Approve (Recommended)")
 
-W1–W3, W5–W7, W10, W11, W15, W16 (plain words on cards and sheet); W4 (*"C: short + below (Recommended)"* — the usual-currency panel short and below the cards); W19–W22 (fixes found while walking, approved after the pane run); W25 (shared `useProviders` hook — SHARED, queued, not in this PR); W26–W29 (failures in the house's words, with a retry); W31 (server refusals in the house's words); W34 (no manager's act told to every reader; no shouting); W35 (a half-written vendor is held, ADR 0112 tear-and-stub); W36 (`?q=`, `?find=`, `?vendor=` hold the page, ADR 0160 §6); W37 (form inset); W38 (the coverage count reads once per load, keyed on house + book size).
+W1–W3, W5–W7, W10, W11, W15, W16 (plain words on cards and sheet); W4 (*"C: short + below (Recommended)"* — the usual-currency panel short and below the cards); W19–W22 (fixes found while walking, approved after the pane run); W25 (shared `useProviders` hook — SHARED, queued, not in this PR); W26–W29 (failures in the house's words, with a retry); W31 (server refusals in the house's words); W34 (no manager's act told to every reader; no shouting); W35 (a half-written vendor is held, ADR 0112 tear-and-stub); W36 (`?q=`, `?find=`, `?vendor=` hold the page, ADR 0160 §6); W37 (form inset); W38 (the coverage count reads once per load, keyed on the house, asked again when the book's size changes).
 
 ## Options considered (for the one rule a reader could reverse: W30)
 

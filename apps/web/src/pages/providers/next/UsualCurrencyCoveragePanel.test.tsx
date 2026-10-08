@@ -126,6 +126,30 @@ describe('the usual-currency coverage panel', () => {
     expect(screen.queryByText('House one: 1 of 2.')).not.toBeInTheDocument();
   });
 
+  // VEN-W38: a house switch whose book is a different size reads the new
+  // house once — the size watch asks again only inside the same house.
+  it('reads a new house once even when its book is a different size', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { stated: 1, total: 2, unstated: [], sentence: 'House one: 1 of 2.' } })
+      .mockResolvedValue({ data: { stated: 2, total: 3, unstated: [], sentence: 'House two: 2 of 3.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (ids: string[], bookSettled: boolean) => (
+      <QueryClientProvider client={client}>
+        <UsualCurrencyCoveragePanel knownIds={new Set(ids)} onOpenVendor={() => {}} bookSettled={bookSettled} />
+      </QueryClientProvider>
+    );
+    act(() => useAuthStore.setState({ activeRestaurantId: 'h1' }));
+    const { rerender } = render(panel(['a', 'b'], true));
+    expect(await screen.findByText('House one: 1 of 2.')).toBeInTheDocument();
+    // The switch: the new house's book is loading, then answers with three.
+    act(() => useAuthStore.setState({ activeRestaurantId: 'h2' }));
+    rerender(panel([], false));
+    rerender(panel(['x', 'y', 'z'], true));
+    expect(await screen.findByText('House two: 2 of 3.')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
   it('says NONE of them in words rather than rendering an empty panel', async () => {
     // A panel that draws nothing when the answer is "none of them" cannot be
     // told apart from one that failed to load.

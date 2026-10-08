@@ -24,6 +24,7 @@
  * A FAILED READ prints the failure and says it is not a coverage of zero.
  */
 
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { apiClient } from '../../../services/api/client';
@@ -83,9 +84,7 @@ export function UsualCurrencyCoveragePanel({
   // house's coverage must never stand under another's name (PROCURE-04).
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
   const coverage = useQuery({
-    // Keyed on the book's size too: a vendor added or retired on this page
-    // changes the denominator ("1 of your 3"), and nothing else would refetch it.
-    queryKey: ['vendor-usual-currency-coverage', house, knownIds.size],
+    queryKey: ['vendor-usual-currency-coverage', house],
     enabled: bookSettled,
     queryFn: async () => {
       const { data } = await apiClient.get<UsualCurrencyCoverage>(
@@ -94,6 +93,20 @@ export function UsualCurrencyCoveragePanel({
       return data;
     },
   });
+  // A vendor added or retired on this page changes the denominator ("1 of
+  // your 3"), and nothing else would count again. The book's size is not in
+  // the key (the key is the house, PROCURE-04): it is watched here, and a
+  // change after the book has answered asks again. A page load still reads
+  // once, and so does a house switch: the new house's first read and this
+  // refetch are one request in flight (VEN-W38).
+  const sizeAtRead = useRef<number | null>(null);
+  const { refetch } = coverage;
+  useEffect(() => {
+    if (!bookSettled) return;
+    const prev = sizeAtRead.current;
+    sizeAtRead.current = knownIds.size;
+    if (prev !== null && prev !== knownIds.size) void refetch();
+  }, [bookSettled, knownIds.size, refetch]);
 
   if (coverage.isError)
     return (
