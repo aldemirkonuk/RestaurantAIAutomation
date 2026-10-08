@@ -118,11 +118,11 @@ describe("what the send fills, and what it cannot", () => {
     expect(blanksAtSend(BLANKED, { senderName: "Meyhouse" }).unfillable).toEqual(["[Provider First Name]"]);
   });
 
-  it("refuses a signature blank when the house has no sender name — it would go out empty", () => {
+  it("refuses a signature blank when the sender name is empty — it would go out empty", () => {
     expect(blanksAtSend(BLANKED, { firstName: "Hasan", senderName: "  " }).unfillable).toEqual(["[Your Name]"]);
   });
 
-  it("refuses every spelling of a signature blank the send would erase when the house has no sender name", () => {
+  it("refuses every spelling of a signature blank the send would erase when the sender name is empty", () => {
     // The detector's pattern misses these; the signature pattern erases them.
     const body = "Dear Hasan,\n\nSix cases.\n\n[your name] / [Your  Name] / [ signature ]";
     expect(blanksAtSend(body, { firstName: "Hasan", senderName: "" }).unfillable).toEqual([
@@ -214,7 +214,7 @@ describe("the gateway refuses a letter with a blank the send cannot fill", () =>
 /** Signed with a spelling only the signature pattern sees. */
 const LOWER_SIGNED = "Dear [Provider First Name],\n\nSix cases, please.\n\n[your name]";
 
-describe("a signature blank in any spelling is refused when the house has no sender name", () => {
+describe("a signature blank in any spelling is refused when the sender name is empty", () => {
   it("at the seal, the staff request and the send", async () => {
     const { service, seal } = serviceWith({ ...pendingRow, content: LOWER_SIGNED }, "");
     await expect(

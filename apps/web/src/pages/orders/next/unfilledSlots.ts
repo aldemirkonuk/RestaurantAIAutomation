@@ -5,9 +5,10 @@
  * is changed. One to four capitalised words in square brackets; a bracketed
  * lowercase aside or a number ("[1]") is not a slot. The gateway refuses the
  * same pattern (apps/api-gateway/src/procurement/unfilled-slots.ts), but only
- * the blanks its send cannot fill. When the house has no sender name it also
- * refuses a signature blank in any case or spacing ("[your name]"), which
- * this pattern does not see. The card uses the gateway's own answer
+ * the blanks its send cannot fill. When the sender name is empty (including a
+ * failed read; always on the hand-written-reply routes) it also refuses a
+ * signature blank in any case or spacing ("[your name]"), which this pattern
+ * does not see. The card uses the gateway's own answer
  * (`at_send` on the draft read) and falls back to this — every Capitalised
  * blank — only while the gateway has not read the words on screen.
  */
