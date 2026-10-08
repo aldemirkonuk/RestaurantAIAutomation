@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Provider } from '../../../services/api/providers';
 
 const mockData = vi.hoisted(() => ({
@@ -477,3 +478,45 @@ describe('the book for staff (VEN-W30, "Staff read only")', () => {
     expect(screen.queryByTestId('vendors-read-only')).toBeNull();
   });
 });
+
+describe('a half-written vendor is held, not thrown away (VEN-W35)', () => {
+  const withClient = () =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProvidersNext />
+      </QueryClientProvider>,
+    );
+  it('Esc on a dirty add sheet leaves a stub; resuming puts every word back; throwing it away can be undone', async () => {
+    auth.role = 'manager';
+    withClient();
+    fireEvent.click(screen.getByTestId('add-vendor'));
+    fireEvent.change(await screen.findByTestId('vendor-name'), { target: { value: 'Efes Dağıtım' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Beer' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const stub = await screen.findByTestId('vendor-draft-held');
+    expect(stub).toHaveTextContent('A new vendor: Efes Dağıtım — not in the book yet');
+    expect(stub).toHaveTextContent('Nothing was written.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go on writing it' }));
+    expect(await screen.findByTestId('vendor-name')).toHaveValue('Efes Dağıtım');
+    expect(screen.getByRole('button', { name: 'Beer' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('vendor-draft-held')).toBeNull();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Throw it away' }));
+    expect(screen.getByTestId('vendor-draft-held')).toHaveTextContent('Discarded · nothing was written');
+    fireEvent.click(screen.getByRole('button', { name: 'Put it back' }));
+    expect(screen.getByTestId('vendor-draft-held')).toHaveTextContent('Efes Dağıtım');
+  });
+
+  it('Esc on an empty add sheet leaves nothing behind', async () => {
+    auth.role = 'manager';
+    withClient();
+    fireEvent.click(screen.getByTestId('add-vendor'));
+    await screen.findByTestId('vendor-name');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('vendor-name')).toBeNull());
+    expect(screen.queryByTestId('vendor-draft-held')).toBeNull();
+  });
+});
+

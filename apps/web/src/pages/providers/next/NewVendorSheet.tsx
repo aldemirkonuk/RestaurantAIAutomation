@@ -234,9 +234,23 @@ export interface NewVendorSheetProps {
   onClose: () => void;
   /** Called once a vendor really is in the book, so the page refetches. */
   onAdded: () => void;
+  /**
+   * VEN-W35: a draft held by a stub, put back in when the person resumes it.
+   * Read once, when the sheet mounts.
+   */
+  initialDraft?: VendorDraft;
+  /**
+   * VEN-W35: Esc or a click outside on a half-written vendor tears the sheet
+   * (ADR 0112, sketch 103 · 1b) — the page holds the words on a stub instead of
+   * the sheet throwing them away.
+   */
+  onTear?: (draft: VendorDraft) => void;
 }
 
-export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) {
+/** Anything typed or picked — what a tear has to hold. */
+export const isDraftDirty = (d: VendorDraft) => JSON.stringify(d) !== JSON.stringify(EMPTY_VENDOR);
+
+export function NewVendorSheet({ open, onClose, onAdded, initialDraft, onTear }: NewVendorSheetProps) {
   const { activeRestaurantId, user } = useAuth();
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
   const createProvider = useCreateProvider();
@@ -245,7 +259,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
   const [query, setQuery] = useState('');
   const [catalogue, setCatalogue] = useState<CatalogueRegister>({ state: 'idle' });
   const [addingId, setAddingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<VendorDraft>(EMPTY_VENDOR);
+  const [draft, setDraft] = useState<VendorDraft>(initialDraft ?? EMPTY_VENDOR);
   const [saving, setSaving] = useState(false);
   const [touched, setTouched] = useState(false);
   /** What did not happen, in words. Cleared on the next attempt. */
@@ -261,14 +275,18 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
   });
 
   // A house switch must never leave the previous house's half-typed vendor.
+  // Not on mount: a resumed draft arrives as `initialDraft` (VEN-W35).
+  const [mountedFor, setMountedFor] = useState(restaurantId);
   useEffect(() => {
+    if (restaurantId === mountedFor) return;
+    setMountedFor(restaurantId);
     setDraft(EMPTY_VENDOR);
     setQuery('');
     setCatalogue({ state: 'idle' });
     setFailure(null);
     setAsides([]);
     resetMatches();
-  }, [restaurantId, resetMatches]);
+  }, [restaurantId, mountedFor, resetMatches]);
 
   /* ── the catalogue, read with its four states ─────────────────────────── */
   useEffect(() => {
@@ -482,6 +500,8 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
       <Sheet
         open={open}
         onClose={onClose}
+        dirty={isDraftDirty(draft) && !saving}
+        onTear={() => onTear?.(draft)}
         /* The contract, as the accessible name (sketch 103, 1e). */
         label="Add a vendor to this house's book, from the shared catalogue or by writing one of your own. Saving writes a vendor; leaving writes nothing."
         eyebrow="The book of vendors"

@@ -18,13 +18,14 @@
  */
 
 import { useCanChangeVendors } from './useCanChangeVendors';
+import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Wordmark } from "@/components/mudavym";
+import { Stub, Wordmark } from "@/components/mudavym";
 import type { Provider } from "../../../services/api/providers";
 import { ink } from "../../../lib/mudavym/motion";
 import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from "./pv-format";
 import { TwinSheet } from "./TwinSheet";
-import { NewVendorSheet } from "./NewVendorSheet";
+import { NewVendorSheet, type VendorDraft } from "./NewVendorSheet";
 import { businessTypeLabel } from "./VendorRecordEdit";
 import { UsualCurrencyCoveragePanel } from "./UsualCurrencyCoveragePanel";
 import {
@@ -223,6 +224,18 @@ export default function ProvidersNext() {
   );
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
   const [adding, setAdding] = useState(false);
+  /**
+   * VEN-W35: a half-written vendor the person walked away from (Esc or a click
+   * outside). The sheet tore; the words wait here, on a stub under the header,
+   * until they are resumed or discarded (ADR 0112, sketch 103 · 1b). `n` keys
+   * the stub, so a second tear is a fresh stub, not a "gone" one.
+   */
+  const { activeRestaurantId, user: me } = useAuth();
+  const house = activeRestaurantId || me?.restaurantId || '';
+  const [heldAt, setHeld] = useState<{ n: number; house: string; draft: VendorDraft; discarded: boolean } | null>(null);
+  // A house switch never shows the previous house's half-written vendor.
+  const held = heldAt && heldAt.house === house ? heldAt : null;
+  const [resumeWith, setResumeWith] = useState<VendorDraft | undefined>(undefined);
   const canChange = useCanChangeVendors();
   const [view, setView] = useState<ProvidersView>(viewFromUrl);
   const chooseView = (next: ProvidersView) => {
@@ -374,6 +387,25 @@ export default function ProvidersNext() {
           </div>
         </header>
 
+        {held && !adding && canChange && (
+          <div data-testid="vendor-draft-held" className="mb-4" style={{ maxWidth: 520 }}>
+            <Stub
+              key={held.n}
+              words={`A new vendor${held.draft.name.trim() ? `: ${held.draft.name.trim()}` : ''} — not in the book yet`}
+              resumeLabel="Go on writing it"
+              discardLabel="Throw it away"
+              onResume={() => {
+                setResumeWith(held.draft);
+                setHeld(null);
+                setAdding(true);
+              }}
+              onDiscard={() => setHeld((h) => (h ? { ...h, discarded: true } : h))}
+              onRestore={() => setHeld((h) => (h ? { ...h, discarded: false } : h))}
+              footer="Nothing was written. It is held on this screen only — leaving the page lets it go."
+            />
+          </div>
+        )}
+
         {data.isError && (
           <div
             role="alert"
@@ -509,7 +541,12 @@ export default function ProvidersNext() {
       {adding && (
         <NewVendorSheet
           open
-          onClose={() => setAdding(false)}
+          initialDraft={resumeWith}
+          onTear={(draft) => setHeld((h) => ({ n: (h?.n ?? 0) + 1, house, draft, discarded: false }))}
+          onClose={() => {
+            setAdding(false);
+            setResumeWith(undefined);
+          }}
           onAdded={data.refetch}
         />
       )}
