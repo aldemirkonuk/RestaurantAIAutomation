@@ -10,7 +10,11 @@ import { policyFor } from "../ask-readings/reading-data-classes";
  * not map (cost, supplier, margin, notes: `HEADER_MAP`, `:5-29`), and no header
  * is kept with it, so nothing can tell which cell is a cost. Under ADR 0145's
  * ROLE_POLICY staff see neither `money` nor `suppliers`, so the raw line goes
- * only to a role that sees both.
+ * only to a role that sees both. That is this read only: the kept source
+ * file and the import reply are other paths, and the register fragment
+ * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`
+ * (entries (i) and (iii)) says what still reaches a member or an uploader
+ * through them.
  *
  * Every member gets `kitchen_line`, worked out here from the stored row, so a
  * line's kitchen split no longer depends on who reads it or in which tab.

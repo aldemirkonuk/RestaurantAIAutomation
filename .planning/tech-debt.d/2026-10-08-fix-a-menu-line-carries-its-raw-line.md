@@ -2,7 +2,7 @@
 
 Entry (i) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:4` (status open).
 
-**What is true at this branch's head.** `GET /menu-versions/:menuId/source` (`apps/api-gateway/src/menus/menus.controller.ts:202`, the route's `@Get` just above it) has no role check: `JwtAuthGuard` and `TenantGuard` only. It calls `MenusService.sourceUrl` (`menus.service.ts:1157`), which hands back a five-minute signed link to the kept file. An import keeps a CSV as `text/csv` and a workbook as its own bytes (`menus.service.ts:450-459`, `keepSource` at `:561`), for every upload since 92ea9cecc (2026-09-22). On the web, the "Open file" link is drawn for every member (`apps/web/src/pages/menu/next/MenuVersions.tsx:296-301`); only make-current is gated (`:310`).
+**What is true at this branch's head.** `GET /menu-versions/:menuId/source` (`apps/api-gateway/src/menus/menus.controller.ts:202`, the route's `@Get` just above it) has no role check: `JwtAuthGuard` and `TenantGuard` only. It calls `MenusService.sourceUrl` (`menus.service.ts:1157`), which hands back a five-minute signed link to the kept file. An import keeps a CSV as `text/csv` and a workbook as its own bytes (`menus.service.ts:450-459`, `keepSource` at `:561`), for every upload since 92ea9cecc (2026-09-22). On the web, the "Open file" link is drawn for every member (`apps/web/src/pages/menu/next/MenuVersions.tsx:297-302`); only make-current is gated (`:311`).
 
 So this branch's line read withholds the raw line, but the kept file still reaches any member until this entry's lane lands. Menus read before 2026-09-22 have no kept file (`menus.service.ts:1162-1168` answers 404).
 
@@ -22,7 +22,7 @@ A related limit, not a defect of this branch: a workbook (XLSX) import keeps no 
 
 Entry (iii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655).
 
-`POST /menus/import` (`menus.controller.ts:62`) has no manage check, and its reply carries `rawText: r.item.raw_text` for every line (`menus.service.ts:1804`): for a CSV, the whole row. It is the uploader's own file, so nothing reaches a person who did not already hold it, but a staff uploader gets back cost and supplier cells the line reads now withhold. It is the same class as the money-policy synthesis M1 #3 (`documents.controller.ts` echoing `result.parsed`). Scans carry no raw line (`parsers/scan-parser.service.ts:35`) and a workbook keeps none, so today it is a CSV text upload that receives the row: `/menu`'s read form sends one (`apps/web/src/pages/menu/next/MenuVersions.tsx:153`).
+`POST /menus/import` (`menus.controller.ts:62`) has no manage check, and its reply carries `rawText: r.item.raw_text` for every line (`menus.service.ts:1804`): for a CSV, the whole row. It is the uploader's own file, so nothing reaches a person who did not already hold it, but a staff uploader gets back cost and supplier cells the line reads now withhold. It is the same class as the money-policy synthesis M1 #3 (`documents.controller.ts` echoing `result.parsed`). Scans carry no raw line (`parsers/scan-parser.service.ts:35`) and a workbook keeps none, so today it is a CSV text upload that receives the row: `/menu`'s read form sends one (`apps/web/src/pages/menu/next/MenuVersions.tsx:154`).
 
 ## A manual import stores whatever raw line a client sends — OPEN — 2026-10-08
 
