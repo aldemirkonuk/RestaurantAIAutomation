@@ -974,6 +974,66 @@ describe("seasonality reads counted lines only, and names the rest", () => {
   });
 });
 
+describe("a series reader's basis says what it does with a line with no bottle figure (ADR 0297)", () => {
+  // The three series readers zero-fill a daily series from counted lines, so
+  // a line with no bottle figure is left out and a day holding only it reads
+  // 0. Their basis must say that, not that the figures resting on the line
+  // are null (audit of PR #626 at b9580443e).
+  const SERIES_WORDS =
+    "1 line across 1 item carries no bottle figure (no bottle or glass mode, a bottle line with no quantity of 0 or more, or a glass line with no millilitres above 0), so it is left out of this series: a day holding it counts only its other lines, and reads 0 if it has none";
+
+  it("SB1: seasonality's basis.units says the line is left out of the series, not that figures are null", async () => {
+    const counted = everyDay(1, 1, 60, BOTTLE);
+    const base: any = await advanced({
+      restaurant_inventory: [item(1)],
+      wine_consumption_log: counted,
+    }).getSeasonality(RESTAURANT, 90);
+    const out: any = await advanced({
+      restaurant_inventory: [item(1)],
+      // Day 70 holds only the line with no figure, so it reads 0 as before.
+      wine_consumption_log: [...counted, on(2, 70, NO_FIGURE)],
+    }).getSeasonality(RESTAURANT, 90);
+    expect(out.weekdayProfile).toEqual(base.weekdayProfile);
+    expect(out.basis.units).toContain(SERIES_WORDS);
+    expect(out.basis.units).not.toContain("is null");
+  });
+
+  it("SB2: the risk profile's basis.demand says the same, and its series is unchanged", async () => {
+    const counted = everyDay(1, 1, 60, BOTTLE);
+    const run = (rows: any[]) =>
+      new AnalyticsService(
+        dbOver({ restaurant_inventory: [item(1)], wine_consumption_log: rows }),
+      ).getRiskProfile(RESTAURANT);
+    const base: any = await run(counted);
+    const out: any = await run([...counted, on(2, 70, NO_FIGURE)]);
+    expect(out.demandRisk).toEqual(base.demandRisk);
+    expect(out.basis.demand).toContain(SERIES_WORDS);
+    expect(out.basis.demand).not.toContain("is null");
+  });
+
+  it("SB3: the house forecast's history reads 0 on a day holding only that line, and its basis says so", async () => {
+    const rows = [
+      ...everyDay(1, 1, 49, BOTTLE),
+      ...everyDay(1, 51, 100, BOTTLE),
+      on(2, 50, NO_FIGURE),
+    ];
+    const out: any = await new AnalyticsService(
+      dbOver({ restaurant_inventory: [item(1)], wine_consumption_log: rows }),
+    ).getDemandForecast(RESTAURANT);
+    const day50 = noonDaysAgo(50).substring(0, 10);
+    const i = out.history.dates.indexOf(day50);
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(out.history.values[i]).toBe(0);
+    expect(out.basis.demand).toContain(SERIES_WORDS);
+    expect(out.basis.demand).not.toContain("is null");
+  });
+
+  it("SB4: a per-item reader keeps the null wording", () => {
+    const cov = summarizeUnits([{ how: "uncounted", inventoryId: "inv-1" }]);
+    expect(unitsBasisSentence(cov)).toContain("is null rather than guessed");
+  });
+});
+
 describe("Wine 360 ranks only wines whose every line has a bottle figure", () => {
   it("W1: a wine holding such a line leaves the peer ranks", async () => {
     const base = [

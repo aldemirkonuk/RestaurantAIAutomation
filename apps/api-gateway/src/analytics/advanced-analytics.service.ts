@@ -571,8 +571,10 @@ export class AdvancedAnalyticsService {
 
   async getSeasonality(restaurantId: string, sinceDays = 90) {
     const consumption = await this.loadConsumption(restaurantId, sinceDays);
-    // Counted lines only; the basis names any line that carries no bottle
-    // figure, so a short day is never passed off as a quiet one (ADR 0297).
+    // Counted lines only, zero-filled: a line with no bottle figure is left
+    // out, so a day holding one counts only its other lines and reads 0 if
+    // it has none. `basis.units` says so in those words (ADR 0297); the day
+    // is short, and the basis is what keeps it from passing as a quiet one.
     const unitsCoverage = summarizeUnits(consumption);
     const rows = consumption
       .filter((c) => c.qty != null)
@@ -649,7 +651,7 @@ export class AdvancedAnalyticsService {
       tie: extremes.tie,
       basis: {
         weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
-        units: unitsBasisSentence(unitsCoverage),
+        units: unitsBasisSentence(unitsCoverage, "series"),
         extremes: extremes.tie
           ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
           : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",

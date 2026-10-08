@@ -166,8 +166,23 @@ function n(count: number, one: string, many: string): string {
  * The per-line truth, as a sentence a `basis` string can carry. Built from
  * the coverage, never written by hand, on the pattern of costBasisSentence
  * (inventory-cost.ts): a basis must describe the lines it actually covered.
+ *
+ * `reads` says what the reader does with a line that has no bottle figure,
+ * because the sentence must say no more than the reader does (ADR 0297):
+ *  - "figures" (the default; menu engineering, Wine 360 and inventory
+ *    science): the item's figures resting on such a line are null. The
+ *    insight bundle's label (`unitsLabel`) also uses it; what the bundle
+ *    withholds is in ADR 0297's Decision.
+ *  - "series" (seasonality, the risk profile, the demand forecast): the
+ *    daily series is zero-filled from counted lines, so such a line is left
+ *    out, a day holding it counts only its other lines, and a day holding
+ *    nothing else reads 0. The figures are short, not null, and the sentence
+ *    says so.
  */
-export function unitsBasisSentence(cov: UnitsCoverage): string {
+export function unitsBasisSentence(
+  cov: UnitsCoverage,
+  reads: "figures" | "series" = "figures",
+): string {
   if (cov.lines === 0) return "no consumption lines in this window";
   const parts = [
     "bottles by each line's own mode: a bottle line is its quantity, a glass line is its millilitres over the item's stated bottle size",
@@ -178,11 +193,15 @@ export function unitsBasisSentence(cov: UnitsCoverage): string {
     );
   else if (cov.glassLines > 0)
     parts.push("every glass line's item states its bottle size");
-  if (cov.uncountedLines > 0)
+  if (cov.uncountedLines > 0) {
+    const one = cov.uncountedLines === 1;
+    const lead = `${n(cov.uncountedLines, "line", "lines")} across ${n(cov.uncountedItems, "item", "items")} ${one ? "carries" : "carry"} no bottle figure (${UNCOUNTED_CAUSES})`;
     parts.push(
-      `${n(cov.uncountedLines, "line", "lines")} across ${n(cov.uncountedItems, "item", "items")} ${cov.uncountedLines === 1 ? "carries" : "carry"} no bottle figure (${UNCOUNTED_CAUSES}), so every figure resting on ${cov.uncountedLines === 1 ? "it" : "them"} is null rather than guessed`,
+      reads === "series"
+        ? `${lead}, so ${one ? "it is" : "they are"} left out of this series: a day holding ${one ? "it" : "them"} counts only its other lines, and reads 0 if it has none, so the series is short by ${one ? "that line" : "those lines"} rather than guessed`
+        : `${lead}, so every figure resting on ${one ? "it" : "them"} is null rather than guessed`,
     );
-  else parts.push("every line has a bottle figure");
+  } else parts.push("every line has a bottle figure");
   return parts.join("; ");
 }
 

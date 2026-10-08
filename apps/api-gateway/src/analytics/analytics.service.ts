@@ -830,7 +830,7 @@ export class AnalyticsService {
 
     return {
       basis: {
-        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage)}`,
+        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}`,
       },
       vendorConcentration: {
         hhi,
@@ -1018,7 +1018,7 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage)}`,
+        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}`,
         model: projection
           ? `${model} fitted on ${values.length} days of history`
           : unmeasuredWine

@@ -214,6 +214,7 @@ export const BASKET_MIN_LIFT = 1.3;
  *       to a fresh compute, so it is refused and recomputed. Numbered 10,
  *       not 7: open PRs hold 7 (#619, #624) and 8 (#625, #626) on their
  *       branches (2026-10-07), and the coordinator renumbers at merge.
+ *       [2026-10-08: #626 no longer holds 8; it holds 11, below.]
  *  11 — 2026-10-05 (ADR 0297): a glass is not a bottle. The bundle counts a
  *       consumption line's bottles by its own mode, where it read `quantity`
  *       (servings) as bottles: ten 150 ml glasses were "10 bottles sold", a
