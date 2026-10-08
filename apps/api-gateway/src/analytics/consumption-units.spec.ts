@@ -268,7 +268,13 @@ function dbOver(rowsByTable: Rows) {
         lim = n;
         return b;
       };
-      b.maybeSingle = () => Promise.resolve({ data: null, error: null });
+      // A house's zone row is read with maybeSingle once goals file on the
+      // house's day (PR #616); every other maybeSingle read answers nothing.
+      b.maybeSingle = () =>
+        Promise.resolve({
+          data: table === "restaurants" ? (all[0] ?? null) : null,
+          error: null,
+        });
       b.single = () => Promise.resolve({ data: all[0] ?? null, error: null });
       b.update = () => b;
       b.then = (resolve: any, reject: any) => {
@@ -497,7 +503,13 @@ describe("the Bottles sold goal counts bottles, or refuses", () => {
       goals({
         wine_consumption_log: lines(1, 10, GLASS),
       }) as any
-    ).computeMetricWithSeries(RESTAURANT, "bottles_sold", since);
+    ).computeMetricWithSeries(
+      RESTAURANT,
+      "bottles_sold",
+      since,
+      undefined,
+      "UTC",
+    );
     expect(out.current).toBeCloseTo(2, 12);
     expect(out.rowCount).toBe(10);
   });
@@ -511,7 +523,13 @@ describe("the Bottles sold goal counts bottles, or refuses", () => {
         ],
       }) as any
     )
-      .computeMetricWithSeries(RESTAURANT, "bottles_sold", since)
+      .computeMetricWithSeries(
+        RESTAURANT,
+        "bottles_sold",
+        since,
+        undefined,
+        "UTC",
+      )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UncountedConsumptionError);
     expect((err as Error).message).toContain(
@@ -532,7 +550,13 @@ describe("the Bottles sold goal counts bottles, or refuses", () => {
         ],
       }) as any
     )
-      .computeMetricWithSeries(RESTAURANT, "bottles_sold", since)
+      .computeMetricWithSeries(
+        RESTAURANT,
+        "bottles_sold",
+        since,
+        undefined,
+        "UTC",
+      )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UncountedConsumptionError);
     expect((err as Error).message).toContain(
@@ -599,6 +623,8 @@ describe("each reader divides by the item's stated size, which it must select", 
       RESTAURANT,
       "bottles_sold",
       daysAgo(30).slice(0, 10),
+      undefined,
+      "UTC",
     );
     expect(out.current).toBeCloseTo(1, 12);
   });
@@ -914,6 +940,8 @@ describe("every figure resting on the 750 ml stand-in says so, with its counts (
             deadline: null,
           },
         ],
+        // The house states its zone: PR #616 refuses a goal over an unset one.
+        restaurants: [{ id: RESTAURANT, timezone: "UTC", country: null }],
         wine_consumption_log: [
           ...everyDay(1, 1, 10, GLASS, null),
           ...everyDay(2, 1, 10, BOTTLE),
