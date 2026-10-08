@@ -77,8 +77,10 @@ function readCalendarParams(params: URLSearchParams): {
 
 export interface SalesCalendarProps {
   restaurantId: string | null;
-  alerts: AlertItem[] | undefined;
-  activity: ActivityItem[] | undefined;
+  /** undefined = loading · null = unreachable · [] = genuinely nothing */
+  alerts: AlertItem[] | null | undefined;
+  /** undefined = loading · null = unreachable · [] = genuinely nothing */
+  activity: ActivityItem[] | null | undefined;
   /** DASH-W20: the house's IANA zone; null until the stats answer. */
   zone?: string | null;
   /**
