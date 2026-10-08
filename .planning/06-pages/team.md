@@ -114,7 +114,7 @@ arrives in the middle, a menu hangs off its own control):
 | Re-publish (**deletes every read receipt**) and copy last week (**deletes the whole target week**) — both sealed with `HoldToApprove` and both saying what they destroy, with the receipt count | `Panel` + seal | `TeamOverlays.tsx` |
 | Time off: the file, approve, deny, and file a request for someone | `Sheet` | `TeamOverlays.tsx` |
 | Export the week (CSV · Excel · JSON · Markdown · PDF · clipboard) and print the floor sheet | `Popover` | `TeamOverlays.tsx` |
-| Per-member performance, read-only, in house tokens, with the benchmark's ceiling stated | card | `PerformanceCard.tsx` |
+| Per-member performance, read-only, in house tokens, with the benchmark's ceiling stated. Money in the house's currency; the member's sales per cover beside the house median per cover, with how many services and servers it covers and whether the member is one; a self-only median refused; "Wine share of sales", not "Wine attach" ([ADR 0294](../decisions/0294-the-team-performance-card-prints-every-figure-with-its-unit.md)) | card | `PerformanceCard.tsx` |
 | My Shifts (staff): my week, acknowledge, take a cover, ask for the week off | — | `MyShiftsNext.tsx` |
 | **How this desk is configured** — five stated values, each a record with where it is kept, when it was written and why there is no author | section | `TeamRecord.tsx` |
 | **What changed here** — the trail, read through `GET /settings-audit` | `Sheet` | `TeamRecord.tsx` |
