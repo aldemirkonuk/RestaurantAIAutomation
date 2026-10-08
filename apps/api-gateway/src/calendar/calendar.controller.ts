@@ -737,8 +737,10 @@ export class CalendarController {
     const to = query.to?.slice(0, 10) || from;
     // Who sees the house's takings (ADR 0287 F1; the founder, 2026-10-04
     // ~02:10Z: "authorized ones see everything others only see actions"):
-    // owners and managers. That is F1 option (b), this lane's reading of his
-    // own words; it is built, and his confirmation of it is owed. `user.role` is the role in THIS token's house,
+    // owners and managers. That is F1 option (b), which follows his money rule
+    // (ADR 0253 rounds 10-11: "owners and managers get it and some authorized
+    // staff"); the per-person right is not built yet, so the role decides.
+    // `user.role` is the role in THIS token's house,
     // re-read from the access row on every request (jwt.strategy.ts), the
     // field RolesGuard trusts. Null, "staff" and any unknown role rank below
     // manager in `roleSatisfies`, so a session that cannot be shown to hold a

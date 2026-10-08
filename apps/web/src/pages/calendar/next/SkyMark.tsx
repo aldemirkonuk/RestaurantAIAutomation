@@ -186,32 +186,35 @@ export function DayRecordMark({ day }: { day: ReconciledDay }) {
  * *"Net sales (Recommended)"*, so the figure is the sum of the checks'
  * subtotals, before tax and surcharge, and it says "net".
  *
- * Three states, none of them a zero:
+ * Four states, none of them a zero:
  *   complete — every check carried a net figure: the amount, "net sales · recorded".
  *   partial  — some did not: the amount, "net sales · from N of M checks". The
  *              day took MORE than this, and the title says why.
  *   none     — no check carried one: the em dash, "net sales not recorded".
+ *   unreadable — the sales register refused: the em dash, "net sales could
+ *              not be read" (below).
  *
- * It draws nothing for a day with no checks (the record mark beside it reads
- * "covers not recorded" and the line under it "Nothing was recorded on this
- * day."), and nothing when the payload carries no net figure at all: a gateway
- * from before ADR 0287 sent no such key, and "not recorded" would then be a
- * claim about a question nobody asked.
+ * Outside a refusal, it draws nothing for a day with no checks (the record
+ * mark beside it reads "covers not recorded" and the line under it "Nothing
+ * was recorded on this day."), and nothing when the payload carries no net
+ * figure at all: a gateway from before ADR 0287 sent no such key, and "not
+ * recorded" would then be a claim about a question nobody asked.
  *
  * And it draws nothing when the window says `takingsWithheld`: owners and
- * managers see the house's takings, nobody else does (ADR 0287 F1, built as
- * option (b) on the founder's own words of 2026-10-04 ~02:10Z, "authorized
- * ones see everything others only see actions"; his confirmation of that
- * reading is still owed). The gateway already leaves the figure out; the flag
- * is checked here too, so a figure that reached this viewer anyway is still
- * not drawn.
+ * managers see the house's takings, nobody else does (ADR 0287 F1, option (b),
+ * which follows the founder's money rule, ADR 0253 rounds 10-11: "owners and
+ * managers get it and some authorized staff"; the per-person right is not
+ * built, so the role decides). The gateway already leaves the figure out; the
+ * flag is checked here too, so a figure that reached this viewer anyway is
+ * still not drawn. It is checked first, so a withheld viewer gets no takings
+ * mark under a refusal either.
  *
- * Nor when the sales register refused (`refused`, the window's
- * `recordedRefusal`). The gateway refuses rather than answer from part of a
- * window (ADR 0292) and sends no recorded day with a refusal, so there is no
- * figure to draw; the check here keeps one that reached the page anyway from
- * reading "net sales · recorded" over a register that could not be read whole.
- * The page prints the refusal sentence in its own line above the grid.
+ * When the sales register refused (`refused`, the window's `recordedRefusal`),
+ * it draws the em dash and "net sales could not be read" (ADR 0287 F3, after
+ * the founder's "Say 'could not be read'" for refused figures, ADR 0292 fork
+ * 3). The gateway refuses rather than answer from part of a window (ADR 0292)
+ * and sends no recorded day with a refusal; the mark never draws a figure in
+ * that state, even one that reached the page anyway.
  */
 export function TakingsMark({
   day,
@@ -225,7 +228,18 @@ export function TakingsMark({
   refused?: boolean;
 }) {
   if (withheld) return null;
-  if (refused) return null;
+  if (refused) {
+    return (
+      <span
+        className="cn-record"
+        data-takings="unreadable"
+        title="The sales register could not be read for this window, so this day's net sales are not known. This is not a zero."
+      >
+        <span className="cn-record-figure">{EM}</span>
+        <span className="cn-record-tag">net sales could not be read</span>
+      </span>
+    );
+  }
   const record = day.recorded;
   if (!record || record.checkCount <= 0) return null;
   const { netSales, netSalesCheckCount: carried, checkCount } = record;

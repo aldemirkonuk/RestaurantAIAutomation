@@ -142,9 +142,10 @@ export interface DayRecordWindow {
  * The founder, 2026-10-04 ~02:10Z: *"everyone owners and managers, authorized
  * ones see everything others only see actions, goals dedicated to them"*.
  * Owners and managers see the day's takings; every other role, and a session
- * holding no role in this house, does not. That is F1 option (b), this lane's
- * reading of his words; it is built, and his confirmation is owed (ADR 0287
- * §Forks F1).
+ * holding no role in this house, does not. That is F1 option (b), which
+ * follows his money rule (ADR 0253 rounds 10-11: "owners and managers get it
+ * and some authorized staff"); the per-person right that rule names is not
+ * built yet, so the role decides (ADR 0287 §Forks F1).
  */
 export interface DayRecordViewer {
   seesHouseMoney: boolean;

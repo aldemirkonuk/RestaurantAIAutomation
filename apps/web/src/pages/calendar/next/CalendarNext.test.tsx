@@ -1166,9 +1166,8 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
     expect(openDay().querySelector('[data-takings]')).toBeNull();
   });
 
-  // ADR 0287 F1, built as option (b) on the founder's words of 2026-10-04
-  // ~02:10Z (his confirmation owed): owners and managers see the
-  // house's takings; every other role gets the days with `netSales`,
+  // ADR 0287 F1, option (b), which follows the founder's money rule (ADR 0253
+  // rounds 10-11): owners and managers see the house's takings; every other role gets the days with `netSales`,
   // `netSalesCheckCount` and `currency` LEFT OUT, and `takingsWithheld: true`.
   it('draws no takings for a viewer the house money is withheld from, and keeps the covers', () => {
     const data = mkData({
@@ -1204,24 +1203,55 @@ describe('CalendarNext — the opened day shows what it took, net', () => {
   });
 
   // ADR 0292 on ADR 0287: the sales register is read whole or refused. A
-  // refused window carries no recorded day, and the mark also checks the
-  // refusal, so no "net sales · recorded" stands over a register that could
-  // not be read whole.
-  it('draws no takings under a sales-register refusal, even if a figure reached it, and says the refusal', () => {
+  // refused window carries no recorded day. ADR 0287 F3: the opened day then
+  // says its net sales could not be read (an em dash, never a figure), after
+  // the founder's "Say 'could not be read'" for refused figures (ADR 0292
+  // fork 3).
+  it('says net sales could not be read under a sales-register refusal, and draws no figure even if one reached it', () => {
     const refusal =
       'The sales register could not be read whole, so no day is drawn from part of it.';
     state.current = withRecorded({}, { recordedRefusal: refusal });
     draw();
     expect(screen.getByText(refusal)).toBeInTheDocument();
     const panel = openDay();
-    expect(panel.querySelector('[data-takings]')).toBeNull();
+    const mark = panel.querySelector('[data-takings]') as HTMLElement;
+    expect(mark).toHaveAttribute('data-takings', 'unreadable');
+    expect(within(mark).getByText('—')).toBeInTheDocument();
+    expect(within(mark).getByText('net sales could not be read')).toBeInTheDocument();
     expect(panel.textContent).not.toContain(NET());
-    expect(panel.textContent).not.toMatch(/net sales/);
+    expect(panel.textContent).not.toMatch(/net sales · |net sales not recorded/);
+    expect(mark.textContent).not.toMatch(/\$\s?0|0\.00/);
     // and the Day view agrees
     fireEvent.click(screen.getByRole('button', { name: 'Day' }));
     expect(screen.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText(NET())).toBeNull();
-    expect(document.querySelector('[data-takings]')).toBeNull();
+    const dayMark = document.querySelector('[data-takings]') as HTMLElement;
+    expect(dayMark).toHaveAttribute('data-takings', 'unreadable');
+    expect(within(dayMark).getByText('net sales could not be read')).toBeInTheDocument();
+  });
+
+  it('says it on a refused day with no recorded half too, where the gateway sends only the weather', () => {
+    state.current = mkData({
+      record: recordWindow({
+        days: [reconciled({ recorded: null })],
+        window: { recordedRefusal: 'The sales register could not be read.' },
+      }),
+    });
+    draw();
+    const mark = openDay().querySelector('[data-takings]') as HTMLElement;
+    expect(mark).toHaveAttribute('data-takings', 'unreadable');
+    expect(within(mark).getByText('net sales could not be read')).toBeInTheDocument();
+  });
+
+  it('draws no takings at all for a withheld viewer under a refusal (F1 before F3)', () => {
+    state.current = withRecorded(
+      {},
+      { takingsWithheld: true, recordedRefusal: 'The sales register could not be read.' },
+    );
+    draw();
+    const panel = openDay();
+    expect(panel.querySelector('[data-takings]')).toBeNull();
+    expect(panel.textContent).not.toMatch(/net sales/);
   });
 });
 

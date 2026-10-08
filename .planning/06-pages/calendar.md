@@ -178,11 +178,14 @@ unchanged with the flag off):
   figure says "from N of M checks". Owners and managers see the figure; any other role
   gets the day's covers without it (0287 F1, founder 2026-10-04). A check sits under the
   UTC day it closed on (F-086, lane tz) and a month read stops at 1,000 rows (C15, lane
-  cap); 0287 §Consequences says what that does to a late check.]** **[2026-10-07: F1 is
-  built as option (b) on his words; his confirmation is owed (0287 §Forks F1). The month
-  read no longer stops at 1,000 rows: #609 (ADR 0292) reads it whole or refuses, and under
-  a refusal the opened day draws no takings and no evidence pair is written (0287
-  §Decision 8).]**
+  cap); 0287 §Consequences says what that does to a late check.]** **[2026-10-07, corrected
+  2026-10-08: F1 is option (b), by citation of the founder's money rule (ADR 0253 rounds
+  10-11, "owners and managers get it and some authorized staff"); no confirmation is owed
+  (0287 §Forks F1). The month read no longer stops at 1,000 rows: #609 (ADR 0292) reads it
+  whole or refuses, and under a refusal the opened day draws no takings figure, says "net
+  sales could not be read" to owners and managers (0287 F3, decided 2026-10-08 under the
+  founder's delegation), and no evidence pair is written (0287 §Decision 8). This bracket
+  said "his confirmation is owed" and "draws no takings".]**
 - **A passed day states the forecast's error, from 2026-09-04.** The nearest reporting
   station's observations are recorded beside the forecast, so `prediction_outcomes` now
   receives the **first real `accuracy_score` this product has ever produced**: the absolute
