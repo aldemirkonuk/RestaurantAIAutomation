@@ -5,21 +5,34 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ISO_4217_CODES } from "../../common/iso-4217";
+import {
+  CAP,
+  FitsInBytes,
+  GOOGLE_PLACE_ID_MAX_BYTES,
+  PLACE_ID_TOO_LONG,
+} from "../house-opening";
 
 export class CreateFirstHouseDto {
-  @IsString() restaurantName: string;
+  @IsString() @MaxLength(249, CAP.name) restaurantName: string;
   @IsString() address: string;
-  @IsString() city: string;
-  @IsString() country: string;
-  @IsOptional() @IsString() stateProvince?: string;
-  @IsOptional() @IsString() postalCode?: string;
-  @IsOptional() @IsString() neighborhood?: string;
+  @IsString() @MaxLength(100, CAP.city) city: string;
+  @IsString() @MaxLength(100, CAP.country) country: string;
+  @IsOptional() @IsString() @MaxLength(100, CAP.state) stateProvince?: string;
+  @IsOptional() @IsString() @MaxLength(20, CAP.postal) postalCode?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(100, CAP.neighborhood)
+  neighborhood?: string;
   @IsOptional() @IsEmail() restaurantEmail?: string;
-  @IsOptional() @IsString() restaurantPhone?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(50, CAP.phone)
+  restaurantPhone?: string;
 
   /**
    * The browser's own zone (`Intl.DateTimeFormat().resolvedOptions()
@@ -45,5 +58,8 @@ export class CreateFirstHouseDto {
   @Max(180)
   longitude?: number;
 
-  @IsOptional() @IsString() googlePlaceId?: string;
+  @IsOptional()
+  @IsString()
+  @FitsInBytes(GOOGLE_PLACE_ID_MAX_BYTES, PLACE_ID_TOO_LONG)
+  googlePlaceId?: string;
 }
