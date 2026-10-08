@@ -43,6 +43,23 @@ A statement of the form::
 where `error` is NOT among the bound names. `count` and `status` are not
 substitutes: neither is populated on failure either.
 
+**A query built into a variable first and awaited later** is the same read::
+
+    let q = client.from("providers").select("id").ilike("contact_email", e);
+    if (restaurantId) q = q.eq("restaurant_id", restaurantId);
+    const { data: providers } = await q.limit(1);
+
+Until 2026-10-08 the guard looked for the supabase chain only inside the
+destructuring statement, so this shape was invisible to it, and the inbound
+mail handler's provider lookup (`rabbitmq-bridge.service.ts`, the known
+vendor's reply filed as a prospect or dropped on a failed read) was never in
+the baseline. Now, when the awaited expression begins with a bare identifier
+(not a call: `await q`, `await q.limit(1)`, never `await load()`), the guard
+finds that identifier's nearest `const`/`let`/`var` declaration ABOVE the
+destructure and in an enclosing block, and treats the read as a supabase read
+when the declaration, or any plain `q = …` assignment between it and the
+await, holds a supabase chain. The table is read from that chain.
+
 WHAT IT DELIBERATELY DOES NOT FLAG, AND WHY
 -------------------------------------------
 1. **A destructure whose value is immediately REFUSED.** ::
@@ -62,6 +79,16 @@ WHAT IT DELIBERATELY DOES NOT FLAG, AND WHY
 
 3. **Non-supabase awaits.** `const { data } = await axios.get(...)` throws on
    failure; the defect is specific to the resolve-with-error contract.
+
+4. **What the builder-variable rule still cannot see**, named so nobody reads
+   a green run as covering it: a builder handed in as a PARAMETER or kept on
+   `this` (no declaration in the file to follow); a builder returned by a
+   helper call (`await this.baseQuery(id)`, and a helper that returns
+   `{ data, error }` whose caller drops `error`, e.g.
+   `communications.controller.ts` → `findProviderByEmail`); and a conditional
+   or parenthesised await (`await (a ? q1 : q2)`). Block scope is judged by
+   counting `{`/`}` between declaration and use, so a brace inside a string
+   literal can mislead it.
 
 THE RATCHET, AND WHY IT IS NOT A BLANKET DISABLE
 ------------------------------------------------
@@ -158,6 +185,10 @@ DESTRUCTURE = re.compile(r"(?:const|let|var)\s*\{([^}]*)\}\s*=\s*await\b")
 SUPABASE_CHAIN = re.compile(r"\.from\(|\.rpc\(|\.storage\b|\.functions\.invoke")
 TABLE_NAME = re.compile(r"\.(?:from|rpc)\(\s*[\"'`]([^\"'`]+)[\"'`]")
 BINDING_ALIAS = re.compile(r"\bdata\s*:\s*(\w+)")
+# The awaited expression starts with a bare identifier that is not called:
+# `await q`, `await q.limit(1)`, `await q\n .order(...)`. `await load()` is a
+# helper call and is out of reach (see "WHAT IT DELIBERATELY DOES NOT FLAG" 4).
+BUILDER_HEAD = re.compile(r"\s*([A-Za-z_$][\w$]*)(?![\w$])(?!\s*\()")
 
 # A value that is REFUSED the moment it arrives is not silent. See
 # "WHAT IT DELIBERATELY DOES NOT FLAG" above.
@@ -199,11 +230,59 @@ def _statement_end(text: str, start: int) -> int:
     return n
 
 
+def _encloses(text: str, outer: int, inner: int) -> bool:
+    """True when `inner` sits in the block that holds `outer`, or deeper.
+
+    Counted as braces between the two offsets: the running depth never drops
+    below where `outer` started. A declaration in a sibling function closes
+    its block before the use site and so does not count.
+    """
+    depth = 0
+    for c in text[outer:inner]:
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth < 0:
+                return False
+    return True
+
+
+def _builder_chain(text: str, name: str, use: int) -> str | None:
+    """The supabase chain a builder variable was made from, or None.
+
+    Follows `name` to its nearest `const`/`let`/`var` declaration above `use`
+    that encloses it, then reads that declaration and every plain `name = …`
+    assignment between it and `use`. The first of those holding a supabase
+    chain is returned, so `let q = c.from("t")…; q = q.eq(…)` reads as table
+    `t`, and `let q; q = c.from("t")…` does too.
+    """
+    n = re.escape(name)
+    decls = [
+        d for d in re.finditer(r"\b(?:const|let|var)\s+%s(?![\w$])" % n, text[:use])
+        if _encloses(text, d.start(), use)
+    ]
+    if not decls:
+        return None
+    decl = decls[-1]
+    pieces = [text[decl.start() : _statement_end(text, decl.end())]]
+    # `name =` but not `name ==`/`name =>`, and not `other.name =` / `xname =`.
+    for a in re.finditer(r"(?<![\w$.])%s\s*=(?![=>])" % n, text[decl.end() : use]):
+        start = decl.end() + a.start()
+        pieces.append(text[start : _statement_end(text, start)])
+    for piece in pieces:
+        if SUPABASE_CHAIN.search(piece):
+            return piece
+    return None
+
+
 def find_sites(text: str) -> list[tuple[int, str, str]]:
     """Swallowed reads in one file, as (lineno, table, binding).
 
     `table` is the literal passed to `.from(`/`.rpc(`, or `?` when it is a
-    variable — the key stays stable either way, which is what matters.
+    variable — the key stays stable either way, which is what matters. For a
+    builder variable (`await q.limit(1)`) the table comes from the chain the
+    variable was built from; see `_builder_chain`.
     """
     out: list[tuple[int, str, str]] = []
     for m in DESTRUCTURE.finditer(text):
@@ -217,13 +296,18 @@ def find_sites(text: str) -> list[tuple[int, str, str]]:
             continue
         end = _statement_end(text, m.end())
         stmt = text[m.end() : end]
-        if not SUPABASE_CHAIN.search(stmt):
+        chain = stmt if SUPABASE_CHAIN.search(stmt) else None
+        if chain is None:
+            head = BUILDER_HEAD.match(stmt)
+            if head:
+                chain = _builder_chain(text, head.group(1), m.start())
+        if chain is None:
             continue
         alias = BINDING_ALIAS.search(bound)
         var = alias.group(1) if alias else "data"
         if _refusal(var).match(text[end + 1 : end + 400]):
             continue
-        table_m = TABLE_NAME.search(stmt)
+        table_m = TABLE_NAME.search(chain)
         table = table_m.group(1) if table_m else "?"
         out.append((text[: m.start()].count("\n") + 1, table, var))
     return out
@@ -532,6 +616,106 @@ def self_test() -> int:
         if len(find_sites('const { data, count } = await c.from("v").select("*");\n')) != 1:
             failures.append("`count` was accepted as an error binding")
 
+        # --- builder variables (2026-10-08) -------------------------------
+        # The handleInboundEmail provider lookup, verbatim in shape: built,
+        # conditionally narrowed, awaited later with one more link.
+        PROVIDER_QUERY = (
+            "async function f(c: any, email: string, rid: string | null) {\n"
+            "  let providerQuery = c\n"
+            '    .from("providers")\n'
+            '    .select("id, restaurant_id, name")\n'
+            '    .ilike("contact_email", email);\n'
+            "  if (rid) {\n"
+            '    providerQuery = providerQuery.eq("restaurant_id", rid);\n'
+            "  }\n"
+            "  const { data: providers } = await providerQuery.limit(1);\n"
+            "  return providers?.[0];\n"
+            "}\n"
+        )
+        got = find_sites(PROVIDER_QUERY)
+        if got != [(9, "providers", "providers")]:
+            failures.append(
+                f"a builder variable awaited later was not caught as one providers site: {got}"
+            )
+        if find_sites(PROVIDER_QUERY.replace(
+            "const { data: providers }", "const { data: providers, error }"
+        )):
+            failures.append("a builder variable with `error` bound was flagged")
+        bare = (
+            'const q = c.from("team_certifications").select("*").eq("r", r);\n'
+            "const { data } = await q;\n"
+        )
+        got = find_sites(bare)
+        if got != [(2, "team_certifications", "data")]:
+            failures.append(f"a bare `await q` of a builder resolved to {got}")
+        later = (
+            "let q: any;\n"
+            'if (a) q = c.from("time_off_requests").select("*");\n'
+            'else q = c.from("time_off_requests").select("id");\n'
+            "const { data } = await q.order(\"created_at\");\n"
+        )
+        got = find_sites(later)
+        if got != [(4, "time_off_requests", "data")]:
+            failures.append(
+                f"a builder declared bare and assigned later resolved to {got}"
+            )
+        promise = (
+            'const originPromise = c.from("restaurants").select("name").maybeSingle();\n'
+            "const other = await somethingElse();\n"
+            "const { data: restaurant } = await originPromise;\n"
+        )
+        got = find_sites(promise)
+        if got != [(3, "restaurants", "restaurant")]:
+            failures.append(f"a query held as a pending promise resolved to {got}")
+        # The refusal discrimination applies to builders exactly as to chains.
+        if find_sites(
+            'let q = c.from("users").select("*");\n'
+            'q = q.eq("id", id);\n'
+            "const { data: user } = await q.maybeSingle();\n"
+            'if (!user) throw new NotFoundException("x");\n'
+        ):
+            failures.append("a builder value refused on falsy was flagged")
+        # An identifier that is not a supabase builder is not one.
+        if find_sites(
+            'const req = axios.get("/x");\n'
+            "const { data } = await req;\n"
+        ):
+            failures.append("a non-supabase variable awaited later was flagged")
+        # A helper CALL is out of reach by decision, even when its body
+        # (which binds its own error here) holds a chain.
+        if find_sites(
+            "const load = async () => {\n"
+            '  const { data, error } = await c.from("t").select("*");\n'
+            "  if (error) throw error;\n"
+            "  return { data };\n"
+            "};\n"
+            "const { data } = await load();\n"
+        ):
+            failures.append("a helper call was followed as if it were a builder")
+        # A declaration in a SIBLING function does not reach this one's
+        # parameter of the same name; a property or a longer name is not it.
+        if find_sites(
+            "function a(c: any) {\n"
+            '  const q = c.from("t").select("*");\n'
+            "  return q;\n"
+            "}\n"
+            "async function b(q: any, o: any) {\n"
+            '  o.q = c.from("t");\n'
+            '  const xq = c.from("t");\n'
+            "  const { data } = await q;\n"
+            "  return data;\n"
+            "}\n"
+        ):
+            failures.append(
+                "a sibling function's declaration, a property or a longer "
+                "name was taken for this builder"
+            )
+        # End to end: a builder-variable site not in the baseline fails main.
+        g = tree(root / "g", {"apps/x/svc.ts": PROVIDER_QUERY, "apps/x/o.ts": VIOLATION})
+        bl_g = baseline_file(g, {"apps/x/o.ts::restaurants::data": 1})
+        if main(g, bl_g) != 1:
+            failures.append("a builder-variable site not in the baseline did not exit 1")
+
         # --- comment-stripping: the illustrative anti-pattern in a JSDoc block
         # must be ignored, while the identical shape in real code is still
         # caught. Both directions proven on the same statement text.
@@ -594,7 +778,7 @@ def self_test() -> int:
         if any(k.count("::") != 2 for k in real_found):
             failures.append("a key did not have exactly two :: separators")
 
-    print("== --self-test: 22 invariants")
+    print("== --self-test: 32 invariants")
     if failures:
         for f in failures:
             print(f"   FAIL -- {f}")
@@ -615,6 +799,12 @@ def self_test() -> int:
     print("   the identical shape in real code next to a comment IS still flagged,")
     print("      at its correct line number")
     print("   a // inside a string literal is not stripped as a comment")
+    print("   a query built into a variable and awaited later IS flagged, with its")
+    print("      table: narrowed then `.limit(1)`, bare `await q`, declared bare and")
+    print("      assigned later, and held as a pending promise; it exits 1 in main")
+    print("   ...but not with `error` bound, not when refused on falsy, not for a")
+    print("      non-supabase variable, a helper call, a sibling function's")
+    print("      declaration, a property, or a longer name")
     print("PASS")
     return 0
 

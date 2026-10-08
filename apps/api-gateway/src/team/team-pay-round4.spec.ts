@@ -285,6 +285,11 @@ function withFormer(db: StubDb, opts: { audited?: boolean } = {}) {
     status: "approved",
     leave_type: "paid",
     reason: "a private sentence",
+    // NOT NULL in production. Without it the stub answers listTimeOff's
+    // `.order("created_at")` with 42703, and before listTimeOff read its
+    // error (2026-10-08) that made "the manager's leave list" pass on an
+    // unread table rather than on the departure filter.
+    created_at: "2026-08-15T09:00:00.000Z",
   });
   db.tables.team_member_wage_changes.push({
     restaurant_id: RID,

@@ -9051,7 +9051,17 @@ export class ProcurementService {
       .is("detected_intent", null)
       .gt("created_at", tenMinAgo);
     if (draftCreatedAt) q = q.gt("created_at", draftCreatedAt);
-    const { data } = await q.limit(1);
+    const { data, error } = await q.limit(1);
+    // This is a gate on a send and on a deal commit. A failed read read as
+    // "no newer reply" opened it (ADR 0067); it now stays shut and says why.
+    if (error) {
+      this.logger.error(
+        `newerReplyStillAnalyzing: read failed for order ${orderId} — ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not check whether a newer vendor reply is still being read, so nothing was sent or confirmed. Try again in a moment.",
+      );
+    }
     return !!(data && (data as any[]).length);
   }
 

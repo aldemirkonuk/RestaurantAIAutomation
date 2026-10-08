@@ -182,7 +182,20 @@ export class ProspectsService {
       existingQuery = isTriage
         ? existingQuery.is("restaurant_id", null)
         : existingQuery.eq("restaurant_id", restaurantId as string);
-      const { data: existing } = await existingQuery.maybeSingle();
+      const { data: existing, error: existingError } =
+        await existingQuery.maybeSingle();
+      // A failed dedup read is not "no prospect yet" (ADR 0067). Read that
+      // way it would insert a row that uq_prospect_domain (or, for triage,
+      // uq_prospect_triage_domain) refuses when the domain is already held,
+      // and that insert's error is not read either, so the caller would
+      // announce a new prospect that was never written and the existing
+      // row would not be bumped. Nothing is written or announced instead.
+      if (existingError) {
+        this.logger.error(
+          `captureFromColdEmail: prospect dedup read failed for ${domain} — ${existingError.message}; nothing captured`,
+        );
+        return { captured: false };
+      }
 
       if (existing) {
         await this.databaseService.supabase

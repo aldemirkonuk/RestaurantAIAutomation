@@ -820,8 +820,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * `0` — the shape that lets a failed query read as "this house bought
      * nothing". The other six metrics have lived with it since before this
      * change and repairing them is its own piece of work (since ADR 0292 the
-     * check and consumption reads refuse through it with `WholeReadError`;
-     * `purchase_spend` still falls through); what must not happen
+     * check and consumption reads refuse through it with `WholeReadError`,
+     * and since 2026-10-08 `purchase_spend` refuses a failed read the same
+     * way, though its read is not yet paged); what must not happen
      * is a NEW metric inheriting it, because a days-of-stock goal reading
      * "0 days" is not a light cellar, it is an unread one.
      *
@@ -869,7 +870,21 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", sinceIso);
         if (untilIso) q = q.lte("delivered_at", untilIso);
-        const { data } = await q;
+        // A failed read refuses like the windowed reads below rather than
+        // summing to "this house bought nothing" (ADR 0067). WholeReadError
+        // is what the catch passes through and what callers already word
+        // per goal. The read is still unranged, so PostgREST's row cap can
+        // still cut it short; that half stays open (ADR 0292).
+        const { data, error } = await q;
+        if (error) {
+          throw new WholeReadError(
+            "The purchase orders in this window",
+            "read_failed",
+            0,
+            null,
+            error.message,
+          );
+        }
         rowCount = (data || []).length;
         for (const o of data || [])
           add(

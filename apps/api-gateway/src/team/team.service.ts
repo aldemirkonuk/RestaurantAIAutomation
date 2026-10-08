@@ -2142,7 +2142,16 @@ export class TeamService {
       if (!mine) return [];
       q = q.eq("member_id", mine);
     }
-    const { data } = await q.order("expires_at", { ascending: true });
+    const { data, error } = await q.order("expires_at", { ascending: true });
+    // A failed read is not "no certificates on file" (ADR 0067).
+    if (error) {
+      this.logger.error(
+        `listCertifications could not read certificates for ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read certificates here, so none are listed.",
+      );
+    }
     // A removed person's credentials are kept five years, not listed (ADR
     // 0215, founder 2026-09-25 round 4 item 19): they appear only in the
     // owner's former-staff history. A staff caller's list is already their own.
@@ -2240,7 +2249,17 @@ export class TeamService {
       if (!mine) return [];
       q = q.eq("member_id", mine);
     }
-    const { data } = await q.order("created_at", { ascending: false });
+    const { data, error } = await q.order("created_at", { ascending: false });
+    // A failed read is not "no requests" (ADR 0067): a manager would read an
+    // empty review queue.
+    if (error) {
+      this.logger.error(
+        `listTimeOff could not read time-off requests for ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read time-off requests here, so none are listed.",
+      );
+    }
     if (role === "staff") return data ?? [];
     // A removed person's requests are kept five years, not listed (ADR 0215
     // item 20): before 20261201110200 the removal deleted them, and a

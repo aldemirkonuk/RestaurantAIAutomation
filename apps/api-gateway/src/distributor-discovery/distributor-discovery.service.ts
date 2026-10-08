@@ -67,9 +67,12 @@ export interface DistributorSearchResult {
   offset: number;
   /**
    * The restaurant's own coordinates, so the map can place the "you are here"
-   * marker and centre sensibly. Null when the restaurant has not been geocoded.
+   * marker and centre sensibly. Null when the restaurant has not been geocoded,
+   * or when its row could not be read (then `originUnreadable` is true).
    */
   origin: { lat: number; lng: number; label: string } | null;
+  /** True when the restaurant's own row could not be read (ADR 0067). */
+  originUnreadable: boolean;
 }
 
 export interface DistributorDetail {
@@ -146,7 +149,16 @@ export class DistributorDiscoveryService {
     // extra round trip. An empty page legitimately means zero total.
     const total = rows.length ? Number(rows[0].total_count) : 0;
 
-    const { data: restaurant } = await originPromise;
+    // A failed read of the house's own row is not "not geocoded" (ADR 0067):
+    // the results stand, and the response says the origin is unknown rather
+    // than absent.
+    const { data: restaurant, error: originError } = await originPromise;
+    if (originError) {
+      this.logger.error("Failed to read the restaurant's own coordinates", {
+        restaurantId,
+        error: originError.message,
+      });
+    }
     const origin =
       restaurant?.latitude != null && restaurant?.longitude != null
         ? {
@@ -162,6 +174,7 @@ export class DistributorDiscoveryService {
       limit,
       offset,
       origin,
+      originUnreadable: Boolean(originError),
     };
   }
 

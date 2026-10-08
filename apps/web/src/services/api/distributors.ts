@@ -69,8 +69,12 @@ export interface DistributorSearchResponse {
   total: number
   limit: number
   offset: number
-  /** The restaurant's own coordinates; null when it has not been geocoded. */
+  /**
+   * The restaurant's own coordinates; null when it has not been geocoded, or
+   * when its row could not be read (then `originUnreadable` is true).
+   */
   origin: { lat: number; lng: number; label: string } | null
+  originUnreadable: boolean
 }
 
 export interface FacetOption {

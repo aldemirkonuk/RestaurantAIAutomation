@@ -152,6 +152,33 @@ The two discriminations do the work an allowlist otherwise would:
   looks superficially identical and is the `providers.service.ts` bug: on a
   failed read it does **not** throw. Flagged. A self-test invariant pins both.
 
+### Amendment, 2026-10-08: a query held in a variable is a read too
+
+The guard looked for the supabase chain only inside the destructuring
+statement, so `let q = c.from(…); … const { data } = await q.limit(1)` was
+invisible to it. That is how `handleInboundEmail`'s provider lookup never
+reached the baseline while a failed read filed known vendors as prospects
+([0310](0310-a-vendor-reply-whose-sender-cannot-be-read-is-parked.md)).
+
+**Rule.** When the awaited expression starts with a bare identifier that is
+not called, the guard follows it to its nearest `const`/`let`/`var`
+declaration above the use and in an enclosing block, and counts the read
+when that declaration, or a plain `q = …` assignment between them, holds a
+supabase chain. The key keeps its shape (`file::table::binding`), with the
+table taken from that chain.
+
+**Still out of reach, named in the guard's docstring:** a builder passed in
+as a parameter or kept on `this`, one returned by a helper call (including a
+helper that returns `{ data, error }` to a caller who drops `error`, e.g.
+`findProviderByEmail`), and a conditional await.
+
+**Measured at `be9a16c`:** the rule found 7 sites, none baselined. All 7 were
+fixed on `claude/laughing-hopper-ofbojk` rather than added: the baseline only
+shrinks, and none of them qualified for the allowlist. The tree then reads
+1717 files, 149 sites, 149 baselined, 0 allowlisted. `--self-test` went from
+22 to 32 invariants, and the extended guard fails `be9a16c` naming exactly
+those 7.
+
 ## Consequences
 
 **Easier.** The 216th swallowed read cannot be merged. The burn-down has a
@@ -201,3 +228,4 @@ moving target and should be replaced by a type-level rule).
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created. Guard proven exit 1 against pristine `origin/main` (1f4717cc) at 8 sites, exit 0 after; `--self-test` 18 invariants pass; 11 behavioural tests, 8 of which fail pre-fix. |
+| 2026-10-08 | — | Amended: builder variables (section above). Exit 1 on `be9a16c` at 7 sites, exit 0 after; `--self-test` 32 invariants pass; 19 behavioural cases across two specs, 14 of them red on `be9a16c`; 24 of 24 source mutants killed under a local harness (jest itself could not run in that sandbox). |
