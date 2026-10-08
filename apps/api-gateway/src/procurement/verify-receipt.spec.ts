@@ -188,6 +188,12 @@ function makeDb(opts: {
   doorEvents?: Row[];
   /** That read fails with this. */
   doorEventsError?: { message: string } | null;
+  /**
+   * Answers to successive `procurement_credits` inserts, in order (null =
+   * lands). A 23514 here is the reason CHECK refusing a reason the database
+   * does not know yet (the gateway deployed before its migration).
+   */
+  creditInsertErrors?: ({ code: string; message: string } | null)[];
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -249,6 +255,9 @@ function makeDb(opts: {
         // `insert` op above, which the branch above already answered).
         // The claim's read of the door's own reason (W54 / F-158): the
         // door's `case_count` events, answered from `doorEvents`.
+        // Every `.eq` the read applies is honoured, as Postgres would, and an
+        // `.eq` the read omits filters nothing — so a dropped tenant or order
+        // filter lets another house's or another order's door in.
         if (
           table === "procurement_receipt_events" &&
           op !== "insert" &&
@@ -257,11 +266,16 @@ function makeDb(opts: {
           if (opts.doorEventsError)
             return { data: null, error: opts.doorEventsError };
           return {
-            data: (opts.doorEvents ?? []).filter(
-              (e) => filters.stage === undefined || e.stage === filters.stage,
+            data: (opts.doorEvents ?? []).filter((e) =>
+              Object.entries(filters).every(([col, v]) => e[col] === v),
             ),
             error: null,
           };
+        }
+
+        if (table === "procurement_credits" && op === "insert") {
+          const error = opts.creditInsertErrors?.[calls.creditInserts.length - 1] ?? null;
+          return { data: null, error };
         }
 
         if (table === "procurement_receipt_events" && op !== "insert") {
@@ -1534,6 +1548,8 @@ describe("verifyReceipt — a rejection's claim keeps the door's reason (W54 / F
     rejectedQuantity: 2,
   } as any;
   const door = (o: Row) => ({
+    restaurant_id: REST,
+    order_id: ORDER,
     stage: "case_count",
     outcome: "refused",
     refusal_reason: null,
@@ -1571,6 +1587,57 @@ describe("verifyReceipt — a rejection's claim keeps the door's reason (W54 / F
     });
     await service(db).verifyReceipt(REST, ORDER, USER, body);
     expect(calls.creditInserts[0].reason).toBe("temperature");
+  });
+
+  it("reads only this house's and this order's door, never another's", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      doorEvents: [
+        door({ refusal_reason: "wrong_wine" }),
+        // Another house's door on the same order id, and this house's door on
+        // another order: either one read would make two reasons, and two
+        // reasons file as damaged.
+        door({ restaurant_id: "rest-2", refusal_reason: "temperature" }),
+        door({ order_id: "other-order", refusal_reason: "temperature" }),
+      ],
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, body);
+    expect(calls.creditInserts).toHaveLength(1);
+    expect(calls.creditInserts[0].reason).toBe("wrong_item");
+  });
+
+  it("re-files the claim as damaged when the database refuses the door's reason (23514), so it is never lost", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      doorEvents: [door({ refusal_reason: "wrong_wine" })],
+      creditInsertErrors: [
+        { code: "23514", message: "violates check constraint procurement_credits_reason_check" },
+        null,
+      ],
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, body);
+    expect(calls.creditInserts).toHaveLength(2);
+    expect(calls.creditInserts[0].reason).toBe("wrong_item");
+    expect(calls.creditInserts[1].reason).toBe("damaged");
+    // Everything but the reason is the same claim.
+    const { reason: _a, ...first } = calls.creditInserts[0];
+    const { reason: _b, ...second } = calls.creditInserts[1];
+    expect(second).toEqual(first);
+  });
+
+  it("does not retry a claim already filed as damaged, nor on any other refusal", async () => {
+    for (const [doorEvents, code] of [
+      [[], "23514"],
+      [[door({ refusal_reason: "wrong_wine" })], "23503"],
+    ] as const) {
+      const { db, calls } = makeDb({
+        orderRow: deliveredOrder,
+        doorEvents: [...doorEvents],
+        creditInsertErrors: [{ code, message: "refused" }],
+      });
+      await service(db).verifyReceipt(REST, ORDER, USER, body);
+      expect(calls.creditInserts).toHaveLength(1);
+    }
   });
 
   it("still opens the claim, as damaged, when the door gave no reason or cannot be read", async () => {

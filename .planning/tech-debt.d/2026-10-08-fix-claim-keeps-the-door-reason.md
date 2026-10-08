@@ -59,3 +59,37 @@ Claims: `claims.d/fix-claim-keeps-the-door-reason.jsonl:1-5`.
 6. **Old `damaged` claims' letters change words.** A `damaged` claim asked
    after this lands says "part of the delivery was refused or arrived broken
    at the door" instead of "arrived damaged".
+7. **Disclosed (gate, 2026-10-08) — door `other` files as `other`, not as a
+   door dispute.** Per the founder's pick list (other→other), a door refusal
+   coded `other` now opens an `other` claim. Its letter files as
+   `invoice_mismatch` (`creditLetterCategory`, `credit-letter.ts`
+   `DELIVERY_DISPUTE_REASONS` does not hold `other`) and says "there is a
+   discrepancy on this delivery"; pages label it "Another reason"
+   (`credit-ledger.ts` `CREDIT_REASON_WORDING.other`), which no longer says it
+   happened at the door. Before this PR the same refusal filed as `damaged`
+   (delivery dispute, "arrived damaged"). Behaviour kept as ruled; a
+   door-specific `other` wording would need its own reason code or ruling.
+8. **Disclosed (gate, 2026-10-08) — the `never_arrived` letter gets its own
+   sentence.** `CREDIT_REASON_SENTENCE` is now derived from
+   `CREDIT_REASON_WORDING`, which has a `never_arrived` entry, so that letter
+   says "we paid for an order that never arrived" instead of falling back to
+   `other`'s "there is a discrepancy on this delivery". Still filed as
+   `invoice_mismatch`. A wording change outside F-158's ruling, named here
+   rather than left silent.
+9. **Pre-existing — the "23505 dedupe" in `openCreditClaim` protects
+   nothing.** The only unique index on this path, `uq_pc_line_reason`
+   (`20260805000000_baseline_from_production.sql:11859`), is
+   `(document_line_id, reason) WHERE document_line_id IS NOT NULL AND state <>
+   'written_off'`, and `openCreditClaim` never sets `document_line_id`. So a
+   re-verify of the same order with the same verdict can open a second claim
+   for money already being chased. The code comment that claimed otherwise is
+   corrected on this branch (`procurement.service.ts`, `openCreditClaim`);
+   the fix (an order-level unique index like `uq_pc_order_never_arrived`, or a
+   read-before-insert) is owed on a later branch.
+10. **Fixed on this branch (gate, 2026-10-08) — a refused reason no longer
+    loses the claim.** If the gateway runs before migration
+    `a_claim_keeps_the_door_reason` lands, `procurement_credits_reason_check`
+    refuses `wrong_item` / `broken` / `temperature` with 23514. The insert used
+    to be only warned, dropping the claim; it now retries once as `damaged`
+    and logs the lost precision (verify-receipt.spec.ts "re-files the claim as
+    damaged ... (23514)").

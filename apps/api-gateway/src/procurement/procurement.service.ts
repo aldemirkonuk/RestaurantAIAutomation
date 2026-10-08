@@ -5776,13 +5776,32 @@ export class ProcurementService {
       };
       if (order?.currency) insertRow.currency = order.currency;
 
-      const { error } = await this.databaseService.supabase
+      let { error } = await this.databaseService.supabase
         .from("procurement_credits")
         .insert(insertRow);
 
-      // 23505 = a claim for this line and reason is already open. Re-running the
-      // match must not manufacture a second claim for money already being
-      // chased — that would double-count recovery and embarrass the restaurant.
+      // 23514 = procurement_credits_reason_check refused the reason — the
+      // door's new reasons (wrong_item, broken, temperature) exist only once
+      // migration a_claim_keeps_the_door_reason has landed, and the gateway can
+      // deploy before it. File the claim once more as `damaged` ("refused or
+      // broken at the door"), the reason every database knows, so the money is
+      // still chased; the lost precision is logged, never silent.
+      if (error?.code === "23514" && insertRow.reason !== "damaged") {
+        this.logger.warn(
+          `openCreditClaim: the database refused reason "${String(insertRow.reason)}" for order ${orderId} ` +
+            `(${error.message}); filing the claim as "damaged" instead`,
+        );
+        ({ error } = await this.databaseService.supabase
+          .from("procurement_credits")
+          .insert({ ...insertRow, reason: "damaged" }));
+      }
+
+      // 23505 is ignored as a duplicate, but NOTHING here can raise it today:
+      // the only unique index on this path, uq_pc_line_reason, is keyed on
+      // (document_line_id, reason) WHERE document_line_id IS NOT NULL, and this
+      // insert never sets document_line_id. So a re-verify of the same order
+      // CAN open a second claim for money already being chased (pre-existing;
+      // disclosed in .planning/tech-debt.d/2026-10-08-fix-claim-keeps-the-door-reason.md).
       if (error && error.code !== "23505")
         this.logger.warn(
           `openCreditClaim failed for order ${orderId}: ${error.message}`,
