@@ -893,8 +893,10 @@ class ProviderCommunicationAgent(BaseAgent):
         Redis too: SET NX on a per-house key that lives as long as the pause.
         The pause ends when rate_key expires, and once the cap is reached nothing
         renews it, so the fence copies its TTL (+60 s, so it cannot re-arm just
-        before the counter clears). A TTL Redis cannot give (no key, no expiry)
-        holds the fence a day. A failed read or SET sends nothing: a missed
+        before the counter clears). A counter with no expiry holds the fence a
+        day. A counter that is already gone (TTL -2: it cleared between the cap
+        check and this read) holds it only a minute, so a pause that starts
+        later the same day is still announced. A failed read or SET sends nothing: a missed
         notice beats a flood. A notice that does not land (no member to tell,
         or the insert failed) lifts the fence again, so the next order over the
         cap retries it instead of the pause passing in silence.
@@ -903,7 +905,12 @@ class ProviderCommunicationAgent(BaseAgent):
         fence_key = f"prov_comm:cap_notice:{restaurant_id}"
         try:
             ttl = await self.redis.ttl(rate_key)
-            ex = int(ttl) + 60 if ttl is not None and int(ttl) > 0 else 86400
+            if ttl is not None and int(ttl) > 0:
+                ex = int(ttl) + 60
+            elif ttl is not None and int(ttl) == -2:
+                ex = 60
+            else:
+                ex = 86400
             first = await self.redis.set(fence_key, "1", nx=True, ex=ex)
         except Exception as exc:
             self.logger.error(f"Cap notice fence failed, notice not sent: {exc}")

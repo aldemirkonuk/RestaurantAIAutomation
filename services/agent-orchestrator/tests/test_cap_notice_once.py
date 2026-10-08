@@ -337,6 +337,65 @@ class TestGroupKeyReachesTheBell:
         assert notify.await_args.kwargs["group_key"] == "rate_limit_reached"
 
 
+class TestTheFenceEndToEnd:
+    """Through the real _notify, with only the bell's insert stubbed."""
+
+    @pytest.mark.asyncio
+    async def test_a_bell_insert_of_zero_rows_lifts_the_fence(self):
+        redis = _FakeRedis()
+        _at_cap(redis)
+        agent = _agent(redis)
+        del agent._notify  # the class's own _notify, not _agent's stand-in
+        with patch(
+            "agents.provider_communication_agent.notify_restaurant",
+            new_callable=AsyncMock,
+            side_effect=[0, 1],
+        ) as notify:
+            await agent._handle_order_created(_order(1))
+            assert await redis.get(FENCE_KEY) is None
+            await agent._handle_order_created(_order(2))
+            await agent._handle_order_created(_order(3))
+
+        assert notify.await_count == 2
+        assert await redis.ttl(FENCE_KEY) == DAY + 60
+
+
+class TestACounterThatAlreadyCleared:
+    @pytest.mark.asyncio
+    async def test_the_fence_holds_a_minute_not_a_day(self):
+        redis = _FakeRedis()
+        _at_cap(redis)
+        real_ttl = redis.ttl
+
+        async def counter_gone(key):
+            if key == RATE_KEY:
+                return -2
+            return await real_ttl(key)
+
+        redis.ttl = counter_gone
+        agent = _agent(redis)
+
+        await agent._handle_order_created(_order(1))
+        assert await real_ttl(FENCE_KEY) == 60
+
+        # A new pause later the same day is announced again.
+        redis.ttl = real_ttl
+        redis.now += 3600
+        _at_cap(redis)
+        await agent._handle_order_created(_order(2))
+        assert len(_cap_notices(agent)) == 2
+
+    @pytest.mark.asyncio
+    async def test_a_counter_with_no_expiry_still_holds_a_day(self):
+        redis = _FakeRedis()
+        redis.store[RATE_KEY] = ("50", None)
+        agent = _agent(redis)
+
+        await agent._handle_order_created(_order(1))
+
+        assert await redis.ttl(FENCE_KEY) == DAY
+
+
 class TestNotifySaysWhetherItLanded:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("inserted, landed", [(1, True), (3, True), (0, False)])
