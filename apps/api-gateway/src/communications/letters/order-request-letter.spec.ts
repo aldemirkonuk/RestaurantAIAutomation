@@ -255,7 +255,8 @@ describe("the prose predicate", () => {
 
   it("names no single figure among its tokens", () => {
     for (const k of Object.keys(ORDER_REQUEST_TOKENS)) {
-      expect(k).not.toMatch(/price|quantity|qty|order_number|amount|total|date$/);
+      expect(k).not.toMatch(/price|quantity|qty|order_number|amount|total/);
+      expect(k).not.toMatch(/date$/);
     }
   });
 
