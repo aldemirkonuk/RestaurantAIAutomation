@@ -437,8 +437,9 @@ export class RecommendationActionsService {
   /**
    * An assignee id is a row of THIS house's roster, whatever that row's
    * status (OPS-03). Before, `assignedTo` was written as sent, so an id
-   * from another house, an id on no roster or any string landed on the
-   * card. The status is not read: ADR 0306, the coordinator's call under
+   * from another house or a uuid on no roster landed on the card, and a
+   * value that is not a uuid failed at the uuid column as a database
+   * error, not as a refusal in words. The status is not read: ADR 0306, the coordinator's call under
    * the founder's delegation, reads F4's "the roster it reads is the
    * team's" as every row, as main's page offered; ADR 0215 reads an
    * inactive person as still on the roster; and an assignment is a note

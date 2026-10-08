@@ -7,8 +7,9 @@ import { AnalyticsController } from "./analytics.controller";
 /**
  * OPS-03, the gateway half: an assignee id is a row of THIS house's roster,
  * whatever that row's status (ADR 0306). Before, `assignedTo` was written as
- * sent, so another house's person, an id on no roster or any string landed on
- * a card.
+ * sent, so another house's person or a uuid on no roster landed on a card,
+ * and a value that is not a uuid failed at the uuid column as a database
+ * error, not as a refusal in words.
  * Every case drives the real `setActionAs` (all its gates) over a table stub,
  * and the controller test drives the real route handler over the real
  * service, so the status the page receives is the one checked.
