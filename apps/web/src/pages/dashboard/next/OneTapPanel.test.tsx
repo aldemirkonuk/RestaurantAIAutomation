@@ -142,6 +142,8 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     expect(
       within(panel).getByText(/no control here sends a mail or places an order/),
     ).toBeInTheDocument();
+    // DASH-W24: no seal mechanics, and the experiment is not narrated.
+    expect(within(panel).queryByText(/minted|spent by the write|tried both ways|gesture rather than a seal/)).not.toBeInTheDocument();
   });
 
   it('disables the reorder and says why, instead of offering a button that refuses', async () => {
@@ -475,13 +477,29 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     expect(within(panel).queryByText(/Nothing standing/)).not.toBeInTheDocument();
   });
 
+  // DASH-W24 (P5): an unreachable desk offers the one way forward, and the
+  // retry reads the register again rather than repainting the old failure.
+  it('offers to try the desk again when it could not be reached, and reads it again', async () => {
+    api.get.mockRejectedValue(new Error('Network Error'));
+    draw();
+    const panel = screen.getByLabelText('One-tap actions');
+    expect(
+      await within(panel).findByText(/The one-tap desk couldn’t be reached just now\./),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByText(/Network Error/)).not.toBeInTheDocument();
+    serve([]);
+    fireEvent.click(within(panel).getByRole('button', { name: /try again/i }));
+    expect(await within(panel).findByText(/Nothing standing/)).toBeInTheDocument();
+  });
+
   it('tells a refusal apart from a breakage', async () => {
     api.get.mockRejectedValue(Object.assign(new Error('forbidden'), { response: { status: 403 } }));
     draw();
     const panel = screen.getByLabelText('One-tap actions');
     await waitFor(() =>
-      expect(within(panel).getByText(/refused this account \(403\)/)).toBeInTheDocument(),
+      expect(within(panel).getByText(/may not read the one-tap desk; an owner or manager can\./)).toBeInTheDocument(),
     );
+    expect(within(panel).queryByText(/403|refused/)).not.toBeInTheDocument();
     expect(within(panel).queryByText(/this is not an empty desk/)).not.toBeInTheDocument();
   });
 
@@ -570,6 +588,72 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     await act(async () => {
       held.resolve({ data: { actions: [] } });
     });
+  });
+
+  // DASH-W18: the undo is a real write (it rules the note out for everyone),
+  // so it is proven here rather than pressed on a live house.
+  it('rules an action out with one cancel for that action, and the row leaves', async () => {
+    serve([houseRaised, personRaised]);
+    draw();
+    const panel = screen.getByLabelText('One-tap actions');
+    await waitFor(() => expect(within(panel).getByText('Reorder the Rioja')).toBeInTheDocument());
+
+    serve([personRaised]); // the re-read after the cancel
+    const undo = within(panel).getAllByRole('button', { name: 'Undo — rule it out' })[0];
+    fireEvent.click(undo);
+
+    await waitFor(() => expect(within(panel).queryByText('Reorder the Rioja')).not.toBeInTheDocument());
+    // One write, to that action; the other post is the experiment's exposure event.
+    const cancels = api.post.mock.calls.filter((c: unknown[]) => String(c[0]).endsWith('/cancel'));
+    expect(cancels).toEqual([['/one-tap-actions/a1/cancel', {}]]);
+    expect(within(panel).getByText('Call the cellar about Thursday')).toBeInTheDocument();
+  });
+
+  it('keeps the action and says so when ruling it out is refused', async () => {
+    serve([houseRaised]);
+    api.post.mockRejectedValue(Object.assign(new Error('Forbidden'), { response: { status: 403 } }));
+    draw();
+    const panel = screen.getByLabelText('One-tap actions');
+    await waitFor(() => expect(within(panel).getByText('Reorder the Rioja')).toBeInTheDocument());
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Undo — rule it out' }));
+
+    expect(await within(panel).findByText('Ruling it out wasn’t accepted. The action is unchanged.')).toBeInTheDocument();
+    expect(within(panel).queryByText(/403|Forbidden/)).not.toBeInTheDocument();
+    expect(within(panel).getByText('Reorder the Rioja')).toBeInTheDocument();
+    expect(api.post.mock.calls.filter((c: unknown[]) => String(c[0]).endsWith('/cancel'))).toHaveLength(1);
+  });
+
+  it('says a dropped connection as one, never the transport string', async () => {
+    serve([houseRaised]);
+    api.post.mockRejectedValue(new Error('Network Error'));
+    draw();
+    const panel = screen.getByLabelText('One-tap actions');
+    await waitFor(() => expect(within(panel).getByText('Reorder the Rioja')).toBeInTheDocument());
+    fireEvent.click(within(panel).getByRole('button', { name: 'Undo — rule it out' }));
+    expect(
+      await within(panel).findByText(
+        'Ruling it out didn’t go through — it couldn’t be reached just now. The action is unchanged.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByText(/Network Error/)).not.toBeInTheDocument();
+  });
+
+  it('says a breakage on our side as one, never the server’s own text', async () => {
+    serve([houseRaised]);
+    api.post.mockRejectedValue(
+      Object.assign(new Error('relation "one_tap_actions" does not exist'), { response: { status: 500 } }),
+    );
+    draw();
+    const panel = screen.getByLabelText('One-tap actions');
+    await waitFor(() => expect(within(panel).getByText('Reorder the Rioja')).toBeInTheDocument());
+    fireEvent.click(within(panel).getByRole('button', { name: 'Undo — rule it out' }));
+    expect(
+      await within(panel).findByText(
+        'Ruling it out didn’t go through — something went wrong on our side. The action is unchanged.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByText(/relation|one_tap_actions|500/)).not.toBeInTheDocument();
   });
 
   it('says a real empty desk in words', async () => {
