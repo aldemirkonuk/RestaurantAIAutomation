@@ -39,6 +39,7 @@ type Row = {
   id: string;
   name?: string | null;
   usual_currency?: string | null;
+  usual_currency_source?: string | null;
   is_active?: boolean | null;
   deleted_at?: string | null;
 };
@@ -119,6 +120,7 @@ describe("usualCurrencyCoverage — the count", () => {
     expect(counted).toEqual({
       stated: 1,
       total: 2,
+      fromInvoices: 0,
       unstated: [{ id: "b", name: "Bodega Álvaro", recorded: null }],
     });
   });
@@ -145,7 +147,7 @@ describe("usualCurrencyCoverage — the count", () => {
     expect(seen).toHaveLength(1);
     expect(seen[0].table).toBe("providers");
     expect(seen[0].columns).toBe(
-      "id, name, usual_currency, is_active, deleted_at",
+      "id, name, usual_currency, usual_currency_source, is_active, deleted_at",
     );
     expect(seen[0].restaurantId).toBe("rest-9");
   });
@@ -153,7 +155,12 @@ describe("usualCurrencyCoverage — the count", () => {
   it("is zero of zero for a house with no vendors, not an error", async () => {
     const { supabase } = makeDb({ rows: [] });
     const counted = await svc(supabase).usualCurrencyCoverage("rest-1");
-    expect(counted).toEqual({ stated: 0, total: 0, unstated: [] });
+    expect(counted).toEqual({
+      stated: 0,
+      total: 0,
+      fromInvoices: 0,
+      unstated: [],
+    });
   });
 
   it("counts none of them when nobody has been asked", async () => {
@@ -210,43 +217,131 @@ describe("usualCurrencyCoverage — the count", () => {
   });
 });
 
+describe("usualCurrencyCoverage — VEN-W13, codes written from invoices", () => {
+  it("counts them as on file and says how many came from invoices", async () => {
+    const { supabase } = makeDb({
+      rows: [
+        { id: "a", name: "A", usual_currency: "USD", usual_currency_source: "invoices" },
+        { id: "b", name: "B", usual_currency: "EUR", usual_currency_source: "person" },
+        { id: "c", name: "C", usual_currency: null },
+      ],
+    });
+    const counted = await svc(supabase).usualCurrencyCoverage("rest-1");
+    expect(counted.stated).toBe(2);
+    expect(counted.fromInvoices).toBe(1);
+    expect(
+      usualCurrencyCoverageSentence({ stated: 2, total: 3, fromInvoices: 1 }),
+    ).toBe(
+      "2 of your 3 vendors have a usual currency on file. Orders to the other 1 start with no currency until one is noted. 1 of them was filled in from their invoices.",
+    );
+  });
+
+  it("falls back to the old columns before the migration is applied (42703)", async () => {
+    const calls: string[] = [];
+    const supabase: any = {
+      from() {
+        let cols = "";
+        const q: any = {
+          select: (c: string) => {
+            cols = c;
+            calls.push(c);
+            return q;
+          },
+          eq: () => q,
+          then: (res: any) =>
+            res(
+              cols.includes("usual_currency_source")
+                ? { data: null, error: { code: "42703", message: "column does not exist" } }
+                : { data: [{ id: "a", name: "A", usual_currency: "USD" }], error: null },
+            ),
+        };
+        return q;
+      },
+    };
+    const counted = await svc(supabase).usualCurrencyCoverage("rest-1");
+    expect(calls).toHaveLength(2);
+    expect(counted).toMatchObject({ stated: 1, total: 1, fromInvoices: 0 });
+  });
+});
+
+describe("setUsualCurrency before the VEN-W13 migration", () => {
+  it("a missing source column (PGRST204 on an UPDATE) falls back to the three old columns, and the save lands", async () => {
+    const writes: Record<string, unknown>[] = [];
+    const supabase: any = {
+      from() {
+        let patch: Record<string, unknown> | null = null;
+        const q: any = {
+          select: () => q,
+          eq: () => q,
+          update: (p: Record<string, unknown>) => {
+            patch = p;
+            writes.push(p);
+            return q;
+          },
+          maybeSingle: async () => {
+            if (!patch) return { data: { usual_currency: null }, error: null };
+            return "usual_currency_source" in patch
+              ? {
+                  data: null,
+                  error: {
+                    code: "PGRST204",
+                    message:
+                      "Could not find the 'usual_currency_invoice_count' column of 'providers' in the schema cache",
+                  },
+                }
+              : { data: { usual_currency: "USD", usual_currency_set_at: "2026-10-01T00:00:00Z" }, error: null };
+          },
+        };
+        return q;
+      },
+    };
+    const s = svc(supabase);
+    (s as any).getUsualCurrency = async () => ({ code: null });
+    const out = await s.setUsualCurrency({ providerId: "p1", restaurantId: "rest-1", code: "USD", userId: "u1" });
+    expect(out.code).toBe("USD");
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).not.toHaveProperty("usual_currency_source");
+  });
+});
+
 describe("usualCurrencyCoverageSentence — never an empty panel", () => {
   it("says none of them, with the number, when nobody has stated one", () => {
     const s = usualCurrencyCoverageSentence({ stated: 0, total: 14 });
-    expect(s).toContain("None of your 14 vendors has stated a usual currency");
-    expect(s).toContain("Nothing is assumed in their place");
+    expect(s).toContain("None of your 14 vendors has a usual currency on file");
+    // Nothing is assumed in their place: the sentence says an order starts empty.
+    expect(s).toContain("an order starts with no currency");
   });
 
   it("prints the fraction the founder asked for", () => {
     expect(usualCurrencyCoverageSentence({ stated: 3, total: 14 })).toContain(
-      "3 of your 14 vendors have stated a usual currency",
+      "3 of your 14 vendors have a usual currency on file",
     );
   });
 
   it("counts down the remainder so the reader knows what is left", () => {
     expect(usualCurrencyCoverageSentence({ stated: 3, total: 14 })).toContain(
-      "remaining 11",
+      "the other 11",
     );
   });
 
   it("says so when every vendor has been asked", () => {
     expect(usualCurrencyCoverageSentence({ stated: 14, total: 14 })).toContain(
-      "All 14 of your vendors have stated a usual currency",
+      "All 14 of your vendors have a usual currency on file",
     );
   });
 
   it("has a sentence for a house with no vendors at all", () => {
     const s = usualCurrencyCoverageSentence({ stated: 0, total: 0 });
-    expect(s).toContain("no vendors on this house's book");
+    expect(s).toContain("No vendors yet");
     expect(s.trim()).not.toBe("");
   });
 
   it("agrees with itself in the singular", () => {
     expect(usualCurrencyCoverageSentence({ stated: 1, total: 1 })).toContain(
-      "All 1 of your vendor has stated",
+      "Your one vendor has a usual currency on file",
     );
     expect(usualCurrencyCoverageSentence({ stated: 0, total: 1 })).toContain(
-      "None of your 1 vendor has stated",
+      "Your one vendor has no usual currency on file",
     );
   });
 

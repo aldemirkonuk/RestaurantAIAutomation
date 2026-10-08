@@ -120,6 +120,11 @@ describe('the shape and the primitive', () => {
     expect(screen.getByRole('dialog', { name: /Add a vendor to this house/ })).toBeInTheDocument();
   });
 
+  it('VEN-W37: the form is inset from the sheet edges like every other sheet body', () => {
+    draw();
+    expect(screen.getByTestId('vendor-name').closest('.px-4')).not.toBeNull();
+  });
+
   it('the duplicate question is a panel that sits above the sheet', () => {
     render(
       <VendorTwinPanel
@@ -228,6 +233,23 @@ describe('door two — a vendor of your own', () => {
     await waitFor(() => expect(create.mutateAsync).toHaveBeenCalled());
     const body = create.mutateAsync.mock.calls[0][0] as Record<string, unknown>;
     expect(body.primaryBusinessType).toBeUndefined();
+  });
+
+  it('VEN-W33: a beer or produce vendor can be added — the chips are not wine-only', async () => {
+    draw();
+    for (const g of ['Wine', 'Other drinks', 'Food']) {
+      expect(screen.getByRole('group', { name: g })).toBeInTheDocument();
+    }
+    fireEvent.change(screen.getByTestId('vendor-name'), { target: { value: 'Efes Dağıtım' } });
+    fireEvent.change(screen.getByTestId('vendor-first'), { target: { value: 'Hasan' } });
+    fireEvent.change(screen.getByTestId('vendor-phone'), { target: { value: '+90 312 0000000' } });
+    fireEvent.change(screen.getByTestId('vendor-email'), { target: { value: 'h@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Beer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Produce' }));
+    fireEvent.click(screen.getByTestId('vendor-save'));
+    await waitFor(() => expect(create.mutateAsync).toHaveBeenCalled());
+    const body = create.mutateAsync.mock.calls[0][0] as Record<string, unknown>;
+    expect(body.winePortfolio).toBe('Beer, Produce');
   });
 
   it('a type the person chose is sent as chosen', async () => {

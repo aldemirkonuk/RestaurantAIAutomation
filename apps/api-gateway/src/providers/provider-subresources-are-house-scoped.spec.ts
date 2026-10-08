@@ -103,7 +103,9 @@ function controllerFor(supabase: { from: (t: string) => unknown }) {
       { track: async () => undefined } as never,
       forbidden("ProcurementService"),
     ),
-    forbidden("OrganizationsService"),
+    // The caller is a manager: this file proves HOUSE scope, and VEN-W30's
+    // role gate (vendor-write-gate.ts) must not be what refuses a write here.
+    { resolveRestaurantRole: async () => "manager" } as never,
   );
 }
 
@@ -126,8 +128,8 @@ const seed = () => ({
   ],
 });
 
-const userA = { restaurantId: HOUSE_A };
-const userB = { restaurantId: HOUSE_B };
+const userA = { userId: "user-a", restaurantId: HOUSE_A };
+const userB = { userId: "user-b", restaurantId: HOUSE_B };
 
 describe("provider sub-resources belong to the caller's house", () => {
   it("GET orders for another house's provider is 404 and does not read orders", async () => {

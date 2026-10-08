@@ -197,6 +197,26 @@ export interface ParsedDocument {
    */
   currencyFiledFrom?: string | null;
   /**
+   * WHICH RUNG filed the currency, as a word a program can compare — the
+   * structured twin of `currencyFiledFrom`, which is prose for a person and
+   * must never be pattern-matched (`filingCurrency`'s kinds). `file` means the
+   * document itself stated the code (the printed currency on a read page, or
+   * the EDI `CUR02`); `order`/`house` mean a rung below the paper supplied it;
+   * `none` means the money was refused. Absent on documents read before this
+   * field existed and on the external-extraction door, which applies no rules.
+   *
+   * Founder, 2026-10-01 (VEN-W13): a vendor's usual currency is written from
+   * invoices that PRINTED it — so the counter reads this, never the filed
+   * `currency`, which may be the house's own.
+   */
+  currencyFiledKind?: "file" | "order" | "house" | "none";
+  /**
+   * The code the FILE stated, kept when `currencyFiledKind` is `file`, because
+   * a hold (`withholdMoney`) blanks `currency` and the vendor's printed code
+   * would otherwise be lost from the record. NULL for every other kind.
+   */
+  currencyFiledCode?: string | null;
+  /**
    * What the extraction model says it SAW on the page, with the location.
    *
    * Founder, 2026-09-06: *"AI needs to ... if the invoice is other than their

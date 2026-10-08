@@ -54,7 +54,7 @@ describe("the column's own default is not an answer", () => {
     // did. If this ever flips to true, every untouched row in the book starts
     // reporting a manager's decision that was never made.
     expect(r.stated).toBe(false);
-    expect(r.says).toMatch(/also what the book writes when nobody has said/i);
+    expect(r.says).toMatch(/Nobody has said what kind of number this is, so it shows as a main line/i);
   });
 
   it("the default this reading is built on is still the column's default", () => {

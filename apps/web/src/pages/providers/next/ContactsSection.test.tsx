@@ -30,8 +30,11 @@ vi.mock('../../../services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : 'unknown error'),
 }));
 
+// VEN-W30: a manager by default, so the write controls are offered; the
+// staff case sets `auth.role = 'staff'` and is reset in beforeEach.
+const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1' }),
+  useAuth: () => ({ activeRestaurantId: 'r1', activeRole: auth.role, user: { role: auth.role } }),
 }));
 
 import { ContactsList, ContactsSection } from './ContactsSection';
@@ -59,12 +62,13 @@ const DEFAULTED = {
   reach: 'landline' as const,
   phoneTypeStated: false,
   reachSays:
-    'This number is recorded as a main line, which is also what the book writes when nobody has said. Nothing is texted to it until somebody confirms the type on the vendor’s contact sheet.',
+    'Nobody has said what kind of number this is, so it shows as a main line. Nothing is texted to it until someone confirms it is a mobile or WhatsApp number on the vendor’s contact sheet.',
 };
 
 beforeEach(() => {
   api.get.mockReset();
   api.patch.mockReset();
+  auth.role = 'manager';
 });
 
 describe('ContactsSection', () => {
@@ -85,6 +89,15 @@ describe('ContactsSection', () => {
     // the question look answered.
     const select = screen.getByLabelText('Type of line for Front Desk') as HTMLSelectElement;
     expect(select.value).toBe('');
+  });
+
+  it('a contact with no number says so, with no line type and no sentence about a number', async () => {
+    api.get.mockResolvedValue({ data: [{ ...DEFAULTED, id: 'c3', name: 'Aldemir Konuk', phone: '' }] });
+    render(<ContactsSection providerId="p1" providerName="Sheena Wines" />);
+    expect(await screen.findByText('No phone number on file for this contact.')).toBeInTheDocument();
+    expect(screen.queryByText(/Nobody has said what kind of number/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Not stated')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Type of line for Aldemir Konuk')).not.toBeInTheDocument();
   });
 
   it('a failed read is words, never an empty book', async () => {
@@ -188,5 +201,17 @@ describe('ContactsSection draws only with house tokens', () => {
       (name) => !new RegExp(`^\\s*${name}\\s*:`, 'm').test(css),
     );
     expect(undeclared).toEqual([]);
+  });
+});
+
+describe('ContactsSection for staff (VEN-W30, "Staff read only")', () => {
+  it('says the type of line in words and offers no picker', async () => {
+    auth.role = 'staff';
+    api.get.mockResolvedValue({ data: [MOBILE, DEFAULTED] });
+    render(<ContactsSection providerId="p1" providerName="Sheena Wines" />);
+    expect(await screen.findByText('Textable')).toBeInTheDocument();
+    expect(screen.getByText('Not stated')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Type of line for/)).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
   });
 });

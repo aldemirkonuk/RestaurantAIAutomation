@@ -24,7 +24,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getErrorMessage } from '../../../services/api/client';
+import { houseMessage } from './pv-format';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   createProviderLocation,
@@ -66,10 +66,9 @@ export interface VendorBranchesState {
   reload: () => void;
 }
 
-/** A class-validator 400 answers `message` as an array; say it as one line. */
+/** The gateway's refusal in its own words, or '' (VEN-W28; arrays joined by houseMessage). */
 function says(e: unknown): string {
-  const m = getErrorMessage(e) as unknown;
-  return Array.isArray(m) ? m.join('; ') : String(m);
+  return houseMessage(e, '');
 }
 
 function pair(d: BranchDraft): { latitude: number; longitude: number } | null {

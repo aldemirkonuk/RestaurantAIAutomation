@@ -1265,3 +1265,47 @@ describe("documentMoneyState / receivingPriceRefusal", () => {
     expect(s).toContain("doc-9");
   });
 });
+
+// ---------------------------------------------------------------------------
+// VEN-W13 (founder, 2026-10-01) — which rung filed the currency is recorded as
+// a word, and the file's own code survives a hold, so a vendor's usual
+// currency is counted from what the paper printed and never from prose.
+// ---------------------------------------------------------------------------
+describe("VEN-W13: the filing rung is recorded structurally", () => {
+  it("records `file` and the code when the page stated it", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({
+        currency: "TRY",
+        currencySeen: { code: "TRY", asPrinted: "₺", where: "the KDV row" },
+      }),
+      houseCurrency: "USD",
+      fileField: "printed currency",
+    });
+    expect(doc.currencyFiledKind).toBe("file");
+    expect(doc.currencyFiledCode).toBe("TRY");
+  });
+
+  it("records `house` and NO code when the house's currency stood in", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({ currencySeen: null }),
+      houseCurrency: "TRY",
+      fileField: "printed currency",
+    });
+    expect(doc.currencyFiledKind).toBe("house");
+    expect(doc.currencyFiledCode).toBeNull();
+  });
+
+  it("keeps the file's code when an order disagreement holds the money", () => {
+    const doc = applyCurrencyRules({
+      doc: extracted({ currency: "EUR", currencySeen: undefined }),
+      houseCurrency: "TRY",
+      orderCurrency: "USD",
+      hasMatchedOrder: true,
+      fileField: "CUR02 currency segment",
+    });
+    expect(doc.moneyHeld).toBeTruthy();
+    expect(doc.currency).toBe("");
+    expect(doc.currencyFiledKind).toBe("file");
+    expect(doc.currencyFiledCode).toBe("EUR");
+  });
+});

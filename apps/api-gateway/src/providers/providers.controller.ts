@@ -42,11 +42,13 @@ import {
 } from "./vendor-wine-search";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
+import { assertVendorWriter } from "./vendor-write-gate";
 import {
   readVendorCurrency,
   usualCurrencyCoverageSentence,
   vendorCurrencySentence,
 } from "./vendor-currency";
+import { INVOICES_TO_WRITE } from "./usual-currency-from-invoices";
 
 type AuthUser = { userId?: string; restaurantId?: string | null };
 
@@ -171,7 +173,7 @@ export class ProvidersController {
       typeof country === "string" ? country.trim().toUpperCase() : "";
     if (!/^[A-Z]{2}$/.test(code)) {
       throw new BadRequestException(
-        "country must be a two-letter ISO 3166-1 code.",
+        "Type the country as two letters, like US or TR.",
       );
     }
     return this.providersService.catalogueWineListers(
@@ -207,6 +209,7 @@ export class ProvidersController {
   async usualCurrencyCoverage(@CurrentUser() user: AuthUser): Promise<{
     stated: number;
     total: number;
+    fromInvoices: number;
     unstated: { id: string; name: string; recorded: string | null }[];
     sentence: string;
   }> {
@@ -218,6 +221,7 @@ export class ProvidersController {
       sentence: usualCurrencyCoverageSentence({
         stated: counted.stated,
         total: counted.total,
+        fromInvoices: counted.fromInvoices,
       }),
     };
   }
@@ -329,6 +333,8 @@ export class ProvidersController {
     @Body() dto: BulkImportProvidersDto,
     @CurrentUser() user: AuthUser,
   ): Promise<BulkImportResultDto> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Importing vendors");
     try {
       // The house comes from the token. The body's `restaurantId` is only
       // compared against it (JwtAuthGuard's assertTenantMatch); before this,
@@ -351,6 +357,7 @@ export class ProvidersController {
     @Body() dto: BulkImportProvidersDto,
     @CurrentUser() user: AuthUser,
   ): Promise<BulkImportResultDto> {
+    // VEN-W30's role check runs once, inside bulkImport.
     return this.bulkImport(dto, user);
   }
 
@@ -365,6 +372,8 @@ export class ProvidersController {
     @Body() dto: CreateProviderDto,
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Adding a vendor");
     try {
       return await this.providersService.createProvider(
         dto,
@@ -422,16 +431,41 @@ export class ProvidersController {
       providerId,
       houseOf(user),
     );
+    const d = stated.decision;
     return {
       providerId,
       code: stated.code,
       setAt: stated.setAt,
       setByName: stated.setByName,
+      // VEN-W23 (founder, 2026-10-01): the house's zone, so the sheet's
+      // "stated on" chip reads the same calendar day as the sentence below.
+      // NULL means none is known; the day is then read in UTC and says so.
+      houseZone: stated.houseZone ?? null,
+      // VEN-W13 (founder, 2026-10-01): where the code came from and what the
+      // vendor's invoices say now, so the sheet can show one of its five
+      // states. `evidence` is NULL when the invoices could not be read, and
+      // `evidenceUnreadable` says so — never an empty count.
+      source: stated.source,
+      invoiceCount: stated.invoiceCount,
+      evidence: d
+        ? {
+            state: d.state,
+            counted: d.counted,
+            counts: d.counts,
+            clash: d.clash,
+            needed: INVOICES_TO_WRITE,
+          }
+        : null,
+      evidenceUnreadable: stated.evidenceUnreadable,
       sentence: vendorCurrencySentence({
         code: stated.code,
         setByName: stated.setByName,
         setAt: stated.setAt,
         vendorName: stated.vendorName,
+        source: stated.source,
+        invoiceCount: stated.invoiceCount,
+        decision: d,
+        houseZone: stated.houseZone ?? null,
       }),
     };
   }
@@ -517,6 +551,8 @@ export class ProvidersController {
     @Body() dto: UpdateProviderDto,
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Editing a vendor's record");
     try {
       return await this.providersService.updateProvider(
         providerId,
@@ -536,6 +572,8 @@ export class ProvidersController {
     @Param("id") providerId: string,
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Removing a vendor");
     try {
       await this.providersService.softDeleteProvider(
         providerId,
@@ -597,6 +635,8 @@ export class ProvidersController {
     @Body() dto: ProviderRatingDto,
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Rating a vendor");
     try {
       await this.providersService.rateProvider(houseOf(user), providerId, dto);
       return { success: true };
@@ -634,6 +674,8 @@ export class ProvidersController {
     @Body() dto: CreateProviderContactDto,
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderContactResponseDto> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Adding a vendor contact");
     try {
       return await this.providersService.addProviderContact(
         providerId,
@@ -654,6 +696,8 @@ export class ProvidersController {
     @Body() dto: UpdateProviderContactDto,
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderContactResponseDto> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Editing a vendor contact");
     try {
       return await this.providersService.updateProviderContact(
         providerId,
@@ -674,6 +718,8 @@ export class ProvidersController {
     @Param("contactId") contactId: string,
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Removing a vendor contact");
     try {
       await this.providersService.deleteProviderContact(
         providerId,
@@ -698,6 +744,8 @@ export class ProvidersController {
     @Body() dto: UpdateContactDateDto,
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Recording when a vendor was last contacted");
     try {
       return await this.providersService.updateLastContactDate(
         providerId,
@@ -773,6 +821,8 @@ export class ProvidersController {
     @Body() dto: UpdateIntelligenceDto,
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Editing a vendor's profile");
     try {
       return await this.providersService.updateIntelligence(
         providerId,
@@ -832,6 +882,8 @@ export class ProvidersController {
     @Body() dto: CreateProviderLocationDto,
     @CurrentUser() user: AuthUser,
   ) {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Adding a vendor branch");
     try {
       return await this.providersService.createProviderLocation(
         providerId,
@@ -851,6 +903,8 @@ export class ProvidersController {
     @Body() dto: UpdateProviderLocationDto,
     @CurrentUser() user: AuthUser,
   ) {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Editing a vendor branch");
     try {
       return await this.providersService.updateProviderLocation(
         providerId,
@@ -870,6 +924,8 @@ export class ProvidersController {
     @Param("locationId") locationId: string,
     @CurrentUser() user: AuthUser,
   ) {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Removing a vendor branch");
     try {
       const after = await this.providersService.deleteProviderLocation(
         providerId,

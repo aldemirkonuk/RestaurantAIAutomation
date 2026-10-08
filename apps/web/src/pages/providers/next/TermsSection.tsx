@@ -28,6 +28,7 @@
  * the JWT, never sent by this form. Recorded, not restricted.
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { useState } from 'react';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import {
@@ -35,7 +36,6 @@ import {
   SOURCE_LABEL,
   WEEKDAY_INITIALS,
   fmtCutoff,
-  fmtMoney,
   fmtWeekdays,
   fmtWhen,
   type TermSource,
@@ -46,7 +46,9 @@ import type {
   VendorTermsRow,
 } from '../../settings/next/useSettingsNextData';
 import { MONO, SANS } from './pv-format';
-import { useProviderTerms } from './useProviderTerms';
+import { useProviderTerms, type ProviderTermsState } from './useProviderTerms';
+
+import { fmtLeadTime, fmtMinimumCell } from './TopTermsFacts';
 
 const SOURCE_TONE: Record<TermSource, string> = {
   stated: 'var(--seal-deep, #14515C)',
@@ -426,9 +428,27 @@ function Words({ children, alert }: { children: React.ReactNode; alert?: boolean
   );
 }
 
-export function TermsSection({ providerId, providerName }: { providerId: string; providerName: string }) {
-  const terms = useProviderTerms(providerId);
+export function TermsSection({
+  providerId,
+  providerName,
+  terms: lifted,
+}: {
+  providerId: string;
+  providerName: string;
+  /**
+   * The read, when the parent already holds it. The vendor sheet lifts it
+   * (VEN-W24) so its top facts and this section are ONE read: a save here
+   * replaces the register both render from, and `/vendor-terms` is fetched
+   * once per open, not twice. Without it the section reads for itself.
+   */
+  terms?: ProviderTermsState;
+}) {
+  // `null` turns the hook's fetch off when the parent supplies the read.
+  const own = useProviderTerms(lifted ? null : providerId);
+  const terms = lifted ?? own;
   const [editing, setEditing] = useState(false);
+  // VEN-W30: staff read the terms; only owners and managers record them.
+  const canChange = useCanChangeVendors();
   const reg = terms.register;
   const row = terms.row;
   // The house's reporting currency, or `null` when nobody has been asked. It
@@ -465,9 +485,9 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
         </Words>
       )}
 
-      {!terms.denied && terms.error && (
+      {!terms.denied && terms.error !== null && (
         <Words alert>
-          The terms register could not be read — {terms.error}. Nothing is shown
+          The terms register could not be read{terms.error ? ` — ${terms.error}` : ''}. Nothing is shown
           below, which is not the same as this vendor having no terms.{' '}
           <button
             type="button"
@@ -527,16 +547,12 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
             <Cell
               label="Will not go below"
               cell={row.minimumOrder}
-              render={(m) =>
-                row.minimumOrder.source === 'inferred'
-                  ? `≤ ${fmtMoney(m, currency)}`
-                  : fmtMoney(m, currency)
-              }
+              render={() => fmtMinimumCell(row.minimumOrder, currency)}
             />
             <Cell
               label="Lead time"
               cell={row.leadTimeDays}
-              render={(d) => (d === 0 ? 'same day' : `${d} day${d === 1 ? '' : 's'}`)}
+              render={(d) => fmtLeadTime(d)}
             />
             <Cell label="Payment" cell={row.paymentTerms} render={(t) => t} />
           </div>
@@ -545,8 +561,8 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
             {row.statedBy || row.statedAt
               ? `Last written down by ${row.statedBy?.name ?? 'someone whose name is not on the row'} ${fmtWhen(row.statedAt)}.`
               : 'Nobody has written these down for this house yet.'}{' '}
-            Inference looks back {reg.windowDays} days over this restaurant’s own
-            orders, and it is never written to the vendor record.
+            Unknown terms are worked out from this house’s own orders of the last{' '}
+            {reg.windowDays} days, and are never saved to the vendor.
           </p>
 
           {terms.saveError && (
@@ -575,7 +591,7 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
             />
           ) : (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              <Btn onClick={() => setEditing(true)}>Record what they said</Btn>
+              {canChange && <Btn onClick={() => setEditing(true)}>Record what they said</Btn>}
               <a
                 href="/settings?tab=vendor-terms"
                 style={{

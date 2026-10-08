@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Provider } from '../../../services/api/providers';
 
 const mockData = vi.hoisted(() => ({
@@ -17,8 +18,10 @@ vi.mock('./useProvidersNextData', () => ({
   useProvidersNextData: () => mockData.current,
 }));
 
-vi.mock('../../../components/providers/ProviderIntelligencePanel', () => ({
-  ProviderIntelligencePanel: ({ providerName }: { providerName: string }) => (
+// What their mail has told this house (VEN-W14) reads four routes of its own;
+// its states are asserted in LearnedSection.test.tsx against a mocked apiClient.
+vi.mock('./LearnedSection', () => ({
+  LearnedSection: ({ providerName }: { providerName: string }) => (
     <div data-testid="twin-panel">twin of {providerName}</div>
   ),
 }));
@@ -208,6 +211,7 @@ const base = {
 };
 
 beforeEach(() => {
+  auth.role = 'owner';
   mockData.current = { ...base, cards: [] };
   roll.current = { data: undefined, isError: false };
   // Each test states its own URL; without the reset a `?vendor=` from one test
@@ -254,13 +258,13 @@ describe('ProvidersNext', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('a card says "Not stated" when nobody stated the vendor\'s type (founder answer 12)', () => {
+  it('a card says "Type not stated" when nobody stated the vendor\'s type (founder answer 12)', () => {
     mockData.current = {
       ...base,
       cards: [{ provider: provider({ primaryBusinessType: undefined }), openOrders: 0, leadTimeDays: null, lastContact: null }],
     };
     render(<ProvidersNext />);
-    expect(screen.getByText('Not stated')).toBeInTheDocument();
+    expect(screen.getByText('Type not stated')).toBeInTheDocument();
   });
 
   it('the vendor sheet offers the edit path, type first', async () => {
@@ -287,12 +291,14 @@ describe('ProvidersNext', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
-  it('says a gateway failure in words with a retry', () => {
+  it('says a failed vendor read in words with a retry', () => {
     mockData.current = { ...base, hasData: false, isError: true, errorMessage: 'boom', cards: [] };
     render(<ProvidersNext />);
-    expect(screen.getByRole('alert')).toHaveTextContent('could not be reached');
+    expect(screen.getByRole('alert')).toHaveTextContent('could not be read just now');
     fireEvent.click(screen.getByText('Try again'));
     expect(base.refetch).toHaveBeenCalled();
+    expect(screen.getByText('Vendors not known')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('boom');
   });
 
   it('opens a vendor’s sheet from the currency prompt panel’s link', async () => {
@@ -445,6 +451,8 @@ describe('ProvidersNext', () => {
         fireEvent.click(screen.getByText('Bodega Álvaro'));
         expect(await screen.findByTestId('mail-tone-stub')).toBeInTheDocument();
         unmount();
+        // The open sheet is in the address now (VEN-W36); a fresh visit starts clean.
+        window.history.replaceState({}, '', '/vendors');
       }
       auth.role = 'staff';
       mockData.current = oneCard();
@@ -454,5 +462,88 @@ describe('ProvidersNext', () => {
       expect(screen.queryByTestId('mail-tone-stub')).not.toBeInTheDocument();
       auth.role = 'owner';
     });
+  });
+});
+
+describe('the book for staff (VEN-W30, "Staff read only")', () => {
+  it('offers no "Add a vendor" and says who changes the book', () => {
+    auth.role = 'staff';
+    render(<ProvidersNext />);
+    expect(screen.queryByTestId('add-vendor')).toBeNull();
+    expect(screen.getByTestId('vendors-read-only')).toHaveTextContent('A manager or an owner changes this book.');
+  });
+
+  it('a manager is offered "Add a vendor"', () => {
+    auth.role = 'manager';
+    render(<ProvidersNext />);
+    expect(screen.getByTestId('add-vendor')).toHaveTextContent('Add a vendor');
+    expect(screen.queryByTestId('vendors-read-only')).toBeNull();
+  });
+});
+
+describe('a half-written vendor is held, not thrown away (VEN-W35)', () => {
+  const withClient = () =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ProvidersNext />
+      </QueryClientProvider>,
+    );
+  it('Esc on a dirty add sheet leaves a stub; resuming puts every word back; throwing it away can be undone', async () => {
+    auth.role = 'manager';
+    withClient();
+    fireEvent.click(screen.getByTestId('add-vendor'));
+    fireEvent.change(await screen.findByTestId('vendor-name'), { target: { value: 'Efes Dağıtım' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Beer' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const stub = await screen.findByTestId('vendor-draft-held');
+    expect(stub).toHaveTextContent('A new vendor: Efes Dağıtım — not in the book yet');
+    expect(stub).toHaveTextContent('Nothing was written.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go on writing it' }));
+    expect(await screen.findByTestId('vendor-name')).toHaveValue('Efes Dağıtım');
+    expect(screen.getByRole('button', { name: 'Beer' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('vendor-draft-held')).toBeNull();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Throw it away' }));
+    expect(screen.getByTestId('vendor-draft-held')).toHaveTextContent('Discarded · nothing was written');
+    fireEvent.click(screen.getByRole('button', { name: 'Put it back' }));
+    expect(screen.getByTestId('vendor-draft-held')).toHaveTextContent('Efes Dağıtım');
+  });
+
+  it('Esc on an empty add sheet leaves nothing behind', async () => {
+    auth.role = 'manager';
+    withClient();
+    fireEvent.click(screen.getByTestId('add-vendor'));
+    await screen.findByTestId('vendor-name');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('vendor-name')).toBeNull());
+    expect(screen.queryByTestId('vendor-draft-held')).toBeNull();
+  });
+});
+
+describe('the address holds what is open and what was typed (VEN-W36, ADR 0160 §6)', () => {
+  const card = () => ({
+    ...base,
+    cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+  });
+
+  it('opening a vendor writes ?vendor=, closing removes it', async () => {
+    mockData.current = card();
+    render(<ProvidersNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    await screen.findByRole('dialog');
+    expect(new URLSearchParams(window.location.search).get('vendor')).toBe('p1');
+    expect((window.history.state as { vendorAt?: string }).vendorAt).toBe('sheet');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('vendor')).toBeNull());
+  });
+
+  it('a reload of a card-opened sheet reopens it at the top, not at the currency field', async () => {
+    window.history.replaceState({ vendorAt: 'sheet' }, '', '/vendors?vendor=p1');
+    mockData.current = card();
+    render(<ProvidersNext />);
+    await screen.findByTestId('twin-panel');
+    expect(screen.getByTestId('usual-currency-takefocus')).toHaveTextContent('false');
   });
 });

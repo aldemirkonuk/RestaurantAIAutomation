@@ -145,7 +145,7 @@ export function phoneReachability(value: unknown): PhoneReachability {
       // NOT stated. `main_line` is what the column writes when nobody answers,
       // so a row carrying it is not evidence that anybody did.
       stated: false,
-      says: "This number is recorded as a main line, which is also what the book writes when nobody has said. Nothing is texted to it until somebody confirms the type on the vendor's contact sheet.",
+      says: "Nobody has said what kind of number this is, so it shows as a main line. Nothing is texted to it until someone confirms it is a mobile or WhatsApp number on the vendor's contact sheet.",
     };
   }
 

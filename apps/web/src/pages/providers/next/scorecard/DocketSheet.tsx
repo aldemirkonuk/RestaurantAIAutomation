@@ -229,7 +229,7 @@ export function DocketSheet({
   const [filter, setFilter] = useState<MeasureKey | null>(measure);
   const q = useDocket(providerId, days, filter);
   const card = q.data?.card;
-  const f = formatsOf(card?.house);
+  const f = formatsOf(card?.house, card?.window.to);
   const current = card?.measures.find((m) => m.key === filter) ?? null;
   const title = SC.docket.title(providerName, filter ? LABEL[filter] : null);
 

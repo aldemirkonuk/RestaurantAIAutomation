@@ -19,6 +19,7 @@
  * the house has no red, ADR 0042), every colour a house token.
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
 import { useId, useState } from 'react';
 import { PlacesAutocomplete, type PlaceResult } from '../../../components/ui/PlacesAutocomplete';
 import '../../../components/locations/locations-mudavym.css';
@@ -366,6 +367,8 @@ export interface BranchesListProps {
   onMakePrimary: (id: string) => void;
   onRemove: (id: string) => void;
   onReload: () => void;
+  /** VEN-W30: staff read the branches; only owners and managers add, edit or remove one. */
+  canChange?: boolean;
 }
 
 /**
@@ -385,6 +388,7 @@ export function BranchesList({
   onMakePrimary,
   onRemove,
   onReload,
+  canChange = true,
 }: BranchesListProps) {
   const headingId = useId();
   /** `'new'`, a branch id, or null — one editor open at a time. */
@@ -406,10 +410,10 @@ export function BranchesList({
       )}
 
       {/* A FAILED READ IS NOT AN EMPTY BOOK. */}
-      {!loading && error && (
+      {!loading && error !== null && (
         <p role="alert" style={REFUSAL}>
           This vendor’s branches could not be read, so nothing is shown — that is
-          not the same as this vendor having none. {error}{' '}
+          not the same as this vendor having none.{error ? ` ${error}` : ''}{' '}
           <button type="button" onClick={onReload} style={LINK}>
             Try again
           </button>
@@ -418,8 +422,8 @@ export function BranchesList({
 
       {readable && branches.length === 0 && open !== 'new' && (
         <p style={{ ...BODY, margin: 0 }}>
-          No branches are recorded for {providerName}. Add the office, warehouse
-          or store you deal with.
+          No branches are recorded for {providerName}.
+          {canChange && ' Add the office, warehouse or store you deal with.'}
         </p>
       )}
 
@@ -456,7 +460,7 @@ export function BranchesList({
                       if (await onUpdate(b.id, d)) setOpen(null);
                     }}
                   />
-                ) : (
+                ) : canChange && (
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                     <Btn
                       quiet
@@ -491,6 +495,7 @@ export function BranchesList({
       )}
 
       {readable &&
+        canChange &&
         (open === 'new' ? (
           <BranchForm
             offerPrimary
@@ -522,9 +527,9 @@ export function BranchesList({
         </p>
       )}
 
-      {saveError && (
+      {saveError !== null && (
         <p role="alert" style={REFUSAL}>
-          That was not saved, so the book still holds what it held: {saveError}
+          That was not saved, so the book still holds what it held.{saveError ? ` ${saveError}` : ''}
         </p>
       )}
     </section>
@@ -539,6 +544,7 @@ export function BranchesSection({
   providerName: string;
 }) {
   const s = useVendorBranches(providerId);
+  const canChange = useCanChangeVendors();
   return (
     <BranchesList
       providerName={providerName}
@@ -553,6 +559,7 @@ export function BranchesSection({
       onMakePrimary={(id) => void s.makePrimary(id)}
       onRemove={(id) => void s.remove(id)}
       onReload={s.reload}
+      canChange={canChange}
     />
   );
 }

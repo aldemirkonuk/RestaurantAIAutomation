@@ -25,7 +25,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiClient, getErrorMessage } from '../../../services/api/client';
+import { apiClient } from '../../../services/api/client';
+import { houseMessage } from './pv-format';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { ProviderContact } from '../../../services/api/providers';
 
@@ -91,7 +92,7 @@ export function useProviderContacts(
         // The list stays NULL. An empty array here would render as "this vendor
         // has no contacts", which is a claim about the book made out of a failed
         // read.
-        setError(getErrorMessage(e));
+        setError(houseMessage(e, ''));
       })
       .finally(() => {
         if (cancelled || !alive.current) return;
@@ -124,7 +125,7 @@ export function useProviderContacts(
         );
         return true;
       } catch (e) {
-        if (alive.current) setSaveError(getErrorMessage(e));
+        if (alive.current) setSaveError(houseMessage(e, ''));
         return false;
       } finally {
         if (alive.current) setSaving(null);

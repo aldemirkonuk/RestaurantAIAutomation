@@ -41,8 +41,11 @@ vi.mock('./useProvidersNextData', () => ({
   }),
 }));
 
+// VEN-W30: a manager by default, so the write controls are offered; the
+// staff case sets `auth.role = 'staff'` and is reset in beforeEach.
+const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1' }),
+  useAuth: () => ({ activeRestaurantId: 'r1', activeRole: auth.role, user: { role: auth.role } }),
 }));
 
 vi.mock('./UsualCurrencyCoveragePanel', () => ({
@@ -137,6 +140,7 @@ const names = () =>
   screen.queryAllByRole('button').map((b) => b.textContent ?? '').filter((t) => /Bodega|Cave|Vinos/.test(t));
 
 beforeEach(() => {
+  auth.role = 'manager';
   h.cards = [
     card(provider('p1', 'Bodega Álvaro')),
     card(provider('p2', 'Cave Lumière', { catalogueVendorId: 'cat-2' })),
@@ -205,6 +209,7 @@ describe('/vendors opens on Supplies my menu', () => {
     expect(screen.getByText('3 wines on your menu · priced, ordered')).toBeInTheDocument();
     expect(screen.getByText('1 wine on your menu · stocked')).toBeInTheDocument();
     expect(screen.getByTestId('scope-menu-basis')).toHaveTextContent('9 wines on your current menu');
+    expect(screen.getByTestId('scope-menu-basis')).toHaveTextContent('Only wines are matched so far');
     expect(screen.queryByTestId('scope-widened')).not.toBeInTheDocument();
   });
 
@@ -255,6 +260,8 @@ describe('no menu → All my vendors, with a banner', () => {
     renderPage();
     const banner = await screen.findByTestId('scope-widened');
     expect(banner).toHaveTextContent('None of your current menu’s lines is linked to a wine yet');
+    // VEN-W33: the match reads wines only, and says so.
+    expect(banner).toHaveTextContent('Only wines are matched so far — beer, spirits, other drinks and food');
   });
 
   it('a failed evidence read widens, prints the failure, and the menu rung claims nothing', async () => {
@@ -262,7 +269,8 @@ describe('no menu → All my vendors, with a banner', () => {
     renderPage();
     // The hook retries once (as in production) before it calls the read failed.
     const banner = await screen.findByTestId('scope-widened', {}, { timeout: 4000 });
-    expect(banner).toHaveTextContent('could not be worked out (The price history could not be read (timeout))');
+    expect(banner).toHaveTextContent('Which vendors supply your menu could not be worked out — showing all your vendors');
+    expect(banner).not.toHaveTextContent('timeout');
     fireEvent.click(screen.getByTestId('scope-menu'));
     expect(screen.getByRole('alert')).toHaveTextContent('Nothing below is claimed about who supplies it.');
     expect(screen.queryByText('Bodega Álvaro')).not.toBeInTheDocument();
@@ -368,6 +376,23 @@ describe('a wine NAME matches any vintage where the menu rung is not applied (it
     expect(screen.getByTestId('book-wine-basis')).toHaveTextContent('1 of your vendors sold you a wine matching “opus one” — any vintage');
   });
 
+  it('VEN-W36: what was typed lives in the address (?q= and ?find=) and comes back on a reload', async () => {
+    h.wineSellers = { query: { text: 'alvaro', words: ['alvaro'], vintages: [] }, winesMatched: 0, sellers: [] };
+    window.history.replaceState({}, '', '/vendors?scope=all');
+    const first = renderPage();
+    fireEvent.change(screen.getByTestId('book-q'), { target: { value: 'alvaro' } });
+    expect(new URLSearchParams(window.location.search).get('q')).toBe('alvaro');
+    first.unmount();
+    renderPage();
+    expect(screen.getByTestId('book-q')).toHaveValue('alvaro');
+    fireEvent.change(screen.getByTestId('book-q'), { target: { value: '' } });
+    expect(new URLSearchParams(window.location.search).has('q')).toBe(false);
+
+    window.history.replaceState({}, '', '/vendors?scope=find&find=napa');
+    renderPage();
+    expect(screen.getAllByTestId('find-q').at(-1)).toHaveValue('napa');
+  });
+
   it('the same box still finds a vendor by its own name, accent-blind', async () => {
     h.wineSellers = { query: { text: 'alvaro', words: ['alvaro'], vintages: [] }, winesMatched: 0, sellers: [] };
     window.history.replaceState({}, '', '/vendors?scope=all');
@@ -409,5 +434,18 @@ describe('a wine NAME matches any vintage where the menu rung is not applied (it
     expect(screen.getByTestId('find-wine-basis')).toHaveTextContent('A price on a vendor’s list is not a sale');
     fireEvent.click(within(row).getByText('Add to my vendors'));
     await waitFor(() => expect(h.posts).toEqual([{ url: '/providers', body: { catalogue_vendor_id: 'cat-7' } }]));
+  });
+});
+
+describe('Find new vendors for staff (VEN-W30, "Staff read only")', () => {
+  it('lists the catalogue, marks what is already in the book, and offers no add', async () => {
+    auth.role = 'staff';
+    window.history.replaceState({}, '', '/vendors?scope=find');
+    renderPage();
+    const rows = await screen.findAllByTestId('find-row');
+    expect(within(rows[0]).getByText('In your vendors')).toBeInTheDocument();
+    expect(screen.queryByText('Add to my vendors')).toBeNull();
+    expect(screen.getByText(/A manager or an owner adds one to your book\./)).toBeInTheDocument();
+    expect(h.posts).toEqual([]);
   });
 });

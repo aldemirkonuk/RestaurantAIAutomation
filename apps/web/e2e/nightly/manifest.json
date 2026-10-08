@@ -113,8 +113,8 @@
         "nothing here"
       ],
       "failed_read": [
-        "The vendor book could not be refreshed",
-        "The gateway could not be reached"
+        "Your vendors could not be refreshed just now",
+        "Your vendors could not be read just now"
       ]
     },
     {
