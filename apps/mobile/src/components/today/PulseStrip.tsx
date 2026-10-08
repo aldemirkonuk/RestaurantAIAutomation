@@ -39,6 +39,13 @@ export function PulseStrip() {
 
   const view = resolvePulseStripView(data);
 
+  // Sales withheld for this role (ADR 0253 round 2) and no decisions waiting:
+  // the strip has nothing of this person's to say, so it says nothing rather
+  // than standing empty under "Tonight".
+  if (view.revenue.status === "withheld" && view.decisionsLabel == null) {
+    return null;
+  }
+
   return (
     <PressableScale onPress={() => router.push("/insights")}>
       <Card
@@ -63,11 +70,11 @@ export function PulseStrip() {
               {view.revenue.checksLabel}
             </AppText>
           </>
-        ) : (
+        ) : view.revenue.status === "unavailable" ? (
           <AppText variant="footnote" tone="tertiary" style={{ marginTop: 6, maxWidth: 220 }}>
             {view.revenue.message}
           </AppText>
-        )}
+        ) : null}
         {view.decisionsLabel != null ? (
           <AppText variant="headline" style={{ marginTop: space.xs }}>
             {view.decisionsLabel}
