@@ -248,14 +248,51 @@ export interface TeamSettings {
   mayChange?: { trackingOff: boolean; trackingOn: boolean; target: boolean; doubleBooking?: boolean }
 }
 
+/** Why the house benchmark has a median, or none (ADR 0294; `performance.service.ts`). */
+export type PerformanceBenchmarkState = 'computed' | 'self-only' | 'no-covers' | 'unreadable'
+
 export interface MemberPerformance {
   hasData: boolean
-  metrics?: { salesPerShift: number; avgCheck: number; wineAttachPct: number }
-  // median/band are null when the peer benchmark is UNKNOWN — either the
-  // server_sales read failed or the restaurant has no other servers with
-  // covers. They used to arrive as 0, which drew the peer line at the bottom
-  // of the chart and put every server above it. ADR 0067.
-  analytic?: { unit: string; series: number[]; median: number | null; band: readonly [number, number] | null }
+  /**
+   * The house's currency and country, which every figure below is in (ADR
+   * 0294). Optional only because a gateway built before it sends none; the
+   * card then says the currency could not be read rather than guess one.
+   */
+  money?: { currency: string | null; country: string | null; readable: boolean }
+  metrics?: {
+    salesPerShift: number
+    /** null when none of the services records a check: unknown, never 0 (ADR 0051). */
+    avgCheck: number | null
+    /** Over the services that record covers with their sales; null when none does. */
+    salesPerCover?: number | null
+    /** How many of `services` record covers with their sales. */
+    coverServices?: number
+    /**
+     * A SHARE OF SALES (wine_sales / net_sales), not an attach rate — the card
+     * labels it "Wine share of sales". The key keeps its old name. null when
+     * the services record no sales.
+     */
+    wineAttachPct: number | null
+  }
+  // median/band are null when the house benchmark is UNKNOWN or refused —
+  // `benchmark.state` says which. They used to arrive as 0, which drew the peer
+  // line at the bottom of the chart and put every server above it. ADR 0067.
+  analytic?: {
+    unit: string
+    series: number[]
+    median: number | null
+    band: readonly [number, number] | null
+    /** Absent from a gateway built before ADR 0294. */
+    benchmark?: {
+      state: PerformanceBenchmarkState
+      /** Services among the house's newest ≤200 (TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES) that record covers with their sales. */
+      services: number
+      /** The servers those services belong to. */
+      servers: number
+      /** Whether this member's own services are among them. */
+      includesMember: boolean
+    }
+  }
   services?: Array<{ date: string; covers: number }>
 }
 
