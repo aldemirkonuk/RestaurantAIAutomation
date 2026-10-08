@@ -93,7 +93,7 @@ function event(over: Partial<CalEvent> & { id: string; title: string; date: stri
   };
 }
 
-const mutation = () => ({ mutate: vi.fn(), isPending: false, error: null });
+const mutation = () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null as unknown });
 
 /**
  * The reminder cron's status, as `GET /calendar/reminders/status` returns it.
@@ -279,6 +279,7 @@ function mkData(over: Record<string, unknown> = {}) {
     record: recordWindow(),
     create: mutation(),
     update: mutation(),
+    move: mutation(),
     remove: mutation(),
     createType: mutation(),
     deleteType: mutation(),
@@ -346,7 +347,7 @@ describe('CalendarNext — the KEEP', () => {
     const target = screen.getByLabelText(/Friday, September 18/);
     fireEvent.dragOver(target);
     fireEvent.drop(target);
-    expect((data.update as { mutate: ReturnType<typeof vi.fn> }).mutate).toHaveBeenCalledWith({
+    expect((data.move as { mutate: ReturnType<typeof vi.fn> }).mutate).toHaveBeenCalledWith({
       id: 'e1',
       patch: { eventDate: '2026-09-18' },
     });
@@ -357,7 +358,8 @@ describe('CalendarNext — the KEEP', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Week' }));
     const slots = container.querySelectorAll('.cn-slot');
     expect(slots.length).toBeGreaterThan(0);
-    fireEvent.click(slots[7]);
+    // The ruler runs from 00:00 (F-197), so the fourteenth slot is 13:00.
+    fireEvent.click(slots[13]);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('Starts')).toHaveValue('13:00');
   });
@@ -544,16 +546,113 @@ describe('CalendarNext — honesty', () => {
   ])('says so when %s is refused', (key, message) => {
     const data = mkData({
       events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
-      [key]: { mutate: vi.fn(), isPending: false, error: new Error(message) },
+      [key]: { mutate: vi.fn(), reset: vi.fn(), isPending: false, error: new Error(message) },
     });
     state.current = data;
     draw();
     fireEvent.click(screen.getByText('Vega Sicilia crate'));
     const sheet = screen.getByRole('dialog');
+    // The banner speaks only for a write this sheet asked for (F-201).
+    if (key === 'createType') {
+      fireEvent.change(within(sheet).getByLabelText('New type name'), { target: { value: 'Stocktake' } });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Add' }));
+    } else {
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Delete the Cellar audit type' }));
+    }
     expect(within(sheet).getByText(new RegExp(`The gateway refused this write \\(${message}\\)`))).toBeInTheDocument();
   });
 });
 
+
+/* ── sim findings F-196, F-197, F-201 ────────────────────────────────────── */
+
+describe('CalendarNext — editing clears, the whole day, refusals in place', () => {
+  it('sends null for a note and an end time the owner emptied (F-196)', () => {
+    const data = mkData({
+      events: [
+        event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17', description: 'Side door', endTime: '10:00' }),
+      ],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Ends'), { target: { value: '' } });
+    const note = sheet.querySelector('textarea') as HTMLTextAreaElement;
+    fireEvent.change(note, { target: { value: '' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    const [{ patch }] = (data.update as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
+    expect(patch.description).toBeNull();
+    expect(patch.eventTimeEnd).toBeNull();
+    expect(patch.eventTime).toBe('09:00');
+  });
+
+  it('clears both clock times when an entry is made all day (F-196)', () => {
+    const data = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.click(within(sheet).getByLabelText('All day'));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    const [{ patch }] = (data.update as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
+    expect(patch.allDay).toBe(true);
+    expect(patch.eventTime).toBeNull();
+    expect(patch.eventTimeEnd).toBeNull();
+  });
+
+  it('draws a 05:00 delivery inside the week grid, not above it (F-197)', () => {
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Bread drop', date: '2026-09-15', startTime: '05:00', endTime: '05:30' })],
+    });
+    const { container } = draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    const block = screen.getByText('Bread drop').closest('.cn-block') as HTMLElement;
+    expect(parseFloat(block.style.top)).toBe(5 * 44);
+    expect(container.querySelectorAll('.cn-hours .cn-hour')).toHaveLength(24);
+  });
+
+  it('draws a party that ends after midnight down to the end of the day (F-197)', () => {
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Late party', date: '2026-09-15', startTime: '22:00', endTime: '01:00' })],
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    const block = screen.getByText('Late party').closest('.cn-block') as HTMLElement;
+    expect(parseFloat(block.style.top)).toBe(22 * 44);
+    expect(parseFloat(block.style.height)).toBe(2 * 44);
+  });
+
+  it('says in the sheet when the end time is the next morning (F-197)', () => {
+    draw('/calendar?openModal=true&date=today');
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Starts'), { target: { value: '22:00' } });
+    fireEvent.change(within(sheet).getByLabelText('Ends'), { target: { value: '01:00' } });
+    expect(within(sheet).getByText('Ends after midnight, at 01:00 the next morning.')).toBeInTheDocument();
+  });
+
+  it('says a refused move on the page, and lets it be dismissed (F-201)', () => {
+    const data = mkData();
+    (data.move as { error: unknown }).error = new Error('Network Error');
+    state.current = data;
+    draw();
+    const line = screen.getByText(/That move was not saved \(Network Error\)/);
+    expect(line).toBeInTheDocument();
+    fireEvent.click(within(line.closest('.cn-notice') as HTMLElement).getByRole('button', { name: 'Dismiss' }));
+    expect((data.move as { reset: ReturnType<typeof vi.fn> }).reset).toHaveBeenCalled();
+  });
+
+  it('does not greet a new entry with an earlier refusal (F-201)', () => {
+    const data = mkData();
+    (data.update as { error: unknown }).error = new Error('earlier write refused');
+    state.current = data;
+    draw('/calendar?openModal=true&date=today');
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).queryByText(/refused this write/)).toBeNull();
+  });
+});
 
 /* ── the reminder job: server-side, and honest about itself (ADR 0109) ─────── */
 

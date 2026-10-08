@@ -538,6 +538,20 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
           </div>
         )}
 
+        {/* A drag or resize that was refused is said here, where it happened,
+            not on the next sheet that opens (F-201). */}
+        {data.move.error != null && (
+          <div role="alert" className="cn-notice">
+            <span>
+              That move was not saved ({data.move.error instanceof Error ? data.move.error.message : 'unknown error'}).
+              The entry is still where it was.
+            </span>
+            <button type="button" className="cn-btn cn-ink" onClick={() => data.move.reset()}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {data.isLoading && !data.hasEvents && (
           <p role="status" className="cn-quiet">
             Reading the entries for {data.start} → {data.end}…

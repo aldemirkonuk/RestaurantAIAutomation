@@ -15,6 +15,10 @@
  * Honesty: an event the gateway sent with no `event_time` cannot be placed on
  * an hour, so it sits in the all-day strip with an em dash for its time. It is
  * never drawn at midnight and never at "09:00 by default".
+ *
+ * The ruler runs the whole day, 00–24, and opens scrolled to 06:00 (or to the
+ * earliest entry, if one starts sooner), so a 05:00 bread drop is never above
+ * reach. An end earlier than the start runs past midnight (F-197).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -33,8 +37,10 @@ import {
 import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
 
 const HOUR_PX = 44;
-const START_HOUR = 6;
+const START_HOUR = 0;
 const END_HOUR = 24;
+/** Where the grid opens when nothing starts earlier. */
+const OPEN_AT_MIN = 6 * 60;
 const START_MIN = START_HOUR * 60;
 const END_MIN = END_HOUR * 60;
 const DEFAULT_MINUTES = 60;
@@ -55,15 +61,27 @@ export interface TimeGridProps {
   onCreateAt: (day: string, hour: number) => void;
 }
 
-/** Where an event sits on the hour ruler, or null when it has no recorded time. */
+/**
+ * Where an event sits on the hour ruler, or null when it has no recorded time.
+ * An end before the start is the next morning, so `end` can pass END_MIN
+ * (22:00–01:00 is 1320–1500); the block is drawn down to midnight.
+ */
 export function placed(e: CalEvent): { start: number; end: number } | null {
   if (e.allDay) return null;
   const start = toMinutes(e.startTime);
   if (start === null) return null;
   const rawEnd = toMinutes(e.endTime);
-  const end = rawEnd !== null && rawEnd > start ? rawEnd : start + DEFAULT_MINUTES;
+  const end =
+    rawEnd === null || rawEnd === start
+      ? start + DEFAULT_MINUTES
+      : rawEnd > start
+        ? rawEnd
+        : rawEnd + END_MIN;
   return { start, end };
 }
+
+/** A clock time for a minute count that may run past midnight. */
+const wrapClock = (mins: number) => fromMinutes(mins > END_MIN ? mins - END_MIN : mins);
 
 export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }: TimeGridProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -89,19 +107,22 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
       const p = event ? placed(event) : null;
       if (!event || !p) return;
       if (finished.mode === 'resize') {
-        const end = Math.min(END_MIN, Math.max(p.start + 15, p.end + finished.dMin));
-        if (end === p.end) return;
-        data.update.mutate({ id: event.seriesId, patch: { eventTimeEnd: fromMinutes(end) } });
+        // The handle sits where the block is drawn, at midnight at the latest.
+        const drawnEnd = Math.min(END_MIN, p.end);
+        const end = Math.min(END_MIN, Math.max(p.start + 15, drawnEnd + finished.dMin));
+        if (end === drawnEnd) return;
+        data.move.mutate({ id: event.seriesId, patch: { eventTimeEnd: fromMinutes(end) } });
         return;
       }
       const start = Math.min(END_MIN - 15, Math.max(START_MIN, p.start + finished.dMin));
-      const end = Math.min(END_MIN, start + (p.end - p.start));
-      data.update.mutate({
+      // The length is kept, so a move can carry the end past midnight.
+      const end = start + (p.end - p.start);
+      data.move.mutate({
         id: event.seriesId,
         patch: {
           eventDate: dayKey(addDays(parseDayKey(event.date), finished.dDay)),
           eventTime: fromMinutes(start),
-          eventTimeEnd: fromMinutes(end),
+          eventTimeEnd: wrapClock(end),
         },
       });
     },
@@ -111,6 +132,28 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
   commitRef.current = commit;
 
   const dragging = drag !== null;
+
+  // Open on the working day, but never with an entry hidden above the view.
+  const earliest = keys.reduce<number | null>((min, key) => {
+    for (const e of data.byDay.get(key) ?? []) {
+      const p = placed(e);
+      if (p && (min === null || p.start < min)) min = p.start;
+    }
+    return min;
+  }, null);
+  const shownRef = useRef<string | null>(null);
+  const viewKey = `${keys[0]}:${keys.length}`;
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const top = (Math.min(OPEN_AT_MIN, earliest ?? OPEN_AT_MIN) / 60) * HOUR_PX;
+    if (shownRef.current !== viewKey) {
+      shownRef.current = viewKey;
+      body.scrollTop = top;
+    } else if (top < body.scrollTop) {
+      body.scrollTop = top;
+    }
+  }, [viewKey, earliest]);
 
   // Window-level listeners: a fast pointer leaves the block behind, and the
   // gesture must still finish (and commit) rather than sticking mid-air.
@@ -221,10 +264,11 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
               const resizing = d?.mode === 'resize';
               const start = d && !resizing ? p.start + d.dMin : p.start;
               const end = resizing
-                ? Math.max(p.start + 15, p.end + d.dMin)
+                ? Math.max(p.start + 15, Math.min(END_MIN, p.end) + d.dMin)
                 : start + (p.end - p.start);
               const top = ((start - START_MIN) / 60) * HOUR_PX;
-              const height = Math.max(22, ((end - start) / 60) * HOUR_PX);
+              // A block running past midnight is drawn down to the day's end.
+              const height = Math.max(22, ((Math.min(END_MIN, end) - start) / 60) * HOUR_PX);
               return (
                 <div
                   key={e.id}
