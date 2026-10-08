@@ -80,12 +80,12 @@ interface InFlight {
 
 export interface BookFreshness {
   /**
-   * When the book in the cache was read (its readStartedAt). Null means the
-   * book has not been read yet, NOT that it is fresh: `failing` and `stale`
-   * are both false then and say nothing, so a screen reads `asOf` first.
+   * The kept book's readStartedAt. Null until a read of this house succeeds past the fence in
+   * `finish`; null is NOT fresh. While null, `stale` equals `failing`: false until a read fails,
+   * then true (an abort or a house change is not a failure). So read `asOf` with `failing`.
    */
   asOf: number | null
-  /** The last refresh failed. */
+  /** A read failed (not an abort or house change); none has succeeded past the fence since. */
   failing: boolean
   /** Older than twice the interval, or a refresh is failing. */
   stale: boolean
