@@ -40,6 +40,24 @@ describe('renamedTarget', () => {
     expect(renamedTarget(loc('/providersX'), '/providers', '/vendors')).toBe('/vendors');
   });
 
+  it('moves an id held in the old path into the query the new page reads (F-219)', () => {
+    // /vendors has no /<id> route; /vendors/p1 was a 404.
+    expect(renamedTarget(loc('/providers/p1'), '/providers', '/vendors', {}, 'vendor')).toBe('/vendors?vendor=p1');
+    expect(renamedTarget(loc('/providers/p1/terms', '?x=1', '#usual'), '/providers', '/vendors', {}, 'vendor')).toBe(
+      '/vendors?x=1&vendor=p1#usual',
+    );
+    expect(renamedTarget(loc('/providers/p%20one'), '/providers', '/vendors', {}, 'vendor')).toBe(
+      '/vendors?vendor=p+one',
+    );
+    // A link that already names the vendor keeps its own word.
+    expect(renamedTarget(loc('/providers/p1', '?vendor=p2'), '/providers', '/vendors', {}, 'vendor')).toBe(
+      '/vendors?vendor=p2',
+    );
+    expect(renamedTarget(loc('/providers', '?vendor=p1'), '/providers', '/vendors', {}, 'vendor')).toBe(
+      '/vendors?vendor=p1',
+    );
+  });
+
   it('adds an implied default only when the link did not say otherwise', () => {
     const d = { tab: 'discover' };
     expect(renamedTarget(loc('/distributors'), '/distributors', '/vendors', d)).toBe('/vendors?tab=discover');
@@ -67,7 +85,7 @@ function mountAt(entry: string | { pathname: string; search?: string; state?: un
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/vendors" element={<Where />} />
-        <Route path="/providers/*" element={<RenamedRoute from="/providers" to="/vendors" />} />
+        <Route path="/providers/*" element={<RenamedRoute from="/providers" to="/vendors" idParam="vendor" />} />
         <Route
           path="/distributors/*"
           element={<RenamedRoute from="/distributors" to="/vendors" defaults={{ tab: 'discover' }} />}
@@ -94,9 +112,9 @@ describe('RenamedRoute in a router', () => {
     expect(screen.getByTestId('where').textContent).toBe('/vendors?tab=discover|null');
   });
 
-  it('a sub-path of an old address keeps its tail (and still reaches the catch-all, as before)', () => {
+  it('/providers/<id> (the unrecorded-invoice notice link) opens that vendor on /vendors, not a 404', () => {
     mountAt('/providers/p1#terms');
-    expect(screen.getByTestId('where').textContent).toBe('/vendors/p1#terms|null');
+    expect(screen.getByTestId('where').textContent).toBe('/vendors?vendor=p1#terms|null');
   });
 
   it('navigation state survives the hop', () => {
@@ -121,7 +139,7 @@ describe('App.tsx declares the rename', () => {
   });
 
   it('/providers/* and /distributors/* redirect with RenamedRoute', () => {
-    expect(routeFor('/providers/*')).toContain('<RenamedRoute from="/providers" to="/vendors" />');
+    expect(routeFor('/providers/*')).toContain('<RenamedRoute from="/providers" to="/vendors" idParam="vendor" />');
     expect(routeFor('/distributors/*')).toContain(
       `<RenamedRoute from="/distributors" to="/vendors" defaults={{ tab: 'discover' }} />`,
     );
