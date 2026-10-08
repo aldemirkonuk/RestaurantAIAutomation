@@ -85,7 +85,15 @@
 }
 .dn-cell[data-future='true'] {
   background: transparent;
+}
+.dn-cell:disabled {
   cursor: default;
+}
+/* DASH-W17 (founder, 2026-10-01): "past days must be lowered in color". */
+.dn-cell[data-past='true'] .dn-cell-num,
+.dn-cell[data-past='true'] .dn-cell-fig,
+.dn-cell[data-past='true'] .dn-cell-marks {
+  opacity: 0.45;
 }
 .dn-cell[data-blank='true'] {
   visibility: hidden;

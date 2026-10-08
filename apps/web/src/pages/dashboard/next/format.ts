@@ -44,6 +44,42 @@ export function localDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * DASH-W20 (2026-10-01): a moment's calendar day on the HOUSE's clock. The
+ * gateway buckets every figure in the house's zone (`stats.timezone`); the
+ * page's "today", its greeting and its day panels must use the same clock or
+ * a Chicago house viewed from another zone shows two different todays. No
+ * zone yet (or one the browser cannot read) falls back to the device's.
+ */
+export function dateIn(d: Date, zone?: string | null): string {
+  if (!zone) return localDateStr(d);
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value;
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  } catch {
+    return localDateStr(d);
+  }
+}
+
+/** DASH-W20: the hour (0-23) on the house's clock; the device's without a zone. */
+export function hourIn(d: Date, zone?: string | null): number {
+  if (!zone) return d.getHours();
+  try {
+    const h = Number(
+      new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', hourCycle: 'h23' }).format(d),
+    );
+    return Number.isFinite(h) ? h % 24 : d.getHours();
+  } catch {
+    return d.getHours();
+  }
+}
+
 /** Parse a YYYY-MM-DD string as a LOCAL date (new Date('YYYY-MM-DD') is UTC). */
 export function parseDateStr(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
@@ -87,4 +123,30 @@ export function eventTime(t: string | null | undefined): string | null {
   if (!t) return null;
   const m = /^(\d{1,2}):(\d{2})/.exec(t);
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
+}
+
+/**
+ * DASH-W32 (P5, found in P7): a calendar event's kind in the house's words.
+ * The keys are the gateway's CalendarEventType (calendar.dto.ts); `custom`
+ * and anything unknown say nothing rather than print a code.
+ */
+const EVENT_KIND_WORDS: Record<string, string> = {
+  delivery: 'delivery',
+  order: 'order',
+  meeting: 'meeting',
+  inventory: 'stock',
+  tasting: 'tasting',
+  reminder: 'reminder',
+  recurring: 'repeats',
+  holiday: 'holiday',
+  delivery_eta: 'delivery expected',
+  provider_birthday: 'vendor’s birthday',
+  provider_unavailable: 'vendor away',
+  inventory_count: 'stock count',
+  high_volume_expected: 'busy day expected',
+};
+
+export function eventKindWords(type: string | null | undefined): string | null {
+  if (!type) return null;
+  return EVENT_KIND_WORDS[type.toLowerCase()] ?? null;
 }
