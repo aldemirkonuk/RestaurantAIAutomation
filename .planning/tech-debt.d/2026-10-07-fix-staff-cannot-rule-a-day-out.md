@@ -9,7 +9,7 @@ Two readers count with a struck day. (a) Every baseline the insight generator bu
 
 **Who may do it. This was the coordinator's call under the founder's 2026-10-07T20:04:10Z delegation, recorded as [ADR 0317](../decisions/0317-only-an-owner-or-manager-rules-a-day-out.md) (Proposed).** His delegation, verbatim:
 
-> "Do not ask me questions, I allow and approve for you to decide on your own. If its a decision question then research deep, find answers. While you can change decisions, you cannot change any feature we decided unless it breaks everything"
+> "Do not ask me questions, I allow and approve for you to decide on your own. If its a decision question then research deep, find answers. While you can change decisions, you cannot change any feature we decided unless it breaks everything …" (cut; the full text is in [ADR 0317](../decisions/0317-only-an-owner-or-manager-rules-a-day-out.md))
 
 No record names who may rule a day out:
 

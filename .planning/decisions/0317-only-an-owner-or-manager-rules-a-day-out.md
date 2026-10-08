@@ -44,7 +44,7 @@ The founder, 2026-10-07T20:04:10Z: *"Do not ask me questions, I allow and approv
 
 Two smaller calls, under the same delegation:
 
-- **`created_by` is the signed-in caller** (`actorOf(user).userId`, `apps/api-gateway/src/analytics/analytics.controller.ts:1425`). A body `createdBy` is ignored. That is the rule every card act on this page already follows (ADR 0191). Rejected: a body field that must match the token. It adds a 400 that nobody needs.
+- **`created_by` is the signed-in caller** (`actorOf(user).userId` in `excludeDay`, `apps/api-gateway/src/analytics/analytics.controller.ts`). A body `createdBy` is ignored. That is the rule every card act on this page already follows (ADR 0191). Rejected: a body field that must match the token. It adds a 400 that nobody needs.
 - **The page reads the house role alone.** `canRuleOutDays = mayActForTheHouse(activeRole)` (`apps/web/src/pages/recommendations/next/useRecommendationsNextData.ts:741`). It never falls back to the account-wide `user.role`. `activeRole` is the role `RolesGuard` checks, so the page fails closed while the house role is unread, and it does not offer a control the gateway would refuse. Rejected: reuse `canActRuleWide` (`activeRole ?? user?.role`). It would offer the strike to an account-wide manager whose role in this house is unread or staff, and the gateway answers that person 403.
 
 ## Decision
@@ -56,7 +56,7 @@ What carried it:
 - It is a house-wide act on `/recommendations`, which ADR 0191 gives to owners and managers and refuses to `admin`.
 - The guard is the one the controller already uses, so nothing new is built to enforce it.
 
-**As built on PR #660:** both writes are guarded (`analytics.controller.ts:1403-1405`, `:1435-1437`), `route-access.expected.json` pins both as `["owner","manager"]` (`:56-63`), and `GET` stays `"open"` (`:55`).
+**As built on PR #660:** both writes are guarded (the `@Roles("owner", "manager")` on `excludeDay` and on `includeDay` in `analytics.controller.ts`; cited by symbol because line numbers move with every merge), `route-access.expected.json` pins both as `["owner","manager"]` (`:56-63`), and `GET` stays `"open"` (`:55`).
 
 ## Consequences
 
@@ -64,6 +64,7 @@ What carried it:
 - **Given up:** staff cannot strike a day. They can still see which days are struck and why.
 - **Owed when the Ask AI gains it:** ADR 0111 lets the Ask AI "exclude a day from the baselines" alone (`:404-406`). Today its allowlist has only `procurement.reorder` and `communications.vendor_draft` (ADR 0111 `:397-398`), so no AI path writes an exclusion yet. When the `calendar` family is built, that act must pass the same owner/manager check on the person who asked.
 - **Not covered:** the day strip and `GET /analytics/pos-revenue` still show staff the day's till revenue. That is filed OPEN in the same tech-debt fragment for the audit's M2.
+- **Not covered: the insight generator still buckets sales by UTC date.** Since #616 (ADR 0296) the till and the day strip file a sale on the house's day, but `insight-generator.service.ts` still dates a check by `(c.closed_at || c.opened_at || "").substring(0, 10)`, the UTC date. So in a house off UTC, striking a house day removes the checks whose UTC date has that date string, not exactly that house day's checks. This PR did not cause it and the struck dates are left out as stated; how often it bites (which date the page posts) was not traced. It is owed to the same lane as #616's calendar UTC-day follow-up.
 - **Revisit when:** M2 puts one shared money-holder check on `main` (option 5), or a role between staff and manager is added to the house.
 
 ## Review trail
@@ -73,3 +74,4 @@ What carried it:
 | 2026-10-07 | The coordinator, under the delegation | Rule decided and built on PR #660; recorded only in `tech-debt.d` |
 | 2026-10-08 | ADR 0090 audit of PR #660 at `332a0efea` (`p4-scratch/sim-run/fixes/audits/660-332a0efea/report.md`, outside the repo) | BLOCK: the rule needed an ADR (CLAUDE.md §0.1-0.2, with ADR 0306 as precedent), and the record understated what a struck day changes |
 | 2026-10-08 | The coordinator, under the delegation | Created as Proposed; named both readers; fixed the ADR 0111 cite to `:404-406` |
+| 2026-10-08 | executor SIM (fix after the BLOCK at `cde18da83`) | The three `analytics.controller.ts` line cites at the `created_by` call and the As-built line had moved by 8 when #616 merged; they now cite the `excludeDay` / `includeDay` handlers by symbol. Added the insight generator's UTC bucketing to Not covered. |
