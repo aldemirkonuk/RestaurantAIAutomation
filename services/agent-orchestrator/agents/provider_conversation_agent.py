@@ -39,6 +39,7 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
 from core.commitment_patterns import contains_commitment_language
+from core.house_only_figures import vendor_safe_intent, withheld_figures_in
 from core.base_agent import BaseAgent
 from core.notifications import notify_restaurant
 from utils.logger import setup_logger
@@ -476,6 +477,9 @@ class AuditEntry:
     active_promos_referenced: List[str] = field(default_factory=list)
     intent_source: str = ""
     commitment_language_detected: bool = False
+    # A house-only figure (the price ceiling) was found in the model's draft,
+    # so the draft was dropped for the fixed template (core/house_only_figures).
+    withheld_figure_dropped: bool = False
 
 
 # =============================================================================
@@ -2269,7 +2273,8 @@ class ProviderConversationAgent(BaseAgent):
                 style_profile=style_summary,
                 last_5_messages=msg_history or "No prior messages in this session",
                 top_5_relevant_memories=mem_text or "No relevant memories found",
-                intent_description=json.dumps(intent, default=str),
+                # The ceiling is the house's own; the model never sees it.
+                intent_description=json.dumps(vendor_safe_intent(intent), default=str),
                 active_promos=promo_text,
                 tone_instruction=tone_instruction,
                 last_3_db_interactions=db_ctx["last_3_db_interactions"],
@@ -2296,6 +2301,18 @@ class ProviderConversationAgent(BaseAgent):
             )
 
             draft_text = response.text.strip()
+
+            # A house-only figure in the draft (the model can still meet one in
+            # memories or history) drops the draft for the fixed template, which
+            # says only the target.
+            withheld = withheld_figures_in(draft_text, intent)
+            if withheld:
+                self.logger.warning(
+                    f"Draft for provider {provider_id} held a house-only figure "
+                    f"({', '.join(withheld)}); using the fixed template instead"
+                )
+                audit.withheld_figure_dropped = True
+                return self._mock_generate_response(intent, style_profile), audit
 
             # AI-SPEC §6: Check commitment language — log warning; caller must force pending_approval
             if self._check_commitment_language(draft_text):
