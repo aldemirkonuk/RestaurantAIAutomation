@@ -34,7 +34,12 @@ Claims: `claims.d/fix-claim-keeps-the-door-reason.jsonl:1-5`.
    `laneOf` (`useReceivingNextData.ts:353-366`) folds verdict `rejected` into
    `refused`, so one broken bottle on a kept delivery still counts in
    "Refused N". The ruling covers the claim's reason and its wording, not the
-   lane; renaming or splitting it is a founder fork (reported, not decided).
+   lane. Decided 2026-10-08 as R3's call under the founder's 2026-10-07
+   delegation (forks decided, not asked): rename the lane "Refused or broken"
+   (a copy change in one file) on a later branch, not in this PR, which is at
+   the 15-file cap. Splitting the lane by door outcome (the gateway queue
+   carries the outcome) was rejected for now: it touches more files and no
+   ruling asks for broken bottles as their own lane.
 2. **`apps/web/src/services/api/credits.ts:19-27` `CreditReason` is stale.** It
    lists the baseline seven; `never_arrived`, `wrong_item`, `broken` and
    `temperature` are missing. Nothing breaks (`ProcurementCredit.reason` is
