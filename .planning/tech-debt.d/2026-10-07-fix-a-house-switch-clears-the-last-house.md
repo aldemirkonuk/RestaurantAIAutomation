@@ -11,7 +11,7 @@ Filed by branch `fix/a-house-switch-clears-the-last-house` (lane `houseswitch`, 
 - `createFirstHouse` does the same. [Since 2026-10-07 ~22:35Z: until then it skipped step 1, so a person who created a second house from inside the first kept the device rows keyed by person only. It now empties the device read cache, bounded, before it stores the new session, and `houseSwitch.test.tsx` checks that.] Sign-out (`endSession`) resets the reads and clears the mutation cache.
 - Six named reads now carry the house in their key: promotions, vendor currency coverage, price locks, price advice, menu versions, and Menu's house currency.
 - `/recommendations` resets its Standing figures in the same render that switches the house. It keys its roster to the house, and a failed roster read is read again when the menu is next opened.
-- The gateway refuses an `assignedTo` that is not an `active` row of the path house's roster.
+- The gateway refuses an `assignedTo` that is not a row of the path house's roster. [Narrowed 2026-10-08 at the re-head after the ADR 0090 BLOCK at `505a03400`: until then it also refused any row whose status was not `active`, and the page offered only `active` rows. Now any status is accepted and offered (ADR 0306).]
 
 Everything below is what the branch did **not** fix. "House-scoped" below is judged from the key's name and the function it calls. The gateway route behind each read was not opened, except where a line says so.
 
@@ -76,4 +76,9 @@ Fix: route every house change and every session end through one function that fo
 - An assignment sent as `assignedName` alone is still written as sent, unchecked.
 - An `assignedName` sent with an `assignedTo` is not compared with the roster's `display_name`.
 
-**5. "Active" is read as `status = 'active'`.** A `trial` roster row can no longer be assigned. The page no longer offers trial rows, and the gateway refuses them with a 400. This follows the task's words, "an active member", and the founder's reading of the active roster for the crew audience (ADR 0218, round 4 answer 3, "Active roster only"). No ADR rules on assignment itself. If trial staff should take entries, both checks change together: the gateway's `assertAssigneeOnRoster` and the hook's `loadTeam` filter.
+**5. Who takes an entry is any row of this house's roster, whatever its status (ADR 0306).** [Replaced 2026-10-08. Until then this item read "Active" as `status = 'active'`, dropped `trial` rows on the page and at the gateway, and leaned on ADR 0218 round 4 answer 3, which rules only on the audience of a crew message to everyone. The ADR 0090 audit at `505a03400` BLOCKed on that.] ADR 0306 records the rule as decided by the coordinator under the founder's 2026-10-07T20:04:10Z delegation. What it leaves open:
+- The popover (`WhoTakesThisPopover.tsx`) shows no status, so an `inactive` person looks like an `active` one. `/team`'s `RosterSheet.tsx` tags non-active rows; a tag here is owed and was left out for the 15-file cap.
+- An assignment outlives the assignee's later change to `inactive` or removal: `assigned_to` has no foreign key and nothing sweeps it.
+- Invite placeholder rows are `active` roster rows, so they can be picked; nothing read for this fix removes one when its invite is revoked.
+- The roster read (`listMembers`) is manager-gated, so a staff member's popover says the roster could not be read, while the gateway still accepts a roster id that staff member sends, when the note gate lets the write through.
+- Production `team_members.status` values were not read. Every writer in the code sets `active`, `trial` or `inactive`.

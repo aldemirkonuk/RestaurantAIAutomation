@@ -98,9 +98,9 @@ const ROSTER_ID_RE =
 /**
  * A state write that is not made, said in words (ADR 0191 round 3): a staff
  * member asking to snooze for everyone, a write with no signed-in person to
- * keep in the history, a malformed snooze, or an assignee who is not on this
- * house's active team. `forbidden` → 403, otherwise 400. Thrown BEFORE
- * anything is written.
+ * keep in the history, a malformed snooze, or an assignee id that is not a
+ * row of this house's roster. `forbidden` → 403, otherwise 400. Thrown
+ * BEFORE anything is written.
  */
 export class ActRefused extends Error {
   constructor(
@@ -435,21 +435,23 @@ export class RecommendationActionsService {
   }
 
   /**
-   * An assignee is a row of THIS house's roster whose status is `active`
-   * (OPS-03). Before, `assignedTo` was written as sent, so an id from another
-   * house, a person taken off the team or any string landed on the card.
-   * "Active" is the status word as the crew audience already reads it
-   * (ADR 0218, round 4 answer 3, "Active roster only"): a `trial` or
-   * `inactive` row is refused, and the page's roster offers neither. A roster
-   * that could not be read refuses the write instead of letting it through
-   * unchecked. Nothing is written before this answers.
+   * An assignee id is a row of THIS house's roster, whatever that row's
+   * status (OPS-03; ADR 0306). Before, `assignedTo` was written as sent, so
+   * an id from another house, an id on no roster or any string landed on the
+   * card. The row's status is not read: a `trial` or `inactive` person is
+   * still on the roster (ADR 0215 item 19, "Only removal counts"), the
+   * page's roster is the team's (the founder, 2026-09-06, F4), and an
+   * assignment sends nothing and grants nothing (ADR 0191, a note, not an
+   * act). A roster that could not be read refuses the write instead of
+   * letting it through unchecked. Only the id is checked: an
+   * `assignedName` is written as sent.
    */
   private async assertAssigneeOnRoster(
     restaurantId: string,
     assignedTo: string,
   ): Promise<void> {
     const notOnTeam = new ActRefused(
-      "That person is not on this house's active team, so the entry was not assigned to them.",
+      "That person is not on this house's team, so the entry was not assigned to them.",
       false,
     );
     // `team_members.id` is a uuid: anything else is no one on the team, and
@@ -458,7 +460,7 @@ export class RecommendationActionsService {
     const { data, error } = await this.dbService
       .getClient()
       .from("team_members")
-      .select("id, status")
+      .select("id")
       .eq("restaurant_id", restaurantId)
       .eq("id", assignedTo)
       .maybeSingle();
@@ -470,8 +472,7 @@ export class RecommendationActionsService {
         "Could not read this house's team, so nobody was assigned. Try again.",
       );
     }
-    if (!data || (data as { status?: unknown }).status !== "active")
-      throw notOnTeam;
+    if (!data) throw notOnTeam;
   }
 
   async setAction(
@@ -482,8 +483,9 @@ export class RecommendationActionsService {
     createdBy?: string,
   ): Promise<RecommendationActionRow> {
     if (!ruleKey?.trim()) throw new Error("ruleKey is required");
-    // Every door that assigns comes through here, after its permission gates
-    // and before anything is written.
+    // This is the only write of `assigned_to` (the bulk route passes no
+    // `assignedTo`): its id is checked here, after the permission gates and
+    // before anything is written. An `assignedName` alone is not checked.
     if (patch.assignedTo)
       await this.assertAssigneeOnRoster(restaurantId, patch.assignedTo);
     const row: Record<string, any> = {

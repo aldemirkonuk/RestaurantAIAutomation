@@ -5,9 +5,10 @@ import {
 import { AnalyticsController } from "./analytics.controller";
 
 /**
- * OPS-03, the gateway half: an assignee is a row of THIS house's roster whose
- * status is `active`. Before, `assignedTo` was written as sent, so another
- * house's person, someone taken off the team or any string landed on a card.
+ * OPS-03, the gateway half: an assignee id is a row of THIS house's roster,
+ * whatever that row's status (ADR 0306). Before, `assignedTo` was written as
+ * sent, so another house's person, an id on no roster or any string landed on
+ * a card.
  * Every case drives the real `setActionAs` (all its gates) over a table stub,
  * and the controller test drives the real route handler over the real
  * service, so the status the page receives is the one checked.
@@ -23,9 +24,10 @@ const TRIAL = "22222222-2222-4222-8222-222222222222";
 const INACTIVE = "33333333-3333-4333-8333-333333333333";
 const ELSEWHERE = "44444444-4444-4444-8444-444444444444";
 const NOBODY = "55555555-5555-4555-8555-555555555555";
+const ODD_STATUS = "66666666-6666-4666-8666-666666666666";
 
 const NOT_ON_TEAM =
-  "That person is not on this house's active team, so the entry was not assigned to them.";
+  "That person is not on this house's team, so the entry was not assigned to them.";
 const ROSTER_UNREAD =
   "Could not read this house's team, so nobody was assigned. Try again.";
 
@@ -41,6 +43,8 @@ function tables(opts: { rosterFails?: boolean } = {}) {
       { id: ON_TEAM, restaurant_id: RID, status: "active" },
       { id: TRIAL, restaurant_id: RID, status: "trial" },
       { id: INACTIVE, restaurant_id: RID, status: "inactive" },
+      // A status no writer in the code sets today: still a roster row.
+      { id: ODD_STATUS, restaurant_id: RID, status: "on_leave" },
       { id: ELSEWHERE, restaurant_id: OTHER_HOUSE, status: "active" },
     ],
   };
@@ -138,29 +142,33 @@ function assign(t: ReturnType<typeof tables>, assignedTo: string | null) {
   );
 }
 
-describe("an assignee must be on this house's active team (OPS-03)", () => {
-  it("an active member of this house is assigned, after a read scoped to this house and that id", async () => {
-    const t = tables();
-    await assign(t, ON_TEAM);
-    expect(houseWrites(t.writes)).toHaveLength(1);
-    expect(houseWrites(t.writes)[0].payload).toMatchObject({
-      assigned_to: ON_TEAM,
-      restaurant_id: RID,
-    });
-    const roster = t.reads.filter((r) => r.table === "team_members");
-    expect(roster).toHaveLength(1);
-    expect(roster[0].filters).toEqual(
-      expect.arrayContaining([
+describe("an assignee must be on this house's roster, whatever its status (OPS-03, ADR 0306)", () => {
+  it.each([
+    ["an active row", ON_TEAM],
+    ["a trial row", TRIAL],
+    ["an inactive row", INACTIVE],
+    ["a row with a status no writer sets today", ODD_STATUS],
+  ])(
+    "%s of this house is assigned, after a read scoped to this house and that id",
+    async (_, id) => {
+      const t = tables();
+      await assign(t, id);
+      expect(houseWrites(t.writes)).toHaveLength(1);
+      expect(houseWrites(t.writes)[0].payload).toMatchObject({
+        assigned_to: id,
+        restaurant_id: RID,
+      });
+      const roster = t.reads.filter((r) => r.table === "team_members");
+      expect(roster).toHaveLength(1);
+      expect(roster[0].filters).toEqual([
         ["restaurant_id", RID],
-        ["id", ON_TEAM],
-      ]),
-    );
-  });
+        ["id", id],
+      ]);
+    },
+  );
 
   it.each([
     ["another house's member", ELSEWHERE],
-    ["a trial row", TRIAL],
-    ["an inactive row", INACTIVE],
     ["an id on no roster", NOBODY],
     ["a string that is not a roster id", "u-x"],
   ])("%s is refused as a 400, in words, with nothing written", async (_, id) => {

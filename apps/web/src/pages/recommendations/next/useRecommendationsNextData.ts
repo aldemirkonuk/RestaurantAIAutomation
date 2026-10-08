@@ -797,9 +797,9 @@ export function useRecommendationsNextData(): RecommendationsData {
   // house on screen. While it is read it stays `undefined` ("Reading the
   // roster…"), never `null`, which says the read failed. A failed read is
   // read again the next time the menu is opened; a read already answered
-  // for this house, or still being read, is not repeated. Only `active`
-  // roster rows are offered: the gateway refuses any other assignee
-  // (`recommendation-actions.service.ts`, `assertAssigneeOnRoster`).
+  // for this house, or still being read, is not repeated. Every row of the
+  // roster is offered, whatever its status, as /team lists it; the gateway
+  // accepts the same rows (`assertAssigneeOnRoster`, ADR 0306).
   const loadTeam = useCallback(() => {
     if (!rid) return;
     if (teamReading.current === rid) return;
@@ -814,15 +814,10 @@ export function useRecommendationsNextData(): RecommendationsData {
           rid,
           // A body that is not a list is a failed read, not an empty team.
           rows: Array.isArray(rows)
-            ? rows
-                .filter((m) => {
-                  const status = (m as { status?: unknown }).status;
-                  return status === undefined || status === 'active';
-                })
-                .map((m) => ({
-                  id: String((m as { id?: unknown }).id ?? ''),
-                  name: String((m as { display_name?: unknown }).display_name ?? 'Unnamed'),
-                }))
+            ? rows.map((m) => ({
+                id: String((m as { id?: unknown }).id ?? ''),
+                name: String((m as { display_name?: unknown }).display_name ?? 'Unnamed'),
+              }))
             : null,
         });
       })

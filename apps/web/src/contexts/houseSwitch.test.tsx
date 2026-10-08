@@ -304,8 +304,12 @@ describe("a house switch forgets the last house's reads", () => {
     clear.mockRestore();
   });
 
-  it("a refused switch forgets nothing", async () => {
+  // Only a switch the server refuses is claimed here: its POST fails before
+  // the device read cache is emptied. A switch overtaken by a later one after
+  // its POST answered has already emptied that cache before it returns false.
+  it("a switch the server refuses forgets nothing", async () => {
     const { qc, frames, auth } = await mountInA();
+    const clear = vi.spyOn(offlineStorage, "clearEntityCache");
     h.instance.post.mockRejectedValue({ response: { status: 403 } });
     await act(async () => {
       await auth().setActiveRestaurantId(B);
@@ -313,6 +317,9 @@ describe("a house switch forgets the last house's reads", () => {
     expect(auth().activeRestaurantId).toBe(A);
     expect(qc.getQueryData(["house-read"])).toBe(`${A}-data`);
     expect(frames.at(-1)).toEqual({ house: A, shown: `${A}-data` });
+    // The device read cache is left as it was too.
+    expect(clear).not.toHaveBeenCalled();
+    clear.mockRestore();
   });
 
   it("sign-out forgets every read and every change of the session", async () => {

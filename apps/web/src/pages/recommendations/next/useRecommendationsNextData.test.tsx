@@ -914,7 +914,7 @@ describe('a house switch, the figures and the roster (OPS-03)', () => {
     expect(team).toHaveBeenCalledTimes(2);
   });
 
-  it('a body that is not a list is a failed read, and only active rows are offered', async () => {
+  it('a body that is not a list is a failed read, and every roster row is offered whatever its status (ADR 0306)', async () => {
     team.mockImplementationOnce(async () => ({}) as unknown as Member[]);
     const { result } = renderHook(() => useRecommendationsNextData());
     await waitFor(() => expect(result.current.phase).toBe('ready'));
@@ -927,12 +927,16 @@ describe('a house switch, the figures and the roster (OPS-03)', () => {
       member('m2', 'Deniz', 'trial'),
       member('m3', 'Ece', 'inactive'),
       member('m4', 'Fatma'),
+      member('m5', 'Gül', 'on_leave'),
     ]);
     act(() => result.current.loadTeam());
     await waitFor(() =>
       expect(result.current.team).toEqual([
         { id: 'm1', name: 'Ayşe' },
+        { id: 'm2', name: 'Deniz' },
+        { id: 'm3', name: 'Ece' },
         { id: 'm4', name: 'Fatma' },
+        { id: 'm5', name: 'Gül' },
       ]),
     );
   });
