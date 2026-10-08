@@ -178,7 +178,7 @@ export function UsualCurrencyCoveragePanel({
                   key={v.id}
                   style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}
                 >
-                  {label} (not in the list below)
+                  {label} — not among the vendors shown here, so it cannot be opened from this note
                 </li>
               );
             return (

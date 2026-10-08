@@ -232,7 +232,7 @@ describe("usualCurrencyCoverage — VEN-W13, codes written from invoices", () =>
     expect(
       usualCurrencyCoverageSentence({ stated: 2, total: 3, fromInvoices: 1 }),
     ).toBe(
-      "2 of your 3 vendors have a usual currency on file. Orders to the other 1 start with no currency until you add one. 1 of them was filled in from their invoices.",
+      "2 of your 3 vendors have a usual currency on file. Orders to the other 1 start with no currency until one is noted. 1 of them was filled in from their invoices.",
     );
   });
 

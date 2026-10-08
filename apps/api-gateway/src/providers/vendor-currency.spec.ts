@@ -101,7 +101,7 @@ describe("vendorCurrencySentence — the profile says what it is FOR", () => {
     // VEN-W23: the day in words; no zone given, so it is read in UTC and says so.
     expect(s).toContain("on Sep 6, 2026 (UTC)");
     // THE LOAD-BEARING CLAUSE.
-    expect(s).toContain("NEVER FILES AN INVOICE");
+    expect(s).toContain("It never sets an invoice's currency");
   });
 });
 
@@ -319,7 +319,7 @@ describe("ProvidersController — the vendor's usual currency", () => {
     });
     const res = await controller.getUsualCurrency("p1", user);
     expect(res.code).toBe("TRY");
-    expect(res.sentence).toContain("NEVER FILES AN INVOICE");
+    expect(res.sentence).toContain("It never sets an invoice's currency");
   });
 
   it("the GET reads 'stated on' in the house's zone and hands the zone to the sheet (VEN-W23)", async () => {

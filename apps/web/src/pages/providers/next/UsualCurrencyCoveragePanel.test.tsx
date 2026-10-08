@@ -153,7 +153,7 @@ describe('the usual-currency coverage panel', () => {
       },
     });
     renderIt(['b']);
-    expect(await screen.findByText(/Retired Imports \(not in the list below\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Retired Imports — not among the vendors shown here, so it cannot be opened from this note/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Retired Imports/ })).not.toBeInTheDocument();
   });
 

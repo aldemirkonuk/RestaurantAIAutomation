@@ -50,7 +50,7 @@ const STATED = {
   setByName: 'Aslı',
   houseZone: 'Europe/Istanbul',
   sentence:
-    'Bir Dagitim usually invoices in TRY. Stated by Aslı on Sep 6, 2026. This is offered as the starting currency when an order is placed with them, and it can be changed there. IT NEVER FILES AN INVOICE: an invoice takes the currency printed on it, then the currency of the order it is matched to.',
+    'Bir Dagitim usually invoices in TRY. Stated by Aslı on Sep 6, 2026. This is offered as the starting currency when an order is placed with them, and it can be changed there. It never sets an invoice\'s currency: an invoice takes the currency printed on it, then the currency of the order it is matched to.',
 };
 
 const UNSTATED = {
@@ -133,7 +133,7 @@ describe('UsualCurrencySection', () => {
     );
     expect(screen.getByText(/stated by Aslı on Sep 6, 2026/)).toBeInTheDocument();
     // The load-bearing clause, rendered verbatim rather than paraphrased.
-    expect(screen.getByText(/NEVER FILES AN INVOICE/)).toBeInTheDocument();
+    expect(screen.getByText(/It never sets an invoice's currency/)).toBeInTheDocument();
   });
 
   // VEN-W23 (founder, 2026-10-01): 9:20 pm on Oct 1 in Chicago is 02:20 UTC on

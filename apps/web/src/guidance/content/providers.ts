@@ -3,7 +3,7 @@ import type { TourDefinition } from '../tours/registry'
 export const providersTip = {
   pageId: 'providers' as const,
   title: 'Vendors',
-  body: 'Search, filter, and open vendor cards — or add a new supplier to unlock ordering.',
+  body: 'Search your vendors and open one for its terms, contacts and orders.',
 }
 
 export const providersTour: TourDefinition = {

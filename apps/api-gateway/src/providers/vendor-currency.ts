@@ -164,7 +164,7 @@ export function vendorCurrencySentence(args: {
   return (
     `${who} usually invoices in ${code}.${attribution} This is offered as the ` +
     `starting currency when an order is placed with them, and it can be changed ` +
-    `there. IT NEVER FILES AN INVOICE: an invoice takes the currency printed on ` +
+    `there. It never sets an invoice's currency: an invoice takes the currency printed on ` +
     `it, then the currency of the order it is matched to.`
   );
 }
@@ -309,24 +309,24 @@ function coverageBase(args: { stated: number; total: number }): string {
   // heading on it: a reader cannot tell it from a panel that failed to load.
   if (total === 0)
     return (
-      "No vendors yet. When you add one, you can note the currency they invoice in."
+      "No vendors yet. Once one is in the book, the currency they invoice in can be noted on it."
     );
   if (total === 1)
     return stated === 1
-      ? "Your one vendor has a usual currency on file. Orders to them start in it, and you can change it on the order."
-      : "Your one vendor has no usual currency on file. Add one and orders to them start in it; until then an order starts with no currency.";
+      ? "Your one vendor has a usual currency on file. Orders to them start in it, and it can be changed on the order."
+      : "Your one vendor has no usual currency on file. Once one is noted, orders to them start in it; until then an order starts with no currency.";
   if (stated === 0)
     return (
       `None of your ${total} ${vendors} has a usual currency on file. ` +
-      `Add one and orders to that vendor start in it; until then an order starts with no currency.`
+      `Once one is noted, orders to that vendor start in it; until then an order starts with no currency.`
     );
   if (stated === total)
     return (
       `All ${total} of your ${vendors} ${total === 1 ? "has" : "have"} a usual currency on file. ` +
-      `Orders to them start in it, and you can change it on the order.`
+      `Orders to them start in it, and it can be changed on the order.`
     );
   return (
     `${stated} of your ${total} ${vendors} ${stated === 1 ? "has" : "have"} a usual currency on file. ` +
-    `Orders to the other ${total - stated} start with no currency until you add one.`
+    `Orders to the other ${total - stated} start with no currency until one is noted.`
   );
 }
