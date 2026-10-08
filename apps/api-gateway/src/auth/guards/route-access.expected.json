@@ -21,8 +21,14 @@
     "owner",
     "manager"
   ],
-  "GET /analytics/table-performance/:restaurantId (AnalyticsController.getTablePerformance)": "open",
-  "GET /analytics/waiters/:restaurantId (AnalyticsController.getWaiters)": "open",
+  "GET /analytics/table-performance/:restaurantId (AnalyticsController.getTablePerformance)": [
+    "owner",
+    "manager"
+  ],
+  "GET /analytics/waiters/:restaurantId (AnalyticsController.getWaiters)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/basket/:restaurantId (AnalyticsController.getBasket)": "open",
   "GET /analytics/hot-tables/:restaurantId (AnalyticsController.getHotTables)": "open",
   "GET /analytics/goal-scenarios (AnalyticsController.getGoalScenarios)": "open",

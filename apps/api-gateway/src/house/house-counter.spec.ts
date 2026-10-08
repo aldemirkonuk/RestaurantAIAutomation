@@ -299,7 +299,9 @@ describe("the counter answers per register (answered)", () => {
   it("publishes no total across registers", async () => {
     const { svc } = build();
     const res = (await svc.read(HOUSE, USER, "owner")) as any;
+    // `amounts` says whether order totals travel to this role; it is not a sum.
     expect(Object.keys(res).sort()).toEqual([
+      "amounts",
       "house",
       "readAt",
       "registers",
@@ -376,15 +378,44 @@ describe("the counter refuses by role, in words, per register (refused)", () => 
       state: "answered",
       act: "not_yours",
     });
-    // Identity links are staff's to decide; door counts are theirs to do.
-    expect(reg(res, "identities")).toMatchObject({
-      state: "answered",
-      act: "yours",
-    });
+    // Door counts are staff's to do.
     expect(reg(res, "deliveries")).toMatchObject({
       state: "answered",
       act: "yours",
     });
+  });
+
+  it("staff read every order's count but none of its money (DASH-W22, F-202)", async () => {
+    const { svc } = build();
+    const res = await svc.read(HOUSE, USER, "staff");
+    expect(res.amounts).toBe("withheld");
+    const orders = reg(res, "orders");
+    if (orders.state !== "answered") throw new Error("not answered");
+    expect(orders.count).toBe(7);
+    expect(orders.rows).toHaveLength(5);
+    for (const row of orders.rows) expect((row as any).total).toBeNull();
+  });
+
+  it("owners and managers read the order totals", async () => {
+    const { svc } = build();
+    for (const role of ["owner", "manager"]) {
+      const res = await svc.read(HOUSE, USER, role);
+      expect(res.amounts).toBe("shown");
+      const orders = reg(res, "orders");
+      if (orders.state !== "answered") throw new Error("not answered");
+      expect((orders.rows[0] as any).total).toBe(100);
+    }
+  });
+
+  it("identities never light 'acts wait on you' while no page can decide one (F-204)", async () => {
+    const { svc } = build();
+    for (const role of ["owner", "manager", "staff"]) {
+      const res = await svc.read(HOUSE, USER, role);
+      expect(reg(res, "identities")).toMatchObject({
+        state: "answered",
+        act: "not_yours",
+      });
+    }
   });
 
   it("a null role (a house with no row for this person) never opens a manager's register", async () => {

@@ -633,7 +633,12 @@ export class AnalyticsController {
     return this.tableAnalytics.renameOrHideTable(restaurantId, tableId, body);
   }
 
+  // Revenue and tip % per table are the house's money: owner or manager
+  // only. Staff see counts, never amounts (DASH-W22, ADR 0145); a 403 shows
+  // on /reports as "Your role cannot read the table register".
   @Get("table-performance/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Per-table metrics + geometry correlations + learned driver weights",
@@ -651,7 +656,12 @@ export class AnalyticsController {
     );
   }
 
+  // Each server's sales and tip % are the house's money, and staff reading
+  // one another's is what the founder ruled out (ADR 0145; DASH-G6: a
+  // waiter's OWN figures come later, never the house's). Owner or manager.
   @Get("waiters/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Waiter performance — raw and table-adjusted",
     description:
