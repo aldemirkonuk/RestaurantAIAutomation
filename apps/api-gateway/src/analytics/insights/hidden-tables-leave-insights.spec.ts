@@ -3,6 +3,7 @@ import {
   multipleRegression,
   regressionSignificance,
 } from "../engine";
+import { Logger } from "@nestjs/common";
 import { stateBookFrom } from "./item-state";
 import {
   DRIVER_AVERAGES_REL_TOL,
@@ -36,8 +37,12 @@ const KEYS = [TABLE_RANK, CORRELATION, DRIVERS, HOT, WAITER];
 
 type Rows = Record<string, any[]>;
 
-/** The thenable PostgREST stand-in insight-rankings-significance.spec.ts uses. */
-function makeClient(rowsByTable: Rows) {
+/**
+ * The thenable PostgREST stand-in insight-rankings-significance.spec.ts uses.
+ * A table named in `failing` answers with a Supabase error, as a statement
+ * timeout gives (ADR 0292).
+ */
+function makeClient(rowsByTable: Rows, failing: string[] = []) {
   const passthrough = [
     "select",
     "eq",
@@ -69,7 +74,14 @@ function makeClient(rowsByTable: Rows) {
       builder.single = () =>
         Promise.resolve({ data: rows[0] ?? null, error: null });
       builder.then = (resolve: any, reject: any) =>
-        Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+        Promise.resolve(
+          failing.includes(table)
+            ? {
+                data: null,
+                error: { code: "57014", message: "statement timeout" },
+              }
+            : { data: rows, error: null },
+        ).then(resolve, reject);
       return builder;
     },
   };
@@ -77,16 +89,23 @@ function makeClient(rowsByTable: Rows) {
 }
 
 async function fire(rows: Rows): Promise<InsightRecord[]> {
-  const client = makeClient({
-    pos_checks: [],
-    wine_consumption_log: [],
-    procurement_orders: [],
-    restaurant_inventory: [],
-    restaurant_tables: [],
-    restaurant_venue_profiles: [],
-    analytics_goals: [],
-    ...rows,
-  });
+  return (await generateOver(rows)).insights;
+}
+
+async function generateOver(rows: Rows, failing: string[] = []) {
+  const client = makeClient(
+    {
+      pos_checks: [],
+      wine_consumption_log: [],
+      procurement_orders: [],
+      restaurant_inventory: [],
+      restaurant_tables: [],
+      restaurant_venue_profiles: [],
+      analytics_goals: [],
+      ...rows,
+    },
+    failing,
+  );
   const generator = new InsightGeneratorService(
     { getClient: () => client, supabase: client } as any,
     {
@@ -101,8 +120,7 @@ async function fire(rows: Rows): Promise<InsightRecord[]> {
     } as any,
   );
   // Narrowed to the table and waiter types: uncapped, never persisted.
-  const out = await generator.generate("r1", { candidateKeys: KEYS });
-  return out.insights;
+  return generator.generate("r1", { candidateKeys: KEYS });
 }
 
 const of = (xs: InsightRecord[], key: string) =>
@@ -747,8 +765,95 @@ describe("The F upper tail the driver test reads (engine)", () => {
   });
 });
 
+/**
+ * Merge of be9a16ccf (#652, ADR 0292 fork 3 follow-on) into this branch,
+ * 2026-10-08. Every table insight here takes a table's label, its hidden
+ * flag or its attributes from the table list, a read besides the checks the
+ * family is built on, so #652's rule holds for all of them: when that read
+ * could not be made, none fires and the read is named. The server's #1 reads
+ * only a check's own `table_id`, so it still fires. Each insight is first
+ * shown firing with the list read, so its absence is not a fixture that
+ * never fires.
+ */
+describe("A table list that could not be read leaves every table insight silent (ADR 0292, ADR 0303)", () => {
+  // Five shown tables with a kitchen distance, average check rising $100 a
+  // table with it, so table 5 is well ahead; a sixth table, hidden, ahead of
+  // them all; Ana
+  // $100 a check above Ben at every table; and an open check at table 5 far
+  // past its pace.
+  const rows = () => {
+    const hand = [5, 10, 15, 20, 25].map((d, i) =>
+      table(`h${i}`, String(i + 1), {
+        seats: 4,
+        is_outdoor: false,
+        distance_to_kitchen_m: d,
+      }),
+    );
+    const at = (id: string, mean: number) =>
+      around(id, mean, 40, (j) => (j % 2 ? "Ben" : "Ana")).map((c) => ({
+        ...c,
+        total: c.total + (c.server_name === "Ana" ? 50 : -50),
+      }));
+    return {
+      restaurant_tables: [
+        ...hand,
+        table("tp", "Patio", { hidden_at: HIDDEN_AT }),
+      ],
+      pos_checks: [
+        ...[150, 250, 350, 450, 550].flatMap((mean, i) => at(`h${i}`, mean)),
+        ...at("tp", 900),
+        open("h4", 3000, 10),
+      ],
+    };
+  };
+
+  it("with the table list read, the table insights fire, the hidden one stays out, and the server's #1 fires", async () => {
+    const out = await generateOver(rows());
+    expect(out.sourcesUnread).toEqual([]);
+    const tableKeys = new Set(
+      out.insights
+        .filter((i) => i.candidateKey.startsWith("table."))
+        .map((i) => i.candidateKey),
+    );
+    expect(tableKeys).toEqual(new Set([TABLE_RANK, CORRELATION, DRIVERS, HOT]));
+    expect(of(out.insights, TABLE_RANK).map((i) => i.sentence)).toEqual([
+      expect.stringMatching(/^Table 5 ranks #1 of 5 by average check/),
+    ]);
+    expect(of(out.insights, HOT).map((i) => i.evidence.entity)).toEqual([
+      "Table 5",
+    ]);
+    expect(out.insights.filter((i) => /Patio/.test(i.sentence))).toEqual([]);
+    expect(of(out.insights, WAITER).map((i) => i.evidence.entity)).toEqual([
+      "Ana",
+    ]);
+  });
+
+  it("with the table list failing, no table insight fires, the list is named, and the server's #1 still fires", async () => {
+    const quiet = jest
+      .spyOn(Logger.prototype, "error")
+      .mockImplementation(() => undefined);
+    try {
+      const out = await generateOver(rows(), ["restaurant_tables"]);
+      expect(out.sourcesUnread).toEqual(["table list"]);
+      expect(
+        out.insights.filter((i) => i.candidateKey.startsWith("table.")),
+      ).toEqual([]);
+      expect(
+        out.insights.filter((i) => /Top table|A table/.test(i.sentence)),
+      ).toEqual([]);
+      expect(of(out.insights, WAITER).map((i) => i.evidence.entity)).toEqual([
+        "Ana",
+      ]);
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+});
+
 describe("The stored insight cache", () => {
-  it("is at version 8 or later, so a row that ranked a hidden table is recomputed", () => {
-    expect(INSIGHT_GENERATOR_VERSION).toBeGreaterThanOrEqual(8);
+  // [2026-10-08, merge of be9a16ccf (#652): was "version 8 or later"; #652
+  // landed 10 on main first, so this change is 11.]
+  it("is at version 11 or later, so a row that ranked a hidden table is recomputed", () => {
+    expect(INSIGHT_GENERATOR_VERSION).toBeGreaterThanOrEqual(11);
   });
 });
