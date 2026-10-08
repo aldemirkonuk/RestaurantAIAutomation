@@ -257,8 +257,8 @@ function finish(run: HouseRun, flight: InFlight, book: OrderBook | null, error: 
     settle((w) => batch.waiters.add(w))
     return
   }
-  // Keep the book with the larger readStartedAt: wall clock, so a backwards clock step keeps
-  // the older one. Callers get the kept book too; TanStack writes what the query returns.
+  // Keep the larger readStartedAt (wall clock; a backwards step larger than the gap between
+  // the two start stamps keeps the older book). Callers get it too: TanStack writes the return.
   let kept = book
   run.client?.setQueryData<OrderBook>(queryKeys.orders.book(run.house), (old) => {
     kept = old && old.readStartedAt > book.readStartedAt ? old : book
