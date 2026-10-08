@@ -274,6 +274,10 @@ describe("sendDraftedReply", () => {
       sealChallenges: { redeem },
       logger: { error: jest.fn() },
       draftBlanksAtSend: async () => ({ unfillable: [], fills: [] }),
+      // approveDraft reads the sender name once and checks with it directly.
+      resolveSenderName: async () => "Meyhouse",
+      resolveFirstName: () => "Hasan",
+      blanksAtSend: () => ({ unfillable: [], fills: [] }),
     };
     await expect(
       ProcurementService.prototype.approveDraft.call(

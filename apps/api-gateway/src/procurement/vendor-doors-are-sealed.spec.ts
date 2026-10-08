@@ -701,4 +701,26 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     expect(t.db.tables.procurement_conversations.find((r) => r.id === "auto-2")?.status).toBe("PENDING_APPROVAL");
     expect(t.gmail.sendEmail.calls).toHaveLength(0);
   });
+
+  it("a scheduled auto-send signed '[your name]' is held when the house has no sender name — never sent unsigned", async () => {
+    // This harness holds no template, branding or restaurant name, so the
+    // sender name resolves to "". The detector's pattern does not see a
+    // lower-case blank; the signature pattern would erase it to nothing.
+    const t = build();
+    t.db.tables.procurement_conversations.push({
+      id: "auto-3",
+      order_id: ORDER,
+      restaurant_id: HOUSE,
+      provider_id: "prov-1",
+      direction: "outbound",
+      status: "AUTO_SEND_SCHEDULED",
+      scheduled_send_at: "2026-09-20T09:00:00Z",
+      content: "Dear Hasan,\n\nSix cases, please.\n\n[your name]",
+      email_headers: { subject: "Re: Yakut" },
+      created_at: "2026-09-20T08:00:00Z",
+    });
+    await t.service.processScheduledAutoSends();
+    expect(t.db.tables.procurement_conversations.find((r) => r.id === "auto-3")?.status).toBe("PENDING_APPROVAL");
+    expect(t.gmail.sendEmail.calls).toHaveLength(0);
+  });
 });
