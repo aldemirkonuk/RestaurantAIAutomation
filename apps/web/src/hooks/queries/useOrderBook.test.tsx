@@ -924,6 +924,28 @@ describe('useApproveOrder holds the book until the approve settles (P1-P6, H5, H
     expect(statusOf(client, X)).toBe('APPROVED')
   })
 
+  it('H7: an approve that fails after a house switch reverts the house it was made in', async () => {
+    const { client, hook } = mountApprove(HOUSE_A)
+    await advance(500)
+    client.setQueryData(queryKeys.orders.list(HOUSE_A), [gw.rows.find((r) => r.id === X)])
+    const answer = deferred<Order>()
+    approveSpy.mockReturnValue(answer.promise)
+    await act(async () => {
+      hook.result.current.approve.mutate(X)
+    })
+    await advance(10)
+    expect(statusOf(client, X)).toBe('approved')
+
+    signInAs(HOUSE_B)
+    authAs(HOUSE_B)
+    hook.rerender()
+    await advance(10)
+    await act(async () => answer.reject(new Error('refused')))
+    await advance(10)
+    expect(statusOf(client, X)).toBe('PENDING')
+    expect(client.getQueryData<Order[]>(queryKeys.orders.list(HOUSE_A))![0].status).not.toBe('approved')
+  })
+
   it('H6: an approve answered after the hold: the release fences the read that started before it', async () => {
     const { client, hook } = mountApprove(HOUSE_A)
     await advance(500)

@@ -231,6 +231,8 @@ export interface OrdersNextData {
   rows: OrderRowVM[];
   /** Station counts. Null while unknown (loading with no cache, or errored). */
   counts: Record<Stage, number | null>;
+  /** True when `counts` are floors, the orders read in a capped or partial read (shown "N+"). */
+  countsAreFloors?: boolean;
   recurringCount: number | null;
   /**
    * How many rows CARRIED a recurrence reading, out of `rows.length`. Null
@@ -507,6 +509,8 @@ export function stationView(
 export interface BookFigures {
   /** Station counts. Null while unknown, or when the read cannot back them. */
   counts: Record<Stage, number | null>;
+  /** Capped or partial read: Pending, Approved and Ordered are floors, the orders read. */
+  countsAreFloors: boolean;
   recurringCount: number | null;
   cancelledCount: number | null;
   month: MonthFigure;
@@ -518,6 +522,7 @@ export interface BookFigures {
 
 const UNKNOWN_FIGURES: BookFigures = {
   counts: { pending: null, approved: null, ordered: null, delivered: null },
+  countsAreFloors: false,
   recurringCount: null,
   cancelledCount: null,
   month: { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 },
@@ -561,20 +566,21 @@ export function figuresFor(book: OrderBook, rows: OrderRowVM[], now: Date): Book
     month.thisMonth = sumKnown(thisRows);
     month.lastMonth = sumKnown(lastRows);
     month.unpricedThisMonth = thisRows.filter((r) => r.total === null).length;
-    return { counts, recurringCount, cancelledCount, month, deliveredAtLeast: null, recurringAtLeast: null };
+    return { counts, countsAreFloors: false, recurringCount, cancelledCount, month, deliveredAtLeast: null, recurringAtLeast: null };
   }
 
-  // Capped or partial: the cancelled count is the gateway's per-status count,
-  // and an open station is exact only when every open order was read.
+  // Capped or partial: the cancelled count is the gateway's per-status count.
+  // Pending, Approved and Ordered are floors, the orders read, whatever
+  // `openComplete` says: it is not proof (ADR 0269 rule (d)).
   const t = book.statusTotals;
   const parts = t ? [t.CANCELLED, t.REJECTED, t.FAILED] : [];
   const cancelledCount =
     parts.length === 3 && parts.every((n) => Number.isInteger(n))
       ? parts.reduce<number>((sum, n) => sum + (n as number), 0)
       : null;
-  const open = (s: Stage) => (book.openComplete ? seen(s) : null);
   return {
-    counts: { pending: open('pending'), approved: open('approved'), ordered: open('ordered'), delivered: null },
+    counts: { pending: seen('pending'), approved: seen('approved'), ordered: seen('ordered'), delivered: null },
+    countsAreFloors: true,
     recurringCount: null,
     cancelledCount,
     month: { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 },
@@ -827,6 +833,7 @@ export function useOrdersNextData(targetOrderId: string | null = null): OrdersNe
       approvalPolicyNote: gate?.readable ? gate.policyNote : null,
       rows,
       counts: figures.counts,
+      countsAreFloors: figures.countsAreFloors,
       recurringCount: figures.recurringCount,
       recurrenceReadCount,
       cancelledCount: figures.cancelledCount,

@@ -18,6 +18,8 @@ export type SpineStation = Stage | 'recurring';
 
 export interface StageSpineProps {
   counts: Record<Stage, number | null>;
+  /** Capped or partial read: the stage counts are floors, the orders read, shown "N+". */
+  countsAreFloors?: boolean;
   recurringCount: number | null;
   active: SpineStation | null;
   onSelect: (station: SpineStation | null) => void;
@@ -25,7 +27,7 @@ export interface StageSpineProps {
 
 const STATIONS: SpineStation[] = [...STAGES, 'recurring'];
 
-export function StageSpine({ counts, recurringCount, active, onSelect }: StageSpineProps) {
+export function StageSpine({ counts, countsAreFloors = false, recurringCount, active, onSelect }: StageSpineProps) {
   return (
     <div
       role="tablist"
@@ -63,6 +65,11 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
           >
             <Tally
               value={value}
+              format={
+                countsAreFloors && station !== 'recurring'
+                  ? (n) => `${Math.round(n)}+`
+                  : undefined
+              }
               style={{
                 display: 'block',
                 fontFamily: MONO,

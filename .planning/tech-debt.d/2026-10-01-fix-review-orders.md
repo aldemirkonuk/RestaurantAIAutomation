@@ -1,4 +1,4 @@
-## The orders list reads at most 50 orders — ~~OPEN~~ CLOSED by `fix/orders-wire-order-book-f140` (ADR 0269, after #598) — 2026-10-01
+## The orders list reads at most 50 orders — OPEN — 2026-10-01
 
 Filed from fix/review-orders (/orders walk-through, ADR 0255).
 
@@ -10,8 +10,6 @@ Filed from fix/review-orders (/orders walk-through, ADR 0255).
 **Today.** Production holds 3 orders across all 8 houses (measured on the walk-through). Nothing is wrong yet.
 
 **Fix.** Either paginate the ledger and read the counts and month figure from a server-side aggregate, or, as a first step, have the page say "the newest 50" whenever it receives exactly 50.
-
-[2026-10-03, `fix/orders-wire-order-book-f140` (ADR 0269): /orders now reads every order of the house, 100 a request, through `useOrderBook`. In a whole read the station counts, the month figure, last month and the recurring station cover every order. Past 3,000 orders, or when the orders kept changing during the read, every open order is listed whenever the read could sweep them all, and otherwise the page says some may be missing; older finished orders come in under Show older; Delivered, Recurring and the month figures show — with a sentence, never a short number (ADR 0269 fork 9). A house past 3,000 orders waits more than a minute for its first list (ADR 0269 handovers, PR-C). A deep link outside the read asks for that order on its own before saying it could not be read. The "3 orders" above was 2026-10-01; the sim has since put about 525 in Tuzlu (`p4-scratch/sim-ledger.md:182`, F-140, live 2026-10-02; not re-measured). /calendar and /vendors still read the newest 50 through `useOrders`; ADR 0269's handovers name them. Until ADR 0269 fork 6 is answered, an order change pushed only through `RealtimeContext` (another device, a local `dispatchOrderUpdate`) reaches /orders at the 60 s interval, not at once (ADR 0269, PR-B).]
 
 ## The blank check sees one shape of blank — OPEN — 2026-10-01
 

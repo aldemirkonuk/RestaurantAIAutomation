@@ -202,6 +202,7 @@ describe('figuresFor', () => {
     expect(f.month).toEqual({ thisMonth: want.thisMonth, lastMonth: want.lastMonth, unpricedThisMonth: want.unpriced });
     expect(f.deliveredAtLeast).toBeNull();
     expect(f.recurringAtLeast).toBeNull();
+    expect(f.countsAreFloors).toBe(false);
   });
 
   function degraded(mode: 'capped' | 'partial', openComplete: boolean, totals: OrderBook['statusTotals']) {
@@ -217,9 +218,10 @@ describe('figuresFor', () => {
     return figuresFor(b, rowsOf(orders), new Date(2026, 8, 20));
   }
 
-  it('A2: capped, every open order read: open stations exact, the rest a floor, cancelled from the counts', () => {
+  it('A2: capped with openComplete true: open stations are floors (rule (d)), the rest a floor, cancelled from the counts', () => {
     const f = degraded('capped', true, { CANCELLED: 7, REJECTED: 2, FAILED: 1, PENDING: 4 });
     expect(f.counts).toEqual({ pending: 4, approved: 3, ordered: 2, delivered: null });
+    expect(f.countsAreFloors).toBe(true);
     expect(f.recurringCount).toBeNull();
     expect(f.month).toEqual({ thisMonth: null, lastMonth: null, unpricedThisMonth: 0 });
     expect(f.cancelledCount).toBe(10);
@@ -227,9 +229,10 @@ describe('figuresFor', () => {
     expect(f.recurringAtLeast).toBe(2);
   });
 
-  it('A3: partial, not every open order read: no station count at all', () => {
+  it('A3: partial with openComplete false: open stations are floors still, never dashes (rule (d))', () => {
     const f = degraded('partial', false, { CANCELLED: 7, REJECTED: 2, FAILED: 1 });
-    expect(f.counts).toEqual({ pending: null, approved: null, ordered: null, delivered: null });
+    expect(f.counts).toEqual({ pending: 4, approved: 3, ordered: 2, delivered: null });
+    expect(f.countsAreFloors).toBe(true);
     expect(f.cancelledCount).toBe(10);
   });
 
@@ -364,6 +367,10 @@ describe('stationView', () => {
       const v = stationView(rows, station, 5, null, false);
       expect(ids([...v.open, ...v.finished])).not.toContain('r-pr');
     }
+    // Delivered's count is one-time orders only: the recurring arrival it lists is not in it.
+    const f = figuresFor(book({ rows: [], total: rows.length }), rows, new Date(2026, 8, 20));
+    expect(f.counts.delivered).toBe(5);
+    expect(f.recurringCount).toBe(2);
   });
 });
 
@@ -493,6 +500,7 @@ describe('useOrdersNextData on the order book', () => {
     let data = hook.result.current;
     expect(data.book.mode).toBe('capped');
     expect(data.counts.pending).toBe(20);
+    expect(data.countsAreFloors).toBe(true);
     expect(data.counts.delivered).toBeNull();
     expect(data.recurringCount).toBeNull();
     expect(data.month.thisMonth).toBeNull();

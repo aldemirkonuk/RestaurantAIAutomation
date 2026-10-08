@@ -14,6 +14,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const state = vi.hoisted(() => ({ current: null as unknown }));
+const auth = vi.hoisted(() => ({ house: 'rest-A' }));
 
 vi.mock('./useOrdersNextData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./useOrdersNextData')>();
@@ -42,8 +43,8 @@ vi.mock('@/lib/mudavym/motion', async (importOriginal) => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    activeRestaurantId: 'rest-A',
-    user: { userId: 'u1', restaurantId: 'rest-A', role: 'owner' },
+    activeRestaurantId: auth.house,
+    user: { userId: 'u1', restaurantId: auth.house, role: 'owner' },
   }),
 }));
 
@@ -207,6 +208,7 @@ const tab = (name: RegExp) => screen.getByRole('tab', { name });
 
 beforeEach(() => {
   state.current = null;
+  auth.house = 'rest-A';
 });
 
 afterEach(() => {
@@ -389,7 +391,7 @@ describe('a read that did not cover every order', () => {
       'The open orders read are listed. One that changed while the orders were read may still be missing.',
     );
     expect(notice).toHaveTextContent(
-      'Delivered, Recurring and the month figures show — because not every order was read. At least 2,980 delivered and 4 recurring orders were read.',
+      'Pending, Approved and Ordered count the orders read, so each is shown with a +. Delivered, Recurring and the month figures show — because not every order was read. At least 2,980 delivered and 4 recurring orders were read.',
     );
     expect(tab(/delivered/i)).toHaveTextContent('—');
     expect(listed()).toHaveLength(50);
@@ -416,7 +418,7 @@ describe('a read that did not cover every order', () => {
     expect(notice).toHaveTextContent('Some open orders may be missing.');
     expect(notice).toHaveTextContent('2 orders are in a state this screen cannot read.');
     expect(notice).toHaveTextContent(
-      'Every count and the month figures show — because not every order was read. At least 10 delivered and 0 recurring orders were read.',
+      'Pending, Approved and Ordered count the orders read, so each is shown with a +. Delivered, Recurring and the month figures show — because not every order was read. At least 10 delivered and 0 recurring orders were read.',
     );
   });
 
@@ -504,6 +506,50 @@ describe('a read that did not cover every order', () => {
     harness('/orders?station=recurring');
     expect(screen.getByText('None of the 3000 orders in this book repeats.')).toBeInTheDocument();
     expect(screen.queryByTestId('orders-empty-incomplete')).not.toBeInTheDocument();
+  });
+});
+
+describe('B19: rule (d), Pending, Approved and Ordered are floors in a capped or partial read', () => {
+  const stageCounts = { pending: 3, approved: 2, ordered: 1, delivered: null };
+  it('capped with openComplete true, and partial with it false: each open station shows N+', () => {
+    const books = [
+      capped({ openComplete: true }),
+      whole(10, { mode: 'partial', total: 900, openComplete: false, deliveredAtLeast: 10, recurringAtLeast: 0 }),
+    ];
+    for (const book of books) {
+      state.current = ordersData(finished(10), { book, counts: stageCounts, countsAreFloors: true });
+      const page = harness('/orders');
+      expect(tab(/pending/i)).toHaveTextContent('3+');
+      expect(tab(/approved/i)).toHaveTextContent('2+');
+      expect(tab(/ordered/i)).toHaveTextContent('1+');
+      expect(tab(/delivered/i)).toHaveTextContent('—');
+      page.unmount();
+    }
+  });
+  it('a whole read: the same counts are exact, with no +', () => {
+    state.current = ordersData(finished(10), { counts: { ...stageCounts, delivered: 10 }, countsAreFloors: false });
+    harness('/orders');
+    expect(tab(/pending/i)).toHaveTextContent('3');
+    expect(tab(/pending/i)).not.toHaveTextContent('+');
+    expect(tab(/ordered/i)).not.toHaveTextContent('+');
+  });
+});
+
+describe('B18: a house change starts Show older again', () => {
+  it('A to B to A: A opens on its newest 50 again, not on what was shown before', () => {
+    state.current = ordersData(finished(120));
+    const page = harness('/orders?station=delivered');
+    expect(listed()).toHaveLength(50);
+    fireEvent.click(showOlder()!);
+    expect(listed()).toHaveLength(100);
+
+    auth.house = 'rest-B';
+    page.again();
+    expect(listed()).toHaveLength(50);
+
+    auth.house = 'rest-A';
+    page.again();
+    expect(listed()).toHaveLength(50);
   });
 });
 

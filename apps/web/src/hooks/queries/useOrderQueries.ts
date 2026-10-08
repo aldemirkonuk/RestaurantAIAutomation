@@ -159,14 +159,18 @@ export function useApproveOrder() {
     },
     onMutate: async (input) => {
       const { orderId } = readApproveInput(input)
+      // The house the approve was made in. A pending mutation takes the next
+      // render's options (TanStack `MutationObserver.setOptions`), so onError
+      // reverts by this, not by the render-time house (ADR 0269, PR-B).
+      const house = activeRestaurantId ?? null
       // Optimistic update
       await queryClient.cancelQueries({ queryKey: queryKeys.orders.all })
       const prevOrders = queryClient.getQueryData<Order[]>(
-        queryKeys.orders.list(activeRestaurantId ?? ''),
+        queryKeys.orders.list(house ?? ''),
       )
       if (prevOrders) {
         queryClient.setQueryData(
-          queryKeys.orders.list(activeRestaurantId ?? ''),
+          queryKeys.orders.list(house ?? ''),
           prevOrders.map((o) =>
             o.id === orderId ? { ...o, status: 'approved' as OrderStatus } : o,
           ),
@@ -174,8 +178,8 @@ export function useApproveOrder() {
       }
       let prevBookStatus: OrderWireStatus | null = null
       let release: (() => void) | null = null
-      if (activeRestaurantId) {
-        const bookKey = queryKeys.orders.book(activeRestaurantId)
+      if (house) {
+        const bookKey = queryKeys.orders.book(house)
         const book = queryClient.getQueryData<OrderBook>(bookKey)
         const before = book?.rows.find((o) => o.id === orderId)?.status ?? null
         prevBookStatus = before
@@ -187,22 +191,23 @@ export function useApproveOrder() {
         })
         if (book && before !== null) queryClient.setQueryData<OrderBook>(bookKey, patch(book))
         // Last, so nothing after it can throw and lose the release (ADR 0269, PR-B).
-        release = holdLocalWrite(activeRestaurantId, before !== null ? patch : undefined)
+        release = holdLocalWrite(house, before !== null ? patch : undefined)
       }
-      return { prevOrders, prevBookStatus, release }
+      return { prevOrders, prevBookStatus, release, house }
     },
     onError: (_err, input, context) => {
       context?.release?.()
+      const house = context?.house ?? null
       if (context?.prevOrders) {
         queryClient.setQueryData(
-          queryKeys.orders.list(activeRestaurantId ?? ''),
+          queryKeys.orders.list(house ?? ''),
           context.prevOrders,
         )
       }
       const before = context?.prevBookStatus
-      if (activeRestaurantId && before) {
+      if (house && before) {
         const { orderId } = readApproveInput(input)
-        queryClient.setQueryData<OrderBook>(queryKeys.orders.book(activeRestaurantId), (book) =>
+        queryClient.setQueryData<OrderBook>(queryKeys.orders.book(house), (book) =>
           book
             ? {
                 ...book,

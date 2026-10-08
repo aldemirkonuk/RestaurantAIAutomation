@@ -100,8 +100,19 @@ export default function OrdersNext() {
   const viewKey = `${activeRestaurantId ?? ''}|${station ?? 'all'}`;
   const taps = older.key === viewKey ? older.taps : 0;
   const keepFirstFifty = firstFifty === viewKey;
-  // Bumped in selectStation, so an older read that lands after a station change counts for nothing.
+  // Bumped in selectStation and on a house change, so an older read that lands after either counts for nothing.
   const tapGen = useRef(0);
+  // A house change starts Show older again, so A to B to A opens A afresh
+  // (test B18 in OrdersNext.older.test.tsx).
+  const [olderHouse, setOlderHouse] = useState(activeRestaurantId ?? '');
+  if (olderHouse !== (activeRestaurantId ?? '')) {
+    setOlderHouse(activeRestaurantId ?? '');
+    setOlder({ key: '', taps: 0 });
+    setFirstFifty('');
+  }
+  useEffect(() => {
+    tapGen.current++;
+  }, [activeRestaurantId]);
   /**
    * The chosen station lives in the URL (ADR 0160, ORD-W5): a reload, a shared
    * link or Back returns to the same station. `replace`, so stepping through
@@ -551,10 +562,11 @@ export default function OrdersNext() {
               </p>
             )}
             <p>
-              {data.book.openComplete
-                ? 'Delivered, Recurring and the month figures show'
-                : 'Every count and the month figures show'}{' '}
-              {EM} because not every order was read. At least{' '}
+              {/* Rule (d), ADR 0269: Pending, Approved and Ordered are floors
+                  here whatever openComplete says (figuresFor). */}
+              Pending, Approved and Ordered count the orders read, so each is shown with a +.
+              Delivered, Recurring and the month figures show {EM} because not every order was
+              read. At least{' '}
               {(data.book.deliveredAtLeast ?? 0).toLocaleString('en-GB')} delivered and{' '}
               {(data.book.recurringAtLeast ?? 0).toLocaleString('en-GB')} recurring orders were
               read.
@@ -664,6 +676,7 @@ export default function OrdersNext() {
         {/* ── the five-stage spine the founder kept ────────────────────── */}
         <StageSpine
           counts={data.counts}
+          countsAreFloors={data.countsAreFloors}
           recurringCount={data.recurringCount}
           active={station}
           onSelect={selectStation}
