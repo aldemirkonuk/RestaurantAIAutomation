@@ -4,15 +4,15 @@
 - **Date:** 2026-10-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** door receipt, reservation, shadow stock, backorder, order-delivered-shadow, F-143, F-152, F-103, F-157, F-158, F-159, F-160, paper owed, price as printed, price claim, vintage, refusal reason, credit memo, settle, sim findings
-- **Links:** `p4-scratch/sim-findings-share-out-2026-10-02.md` (the coordinator's hand-out: "## R3" and "Founder answers, 2026-10-02"), [[0261-receipts-walk-through-r3-rulings]] (the walk-through these rulings follow), [[0119-an-agreed-price-states-its-unit]] (W56), [[0103-a-delivery-is-agreed-before-it-is-verified]] (W57b: a vintage change is a substitution, :113), [[0115-the-house-item-is-the-ledgers-key]] (the keg unit waits for its lock, PR #589; not decided here), [[0230-asking-a-vendor-for-a-credit-drafts-the-letter-and-sends-nothing]] (W55 amends it), `06-pages/receiving.md` P11, `tech-debt.d/2026-10-02-fix-door-releases-reservation.md`
+- **Links:** `p4-scratch/sim-findings-share-out-2026-10-02.md` (the coordinator's hand-out: "## R3" and "Founder answers, 2026-10-02"), [[0261-receipts-walk-through-r3-rulings]] (the walk-through these rulings follow), [[0119-an-agreed-price-states-its-unit]] (W56), [[0103-a-delivery-is-agreed-before-it-is-verified]] (W57b: a vintage change is a substitution, :113), [[0115-the-house-item-is-the-ledgers-key]] (the keg unit waits for its lock, PR #589; not decided here), [[0230-asking-a-vendor-for-a-credit-drafts-the-letter-and-sends-nothing]] (W55 amends it), `06-pages/receiving.md` P11, `tech-debt.d/2026-10-08-fix-door-releases-reservation.md`
 
 ## Context
 
 The owner-quarter sim of 2026-10-01 (Tuzlu Rüzgar, on mudavym.com) filed findings that the coordinator split among the walk-through sessions. R3 received F-143, F-103, F-157, F-158, F-159 and F-160, and the founder made R3 the owner of `/receiving`. The main one, F-143, is that a door receipt never lets go of the order's reservation:
 
-- The reservation is made at approval. approveOrder calls reserveOrderShadowStock (`apps/api-gateway/src/procurement/procurement.service.ts:4205` → `:4074-4119`), which adds `order.quantity` to the item's shadow stock. It passes no order id and no idempotency key, and it counts in the order's unit, so a case counts as 1.
-- Only three places ever let go of a reservation: cancelOrder (`:3736` → `:4002-4070`), markDelivered (`:5428-5437`, key `order-delivered-shadow:${orderId}`) and delivery-item-to-name (`delivery-item-to-name.ts:504-514`, same key).
-- Neither door path is among them. recordDoorReceipt (`receiving.service.ts:228`) books the counted bottles as live. DeliveryStockService.bookAtTheDoor (`canonical/delivery-stock.service.ts:179`, moves at `:501-524`) does the same.
+- The reservation is made at approval. approveOrder calls reserveOrderShadowStock (`apps/api-gateway/src/procurement/procurement.service.ts:4172` → `:4041-4088`), which adds `order.quantity` to the item's shadow stock. It passes no order id and no idempotency key, and it counts in the order's unit, so a case counts as 1.
+- Only three places ever let go of a reservation: cancelOrder (`:3843` → `:3969-4038`), markDelivered (`:5395-5404`, key `order-delivered-shadow:${orderId}`) and delivery-item-to-name (`delivery-item-to-name.ts:506-514`, same key).
+- Neither door path is among them. recordDoorReceipt (`receiving.service.ts:259`) books the counted bottles as live. DeliveryStockService.bookAtTheDoor (`canonical/delivery-stock.service.ts:179`, moves at `:512`) does the same.
 - So on-hand counts every door-received delivery twice: once as live, once as a reservation nobody lets go of.
 
 Measured read-only in production on 2026-10-02:
@@ -66,7 +66,7 @@ The other five findings came from the same sim and are recorded here so R3's sim
 
 ## Decision
 
-**A signed door receipt lets go of the share of its order's reservation that the door accepted. Whatever is short stays reserved as a backorder until the order closes (W58).** How it works (`apps/api-gateway/src/procurement/order-reservation.ts`, called from `receiving.service.ts:575-601`):
+**A signed door receipt lets go of the share of its order's reservation that the door accepted. Whatever is short stays reserved as a backorder until the order closes (W58).** How it works (`apps/api-gateway/src/procurement/order-reservation.ts`, called from `receiving.service.ts:711-735`):
 
 1. **Target.** The bottles to let go of add up across trucks: `target = min(reserved, floor(reserved × booked ÷ bottles_total))`.
    - `booked` is the live bottles booked for this order and item. It is the larger of the two booking families: the door-receipt rows and the delivery-model rows. The larger is taken, not the sum, so one delivery seen by both paths is not counted twice.
@@ -97,6 +97,7 @@ The rulings W53–W57b are decided here and built on their own branches, one PR 
 
 - On-hand stops counting door-received bottles twice from the moment this ships. Tuzlu's 1,899 already-leaked bottles stay until the dry-run repair gets the founder's yes.
 - **Narrowed in this PR, said plainly:** the delivery-model door path (`bookAtTheDoor`) does not let go yet.
+  - When a delivery already booked the order's stock, `recordDoorReceipt` books nothing but still lets go of the accepted share, counted from the delivery's live rows (`order-reservation.ts` `ordersLedger`, the larger of the two booking families). It is only `bookAtTheDoor` itself that releases nothing.
   - Doing it there before cancelOrder goes through the same helper would let go twice: once at the door with an order id, and again at cancel without one.
   - Both move to the later `procurement.service.ts` PR together.
   - Production has 3 delivery-model rows ever, so the gap is small but real.
