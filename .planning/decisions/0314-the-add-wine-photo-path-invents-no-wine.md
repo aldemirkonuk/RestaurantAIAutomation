@@ -3,7 +3,7 @@
 - **Status:** Locked 2026-10-03, by the founder. This branch had one fork: what the
   "Single Wine Label Scan" button becomes. The founder answered *"Delete it"*.
 - **Date:** 2026-10-03
-- **Number:** written as 0271 on 2026-10-03, uncommitted. Renumbered to 0314 on 2026-10-08, before its first push. 0271 is below main's newest number (0306 on 2026-10-08), so landing it would put the record out of order; no other ADR holds 0271 (only this one's own backup ref, `backup/local-2026-10-08/addwine`). `check_adr_numbers_unique.py` gave 0313 as the next free number, but an uncommitted 0313 sits in another worktree.
+- **Number:** written as 0271 on 2026-10-03, uncommitted. Renumbered to 0314 on 2026-10-08, before its first push. 0271 is below main's newest number (0306 on 2026-10-08), so landing it would put the record out of order; no other ADR holds 0271 (only this one's own backup ref, `backup/local-2026-10-08/addwine`). `check_adr_numbers_unique.py` gave 0313 as the next free number, but another lane already held 0313 (then uncommitted in its worktree; pushed since on `feat/w25-order-request-renderer`, PR #674).
 - **Decider:** Aldemir (founder)
 - **Keywords:** AddWineModal, AddWineToInventoryModal, label scan, photo, mock detection,
   Château Latour, handlePhotoWineDetected, sweetness, dry, ABV, alcohol 0, fabricated id,
