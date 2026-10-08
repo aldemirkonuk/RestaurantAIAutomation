@@ -451,6 +451,8 @@ describe('ProvidersNext', () => {
         fireEvent.click(screen.getByText('Bodega Álvaro'));
         expect(await screen.findByTestId('mail-tone-stub')).toBeInTheDocument();
         unmount();
+        // The open sheet is in the address now (VEN-W36); a fresh visit starts clean.
+        window.history.replaceState({}, '', '/vendors');
       }
       auth.role = 'staff';
       mockData.current = oneCard();
@@ -520,3 +522,28 @@ describe('a half-written vendor is held, not thrown away (VEN-W35)', () => {
   });
 });
 
+describe('the address holds what is open and what was typed (VEN-W36, ADR 0160 §6)', () => {
+  const card = () => ({
+    ...base,
+    cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+  });
+
+  it('opening a vendor writes ?vendor=, closing removes it', async () => {
+    mockData.current = card();
+    render(<ProvidersNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    await screen.findByRole('dialog');
+    expect(new URLSearchParams(window.location.search).get('vendor')).toBe('p1');
+    expect((window.history.state as { vendorAt?: string }).vendorAt).toBe('sheet');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('vendor')).toBeNull());
+  });
+
+  it('a reload of a card-opened sheet reopens it at the top, not at the currency field', async () => {
+    window.history.replaceState({ vendorAt: 'sheet' }, '', '/vendors?vendor=p1');
+    mockData.current = card();
+    render(<ProvidersNext />);
+    await screen.findByTestId('twin-panel');
+    expect(screen.getByTestId('usual-currency-takefocus')).toHaveTextContent('false');
+  });
+});

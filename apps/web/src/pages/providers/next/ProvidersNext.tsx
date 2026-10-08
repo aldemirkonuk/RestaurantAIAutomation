@@ -81,9 +81,34 @@ function writeViewToUrl(view: ProvidersView) {
  * Read from the URL once, at mount, rather than held in router state: the two
  * callers are this page's own prompt panel (which opens the sheet directly) and
  * the order sheet's empty currency field on another route, which arrives as a
- * navigation. Nothing here writes the URL back, so a person who closes the sheet
- * is not fighting a param to keep it closed.
+ * navigation. Since VEN-W36 the page writes it while a sheet is open and removes it
+ * on close (`writeVendorToUrl`), so a person who closes the sheet is still
+ * not fighting a param to keep it closed.
  */
+/**
+ * VEN-W36: the open sheet is in the address while it is open (ADR 0160 §6) —
+ * written on open, removed on close, so a reload reopens it and closing is
+ * never a fight with a param. `history.state.vendorAt` says whether it was
+ * opened FOR the currency control; a reload of a sheet opened from a card
+ * reopens it at the top, not scrolled to currency.
+ */
+function writeVendorToUrl(id: string | null, at: 'currency' | 'sheet') {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("vendor", id);
+    else url.searchParams.delete("vendor");
+    const state = { ...(window.history.state ?? {}), vendorAt: id ? at : undefined };
+    window.history.replaceState(state, "", url.toString());
+  } catch {
+    /* an address the page cannot rewrite keeps the sheet in state only */
+  }
+}
+function openedAtFromHistory(): boolean {
+  if (typeof window === "undefined") return true;
+  return (window.history.state as { vendorAt?: string } | null)?.vendorAt !== "sheet";
+}
+
 function vendorFromUrl(): string | null {
   if (typeof window === "undefined") return null;
   const asked = new URLSearchParams(window.location.search).get("vendor");
@@ -283,9 +308,15 @@ export default function ProvidersNext() {
     const found = data.cards.find((vm) => vm.provider.id === asked.current);
     if (!found) return;
     asked.current = null;
-    setOpenedForCurrency(true);
+    setOpenedForCurrency(openedAtFromHistory());
     setOpenProvider(found.provider);
   }, [data.cards]);
+  // Not while a deep link is still waiting for the cards: clearing it then
+  // would lose it to a reload during the read.
+  useEffect(() => {
+    if (asked.current) return;
+    writeVendorToUrl(openProvider?.id ?? null, openedForCurrency ? "currency" : "sheet");
+  }, [openProvider, openedForCurrency]);
 
   return (
     <div

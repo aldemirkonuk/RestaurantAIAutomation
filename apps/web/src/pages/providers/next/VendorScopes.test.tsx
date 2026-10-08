@@ -376,6 +376,23 @@ describe('a wine NAME matches any vintage where the menu rung is not applied (it
     expect(screen.getByTestId('book-wine-basis')).toHaveTextContent('1 of your vendors sold you a wine matching “opus one” — any vintage');
   });
 
+  it('VEN-W36: what was typed lives in the address (?q= and ?find=) and comes back on a reload', async () => {
+    h.wineSellers = { query: { text: 'alvaro', words: ['alvaro'], vintages: [] }, winesMatched: 0, sellers: [] };
+    window.history.replaceState({}, '', '/vendors?scope=all');
+    const first = renderPage();
+    fireEvent.change(screen.getByTestId('book-q'), { target: { value: 'alvaro' } });
+    expect(new URLSearchParams(window.location.search).get('q')).toBe('alvaro');
+    first.unmount();
+    renderPage();
+    expect(screen.getByTestId('book-q')).toHaveValue('alvaro');
+    fireEvent.change(screen.getByTestId('book-q'), { target: { value: '' } });
+    expect(new URLSearchParams(window.location.search).has('q')).toBe(false);
+
+    window.history.replaceState({}, '', '/vendors?scope=find&find=napa');
+    renderPage();
+    expect(screen.getAllByTestId('find-q').at(-1)).toHaveValue('napa');
+  });
+
   it('the same box still finds a vendor by its own name, accent-blind', async () => {
     h.wineSellers = { query: { text: 'alvaro', words: ['alvaro'], vintages: [] }, winesMatched: 0, sellers: [] };
     window.history.replaceState({}, '', '/vendors?scope=all');

@@ -66,6 +66,29 @@ function writeScope(scope: VendorScope) {
   window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
+/**
+ * VEN-W36 (ADR 0160 §6, "the URL holds it"): the two search boxes live in the
+ * address too — `?q=` for "All my vendors", `?find=` for "Find new vendors" — so
+ * a reload, a shared link or the phone's tab-discard keeps what was typed.
+ * Read once at mount; written with replaceState like `?scope=`, so typing adds
+ * no history entries.
+ */
+function textFromUrl(key: 'q' | 'find'): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get(key) ?? '';
+}
+function writeText(key: 'q' | 'find', text: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    if (text.trim()) url.searchParams.set(key, text);
+    else url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    /* an address the page cannot rewrite keeps the text in state only */
+  }
+}
+
 /** The catalogue is searched on a pause in typing, not on every key. */
 function useSettled<T>(value: T, ms = 300): T {
   const [settled, setSettled] = useState(value);
@@ -158,7 +181,8 @@ export function useVendorScopes<T extends { provider: { id: string; name: string
       ? { status: 'error', message: serverMessage(supplyQ.error) }
       : { status: 'loading' };
 
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(() => textFromUrl('find'));
+  useEffect(() => writeText('find', q), [q]);
   // The curated catalogue is keyed by country. Founder, 2026-09-26, round 7,
   // item 48: "Find new vendors" opens on the HOUSE's own country (its address,
   // `restaurants.country`, resolved to ISO-2 by lib/countries.ts), US only when
@@ -206,7 +230,8 @@ export function useVendorScopes<T extends { provider: { id: string; name: string
     retry: 1,
   });
 
-  const [bookQ, setBookQ] = useState('');
+  const [bookQ, setBookQ] = useState(() => textFromUrl('q'));
+  useEffect(() => writeText('q', bookQ), [bookQ]);
   const settledBookQ = useSettled(bookQ.trim());
   const ownWineOn = scope === 'all' && wineSearchable(settledBookQ);
   const ownWineQ = useQuery({
