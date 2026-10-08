@@ -3,7 +3,7 @@
  *
  * `wine_consumption_log.quantity` counts SERVINGS in the line's own mode, not
  * bottles (ADR 0011). The POS mirror writes it that way
- * (pos-hub.service.ts:1018-1022, :1060): a bottle line is `quantity` bottles,
+ * (pos-hub.service.ts:1583-1587, :1625): a bottle line is `quantity` bottles,
  * and a glass line is `quantity` pours whose millilitres sit in `volume_ml`.
  * Every demand reader used to take `quantity` as bottles, so a 150 ml glass
  * counted as a whole bottle and a 50 ml rakı single as fifteen times what it
@@ -11,14 +11,16 @@
  *
  * The rule here is the only converter the readers use:
  *
- *   - a `bottle` line is `quantity` bottles, whatever the bottle's size;
+ *   - a `bottle` line with a `quantity` of 0 or more is that many bottles,
+ *     whatever the bottle's size;
  *   - a `glass` line is its millilitres over the item's STATED bottle size
  *     (`restaurant_inventory.bottle_size_ml`, positive only, the same test as
  *     pos-hub's `loadInventoryVolumes`);
  *   - a glass line of an item with no stated size rests on the 750 ml stand-in
  *     the stock itself moves by, and is labelled as resting on it;
- *   - anything else (no mode, or a glass line with no positive millilitres)
- *     has NO bottle figure. It is never 1 and never 0.
+ *   - anything else (no mode, a bottle line with no `quantity` of 0 or more,
+ *     or a glass line with no positive millilitres) has NO bottle figure. It
+ *     is never 1 and never 0.
  *
  * `master_wine_library.bottle_size_ml` is never read: its 750 is a default,
  * not a reading (ADR 0124).
@@ -30,8 +32,9 @@
 /**
  * The size an unsized item's stock moves by. `record_glass_pour` COALESCEs a
  * missing `bottle_size_ml` to 750 before it takes a pour off the open bottle
- * (supabase/migrations/20261217112500_a_short_pour_opens_the_next_bottle.sql:102),
- * and pos-hub mirrors the same number (RPC_DEFAULT_BOTTLE_ML). Demand counted
+ * (supabase/migrations/20261222100000_a_pos_sale_is_dated_by_its_check.sql:318,
+ * the newest migration that defines it), and pos-hub mirrors the same number
+ * (RPC_DEFAULT_BOTTLE_ML, pos-hub.service.ts:33). Demand counted
  * on any other size would disagree with the stock figure it is set beside.
  * The founder's fork 1 answer (ADR 0297): "750 ml stand-in (Recommended)",
  * labelled, and dropped per item as soon as its size is stated. It goes with
@@ -63,7 +66,10 @@ function finite(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** A size is a reading only when it is a positive number (pos-hub :638-645). */
+/**
+ * A size is a reading only when it is a positive number (pos-hub's
+ * inventoryVolumesFromRow, pos-hub.service.ts:58-62).
+ */
 function statedSize(v: unknown): number | null {
   const n = finite(v);
   return n !== null && n > 0 ? n : null;

@@ -16,7 +16,7 @@ import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
  * A glass is not a bottle (AW02, ADR 0297).
  *
  * `wine_consumption_log.quantity` counts servings in the line's own mode
- * (ADR 0011; pos-hub.service.ts:1018-1022, :1060). Every demand reader took
+ * (ADR 0011; pos-hub.service.ts:1583-1587, :1625). Every demand reader took
  * it as bottles, so ten 150 ml glasses from a 750 ml bottle read as ten
  * bottles sold instead of two. The reader cases below FAIL on the readers as
  * they stood at efd8de7ea and pass once each one converts through
@@ -123,6 +123,27 @@ describe("bottlesOf — a line's bottles come from its own mode", () => {
     expect(bottlesOf({ consumption_type: "bottle", quantity: null }).how).toBe(
       "uncounted",
     );
+  });
+
+  it("H7b: a bottle line with a negative quantity has no bottle figure, never a negative sale", () => {
+    // The POS mirror never writes one (pos-hub.service.ts:1257-1258 clamps the
+    // count at 0 and skips a 0), and no CHECK holds `quantity` at 0 or more
+    // (baseline_from_production.sql:6385), so only a
+    // `manual` or `ai_agent` row can carry it (ADR 0297).
+    for (const quantity of [-1, -0.5, "-2"])
+      expect(
+        bottlesOf({
+          consumption_type: "bottle",
+          quantity,
+          volume_ml: 750,
+          restaurant_inventory: { bottle_size_ml: 750 },
+        }),
+      ).toEqual({ bottles: null, how: "uncounted" });
+    // Zero is still a count: the boundary sits below 0, not at it.
+    expect(bottlesOf({ consumption_type: "bottle", quantity: 0 })).toEqual({
+      bottles: 0,
+      how: "bottle",
+    });
   });
 
   it("H8: a size of 0 or below is no size, so the line rests on the stand-in", () => {
@@ -410,6 +431,20 @@ describe("the restock list counts bottles, not pours", () => {
     }).getFinancialSummary(RESTAURANT);
     expect(out.deadStockTop.map((d: any) => d.name)).toEqual(["Item 2"]);
   });
+
+  it("R6b: a glass line with no millilitres has no bottle figure, but its servings are still movement", async () => {
+    // Movement is a serving or a millilitre, not a bottle figure
+    // (analytics.service.ts loadConsumption's dead-stock join): Item 1 poured
+    // two glasses whose millilitres were not recorded, so it moved, and only
+    // the untouched Item 3 is idle. Item 2's bottle line gives the window a
+    // movement signal of its own, so the case does not rest on Item 1 alone.
+    const out: any = await analytics({
+      restaurant_inventory: [item(1), item(2), item(3)],
+      wine_consumption_log: [...lines(1, 1, NO_FIGURE), ...lines(2, 1, BOTTLE)],
+    }).getFinancialSummary(RESTAURANT);
+    expect(bottlesOf(NO_FIGURE)).toEqual({ bottles: null, how: "uncounted" });
+    expect(out.deadStockTop.map((d: any) => d.name)).toEqual(["Item 3"]);
+  });
 });
 
 describe("the insight bundle counts bottles, not pours", () => {
@@ -469,6 +504,27 @@ describe("the Bottles sold goal counts bottles, or refuses", () => {
         wine_consumption_log: [
           ...lines(1, 10, GLASS),
           ...lines(2, 1, NO_FIGURE),
+        ],
+      }) as any
+    )
+      .computeMetricWithSeries(RESTAURANT, "bottles_sold", since)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UncountedConsumptionError);
+    expect((err as Error).message).toContain(
+      "1 consumption line across 1 item",
+    );
+  });
+
+  it("R5b: a bottle line with a negative quantity refuses the total instead of subtracting from it", async () => {
+    const err = await (
+      goals({
+        wine_consumption_log: [
+          ...lines(1, 10, GLASS),
+          ...lines(2, 1, {
+            consumption_type: "bottle",
+            quantity: -3,
+            volume_ml: 750,
+          }),
         ],
       }) as any
     )
