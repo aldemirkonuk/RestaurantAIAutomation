@@ -12,7 +12,8 @@ import type { CalendarEvent } from '@/services/api/calendar';
 import type { InventoryItem } from '@/services/api/types';
 import { formatNumber } from '@/lib/utils';
 import type { ActivityItem } from './useDashboardNextData';
-import { DASH, localDateStr, parseDateStr, timeAgo } from './format';
+import { DASH, dateIn, eventKindWords, localDateStr, parseDateStr, timeAgo } from './format';
+import { TryAgain } from './TryAgain';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -29,17 +30,24 @@ function Panel({ title, children, action }: { title: string; children: ReactNode
 }
 
 function EmptyLine({ children }: { children: ReactNode }) {
-  return <p className="text-[12px] italic text-inkm-3">{children}</p>;
+  return <p className="text-[12px] italic text-inkm-4">{children}</p>;
 }
 
 /* ── This week ──────────────────────────────────────────────────────────── */
 
-export function WeekAhead({ restaurantId }: { restaurantId: string | null }) {
-  const today = new Date();
-  const end = new Date(today);
+export function WeekAhead({
+  restaurantId,
+  zone = null,
+}: {
+  restaurantId: string | null;
+  zone?: string | null;
+}) {
+  // DASH-W20: the week starts on the house's today, not the device's.
+  const todayStr = dateIn(new Date(), zone);
+  const end = parseDateStr(todayStr);
   end.setDate(end.getDate() + 6);
   const query = useCalendarEvents(restaurantId ?? '', {
-    startDate: localDateStr(today),
+    startDate: todayStr,
     endDate: localDateStr(end),
   });
 
@@ -53,7 +61,7 @@ export function WeekAhead({ restaurantId }: { restaurantId: string | null }) {
       action={
         <Link
           to="/calendar"
-          className="text-[11px] uppercase tracking-[0.1em] text-inkm-3 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          className="text-[11px] uppercase tracking-[0.1em] text-inkm-4 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
         >
           Calendar
         </Link>
@@ -66,7 +74,10 @@ export function WeekAhead({ restaurantId }: { restaurantId: string | null }) {
         </div>
       )}
       {query.isError && (
-        <EmptyLine>{DASH} The calendar couldn’t be reached just now.</EmptyLine>
+        <EmptyLine>
+          {DASH} The calendar couldn’t be reached just now.
+          <TryAgain onRetry={() => query.refetch()} />
+        </EmptyLine>
       )}
       {!query.isLoading && !query.isError && events.length === 0 && (
         <EmptyLine>Nothing on the calendar this week.</EmptyLine>
@@ -75,18 +86,19 @@ export function WeekAhead({ restaurantId }: { restaurantId: string | null }) {
         <ul className="space-y-1.5">
           {events.slice(0, 6).map((ev) => (
             <li key={ev.id} className="flex items-baseline justify-between gap-3 text-[13px]">
-              <span className="min-w-0 truncate text-inkm-1">
+              {/* DASH-W31/W32: two lines at most; the kind in words, never a code. */}
+              <span className="min-w-0 line-clamp-2 leading-snug text-inkm-1">
                 {ev.title}
-                <span className="text-inkm-3"> · {ev.type}</span>
+                {eventKindWords(ev.type) ? <span className="text-inkm-4"> · {eventKindWords(ev.type)}</span> : null}
               </span>
-              <span className="shrink-0 text-[11px] text-inkm-3" style={{ fontFamily: MONO }}>
+              <span className="shrink-0 text-[11px] text-inkm-4" style={{ fontFamily: MONO }}>
                 {parseDateStr(ev.date).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
                 {ev.allDay || !ev.startTime ? '' : ` ${ev.startTime.slice(0, 5)}`}
               </span>
             </li>
           ))}
           {events.length > 6 && (
-            <li className="text-[11px] text-inkm-3">and {events.length - 6} more this week</li>
+            <li className="text-[11px] text-inkm-4">and {events.length - 6} more this week</li>
           )}
         </ul>
       )}
@@ -123,7 +135,14 @@ function lowStockView(it: InventoryItem) {
   };
 }
 
-export function LowStockPanel({ items }: { items: InventoryItem[] | null | undefined }) {
+export function LowStockPanel({
+  items,
+  onRetry,
+}: {
+  items: InventoryItem[] | null | undefined;
+  /** DASH-W19: reads the list again after a failed read. */
+  onRetry?: () => unknown;
+}) {
   const sorted = (items ?? [])
     .map(lowStockView)
     .sort((a, b) => (a.stock ?? 0) - (a.min ?? 0) - ((b.stock ?? 0) - (b.min ?? 0)));
@@ -134,7 +153,7 @@ export function LowStockPanel({ items }: { items: InventoryItem[] | null | undef
       action={
         <Link
           to="/inventory"
-          className="text-[11px] uppercase tracking-[0.1em] text-inkm-3 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          className="text-[11px] uppercase tracking-[0.1em] text-inkm-4 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
         >
           Inventory
         </Link>
@@ -147,7 +166,10 @@ export function LowStockPanel({ items }: { items: InventoryItem[] | null | undef
         </div>
       )}
       {items === null && (
-        <EmptyLine>{DASH} Stock levels couldn’t be reached just now.</EmptyLine>
+        <EmptyLine>
+          {DASH} Stock levels couldn’t be reached just now.
+          {onRetry && <TryAgain onRetry={onRetry} />}
+        </EmptyLine>
       )}
       {items != null && items.length === 0 && (
         <EmptyLine>Nothing is running low. The cellar holds.</EmptyLine>
@@ -156,10 +178,20 @@ export function LowStockPanel({ items }: { items: InventoryItem[] | null | undef
         <ul className="space-y-1.5">
           {sorted.slice(0, 6).map((it) => (
             <li key={it.id} className="flex items-baseline justify-between gap-3 text-[13px]">
-              <span className="min-w-0 truncate text-inkm-1">
-                {it.name ?? 'Unnamed wine'}
-                {it.vintage ? <span className="text-inkm-3"> {it.vintage}</span> : null}
-              </span>
+              {it.name ? (
+                <Link
+                  to={`/inventory?wine=${encodeURIComponent(it.name)}`}
+                  className="min-w-0 line-clamp-2 leading-snug text-inkm-1 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+                >
+                  {it.name}
+                  {it.vintage ? <span className="text-inkm-4"> {it.vintage}</span> : null}
+                </Link>
+              ) : (
+                <span className="min-w-0 line-clamp-2 leading-snug text-inkm-1">
+                  Unnamed item
+                  {it.vintage ? <span className="text-inkm-4"> {it.vintage}</span> : null}
+                </span>
+              )}
               <span
                 className="shrink-0 text-[12px]"
                 style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
@@ -167,12 +199,12 @@ export function LowStockPanel({ items }: { items: InventoryItem[] | null | undef
                 <span className={it.stock === 0 ? 'text-seal font-semibold' : 'text-inkm-1'}>
                   {it.stock == null ? DASH : formatNumber(it.stock)}
                 </span>
-                <span className="text-inkm-3"> / min {it.min == null ? DASH : formatNumber(it.min)}</span>
+                <span className="text-inkm-4"> / min {it.min == null ? DASH : formatNumber(it.min)}</span>
               </span>
             </li>
           ))}
           {sorted.length > 6 && (
-            <li className="text-[11px] text-inkm-3">and {sorted.length - 6} more below minimum</li>
+            <li className="text-[11px] text-inkm-4">and {sorted.length - 6} more below minimum</li>
           )}
         </ul>
       )}
@@ -198,11 +230,21 @@ export function ActivityPanel({ items }: { items: ActivityItem[] | undefined }) 
         <ul className="space-y-1.5">
           {items.slice(0, 8).map((a) => (
             <li key={a.id} className="flex items-baseline justify-between gap-3 text-[13px]">
-              <span className="min-w-0 truncate text-inkm-2">
-                <span className="text-inkm-1">{a.title}</span>
-                {a.description ? ` — ${a.description}` : ''}
-              </span>
-              <span className="shrink-0 text-[11px] text-inkm-3" style={{ fontFamily: MONO }}>
+              {a.entityType === 'procurement_order' && a.entityId ? (
+                <Link
+                  to={`/orders?order=${a.entityId}`}
+                  className="min-w-0 line-clamp-2 leading-snug text-inkm-2 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+                >
+                  <span className="text-inkm-1">{a.title}</span>
+                  {a.description ? ` — ${a.description}` : ''}
+                </Link>
+              ) : (
+                <span className="min-w-0 line-clamp-2 leading-snug text-inkm-2">
+                  <span className="text-inkm-1">{a.title}</span>
+                  {a.description ? ` — ${a.description}` : ''}
+                </span>
+              )}
+              <span className="shrink-0 text-[11px] text-inkm-4" style={{ fontFamily: MONO }}>
                 {timeAgo(a.timestamp)}
               </span>
             </li>

@@ -21,17 +21,28 @@
  * route carries the whole reason — which rule fired, what the number was, who
  * may sign — and the die prints it verbatim; "the approval didn't reach the
  * server" was a claim about the network that a refusal makes false.
+ *
+ * WHO MAY SEAL IT (DASH-W21). `/orders` asks `GET
+ * /procurement/order-approval-gate` and shows the die DISABLED, with the
+ * house's own sentence, on an order the caller's role may not seal. This card
+ * offered a live die to everyone and let the approve route refuse after the
+ * hold. It now reads the same gate, once per queue, only while something is
+ * waiting. The gate is a courtesy, not the lock: the approve route still
+ * decides, so an unreadable gate leaves the die live and says so.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Seal } from '@/components/mudavym';
 import { WaitingFlag } from './WaitingFlag';
 import { SealedApproveDie } from '@/components/orders/SealedApproveDie';
 import type { Order } from '@/services/api/types';
+import { apiClient } from '@/services/api/client';
+import type { ApprovalGate, ApprovalGateRow } from '@/pages/orders/next/useOrdersNextData';
 import { vendorLine } from '@/lib/mudavym/vendor';
 import { formatNumber } from '@/lib/utils';
 import { DASH, approveLabel, money, timeAgo } from './format';
+import { TryAgain } from './TryAgain';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -39,9 +50,49 @@ export interface WaitingOnYouProps {
   /** undefined = loading · null = unreachable · [] = genuinely nothing */
   pending: Order[] | null | undefined;
   onChanged: () => void;
+  /** DASH-W21: the active house, whose approval rules the gate reads. */
+  restaurantId?: string | null;
+  /** DASH-W22: false for a role that sees counts, not money (staff). */
+  seesAmounts?: boolean;
 }
 
-export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
+type GateState =
+  | { state: 'idle' }
+  | { state: 'ready'; byId: Map<string, ApprovalGateRow> }
+  | { state: 'unknown' };
+
+/** One read of the house's approval rules for the orders now waiting. */
+function useApprovalGate(restaurantId: string | null | undefined, waitingKey: string): GateState {
+  const [gate, setGate] = useState<GateState>({ state: 'idle' });
+  useEffect(() => {
+    if (!restaurantId || !waitingKey) {
+      setGate({ state: 'idle' });
+      return;
+    }
+    let live = true;
+    apiClient
+      .get<ApprovalGate>('/procurement/order-approval-gate')
+      .then(({ data }) => {
+        if (!live) return;
+        // Another house's verdicts, or rules that could not be read, are not
+        // an answer about these orders.
+        if (!data || data.restaurantId !== restaurantId || !data.readable || !Array.isArray(data.orders)) {
+          setGate({ state: 'unknown' });
+          return;
+        }
+        setGate({ state: 'ready', byId: new Map(data.orders.map((r) => [r.orderId, r])) });
+      })
+      .catch(() => {
+        if (live) setGate({ state: 'unknown' });
+      });
+    return () => {
+      live = false;
+    };
+  }, [restaurantId, waitingKey]);
+  return gate;
+}
+
+export function WaitingOnYou({ pending, onChanged, restaurantId, seesAmounts = true }: WaitingOnYouProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [sealedIds, setSealedIds] = useState<Set<string>>(new Set());
 
@@ -56,6 +107,10 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
   };
 
   const rows = (pending ?? []).filter((o) => !sealedIds.has(o.id));
+  const gate = useApprovalGate(
+    restaurantId,
+    (pending ?? []).map((o) => o.id).join(','),
+  );
 
   return (
     <section className="rounded-lg border border-paper-2 bg-paper-0 p-4" aria-label="Waiting on you">
@@ -67,7 +122,7 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
           </h2>
         </div>
         <span
-          className="text-[13px] text-inkm-3"
+          className="text-[13px] text-inkm-4"
           style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
         >
           {pending === undefined ? '' : pending === null ? DASH : formatNumber(rows.length)}
@@ -83,20 +138,22 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
         )}
 
         {pending === null && (
-          <p className="text-[12px] italic text-inkm-3">
-            {DASH} The approvals queue couldn’t be reached. Nothing has been approved or lost —
-            it will reappear when the connection returns.
+          <p className="text-[12px] italic text-inkm-4">
+            {DASH} The approvals queue couldn’t be reached. Nothing has been approved or lost.
+            <TryAgain onRetry={onChanged} />
           </p>
         )}
 
         {pending !== undefined && pending !== null && rows.length === 0 && (
-          <p className="text-[12px] italic text-inkm-3">
+          <p className="text-[12px] italic text-inkm-4">
             Nothing is waiting on you. New orders land here the moment they need a decision.
           </p>
         )}
 
         {rows.map((o) => {
           const open = openId === o.id;
+          const verdict = gate.state === 'ready' ? gate.byId.get(o.id) : undefined;
+          const held = verdict ? !verdict.mayApprove : false;
           return (
             <div key={o.id} className="dn-row dn-ink">
               <button
@@ -107,7 +164,7 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] text-inkm-1">
-                    {o.wineName ?? 'Unnamed wine'}
+                    {o.wineName ?? 'Unnamed item'}
                   </span>
                   {/*
                     WHO IS BEING PAID. `GET /procurement/orders/pending` joins
@@ -120,7 +177,7 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
                     apart so a screen never reports "no vendor" about a query
                     that did not ask.
                   */}
-                  <span className="block truncate text-[11px] text-inkm-3">
+                  <span className="block truncate text-[11px] text-inkm-4">
                     {vendorLine(o)} · requested {timeAgo(o.requestedAt)}
                   </span>
                   <WaitingFlag priority={o.priority} />
@@ -129,7 +186,9 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
                   className="shrink-0 text-[13px] text-inkm-1"
                   style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {money(o.totalCost)}
+                  {seesAmounts
+                    ? money(o.totalCost)
+                    : `${formatNumber(o.quantity)}${o.unitType ? ` ${o.unitType}` : ''}`}
                 </span>
               </button>
 
@@ -142,22 +201,37 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
                       style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                     >
                       {formatNumber(o.quantity)}
-                      {o.unitType ? ` ${o.unitType}` : ''} × {money(o.finalPrice)}
+                      {o.unitType ? ` ${o.unitType}` : ''}
+                      {seesAmounts ? ` × ${money(o.finalPrice)}` : ''}
                     </p>
                     <div className="flex items-center gap-3">
                       <Link
-                        to={`/orders?highlight=${o.id}`}
-                        className="text-[11px] uppercase tracking-[0.1em] text-inkm-3 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+                        to={`/orders?order=${o.id}`}
+                        className="text-[11px] uppercase tracking-[0.1em] text-inkm-4 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
                       >
                         Review
                       </Link>
+                      {/* Disabled, never hidden: a shut control with the rule beside it teaches who to ask. */}
                       <SealedApproveDie
                         orderIds={[o.id]}
-                        label={approveLabel(o.totalCost)}
+                        label={approveLabel(seesAmounts ? o.totalCost : undefined)}
+                        disabled={held}
                         onApproved={onApproved}
                       />
                     </div>
                   </div>
+                  {held && (
+                    <p className="px-3 pb-2.5 text-[11px] leading-relaxed text-inkm-2" role="status">
+                      Waiting on {verdict?.requiredRole === 'owner' ? 'an owner' : 'a manager'}.
+                      {verdict?.sentence ? ` ${verdict.sentence}` : ''}
+                    </p>
+                  )}
+                  {gate.state === 'unknown' && (
+                    <p className="px-3 pb-2.5 text-[11px] leading-relaxed text-inkm-4" role="status">
+                      The house’s approval rules couldn’t be read just now, so this card can’t say
+                      whether you may seal it. The house still checks when you hold.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -168,7 +242,7 @@ export function WaitingOnYou({ pending, onChanged }: WaitingOnYouProps) {
       {pending && pending.length > 0 && (
         <Link
           to="/orders"
-          className="mt-3 inline-block text-[11px] uppercase tracking-[0.1em] text-inkm-3 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          className="mt-3 inline-block text-[11px] uppercase tracking-[0.1em] text-inkm-4 underline-offset-2 hover:text-inkm-1 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
         >
           The full queue on /orders
         </Link>
