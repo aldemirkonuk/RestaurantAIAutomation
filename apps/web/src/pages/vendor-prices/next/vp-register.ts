@@ -265,6 +265,28 @@ export function provenanceLines(row: VendorObservationRow): ProvenanceLine[] {
   return out
 }
 
+/**
+ * Which date the row carries, said as which (ADR 0273). A verified receipt's
+ * price is dated by its invoice's issue date — a calendar date, printed as the
+ * day it names rather than through the viewer's timezone — or, when no issue
+ * date could be read, by the moment it was checked, with the writer's own
+ * sentence saying why. A row written without a basis (hand-recorded, a
+ * confirmed order, a receipt from before ADR 0273) keeps the plain "seen".
+ */
+export function whenWords(row: VendorObservationRow): string {
+  const checked = row.verifiedAt ? ` (checked ${dateWords(row.verifiedAt)})` : ''
+  if (row.dateBasis === 'invoice_issue_date' || row.dateBasis === 'invoice_issue_date_corrected') {
+    const day = row.issueDate ? calendarDateWords(row.issueDate) : dateWords(row.observedAt)
+    const corrected = row.dateBasis === 'invoice_issue_date_corrected' ? ', as corrected' : ''
+    return `dated ${day}, the invoice's issue date${corrected}${checked}`
+  }
+  if (row.dateBasis === 'verified_at') {
+    const why = row.dateSentence ? `: ${row.dateSentence}` : ''
+    return `dated when it was checked, ${dateWords(row.observedAt)}${why}`
+  }
+  return `seen ${ageWords(row.observedAt)} (${dateWords(row.observedAt)})`
+}
+
 export function provenanceOf(row: VendorObservationRow): Provenance {
   const meta = isSourceType(row.sourceType) ? SOURCE_META[row.sourceType] : null
   const tier = row.trustTier ?? meta?.tier ?? null
@@ -290,7 +312,7 @@ export function provenanceOf(row: VendorObservationRow): Provenance {
         : genericWhat
 
   const asQuoted = `${money(row.rawPrice, row.currency)} for ${packWords(row.packSize, row.unitVolumeMl)}`
-  const when = `seen ${ageWords(row.observedAt)} (${dateWords(row.observedAt)})`
+  const when = whenWords(row)
 
   const verdict = row.outlierReason
     ? `${row.isOutlier ? 'Set aside' : 'Admitted'} — ${row.outlierReason}`

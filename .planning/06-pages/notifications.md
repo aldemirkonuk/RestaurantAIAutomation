@@ -147,7 +147,7 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   with *Read further back* paging at the gateway's `@Max(100)`. The legacy client
   threw the `{ total, hasMore }` envelope away (`services/api/notifications.ts:104-106`).
 - **Per-register tally in the rail** (Stock · Orders · Vendor mail · Calendar ·
-  Reports · Advice · Payments · System · Other), open/total, on the `tally` spring.
+  Reports · Advice · Payments · System · Other), open/total, on the `tally` spring. [Corrected 2026-10-05: the rail counts the registers listed in `KIND_ORDER` (`notifications/next/nt-format.ts`) and no others. Since branch `fix/bell-files-refused-checks` they are Stock · Orders · Deliveries · Invoices · Vendor mail · Calendar · Reports · Advice · Payments · Sales · Goals · Market · Connections · Point of sale · System · Other.]
 - **Live-read contract stated on the page**: re-read every 10s while open, plus the
   `notification_sent` / `ws:dashboard-invalidate` nudges; "last read HH:MM:SS".
 - **Digest stacking preserved** — `lib/notificationStack.ts`, with the folded count
@@ -294,6 +294,39 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   `TYPE_CHOICES`:** the filter pills were left alone this pass (the coordinator's
   instruction was the register line only), so a *Connections* row is drawn and
   tallied correctly but cannot be filtered for. Filed, not built.
+  [Corrected 2026-10-05: drawn, but not tallied. The rail's tally counts only
+  the registers in `KIND_ORDER`, and *Connections* was not in it, so a book
+  holding only *Connections* lines said "The book is open and empty." Branch
+  `fix/bell-files-refused-checks` added it, and `nt-format.test.ts` now
+  requires every register `KIND_BY_TYPE` names to be in `KIND_ORDER`.]
+- **A register for a till's refused checks, 2026-10-05: *Point of sale*
+  (`pos_import_refused`).** When a till's import refuses checks whose closing
+  time it cannot read, the gateway files one bell note for the house's owners
+  and managers (ADR 0281, amended 2026-10-05 on branch
+  `fix/pos-import-refusals-ring-the-bell`), titled like "3 checks not
+  imported: date not readable" and linking to `/connections`. With no row in
+  `KIND_BY_TYPE` it would fall to *Other*. The founder's answer (F7,
+  2026-10-05): *"Own group, small web PR (Recommended)"*. So it files under
+  *Point of sale*, a register of its own (not a seat in *Connections*), drawn
+  with `Store` (the mark the Connections page draws on its "Point of sale"
+  row) and counted on the rail, between *Connections* and *System* in
+  `KIND_ORDER`. **The name**: asked what the group should be called (options
+  "Till", "Point of sale", "Till imports"), the founder typed, verbatim, *"do
+  the most user like answer"*. Under that delegation the coordinator chose
+  *Point of sale*: it is the title of the row the note's link opens on the
+  Connections page (`ConnectionsNext.tsx`), and the founder's own word for it
+  elsewhere is "POS" ("Learn from the POS", "Own row, POS field": the
+  options he picked on 2026-10-03 for AW25+AW30 and AW24, each marked
+  Recommended; not yet in an ADR). No filter pill yet: nothing on `main`
+  writes the type until the gateway branch (#644) merges. Pinned in
+  `nt-format.test.ts` and `NotificationsNext.test.tsx`.
+- **Two mail notes join *Connections*, 2026-10-05 (`mail_grant_absent`,
+  `mail_retention_deleted`).** Both link to `/connections` ("Reconnect",
+  "Connections") and had no row in `KIND_BY_TYPE`, so they fell to *Other*
+  (`tech-debt.d/2026-10-05-fix-bell-files-refused-checks.md`). Asked which
+  group they join, the founder answered, verbatim: *"Connections"*. Both now
+  file there, draw the plug and are counted on the rail's *Connections* row.
+  Pinned in `nt-format.test.ts` and `NotificationsNext.test.tsx`.
 - **A ninth producer, 2026-09-05: `experiment_ended_unnamed`** — the only one that
   is NOT a tenant sweep. It writes one notice when a UX experiment's window closes
   with no winner named (ADR 0127's second addendum; founder, batch 53: *"A
@@ -1241,7 +1274,7 @@ calls `createSystemAction`.
 | Vendor reply / draft ready | Gmail push → `email.inbound.received` → `rabbitmq-bridge.service.ts:528` → `InboundResponderService.analyzeAndDraftReply` → notification rows `inbound-responder.service.ts:1287` | Yes (live Gmail watch, OD-78) |
 | Schedule published / acknowledged, broadcast | `team/schedule.service.ts:254,484`; `team/team.controller.ts:350` | Yes |
 | Order approval, delivery, price | `procurement.service.ts:1062,1368` | Yes |
-| Weekly report ready, delivery ETA, audit, event prep, custom reminders | **Seven** tenant-scoped `@Cron`s in `communications/scheduled-tasks.service.ts`, anchored on the decorator's `name:` rather than a line: `daily-sms-summary`, `weekly-email-report`, `recurring-order-reminder`, `delivery-eta-notification`, `inventory-audit-reminder`, `event-prep-check`, `custom-reminders-check` (`:193,228,407,522,625,679,734` — an eighth, `payment-due-reminder`, was deleted 2026-09-02 after [ADR 0077](../decisions/0077-there-is-no-payment-due-reminder.md) found it had never sent one email). Separately, `tenant-isolation-check` (`:159`) is the global tenant-isolation RPC, not a tenant-scoped one. **Count them with `grep -nE '^[[:space:]]*@Cron\('`** — a bare `grep @Cron` also hits `:274`, a `@deprecated` note recording that `sendMiddayLowStockReport`'s schedule was *removed* | **Per-tenant since 2026-08-26** (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)) — each iterates `ScheduledTenantsService.runPerTenant`, isolating per-tenant failures. But enumeration is **explicit opt-in** and no restaurant has opted in, so in practice this still serves exactly the `DEFAULT_RESTAURANT_ID` restaurant, which still takes its recipients from `MANAGER_EMAIL`. Whether that stays opt-in is **OD-91** |
+| Weekly report ready, delivery ETA, audit, event prep, custom reminders | **Seven** tenant-scoped `@Cron`s in `communications/scheduled-tasks.service.ts`, anchored on the decorator's `name:` rather than a line: `daily-sms-summary`, `weekly-email-report`, `recurring-order-reminder`, `delivery-eta-notification`, `inventory-audit-reminder`, `event-prep-check`, `custom-reminders-check` (`:193,228,407,522,625,679,734` — an eighth, `payment-due-reminder`, was deleted 2026-09-02 after [ADR 0077](../decisions/0077-there-is-no-payment-due-reminder.md) found it had never sent one email). Separately, `tenant-isolation-check` (`:159`) is the global tenant-isolation RPC, not a tenant-scoped one. **Count them with `grep -nE '^[[:space:]]*@Cron\('`** — a bare `grep @Cron` also hits `:274`, a `@deprecated` note recording that `sendMiddayLowStockReport`'s schedule was *removed* | **Per-tenant since 2026-08-26** (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)) — each iterates `ScheduledTenantsService.runPerTenant`, isolating per-tenant failures. But enumeration is **explicit opt-in** and no restaurant has opted in, so in practice this still serves exactly the `DEFAULT_RESTAURANT_ID` restaurant, which still takes its recipients from `MANAGER_EMAIL`. Whether that stays opt-in is **OD-91**. Since 2026-10-02 `event-prep-check` sends nothing, for that restaurant too, unless `EVENT_PREP_REMINDERS_ENABLED` is `true` or `1` ([ADR 0264](../decisions/0264-event-prep-mail-is-off-until-the-founder-arms-it.md)) |
 | Agent-side writes | Historically silent-failing until 44.1d (`v3.0-TECH-DEBT.md:95-131`) | Fixed |
 | **Goal reached** (`type: goal_reached`) | `notifications/producers/goal-reached.producer.ts` — reads `analytics_goals` (status `active`, `direction` `at_least`) and asks `GoalsService.getGoalProgress` for the number rather than re-summing the metric. Metadata carries `crossedAt` (the latest contributing source row, NOT the sweep time), `detectedAt`, `earlyByDays`/`earlinessPhrase` against `deadline`, and `onShift` from `public.shifts` via the new `shift-window.ts` | **Built, NOT armed.** Sweep `*/15 * * * *` under `runPerTenant`; writes nothing until `NOTIFICATION_PRODUCERS_ENABLED=true`. `at_most` ceilings are deliberately not reported — crossing a ceiling is not a success — and the run row says so |
 | **Ceiling held** (`type: goal_reached`, producer `ceiling_held`) | `ceiling-held.producer.ts` — the founder's 2026-09-03 answer to the first pass reporting `at_most` goals as "not a success this producer reports on". A ceiling has no crossing: the success is a period that ran out with the house still under. Fires at **local midnight ending `analytics_goals.deadline`** on the house's own clock, carrying `periodEndedAt`, `headroom`, `headroomFraction` and the same roster/provenance keys the crossing producer uses. A ceiling that closed OVER is counted and named, never reported as a success | **Built, NOT armed.** `*/15 * * * *`, so a period closing at midnight is not reported a day late. Dedupe `goal:<goalId>:<periodEnd>`, so rolling a ceiling to a new month is a new line and re-reading a closed period never is. **Measured on production 2026-09-03: all 4 `analytics_goals` rows are `at_least` (3 active, 1 archived) — there is no ceiling goal in the house yet, so this producer has nothing to report until someone sets one** |
@@ -1921,8 +1954,12 @@ sibling's implementation differs, the sibling's file is the truth.
     written once and never again for the same first sighting, and a
     removed-then-re-added tool is written again.
 
-31. **`grant_suspended` has no register on the rebuilt page yet.** `KIND_BY_TYPE`
-    in `notifications/next/nt-format.ts` does not carry the type, so these rows
+31. ~~**`grant_suspended` has no register on the rebuilt page yet.**~~ **CLOSED
+    by #289 (`941d9cb40`), which gave it the *Connections* row in
+    `KIND_BY_TYPE`. The rail counts it once branch
+    `fix/bell-files-refused-checks` (2026-10-05) puts *Connections* in
+    `KIND_ORDER`.** Originally: `KIND_BY_TYPE`
+    in `notifications/next/nt-format.ts` did not carry the type, so these rows
     fall to *Other* — the exact way a new register goes invisible that the map's
     own comment warns about. The one-line patch is written out in the pass
     report; it was not applied because that file is under concurrent edit by the
@@ -1939,7 +1976,9 @@ sibling's implementation differs, the sibling's file is the truth.
     which is the founder's call and is stated in each row's
     `metadata.audience`. Bounded at twelve weeks — the run row and
     `/connections` keep carrying it after that, the day book stops.
-33. **`mcp_tool_added` has no register on the rebuilt page yet**, exactly as
+33. ~~**`mcp_tool_added` has no register on the rebuilt page yet**~~ **CLOSED,
+    as item 31: #289 gave it the *Connections* row, and the rail counts it once
+    the same branch lands.** Originally: no register, exactly as
     `grant_suspended` does not (§13.31). Same one-line patch, same file under
     the same concurrent edit, same reason it was not applied here. Both types
     fall to *Other* until the page owner adds them; the producers deliberately

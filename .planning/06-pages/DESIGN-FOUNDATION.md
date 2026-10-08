@@ -223,7 +223,13 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
    top bar into settings". `ThemeMenu.tsx` is deleted, and with it the legacy
    Light/Dark/System app-theme menu; the person's ground (Paper / Charcoal, ADR
    0169) is chosen in `/profile`'s Preferences card, which every role can reach.
-   ADR 0169 §Amendment 2026-10-01.]**
+   ADR 0169 §Amendment 2026-10-01.]** **[2026-10-01 (batch 4): "Paper / Charcoal" is now
+   Paper / Charcoal / System — founder, 2026-10-01: "Paper / Charcoal / System". System
+   follows the device live; paper stays the default for anyone who never chose, and a
+   one-time `Panel` sheet asks them at first sign-in, mounted once in `DashboardLayout`
+   and never over the data-terms sheet. The old app theme is reset to light once more
+   (`wineops-theme-v3`); the ground choice never drives it. ADR 0169 §Amendment
+   2026-10-01 (batch 4).]**
 
    - **The chrome-free list is now two, and both are decided, not accidental:**
      `receiving_door` (routed outside `DashboardLayout` on purpose — "used at a
@@ -336,9 +342,12 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      room.
    - **The width rule, "Open first, then remember"** — open at normal widths on a
      person's first visits; tucked below 1280 px and on `/reports` and
-     `/inventory` to a ~52 px strip that still shows each verb with its count (a
+     `/inventory` [Amended 2026-10-07: and on the dashboard at `/`, ADR 0290's
+     *"Counter starts tucked"*, `fix/dashboard-counter-starts-tucked`] to a ~52 px strip that still shows each verb with its count (a
      ring for a verb with a register not read, a dash for one refused — never a
-     blank edge); after that each person's choice per page wins. Kept per device
+     blank edge); after that each person's choice per page wins [Corrected
+     2026-10-07: one choice, kept for every page, since the founder's
+     2026-10-01 narrowing (`counterPrefs.ts`'s header); not one per page]. Kept per device
      in localStorage keyed by the person (`lib/mudavym/counterPrefs.ts` says why
      not the server route).
    - **The house said** — the sitting's own log of what the house sealed,

@@ -86,6 +86,10 @@ import {
   OwnPaperProvenance,
   PaperCandidate,
   PaperLineCandidate,
+  ReceiptPaper,
+  ReceiptPaperRead,
+  SightingDate,
+  dateReceiptSighting,
   decideOwnPaperSighting,
   isOutlierAgainstPriors,
   isOwnPaperSource,
@@ -229,13 +233,27 @@ const UUID_RE =
  */
 const MASTER_WINE_LIBRARY_NAMESPACE = "mudavym:master_wine_library";
 
-// The two terminal states of a calendar event, built from `CalendarEventStatus`
-// rather than restated as literals so a divergence is a compile error (ADR
-// 0066).
-const TERMINAL_CALENDAR_STATUSES = [
-  CalendarEventStatus.COMPLETED,
-  CalendarEventStatus.CANCELLED,
-] as const;
+/**
+ * The day an order says its delivery is due, or `null` when it states none.
+ *
+ * `procurement_orders.expected_delivery_date` is a `date` column, which
+ * PostgREST returns as `YYYY-MM-DD`; a timestamp-shaped value is cut to its
+ * day rather than refused, and anything that is not a day at all is treated as
+ * no date, so the event falls back to the labelled estimate instead of landing
+ * on a day nobody stated (ADR 0284).
+ */
+export function statedDeliveryDayOf(
+  value: string | null | undefined,
+): string | null {
+  if (typeof value !== "string") return null;
+  const day = value.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  // `2026-02-30` has the shape of a day and is not one; a `date` column
+  // could not hold it, so it never came from the order.
+  const parsed = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10) === day ? day : null;
+}
 
 /**
  * The statuses an order can be in while it is still waiting for a signature.
@@ -1726,6 +1744,13 @@ export class ProcurementService {
       unitVolumeMl?: number | null;
       observedAt?: string | null;
       currency?: string | null;
+      /**
+       * ADR 0273: the date this price is dated by and why
+       * (`dateReceiptSighting`). Given on the receipt path only; it dates the
+       * sighting AND this event's `price_history` row, so the two records of
+       * one event name one day.
+       */
+      dating?: SightingDate | null;
     };
     /**
      * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
@@ -1846,7 +1871,15 @@ export class ProcurementService {
           // The key is named explicitly even when the value is null so the
           // capture-contract guard can read what this write claims.
           currency: seriesCurrency.code,
-          effective_date: new Date().toISOString().slice(0, 10),
+          // ADR 0273: the sighting's `effective_date` — the invoice's issue
+          // date when one was read, the check's UTC day otherwise — so this
+          // row and the sighting name one day for one event. A build-lane
+          // pick, not a founder answer: it moves what the two price_history
+          // readers return (ADR 0273, Consequences). A confirmed order passes
+          // no dating and keeps today, which is the day it was confirmed.
+          effective_date:
+            args.sighting?.dating?.effectiveDate ??
+            new Date().toISOString().slice(0, 10),
           source: args.source,
           order_id: args.orderId,
           notes,
@@ -2055,6 +2088,13 @@ export class ProcurementService {
       unitVolumeMl?: number | null;
       observedAt?: string | null;
       currency?: string | null;
+      /**
+       * ADR 0273: the date this price is dated by and why
+       * (`dateReceiptSighting`). Given on the receipt path only; it dates the
+       * sighting AND this event's `price_history` row, so the two records of
+       * one event name one day.
+       */
+      dating?: SightingDate | null;
     };
     /**
      * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
@@ -2100,6 +2140,7 @@ export class ProcurementService {
       packSize: s.packSize,
       unitVolumeMl: s.unitVolumeMl,
       observedAt: s.observedAt,
+      dating: s.dating ?? null,
       currency: s.currency ?? null,
       notes: args.notes ?? null,
       provenance: args.provenance ?? null,
@@ -2178,6 +2219,7 @@ export class ProcurementService {
           packSize: s.packSize,
           unitVolumeMl: s.unitVolumeMl,
           observedAt: s.observedAt,
+          dating: s.dating ?? null,
           currency: s.currency ?? null,
           notes: args.notes ?? null,
           provenance: args.provenance ?? null,
@@ -2765,13 +2807,18 @@ export class ProcurementService {
    * attached": that sentence would be a claim about the order the read could
    * not make. Best-effort like the sighting it rides on — a delivery that has
    * been counted is not failed over provenance.
+   *
+   * ADR 0273: it also reads what dates the price — the named invoice's
+   * `doc_date` and its latest `issueDate` correction — off the SAME paper it
+   * names, and says what it could not read (`readFailure`), so a failed read
+   * dates the price by its check in words that say so.
    */
   private async receiptPaperFor(
     restaurantId: string,
     orderId: string,
     orderLineId: string | null,
-  ): Promise<OwnPaperProvenance> {
-    const failed = (what: string, message: string): OwnPaperProvenance => {
+  ): Promise<ReceiptPaperRead> {
+    const failed = (what: string, message: string): ReceiptPaperRead => {
       this.logger.warn(
         `Price provenance for order ${orderId}: ${what} could not be read (${message}); the sighting names no paper.`,
       );
@@ -2779,6 +2826,12 @@ export class ProcurementService {
         documentId: null,
         documentLineId: null,
         sentence: `The paper for order ${orderId} could not be read when this price was recorded (${what}), so none is named. That is a failed read, not an order without paper.`,
+        invoice: null,
+        liveInvoices: null,
+        issueDateCorrection: null,
+        // `what` only: the database's own error text stays in the log line
+        // above and never reaches a stored row or the sighting sheet.
+        readFailure: what,
       };
     };
 
@@ -2798,7 +2851,7 @@ export class ProcurementService {
     if (ids.length) {
       const { data: docs, error: docError } = await this.databaseService.supabase
         .from("procurement_documents")
-        .select("id, doc_type, doc_number, status")
+        .select("id, doc_type, doc_number, doc_date, status")
         .eq("restaurant_id", restaurantId)
         .in("id", ids);
       if (docError) return failed("the order's documents", docError.message);
@@ -2824,15 +2877,69 @@ export class ProcurementService {
         this.logger.warn(
           `Price provenance for order ${orderId}: the invoice's lines could not be read (${lineError.message}); the paper is named without a line.`,
         );
-        return {
+        return this.withIssueDateCorrection(orderId, {
           ...paper,
           sentence: `${paper.documentId ? "Read from the invoice attached to this order." : paper.sentence} Its lines could not be read when this price was recorded, so no line is named — a failed read, not an unpaired line.`,
-        };
+        });
       }
       lines = (lineRows ?? []) as PaperLineCandidate[];
     }
 
-    return pickReceiptPaper({ orderId, orderLineId, documents, lines });
+    return this.withIssueDateCorrection(
+      orderId,
+      pickReceiptPaper({ orderId, orderLineId, documents, lines }),
+    );
+  }
+
+  /**
+   * ADR 0273: the latest `correction` on the named invoice's `issueDate`,
+   * which wins over the extracted `doc_date` (ADR 0104 D5, the same overlay
+   * `CanonicalDocumentService` applies). One bounded read, made only when an
+   * invoice is named, on the `document_corrections_document` index; the
+   * document id was read house-scoped above, and this table has no house
+   * column of its own.
+   *
+   * A failed read keeps the paper named — only its date could not be read —
+   * and says so, rather than reading as an invoice nobody corrected.
+   */
+  private async withIssueDateCorrection(
+    orderId: string,
+    paper: ReceiptPaper,
+  ): Promise<ReceiptPaperRead> {
+    if (!paper.documentId || !paper.invoice)
+      return { ...paper, issueDateCorrection: null, readFailure: null };
+    const { data, error } = await this.databaseService.supabase
+      .from("document_corrections")
+      .select("revision, kind, after")
+      .eq("document_id", paper.documentId)
+      .eq("field_path", "issueDate")
+      .eq("kind", "correction")
+      .order("revision", { ascending: false })
+      .limit(1);
+    if (error) {
+      this.logger.warn(
+        `Price date for order ${orderId}: the invoice's issue-date corrections could not be read (${error.message}); the price is dated when it was checked.`,
+      );
+      return {
+        ...paper,
+        issueDateCorrection: null,
+        // The error text is in the log line above, not on the row.
+        readFailure: "the invoice's issue-date corrections",
+      };
+    }
+    const latest = (
+      (data ?? []) as Array<{ revision?: number | null; after?: any }>
+    )[0];
+    return {
+      ...paper,
+      issueDateCorrection: latest
+        ? {
+            revision: latest.revision ?? null,
+            value: latest.after?.value ?? null,
+          }
+        : null,
+      readFailure: null,
+    };
   }
 
   /**
@@ -3719,8 +3826,8 @@ export class ProcurementService {
       );
     }
 
-    // Cancel any pending calendar delivery event linked to this order.
-    await this.cancelCalendarEventForOrder(restaurantId, orderId, order);
+    // The delivery calendar event is cancelled by the table, for every writer:
+    // migration `a_delivery_event_follows_its_order` (ADR 0284).
 
     // Release shadow stock if the order had already been approved/sent and
     // inventory was reserved (shadow_stock was incremented for this order).
@@ -3857,146 +3964,6 @@ export class ProcurementService {
           `Order ${record.orderId} IS cancelled and the log does not say so.`,
       );
     }
-  }
-
-  /**
-   * Close the open delivery calendar event for an order — the one
-   * implementation behind both `cancelCalendarEventForOrder` and
-   * `updateCalendarEventForDelivery`.
-   *
-   * Those two are the same job in two directions, and before this they were
-   * the same job written twice. Both were broken the same two ways, and
-   * neither fault could be seen. They are the read/update counterparts of the
-   * write ADR 0066 repaired:
-   *
-   *  1. Each located the event with `.select("id, tags")` and JSON-parsed
-   *     `tags` looking for an `order_id`. `calendar_events` has no `tags`
-   *     column, so PostgREST answered 42703 for the whole query — and the
-   *     destructure took only `data`, so the error was never read. Supabase
-   *     *returns* `{data, error}` rather than throwing, which made the
-   *     wrapping `try`/`catch` inert for exactly the failure that was
-   *     occurring. `events` came back `undefined`, `(events || [])` was empty,
-   *     and the function returned having done nothing — indistinguishable
-   *     from a run that legitimately found no event. `order_id` is a real
-   *     uuid column with an FK to `procurement_orders`, and since ADR 0066 it
-   *     is written, so the scan is replaced by `.eq("order_id", orderId)`.
-   *  2. Each wrote and filtered on uppercase `COMPLETED`/`CANCELLED`. The
-   *     column carries no CHECK, so the write would have *succeeded* and
-   *     produced a row no reader recognises, while the filters matched
-   *     nothing. The real vocabulary is `CalendarEventStatus` — all lowercase;
-   *     production holds `active`, `completed`, `pending` — and it is
-   *     imported, not restated.
-   *
-   * Until ADR 0066 there was never an event to find, so failing cost nothing.
-   * Now that events are created for real, an unclosed event leaves a `pending`
-   * delivery on `/calendar` for an order that has long since arrived or been
-   * cancelled.
-   *
-   * Sharing one body is not only deduplication. Written twice, the two drifted:
-   * one excluded the terminal statuses with `.not("status", "in", ...)` and the
-   * other with `.neq(...)`, for no reason either recorded. Here the one thing
-   * that legitimately differs — which statuses are already closed and must not
-   * be reopened — is an argument with a name, so the difference is a decision
-   * instead of an accident.
-   *
-   * One statement, not select-then-update: it cannot match a row it then fails
-   * to write, and `.select("id")` makes the success branch unreachable without
-   * rows to name. All three outcomes are reported, and "nothing matched" is
-   * stated rather than being indistinguishable from success.
-   */
-  private async closeDeliveryCalendarEvent(
-    restaurantId: string,
-    orderId: string,
-    order: OrderResponseDto,
-    close: {
-      /** The status to write. Also reads as the verb in every log line. */
-      status: CalendarEventStatus;
-      /** Statuses already closed for this transition; never reopened. */
-      leaveAlone: readonly CalendarEventStatus[];
-      description: string;
-    },
-  ): Promise<void> {
-    // PostgREST wants an `in` value as a parenthesised, quoted list. A
-    // one-element list is valid, so this covers both callers.
-    const alreadyClosed = `(${close.leaveAlone.map((s) => `"${s}"`).join(",")})`;
-
-    const context = {
-      restaurantId,
-      orderId,
-      orderNumber: order.orderNumber,
-    };
-
-    try {
-      const { data, error } = await this.databaseService.supabase
-        .from("calendar_events")
-        .update({
-          status: close.status,
-          description: close.description,
-        })
-        .eq("restaurant_id", restaurantId)
-        .eq("order_id", orderId)
-        .eq("event_type", CalendarEventType.DELIVERY)
-        .not("status", "in", alreadyClosed)
-        .select("id");
-
-      if (error) {
-        this.logger.error(
-          `Calendar delivery event NOT ${close.status} for order ${order.orderNumber}`,
-          {
-            ...context,
-            code: (error as { code?: string }).code,
-            error: error.message,
-          },
-        );
-        return;
-      }
-
-      const ids = (data ?? []).map((row: { id: string }) => row.id);
-      if (ids.length === 0) {
-        // Legitimate in two known cases: an order cancelled before approval
-        // never had an event, and any order approved before ADR 0066 shipped
-        // never got one either. Said out loud regardless — reporting nothing
-        // here is precisely what kept the 42703 above invisible for the whole
-        // life of both functions.
-        this.logger.warn(
-          `No open delivery calendar event matched this order — nothing was ${close.status}`,
-          context,
-        );
-        return;
-      }
-
-      this.logger.log(
-        `Calendar event(s) ${ids.join(", ")} ${close.status} for order ${order.orderNumber}`,
-      );
-    } catch (e: any) {
-      this.logger.error(
-        `Calendar delivery event NOT ${close.status} for order ${order.orderNumber}`,
-        { ...context, error: e?.message },
-      );
-    }
-  }
-
-  /**
-   * Close the delivery event when its order is cancelled (non-fatal — the
-   * order is already cancelled by the time this runs).
-   *
-   * A **completed** event is left alone: a recorded delivery is a physical
-   * fact, and a later administrative cancellation should not erase it. That is
-   * why `leaveAlone` here is both terminal statuses and only one of them in
-   * `updateCalendarEventForDelivery` — see that function for the other side.
-   */
-  private async cancelCalendarEventForOrder(
-    restaurantId: string,
-    orderId: string,
-    order: OrderResponseDto,
-  ): Promise<void> {
-    return this.closeDeliveryCalendarEvent(restaurantId, orderId, order, {
-      status: CalendarEventStatus.CANCELLED,
-      leaveAlone: TERMINAL_CALENDAR_STATUSES,
-      // The pre-fix text was the raw uuid, which is nothing a manager reading
-      // /calendar can use. The order number is already in hand at the caller.
-      description: `Order ${order.orderNumber} was cancelled — this delivery is not coming.`,
-    });
   }
 
   /** Subtract order quantity from shadow_stock + in_transit_quantity, flooring at 0. Non-fatal. */
@@ -5639,8 +5606,8 @@ export class ProcurementService {
       }
     }
 
-    // Update calendar event to COMPLETED on delivery
-    await this.updateCalendarEventForDelivery(restaurantId, orderId, order);
+    // The delivery calendar event is completed, on the day the goods arrived,
+    // by the table: migration `a_delivery_event_follows_its_order` (ADR 0284).
 
     // Emit order_change event for cross-page sync (triggers inventory update)
     await this.emitOrderChangeEvent(restaurantId, userId, order, "delivered");
@@ -6857,6 +6824,16 @@ export class ProcurementService {
         orderId,
         agreedLine.id,
       );
+      // ADR 0273: the price is dated by the issue date of the invoice named
+      // just above — never by paper the row does not name — and by the
+      // moment it was checked only when no such date can be read, with the
+      // reason written on the row.
+      const receiptDate = dateReceiptSighting({
+        verifiedAt: update.match_verified_at ?? new Date().toISOString(),
+        paper: receiptPaper,
+        issueDateCorrection: receiptPaper.issueDateCorrection,
+        readFailure: receiptPaper.readFailure,
+      });
       await this.recordPriceHistory({
         restaurantId,
         orderId,
@@ -6933,11 +6910,14 @@ export class ProcurementService {
           // it — never `restaurants.currency`, which is what the house REPORTS
           // in (ADR 0117 Q25).
           currency: body.invoiceCurrency ?? null,
-          // The receipt's own moment. `procurement_documents` carries no
-          // issued-date column this path can read, so the date recorded is the
-          // one this event actually has: when a person checked the paper. It is
-          // an event date, never `now()` stamped onto an undated number.
-          observedAt: update.match_verified_at ?? new Date().toISOString(),
+          // ADR 0273. The invoice's issue date — `doc_date` with its latest
+          // correction laid over it — when the one invoice named above states
+          // one; the moment a person checked the paper otherwise. This used
+          // to say `procurement_documents` carries no issued-date column; it
+          // does (`baseline_from_production.sql:4433`), and every window was
+          // counting a July invoice checked in September as September's.
+          observedAt: receiptDate.observedAt,
+          dating: receiptDate,
         },
       });
     }
@@ -7033,16 +7013,37 @@ export class ProcurementService {
    * at — a bare insert cannot tell "wrote a row" from "wrote nothing", and
    * reporting the second as the first is how this went unnoticed. The id (or
    * `null`) is returned so the omission is enumerable by a caller.
+   *
+   * WHERE IT GOES (ADR 0284). On the date the order states
+   * (`procurement_orders.expected_delivery_date`) when it states one. Before
+   * this every event went to approval + 7 days whether or not its order stated
+   * a date; on Tuzlu Rüzgar all 534 October events sat on 9 October (F-152).
+   * With no stated date it still goes to approval + 7, an estimate and not a
+   * vendor commitment, and its text now says so rather than reading as a date
+   * somebody gave.
+   *
+   * WHAT CLOSES IT is no longer this file. The table does, for every writer:
+   * migration `a_delivery_event_follows_its_order` completes the event on the
+   * arrival or cancels it when the order will not come, and an event written
+   * here for an order that has already arrived or been cancelled is closed at
+   * birth.
    */
   private async createCalendarEventForOrder(
     restaurantId: string,
     order: OrderResponseDto,
     trigger: "approved" | "created",
+    statedDeliveryDate: string | null,
   ): Promise<string | null> {
-    // Expected delivery: 7 days out. An estimate, not a vendor commitment.
-    const expectedDate = new Date();
-    expectedDate.setDate(expectedDate.getDate() + 7);
-    const eventDate = expectedDate.toISOString().split("T")[0];
+    const stated = statedDeliveryDayOf(statedDeliveryDate);
+    let eventDate: string;
+    if (stated) {
+      eventDate = stated;
+    } else {
+      // Expected delivery: 7 days out. An estimate, not a vendor commitment.
+      const expectedDate = new Date();
+      expectedDate.setDate(expectedDate.getDate() + 7);
+      eventDate = expectedDate.toISOString().split("T")[0];
+    }
 
     // `calendar_events` has no priority column and this change must not add
     // one, so the emergency flag rides in the two human-visible text columns
@@ -7055,7 +7056,11 @@ export class ProcurementService {
 
     const description =
       `Expected delivery for order ${order.orderNumber} ` +
-      `(${describeOrderedQuantity(order)}). Created on order ${trigger}.` +
+      `(${describeOrderedQuantity(order)}), ` +
+      (stated
+        ? "on the date the order states. "
+        : "estimated 7 days after approval; the order states no date. ") +
+      `Created on order ${trigger}.` +
       (order.isEmergency ? " Emergency order." : "");
 
     try {
@@ -7128,30 +7133,6 @@ export class ProcurementService {
       );
       return null;
     }
-  }
-
-  /**
-   * Close the delivery event when its order arrives (non-fatal).
-   *
-   * Only a **completed** event is left alone here, so a `cancelled` one is
-   * still eligible. That asymmetry with `cancelCalendarEventForOrder` is
-   * deliberate and it is the pre-fix intent preserved: an arrival is a
-   * physical fact and outranks an earlier administrative cancellation.
-   * `markDelivered` does not require the order to be un-cancelled either, so
-   * refusing here would leave a delivered order facing a `cancelled` event
-   * with nothing to reconcile the two. Cancellation is the weaker claim and
-   * yields; delivery is the stronger one and wins.
-   */
-  private async updateCalendarEventForDelivery(
-    restaurantId: string,
-    orderId: string,
-    order: OrderResponseDto,
-  ): Promise<void> {
-    return this.closeDeliveryCalendarEvent(restaurantId, orderId, order, {
-      status: CalendarEventStatus.COMPLETED,
-      leaveAlone: [CalendarEventStatus.COMPLETED],
-      description: `Delivered: ${order.orderNumber} (${describeOrderedQuantity(order)}). Actual delivery: ${order.deliveredAt}`,
-    });
   }
 
   /**
@@ -8063,10 +8044,13 @@ export class ProcurementService {
           ...raw,
           wine_name: raw.inventory?.wine_name || null,
         };
+        // The order's own stated date, read from the row: `OrderResponseDto`
+        // does not carry `expected_delivery_date` (ADR 0284).
         await this.createCalendarEventForOrder(
           restaurantId,
           this.mapOrderRow(mappedRow),
           "approved",
+          raw.expected_delivery_date ?? null,
         );
       }
     } catch (e: any) {

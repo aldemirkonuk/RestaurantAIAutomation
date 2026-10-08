@@ -20,7 +20,9 @@ import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { Logger } from "@nestjs/common";
 import {
+  dateReceiptSighting,
   decideOwnPaperSighting,
+  ISSUE_DATE_FUTURE_TOLERANCE_DAYS,
   isOutlierAgainstPriors,
   MIN_OUTLIER_SAMPLE,
   pickDealMessage,
@@ -28,6 +30,7 @@ import {
   provenanceIds,
 } from "./own-paper-sighting";
 import { priceBelowAverage } from "../vendor-intel/price-below-average";
+import { VendorComparisonService } from "../vendor-intel/vendor-comparison.service";
 import { A_MANAGER, A_SEAL, GATES_AFTER_LEDGER } from "./testing/passing-vendor-gates";
 import * as ownPaperSighting from "./own-paper-sighting";
 
@@ -59,6 +62,12 @@ function makeDb(opts: {
   docLinks?: Row[];
   documents?: Row[];
   docLines?: Row[];
+  /**
+   * ADR 0273: `document_corrections` rows. The fake applies the read's own
+   * equality filters and its `order(revision)` / `limit`, so "the latest
+   * correction wins" is the service's query doing it, not the fixture.
+   */
+  corrections?: Row[];
   /** A read error for one of the paper tables, by table name. */
   failTable?: string;
   /** Inbound `procurement_conversations` rows, newest first. */
@@ -87,6 +96,8 @@ function makeDb(opts: {
       let op: "select" | "insert" | "update" | "delete" = "select";
       let selectedColumns = "";
       const filters: Record<string, any> = {};
+      let orderBy: { col: string; ascending: boolean } | null = null;
+      let limitTo: number | null = null;
 
       const settle = (shape: "one" | "many"): Row => {
         if (op === "select") calls.reads.push({ table, filters: { ...filters } });
@@ -98,6 +109,19 @@ function makeDb(opts: {
           return { data: opts.documents ?? [], error: null };
         if (table === "procurement_document_lines")
           return { data: opts.docLines ?? [], error: null };
+        if (table === "document_corrections") {
+          let rows = (opts.corrections ?? []).filter((r) =>
+            Object.entries(filters).every(([k, v]) => r[k] === v),
+          );
+          if (orderBy) {
+            const { col, ascending } = orderBy;
+            rows = [...rows].sort((a, b) =>
+              ascending ? a[col] - b[col] : b[col] - a[col],
+            );
+          }
+          if (limitTo !== null) rows = rows.slice(0, limitTo);
+          return { data: rows, error: null };
+        }
         // Only the deal readers select `conversation_context`; the
         // "newer reply still analysing" gate selects `id` and must see none.
         if (table === "procurement_conversations" && op === "select")
@@ -181,9 +205,15 @@ function makeDb(opts: {
         is: () => q,
         gt: () => q,
         gte: () => q,
-        order: () => q,
+        order(col: string, o?: { ascending?: boolean }) {
+          orderBy = { col, ascending: o?.ascending !== false };
+          return q;
+        },
         range: () => q,
-        limit: () => q,
+        limit(n: number) {
+          limitTo = n;
+          return q;
+        },
         insert(payload: Row) {
           op = "insert";
           if (table === "price_history") calls.priceHistoryInserts.push(payload);
@@ -296,9 +326,17 @@ describe("own paper reaches vendor_price_observations", () => {
     );
     expect(row.outlier_basis).toBe("write_time");
     expect(typeof row.outlier_judged_at).toBe("string");
-    // observed_at is the verification's own moment, and effective_date agrees.
+    // No paper is attached to this order, so there is no issue date to read
+    // (ADR 0273): observed_at is the verification's own moment, effective_date
+    // agrees, and the row says which date it carries and why.
     expect(row.observed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(row.effective_date).toBe(row.observed_at.slice(0, 10));
+    expect(row.raw.dateBasis).toBe("verified_at");
+    expect(row.raw.verifiedAt).toBe(row.observed_at);
+    expect(row.raw.issueDate).toBeNull();
+    expect(row.raw.dateSentence).toMatch(
+      /^No live invoice is attached to this order, so there is no issue date to read\.$/,
+    );
   });
 
   it("a confirmed order writes one tier-2 quote sighting", async () => {
@@ -1227,5 +1265,562 @@ describe("own paper: the sighting records the invoice price in its own unit, onc
     expect(row.raw_price).toBe(40);
     expect(row.pack_size).toBe(1);
     expect(row.normalized_unit_price).toBeCloseTo(40, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR 0273: a verified receipt's price is dated by the invoice it was read
+// from, and says which date it carries. Every case below runs through
+// `verifyReceipt`, so the date is the one the real writer puts on the row.
+// ---------------------------------------------------------------------------
+describe("ADR 0273: a verified receipt is dated by its invoice's issue date", () => {
+  // The check happens at a fixed moment, so "today" in the writer is this.
+  const CHECKED = "2026-09-03T10:00:00.000Z";
+  const invoice = {
+    id: DOC,
+    doc_type: "invoice",
+    doc_number: "F-2201",
+    doc_date: "2026-07-15",
+    status: "received",
+    // The receipt's door reads the paper's own money before it accepts a
+    // price (the fork 6(a) fixture above carries the same two keys).
+    currency: "TRY",
+    extracted: {},
+  };
+  const onePaper = (over: Partial<Parameters<typeof makeDb>[0]> = {}) =>
+    makeDb({
+      orderRow: deliveredOrder,
+      docLinks: [{ document_id: DOC }],
+      documents: [invoice],
+      ...over,
+    });
+  const correction = (
+    revision: number,
+    value: unknown,
+    kind = "correction",
+  ) => ({
+    document_id: DOC,
+    field_path: "issueDate",
+    kind,
+    revision,
+    after: { value, source: "human_corrected", confidence: null },
+  });
+  const at = (iso: string) =>
+    jest
+      .useFakeTimers({
+        doNotFake: [
+          "nextTick",
+          "setImmediate",
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "clearInterval",
+          "queueMicrotask",
+        ],
+      })
+      .setSystemTime(new Date(iso));
+
+  beforeEach(() => at(CHECKED));
+  afterEach(() => jest.useRealTimers());
+
+  it("dates the sighting by the one named invoice's doc_date, at noon UTC", async () => {
+    const { db, calls } = onePaper();
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.observed_at).toBe("2026-07-15T12:00:00.000Z");
+    expect(row.effective_date).toBe("2026-07-15");
+    expect(row.document_id).toBe(DOC);
+    expect(row.raw.dateBasis).toBe("invoice_issue_date");
+    expect(row.raw.verifiedAt).toBe(CHECKED);
+    expect(row.raw.issueDate).toBe("2026-07-15");
+    expect(row.raw.dateSentence).toBe(
+      "Dated by the issue date on invoice F-2201, 2026-07-15, as read from the paper (invoice status: received). The price was checked on 2026-09-03.",
+    );
+    // One bounded read of the corrections, on the named invoice's issue date.
+    const corr = calls.reads.filter((r) => r.table === "document_corrections");
+    expect(corr).toHaveLength(1);
+    expect(corr[0].filters).toEqual({
+      document_id: DOC,
+      field_path: "issueDate",
+      kind: "correction",
+    });
+  });
+
+  it("the latest issueDate correction wins over the extracted date and an older correction", async () => {
+    const { db, calls } = onePaper({
+      corrections: [
+        correction(2, "2026-07-13"),
+        correction(4, "2026-07-14"),
+        // A verification tick is not a correction, and a later one does not
+        // win. Neither does a correction to a different field.
+        correction(5, "2026-07-01", "verification"),
+        { ...correction(6, "2026-07-02"), field_path: "documentNumber" },
+      ],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    const row = calls.sightingInserts[0];
+    expect(row.observed_at).toBe("2026-07-14T12:00:00.000Z");
+    expect(row.effective_date).toBe("2026-07-14");
+    expect(row.raw.dateBasis).toBe("invoice_issue_date_corrected");
+    expect(row.raw.issueDate).toBe("2026-07-14");
+    expect(row.raw.dateSentence).toMatch(
+      /^Dated by the issue date on invoice F-2201, 2026-07-14, as a person corrected it \(the paper read 2026-07-15\)/,
+    );
+  });
+
+  it("names no date when two invoices are attached, and reads no correction", async () => {
+    const { db, calls } = onePaper({
+      docLinks: [{ document_id: DOC }, { document_id: DOC2 }],
+      documents: [
+        invoice,
+        { ...invoice, id: DOC2, doc_number: "F-2202", doc_date: "2026-07-10" },
+      ],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    const row = calls.sightingInserts[0];
+    expect(row.observed_at).toBe(CHECKED);
+    expect(row.raw.dateBasis).toBe("verified_at");
+    expect(row.raw.dateSentence).toBe(
+      "2 invoices are attached to this order and none is named, so no single issue date can be read.",
+    );
+    expect(calls.reads.some((r) => r.table === "document_corrections")).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    ["paper", "procurement_documents", null, "the order's documents"],
+    [
+      "issue-date correction",
+      "document_corrections",
+      DOC,
+      "the invoice's issue-date corrections",
+    ],
+  ])(
+    "calls an unreadable %s a failed read, dated when checked — never 'no date'",
+    async (_label, failTable, documentId, what) => {
+      const { db, calls } = onePaper({ failTable });
+
+      await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+      expect(calls.sightingInserts).toHaveLength(1);
+      const row = calls.sightingInserts[0];
+      // Only the date failed when the correction could not be read: the
+      // paper itself was read, and stays named.
+      expect(row.document_id).toBe(documentId);
+      expect(row.observed_at).toBe(CHECKED);
+      expect(row.raw.dateBasis).toBe("verified_at");
+      expect(row.raw.dateSentence).toBe(
+        `The invoice's issue date could not be read when this price was checked (${what}). That is a failed read, not an invoice without a date.`,
+      );
+      // The database's error text stays in the log, never on a stored row
+      // that the sighting sheet shows to staff.
+      expect(row.raw.dateSentence).not.toContain("unreachable");
+    },
+  );
+
+  it("refuses an issue date two days after the check, and keeps it on the row", async () => {
+    const { db, calls } = onePaper({
+      documents: [{ ...invoice, doc_date: "2026-09-05" }],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    const row = calls.sightingInserts[0];
+    expect(row.observed_at).toBe(CHECKED);
+    expect(row.effective_date).toBe("2026-09-03");
+    expect(row.raw.dateBasis).toBe("verified_at");
+    expect(row.raw.issueDate).toBe("2026-09-05");
+    expect(row.raw.dateSentence).toMatch(
+      /2026-09-05, is more than 1 day after the day this price was checked, so it is not used\./,
+    );
+  });
+
+  it("refuses a corrected value that is not a calendar date", async () => {
+    const { db, calls } = onePaper({
+      corrections: [correction(2, "14.08.2026")],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    const row = calls.sightingInserts[0];
+    expect(row.observed_at).toBe(CHECKED);
+    expect(row.raw.dateBasis).toBe("verified_at");
+    expect(row.raw.issueDate).toBeNull();
+    expect(row.raw.dateSentence).toMatch(
+      /^The issue date on invoice F-2201 was corrected to "14\.08\.2026", which is not a calendar date \(YYYY-MM-DD\)\./,
+    );
+  });
+
+  it("dates the price_history row of the same event by the same issue date", async () => {
+    const { db, calls } = onePaper();
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    expect(calls.priceHistoryInserts[0].effective_date).toBe("2026-07-15");
+    expect(calls.priceHistoryInserts[0].effective_date).toBe(
+      calls.sightingInserts[0].effective_date,
+    );
+  });
+
+  it("re-checking the same receipt at the same numbers a day later writes no second sighting", async () => {
+    const { db, calls } = onePaper();
+    const svc = service(db);
+
+    await svc.verifyReceipt(REST, ORDER, USER, verifyBody);
+    at("2026-09-04T10:00:00.000Z");
+    await svc.verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    // The same paper, the same numbers, the same dated day: the same evidence.
+    expect(calls.sightingInserts).toHaveLength(1);
+  });
+
+  it("an invoice issued 60 days before its check is outside the 30-day box (A-038)", async () => {
+    // The analytics walk measured the 30-, 95- and 365-day boxes counting
+    // the same sightings (A-038). This is one mechanism that does that — a
+    // row dated by its check stays in every box — not a claim about which
+    // source wrote the measured rows. The REAL sweep, over the REAL writer's
+    // row, with the window applied the way PostgREST applies
+    // `.gte("observed_at", from)`.
+    const { db, calls } = onePaper({
+      documents: [{ ...invoice, doc_date: "2026-07-05" }],
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+    expect(calls.sightingInserts).toHaveLength(1);
+
+    const swept = async (windowDays: number) => {
+      let from = "";
+      const q: any = {
+        select: () => q,
+        or: () => q,
+        eq: () => q,
+        order: () => q,
+        limit: () => q,
+        gte: (col: string, v: string) => {
+          expect(col).toBe("observed_at");
+          from = v;
+          return q;
+        },
+        then: (res: any) =>
+          res({
+            data: calls.sightingInserts
+              .filter((r) => r.observed_at >= from)
+              .map((r) => ({
+                ...r,
+                yield_factor: 1,
+                signature_hash: null,
+                identity_id: null,
+              })),
+            error: null,
+          }),
+      };
+      const vcs = new VendorComparisonService({
+        supabase: { from: () => q },
+      } as any);
+      const out = await vcs.belowTrailingAverage({
+        restaurantId: REST,
+        windowDays,
+      });
+      return out.scanned.observations;
+    };
+
+    expect(await swept(30)).toBe(0);
+    expect(await swept(95)).toBe(1);
+  });
+});
+
+describe("dateReceiptSighting", () => {
+  const CHECKED = "2026-09-03T10:00:00.000Z";
+  const paper = (
+    over: Partial<{
+      docNumber: string | null;
+      docDate: string | null;
+      status: string | null;
+    }> = {},
+  ) => ({
+    invoice: {
+      docNumber: "F-1",
+      docDate: "2026-07-15",
+      status: "verified",
+      ...over,
+    },
+    liveInvoices: 1,
+  });
+
+  it("uses the issue date at noon UTC, and the issue date exactly as effective_date", () => {
+    const d = dateReceiptSighting({ verifiedAt: CHECKED, paper: paper() });
+    expect(d).toMatchObject({
+      observedAt: "2026-07-15T12:00:00.000Z",
+      effectiveDate: "2026-07-15",
+      basis: "invoice_issue_date",
+      verifiedAt: CHECKED,
+      issueDate: "2026-07-15",
+    });
+    expect(d.sentence).toContain("(invoice status: verified)");
+  });
+
+  it("never dates a row after its check: an issue date the same day, checked before noon, keeps the check", () => {
+    const d = dateReceiptSighting({
+      verifiedAt: "2026-09-03T08:30:00.000Z",
+      paper: paper({ docDate: "2026-09-03" }),
+    });
+    expect(d.observedAt).toBe("2026-09-03T08:30:00.000Z");
+    expect(d.effectiveDate).toBe("2026-09-03");
+    expect(d.basis).toBe("invoice_issue_date");
+  });
+
+  it(`admits an issue date ${ISSUE_DATE_FUTURE_TOLERANCE_DAYS} day after the UTC check day, held at the check`, () => {
+    // A house in Türkiye checking just after its own midnight: still the
+    // previous day in UTC.
+    const d = dateReceiptSighting({
+      verifiedAt: "2026-09-03T22:30:00.000Z",
+      paper: paper({ docDate: "2026-09-04" }),
+    });
+    expect(d.basis).toBe("invoice_issue_date");
+    expect(d.effectiveDate).toBe("2026-09-04");
+    expect(d.observedAt).toBe("2026-09-03T22:30:00.000Z");
+  });
+
+  it("refuses an issue date more than a day after the check", () => {
+    const d = dateReceiptSighting({
+      verifiedAt: CHECKED,
+      paper: paper({ docDate: "2026-09-05" }),
+    });
+    expect(d).toMatchObject({
+      basis: "verified_at",
+      observedAt: CHECKED,
+      effectiveDate: "2026-09-03",
+      issueDate: "2026-09-05",
+    });
+  });
+
+  it.each([
+    [
+      "no invoice attached",
+      { invoice: null, liveInvoices: 0 },
+      /^No live invoice is attached to this order/,
+    ],
+    [
+      "several invoices",
+      { invoice: null, liveInvoices: 3 },
+      /^3 invoices are attached to this order and none is named/,
+    ],
+    [
+      "an invoice with no date on record",
+      paper({ docDate: null }),
+      /^No issue date is on record for invoice F-1\./,
+    ],
+    [
+      "an invoice with no number and no date",
+      paper({ docNumber: null, docDate: null }),
+      /^No issue date is on record for the invoice\./,
+    ],
+    [
+      "a stored date that does not parse",
+      paper({ docDate: "2026-02-30" }),
+      /reads "2026-02-30", which is not a calendar date/,
+    ],
+    [
+      "a timestamp, not a calendar date",
+      paper({ docDate: "2026-07-15T00:00:00Z" }),
+      /which is not a calendar date/,
+    ],
+  ])("falls back to the check, saying why, for %s", (_label, p, sentence) => {
+    const d = dateReceiptSighting({ verifiedAt: CHECKED, paper: p });
+    expect(d.basis).toBe("verified_at");
+    expect(d.observedAt).toBe(CHECKED);
+    expect(d.effectiveDate).toBe("2026-09-03");
+    expect(d.sentence).toMatch(sentence);
+    expect(d.sentence).not.toMatch(/dated when it was checked/);
+  });
+
+  it("reads a correction to none as 'states none', and a non-date correction as not a date", () => {
+    const none = dateReceiptSighting({
+      verifiedAt: CHECKED,
+      paper: paper(),
+      issueDateCorrection: { revision: 2, value: null },
+    });
+    expect(none.basis).toBe("verified_at");
+    expect(none.sentence).toMatch(
+      /^A person corrected the issue date on invoice F-1 to none\./,
+    );
+    const bad = dateReceiptSighting({
+      verifiedAt: CHECKED,
+      paper: paper(),
+      issueDateCorrection: { revision: 2, value: 20260714 },
+    });
+    expect(bad.basis).toBe("verified_at");
+    expect(bad.sentence).toMatch(
+      /was corrected to 20260714, which is not a calendar date/,
+    );
+  });
+
+  it("a correction over a missing extracted date still dates the row, and says the paper read none", () => {
+    const d = dateReceiptSighting({
+      verifiedAt: CHECKED,
+      paper: paper({ docDate: null }),
+      issueDateCorrection: { revision: 2, value: "2026-08-01" },
+    });
+    expect(d.basis).toBe("invoice_issue_date_corrected");
+    expect(d.observedAt).toBe("2026-08-01T12:00:00.000Z");
+    expect(d.sentence).toContain("(the paper read no date)");
+  });
+
+  it("a failed read wins over everything else and says it is a failed read", () => {
+    const d = dateReceiptSighting({
+      verifiedAt: CHECKED,
+      paper: paper(),
+      readFailure: "the order's documents",
+    });
+    expect(d.basis).toBe("verified_at");
+    expect(d.issueDate).toBeNull();
+    expect(d.sentence).toMatch(
+      /\(the order's documents\)\. That is a failed read, not an invoice without a date\./,
+    );
+  });
+
+  it("an unreadable check time places no date, and the sighting is refused for it", () => {
+    const d = dateReceiptSighting({ verifiedAt: "not a time", paper: paper() });
+    expect(d.effectiveDate).toBeNull();
+    const refused = decideOwnPaperSighting({
+      restaurantId: REST,
+      orderId: ORDER,
+      providerId: null,
+      vendorName: null,
+      masterWineId: WINE,
+      productName: "x",
+      source: "receipt_verified",
+      unitPrice: 40,
+      unitLabel: "bottle",
+      packSize: 1,
+      unitVolumeMl: 750,
+      observedAt: CHECKED,
+      dating: d,
+      currency: "EUR",
+    });
+    expect(refused.write).toBe(false);
+  });
+});
+
+describe("decideOwnPaperSighting with a dating", () => {
+  const base = {
+    restaurantId: REST,
+    orderId: ORDER,
+    providerId: null,
+    vendorName: null,
+    masterWineId: WINE,
+    productName: "x",
+    source: "receipt_verified" as const,
+    unitPrice: 40,
+    unitLabel: "bottle",
+    packSize: 1,
+    unitVolumeMl: 750,
+    observedAt: "2026-09-03T10:00:00.000Z",
+    currency: "EUR",
+  };
+  const dated = (verifiedAt: string) =>
+    dateReceiptSighting({
+      verifiedAt,
+      paper: {
+        invoice: { docNumber: "F-1", docDate: "2026-07-15", status: null },
+        liveInvoices: 1,
+      },
+    });
+
+  it("keys the content hash on the dated day, so a later re-check is the same evidence", () => {
+    const a = decideOwnPaperSighting({
+      ...base,
+      dating: dated("2026-09-03T10:00:00.000Z"),
+    });
+    const b = decideOwnPaperSighting({
+      ...base,
+      dating: dated("2026-09-20T10:00:00.000Z"),
+    });
+    if (!a.write || !b.write) throw new Error("expected writes");
+    expect(a.row.observed_at).toBe("2026-07-15T12:00:00.000Z");
+    expect(b.contentHash).toBe(a.contentHash);
+  });
+
+  it("keys the hash on the paper's day even when observed_at is held at the check", () => {
+    // Issued 4 Sep; checked late on 3 Sep UTC (just after midnight in
+    // Türkiye), then again on the morning of 4 Sep. observed_at differs by
+    // UTC day — held at each check — but the paper's day does not.
+    const paper = {
+      invoice: { docNumber: "F-1", docDate: "2026-09-04", status: null },
+      liveInvoices: 1,
+    };
+    const late = dateReceiptSighting({
+      verifiedAt: "2026-09-03T22:30:00.000Z",
+      paper,
+    });
+    const next = dateReceiptSighting({
+      verifiedAt: "2026-09-04T09:00:00.000Z",
+      paper,
+    });
+    const a = decideOwnPaperSighting({ ...base, dating: late });
+    const b = decideOwnPaperSighting({ ...base, dating: next });
+    if (!a.write || !b.write) throw new Error("expected writes");
+    expect(a.row.observed_at.slice(0, 10)).toBe("2026-09-03");
+    expect(b.row.observed_at.slice(0, 10)).toBe("2026-09-04");
+    expect(a.row.effective_date).toBe("2026-09-04");
+    expect(b.contentHash).toBe(a.contentHash);
+  });
+
+  it("without a dating writes no date basis — a confirmed order is unchanged", () => {
+    const d = decideOwnPaperSighting({ ...base, source: "order_confirmed" });
+    if (!d.write) throw new Error(d.reason);
+    expect(d.row.observed_at).toBe(base.observedAt);
+    expect(d.row.effective_date).toBe("2026-09-03");
+    expect("dateBasis" in d.row.raw).toBe(false);
+    expect("verifiedAt" in d.row.raw).toBe(false);
+  });
+});
+
+describe("pickReceiptPaper names the invoice dating reads", () => {
+  it("carries the named invoice's header, and none when no single invoice is named", () => {
+    const inv = {
+      id: "a",
+      doc_type: "invoice",
+      doc_number: "F-9",
+      doc_date: "2026-07-15",
+      status: "received",
+    };
+    expect(
+      pickReceiptPaper({
+        orderId: "o",
+        orderLineId: null,
+        documents: [inv],
+        lines: [],
+      }),
+    ).toMatchObject({
+      documentId: "a",
+      invoice: { docNumber: "F-9", docDate: "2026-07-15", status: "received" },
+      liveInvoices: 1,
+    });
+    expect(
+      pickReceiptPaper({
+        orderId: "o",
+        orderLineId: null,
+        documents: [inv, { ...inv, id: "b" }],
+        lines: [],
+      }),
+    ).toMatchObject({ documentId: null, invoice: null, liveInvoices: 2 });
+    // A rejected invoice is not the paper, so its date is not read either.
+    expect(
+      pickReceiptPaper({
+        orderId: "o",
+        orderLineId: null,
+        documents: [{ ...inv, status: "rejected" }],
+        lines: [],
+      }),
+    ).toMatchObject({ documentId: null, invoice: null, liveInvoices: 0 });
   });
 });
