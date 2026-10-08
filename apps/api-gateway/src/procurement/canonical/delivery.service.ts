@@ -873,10 +873,12 @@ export class DeliveryService {
    * IDEMPOTENT. A second verify returns the first one's stamp unchanged. Writing
    * again would move `verified_at` to a moment at which nobody decided anything.
    *
-   * NO STOCK, NO COST — MEASURED. See the class header: `cost_state` and
-   * `inventory_transactions.delivery_id` have zero writers on this tree, so
-   * setting `cost_state = final` here would be this code asserting a cost state
-   * about a booking it never made. Filed as the next stop, not half-done.
+   * THIS IS WHERE COST POSTS (ADR 0103 A1). The door count booked the lots
+   * provisionally, with no price yet (`DeliveryStockService.bookAtTheDoor`).
+   * Once the state moves, `finaliseAtVerified` posts the agreed price for each
+   * item an agreed price reaches; an item no agreed price reaches stays
+   * provisional. A delivery the door count never booked posts nothing. The
+   * controller lets only an owner or a manager call this (ADR 0312).
    */
   async verify(
     restaurantId: string,
@@ -916,7 +918,7 @@ export class DeliveryService {
           alreadyVerified: true,
           cost: null,
           costNote:
-            "This delivery was already verified; its cost was posted then and is not posted twice.",
+            "This delivery was already verified; verifying again posts nothing.",
         },
       };
 
@@ -953,15 +955,16 @@ export class DeliveryService {
     await this.clocks.cancelFor(deliveryId);
 
     // ADR 0103 A1, the second half: the goods were already on the shelf from
-    // the door count, PROVISIONALLY costed. Verification is where the agreed
-    // price becomes the lot's cost. The quantity is not touched — money moves,
-    // bottles do not.
+    // the door count, provisionally and with no price yet. Verification is
+    // where an agreed price, where one reaches an item, becomes the lot's
+    // cost. The quantity is not touched — money moves, bottles do not.
     //
     // A COST FAILURE DOES NOT UN-VERIFY THE DELIVERY. A named person asserted
-    // receipt and that assertion is durable; the lots simply stay provisional,
-    // the sentence says so, and posting is safe to retry. Reporting the
-    // verification as failed would send them to press it again on a delivery
-    // that is already verified.
+    // receipt and that assertion is durable; the lots simply stay provisional
+    // and the sentence says so. Verifying again does not post them: a second
+    // verify returns at the early return above. A way to post them is OD-223.
+    // Reporting the verification as failed would send them to press it again
+    // on a delivery that is already verified.
     const cost = await this.stock.finaliseAtVerified(
       restaurantId,
       deliveryId,

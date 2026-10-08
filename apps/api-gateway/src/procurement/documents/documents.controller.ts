@@ -853,7 +853,7 @@ export class DocumentsController {
     summary:
       "Record a door count as a receiving_advice document (ADR 0104 D11)",
     description:
-      "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. Nothing here writes stock — a count is a record (ADR 0078), not a booking.",
+      "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. With a delivery to attach to, the count also books its lines as stock, provisionally and with no price yet (ADR 0103 A1); a count with no delivery books nothing and `booking` is null. Cost posts later, at verify, which is an owner's or a manager's act (ADR 0312).",
   })
   async doorCount(@Body() body: DoorCountDto, @CurrentUser() user: AuthedUser) {
     let photo: {

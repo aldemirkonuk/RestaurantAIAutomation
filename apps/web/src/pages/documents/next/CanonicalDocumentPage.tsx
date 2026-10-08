@@ -39,6 +39,12 @@
  * staff member still sees the controls, and the hold fails at the mint in the
  * control's own "could not be issued" words. Disabling them for staff is a
  * named follow-up in that branch's tech-debt fragment.]
+ * [Added 2026-10-08, ADR 0312: the delivery desk on this page (agree, verify,
+ * propose, counter, accept) is an owner's or a manager's act at the gateway
+ * (`assertDeliveryDesk`), so this page offers those controls only to an owner
+ * or a manager (`holdsMoney` below) and tells anyone else why in one sentence.
+ * The door count stays offered to everyone. The two sealed writes above are
+ * not changed by that branch.]
  *
  * LIVE FOR EVERY HOUSE since ADR 0149 row 36 (2026-09-17). `/documents/:id`
  * still renders through PageGate on the `document` page name, but `document`
@@ -143,6 +149,18 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const auth = useContext(AuthContext)
   const rid = auth?.activeRestaurantId || auth?.user?.restaurantId || null
+  /**
+   * THE DELIVERY DESK IS THE MONEY HOLDERS' (ADR 0312). The gateway refuses
+   * agree, verify, propose, counter and accept to anyone but an owner or a
+   * manager, so offering those buttons to staff would only lead to a refusal.
+   * The role is the one in this house (`activeRole`, ADR 0164), else the
+   * account's. `admin` is refused here and admitted by the gateway's
+   * `holdsHouseMoney`, a divergence ADR 0312 names.
+   */
+  const deskRole = String(auth?.activeRole ?? auth?.user?.role ?? '')
+    .trim()
+    .toLowerCase()
+  const holdsMoney = deskRole === 'owner' || deskRole === 'manager'
 
   const q = useQuery({
     queryKey: ['canonical-document', rid, id],
@@ -552,11 +570,15 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               delivery={eventQ.data}
               busy={writing}
               error={deliveryError}
-              onAgree={() =>
-                deliveryWrite(() => deliveriesApi.agree(soleDelivery.deliveryId))
+              onAgree={
+                holdsMoney
+                  ? () => deliveryWrite(() => deliveriesApi.agree(soleDelivery.deliveryId))
+                  : undefined
               }
-              onVerify={() =>
-                deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
+              onVerify={
+                holdsMoney
+                  ? () => deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
+                  : undefined
               }
             />
           ) : (
@@ -575,25 +597,43 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             selectedLine={selectedLine}
             busy={writing}
             error={deliveryError}
-            onPropose={(body) =>
-              deliveryWrite(() =>
-                deliveriesApi.propose(soleDelivery.deliveryId, {
-                  ...(body as ProposalBody),
-                  documentId: doc.documentId,
-                }),
-              )
+            onPropose={
+              holdsMoney
+                ? (body) =>
+                    deliveryWrite(() =>
+                      deliveriesApi.propose(soleDelivery.deliveryId, {
+                        ...(body as ProposalBody),
+                        documentId: doc.documentId,
+                      }),
+                    )
+                : undefined
             }
-            onCounter={(pid, body) =>
-              deliveryWrite(() =>
-                deliveriesApi.counter(pid, {
-                  ...(body as ProposalBody),
-                  documentId: doc.documentId,
-                }),
-              )
+            onCounter={
+              holdsMoney
+                ? (pid, body) =>
+                    deliveryWrite(() =>
+                      deliveriesApi.counter(pid, {
+                        ...(body as ProposalBody),
+                        documentId: doc.documentId,
+                      }),
+                    )
+                : undefined
             }
-            onAccept={(pid) => deliveryWrite(() => deliveriesApi.accept(pid))}
+            onAccept={
+              holdsMoney ? (pid) => deliveryWrite(() => deliveriesApi.accept(pid)) : undefined
+            }
           />
         </div>
+      )}
+      {soleDelivery && !holdsMoney && (
+        <p
+          data-testid="delivery-desk-note"
+          style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}
+        >
+          Agreeing, verifying and answering a position on this delivery are an
+          owner’s or a manager’s acts. The door count and its photograph still go
+          through for you.
+        </p>
       )}
 
       {showDoorTab && (

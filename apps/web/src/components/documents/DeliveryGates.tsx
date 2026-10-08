@@ -148,13 +148,12 @@ export function DeliveryGates({
             {verified ? (
               <>
                 Verified {fmtStamp(delivery.verifiedAt, delivery.jurisdiction)} by a
-                named person. Nothing was posted to inventory or cost by this step
-                on this build.
+                named person.
               </>
             ) : agreed ? (
-              'A named person asserts the goods arrived. This is not the same act as agreeing the document, and the two are never collapsed.'
+              'A named person asserts the goods arrived, and where an agreed price reaches the item, it becomes what the item cost. This is not the same act as agreeing the document, and the two are never collapsed.'
             ) : (
-              'Only an agreed delivery can be verified. Agreement is about the document; verification is about the goods.'
+              'Only an agreed delivery can be verified. Agreement is about the document; verification is about the goods and the books.'
             )}
           </p>
           {agreed && !verified && onVerify && (

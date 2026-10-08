@@ -902,6 +902,33 @@ describe('DeliveryGates — the two gates, explained before they are pressed', (
       /signed delivery ticket is final/,
     )
     expect(screen.getByTestId('verify-button')).toBeTruthy()
+    // ADR 0312: verify is where an agreed price becomes the item's cost, and
+    // the sentence is no broader than that.
+    const text = screen.getByTestId('delivery-gates').textContent ?? ''
+    expect(text).toMatch(/where an agreed price reaches the item, it becomes what the item cost/)
+  })
+
+  it('offers neither gate when no handler is passed (a session that does not hold the money)', () => {
+    render(<DeliveryGates delivery={event()} />)
+    expect(screen.queryByTestId('agree-button')).toBeNull()
+    render(<DeliveryGates delivery={event({ state: 'AGREED', agreedAt: '2026-08-15T10:00:00Z' })} />)
+    expect(screen.queryByTestId('verify-button')).toBeNull()
+  })
+
+  it('does not say a verified delivery posted nothing to cost', () => {
+    render(
+      <DeliveryGates
+        delivery={event({
+          state: 'VERIFIED',
+          agreedAt: '2026-08-15T10:00:00Z',
+          verifiedAt: '2026-08-16T10:00:00Z',
+        })}
+      />,
+    )
+    const text = screen.getByTestId('delivery-gates').textContent ?? ''
+    expect(text).toMatch(/by a\s+named person\./)
+    expect(text).not.toMatch(/Nothing was posted to inventory or cost by this step/)
+    expect(text).not.toMatch(/on this build/)
   })
 
   it('shows the gateway’s refusal verbatim rather than a paraphrase', () => {

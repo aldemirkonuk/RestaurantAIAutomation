@@ -424,7 +424,7 @@ export class DeliveryStockService {
         return {
           ok: false,
           status: 503,
-          error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${rpc.error.message}. The stock is correct and the lot stays provisional; this is safe to retry.`,
+          error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${rpc.error.message}. The stock is correct and the lot stays provisional; verifying again does not post it.`,
         };
       const receipt = (rpc.data ?? {}) as Record<string, unknown>;
       finalised.push({
