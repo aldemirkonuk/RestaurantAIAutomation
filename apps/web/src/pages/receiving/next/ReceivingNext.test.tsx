@@ -417,6 +417,9 @@ describe('F12 — the rail shows a parked door receipt as Not sent, with Send ag
     fireEvent.click(discard)
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(String(confirm.mock.calls[0][0])).toContain('not on the server')
+    // discard() reaches removePendingMutation only after awaiting the queue read,
+    // so a wrong "discard on no" would land a tick later — let it land first.
+    await new Promise((r) => setTimeout(r, 0))
     expect(offlineStorage.removePendingMutation).not.toHaveBeenCalled()
 
     fireEvent.click(discard)
@@ -560,8 +563,12 @@ describe('F6 — $0 measured and $— unknown are different facts', () => {
       queuePayload({ items: [queueItem({ dollarsAtRisk: null })], totalAtRisk: 0 }),
     )
     harness(ManagerBody)
-    await screen.findByRole('tab', { name: /Short/ })
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+
+    // Scoped to the row: the lane counts and the header are em dashes before the
+    // queue answers too, and the header stays one for an unpriced queue.
+    await screen.findByText('PO-1')
+    const row = screen.getByText('PO-1').closest('button') as HTMLElement
+    expect(within(row).getByText('—')).toBeInTheDocument()
   })
 
   it('states what is still owed in bottles, from the ledger (ADR 0192 amendment)', async () => {
@@ -800,7 +807,9 @@ describe('F7 — an uncounted list that did not load is not "nothing uncounted"'
     get.mockResolvedValue(queuePayload({ unverified: [] }))
     harness(ManagerBody)
 
-    await screen.findByRole('tab', { name: /Short/ })
+    // The tabs paint before the queue answers, so waiting on them let this
+    // negative run first. "Nothing to chase" renders only once it has answered.
+    await screen.findByText(/Nothing to chase/)
     expect(screen.queryByText(/the uncounted list did not load/i)).not.toBeInTheDocument()
   })
 })
@@ -845,21 +854,22 @@ describe('F8 — a refusal is not an outage, on all three renderings', () => {
     get.mockRejectedValue(httpError(403, 'Forbidden resource'))
     harness(OwnerBody)
 
-    const alerts = await screen.findAllByRole('alert')
-    const text = alerts.map((a) => a.textContent ?? '').join(' ')
-    expect(text).toMatch(/not permitted/i)
-    expect(text).toContain('HTTP 403')
+    // Scoped to the headline's own alert: the trend alert also says "not
+    // permitted" and "HTTP 403", so the joined text passed without this one.
+    const statsAlert = await screen.findByText(/not permitted to see recovered money/i)
+    expect(statsAlert).toHaveTextContent('HTTP 403')
   })
 
   it('owner: a 500 prints the message it used to swallow', async () => {
     get.mockRejectedValue(httpError(500, 'Internal error'))
     harness(OwnerBody)
 
-    const alerts = await screen.findAllByRole('alert')
-    const text = alerts.map((a) => a.textContent ?? '').join(' ')
-    expect(text).toContain('unknown, not zero')
-    expect(text).toContain('HTTP 500')
-    expect(text).toContain('Internal error')
+    // Scoped to the headline's own alert: the trend alert prints the same status
+    // and message, so the joined text passed with the headline swallowing them.
+    const headline = await screen.findByText(/it is unknown, not zero/)
+    expect(headline).toHaveAttribute('role', 'alert')
+    expect(headline).toHaveTextContent('HTTP 500')
+    expect(headline).toHaveTextContent('Internal error')
   })
 })
 
@@ -882,7 +892,10 @@ describe('F9 — the trend says when it broke, instead of being honest by accide
     expect(await screen.findByText(/settled-claims list did not load/i)).toBeInTheDocument()
     expect(screen.getByText(/not zero, and not "nothing settled"/)).toBeInTheDocument()
     // The recovered figure comes from a different query and keeps its answer.
-    expect(screen.getByText('≥$900')).toBeInTheDocument()
+    // Awaited on its own: /stats can land after the list fails, and the headline
+    // is an RcTally, which shows its figure one effect after the commit. Read in
+    // the alert's tick, it saw the em dash on a slow CI runner (2026-10-06).
+    expect(await screen.findByText('≥$900')).toBeInTheDocument()
   })
 
   it('says nothing when the list simply came back empty', async () => {

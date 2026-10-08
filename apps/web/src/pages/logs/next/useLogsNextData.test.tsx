@@ -178,6 +178,100 @@ describe('useLogsNextData — the window', () => {
   });
 });
 
+/**
+ * Reading back from a day. The seed is the first `before`; the walk from it is
+ * the same walk as from the top. The cache case is the one that matters most:
+ * with the seed outside the key, a jumped reading would be answered from the
+ * newest page already in cache, and the page would print the newest entries
+ * under a band naming a day months back.
+ */
+describe('useLogsNextData — reading back from a day', () => {
+  const SEED = '2026-07-23T04:00:00.000Z';
+
+  it('sends the seed as the first cursor', async () => {
+    api.get.mockResolvedValueOnce({
+      data: { events: [row('a', '2026-07-22T20:00:00.000Z')], correlationId: null, hasMore: false, nextCursor: null },
+    });
+    const { result } = renderHook(() => useLogsNextData(null, SEED), { wrapper });
+    await waitFor(() => expect(result.current.state).toBe('ready'));
+    const [, opts] = api.get.mock.calls[0] as [string, { params: Record<string, unknown> }];
+    expect(opts.params.before).toBe(SEED);
+    expect(opts.params.limit).toBe(LOGS_SERVER_WINDOWS.TIMELINE);
+  });
+
+  it('never answers a seeded reading from the newest page in cache', async () => {
+    api.get.mockResolvedValue({
+      data: { events: [row('a', '2026-07-22T20:00:00.000Z')], correlationId: null, hasMore: false, nextCursor: null },
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(({ from }: { from: string | null }) => useLogsNextData(null, from), {
+      wrapper: shared,
+      initialProps: { from: null as string | null },
+    });
+    await waitFor(() => expect(result.current.state).toBe('ready'));
+    rerender({ from: SEED });
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    const first = api.get.mock.calls[0] as [string, { params: Record<string, unknown> }];
+    const second = api.get.mock.calls[1] as [string, { params: Record<string, unknown> }];
+    expect(first[1].params.before).toBeUndefined();
+    expect(second[1].params.before).toBe(SEED);
+  });
+
+  it('walks older from the seed, and stalls rather than re-reading the seed', async () => {
+    api.get
+      .mockResolvedValueOnce({
+        data: {
+          events: [row('a', '2026-07-22T20:00:00.000Z'), row('b', '2026-07-22T10:00:00.000Z')],
+          correlationId: null,
+          window: 2,
+          hasMore: true,
+          nextCursor: '2026-07-22T10:00:00.000Z',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          events: [row('b', '2026-07-22T10:00:00.000Z'), row('c', '2026-07-21T10:00:00.000Z')],
+          correlationId: null,
+          window: 2,
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+    const { result } = renderHook(() => useLogsNextData(null, SEED), { wrapper });
+    await waitFor(() => expect(result.current.state).toBe('ready'));
+    act(() => result.current.readMore());
+    await waitFor(() => expect(result.current.pagesRead).toBe(2));
+    const first = api.get.mock.calls[0] as [string, { params: Record<string, unknown> }];
+    const second = api.get.mock.calls[1] as [string, { params: Record<string, unknown> }];
+    expect(first[1].params.before).toBe(SEED);
+    expect(second[1].params.before).toBe('2026-07-22T10:00:00.000Z');
+    expect(result.current.events?.map((e) => e.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('calls a first page that hands back the seed itself a stall, and asks no further', async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        // Every row on the page sits exactly at the seed: the gateway can only
+        // hand the same cursor back.
+        events: [row('a', SEED), row('b', SEED)],
+        correlationId: null,
+        window: 2,
+        hasMore: true,
+        nextCursor: SEED,
+      },
+    });
+    const { result } = renderHook(() => useLogsNextData(null, SEED), { wrapper });
+    await waitFor(() => expect(result.current.state).toBe('ready'));
+    expect(result.current.stalled).toBe(true);
+    act(() => result.current.readMore());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('useLogsNextData — honesty', () => {
   it('tells a refusal apart from a breakage', async () => {
     api.get.mockRejectedValueOnce({ response: { status: 403 }, message: 'Access denied to this restaurant' });

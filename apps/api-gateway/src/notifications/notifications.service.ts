@@ -667,6 +667,14 @@ export class NotificationsService {
        * Two push paths for one message; this keeps it to one.
        */
       skipMobilePush?: boolean;
+      /**
+       * The phone push's `data`, in place of the row's `metadata` (the type
+       * and link are still added; the title and body are the payload's). For
+       * a caller whose metadata carries text it did not write, so that text
+       * is not copied into the push's data: the POS import's refused-checks
+       * note (ADR 0281, amended 2026-10-05) sends its note id and count only.
+       */
+      pushData?: Record<string, unknown>;
     } = {},
   ): Promise<{ inserted: number; ids: string[]; routing?: PersistRouting }> {
     const { broadcast = true, dedupeWithinMinutes } = opts;
@@ -814,7 +822,7 @@ export class NotificationsService {
           data: {
             type: payload.type,
             actionUrl: payload.actionUrl ?? null,
-            ...(payload.metadata ?? {}),
+            ...(opts.pushData ?? payload.metadata ?? {}),
           },
         });
       }
