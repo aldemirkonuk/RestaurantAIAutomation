@@ -72,7 +72,6 @@ import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
 import { ChooseHouse } from './pages/ChooseHouse'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
-import InventoryNext from './pages/inventory/next/InventoryNext' // R4 LOCAL PREVIEW ONLY — never commit (shared queue)
 import { PageGate } from './components/mudavym'
 import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
 
@@ -368,7 +367,7 @@ function App() {
                       runs on all day was the only surface with no bell, no account
                       menu and no theme switch. Flag off, `legacy` renders the page
                       with no wrapper and no class: byte-for-byte what shipped. */}
-                  <Route path="/inventory" element={<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryNext />} />} />
+                  <Route path="/inventory" element={<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryCommandPage />} />} />
                   {/* `/inventory-legacy` is retired (ADR 0019 §B). It redirects
                       rather than 404s because every capability it had was ported
                       onto `/inventory` first — a bookmark lands somewhere that can
