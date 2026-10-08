@@ -136,7 +136,7 @@ def _cap_notices(agent) -> list:
     ]
 
 
-def _at_cap(redis: _FakeRedis, seconds_left: int = DAY) -> None:
+def _at_cap(redis: _FakeRedis, seconds_left: float = DAY) -> None:
     """The 50th pre-draft has been counted; the counter clears in seconds_left."""
     redis.store[RATE_KEY] = ("50", redis.now + seconds_left)
 
@@ -179,7 +179,7 @@ class TestOneNoticePerPause:
         assert len(_cap_notices(agent)) == 2
 
     @pytest.mark.asyncio
-    async def test_a_ttl_redis_cannot_give_holds_the_fence_a_day(self):
+    async def test_a_counter_with_no_expiry_holds_the_fence_a_day(self):
         redis = _FakeRedis()
         redis.store[RATE_KEY] = ("50", None)  # no expiry on the counter
         agent = _agent(redis)
@@ -385,15 +385,24 @@ class TestACounterThatAlreadyCleared:
         await agent._handle_order_created(_order(2))
         assert len(_cap_notices(agent)) == 2
 
+
+class TestACounterWithUnderASecondLeft:
     @pytest.mark.asyncio
-    async def test_a_counter_with_no_expiry_still_holds_a_day(self):
+    async def test_a_ttl_of_zero_holds_the_fence_a_minute_not_a_day(self):
         redis = _FakeRedis()
-        redis.store[RATE_KEY] = ("50", None)
+        _at_cap(redis, seconds_left=0.4)  # still counted, but TTL answers 0
         agent = _agent(redis)
+        assert await redis.ttl(RATE_KEY) == 0
 
         await agent._handle_order_created(_order(1))
+        assert len(_cap_notices(agent)) == 1
+        assert await redis.ttl(FENCE_KEY) == 60
 
-        assert await redis.ttl(FENCE_KEY) == DAY
+        # A new pause later the same day is announced again.
+        redis.now += 3600
+        _at_cap(redis)
+        await agent._handle_order_created(_order(2))
+        assert len(_cap_notices(agent)) == 2
 
 
 class TestNotifySaysWhetherItLanded:

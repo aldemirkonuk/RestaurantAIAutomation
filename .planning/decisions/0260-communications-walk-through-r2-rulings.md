@@ -126,3 +126,4 @@ The founder's words, verbatim, per item (one-word "Approve" items grouped):
 | 2026-10-02 | — | F-106 survivor corrected in place (bracket): the held row is the older; re-ruled first-written, recorded in ADR 0266 |
 | 2026-10-03 | — | Follow-up ruling added: F-126 cap notice once per pause, its words (branch fix/f126-cap-notice-once-a-day) |
 | 2026-10-04 | — | F-126: a notice that does not land lifts the fence, unless the lift also fails (audit finding on #595; no new ruling) |
+| 2026-10-08 | — | F-126: the fence follows the rate key's TTL: 60 s when the counter has under a second left or is already gone (TTL 0 or -2), a day for no expiry, so a later pause the same day is still announced (gate findings on #665; no new ruling) |

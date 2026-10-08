@@ -892,14 +892,15 @@ class ProviderCommunicationAgent(BaseAgent):
         The cap branch is reached only after Redis answered, so the fence is
         Redis too: SET NX on a per-house key that lives as long as the pause.
         The pause ends when rate_key expires, and once the cap is reached nothing
-        renews it, so the fence copies its TTL (+60 s, so it cannot re-arm just
-        before the counter clears). A counter with no expiry holds the fence a
-        day. A counter that is already gone (TTL -2: it cleared between the cap
-        check and this read) holds it only a minute, so a pause that starts
-        later the same day is still announced. A failed read or SET sends nothing: a missed
-        notice beats a flood. A notice that does not land (no member to tell,
-        or the insert failed) lifts the fence again, so the next order over the
-        cap retries it instead of the pause passing in silence.
+        renews it, so the fence follows its TTL. Above 0, the fence holds that
+        TTL + 60 s, so it cannot re-arm just before the counter clears. At 0 or
+        -2 (the counter has under a second left, or is already gone since the
+        cap check, by expiry, eviction or deletion), it holds 60 s, so a pause
+        that starts later the same day is still announced. At -1 (no expiry),
+        None or any other negative, it holds a day. A failed read or SET sends
+        nothing: a missed notice beats a flood. A notice that does not land (no
+        member to tell, or the insert failed) lifts the fence again, so the next
+        order over the cap retries it instead of the pause passing in silence.
         """
         cap = self.settings.negotiation_draft_daily_cap
         fence_key = f"prov_comm:cap_notice:{restaurant_id}"
@@ -907,7 +908,7 @@ class ProviderCommunicationAgent(BaseAgent):
             ttl = await self.redis.ttl(rate_key)
             if ttl is not None and int(ttl) > 0:
                 ex = int(ttl) + 60
-            elif ttl is not None and int(ttl) == -2:
+            elif ttl is not None and int(ttl) in (0, -2):
                 ex = 60
             else:
                 ex = 86400
