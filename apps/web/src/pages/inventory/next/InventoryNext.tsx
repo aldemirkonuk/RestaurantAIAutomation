@@ -520,7 +520,9 @@ export default function InventoryNext() {
                   value={query}
                   onChange={(e) => setV({ q: e.target.value })}
                 />
-                <span className="iv-hint">accents ignored · /</span>
+                <span className="iv-hint">
+                  accents ignored<span className="iv-key"> · /</span>
+                </span>
               </label>
               <Select
                 label="Zone"

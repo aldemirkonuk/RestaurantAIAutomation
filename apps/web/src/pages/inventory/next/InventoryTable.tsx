@@ -76,6 +76,9 @@ export default function InventoryTable(props: InventoryTableProps) {
   return (
     <div className="iv-tablewrap">
       <table className="iv-table" data-testid="inventory-table">
+        {/* INV-W39: the book had no name and no heading, so a screen reader
+            went from the page title straight to Tools. */}
+        <caption className="sr-only">The book: every title on hand</caption>
         <thead>
           <tr>
             {COLUMNS.map((c) => (

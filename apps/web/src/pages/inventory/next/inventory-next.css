@@ -836,3 +836,19 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
   font-size: 12.5px;
   line-height: 1.55;
 }
+
+/* INV-W39: the price cell is borrowed from the legacy page (HousePriceCell),
+   whose grey-400/300 units and "no target set" measured 2.83:1 on this paper.
+   Scoped here, so the legacy page renders as it shipped. --ink-2, not --ink-3:
+   --ink-3 drops to 4.07:1 on the open row's --paper-1. */
+.iv-page [data-testid^='house-price-'] .text-gray-400,
+.iv-page [data-testid^='house-price-'] .text-gray-300 {
+  color: var(--ink-2);
+}
+
+/* INV-W40: "/" focuses the search from a keyboard; a phone has no such key. */
+@media (hover: none) and (pointer: coarse) {
+  .iv-hint .iv-key {
+    display: none;
+  }
+}

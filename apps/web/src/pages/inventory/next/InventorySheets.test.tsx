@@ -478,6 +478,32 @@ describe('the borrowed order ceremony takes this page\'s styles (INV-W32)', () =
   });
 });
 
+describe('the borrowed price cell reads at 4.5:1 on this paper (INV-W39)', () => {
+  // jsdom applies no stylesheet, so the rule is read from the files.
+  it('lifts every faint grey the price cell draws to the page\u2019s ink, on this page only', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, 'inventory-next.css'), 'utf8');
+    const cell = readFileSync(join(__dirname, '../command/HousePriceCell.tsx'), 'utf8');
+    expect(cell).toContain('data-testid={`house-price-${inventoryId}`}');
+    const faint = [...new Set([...cell.matchAll(/text-gray-(\d00)/g)].map((m) => Number(m[1])).filter((n) => n < 500))].sort();
+    expect(faint).toEqual([300, 400]);
+    const rules = [...css.matchAll(/([^{}]*)\{([^}]*)\}/g)].filter((m) => /color:\s*var\(--ink-2\)/.test(m[2])).map((m) => m[1]);
+    for (const n of faint) expect(rules.some((sel) => sel.includes(`.iv-page [data-testid^='house-price-'] .text-gray-${n}`))).toBe(true);
+  });
+});
+
+describe('the search hint keeps its keyboard key off a phone (INV-W40)', () => {
+  it('hides the "/" key on a touch-only screen', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, 'inventory-next.css'), 'utf8');
+    const page = readFileSync(join(__dirname, 'InventoryNext.tsx'), 'utf8');
+    expect(page).toContain('accents ignored<span className="iv-key"> · /</span>');
+    expect(css).toMatch(/@media \(hover: none\) and \(pointer: coarse\) \{\s*\.iv-hint \.iv-key \{\s*display: none;/);
+  });
+});
+
 describe('counts read with grouped digits, as money does (INV-W33)', () => {
   it('groups a large count, its book figure and the gap', () => {
     expect(countGapSentence(1000, 1240, 'Barolo')).toBe('Counted 1,240; the book said 1,000, so the shelf is 240 over. Barolo now reads 1,240.');

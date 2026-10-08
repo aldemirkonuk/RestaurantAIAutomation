@@ -967,3 +967,11 @@ describe('INV-W38 — the view is the URL', () => {
     expect(new URLSearchParams(seen.search).get('order')).toBe('o/7');
   });
 });
+
+describe('INV-W39 — the book has a name', () => {
+  it('names the table for a screen reader', () => {
+    mock.data = data({ rows: [row()] });
+    renderPage();
+    expect(screen.getByRole('table', { name: 'The book: every title on hand' })).toBeTruthy();
+  });
+});
