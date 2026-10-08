@@ -411,6 +411,243 @@ describe('fetchOrderBook: past the ceiling', () => {
   })
 })
 
+describe('fetchOrderBook: the known set of ways to miss an open order (ADR 0269)', () => {
+  /** Replace a row (never mutate it: the reader holds the old object). */
+  const move = (id: string, status: OrderWireStatus) => {
+    gw.rows = gw.rows.map((r) => (r.id === id ? { ...r, status } : r))
+  }
+  /** The unfiltered read made unstable twice, so the book degrades to partial. */
+  const unstable = (rows: Order[]) => (call: { params: Record<string, unknown> }) =>
+    call.params.page === 2 && !call.params.status
+      ? { data: { orders: rows.slice(99, 149), total: 150, page: 2, limit: 100, hasMore: false } }
+      : undefined
+
+  it('whole read: a row deleted between pages moves the count, so the read is not called whole on that pass', async () => {
+    const rows = makeOrders(HOUSE_A, 150)
+    install(rows)
+    let deleted = false
+    gw.before = (call) => {
+      if (call.params.page === 2 && !call.params.status && !deleted) {
+        deleted = true
+        gw.rows = gw.rows.filter((r) => r.id !== 'o-00003')
+      }
+      return undefined
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    // Without the check, page 2 starts at o-00101 and o-00100 is skipped while
+    // 149 distinct ids match the new total of 149.
+    expect(gw.listCalls().map((c) => c.params.page)).toEqual([1, 2, 1, 2])
+    expect(book.mode).toBe('whole')
+    expect(book.rows.some((r) => r.id === 'o-00100')).toBe(true)
+    expect(book.rows).toHaveLength(149)
+  })
+
+  it('KNOWN GAP (ADR 0269): whole read, an order placed and another deleted between the same pages keep the count, and the new order is not read', async () => {
+    // Not detected. The new order is missing just as one placed after the read
+    // would be; no order that existed when page 1 was read is skipped.
+    const rows = makeOrders(HOUSE_A, 150)
+    install(rows)
+    const placed = {
+      ...rows[0],
+      id: 'n-00000',
+      status: 'PENDING',
+      createdAt: new Date(Date.UTC(2026, 9, 2)).toISOString(),
+    } as unknown as Order
+    let done = false
+    gw.before = (call) => {
+      if (call.params.page === 2 && !call.params.status && !done) {
+        done = true
+        gw.rows = [placed, ...gw.rows.filter((r) => r.id !== 'o-00003')]
+      }
+      return undefined
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('whole')
+    expect(book.rows).toHaveLength(150)
+    expect(book.rows.some((r) => r.id === 'n-00000')).toBe(false)
+  })
+
+  it('KNOWN GAP (ADR 0269): whole read, a null count from the gateway (`total = count ?? orders.length`) is read as the whole book', async () => {
+    const rows = makeOrders(HOUSE_A, 150)
+    install(rows)
+    gw.before = (call) =>
+      call.params.page === 1 && !call.params.status
+        ? { data: { orders: rows.slice(0, 100), total: 100, page: 1, limit: 100, hasMore: false } }
+        : undefined
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('whole')
+    expect(book.openComplete).toBe(true)
+    expect(book.rows).toHaveLength(100)
+  })
+
+  it('sweep, partial: an order that leaves the swept status between its pages makes the sweep read again, and the order the shift skipped is kept', async () => {
+    const rows = makeOrders(HOUSE_A, 150, () => 'IN_TRANSIT')
+    install(rows)
+    const base = unstable(rows)
+    let moved = false
+    gw.before = (call) => {
+      if (call.params.status === 'IN_TRANSIT' && call.params.page === 2 && !moved) {
+        moved = true
+        move('o-00003', 'COMPLETED')
+      }
+      return base(call)
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    const transit = gw.listCalls().filter((c) => c.params.status === 'IN_TRANSIT')
+    expect(transit.map((c) => c.params.page)).toEqual([1, 2, 1, 2])
+    expect(book.mode).toBe('partial')
+    expect(book.rows.some((r) => r.id === 'o-00100')).toBe(true)
+    expect(book.rows.filter((r) => r.status === 'IN_TRANSIT')).toHaveLength(149)
+    expect(book.statusTotals?.IN_TRANSIT).toBe(149)
+    expect(book.openComplete).toBe(true)
+  })
+
+  it('sweep, capped: an order that leaves the swept status between its pages makes the sweep read again, and the order the shift skipped is kept', async () => {
+    const rows = makeOrders(HOUSE_A, 3001, (i) => (i < 150 ? 'IN_TRANSIT' : 'COMPLETED'))
+    install(rows)
+    let moved = false
+    gw.before = (call) => {
+      if (call.params.status === 'IN_TRANSIT' && call.params.page === 2 && !moved) {
+        moved = true
+        move('o-00003', 'DELIVERED')
+      }
+      return undefined
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('capped')
+    expect(book.rows.some((r) => r.id === 'o-00100')).toBe(true)
+    expect(book.rows.find((r) => r.id === 'o-00003')?.status).toBe('DELIVERED')
+    expect(book.statusTotals?.IN_TRANSIT).toBe(149)
+    expect(book.openComplete).toBe(true)
+  })
+
+  it('sweep: one status past its own 30 pages is not called complete', async () => {
+    install(makeOrders(HOUSE_A, 3001, () => 'IN_TRANSIT'))
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('capped')
+    expect(book.statusTotals?.IN_TRANSIT).toBe(3001)
+    expect(book.rows.some((r) => r.id === 'o-03000')).toBe(false)
+    expect(book.openComplete).toBe(false)
+  })
+
+  it('KNOWN GAP (ADR 0269): sweep, an order that leaves and another that enters above the page read, between the same pages, keep the count, and the one that entered is lost', async () => {
+    // o-00005 moves PARTIALLY_RECEIVED -> DELIVERED (a legal edge) onto a page
+    // the DELIVERED sweep already read, while o-00010 leaves DELIVERED. No row
+    // shifts, the count holds, and the PARTIALLY_RECEIVED sweep, later, no
+    // longer has o-00005. The per-status counts still add up.
+    const rows = makeOrders(HOUSE_A, 150, (i) => (i === 5 ? 'PARTIALLY_RECEIVED' : 'DELIVERED'))
+    install(rows)
+    const base = unstable(rows)
+    let moved = false
+    gw.before = (call) => {
+      if (call.params.status === 'DELIVERED' && call.params.page === 2 && !moved) {
+        moved = true
+        move('o-00010', 'COMPLETED')
+        move('o-00005', 'DELIVERED')
+      }
+      return base(call)
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('partial')
+    expect(book.statusTotals?.DELIVERED).toBe(149)
+    expect(book.statusTotals?.PARTIALLY_RECEIVED).toBe(0)
+    expect(book.unclassifiedCount).toBe(0)
+    expect(book.openComplete).toBe(true)
+    expect(book.rows.some((r) => r.id === 'o-00005')).toBe(false)
+  })
+
+  it('KNOWN GAP (ADR 0269): sweep, an order that leaves above the page read and an older one that enters below it, between the same pages, keep the count, and an order that never moved is lost', async () => {
+    // o-00003 leaves DELIVERED (page 1 already read), so page 2 shifts up and
+    // skips o-00100; o-00140 enters DELIVERED from PARTIALLY_RECEIVED (a legal
+    // edge, counted later) on page 2, so the count holds at 149. o-00100 was
+    // DELIVERED throughout.
+    const rows = makeOrders(HOUSE_A, 150, (i) => (i === 140 ? 'PARTIALLY_RECEIVED' : 'DELIVERED'))
+    install(rows)
+    const base = unstable(rows)
+    let moved = false
+    gw.before = (call) => {
+      if (call.params.status === 'DELIVERED' && call.params.page === 2 && !moved) {
+        moved = true
+        move('o-00003', 'COMPLETED')
+        move('o-00140', 'DELIVERED')
+      }
+      return base(call)
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('partial')
+    expect(book.statusTotals?.DELIVERED).toBe(149)
+    expect(book.unclassifiedCount).toBe(0)
+    expect(book.openComplete).toBe(true)
+    expect(book.rows.some((r) => r.id === 'o-00100')).toBe(false)
+  })
+
+  it('across sweeps: an order that moves into a status already swept, from one not yet swept, leaves the counts short, and the book says so', async () => {
+    const rows = makeOrders(HOUSE_A, 150, (i) =>
+      i === 20 ? 'PARTIALLY_RECEIVED' : i === 30 ? 'DELIVERED' : 'COMPLETED',
+    )
+    install(rows)
+    const base = unstable(rows)
+    let moved = false
+    gw.before = (call) => {
+      if (call.params.status === 'PARTIALLY_RECEIVED' && !moved) {
+        moved = true
+        move('o-00020', 'DELIVERED')
+      }
+      return base(call)
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('partial')
+    expect(book.rows.some((r) => r.id === 'o-00020')).toBe(false)
+    expect(book.unclassifiedCount).toBe(1)
+    expect(book.openComplete).toBe(false)
+  })
+
+  it('KNOWN GAP (ADR 0269): across sweeps, that shortfall cancelled by an order counted twice reads as complete, with the moved order lost', async () => {
+    // Same move as above, plus o-00030 moving DELIVERED -> COMPLETED after the
+    // DELIVERED sweep counted it and before COMPLETED is counted: a surplus of
+    // 1 against a deficit of 1, every status nameable.
+    const rows = makeOrders(HOUSE_A, 150, (i) =>
+      i === 20 ? 'PARTIALLY_RECEIVED' : i === 30 ? 'DELIVERED' : 'COMPLETED',
+    )
+    install(rows)
+    const base = unstable(rows)
+    let moved = false
+    gw.before = (call) => {
+      if (call.params.status === 'PARTIALLY_RECEIVED' && !moved) {
+        moved = true
+        move('o-00020', 'DELIVERED')
+        move('o-00030', 'COMPLETED')
+      }
+      return base(call)
+    }
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('partial')
+    expect(book.unclassifiedCount).toBe(0)
+    expect(book.openComplete).toBe(true)
+    expect(book.rows.some((r) => r.id === 'o-00020')).toBe(false)
+  })
+
+  it('an order of a status no sweep can name, past the ceiling, with no surplus, leaves the counts short, and the book says so', async () => {
+    install(makeOrders(HOUSE_A, 3001, (i) => (i === 3000 ? ('ON_HOLD' as OrderWireStatus) : 'COMPLETED')))
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('capped')
+    expect(book.rows.some((r) => r.id === 'o-03000')).toBe(false)
+    expect(book.unclassifiedCount).toBe(1)
+    expect(book.openComplete).toBe(false)
+  })
+})
+
 describe('fetchOrderBookPage', () => {
   it('reads one page past the cap on /history at limit 100', async () => {
     install(makeOrders(HOUSE_A, 3001))

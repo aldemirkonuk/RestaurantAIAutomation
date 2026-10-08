@@ -19,10 +19,12 @@
  *
  * WHAT THE READER WILL NOT DO
  * - It never calls a read whole on trust: the count of distinct ids must equal
- *   the gateway's `total`. Otherwise it reads again once, and then falls back to
- *   reading every open status it can name on its own, marked `partial`, with
- *   `openComplete` false when it can tell that read may have missed an open
- *   order. It cannot always tell (see `OrderBook.openComplete`).
+ *   the gateway's `total`, and `total` must not move between pages. Otherwise it
+ *   reads again once, and then falls back to reading every open status it can
+ *   name on its own, marked `partial`, with `openComplete` false when it can
+ *   tell that read may have missed an open order. It cannot always tell: ADR
+ *   0269 lists the known ways it can miss one, each detected or pinned by a
+ *   "KNOWN GAP" test (see `OrderBook.openComplete`).
  * - It never returns a row from another house. The token's house is checked
  *   before and after every page, and every row's `restaurantId` is compared
  *   with the house asked for.
@@ -90,9 +92,10 @@ export const ORDER_WIRE_STATUSES: readonly OrderWireStatus[] = [
  * `normalizeOrderStatus` files as `pending`. A whole read lists such an order
  * with the open ones. The open sweep cannot ask for a status it cannot name,
  * so a degraded read keeps such an order only as the unfiltered pages it read
- * showed it, and counts the rest in `unclassifiedCount` with `openComplete`
- * false, except when a concurrent move offsets them exactly: then both read as
- * complete and the order is missing (see `OrderBook.openComplete`).
+ * showed it. The rest leave the per-status counts short, which sets
+ * `unclassifiedCount` above 0 and `openComplete` false, unless a surplus from orders
+ * that moved while the counts were taken cancels the shortfall exactly (see
+ * `OrderBook.openComplete`).
  */
 const CLOSED_STAGES: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
   'completed',
@@ -225,14 +228,13 @@ export class BookUnstableError extends Error {
 export interface OrderBook {
   house: string
   /**
-   * whole: every order was read and the distinct ids matched the total.
-   * capped: the house has more than CEILING_PAGES pages; `rows` are the newest
-   * 3,000 plus the open orders its sweeps found. partial: the read did not hold
-   * still after one more try; `rows` are the closed rows it saw, and any of a
-   * status no sweep can ask for, plus the open orders its sweeps found. In both,
-   * `openComplete` false says some open orders may be missing: a status no sweep
-   * can ask for, or a sweep that did not hold still, can leave some out.
-   * `openComplete` true does not prove the opposite (see below).
+   * whole: the distinct ids matched the total, and the total did not move
+   * between pages. capped: the house has more than CEILING_PAGES pages; `rows`
+   * are the newest 3,000 plus the open orders its sweeps found. partial: the
+   * read did not hold still after one more try; `rows` are the closed rows it
+   * saw, and any of a status no sweep can ask for, plus the open orders its
+   * sweeps found. In both, `openComplete` false says some open orders may be
+   * missing. `openComplete` true does not prove the opposite (see below).
    */
   mode: 'whole' | 'capped' | 'partial'
   reason: 'ceiling' | 'unstable' | null
@@ -240,25 +242,36 @@ export interface OrderBook {
   /** The gateway's count of every order in the house, from the last page read. */
   total: number
   /**
-   * Whole book: always true, and every order read is in `rows`.
+   * False means some open orders may be missing. True is NOT proof that none
+   * is: it means only that the reader saw no sign of one.
    *
-   * Degraded book: true only when every open sweep held still and the
-   * per-status counts add up to `total` exactly. That is necessary, not
-   * sufficient. Below `total`, a status no sweep can ask for may hold open
-   * orders the unfiltered pages did not show, so it is false even when they
-   * showed all of them. Above it, the counts were taken while orders moved, so
-   * it is false too. But the counts can also add up exactly by accident: an
-   * order of a status no sweep can ask for, outside the pages read (a deficit of
-   * N), and N extra counts from orders that moved status, or were placed, while
-   * the counts were taken (a surplus of N), cancel out. Then this is true and that order is not
-   * in `rows`. The reader cannot see the tie. A known gap, pinned by a test in
-   * `order-book.test.ts`; proving the open set needs a count from the gateway
-   * itself (ADR 0269).
+   * Whole book: always true. The checks (distinct ids equal `total`, `total`
+   * still between pages) miss an order placed and another deleted between the
+   * same two pages, and a null count from the gateway.
+   *
+   * Degraded book: true only when every open sweep held still (distinct ids
+   * equal its `total`, which did not move between its pages) and the
+   * per-status counts add up to `total` exactly. Both checks are offset-paged
+   * reads taken at different moments, and they miss:
+   * - a sweep in which one order leaves the status and another enters it
+   *   between the same two pages, so its count holds;
+   * - a shortfall in the counts (an order of a status no sweep can ask for,
+   *   outside the pages read, or an order that moved into a status already
+   *   counted from one not yet counted) cancelled exactly by a surplus (an
+   *   order counted twice because it moved, or was placed, while the counts
+   *   were taken).
+   * ADR 0269 lists the known set; each case it does not detect is pinned by a
+   * "KNOWN GAP" test in `order-book.test.ts`. Proving the open set needs the
+   * open orders, or their count, from one gateway query.
    */
   openComplete: boolean
   /** Per wire status, the gateway's count. Read only when the book is not whole. */
   statusTotals: Partial<Record<OrderWireStatus, number>> | null
-  /** `total` less the per-status counts, floored at 0: rows of a status no sweep can ask for. */
+  /**
+   * `total` less the per-status counts, floored at 0: a shortfall, from rows of
+   * a status no sweep can ask for or from orders that moved between the counts.
+   * 0 does not prove there are none (see `openComplete`).
+   */
   unclassifiedCount: number | null
   /** The next page (at PAGE_LIMIT) not read, for "Show older" past the cap. */
   nextClosedPage: number | null
@@ -413,9 +426,11 @@ type Session = ReturnType<typeof openSession>
 
 // ---------------------------------------------------------------------------
 // The open sweep: the fallback that reads each open status this client can
-// name on its own, twice at most, and says whether each held still
-// (`openComplete` false when one did not, or when the per-status counts do not
-// add up to `total`)
+// name on its own, twice at most. A sweep counts as held still when its
+// distinct ids equal its `total` and that `total` did not move between its
+// pages; `openComplete` is false when one did not. Held still is not proof: a
+// leave and an enter between the same two pages keep the count and can lose an
+// order (ADR 0269, pinned by a "KNOWN GAP" test).
 // ---------------------------------------------------------------------------
 
 async function sweepStatus(
@@ -427,14 +442,24 @@ async function sweepStatus(
   for (let attempt = 0; attempt < 2; attempt++) {
     rows = new Map()
     let pages = 0
+    let firstTotal: number | null = null
+    let totalMoved = false
     for (let p = 1; ; p++) {
       const page = await session.page({ page: p, limit: PAGE_LIMIT, status })
       for (const row of page.orders) rows.set(row.id, row)
       total = page.total
+      if (firstTotal === null) firstTotal = total
+      else if (total !== firstTotal) totalMoved = true
       pages++
       if (!page.hasMore || pages >= CEILING_PAGES) break
     }
-    if (rows.size === total) return { rows: [...rows.values()], total, complete: true }
+    // The gateway pages by offset. An order that leaves this status after its
+    // page was read shifts the later pages up and one row is skipped, while the
+    // count drops by one and the leaver is still held: the sizes agree. So a
+    // count that moved between pages is a sweep that did not hold still.
+    if (!totalMoved && rows.size === total) {
+      return { rows: [...rows.values()], total, complete: true }
+    }
   }
   return { rows: [...rows.values()], total, complete: false }
 }
@@ -472,12 +497,13 @@ async function degrade(
   const counted = Object.values(statusTotals).reduce((sum, n) => sum + (n ?? 0), 0)
   const unclassifiedCount = Math.max(0, total - counted)
   // An exact sum is necessary for `openComplete`, not sufficient. Above `total`,
-  // an order moved status between sweeps (or one was placed mid-sweep), and that
-  // surplus can hide an order of a status no sweep can name, so the clamp above
-  // would read 0; the read did not hold still. At exactly `total`, a surplus of N
-  // can still cancel a deficit of N such orders outside the pages read, and this
-  // check passes with them missing. The reader cannot tell the two apart; that
-  // tie is a known gap (`OrderBook.openComplete`, ADR 0269).
+  // an order was counted twice (it moved status, or was placed, between the
+  // counts), and that surplus can hide a shortfall, so the clamp above would
+  // read 0. Below it, an order is in no count: a status no sweep can name, or a
+  // move into a status already counted from one not yet counted. At exactly
+  // `total`, a surplus of N can cancel a shortfall of N, and this check passes
+  // with those orders missing. The reader cannot tell that from a read that
+  // held still: a known gap (`OrderBook.openComplete`, ADR 0269).
   const totalsAddUp = counted === total
   return {
     house,
@@ -523,6 +549,8 @@ export async function fetchOrderBook(
   for (let attempt = 0; attempt < 2; attempt++) {
     const seen = new Map<string, Order>()
     let total = 0
+    let firstTotal: number | null = null
+    let totalMoved = false
     try {
       for (let p = 1; ; p++) {
         if (p > CEILING_PAGES) {
@@ -531,9 +559,13 @@ export async function fetchOrderBook(
         const page = await session.page({ page: p, limit: PAGE_LIMIT })
         for (const row of page.orders) seen.set(row.id, row)
         total = page.total
+        if (firstTotal === null) firstTotal = total
+        else if (total !== firstTotal) totalMoved = true
         if (!page.hasMore) break
       }
-      if (seen.size !== total) throw new BookUnstableError(seen.size, total)
+      // A row that leaves the list mid-read (a delete) skips one row on a later
+      // page while the count drops by one: the sizes agree, the count moved.
+      if (totalMoved || seen.size !== total) throw new BookUnstableError(seen.size, total)
       return {
         house,
         mode: 'whole',
