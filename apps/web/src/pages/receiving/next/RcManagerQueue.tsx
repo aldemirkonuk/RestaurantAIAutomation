@@ -80,8 +80,9 @@ interface VendorGroup {
    * USD order is two subtotals, not one invented number (fixer review,
    * 2026-09-18: "a priced receipt needs its currency",
    * procurement_orders.currency). Keyed by the order's own currency code, or
-   * '' for a legacy order that carries none (treated as this page's other
-   * figures already do: USD). Empty when nothing in the box is priced yet.
+   * '' for a legacy order that carries none. That key comes out as
+   * `currency: null`, which `fmtMoneyWholeCcy` prints as "N (currency not
+   * recorded)", not as USD. Empty when nothing in the box is priced yet.
    */
   atRiskByCurrency: Array<{ currency: string | null; amount: number }>;
   /** Rows in this box with no at-risk figure at all — "missing is not zero". */
