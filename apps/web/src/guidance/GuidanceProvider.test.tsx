@@ -563,3 +563,22 @@ describe('two browsers, one account, with the real preferences hook and the gate
     expect(tipIn(x)).toBeTruthy();
   });
 });
+
+describe('a copy left by an earlier build, with no stamp', () => {
+  it('is not carried into this browser\'s copy at the first save', () => {
+    // Every browser that ran an earlier build holds such a copy, written from a
+    // read, so it would lay that read's values over later changes from elsewhere.
+    window.localStorage.setItem(
+      LOCAL_KEY,
+      JSON.stringify({ global: { hide_all_tips: false }, pages: { calendar: { tip: 'dismissed' } } }),
+    );
+    account.preferences = { guidance: { global: { hide_all_tips: false }, pages: {} } };
+    mount('/orders');
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    const kept = JSON.parse(window.localStorage.getItem(LOCAL_KEY) ?? '{}');
+    expect(Number.isFinite(Date.parse(kept.saved_at))).toBe(true);
+    expect(kept.pages?.orders?.tip).toBe('snoozed');
+    expect(kept.pages?.calendar).toBeUndefined();
+    expect(kept.global?.hide_all_tips).toBeUndefined();
+  });
+});
