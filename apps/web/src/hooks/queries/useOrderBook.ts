@@ -80,14 +80,14 @@ interface InFlight {
 
 export interface BookFreshness {
   /**
-   * The kept book's readStartedAt. Null until a read of this house succeeds past the fence in
-   * `finish`; null is NOT fresh. While null, `stale` equals `failing`: false until a read fails,
-   * then true (an abort or a house change is not a failure). So read `asOf` with `failing`.
+   * The `asOf` that `finish` last passed to `setFreshness`: `kept.readStartedAt` from the
+   * write branch, the unchanged `asOf` from the failure branch. Null before the first call
+   * (`NO_FRESHNESS`).
    */
   asOf: number | null
-  /** A read failed (not an abort or house change); none has succeeded past the fence since. */
+  /** The `failing` that `finish` last passed to `setFreshness`; false before the first call. */
   failing: boolean
-  /** Over twice the interval since `asOf` by the wall clock, or a read is failing. */
+  /** `failing`, or `asOf` non-null and `Date.now() - asOf` over twice the interval. */
   stale: boolean
 }
 
@@ -257,8 +257,8 @@ function finish(run: HouseRun, flight: InFlight, book: OrderBook | null, error: 
     settle((w) => batch.waiters.add(w))
     return
   }
-  // Keep the larger readStartedAt (wall clock; a backwards step larger than the gap between
-  // the two start stamps keeps the older book). Callers get it too: TanStack writes the return.
+  // The cached book if its readStartedAt is larger than this one's, else this one,
+  // is written, set as `asOf`, and resolved to the waiters.
   let kept = book
   run.client?.setQueryData<OrderBook>(queryKeys.orders.book(run.house), (old) => {
     kept = old && old.readStartedAt > book.readStartedAt ? old : book
