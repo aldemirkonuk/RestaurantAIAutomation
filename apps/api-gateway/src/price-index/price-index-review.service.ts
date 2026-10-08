@@ -62,7 +62,7 @@ import { createHash } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
-import { normalizeJurisdiction } from "./price-index.registry";
+import { houseJurisdictionKey } from "./house-jurisdiction";
 import { jurisdictionCovers } from "./jurisdiction";
 import type { EditionDiff, PriceFingerprint, TierVerdict } from "./upload-tier";
 
@@ -379,10 +379,11 @@ export class PriceIndexReviewService {
   // =========================================================================
 
   /**
-   * The jurisdiction one house is in: its province, or its country when it
-   * records no province.
+   * The jurisdiction one house is in: its state read inside its country, or
+   * its country when no state reads there; null for a house with no country
+   * or a country this register has no list for (ADR 0305).
    *
-   * The SAME precedence `PriceIndexService.forHouse` reads, deliberately - a
+   * The SAME resolver `PriceIndexService.forHouse` reads, deliberately - a
    * manager who is shown an index line for a state must be able to act on the
    * books held for that same state, and two answers to "which jurisdiction is
    * this house in" is how those two come apart.
@@ -398,13 +399,9 @@ export class PriceIndexReviewService {
       if (error) throw error;
       const row = (data ?? null) as Record<string, unknown> | null;
       if (!row) return null;
-      return (
-        normalizeJurisdiction(
-          typeof row.state_province === "string" ? row.state_province : null,
-        ) ??
-        normalizeJurisdiction(
-          typeof row.country === "string" ? row.country : null,
-        )
+      return houseJurisdictionKey(
+        typeof row.state_province === "string" ? row.state_province : null,
+        typeof row.country === "string" ? row.country : null,
       );
     } catch (err) {
       this.logger.warn(
@@ -436,13 +433,13 @@ export class PriceIndexReviewService {
       if (error) throw error;
       houses = ((data ?? []) as Array<Record<string, unknown>>).map((h) => ({
         id: String(h.id),
-        jurisdiction:
-          normalizeJurisdiction(
-            typeof h.state_province === "string" ? h.state_province : null,
-          ) ??
-          normalizeJurisdiction(
-            typeof h.country === "string" ? h.country : null,
-          ),
+        // Read inside the house's own country (ADR 0305): an Italian house
+        // that writes "MI" for Milano is not a Michigan admitter, and a house
+        // with no country is in no state's pool.
+        jurisdiction: houseJurisdictionKey(
+          typeof h.state_province === "string" ? h.state_province : null,
+          typeof h.country === "string" ? h.country : null,
+        ),
       }));
     } catch (err) {
       this.logger.warn(
