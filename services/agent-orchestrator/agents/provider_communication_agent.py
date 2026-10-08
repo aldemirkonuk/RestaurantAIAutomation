@@ -893,9 +893,10 @@ class ProviderCommunicationAgent(BaseAgent):
         Redis too: SET NX on a per-house key that lives as long as the pause.
         The pause ends when rate_key expires, and once the cap is reached nothing
         renews it, so the fence follows its TTL. Above 0, the fence holds that
-        TTL + 60 s, so it cannot re-arm just before the counter clears. At 0 or
-        -2 (the counter has under a second left, or is already gone since the
-        cap check, by expiry, eviction or deletion), it holds 60 s, so a pause
+        TTL + 60 s, so it cannot re-arm just before the counter clears. When
+        Redis answers 0 or -2 (0: Redis rounds the time left to 0 s; -2: the
+        counter is already gone since the cap check, by expiry, eviction or
+        deletion), it holds 60 s, so a pause
         that starts later the same day is still announced. At -1 (no expiry),
         None or any other negative, it holds a day. A failed read or SET sends
         nothing: a missed notice beats a flood. A notice that does not land (no

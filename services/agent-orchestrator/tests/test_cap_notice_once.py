@@ -405,6 +405,27 @@ class TestACounterWithUnderASecondLeft:
         assert len(_cap_notices(agent)) == 2
 
 
+class TestATtlRedisCannotGive:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("answer", [None, -3])
+    async def test_the_fence_holds_a_day(self, answer):
+        redis = _FakeRedis()
+        _at_cap(redis)
+        real_ttl = redis.ttl
+
+        async def odd_ttl(key):
+            if key == RATE_KEY:
+                return answer
+            return await real_ttl(key)
+
+        redis.ttl = odd_ttl
+        agent = _agent(redis)
+
+        await agent._handle_order_created(_order(1))
+        assert len(_cap_notices(agent)) == 1
+        assert await real_ttl(FENCE_KEY) == DAY
+
+
 class TestNotifySaysWhetherItLanded:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("inserted, landed", [(1, True), (3, True), (0, False)])
