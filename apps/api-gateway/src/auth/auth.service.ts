@@ -43,6 +43,7 @@ import { resolveSignUpTimezone } from "./sign-up-timezone";
 import {
   houseWriteError,
   isSharedPlace,
+  PlaceAlreadyAHouse,
   refuseHouseOpening,
   slugBase,
   type HouseRowAnswer,
@@ -1551,19 +1552,20 @@ export class AuthService {
   }
 
   /**
-   * Opens a house row for both sign-up writers. A place another house
-   * already holds opens the house anyway, with its pin and without the place
-   * id -- the founder, 2026-10-02: "Open it, keep the pin (Recommended)".
-   * Whether one house per place is a rule at all is still OPEN (ADR 0265,
-   * amendment 2026-10-03).
+   * Opens the house row for the signed-in /get-started route
+   * (`createFirstHouse`). A place another house already holds opens the house
+   * anyway, with its pin and without the place id -- the founder, 2026-10-02:
+   * "Open it, keep the pin (Recommended)". The public register route does not
+   * come here: it refuses a held place and says so (the founder, 2026-10-08,
+   * OPEN-1: "Refuse, say it exists (Recommended)"; see registerRestaurant).
+   * Whether one house per place is a rule at all is still OPEN (ADR 0265).
    *
-   * Nothing may tell a held place from a free one, the time taken included:
-   * the public register route would otherwise let a caller learn that a house
-   * exists at a place. So a row with a place id always costs the same two
-   * calls, a look-up of the place and one insert, with the id or without it.
-   * A place taken between the two (a 23505 on idx_restaurants_google_place_id,
-   * which `isSharedPlace` reads) is inserted once more without the id; only a
-   * race reaches that. Only the server log says the place was held.
+   * On this route nothing tells a held place from a free one, the time taken
+   * included: a row with a place id always costs the same two calls, a
+   * look-up of the place and one insert, with the id or without it. A place
+   * taken between the two (a 23505 on idx_restaurants_google_place_id, which
+   * `isSharedPlace` reads) is inserted once more without the id; only a race
+   * reaches that. Only the server log says the place was held.
    *
    * `insert` is the writer's own `.from("restaurants").insert({...})`, kept
    * inline there so the capture-contract guard reads its columns; it is called
@@ -1774,6 +1776,20 @@ export class AuthService {
         );
       restaurantId = restaurant.id;
 
+      // The onboarding row goes first and on its own: its UNIQUE(user_id) is
+      // what stops a second, concurrent first house by the same account
+      // before either touches `users` (F-006 OPEN-6, option b). A rolled-back
+      // house takes the row with it (ON DELETE CASCADE), so a retry is free.
+      const claim = await this.databaseService.supabase
+        .from("user_onboarding_progress")
+        .insert({ user_id: userId, restaurant_id: restaurantId });
+      if (claim.error)
+        throw houseWriteError(
+          "onboarding row",
+          claim.error,
+          "the onboarding row was not written",
+        );
+
       const writes = await Promise.all([
         this.databaseService.supabase.from("organization_members").insert({
           organization_id: orgId,
@@ -1791,9 +1807,6 @@ export class AuthService {
           .from("users")
           .update({ restaurant_id: restaurantId, role: "owner" })
           .eq("user_id", userId),
-        this.databaseService.supabase
-          .from("user_onboarding_progress")
-          .insert({ user_id: userId, restaurant_id: restaurantId }),
       ]);
       const failed = writes.find((write) => write.error);
       if (failed?.error)
@@ -1842,6 +1855,26 @@ export class AuthService {
     let userId: string | null = null;
 
     try {
+      // A place that is already a house is refused here, before anything is
+      // written, and the caller is told so -- the founder, 2026-10-08, F-006
+      // OPEN-1: "Refuse, say it exists (Recommended)". A place taken between
+      // this look-up and the insert below is refused there (the 23505).
+      const placeId = this.coordinateColumns(dto).google_place_id;
+      if (placeId) {
+        const held = await this.databaseService.supabase
+          .from("restaurants")
+          .select("id")
+          .eq("google_place_id", placeId)
+          .maybeSingle();
+        if (held.error)
+          throw houseWriteError(
+            "place look-up",
+            held.error,
+            "the place was not looked up",
+          );
+        if (held.data) throw new PlaceAlreadyAHouse();
+      }
+
       const { data: org, error: orgErr } = await this.databaseService.supabase
         .from("organizations")
         .insert({ name: `${dto.restaurantName} Group`, owner_id: null })
@@ -1862,8 +1895,8 @@ export class AuthService {
       // column this insert writes — a conditional spread is unreadable to it.
       const coords = this.coordinateColumns(dto);
 
-      const insertRow = (google_place_id: string | undefined) =>
-        this.databaseService.supabase
+      const { data: restaurant, error: restErr } =
+        await this.databaseService.supabase
           .from("restaurants")
           .insert({
             name: dto.restaurantName,
@@ -1905,14 +1938,12 @@ export class AuthService {
             organization_id: org.id,
             latitude: coords.latitude,
             longitude: coords.longitude,
-            google_place_id,
+            google_place_id: coords.google_place_id,
           })
           .select("id")
           .single();
-      const { data: restaurant, error: restErr } = await this.insertHouseRow(
-        coords.google_place_id,
-        insertRow,
-      );
+      // Taken since the look-up above: refused the same way (OPEN-1).
+      if (isSharedPlace(restErr)) throw new PlaceAlreadyAHouse();
       if (restErr || !restaurant)
         throw houseWriteError(
           "restaurant",
@@ -1959,6 +1990,15 @@ export class AuthService {
           is_active: true,
         });
 
+      // Registering lands in the house it opened (ADR 0164, R1); the owner
+      // row above is what lets `generateTokens` name it. Minted, and awaited,
+      // before either email goes out: a failed mint rolls the account back in
+      // the catch below, and no mail is sent for an account that is gone
+      // (F-006 OPEN-4, option c). One line: claim
+      // ADR-0164-SESSIONS-FOLLOW-MEMBERSHIP pins this call's argument list.
+      // prettier-ignore
+      const tokens = await this.generateTokens(user, false, restaurantId, signedInNow());
+
       // Seed onboarding progress row (fire-and-forget — never block registration)
       this.databaseService.supabase
         .from("user_onboarding_progress")
@@ -2004,9 +2044,7 @@ export class AuthService {
           ),
         );
 
-      // Registering lands in the house it opened (ADR 0164, R1); the owner
-      // row above is what lets `generateTokens` name it.
-      return this.generateTokens(user, false, restaurantId, signedInNow());
+      return tokens;
     } catch (err) {
       if (userId)
         await this.databaseService.supabase

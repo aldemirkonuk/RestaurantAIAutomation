@@ -230,8 +230,11 @@ describe("registerRestaurant (F-006, scope item 6)", () => {
     expect(houseNotOpened(new Error("x"), "register")).toBe(
       "Registration failed",
     );
-    // /register never answers 409; it keeps the fallback if it ever does.
-    expect(houseNotOpened(status(409), "register")).toBe("Registration failed");
+    // /register's 409 is a place that is already a house: refused and said
+    // (the founder, 2026-10-08, F-006 OPEN-1: "Refuse, say it exists").
+    expect(houseNotOpened(status(409), "register")).toBe(
+      "A house is already open at this place, so this one was not registered. If it is yours, sign in instead.",
+    );
   });
 
   it("Register.tsx's house-form catch calls houseNotOpened, never the error's text (source read)", () => {
@@ -268,8 +271,9 @@ describe("the sentences (F-006)", () => {
         houseNotOpened(cause, "register"),
       ]),
     ]);
-    // W1, W3, W4, W5, the 429 sentence, R1, R2 and the two kept fallbacks.
-    expect(sentences.size).toBe(9);
+    // W1, W3, W4, W5, the 429 sentence, R1, R2, R3 (the held place) and
+    // the two kept fallbacks.
+    expect(sentences.size).toBe(10);
     const forbidden = [
       "idx",
       "constraint",
@@ -290,12 +294,21 @@ describe("the sentences (F-006)", () => {
     // said on the signed-in /get-started only, of the person's own account,
     // and names no place.
     const ownAccount = houseNotOpened({ response: { status: 409 } }, "arrival");
+    // /register's 409 names a house at the place, by the founder's ruling;
+    // it still names no rule, index or storage.
+    const heldPlace = houseNotOpened({ response: { status: 409 } }, "register");
+    expect(heldPlace).toMatch(/^A house is already open at this place/);
     expect(ownAccount).toBe(
       "This account already has a house, so no second one was opened.",
     );
     for (const sentence of sentences)
       for (const word of forbidden)
-        if (!(sentence === ownAccount && word === "already has a house"))
+        if (
+          !(sentence === ownAccount && word === "already has a house") &&
+          sentence !== heldPlace
+        )
           expect(sentence.toLowerCase()).not.toContain(word);
+    for (const word of forbidden.slice(0, 10))
+      expect(heldPlace.toLowerCase()).not.toContain(word);
   });
 });

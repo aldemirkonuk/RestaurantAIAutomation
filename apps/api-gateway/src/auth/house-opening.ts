@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   InternalServerErrorException,
   Logger,
@@ -61,6 +62,21 @@ export function isSharedPlace(
   );
 }
 
+/**
+ * The public register route refuses a place another house already holds, and
+ * says so -- the founder, 2026-10-08, F-006 OPEN-1: "Refuse, say it exists
+ * (Recommended)". The signed-in /get-started route still opens the house
+ * without the place id (the 2026-10-02 ruling); see `insertHouseRow`.
+ */
+export class PlaceAlreadyAHouse extends Error {
+  constructor() {
+    super("the place is already a house");
+  }
+}
+
+export const HOUSE_ALREADY_AT_PLACE =
+  "A house is already open at this place, so this one was not registered. If it is yours, sign in instead.";
+
 export const HOUSE_DETAIL_TOO_LONG =
   "Could not open the house: one of its details is too long to keep. Shorten it and try again.";
 export const HOUSE_NOT_OPENED =
@@ -69,13 +85,18 @@ export const HOUSE_NOT_OPENED =
 /**
  * The one refusal both openings send. The raw code and message go to the
  * server log only; the response carries a fixed sentence, so it can name no
- * constraint, index or other house.
+ * constraint or index. Only the public register route's held place is told
+ * as a house that exists, by the founder's 2026-10-08 ruling.
  */
 export function refuseHouseOpening(
   where: string,
   error: unknown,
   logger: Pick<Logger, "error">,
 ): HttpException {
+  if (error instanceof PlaceAlreadyAHouse) {
+    logger.error(`${where} refused: the place is already a house (F-006).`);
+    return new ConflictException(HOUSE_ALREADY_AT_PLACE);
+  }
   const step = error instanceof HouseWriteError ? error.step : "a later step";
   const code = error instanceof HouseWriteError ? error.code : "";
   const message = error instanceof Error ? error.message : String(error);
@@ -118,6 +139,10 @@ export const CAP = {
   country: { message: tooLong("The country", 100) },
   postal: { message: tooLong("The postal code", 20) },
   phone: { message: tooLong("The phone number", 50) },
+  // The register route only (F-006 OPEN-5, option a): cuisine_type is
+  // varchar(100) and users.name varchar(255).
+  cuisine: { message: tooLong("The cuisine", 100) },
+  person: { message: tooLong("Your name", 255) },
 } satisfies Record<string, ValidationOptions>;
 
 /** ADR 0265: the CHECK on `restaurants.google_place_id`, in bytes (F1, locked 2026-10-03). */

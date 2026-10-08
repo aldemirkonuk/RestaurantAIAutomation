@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   InternalServerErrorException,
   ServiceUnavailableException,
@@ -11,6 +12,7 @@ import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import {
   CAP,
+  HOUSE_ALREADY_AT_PLACE,
   HOUSE_DETAIL_TOO_LONG,
   HOUSE_NOT_OPENED,
   HouseWriteError,
@@ -26,10 +28,13 @@ jest.mock("bcrypt", () => ({
 }));
 
 /**
- * F-006: a place another house already holds opens the house anyway, with its
- * pin and without the place id (the founder, 2026-10-02: "Open it, keep the
- * pin (Recommended)"), and every refused opening is said in a fixed sentence
- * that names no constraint, index or other house. The error fixtures are the
+ * F-006: on the signed-in /get-started route a place another house already
+ * holds opens the house anyway, with its pin and without the place id (the
+ * founder, 2026-10-02: "Open it, keep the pin (Recommended)"); the public
+ * register route refuses it and says the house exists (the founder,
+ * 2026-10-08, OPEN-1: "Refuse, say it exists (Recommended)"). Every other
+ * refused opening is said in a fixed sentence that names no constraint or
+ * index. The error fixtures are the
  * texts PostgreSQL gives, measured in PGlite on 2026-10-03.
  */
 
@@ -273,7 +278,10 @@ async function refusal(promise: Promise<unknown>): Promise<HttpException> {
 
 function expectPlain(
   exception: HttpException,
-  kind: typeof BadRequestException | typeof InternalServerErrorException,
+  kind:
+    | typeof BadRequestException
+    | typeof ConflictException
+    | typeof InternalServerErrorException,
   sentence: string,
 ) {
   expect(exception).toBeInstanceOf(kind);
@@ -384,10 +392,18 @@ describe("the sentences (G-L)", () => {
   ];
 
   it("name no rule, no storage and no other house", () => {
-    expect(sentences).toHaveLength(10);
+    expect(sentences).toHaveLength(12);
     for (const sentence of sentences)
       for (const word of forbidden)
         expect(sentence.toLowerCase()).not.toContain(word);
+  });
+
+  it("says a held place on /register as a house that exists, and nothing more (G-OPEN1)", () => {
+    expect(HOUSE_ALREADY_AT_PLACE).toMatch(
+      /^A house is already open at this place/,
+    );
+    for (const word of forbidden.slice(0, 10))
+      expect(HOUSE_ALREADY_AT_PLACE.toLowerCase()).not.toContain(word);
   });
 });
 
@@ -457,6 +473,12 @@ describe.each([
       ["country", 100, CAP.country.message],
       ["postalCode", 20, CAP.postal.message],
       [phone, 50, CAP.phone.message],
+      ...(dto === RegisterRestaurantDto
+        ? ([
+            ["cuisineType", 100, CAP.cuisine.message],
+            ["name", 255, CAP.person.message],
+          ] as [string, number, string][])
+        : []),
     ];
     for (const [field, max, sentence] of caps) {
       expect(await errorsFor(field, "a".repeat(max))).toBeUndefined();
@@ -668,6 +690,29 @@ describe("createFirstHouse", () => {
     const slug = run.restaurantRows()[0].slug as string;
     expect(slug.length).toBeLessThanOrEqual(100);
   });
+
+  it("claims the onboarding row first, so a concurrent second house touches no user row (E9, OPEN-6)", async () => {
+    const won = makeService();
+    await won.svc.createFirstHouse("user-1", HOUSE);
+    const order = won.calls.filter((c) => /:(insert|update)/.test(c));
+    expect(order.indexOf("user_onboarding_progress:insert:then")).toBeLessThan(
+      order.indexOf("users:update:then"),
+    );
+
+    const lost = makeService({
+      then: { user_onboarding_progress: [{ error: ONBOARDING_TAKEN }] },
+    });
+    const exception = await refusal(lost.svc.createFirstHouse("user-1", HOUSE));
+    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
+    expect(lost.calls).not.toContain("users:update:then");
+    expect(lost.inserts.map((i) => i.table)).not.toContain(
+      "user_restaurant_access",
+    );
+    expect(lost.deletes).toEqual([
+      { table: "restaurants", col: "id", v: "rest-1" },
+      { table: "organizations", col: "id", v: "org-1" },
+    ]);
+  });
 });
 
 describe("registerRestaurant", () => {
@@ -677,52 +722,76 @@ describe("registerRestaurant", () => {
   const userRow = (run: ReturnType<typeof makeService>) =>
     run.inserts.find((i) => i.table === "users")!.row;
 
-  it("opens a house at a held place on the public route too (F1)", async () => {
+  it("refuses a held place before writing anything, and says the house exists (F1, OPEN-1)", async () => {
     const run = makeService({}, HELD);
-    await run.svc.registerRestaurant(REGISTRATION);
-    expect(run.restaurantRows()).toHaveLength(1);
-    const [landed] = run.restaurantRows();
-    expect(JSON.stringify(landed)).not.toContain("google_place_id");
-    expect(landed.latitude).toBe(HOUSE.latitude);
-    expect(landed.longitude).toBe(HOUSE.longitude);
-    expect(userRow(run).restaurant_id).toBe("rest-1");
+    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
+    expectPlain(exception, ConflictException, HOUSE_ALREADY_AT_PLACE);
+    expect(exception.getStatus()).toBe(409);
+    expect(run.inserts).toEqual([]);
     expect(run.deletes).toEqual([]);
-    expect(run.logLog).toHaveBeenCalledTimes(1);
+    expect(run.calls[0]).toBe("restaurants:select(id):maybeSingle");
+    expect(JSON.stringify(exception.getResponse())).not.toContain("ChIJ");
+    expect((run.svc as any).queueEmailVerification).not.toHaveBeenCalled();
   });
 
-  it("makes the same calls and answers the same bytes, free or held (F1b)", async () => {
-    const free = runFor("free");
-    const held = runFor("held");
-    const freeAnswer = await free.svc.registerRestaurant(REGISTRATION);
-    const heldAnswer = await held.svc.registerRestaurant(REGISTRATION);
-
-    expect(free.restaurantRows()[0].google_place_id).toBe("ChIJ-held");
-    expect(held.calls).toEqual(free.calls);
-    expect(free.calls.filter((c) => c.startsWith("restaurants:"))).toEqual([
+  it("opens a free place with its id, looked up first (F1b)", async () => {
+    const run = makeService();
+    await run.svc.registerRestaurant(REGISTRATION);
+    expect(run.calls.filter((c) => c.startsWith("restaurants:"))).toEqual([
       "restaurants:select(id):maybeSingle",
       "restaurants:insert(id):single",
     ]);
-    expect(JSON.stringify(heldAnswer)).toBe(JSON.stringify(freeAnswer));
-    expect(JSON.parse(freeAnswer.accessToken)).toMatchObject({
-      role: "owner",
-      restaurantId: "rest-1",
-    });
-    expect(JSON.stringify(freeAnswer)).not.toContain("ChIJ");
+    expect(run.restaurantRows()).toHaveLength(1);
+    expect(run.restaurantRows()[0].google_place_id).toBe("ChIJ-held");
+    expect(userRow(run).restaurant_id).toBe("rest-1");
   });
 
-  it("re-inserts without the id on a race, keeping the slug (F1c)", async () => {
+  it("refuses a place taken after the look-up the same way, and rolls back (F1c)", async () => {
     const run = makeService({
-      single: {
-        restaurants: [{ error: PLACE_HELD }, { data: { id: "rest-2" } }],
-      },
+      single: { restaurants: [{ error: PLACE_HELD }] },
     });
-    await run.svc.registerRestaurant(REGISTRATION);
-    const [first, second] = run.restaurantRows();
-    expect(first.google_place_id).toBe("ChIJ-held");
-    const { google_place_id: _id, ...kept } = sent(first);
-    expect(sent(second)).toEqual(kept);
-    expect(userRow(run).restaurant_id).toBe("rest-2");
-    expect(run.deletes).toEqual([]);
+    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
+    expectPlain(exception, ConflictException, HOUSE_ALREADY_AT_PLACE);
+    expect(run.restaurantRows()).toHaveLength(1);
+    expect(run.inserts.map((i) => i.table)).not.toContain("users");
+    expect(run.deletes).toEqual([
+      { table: "organizations", col: "id", v: "org-1" },
+    ]);
+  });
+
+  it("writes nothing when the place cannot be looked up, and says so plainly (F1d)", async () => {
+    const run = makeService({
+      maybeSingle: { restaurants: [{ data: null, error: NO_ANSWER }] },
+    });
+    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
+    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
+    expect(run.inserts).toEqual([]);
+  });
+
+  it("does not refuse a slug duplicate as a held place (F1e)", async () => {
+    const run = makeService({
+      single: { restaurants: [{ error: SLUG_TAKEN }] },
+    });
+    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
+    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
+  });
+
+  it("rolls the account back and sends no mail when the token mint fails (F5, OPEN-4)", async () => {
+    const run = makeService();
+    const mail = jest.fn().mockResolvedValue(undefined);
+    (run.svc as any).gmailService = { sendOnboardingEmail: mail };
+    (run.svc as any).generateTokens.mockRejectedValue(
+      new ServiceUnavailableException("token store is down"),
+    );
+    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
+    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
+    expect((run.svc as any).queueEmailVerification).not.toHaveBeenCalled();
+    expect(mail).not.toHaveBeenCalled();
+    expect(run.deletes).toEqual([
+      { table: "users", col: "user_id", v: "user-1" },
+      { table: "restaurants", col: "id", v: "rest-1" },
+      { table: "organizations", col: "id", v: "org-1" },
+    ]);
   });
 
   it("says the loser of a same-email race plainly and leaves no rows (F2, F6)", async () => {

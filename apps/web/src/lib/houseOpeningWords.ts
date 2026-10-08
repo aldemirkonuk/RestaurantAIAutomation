@@ -4,7 +4,9 @@ import { getErrorStatus, isUnconfirmedWrite } from "../services/api/client";
  * What /get-started and /register say when opening a house does not land
  * (F-006, scope item 6). The sentence is chosen from the answer's status
  * alone, never from the gateway's own text, which can carry a constraint or
- * index name, or hint at another house.
+ * index name. The one house this ever names is on /register's 409: a place
+ * that is already a house is refused and said (the founder, 2026-10-08,
+ * F-006 OPEN-1: "Refuse, say it exists (Recommended)").
  */
 
 /** Shown on the menu step when the house opened but `/auth/me` did not load. */
@@ -24,8 +26,9 @@ const WORDS: Record<
   }
 > = {
   // /get-started is signed in, and its 409 is about the person's own account,
-  // never a place: a press after one whose answer was lost meets it. Where
-  // that press then takes them (scope item 4) is F-006 OPEN-2, unanswered.
+  // never a place: a press after one whose answer was lost meets it. It is
+  // said, not stepped past (F-006 OPEN-2, ADR 0265): the account's house may
+  // be one an invite joined, so the page does not move into it on a guess.
   arrival: {
     refused:
       "We could not open the house with these details. Check the name, the address and the phone number. If you picked the address from the list, try typing it in yourself.",
@@ -40,6 +43,8 @@ const WORDS: Record<
       "We could not register the house with these details. If this email already has an account, sign in instead; otherwise check the details and try again.",
     unconfirmed:
       "We could not confirm the registration went through. If a verification email arrives, it did: sign in instead of registering again. If none arrives within a few minutes, register again.",
+    alreadyOpen:
+      "A house is already open at this place, so this one was not registered. If it is yours, sign in instead.",
     fallback: "Registration failed",
   },
 };

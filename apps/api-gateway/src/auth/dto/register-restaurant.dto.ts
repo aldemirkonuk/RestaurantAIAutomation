@@ -20,7 +20,7 @@ import {
 } from "../house-opening";
 
 export class RegisterRestaurantDto {
-  @IsString() name: string;
+  @IsString() @MaxLength(255, CAP.person) name: string;
   @IsEmail() email: string;
   @MinLength(8) password: string;
   @IsString() @MaxLength(249, CAP.name) restaurantName: string;
@@ -35,7 +35,7 @@ export class RegisterRestaurantDto {
   neighborhood?: string; // US: "River North", TR: "Konyaaltı", UK: "Mayfair"
   @IsOptional() @IsEmail() restaurantEmail?: string; // restaurant contact email; defaults to owner email
   @IsOptional() @IsString() @MaxLength(50, CAP.phone) phone?: string;
-  @IsOptional() @IsString() cuisineType?: string;
+  @IsOptional() @IsString() @MaxLength(100, CAP.cuisine) cuisineType?: string;
 
   /**
    * The browser's own zone, as `Intl.DateTimeFormat().resolvedOptions()
