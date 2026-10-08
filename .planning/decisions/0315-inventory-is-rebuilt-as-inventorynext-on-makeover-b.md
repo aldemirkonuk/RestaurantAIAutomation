@@ -42,7 +42,7 @@ Rows W8–W37 refine these. Each one is in §14 with its evidence and the founde
 - The page states only what it read. A pending or failed figure is "—", never 0 (W28, W29), and failures are said in the house's words (W31).
 - Two inventory pages exist until the mount line merges, and fixes to shared pieces (`HousePriceCell`, `CellarMapView`) must keep both rendering. The legacy page is deleted once, after go-live (ADR 0149).
 - Queued, not built here (each listed in §14 or the shared queue): the gateway F-10 PR (ledger DTO `@Type`, the write-off role guard, a merged flag on `POST /procurement/orders`, `approveDraft` checking the order's status), the three Tools overlays that fail the P6 key check, the shared shell's duplicate reads, `RowDropdown`'s unguarded `books`, the currency query key with no house id, and the hour tiles following the viewer's clock.
-- Open with the founder: the three departures flagged in INV-W7 (no voice in the count sheet, `$` in the owner price editor, CSV-only exports); the toolbar look now that #567 has merged; phone-first counting (OD-TBD, INV-W11); the mount line; and when to open the PR.
+- Open with the founder: the three departures flagged in INV-W7 (no voice in the count sheet, `$` in the owner price editor, CSV-only exports); phone-first counting (OD-TBD, INV-W11); and the mount line. [changed 2026-10-08: the founder kept the compact toolbar patch after #567 and said yes to opening the PR, #677.]
 - **Revisit if** the founder reverses W38–W40 at the PR, or the gate stops treating `inventory` as live (then the flag, not the mount line, becomes the go-live).
 
 ## Review trail

@@ -15,4 +15,4 @@ Filed by `fix/review-inventory` ([ADR 0315](../decisions/0315-inventory-is-rebui
 
 **Owed records:** the phone-first counting fork (INV-W11: barcode, level tap, voice) was meant for `OPEN-DECISIONS.md`. It is NOT filed on this branch, because a new row at the top of Open re-anchors about 173 citations across about 89 files. It needs its own docs branch.
 
-**Owed to the founder (open):** the three departures flagged in INV-W7 (no voice in the count sheet, `$` in the owner price editor, CSV-only exports), the toolbar look now that #567 has merged, the mount line, and the PR.
+**Owed to the founder (open):** the three departures flagged in INV-W7 (no voice in the count sheet, `$` in the owner price editor, CSV-only exports) and the mount line. [changed 2026-10-08: the founder answered the toolbar look (keep the compact `.iv-toolbar .mdv-select` patch) and said yes to opening the PR, #677.]
