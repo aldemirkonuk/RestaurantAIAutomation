@@ -582,3 +582,16 @@ describe('a copy left by an earlier build, with no stamp', () => {
     expect(kept.global?.hide_all_tips).toBeUndefined();
   });
 });
+
+describe('a copy left by an earlier build, at the read', () => {
+  it('loses to an account copy that carries a stamp, so its page dismissal does not hide the tip', () => {
+    // Case 4 of the fragment's last entry: the earlier build's "Don't show
+    // again" dismissed one page, and its copy has no stamp.
+    window.localStorage.setItem(LOCAL_KEY, JSON.stringify({ pages: { calendar: { tip: 'dismissed' } } }));
+    account.preferences = {
+      guidance: { global: { hide_all_tips: false }, pages: {}, saved_at: '2026-10-02T08:00:00.000Z' },
+    };
+    mount('/calendar');
+    expect(tip()).toBeTruthy();
+  });
+});
