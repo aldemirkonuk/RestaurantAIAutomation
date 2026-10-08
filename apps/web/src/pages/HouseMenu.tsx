@@ -67,12 +67,14 @@ function Plain({ children }: { children: ReactNode }) {
 /**
  * /house/menu reads the house's newest read menu from the server (ADR 0309),
  * for the house this session is in. This tab's own reading only adds the marks
- * the stored lines do not keep, and only for the same menu of the same house.
+ * the stored lines do not keep, and only for the same menu of the same house,
+ * read by the same person.
  */
 export default function HouseMenu() {
   const navigate = useNavigate()
-  const { activeRestaurantId } = useAuth()
-  const { proof, retry } = useHouseProof(activeRestaurantId)
+  const { user, activeRestaurantId } = useAuth()
+  const userId = user?.userId ?? null
+  const { proof, retry } = useHouseProof(activeRestaurantId, userId)
 
   if (proof.state === 'loading') {
     return (
@@ -126,6 +128,7 @@ export default function HouseMenu() {
     <FirstProof
       key={proof.version.menuId}
       restaurantId={activeRestaurantId}
+      userId={userId}
       version={proof.version}
       lines={proof.lines}
       sourceImage={proof.sourceImage}
@@ -135,11 +138,13 @@ export default function HouseMenu() {
 
 function FirstProof({
   restaurantId,
+  userId,
   version,
   lines,
   sourceImage,
 }: {
   restaurantId: string | null
+  userId: string | null
   version: MenuVersion
   lines: ProofLine[]
   sourceImage: string | null
@@ -190,7 +195,7 @@ function FirstProof({
       setItems((current) =>
         current.map((row) => (row.menuItemId === item.menuItemId ? { ...row, ...placed } : row)),
       )
-      markProofLine(restaurantId, item.menuItemId, placed)
+      markProofLine(restaurantId, userId, item.menuItemId, placed)
       setOpen(null)
     } catch (cause) {
       setPlaceError({ menuItemId: item.menuItemId, reason: proofReason(cause) })
@@ -337,6 +342,13 @@ function FirstProof({
                             <blockquote className="mt-2 font-serif text-lg">
                               {item.rawText || item.name}
                             </blockquote>
+                            {/* ADR 0309 option 1c: the house kept this line's raw line and held it back from this viewer. */}
+                            {item.rawLineWithheld && (
+                              <p className="mt-2 text-xs text-[#6d685f]">
+                                The whole line as it was read is shown only to an owner or a manager: a
+                                file&apos;s row can carry its costs and suppliers.
+                              </p>
+                            )}
                             <p className="mt-3 text-sm text-[#6d685f]">
                               {item.category
                                 ? `Read into ${sectionName(item.category)} from this line.`

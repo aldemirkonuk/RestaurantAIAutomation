@@ -139,13 +139,15 @@ export default function GetStarted() {
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
     const timer = window.setTimeout(() => {
-      // The tab's reading is stamped with the house it was read for (MENU-07);
-      // /house/menu reads the house's record and uses this only for that house.
-      if (activeRestaurantId) writeProof(pendingResult, activeRestaurantId, sourceImage)
+      // The tab's reading is stamped with the house it was read for (MENU-07)
+      // and the person who read it; /house/menu reads the house's record and
+      // uses this only for that house and that person. writeProof keeps
+      // nothing when either is missing.
+      writeProof(pendingResult, activeRestaurantId, user?.userId, sourceImage)
       navigate('/house/menu', { replace: true })
     }, 1200)
     return () => window.clearTimeout(timer)
-  }, [activeRestaurantId, navigate, pendingResult, sourceImage, step])
+  }, [activeRestaurantId, navigate, pendingResult, sourceImage, step, user?.userId])
 
   const saveYou = async () => {
     setSaving(true)

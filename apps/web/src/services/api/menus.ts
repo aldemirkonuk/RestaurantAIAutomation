@@ -183,8 +183,17 @@ export interface MenuLine {
   /** Blank menu price: the house kept its last known one, or had none either; a manager can change it. */
   price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
   price_flag_note?: string | null
-  /** The line as the reading saw it (`menu_items.raw_extracted_text`). A gateway from before ADR 0309's correction does not send it. */
+  /**
+   * The line as the reading saw it (`menu_items.raw_extracted_text`): for a
+   * CSV, the whole row, cost and supplier cells included. Sent only on
+   * `GET /menu-versions/:menuId` and only to an owner or a manager; null when
+   * no raw line was kept. Absent for anyone else and from an older gateway.
+   */
   raw_extracted_text?: string | null
+  /** The house's own kitchen split for this line (ADR 0309 option 1c). Absent from an older gateway. */
+  kitchen_line?: boolean
+  /** True when the house keeps a raw line for this line and did not send it to this viewer. */
+  raw_line_withheld?: boolean
   created_at: string
 }
 
@@ -398,14 +407,17 @@ export async function listMenuVersions(): Promise<MenuVersions> {
 /**
  * One kept menu of this house and its lines, as `GET /menu-versions/:menuId`
  * returns them (the house comes from the token; another house's id is a 404).
- * The lines are the stored row: what the reading said about a line's library
- * match, its raw text and its crop box are not kept on it.
+ * The lines are the stored row: a line's library match and its crop box are
+ * not kept on it. Its raw line is kept and sent only to an owner or a
+ * manager; `kitchen_line` is sent to every member. A reply that held raw
+ * lines back says `rawLineWithheld: true`.
  */
 export interface MenuVersionDetail {
   version: MenuVersion
   items: MenuLine[]
   namesReadable?: boolean
   namesReason?: string | null
+  rawLineWithheld?: boolean
 }
 
 /** One kept menu and its lines. A failed read throws. */

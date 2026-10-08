@@ -11,16 +11,18 @@ export default function HouseContents() {
   const navigate = useNavigate()
   // The house's own record, for the house this session is in (ADR 0309) —
   // not whatever one browser tab happened to read.
-  const { activeRestaurantId } = useAuth()
-  const { proof, retry } = useHouseProof(activeRestaurantId)
+  const { user, activeRestaurantId } = useAuth()
+  const userId = user?.userId ?? null
+  const { proof, retry } = useHouseProof(activeRestaurantId, userId)
   const [supplier, setSupplier] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Read on every render, so a house switch on this page shows the new
-  // house's note or none, never the last house's (ADR 0309).
+  // house's note or none, never the last house's, and only the note this
+  // person made (ADR 0309).
   const [, invoiceNoted] = useReducer((n: number) => n + 1, 0)
-  const invoice = readLastInvoiceLater(activeRestaurantId)
+  const invoice = readLastInvoiceLater(activeRestaurantId, userId)
   const [invoiceDropping, setInvoiceDropping] = useState(false)
 
   const saveSupplier = async () => {
@@ -40,7 +42,7 @@ export default function HouseContents() {
 
   const keepInvoice = (file?: File) => {
     if (!file) return
-    writeLastInvoiceLater(activeRestaurantId, file.name)
+    writeLastInvoiceLater(activeRestaurantId, userId, file.name)
     invoiceNoted()
   }
 

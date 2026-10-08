@@ -100,7 +100,7 @@ vi.mock('../services/api/vendors', () => ({
   addCustomProvider,
 }))
 
-const SELIN = { name: 'Selin Kaya', emailVerified: true, restaurantId: '' }
+const SELIN = { userId: 'user-selin', name: 'Selin Kaya', emailVerified: true, restaurantId: '' }
 
 function signedIn(user: Record<string, unknown> = SELIN) {
   auth.value = { user, loading: false, activeRestaurantId: 'house-1', createFirstHouse }
@@ -173,18 +173,18 @@ function read(menuItemId: string, name: string, over: Partial<MenuImportReviewIt
 }
 
 /** The server holds `lines` on the house's one kept menu. */
-function serve(lines: MenuLine[], over: Partial<MenuVersion> = {}) {
+function serve(lines: MenuLine[], over: Partial<MenuVersion> = {}, root: Record<string, unknown> = {}) {
   const version = menu(over)
   listMenuVersions.mockResolvedValue({
     current: version.current ? version : null,
     lastUsed: null,
     versions: [version],
   })
-  getMenuVersion.mockResolvedValue({ version, items: lines })
+  getMenuVersion.mockResolvedValue({ version, items: lines, ...root })
   return version
 }
 
-/** This tab just read `items` (stamped with a house, ADR 0309). */
+/** This tab just read `items` (stamped with a house and a person, ADR 0309). */
 function keepReading(items: MenuImportReviewItem[], extra: Record<string, unknown> = {}) {
   sessionStorage.setItem(
     'mudavym:first-proof',
@@ -193,6 +193,7 @@ function keepReading(items: MenuImportReviewItem[], extra: Record<string, unknow
       itemsExtracted: items.length,
       submissionsCreated: 0,
       restaurantId: 'house-1',
+      userId: 'user-selin',
       items,
       ...extra,
     }),
@@ -331,7 +332,7 @@ describe('approved arrival flow', () => {
       timeout: 3000,
     })
     const kept = JSON.parse(sessionStorage.getItem('mudavym:first-proof') ?? 'null')
-    expect(kept).toMatchObject({ menuId: 'menu', restaurantId: 'house-1' })
+    expect(kept).toMatchObject({ menuId: 'menu', restaurantId: 'house-1', userId: 'user-selin' })
   })
 })
 
@@ -438,12 +439,84 @@ describe('the first proof reads from the house (MENU-07)', () => {
     expect(screen.getByText(/does not keep which wines matched the library/)).toBeInTheDocument()
   })
 
+  it("ignores another person's reading left in this tab", async () => {
+    serve([SMOKY])
+    keepReading([read('pencil', 'Smoky No. 4', { rawText: 'Smoky No. 4,18,7.20,Vini Ltd' })], {
+      userId: 'user-owner',
+    })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /Smoky No. 4/ }))
+    expect(screen.queryByText(/Vini Ltd/)).not.toBeInTheDocument()
+    expect(screen.getByText(/does not keep which wines matched the library/)).toBeInTheDocument()
+  })
+
+  it('splits by the house\'s kitchen_line and says a held-back raw line is an owner\'s or a manager\'s', async () => {
+    // A staff reply under ADR 0309 option 1c: no raw line, each line's kitchen
+    // split, and the lines that had a raw line say it was held back.
+    serve(
+      [
+        line('barolo', 'Barolo', { bottle_price: 120, kitchen_line: false, raw_line_withheld: true }),
+        line('tiramisu', 'Tiramisu', { bottle_price: 12, kitchen_line: true, raw_line_withheld: true }),
+        line('lager', 'House Lager', { category: 'beer', by_glass_price: 8, kitchen_line: false }),
+      ],
+      {},
+      { rawLineWithheld: true },
+    )
+    keepReading([read('barolo', 'Barolo', { rawText: 'Barolo,Vietti,2019,red,120,38.50,Vini Ltd,68%,Wines' })], {
+      userId: 'user-owner',
+    })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByText(/1 kitchen line set aside/)).toBeInTheDocument()
+    expect(screen.queryByText('Tiramisu')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Barolo/ }))
+    expect(screen.getByRole('blockquote')).toHaveTextContent('Barolo')
+    expect(
+      screen.getByText(/The whole line as it was read is shown only to an owner or a manager/),
+    ).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/38\.50|Vini Ltd|68%/)
+  })
+
+  it("shows an owner or a manager the house's whole raw line, with no held-back sentence", async () => {
+    serve([
+      line('barolo', 'Barolo', {
+        bottle_price: 120,
+        kitchen_line: false,
+        raw_extracted_text: 'Barolo,Vietti,2019,red,120,38.50,Vini Ltd,68%,Wines',
+      }),
+    ])
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /Barolo/ }))
+    expect(screen.getByRole('blockquote')).toHaveTextContent('Barolo,Vietti,2019,red,120,38.50,Vini Ltd,68%,Wines')
+    expect(screen.queryByText(/shown only to an owner or a manager/)).not.toBeInTheDocument()
+  })
+
+  it('falls back to the raw line when the gateway sends no kitchen_line', async () => {
+    serve([LAGER, line('lamb', 'Lamb', { raw_extracted_text: 'Lamb shank (kitchen) 24' })])
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByText(/1 kitchen line set aside/)).toBeInTheDocument()
+    expect(screen.queryByText('Lamb')).not.toBeInTheDocument()
+  })
+
   it('ignores a reading of an older menu of the same house', async () => {
     serve([SMOKY])
     keepReading([read('pencil', 'Smoky No. 4', { rawText: 'Old raw line' })], { menuId: 'older-menu' })
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
     fireEvent.click(await screen.findByRole('button', { name: /Smoky No. 4/ }))
     expect(screen.queryByText('Old raw line')).not.toBeInTheDocument()
+    // No raw line here, but none was held back either: a scan keeps none.
+    expect(screen.queryByText(/shown only to an owner or a manager/)).not.toBeInTheDocument()
+  })
+
+  it('drops the reading when another person signs in to the same tab', async () => {
+    serve([LAGER])
+    keepReading([{ ...LAGER_READ, matched: false, needsReview: true }])
+    const { rerender } = render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByRole('group', { name: 'The reading count' })).toHaveTextContent(/1pencilled/)
+    auth.value = { ...auth.value, user: { ...SELIN, userId: 'user-staff' } }
+    rerender(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    await waitFor(() =>
+      expect(screen.getByRole('group', { name: 'The reading count' })).toHaveTextContent(/0pencilled/),
+    )
   })
 
   it('sends a house with no kept menu to the Menu page, never to the sign-up wizard', async () => {
@@ -641,6 +714,24 @@ describe('/house reads the house (MENU-07)', () => {
     await waitFor(() => expect(screen.queryByText(/Reading the house/)).toBeNull())
     expect(screen.queryByText(/suvla-sept.pdf/)).toBeNull()
     expect(screen.getByText('Last invoice · later')).toBeInTheDocument()
+  })
+
+  it("never shows another person's invoice note in the same tab", async () => {
+    serve([SMOKY], { linesExtracted: 1 })
+    sessionStorage.setItem(
+      'mudavym:last-invoice-later',
+      JSON.stringify({ restaurantId: 'house-1', userId: 'user-owner', name: 'vini-ltd-sept.pdf' }),
+    )
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    await screen.findByText(/pencilled|The first proof is set/)
+    expect(screen.queryByText(/vini-ltd-sept.pdf/)).toBeNull()
+    expect(screen.getByText('Last invoice · later')).toBeInTheDocument()
+  })
+
+  it("counts a line the house calls a kitchen line out of the pencils", async () => {
+    serve([LAGER, line('tiramisu', 'Tiramisu', { bottle_price: 12, kitchen_line: true })], { linesExtracted: 2 })
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByRole('button', { name: 'The first proof is set.' })).toBeInTheDocument()
   })
 
   it("shows the house's menu in a tab that never read it", async () => {

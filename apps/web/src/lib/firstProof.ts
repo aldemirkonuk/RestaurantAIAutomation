@@ -15,11 +15,26 @@ export const FIRST_PROOF_SOURCE_KEY = 'mudavym:first-proof-source'
  * A line of the first proof. `matched` is null when nobody can say: the
  * house's record keeps a line's section, never whether the reading matched it
  * to the wine library (ADR 0309).
+ *
+ * `kitchenLine` is the house's own answer (the gateway's `kitchen_line`), null
+ * when the gateway did not send one. `rawLineWithheld` is true when the house
+ * keeps a raw line for this line and did not send it to this viewer.
  */
-export type ProofLine = Omit<MenuImportReviewItem, 'matched'> & { matched: boolean | null }
+export type ProofLine = Omit<MenuImportReviewItem, 'matched'> & {
+  matched: boolean | null
+  kitchenLine?: boolean | null
+  rawLineWithheld?: boolean
+}
 
-/** What one tab just read, stamped with the house it was read for (ADR 0309). */
-export type StoredProof = MenuImportResult & { restaurantId?: string; sourceImage?: string | null }
+/**
+ * What one tab just read, stamped with the house it was read for and the
+ * person who read it (ADR 0309).
+ */
+export type StoredProof = MenuImportResult & {
+  restaurantId?: string
+  userId?: string
+  sourceImage?: string | null
+}
 
 const VOCABULARY = new Set([
   'wine',
@@ -55,7 +70,14 @@ export function lineNeedsPencil(item: Pick<ProofLine, 'matched' | 'needsReview' 
   return !VOCABULARY.has(category)
 }
 
-export function isKitchenLine(item: Pick<ProofLine, 'category' | 'rawText'>) {
+/**
+ * A kitchen line is set aside, not pencilled. The house's own answer
+ * (`kitchenLine`, from the gateway's `kitchen_line`) wins, so every tab and
+ * every role splits one menu the same. A gateway that does not send it falls
+ * back to a hint in the section or in the raw line this viewer has.
+ */
+export function isKitchenLine(item: Pick<ProofLine, 'category' | 'rawText' | 'kitchenLine'>) {
+  if (typeof item.kitchenLine === 'boolean') return item.kitchenLine
   const hay = `${item.category ?? ''} ${item.rawText ?? ''}`.toLowerCase()
   return KITCHEN.some((hint) => hay.includes(hint))
 }
@@ -65,17 +87,23 @@ export function pencilledCount(items: ProofLine[]) {
 }
 
 /**
- * The reading this tab kept for `restaurantId`, or null. A reading stamped
- * with another house, or with none (written before the stamp existed), is
- * ignored: it cannot be shown to be this house's (MENU-07 b).
+ * The reading this tab kept for `restaurantId`, read by `userId`, or null. A
+ * reading stamped with another house or another person, or with no house or
+ * no person (written before the stamps existed), is ignored: it cannot be
+ * shown to be this house's (MENU-07 b) or this person's. With no house or no
+ * person given, nothing is read.
  */
-export function readProof(restaurantId: string | null | undefined): StoredProof | null {
-  if (!restaurantId) return null
+export function readProof(
+  restaurantId: string | null | undefined,
+  userId: string | null | undefined,
+): StoredProof | null {
+  if (!restaurantId || !userId) return null
   try {
     const value = sessionStorage.getItem(FIRST_PROOF_KEY)
     if (!value) return null
     const proof = JSON.parse(value) as StoredProof
     if (!proof || proof.restaurantId !== restaurantId || !Array.isArray(proof.items)) return null
+    if (!proof.userId || proof.userId !== userId) return null
     if (!proof.sourceImage) {
       proof.sourceImage = sessionStorage.getItem(FIRST_PROOF_SOURCE_KEY)
     }
@@ -85,8 +113,15 @@ export function readProof(restaurantId: string | null | undefined): StoredProof 
   }
 }
 
-export function writeProof(result: MenuImportResult, restaurantId: string, sourceImage?: string | null) {
-  sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify({ ...result, restaurantId }))
+/** Keeps this tab's reading, stamped with its house and its person. With either missing, nothing is kept. */
+export function writeProof(
+  result: MenuImportResult,
+  restaurantId: string | null | undefined,
+  userId: string | null | undefined,
+  sourceImage?: string | null,
+) {
+  if (!restaurantId || !userId) return
+  sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify({ ...result, restaurantId, userId }))
   if (sourceImage) {
     try {
       sessionStorage.setItem(FIRST_PROOF_SOURCE_KEY, sourceImage)
@@ -101,15 +136,17 @@ export function writeProof(result: MenuImportResult, restaurantId: string, sourc
 /** A line a person placed stays placed in this tab's reading, so a reload keeps it in ink. */
 export function markProofLine(
   restaurantId: string | null | undefined,
+  userId: string | null | undefined,
   menuItemId: string,
   patch: Partial<MenuImportReviewItem>,
 ) {
-  if (!restaurantId) return
+  if (!restaurantId || !userId) return
   try {
     const value = sessionStorage.getItem(FIRST_PROOF_KEY)
     if (!value) return
     const proof = JSON.parse(value) as StoredProof
     if (!proof || proof.restaurantId !== restaurantId || !Array.isArray(proof.items)) return
+    if (!proof.userId || proof.userId !== userId) return
     proof.items = proof.items.map((item) => (item.menuItemId === menuItemId ? { ...item, ...patch } : item))
     sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify(proof))
   } catch {
@@ -140,10 +177,11 @@ export function pickHouseMenu(versions: MenuVersion[]): MenuVersion | null {
 
 /**
  * The house's stored lines as proof lines. The stored row is the truth for
- * what it keeps (name, section, prices, the raw line); this tab's reading of
- * the SAME menu adds only what the row does not keep or the gateway does not
- * send: the match, the crop box, and the raw line from a gateway that does not
- * send it yet (ADR 0309).
+ * what it keeps (name, section, prices) and the house's `kitchen_line` decides
+ * the kitchen split. The raw line comes from the row when the gateway sends it
+ * to this viewer (an owner or a manager), else from this person's own reading
+ * of the SAME menu in this tab. The match and the crop box come only from that
+ * reading (ADR 0309).
  */
 export function proofFromServer(lines: MenuLine[], reading: StoredProof | null): ProofLine[] {
   const byId = new Map((reading?.items ?? []).map((item) => [item.menuItemId, item]))
@@ -161,6 +199,8 @@ export function proofFromServer(lines: MenuLine[], reading: StoredProof | null):
       byGlassPrice: line.by_glass_price,
       bottlePrice: line.bottle_price,
       rawText: line.raw_extracted_text ?? read?.rawText ?? null,
+      kitchenLine: typeof line.kitchen_line === 'boolean' ? line.kitchen_line : null,
+      rawLineWithheld: line.raw_line_withheld === true,
       matched: read ? read.matched : null,
       needsReview: read ? read.needsReview : false,
       bbox: read?.bbox ?? null,
@@ -192,9 +232,13 @@ export type HouseProof =
 /**
  * The house's newest read menu, from the server, for the house this session
  * is in (ADR 0309). A failed read is `failed` with its reason, never `none`;
- * `none` is the server saying the house has kept no menu.
+ * `none` is the server saying the house has kept no menu. This tab's reading
+ * is used only when `userId` read it.
  */
-export function useHouseProof(restaurantId: string | null | undefined): {
+export function useHouseProof(
+  restaurantId: string | null | undefined,
+  userId: string | null | undefined,
+): {
   proof: HouseProof
   retry: () => void
 } {
@@ -220,7 +264,7 @@ export function useHouseProof(restaurantId: string | null | undefined): {
         if (!Array.isArray(detail?.items)) {
           throw new Error('the menu came back without its lines')
         }
-        const cached = readProof(restaurantId)
+        const cached = readProof(restaurantId, userId)
         const reading = cached && cached.menuId === pick.menuId ? cached : null
         if (!live) return
         setProof({
@@ -237,7 +281,7 @@ export function useHouseProof(restaurantId: string | null | undefined): {
     return () => {
       live = false
     }
-  }, [restaurantId, attempt])
+  }, [restaurantId, userId, attempt])
 
   const retry = useCallback(() => setAttempt((n) => n + 1), [])
   return { proof, retry }
