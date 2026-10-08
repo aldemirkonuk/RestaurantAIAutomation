@@ -32,9 +32,10 @@ import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
  * Every failure THROWS a `WholeReadError`, as `readWholeWindow` does: a
  * database error is `read_failed`; a page whose `data` is not an array (no
  * error, but no row list either), or that holds more rows than its count, is
- * `malformed_page`; a prefix is `row_ceiling`. An empty array is not refused:
- * with a count of 0 (or no count) it is a house with no lots, and is returned
- * as such. The reorder register, Wine-360
+ * `malformed_page`; a prefix is `row_ceiling`. An empty array with a count of
+ * 0 (or no count) is not refused: it is a house with no lots, and is returned
+ * as such; with a positive count it is a prefix (`row_ceiling`). The reorder
+ * register, Wine-360
  * and every other lens that loads stock through `loadInventory` or
  * `loadInventoryWithCost` let it PROPAGATE, so that lens says it could not be
  * read, by the same path a refused pour read takes (ADR 0292 fork 3). They
