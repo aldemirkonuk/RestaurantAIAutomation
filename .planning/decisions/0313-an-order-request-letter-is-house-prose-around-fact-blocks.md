@@ -62,6 +62,7 @@ B, with the adversary's eleven required changes.
 - Some legitimate prose is refused: a digit in "2 days", or "free" in a sentence. The refusal names the class.
 - The commitment patterns have no Turkish entries (`commitment-patterns.ts:30-50`), so that check does nothing for the Turkish house. Adding Turkish patterns is a separate lane.
 - ServiceKeyGuard is the founder's `ADMIN_API_KEY`. The precedent is `ux-optimizer.controller.ts:66-79`.
+- **PR-4b must retire the approval-time `ORDER_CONFIRMATION` writer for the order.** `stage_order_letter` dedupes within one kind only, and the pending-draft trigger (ADR 0266) is kind-blind and settles newest-wins. A second writer of a different kind would therefore replace the order request, and F-106's two-letter shape would come back as a replacement. Found at the PR-4a-i audit (N4).
 - **Revisit when:**
   - F3 is answered (the words and number-word lists);
   - a vendor letter is reported carrying a figure the order does not hold;

@@ -445,6 +445,17 @@ describe("OrderRequestService — facts under the order row's house", () => {
     expect(r.parts.signer).toBe("Ali\nTuzlu Rüzgar");
   });
 
+  it("an unreadable access register shows no price, even with a legacy owner role", async () => {
+    // lookupRestaurantRole falls back to users.role and still reports the
+    // failed read: the letter must take the failure, not the legacy role.
+    const w = world();
+    w.users = w.users.map((u: any) => (u.user_id === OWNER ? { ...u, role: "owner", restaurant_id: HOUSE } : u));
+    const { db } = store(w, { failing: ["user_restaurant_access"] });
+    const r = await new OrderRequestService(db).render({ orderId: ORDER, stage: false });
+    expect(r.priceShown).toBe(false);
+    expect(r.body).not.toMatch(/25\.00|EUR/);
+  });
+
   it("a NULL creator shows no price and the house signs alone", async () => {
     const { db } = store(world({ createdBy: null }));
     const r = await new OrderRequestService(db).render({ orderId: ORDER, stage: false });
