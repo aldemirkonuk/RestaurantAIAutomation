@@ -171,7 +171,8 @@ function netSalesValue(day: DayLedger): string {
 /**
  * The figure row: a track is never narrower than 8rem (an eleven-character
  * figure at 19 px), and a row holds at most half the figures, so six read
- * 3 + 3 or 2 + 2 + 2 and four read 2 + 2 — never a lone figure on a row.
+ * 3 + 3 or 2 + 2 + 2 and four read 2 + 2. An odd count leaves one alone: a
+ * role without money (DASH-W22) has three, which read 2 + 1.
  */
 export function figureColumns(count: number): string {
   const most = Math.max(1, Math.ceil(count / 2));

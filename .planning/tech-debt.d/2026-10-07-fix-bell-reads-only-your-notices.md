@@ -40,6 +40,10 @@ bell's own list. Claims: `claims.d/fix-bell-reads-only-your-notices.jsonl:1-2`.
    a `userId` on the request. A refusal from one leg would also sink the other
    five legs of the summary, and a missing user must never fall back to the
    house's notices.
+   [2026-10-08, PR #579 merging main: overtaken at the route. DASH-W22 now
+   refuses the whole summary, in words, to staff and to an unknown or missing
+   role before any leg runs, so no leg's refusal can sink the others. The
+   service's no-user branch stays as defence in depth.]
 
 ## GET /dashboard/summary still hands every member vendor spend and whole order rows — CLOSED on `fix/review-dashboard` — 2026-10-07
 
