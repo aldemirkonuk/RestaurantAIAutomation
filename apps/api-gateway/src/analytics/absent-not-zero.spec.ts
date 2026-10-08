@@ -377,8 +377,9 @@ describe("financial never reports an empty result set as $0", () => {
 
   // PR #617's audit at 847f2470d: first_sale_at is the earlier of the first
   // closed check and the first POS stock move, so where they are days apart
-  // one figure holds days the other does not. The basis names both dates; it
-  // does not correct for it or say how much it moves the figure.
+  // one figure holds days the other does not. The basis says which clock
+  // starts first and how many days later the other does, and names no date
+  // (ADR 0296); it does not correct for it or say how much it moves the figure.
   it("names both clocks when sales start days before the first stock move", async () => {
     const check = daysAgo(60);
     const move = daysAgo(45);
