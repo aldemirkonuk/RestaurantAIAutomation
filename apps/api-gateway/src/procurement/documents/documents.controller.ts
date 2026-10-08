@@ -58,6 +58,11 @@ import {
   documentVerifySealArgs,
 } from "./document-seal";
 import { CORRECTABLE_PATHS, splitPath } from "../canonical/correctable-paths";
+import {
+  assertHoldsHouseMoney,
+  doorEchoOf,
+  holdsHouseMoney,
+} from "./document-money-gate";
 
 /**
  * The document columns a verify seal is taken over, as ONE literal string.
@@ -97,6 +102,12 @@ type AuthedUser = {
   fullName?: string;
   name?: string;
   email?: string;
+  /**
+   * The role in the token's house, which `JwtStrategy` re-derives from the
+   * access row per request. Read by `assertHoldsHouseMoney` and the upload's
+   * door echo (`document-money-gate.ts`). Absent or null holds no money.
+   */
+  role?: string | null;
 };
 
 /** The house shape (`procurement.service.ts`, `vendor-intel.controller.ts`). */
@@ -141,6 +152,16 @@ function requireUuid(value: string, label: string): void {
  * off a photograph without the match ever running.
  *
  * restaurantId comes from the token on every route, never from the request.
+ *
+ * THE DOOR IS OPEN; THE DESK IS NOT. `JwtAuthGuard` is the only class guard,
+ * because the upload and the door count are the delivery door and staff use
+ * them. Every act that writes the document's money — field corrections and
+ * ticks, line edits, extraction, match, line pairing, verify, and the seals
+ * those take — refuses a session that does not hold the house's money
+ * (`assertHoldsHouseMoney`, `document-money-gate.ts`) before any seal is
+ * minted, redeemed or read. The upload answers a non-holder with the door's
+ * keys only and `amountsWithheld: true`. `link-item` stays open: it names a
+ * shelf and carries no price.
  */
 @ApiTags("procurement-documents")
 @ApiBearerAuth()
@@ -674,13 +695,16 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Mint the one-time seal a field correction has to carry back",
     description:
-      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `field_correct`, so this token cannot be spent on `POST :id/fields/verify`, on a line correction or on a verification. It is bound to this actor, this document, the REVISION being corrected in full, and the exact path and value asked for: a correction somebody else appended in between, or a line corrected on the /receipts face in between, refuses it.",
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `field_correct`, so this token cannot be spent on `POST :id/fields/verify`, on a line correction or on a verification. It is bound to this actor, this document, the REVISION being corrected in full, and the exact path and value asked for: a correction somebody else appended in between, or a line corrected on the /receipts face in between, refuses it. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before any seal is minted, redeemed or read.",
   })
   async mintFieldCorrectSeal(
     @Param("id") id: string,
     @Body() body: CorrectFieldDto,
     @CurrentUser() user: AuthedUser,
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    // The role FIRST: a person the write would refuse is never handed a seal
+    // for it, whatever the path (`document-money-gate.ts`).
+    assertHoldsHouseMoney(user, "field_correct");
     // Before the document is read and before anything is issued: a path the
     // write would refuse never becomes a token somebody can be asked to hold.
     this.assertSealablePath(body?.path, "field_correct");
@@ -702,7 +726,7 @@ export class DocumentsController {
     summary:
       "Correct one field of the canonical document, behind a redeemed seal (ADR 0104 D5)",
     description:
-      "Appends a new revision and an append-only correction row. The corrected value is replayed through the same mapper the read path uses, so the bottle-equivalent, the tie-out and every EN 16931 invariant follow it — a correction is never a cosmetic overlay. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/corrections-seal-challenge` when the hold begins and redeemed exactly once here (founder, 2026-09-11, batch 69). 400 names the field when the path is not in the closed correctable list; 409 means another correction landed first and nothing was written.",
+      "Appends a new revision and an append-only correction row. The corrected value is replayed through the same mapper the read path uses, so the bottle-equivalent, the tie-out and every EN 16931 invariant follow it — a correction is never a cosmetic overlay. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/corrections-seal-challenge` when the hold begins and redeemed exactly once here (founder, 2026-09-11, batch 69). 400 names the field when the path is not in the closed correctable list; 409 means another correction landed first and nothing was written. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before any seal is minted, redeemed or read.",
   })
   async correctField(
     @Param("id") id: string,
@@ -713,6 +737,8 @@ export class DocumentsController {
     // act the token was minted for is what keeps them apart, not the shape.
     @Headers("x-seal-challenge") challenge?: string,
   ) {
+    // The role before the seal, so a refused person spends no seal.
+    assertHoldsHouseMoney(user, "field_correct");
     // BEFORE the write. An absent seal is refused before the document is read,
     // so a caller with no seal gets the sentence telling them to begin the hold
     // rather than whatever the read happened to say.
@@ -756,13 +782,14 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Mint the one-time seal a field tick has to carry back",
     description:
-      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `field_verify`, so this token cannot be spent on a correction or on the document-wide verification. Bound to this actor, this document, the field's path, the value it shows now, whether the document carries that field at all, and the verdict being recorded.",
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `field_verify`, so this token cannot be spent on a correction or on the document-wide verification. Bound to this actor, this document, the field's path, the value it shows now, whether the document carries that field at all, and the verdict being recorded. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before any seal is minted, redeemed or read.",
   })
   async mintFieldVerifySeal(
     @Param("id") id: string,
     @Body() body: VerifyFieldDto,
     @CurrentUser() user: AuthedUser,
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    assertHoldsHouseMoney(user, "field_verify");
     this.assertSealablePath(body?.path, "field_verify");
     return this.mintSeal(
       user,
@@ -777,7 +804,7 @@ export class DocumentsController {
     summary:
       "Tick one field as verified by a human, behind a redeemed seal (ADR 0104 D5)",
     description:
-      "Records `verified_by` and `verified_at` on one field's envelope as a new revision, with an append-only row of kind `verification`. The value and its `source` are unchanged. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/fields/verify-seal-challenge` when the hold begins and redeemed exactly once here (founder, 2026-09-11, batch 69): the value somebody is standing behind has to be the one they read.",
+      "Records `verified_by` and `verified_at` on one field's envelope as a new revision, with an append-only row of kind `verification`. The value and its `source` are unchanged. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/fields/verify-seal-challenge` when the hold begins and redeemed exactly once here (founder, 2026-09-11, batch 69): the value somebody is standing behind has to be the one they read. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before any seal is minted, redeemed or read.",
   })
   async verifyFieldTick(
     @Param("id") id: string,
@@ -785,6 +812,7 @@ export class DocumentsController {
     @CurrentUser() user: AuthedUser,
     @Headers("x-seal-challenge") challenge?: string,
   ) {
+    assertHoldsHouseMoney(user, "field_verify");
     await this.assertSealed(user, id, "field_verify", challenge, () =>
       this.readFieldVerifySealArgs(id, user.restaurantId, body?.path),
     );
@@ -1001,7 +1029,7 @@ export class DocumentsController {
     summary: "Upload or photograph a vendor document",
     description:
       "Accepts base64 content for a PDF, image or EDI file. Classifies it (invoice / packing slip / credit memo / EDI 832 price list), extracts lines, and stores it for review. Writes no stock, cost or orders. Identical content is deduplicated per restaurant, so the same invoice arriving by email and by photo is one document. " +
-      "AN EDI 832 PRICE CATALOGUE IS ALSO ADMITTED HERE (ADR 0126, batch 56) rather than at a door of its own: it is stored as a `price_list`, and when `distributorKey` names a measured distributor its lines are read against the price-code meanings a manager of this house has stated. The per-line outcome comes back in `catalog` — what was priced, and for each refused line the reason and the code that refused it. There is never a bare row count.",
+      "AN EDI 832 PRICE CATALOGUE IS ALSO ADMITTED HERE (ADR 0126, batch 56) rather than at a door of its own: it is stored as a `price_list`, and when `distributorKey` names a measured distributor its lines are read against the price-code meanings a manager of this house has stated. The per-line outcome comes back in `catalog` — what was priced, and for each refused line the reason and the code that refused it. There is never a bare row count. The upload is open to every signed-in person at the house, because it is the delivery door. A session that does not hold the house's money gets `document` cut down to the keys the door reads (`docType`, `docNumber`, and per line `lineNo`, `qty`, `uom`, `packSize`, `qtyBottles`) and `amountsWithheld: true` at the root; owners and managers get the whole parse.",
   })
   async upload(
     @Body() body: UploadDocumentDto,
@@ -1054,12 +1082,19 @@ export class DocumentsController {
       ? await this.admitCatalogue(text, buffer, body, user, result.documentId)
       : null;
 
+    // THE DOOR STAYS OPEN, ITS ANSWER DOES NOT CARRY THE MONEY. The upload
+    // itself is never refused (ADR 0126: a role check here would lose paper
+    // at the moment it arrives), but a session that does not hold the house's
+    // money is sent back only the keys the door reads, and told so at the root
+    // — an omitted price must not read as a paper that printed none.
+    const holder = holdsHouseMoney(user.role ?? null);
     return {
       documentId: result.documentId,
       duplicate: result.duplicate,
       // The parse is returned so the receiving screen can show what was read
       // immediately, without a second round trip.
-      document: result.parsed,
+      document: holder ? result.parsed : doorEchoOf(result.parsed),
+      ...(holder ? {} : { amountsWithheld: true }),
       ...(catalog ? { catalog } : {}),
       // ADR 0104 D15 — and so is what resolving the vendor answered, refusals
       // included. Omitting a refusal would leave the caller unable to tell
@@ -1455,7 +1490,9 @@ export class DocumentsController {
   }
 
   /**
-   * The extraction door. Class-level `@UseGuards(JwtAuthGuard)` covers it, and
+   * The extraction door. Class-level `@UseGuards(JwtAuthGuard)` signs the
+   * caller in, `assertHoldsHouseMoney` refuses one who does not hold the
+   * house's money (the reading writes every price on the document), and
    * `restaurantId` comes from the token exactly as it does on every sibling
    * route — the id in the path is scoped by it, never trusted on its own.
    */
@@ -1464,13 +1501,15 @@ export class DocumentsController {
     summary: "Apply an extraction produced outside this gateway",
     description:
       "Fills a document that was stored UNREAD (ADR 0104 D6) with an extraction someone else performed — today, a Claude Code session reading the PDF, because the configured Anthropic key has no credit. The body is the same JSON DocumentExtractorService asks a model for, and it goes through the same `normalize` (validation, tie-out, warnings) that a model's answer does; `model` is recorded verbatim in extraction_model so the row says who read the page. " +
-      "409 if the document already has lines or a non-degraded extraction: this door FILLS an unread document and never overwrites a read one, because overwriting would silently discard a manager's corrections. 422 if the body is not the contract's JSON, or carries no lines. Writes no stock, cost or orders — the gateway's own extractor remains the product path.",
+      "409 if the document already has lines or a non-degraded extraction: this door FILLS an unread document and never overwrites a read one, because overwriting would silently discard a manager's corrections. 422 if the body is not the contract's JSON, or carries no lines. Writes no stock, cost or orders — the gateway's own extractor remains the product path. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before anything is read or written.",
   })
   async applyExtraction(
     @Param("id") id: string,
     @Body() body: ApplyExtractionDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    // Outside the try below, whose catch turns unknown messages into 500s.
+    assertHoldsHouseMoney(user, "extraction");
     let applied: Awaited<
       ReturnType<DocumentIntakeService["applyExternalExtraction"]>
     >;
@@ -1513,9 +1552,11 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Pair this document's lines with the lines that were ordered",
     description:
-      "Writes only unambiguous matches (exact vendor SKU, no substitution). Everything else comes back under `suggested` for one-tap confirmation and is NOT persisted — a wrong link writes one wine's invoice price onto another wine's cost lot, which looks fine and surfaces months later as margin drift on two products. Lines a human already paired are left alone, so re-running never reverts a correction.",
+      "Writes only unambiguous matches (exact vendor SKU, no substitution). Everything else comes back under `suggested` for one-tap confirmation and is NOT persisted — a wrong link writes one wine's invoice price onto another wine's cost lot, which looks fine and surfaces months later as margin drift on two products. Lines a human already paired are left alone, so re-running never reverts a correction. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before anything is read or written.",
   })
   async match(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    // Outside the try: a refusal is a 403 in words, never a re-wrapped 500.
+    assertHoldsHouseMoney(user, "match");
     try {
       return await this.intake.matchDocumentLines(id, user.restaurantId);
     } catch (error) {
@@ -1593,6 +1634,7 @@ export class DocumentsController {
       "The human half of line matching. Pass orderLineId to accept a suggestion, or null to unlink one that was wrong. " +
       "The answer is APPENDED, never substituted (ADR 0059): a pairing the machine proposed keeps its proposed_confidence / proposed_method untouched, and this endpoint adds confirmed_by / confirmed_at beside them. " +
       "Only a pairing no machine ever proposed gets match_method 'manual' — there is no proposal there to preserve. " +
+      "Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before anything is read or written. " +
       "An orderLineId that is not a uuid is refused with 400 before any read. " +
       "A uuid that is not a line of one of this restaurant's orders is refused with 404, the same answer as an id that does not exist.",
   })
@@ -1604,6 +1646,9 @@ export class DocumentsController {
   ) {
     requireUuid(documentId, "document id");
     requireUuid(lineId, "line id");
+    // A wrong pairing writes one wine's invoice price onto another wine's cost
+    // lot (`match`'s description), so it is desk work. Outside the try.
+    assertHoldsHouseMoney(user, "line_link");
     // The body's id reaches the same uuid column, through the ownership read in
     // confirmLineMatch. Malformed, it would come back as 22P02 and leave the
     // catch below as a 500, so it is the caller's 400 here, before any read.
@@ -1654,7 +1699,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Mint the one-time seal a line correction has to carry back",
     description:
-      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `line_edit`, so this token cannot be spent on `POST :id/verify` or `PATCH :id/currency`. It is bound to this actor, this document, this line AS IT STANDS and this exact patch: a second manager's correction landing in between refuses it.",
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `line_edit`, so this token cannot be spent on `POST :id/verify` or `PATCH :id/currency`. It is bound to this actor, this document, this line AS IT STANDS and this exact patch: a second manager's correction landing in between refuses it. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before any seal is minted, redeemed or read.",
   })
   async mintLineEditSeal(
     @Param("id") documentId: string,
@@ -1662,6 +1707,7 @@ export class DocumentsController {
     @Body() body: Record<string, unknown>,
     @CurrentUser() user: AuthedUser,
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    assertHoldsHouseMoney(user, "line_edit");
     return this.mintSeal(
       user,
       documentId,
@@ -1679,7 +1725,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Correct one extracted line by hand, behind a redeemed seal",
     description:
-      "The receipts brief's editable half (ADR 0045 §5): a manager fixes what the model misread, then confirms. Only a pre-verification document (received / needs_review) may be edited — a verified document is the record a vendor dispute leans on, and there is deliberately no un-verify. Edits are anonymous drafts; provenance is carried by verify, which stamps who confirmed the final transcription. The document's tie-out is recomputed through the same rule extraction uses, so an edit can never leave a stale ties-out claim standing. Note the tie-out arithmetic prefers a line's stated lineTotal over qty × unitPrice — that is the paper's own claim; correcting qty alone moves the tie-out only when the line has no stated total, which is the honest reading, not a bug. qty_bottles is derived and follows qty/packSize corrections automatically unless set explicitly.",
+      "The receipts brief's editable half (ADR 0045 §5): a manager fixes what the model misread, then confirms. Only a pre-verification document (received / needs_review) may be edited — a verified document is the record a vendor dispute leans on, and there is deliberately no un-verify. Edits are anonymous drafts; provenance is carried by verify, which stamps who confirmed the final transcription. The document's tie-out is recomputed through the same rule extraction uses, so an edit can never leave a stale ties-out claim standing. Note the tie-out arithmetic prefers a line's stated lineTotal over qty × unitPrice — that is the paper's own claim; correcting qty alone moves the tie-out only when the line has no stated total, which is the honest reading, not a bug. qty_bottles is derived and follows qty/packSize corrections automatically unless set explicitly. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before any seal is minted, redeemed or read.",
   })
   async editLine(
     @Param("id") documentId: string,
@@ -1710,6 +1756,9 @@ export class DocumentsController {
     // is reached before the guard.
     requireUuid(documentId, "document id");
     requireUuid(lineId, "line id");
+    // The role after the ids and before the seal: a refused person spends no
+    // seal, and nothing below is read for them.
+    assertHoldsHouseMoney(user, "line_edit");
 
     // BEFORE the write, and outside the try/catch below: a refused seal is a
     // 403 with a whole sentence, and this method's catch turns unknown messages
@@ -2145,12 +2194,13 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Mint the one-time seal a verification has to carry back",
     description:
-      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `verify`, so this token cannot be spent on a line correction or a currency restatement. Bound to this actor, this document and the transcription AS IT STANDS: a line corrected between the hold and the write refuses it with 'This document changed after the seal was issued'.",
+      "`challenge` (returned once, never stored in the clear), `expiresAt` and `act` — the act is `verify`, so this token cannot be spent on a line correction or a currency restatement. Bound to this actor, this document and the transcription AS IT STANDS: a line corrected between the hold and the write refuses it with 'This document changed after the seal was issued'. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before any seal is minted, redeemed or read.",
   })
   async mintVerifySeal(
     @Param("id") id: string,
     @CurrentUser() user: AuthedUser,
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    assertHoldsHouseMoney(user, "verify");
     return this.mintSeal(
       user,
       id,
@@ -2164,13 +2214,14 @@ export class DocumentsController {
     summary:
       "Confirm the extraction is faithful to the paper document, behind a redeemed seal",
     description:
-      "Records who checked it and when. This asserts only that the transcription is right — it does not accept the charges, apply anything to stock, or settle a discrepancy. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/verify-seal-challenge` when the gesture begins and redeemed exactly once here: the transcription somebody is standing behind has to be the one they read.",
+      "Records who checked it and when. This asserts only that the transcription is right — it does not accept the charges, apply anything to stock, or settle a discrepancy. Takes a one-time seal in `X-Seal-Challenge`, minted by `POST :id/verify-seal-challenge` when the gesture begins and redeemed exactly once here: the transcription somebody is standing behind has to be the one they read. Owners and managers only (`document-money-gate.ts`): anyone else is refused in words before any seal is minted, redeemed or read.",
   })
   async verify(
     @Param("id") id: string,
     @CurrentUser() user: AuthedUser,
     @Headers("x-seal-challenge") challenge?: string,
   ) {
+    assertHoldsHouseMoney(user, "verify");
     await this.assertSealed(user, id, "verify", challenge, () =>
       this.readVerifySealArgs(id, user.restaurantId),
     );
