@@ -29,7 +29,8 @@ vi.mock('./useHouseIndex', () => ({
  * The commodity context section draws inside this box (2026-09-05). It is
  * stubbed to a ready-and-empty register here so that these assertions stay
  * about the POSTED-PRICE register they were written for; the commodity
- * section's own contract is tested in `MarketIndexPanel.commodity.test.tsx`.
+ * section's own contract is tested in `MarketIndexPanel.commodity.test.tsx`,
+ * except its no-country ask (ADR 0305), which is tested below.
  */
 const mockCommodity = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 vi.mock('./useHouseCommodity', () => ({
@@ -38,9 +39,10 @@ vi.mock('./useHouseCommodity', () => ({
 }));
 
 /**
- * The real hook is read once below (`vi.importActual`), for the one field the
- * panel's mock cannot vouch for: `countryNotRecorded` off the wire. Its two
- * imports that reach the network and the session are stubbed here.
+ * The real hooks (`useHouseIndex`, `useHouseCommodity`) are each read once
+ * below (`vi.importActual`), for the one field the panel's mocks cannot vouch
+ * for: `countryNotRecorded` off the wire. Their two imports that reach the
+ * network and the session are stubbed here.
  */
 const mockGet = vi.hoisted(() => vi.fn());
 vi.mock('@/services/api/client', () => ({
@@ -359,6 +361,91 @@ describe('useHouseIndex — countryNotRecorded off the wire', () => {
 
   it('is not set by a truthy string', async () => {
     expect(await readWith({ countryNotRecorded: 'true', lines: [] })).toBe(false);
+  });
+});
+
+/**
+ * The commodity section asks too (ADR 0305). With no country the gateway reads
+ * no jurisdiction, so only a WORLD series answers (`seriesForJurisdiction(null)`,
+ * `commodity.registry.ts`); the section says so and links to Settings.
+ */
+describe('MarketIndexPanel — the commodity section asks a house with no country', () => {
+  const READY_COMMODITY = {
+    state: 'ready',
+    failure: null,
+    jurisdiction: null,
+    requested: null,
+    series: [],
+    fetchArmed: false,
+    silence: 'the gateway sentence for an empty register',
+    noExposureRecorded: false,
+    countryNotRecorded: false,
+    refresh: vi.fn(),
+  };
+
+  it('says the country is not recorded and links to Settings, under Locations', () => {
+    mockCommodity.current = { ...READY_COMMODITY, countryNotRecorded: true };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    const asked = screen.getByTestId('mi-commodity-country-unset');
+    expect(asked.textContent).toContain('This house’s country isn’t recorded');
+    expect(asked.textContent).toContain('only a series that speaks for everywhere is listed');
+    expect(
+      within(asked).getByRole('link', { name: 'Set the country in Settings' }),
+    ).toHaveAttribute('href', '/settings?tab=locations');
+    // The index register above is not flagged here, so this is the only ask.
+    expect(screen.queryByTestId('mi-country-unset')).toBeNull();
+  });
+
+  it('a house whose country is recorded is not asked for it', () => {
+    mockCommodity.current = { ...READY_COMMODITY };
+    render(
+      <MemoryRouter>
+        <MarketIndexPanel />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('mi-commodity-country-unset')).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: 'Set the country in Settings' }),
+    ).toBeNull();
+  });
+});
+
+describe('useHouseCommodity — countryNotRecorded off the wire', () => {
+  // Loaded once, outside any test's 5 s budget, as for useHouseIndex above.
+  let useRealHouseCommodity: typeof import('./useHouseCommodity').useHouseCommodity;
+  beforeAll(async () => {
+    ({ useHouseCommodity: useRealHouseCommodity } = await vi.importActual<
+      typeof import('./useHouseCommodity')
+    >('./useHouseCommodity'));
+  }, 60_000);
+
+  async function readWith(data: Record<string, unknown>) {
+    mockGet.mockResolvedValueOnce({ data });
+    const { result, unmount } = renderHook(() => useRealHouseCommodity());
+    await waitFor(() => expect(result.current.state).toBe('ready'));
+    const flag = result.current.countryNotRecorded;
+    unmount();
+    return flag;
+  }
+
+  it('is set by a true from the gateway', async () => {
+    expect(await readWith({ countryNotRecorded: true, series: [] })).toBe(true);
+  });
+
+  it('is not set by a false', async () => {
+    expect(await readWith({ countryNotRecorded: false, series: [] })).toBe(false);
+  });
+
+  it('is not set when an older gateway does not send it', async () => {
+    expect(await readWith({ series: [] })).toBe(false);
+  });
+
+  it('is not set by a truthy string', async () => {
+    expect(await readWith({ countryNotRecorded: 'true', series: [] })).toBe(false);
   });
 });
 

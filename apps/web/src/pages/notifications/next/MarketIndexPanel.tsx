@@ -550,6 +550,30 @@ function CommoditySection() {
         </p>
       )}
 
+      {/* No country recorded (ADR 0305; the founder, 2026-10-07T19:48:13Z:
+          "The panels say the country isn't recorded and link to Settings").
+          The gateway read no state or country for this house, so only a
+          series that speaks for everywhere is listed below; this says so and
+          asks for the country, as the register above does. */}
+      {c.state === 'ready' && c.countryNotRecorded && (
+        <p
+          role="status"
+          data-testid="mi-commodity-country-unset"
+          className="mt-1.5 text-[11.5px]"
+          style={{ fontFamily: SANS, color: 'var(--ink-2)' }}
+        >
+          This house’s country isn’t recorded, so no country’s or state’s series is read here,
+          and only a series that speaks for everywhere is listed.{' '}
+          <Link
+            to="/settings?tab=locations"
+            className="underline underline-offset-2"
+            style={{ color: 'var(--ink-1)' }}
+          >
+            Set the country in Settings
+          </Link>
+        </p>
+      )}
+
       {c.state === 'ready' && c.series.length > 0 && (
         <ul className="mt-1.5">
           {c.series.map((s) => (
