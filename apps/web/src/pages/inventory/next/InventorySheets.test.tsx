@@ -51,7 +51,7 @@ vi.mock('../../../hooks/queries/useProviderQueries', async (orig) => ({
 }));
 
 import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios';
-import { CountSheet, MERGE_AGE_MS, OrderSheet, PourSheet, TransferSheet, WriteOffSheet, countGapSentence, orderWasMerged, placedSentence } from './InventorySheets';
+import { CountSheet, MERGE_AGE_MS, freshKey, OrderSheet, PourSheet, TransferSheet, WriteOffSheet, countGapSentence, orderWasMerged, placedSentence } from './InventorySheets';
 
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
@@ -616,5 +616,32 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
   it('groups the pour hold\'s millilitres', () => {
     mount(<PourSheet row={row({ pourMl: 1500 })} onClose={() => {}} />);
     expect(screen.getByRole('button', { name: 'Hold to record 1 × 1,500 ml' })).toBeTruthy();
+  });
+});
+
+describe('a write key never falls back to Math.random', () => {
+  it('uses getRandomValues when randomUUID is missing, and keys differ', async () => {
+        const realFill = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+    const rnd = vi.spyOn(Math, 'random');
+    vi.stubGlobal('crypto', { getRandomValues: (b: Uint8Array) => realFill(b) });
+    try {
+      const a = freshKey('pour', 'r1');
+      const b = freshKey('pour', 'r1');
+      expect(a).toMatch(/^pour:r1:[0-9a-f]{32}$/);
+      expect(a).not.toBe(b);
+      expect(rnd).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      rnd.mockRestore();
+    }
+  });
+
+  it('refuses rather than inventing a weak key when the browser has no crypto', async () => {
+        vi.stubGlobal('crypto', undefined);
+    try {
+      expect(() => freshKey('writeoff', 'r1')).toThrow('This browser cannot make a write key.');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -46,11 +46,20 @@ function wholeNumber(s: string): number | null {
   return /^\d+$/.test(t) ? Number(t) : null;
 }
 
-function freshKey(prefix: string, id: string): string {
-  const uuid =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+/**
+ * A key no other write shares. randomUUID needs a secure context; outside one
+ * (plain-http dev) getRandomValues still works, and Math.random never stands in.
+ */
+export function freshKey(prefix: string, id: string): string {
+  const c = typeof crypto !== 'undefined' ? crypto : undefined;
+  let uuid: string;
+  if (c && typeof c.randomUUID === 'function') {
+    uuid = c.randomUUID();
+  } else {
+    if (!c || typeof c.getRandomValues !== 'function') throw new Error('This browser cannot make a write key.');
+    const b = c.getRandomValues(new Uint8Array(16));
+    uuid = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  }
   return `${prefix}:${id}:${uuid}`;
 }
 
