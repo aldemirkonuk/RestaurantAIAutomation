@@ -1,4 +1,4 @@
-# 0269 — /orders reads the whole order book, page by page, and lists every open order or says it could not
+# 0269 — /orders reads the whole order book, page by page, and flags an open list it can tell may be short
 
 - **Status:** Proposed
 - **Date:** 2026-10-03
@@ -110,7 +110,8 @@ Why the superseded answer could not stand (this session's reading, not in the re
   - Then it **degrades**: every open status this client can name is swept on its own, and every closed status is counted with a `limit=1` read.
   - The result is marked `partial`, with the reason `unstable`.
   - A status this client cannot read is filed open, and a whole read lists it with the open orders. The sweep cannot ask for a status it cannot name, so a degraded read keeps such an order only as the unfiltered pages it read showed it, and counts the rest in `unclassifiedCount` (`total` less the per-status counts, floored at 0).
-  - `openComplete` is true for a degraded read only when the per-status counts add up to `total` exactly. Below it, orders of a status no sweep can name may be missing. Above it, an order moved status (or was placed) between the sweeps and the counts, and the surplus can hide such an order while the floor reads 0.
+  - `openComplete` is true for a degraded read only when the per-status counts add up to `total` exactly. That is necessary, not sufficient. Below it, orders of a status no sweep can name may be missing. Above it, an order moved status (or was placed) between the sweeps and the counts, and the surplus can hide such an order while the floor reads 0.
+  - **The tie, a known gap.** A surplus of N can exactly cancel a deficit of N orders of a status no sweep can name that sit outside the pages read (past the ceiling, or skipped by a read that did not hold still). The counts then add up to `total`, `unclassifiedCount` is 0, `openComplete` is true, and those orders are not in `rows`. The reader cannot tell this from a read that held still. `order-book.test.ts` pins today's behaviour in a test named "KNOWN GAP" (3,001 orders, the oldest ON_HOLD, COMPLETED counted 3,001). Proving the open set needs a count from the gateway itself; see the handovers.
   - `openComplete` is also false when an open sweep does not hold still after two tries.
 - **The build's picks, not the founder's.** The ceiling (30 pages), the 40-per-60 s window, the 400 ms settle, the 60 s interval, the 30 s background gap, the 0 to 30 s jitter and the 60 s cap on a 429's wait were picked by the agent that built PR-A. None of them is a founder ruling.
 - **The ceiling** is 30 pages (3,000 orders). Past it the result is `capped`. It holds:
@@ -140,18 +141,20 @@ Why the superseded answer could not stand (this session's reading, not in the re
 - **The approve write stays where it is.** The optimistic approve write on `orders.list` (`useOrderQueries.ts:147-182`) is unchanged.
 - **The key** is `queryKeys.orders.book(house)`. It sits under `['orders']`, so every existing invalidation reaches it.
 
-**Tests and mutation proof.** `order-book.test.ts` (49 tests) and `useOrderBook.test.tsx` (24 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Mutations were run from `cp -p` snapshots, never `git stash`, and every restore was compared byte for byte. 38 were run; 37 each failed at least one test and passed again when restored:
+**Tests and mutation proof.** `order-book.test.ts` (50 tests) and `useOrderBook.test.tsx` (24 tests) use a fake gateway that pages as `listOrders` does (`__tests__/utils/fakeOrderGateway.ts`). Mutations were run from `cp -p` snapshots, never `git stash`, and every restore was compared byte for byte. 38 were run; 37 each failed at least one test and passed again when restored:
 
 - the six the design rests on: dropping the paging loop; dropping the `restaurantId` check; pointing the reader at `/procurement/orders`; removing the fence; making background the default; restarting from page 1 on a 429;
 - 16 more in the reader: `openComplete` set from the floored `unclassifiedCount` instead of an exact sum (the per-status counts above `total`); `retryAfter` not capped at the window; no house check after a page; no rows-over-limit, total-is-a-count, `hasMore`-is-boolean or status-echo check; `sweepStatus` always complete, or one attempt; `degrade` keeping every prefix row, or dropping prefix rows of a status it cannot name; `openComplete` ignoring `unclassifiedCount`; a row of another house read as `HouseChangedError`; `fetchOrderById` without its id check, its house check before the GET, or its house check after it;
 - 15 more in the runner: no 429 gate; a background mark that never clears; a fence that does not move its waiters; the aborted branch off; `HouseChangedError` counted as failing; no staleness guard; callers resolved with the book read instead of the book kept; freshness dated from the book read instead of the book kept; a read nobody waits for started anyway; `retry: 1`, `refetchOnWindowFocus: true` or the default `refetchOnReconnect` in `useQuery`; `start()` ignoring a hidden tab; a hidden tab deferring an urgent read too; `retryOrderBook` retrying `ForeignRowError`.
+
+The tie test added at the second gate round (see the review trail) pins a gap rather than guarding code, so it was checked separately, from `cp -p` snapshots with byte-for-byte restores: changing `counted === total` to `counted < total` in `degrade` fails it (and four other tests); counting COMPLETED at 3,002 instead of 3,001 in its fixture fails it alone; moving the ON_HOLD order inside the first 3,000 fails it alone. So it sits on the tie, not above it, and its "order missing" assertion is live. These three are not in the 38.
 
 One survives, re-run against the final tests: removing `run.next = null` from `stopOtherHouses`, so the house switched away from keeps its queued read. It gets no test. In the app the token is stored before the house changes (`AuthContext.tsx:625` before `:630`, `:835` before `:839`), and `assertHouse` runs before every GET, so that queued read sends nothing for the old house; its cost is one window slot and a swallowed `HouseChangedError`.
 
 ## Consequences
 
 - **Easier.**
-  - PR-B can show every open order when `openComplete` is true; when it is false, the book says the open list may be short.
+  - PR-B can show every open order the reader found. When `openComplete` is false, the book says the open list may be short. When it is true, that is not proof against an order of a status no sweep can name in a degraded read (the tie above), so PR-B must not promise completeness on `openComplete` alone (see the handovers).
   - Per-status counts cover the whole book in every mode: from the rows of a whole read, or from `statusTotals` in a capped or partial one. A whole read's counts come from one cached value. A degraded read's counts are separate reads taken at different moments. Month figures cover the whole book only in a whole read (see the narrowed ruling above).
   - Every later screen that needs the whole book has a reader with a 429 path, a house check and a completeness check, instead of `?? []`.
 - **Weaknesses, stated.**
@@ -171,7 +174,8 @@ One survives, re-run against the final tests: removing `run.next = null` from `s
   - **The dashboard shares the bucket.** The dashboard reads `/history` (`useDayOrders`, `useDashboardNextData.ts:415-470`, its `getOrderHistory` call at `:447`; `useOrderQueries.ts:93`) from the same browser, outside this runner's window.
   - **The window does not cover them.** The 40-per-tab window counts only book reads, so book reads, dashboard reads and a second tab can still reach 100 together. The 429 path absorbs that; it does not prevent it.
   - **Request cost.** A capped read costs at least 42 requests: 30 pages, 8 open sweeps and 4 counts. Under the 40-per-60s window it spans more than a minute. A read that does not hold still reads its pages twice and then degrades: at least 2 × its pages + 12.
-  - **A status this client cannot name, in a degraded read.** Such an order is kept only as the unfiltered pages the read went through showed it. One those pages did not show (past the ceiling, or skipped by a read that did not hold still) is not listed at all, and the book says so (`unclassifiedCount`, `openComplete` false). The gateway references only the twelve enum members (a grep of `ProcurementOrderStatus.` in `apps/api-gateway/src`); string-literal and SQL writers were not swept.
+  - **A status this client cannot name, in a degraded read.** Such an order is kept only as the unfiltered pages the read went through showed it. One those pages did not show (past the ceiling, or skipped by a read that did not hold still) is not listed at all. Usually the book says so (`unclassifiedCount` above 0, `openComplete` false). It does not when a concurrent surplus of the same size cancels the deficit exactly (the tie above): then `unclassifiedCount` is 0 and `openComplete` is true.
+    - How likely such an order is: the gateway references only the twelve enum members (a grep of `ProcurementOrderStatus.` in `apps/api-gateway/src`); string-literal and SQL writers were not swept. The status trigger in `20260905230000_an_order_changes_state_by_the_table.sql` refuses an UPDATE to or from a status outside the twelve, but it fires `BEFORE UPDATE OF status` only (`:174-176`), so an INSERT is not guarded. That migration measured 0 rows outside the twelve in production on 2026-09-05 (`:43`); nothing here re-measured it.
 - **Revisit when:**
   - 429s are observed from one address (reconsider options 2 and 3);
   - a house's book is routinely `partial` (G2 is late, or the insert-only assumption is wrong);
@@ -188,6 +192,7 @@ One survives, re-run against the final tests: removing `run.next = null` from `s
 | Phone /orders | this lane, a later PR | Mobile is not touched here |
 | `pages/dashboard/next/DayDetail.tsx:302` links `/orders?highlight=` | follow-up | Check whether /orders reads `?highlight=` or `?order=` |
 | `markBackground` from `lib/websocket.tsx:646`/`:664` | PR-B | Until wired, websocket-triggered book reads are urgent (settled, not gapped) |
+| No completeness promise on `openComplete` alone | PR-B | In a degraded read, `openComplete` true can hide an order of a status no sweep can name (the tie, pinned by the "KNOWN GAP" test). PR-B must not render "every open order" or the like from it. Proof needs a gateway aggregate (for example an open count, or a count of statuses outside the twelve); when one lands, the "KNOWN GAP" test should flip |
 
 ## Forks for PR-B
 
@@ -214,4 +219,5 @@ Forks 1 to 3 were asked through AskUserQuestion and answered by the founder on 2
 | 2026-10-03 | — | Created (Proposed) with PR-A on `fix/orders-paged-fetch-f140` |
 | 2026-10-03 | Internal audit (correctness and adversarial), branch head `752189ac2` | Findings fixed in `833776ac9` |
 | 2026-10-03 | Internal re-audit, branch head `833776ac9` | Findings fixed in `86224761d` |
-| 2026-10-08 | PR audit gate (ADR 0090), head `1e5f3bae3` | BLOCK, on the record only: forks 1 to 3 shown open, stale citations, the cap narrowing the ruling unstated. Two code findings (the `openComplete` sum, the `retryAfter` cap) fixed with tests in the same round |
+| 2026-10-08 | PR audit gate (ADR 0090), head `1e5f3bae3` | BLOCK, on the record only: forks 1 to 3 shown open, stale citations, the cap narrowing the ruling unstated. Two code findings (the `openComplete` sum, the `retryAfter` cap) answered with tests in `15e98ec7f` |
+| 2026-10-08 | PR audit gate (ADR 0090), head `15e98ec7f` | BLOCK, on the record only. Finding #4 (the `openComplete` sum) was narrowed, not closed, at `15e98ec7f`: the exact-sum check rejects counts above `total`, but not a surplus that exactly cancels a deficit. It is now recorded as a known gap, pinned by a test, with a PR-B handover; the reader's behaviour is unchanged (comments only). Also fixed: the comment on 429 waits (counted per page, not per read) |

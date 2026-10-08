@@ -21,7 +21,8 @@
  * - It never calls a read whole on trust: the count of distinct ids must equal
  *   the gateway's `total`. Otherwise it reads again once, and then falls back to
  *   reading every open status it can name on its own, marked `partial`, with
- *   `openComplete` saying whether that found every open order.
+ *   `openComplete` false when it can tell that read may have missed an open
+ *   order. It cannot always tell (see `OrderBook.openComplete`).
  * - It never returns a row from another house. The token's house is checked
  *   before and after every page, and every row's `restaurantId` is compared
  *   with the house asked for.
@@ -58,7 +59,7 @@ export const CEILING_PAGES = 30
 export const RATE_WINDOW_MS = 60_000
 /** A 429's wait is spread uniformly over 0 to this, so devices do not return together. */
 export const RATE_JITTER_MAX_MS = Math.min(30_000, RATE_WINDOW_MS)
-/** 429 waits one read session will sit out before it gives up. */
+/** 429 waits one page will sit out before the read gives up (counted per page, in `openSession`). */
 const MAX_RATE_LIMIT_WAITS = 2
 
 // ---------------------------------------------------------------------------
@@ -89,8 +90,9 @@ export const ORDER_WIRE_STATUSES: readonly OrderWireStatus[] = [
  * `normalizeOrderStatus` files as `pending`. A whole read lists such an order
  * with the open ones. The open sweep cannot ask for a status it cannot name,
  * so a degraded read keeps such an order only as the unfiltered pages it read
- * showed it, and reports the rest as `unclassifiedCount` with `openComplete`
- * false.
+ * showed it, and counts the rest in `unclassifiedCount` with `openComplete`
+ * false, except when a concurrent move offsets them exactly: then both read as
+ * complete and the order is missing (see `OrderBook.openComplete`).
  */
 const CLOSED_STAGES: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
   'completed',
@@ -228,8 +230,9 @@ export interface OrderBook {
    * 3,000 plus the open orders its sweeps found. partial: the read did not hold
    * still after one more try; `rows` are the closed rows it saw, and any of a
    * status no sweep can ask for, plus the open orders its sweeps found. In both,
-   * `openComplete` says whether that is every open order: a status no sweep can
-   * ask for, or a sweep that did not hold still, can leave some out.
+   * `openComplete` false says some open orders may be missing: a status no sweep
+   * can ask for, or a sweep that did not hold still, can leave some out.
+   * `openComplete` true does not prove the opposite (see below).
    */
   mode: 'whole' | 'capped' | 'partial'
   reason: 'ceiling' | 'unstable' | null
@@ -237,13 +240,20 @@ export interface OrderBook {
   /** The gateway's count of every order in the house, from the last page read. */
   total: number
   /**
-   * True when every open order is in `rows`. Always true for a whole book. A
-   * degraded book sets it only when every open sweep held still and the
-   * per-status counts add up to `total` exactly. Below it, a status no sweep can
-   * ask for may hold open orders the unfiltered pages did not show, and the
-   * reader cannot tell, so it is false even when they showed all of them. Above
-   * it, the counts were taken while orders moved, and the surplus can hide such
-   * an order, so it is false too.
+   * Whole book: always true, and every order read is in `rows`.
+   *
+   * Degraded book: true only when every open sweep held still and the
+   * per-status counts add up to `total` exactly. That is necessary, not
+   * sufficient. Below `total`, a status no sweep can ask for may hold open
+   * orders the unfiltered pages did not show, so it is false even when they
+   * showed all of them. Above it, the counts were taken while orders moved, so
+   * it is false too. But the counts can also add up exactly by accident: an
+   * order of a status no sweep can ask for, outside the pages read (a deficit of
+   * N), and N extra counts from orders that moved status, or were placed, while
+   * the counts were taken (a surplus of N), cancel out. Then this is true and that order is not
+   * in `rows`. The reader cannot see the tie. A known gap, pinned by a test in
+   * `order-book.test.ts`; proving the open set needs a count from the gateway
+   * itself (ADR 0269).
    */
   openComplete: boolean
   /** Per wire status, the gateway's count. Read only when the book is not whole. */
@@ -404,8 +414,8 @@ type Session = ReturnType<typeof openSession>
 // ---------------------------------------------------------------------------
 // The open sweep: the fallback that reads each open status this client can
 // name on its own, twice at most, and says whether each held still
-// (`openComplete` false when one did not, or when some rows have a status no
-// sweep can ask for)
+// (`openComplete` false when one did not, or when the per-status counts do not
+// add up to `total`)
 // ---------------------------------------------------------------------------
 
 async function sweepStatus(
@@ -461,10 +471,13 @@ async function degrade(
   for (const row of open.values()) rows.set(row.id, row)
   const counted = Object.values(statusTotals).reduce((sum, n) => sum + (n ?? 0), 0)
   const unclassifiedCount = Math.max(0, total - counted)
-  // The open set is proven only when the per-status totals add up to `total`
-  // exactly. Above it, an order moved status between sweeps (or one was placed
-  // mid-sweep), and that surplus can hide an order of a status no sweep can
-  // name, so the clamp above would read 0. Either way the read did not hold still.
+  // An exact sum is necessary for `openComplete`, not sufficient. Above `total`,
+  // an order moved status between sweeps (or one was placed mid-sweep), and that
+  // surplus can hide an order of a status no sweep can name, so the clamp above
+  // would read 0; the read did not hold still. At exactly `total`, a surplus of N
+  // can still cancel a deficit of N such orders outside the pages read, and this
+  // check passes with them missing. The reader cannot tell the two apart; that
+  // tie is a known gap (`OrderBook.openComplete`, ADR 0269).
   const totalsAddUp = counted === total
   return {
     house,

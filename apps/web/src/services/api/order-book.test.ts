@@ -378,6 +378,37 @@ describe('fetchOrderBook: past the ceiling', () => {
     expect(book.unclassifiedCount).toBe(0)
     expect(book.openComplete).toBe(false)
   })
+
+  it('KNOWN GAP (ADR 0269): a surplus that exactly cancels an unnameable order past the ceiling reads as complete, with that order missing', async () => {
+    // This pins today's behaviour; it is not the behaviour wanted. The ON_HOLD
+    // order is the oldest (#3000), so it is past page 30 and no sweep can ask
+    // for it: a deficit of 1. One order counted twice in COMPLETED (it moved
+    // while the counts were taken) is a surplus of 1. The per-status counts then
+    // add up to `total` exactly, and the reader cannot tell this from a read that
+    // held still. Closing the gap needs a count from the gateway itself; when
+    // that lands, this test should flip to `openComplete` false.
+    const rows = makeOrders(HOUSE_A, 3001, (i) =>
+      i === 3000 ? ('ON_HOLD' as OrderWireStatus) : 'COMPLETED',
+    )
+    install(rows)
+    const completed = rows.find((r) => r.status === 'COMPLETED')!
+    expect(rows.filter((r) => r.status === 'COMPLETED')).toHaveLength(3000)
+    gw.before = (call) =>
+      call.params.status === 'COMPLETED' && call.params.limit === 1
+        ? { data: { orders: [completed], total: 3001, page: 1, limit: 1, hasMore: true } }
+        : undefined
+    const book = await fetchOrderBook(HOUSE_A, signal())
+
+    expect(book.mode).toBe('capped')
+    expect(book.total).toBe(3001)
+    expect(book.statusTotals?.COMPLETED).toBe(3001)
+    expect(book.unclassifiedCount).toBe(0)
+    expect(book.openComplete).toBe(true)
+    const onHold = rows.filter((r) => r.status === ('ON_HOLD' as OrderWireStatus))
+    expect(onHold.map((r) => r.id)).toEqual(['o-03000'])
+    expect(book.rows.some((r) => r.id === 'o-03000')).toBe(false)
+    expect(book.rows.some((r) => r.status === ('ON_HOLD' as OrderWireStatus))).toBe(false)
+  })
 })
 
 describe('fetchOrderBookPage', () => {
