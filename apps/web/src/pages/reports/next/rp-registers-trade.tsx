@@ -111,6 +111,10 @@ export interface TillWindow {
   from: string;
   to: string;
   days: number;
+  /** The house's zone the days were filed in (ADR 0296); null from an older gateway or a house with none. */
+  timezone: string | null;
+  /** True when the house has no time zone: no day can be filed, so nothing is stated. */
+  zoneUnset: boolean;
   dailySeries: Array<{ date: string; revenue: number }>;
 }
 
@@ -150,6 +154,8 @@ const till = analysis<TillWindow>({
       from: str(d.from),
       to: str(d.to),
       days: num(d.days) ?? 0,
+      timezone: str(d.timezone) || null,
+      zoneUnset: d.zoneUnset === true,
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),
         revenue: num(r.revenue) ?? 0,
@@ -172,6 +178,23 @@ const till = analysis<TillWindow>({
         notes: [],
         basis: [],
       };
+    // A house with no time zone has no days to file a check on (ADR 0296), so
+    // the till states no figure rather than UTC days dressed as the house's.
+    if (w.zoneUnset)
+      return {
+        say: (
+          <>
+            This house&rsquo;s time zone isn&rsquo;t set, so no sale can be filed on the house&rsquo;s day
+            yet — nothing is drawn here.{' '}
+            <Link to="/settings?tab=time-zone" className="rp-link rp-ink rp-focus rp-no-drag">
+              Set the time zone in Settings
+            </Link>
+          </>
+        ),
+        figures: [],
+        notes: [],
+        basis: [],
+      };
     const avg =
       w.revenue != null && w.checkCount != null && w.checkCount > 0
         ? w.revenue / w.checkCount
@@ -186,7 +209,9 @@ const till = analysis<TillWindow>({
       },
     ];
     const basis = [
-      `Non-voided pos_checks.total between ${w.from || EM} and ${w.to || EM}.`,
+      w.timezone
+        ? `Non-voided pos_checks.total between ${w.from || EM} and ${w.to || EM}, each check filed on the house's day in ${w.timezone} by when it closed, else when it opened.`
+        : `Non-voided pos_checks.total between ${w.from || EM} and ${w.to || EM}.`,
       'The series is sparse on purpose: a day with no check is absent, not plotted at zero.',
     ];
     if (w.dailySeries.length === 0)

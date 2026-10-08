@@ -3,9 +3,19 @@
  *
  * House honesty rule: an unknown is an em dash, never a zero and never a
  * guess. Nothing in this file invents a figure — the two mappings below
- * (category → stake, rule → hand) are CLASSIFICATIONS of a rule that already
- * fired, not measurements, and both keep an explicit "unfiled" branch so an
- * unrecognised category is visible rather than silently binned.
+ * (rule, then category → stake; rule, then category → hand) are
+ * CLASSIFICATIONS of a rule that already fired, not measurements. Both read
+ * a table's own rows only (`ownRow`), so a stored key such as `constructor`
+ * or `__proto__` is an unknown, not a value inherited from `Object.prototype`.
+ * [2026-10-06: so do `urgencyLabel` below and the page's goal, cutting,
+ * day-book, lever and urgency-rank tables. Until then they read a plain
+ * `table[key]`, and a stored `__proto__` rule key (through the goal and
+ * cutting refusals) or urgency (through `urgencyLabel`) made the page throw
+ * at render, though these two mappings already filed it (ADR 0288).]
+ * A rule the stake knows neither by name nor by category is filed under
+ * Unfiled, visible rather than silently binned, and the stake says which of
+ * the two filed it (ADR 0288). A hand the page knows neither by rule nor by
+ * category falls back to Reports.
  */
 
 import { roleAllows, roomFor, type ShellRole } from '@/lib/mudavym/rooms';
@@ -33,6 +43,18 @@ export function num(v: unknown): number | null {
   return null;
 }
 
+/**
+ * A table's row for `key`, read from the table's OWN rows only. The tables on
+ * this page are object literals, so a plain `table[key]` answers a stored key
+ * such as `constructor`, `toString`, `valueOf` or `__proto__` with a value
+ * inherited from `Object.prototype`: an entry filed nowhere, a refusal React
+ * cannot render, a rank that is not a number (ADR 0288). `Object.prototype.hasOwnProperty.call`, because the
+ * web build's `lib` is ES2020 and has no `Object.hasOwn`.
+ */
+export function ownRow<T>(table: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
+}
+
 /* ── Axis 1: the stake — what the entry would change ─────────────────────── */
 
 export type StakeId = 'money' | 'stock' | 'vendors' | 'floor' | 'unfiled';
@@ -48,21 +70,95 @@ export const STAKE_LABEL: Record<StakeId, string> = {
   unfiled: 'Unfiled',
 };
 
+/**
+ * A register's name as it is printed inside a sentence: lower-case ("Why it
+ * would change the floor", "1 more filed under stock, vendors and the
+ * floor"). The rail and the "Would change" fact print `STAKE_LABEL` as it
+ * is; the section headings name an act (`ACT_LABEL`), not a register. The
+ * founder, 2026-10-07 (ADR 0288): "Lower-case
+ * mid-sentence (Recommended)".
+ *
+ * `stakeOf` always returns a register, so only a hand-built entry can carry a
+ * stake this table does not know; it is printed as its own word, lower-case,
+ * the way `urgencyLabel` prints an unknown urgency, rather than throwing.
+ */
+export function stakeInSentence(stake: StakeId): string {
+  return (ownRow(STAKE_LABEL, stake) ?? String(stake)).toLowerCase();
+}
+
 /** The register's own gloss — what "acting on this" would actually move. */
 export const STAKE_BLURB: Record<StakeId, string> = {
   money: 'money taken across the pass',
   stock: 'bottles at risk on the shelf',
   vendors: 'what you pay and who you pay it to',
   floor: 'how the shift is run',
-  unfiled: 'a rule category this page has no register for',
+  unfiled: 'a rule this page has no register for',
+};
+
+/** Where an entry is filed in the register, and the sentence it was read from. */
+export interface StakeFiling {
+  stake: StakeId;
+  /** Why it is filed there — the rule's own words, or the category it fell back on. */
+  why: string;
+  /** Which of the two filed it, or neither. */
+  by: 'rule' | 'category' | 'unfiled';
+}
+
+/**
+ * Rule → stake, for the rules whose category does not say what acting on them
+ * would change (ADR 0288).
+ *
+ * The register's promise is "what acting on an entry would change". The
+ * engine's category is a different fact — which family of analysis found the
+ * entry — and for four rules the two disagree. The founder ruled on each:
+ *
+ *  - `plowhorse_repricing` and `puzzle_activation` are `efficiency` in
+ *    `recommendations.service.ts`, and the category once filed both under The
+ *    floor, so with Money pressed "Price it" left out a price change (AW28).
+ *    2026-10-04: "Money / Stock (Recommended)" — the price change under Money,
+ *    the bottle moved under Stock.
+ *  - `revenue_concentration` is `risk`, which files under Vendors, but it
+ *    changes how deep the top sellers' stock runs. 2026-10-04:
+ *    "Stock (Recommended)".
+ *  - `weekday_gap` is `sales`, which files under Money, but it leads with
+ *    putting staff training, deliveries and counts on a named day. 2026-10-04:
+ *    "The floor (Recommended)" — filed by its leading clause, as its act is.
+ *
+ * Each `why` quotes the rule's own `recommendation` sentence, the way
+ * `rec-docket.ts` `RULE_ACT` does for acts.
+ *
+ * The category is NOT changed in the engine: it feeds the goal levers
+ * (`rec-daybook.ts`) and the hand's category fallback (`handOf`, below).
+ */
+const RULE_STAKE: Record<string, { stake: StakeId; why: string }> = {
+  plowhorse_repricing: {
+    stake: 'money',
+    why: 'The rule says “Raise those prices 5–8% or renegotiate cost on the next PO”. A price change moves what each bottle and glass brings in. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+  },
+  puzzle_activation: {
+    stake: 'stock',
+    why: 'The rule says “Put one puzzle wine by-the-glass this week”. It moves a bottle that is standing still on the shelf. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+  },
+  revenue_concentration: {
+    stake: 'stock',
+    why: 'The rule says “Protect the top sellers’ stock first (raise their service level to 98%)”. It changes how deep the stock runs on the wines the room actually drinks, not which vendor is paid. The engine calls the rule risk; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+  },
+  weekday_gap: {
+    stake: 'floor',
+    why: 'The rule leads with “Move staff training, deliveries, and inventory counts to <weakest day>”. Putting the team’s work on a named day changes how the floor runs its week. Its second half, a day-only offer, would change money; it is filed by the clause it leads with, as its act is. The engine calls the rule sales; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+  },
 };
 
 /**
- * Category → stake. The eight categories the rule engine emits
- * (`analytics/recommendations.service.ts`: sales · inventory · efficiency ·
- * risk · purchasing · staff · basket · goals) filed by consequence. Anything
- * else lands in `unfiled` ON PURPOSE: a new rule category must show up as
- * unfiled rather than be absorbed into a register it was never sorted into.
+ * Category → stake, for every rule not filed by name. The rule engine
+ * (`analytics/recommendations.service.ts`) emits nine categories: sales ·
+ * inventory · pricing · risk · purchasing · staff · basket · goals ·
+ * efficiency. The first eight are filed here by consequence.
+ *
+ * `efficiency` is deliberately absent. Both of its rules are filed by name
+ * above, and a NEW efficiency rule must land in `unfiled` rather than be
+ * absorbed into a register nobody sorted it into — which is exactly how AW28
+ * happened. Anything else unknown lands in `unfiled` ON PURPOSE too.
  */
 const CATEGORY_STAKE: Record<string, StakeId> = {
   sales: 'money',
@@ -72,14 +168,45 @@ const CATEGORY_STAKE: Record<string, StakeId> = {
   purchasing: 'vendors',
   risk: 'vendors',
   staff: 'floor',
-  efficiency: 'floor',
   // ADR 0193: price advice toward the house's target margin moves money.
   pricing: 'money',
 };
 
-export function stakeOf(category: string | null | undefined): StakeId {
-  if (!category) return 'unfiled';
-  return CATEGORY_STAKE[category] ?? 'unfiled';
+/**
+ * Where the register files an entry, and why. The rule is read from the key
+ * with `readKey`, so a row on the Snoozed, Dismissed or History leaves —
+ * whose stored key may be the composite `rule#subject#grain` (ADR 0191) —
+ * files exactly as the standing entry does. Both tables are read by their own
+ * rows only (`ownRow`).
+ */
+export function stakeFilingOf(
+  ruleKey: string | null | undefined,
+  category: string | null | undefined,
+): StakeFiling {
+  const ruleId = readKey(ruleKey ?? '').ruleId;
+  const named = ownRow(RULE_STAKE, ruleId);
+  if (named) return { stake: named.stake, why: named.why, by: 'rule' };
+  const byCategory = category ? ownRow(CATEGORY_STAKE, category) : undefined;
+  if (category && byCategory)
+    return {
+      stake: byCategory,
+      why: `Filed from the rule’s category, ${category}, which this page reads as ${STAKE_BLURB[byCategory]}. No register is written for this rule by name.`,
+      by: 'category',
+    };
+  return {
+    stake: 'unfiled',
+    why: category
+      ? `This page has no register for the rule ${ruleId || EM} or for its category, ${category}. It is shown under ${stakeInSentence('unfiled')} rather than sorted by guesswork.`
+      : `This page has no register for the rule ${ruleId || EM}, and it carried no category to file it by. It is shown under ${stakeInSentence('unfiled')} rather than sorted by guesswork.`,
+    by: 'unfiled',
+  };
+}
+
+export function stakeOf(
+  ruleKey: string | null | undefined,
+  category: string | null | undefined,
+): StakeId {
+  return stakeFilingOf(ruleKey, category).stake;
 }
 
 /* ── Axis 2: urgency — the engine's own word, said plainly ───────────────── */
@@ -100,7 +227,7 @@ export const URGENCY_RANK: Record<string, number> = {
 
 export function urgencyLabel(u: string | null | undefined): string {
   if (!u) return EM;
-  return URGENCY_LABEL[u] ?? u;
+  return ownRow(URGENCY_LABEL, u) ?? u;
 }
 
 /* ── Axis 3: the hand — who does it, and where the work lands ────────────── */
@@ -139,7 +266,7 @@ export function handOf(ruleKey: string, category: string): Hand {
     // ADR 0193 round 3: the locks live on /menu, under Locked prices.
     price_locks_to_review: { href: `/menu?${q}#locked-prices`, label: 'Look at the locks', where: 'Menu' },
   };
-  const hit = byRule[ruleKey];
+  const hit = ownRow(byRule, ruleKey);
   if (hit) return hit;
   if (ruleKey.startsWith('goal_behind'))
     return { href: `/reports?${q}`, label: 'Open the goal', where: 'Reports' };
@@ -153,7 +280,7 @@ export function handOf(ruleKey: string, category: string): Hand {
     basket: { href: `/promotions?${q}`, label: 'Open Promotions', where: 'Promotions' },
     goals: { href: `/reports?${q}`, label: 'Open Goals', where: 'Reports' },
   };
-  return byCategory[category] ?? { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' };
+  return ownRow(byCategory, category) ?? { href: `/reports?${q}`, label: 'Open Reports', where: 'Reports' };
 }
 
 /** A hand as the person looking at the card holds it. */

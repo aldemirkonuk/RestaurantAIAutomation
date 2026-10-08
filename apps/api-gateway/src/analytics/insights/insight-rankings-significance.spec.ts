@@ -344,6 +344,7 @@ describe("A ranking or a pairing is printed only when the data can tell it apart
         },
         rows: Array.from({ length: 5 }, () => ({
           inventory_id: `inv-${i}`,
+          consumption_type: "bottle",
           quantity: sold / 5,
           volume_ml: null,
           created_at: `${dayBack(30)}T12:00:00.000Z`,
