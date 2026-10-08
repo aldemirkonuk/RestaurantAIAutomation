@@ -815,15 +815,17 @@ export class AnalyticsService {
     // The span starts at the earlier of two clocks: sales at the first closed
     // check, cost of goods at the first POS stock move. When they are a day
     // or more apart, one figure holds days the other does not, and the basis
-    // names both dates. Nothing here corrects for it or measures its size.
+    // says which clock starts first and how many days later the other does.
+    // It names no date: a date is a day of the house's clock (ADR 0296), and
+    // this reader needs no zone, so it cuts no day of its own. Nothing here
+    // corrects for the gap or measures its size.
     const spanGap = (() => {
       const c = Date.parse(pos?.firstCheckAt ?? "");
       const m = Date.parse(pos?.firstMoveAt ?? "");
       if (!Number.isFinite(c) || !Number.isFinite(m)) return null;
       const days = Math.round(Math.abs(m - c) / 86400000);
       if (days < 1) return null;
-      const day = (t: number) => new Date(t).toISOString().slice(0, 10);
-      return { checksFirst: c < m, days, check: day(c), move: day(m) };
+      return { checksFirst: c < m, days };
     })();
     const annualFactor =
       cogsWindow != null && cogsWindow.days >= MIN_ANNUALISED_SPAN_DAYS
@@ -959,8 +961,8 @@ export class AnalyticsService {
       spanGap == null
         ? ""
         : spanGap.checksFirst
-          ? `; sales start at the first closed check in the window (${spanGap.check}) and stock moves at the first POS ledger row (${spanGap.move}), ${plural(spanGap.days, "day", "days")} later, so cost of goods holds no stock move from those days while sales and the span annualised include them`
-          : `; stock moves start at the first POS ledger row in the window (${spanGap.move}) and sales at the first closed check (${spanGap.check}), ${plural(spanGap.days, "day", "days")} later, so sales hold no check from those days while cost of goods and the span annualised include them`;
+          ? `; sales start at the first closed check in the window and stock moves at the first POS ledger row ${plural(spanGap.days, "day", "days")} later, so cost of goods holds no stock move from those days while sales and the span annualised include them`
+          : `; stock moves start at the first POS ledger row in the window and sales at the first closed check ${plural(spanGap.days, "day", "days")} later, so sales hold no check from those days while cost of goods and the span annualised include them`;
     const cogsBasis =
       pos == null
         ? `${cogsHead} — null: the POS sales read failed, and $0 would claim nothing sold`

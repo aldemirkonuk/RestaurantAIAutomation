@@ -399,8 +399,11 @@ describe("financial never reports an empty result set as $0", () => {
       firstMoveAt: move,
     });
     expect(out.basis.cogs).toContain(
-      `sales start at the first closed check in the window (${check.slice(0, 10)}) and stock moves at the first POS ledger row (${move.slice(0, 10)}), 15 days later, so cost of goods holds no stock move from those days while sales and the span annualised include them`,
+      `sales start at the first closed check in the window and stock moves at the first POS ledger row 15 days later, so cost of goods holds no stock move from those days while sales and the span annualised include them`,
     );
+    // ADR 0296: a date is a day of the house's clock, so this zone-free
+    // reader prints none.
+    expect(out.basis.cogs).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 
   it("names both clocks when stock moves start days before the first check", async () => {
@@ -416,8 +419,9 @@ describe("financial never reports an empty result set as $0", () => {
       }),
     ).getFinancialSummary(RESTAURANT);
     expect(out.basis.cogs).toContain(
-      `stock moves start at the first POS ledger row in the window (${move.slice(0, 10)}) and sales at the first closed check (${check.slice(0, 10)}), 10 days later, so sales hold no check from those days while cost of goods and the span annualised include them`,
+      `stock moves start at the first POS ledger row in the window and sales at the first closed check 10 days later, so sales hold no check from those days while cost of goods and the span annualised include them`,
     );
+    expect(out.basis.cogs).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 
   it("says nothing of the clocks when they are under a day apart or one is unknown", async () => {
