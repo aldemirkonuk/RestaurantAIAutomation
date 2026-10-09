@@ -989,16 +989,27 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 
     try {
       if (metricKey === "purchase_spend") {
-        let q = client
-          .from("procurement_orders")
-          .select("total_cost, final_price, delivered_at, created_at, status")
-          .eq("restaurant_id", restaurantId)
-          .in("status", ORDER_SPEND_STATUSES)
-          .gte("delivered_at", sinceIso);
-        if (untilIso) q = q.lte("delivered_at", untilIso);
-        const { data } = await q;
+        // Read whole or refused (ADR 0292, F-332), like its siblings below:
+        // this read dropped its error, so a failed query scored the goal as
+        // $0 of buying, and an unranged select stopped at 1,000 orders.
+        const read = await readWholeWindow<any>(
+          "The delivered orders in this window",
+          () => {
+            let q = client
+              .from("procurement_orders")
+              .select(
+                "id, total_cost, final_price, delivered_at, created_at, status",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId)
+              .in("status", ORDER_SPEND_STATUSES)
+              .gte("delivered_at", sinceIso);
+            if (untilIso) q = q.lte("delivered_at", untilIso);
+            return q;
+          },
+        );
         const orders = fileByHouseDay(
-          (data || []) as any[],
+          read,
           (o) => o.delivered_at || o.created_at,
         );
         rowCount = orders.length;

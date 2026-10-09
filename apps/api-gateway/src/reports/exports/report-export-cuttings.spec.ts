@@ -176,6 +176,21 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(figure(doc, "Bought, the last 30 days")).toBe(1200);
   });
 
+  it("against ourselves: a goal is typed by its unit and named as its last reading; an unread goals lens is not 'no goal' (F-573)", () => {
+    const bench = (activeGoals: unknown) =>
+      EXPORT_CUTTINGS.bench.write({ ...(PAYLOADS.bench as object), activeGoals }, { days: null });
+    const typed = bench([
+      { name: "Lift wine attach", metric_key: "wine_attach_rate", unit: "percent", baseline_value: 0.2, current_value: 0.35, target_value: 0.4 },
+    ]);
+    const row = typed.tables[0].rows.find((r) => String(r[0]).startsWith("Lift wine attach"))!;
+    expect(row[0]).toBe("Lift wine attach — baseline, last read, target");
+    expect(row[2]).toEqual({ n: 0.35, unit: "ratio" });
+    const unread = bench(null);
+    expect(isWithheld(figure(unread, "Goals running"))).toBe(true);
+    expect(unread.notes.join(" ")).toContain("The goals could not be read");
+    expect(unread.notes.join(" ")).not.toContain("No goal is running");
+  });
+
   it("the room and who served it: a table with no attributed check has no average, and a missing tip is not 0%", () => {
     const seats = EXPORT_CUTTINGS.seats.write(PAYLOADS.seats, { days: null });
     expect(isWithheld(seats.tables[0].rows[1][5])).toBe(true);

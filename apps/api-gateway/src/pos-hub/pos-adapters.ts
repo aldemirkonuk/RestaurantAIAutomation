@@ -108,6 +108,11 @@ export const squareAdapter: PosAdapter = {
           o.state === "COMPLETED"
             ? (o.closed_at ?? o.updated_at ?? null)
             : null,
+        // A cancelled order took no money. Without this it landed as
+        // `voided: false`, and every revenue reader (the till, the room, the
+        // servers, goals, the calendar), all of which filter only on
+        // `voided`, counted its total as a sale (F-572).
+        voided: o.state === "CANCELED",
         tableRef: o.ticket_name ?? null,
         serverExternalId: o.employee_id ?? null,
         serverName: null,
@@ -204,6 +209,11 @@ export const toastAdapter: PosAdapter = {
         externalCheckId: String(c.guid),
         openedAt: c.openedDate ?? new Date().toISOString(),
         closedAt: c.closedDate ?? null,
+        // Toast keeps a voided or deleted check on the order with a flag
+        // rather than dropping it, so both are read: a check the till took
+        // back is not a sale, and every revenue reader filters only on
+        // `voided` (F-572).
+        voided: c.voided === true || c.deleted === true,
         tableRef: c.table?.guid ?? c.table?.name ?? null,
         serverExternalId: c.server?.guid ?? null,
         serverName: c.server

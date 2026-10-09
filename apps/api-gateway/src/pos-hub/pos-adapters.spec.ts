@@ -141,6 +141,50 @@ describe("adapters normalize to the canonical check", () => {
 });
 
 /**
+ * F-572: a check the till took back is not a sale. Every revenue reader filters
+ * `pos_checks` on `voided` alone, and the hub writes `voided: check.voided ===
+ * true`, so an adapter that never set the flag made a voided Toast check and a
+ * cancelled Square order count as takings.
+ */
+describe("a check the till took back lands voided (F-572)", () => {
+  const toast = (over: Record<string, unknown>) =>
+    toastAdapter.normalize({
+      guid: "t-v",
+      openedDate: "2026-10-01T18:00:00Z",
+      closedDate: "2026-10-01T19:00:00Z",
+      totalAmount: 118,
+      ...over,
+    })[0];
+
+  it("a voided Toast check is voided", () => {
+    expect(toast({ voided: true }).voided).toBe(true);
+  });
+
+  it("a deleted Toast check is voided", () => {
+    expect(toast({ deleted: true }).voided).toBe(true);
+  });
+
+  it("an ordinary Toast check is not", () => {
+    expect(toast({}).voided).toBe(false);
+    expect(toast({ voided: false, deleted: false }).voided).toBe(false);
+  });
+
+  it("a cancelled Square order is voided; a completed or open one is not", () => {
+    const square = (state: string) =>
+      squareAdapter.normalize({
+        id: "sq-v",
+        state,
+        created_at: "2026-10-01T18:00:00Z",
+        closed_at: "2026-10-01T19:00:00Z",
+        total_money: { amount: 11800 },
+      })[0];
+    expect(square("CANCELED").voided).toBe(true);
+    expect(square("COMPLETED").voided).toBe(false);
+    expect(square("OPEN").voided).toBe(false);
+  });
+});
+
+/**
  * An absent number and a zero are different facts (ADR 0105 D5, ADR 0020).
  *
  * `num()` was `Number(v)` guarded by `Number.isFinite`. `Number(null)` is `0`

@@ -41,12 +41,16 @@
  * a duplicate, not a comparison.
  */
 
-import { EM, countOf, figure, money, num, pct } from './rp-format';
+import { EM, countOf, figure, money, num, pct, ratioPct, shortDay } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 export interface BenchGoalRow {
   name: string;
   metricKey: string;
+  /** The metric's unit, from the gateway: currency, percent, units, count or days. */
+  unit: string;
+  /** When `current` was last stored (the goal last opened), YYYY-MM-DD; null when not sent. */
+  readOn: string | null;
   baseline: number | null;
   current: number | null;
   target: number | null;
@@ -65,6 +69,8 @@ export interface BenchRegister {
   tie: boolean;
   weekdays: Array<{ day: string; mean: number | null; n: number | null }>;
   goals: BenchGoalRow[];
+  /** True when the goals read failed inside the parallel call (F-573). */
+  goalsMissing: boolean;
   /** True when the whole cashflow lens failed inside the parallel call. */
   cashflowMissing: boolean;
   seasonalityMissing: boolean;
@@ -105,6 +111,8 @@ export const bench = analysis<BenchRegister>({
       goals: arr(d.activeGoals).map((g) => ({
         name: str(g.name) || 'Untitled goal',
         metricKey: str(g.metric_key),
+        unit: str(g.unit) || 'count',
+        readOn: typeof g.updated_at === 'string' ? g.updated_at.slice(0, 10) : null,
         baseline: num(g.baseline_value),
         current: num(g.current_value),
         target: num(g.target_value),
@@ -113,6 +121,8 @@ export const bench = analysis<BenchRegister>({
       // `getOverview` runs its eight lenses through Promise.allSettled and
       // returns `null` for any that threw. A null lens is a read that did not
       // happen — never "this house bought nothing".
+      // A null goals lens is a read that failed, never "no goal is running" (F-573).
+      goalsMissing: d.activeGoals == null,
       cashflowMissing: d.cashflow == null,
       seasonalityMissing: d.seasonality == null,
       basis: [cfBasis.outflow, seBasis.weekday, seBasis.extremes] as Array<
@@ -144,9 +154,20 @@ export const bench = analysis<BenchRegister>({
         label: 'Trend per day, last 28 days',
         value: b.trendPerDayPct === null ? EM : pct(b.trendPerDayPct),
       },
-      { label: 'Goals running', value: figure(b.goals.length) },
+      {
+        label: 'Goals running',
+        value: b.goalsMissing ? EM : figure(b.goals.length),
+        note: b.goalsMissing ? 'the goals could not be read' : undefined,
+      },
     ];
 
+    if (b.cashflowMissing && b.seasonalityMissing && b.goalsMissing)
+      return {
+        say: `Nothing in the overview register answered — neither the buying lens, the weekday lens nor the goals returned. ${noPeers}`,
+        figures,
+        notes: [],
+        basis: b.basis,
+      };
     if (b.cashflowMissing && b.seasonalityMissing && b.goals.length === 0)
       return {
         say: `Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running. ${noPeers}`,
@@ -197,14 +218,19 @@ export const bench = analysis<BenchRegister>({
           '',
         ],
       });
+    // Each goal in its own unit, and its middle figure named for what it is:
+    // the reading stored the last time the goal was opened, not a live count
+    // (F-573). The goals desk holds the live one.
     for (const g of b.goals)
       rows.push({
         key: `goal-${g.name}`,
         cells: [
-          `${g.name} — since it was set`,
-          g.baseline === null ? EM : figure(g.baseline, 'compact'),
-          g.current === null ? EM : figure(g.current, 'compact'),
-          g.target === null ? EM : figure(g.target, 'compact'),
+          g.readOn
+            ? `${g.name} — when set, last read ${shortDay(g.readOn)}, target`
+            : `${g.name} — when set, last read, target`,
+          inUnit(g.baseline, g.unit),
+          inUnit(g.current, g.unit),
+          inUnit(g.target, g.unit),
         ],
       });
 
@@ -251,11 +277,21 @@ export const bench = analysis<BenchRegister>({
         b.seasonalityMissing
           ? 'The weekday lens did not answer inside the overview call.'
           : null,
-        b.goals.length === 0
-          ? 'No goal is running, so there is nothing to measure against a baseline. Set one on the goals desk and it appears here.'
-          : null,
+        b.goalsMissing
+          ? 'The goals could not be read just now, so whether any goal is running is not known. The goals desk reads them on its own.'
+          : b.goals.length === 0
+            ? 'No goal is running, so there is nothing to measure against a baseline. Set one on the goals desk and it appears here.'
+            : 'Each goal’s middle figure is where it stood the last time it was opened on the goals desk. The goals desk shows where it stands now.',
       ].filter((n): n is string => n !== null),
       basis: b.basis,
     };
   },
 });
+
+/** A goal figure in its own unit — a percent is not a count is not money. */
+function inUnit(v: number | null, unit: string): string {
+  if (v === null) return EM;
+  if (unit === 'percent') return ratioPct(v);
+  if (unit === 'currency') return money(v, 'compact');
+  return figure(v, 'compact');
+}

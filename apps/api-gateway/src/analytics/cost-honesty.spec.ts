@@ -295,6 +295,54 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
   });
 });
 
+/**
+ * F-574: a wine with no bottle price is left out of the sell-price valuation
+ * and the margin, and counted, instead of being valued at $0 while its cost
+ * still counted — which pushed gross margin and the COGS ratio down, and could
+ * take margin below zero, with nothing saying why.
+ */
+describe("getFinancialSummary leaves an unpriced wine out of sales and margin (F-574)", () => {
+  /** Costed at $20, on hand, and not on the list by the bottle. */
+  const GLASS_ONLY = {
+    ...RECORDED,
+    id: "inv-glass-only",
+    wine_name: "Glass-only Rioja",
+    stock_live: 10,
+    menu_price_current: null,
+    master_wine_id: "mw-glass-only",
+  };
+  const build = (inventoryRows: any[]) =>
+    analytics({ restaurant_inventory: inventoryRows });
+
+  it("values only the priced wines and takes margin over the same bottles", async () => {
+    const out = await build([RECORDED, GLASS_ONLY]).getFinancialSummary(
+      RESTAURANT,
+    );
+    // RECORDED: 5 × $60 sold against 5 × $20 cost. GLASS_ONLY adds neither.
+    expect(out.revenue).toBe(300);
+    expect(out.grossMarginDollars).toBe(200);
+    expect(out.grossMargin).toBeCloseTo(200 / 300);
+    expect(out.cogsRatio).toBeCloseTo(100 / 300);
+    // The cellar at cost still holds every on-hand bottle.
+    expect(out.inventoryValue).toBe(300);
+  });
+
+  it("says how many on-hand wines were left out", async () => {
+    const out = await build([RECORDED, GLASS_ONLY]).getFinancialSummary(
+      RESTAURANT,
+    );
+    expect(out.priceCoverage).toEqual({ total: 2, priced: 1, unpriced: 1 });
+    expect(out.basis.revenue).toContain("1 with no bottle price left out");
+  });
+
+  it("states no valuation, not $0, when no wine carries a bottle price", async () => {
+    const out = await build([GLASS_ONLY]).getFinancialSummary(RESTAURANT);
+    expect(out.revenue).toBeNull();
+    expect(out.grossMargin).toBeNull();
+    expect(out.basis.revenue).toContain("carries a bottle price");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // getInventoryScience
 // ---------------------------------------------------------------------------

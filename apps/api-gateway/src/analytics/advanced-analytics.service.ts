@@ -862,7 +862,22 @@ export class AdvancedAnalyticsService {
       seasonality: ok(seasonality),
       cashflow: ok(cashflow),
       insights: ok(insights) ?? [],
-      activeGoals: ok(goals) ?? [],
+      // F-573. A failed goals read is null, never `[]`: an empty list reads
+      // as "no goal is running". Each goal carries its metric's unit so the
+      // bench and its export print $4,210 or 35% the way the goals desk does,
+      // not 4.2K or 0.35. `current_value` is the STORED reading, refreshed only
+      // when that goal's progress is opened (goals.service.ts listGoals vs
+      // listGoalsWithProgress), so `updated_at` travels with it and the bench
+      // says when it was last read rather than calling it "now". Live progress
+      // is several reads per goal and writes back, too heavy for this call.
+      activeGoals:
+        goals.status === "fulfilled"
+          ? (goals.value as any[]).map((g) => ({
+              ...g,
+              unit:
+                GoalsService.SUPPORTED_METRICS[g.metric_key]?.unit ?? "count",
+            }))
+          : null,
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };

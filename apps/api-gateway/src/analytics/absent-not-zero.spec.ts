@@ -119,13 +119,15 @@ describe("financial never reports an empty result set as $0", () => {
     expect(out.cogs).not.toBe(0);
   });
 
-  it("says in the basis WHY the COGS is null, naming both possibilities", async () => {
+  it("says in the basis WHY the COGS is null", async () => {
     const out: any = await analytics({
       restaurant_inventory: [STOCKED],
     }).getFinancialSummary(RESTAURANT);
     // The load-bearing assertion: a null with no explanation is only half a fix.
     expect(out.basis.cogs).toContain("no delivered order was returned");
-    expect(out.basis.cogs).toContain("read that failed");
+    // A failed read no longer lands here as a second possibility: it refuses
+    // the summary (F-332), and the basis says so rather than offering it.
+    expect(out.basis.cogs).toContain("a failed read refuses the summary");
   });
 
   it("returns null revenue when no inventory row came back", async () => {

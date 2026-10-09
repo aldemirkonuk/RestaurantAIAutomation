@@ -861,8 +861,14 @@ function writeBench(payload: unknown): ExportDoc {
   const seMissing = "the weekday lens did not answer inside the overview call";
   const cfWhy = cashflowMissing ? cfMissing : "the cashflow register returned no figure";
   const tie = se.tie === true;
+  // F-573: a null goals lens is a read that failed, not "no goal is running".
+  // Each goal is typed by its metric's unit, and its current figure is the
+  // reading stored when the goal was last opened, so it is named that way.
+  const goalsUnread = d.activeGoals == null;
+  const goalsMissing = "the goals did not answer inside the overview call";
   const goals = arr(d.activeGoals).map((g) => ({
     name: str(g.name) || "Untitled goal",
+    unit: goalUnit(str(g.unit) || "count"),
     baseline: num(g.baseline_value),
     current: num(g.current_value),
     target: num(g.target_value),
@@ -892,25 +898,27 @@ function writeBench(payload: unknown): ExportDoc {
       null,
     ]),
     ...goals.map((g): Cell[] => [
-      `${g.name} — baseline, now, target`,
-      typed(g.baseline, "count", "no baseline recorded when the goal was set"),
-      typed(g.current, "count", "the goal's current value was not recorded"),
-      typed(g.target, "count", "no target recorded"),
+      `${g.name} — baseline, last read, target`,
+      typed(g.baseline, g.unit, "no baseline recorded when the goal was set"),
+      typed(g.current, g.unit, "the goal's current value was not recorded"),
+      typed(g.target, g.unit, "no target recorded"),
     ]),
   ];
 
   return doc({
     say:
-      cashflowMissing && seasonalityMissing && goals.length === 0
-        ? "Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running."
-        : null,
+      cashflowMissing && seasonalityMissing && goalsUnread
+        ? "Nothing in the overview register answered — neither the buying lens, the weekday lens nor the goals returned."
+        : cashflowMissing && seasonalityMissing && goals.length === 0
+          ? "Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running."
+          : null,
     figures: [
       f("Bought, the last 30 days", figure(last, cfWhy), "money"),
       f("Bought, the 30 before", figure(prev, cfWhy), "money"),
       f("Pace against last month", figure(pctOf(cf.paceDeltaPct), cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
       f("Committed, not yet delivered", figure(cf.committedOpenOrders, cfWhy), "money"),
       f("Trend per day, last 28 days", figure(pctOf(se.trendPerDayPct), seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
-      f("Goals running", goals.length, "count"),
+      f("Goals running", goalsUnread ? withheld(goalsMissing) : goals.length, "count"),
     ],
     tables: [
       {
@@ -918,7 +926,7 @@ function writeBench(payload: unknown): ExportDoc {
         columns: [
           { label: "Against", unit: "text" },
           { label: "Then / busiest / baseline", unit: "text" },
-          { label: "Now / quietest / current", unit: "text" },
+          { label: "Now / quietest / last read", unit: "text" },
           { label: "Change / trend / target", unit: "text" },
         ],
         rows,
@@ -929,9 +937,11 @@ function writeBench(payload: unknown): ExportDoc {
       last === 0 && prev === 0
         ? 'Both buying windows came back at zero, and the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so zero means "no delivered order was returned", not necessarily "nothing was bought".'
         : "",
-      goals.length === 0
-        ? "No goal is running, so there is nothing to measure against a baseline."
-        : "",
+      goalsUnread
+        ? "The goals could not be read inside the overview call, so whether any goal is running is not known."
+        : goals.length === 0
+          ? "No goal is running, so there is nothing to measure against a baseline."
+          : "Each goal's middle figure is its reading from the last time the goal was opened on the goals desk, not a live count.",
     ],
     basis: sentences(obj(cf.basis).outflow, obj(se.basis).weekday, obj(se.basis).extremes),
   });

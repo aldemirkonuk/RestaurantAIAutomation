@@ -164,6 +164,11 @@ export class AnalyticsService {
     return inventory.map((i: any) => {
       const lot = rollup.get(i.id);
       const unitPrice = Number(i.menu_price_current) || 0;
+      // A wine with no bottle price on the list (a glass-only pour, a bottle
+      // not yet priced) has no sell-price value we can state. `unitPrice`
+      // stays 0 for the readers below that rank by it; the sell-price
+      // valuation leaves these rows out and says how many (F-574).
+      const hasPrice = unitPrice > 0;
       const { unitCost, costBasis } = resolveUnitCost(i, lot);
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
       return {
@@ -174,6 +179,7 @@ export class AnalyticsService {
         unitCost,
         costBasis,
         unitPrice,
+        hasPrice,
         thresholdMin: i.threshold_min || 0,
         // This schema carries a single reorder trigger (threshold_min); there
         // is no separate reorder_point column.
@@ -190,19 +196,28 @@ export class AnalyticsService {
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data, error } = await client
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .in("status", ORDER_SPEND_STATUSES)
-      .gte("delivered_at", since);
     // Every spend, COGS-ratio and vendor-concentration figure is built on this
     // list. Discarding the error made a failed read report a restaurant that
     // bought nothing all year — the exact shape ADR 0053 named for cost.
-    if (error) this.logQueryFailure("procurement_orders", error);
-    return (data || []).map((o: any) => ({
+    //
+    // Read whole or refused (ADR 0292, F-332): unranged, a year of orders
+    // stopped at PostgREST's 1,000 rows, and a failed read only logged and
+    // fell through to `[]`, which the COGS line reads as "no delivered order".
+    // A refusal now propagates, as `loadConsumption` below already does.
+    const data = await readWholeWindow<any>(
+      "The delivered orders in this window",
+      () =>
+        client
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("status", ORDER_SPEND_STATUSES)
+          .gte("delivered_at", since),
+    );
+    return data.map((o: any) => ({
       providerId: o.provider_id || "unknown",
       cost: o.total_cost || o.final_price || 0,
       bottles: o.bottles_total || o.quantity || 0,
@@ -469,10 +484,10 @@ export class AnalyticsService {
       ? E.stats.sum(onHand.map((i) => i.inventoryValue as number))
       : null;
 
-    // `E.stats.sum([])` is 0, and BOTH loaders above degrade a failed query to
-    // `[]` (see their comments), so an unconditional sum reported "the query
-    // failed" and "this restaurant bought nothing in a year" as the same $0 —
-    // absence rendered as a fact. An empty result set is not a measured zero:
+    // `E.stats.sum([])` is 0, and the orders loader used to degrade a failed
+    // query to `[]` (it now refuses, F-332), so an unconditional sum reported
+    // "the query failed" and "this restaurant bought nothing in a year" as the
+    // same $0 — absence rendered as a fact. An empty result set is not a measured zero:
     // it is the absence of any row to measure, so it is null and the basis
     // says which. A restaurant that genuinely placed orders still gets its
     // real total, including a real 0 if every order carried no cost.
@@ -482,12 +497,33 @@ export class AnalyticsService {
     // Revenue basis: sell-price valuation of purchased bottles (proxy until a
     // POS revenue feed lands). Menu price is recorded, so this survives an
     // unknown cost — it is the cost-derived fields below that go null.
+    //
+    // Only wines with a bottle price are valued (F-574). An unpriced wine used
+    // to count as $0 of sales while its cost still counted, so every glass-only
+    // wine pushed gross margin and the COGS ratio down, and could take margin
+    // below zero, with nothing on the page saying why. It is now left out of
+    // both sides of the margin, and `priceCoverage` says how many were left
+    // out. No priced wine at all is no valuation, not $0.
+    const priced = inventory.filter((i) => i.hasPrice);
+    const onHandPriced = onHand.filter((i) => i.hasPrice);
+    const priceCoverage = {
+      total: onHand.length,
+      priced: onHandPriced.length,
+      unpriced: onHand.length - onHandPriced.length,
+    };
     const revenue =
-      inventory.length === 0
+      priced.length === 0
         ? null
-        : E.stats.sum(inventory.map((i) => i.unitPrice * (i.qty || 0)));
+        : E.stats.sum(priced.map((i) => i.unitPrice * (i.qty || 0)));
+    // The cost side of the margin: the same priced on-hand rows, so the two
+    // sides of every ratio below cover the same bottles. Null whenever the
+    // cellar's cost is not complete, as before (ADR 0051).
+    const pricedValue =
+      inventoryValue == null
+        ? null
+        : E.stats.sum(onHandPriced.map((i) => i.inventoryValue as number));
     const marginDollars =
-      inventoryValue == null || revenue == null ? null : revenue - inventoryValue;
+      pricedValue == null || revenue == null ? null : revenue - pricedValue;
 
     // Every one of these takes inventory value as its cost input, and the two
     // ratios take revenue as their denominator. A null on either side makes
@@ -501,20 +537,20 @@ export class AnalyticsService {
         ? null
         : E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
     const gmroi =
-      inventoryValue == null || marginDollars == null
+      pricedValue == null || marginDollars == null
         ? null
-        : E.inventory.gmroi(marginDollars, inventoryValue);
+        : E.inventory.gmroi(marginDollars, pricedValue);
     const grossMargin =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.grossMargin(inventoryValue, revenue)
+      pricedValue != null && revenue != null && revenue > 0
+        ? E.finance.grossMargin(pricedValue, revenue)
         : null;
     const cogsRatioVal =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.cogsRatio(inventoryValue, revenue)
+      pricedValue != null && revenue != null && revenue > 0
+        ? E.finance.cogsRatio(pricedValue, revenue)
         : null;
     const primeCost =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.primeCostRatio(inventoryValue, labor, revenue)
+      pricedValue != null && revenue != null && revenue > 0
+        ? E.finance.primeCostRatio(pricedValue, labor, revenue)
         : null;
 
     // Dead stock: on hand, but NOT MOVING. The previous definition was a
@@ -585,21 +621,24 @@ export class AnalyticsService {
       basis: {
         cogs:
           orders.length === 0
-            ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
+            ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window (a failed read refuses the summary rather than landing here), and an empty list is not a measured $0"
             : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
         revenue:
           inventory.length === 0
             ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
-            : `unit_price × on-hand qty (POS-revenue proxy) — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued`,
+            : priced.length === 0
+              ? `unit_price × on-hand qty (POS-revenue proxy) — null: none of the ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} carries a bottle price, and $0 would claim they sell for nothing`
+              : `unit_price × on-hand qty (POS-revenue proxy) — ${priced.length} inventory row${priced.length === 1 ? "" : "s"} valued${priced.length < inventory.length ? `; ${inventory.length - priced.length} with no bottle price left out of revenue and of the cost the margin is taken against` : ""}`,
         // This string used to read "on-hand qty × WAC (lot rollup)"
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
         costDerived:
-          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio",
+          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio; grossMarginDollars, grossMargin, cogsRatio, primeCostRatio and gmroi are taken over the on-hand wines that carry a bottle price only, so a wine with no price adds neither sales nor cost to them (priceCoverage counts it)",
       },
       costCoverage,
+      priceCoverage,
       inventoryValue,
       cogs,
       revenue,

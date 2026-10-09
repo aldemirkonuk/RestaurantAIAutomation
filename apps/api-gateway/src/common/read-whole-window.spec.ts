@@ -897,6 +897,94 @@ describe("AnalyticsService — loadConsumption reads every line, or refuses (for
   });
 });
 
+/**
+ * F-332: the purchase_spend goal and the year of COGS read every delivered
+ * order or refuse. The goal dropped its error (a failed read scored $0 of
+ * buying) and both stopped at 1,000 orders.
+ */
+describe("delivered orders — the spend goal and COGS read the whole window (F-332)", () => {
+  const orders = spread(1500, 40, 1, (_i, daysAgo) => ({
+    restaurant_id: "r1",
+    provider_id: "p1",
+    total_cost: 10,
+    status: "DELIVERED",
+    delivered_at: at(daysAgo),
+    created_at: at(daysAgo),
+  }));
+  const restaurants = [{ id: "r1", timezone: "UTC", country: null }];
+  const spend = (db: any) =>
+    (goalsOver(db) as any).computeMetricWithSeries(
+      "r1",
+      "purchase_spend",
+      at(60).slice(0, 10),
+      undefined,
+      "UTC",
+    );
+
+  it("purchase_spend sums 1,500 orders, not 1,000", async () => {
+    const { db } = cappedDb({ procurement_orders: orders, restaurants });
+    const out = await spend(db);
+    expect(out.rowCount).toBe(1500);
+    expect(out.current).toBe(15000);
+  });
+
+  it("purchase_spend refuses a failed read instead of scoring $0", async () => {
+    const { db } = cappedDb(
+      { procurement_orders: orders, restaurants },
+      { procurement_orders: { failOn: [1] } },
+    );
+    await expect(spend(db)).rejects.toBeInstanceOf(WholeReadError);
+  });
+
+  it("the financial summary's COGS sums 1,500 orders, and refuses a failed page", async () => {
+    const { db } = cappedDb({ procurement_orders: orders });
+    const out: any = await new AnalyticsService(db).getFinancialSummary("r1");
+    expect(out.cogs).toBe(15000);
+    const { db: broken } = cappedDb(
+      { procurement_orders: orders },
+      { procurement_orders: { failOn: [2] } },
+    );
+    await expect(
+      new AnalyticsService(broken).getFinancialSummary("r1"),
+    ).rejects.toBeInstanceOf(WholeReadError);
+  });
+});
+
+/**
+ * F-573: "Against ourselves" reads the overview's goals. A failed goals read
+ * is null (unread), not `[]` ("no goal is running"), and each goal carries its
+ * metric's unit so the bench prints it the way the goals desk does.
+ */
+describe("the overview's goals lens (F-573)", () => {
+  const overview = (listGoals: () => Promise<any[]>) => {
+    const { db } = cappedDb({});
+    return new AdvancedAnalyticsService(
+      db,
+      new AnalyticsService(db),
+      { getStored: async () => [] } as any,
+      { listGoals } as any,
+    ).getOverview("r1");
+  };
+
+  it("a failed goals read is null, not an empty list", async () => {
+    const out: any = await overview(async () => {
+      throw new Error("statement timeout");
+    });
+    expect(out.activeGoals).toBeNull();
+  });
+
+  it("each goal carries its metric's unit", async () => {
+    const out: any = await overview(async () => [
+      { id: "g1", metric_key: "wine_revenue", current_value: 4210 },
+      { id: "g2", metric_key: "wine_attach_rate", current_value: 0.35 },
+    ]);
+    expect(out.activeGoals.map((g: any) => g.unit)).toEqual([
+      "currency",
+      "percent",
+    ]);
+  });
+});
+
 describe("RecordedDaysService — a /calendar month reads every check", () => {
   it("windowFor over 2,121 checks draws every trading day", async () => {
     const from = at(40).slice(0, 10);
