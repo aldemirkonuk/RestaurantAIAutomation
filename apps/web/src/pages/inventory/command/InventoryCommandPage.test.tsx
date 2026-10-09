@@ -24,7 +24,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -415,5 +415,65 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
       expect(second).toBe(first);
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+  });
+});
+
+describe('InventoryCommandPage — the empty table says which of three facts it is (INV-W1, live at merge)', () => {
+  const oneWine = [
+    { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', wineProducer: 'Produttori del Barbaresco', stockLive: 6, shadowStock: 0, thresholdMin: 2 },
+  ];
+
+  it('a failed list says the wines could not be read, not that there are none', async () => {
+    routeGets({ 'inventory-list': 'reject' });
+    mount();
+    expect(await screen.findByText('The wines could not be read.')).toBeInTheDocument();
+    expect(screen.queryByText('No wines on the books yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/match this search/)).not.toBeInTheDocument();
+  });
+
+  it('a house with nothing on the books is told so, and offers to add the first wine', async () => {
+    routeGets();
+    mount();
+    expect(await screen.findByText('No wines on the books yet.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add your first wine/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Showing 0 of 0/)).not.toBeInTheDocument();
+    // The sentence sits outside the wide scroller, so a narrow screen sees it.
+    expect(document.querySelector('.min-w-\\[1330px\\]')).not.toBeNull();
+    expect(screen.getByText('No wines on the books yet.').closest('.min-w-\\[1330px\\]')).toBeNull();
+  });
+
+  it('a search that hides every row says so, and Show all wines clears it', async () => {
+    routeGets({ 'inventory-list': oneWine });
+    mount();
+    expect(await screen.findByText('Produttori Barbaresco')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/Search wines, producers, grapes/), { target: { value: 'zzz-no-such-wine' } });
+    expect(await screen.findByText(/None of your 1 wines match this search\./)).toBeInTheDocument();
+    expect(screen.queryByText('No wines on the books yet.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show all wines' }));
+    expect(await screen.findByText('Produttori Barbaresco')).toBeInTheDocument();
+    expect(screen.queryByText(/match this search/)).not.toBeInTheDocument();
+  });
+
+  it('a list still on its way says so, not that the wines could not be read', async () => {
+    routeGets();
+    const settled = api.get.getMockImplementation()!;
+    api.get.mockImplementation((url: string) =>
+      classify(url) === 'inventory-list' ? new Promise(() => {}) : settled(url),
+    );
+    mount();
+    expect(await screen.findByText('Reading the cellar…')).toBeInTheDocument();
+    expect(screen.queryByText('The wines could not be read.')).not.toBeInTheDocument();
+  });
+
+  it('Show all wines also clears a KPI flag that hid every row', async () => {
+    routeGets({ 'inventory-list': oneWine });
+    mount();
+    expect(await screen.findByText('Produttori Barbaresco')).toBeInTheDocument();
+    // The one wine sits above par, so the Below par flag hides it.
+    fireEvent.click(document.querySelector('[data-tour="inventory-below-par"]')!);
+    expect(await screen.findByText(/None of your 1 wines match this search\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show all wines' }));
+    expect(await screen.findByText('Produttori Barbaresco')).toBeInTheDocument();
+    expect(screen.queryByText(/match this search/)).not.toBeInTheDocument();
   });
 });
