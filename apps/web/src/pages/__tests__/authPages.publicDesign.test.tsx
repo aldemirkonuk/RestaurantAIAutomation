@@ -149,6 +149,7 @@ vi.mock('../../components/ui/PlacesAutocomplete', async () => {
 
 import { Login } from '../Login'
 import { Register } from '../Register'
+import { JOIN_HOLD_KEY, holdJoin } from '../../lib/joinResume'
 import { PUBLIC_OVERRIDE_KEY } from '../../lib/mudavym/publicDesign'
 
 /* ── the switch ─────────────────────────────────────────────────────────── */
@@ -721,5 +722,13 @@ describe('the invite mail secret reaches the join', () => {
   it('a join from a copied link sends no secret', async () => {
     const sent = await joinFrom('/register?invite=abcdefgh')
     expect(sent).not.toHaveProperty('emailSecret')
+  })
+
+  // F-288: the join used the invite, so a hold from the invite page must not
+  // send the person back to it (it would read "already used") after verifying.
+  it('a join drops the invite this tab was holding', async () => {
+    holdJoin('/invite/ABCDEFGH')
+    await joinFrom('/register?invite=abcdefgh')
+    await vi.waitFor(() => expect(sessionStorage.getItem(JOIN_HOLD_KEY)).toBeNull())
   })
 })

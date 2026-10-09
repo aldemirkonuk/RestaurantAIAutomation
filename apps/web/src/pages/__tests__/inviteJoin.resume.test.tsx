@@ -33,7 +33,13 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 import { InviteLanding } from '../InviteLanding'
 import { NoAccess } from '../NoAccess'
 import { VerifyEmail } from '../VerifyEmail'
-import { JOIN_RESUME_KEY, pendingJoin, rememberJoin } from '../../lib/joinResume'
+import {
+  JOIN_RESUME_KEY,
+  holdJoin,
+  pendingJoin,
+  rememberJoin,
+  takeHeldJoin,
+} from '../../lib/joinResume'
 
 function Where() {
   return <div data-testid="where">{useLocation().pathname}</div>
@@ -57,6 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.stubEnv('VITE_MUDAVYM_PUBLIC', '')
   localStorage.clear()
+  sessionStorage.clear()
   localStorage.setItem('mudavym.design.public', 'true')
   h.auth.user = null
   h.auth.loading = false
@@ -151,4 +158,62 @@ it('F-274/F-288: verifying sends the account back to the invite it was joining, 
       value: realLocation,
     })
   }
+})
+
+it('F-275: an invite made for another address is named plainly before Join', async () => {
+  signedIn(true)
+  h.get.mockResolvedValue({
+    data: {
+      valid: true,
+      restaurant: 'Tuzlu Rüzgar',
+      role: 'staff',
+      madeForAnotherAddress: true,
+    },
+  })
+  mount(<InviteLanding />, '/invite/AB12CD34', '/invite/:code')
+  expect(await screen.findByTestId('invite-other-address')).toHaveTextContent(
+    'This invitation was sent to a different email address.',
+  )
+  expect(screen.getByRole('button', { name: 'Join Tuzlu Rüzgar' })).toBeInTheDocument()
+})
+
+it('F-275: no warning when the invite is for this address, or when signed out', async () => {
+  signedIn(true)
+  h.get.mockResolvedValue({
+    data: { valid: true, restaurant: 'Tuzlu Rüzgar', role: 'staff', madeForAnotherAddress: false },
+  })
+  mount(<InviteLanding />, '/invite/AB12CD34', '/invite/:code')
+  await screen.findByRole('button', { name: 'Join Tuzlu Rüzgar' })
+  expect(screen.queryByTestId('invite-other-address')).not.toBeInTheDocument()
+  cleanup()
+
+  h.auth.user = null
+  h.auth.isAuthenticated = false
+  mount(<InviteLanding />, '/invite/AB12CD34', '/invite/:code')
+  await screen.findByRole('link', { name: 'Create account to accept' })
+  expect(screen.queryByTestId('invite-other-address')).not.toBeInTheDocument()
+})
+
+it('F-288: a signed-out invitee holds the invite in this tab', async () => {
+  mount(<InviteLanding />, '/invite/AB12CD34', '/invite/:code')
+  await screen.findByRole('link', { name: 'Sign in to accept' })
+  expect(takeHeldJoin()).toBe('/invite/AB12CD34')
+  expect(localStorage.getItem(JOIN_RESUME_KEY)).toBeNull()
+})
+
+it('F-288: a new account with no house takes the held invite on the verify page, so verifying returns to it', () => {
+  holdJoin('/studio/invite/tok_123')
+  h.auth.user = { userId: U, email: 'new@house.test', emailVerified: false, restaurantId: '' }
+  h.auth.isAuthenticated = true
+  mount(<VerifyEmail />, '/verify-email', '/verify-email')
+  expect(pendingJoin(U)).toBe('/studio/invite/tok_123')
+  expect(takeHeldJoin()).toBeNull()
+})
+
+it('F-288: an account that opened a house of its own does not take a held invite', () => {
+  holdJoin('/invite/AB12CD34')
+  h.auth.user = { userId: U, email: 'owner@house.test', emailVerified: false, restaurantId: 'r1' }
+  h.auth.isAuthenticated = true
+  mount(<VerifyEmail />, '/verify-email', '/verify-email')
+  expect(pendingJoin(U)).toBeNull()
 })

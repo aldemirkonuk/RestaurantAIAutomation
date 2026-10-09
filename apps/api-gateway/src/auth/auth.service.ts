@@ -2147,13 +2147,22 @@ export class AuthService {
   /**
    * Preview an invite code — returns invite details or {valid:false, reason}.
    * @Public() endpoint — no auth required.
+   *
+   * Called with a session, a live invite also answers `madeForAnotherAddress`
+   * (F-275): whether it was made for an address other than the signed-in
+   * account's, so the invite page can warn before Join. Only that yes/no
+   * leaves; the invite's address never does. Signed out, or with a session
+   * that cannot be confirmed, the answer is exactly what it was before.
    */
-  async getInvitePreview(code: string): Promise<object> {
+  async getInvitePreview(
+    code: string,
+    accessToken?: string | null,
+  ): Promise<object> {
     const { data: invite, error } = await this.databaseService.supabase
       .from("organization_invites")
       .select(
         `
-        id, role, expires_at, used_at,
+        id, role, expires_at, used_at, target_email,
         organizations ( name ),
         restaurants ( name, city ),
         users!invited_by ( name )
@@ -2178,7 +2187,7 @@ export class AuthService {
     if (new Date(invite.expires_at) < new Date())
       return { valid: false, reason: "expired" };
 
-    return {
+    const preview = {
       valid: true,
       organization: (invite.organizations as any)?.name,
       restaurant: (invite.restaurants as any)?.name,
@@ -2186,6 +2195,36 @@ export class AuthService {
       inviter: (invite.users as any)?.name,
       role: invite.role,
     };
+    const callerEmail = accessToken
+      ? await this.invitePreviewCallerEmail(accessToken)
+      : null;
+    if (!callerEmail) return preview;
+    // An invite made for no address (a code handed over in person) is for
+    // whoever holds it: nothing to warn about.
+    const target = normalizeEmail(invite.target_email);
+    return {
+      ...preview,
+      madeForAnotherAddress: !!target && target !== callerEmail,
+    };
+  }
+
+  /**
+   * The signed-in caller's address for the invite preview, or null. The route
+   * is public, so the guard never read the token: it is checked here the way
+   * the guard would (signature, sign-out list, a current session), and any
+   * doubt reads as signed out rather than failing the preview.
+   */
+  private async invitePreviewCallerEmail(
+    token: string,
+  ): Promise<string | null> {
+    try {
+      const payload = this.jwtService.verify(token, { secret: this.jwtSecret });
+      if (await this.tokenBlacklistService.isBlacklisted(token)) return null;
+      const user = await this.validateJwtPayload(payload);
+      return normalizeEmail(user?.email) || null;
+    } catch {
+      return null;
+    }
   }
 
   /**
