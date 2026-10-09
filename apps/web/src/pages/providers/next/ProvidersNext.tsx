@@ -88,6 +88,28 @@ function vendorFromUrl(): string | null {
   return asked && asked.trim() ? asked.trim() : null;
 }
 
+/**
+ * `?add=1` opens the add-a-vendor sheet — the command palette's "Add vendor"
+ * (F-550), which landed on the list with nothing opened while no page read
+ * `add`. Read once at mount like `?vendor=`; dropped from the URL straight
+ * after, so a reload or Back does not open the sheet again.
+ */
+function addFromUrl(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("add") === "1";
+}
+function dropAddFromUrl() {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("add")) return;
+    url.searchParams.delete("add");
+    window.history.replaceState(window.history.state, "", url.toString());
+  } catch {
+    /* a URL the page cannot rewrite only means a reload reopens the sheet */
+  }
+}
+
 function BucketCard({
   vm,
   ordersKnown,
@@ -221,7 +243,10 @@ export default function ProvidersNext() {
     [data.cards],
   );
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(addFromUrl);
+  useEffect(() => {
+    dropAddFromUrl();
+  }, []);
   const [view, setView] = useState<ProvidersView>(viewFromUrl);
   const chooseView = (next: ProvidersView) => {
     setView(next);

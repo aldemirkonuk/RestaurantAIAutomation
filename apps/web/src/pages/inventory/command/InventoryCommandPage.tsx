@@ -443,6 +443,19 @@ export function InventoryCommandPage() {
     setSearchQuery(wine);
   }, [searchParams, setSearchQuery]);
 
+  /**
+   * Deep-link: /inventory?add=1 — the command palette's "Add wine" (F-550).
+   * Opens the same chooser the "Add wine" button opens, then drops the param
+   * so a reload or Back does not open it again.
+   */
+  useEffect(() => {
+    if (searchParams.get("add") !== "1") return;
+    setShowAddWineSelection(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("add");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const closeVerify = () => {
     setVerifyOrder(null);
     if (searchParams.has("verify")) {
