@@ -13,11 +13,8 @@
  *     (the assertion model with extra steps);
  *  2. approving anyway when the mint failed — the one failure the whole
  *     mechanism exists to prevent, arriving through the UI instead of the API;
- *  3. throwing away the orders that DID mint because one did not — the old
- *     all-or-nothing, retired by F-445 (2026-10-09): each order is its own
- *     commitment, and the gateway refuses a mint with the same sentence it
- *     would refuse the approval with, so the refused order stays pending with
- *     its reason and the rest are approved (the `BulkApproveBar` rule);
+ *  3. approving the subset that happened to mint, which makes the count a lie
+ *     about what the operator agreed to;
  *  4. sending ONE seal for N orders, which would mean "whatever this person
  *     selected" — precisely the open-ended approval a seal is bound against;
  *  5. burying the gateway's 403 sentence inside a generic wrapper;
@@ -115,60 +112,16 @@ describe('one seal per order, even in bulk', () => {
     ]);
   });
 
-  it('approves the orders that minted and keeps the refused one pending with its reason (F-445)', async () => {
-    // Was pinned as deliberate all-or-nothing. That threw the gateway's own
-    // sentence away (a mint is refused for the same rule as the approval) and
-    // left every order under the ceiling unapproved with it.
-    const sentence =
-      'This order is over the 1000 ceiling this house set for a manager, so it waits for an owner to seal it.';
-    mintMock.mockImplementation(async (id: string) => {
-      if (id === 'o-2') throw Object.assign(new Error(sentence), { response: { status: 403 } });
-      return `seal-${id}`;
-    });
-    const onApproved = vi.fn();
-    const onRefused = vi.fn();
-    render(
-      <SealedApproveDie
-        orderIds={['o-1', 'o-2', 'o-3']}
-        label="Hold to approve 3 orders"
-        onApproved={onApproved}
-        onRefused={onRefused}
-      />,
-    );
-    seal();
-
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(/2 sealed, 1 refused and still pending\./i);
-    expect(alert).toHaveTextContent(sentence);
-    expect(approveMock.mutateAsync.mock.calls.map(([a]) => a)).toEqual([
-      { orderId: 'o-1', challenge: 'seal-o-1' },
-      { orderId: 'o-3', challenge: 'seal-o-3' },
-    ]);
-    expect(onApproved).toHaveBeenCalledWith(['o-1', 'o-3']);
-    expect(onRefused).toHaveBeenCalledWith([sentence], 1);
-  });
-
-  it('says plainly which order got no seal when the mint gave no reason', async () => {
+  it('approves NOTHING when a single order in the batch fails to mint', async () => {
     mintMock.mockImplementation(async (id: string) => (id === 'o-2' ? null : `seal-${id}`));
     render(<SealedApproveDie orderIds={['o-1', 'o-2']} label="Hold to approve 2 orders" />);
     seal();
 
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(/1 sealed, 1 refused and still pending\./i);
-    expect(alert).toHaveTextContent(/The seal could not be issued for that order — nothing sent on it\./i);
-    expect(approveMock.mutateAsync).toHaveBeenCalledTimes(1);
-    expect(approveMock.mutateAsync).toHaveBeenCalledWith({ orderId: 'o-1', challenge: 'seal-o-1' });
-  });
-
-  it('prints a single order’s mint refusal as the gateway worded it, and sends nothing', async () => {
-    const sentence = 'This order needs an owner, so nothing was approved.';
-    mintMock.mockRejectedValue(Object.assign(new Error(sentence), { response: { status: 403 } }));
-    render(<SealedApproveDie orderIds={['o-1']} label="Hold to approve" />);
-    seal();
-
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(/Nothing was approved — 1 refused and still pending\./i);
-    expect(alert).toHaveTextContent(sentence);
+    expect(
+      await screen.findByText(/The seal could not be issued — nothing sent\./i),
+    ).toBeInTheDocument();
+    // Not "o-1 approved, o-2 skipped": approving the subset that happened to
+    // mint would make the count a lie about what was agreed to.
     expect(approveMock.mutateAsync).not.toHaveBeenCalled();
   });
 });
@@ -194,6 +147,52 @@ describe('a mint that fails approves nothing, and says why', () => {
       await screen.findByText(/The seal could not be issued — nothing sent\./i),
     ).toBeInTheDocument();
     expect(approveMock.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('prints the gateway’s sentence when it REFUSED the mint, and still sends nothing (F-445)', async () => {
+    // The gateway refuses a mint for the rule that would refuse the approval,
+    // so its 403 is that rule's own sentence. Rule 4 holds at the mint too.
+    const sentence =
+      'This order is over the 1000 ceiling this house set for a manager, so it waits for an owner to seal it.';
+    mintMock.mockRejectedValue(Object.assign(new Error(sentence), { response: { status: 403 } }));
+    const onRefused = vi.fn();
+    render(<SealedApproveDie orderIds={['o-1']} label="Hold to approve" onRefused={onRefused} />);
+    seal();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Nothing was approved — the house would not seal this order\./i);
+    expect(alert).toHaveTextContent(sentence);
+    expect(alert).not.toHaveTextContent(/The gateway refused/i);
+    expect(onRefused).toHaveBeenCalledWith([sentence], 1);
+    expect(approveMock.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('in bulk, names the refused mint and approves NONE of the others (ADR 0116)', async () => {
+    const sentence = 'This order needs an owner to seal it.';
+    mintMock.mockImplementation(async (id: string) => {
+      if (id === 'o-2') throw Object.assign(new Error(sentence), { response: { status: 403 } });
+      return `seal-${id}`;
+    });
+    const onApproved = vi.fn();
+    render(
+      <SealedApproveDie
+        orderIds={['o-1', 'o-2', 'o-3']}
+        label="Hold to approve 3 orders"
+        onApproved={onApproved}
+      />,
+    );
+    seal();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      /Nothing was approved — the house would not seal 1 of 3 orders, so none were sent\./i,
+    );
+    expect(alert).toHaveTextContent(sentence);
+    expect(
+      await screen.findByText(/The seal could not be issued — nothing sent\./i),
+    ).toBeInTheDocument();
+    expect(approveMock.mutateAsync).not.toHaveBeenCalled();
+    expect(onApproved).not.toHaveBeenCalled();
   });
 
   it('sends nothing at all when there is no order to seal', async () => {
