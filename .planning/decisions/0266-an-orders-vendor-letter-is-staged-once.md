@@ -1,6 +1,6 @@
 # 0266 — An order's vendor letter is staged once, and a replaced draft stays closed
 
-- **Status:** Locked on the founder's rulings of 2026-10-02 (F0, F2, F4, F5, F6, F7) and 2026-10-03 (the sent-letter block), and 2026-10-04 (any newer draft replaces a waiting order letter; an old pair that cycles settles newest-wins; the 16-file PR), below. The mechanism is built in PR-1 and reviewed at that PR's gate. F3, F8 and F9 are open.
+- **Status:** Locked on the founder's rulings of 2026-10-02 (F0, F2, F4, F5, F6, F7) and 2026-10-03 (the sent-letter block), and 2026-10-04 (any newer draft replaces a waiting order letter; an old pair that cycles settles newest-wins; the 16-file PR) and 2026-10-05 (the cap notice keeps its words until F1), below. The mechanism is built in PR-1 and reviewed at that PR's gate. F1, F3, F8 and F9 are open.
 - **Date:** 2026-10-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** F-106, COMMS-W25, COMMS-W24, one letter per order, stage_order_letter, discard_reason, DISCARDED, pending draft, order_inquiry, approval-time letter, create-time letter, order request, owner-quarter sim
@@ -44,6 +44,11 @@ A draft seal is issued only while exactly one row waits (`:7429`), so the row an
 - **A pair already in production that cycles (a claim, then a release or revert):** "Accept, as disclosed (Recommended)". The trigger settles it newest-wins, not F0's first-written. PR-3's dry-run counts these pairs, and the reconcile settles every other pair first-written. Rejected: first-written everywhere (the trigger would have to tell old pairs from new ones); landing PR-3 before PR-1.
 - **PR-1 at 16 files, over the 15-file cap:** "Allow 16 (Recommended)". The sixteenth file is this ADR, which belongs with the code it describes. Rejected: this ADR in its own PR first.
 
+**Founder fork (AskUserQuestion, 2026-10-05, raised at the #591 gate PASS at db1002416):**
+- **The cap notice promises a letter the door may refuse:** "Leave until F1 (Recommended)". #595's notice (ADR 0260, F-126) tells an over-cap house "Orders you approve still get a vendor letter to review". Since PR-1, an order that already has a live outbound letter (one written by hand, or a vendor-reply draft waiting) gets no new letter at approval. Keep #595's words and add no bell. It happens only in a house over the cap, on an order that already has a letter, and today only through the API or a vendor email. Settle it when F1 is answered. Rejected:
+  - re-word the notice (for example "…unless one was already written"), which needs the founder's exact words, a follow-up PR and a gate;
+  - ring the bell when approval adds no letter ("No new letter for this order: it already has one"), which is an agent change, a notice and tests, then a gate.
+
 ## Decision
 
 The order's letter is decided in the database. Both agents stage it through `public.stage_order_letter`, which writes nothing when the order already has a live outbound letter. A trigger keeps one waiting draft per order for every other writer. A draft closed as `DISCARDED` or `CANCELLED` can never be sent.
@@ -75,6 +80,7 @@ The order's letter is decided in the database. Both agents stage it through `pub
 - A replaced or cancelled draft cannot be sent by the route or the agent, even with a stale approval.
 - **The trigger is a write its callers do not see.** A release or revert can end in `DISCARDED`. The gateway still says "It is back in your queue for one-tap approval" (`procurement.service.ts:8702`, `:8712`) until PR-5a.
 - **Until PR-4b narrows the door with `p_kind = 'ORDER_REQUEST'`, any live outbound letter blocks the approval-time letter.** That includes an earlier price inquiry that was sent. A negotiated order therefore gets no post-approval inquiry, which F-099 calls wrong anyway. Founder ruling of 2026-10-03, above.
+- **#595's cap notice is broader than the door, under some conditions.** "Orders you approve still get a vendor letter to review" is false for an over-cap order that already has a live outbound letter: the door refuses the approval-time letter, and nothing tells the house. Accepted on 2026-10-05 ("Leave until F1", above). This sentence is the disclosure owed from the #591 gate.
 - **Pairs already in production stay until PR-3.** R4's `OrderLetter` must skip `DISCARDED` rows before PR-3 lands.
 - Evidence:
   - PostgreSQL 17, built from all 283 migrations at e25ebf537 plus this one (applied twice): 20/20 checks pass. A two-session race stages once.
@@ -98,7 +104,7 @@ The order's letter is decided in the database. Both agents stage it through `pub
 |---|---|---|
 | PR-1 | `fix/f106-one-letter-per-order` | this ADR's mechanism |
 | PR-2 | `fix/f126-cap-notice-once-a-day` | the cap notice once a day; the cap is unchanged |
-| PR-3 | `data/f106-reconcile-pending-drafts` | first-written survives (F0); unique index; after the dry-run and R4's confirmation |
+| PR-3 | `data/f106-reconcile-pending-drafts` | first-written survives (F0); unique index; after the dry-run and R4's confirmation [2026-10-08: built. Migration `an_order_holds_one_pending_draft`: table lock first (lock_timeout 5s), the F0 reconcile, the index, strict asserts. Production dry run done (no pairs); R4's skip (4c0c5c816) is on #677, which this branch carries.] |
 | PR-4a | `feat/w25-order-request-renderer` | renderer, internal route, `ORDER_REQUEST` type, F5's editable purpose |
 | PR-4b | `feat/w25-order-request-draft` | both agents draft from it, behind `ORDER_REQUEST_LETTER` (off; the flip is the founder's) |
 | PR-5a / 5b | `fix/w25-approve-draft-lookup`, `fix/w25-order-subject-fallbacks` | `procurement.service.ts`, in the O4 queue |
@@ -107,7 +113,7 @@ The order's letter is decided in the database. Both agents stage it through `pub
 - **F3, the template's words.** To be asked after one rendered sample; to be filed as an OD-TBD row with PR-4a. PR-4b's flag stays off until then.
 - **F8, a duplicate that carries a staff send request.** Asked only if the dry-run counts one.
 - **F9, a waiting letter whose order is later merged.** To be filed as an OD-TBD row with PR-4a. Asked once, by whichever of W25 or R4 builds first.
-- **F1, where an over-cap order's letter comes from.** Relayed to the coordinator; it waits for F-084/F-089.
+- **F1, where an over-cap order's letter comes from.** Relayed to the coordinator; it waits for F-084/F-089. Its answer also settles the cap notice's words (2026-10-05 fork, above).
 
 ## Review trail
 
@@ -116,3 +122,6 @@ The order's letter is decided in the database. Both agents stage it through `pub
 | 2026-10-02 | — | Created, session R2, branch fix/f106-one-letter-per-order (PR-1); founder rulings F0, F2, F4–F7 recorded |
 | 2026-10-02 | — | Numbered 0266 at push: 0265 was already taken by an uncommitted ADR in wt-review-9 (place id), found by sweeping remote refs and every worktree |
 | 2026-10-04 | PR #591 gate at 0c363b4a2 (correctness and security reviews) | Three points nobody had ruled on were asked; founder ruled all three as recommended (Founder forks, 2026-10-04). Recorded at a new head, so a full re-gate follows |
+| 2026-10-08 | — | PR-3 production dry run, read-only SELECTs (founder: "Yes, I'll run /mcp auth"). No order has two waiting drafts, the reconcile would discard 0 rows, and the PR-1 trigger has settled 0. Query 4 found one stray approval-time `order_inquiry` whose order's letter had already been sent; it was discarded on his word ("analyze draft decide what to do"). That draft was never sent, but its text named the house's ceiling price; the defect is filed in `tech-debt.d/2026-10-08-data-f106-reconcile-pending-drafts.md` |
+| 2026-10-08 | — | Branch data/f106-reconcile-pending-drafts (PR-3): recorded the founder's 2026-10-05 "Leave until F1" cap-notice ruling, F1 in Status, and the disclosure that #595's notice is broader than the door (owed from the #591 gate) |
+| 2026-10-08 | — | PR-3 built on data/f106-reconcile-pending-drafts: migration `an_order_holds_one_pending_draft`, test file, claims F106-RECONCILE-FIRST-WRITTEN and F106-ONE-PENDING-INDEX-SHAPE (F106-EXISTING-DUPLICATES-RECONCILED resolved). PGlite proof over 295 earlier migrations with seeded pairs: all checks pass, and 4 of 4 mutations are caught |
