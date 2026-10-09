@@ -56,6 +56,7 @@ import {
 } from "./dto/procurement.dto";
 import {
   computeMatch,
+  differentMoney,
   isDiscrepancy,
   MatchResult,
   MatchUnitError,
@@ -6771,7 +6772,14 @@ export class ProcurementService {
         // NULL, not false, when there was no invoice to verify against: "we
         // checked and it did not match" and "nobody has checked" are different
         // facts, and only one of them is an accusation.
-        price_verified: hasInvoice ? match.priceVerified : null,
+        price_verified:
+          hasInvoice &&
+          // Two different moneys were not compared (F-341), so nobody checked
+          // the price: NULL, which the vendor scorecard reads as "not checked"
+          // rather than as a price off the agreed one.
+          !differentMoney(matchInput.poCurrency, matchInput.invoiceCurrency)
+            ? match.priceVerified
+            : null,
         price_override_reason: body.priceOverrideReason ?? null,
         // The verdict's own summary, followed by what the price check actually
         // compared (ADR 0119 phase 2). A `price_variance` on a case-priced
