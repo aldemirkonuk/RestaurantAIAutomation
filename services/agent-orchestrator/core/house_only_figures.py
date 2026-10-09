@@ -28,16 +28,20 @@ There are two layers here:
      first, as described at `_normalised`. The caller replaces a draft that
      holds it with `order_letter_without_ceiling`. A form of the ceiling
      (the ceiling itself, or its cut or rounded cent form) that equals the
-     target is not looked for, because the target is the price the house
-     means to propose.
+     target (`target_price`, or `target_price_per_bottle` when that is not a
+     positive number) is not looked
+     for, because the target is the price the house means to propose.
 
 The ceiling is read from a number, or from a string holding one figure,
 optionally with one currency symbol (category Sc) or three ASCII letters
 ("EUR") before or after it: "1199", "1,199", "$1,199.00", "1.199,00 EUR".
 A string that can be read two ways ("1,199" is 1199 or 1.199) is looked
-for in both readings. A ceiling that is set but cannot be read (zero or
-less, NaN, infinity, a bool, "n/a") is logged as a warning and nothing is
-looked for.
+for in both readings. An int or float ceiling of zero or less is
+treated as unset, without a warning: the gateway writers send
+`(price || 0) * 1.1`, so 0 is their "no price". A ceiling that is set but
+cannot be read (NaN, infinity, a bool, a string that holds no positive
+figure such as "n/a" or "0") is logged as a warning and nothing is looked
+for.
 
 Not covered: a figure in words ("eleven hundred"), a rounded one ("about
 1,200", "1.2k"), one cut or rounded to whole units (13 for 13.60), a figure
@@ -221,9 +225,22 @@ _CEILING_TEXT = re.compile(
 _SPACE_GROUPED = re.compile(r"\d{1,3}(?: \d{3})+(?:[.,]\d+)?")
 
 
+def _is_unset_number(value: Any) -> bool:
+    """A numeric ceiling of zero or less: the producers' "no price".
+
+    The gateway writers send `(price || 0) * 1.1`, so an intent without a
+    price carries a ceiling of 0. That is treated as unset, without a warning.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value) and value <= 0
+
+
 def _ceiling_values(value: Any) -> List[float]:
     """Every value the ceiling may be, or [] when it is unset or unreadable."""
     if value is None or (isinstance(value, str) and not value.strip()):
+        return []
+    if _is_unset_number(value):
         return []
     if isinstance(value, str):
         m = _CEILING_TEXT.fullmatch(_normalised(value))
@@ -265,11 +282,14 @@ def withheld_figures_in(text: str, intent: Mapping[str, Any] | None) -> List[str
     """The house-only keys whose figure appears in `text` (empty when none).
 
     A form of the ceiling that equals the intent's target price is skipped:
-    that figure is meant to be said.
+    that figure is meant to be said. The target is `target_price`, or
+    `target_price_per_bottle` when `target_price` is not a positive number.
     """
     if not text or not intent:
         return []
     target = _as_number(intent.get("target_price"))
+    if target is None:
+        target = _as_number(intent.get("target_price_per_bottle"))
     spaced = _normalised(text)
     values = [v for m in _NUMBER.finditer(spaced) for v in _readings(m.group(0))]
     hits: List[str] = []

@@ -256,8 +256,36 @@ def test_no_ceiling_finds_nothing():
     assert withheld_figures_in("1199", None) == []
 
 
+@pytest.mark.parametrize("ceiling", [0, 0.0, -0.0, -5, -1.5])
+def test_a_numeric_ceiling_of_zero_or_less_is_unset_and_not_logged(ceiling, caplog):
+    # the gateway writers send (price || 0) * 1.1: 0 is their "no price"
+    with caplog.at_level(logging.WARNING, logger="core.house_only_figures"):
+        found = withheld_figures_in(
+            "0 1199", dict(INTENT, max_acceptable_price=ceiling)
+        )
+    assert found == []
+    assert caplog.text == ""
+
+
+@pytest.mark.parametrize("target_key", ["target_price", "target_price_per_bottle"])
+def test_the_target_may_be_given_per_bottle(target_key):
+    intent = {"max_acceptable_price": 12.0, target_key: 12.0}
+    assert withheld_figures_in("12.00 per bottle", intent) == []
+    intent = {"max_acceptable_price": 13.2, target_key: 12.0}
+    assert withheld_figures_in("13.20 per bottle", intent) == ["max_acceptable_price"]
+
+
+def test_target_price_wins_over_the_per_bottle_target():
+    intent = {
+        "max_acceptable_price": 12.0,
+        "target_price": 11.0,
+        "target_price_per_bottle": 12.0,
+    }
+    assert withheld_figures_in("12.00", intent) == ["max_acceptable_price"]
+
+
 @pytest.mark.parametrize(
-    "ceiling", ["n/a", "0", "-5", float("nan"), float("inf"), True, 0, [1199]]
+    "ceiling", ["n/a", "0", "-5", float("nan"), float("inf"), True, [1199]]
 )
 def test_a_set_ceiling_that_cannot_be_read_is_logged(ceiling, caplog):
     with caplog.at_level(logging.WARNING, logger="core.house_only_figures"):
@@ -406,32 +434,57 @@ def test_the_order_letter_is_not_commitment_language():
     assert not any(p.search(text) for p in COMPILED_COMMITMENT_PATTERNS)
 
 
-# The two bounds below catch super-linear (backtracking) growth only; they
-# are loose so that a loaded CI machine does not fail them. They state no
-# speed figure.
+# Linear time is checked by scaling, not by a wall-clock bound: each shape
+# is timed at n and at 4n repeats, in this thread's CPU time (so time spent
+# preempted on a busy machine is not counted), best of five, interleaved.
+# Linear work grows about 4x; quadratic work grows about 16x, so the ratio
+# must stay under 8. Any single run over 2 s of CPU fails at once, so a
+# quadratic mutation fails fast instead of hanging.
+_SHAPES = (
+    "1 ",
+    "123 ",  # one long space-grouped token
+    "1 199 ",
+    "1, ",  # many short numbers: one match each
+    "1 a ",
+    "1\u200b\u2009",  # digits, Cf and Zs
+    "123\u2060\u202f\u00ad",
+    "\u200b\u2028\u3000",
+)
 
 
-def test_a_long_run_of_spaced_numbers_stays_linear():
+def _best_of_five(texts):
+    import gc
     import time
 
-    t0 = time.perf_counter()
-    for text in ("1 " * 2000, "123 " * 2000, "1 199 " * 1000):
-        withheld_figures_in(text, INTENT)
-    assert time.perf_counter() - t0 < 10.0
+    best = [float("inf")] * len(texts)
+    gc.disable()
+    try:
+        for _ in range(5):
+            for k, text in enumerate(texts):
+                t0 = time.thread_time()
+                withheld_figures_in(text, INTENT)
+                took = time.thread_time() - t0
+                assert took < 2.0, f"{len(text)} chars took {took:.2f} s of CPU"
+                best[k] = min(best[k], took)
+    finally:
+        gc.enable()
+    return best
 
 
-def test_a_long_run_of_invisible_and_space_characters_stays_linear():
-    import time
+@pytest.mark.parametrize("shape", _SHAPES)
+def test_reading_time_grows_linearly_with_the_text(shape):
+    small, large = _best_of_five((shape * 5_000, shape * 20_000))
+    assert large / small < 8.0, f"x4 text took x{large / small:.1f} time"
 
-    texts = (
-        "1\u200b\u2009" * 87_000,  # 261k chars of digits, Cf and Zs
-        "123\u2060\u202f\u00ad" * 52_000,
-        "\u200b\u2028\u3000" * 87_000,
-    )
-    t0 = time.perf_counter()
-    for text in texts:
-        withheld_figures_in(text, INTENT)
-    assert time.perf_counter() - t0 < 20.0
+
+def test_reading_time_grows_linearly_with_distinct_numbers():
+    # every number different, so work per match that scans earlier values
+    # (a dedupe or a membership test) shows up as quadratic
+    def numbers(n):
+        return ", ".join(str(k) for k in range(2_000, 2_000 + n))
+
+    small, large = _best_of_five((numbers(5_000), numbers(20_000)))
+    assert large / small < 8.0, f"x4 text took x{large / small:.1f} time"
 
 
 @pytest.mark.parametrize(
