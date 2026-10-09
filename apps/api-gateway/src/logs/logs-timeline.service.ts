@@ -216,17 +216,36 @@ export class LogsTimelineService {
     cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("pos_checks", async () => {
-      let q = db
-        .from("pos_checks")
-        .select(
-          "id, external_check_id, source, closed_at, opened_at, correlation_id, items",
-        )
-        .eq("restaurant_id", restaurantId);
-      q = windowed(q, "opened_at", cursor);
-      if (correlationId) q = q.eq("correlation_id", correlationId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []).map((r: any) => ({
+      // A check is placed at its close, or at its open while it is still
+      // open — so it must be paged by that same time. Paging every check by
+      // opened_at let a long table that just closed (opened early, closed
+      // last) fall behind the window of later-opened checks: missing from
+      // page one, then turning up on a later page above older rows (F-261).
+      // PostgREST cannot order by coalesce(closed_at, opened_at), so the two
+      // halves are read separately, each windowed on the column that IS its
+      // time, and merged; the top `fetch` of the union is exact because each
+      // half is its own top `fetch`.
+      const read = (half: (q: any) => any, col: string) => {
+        let q = half(
+          db
+            .from("pos_checks")
+            .select(
+              "id, external_check_id, source, closed_at, opened_at, correlation_id, items",
+            )
+            .eq("restaurant_id", restaurantId),
+        );
+        q = windowed(q, col, cursor);
+        if (correlationId) q = q.eq("correlation_id", correlationId);
+        return q;
+      };
+      const [closed, open] = await Promise.all([
+        read((q) => q.not("closed_at", "is", null), "closed_at"),
+        read((q) => q.is("closed_at", null), "opened_at"),
+      ]);
+      if (closed.error) throw closed.error;
+      if (open.error) throw open.error;
+      const data = [...(closed.data || []), ...(open.data || [])];
+      return data.map((r: any) => ({
         id: r.id,
         source: "pos_checks" as const,
         occurredAt: r.closed_at || r.opened_at || null,
