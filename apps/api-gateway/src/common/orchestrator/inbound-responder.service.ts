@@ -25,6 +25,7 @@ import { SETTINGS_ROW_FLAG_NAME } from "../../settings/feature-flag-registry";
 import { COMMITMENT_PATTERNS } from "./commitment-patterns";
 import {
   houseMembersInRoles,
+  OWNER_AND_MANAGER,
   type HouseRoleName,
 } from "../tenant/live-membership";
 
@@ -385,35 +386,45 @@ export class InboundResponderService {
           urgency: dealProposal.urgency === "urgent" ? 0.9 : 0.3,
           trust: senderTrusted ? 0.85 : 0.6,
         }).bucket;
-        this.websocketGateway.emitRestaurantNotification(ctx.restaurantId, {
-          id: ctx.inboundConversationId,
-          title:
-            dealProposal.dealKind === "verification"
-              ? `${providerName} confirmed — verify the order`
-              : `${providerName} sent an offer to review`,
-          message: `${dealProposal.summary}`,
-          type: dealBucket === "interrupt" ? "warning" : "info",
-          action_url: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === "urgent" ? "&urgent=1" : ""}`,
-        });
-        void this.persistManagerNotification(ctx.restaurantId, {
-          type:
-            dealProposal.dealKind === "verification"
-              ? "order_verification"
-              : "deal",
-          title:
-            dealProposal.dealKind === "verification"
-              ? `${providerName} confirmed — verify the order`
-              : `${providerName} sent an offer to review`,
-          message: dealProposal.summary,
-          priority: dealProposal.urgency === "urgent" ? "high" : "medium",
-          actionUrl: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === "urgent" ? "&urgent=1" : ""}`,
-          metadata: {
-            order_id: ctx.orderId,
-            conversation_id: ctx.inboundConversationId,
-            provider_id: ctx.providerId,
-            urgency: dealProposal.urgency,
+        // Owners and managers only, live and in the bell (F-538): the line
+        // carries the vendor's price, which staff are not shown.
+        void this.websocketGateway.emitRoleNotification(
+          ctx.restaurantId,
+          OWNER_AND_MANAGER,
+          {
+            id: ctx.inboundConversationId,
+            title:
+              dealProposal.dealKind === "verification"
+                ? `${providerName} confirmed — verify the order`
+                : `${providerName} sent an offer to review`,
+            message: `${dealProposal.summary}`,
+            type: dealBucket === "interrupt" ? "warning" : "info",
+            action_url: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === "urgent" ? "&urgent=1" : ""}`,
           },
-        });
+        );
+        void this.persistManagerNotification(
+          ctx.restaurantId,
+          {
+            type:
+              dealProposal.dealKind === "verification"
+                ? "order_verification"
+                : "deal",
+            title:
+              dealProposal.dealKind === "verification"
+                ? `${providerName} confirmed — verify the order`
+                : `${providerName} sent an offer to review`,
+            message: dealProposal.summary,
+            priority: dealProposal.urgency === "urgent" ? "high" : "medium",
+            actionUrl: `/orders?order=${ctx.orderId}&deal=1${dealProposal.urgency === "urgent" ? "&urgent=1" : ""}`,
+            metadata: {
+              order_id: ctx.orderId,
+              conversation_id: ctx.inboundConversationId,
+              provider_id: ctx.providerId,
+              urgency: dealProposal.urgency,
+            },
+          },
+          { roles: OWNER_AND_MANAGER },
+        );
         this.websocketGateway.emitConversationUpdated(ctx.restaurantId, {
           conversation_id: ctx.inboundConversationId,
           order_id: ctx.orderId,
@@ -591,38 +602,48 @@ export class InboundResponderService {
       const reasonText = flags.reasons.length
         ? ` (needs your review: ${flags.reasons.map((r) => this.humanReason(r)).join(", ")})`
         : "";
-      this.websocketGateway.emitRestaurantNotification(ctx.restaurantId, {
-        id: draft.id,
-        title: willAutoSend
-          ? `AI is auto-sending a reply to ${providerName}`
-          : `AI drafted a reply to ${providerName}`,
-        message: willAutoSend
-          ? `${analysis.summary} — sending in 2 min unless you cancel.`
-          : `${analysis.summary}${reasonText}`,
-        type: willAutoSend
-          ? "success"
-          : flags.needs_approval
-            ? "warning"
-            : "info",
-        action_url: `/orders?order=${ctx.orderId}`,
-      });
-      void this.persistManagerNotification(ctx.restaurantId, {
-        type: "vendor_reply",
-        title: willAutoSend
-          ? `AI is auto-sending a reply to ${providerName}`
-          : `AI drafted a reply to ${providerName}`,
-        message: willAutoSend
-          ? `${analysis.summary} — sending in 2 min unless you cancel.`
-          : `${analysis.summary}${reasonText}`,
-        priority: flags.needs_approval ? "high" : "medium",
-        actionUrl: `/orders?order=${ctx.orderId}`,
-        metadata: {
-          order_id: ctx.orderId,
-          draft_id: draft.id,
-          provider_id: ctx.providerId,
-          needs_approval: flags.needs_approval,
+      // Owners and managers only, live and in the bell (F-538): the summary
+      // names the vendor's terms, and only they approve the reply.
+      void this.websocketGateway.emitRoleNotification(
+        ctx.restaurantId,
+        OWNER_AND_MANAGER,
+        {
+          id: draft.id,
+          title: willAutoSend
+            ? `AI is auto-sending a reply to ${providerName}`
+            : `AI drafted a reply to ${providerName}`,
+          message: willAutoSend
+            ? `${analysis.summary} — sending in 2 min unless you cancel.`
+            : `${analysis.summary}${reasonText}`,
+          type: willAutoSend
+            ? "success"
+            : flags.needs_approval
+              ? "warning"
+              : "info",
+          action_url: `/orders?order=${ctx.orderId}`,
         },
-      });
+      );
+      void this.persistManagerNotification(
+        ctx.restaurantId,
+        {
+          type: "vendor_reply",
+          title: willAutoSend
+            ? `AI is auto-sending a reply to ${providerName}`
+            : `AI drafted a reply to ${providerName}`,
+          message: willAutoSend
+            ? `${analysis.summary} — sending in 2 min unless you cancel.`
+            : `${analysis.summary}${reasonText}`,
+          priority: flags.needs_approval ? "high" : "medium",
+          actionUrl: `/orders?order=${ctx.orderId}`,
+          metadata: {
+            order_id: ctx.orderId,
+            draft_id: draft.id,
+            provider_id: ctx.providerId,
+            needs_approval: flags.needs_approval,
+          },
+        },
+        { roles: OWNER_AND_MANAGER },
+      );
 
       this.websocketGateway.emitConversationUpdated(ctx.restaurantId, {
         conversation_id: draft.id,

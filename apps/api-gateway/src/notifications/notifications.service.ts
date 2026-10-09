@@ -14,6 +14,7 @@ import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { CommunicationsService } from "../communications/communications.service";
 import { DatabaseService } from "../database/database.service";
 import { ExpoPushService } from "../push/expo-push.service";
+import { pushHolds, type PushHoldReason } from "./push-hold";
 import { AreaRoutingService } from "../areas/area-routing.service";
 import { type AreaLabel, readAreaLabel } from "../areas/area-label";
 import type { RouteStep } from "../areas/area-routing";
@@ -111,18 +112,35 @@ export class NotificationsService {
   }
 
   /**
-   * Send notification to specific user
+   * Send notification to specific user.
+   *
+   * The live ping always goes. The browser and phone pushes honour the
+   * person's Push switch and quiet hours in `restaurantId` (F-539, the same
+   * rule as the funnel's push leg, `pushHolds`); a `null` house has no
+   * preferences row to read, so it pushes as before. Returns why the pushes
+   * were held, or `null` when they went.
    */
   async sendToUser(
     userId: string,
     payload: NotificationPayload,
-  ): Promise<void> {
+    restaurantId: string | null,
+  ): Promise<PushHoldReason | null> {
     this.logger.log(`Sending notification to user ${userId}: ${payload.title}`);
 
     // Send via WebSocket (for real-time delivery)
     this.websocketGateway.server
       .to(`user:${userId}`)
       .emit("notification:new", payload);
+
+    const hold = restaurantId
+      ? (await pushHolds(
+          this.databaseService.supabase,
+          restaurantId,
+          [userId],
+          (line) => this.logger.warn(line),
+        )).get(userId) ?? null
+      : null;
+    if (hold) return hold;
 
     // Also send via Web Push API if user has subscription
     await this.sendWebPush(userId, payload);
@@ -135,6 +153,7 @@ export class NotificationsService {
         data: { type: payload.type, ...(payload.data ?? {}) },
       });
     }
+    return null;
   }
 
   /**
@@ -274,6 +293,7 @@ export class NotificationsService {
    */
   async sendOrderApprovalNotification(data: {
     userId: string;
+    restaurantId: string;
     orderId: string;
     wineName: string;
     quantity: number;
@@ -300,7 +320,7 @@ export class NotificationsService {
       ],
     };
 
-    await this.sendToUser(data.userId, payload);
+    await this.sendToUser(data.userId, payload, data.restaurantId);
   }
 
   /**
@@ -437,6 +457,7 @@ export class NotificationsService {
    */
   async sendPriceNegotiationNotification(data: {
     userId: string;
+    restaurantId: string;
     orderId: string;
     wineName: string;
     currentPrice: number;
@@ -467,7 +488,7 @@ export class NotificationsService {
       ],
     };
 
-    await this.sendToUser(data.userId, payload);
+    await this.sendToUser(data.userId, payload, data.restaurantId);
   }
 
   /**
