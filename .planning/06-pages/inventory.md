@@ -380,7 +380,7 @@ keep it true — count what drifted, verify what arrived.
 
 ## 13. Roadmap
 [changed 2026-10-01, R4 P3: the inline order email uses the composer's free text until the comms session's *Order request* template lands on its own branch. The gateway merged flag (§9) replaces the page's 2-minute merge heuristic.]
-[changed 2026-10-08, R4: next on this page are the mount line (the founder's word), then the gateway F-10 PR (ledger DTO `@Type`, the write-off role guard, a merged flag on `POST /procurement/orders`, `approveDraft` checking the order's status), then deleting the legacy page once (ADR 0149). The phone-first counting fork (INV-W11) still needs its `OPEN-DECISIONS.md` row on its own docs branch.]
+[changed 2026-10-08, R4: next on this page are the three server fixes in #685 (the write-off role guard, the refusal of a changed retry key, `approveOrder` checking the order's status), then the mount line (the founder's word, and only after #685 merges), then the rest of the gateway F-10 work (ledger DTO `@Type`, a merged flag on `POST /procurement/orders`), then deleting the legacy page once (ADR 0149). The phone-first counting fork (INV-W11) still needs its `OPEN-DECISIONS.md` row on its own docs branch.]
 
 1. **Fix the insights rail's auth** — move `ContextualInsights` off raw `fetch` onto
    `apiClient` (which stamps the bearer token, `services/api/client.ts:62`). One-line
