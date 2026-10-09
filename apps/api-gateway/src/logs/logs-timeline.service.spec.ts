@@ -808,4 +808,164 @@ describe("LogsTimelineService.getTimeline", () => {
       expect(page.nextCursor).toBe("2026-09-20T08:00:00Z");
     });
   });
+
+  // F-482: the person behind a row was stored and never read.
+  describe("a row names who did it, from this house only", () => {
+    const PEOPLE = {
+      users: [
+        { user_id: "u-ayse", name: "Ayşe Demir", email: "a@x", restaurant_id: "r1" },
+        { user_id: "u-mert", name: "Mert Kaya", email: "m@x", restaurant_id: "r9" },
+        { user_id: "u-elif", name: "Elif Ak", email: "e@x", restaurant_id: "r9" },
+      ],
+      // Elif's home is another house but she holds access to this one.
+      user_restaurant_access: [{ user_id: "u-elif", restaurant_id: "r1" }],
+    };
+
+    function audit(id: string, action: string, actorId: string | null, changes: Row | null): Row {
+      return {
+        id,
+        restaurant_id: "r1",
+        actor_type: actorId ? "user" : "system",
+        actor_id: actorId,
+        action,
+        entity_type: "restaurant_member",
+        entity_id: "user-2",
+        changes,
+        reason: null,
+        correlation_id: null,
+        created_at: "2026-09-20T09:00:00Z",
+      };
+    }
+
+    function svc(tables: Record<string, Row[]>) {
+      const client = makeFakeClient({ ...EMPTY, ...PEOPLE, ...tables });
+      return new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+    }
+
+    it("prints 'Name: act (field: from → to)' for an audit row", async () => {
+      const { events } = await svc({
+        system_audit_log: [
+          audit("a1", "member_role_changed", "u-ayse", { role: { from: "staff", to: "manager" } }),
+        ],
+      }).getTimeline("r1", { role: "owner" });
+
+      expect(events[0].summary).toBe("Ayşe Demir: member role changed (role: staff → manager)");
+      expect(events[0].detail).toMatchObject({
+        actorId: "u-ayse",
+        actorName: "Ayşe Demir",
+        changes: [{ field: "role", from: "staff", to: "manager" }],
+      });
+    });
+
+    it("names a person who holds access to this house, and never names someone from another house", async () => {
+      const { events } = await svc({
+        system_audit_log: [
+          { ...audit("a1", "house_area_changed", "u-elif", null), created_at: "2026-09-20T10:00:00Z" },
+          audit("a2", "house_area_changed", "u-mert", null),
+        ],
+      }).getTimeline("r1", { role: "owner" });
+
+      expect(events.map((e) => e.summary)).toEqual([
+        "Elif Ak: house area changed",
+        "Someone not on this house's team: house area changed",
+      ]);
+      expect(JSON.stringify(events)).not.toContain("Mert");
+    });
+
+    it("says a name could not be read rather than calling a colleague a stranger", async () => {
+      const client = makeFakeClient({
+        ...EMPTY,
+        system_audit_log: [audit("a1", "house_area_changed", "u-ayse", null)],
+      });
+      const realFrom = client.from;
+      (client as any).from = (t: string) =>
+        t === "users"
+          ? { select: () => ({ in: () => Promise.resolve({ data: null, error: { message: "down" } }) }) }
+          : realFrom(t);
+      const service = new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+
+      const page = await service.getTimeline("r1", { role: "owner" });
+      expect(page.failedSources).toEqual([]);
+      expect(page.events[0].summary).toBe(
+        "Someone (their name could not be read): house area changed",
+      );
+    });
+
+    it("names who moved stock", async () => {
+      const { events } = await svc({
+        inventory_transactions: [
+          {
+            id: "t1",
+            restaurant_id: "r1",
+            inventory_id: "inv-1",
+            transaction_type: "count",
+            source: "manual",
+            quantity_change: -2,
+            reason: null,
+            metadata: {},
+            transaction_date: "2026-09-20T09:00:00Z",
+            performed_by: "u-ayse",
+          },
+        ],
+      }).getTimeline("r1", { role: "staff" });
+
+      expect(events[0].summary).toBe("Stock count (manual): -2 by Ayşe Demir");
+      expect(events[0].detail).toMatchObject({ performedBy: "u-ayse", performedByName: "Ayşe Demir" });
+    });
+
+    // The ADR 0218 round-4 ruling keeps /logs' staff withholding to the two
+    // Away actions. These rows still reach staff — as the act, never the person.
+    it("shows a staff reader an area or zone-access row without naming anyone", async () => {
+      const rows = [
+        audit("a1", "area_lead_granted", "u-ayse", {
+          subject: "Mert Kaya",
+          fields: { lead: { from: false, to: true } },
+        }),
+      ];
+
+      const staff = await svc({ system_audit_log: rows }).getTimeline("r1", { role: "staff" });
+      expect(staff.events[0].summary).toBe("Someone: area lead granted (lead: no → yes)");
+      expect(staff.events[0].detail).toMatchObject({ actorId: null, actorName: null, subject: null });
+      expect(JSON.stringify(staff.events)).not.toMatch(/Ayşe|Mert|u-ayse/);
+
+      const owner = await svc({ system_audit_log: rows }).getTimeline("r1", { role: "owner" });
+      expect(owner.events[0].summary).toBe(
+        "Ayşe Demir: area lead granted — Mert Kaya (lead: no → yes)",
+      );
+    });
+  });
+
+  // F-483: a voided check carries closed_at too, so it read as a sale.
+  describe("a voided check says so", () => {
+    function check(id: string, voided: boolean): Row {
+      return {
+        id,
+        restaurant_id: "r1",
+        external_check_id: id.toUpperCase(),
+        source: "simpos",
+        opened_at: "2026-09-20T20:00:00Z",
+        closed_at: "2026-09-20T21:00:00Z",
+        correlation_id: null,
+        items: [{ name: "Opus" }],
+        voided,
+        server_name: "Ali",
+      };
+    }
+
+    it("says 'voided' in the summary and the detail, and 'closed' for a sale", async () => {
+      const client = makeFakeClient({
+        ...EMPTY,
+        pos_checks: [check("c1", true), { ...check("c2", false), opened_at: "2026-09-20T19:00:00Z", closed_at: "2026-09-20T19:30:00Z" }],
+      });
+      const service = new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+
+      const { events } = await service.getTimeline("r1");
+      expect(events.map((e) => e.summary)).toEqual([
+        "POS check C1 voided by Ali (simpos)",
+        "POS check C2 closed by Ali (simpos)",
+      ]);
+      expect(events[0].detail).toMatchObject({ voided: true, serverName: "Ali" });
+      expect(events[1].detail).toMatchObject({ voided: false });
+    });
+  });
 });

@@ -137,8 +137,11 @@ export class MenusController {
   async discardMenuItem(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
+    @CurrentUser() user: { userId: string },
   ) {
-    return this.menusService.discardMenuItem(restaurantId, id);
+    // F-484: the person is passed so the discard is filed under their name
+    // (a `menu_line_discarded` row in system_audit_log, read on /logs).
+    return this.menusService.discardMenuItem(restaurantId, id, user?.userId ?? null);
   }
 }
 
