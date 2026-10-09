@@ -4,6 +4,7 @@
  */
 
 import { CeilingHeldProducer } from "./ceiling-held.producer";
+import { DAYS_OF_STOCK_WITHHELD } from "../../analytics/goals.service";
 import { ProducerLedgerService } from "./producer-ledger.service";
 import {
   FakeDb,
@@ -254,5 +255,91 @@ describe("CeilingHeldProducer", () => {
       /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]|\u{FE0F}|\u{20E3})/u;
     expect(emoji.test(call.title)).toBe(false);
     expect(emoji.test(call.message)).toBe(false);
+  });
+});
+
+/**
+ * A goal read from the till (ADR 0298 decision 9). The double refuses an
+ * ungated read of days of stock exactly as GoalsService does, so a producer
+ * that forgot the gate fails here the way it would in production.
+ */
+describe("CeilingHeldProducer — a goal read from the till reaches owners and managers only", () => {
+  const DIO = { target: 30, current: 20, metricLabel: "Days of stock", unit: "days" };
+  function buildGated() {
+    const built = build(DIO);
+    const real = built.goals.getGoalProgress;
+    built.goals.getGoalProgress = recorder(async (...args: any[]) => {
+      const gate = args[3];
+      if (gate?.withSales !== true) throw new Error(DAYS_OF_STOCK_WITHHELD);
+      return real(...args);
+    }) as any;
+    return built;
+  }
+  function roles(db: FakeDb, byUser: Record<string, string>) {
+    for (const [user_id, role] of Object.entries(byUser))
+      db.tables.user_restaurant_access.push({
+        restaurant_id: TENANT,
+        user_id,
+        role,
+        is_active: true,
+      });
+  }
+
+  it("[REVERT-FAILS] a staff-only audience gets nothing, and it is withheld with a reason, not failed", async () => {
+    const { db, notifications, goals, producer } = buildGated();
+    db.tables.analytics_goals.push(ceiling({ id: "goal-dio", name: "Stock turns", metric_key: "days_of_inventory", target_value: 30 }));
+    
+    roles(db, { "user-1": "staff", "user-2": "staff" });
+
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+    expect(goals.getGoalProgress.calls).toHaveLength(0);
+    expect(tally.failed).toBe(0);
+    expect(tally.withheldReason).toMatch(/no owner or manager of this house is in the audience/);
+  });
+
+  it("[REVERT-FAILS] an owner gets it, read with the gate open, and staff do not", async () => {
+    const { db, notifications, goals, producer } = buildGated();
+    db.tables.analytics_goals.push(ceiling({ id: "goal-dio", name: "Stock turns", metric_key: "days_of_inventory", target_value: 30 }));
+    
+    roles(db, { "user-1": "owner", "user-2": "staff" });
+
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+
+    expect(tally.failed).toBe(0);
+    expect(tally.emitted).toBe(1);
+    expect(goals.getGoalProgress.calls[0][3]).toEqual({ withSales: true });
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+    expect(notifications.persistForRestaurant.calls[0][2].onlyUserIds).toEqual(["user-1"]);
+  });
+
+  it("a goal not read from the till still reaches staff, read as before", async () => {
+    const { db, notifications, goals, producer } = build(HELD);
+    db.tables.analytics_goals.push(ceiling());
+    
+    roles(db, { "user-1": "staff", "user-2": "staff" });
+
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+
+    expect(tally.emitted).toBe(2);
+    expect(goals.getGoalProgress.calls[0]).toHaveLength(2);
+    expect(notifications.persistForRestaurant.calls[0][2]?.onlyUserIds ?? MEMBERS).toEqual(MEMBERS);
+  });
+
+  it("[REVERT-FAILS] a failed role read is counted failed, not reported as nobody to tell", async () => {
+    const { db, notifications, goals, producer } = buildGated();
+    db.tables.analytics_goals.push(ceiling({ id: "goal-dio", name: "Stock turns", metric_key: "days_of_inventory", target_value: 30 }));
+    
+    roles(db, { "user-1": "owner" });
+    db.failures.user_restaurant_access = "statement timeout";
+
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+    expect(goals.getGoalProgress.calls).toHaveLength(0);
+    expect(tally.failed).toBe(1);
+    expect(tally.withheldReason ?? "").not.toMatch(/no owner or manager/);
+    expect(tally.withheldReason).toMatch(/could not be read from user_restaurant_access/);
   });
 });

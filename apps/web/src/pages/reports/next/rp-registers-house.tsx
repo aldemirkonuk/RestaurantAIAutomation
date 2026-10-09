@@ -154,9 +154,31 @@ const quadrants = analysis<QuadrantRegister>({
 export interface LedgerRegister {
   basis?: Record<string, string>;
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
+  /**
+   * ADR 0298: how many of the items the till sold carry a recorded cost. An
+   * item no longer active is costed from its own row; one with no inventory
+   * row at all is "no longer in the books"; one whose row could not be read
+   * is counted as unread.
+   */
+  cogsCoverage?: {
+    total: number;
+    priced: number;
+    unpriced: number;
+    complete: boolean;
+    itemsNotInBooks?: number;
+    itemsCostUnread?: number;
+  };
+  salesCoverage?: { unmappedLines: number; itemsSoldWithoutStockMove: number } | null;
+  /**
+   * ADR 0298 decision 9: the gateway read no till for this caller (ADR 0290
+   * §5: sales are an owner's or a manager's), so sales, cost of goods and the
+   * ratios built on them are withheld, not unread.
+   */
+  salesWithheld: boolean;
   inventoryValue: number | null;
   cogs: number | null;
   revenue: number | null;
+  shelfValueAtMenuPrice: number | null;
   grossMargin: number | null;
   cogsRatio: number | null;
   inventoryTurnover: number | null;
@@ -173,15 +195,25 @@ const ledger = analysis<LedgerRegister>({
   path: (rid) => `/analytics/financial/${rid}`,
   graphs: ['table', 'figure'],
   graphNote:
-    'No bars, line or area: these eight figures are in four different units — money, a ratio, a count of turns, a count of days — and one axis across them would compare dollars with days.',
+    'No bars, line or area: these figures are in four different units — money, a ratio, a count of turns, a count of days — and one axis across them would compare dollars with days.',
   select: (raw) => {
     const d = obj(raw);
+    const sc = d.salesCoverage == null ? null : obj(d.salesCoverage);
     return {
       basis: d.basis as Record<string, string>,
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
+      cogsCoverage: d.cogsCoverage as LedgerRegister['cogsCoverage'],
+      salesCoverage: sc
+        ? {
+            unmappedLines: num(sc.unmappedLines) ?? 0,
+            itemsSoldWithoutStockMove: num(sc.itemsSoldWithoutStockMove) ?? 0,
+          }
+        : null,
+      salesWithheld: d.salesWithheld === true,
       inventoryValue: num(d.inventoryValue),
       cogs: num(d.cogs),
       revenue: num(d.revenue),
+      shelfValueAtMenuPrice: num(d.shelfValueAtMenuPrice),
       grossMargin: num(d.grossMargin),
       cogsRatio: num(d.cogsRatio),
       inventoryTurnover: num(d.inventoryTurnover),
@@ -192,6 +224,15 @@ const ledger = analysis<LedgerRegister>({
   },
   view: (f) => {
     const cc = f.costCoverage;
+    const gc = f.cogsCoverage;
+    const sc = f.salesCoverage;
+    // ADR 0298: cost of goods is what the till sold at its recorded cost, and
+    // sales are the till's. Turns, days and GMROI also divide by the cellar
+    // at cost and annualise the till's span.
+    const withheld = f.salesWithheld;
+    const tillNote = (otherwise: string) =>
+      withheld ? 'Sales are shown to owners and managers' : otherwise;
+    const turnsNote = tillNote('Needs a complete cost basis and at least 28 days of POS sales');
     const figures = [
       {
         label: 'Cellar at cost',
@@ -199,26 +240,72 @@ const ledger = analysis<LedgerRegister>({
         note: 'Not every on-hand row carries a recorded cost',
       },
       {
+        label: 'Sales of stocked items, net (365d)',
+        value: money(f.revenue),
+        note: tillNote('No POS sale could be read: no closed check, a line that cannot be read, or a read that failed'),
+      },
+      {
         label: 'Cost of goods (365d)',
         value: money(f.cogs),
-        note: 'No delivered order came back for the window — which is either no buying or a read that failed',
+        note: tillNote('Not every item that sold carries a recorded cost, the POS moved no stock, or the read failed'),
       },
       {
         label: 'Sell-price valuation',
-        value: money(f.revenue),
+        value: money(f.shelfValueAtMenuPrice),
         note: 'No inventory row came back',
       },
-      { label: 'Gross margin', value: ratioPct(f.grossMargin), note: 'Needs a complete cost basis' },
-      { label: 'COGS ratio', value: ratioPct(f.cogsRatio) },
-      { label: 'Inventory turns', value: figure(f.inventoryTurnover) },
-      { label: 'Days of inventory', value: figure(f.daysInventoryOutstanding) },
-      { label: 'GMROI', value: figure(f.gmroi) },
+      {
+        label: 'Gross margin',
+        value: ratioPct(f.grossMargin),
+        note: tillNote('Needs the cost of every item that sold and the POS sales'),
+      },
+      {
+        label: 'COGS ratio',
+        value: ratioPct(f.cogsRatio),
+        ...(withheld ? { note: tillNote('') } : {}),
+      },
+      { label: 'Inventory turns', value: figure(f.inventoryTurnover), note: turnsNote },
+      { label: 'Days of inventory', value: figure(f.daysInventoryOutstanding), note: turnsNote },
+      { label: 'GMROI', value: figure(f.gmroi), note: turnsNote },
       {
         label: 'Capital sitting still',
         value: money(f.deadStockCapital),
         note: 'No movement signal recorded, or an idle row has no cost',
       },
     ];
+    const notes: string[] = [];
+    if (withheld)
+      notes.push(
+        `Sales, cost of goods, margin, turns, days of inventory and GMROI are read from the till, and the till's figures are shown to owners and managers, so they read ${EM} here.`,
+      );
+    if (gc && !gc.complete && gc.total > 0) {
+      const gone = num(gc.itemsNotInBooks) ?? 0;
+      const unread = num(gc.itemsCostUnread) ?? 0;
+      const withheld = `cost of goods and the ratios built on it read ${EM} rather than a floor.`;
+      notes.push(
+        unread > 0
+          ? `The cost of ${countOf(unread, 'item', 'items')} that sold could not be read (${unread === 1 ? 'its row is' : 'their rows are'} no longer active, and the read failed), so ${withheld}`
+          : gone > 0
+            ? `${figure(gc.priced)} of ${figure(gc.total)} items that sold carry a recorded cost. ${countOf(gone, 'item that sold is', 'items that sold are')} no longer in the books (no inventory row), so nothing records what ${gone === 1 ? 'it' : 'they'} cost, and ${withheld}`
+            : `${figure(gc.priced)} of ${figure(gc.total)} items that sold carry a recorded cost, so ${withheld}`,
+      );
+    }
+    if (cc && !cc.complete)
+      notes.push(
+        cc.total === 0
+          ? `No on-hand item carries a recorded cost, so the cellar at cost, turns, days of inventory and GMROI read ${EM} rather than a total assembled from nothing.`
+          : `${figure(cc.priced)} of ${figure(cc.total)} on-hand items carry a recorded cost, so the cellar at cost, turns, days of inventory and GMROI read ${EM} rather than a total assembled from part of the cellar.`,
+      );
+    if (sc && sc.unmappedLines > 0)
+      notes.push(
+        `${countOf(sc.unmappedLines, 'POS line names', 'POS lines name')} no stock item (a dish, or a drink not linked to one), and ${sc.unmappedLines === 1 ? 'it is' : 'they are'} left out of sales and cost of goods.`,
+      );
+    if (sc && sc.itemsSoldWithoutStockMove > 0)
+      notes.push(
+        f.cogs == null && gc != null && gc.total === 0
+          ? `${countOf(sc.itemsSoldWithoutStockMove, 'item', 'items')} sold at the till, but no item moved stock in the window, so cost of goods and the ratios built on it read ${EM} rather than $0.`
+          : `${countOf(sc.itemsSoldWithoutStockMove, 'item', 'items')} sold at the till but moved no stock in the window, so ${sc.itemsSoldWithoutStockMove === 1 ? 'it adds' : 'they add'} sales and no cost.`,
+      );
     return {
       // The "table" of this register IS its figures — one label, one figure of
       // record — so it is rendered as the figure list rather than as a grid
@@ -231,17 +318,11 @@ const ledger = analysis<LedgerRegister>({
         </dl>
       ),
       figures,
-      notes:
-        cc && !cc.complete
-          ? [
-              cc.total === 0
-                ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
-                : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
-            ]
-          : [],
+      notes,
       basis: [
         f.basis?.revenue,
         f.basis?.cogs,
+        f.basis?.shelfValueAtMenuPrice,
         f.basis?.inventoryValue,
         f.basis?.deadStock,
         f.basis?.costDerived,

@@ -224,9 +224,15 @@ export class McpToolReadersService {
     // read as computed-from-zero rather than not-computed. When the caller
     // omits it, the result says so alongside the engine's own answer.
     const hasLabor = typeof args.labor === "number" && Number.isFinite(args.labor);
+    // The till's figures are read here (ADR 0298 decision 9): an MCP key is
+    // minted and revoked only by a manager or an owner of the house
+    // (`mcp-keys.controller.ts`, `assertCanManageRestaurant`), and its
+    // secret is shown to that person alone, so the reader is one a holder of
+    // the sales class let in.
     const summary = await this.analytics.getFinancialSummary(
       restaurantId,
       hasLabor ? (args.labor as number) : 0,
+      { withSales: true },
     );
     return {
       value: {

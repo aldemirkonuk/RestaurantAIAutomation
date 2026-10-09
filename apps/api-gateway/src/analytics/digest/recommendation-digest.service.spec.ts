@@ -78,6 +78,14 @@ interface EngineOpts {
   insights?: Row[];
   dispositionsReadable?: boolean;
   rejectRisk?: boolean;
+  /**
+   * ADR 0298 decision 9: the risk read answers with a concentrated till only
+   * when it is asked with the gate open, and every gate it is asked with is
+   * recorded here.
+   */
+  tillConcentrated?: boolean;
+  riskGates?: Array<boolean>;
+  goals?: Row[];
 }
 
 function engine(db: FakeDb, o: EngineOpts = {}) {
@@ -88,7 +96,12 @@ function engine(db: FakeDb, o: EngineOpts = {}) {
         ? async () => {
             throw new Error("risk profile read failed");
           }
-        : async () => null,
+        : async (_rid: string, gate?: { withSales?: boolean }) => {
+            o.riskGates?.push(gate?.withSales === true);
+            return o.tillConcentrated && gate?.withSales === true
+              ? { revenueConcentration: { gini: 0.8 } }
+              : null;
+          },
       getInventoryScience: async () => null,
     } as any,
     {
@@ -99,7 +112,7 @@ function engine(db: FakeDb, o: EngineOpts = {}) {
     {
       generate: async () => ({ insights: o.insights ?? [weekdayInsight()] }),
     } as any,
-    { listGoals: async () => [] } as any,
+    { listGoals: async () => o.goals ?? [] } as any,
     {
       readDispositions: async () => ({
         map: new Map(),
@@ -1348,5 +1361,109 @@ describe("the digest pauses for a person while they are Away", () => {
     const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
     expect(tally.pausedAway).toBe(0);
     expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ── the till's figures reach only a sales holder (ADR 0298 decision 9) ───── */
+
+describe("the concentration card reaches owners and managers only", () => {
+  const CARD = /Revenue rides on very few wines/;
+
+  function houseWithRoles(roles: Record<string, string>) {
+    const db = seed();
+    db.tables.recommendation_digest_prefs[0].digest_min_urgency = "this_month";
+    for (const r of db.tables.user_restaurant_access) r.role = roles[r.user_id] ?? "staff";
+    db.tables.recommendation_digest_subscriptions.push({
+      id: "sub-bora",
+      restaurant_id: HOUSE,
+      user_id: BORA,
+      frequency: "daily",
+      weekday: null,
+      subscribed_at: "2026-09-02T10:00:00Z",
+      updated_at: "2026-09-02T10:00:00Z",
+      unsubscribed_at: null,
+      unsubscribed_via: null,
+    });
+    return db;
+  }
+
+  function letterTo(gmail: Provider, email: string): string {
+    const call = gmail.sendEmail.mock.calls.find((c: any[]) => c[0].to[0] === email);
+    if (!call) throw new Error(`no letter to ${email}`);
+    return call[0].text;
+  }
+
+  it("[REVERT-FAILS] the owner's letter carries it and the staff member's does not", async () => {
+    const db = houseWithRoles({ [ANA]: "owner" });
+    const riskGates: boolean[] = [];
+    const { service, gmail } = build({ db, engine: { tillConcentrated: true, riskGates } });
+    const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(tally.sent).toBe(2);
+    expect(letterTo(gmail, "ana@house.test")).toMatch(CARD);
+    expect(letterTo(gmail, "bora@house.test")).not.toMatch(CARD);
+    expect(riskGates.sort()).toEqual([false, true]);
+    const rows = sends(db);
+    expect(rows.find((r) => r.user_id === ANA)?.rule_keys).toContain("revenue_concentration");
+    expect(rows.find((r) => r.user_id === BORA)?.rule_keys).not.toContain("revenue_concentration");
+  });
+
+  it("[REVERT-FAILS] a days-of-stock goal's stored score reaches the owner's letter, not the staff member's", async () => {
+    const db = houseWithRoles({ [ANA]: "owner" });
+    const goal = (id: string, name: string, metric_key: string) => ({
+      id,
+      name,
+      metric_key,
+      target_value: 30,
+      current_value: 3,
+      deadline: new Date(Date.now() + 10 * 86400000).toISOString(),
+      created_at: new Date(Date.now() - 80 * 86400000).toISOString(),
+    });
+    const { service, gmail } = build({
+      db,
+      engine: {
+        goals: [
+          goal("g-dos", "Days of stock", "days_of_inventory"),
+          goal("g-cov", "Covers", "covers"),
+        ],
+      },
+    });
+    await service.sweepTenant(TENANT, DUE_PLUS_5);
+    const owner = letterTo(gmail, "ana@house.test");
+    const staff = letterTo(gmail, "bora@house.test");
+    expect(owner).toMatch(/Goal "Days of stock" is behind/);
+    expect(staff).not.toMatch(/Days of stock/);
+    // A goal not read from the till still reaches everyone, as before.
+    expect(staff).toMatch(/Goal "Covers" is behind/);
+  });
+
+  it("a house with no owner or manager subscribed reads the till for nobody", async () => {
+    const db = houseWithRoles({ [CEM]: "owner" });
+    const riskGates: boolean[] = [];
+    const { service, gmail } = build({ db, engine: { tillConcentrated: true, riskGates } });
+    await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(2);
+    for (const c of gmail.sendEmail.mock.calls) expect(c[0].text).not.toMatch(CARD);
+    expect(riskGates).toEqual([false]);
+  });
+
+  it("[REVERT-FAILS] a failed role read throws and sends nothing, never 'nobody holds the sales class'", async () => {
+    const db = houseWithRoles({ [ANA]: "owner" });
+    const from = db.from.bind(db);
+    db.from = (table: string) => {
+      const q: any = from(table);
+      if (table !== "user_restaurant_access") return q;
+      const realIn = q.in.bind(q);
+      q.in = (col: string, values: unknown[]) =>
+        col === "role"
+          ? Promise.resolve({ data: null, error: { message: "statement timeout" } })
+          : realIn(col, values);
+      return q;
+    };
+    const { service, gmail } = build({ db, engine: { tillConcentrated: true } });
+    await expect(service.sweepTenant(TENANT, DUE_PLUS_5)).rejects.toThrow(
+      /user_restaurant_access read failed: statement timeout/,
+    );
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(sends(db)).toHaveLength(0);
   });
 });

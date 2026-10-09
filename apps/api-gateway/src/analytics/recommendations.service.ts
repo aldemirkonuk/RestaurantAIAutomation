@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
-import { GoalsService } from "./goals.service";
+import { GoalsService, SALES_GATED_GOAL_METRICS } from "./goals.service";
 import { DatabaseService } from "../database/database.service";
 import {
   RecommendationActionsService,
@@ -285,6 +285,14 @@ export class RecommendationsService {
        * answer is the house's.
        */
       viewerId?: string | null;
+      /**
+       * Whether the viewer sees sales (ADR 0290 §5). The concentration card
+       * reads the till (ADR 0298 decision 9), so it is evaluated only when
+       * this is true; absent, it is false. The digest composes twice and
+       * passes true only for its owner and manager recipients
+       * (recommendation-digest.service.ts, readSalesHolderIds).
+       */
+      withSales?: boolean;
     } = {},
   ): Promise<{
     recommendations: Recommendation[];
@@ -321,8 +329,12 @@ export class RecommendationsService {
       priceAdviceRes,
       priceLocksRes,
     ] = await Promise.allSettled([
-      this.analyticsService.getFinancialSummary(restaurantId),
-      this.analyticsService.getRiskProfile(restaurantId),
+      this.analyticsService.getFinancialSummary(restaurantId, 0, {
+        withSales: opts.withSales === true,
+      }),
+      this.analyticsService.getRiskProfile(restaurantId, {
+        withSales: opts.withSales === true,
+      }),
       this.analyticsService.getInventoryScience(restaurantId),
       this.advanced.getMenuEngineering(restaurantId),
       this.advanced.getSeasonality(restaurantId),
@@ -781,7 +793,16 @@ export class RecommendationsService {
     }));
 
     // ---- Goal rules -------------------------------------------------------
-    for (const g of ctx.goals.slice(0, 3)) {
+    // A goal read from the till keeps its last score in `current_value`
+    // (written by an owner's read or by the goal producers), so "N% done"
+    // would hand the till's figure to a viewer without sales. Such a goal is
+    // left out unless the gate is open (ADR 0298 decision 9).
+    const goalsForViewer = ctx.goals.filter(
+      (g: { metric_key?: unknown }) =>
+        opts.withSales === true ||
+        !SALES_GATED_GOAL_METRICS.has(String(g?.metric_key ?? "")),
+    );
+    for (const g of goalsForViewer.slice(0, 3)) {
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;
       const behind =

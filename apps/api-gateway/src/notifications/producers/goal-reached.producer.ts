@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
-import { GoalsService } from "../../analytics/goals.service";
+import {
+  GoalsService,
+  SALES_GATED_GOAL_METRICS,
+} from "../../analytics/goals.service";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import {
   ProducerLedgerService,
@@ -10,6 +13,7 @@ import {
 } from "./producer-ledger.service";
 import { clockIn, dayIn, earliness, onShiftPhrase } from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
+import { GoalAudience } from "./sales-holders";
 
 /**
  * "The goal was reached" — the success the house owns.
@@ -117,15 +121,43 @@ export class GoalReachedProducer {
 
     let ceilingGoals = 0;
 
+    const goalAudience = new GoalAudience(
+      client,
+      restaurantId,
+      audience,
+      SALES_GATED_GOAL_METRICS,
+    );
+
     for (const goal of goals) {
       if (goal.direction === "at_most") {
         ceilingGoals += 1;
         continue;
       }
 
+      // A metric read from the till is scored for, and told to, the house's
+      // owners and managers only (ADR 0298 decision 9); others as before.
+      const who = await goalAudience.for(String(goal.metric_key));
+      if ("withheld" in who) {
+        if (who.withheld === "role-unread") {
+          tally.failed += 1;
+          this.logger.warn(
+            `GOAL_SALES_AUDIENCE_UNREADABLE restaurant=${restaurantId} goal=${goal.id} — ` +
+              `${who.reason}. Who may see this goal cannot be told, so it is not read on this tick.`,
+          );
+        }
+        continue;
+      }
+
       let progress: any;
       try {
-        progress = await this.goals.getGoalProgress(restaurantId, goal.id);
+        progress = who.gate
+          ? await this.goals.getGoalProgress(
+              restaurantId,
+              goal.id,
+              undefined,
+              who.gate,
+            )
+          : await this.goals.getGoalProgress(restaurantId, goal.id);
       } catch (e: any) {
         tally.failed += 1;
         this.logger.warn(
@@ -174,7 +206,13 @@ export class GoalReachedProducer {
       });
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally, now },
+        {
+          restaurantId,
+          producer: PRODUCER,
+          audience: who.audience,
+          tally,
+          now,
+        },
         {
           // The target is IN the key: raising a target after it was met makes a
           // new goal to reach, and the house should hear about that one too.
@@ -224,7 +262,11 @@ export class GoalReachedProducer {
       tally.withheldReason =
         ceilingGoals > 0 && tally.considered === 0
           ? `${goals.length} active goal(s), of which ${ceilingGoals} are 'at most' ceilings this producer does not report on — crossing a ceiling is not a success. No 'at least' goal has reached its target.`
-          : "No active goal has reached its target.";
+          : goalAudience.roleUnread > 0
+            ? "No goal that could be read has reached its target."
+            : "No active goal has reached its target.";
+      const gated = goalAudience.sentence();
+      if (gated) tally.withheldReason = `${tally.withheldReason} ${gated}`;
     }
 
     return tally;

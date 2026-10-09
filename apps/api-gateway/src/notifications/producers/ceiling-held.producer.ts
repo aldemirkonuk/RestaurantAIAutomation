@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
-import { GoalsService } from "../../analytics/goals.service";
+import {
+  GoalsService,
+  SALES_GATED_GOAL_METRICS,
+} from "../../analytics/goals.service";
 import {
   ProducerLedgerService,
   emptyTally,
@@ -9,6 +12,7 @@ import {
 } from "./producer-ledger.service";
 import { clockIn, dayIn, onShiftPhrase, percent } from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
+import { GoalAudience } from "./sales-holders";
 import { localMidnight, shiftLocalDate } from "./service-day";
 
 /**
@@ -119,6 +123,13 @@ export class CeilingHeldProducer {
     let tooOld = 0;
     let breached = 0;
 
+    const goalAudience = new GoalAudience(
+      client,
+      restaurantId,
+      audience,
+      SALES_GATED_GOAL_METRICS,
+    );
+
     for (const goal of goals) {
       const periodEnd = String(goal.deadline).slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
@@ -145,9 +156,30 @@ export class CeilingHeldProducer {
         continue;
       }
 
+      // A metric read from the till is scored for, and told to, the house's
+      // owners and managers only (ADR 0298 decision 9); others as before.
+      const who = await goalAudience.for(String(goal.metric_key));
+      if ("withheld" in who) {
+        if (who.withheld === "role-unread") {
+          tally.failed += 1;
+          this.logger.warn(
+            `GOAL_SALES_AUDIENCE_UNREADABLE restaurant=${restaurantId} goal=${goal.id} — ` +
+              `${who.reason}. Who may see this goal cannot be told, so it is not read on this tick.`,
+          );
+        }
+        continue;
+      }
+
       let progress: any;
       try {
-        progress = await this.goals.getGoalProgress(restaurantId, goal.id);
+        progress = who.gate
+          ? await this.goals.getGoalProgress(
+              restaurantId,
+              goal.id,
+              undefined,
+              who.gate,
+            )
+          : await this.goals.getGoalProgress(restaurantId, goal.id);
       } catch (e: any) {
         tally.failed += 1;
         this.logger.warn(
@@ -185,7 +217,13 @@ export class CeilingHeldProducer {
       const name = String(goal.name || "Untitled goal");
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally, now },
+        {
+          restaurantId,
+          producer: PRODUCER,
+          audience: who.audience,
+          tally,
+          now,
+        },
         {
           // The period end, not the target: a ceiling that is reset for the next
           // month is a new period and gets its own line, while re-reading the
@@ -255,7 +293,8 @@ export class CeilingHeldProducer {
       if (tally.alreadyClaimed > 0) {
         bits.push(`${tally.alreadyClaimed} already reported`);
       }
-      tally.withheldReason = `${bits.join("; ")}.`;
+      const gated = goalAudience.sentence();
+      tally.withheldReason = `${bits.join("; ")}.${gated ? ` ${gated}` : ""}`;
     }
 
     return tally;

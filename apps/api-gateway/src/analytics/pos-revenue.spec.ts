@@ -6,7 +6,7 @@ import { RecommendationsService } from "./recommendations.service";
 import { RecommendationActionsService } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { ConfigService } from "@nestjs/config";
-import { GoalsService } from "./goals.service";
+import { DAYS_OF_STOCK_WITHHELD, GoalsService } from "./goals.service";
 import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
 import { ConsultantsService } from "./consultants.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -703,6 +703,8 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     getFinancialSummary: async () => ({ daysInventoryOutstanding: 42 }),
   };
   const NO_ZONE = { timezone: null, country: "US" };
+  // Days of stock reads the till: an owner's or a manager's (ADR 0298, decision 9).
+  const HOLDER = { withSales: true };
 
   it("(k) scores a days-of-stock goal for a house with no zone, and says why its deadline has no pace", async () => {
     const { service } = makeGoals(
@@ -711,7 +713,7 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       shelf,
     );
 
-    const list: any = await service.listGoalsWithProgress("r1");
+    const list: any = await service.listGoalsWithProgress("r1", undefined, HOLDER);
     expect(list.goals[0].unreadable).toBeUndefined();
     expect(list.goals[0]).toMatchObject({
       current: 42,
@@ -722,14 +724,14 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       paceUnread: HOUSE_ZONE_UNSET_PACE,
     });
     // The one-goal route says the same.
-    const one: any = await service.getGoalProgress("r1", "g-stock");
+    const one: any = await service.getGoalProgress("r1", "g-stock", undefined, HOLDER);
     expect(one.paceUnread).toBe(HOUSE_ZONE_UNSET_PACE);
   });
 
   it("(k2) paces the same goal in a house with a zone, and sends no reason", async () => {
     const { service } = makeGoals({ analytics_goals: [stock] }, {}, shelf);
 
-    const progress: any = await service.getGoalProgress("r1", "g-stock");
+    const progress: any = await service.getGoalProgress("r1", "g-stock", undefined, HOLDER);
 
     expect(progress.paceUnread).toBeNull();
     // 42 days of stock against "at most 30", 31 d 20 h into a 60-day schedule.
@@ -747,9 +749,20 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       shelf,
     );
 
-    const progress: any = await service.getGoalProgress("r1", "g-stock");
+    const progress: any = await service.getGoalProgress("r1", "g-stock", undefined, HOLDER);
 
     expect([progress.onTrack, progress.paceUnread]).toEqual([null, null]);
+  });
+
+  it("(k4) does not score days of stock for a caller who does not see sales: the goal says why", async () => {
+    const { service } = makeGoals({ analytics_goals: [stock] }, {}, shelf);
+
+    const list: any = await service.listGoalsWithProgress("r1");
+
+    expect(list.goals[0]).toMatchObject({
+      unreadable: true,
+      reason: DAYS_OF_STOCK_WITHHELD,
+    });
   });
 });
 
