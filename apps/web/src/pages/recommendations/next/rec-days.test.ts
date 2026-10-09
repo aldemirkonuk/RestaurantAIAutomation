@@ -9,7 +9,7 @@
  * as a measurement; this model is where that distinction is kept.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   barHeight,
   buildDays,
@@ -231,7 +231,7 @@ describe('touchesDay — what a selection may narrow to', () => {
 });
 
 describe('the strip’s small helpers', () => {
-  it('reads a business date in UTC, and refuses one that will not parse', () => {
+  it('reads a business date on the reader’s clock, and refuses one that will not parse', () => {
     expect(businessDate('2026-09-02T23:30:00.000Z')).toBe('2026-09-02');
     expect(businessDate('not a date')).toBeNull();
     expect(businessDate(null)).toBeNull();
@@ -246,5 +246,36 @@ describe('the strip’s small helpers', () => {
   it('writes the long day out rather than trusting the runtime’s ICU', () => {
     expect(fmtLongDay('2026-09-02')).toBe('Wednesday 2 September');
     expect(fmtLongDay('nope')).toBe('nope');
+  });
+});
+
+describe('the strip on an LA evening — the reader’s day, not the UTC one (F-326)', () => {
+  // The suite runs in New York; this reader is in Los Angeles at 19:30 PDT on
+  // the 29th, when the UTC date is already the 30th.
+  let tz: string | undefined;
+  beforeEach(() => {
+    tz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-30T02:30:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    process.env.TZ = tz;
+  });
+
+  it('rings tonight as today and keeps tomorrow in the future', () => {
+    const cells = buildDays({ ...base, now: undefined });
+    expect(cells.find((c) => c.isToday)!.date).toBe('2026-09-29');
+    expect(cells.find((c) => c.date === '2026-09-30')!.isFuture).toBe(true);
+    expect(cells.find((c) => c.date === '2026-09-30')!.records).toBe('future');
+  });
+
+  it('files an entry that fired this evening on tonight, not on tomorrow', () => {
+    // 18:00 PDT on the 29th.
+    const tonight = entry({ firstSeenAt: '2026-09-30T01:00:00.000Z' });
+    const cells = buildDays({ ...base, now: undefined, entries: [tonight] });
+    expect(cells.find((c) => c.date === '2026-09-29')!.fired).toEqual(['stockout_imminent']);
+    expect(cells.find((c) => c.date === '2026-09-30')!.fired).toEqual([]);
   });
 });

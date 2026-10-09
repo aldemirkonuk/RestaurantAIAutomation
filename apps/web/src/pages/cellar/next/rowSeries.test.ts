@@ -3,7 +3,7 @@
  * from `/inventory`'s equivalent.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { velocity, whenItSells, type TillLine } from './rowSeries';
 
 const line = (at: string, qty: number): TillLine => ({ at, qty, unitPrice: 18 });
@@ -80,5 +80,34 @@ describe('when it sells — over the hours this house actually sells in', () => 
     const w = whenItSells([{ at: '2026-08-25T09:15:00Z', qty: 0, unitPrice: null }]);
     expect(w.buckets).toHaveLength(0);
     expect(w.peak).toBeNull();
+  });
+});
+
+describe('one clock for the bars and the grid — an LA evening (F-327)', () => {
+  // The suite runs in New York; the house here is in Los Angeles, where the UTC
+  // date is already tomorrow from 17:00 on.
+  let tz: string | undefined;
+  beforeEach(() => {
+    tz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+  });
+  afterEach(() => {
+    process.env.TZ = tz;
+  });
+
+  it('puts a Friday 20:00 sale on Friday’s bar, the same day as its 8pm cell', () => {
+    // Fri 2026-08-28 20:00 PDT is Sat 03:00 UTC.
+    const sale = [line('2026-08-29T03:00:00Z', 2)];
+    const v = velocity(sale);
+    expect(v.days).toEqual([{ date: '2026-08-28', qty: 2 }]);
+    expect(v.to).toBe('2026-08-28');
+    const w = whenItSells(sale);
+    expect(w.buckets).toEqual([{ dow: 4, hour: 20, qty: 2 }]);
+  });
+
+  it('draws one bar per day across the night the clocks go back', () => {
+    // 2026-11-01 is 25 hours long in Los Angeles.
+    const v = velocity([line('2026-10-31T19:00:00Z', 1), line('2026-11-02T20:00:00Z', 1)]);
+    expect(v.days.map((d) => d.date)).toEqual(['2026-10-31', '2026-11-01', '2026-11-02']);
   });
 });

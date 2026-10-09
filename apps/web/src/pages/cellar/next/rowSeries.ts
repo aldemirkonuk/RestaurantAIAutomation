@@ -22,6 +22,8 @@
  * rang nothing — and only those are filled.
  */
 
+import { localDayKey } from '@/lib/localDay';
+
 export interface TillLine {
   at: string | null;
   qty: number | null;
@@ -45,10 +47,17 @@ export interface VelocitySeries {
   clipped: boolean;
 }
 
-const DAY = 86_400_000;
-
-function dayKey(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
+/**
+ * Midnight of the device-local day an instant falls on, `shift` days on.
+ *
+ * Local, not UTC, because the hour grid below places the same lines with
+ * `getDay`/`getHours`: a Friday 20:00 PDT sale must sit on Friday's bar as well
+ * as Friday's 8pm cell, not on a UTC Saturday. Stepped by calendar day, not by
+ * 24 h, so a daylight-saving night neither skips nor repeats a bar.
+ */
+function dayStart(ms: number, shift = 0): number {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + shift).getTime();
 }
 
 /**
@@ -66,21 +75,21 @@ export function velocity(lines: TillLine[], window = 14): VelocitySeries {
 
   const first = Math.min(...dated.map((l) => l.ms));
   const last = Math.max(...dated.map((l) => l.ms));
-  const lastDay = Date.parse(`${dayKey(last)}T00:00:00.000Z`);
-  const firstDay = Date.parse(`${dayKey(first)}T00:00:00.000Z`);
-  const capped = Math.max(firstDay, lastDay - (window - 1) * DAY);
+  const lastDay = dayStart(last);
+  const firstDay = dayStart(first);
+  const capped = Math.max(firstDay, dayStart(last, -(window - 1)));
   const clipped = capped > firstDay;
 
   const byDay = new Map<string, number>();
   for (const l of dated) {
     if (l.ms < capped) continue;
-    const k = dayKey(l.ms);
+    const k = localDayKey(l.ms);
     byDay.set(k, (byDay.get(k) ?? 0) + l.qty);
   }
 
   const days: DayPoint[] = [];
-  for (let t = capped; t <= lastDay; t += DAY) {
-    const k = dayKey(t);
+  for (let t = capped; t <= lastDay; t = dayStart(t, 1)) {
+    const k = localDayKey(t);
     days.push({ date: k, qty: byDay.get(k) ?? 0 });
   }
 
