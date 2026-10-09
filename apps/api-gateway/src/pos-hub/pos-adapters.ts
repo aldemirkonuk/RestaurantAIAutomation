@@ -304,15 +304,21 @@ export const toastAdapter: PosAdapter = {
         subtotal: num(c.amount),
         total: num(c.totalAmount ?? c.amount),
         tip: num(c.tipAmount),
-        items: (c.selections ?? []).map(
-          (s: any): CanonicalItem => ({
-            name: String(s.displayName ?? s.itemName ?? "unknown"),
-            externalItemId: s.item?.guid ?? null,
-            category: s.salesCategory?.name ?? null,
-            qty: num(s.quantity) ?? 1,
-            price: num(s.price) ?? 0,
-          }),
-        ),
+        // F-395: a selection Toast voided off the check stays in the list
+        // with `voided: true`. Kept, it was sold; dropped, the hub sees the
+        // re-sent check without it and gives its stock back. A value
+        // readVoided cannot read keeps the line, as before.
+        items: (c.selections ?? [])
+          .filter((s: any) => readVoided(s?.voided).voided !== true)
+          .map(
+            (s: any): CanonicalItem => ({
+              name: String(s.displayName ?? s.itemName ?? "unknown"),
+              externalItemId: s.item?.guid ?? null,
+              category: s.salesCategory?.name ?? null,
+              qty: num(s.quantity) ?? 1,
+              price: num(s.price) ?? 0,
+            }),
+          ),
         raw: c,
       }));
   },

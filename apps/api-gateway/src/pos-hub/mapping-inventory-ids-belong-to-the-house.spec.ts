@@ -100,6 +100,8 @@ function houseClient(opts: { mappings?: Row[]; proposals?: Row[] } = {}) {
           return q;
         },
         neq: () => q,
+        // What earlier imports of the check moved: nothing (sim wave 8).
+        like: () => q,
         is: () => q,
         not: () => q,
         order: () => q,

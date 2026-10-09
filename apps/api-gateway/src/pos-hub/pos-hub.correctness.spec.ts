@@ -28,6 +28,8 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row } = {}) {
         select: () => q,
         eq: () => q,
         in: () => q,
+        // What earlier imports of the check moved: nothing (sim wave 8).
+        like: async () => ({ data: [], error: null }),
         maybeSingle: async () => ({
           data: opts.inventory ?? null,
           error: null,

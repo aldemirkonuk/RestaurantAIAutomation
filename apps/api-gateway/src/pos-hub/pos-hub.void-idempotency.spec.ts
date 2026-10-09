@@ -37,7 +37,10 @@ type Row = Record<string, any>;
  * has already seen returns the first transaction and moves NOTHING.
  */
 function makeIdempotentDb(opening: number) {
-  const seen = new Map<string, { id: string; delta: number }>();
+  const seen = new Map<
+    string,
+    { id: string; delta: number; name: string; args: Row }
+  >();
   const state = { stockLive: opening };
   const calls: Array<{ name: string; args: Row; moved: boolean }> = [];
 
@@ -48,6 +51,26 @@ function makeIdempotentDb(opening: number) {
         select: () => q,
         eq: () => q,
         in: () => q,
+        // What earlier imports of the check moved: the rows this database
+        // wrote, under their keys (sim wave 8).
+        like: async () => ({
+          data: [...seen.entries()]
+            .filter(([, v]) =>
+              table === "inventory_transactions"
+                ? v.name === "apply_stock_movement"
+                : table === "pour_events"
+                  ? v.name === "record_glass_pour"
+                  : false,
+            )
+            .map(([key, v]) => ({
+              idempotency_key: key,
+              inventory_id: v.args.p_inventory_id,
+              quantity_change: v.delta,
+              pours: v.args.p_pours,
+              pour_ml: v.args.p_pour_ml,
+            })),
+          error: null,
+        }),
         upsert: async () => ({ error: null }),
         insert: async () => ({ error: null }),
       };
@@ -88,7 +111,7 @@ function makeIdempotentDb(opening: number) {
         }
         state.stockLive += Number(args.p_delta) || 0;
         const id = `tx-${seen.size + 1}`;
-        seen.set(key, { id, delta: Number(args.p_delta) || 0 });
+        seen.set(key, { id, delta: Number(args.p_delta) || 0, name, args });
         calls.push({ name, args, moved: true });
         return { data: id, error: null };
       }
@@ -99,7 +122,7 @@ function makeIdempotentDb(opening: number) {
           return { data: prior.id, error: null };
         }
         const id = `pour-${seen.size + 1}`;
-        seen.set(key, { id, delta: 0 });
+        seen.set(key, { id, delta: 0, name, args });
         calls.push({ name, args, moved: true });
         return { data: id, error: null };
       }
@@ -148,13 +171,16 @@ describe("PosHubService — a void moves stock under its own key (ADR 0093 D5)",
     expect(voidMove.args.p_delta).toBe(2);
     expect(voidMove.args.p_transaction_type).toBe("return");
     expect(voidMove.moved).toBe(true);
-    // Distinct keys, and the void's is derived from the sale's so a REPLAYED
-    // void is still idempotent.
+    // Distinct keys. Since sim wave 8 (F-393/F-395) a bottle void returns
+    // what the check's ledger says it took, under a key named by the check,
+    // the item and how many rows the check already holds for it: two
+    // deliveries of the same void read the same ledger and send the same
+    // key, so a REPLAYED void is still idempotent.
     expect(voidMove.args.p_idempotency_key).not.toBe(
       sale.args.p_idempotency_key,
     );
     expect(voidMove.args.p_idempotency_key).toBe(
-      `${sale.args.p_idempotency_key}:void`,
+      "pos:generic_webhook:chk-void-1:inv-1:void:1",
     );
   });
 

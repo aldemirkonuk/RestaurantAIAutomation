@@ -64,12 +64,37 @@ function makeDb(opts: DbOpts = {}) {
     consumption: [] as Row[],
     queued: [] as Row[],
   };
+  const booked: Array<{ fn: string; args: Row }> = [];
   const client: any = {
     from(table: string) {
       const q: any = {
         select: () => q,
         eq: () => q,
         in: async () => ({ data: [], error: null }),
+        // What earlier imports of the check moved, read back from the RPCs
+        // this mock answered (sim wave 8): the void is decided against it.
+        like: async () => ({
+          data:
+            table === "inventory_transactions"
+              ? booked
+                  .filter((c) => c.fn === "apply_stock_movement")
+                  .map((c) => ({
+                    idempotency_key: c.args.p_idempotency_key,
+                    inventory_id: c.args.p_inventory_id,
+                    quantity_change: c.args.p_delta,
+                  }))
+              : table === "pour_events"
+                ? booked
+                    .filter((c) => c.fn === "record_glass_pour")
+                    .map((c) => ({
+                      idempotency_key: c.args.p_idempotency_key,
+                      inventory_id: c.args.p_inventory_id,
+                      pours: c.args.p_pours,
+                      pour_ml: c.args.p_pour_ml,
+                    }))
+                : [],
+          error: null,
+        }),
         upsert: async (row: Row) => {
           if (table === "pos_checks") calls.checks.push(row);
           return { error: null };
@@ -102,7 +127,12 @@ function makeDb(opts: DbOpts = {}) {
     },
     rpc: async (fn: string, args: Row) => {
       calls.rpc.push({ fn, args });
-      return opts.rpc ? opts.rpc(fn, args) : { data: "tx-1", error: null };
+      const res = opts.rpc
+        ? opts.rpc(fn, args)
+        : { data: "tx-1", error: null };
+      // A refused write leaves no row for the ledger read to find.
+      if (!res.error) booked.push({ fn, args });
+      return res;
     },
   };
   return {
@@ -384,17 +414,20 @@ describe("ingest dates stock and consumption by the check (A-007 / A-009)", () =
       mappings: [BOTTLE],
       inventory: INVENTORY,
     });
+    // The sale first: a void returns only what this hub took (F-393).
+    await ingest(service, [check("c-3", CLOSED, [line(BOTTLE, 1)])]);
+    const soldConsumption = calls.consumption.length;
     await ingest(service, [
       check("c-3", CLOSED, [line(BOTTLE, 1)], { voided: true }),
     ]);
 
-    expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].args).toMatchObject({
+    expect(calls.rpc).toHaveLength(2);
+    expect(calls.rpc[1].args).toMatchObject({
       p_transaction_type: "return",
       p_delta: 1,
       p_occurred_at: AT,
     });
-    expect(calls.consumption).toHaveLength(0);
+    expect(calls.consumption).toHaveLength(soldConsumption);
   });
 });
 

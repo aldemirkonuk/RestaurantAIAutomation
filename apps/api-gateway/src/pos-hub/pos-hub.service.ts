@@ -287,8 +287,9 @@ export interface StockTally {
   lines: number;
   /**
    * Lines with nothing to move by design: not a stock line (kept on
-   * pos_checks.items for the analytics that read it), or a quantity that
-   * rounds to zero.
+   * pos_checks.items for the analytics that read it), a quantity of zero or
+   * less, or a voided line whose sale this hub never booked (F-393; errors[]
+   * names those).
    */
   notStock: number;
   /**
@@ -312,7 +313,7 @@ export interface StockTally {
   backdatedOver72h: number;
 }
 
-type StockFailureKind = "stock" | "queue" | "consumption";
+type StockFailureKind = "stock" | "queue" | "consumption" | "neverTaken";
 
 /**
  * The import report a check's stock effects count into (ADR 0281), keyed by
@@ -332,6 +333,63 @@ function decidedLines(t: StockTally): number {
     t.failed
   );
 }
+
+/**
+ * One wine line of a closed check, resolved to what it takes (sim wave 8).
+ * Exactly one of `bottles` (a whole-bottle move) or `pours` x `pourMl` (a draw
+ * through record_glass_pour) is set. `part` marks a fractional quantity
+ * carried as ml (F-394): a split check's half bottle, or a third of one.
+ */
+interface PlannedStockLine {
+  it: {
+    name: string;
+    external_item_id: string | null;
+    qty: number;
+    price: number;
+    inventory_id: string | null;
+  };
+  inventoryId: string;
+  idem: string;
+  label: string;
+  inv: InventoryVolumes | null;
+  qty: number;
+  bottles: number;
+  pours: number;
+  pourMl: number;
+  part: boolean;
+  consumed: ResolvedSaleVolume;
+  consumedQty: number;
+}
+
+/**
+ * What earlier imports of one check moved, per inventory item (F-393/F-395).
+ * Read from the stock writes themselves: `inventory_transactions` rows keyed
+ * under the check (whole bottles; record_glass_pour's own ledger row carries
+ * no key) and `pour_events` rows keyed under it (ml).
+ */
+interface CheckLedger {
+  /** No keyed stock row exists for this check: its first import. */
+  empty: boolean;
+  /** Whole bottles taken net (sales minus returns), per item. */
+  bottles: Map<string, number>;
+  /** Ml poured and not voided, per item. */
+  ml: Map<string, number>;
+  /** Keyed rows of either kind, per item: names the next correction's key. */
+  rows: Map<string, number>;
+  /** Keys of the pours booked for this check. */
+  pourKeys: Set<string>;
+  /** Pour keys whose B19 whole-bottle void return is already booked. */
+  glassVoided: Set<string>;
+}
+
+/** Every stock key of a check begins with this (B15). */
+function checkLedgerPrefix(source: string, externalCheckId: string): string {
+  return `pos:${source}:${externalCheckId}:`;
+}
+
+/** Said when a till takes back a pour that was already poured. */
+const POURED_CANNOT_RETURN =
+  "the till took back a glass or part of a bottle that was already poured; a poured glass cannot be put back on the shelf automatically, so count this bottle and correct its stock by hand";
 
 /** At most this many grouped stock lines reach errors[]; the rest are summed into one. */
 const MAX_STOCK_ERROR_GROUPS = 50;
@@ -419,6 +477,13 @@ export class StockReport {
         case "consumption":
           out.push(
             `stock: "${g.label}" moved stock on ${lines} but its consumption log row was not written: ${g.message} (first on check ${g.checkId})`,
+          );
+          break;
+        case "neverTaken":
+          // F-393: not a failure, but said, because a void that returns
+          // nothing looks like one to a person comparing the till with stock.
+          out.push(
+            `stock: "${g.label}" was voided on ${lines} before this hub booked its sale, so no stock was taken and none was returned (first on check ${g.checkId})`,
           );
           break;
       }
@@ -695,8 +760,11 @@ export function tallyChannels(
  * depletion via apply_stock_movement/record_glass_pour for closed checks only
  * (decision B18). Idempotent on (restaurant_id, source, external_check_id)
  * for the check row, and on `pos:{source}:{externalCheckId}:{externalItemId}
- * :{lineNo}` (decision B15) for every stock write, so webhook replays and
- * re-imports are safe.
+ * :{lineNo}` (decision B15) for the first import of a check's stock, so webhook
+ * replays and re-imports are safe. Every later import of the same check is
+ * compared with the stock rows keyed under it and moves only the difference
+ * (sim wave 8): a corrected or voided check corrects stock, and a void never
+ * returns what was never taken.
  */
 @Injectable()
 export class PosHubService {
@@ -1369,6 +1437,15 @@ export class PosHubService {
     tally.lines += items.length;
     const decidedBefore = decidedLines(tally);
 
+    // Two passes (sim wave 8, F-393/F-394/F-395). The first resolves every
+    // wine line to what it takes -- whole bottles, or ml -- and queues what
+    // cannot be resolved, as before. The second compares the check with what
+    // earlier imports of the SAME check already moved, and moves only the
+    // difference. Until then each line was booked under its own key and the
+    // RPC's early return was the only memory, so a check that first arrived
+    // voided returned bottles nobody took (F-393), and a re-sent check that
+    // lost or shrank a line never gave the stock back (F-395).
+    const planned: PlannedStockLine[] = [];
     for (let lineNo = 0; lineNo < items.length; lineNo++) {
       const it = items[lineNo];
       // Stock-scoped skip only. The full line set — food included — was
@@ -1380,8 +1457,12 @@ export class PosHubService {
       // is skipped here. See .planning/BEVERAGE_CATALOGUE_PLAN.md register A11.
       if (!it.is_wine) continue;
 
-      const qty = Math.max(0, Math.round(Number(it.qty) || 0));
-      if (qty <= 0) continue;
+      // F-394: no rounding. A till that splits one bottle across two checks
+      // sends 0.5 on each, and Math.round took a whole bottle for each half
+      // (2 for 1), while a three-way split rounded to 0 and took nothing. A
+      // part is carried as ml below.
+      const qty = Number(it.qty);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
 
       try {
         if (!it.inventory_id) {
@@ -1437,124 +1518,55 @@ export class PosHubService {
           continue;
         }
 
-        // B15: depletion idempotency key.
-        const idem = `pos:${source}:${check.externalCheckId}:${it.external_item_id ?? it.name}:${lineNo}`;
-        // Reporting label only — never arithmetic (ADR 0011).
-        const label = it.sale_unit ?? resolved.mode;
-
-        // supabase-js resolves RPC failures as { error } rather than
-        // throwing, so — as in the receiving-door bug this plan's spine
-        // repair fixed — the error field must be checked explicitly or a
-        // failed depletion reports success silently.
-        let rpcError: { message?: string } | null = null;
-        if (resolved.mode === "volume" && !isVoid) {
+        const line: PlannedStockLine = {
+          it,
+          inventoryId: it.inventory_id,
+          // B15: depletion idempotency key, for the first import of a check.
+          idem: `pos:${source}:${check.externalCheckId}:${it.external_item_id ?? it.name}:${lineNo}`,
+          // Reporting label only — never arithmetic (ADR 0011).
+          label: it.sale_unit ?? resolved.mode,
+          inv,
+          qty,
+          bottles: 0,
+          pours: 0,
+          pourMl: 0,
+          part: false,
+          consumed: resolved,
+          consumedQty: qty,
+        };
+        if (Number.isInteger(qty) && resolved.mode === "whole_bottle") {
+          line.bottles = qty;
+        } else if (Number.isInteger(qty) && resolved.mode === "volume") {
           // record_glass_pour has taken an arbitrary p_pour_ml since the
           // baseline (baseline_from_production.sql:1132); the app layer was
           // the only binary part. It is passed explicitly rather than as null
           // so the ml that moves stock and the ml written to the consumption
           // log are the same number, decided here.
-          ({ error: rpcError } = await db.rpc("record_glass_pour", {
-            p_inventory_id: it.inventory_id,
-            p_pours: qty,
-            p_pour_ml: Math.round(resolved.ml),
-            p_location_id: null,
-            p_source: "pos",
-            p_reason: `POS sale (${label}): ${it.name}`,
-            p_idempotency_key: idem,
-            // ADR 0281: dated by the check, not by its arrival.
-            p_occurred_at: when.at,
-          }));
+          line.pours = qty;
+          line.pourMl = Math.round(resolved.ml);
         } else {
-          // Whole-bottle sales, and every void.
-          //
-          // B19 (unchanged, and wrong — see ADR 0011 Consequences): a partial-
-          // volume void returns `qty` WHOLE BOTTLES because record_glass_pour
-          // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
-          // it is because B19 is a recorded decision; superseding it is the
-          // founder's call, not this change's.
-          //
-          // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
-          //
-          // `apply_stock_movement` (production definition, read 2026-09-02)
-          // opens with `SELECT id ... WHERE idempotency_key = p_idempotency_key
-          // ... IF FOUND RETURN`. Passing `idem` here — the key the SALE
-          // already wrote — therefore returned the sale's transaction id and
-          // MOVED NOTHING: a voided check stayed depleted forever, and the
-          // caller could not tell, because an idempotent hit and a real
-          // movement are the same `{ error: null }`.
-          //
-          // `${idem}:void` is derived from the sale's key rather than random,
-          // so a REPLAYED void is still idempotent — the property the sale
-          // already had, extended to the reversal.
-          //
-          // pos-hub.void-idempotency.spec.ts pins this against a mock that
-          // actually implements the early return; the older B19 tests could
-          // not see it because their mock ignores the key.
-          ({ error: rpcError } = await db.rpc("apply_stock_movement", {
-            p_inventory_id: it.inventory_id,
-            p_stock_state: "live",
-            p_delta: isVoid ? qty : -qty,
-            p_transaction_type: isVoid ? "return" : "sale",
-            p_source: "pos",
-            p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
-            p_idempotency_key: isVoid ? `${idem}:void` : idem,
-            // ADR 0141 — the house this check belongs to. `it.inventory_id`
-            // comes from a `pos_item_mappings` row read for this restaurant;
-            // the row belonging here does not make the item it names belong
-            // here, and a mis-seeded mapping used to move another house's
-            // shelf on every sale.
-            p_restaurant_id: restaurantId,
-            // ADR 0281: a sale and its void are both dated by the closed_at
-            // their check carries. A void lands on the sale's day only when
-            // the till re-sends the sale's closed_at on it; a till that
-            // stamps the void with its own time dates the return then.
-            p_occurred_at: when.at,
-          }));
-        }
-
-        if (rpcError) {
-          this.logger.warn(
-            `Stock effect failed for ${it.name} (${label}) on check ${check.externalCheckId}: ${rpcError.message}`,
-          );
-          tally.failed++;
-          report.noteFailure(
-            "stock",
-            it.name,
-            rpcError.message,
-            check.externalCheckId,
-          );
-        } else {
-          affected.add(it.inventory_id);
-          if (!isVoid) {
-            const consumption = await this.recordConsumption(
-              restaurantId,
-              it,
-              resolved,
-              inv,
-              qty,
-              idem,
-              when.at,
-            );
-            if (consumption === "already") {
-              // The consumption row under this key exists, so an earlier
-              // import booked this line; the RPC answered with that booking.
-              tally.alreadyBooked++;
-            } else {
-              booked();
-              if (consumption === "failed") {
-                tally.consumptionNotWritten++;
-                report.noteFailure(
-                  "consumption",
-                  it.name,
-                  "the stock moved; see the gateway log for the database error",
-                  check.externalCheckId,
-                );
-              }
-            }
-          } else {
-            booked();
+          // F-394: a part of a bottle (or of a pour) is one draw of that many
+          // ml through record_glass_pour, which finishes open bottles first,
+          // so two halves of one bottle open exactly one. It needs the
+          // bottle's size: the RPC would assume 750ml for a missing one.
+          const unitMl =
+            resolved.mode === "volume" ? resolved.ml : (inv?.bottleMl ?? null);
+          if (unitMl == null) {
+            await this.queueUnresolvedLine(restaurantId, source, check, it, {
+              reason: "no_sale_volume",
+              mappedInventoryId: it.inventory_id,
+              detail: `the till sold ${qty} of a bottle, and the inventory row carries no bottle_size_ml to say how much that is`,
+            });
+            continue;
           }
+          line.part = true;
+          line.pours = 1;
+          line.pourMl = Math.round(qty * unitMl);
+          if (line.pourMl < 1) continue;
+          line.consumed = { mode: "volume", ml: line.pourMl };
+          line.consumedQty = 1;
         }
+        planned.push(line);
       } catch (err: any) {
         this.logger.warn(
           `Stock effect threw for ${it.name} on check ${check.externalCheckId}: ${err?.message}`,
@@ -1566,6 +1578,298 @@ export class PosHubService {
           err?.message ?? String(err),
           check.externalCheckId,
         );
+      }
+    }
+
+    // supabase-js resolves RPC failures as { error } rather than throwing, so
+    // — as in the receiving-door bug this plan's spine repair fixed — the
+    // error field must be checked explicitly or a failed depletion reports
+    // success silently. A throw is folded into the same shape.
+    const call = async (
+      name: "apply_stock_movement" | "record_glass_pour",
+      args: Record<string, unknown>,
+    ): Promise<string | null> => {
+      try {
+        const { error } = await db.rpc(name, args);
+        return error ? (error.message ?? "no message") : null;
+      } catch (err: any) {
+        return err?.message ?? String(err);
+      }
+    };
+    const move = (
+      inventoryId: string,
+      delta: number,
+      reason: string,
+      key: string,
+    ) =>
+      call("apply_stock_movement", {
+        p_inventory_id: inventoryId,
+        p_stock_state: "live",
+        p_delta: delta,
+        p_transaction_type: delta > 0 ? "return" : "sale",
+        p_source: "pos",
+        p_reason: reason,
+        p_idempotency_key: key,
+        // ADR 0141 — the house this check belongs to. `it.inventory_id`
+        // comes from a `pos_item_mappings` row read for this restaurant;
+        // the row belonging here does not make the item it names belong
+        // here, and a mis-seeded mapping used to move another house's
+        // shelf on every sale.
+        p_restaurant_id: restaurantId,
+        // ADR 0281: a sale and its void are both dated by the closed_at
+        // their check carries. A void lands on the sale's day only when
+        // the till re-sends the sale's closed_at on it; a till that
+        // stamps the void with its own time dates the return then.
+        p_occurred_at: when.at,
+      });
+    const pour = (
+      inventoryId: string,
+      pours: number,
+      pourMl: number,
+      reason: string,
+      key: string,
+    ) =>
+      call("record_glass_pour", {
+        p_inventory_id: inventoryId,
+        p_pours: pours,
+        p_pour_ml: pourMl,
+        p_location_id: null,
+        p_source: "pos",
+        p_reason: reason,
+        p_idempotency_key: key,
+        // ADR 0281: dated by the check, not by its arrival.
+        p_occurred_at: when.at,
+      });
+    const fail = (name: string, message: string, lines: number) => {
+      this.logger.warn(
+        `Stock effect failed for ${name} on check ${check.externalCheckId}: ${message}`,
+      );
+      tally.failed += lines;
+      for (let i = 0; i < Math.max(lines, 1); i++) {
+        report.noteFailure("stock", name, message, check.externalCheckId);
+      }
+    };
+    const consume = async (
+      line: PlannedStockLine,
+      consumed: ResolvedSaleVolume,
+      qty: number,
+      key: string,
+    ): Promise<"logged" | "already" | "failed"> => {
+      const consumption = await this.recordConsumption(
+        restaurantId,
+        line.it,
+        consumed,
+        line.inv,
+        qty,
+        key,
+        when.at,
+      );
+      if (consumption === "failed") {
+        tally.consumptionNotWritten++;
+        report.noteFailure(
+          "consumption",
+          line.it.name,
+          "the stock moved; see the gateway log for the database error",
+          check.externalCheckId,
+        );
+      }
+      return consumption;
+    };
+
+    const ledger =
+      planned.length > 0
+        ? await this.readCheckLedger(
+            restaurantId,
+            source,
+            check.externalCheckId,
+          )
+        : null;
+    if (ledger && !ledger.ok) {
+      // Fail closed: without knowing what this check already moved, a sale
+      // could be taken twice and a void could return what was never taken.
+      for (const line of planned) {
+        fail(
+          line.it.name,
+          `could not read what earlier imports of this check moved, so nothing was moved: ${ledger.message}`,
+          1,
+        );
+      }
+    } else if (ledger && ledger.empty && isVoid) {
+      // F-393: the check's first arrival is already voided (a nightly export
+      // holding a check voided during service). Nothing was taken for it, so
+      // nothing is returned; each line is notStock, and errors[] says why.
+      for (const line of planned) {
+        report.noteFailure(
+          "neverTaken",
+          line.it.name,
+          null,
+          check.externalCheckId,
+        );
+      }
+    } else if (ledger && ledger.empty) {
+      // The first import of a closed check: each line under its own B15 key,
+      // exactly as before, so a replay racing this import is still a no-op.
+      for (const line of planned) {
+        const reason = `POS sale (${line.label}): ${line.it.name}`;
+        const error =
+          line.bottles > 0
+            ? await move(line.inventoryId, -line.bottles, reason, line.idem)
+            : await pour(
+                line.inventoryId,
+                line.pours,
+                line.pourMl,
+                reason,
+                line.idem,
+              );
+        if (error) {
+          fail(line.it.name, error, 1);
+          continue;
+        }
+        affected.add(line.inventoryId);
+        const consumption = await consume(
+          line,
+          line.consumed,
+          line.consumedQty,
+          line.idem,
+        );
+        // The consumption row under this key exists, so an earlier import
+        // booked this line; the RPC answered with that booking.
+        if (consumption === "already") tally.alreadyBooked++;
+        else booked();
+      }
+    } else if (ledger) {
+      // A check this hub has moved stock for before: a replay, a correction
+      // (a line removed, a quantity changed), or its void. Per item, the
+      // check now asks for `want`; earlier imports took `had`; only the
+      // difference moves, under a key named by how many rows this check
+      // already holds for the item, so a second delivery of the same
+      // correction is a no-op and a later, different one is not.
+      const prefix = checkLedgerPrefix(source, check.externalCheckId);
+      const ids = new Set<string>([
+        ...planned.map((l) => l.inventoryId),
+        ...ledger.bottles.keys(),
+        ...ledger.ml.keys(),
+      ]);
+      for (const inventoryId of ids) {
+        const lines = planned.filter((l) => l.inventoryId === inventoryId);
+        const rows = ledger.rows.get(inventoryId) ?? 0;
+        const name = lines[0]?.it.name ?? `inventory item ${inventoryId}`;
+
+        // Whole bottles.
+        const bottleLines = lines.filter((l) => l.bottles > 0);
+        const hadBottles = ledger.bottles.get(inventoryId) ?? 0;
+        const wantBottles = isVoid
+          ? 0
+          : bottleLines.reduce((n, l) => n + l.bottles, 0);
+        const bottleDiff = wantBottles - hadBottles;
+        if (bottleDiff === 0) {
+          // Nothing to move: a replay, or a void already returned. A voided
+          // line this hub never booked a sale for returns nothing (F-393).
+          for (const l of bottleLines) {
+            if (rows > 0) tally.alreadyBooked++;
+            else
+              report.noteFailure(
+                "neverTaken",
+                l.it.name,
+                null,
+                check.externalCheckId,
+              );
+          }
+        } else {
+          const kind = isVoid ? "void" : "bottles";
+          const key = `${prefix}${inventoryId}:${kind}:${rows}`;
+          const error = await move(
+            inventoryId,
+            -bottleDiff,
+            `POS ${isVoid ? "void" : bottleDiff > 0 ? "sale" : "correction"} (bottle): ${name}`,
+            key,
+          );
+          if (error) fail(name, error, bottleLines.length);
+          else {
+            affected.add(inventoryId);
+            for (let i = 0; i < bottleLines.length; i++) booked();
+            if (bottleDiff > 0 && bottleLines[0]) {
+              await consume(
+                bottleLines[0],
+                { mode: "whole_bottle" },
+                bottleDiff,
+                key,
+              );
+            }
+          }
+        }
+
+        // Pours and parts of a bottle, in ml.
+        const pourLines = lines.filter((l) => l.bottles === 0);
+        if (isVoid) {
+          for (const l of pourLines) {
+            if (ledger.glassVoided.has(l.idem)) {
+              tally.alreadyBooked++;
+            } else if (ledger.pourKeys.has(l.idem) && !l.part) {
+              // B19 (unchanged, and wrong — see ADR 0011 Consequences): a
+              // partial-volume void returns `qty` WHOLE BOTTLES because
+              // record_glass_pour has no reversal mode. Voiding 5 glasses
+              // returns 5 bottles. Left as it is because B19 is a recorded
+              // decision; superseding it is the founder's call (OD-67).
+              //
+              // ADR 0093 D5 — the void's key is not the sale's key, or
+              // apply_stock_movement's early return answers the void with the
+              // sale's transaction and moves nothing. It is derived from the
+              // sale's key so a replayed void stays idempotent.
+              const error = await move(
+                inventoryId,
+                l.qty,
+                `POS void (${l.label}): ${l.it.name}`,
+                `${l.idem}:void`,
+              );
+              if (error) fail(l.it.name, error, 1);
+              else {
+                affected.add(inventoryId);
+                booked();
+              }
+            } else if ((ledger.ml.get(inventoryId) ?? 0) > 0) {
+              fail(l.it.name, POURED_CANNOT_RETURN, 1);
+            } else {
+              report.noteFailure(
+                "neverTaken",
+                l.it.name,
+                null,
+                check.externalCheckId,
+              );
+            }
+          }
+          continue;
+        }
+        const hadMl = ledger.ml.get(inventoryId) ?? 0;
+        const wantMl = pourLines.reduce((n, l) => n + l.pours * l.pourMl, 0);
+        if (wantMl === hadMl) {
+          tally.alreadyBooked += pourLines.length;
+        } else if (wantMl > hadMl) {
+          const key = `${prefix}${inventoryId}:ml:${rows}`;
+          const error = await pour(
+            inventoryId,
+            1,
+            wantMl - hadMl,
+            `POS sale (ml): ${name}`,
+            key,
+          );
+          if (error) fail(name, error, pourLines.length);
+          else {
+            affected.add(inventoryId);
+            for (let i = 0; i < pourLines.length; i++) booked();
+            await consume(
+              pourLines[0],
+              { mode: "volume", ml: wantMl - hadMl },
+              1,
+              key,
+            );
+          }
+        } else {
+          // The till took a pour back off a check after it was poured. A
+          // poured glass has no automatic way back (B19 covers only a whole
+          // voided check), so a person corrects it; errors[] says so.
+          fail(name, POURED_CANNOT_RETURN, pourLines.length);
+        }
       }
     }
     // Every line that reached no outcome above was skipped by design.
@@ -1589,6 +1893,78 @@ export class PosHubService {
       }
     }
     return tally;
+  }
+
+  /**
+   * What earlier imports of this check moved (sim wave 8, F-393/F-395). Read
+   * by the B15 key prefix, so rows written under a line's position before
+   * this change count exactly as rows written after it. A read that fails, or
+   * answers without a list, is not an empty ledger: the caller moves nothing.
+   */
+  private async readCheckLedger(
+    restaurantId: string,
+    source: string,
+    externalCheckId: string,
+  ): Promise<({ ok: true } & CheckLedger) | { ok: false; message: string }> {
+    // LIKE treats `_` and `%` as wildcards and a till's check id may carry
+    // either, so both (and the escape itself) are escaped.
+    const pattern = `${checkLedgerPrefix(source, externalCheckId).replace(
+      /[\\%_]/g,
+      (c) => `\\${c}`,
+    )}%`;
+    try {
+      const db = this.dbService.getClient();
+      const [tx, pours] = await Promise.all([
+        db
+          .from("inventory_transactions")
+          .select("idempotency_key, inventory_id, quantity_change")
+          .eq("restaurant_id", restaurantId)
+          .like("idempotency_key", pattern),
+        db
+          .from("pour_events")
+          .select("idempotency_key, inventory_id, pours, pour_ml")
+          .eq("restaurant_id", restaurantId)
+          .like("idempotency_key", pattern),
+      ]);
+      const error = tx?.error ?? pours?.error;
+      if (error) return { ok: false, message: error.message ?? "no message" };
+      if (!Array.isArray(tx?.data) || !Array.isArray(pours?.data)) {
+        return { ok: false, message: "the stock read returned no list" };
+      }
+      const ledger: CheckLedger = {
+        empty: tx.data.length === 0 && pours.data.length === 0,
+        bottles: new Map(),
+        ml: new Map(),
+        rows: new Map(),
+        pourKeys: new Set(
+          pours.data.map((r: any) => String(r.idempotency_key)),
+        ),
+        glassVoided: new Set(),
+      };
+      const add = (m: Map<string, number>, id: string, n: number) =>
+        m.set(id, (m.get(id) ?? 0) + n);
+      for (const r of tx.data as any[]) {
+        const key = String(r.idempotency_key);
+        const id = String(r.inventory_id);
+        add(ledger.rows, id, 1);
+        // A B19 glass void returns whole bottles under `${pourKey}:void`; it
+        // reverses that pour, not a bottle sale.
+        if (key.endsWith(":void") && ledger.pourKeys.has(key.slice(0, -5))) {
+          ledger.glassVoided.add(key.slice(0, -5));
+          continue;
+        }
+        add(ledger.bottles, id, -(Number(r.quantity_change) || 0));
+      }
+      for (const r of pours.data as any[]) {
+        const id = String(r.inventory_id);
+        add(ledger.rows, id, 1);
+        if (ledger.glassVoided.has(String(r.idempotency_key))) continue;
+        add(ledger.ml, id, (Number(r.pours) || 0) * (Number(r.pour_ml) || 0));
+      }
+      return { ok: true, ...ledger };
+    } catch (err: any) {
+      return { ok: false, message: err?.message ?? String(err) };
+    }
   }
 
   /**

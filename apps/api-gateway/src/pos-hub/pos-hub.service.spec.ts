@@ -27,6 +27,30 @@ function makeDb(opts: { mappings?: Row[]; tables?: Row[]; inventory?: Row[] }) {
         select: () => q,
         eq: () => q,
         in: () => q,
+        // What earlier imports of the check moved, read back from the RPCs
+        // this mock answered (sim wave 8): the void is decided against it.
+        like: async () => ({
+          data:
+            table === "inventory_transactions"
+              ? calls.rpc
+                  .filter((c) => c.name === "apply_stock_movement")
+                  .map((c) => ({
+                    idempotency_key: c.args.p_idempotency_key,
+                    inventory_id: c.args.p_inventory_id,
+                    quantity_change: c.args.p_delta,
+                  }))
+              : table === "pour_events"
+                ? calls.rpc
+                    .filter((c) => c.name === "record_glass_pour")
+                    .map((c) => ({
+                      idempotency_key: c.args.p_idempotency_key,
+                      inventory_id: c.args.p_inventory_id,
+                      pours: c.args.p_pours,
+                      pour_ml: c.args.p_pour_ml,
+                    }))
+                : [],
+          error: null,
+        }),
         upsert: async () => ({ error: null }),
       };
       if (table === "pos_item_mappings") {
@@ -180,12 +204,14 @@ describe("PosHubService.ingest — stock effects", () => {
       ],
     });
 
+    // The sale first: a void returns only what this hub took (F-393).
+    await service.ingest("r1", "generic_webhook", [closedCheckPayload()]);
     await service.ingest("r1", "generic_webhook", [
       closedCheckPayload({ voided: true }),
     ]);
 
-    expect(calls.rpc[0].args.p_delta).toBe(2);
-    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+    expect(calls.rpc[1].args.p_delta).toBe(2);
+    expect(calls.rpc[1].args.p_transaction_type).toBe("return");
   });
 
   it("reverses a glass void via apply_stock_movement, not record_glass_pour (B19)", async () => {
@@ -201,14 +227,17 @@ describe("PosHubService.ingest — stock effects", () => {
       ],
     });
 
+    // The sale first: a void returns only what this hub took (F-393).
+    await service.ingest("r1", "generic_webhook", [closedCheckPayload()]);
     await service.ingest("r1", "generic_webhook", [
       closedCheckPayload({ voided: true }),
     ]);
 
-    expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].name).toBe("apply_stock_movement");
-    expect(calls.rpc[0].args.p_delta).toBe(2);
-    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+    expect(calls.rpc).toHaveLength(2);
+    expect(calls.rpc[0].name).toBe("record_glass_pour");
+    expect(calls.rpc[1].name).toBe("apply_stock_movement");
+    expect(calls.rpc[1].args.p_delta).toBe(2);
+    expect(calls.rpc[1].args.p_transaction_type).toBe("return");
   });
 
   it("queues an unmapped wine line in pos_unresolved_lines instead of dropping it (B20)", async () => {
