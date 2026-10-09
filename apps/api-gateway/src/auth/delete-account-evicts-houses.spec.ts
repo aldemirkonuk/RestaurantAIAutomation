@@ -41,6 +41,8 @@ function makeService(seed: {
   access?: Record<string, any>[];
   invites?: Record<string, any>[];
   users?: Record<string, any>[];
+  oauth?: Record<string, any>[];
+  blockers?: Record<string, any>[];
   errors?: Record<string, { message: string }>;
 }) {
   const db = makeStubDb(
@@ -48,7 +50,8 @@ function makeService(seed: {
       user_restaurant_access: seed.access ?? [],
       organization_invites: seed.invites ?? [],
       users: seed.users ?? [{ user_id: USER, email: "leaving@example.com" }],
-      user_oauth_accounts: [],
+      user_oauth_accounts: seed.oauth ?? [],
+      account_delete_blockers: seed.blockers ?? [],
       team_members: [],
       notifications: [],
       system_audit_log: [],
@@ -170,5 +173,88 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
       BadRequestException,
     );
     expect(gateway.evictFromHouse).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F-457 (house-lifecycle sim, 2026-10-09). The house's own records refuse the
+ * `users` delete once the person wrote a crew note or changed a menu price
+ * (ON DELETE RESTRICT). The delete used to leave every house and drop the
+ * sign-in links first, then fail: account kept, houses gone. The stub's
+ * `users:delete` error stands for that RESTRICT refusal.
+ */
+describe("deleteAccount — refused up front when records keep the person's name (F-457)", () => {
+  const RESTRICTED = {
+    "users:delete": {
+      message:
+        'update or delete on table "users" violates foreign key constraint "team_notes_author_user_id_fkey"',
+    },
+  };
+
+  it("names the records and writes nothing: still in every house, sign-in links kept, no account delete tried", async () => {
+    const { svc, db, gateway } = makeService({
+      access: [
+        { user_id: USER, restaurant_id: HOUSE_A, role: "manager", is_active: true },
+        { user_id: USER, restaurant_id: HOUSE_B, role: "staff", is_active: true },
+      ],
+      oauth: [{ user_id: USER, provider: "google", provider_user_id: "g-1" }],
+      invites: [invite({ restaurant_id: HOUSE_A })],
+      blockers: [
+        { table_name: "team_notes", column_name: "author_user_id", row_count: 3 },
+        { table_name: "menu_price_versions", column_name: "changed_by", row_count: 12 },
+      ],
+      errors: RESTRICTED,
+    });
+
+    const refusal = svc.deleteAccount(USER);
+    await expect(refusal).rejects.toBeInstanceOf(BadRequestException);
+    await expect(refusal).rejects.toThrow(
+      /crew notes and menu price changes.*Nothing was changed/,
+    );
+
+    expect(db.ops.filter((o) => o.op !== "select")).toEqual([]);
+    expect(gateway.evictFromHouse).not.toHaveBeenCalled();
+    expect(
+      db.tables.user_restaurant_access.map((r) => [r.restaurant_id, r.is_active]),
+    ).toEqual([
+      [HOUSE_A, true],
+      [HOUSE_B, true],
+    ]);
+    expect(db.tables.user_oauth_accounts).toHaveLength(1);
+    expect(db.tables.users).toHaveLength(1);
+    expect(
+      new Date(db.tables.organization_invites[0].expires_at).getTime(),
+    ).toBeGreaterThan(Date.now());
+  });
+
+  it("refuses with 503 and writes nothing when the check itself cannot be read", async () => {
+    const { svc, db, gateway } = makeService({
+      access: [
+        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
+      ],
+      errors: { "rpc:account_delete_blockers": { message: "connection reset" } },
+    });
+
+    await expect(svc.deleteAccount(USER)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(db.ops.filter((o) => o.op !== "select")).toEqual([]);
+    expect(gateway.evictFromHouse).not.toHaveBeenCalled();
+  });
+
+  it("if the account delete is still refused after the check, the sign-in links stay and the message says the houses were left", async () => {
+    const { svc, db } = makeService({
+      access: [
+        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
+      ],
+      oauth: [{ user_id: USER, provider: "google", provider_user_id: "g-1" }],
+      errors: RESTRICTED,
+    });
+
+    await expect(svc.deleteAccount(USER)).rejects.toThrow(
+      /left your restaurants, but the account itself was not deleted/,
+    );
+    expect(db.opsOn("user_oauth_accounts", "delete")).toHaveLength(0);
+    expect(db.tables.user_oauth_accounts).toHaveLength(1);
   });
 });

@@ -250,7 +250,7 @@ export class MembersService {
 
       if ((count ?? 0) <= 1) {
         throw new BadRequestException(
-          "You're the only owner. Transfer ownership or delete the restaurant first.",
+          "You're the only owner. In Settings under Team, make someone else an owner first, then you can step down.",
         );
       }
     }
@@ -398,7 +398,7 @@ export class MembersService {
 
       if ((count ?? 0) <= 1) {
         throw new BadRequestException(
-          "You're the only owner. Transfer ownership or delete the restaurant first.",
+          "You're the only owner. In Settings under Team, make someone else an owner first, then you can leave.",
         );
       }
     }
@@ -412,7 +412,7 @@ export class MembersService {
 
       if ((count ?? 0) <= 1) {
         throw new BadRequestException(
-          "You're the only owner. Transfer ownership or delete the restaurant first.",
+          "You're the only owner. In Settings under Team, make someone else an owner first, then you can leave.",
         );
       }
     }

@@ -12,6 +12,7 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { TeamService } from "../team/team.service";
 import {
   asDatabaseService,
+  defaultRpc,
   makeStubDb,
   StubDb,
 } from "../team/testing/supabase-stub";
@@ -83,6 +84,7 @@ function shift(over: Record<string, any>) {
  */
 function withReleaseRpc(db: StubDb): StubDb {
   (db.supabase as any).rpc = async (fn: string, args: any) => {
+    if (fn === "account_delete_blockers") return defaultRpc(db, fn, args);
     db.ops.push({
       table: `rpc:${fn}`,
       op: "update",
