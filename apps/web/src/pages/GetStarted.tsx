@@ -17,6 +17,8 @@ import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
 
 type Step = 'you' | 'restaurant' | 'menu' | 'reading'
+/** Whether this account may start a house here, decided once on arrival (SETUP-01). */
+type Entry = { state: 'checking' } | { state: 'wizard' } | { state: 'failed'; reason: string }
 type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
 type MenuMethod = 'photo' | 'file' | 'typed' | null
 
@@ -50,7 +52,8 @@ function ArrivalShell({
 
 export default function GetStarted() {
   const navigate = useNavigate()
-  const { user, createFirstHouse } = useAuth()
+  const { user, loading, activeRestaurantId, createFirstHouse } = useAuth()
+  const [entry, setEntry] = useState<Entry>({ state: 'checking' })
   const [step, setStep] = useState<Step>('you')
   const [name, setName] = useState(user?.name ?? '')
   const [mobile, setMobile] = useState('')
@@ -86,14 +89,67 @@ export default function GetStarted() {
   // omitted, the gateway stores NULL rather than inventing a clock.
   const timezone = useMemo(() => getBrowserTimezone(), [])
 
+  // SETUP-01 (ADR 0309): /get-started is for an account with no house. One
+  // that already has a house is sent to it; one that holds houses but has
+  // none open is sent to choose. The account's own record decides — the same
+  // read /choose-house makes — and a check that fails says so rather than
+  // opening the sign-up wizard as if the answer were "no house". Decided once
+  // on arrival: creating the house mid-wizard must not send the person away
+  // before their menu is read.
+  useEffect(() => {
+    if (entry.state !== 'checking' || loading) return
+    if (!user) {
+      setEntry({ state: 'wizard' })
+      return
+    }
+    if (user.emailVerified === false) {
+      navigate('/verify-email', { replace: true })
+      return
+    }
+    if (user.restaurantId) {
+      navigate('/house', { replace: true })
+      return
+    }
+    let live = true
+    void (async () => {
+      try {
+        const { data } = await apiClient.get('/auth/houses')
+        if (!live) return
+        if (!Array.isArray(data?.houses)) {
+          setEntry({ state: 'failed', reason: "the account's houses came back without a list" })
+          return
+        }
+        const held = Array.isArray(data?.held) ? data.held : []
+        if (data.houses.length > 0 || held.length > 0) {
+          navigate('/choose-house', { replace: true })
+          return
+        }
+        setEntry({ state: 'wizard' })
+      } catch (cause: any) {
+        if (!live) return
+        setEntry({
+          state: 'failed',
+          reason: cause?.response?.data?.message || cause?.message || 'no reason was given',
+        })
+      }
+    })()
+    return () => {
+      live = false
+    }
+  }, [entry.state, loading, navigate, user])
+
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
     const timer = window.setTimeout(() => {
-      writeProof(pendingResult, sourceImage)
+      // The tab's reading is stamped with the house it was read for (MENU-07)
+      // and the person who read it; /house/menu reads the house's record and
+      // uses this only for that house and that person. writeProof keeps
+      // nothing when either is missing.
+      writeProof(pendingResult, activeRestaurantId, user?.userId, sourceImage)
       navigate('/house/menu', { replace: true })
     }, 1200)
     return () => window.clearTimeout(timer)
-  }, [navigate, pendingResult, sourceImage, step])
+  }, [activeRestaurantId, navigate, pendingResult, sourceImage, step, user?.userId])
 
   const saveYou = async () => {
     setSaving(true)
@@ -204,6 +260,31 @@ export default function GetStarted() {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (entry.state === 'checking') {
+    return (
+      <ArrivalShell step={step}>
+        <p role="status" className="text-[#6d685f]">Checking this account…</p>
+      </ArrivalShell>
+    )
+  }
+
+  if (entry.state === 'failed') {
+    return (
+      <ArrivalShell step={step}>
+        <p role="alert" className="font-serif text-2xl">
+          We could not check whether this account already has a house: {entry.reason}
+        </p>
+        <button
+          type="button"
+          onClick={() => setEntry({ state: 'checking' })}
+          className="mt-6 text-[#1a5e6b] underline"
+        >
+          Try again
+        </button>
+      </ArrivalShell>
+    )
   }
 
   if (step === 'you') {
