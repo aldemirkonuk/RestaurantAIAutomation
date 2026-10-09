@@ -22,6 +22,7 @@ import {
 } from "../organizations/org-role";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { TeamService } from "../team/team.service";
+import { retireInvitePlaceholders } from "../team/invite-placeholders";
 
 @Injectable()
 export class MembersService {
@@ -212,7 +213,7 @@ export class MembersService {
     const { data: targetAccess, error: targetAccessErr } =
       await this.databaseService.supabase
         .from("user_restaurant_access")
-        .select("role")
+        .select("role, team_pay_access")
         .eq("user_id", targetUserId)
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true)
@@ -258,9 +259,17 @@ export class MembersService {
     // Only the ACTIVE row, the one the target read above admitted them by. A
     // member admitted by their `users` row may still hold an inactive row here;
     // rewriting it would hand a role nobody granted to whoever reactivates it.
+    // The pay switch belongs to a manager (ADR 0215, `setPayAccess`): any other
+    // role clears it in the same write, so a manager demoted and later promoted
+    // again starts with pay off instead of quietly getting it back (F-579).
+    const payWasOn = targetAccess?.team_pay_access === true;
     const { error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
-      .update({ role: newRole })
+      .update(
+        newRole === "manager"
+          ? { role: newRole }
+          : { role: newRole, team_pay_access: false },
+      )
       .eq("user_id", targetUserId)
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true);
@@ -303,7 +312,12 @@ export class MembersService {
       action: "member_role_changed",
       entityType: "restaurant_member",
       entityId: targetUserId,
-      changes: { role: { from: previousRole, to: newRole } },
+      changes: {
+        role: { from: previousRole, to: newRole },
+        ...(payWasOn && newRole !== "manager"
+          ? { team_pay_access: { from: true, to: false } }
+          : {}),
+      },
       notice: {
         title: "Your role in this restaurant changed",
         message: `An owner changed your role to ${newRole}. What you can see and do here has changed with it.`,
@@ -456,7 +470,11 @@ export class MembersService {
     }
 
     // Not on the roster: there are no shifts or roster row to release, and
-    // this door revokes the access it knows (unchanged).
+    // this door revokes the access it knows. It files the same
+    // `team_member_removed` row and notice the roster path files, so a person
+    // added from Settings (who never gets a roster row) does not leave with no
+    // record (F-581).
+    const removal = { actorUserId, actorRole: actor.role, targetRole, selfLeave };
     if (!targetAccess) {
       await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
       await this.clearUsersRowHouse(targetUserId, restaurantId);
@@ -467,6 +485,7 @@ export class MembersService {
         restaurantId,
         this.logger,
       );
+      await this.recordUnrosteredRemoval(restaurantId, targetUserId, removal);
       return;
     }
 
@@ -505,6 +524,49 @@ export class MembersService {
       restaurantId,
       this.logger,
     );
+    await this.recordUnrosteredRemoval(restaurantId, targetUserId, removal);
+  }
+
+  /**
+   * The audit row and notice for a removal of someone with no roster row, in
+   * the shape `TeamService.removeFromHouse` files for a rostered one
+   * (`team_member_removed`, `access_role` before → none, the door, and whether
+   * they left on their own). A person who leaves is not told they were
+   * removed. Never throws: the access is already gone (`recordAccessChange`).
+   */
+  private async recordUnrosteredRemoval(
+    restaurantId: string,
+    targetUserId: string,
+    removal: {
+      actorUserId: string;
+      actorRole: string;
+      targetRole: string | null;
+      selfLeave: boolean;
+    },
+  ): Promise<void> {
+    await recordAccessChange(this.databaseService.supabase, this.logger, {
+      restaurantId,
+      actorUserId: removal.actorUserId,
+      targetUserId,
+      action: "team_member_removed",
+      entityType: "restaurant_member",
+      entityId: targetUserId,
+      changes: {
+        access_role: { from: removal.targetRole, to: null },
+        user_id: targetUserId,
+        via: "MembersService.removeMember",
+        self_leave: removal.selfLeave,
+      },
+      notice: removal.selfLeave
+        ? undefined
+        : {
+            title: "Your access to this restaurant was removed",
+            message:
+              (removal.actorRole === "owner" ? "An owner" : "A manager") +
+              " removed you from this restaurant, so your access to it has ended. " +
+              "Talk to them if this was not expected.",
+          },
+    });
   }
 
   /**
@@ -671,6 +733,20 @@ export class MembersService {
   ): Promise<void> {
     await this.assertMembership(actorUserId, restaurantId, "owner|manager");
 
+    // Read first: the invite's id and date are what find the roster row it
+    // made, and both are gone once the invite is deleted.
+    const { data: invite, error: readErr } = await this.databaseService.supabase
+      .from("organization_invites")
+      .select("id, created_at")
+      .eq("code", code.toUpperCase())
+      .eq("restaurant_id", restaurantId)
+      .is("used_at", null)
+      .maybeSingle();
+    if (readErr) {
+      this.logger.error(`revokeInvite could not read the invite: ${readErr.message}`);
+      throw new InternalServerErrorException("Failed to revoke invite");
+    }
+
     const { error } = await this.databaseService.supabase
       .from("organization_invites")
       .delete()
@@ -682,5 +758,14 @@ export class MembersService {
       this.logger.error(`revokeInvite failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to revoke invite");
     }
+
+    // The person this invite put on /team will never arrive (F-580).
+    if (invite)
+      await retireInvitePlaceholders(
+        this.databaseService.supabase,
+        this.logger,
+        restaurantId,
+        [invite],
+      );
   }
 }

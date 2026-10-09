@@ -811,6 +811,14 @@ export function MemberSheet({
                 </option>
               ))}
             </select>
+            {/* Inactive is a roster label, not a suspension (F-583): it writes
+                `team_members.status` and nothing else, so the page says so
+                rather than letting it read as a way to lock someone out. */}
+            <p className="tm-hint">
+              Inactive keeps this person on the team with their records. It does not
+              stop them signing in or using this restaurant — to end their access,
+              remove them.
+            </p>
           </label>
         )}
 
