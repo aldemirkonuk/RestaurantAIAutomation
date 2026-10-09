@@ -80,7 +80,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Check, ChevronDown, Mail } from 'lucide-react';
 import { Wordmark } from '../../../components/mudavym';
 import { ink, settle, useReducedMotion } from '../../../lib/mudavym/motion';
@@ -97,6 +97,9 @@ import {
 } from './hp-readiness';
 import { nextUpEntries, type NextUpEntry } from './hp-nextup';
 import { SupportPanel } from './SupportPanel';
+import { useGuidanceOptional } from '../../../guidance/GuidanceProvider';
+import { PAGE_TOUR_IDS, PAGE_TOUR_ROUTES, type PageTourId } from '../../../guidance/types';
+import { TOUR_LABELS, TOUR_REGISTRY } from '../../../guidance/tours/registry';
 import { useHelpNextData } from './useHelpNextData';
 
 export interface HelpNextProps {
@@ -248,6 +251,96 @@ function NextUpRail({
   );
 }
 
+/**
+ * "Tours and tips" (F-553, F-239) — the replay place the house's layout
+ * lacked: LearnPanel (startPageTour/resetTips) mounts only in the legacy
+ * Sidebar, so under HouseShell a dismissed tip never came back and a tour
+ * could only be taken from that page's own tip. Same GuidanceProvider calls
+ * LearnPanel makes; the only difference is the wait. A route's page is lazy
+ * and reads before it draws, and the engine drops a step whose element is
+ * not on the page yet, so this waits for the tour's first anchor (up to
+ * TOUR_WAIT_MS) instead of LearnPanel's fixed 300 ms.
+ */
+const TOUR_WAIT_MS = 5000;
+const TOUR_POLL_MS = 150;
+
+function startTourWhenDrawn(start: (id: PageTourId) => void, id: PageTourId) {
+  const first = TOUR_REGISTRY[id]?.steps[0]?.element;
+  const began = Date.now();
+  const tick = () => {
+    let drawn = false;
+    try {
+      drawn = !!first && !!document.querySelector(first);
+    } catch {
+      drawn = false;
+    }
+    if (drawn || Date.now() - began >= TOUR_WAIT_MS) start(id);
+    else window.setTimeout(tick, TOUR_POLL_MS);
+  };
+  window.setTimeout(tick, TOUR_POLL_MS);
+}
+
+function ToursAndTips() {
+  const guidance = useGuidanceOptional();
+  const navigate = useNavigate();
+  const [tipsBack, setTipsBack] = useState(false);
+  // `orders-create` is a sheet inside /orders with no route of its own, so
+  // it cannot be opened from here (same filter as LearnPanel).
+  const tours = PAGE_TOUR_IDS.filter((id) => id in PAGE_TOUR_ROUTES);
+
+  if (!guidance) {
+    return <Prose muted>Tours cannot be started from this screen.</Prose>;
+  }
+
+  const hidden = PAGE_TOUR_IDS.filter((id) => guidance.state.pages[id]?.tip === 'dismissed').length;
+  const tipsLine = tipsBack
+    ? 'Done — each page shows its tip again the next time you open it.'
+    : guidance.state.global.hide_all_tips
+      ? 'You turned every page’s tip off.'
+      : hidden > 0
+        ? `${hidden} page tip${hidden === 1 ? ' is' : 's are'} hidden because you chose “Don’t show again”.`
+        : 'No page tip is hidden right now.';
+
+  const takeTour = (id: PageTourId) => {
+    navigate(PAGE_TOUR_ROUTES[id]!);
+    startTourWhenDrawn(guidance.startTour, id);
+  };
+
+  return (
+    <>
+      <Prose muted>Start any page’s tour again. It opens that page and walks you through it.</Prose>
+      <ul style={{ margin: '10px 0 0', padding: 0, listStyle: 'none' }}>
+        {tours.map((id) => (
+          <li key={id} className="hp-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 0' }}>
+            <span style={{ fontFamily: SANS, fontSize: 13.5, color: 'var(--ink-1)' }}>
+              {TOUR_LABELS[id]}
+              {guidance.state.pages[id]?.tour === 'completed' && <Mono dim> · taken</Mono>}
+            </span>
+            <button type="button" className="hp-btn hp-ink hp-focus" onClick={() => takeTour(id)}>
+              Take the tour
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--paper-2)' }}>
+        <p role="status" aria-live="polite" style={{ fontFamily: SANS, fontSize: 13, color: 'var(--ink-2)', margin: '0 0 8px' }}>
+          {tipsLine}
+        </p>
+        <button
+          type="button"
+          className="hp-btn hp-btn--seal hp-ink hp-focus"
+          onClick={() => {
+            guidance.resetTips();
+            setTipsBack(true);
+          }}
+        >
+          Bring the tips back
+        </button>
+      </div>
+    </>
+  );
+}
+
 /* ── the page ──────────────────────────────────────────────────────────── */
 
 export default function HelpNext({ ground }: HelpNextProps) {
@@ -268,7 +361,12 @@ export default function HelpNext({ ground }: HelpNextProps) {
   const [openFaq, setOpenFaq] = useState<string | null>(() => findFaq(location.hash)?.slug ?? null);
   useEffect(() => {
     const e = findFaq(location.hash);
-    if (!e) return;
+    if (!e) {
+      // `/help#hp-tours` (the app-guide card, the overview guide, the FAQ):
+      // the page is lazy, so the browser's own jump can land before it draws.
+      if (location.hash === '#hp-tours') document.getElementById('hp-tours')?.scrollIntoView({ block: 'start' });
+      return;
+    }
     setOpenFaq(e.slug);
     document.getElementById(`hp-faq-${e.slug}`)?.scrollIntoView({ block: 'start' });
   }, [location.hash]);
@@ -496,6 +594,10 @@ export default function HelpNext({ ground }: HelpNextProps) {
               </article>
             ))}
           </div>
+          <article id="hp-tours" aria-labelledby="hp-tours-h" className="hp-card" style={{ marginTop: 12 }}>
+            <h3 id="hp-tours-h" style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, margin: 0, color: 'var(--ink-1)' }}>Tours and tips</h3>
+            <ToursAndTips />
+          </article>
         </Section>
 
         {/* ── III. Questions people ask ────────────────────────────────── */}
@@ -575,9 +677,9 @@ export default function HelpNext({ ground }: HelpNextProps) {
         {/* ── V. Ways back in ──────────────────────────────────────────── */}
         <Section n="V · Ways back" id="hp-ways-back" title="Ways back in">
           <div className="hp-grid2">
-            <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/get-started?tab=use">
-              <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>The app guide</p>
-              <Prose muted>The tours and the getting-started walkthrough, from the top.</Prose>
+            <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/help#hp-tours">
+              <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>Tours and tips</p>
+              <Prose muted>Take any page’s tour again, or bring back the tips you hid.</Prose>
             </a>
             <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/ask">
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>Ask</p>

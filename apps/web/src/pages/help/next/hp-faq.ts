@@ -72,15 +72,15 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
       'By email, in "Reach a person" below on this page. If that section says no address was configured, none was set for this build; there is no default one and no other channel.',
   },
   {
-    // guidance/components/PageTipStrip.tsx ("Take tour", "Don't show
-    // again"). F-553: this used to send people to "Learn & Help, at the bottom
-    // of the sidebar" — LearnPanel (startPageTour/resetTips), which mounts only
-    // in the legacy components/layout/Sidebar.tsx, never under HouseShell.
-    // Say what the house's layout really offers until replay is mounted there.
+    // HelpNext.tsx "Tours and tips" (#hp-tours) — the replay place under
+    // HouseShell (F-553): GuidanceProvider's startTour/resetTips, the same
+    // calls the legacy Sidebar's LearnPanel makes. PageTipStrip.tsx's
+    // "Take tour" is the other way in.
     slug: 'page-tours',
     question: 'Where are the page tours and the tips?',
     answer:
-      'A page offers its tour in the tip at the top of the page — choose “Take tour” there. If you chose “Don’t show again”, that tip stays away: there is not yet a place to bring it back or to replay that page’s tour.',
+      'Here on Help, under “Tours and tips” in Guides: take any page’s tour again, or bring back the tips you hid with “Don’t show again”. A page also offers its tour in the tip at the top — choose “Take tour” there.',
+    goes: { to: '/help#hp-tours', label: 'Open Tours and tips' },
   },
   {
     // settings/next/st-format.ts SECTION_IDS/COLLAPSED_SECTIONS: `services`
