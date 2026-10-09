@@ -55,6 +55,23 @@ describe('the initiating browser holds the consent proof', () => {
     expect(returnLanding(new URL('/authorize/gmail_send', window.location.origin))).toBe('/profile')
   })
 
+  // Audit pin (F-279): every fallback lands on /profile with ONLY the outcome keys.
+  const OUTCOME = 'integration_status=error&integration=gmail_read&integration_reason=exchange_failed'
+  it.each(['//evil.com', '/\\evil.com', 'https://evil.com/communications', 'javascript:alert(1)', '%2F%2Fevil.com', '/communications/', '/Communications'])(
+    'never follows %s: lands on /profile carrying only the outcome',
+    value => {
+      const url = new URL(`${value}?${OUTCOME}&next=https://evil.com`, window.location.origin)
+      const sameOrigin = url.origin === window.location.origin
+      // A foreign origin never reaches returnLanding: completion refuses it first.
+      if (!sameOrigin) {
+        expect(sameSiteReturnPath(value)).toBe('/settings')
+        return
+      }
+      expect(returnLanding(url)).toBe(`/profile?${OUTCOME}`)
+      expect(sameSiteReturnPath(value)).toBe('/settings')
+    },
+  )
+
   it('retains a same-site destination, query and fragment', () => {
     expect(sameSiteReturnPath('/profile?tab=accounts#connected')).toBe('/profile?tab=accounts#connected')
   })

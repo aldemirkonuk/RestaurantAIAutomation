@@ -118,6 +118,12 @@ describe('completion and return status', () => {
     expect(screen.queryByText(/provider flow returned/)).toBeNull()
   })
 
+  it('reads only the three outcome keys; other parameters change nothing (F-279 audit pin)', () => {
+    render(<MemoryRouter initialEntries={['/communications?integration_status=error&integration=gmail_read&integration_reason=membership_unreadable&reason=membership_refused&status=connected&message=Hacked']}><IntegrationReturnNotice /></MemoryRouter>)
+    expect(screen.getByRole('status')).toHaveTextContent(/could not be checked just then/)
+    expect(screen.queryByText(/Hacked|no longer a confirmed member|connection is confirmed/)).toBeNull()
+  })
+
   it('does not believe a forged connected query parameter', async () => {
     vi.mocked(integrationsApi.getConnections).mockResolvedValue([])
     render(<MemoryRouter initialEntries={['/profile?integration_status=connected&integration=gmail_send']}><IntegrationReturnNotice /></MemoryRouter>)
