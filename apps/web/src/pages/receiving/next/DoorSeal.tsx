@@ -15,14 +15,20 @@
  *   nothing saved.");
  * - release past the threshold runs the remaining fill on `settle`, then the
  *   pressed Seal lands on `stamp` — the one motion allowed to overshoot;
- * - keyboard: Enter arms, Enter again seals, Escape disarms;
+ * - keyboard: Enter or Space arms, Enter again seals, Escape disarms;
+ *   holding the key down for the hold time seals too, the same timed hold
+ *   the thumb makes (F-319);
+ * - assistive tech: a screen reader, VoiceOver, TalkBack or voice control
+ *   presses with a bare click (no pointer, no key). That click is the same
+ *   two-step confirm — first arms, second seals. A thumb or mouse click is
+ *   never a confirm: the pointer has to hold;
  * - reduced motion: the timed hold collapses to the same two-step confirm.
  *
  * A disabled seal explains itself on press (`disabledHint`) instead of being
  * silently dead — at the door, a control that ignores a tap reads as broken.
  */
 
-import { CSSProperties, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { CSSProperties, ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Seal } from '@/components/mudavym';
 import { animate, pour, settle, stamp, tuck, useReducedMotion } from '@/lib/mudavym';
 
@@ -61,6 +67,14 @@ export function DoorSeal({
   const [note, setNote] = useState<string | null>(null);
 
   const fillRef = useRef<HTMLDivElement | null>(null);
+  /* The fill drawn for assistive technology: a progressbar beside the button
+     (a button's children are presentational, so it cannot live inside). */
+  const meterRef = useRef<HTMLSpanElement | null>(null);
+  const statusId = useId();
+  /** A key is being held down on top of the arm (keyboard hold). */
+  const keyHoldRef = useRef(false);
+  /** The browser's own click after a key we already handled. */
+  const swallowClickRef = useRef(false);
   const sealRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef(0);
   const startRef = useRef(0);
@@ -71,6 +85,7 @@ export function DoorSeal({
 
   const setFill = (p: number) => {
     if (fillRef.current) fillRef.current.style.transform = `scaleX(${p})`;
+    meterRef.current?.setAttribute('aria-valuenow', String(Math.round(p * 100)));
     progressRef.current = p;
   };
 
@@ -137,6 +152,38 @@ export function DoorSeal({
     rafRef.current = requestAnimationFrame(tick);
   };
 
+  /* The key-held version of the thumb hold. It runs on top of the arm the key
+     press already made, so letting go early leaves it armed (the next press
+     seals) rather than reporting a release. */
+  const startKeyHold = () => {
+    keyHoldRef.current = true;
+    startRef.current = performance.now();
+    const tick = (now: number) => {
+      if (!keyHoldRef.current) return;
+      const p = Math.min(1, (now - startRef.current) / holdMs);
+      setFill(p);
+      if (p >= 1) {
+        keyHoldRef.current = false;
+        commit();
+      } else rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  const endKeyHold = () => {
+    if (!keyHoldRef.current) return;
+    keyHoldRef.current = false;
+    cancelAnimationFrame(rafRef.current);
+    if (!committedRef.current) setFill(0);
+  };
+
+  const swallowNextClick = () => {
+    swallowClickRef.current = true;
+    setTimeout(() => {
+      swallowClickRef.current = false;
+    }, 0);
+  };
+
   const releaseHold = () => {
     if (committedRef.current || phase !== 'holding') return;
     cancelAnimationFrame(rafRef.current);
@@ -184,16 +231,44 @@ export function DoorSeal({
     if (committedRef.current) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
+      swallowNextClick();
       if (e.repeat) return;
       if (disabled) {
         if (disabledHint) say(disabledHint);
         return;
       }
+      const wasArmed = phase === 'armed';
       stepConfirm();
+      if (!wasArmed && !reduced) startKeyHold();
     } else if (e.key === 'Escape' && phase === 'armed') {
+      endKeyHold();
       if (armTimerRef.current) clearTimeout(armTimerRef.current);
       setPhase('idle');
     }
+  };
+
+  const onKeyUp = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    // Space presses a button on key-up; that click was this key, not a confirm.
+    swallowNextClick();
+    endKeyHold();
+  };
+
+  /* A bare click with no pointer and no key behind it (`detail === 0`) is how
+     a screen reader or voice control presses a button. It takes the same two
+     steps as the keyboard, never one. A thumb or mouse click (`detail >= 1`)
+     is ignored: the pointer path is the hold. */
+  const onClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (swallowClickRef.current) {
+      swallowClickRef.current = false;
+      return;
+    }
+    if (e.detail !== 0 || committedRef.current) return;
+    if (disabled) {
+      if (disabledHint) say(disabledHint);
+      return;
+    }
+    stepConfirm();
   };
 
   const sealed = phase === 'sealed';
@@ -231,11 +306,15 @@ export function DoorSeal({
         // broken app. It stays pressable and explains itself instead.
         aria-disabled={disabled || sealed}
         aria-label={typeof label === 'string' ? label : 'Hold to seal'}
+        aria-describedby={statusId}
         data-ux-key="door:seal"
         onPointerDown={onPointerDown}
         onPointerUp={releaseHold}
         onPointerCancel={releaseHold}
         onKeyDown={onKeyDown}
+        onKeyUp={onKeyUp}
+        onBlur={endKeyHold}
+        onClick={onClick}
       >
         {/* fill — the pour under the label */}
         <div
@@ -263,8 +342,18 @@ export function DoorSeal({
           </span>
         )}
       </button>
+      <span
+        ref={meterRef}
+        className="sr-only"
+        role="progressbar"
+        aria-label="How far the hold has gone"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={0}
+      />
       {/* status line — honest, and reserved so nothing jumps */}
       <div
+        id={statusId}
         aria-live="polite"
         style={{
           minHeight: 20,
