@@ -41,6 +41,7 @@ import { Action, Note, Register, Row, SaveFailure, fieldStyle } from './SectionK
 import { EM, MONO, SANS } from './st-format';
 import { carryingCostCert } from './certaintyTally';
 import type { HouseCarryingCostRegister, SettingsNextData } from './useSettingsNextData';
+import { parseDecimal } from '@/lib/parseDecimal';
 
 /** Exactly the bounds `restaurants_carrying_cost_is_a_plausible_percent` holds. */
 export const MIN_PERCENT = 0.01;
@@ -82,8 +83,9 @@ export function readTyped(
       canRecord: false,
     };
   }
-  const value = Number(trimmed);
-  if (!Number.isFinite(value)) {
+  // Read the way the house writes it: "0,75" is 0.75 (F-358).
+  const value = parseDecimal(trimmed);
+  if (value === null) {
     return { value: null, sentence: `“${trimmed}” is not a number, so nothing can be recorded.`, canRecord: false };
   }
   if (value < MIN_PERCENT) {
@@ -181,11 +183,8 @@ function CarryingCostBody({
             </label>
             <input
               id="st-carrying-cost"
-              type="number"
+              type="text"
               inputMode="decimal"
-              step="0.01"
-              min={MIN_PERCENT}
-              max={MAX_PERCENT}
               placeholder="0.75"
               value={typed}
               disabled={!canManage || busy}

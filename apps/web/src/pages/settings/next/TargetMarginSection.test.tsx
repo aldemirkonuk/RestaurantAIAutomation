@@ -83,13 +83,13 @@ describe('TargetMarginSection', () => {
     getTargetMargin.mockResolvedValue(UNSET)
     render(<TargetMarginSection canManage />)
     expect(await screen.findByText(/No price advice is given anywhere\./)).toBeInTheDocument()
-    expect(screen.getByLabelText('bottle')).toHaveValue(null)
-    expect(screen.getByLabelText('glass')).toHaveValue(null)
-    expect(screen.getByLabelText('close enough')).toHaveValue(null)
+    expect(screen.getByLabelText('bottle')).toHaveValue('')
+    expect(screen.getByLabelText('glass')).toHaveValue('')
+    expect(screen.getByLabelText('close enough')).toHaveValue('')
     expect(screen.getByRole('button', { name: 'Record' })).toBeDisabled()
     // The pour: not confirmed, so glasses wait -- and no 150 ml is offered.
     expect(screen.getByText(/No glass is advised yet\./)).toBeInTheDocument()
-    expect(screen.getByLabelText('pour')).toHaveValue(null)
+    expect(screen.getByLabelText('pour')).toHaveValue('')
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
   })
 

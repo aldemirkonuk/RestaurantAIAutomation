@@ -29,6 +29,8 @@
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
+import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import AccountSheet from './AccountSheet';
 import {
   DISMISS_CHOICES,
@@ -282,6 +284,15 @@ function scopesFor(e: EntryVM): SuppressionScope[] {
  * house should be held to, and inventing one would be exactly the fabricated
  * figure this page exists to refuse.
  */
+/**
+ * A typed goal target, read the way the house writes it ("12,5"; "9.000" in a
+ * "."-grouping house — F-358). Null unless it is a number above zero.
+ */
+export function readGoalTarget(typed: string, group: GroupMark | null = null): number | null {
+  const n = parseDecimal(typed, group);
+  return n !== null && n > 0 ? n : null;
+}
+
 function GoalSheet({
   plan,
   goals,
@@ -367,8 +378,10 @@ function GoalSheet({
   const keepsProvenance = effective.metricKey === plan.metricKey;
 
   const deadline = useMemo(() => deadlineFor(period), [period]);
-  const value = Number(typed);
-  const usable = typed.trim() !== '' && Number.isFinite(value) && value > 0;
+  const group = useHouseGroupMark();
+  const target = readGoalTarget(typed, group);
+  const usable = target !== null;
+  const value = target ?? NaN;
 
   /** Choosing from the book fills three fields and never the target. */
   const chooseScenario = (s: GoalScenario | null) => {
@@ -521,10 +534,8 @@ function GoalSheet({
             The target ({UNIT_SUFFIX[effective.unit]})
           </span>
           <input
-            type="number"
+            type="text"
             inputMode="decimal"
-            min="0"
-            step="any"
             value={typed}
             aria-label={`Target in ${UNIT_SUFFIX[effective.unit]}`}
             onChange={(ev) => {

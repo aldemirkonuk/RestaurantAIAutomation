@@ -108,3 +108,18 @@ export function groupMarkForCountry(countryCode: string | null | undefined): Gro
     return null
   }
 }
+
+/**
+ * An optional amount field — a minimum order, a cost, a limit. Blank is
+ * `value: null` (nothing stated; the caller decides what that sends); anything
+ * else must read as a number of 0 or more, or the field is refused rather than
+ * sent as NaN or a misread figure.
+ */
+export function readOptionalAmount(
+  raw: string,
+  group: GroupMark | null = null,
+): { ok: true; value: number | null } | { ok: false } {
+  if (raw.trim() === '') return { ok: true, value: null }
+  const n = parseDecimal(raw, group)
+  return n === null || n < 0 ? { ok: false } : { ok: true, value: n }
+}

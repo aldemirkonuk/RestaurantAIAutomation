@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Action, Note, Row, fieldStyle } from './SectionKit';
 import { MONO, SANS } from './st-format';
+import { parseDecimal } from '@/lib/parseDecimal';
 import {
   confirmPourSize,
   getTargetMargin,
@@ -45,8 +46,8 @@ export const MAX_POUR_ML = 500;
 export function readPourInput(raw: string, confirmedMl: number | null): { canConfirm: boolean; sentence: string; ml: number | null } {
   const t = raw.trim().replace(/\s*ml$/i, '');
   if (t === '') return { canConfirm: false, sentence: 'Type the pour this house serves, in ml (for example 125 or 150).', ml: null };
-  const n = Number(t);
-  if (!Number.isFinite(n)) return { canConfirm: false, sentence: `“${raw.trim()}” is not a number of ml.`, ml: null };
+  const n = parseDecimal(t);
+  if (n === null) return { canConfirm: false, sentence: `“${raw.trim()}” is not a number of ml.`, ml: null };
   if (n < MIN_POUR_ML || n > MAX_POUR_ML) {
     return { canConfirm: false, sentence: `A pour is between ${MIN_POUR_ML} and ${MAX_POUR_ML} ml.`, ml: null };
   }
@@ -63,8 +64,9 @@ type Parsed = { value: number | null; error: string | null };
 function parsePct(label: string, raw: string): Parsed {
   const t = raw.trim().replace(/%$/, '');
   if (t === '') return { value: null, error: null };
-  const n = Number(t);
-  if (!Number.isFinite(n)) return { value: null, error: `“${raw.trim()}” is not a number.` };
+  // A percent is read the way the house writes it: "66,7" is 66.7 (F-358).
+  const n = parseDecimal(t);
+  if (n === null) return { value: null, error: `“${raw.trim()}” is not a number.` };
   if (n < MIN_PCT)
     return {
       value: n,
@@ -108,8 +110,8 @@ export function readTargetInputs(
       body: null,
     };
   }
-  const band = Number(bandT);
-  if (!Number.isFinite(band) || band < 0 || band > MAX_BAND) {
+  const band = parseDecimal(bandT);
+  if (band === null || band < 0 || band > MAX_BAND) {
     return { canRecord: false, sentence: `“Close enough” is between 0 and ${MAX_BAND} percent of the advised price.`, body: null };
   }
   const same =
@@ -225,9 +227,8 @@ function TargetMarginBody({
       </label>
       <input
         id={id}
-        type="number"
+        type="text"
         inputMode="decimal"
-        step="0.1"
         placeholder={placeholder}
         value={value}
         disabled={!canManage || busy}
@@ -345,9 +346,8 @@ function TargetMarginBody({
               </label>
               <input
                 id="st-pour-ml"
-                type="number"
+                type="text"
                 inputMode="decimal"
-                step="1"
                 placeholder="125"
                 value={pour}
                 disabled={!canManage || pourBusy}

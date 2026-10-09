@@ -29,6 +29,8 @@
  */
 
 import { useState } from 'react';
+import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import {
   EM as ST_EM,
@@ -173,7 +175,7 @@ function draftFrom(row: VendorTermsRow): DraftState {
 
 /** Only what the person touched is sent: the gateway reads an explicit null as
  *  "withdraw the statement" and a missing key as "leave it alone". */
-function toBody(draft: DraftState, before: DraftState): SetVendorTermsBody {
+export function toBody(draft: DraftState, before: DraftState, group: GroupMark | null = null): SetVendorTermsBody {
   const body: SetVendorTermsBody = {};
   if (JSON.stringify(draft.weekdays) !== JSON.stringify(before.weekdays)) {
     body.deliveryWeekdays = draft.weekdays;
@@ -185,7 +187,10 @@ function toBody(draft: DraftState, before: DraftState): SetVendorTermsBody {
     body.orderCutoffOffsetDays = draft.cutoffOffset.trim() === '' ? null : Number(draft.cutoffOffset);
   }
   if (draft.minimum !== before.minimum) {
-    body.minimumOrderAmount = draft.minimum.trim() === '' ? null : Number(draft.minimum);
+    // Read the way the house writes it ("1.250,00", "12,50"); an unreadable
+    // amount is left out and refused by the editor, never sent as NaN (F-358).
+    const m = readOptionalAmount(draft.minimum, group);
+    if (m.ok) body.minimumOrderAmount = m.value;
   }
   if (draft.leadTime !== before.leadTime) {
     body.leadTimeDays = draft.leadTime.trim() === '' ? null : Number(draft.leadTime);
@@ -279,7 +284,9 @@ function Editor({
 }) {
   const initial = draftFrom(row);
   const [draft, setDraft] = useState<DraftState>(initial);
-  const body = toBody(draft, initial);
+  const group = useHouseGroupMark();
+  const body = toBody(draft, initial, group);
+  const minimumUnread = !readOptionalAmount(draft.minimum, group).ok;
   const nothingChanged = Object.keys(body).length === 0;
 
   return (
@@ -359,8 +366,7 @@ function Editor({
           }
         >
           <input
-            type="number"
-            min={0}
+            type="text"
             inputMode="decimal"
             value={draft.minimum}
             onChange={(e) => setDraft((d) => ({ ...d, minimum: e.target.value }))}
@@ -391,14 +397,16 @@ function Editor({
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-        <Btn onClick={() => onSave(body)} disabled={busy || nothingChanged}>
+        <Btn onClick={() => onSave(body)} disabled={busy || nothingChanged || minimumUnread}>
           {busy ? 'Recording…' : 'Record what they said'}
         </Btn>
         <Btn quiet onClick={onClose}>
           Close
         </Btn>
         <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
-          {nothingChanged
+          {minimumUnread
+            ? `“${draft.minimum.trim()}” is not an amount, so nothing can be recorded.`
+            : nothingChanged
             ? 'Nothing has changed, so there is nothing to record.'
             : 'Your name and the time are filed with this, on the vendor row.'}
         </span>
