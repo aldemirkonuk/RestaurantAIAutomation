@@ -6644,42 +6644,6 @@ export class ProcurementService {
       );
     }
 
-    // THE VERIFICATION IS AN EVENT ROW (ADR 0192 amendment, founder answer 8,
-    // 2026-09-21). What the desk accepted, rejected and was invoiced for used
-    // to be written onto four `procurement_orders` columns — accepted and
-    // rejected in the COUNTED unit, backorder in bottles — and overwritten by
-    // the next verification. They are now one `reconciled` receipt event, all
-    // in BOTTLES (the unit `computeMatch` compared them in), written BEFORE
-    // anything else moves: if the facts cannot be recorded, nothing is changed.
-    // "Accepted" is then the ledger's own count (the correction below moves
-    // it), "rejected" the door's plus the desk's, "invoiced" this row's, and
-    // "backorder" what was ordered less what the ledger holds
-    // (`shelf-received.ts`). The four columns are no longer written or read;
-    // `scripts/check_no_quantity_received_column.py` holds that line.
-    if (match && bottles) {
-      const { error: eventError } = await this.databaseService.supabase
-        .from("procurement_receipt_events")
-        .insert({
-          restaurant_id: restaurantId,
-          order_id: orderId,
-          stage: "reconciled",
-          counted_qty: bottles.acceptedQty,
-          counted_uom: "bottle",
-          counted_qty_bottles: bottles.acceptedQty,
-          rejected_qty: bottles.rejectedQty,
-          rejected_qty_bottles: bottles.rejectedQty,
-          invoice_qty_bottles: hasInvoice ? bottles.invoiceQty : null,
-          received_by: userId,
-          notes: body.rejectedReason ?? null,
-        });
-      if (eventError) {
-        throw new InternalServerErrorException(
-          `This verification's counts could not be recorded (${eventError.message}), so nothing was changed: ` +
-            "no stock was corrected and the order is as it was. Try again.",
-        );
-      }
-    }
-
     // A VERIFICATION THAT STATES NO COUNT STILL LEAVES A HISTORY LINE (ADR
     // 0192, fifth amendment; founder, 2026-09-26, round 6, verbatim option:
     // "Yes, keep last invoice (Recommended) — It writes a history line with
@@ -6709,16 +6673,19 @@ export class ProcurementService {
     // reports success, the order's status write below still runs, and an
     // earlier full check's rejected count and invoice stay exactly as they
     // were, read from that same still-latest row.
+    //
+    // F-374: on the match path too, so a refused extra (403) is refused
+    // before the order is claimed below and nothing is written.
+    for (const adj of adjustments)
+      await assertInventoryBelongsToRestaurant(
+        this.databaseService.supabase,
+        restaurantId,
+        adj.inventoryId,
+        `verifyReceipt on order ${orderId}`,
+        this.logger,
+      );
     let countsConfirmedEvent: Record<string, unknown> | null = null;
     if (!hasMatchFields) {
-      for (const adj of adjustments)
-        await assertInventoryBelongsToRestaurant(
-          this.databaseService.supabase,
-          restaurantId,
-          adj.inventoryId,
-          `verifyReceipt on order ${orderId}`,
-          this.logger,
-        );
       const orderedItem: string | null = (orderRow as any).inventory_id ?? null;
       let confirmedBottles: number | null = null;
       if (orderedItem) {
@@ -6783,51 +6750,6 @@ export class ProcurementService {
       }
     }
 
-    // Correct the ordered line to the accepted count, then apply any unlisted extras.
-    //
-    // The gate used to be `match.ledgerDelta !== 0` alone, which silently
-    // dropped the entire point of the three-way match: when the count was right
-    // and only the PRICE was wrong — the commonest discrepancy there is, and
-    // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
-    // and the verified landed cost never reached the books. A verified price is
-    // now reason enough to write, on its own.
-    if (
-      match &&
-      (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
-      (orderRow as any).inventory_id
-    ) {
-      await this.applyReceiptAdjustment(
-        restaurantId,
-        orderId,
-        (orderRow as any).inventory_id,
-        match.ledgerDelta,
-        `receipt verification for order ${orderId}: ${match.summary}`,
-        // Verified landed cost, so the corrected lot carries what the bottle
-        // really cost rather than what we expected it to.
-        match.effectiveUnitCost,
-        userId,
-      );
-    }
-
-    for (const adj of adjustments) {
-      // Skip the ordered line when the match already corrected it.
-      if (match && adj.inventoryId === (orderRow as any).inventory_id) continue;
-      await this.applyReceiptAdjustment(
-        restaurantId,
-        orderId,
-        adj.inventoryId,
-        adj.delta,
-        adj.reason ||
-          `receipt verification for order ${orderId}${body.note ? `: ${body.note}` : ""}`,
-        // No unit cost: a free-form adjustment is a count correction on an item
-        // the invoice line does not describe, so there is no verified price to
-        // put on it. Passing one would be inventing the number the whole of
-        // this change exists to stop inventing.
-        null,
-        userId,
-      );
-    }
-
     // Accepting less than was ordered keeps the order open, so the outstanding bottles stay
     // visible as a backorder instead of stranding phantom shadow stock (D17).
     // An order also stays open when no invoice has arrived. Many distributors
@@ -6857,7 +6779,8 @@ export class ProcurementService {
     // ledger correction and the credit claim above have already been written, so
     // a PGRST204 here leaves the order permanently half-verified: status,
     // match_status, the invoice price and the price history below never land,
-    // and the retry fails identically.
+    // and the retry fails identically. [F-374: the correction and the claim
+    // are now written after this update, never before it.]
     //
     // Appended rather than assigned. A note left at the door and a note left at
     // verification are two different observations of the same delivery, and the
@@ -6938,21 +6861,16 @@ export class ProcurementService {
       });
     }
 
-    // Raise a vendor credit claim when the match found money owed back.
-    // Best-effort: a failure here must not strand a delivery that has already
-    // been counted, and the claim can be raised again from the discrepancy queue.
-    if (match)
-      await this.openCreditClaim(
-        restaurantId,
-        orderId,
-        userId,
-        match,
-        orderRow as { provider_id?: string | null; currency?: string | null },
-      );
-
     // F-349. Compare-and-set on the status read above: a "Counts match" tap
     // and a manager's match arriving together cannot both win, and a queued
     // tap sent after the match landed matches no row.
+    //
+    // F-374. This is the CLAIM, and it comes before every other write: the
+    // `reconciled` line, the stock corrections and the credit claim all
+    // follow it. The receipt record is append-only (ADR 0227) and a stock
+    // move is a ledger row, so a check that loses here (409) must not have
+    // written either — it would leave a line or a move behind for a check
+    // that never landed.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update(update)
@@ -6974,37 +6892,157 @@ export class ProcurementService {
       throw error;
     }
 
+    // F-371 / F-374. Puts the order back the way it was read (compare-and-set
+    // on the status just written) when a write after the claim fails before
+    // any stock has moved, so the check can be retried and "nothing changes"
+    // still holds. Returns whether it was put back.
+    let stockMoved = false;
+    const putBack = async (): Promise<boolean> => {
+      const prior: Record<string, any> = {};
+      for (const key of Object.keys(update))
+        prior[key] = (orderRow as any)[key] ?? null;
+      const { error: undoError } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .update(prior)
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .eq("status", status)
+        .select("id")
+        .single();
+      if (undoError) {
+        this.logger.error(
+          `verifyReceipt could not put order ${orderId} back after a failed write: ${undoError.message}`,
+        );
+        return false;
+      }
+      return true;
+    };
+
+    // THE VERIFICATION IS AN EVENT ROW (ADR 0192 amendment, founder answer 8,
+    // 2026-09-21). What the desk accepted, rejected and was invoiced for used
+    // to be written onto four `procurement_orders` columns — accepted and
+    // rejected in the COUNTED unit, backorder in bottles — and overwritten by
+    // the next verification. They are now one `reconciled` receipt event, all
+    // in BOTTLES (the unit `computeMatch` compared them in), written BEFORE
+    // any stock moves: if the facts cannot be recorded, the order is put back
+    // and nothing is changed. [F-374: written right after the claim above,
+    // not before it; a line written before a lost claim could not be taken
+    // back.] "Accepted" is then the ledger's own count (the correction below
+    // moves it), "rejected" the door's plus the desk's, "invoiced" this row's,
+    // and "backorder" what was ordered less what the ledger holds
+    // (`shelf-received.ts`). The four columns are no longer written or read;
+    // `scripts/check_no_quantity_received_column.py` holds that line.
+    if (match && bottles) {
+      const { error: eventError } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .insert({
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          stage: "reconciled",
+          counted_qty: bottles.acceptedQty,
+          counted_uom: "bottle",
+          counted_qty_bottles: bottles.acceptedQty,
+          rejected_qty: bottles.rejectedQty,
+          rejected_qty_bottles: bottles.rejectedQty,
+          invoice_qty_bottles: hasInvoice ? bottles.invoiceQty : null,
+          received_by: userId,
+          notes: body.rejectedReason ?? null,
+        });
+      if (eventError) {
+        if (await putBack())
+          throw new InternalServerErrorException(
+            `This verification's counts could not be recorded (${eventError.message}), so nothing was changed: ` +
+              "no stock was corrected and the order is as it was. Try again.",
+          );
+        throw new InternalServerErrorException(
+          `The delivery is marked as checked, but its counts could not be saved to the order's history (${eventError.message}). No stock was corrected.`,
+        );
+      }
+    }
+
+    // Correct the ordered line to the accepted count, then apply any unlisted extras.
+    //
+    // The gate used to be `match.ledgerDelta !== 0` alone, which silently
+    // dropped the entire point of the three-way match: when the count was right
+    // and only the PRICE was wrong — the commonest discrepancy there is, and
+    // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
+    // and the verified landed cost never reached the books. A verified price is
+    // now reason enough to write, on its own.
+    //
+    // F-374: after the claim. If the first correction fails before any stock
+    // has moved, the order is put back so the check can be retried; once
+    // stock has moved it is not (a retry would move it a second time).
+    try {
+      if (
+        match &&
+        (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
+        (orderRow as any).inventory_id
+      ) {
+        await this.applyReceiptAdjustment(
+          restaurantId,
+          orderId,
+          (orderRow as any).inventory_id,
+          match.ledgerDelta,
+          `receipt verification for order ${orderId}: ${match.summary}`,
+          // Verified landed cost, so the corrected lot carries what the bottle
+          // really cost rather than what we expected it to.
+          match.effectiveUnitCost,
+          userId,
+        );
+        stockMoved = true;
+      }
+
+      for (const adj of adjustments) {
+        // Skip the ordered line when the match already corrected it.
+        if (match && adj.inventoryId === (orderRow as any).inventory_id)
+          continue;
+        await this.applyReceiptAdjustment(
+          restaurantId,
+          orderId,
+          adj.inventoryId,
+          adj.delta,
+          adj.reason ||
+            `receipt verification for order ${orderId}${body.note ? `: ${body.note}` : ""}`,
+          // No unit cost: a free-form adjustment is a count correction on an item
+          // the invoice line does not describe, so there is no verified price to
+          // put on it. Passing one would be inventing the number the whole of
+          // this change exists to stop inventing.
+          null,
+          userId,
+        );
+        stockMoved = true;
+      }
+    } catch (e) {
+      if (!stockMoved) await putBack();
+      throw e;
+    }
+
+    // Raise a vendor credit claim when the match found money owed back.
+    // Best-effort: a failure here must not strand a delivery that has already
+    // been counted, and the claim can be raised again from the discrepancy queue.
+    if (match)
+      await this.openCreditClaim(
+        restaurantId,
+        orderId,
+        userId,
+        match,
+        orderRow as { provider_id?: string | null; currency?: string | null },
+      );
+
     // F-371. Only the tap whose compare-and-set won writes its history line.
     // If the line then cannot be written, the order is put back the way it
-    // was (compare-and-set on the status just written), so the tap can be
-    // retried and "nothing changes" still holds. An old offline payload whose
-    // adjustments already moved stock is NOT put back: a retry would move
-    // that stock a second time.
+    // was, so the tap can be retried and "nothing changes" still holds. An
+    // old offline payload whose adjustments already moved stock is NOT put
+    // back: a retry would move that stock a second time.
     if (countsConfirmedEvent) {
       const { error: confirmError } = await this.databaseService.supabase
         .from("procurement_receipt_events")
         .insert(countsConfirmedEvent);
       if (confirmError) {
-        if (adjustments.length === 0) {
-          const { error: undoError } = await this.databaseService.supabase
-            .from("procurement_orders")
-            .update({
-              status: (orderRow as any).status,
-              delivery_notes: (orderRow as any).delivery_notes ?? null,
-            })
-            .eq("restaurant_id", restaurantId)
-            .eq("id", orderId)
-            .eq("status", status)
-            .select("id")
-            .single();
-          if (!undoError) {
-            throw new InternalServerErrorException(
-              `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
-                "no stock was corrected and the order is as it was. Try again.",
-            );
-          }
-          this.logger.error(
-            `verifyReceipt could not put order ${orderId} back after its counts line failed: ${undoError.message}`,
+        if (!stockMoved && (await putBack())) {
+          throw new InternalServerErrorException(
+            `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
+              "no stock was corrected and the order is as it was. Try again.",
           );
         }
         throw new InternalServerErrorException(
