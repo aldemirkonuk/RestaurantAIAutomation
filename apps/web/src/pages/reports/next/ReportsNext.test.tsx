@@ -43,7 +43,7 @@ const decode = (id: 'goals' | 'bench', raw: unknown) => CATALOGUE[id].select(raw
 
 const hook = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 /** What the page last asked the data layer to READ — the draft included. */
-const asked = vi.hoisted(() => ({ showing: undefined as unknown }));
+const asked = vi.hoisted(() => ({ showing: undefined as unknown, month: undefined as unknown }));
 
 vi.mock('./useReportsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useReportsNextData')>(
@@ -53,6 +53,7 @@ vi.mock('./useReportsNextData', async () => {
     ...actual,
     useReportsNextData: (...args: unknown[]) => {
       asked.showing = args[2];
+      asked.month = args[4];
       return hook.current;
     },
   };
@@ -542,6 +543,31 @@ describe('ReportsNext — the sheet', () => {
     expect(screen.getAllByRole('group', { name: 'Till window' })).toHaveLength(1);
     expect(within(till).getByRole('group', { name: 'Till window' })).toBeInTheDocument();
     expect(within(screen.getByRole('banner')).queryByRole('group')).toBeNull();
+  });
+
+  it('asks the gateway for the month, not a trailing window, and says which month (F-128)', () => {
+    const july = { days: 30, month: '2026-07' };
+    expect(CATALOGUE.till.path!('r1', july)).toBe('/analytics/pos-revenue/r1?month=2026-07');
+    expect(CATALOGUE.till.path!('r1', { days: 30 })).toBe('/analytics/pos-revenue/r1?days=30');
+    expect(CATALOGUE.till.window(july)).toBe('July 2026 of POS checks, by the house’s days');
+    expect(CATALOGUE.till.window({ days: 30 })).toBe('the last 30 days of POS checks');
+  });
+
+  it('cuts the till to one calendar month, and a number of days leaves the month (F-128)', () => {
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(asked.month).toBeNull();
+    const picker = within(till).getByLabelText('Calendar month') as HTMLSelectElement;
+    // Twelve months up to this one, after the "A month…" placeholder.
+    expect(picker.options).toHaveLength(13);
+    const month = picker.options[2].value;
+    expect(month).toMatch(/^\d{4}-\d{2}$/);
+    fireEvent.change(picker, { target: { value: month } });
+    expect(asked.month).toBe(month);
+    expect(within(till).getByRole('button', { name: '30d' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(till).getByText(/of POS checks, by the house’s days$/)).toBeInTheDocument();
+    fireEvent.click(within(till).getByRole('button', { name: '30d' }));
+    expect(asked.month).toBeNull();
   });
 
   it('asks nothing while you are reading: no drawing or subject control until Arrange', () => {

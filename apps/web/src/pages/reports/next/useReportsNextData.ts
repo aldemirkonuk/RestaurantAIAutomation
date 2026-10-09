@@ -235,6 +235,8 @@ export function useReportsNextData(
   showing: AnalysisId[] | null = null,
   /** Puts a cutting the goals desk proposed onto the page's draft sheet. */
   placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
+  /** A calendar month the till reads instead of `tillDays` (F-128), YYYY-MM. */
+  tillMonth: string | null = null,
 ): ReportsNextData {
   const { activeRestaurantId } = useAuth();
   const rid = activeRestaurantId;
@@ -256,12 +258,12 @@ export function useReportsNextData(
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
       return {
-        queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null],
+        queryKey: [ROOT, id, rid, spec.takesWindow ? (tillMonth ?? tillDays) : null],
         enabled: !!rid,
         staleTime: 60_000,
         retry: 1,
         queryFn: async () => {
-          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days: tillDays }));
+          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days: tillDays, month: tillMonth }));
           return spec.select(data);
         },
       };

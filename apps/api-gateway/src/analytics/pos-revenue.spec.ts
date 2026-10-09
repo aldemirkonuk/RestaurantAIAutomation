@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { AnalyticsController } from "./analytics.controller";
 import { AnalyticsService } from "./analytics.service";
@@ -414,6 +415,31 @@ describe("GoalsService.getPosRevenueWindow", () => {
       1;
     expect(spanDays).toBe(7);
     expect(result.days).toBe(7);
+  });
+
+  // ── F-128: a calendar month, so July can be closed on Oct 2 ───────────
+
+  it("(m) reads a whole past calendar month, first day to last", async () => {
+    const { service } = makeGoals({ pos_checks: probeThen([]) });
+    const result = await service.getPosRevenueWindow("r1", 30, "2026-07");
+    expect(result).toMatchObject({ from: "2026-07-01", to: "2026-07-31", days: 31 });
+  });
+
+  it("(m2) ends a month still running on the house's today", async () => {
+    // LA_TODAY is Sep 1, though the server's clock already reads Sep 2.
+    const { service } = makeGoals({ pos_checks: probeThen([]) });
+    const result = await service.getPosRevenueWindow("r1", 30, "2026-09");
+    expect(result).toMatchObject({ from: "2026-09-01", to: LA_TODAY, days: 1 });
+  });
+
+  it("(m3) refuses a month not yet begun, and a month written wrong", async () => {
+    const { service } = makeGoals({ pos_checks: probeThen([]) });
+    await expect(service.getPosRevenueWindow("r1", 30, "2026-10")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(service.getPosRevenueWindow("r1", 30, "2026-13")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   // ── F-086 / A-027: Tuzlu Rüzgar's days, on Tuzlu's clock ──────────────
@@ -1219,15 +1245,26 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
     });
 
     await controller.getPosRevenue("r1", "99999");
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 365);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 365, null);
 
     await controller.getPosRevenue("r1", "banana");
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, null);
 
     // A parseable-but-tiny window clamps to the floor rather than snapping back
     // to the default — `?days=0` asking for today is a coherent request.
     await controller.getPosRevenue("r1", "0");
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1, null);
+  });
+
+  it("passes a calendar month through, and answers a refused month as the caller's mistake (F-128)", async () => {
+    goals.getPosRevenueWindow.mockResolvedValue({ posConnected: false, dailySeries: [] });
+    await controller.getPosRevenue("r1", undefined, "2026-07");
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, "2026-07");
+
+    goals.getPosRevenueWindow.mockRejectedValue(new BadRequestException("not begun"));
+    await expect(controller.getPosRevenue("r1", undefined, "2027-01")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 });
 

@@ -24,6 +24,7 @@
 import { CATALOGUE } from './rp-catalogue';
 import type { AnalysisId } from './rp-sheet';
 import { failureLine } from './rp-format';
+import { monthLabel } from './rp-registers-trade';
 import type { ExportDesk } from './useReportExports';
 import { REPORT_EXPORTS_PAGE_LIMIT, type ReportExport } from '@/services/api/reports';
 import { useState } from 'react';
@@ -37,6 +38,8 @@ export interface ExportsShelfProps {
   onSheet: AnalysisId[];
   /** The till's window as the reader set it on the till cutting. */
   tillDays: number;
+  /** A calendar month the till is set to instead (F-128), YYYY-MM. */
+  tillMonth?: string | null;
 }
 
 /**
@@ -140,7 +143,7 @@ function Row({ exp, desk }: { exp: ReportExport; desk: ExportDesk }) {
   );
 }
 
-export default function ExportsShelf({ desk, onSheet, tillDays }: ExportsShelfProps) {
+export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null }: ExportsShelfProps) {
   const exportable = onSheet.filter((id) => !UNEXPORTABLE.has(id));
   const [picked, setChosen] = useState<AnalysisId | null>(null);
   // A cutting taken off the sheet is no longer on offer: the choice falls back
@@ -148,6 +151,11 @@ export default function ExportsShelf({ desk, onSheet, tillDays }: ExportsShelfPr
   const chosen = picked !== null && exportable.includes(picked) ? picked : (exportable[0] ?? null);
 
   const takesWindow = chosen !== null && CATALOGUE[chosen].takesWindow === true;
+  // An export of the till re-reads its register later (a retry, a queue), so
+  // it keeps its window on the row — and that row holds days, not a month.
+  // Until it can hold one, a month is refused here in words rather than
+  // written as "the last N days" under a July title (F-128).
+  const monthHeld = takesWindow ? tillMonth : null;
 
   return (
     <section id="rp-exports" className="rp-exports" aria-labelledby="rp-exports-title">
@@ -182,12 +190,21 @@ export default function ExportsShelf({ desk, onSheet, tillDays }: ExportsShelfPr
                   ))}
                 </select>
               </label>
-              {takesWindow && <span className="rp-cap">over the last {tillDays} days, as the till is set</span>}
+              {takesWindow && monthHeld === null && (
+                <span className="rp-cap">over the last {tillDays} days, as the till is set</span>
+              )}
+              {monthHeld !== null && (
+                <span className="rp-note" role="note">
+                  A month of the till cannot be written up yet — only the last 7, 30 or 90 days
+                  can. Read {monthLabel(monthHeld)} on the sheet, or set the till back to a number
+                  of days to write it up.
+                </span>
+              )}
               <button
                 type="button"
                 className="rp-btn rp-ink rp-focus"
                 data-strong="true"
-                disabled={chosen === null || desk.busy === 'new'}
+                disabled={chosen === null || monthHeld !== null || desk.busy === 'new'}
                 onClick={() => chosen && desk.request(chosen, takesWindow ? tillDays : null)}
               >
                 {desk.busy === 'new' ? 'Asking…' : 'Write it up'}

@@ -13,6 +13,9 @@
  *   L3  whoever approves leave marks it paid or unpaid, and a person may say so
  *       on their own request.
  *
+ * F-191 (2026-10-09) sits with L3: a request names its own days, and the
+ * person sees their own requests and where each stands.
+ *
  * (R1, the five-year wage record, and L2, leave kept as days, have no page of
  * their own: R1 is proved in the gateway spec and on PGlite, L2 by
  * `TeamPay.test.tsx`'s paid-leave case.)
@@ -29,6 +32,7 @@ const api = vi.hoisted(() => ({
   week: {} as Record<string, unknown>,
   settings: {} as Record<string, unknown>,
   myWeek: {} as Record<string, unknown>,
+  timeOff: (() => Promise.resolve([])) as () => Promise<unknown[]>,
   createShift: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   updateShift: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   createTimeOff: vi.fn((..._args: unknown[]) => Promise.resolve({})),
@@ -49,7 +53,7 @@ vi.mock('../../../services/api/team', () => ({
       myConsent: { consent: null, readable: true, reason: null },
       crewConsents: 0,
     }),
-  getTimeOff: () => Promise.resolve([]),
+  getTimeOff: () => api.timeOff(),
   getMyWeek: () => Promise.resolve(api.myWeek),
   getMemberPerformance: () => Promise.resolve({ hasData: false }),
   createSchedule: vi.fn(() => Promise.resolve({ id: 'sch1' })),
@@ -427,17 +431,77 @@ describe('L3 — a person may say whether their own leave is paid', () => {
 
   it('files the request as not yet said when left to the manager', async () => {
     render(<MyShiftsNext />, { wrapper });
-    fireEvent.click(await screen.findByRole('button', { name: 'Ask for this week off' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask for these days off' }));
     await vi.waitFor(() => expect(api.createTimeOff).toHaveBeenCalled());
     expect('leaveType' in (api.createTimeOff.mock.calls[0][0] as object)).toBe(false);
   });
 
   it('files the type the person picked', async () => {
     render(<MyShiftsNext />, { wrapper });
-    await screen.findByRole('button', { name: 'Ask for this week off' });
+    await screen.findByRole('button', { name: 'Ask for these days off' });
     fireEvent.change(screen.getByLabelText('Paid or unpaid?'), { target: { value: 'paid' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask for this week off' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for these days off' }));
     await vi.waitFor(() => expect(api.createTimeOff).toHaveBeenCalled());
     expect(api.createTimeOff.mock.calls[0][0]).toMatchObject({ memberId: 'm1', leaveType: 'paid' });
+  });
+});
+
+// ── F-191: any days off, and where the request stands ───────────────────────
+
+describe('F-191 — staff ask for any days off and see the answer', () => {
+  beforeEach(() => {
+    api.myWeek = {
+      member: { id: 'm1', display_name: 'Sam' },
+      schedule: null,
+      mine: [],
+      open: [],
+      acknowledged: false,
+    };
+    api.timeOff = () => Promise.resolve([]);
+  });
+
+  it('files the days the person picked, one day included, and will not file them twice', async () => {
+    render(<MyShiftsNext />, { wrapper });
+    await screen.findByRole('button', { name: 'Ask for these days off' });
+    fireEvent.change(screen.getByLabelText('First day off'), { target: { value: '2026-11-03' } });
+    fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-11-03' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for this day off' }));
+    await vi.waitFor(() => expect(api.createTimeOff).toHaveBeenCalledTimes(1));
+    expect(api.createTimeOff.mock.calls[0][0]).toMatchObject({
+      memberId: 'm1',
+      startDate: '2026-11-03',
+      endDate: '2026-11-03',
+    });
+    expect(await screen.findByRole('button', { name: 'Asked' })).toBeDisabled();
+  });
+
+  it('refuses a last day before the first, in words', async () => {
+    render(<MyShiftsNext />, { wrapper });
+    await screen.findByRole('button', { name: 'Ask for these days off' });
+    fireEvent.change(screen.getByLabelText('First day off'), { target: { value: '2026-11-10' } });
+    fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-11-03' } });
+    expect(screen.getByRole('button', { name: 'Ask for these days off' })).toBeDisabled();
+    expect(screen.getByText(/The last day off comes before the first/)).toBeInTheDocument();
+  });
+
+  it('lists the person’s own requests with where each stands', async () => {
+    api.timeOff = () =>
+      Promise.resolve([
+        { id: 't1', member_id: 'm1', start_date: '2026-11-03', end_date: '2026-11-05', status: 'approved', leave_type: 'paid' },
+        { id: 't2', member_id: 'm1', start_date: '2026-12-24', end_date: '2026-12-24', status: 'pending' },
+        { id: 't3', member_id: 'm1', start_date: '2026-10-20', end_date: '2026-10-21', status: 'denied' },
+      ]);
+    render(<MyShiftsNext />, { wrapper });
+    const list = await screen.findByRole('heading', { name: 'Your time-off requests' });
+    const panel = list.closest('section')!;
+    expect(within(panel).getByText(/approved · paid$/)).toBeInTheDocument();
+    expect(within(panel).getByText(/waiting for your manager$/)).toBeInTheDocument();
+    expect(within(panel).getByText(/turned down$/)).toBeInTheDocument();
+  });
+
+  it('says the requests could not be read rather than showing none', async () => {
+    api.timeOff = () => Promise.reject(new Error('boom'));
+    render(<MyShiftsNext />, { wrapper });
+    expect(await screen.findByText(/Your time-off requests could not be read/)).toBeInTheDocument();
   });
 });

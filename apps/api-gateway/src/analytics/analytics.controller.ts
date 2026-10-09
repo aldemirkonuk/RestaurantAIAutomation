@@ -1123,10 +1123,17 @@ export class AnalyticsController {
     required: false,
     description: "Window length in days (1–365, default 30).",
   })
+  @ApiQuery({
+    name: "month",
+    required: false,
+    description:
+      "A calendar month, YYYY-MM: its first house day to its last (or to today while it runs). Replaces `days` when given.",
+  })
   @ApiResponse({ status: 200, description: "POS revenue window" })
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
+    @Query("month") month?: string,
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
@@ -1136,6 +1143,7 @@ export class AnalyticsController {
       const window = await this.goalsService.getPosRevenueWindow(
         restaurantId,
         span,
+        month || null,
       );
       // Skipped entirely when no POS is wired: there is nothing to break down,
       // and issuing the query anyway would only make "no POS" cost two round
@@ -1155,6 +1163,8 @@ export class AnalyticsController {
           : null;
       return { ...window, consumption };
     } catch (error) {
+      // A month written wrong, or not yet begun, is the caller's to fix.
+      if (error instanceof HttpException) throw error;
       // Deliberately a 500 rather than an empty payload: "we could not load
       // this" and "you have no POS" are different sentences, and the UI shows
       // different things for each.

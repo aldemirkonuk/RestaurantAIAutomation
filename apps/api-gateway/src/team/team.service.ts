@@ -2333,7 +2333,69 @@ export class TeamService {
     if (error)
       throw new InternalServerErrorException("Failed to review request");
     if (!data) throw new NotFoundException("Request not found");
-    return data;
+    // The person who asked hears the answer (F-191): before this, a decision
+    // reached nobody, and My Shifts said to look on the manager's desk.
+    const requesterNotified = await this.tellRequester(
+      userId,
+      restaurantId,
+      cur.member_id,
+      data,
+    );
+    return { ...data, requesterNotified };
+  }
+
+  /**
+   * One in-app notice to the person whose time off was decided. Never throws:
+   * the decision is saved, and a notice that did not land is reported as
+   * `false` rather than undoing it. No notice when the person has no account
+   * here, or decided their own request.
+   */
+  private async tellRequester(
+    reviewerId: string,
+    restaurantId: string,
+    memberId: string,
+    row: { status?: string; start_date?: string; end_date?: string },
+  ): Promise<boolean> {
+    try {
+      const { data: member, error } = await this.sb
+        .from("team_members")
+        .select("user_id")
+        .eq("id", memberId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      const to = member?.user_id as string | null | undefined;
+      if (!to || to === reviewerId) return false;
+      const days =
+        row.start_date === row.end_date
+          ? `${row.start_date}`
+          : `${row.start_date} to ${row.end_date}`;
+      const word = row.status === "approved" ? "approved" : "turned down";
+      const { error: insErr } = await this.sb.from("notifications").insert({
+        user_id: to,
+        // Legacy NOT-NULL columns still on the live notifications table.
+        recipient_id: to,
+        notification_type: "system",
+        channels: ["in_app"],
+        restaurant_id: restaurantId,
+        type: "system",
+        title: `Your time off was ${word}`,
+        message: `Your request for ${days} off was ${word}.`,
+        priority: "medium",
+        status: "unread",
+        action_url: "/team",
+        action_label: "Open My shifts",
+        metadata: { action: "time_off_reviewed", decision: row.status },
+        created_at: new Date().toISOString(),
+      });
+      if (insErr) throw new Error(insErr.message);
+      return true;
+    } catch (err: any) {
+      this.logger.error(
+        `reviewTimeOff: the requester was not told — ${err?.message}`,
+      );
+      return false;
+    }
   }
 
   /*
