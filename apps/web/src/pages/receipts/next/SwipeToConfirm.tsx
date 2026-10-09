@@ -10,6 +10,15 @@
  * go early resets. Screen readers get the control as a button whose label
  * says exactly what completing it asserts.
  *
+ * Assistive path (F-345, the same one DoorSeal and HoldToApprove take): a
+ * screen reader, VoiceOver, TalkBack or voice control presses with a bare
+ * click (no pointer, no key, `detail === 0`). That click is a two-step
+ * confirm: the first arms (and begins the seal, since the gesture begins
+ * there), the second confirms; the status line under the handle says which
+ * step it is on. A thumb or mouse click is never a confirm: the pointer has to
+ * travel. The armed step lapses after a few seconds, and lapsing, blurring or
+ * starting another gesture abandons it.
+ *
  * THE SEAL (founder, 2026-09-06, batch 64: "Decide as a module: seal all
  * three"). `onChallenge` is the SAME contract `HoldToApprove` carries, lifted
  * rather than re-invented: the proof is minted when the gesture BEGINS, and a
@@ -19,7 +28,7 @@
  * through the UI instead of the API.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { animate, pour, stamp, tuck, useReducedMotion } from '../../../lib/mudavym/motion';
 import { Seal } from '../../../components/mudavym/Seal';
@@ -27,6 +36,7 @@ import { MONO, SANS } from './rc2-format';
 
 const TRAVEL = 96; // px of upward drag that constitutes the gesture
 const WAIT_SIGN_AFTER_MS = 400; // the house loader's ladder: nothing shows sooner
+const ARM_WINDOW_MS = 3000; // how long a first assistive press stays armed
 
 interface Props {
   label: string;
@@ -65,6 +75,13 @@ export function SwipeToConfirm({
   /** The loading sign under "Confirming…", once confirming outlasts a glance. */
   const waitRef = useRef<HTMLSpanElement | null>(null);
   const [waiting, setWaiting] = useState(false);
+  /** A first assistive press is waiting for its second (F-345). */
+  const [armed, setArmed] = useState(false);
+  const armedRef = useRef(false);
+  const armTimer = useRef<number | null>(null);
+  /** The browser's own click after a key the hold path already handled. */
+  const swallowClickRef = useRef(false);
+  const statusId = useId();
 
   /** Begin minting the proof, once per gesture. */
   const beginChallenge = useCallback(() => {
@@ -102,8 +119,18 @@ export function SwipeToConfirm({
       });
   }, [onConfirm]);
 
+  const disarm = useCallback(() => {
+    if (armTimer.current !== null) {
+      window.clearTimeout(armTimer.current);
+      armTimer.current = null;
+    }
+    armedRef.current = false;
+    setArmed(false);
+  }, []);
+
   const reset = useCallback(() => {
     startY.current = null;
+    disarm();
     if (!doneRef.current) {
       // The gesture ended without a confirmation, so the seal it began is
       // abandoned. It expires on the server; nothing here spends it.
@@ -111,12 +138,13 @@ export function SwipeToConfirm({
       setSettling(true);
       setProgress(0);
     }
-  }, []);
+  }, [disarm]);
 
   // pointer path
   const onPointerDown = (e: React.PointerEvent) => {
     if (disabled || doneRef.current) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    disarm();
     setSettling(false);
     setSealNote(null);
     beginChallenge();
@@ -146,7 +174,9 @@ export function SwipeToConfirm({
     if (disabled || doneRef.current) return;
     if (e.key !== ' ' && e.key !== 'Enter') return;
     e.preventDefault();
+    swallowNextClick();
     if (holdTimer.current !== null) return; // already holding
+    disarm();
     setSettling(false);
     setSealNote(null);
     beginChallenge();
@@ -164,9 +194,51 @@ export function SwipeToConfirm({
     holdTimer.current = window.requestAnimationFrame(tick);
   };
   const onKeyUp = (e: React.KeyboardEvent) => {
-    if (e.key === ' ' || e.key === 'Enter') stopHold();
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    // Space presses a button on key-up; that click was this key, not a confirm.
+    swallowNextClick();
+    stopHold();
   };
   useEffect(() => () => stopHold(), [stopHold]);
+
+  const swallowNextClick = () => {
+    swallowClickRef.current = true;
+    window.setTimeout(() => {
+      swallowClickRef.current = false;
+    }, 0);
+  };
+
+  /* A bare click with no pointer and no key behind it (`detail === 0`) is how
+     a screen reader or voice control presses a button. It takes two steps,
+     never one. A thumb or mouse click (`detail >= 1`) is ignored: the pointer
+     path is the swipe. */
+  const onClick = (e: React.MouseEvent) => {
+    if (swallowClickRef.current) {
+      swallowClickRef.current = false;
+      return;
+    }
+    if (e.detail !== 0 || disabled || doneRef.current) return;
+    if (armedRef.current) {
+      disarm();
+      complete();
+      return;
+    }
+    setSettling(false);
+    setSealNote(null);
+    beginChallenge();
+    armedRef.current = true;
+    setArmed(true);
+    armTimer.current = window.setTimeout(() => {
+      armTimer.current = null;
+      if (!doneRef.current) reset();
+    }, ARM_WINDOW_MS);
+  };
+  useEffect(
+    () => () => {
+      if (armTimer.current !== null) window.clearTimeout(armTimer.current);
+    },
+    [],
+  );
 
   const done = doneRef.current;
 
@@ -250,7 +322,8 @@ export function SwipeToConfirm({
         <button
           type="button"
           role="button"
-          aria-label={`${label}. ${assertion} Hold Space or drag up to complete.`}
+          aria-label={`${label}. ${assertion} Hold Space, drag up, or press twice to complete.`}
+          aria-describedby={statusId}
           disabled={disabled || done}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -258,6 +331,7 @@ export function SwipeToConfirm({
           onPointerCancel={onPointerUp}
           onKeyDown={onKeyDown}
           onKeyUp={onKeyUp}
+          onClick={onClick}
           // A consent hold must not complete undeliberately: losing focus
           // mid-hold (click away, Alt-Tab) cancels like a lifted key
           // (opus-honesty BLOCKER 2 / receipts-audit D3).
@@ -296,6 +370,8 @@ export function SwipeToConfirm({
         </button>
       </div>
       <p
+        id={statusId}
+        aria-live="polite"
         style={{
           textAlign: 'center',
           fontFamily: MONO,
@@ -310,7 +386,7 @@ export function SwipeToConfirm({
             control never claims "Verified"; on success the document leaves
             the queue, and on failure the parent remounts this control fresh
             (receipts-audit.md, BLOCKER 2). */}
-        {done ? 'Confirming…' : label}
+        {done ? 'Confirming…' : armed ? 'Press again to confirm' : label}
       </p>
       {/* The slot is always there, so the sign appearing moves nothing. */}
       <span
