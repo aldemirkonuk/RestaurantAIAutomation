@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PriceLockNote from './PriceLockNote';
+import { setCellarCurrency } from './cellar-format';
 import { listPriceLocks as listPriceLocksReal, type LockReadout, type PriceLock } from '../../../services/api/pricing';
 
 vi.mock('../../../services/api/pricing', async () => {
@@ -67,6 +68,8 @@ function mount(inventoryId = 'inv-1') {
 // A braced body: a hook that RETURNS a function has it run as the test's teardown
 // (vitest), and mockReset() returns the mock itself.
 beforeEach(() => {
+  // A dollar house: the currency CellarNext reads before any note draws.
+  setCellarCurrency('USD');
   listPriceLocks.mockReset();
 });
 

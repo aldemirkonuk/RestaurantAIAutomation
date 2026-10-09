@@ -5,10 +5,12 @@ import { addCustomProvider } from '../services/api/vendors'
 import { updateOnboardingProgress } from '../services/api/menus'
 import { pencilledCount, readProof } from '../lib/firstProof'
 import { readLastInvoiceLater, writeLastInvoiceLater } from '../lib/houseLater'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function HouseContents() {
   const navigate = useNavigate()
-  const proof = readProof()
+  const { activeRestaurantId } = useAuth()
+  const proof = readProof(activeRestaurantId)
   const pencilled = proof ? pencilledCount(proof.items) : 0
   const [supplier, setSupplier] = useState('')
   const [saving, setSaving] = useState(false)

@@ -6,7 +6,7 @@
  *  - `price_reference` is mapped by the gateway as `price: row.price_reference ?? 0`
  *    (wines.service.ts:82) — so a bottle with no reference price arrives as the
  *    number 0. `money()` treats 0 as unknown for that field on purpose (see
- *    `refPrice`), because "$0" is a claim the library cannot support.
+ *    `refPrice`), because a zero price is a claim the library cannot support.
  *  - `retailPriceAvg` is null on all 442 rows (v3.0-TECH-DEBT.md:543-549 —
  *    the sentence is at :547; an earlier draft of this file cited :432-440,
  *    which is an unrelated roadmap section), so
@@ -15,6 +15,8 @@
  *  - `vintage` absent is the dash, not "NV". "NV" asserts non-vintage; missing
  *    asserts nothing.
  */
+
+import { formatMoney } from '../../../lib/currency';
 
 export const EM = '—';
 
@@ -43,11 +45,27 @@ export function text(v: unknown): string | null {
   return t;
 }
 
-/** Money of record, or the dash. */
-export function money(v: number | null | undefined): string {
+/**
+ * The house's reporting currency, as `CellarNext` last read it from
+ * `GET /settings/currency` (the read /menu makes). Held here rather than
+ * threaded through every leaf and cell, because `money()` is called from
+ * plain cell renderers and sentence builders that have no React scope. Null
+ * — unread, unrecorded, or a failed read — prints "currency not recorded",
+ * never a dollar sign: a TRY or GBP house must not see one bottle in two
+ * currencies, one page apart.
+ */
+let houseCurrency: string | null = null;
+
+/** Called by `CellarNext` on every render, before its registers draw. */
+export function setCellarCurrency(code: string | null): void {
+  houseCurrency = code;
+}
+
+/** Money of record, in the house's currency, or the dash. */
+export function money(v: number | null | undefined, currency: string | null = houseCurrency): string {
   const n = num(v);
   if (n === null) return EM;
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatMoney(n, currency);
 }
 
 /**

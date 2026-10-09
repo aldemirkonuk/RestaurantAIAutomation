@@ -52,7 +52,7 @@ import { Wordmark } from '@/components/mudavym';
 import CatalogueRegister from './CatalogueRegister';
 import Registers from './Registers';
 import WineRegister from './WineRegister';
-import { useCellarNextData } from './useCellarNextData';
+import { useCellarNextData, useHouseCurrency } from './useCellarNextData';
 import {
   REGISTER_ORDER,
   REGISTER_TITLE,
@@ -60,6 +60,7 @@ import {
   houseNamingFor,
   parentView,
   registerHref,
+  setCellarCurrency,
   type RegisterId,
 } from './cellar-format';
 import './cellar-next.css';
@@ -83,6 +84,9 @@ export interface CellarNextProps {
 
 export default function CellarNext({ ground, category }: CellarNextProps) {
   const data = useCellarNextData();
+  // Every price below prints in this house's currency (F-271). Set during
+  // render, so the registers drawn under it read the current house's code.
+  setCellarCurrency(useHouseCurrency());
   const { pathname } = useLocation();
   const [params] = useSearchParams();
 
@@ -212,7 +216,10 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
           ) : open === 'wines' ? (
             <WineRegister data={data} />
           ) : (
-            <CatalogueRegister id={open} data={data} />
+            // Keyed by register: /beer and /whiskey render this same element,
+            // so without the key a Type filter set on one page silently hid
+            // every row on the next (F-269).
+            <CatalogueRegister key={open} id={open} data={data} />
           )}
         </div>
 

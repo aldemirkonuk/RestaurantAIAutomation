@@ -11,12 +11,18 @@
  * order/inventory mutation paths are `OrderCeremony.test.tsx`'s own file.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import BottleLeaf from './BottleLeaf';
-import { EM } from './cellar-format';
+import { EM, setCellarCurrency } from './cellar-format';
 import type { BottleVM, CellarRow, WineStructureVM } from './useCellarNextData';
+
+// The house currency CellarNext reads from /settings/currency before any leaf
+// draws. A dollar house here, so the `$` figures below are what it prints.
+beforeEach(() => {
+  setCellarCurrency('USD');
+});
 
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
   useCreateInventoryItem: () => ({ mutate: vi.fn(), isPending: false }),
