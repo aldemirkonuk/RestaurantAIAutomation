@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { useAuth } from "../contexts/AuthContext";
+import { pendingJoin } from "../lib/joinResume";
 
 /**
  * ProtectedRoute and the session's house (ADR 0164): a session in no house is
@@ -86,5 +87,50 @@ describe("ProtectedRoute", () => {
   it("is exact: 'owner' alone refuses a manager", () => {
     renderWith(inHouse("manager"), "owner");
     expect(screen.queryByText("the page")).not.toBeInTheDocument();
+  });
+
+  // F-288: the studio is not scoped to a house, and its invitee often has none.
+  describe("a studio invite (F-288)", () => {
+    const U = "11111111-1111-4111-8111-111111111111";
+    function renderStudioInvite(user: Record<string, unknown>) {
+      vi.mocked(useAuth).mockReturnValue({
+        user,
+        loading: false,
+        isAuthenticated: true,
+      } as any);
+      return render(
+        <MemoryRouter initialEntries={["/studio/invite/tok_123"]}>
+          <Routes>
+            <Route
+              path="/studio/invite/:token"
+              element={
+                <ProtectedRoute houseOptional>
+                  <div>the invite</div>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Where />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    it("opens for a verified account with no house instead of sending it to the chooser", () => {
+      renderStudioInvite({ userId: U, emailVerified: true, restaurantId: "" });
+      expect(screen.getByText("the invite")).toBeInTheDocument();
+    });
+
+    it("keeps the invite for an unverified account on its way to verify", () => {
+      localStorage.clear();
+      renderStudioInvite({ userId: U, emailVerified: false, restaurantId: "" });
+      expect(screen.getByTestId("where")).toHaveTextContent("/verify-email");
+      expect(pendingJoin(U)).toBe("/studio/invite/tok_123");
+    });
+
+    it("keeps nothing for an ordinary page", () => {
+      localStorage.clear();
+      renderWith({ userId: U, emailVerified: false, restaurantId: "" });
+      expect(pendingJoin(U)).toBeNull();
+    });
   });
 });

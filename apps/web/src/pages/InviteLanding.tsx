@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom'
 import { readInviteMailSecret, withInviteMailSecret } from '../lib/inviteMailSecret'
 import { useAuth } from '../contexts/AuthContext'
+import { forgetJoin, rememberJoin } from '../lib/joinResume'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { toast } from 'sonner'
@@ -68,7 +69,11 @@ export function InviteLanding() {
   // The secret the invite mail's link carries (ADR 0229 fork 9, item 77),
   // handed on to /register as a fragment: only a join from the mail verifies.
   const mailSecret = readInviteMailSecret(useLocation().hash)
-  const { isAuthenticated, refreshBranches, setActiveRestaurantId } = useAuth()
+  const { user, isAuthenticated, logout, refreshBranches, setActiveRestaurantId } =
+    useAuth()
+  // The accept route needs a verified address (F-274): an unverified account
+  // verifies first and is brought back here, rather than losing the invite.
+  const unverified = isAuthenticated && user?.emailVerified === false
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(true)
@@ -98,6 +103,24 @@ export function InviteLanding() {
   useEffect(() => {
     void loadPreview()
   }, [loadPreview])
+
+  // Being here is the way back from verifying: nothing more to keep.
+  useEffect(() => {
+    forgetJoin()
+  }, [])
+
+  const verifyFirst = () => {
+    if (!code) return
+    rememberJoin(`/invite/${encodeURIComponent(code)}`, user?.userId)
+    navigate('/verify-email')
+  }
+
+  // A link opened from a mail has nothing to go back to (F-277).
+  const goBack = () => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx
+    if (typeof idx === 'number' ? idx > 0 : window.history.length > 1) navigate(-1)
+    else navigate('/', { replace: true })
+  }
 
   const handleAccept = async () => {
     if (!code) return
@@ -199,14 +222,37 @@ export function InviteLanding() {
               )}
               {isAuthenticated ? (
                 <>
-                  <button
-                    className="mdv-btn mdv-btn--seal"
-                    disabled={accepting}
-                    onClick={() => void handleAccept()}
-                  >
-                    {accepting ? 'Joining…' : `Join ${restaurantName}`}
-                  </button>
-                  <button className="mdv-btn" onClick={() => navigate(-1)}>
+                  {/* Join uses whoever is signed in on this device (F-275). */}
+                  <p data-testid="invite-signed-in-as">
+                    You are signed in as <strong>{user?.email}</strong>.{' '}
+                    <button
+                      type="button"
+                      className="mdv-link"
+                      onClick={() => void logout()}
+                    >
+                      Not you? Sign out
+                    </button>
+                  </p>
+                  {unverified ? (
+                    <>
+                      <p>
+                        Confirm your email address first. We will bring you
+                        back here to join.
+                      </p>
+                      <button className="mdv-btn mdv-btn--seal" onClick={verifyFirst}>
+                        Confirm my email
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="mdv-btn mdv-btn--seal"
+                      disabled={accepting}
+                      onClick={() => void handleAccept()}
+                    >
+                      {accepting ? 'Joining…' : `Join ${restaurantName}`}
+                    </button>
+                  )}
+                  <button className="mdv-btn" onClick={goBack}>
                     Cancel, go back
                   </button>
                 </>
@@ -318,30 +364,57 @@ export function InviteLanding() {
           </>
         ) : (
           <>
+            <p className="text-sm text-gray-500 mb-4" data-testid="invite-signed-in-as">
+              You&apos;re signed in as{' '}
+              <span className="font-medium text-gray-700">{user?.email}</span>.{' '}
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="underline hover:text-gray-700"
+              >
+                Not you? Sign out
+              </button>
+            </p>
             {acceptError && (
               <p className="text-sm text-rose-500 mb-3">{acceptError}</p>
             )}
+            {unverified ? (
+              <>
+                <p className="text-sm text-gray-500 mb-3">
+                  Confirm your email address first. We will bring you back here
+                  to join.
+                </p>
+                <button
+                  type="button"
+                  onClick={verifyFirst}
+                  className="w-full flex items-center justify-center gap-2 bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
+                >
+                  Confirm my email
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={accepting}
+                onClick={() => void handleAccept()}
+                className="w-full flex items-center justify-center gap-2 bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 disabled:opacity-60 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
+              >
+                {accepting ? (
+                  <>
+                    <RefreshCw
+                      className="w-4 h-4 animate-spin"
+                      strokeWidth={1.75}
+                    />
+                    Adding…
+                  </>
+                ) : (
+                  `Add ${restaurantName}`
+                )}
+              </button>
+            )}
             <button
               type="button"
-              disabled={accepting}
-              onClick={() => void handleAccept()}
-              className="w-full flex items-center justify-center gap-2 bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 disabled:opacity-60 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
-            >
-              {accepting ? (
-                <>
-                  <RefreshCw
-                    className="w-4 h-4 animate-spin"
-                    strokeWidth={1.75}
-                  />
-                  Adding…
-                </>
-              ) : (
-                `Add ${restaurantName}`
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
+              onClick={goBack}
               className="mt-3 w-full text-sm text-gray-400 underline hover:text-gray-600"
             >
               Cancel, go back

@@ -1,6 +1,6 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
-import { Link } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { useAuth } from '../contexts/AuthContext'
@@ -8,11 +8,23 @@ import { cachedHouseName, clearHouseEnded, readHouseEnded } from '../lib/houseMe
 
 export function NoAccess() {
   const publicDesign = usePublicDesign()
-  const { user, logout } = useAuth()
+  const { user, loading, logout } = useAuth()
+  const navigate = useNavigate()
   // Set when the person's access to the house they were in just ended and no
   // house is left (ADR 0164, R5): the same one sentence the chooser shows.
   const endedId = readHouseEnded()
   const ended = endedId ? (cachedHouseName(endedId) ?? 'that house') : null
+
+  // This page is about an account (F-276): with no one signed in, there is no
+  // account to talk about and nobody to sign out, so it is the sign-in page.
+  // While the session is still being read, it says nothing yet.
+  if (!user) return loading ? null : <Navigate to="/login" replace />
+
+  const signOut = async () => {
+    clearHouseEnded()
+    // `false`: they chose to keep unsent changes and stay signed in (ADR 0241).
+    if (await logout()) navigate('/login', { replace: true })
+  }
 
   if (publicDesign) {
     return (
@@ -60,10 +72,7 @@ export function NoAccess() {
           <button
             className="mdv-btn mdv-btn--seal"
             type="button"
-            onClick={() => {
-              clearHouseEnded()
-              void logout()
-            }}
+            onClick={() => void signOut()}
           >
             Sign out
           </button>
@@ -96,10 +105,7 @@ export function NoAccess() {
         <div className="mt-8 flex flex-col gap-3">
           <button
             type="button"
-            onClick={() => {
-              clearHouseEnded()
-              void logout()
-            }}
+            onClick={() => void signOut()}
             className="inline-flex items-center justify-center gap-2 w-full bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
           >
             <LogOut className="w-4 h-4" strokeWidth={1.75} />
