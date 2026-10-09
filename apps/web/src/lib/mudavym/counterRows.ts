@@ -101,15 +101,24 @@ function threadLine(t: CounterThreadRow): ActLine {
   };
 }
 
+/**
+ * How likely, in words. The matcher's method code and raw score are the
+ * system's own terms, not the owner's, so neither is printed (F-267).
+ */
+function likelihoodWord(confidence: number | null | undefined): string {
+  if (confidence === null || confidence === undefined || !Number.isFinite(confidence)) {
+    return 'how likely is not recorded';
+  }
+  if (confidence >= 0.9) return 'very likely';
+  if (confidence >= 0.7) return 'likely';
+  return 'possible';
+}
+
 function identityLine(i: CounterIdentityRow): ActLine {
-  const conf =
-    i.confidence === null || i.confidence === undefined
-      ? 'confidence not stated'
-      : `confidence ${Math.round(i.confidence * 100) / 100}`;
   return {
     id: i.id,
-    what: 'Two records may be the same bottle',
-    detail: `${i.method ?? 'method not stated'} · ${conf}`,
+    what: 'May be the same wine',
+    detail: `${likelihoodWord(i.confidence)} · kept for the record`,
     at: shortWhen(i.createdAt),
   };
 }

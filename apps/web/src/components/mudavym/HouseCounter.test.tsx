@@ -229,3 +229,42 @@ describe('The house said — this sitting only', () => {
     expect(window.sessionStorage?.getItem?.('houseSaid') ?? null).toBeNull();
   });
 });
+
+// F-267: identities is the house's count, asking nobody to act while no page
+// decides one — no number on the Decide strip, no act verb, no matcher codes.
+describe('identities is a count to read, not an act', () => {
+  const IDENTITIES: CounterRegister = {
+    key: 'identities',
+    verb: 'decide',
+    state: 'answered',
+    readAt: T,
+    ms: 4,
+    count: 3,
+    complete: true,
+    act: 'not_yours',
+    rows: [{ id: 'c-1', subject: 'vendor_products', method: 'name_match', confidence: 0.82, createdAt: T }],
+  };
+  const INVITES: CounterRegister = {
+    key: 'invitations',
+    verb: 'decide',
+    state: 'answered',
+    readAt: T,
+    ms: 4,
+    count: 1,
+    complete: true,
+    act: 'yours',
+    rows: [{ id: 'i-1', role: 'staff', expiresAt: null, createdAt: T }],
+  };
+
+  it('the tucked Decide number counts the invitation, not the identities', () => {
+    mount(state({ last: read([ORDERS, IDENTITIES, INVITES]) }), 'tucked');
+    expect(screen.getByRole('button', { name: 'Decide: 1' })).toBeTruthy();
+  });
+
+  it('its row says what it is in plain words, with no act verb and no matcher codes', () => {
+    mount(state({ last: read([IDENTITIES]) }));
+    const row = screen.getByRole('button', { name: /May be the same wine/ });
+    expect(row.textContent).toMatch(/likely/);
+    expect(row.textContent).not.toMatch(/Decide|name_match|0\.82|confidence/);
+  });
+});

@@ -119,7 +119,7 @@ const LABELS: Record<CounterRegisterKey, string> = {
   deliveries: "Deliveries counted by case",
   credits: "Credits promised",
   threads: "Vendor replies waiting",
-  identities: "Identities to decide",
+  identities: "Bottles that may be the same wine",
   invitations: "Invitations",
   proposals: "Mudavym's proposals",
 };

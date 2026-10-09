@@ -276,6 +276,8 @@ describe('an identity candidate asks nothing of the reader (F-267)', () => {
     mount({ register, row: register.rows[0] });
     expect(screen.getByText(/bottles Mudavym thinks may be the same wine/i)).toBeTruthy();
     expect(screen.getByText(/nothing is needed from you now/i)).toBeTruthy();
+    expect(screen.getByText(/^For the record · /)).toBeTruthy();
+    expect(screen.queryByText(/^Decide · /)).toBeNull();
     expect(screen.queryByText(/not built|surface|No page decides/i)).toBeNull();
     expect(screen.queryByRole('button', { name: /confirm|reject|hold/i })).toBeNull();
   });

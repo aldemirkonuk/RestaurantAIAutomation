@@ -157,6 +157,24 @@ export const VERB_WORD: Record<CounterVerb, string> = {
   proposed: 'Mudavym proposes',
 };
 
+/**
+ * Registers that ask nobody to act today — a count to read, not a to-do.
+ * Identities: no mounted page decides an identity link, so the gateway sends
+ * the register as `not_yours` for every role (F-267). Such a register adds to
+ * no verb's number on the tucked strip and its rows carry no act verb. Take
+ * the key out of this set when a page that decides one is mounted.
+ */
+export const INFORMATION_ONLY: ReadonlySet<CounterRegisterKey> = new Set<CounterRegisterKey>(['identities']);
+
+/** The word a register's row and sheet carry in place of the verb's act word. */
+export const RECORD_WORD = 'For the record';
+
+/** The verb word for one register: the act it asks, or RECORD_WORD when it asks none. */
+export function actWordFor(key: CounterRegisterKey, verb: CounterVerb, short = false): string {
+  if (INFORMATION_ONLY.has(key)) return short ? 'Record' : RECORD_WORD;
+  return short ? VERB_SHORT[verb] : VERB_WORD[verb];
+}
+
 /** The short word the tucked strip and the phone print. */
 export const VERB_SHORT: Record<CounterVerb, string> = {
   seal: 'Seal',
@@ -172,7 +190,7 @@ export const REGISTER_WORD: Record<CounterRegisterKey, string> = {
   deliveries: 'Deliveries counted by case',
   credits: 'Credits promised',
   threads: 'Replies waiting',
-  identities: 'Identities',
+  identities: 'Bottles that may be the same wine',
   invitations: 'Invitations',
   proposals: 'Proposals',
 };
@@ -264,7 +282,8 @@ export type VerbMark =
  * partial sum is a failure printed as a smaller number.
  */
 export function verbMark(registers: readonly CounterRegister[], verb: CounterVerb): VerbMark {
-  const mine = registers.filter((r) => r.verb === verb);
+  // A register that asks nobody to act adds nothing to a verb's number (F-267).
+  const mine = registers.filter((r) => r.verb === verb && !INFORMATION_ONLY.has(r.key));
   if (mine.length === 0) return { kind: 'absent' };
   if (mine.some((r) => r.state === 'unreadable')) return { kind: 'unread' };
   const answered = mine.filter((r): r is CounterRegisterAnswered => r.state === 'answered');

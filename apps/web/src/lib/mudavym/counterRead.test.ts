@@ -85,8 +85,20 @@ describe("a verb's mark on the tucked strip", () => {
   });
 
   it('marks a page-sized answer as a floor', () => {
-    const regs = [answered('identities', 'decide', 50, { complete: false })];
+    const regs = [answered('invitations', 'decide', 50, { complete: false })];
     expect(verbMark(regs, 'decide')).toEqual({ kind: 'count', count: 50, floor: true });
+  });
+
+  // F-267: identities asks nobody to act while no page decides one, so it adds
+  // nothing to Decide's number — a not_yours register that DOES name an act
+  // (threads, orders for staff) still counts; HouseCounter.test pins "Reply: 0".
+  it('leaves an information-only register out of the verb it sits under', () => {
+    const regs = [
+      answered('identities', 'decide', 3, { act: 'not_yours' }),
+      answered('invitations', 'decide', 1),
+    ];
+    expect(verbMark(regs, 'decide')).toEqual({ kind: 'count', count: 1, floor: false });
+    expect(verbMark([regs[0]], 'decide')).toEqual({ kind: 'absent' });
   });
 });
 

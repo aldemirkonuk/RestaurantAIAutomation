@@ -43,7 +43,7 @@ import { applyProposalSealed, mintProposalSeal } from '../../services/api/askAi'
 import {
   roomForAct,
   REGISTER_WORD,
-  VERB_WORD,
+  actWordFor,
   type CounterOrderRow,
   type CounterProposalRow,
   type CounterRegisterAnswered,
@@ -235,7 +235,7 @@ export function CounterActSheet({ target, read, onClose, onChanged }: CounterAct
       contract={
         (isOrder || register.key === 'proposals') && register.act === 'yours' ? contractFor(target) : undefined
       }
-      eyebrow={`${VERB_WORD[register.verb]} · ${REGISTER_WORD[register.key]}`}
+      eyebrow={`${actWordFor(register.key, register.verb)} · ${REGISTER_WORD[register.key]}`}
       title={line.what}
       closeLabel="Back to the page"
       className="mdv-shell__phonesheet"

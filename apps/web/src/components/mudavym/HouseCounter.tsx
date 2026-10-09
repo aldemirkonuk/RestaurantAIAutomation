@@ -30,6 +30,7 @@ import {
   REGISTER_WORD,
   VERB_SHORT,
   VERB_WORD,
+  actWordFor,
   clockOf,
   countWord,
   counterHead,
@@ -139,7 +140,7 @@ function RegisterBlock({
                 data-yours={r.act === 'yours' ? 'true' : 'false'}
                 onClick={() => onOpen({ register: r, row })}
               >
-                <span className="mdv-counter__verb">{VERB_SHORT[r.verb]}</span>
+                <span className="mdv-counter__verb">{actWordFor(r.key, r.verb, true)}</span>
                 <span className="mdv-counter__main">
                   <span className="mdv-counter__what">{line.what}</span>
                   <span className="mdv-counter__detail">{line.detail}</span>
