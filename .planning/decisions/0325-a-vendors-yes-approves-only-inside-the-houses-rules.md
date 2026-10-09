@@ -34,6 +34,7 @@ The founder, 2026-10-07T20:04:10Z: *"Do not ask me questions, I allow and approv
 5. `procurement_orders.reserved_bottles` records what an order put on order. NULL means it never reserved. N means N bottles are held. 0 means they were released, or nothing could be reserved.
    - Reserve claims the record with a compare-and-set from NULL, so an order reserves once, however many times it is approved.
    - Cancel releases from the record whatever status the order is in. Delivery does the same. Each release is a compare-and-set to 0, so it happens once.
+   - A release that does not happen gives the record back (compare-and-set from 0 to N). That covers a refused delivery booking, a failed delivery shadow release, and a failed cancel release. A retry then releases it, and a cancel after a refused delivery does not release twice. Delivery books the live stock first and releases shadow only after that booking succeeds. Pinned in `order-reservation.spec.ts`.
 6. The record counts bottles. A case, pack or split case needs its pack size: the order line's `bottles_per_unit`, or else `bottles_total / quantity` when that divides exactly. Without a pack size, nothing is reserved, 0 is recorded, and the log says so.
 7. The migration backfills orders that hold a reservation under the old rule. It sets `quantity` for APPROVED, CONFIRMED and IN_TRANSIT orders, and for NEGOTIATING orders with `approved_at` set. Each such order then releases exactly what it reserved.
 

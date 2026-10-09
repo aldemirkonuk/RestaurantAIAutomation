@@ -3964,12 +3964,16 @@ export class ProcurementService {
     }
   }
 
-  /** Subtract order quantity from shadow_stock + in_transit_quantity, flooring at 0. Non-fatal. */
+  /**
+   * Subtract order quantity from shadow_stock + in_transit_quantity, flooring
+   * at 0. Non-fatal; says whether the release went through, so a caller that
+   * took the order's reservation can give it back when it did not.
+   */
   private async releaseOrderShadowStock(
     restaurantId: string,
     inventoryId: string,
     quantity: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       // Shadow stock is a projection of inventory_lots — release via the ledger RPC, clamped
       // to what is actually on-order (floor at 0). in_transit_quantity is a separate display counter.
@@ -4031,8 +4035,10 @@ export class ProcurementService {
           `Released ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
         );
       }
+      return true;
     } catch (e: any) {
       this.logger.warn(`releaseOrderShadowStock failed: ${e?.message}`);
+      return false;
     }
   }
 
@@ -4205,6 +4211,34 @@ export class ProcurementService {
     }
   }
 
+  /**
+   * Put a taken reservation back on the order's record, when the release it
+   * was taken for did not happen (a refused delivery, a failed release).
+   * Compare-and-set from 0, so it lands once and never over a later claim.
+   * Without it the record read 0 while the bottles stayed on order, and the
+   * retry released nothing (F-491 on the failure path).
+   */
+  private async giveBackOrderReservation(
+    restaurantId: string,
+    orderId: string,
+    bottles: number,
+  ): Promise<void> {
+    if (!(bottles > 0)) return;
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .update({ reserved_bottles: bottles })
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .eq("reserved_bottles", 0);
+      if (error) throw new Error(error.message);
+    } catch (e: any) {
+      this.logger.error(
+        `Order ${orderId} still has ${bottles} bottles on order, but its record could not say so (${e?.message}).`,
+      );
+    }
+  }
+
   /** Release whatever this order put on order (cancel, from any status). Non-fatal. */
   private async releaseOrderReservation(
     restaurantId: string,
@@ -4215,7 +4249,13 @@ export class ProcurementService {
       orderId,
     );
     if (bottles > 0 && inventoryId) {
-      await this.releaseOrderShadowStock(restaurantId, inventoryId, bottles);
+      const released = await this.releaseOrderShadowStock(
+        restaurantId,
+        inventoryId,
+        bottles,
+      );
+      if (!released)
+        await this.giveBackOrderReservation(restaurantId, orderId, bottles);
     }
   }
 
@@ -5505,6 +5545,11 @@ export class ProcurementService {
     // an owner or a manager to name the item (`delivery-item-to-name.ts`).
     let nameAsk: { why: NameAskWhy; bottles: number } | null = null;
     let nameAskOutcome: RaiseOutcome | null = null;
+    // The reservation this call took off the order's record, and whether its
+    // shadow release went through. Given back below when the booking is
+    // refused or the release failed, so the retry still releases it.
+    let takenReservation = 0;
+    let shadowReleaseFailed = false;
 
     if (!deliveryOwns.ok) {
       // Whether the receiving door already booked this order could not be
@@ -5607,6 +5652,7 @@ export class ProcurementService {
             // count drained other orders' reservations whenever an order in
             // cases had reserved its case count, or reserved nothing at all.
             const reserved = await this.takeOrderReservation(restaurantId, orderId);
+            takenReservation = reserved.bottles;
             const shadowRelease = Math.min(reserved.bottles, currentShadow);
 
             // WHAT KIND OF PRICE THIS IS.
@@ -5637,31 +5683,11 @@ export class ProcurementService {
             const costProvenance = unitCost == null ? null : "estimated";
 
             // Move shadow -> live through the ledger RPC (lots = source of
-            // truth). Two idempotent movements: release the reserved shadow,
-            // then receive the physical lot at cost.
-            if (shadowRelease > 0) {
-              const shadow = await this.databaseService.supabase.rpc("apply_stock_movement", {
-                p_inventory_id: inventoryId,
-                p_stock_state: "shadow",
-                p_delta: -shadowRelease,
-                p_transaction_type: "adjustment",
-                p_source: "order",
-                p_reason: "shadow released on delivery",
-                p_order_id: orderId,
-                p_idempotency_key: `order-delivered-shadow:${orderId}`,
-                // ADR 0141. `order.inventoryId` comes off the order row, which
-                // was read scoped to this restaurant — but the COLUMN carries no
-                // tenant constraint, so the row belonging here does not make the
-                // item belong here.
-                p_restaurant_id: restaurantId,
-              });
-              // The live booking below does not depend on it; a shadow figure
-              // left reserved is logged, not hidden.
-              if (shadow?.error)
-                this.logger.warn(
-                  `markDelivered: order ${orderId}'s reserved (shadow) stock was not released (${shadow.error.message ?? String(shadow.error)})`,
-                );
-            }
+            // truth). Two idempotent movements: receive the physical lot at
+            // cost, then — only once it is booked — release the reserved
+            // shadow. Releasing first meant a refused booking had already
+            // given the order's bottles back, and a cancel after the put-back
+            // gave them back a second time.
             const live = await this.databaseService.supabase.rpc(
               "apply_stock_movement",
               {
@@ -5675,7 +5701,7 @@ export class ProcurementService {
                 p_cost_provenance: costProvenance,
                 p_order_id: orderId,
                 p_idempotency_key: `order-delivered-live:${orderId}`,
-                // ADR 0141 — same reason as the shadow release above.
+                // ADR 0141 — same reason as the shadow release below.
                 p_restaurant_id: restaurantId,
               },
             );
@@ -5684,6 +5710,31 @@ export class ProcurementService {
               bookingRefused = true;
               stockNotMoved = live.error.message ?? String(live.error);
             } else {
+              if (shadowRelease > 0) {
+                const shadow = await this.databaseService.supabase.rpc("apply_stock_movement", {
+                  p_inventory_id: inventoryId,
+                  p_stock_state: "shadow",
+                  p_delta: -shadowRelease,
+                  p_transaction_type: "adjustment",
+                  p_source: "order",
+                  p_reason: "shadow released on delivery",
+                  p_order_id: orderId,
+                  p_idempotency_key: `order-delivered-shadow:${orderId}`,
+                  // ADR 0141. `order.inventoryId` comes off the order row, which
+                  // was read scoped to this restaurant — but the COLUMN carries no
+                  // tenant constraint, so the row belonging here does not make the
+                  // item belong here.
+                  p_restaurant_id: restaurantId,
+                });
+                // The booking stands without it; a shadow figure left reserved
+                // is logged, not hidden, and stays on the order's record.
+                if (shadow?.error) {
+                  shadowReleaseFailed = true;
+                  this.logger.warn(
+                    `markDelivered: order ${orderId}'s reserved (shadow) stock was not released (${shadow.error.message ?? String(shadow.error)})`,
+                  );
+                }
+              }
               // in_transit_quantity is a separate denormalized display counter.
               const { error: inTransitError } =
                 await this.databaseService.supabase
@@ -5706,6 +5757,13 @@ export class ProcurementService {
           bookingRefused = true;
           stockNotMoved = `the booking failed (${bookingError?.message ?? String(bookingError)})`;
         }
+
+        if (bookingRefused || shadowReleaseFailed)
+          await this.giveBackOrderReservation(
+            restaurantId,
+            orderId,
+            takenReservation,
+          );
 
         if (bookingRefused) {
           this.logger.error(

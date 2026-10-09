@@ -12,7 +12,10 @@ import { INBOUND_RESPONDER_AGENT_ID } from "../common/orchestrator/inbound-respo
 
 type Row = Record<string, any>;
 
-function fakeDb(tables: Record<string, Row[]>) {
+function fakeDb(
+  tables: Record<string, Row[]>,
+  refuse: (args: Row) => string | null = () => null,
+) {
   const movements: Row[] = [];
   const from = (table: string) => {
     const filters: Array<(r: Row) => boolean> = [];
@@ -27,6 +30,11 @@ function fakeDb(tables: Record<string, Row[]>) {
       update: (p: Row) => ((patch = p), b),
       eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), b),
       neq: (k: string, v: unknown) => (filters.push((r) => r[k] !== v), b),
+      in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), b),
+      not: (k: string, _op: string, list: string) => (
+        filters.push((r) => !list.includes(String(r[k]))), b
+      ),
+      insert: (row: Row) => ((tables[table] ??= []).push(row), b),
       is: (k: string, v: unknown) => (filters.push((r) => (r[k] ?? null) === v), b),
       order: () => b,
       limit: () => b,
@@ -40,6 +48,8 @@ function fakeDb(tables: Record<string, Row[]>) {
     return b;
   };
   const rpc = async (_name: string, args: Row) => {
+    const refused = refuse(args);
+    if (refused) return { error: { message: refused } };
     movements.push(args);
     const item = tables.restaurant_inventory.find((r) => r.id === args.p_inventory_id);
     if (item && args.p_stock_state === "shadow") item.shadow_stock += args.p_delta;
@@ -50,7 +60,12 @@ function fakeDb(tables: Record<string, Row[]>) {
 
 function build(
   order: Row,
-  opts: { line?: Row; rules?: Row[]; others?: Row[] } = {},
+  opts: {
+    line?: Row;
+    rules?: Row[];
+    others?: Row[];
+    refuse?: (args: Row) => string | null;
+  } = {},
 ) {
   const tables: Record<string, Row[]> = {
     procurement_orders: [
@@ -61,10 +76,16 @@ function build(
       ? [{ restaurant_id: "r1", order_id: order.id, ...opts.line }]
       : [],
     restaurant_inventory: [
-      { id: "inv1", restaurant_id: "r1", shadow_stock: 0, in_transit_quantity: 0 },
+      {
+        id: "inv1",
+        restaurant_id: "r1",
+        master_wine_id: "w1",
+        shadow_stock: 0,
+        in_transit_quantity: 0,
+      },
     ],
   };
-  const db = fakeDb(tables);
+  const db = fakeDb(tables, (args) => opts.refuse?.(args) ?? null);
   const thresholds = {
     read: async () => ({
       readable: true,
@@ -127,6 +148,64 @@ describe("F-491: an order reserves once and releases what it reserved", () => {
     await svc.releaseOrderReservation("r1", "o1");
     expect(movements).toHaveLength(0);
     expect(item.shadow_stock).toBe(7);
+  });
+});
+
+describe("F-491/F-494: delivery gives back what the order put on order", () => {
+  it("releases the order's own 12, not the 20 that arrived, leaving another order's 5", async () => {
+    const { svc, row, item } = build(bottleOrder);
+    await svc.reserveOrderOnce("r1", "o1");
+    item.shadow_stock += 5; // another order's bottles
+    item.in_transit_quantity += 5;
+    await svc.markDelivered("r1", "o1", "u1", 20);
+    expect(item.shadow_stock).toBe(5);
+    expect(item.in_transit_quantity).toBe(5);
+    expect(row.reserved_bottles).toBe(0);
+  });
+
+  it("a refused booking keeps the reservation, and the retry releases it", async () => {
+    let liveDown = true;
+    const { svc, row, item } = build(bottleOrder, {
+      refuse: (a) =>
+        liveDown && a.p_stock_state === "live" ? "the ledger is busy" : null,
+    });
+    await svc.reserveOrderOnce("r1", "o1");
+    await expect(svc.markDelivered("r1", "o1", "u1")).rejects.toBeTruthy();
+    expect(row.status).toBe("APPROVED"); // put back
+    expect(row.reserved_bottles).toBe(12);
+    expect(item.shadow_stock).toBe(12);
+    expect(item.in_transit_quantity).toBe(12);
+
+    liveDown = false;
+    await svc.markDelivered("r1", "o1", "u1");
+    expect(item.shadow_stock).toBe(0);
+    expect(item.in_transit_quantity).toBe(0);
+    expect(row.reserved_bottles).toBe(0);
+  });
+
+  it("a shadow release that fails stays on the order's record", async () => {
+    const { svc, row, item } = build(bottleOrder, {
+      refuse: (a) => (a.p_stock_state === "shadow" && a.p_delta < 0 ? "busy" : null),
+    });
+    await svc.reserveOrderOnce("r1", "o1");
+    await svc.markDelivered("r1", "o1", "u1");
+    expect(item.shadow_stock).toBe(12);
+    expect(row.reserved_bottles).toBe(12);
+  });
+
+  it("a cancel whose release fails keeps the reservation for the next try", async () => {
+    let down = true;
+    const { svc, row, item } = build(bottleOrder, {
+      refuse: (a) => (down && a.p_delta < 0 ? "busy" : null),
+    });
+    await svc.reserveOrderOnce("r1", "o1");
+    await svc.releaseOrderReservation("r1", "o1");
+    expect(row.reserved_bottles).toBe(12);
+    expect(item.shadow_stock).toBe(12);
+    down = false;
+    await svc.releaseOrderReservation("r1", "o1");
+    expect(row.reserved_bottles).toBe(0);
+    expect(item.shadow_stock).toBe(0);
   });
 });
 
