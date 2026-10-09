@@ -61,12 +61,12 @@ import {
   CUTTING_BASIS_WORDS,
   METRICS,
   PERIOD_LABEL,
-  UNIT_SUFFIX,
   cuttingFor,
   deadlineFor,
   goalOfferFor,
   landingWords,
   toStored,
+  unitSuffix,
   type GoalPeriod,
   type GoalPlan,
   type MetricKey,
@@ -82,6 +82,7 @@ import {
 } from './rec-daybook';
 import { ACT_LABEL, actOf } from './rec-docket';
 import { WhoTakesThisPopover } from './WhoTakesThisPopover';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
 import type {
   DismissChoice,
   EntryVM,
@@ -357,6 +358,8 @@ function GoalSheet({
   }, [swap, plan]);
 
   const effective = held.plan;
+  // A money target is the house's own figure, in the house's own currency.
+  const suffix = unitSuffix(effective.unit, useHouseCurrency());
   /**
    * A goal made from an entry records the rule it came from. Swapped onto a
    * different figure, it no longer does: `source_rule_key` is what makes the
@@ -518,7 +521,7 @@ function GoalSheet({
       <div className="rc-sheet-block">
         <label className="rc-field">
           <span className="rc-micro">
-            The target ({UNIT_SUFFIX[effective.unit]})
+            The target ({suffix})
           </span>
           <input
             type="number"
@@ -526,7 +529,7 @@ function GoalSheet({
             min="0"
             step="any"
             value={typed}
-            aria-label={`Target in ${UNIT_SUFFIX[effective.unit]}`}
+            aria-label={`Target in ${suffix}`}
             onChange={(ev) => {
               setTyped(ev.target.value);
               setRefusal(null);

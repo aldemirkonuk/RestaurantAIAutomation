@@ -23,6 +23,7 @@ import {
   landingWords,
   periodFor,
   toStored,
+  unitSuffix,
   type ForwardEntry,
 } from './rec-forward';
 
@@ -225,5 +226,24 @@ describe('rec-forward — the reports door', () => {
       const words = g.kind === 'plan' ? g.plan.basis : g.why;
       expect(words.trim().length, ruleKey).toBeGreaterThan(20);
     }
+  });
+});
+
+describe('rec-forward — a money target is typed in the house\'s own currency', () => {
+  it('names the house\'s sign, never a dollar on a lira or pound house (sim F-341)', () => {
+    expect(unitSuffix('currency', 'USD')).toBe('$');
+    expect(unitSuffix('currency', 'GBP')).toBe('£');
+    expect(unitSuffix('currency', 'EUR')).toBe('€');
+    expect(unitSuffix('currency', 'TRY')).toBe('TRY');
+  });
+
+  it('says so when the house has not named its money, and guesses nothing before the read', () => {
+    expect(unitSuffix('currency', null)).toBe('currency not recorded');
+    expect(unitSuffix('currency', undefined)).toBe('amount');
+  });
+
+  it('leaves the other units alone', () => {
+    expect(unitSuffix('percent', 'TRY')).toBe('%');
+    expect(unitSuffix('days', undefined)).toBe('days');
   });
 });

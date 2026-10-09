@@ -6,6 +6,7 @@ import {
   fetchPromoSavings,
   type Promotion,
 } from '../../services/api/provider-intelligence'
+import { formatStatedMoney } from '../../lib/currency'
 
 const PROMO_TYPE_COLORS: Record<string, string> = {
   volume_discount: 'bg-green-100 text-green-700',
@@ -76,7 +77,8 @@ export function ProviderPromotionsPanel({ providerId, mode = 'provider' }: Props
         {mode === 'dashboard' && savings && (
           <div className="text-right">
             <p className="text-2xl font-bold text-green-600">
-              ${savings.totalSavings.toFixed(2)}
+              {/* Summed across vendors, which may bill in different money: no sign. */}
+              {formatStatedMoney(savings.totalSavings, null)}
             </p>
             <p className="text-xs text-gray-500">Total Savings</p>
           </div>
@@ -141,16 +143,20 @@ export function ProviderPromotionsPanel({ providerId, mode = 'provider' }: Props
                   )}
                 </div>
                 <div className="text-right text-sm">
+                  {/* A fixed amount off is the vendor's money: the currency the
+                      promotion was read with, else the bare figure (sim F-341). */}
                   {promo.discount_value && (
                     <p className="font-semibold text-green-600">
                       {(promo.discount_value as any).value
-                        ? `${(promo.discount_value as any).type === 'percentage' ? '' : '$'}${(promo.discount_value as any).value}${(promo.discount_value as any).type === 'percentage' ? '%' : ''} off`
+                        ? (promo.discount_value as any).type === 'percentage'
+                          ? `${(promo.discount_value as any).value}% off`
+                          : `${formatStatedMoney(Number((promo.discount_value as any).value), (promo.discount_value as any).currency)} off`
                         : ''}
                     </p>
                   )}
                   {promo.savings_realized > 0 && (
                     <p className="text-xs text-gray-500">
-                      Saved: ${promo.savings_realized}
+                      Saved: {formatStatedMoney(promo.savings_realized, (promo.discount_value as any)?.currency)}
                     </p>
                   )}
                 </div>

@@ -254,6 +254,19 @@ describe('ProvidersNext', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('prints the vendor\'s minimum order bare, never with a guessed dollar sign (sim F-341)', async () => {
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({ minimumOrder: 500 }), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    const dialog = await screen.findByRole('dialog');
+    const row = within(dialog).getByText('Minimum order').parentElement as HTMLElement;
+    expect(row).toHaveTextContent('500');
+    expect(row).not.toHaveTextContent('$');
+  });
+
   it('a card says "Not stated" when nobody stated the vendor\'s type (founder answer 12)', () => {
     mockData.current = {
       ...base,

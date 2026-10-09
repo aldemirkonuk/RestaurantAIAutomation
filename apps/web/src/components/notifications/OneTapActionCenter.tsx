@@ -57,6 +57,7 @@ import {
 import type { Order, OrderStatus } from '../../services/api/types'
 import { canonicalStatus } from '../../lib/mudavym/status'
 import { vendorLine } from '../../lib/mudavym/vendor'
+import { formatStatedMoney } from '../../lib/currency'
 import { useAuthStore } from '../../stores'
 import { useWines } from '../../hooks/queries'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
@@ -427,6 +428,9 @@ function generateRealActions(
             expectedQty: order.quantity, 
             invoicePrice,
             negotiatedPrice: invoicePrice == null ? null : invoicePrice * 0.97,
+            // The money the ORDER was placed in, never the house's: the vendor
+            // bills in its own. Absent or null prints the bare figure.
+            currency: order.currency,
             supplier: vendorLine(order),
             orderId: order.id
           },
@@ -1490,7 +1494,7 @@ export function OneTapActionCenter() {
                                   <p className="text-xs text-gray-500 mb-1">Invoice Price</p>
                                   <p className="text-lg font-bold text-gray-900">
                                     {typeof action.details.invoicePrice === 'number'
-                                      ? `$${action.details.invoicePrice}`
+                                      ? formatStatedMoney(action.details.invoicePrice, action.details.currency)
                                       : 'no total on this order'}
                                   </p>
                                 </div>
@@ -1498,7 +1502,7 @@ export function OneTapActionCenter() {
                                   <p className="text-xs text-gray-500 mb-1">Negotiated</p>
                                   <p className="text-lg font-bold text-emerald-600">
                                     {typeof action.details.negotiatedPrice === 'number'
-                                      ? `$${action.details.negotiatedPrice}`
+                                      ? formatStatedMoney(action.details.negotiatedPrice, action.details.currency)
                                       : 'nothing to negotiate from'}
                                   </p>
                                 </div>

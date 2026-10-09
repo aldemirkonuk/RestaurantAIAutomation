@@ -383,6 +383,12 @@ export interface Order {
   finalPrice?: number;
   /** The order's total. This is the field the old `totalPrice` meant. */
   totalCost?: number;
+  /**
+   * The currency the order was PLACED in (`procurement_orders.currency`).
+   * THREE values: a code; `null` (the row names none, never defaulted); or the
+   * KEY ABSENT (this route does not read the column).
+   */
+  currency?: string | null;
   status: OrderWireStatus;
   requestedAt?: string;
   approvedAt?: string;

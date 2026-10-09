@@ -38,6 +38,7 @@ import { VendorRecordEdit, businessTypeLabel } from './VendorRecordEdit';
 import { LedgerCard } from './scorecard/LedgerCard';
 import { MailTone } from './scorecard/MailTone';
 import { useAuth } from '../../../contexts/AuthContext';
+import { formatStatedMoney } from '../../../lib/currency';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -110,9 +111,11 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
         <FactRow label="Phone" value={provider.phone || EM} />
         <FactRow label="Lead time" value={fmtDays(provider.leadTimeDays)} />
         <FactRow label="Payment terms" value={provider.paymentTerms || EM} />
+        {/* The vendor's figure, and this payload names no currency for it: the
+            bare number, never the house's sign (ADR 0117 Q25, sim F-341). */}
         <FactRow
           label="Minimum order"
-          value={typeof provider.minimumOrder === 'number' ? `$${provider.minimumOrder}` : EM}
+          value={typeof provider.minimumOrder === 'number' ? formatStatedMoney(provider.minimumOrder, null) : EM}
         />
         <FactRow label="Regions" value={regions.length ? regions.join(', ') : EM} />
         <FactRow label="Last contact" value={fmtLastContact(provider.lastContactDate)} />

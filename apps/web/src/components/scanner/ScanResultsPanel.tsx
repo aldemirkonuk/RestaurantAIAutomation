@@ -18,6 +18,8 @@ import {
 } from 'lucide-react'
 import { DetectedWine } from '../../services/wineDetection'
 import { getWineTypeColor } from '../../data/wineData'
+// A price in the money the scan read beside it, else the bare figure (sim F-341).
+import { formatStatedMoney } from '../../lib/currency'
 
 // Field source badge colors
 const SOURCE_BADGE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -330,7 +332,7 @@ export function ScanResultsPanel({
                               </span>
                             )}
                             {wine.price != null && (
-                              <span className="text-[10px] font-medium text-gray-700">${wine.price}</span>
+                              <span className="text-[10px] font-medium text-gray-700">{formatStatedMoney(wine.price, wine.priceCurrency)}</span>
                             )}
                           </div>
 
@@ -413,7 +415,7 @@ export function ScanResultsPanel({
                           <FieldRow label="Sub-Region" value={wine.subRegion} source={wine.fieldSources?.sub_region} />
                           <FieldRow label="Appellation" value={wine.appellation} source={wine.fieldSources?.appellation} />
                           <FieldRow label="Grape" value={wine.grape} source={wine.fieldSources?.grape_variety} />
-                          <FieldRow label="Price" value={wine.price ? `$${wine.price}` : undefined} source={wine.fieldSources?.price} />
+                          <FieldRow label="Price" value={wine.price ? formatStatedMoney(wine.price, wine.priceCurrency) : undefined} source={wine.fieldSources?.price} />
                           <FieldRow label="ABV" value={wine.alcoholPct ? `${wine.alcoholPct}%` : undefined} source={wine.fieldSources?.alcohol_pct} />
                           <FieldRow label="Body" value={wine.body} source={wine.fieldSources?.body} />
                           <FieldRow label="Sweetness" value={wine.sweetness} source={wine.fieldSources?.sweetness} />
