@@ -46,7 +46,11 @@ const MAPPINGS = [
 ];
 
 function makeDb(
-  opts: { ledgerError?: string; houseBottleMl?: number | null } = {},
+  opts: {
+    ledgerError?: string;
+    houseBottleMl?: number | null;
+    consumptionFailures?: number;
+  } = {},
 ) {
   const stock: Record<string, { sealed: number; openMl: number; ml: number }> =
     {
@@ -57,6 +61,9 @@ function makeDb(
   const tx = new Map<string, Row>();
   const pours = new Map<string, Row>();
   const queued: Row[] = [];
+  // wine_consumption_log, unique on notes (the key) like the partial index.
+  const consumption = new Map<string, Row>();
+  let consumptionFailures = opts.consumptionFailures ?? 0;
 
   const client: any = {
     from(table: string) {
@@ -83,6 +90,16 @@ function makeDb(
         upsert: async () => ({ error: null }),
         insert: async (row: Row) => {
           if (table === "pos_unresolved_lines") queued.push(row);
+          if (table === "wine_consumption_log") {
+            if (consumptionFailures > 0) {
+              consumptionFailures--;
+              return { error: { code: "57014", message: "statement timeout" } };
+            }
+            if (consumption.has(row.notes)) {
+              return { error: { code: "23505", message: "duplicate key" } };
+            }
+            consumption.set(row.notes, row);
+          }
           return { error: null };
         },
       };
@@ -165,6 +182,7 @@ function makeDb(
     } as unknown as DatabaseService),
     stock,
     queued,
+    consumption,
   };
 }
 
@@ -322,5 +340,54 @@ describe("a closed check re-sent with different lines (F-395)", () => {
         "could not read what earlier imports of this check moved, so nothing was moved: statement timeout",
       ),
     ]);
+  });
+});
+
+describe("a replayed check repairs a consumption row that failed (F-395 audit)", () => {
+  it("writes the missing row on the replay of an unchanged bottle check", async () => {
+    const { service, stock, consumption } = makeDb({ consumptionFailures: 1 });
+    const send = () =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", 2)]),
+      ]);
+
+    await send();
+    expect(consumption.size).toBe(0);
+    await send();
+
+    expect(stock["inv-caymus"].sealed).toBe(10);
+    expect(consumption.size).toBe(1);
+    expect([...consumption.values()][0]).toMatchObject({ quantity: 2 });
+    await send();
+    expect(consumption.size).toBe(1);
+  });
+
+  it("writes the missing row on the replay of an unchanged part of a bottle", async () => {
+    const { service, stock, consumption } = makeDb({ consumptionFailures: 1 });
+    const send = () =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", 0.5)]),
+      ]);
+
+    await send();
+    await send();
+
+    expect(stock["inv-caymus"]).toMatchObject({ sealed: 11, openMl: 375 });
+    expect(consumption.size).toBe(1);
+  });
+
+  it("does not write a line a correction added again under its own key", async () => {
+    const { service, consumption } = makeDb();
+    const first = [line("caymus", 1)];
+    const corrected = [line("caymus", 1), line("sancerre", 1)];
+
+    await service.ingest("r1", "generic_webhook", [check("c-1", first)]);
+    await service.ingest("r1", "generic_webhook", [check("c-1", corrected)]);
+    await service.ingest("r1", "generic_webhook", [check("c-1", corrected)]);
+
+    const sancerre = [...consumption.values()].filter(
+      (r) => r.inventory_id === "inv-sancerre",
+    );
+    expect(sancerre).toHaveLength(1);
   });
 });

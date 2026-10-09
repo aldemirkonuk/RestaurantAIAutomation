@@ -380,6 +380,12 @@ interface CheckLedger {
   pourKeys: Set<string>;
   /** Pour keys whose B19 whole-bottle void return is already booked. */
   glassVoided: Set<string>;
+  /**
+   * What each key booked: bottles for a stock row, ml for a pour. A line
+   * whose own key booked exactly what it asks for now is unchanged, so its
+   * consumption row belongs under that key and a replay may write it.
+   */
+  byKey: Map<string, number>;
 }
 
 /** Every stock key of a check begins with this (B15). */
@@ -1684,6 +1690,17 @@ export class PosHubService {
             check.externalCheckId,
           )
         : null;
+    // A replay moves no stock, but it still writes a consumption row an
+    // earlier import failed to write, as the replay of the first import
+    // always did. Only for a line its own key booked unchanged: a line a
+    // correction added or changed was mirrored under the correction's key,
+    // and writing it again under its own would count the sale twice.
+    const replayConsumption = async (l: PlannedStockLine, amount: number) => {
+      if (ledger?.ok && ledger.byKey.get(l.idem) === amount) {
+        await consume(l, l.consumed, l.consumedQty, l.idem);
+      }
+      tally.alreadyBooked++;
+    };
     if (ledger && !ledger.ok) {
       // Fail closed: without knowing what this check already moved, a sale
       // could be taken twice and a void could return what was never taken.
@@ -1766,7 +1783,7 @@ export class PosHubService {
           // Nothing to move: a replay, or a void already returned. A voided
           // line this hub never booked a sale for returns nothing (F-393).
           for (const l of bottleLines) {
-            if (rows > 0) tally.alreadyBooked++;
+            if (rows > 0) await replayConsumption(l, l.bottles);
             else
               report.noteFailure(
                 "neverTaken",
@@ -1843,7 +1860,9 @@ export class PosHubService {
         const hadMl = ledger.ml.get(inventoryId) ?? 0;
         const wantMl = pourLines.reduce((n, l) => n + l.pours * l.pourMl, 0);
         if (wantMl === hadMl) {
-          tally.alreadyBooked += pourLines.length;
+          for (const l of pourLines) {
+            await replayConsumption(l, l.pours * l.pourMl);
+          }
         } else if (wantMl > hadMl) {
           const key = `${prefix}${inventoryId}:ml:${rows}`;
           const error = await pour(
@@ -1940,6 +1959,7 @@ export class PosHubService {
           pours.data.map((r: any) => String(r.idempotency_key)),
         ),
         glassVoided: new Set(),
+        byKey: new Map(),
       };
       const add = (m: Map<string, number>, id: string, n: number) =>
         m.set(id, (m.get(id) ?? 0) + n);
@@ -1954,12 +1974,18 @@ export class PosHubService {
           continue;
         }
         add(ledger.bottles, id, -(Number(r.quantity_change) || 0));
+        add(ledger.byKey, key, -(Number(r.quantity_change) || 0));
       }
       for (const r of pours.data as any[]) {
         const id = String(r.inventory_id);
         add(ledger.rows, id, 1);
         if (ledger.glassVoided.has(String(r.idempotency_key))) continue;
         add(ledger.ml, id, (Number(r.pours) || 0) * (Number(r.pour_ml) || 0));
+        add(
+          ledger.byKey,
+          String(r.idempotency_key),
+          (Number(r.pours) || 0) * (Number(r.pour_ml) || 0),
+        );
       }
       return { ok: true, ...ledger };
     } catch (err: any) {
