@@ -556,7 +556,8 @@ export interface PriceIndexSourceStatus {
   key: string
   issuer: string | null
   jurisdiction: string | null
-  rows: number
+  /** null when the server could not count this source (F-544) — unknown, not empty. */
+  rows: number | null
   lastFetchedAt: string | null
   silentBecause: string | null
 }
@@ -572,7 +573,7 @@ export async function fetchPriceIndexStatus(): Promise<{ armed: boolean; sources
       key: String(s?.key ?? 'unknown'),
       issuer: s?.issuer ?? null,
       jurisdiction: s?.jurisdiction ?? null,
-      rows: typeof s?.rows === 'number' ? s.rows : 0,
+      rows: typeof s?.rows === 'number' ? s.rows : null,
       lastFetchedAt: s?.lastFetchedAt ?? null,
       silentBecause: s?.silentBecause ?? null,
     })),

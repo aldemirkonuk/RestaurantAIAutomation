@@ -61,6 +61,9 @@ export function AssignToChainDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   /* The failure in words — see the note in EditLocationChainDialog. */
   const [failure, setFailure] = useState<string | null>(null)
+  /* Locations already moved by an earlier, half-done try (F-547): a retry
+     PATCHes only the rest, and the failure says exactly what did move. */
+  const [movedIds, setMovedIds] = useState<Set<string>>(new Set())
   const shell = useMudavymShell()
 
   const toggle = (id: string) =>
@@ -72,8 +75,11 @@ export function AssignToChainDialog({
     })
 
   const handleClose = () => {
+    // Some locations did move on a half-done try; the page must show them.
+    if (movedIds.size > 0) onSaved()
     setSelectedIds(new Set())
     setFailure(null)
+    setMovedIds(new Set())
     onClose()
   }
 
@@ -82,18 +88,45 @@ export function AssignToChainDialog({
     setIsSubmitting(true)
     setFailure(null)
     try {
-      await Promise.all(
-        Array.from(selectedIds).map((locationId) =>
+      const ids = Array.from(selectedIds).filter((id) => !movedIds.has(id))
+      const results = await Promise.allSettled(
+        ids.map((locationId) =>
           apiClient.patch(`/organizations/locations/${locationId}`, { chainId }),
         ),
       )
-      const n = selectedIds.size
+      const moved = new Set(movedIds)
+      const failedIds: string[] = []
+      let firstError: unknown = null
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') moved.add(ids[i])
+        else {
+          failedIds.push(ids[i])
+          if (firstError === null) firstError = r.reason
+        }
+      })
+      setMovedIds(moved)
+
+      if (failedIds.length > 0) {
+        const detail = getErrorMessage(firstError)
+        let message = `Could not assign locations — ${detail}`
+        if (moved.size > 0) {
+          const names = failedIds
+            .map((id) => standaloneLocations.find((l) => l.id === id)?.name ?? 'a location')
+            .join(', ')
+          const total = moved.size + failedIds.length
+          message = `${moved.size} of ${total} locations added to "${chainName}". ${names} did not move — ${detail}. Try again to move ${failedIds.length !== 1 ? 'them' : 'it'}.`
+        }
+        setFailure(message)
+        toast.error(message)
+        return
+      }
+
+      const n = moved.size
       toast.success(`${n} location${n !== 1 ? 's' : ''} added to "${chainName}"`)
       onSaved()
-      handleClose()
-    } catch (e) {
-      setFailure(`Could not assign locations — ${getErrorMessage(e)}`)
-      toast.error(`Could not assign locations — ${getErrorMessage(e)}`)
+      setSelectedIds(new Set())
+      setMovedIds(new Set())
+      onClose()
     } finally {
       setIsSubmitting(false)
     }
@@ -115,7 +148,7 @@ export function AssignToChainDialog({
         <div className="mdv-form">
           {failure ? (
             <div className="mdv-alert" role="alert">
-              <p className="mdv-alert__head">Not assigned</p>
+              <p className="mdv-alert__head">{movedIds.size > 0 ? 'Partly assigned' : 'Not assigned'}</p>
               <p>{failure}</p>
             </div>
           ) : null}

@@ -26,6 +26,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AddLocationDialog } from './AddLocationDialog';
 import { AssignToChainDialog } from './AssignToChainDialog';
+import { CreateChainDialog } from './CreateChainDialog';
 import { EditLocationChainDialog } from './EditLocationChainDialog';
 import { claimMudavymShell, resetMudavymShell } from '../../lib/mudavym/shellGround';
 
@@ -181,6 +182,93 @@ describe('a refused write is printed on the dialog that asked for it', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(alertInDialog()).toHaveTextContent('locked'));
     expect(toastError).toHaveBeenCalled();
+  });
+});
+
+/**
+ * F-547: the chain POST and each location PATCH are separate writes, so one
+ * try can half-succeed. The dialog used to say "Could not create chain" while
+ * the chain existed, and a retry re-POSTed it (a second chain, same name) and
+ * re-PATCHed locations already moved. Now the alert says what did happen, and
+ * a retry sends only what is left.
+ */
+describe('a half-done write says what happened and a retry does only the rest', () => {
+  it('CreateChainDialog: chain made, one location refused — says so, retry moves only that one', async () => {
+    post.mockResolvedValueOnce({ data: { id: 'c9', name: 'The Grill Co.' } });
+    patch.mockImplementation((url: string) =>
+      url.endsWith('/l2') ? Promise.reject(new Error('location is locked')) : Promise.resolve({ data: {} }),
+    );
+    const onCreated = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <CreateChainDialog open onClose={onClose} onCreated={onCreated} standaloneLocations={STANDALONE} />,
+    );
+    fireEvent.change(screen.getByLabelText('Chain name'), { target: { value: 'The Grill Co.' } });
+    fireEvent.click(screen.getByRole('button', { name: /Uptown/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Loop/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create chain' }));
+
+    await waitFor(() => expect(alertInDialog()).toHaveTextContent('was created and 1 of 2 locations moved in'));
+    expect(alertInDialog()).toHaveTextContent('Loop did not move — location is locked');
+    expect(alertInDialog()).not.toHaveTextContent('Could not create chain');
+    expect(onCreated).not.toHaveBeenCalled();
+
+    patch.mockClear();
+    patch.mockResolvedValue({ data: {} });
+    fireEvent.click(screen.getByRole('button', { name: 'Move the rest' }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith({ id: 'c9', name: 'The Grill Co.' }));
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(patch).toHaveBeenCalledTimes(1);
+    expect(patch).toHaveBeenCalledWith('/organizations/locations/l2', { chainId: 'c9' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('CreateChainDialog: closing after a half-done try still tells the page the chain exists', async () => {
+    post.mockResolvedValueOnce({ data: { id: 'c9', name: 'The Grill Co.' } });
+    patch.mockRejectedValueOnce(new Error('location is locked'));
+    const onCreated = vi.fn();
+    render(
+      <CreateChainDialog open onClose={() => {}} onCreated={onCreated} standaloneLocations={STANDALONE} />,
+    );
+    fireEvent.change(screen.getByLabelText('Chain name'), { target: { value: 'The Grill Co.' } });
+    fireEvent.click(screen.getByRole('button', { name: /Uptown/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create chain' }));
+    await waitFor(() => expect(alertInDialog()).toHaveTextContent('was created and 0 of 1 location moved in'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCreated).toHaveBeenCalledWith({ id: 'c9', name: 'The Grill Co.' });
+  });
+
+  it('AssignToChainDialog: one of two refused — says which, retry moves only that one', async () => {
+    patch.mockImplementation((url: string) =>
+      url.endsWith('/l2') ? Promise.reject(new Error('location is locked')) : Promise.resolve({ data: {} }),
+    );
+    const onSaved = vi.fn();
+    render(
+      <AssignToChainDialog
+        open
+        onClose={() => {}}
+        onSaved={onSaved}
+        onCreateNew={() => {}}
+        chainId="c1"
+        chainName="The Grill Co."
+        standaloneLocations={STANDALONE}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Uptown/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Loop/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chain' }));
+
+    await waitFor(() => expect(alertInDialog()).toHaveTextContent('1 of 2 locations added to "The Grill Co."'));
+    expect(alertInDialog()).toHaveTextContent('Partly assigned');
+    expect(alertInDialog()).toHaveTextContent('Loop did not move — location is locked');
+    expect(onSaved).not.toHaveBeenCalled();
+
+    patch.mockClear();
+    patch.mockResolvedValue({ data: {} });
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chain' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(patch).toHaveBeenCalledTimes(1);
+    expect(patch).toHaveBeenCalledWith('/organizations/locations/l2', { chainId: 'c1' });
   });
 });
 
