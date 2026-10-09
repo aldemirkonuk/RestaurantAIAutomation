@@ -626,7 +626,7 @@ describe("a hide or show clears the stored table insights before the write and r
     expect(calls).toEqual([`drop:${RID}:tables`]);
   });
 
-  it("when the write is refused, nothing is recomputed", async () => {
+  it("when the write is refused, the rows are still recomputed, so they come back as they were, and the refusal is still the answer", async () => {
     const { controller, calls } = build({
       write: async () => {
         throw new NotFoundException("This house has no such table.");
@@ -635,7 +635,11 @@ describe("a hide or show clears the stored table insights before the write and r
     await expect(
       controller.renameOrHideTable(RID, T7, { hidden: true }),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(calls).toEqual([`drop:${RID}:tables`, "write"]);
+    expect(calls).toEqual([
+      `drop:${RID}:tables`,
+      "write",
+      `refresh:${RID}:tables`,
+    ]);
   });
 
   it("a recompute that could only drop, or leave, the rows does not undo the hide", async () => {

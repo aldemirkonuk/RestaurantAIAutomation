@@ -624,13 +624,21 @@ export class AnalyticsController {
    * item 7). The live compute already leaves a hidden table out, but the
    * `tables` rows the 06:00 run stored (ADR 0191's cache) may name it, and
    * would otherwise stand until the category's next run. So the house's
-   * stored `tables` rows go BEFORE the write — no table is hidden, or shown
-   * again, while a stored row still says the other, and when they cannot go
-   * nothing is written (503) — and are recomputed after it, so the next read
-   * is answered from the cache as before. A rename touches no stored row: it
-   * does not change which tables are ranked. A body refused by the service
-   * after the drop (a bad name beside `hidden`, an unknown table) has cost
-   * one recompute and nothing else.
+   * stored `tables` rows go BEFORE the write (when they cannot go, nothing
+   * is written: 503) and are recomputed after it in a `finally`, whether the
+   * write was taken or refused, so the next read is answered from the cache
+   * as before. On that path no stored row names the old state once the
+   * PATCH has answered. Not serialized: a read that computes the category
+   * between the drop and the write and persists after the recompute (a
+   * cold-start GET, the sweep) stores rows naming the old state until the
+   * next run; `analytics_insights` has no unique index (residual 5). A
+   * rename touches no stored row: it does not change which tables are
+   * ranked. A body refused by the service after the drop (a bad name beside
+   * `hidden`, an unknown table) has cost one recompute: the rows come back
+   * as they were. When the fresh rows cannot be written, `refreshStored`
+   * drops the stale ones (a read of the category computes live; a mixed
+   * read goes without it until the next run), and when even that is refused
+   * leaves them and logs an error (residual 4).
    */
   @Patch("tables/:restaurantId/:tableId")
   @UseGuards(RolesGuard)
@@ -638,7 +646,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Rename or hide a table",
     description:
-      "Body: { label?: string (1-60 characters), hidden?: boolean }. 400 on a bad body, 404 for a table that is not this house's, 409 when another table of the house already has the name. A hidden table still catches its checks, and they stay in takings; the room (table-performance), its export and hot-tables leave it out and count those checks, and every table insight leaves it out: with hidden in the body, the house's stored table insights are cleared before the write (503 and no change when they cannot be) and recomputed after it, so the next read does not name a table hidden just now, and names one shown again. Its checks stay in the servers' figures and in the waiter adjustment's table control (ADR 0303).",
+      "Body: { label?: string (1-60 characters), hidden?: boolean }. 400 on a bad body, 404 for a table that is not this house's, 409 when another table of the house already has the name. A hidden table still catches its checks, and they stay in takings; the room (table-performance), its export and hot-tables leave it out and count those checks, and every table insight leaves it out: with hidden in the body, the house's stored table insights are cleared before the write (503 and no change when they cannot be) and recomputed after it, so that, when the recompute writes, the next read does not name a table hidden just now, and names one shown again; when the fresh rows cannot be written, the stored table insights are left out until the next run (a read of the tables category alone computes it live), and when they cannot be cleared after that, the stale rows stand until the next run (ADR 0303 residual 4). Its checks stay in the servers' figures and in the waiter adjustment's table control (ADR 0303).",
   })
   async renameOrHideTable(
     @Param("restaurantId") restaurantId: string,
@@ -656,14 +664,18 @@ export class AnalyticsController {
           "The table insights could not be cleared, so the table was left as it was. Try again.",
         );
     }
-    const table = await this.tableAnalytics.renameOrHideTable(
-      restaurantId,
-      tableId,
-      body,
-    );
-    if (togglesHidden)
-      await this.insightGenerator.refreshStored(restaurantId, ["tables"]);
-    return table;
+    try {
+      return await this.tableAnalytics.renameOrHideTable(
+        restaurantId,
+        tableId,
+        body,
+      );
+    } finally {
+      // For a taken write and for a refused one alike: the rows went before
+      // the write, so they come back either way (amendment item 7).
+      if (togglesHidden)
+        await this.insightGenerator.refreshStored(restaurantId, ["tables"]);
+    }
   }
 
   @Get("table-performance/:restaurantId")
