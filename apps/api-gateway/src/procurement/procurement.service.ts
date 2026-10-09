@@ -1620,11 +1620,17 @@ export class ProcurementService {
       .delete()
       .eq("order_id", orderId)
       .eq("restaurant_id", restaurantId);
-    if (delErr)
-      this.logger.warn("Could not clear previous order lines", {
+    if (delErr) {
+      // F-548: inserting anyway is the stale-second-line outcome named above.
+      // Fail the write instead; the merge replaces rather than adds, so a
+      // retry lands the same header and line.
+      this.logger.error("Could not clear previous order lines", {
+        restaurantId,
         orderId,
         error: delErr.message,
       });
+      throw delErr;
+    }
 
     const { error } = await this.databaseService.supabase
       .from("procurement_order_items")

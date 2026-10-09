@@ -1,4 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { ProcurementService } from "../procurement/procurement.service";
 import { ConversationsService } from "../conversations/conversations.service";
@@ -30,28 +34,39 @@ export class MobileService {
   ) {}
 
   async getFeed(userId: string, restaurantId: string): Promise<FeedResponse> {
+    // F-542: a collector that fails is an unknown, never an empty list. One
+    // missing source would otherwise make the feed (and the Today strip's
+    // count) read as "nothing needs you" with orders still waiting.
+    const failed: string[] = [];
+    const collect = <T>(name: string, p: Promise<T[]>): Promise<T[]> =>
+      p.catch((e) => {
+        this.logger.warn(`feed ${name} collector failed: ${e?.message}`);
+        failed.push(name);
+        return [] as T[];
+      });
     const [orders, conversations, notifications] = await Promise.all([
-      this.procurementService.listPendingOrders(restaurantId).catch((e) => {
-        this.logger.warn(`feed orders collector failed: ${e?.message}`);
-        return [];
-      }),
-      this.conversationsService
-        .getPendingConversations(restaurantId)
-        .catch((e) => {
-          this.logger.warn(
-            `feed conversations collector failed: ${e?.message}`,
-          );
-          return [];
+      collect(
+        "orders",
+        this.procurementService.listPendingOrders(restaurantId),
+      ),
+      collect(
+        "conversations",
+        this.conversationsService.getPendingConversations(restaurantId),
+      ),
+      collect(
+        "notifications",
+        this.notificationsService.getUnreadNotifications({
+          userId,
+          restaurantId,
+          limit: 40,
         }),
-      this.notificationsService
-        .getUnreadNotifications({ userId, restaurantId, limit: 40 })
-        .catch((e) => {
-          this.logger.warn(
-            `feed notifications collector failed: ${e?.message}`,
-          );
-          return [];
-        }),
+      ),
     ]);
+    if (failed.length > 0) {
+      throw new ServiceUnavailableException(
+        `Today's list could not be read in full (${failed.join(", ")}). Try again in a moment.`,
+      );
+    }
 
     const providerNames = await this.resolveProviderNames([
       ...orders.map((o: any) => o.providerId),
@@ -217,9 +232,11 @@ export class MobileService {
       checksToday: today?.total ?? null,
       revenueLastWeek,
       deltaPct,
-      pendingDecisions: feed?.counts.total ?? 0,
-      criticalCount:
-        feed?.items.filter((i) => i.priority === "critical").length ?? 0,
+      // null = the feed could not be read; the strip must not say "All clear".
+      pendingDecisions: feed ? feed.counts.total : null,
+      criticalCount: feed
+        ? feed.items.filter((i) => i.priority === "critical").length
+        : null,
       windowStart: start.toISOString(),
       windowEnd: end.toISOString(),
       generatedAt: new Date().toISOString(),

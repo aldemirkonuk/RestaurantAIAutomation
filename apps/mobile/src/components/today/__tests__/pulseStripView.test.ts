@@ -1,4 +1,8 @@
-import { REVENUE_UNAVAILABLE_MESSAGE, resolvePulseStripView } from "@/components/today/pulseStripView";
+import {
+  DECISIONS_UNREAD_LABEL,
+  REVENUE_UNAVAILABLE_MESSAGE,
+  resolvePulseStripView,
+} from "@/components/today/pulseStripView";
 import type { TodayPulse } from "@/api/types";
 
 function pulse(overrides: Partial<TodayPulse>): TodayPulse {
@@ -56,6 +60,24 @@ describe("resolvePulseStripView", () => {
     expect(view.revenue.status).toBe("known");
     expect(view.revenue.status === "known" && view.revenue.amount).toBe(4210);
     expect(view.decisionsLabel).toBe("All clear");
+  });
+
+  /**
+   * F-542: the gateway sends `pendingDecisions: null` when the decision feed
+   * could not be read. That used to arrive as 0 and render "All clear" next to
+   * a known revenue figure, with orders waiting for approval.
+   */
+  it("does not claim All clear when the decision feed could not be read", () => {
+    const view = resolvePulseStripView(pulse({ revenueToday: 4210, pendingDecisions: null }));
+
+    expect(view.decisionsLabel).not.toBe("All clear");
+    expect(view.decisionsLabel).toBe(DECISIONS_UNREAD_LABEL);
+  });
+
+  it("says the feed is unread even when revenue is also unavailable", () => {
+    const view = resolvePulseStripView(pulse({ revenueToday: null, pendingDecisions: null }));
+
+    expect(view.decisionsLabel).toBe(DECISIONS_UNREAD_LABEL);
   });
 
   it("reports singular decision phrasing for exactly one pending decision", () => {

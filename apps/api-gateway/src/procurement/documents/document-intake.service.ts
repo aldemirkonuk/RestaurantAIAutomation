@@ -1167,10 +1167,40 @@ export class DocumentIntakeService {
       parsed.lines,
       schemaLagNote,
     );
-    if (lineErr)
+    if (lineErr) {
+      // F-546: keep the paper, but never as a clean document with no lines.
+      // Flag it for review and say what was lost, in the notes the page shows.
       this.logger.warn(
         `document ${documentId} stored but its lines failed: ${lineErr.message}`,
       );
+      const lostNote =
+        `The ${parsed.lines.length} line${parsed.lines.length === 1 ? "" : "s"} ` +
+        "read from this paper could not be saved. Read the paper again or " +
+        "enter its lines by hand before using it.";
+      const notes = [...parsed.warnings, schemaLagNote, lostNote]
+        .filter((n): n is string => !!n)
+        .join("\n");
+      const { error: markErr } = await this.db
+        .getClient()
+        .from("procurement_documents")
+        .update({ status: "needs_review", notes })
+        .eq("id", documentId)
+        .eq("restaurant_id", input.restaurantId);
+      if (markErr) {
+        // Neither the lines nor the flag landed. A clean zero-line paper is
+        // the one outcome this must not leave behind, and a retry of the same
+        // bytes would be deduped back onto it, so take the row away and fail.
+        await this.db
+          .getClient()
+          .from("procurement_documents")
+          .delete()
+          .eq("id", documentId)
+          .eq("restaurant_id", input.restaurantId);
+        throw new Error(
+          `document ${documentId} lines failed (${lineErr.message}) and it could not be flagged for review (${markErr.message})`,
+        );
+      }
+    }
 
     await this.linkAndMatch(
       documentId,

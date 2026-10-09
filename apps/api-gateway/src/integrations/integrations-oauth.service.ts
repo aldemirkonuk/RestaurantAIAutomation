@@ -1222,7 +1222,15 @@ export class IntegrationsOauthService {
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true);
 
-    if (memberError || !members || members.length === 0) return 0;
+    // F-543: fatal for the same reason as `houseRevocations` — a count that
+    // reads 0 on a failed read hides the only warning about grants that still
+    // work and sit on nobody's page.
+    if (memberError) {
+      throw new InternalServerErrorException(
+        `Who works here could not be read, so grants with no recorded restaurant could not be counted: ${memberError.message}`,
+      );
+    }
+    if (!members || members.length === 0) return 0;
 
     const { count, error } = await this.db.client
       .from("integration_oauth_connections")
@@ -1234,7 +1242,11 @@ export class IntegrationsOauthService {
       .is("restaurant_id", null)
       .is("revoked_at", null);
 
-    if (error) return 0;
+    if (error) {
+      throw new InternalServerErrorException(
+        `Grants with no recorded restaurant could not be counted: ${error.message}`,
+      );
+    }
     return count ?? 0;
   }
 

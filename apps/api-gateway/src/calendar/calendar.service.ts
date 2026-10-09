@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
@@ -160,6 +165,12 @@ export class CalendarService {
         end_on_date: dto.recurrence.endOnDate || null,
       };
 
+      // F-545: a repeating entry is saved whole or not at all. Any failure
+      // after the event row exists (rule insert, linking the rule, first
+      // occurrences) deletes the event (rule and occurrences cascade) and
+      // fails the request, so the sheet never closes on a one-off the manager
+      // believes repeats.
+      let failure: string | null = null;
       const { data: ruleData, error: ruleError } =
         await this.databaseService.supabase
           .from("calendar_recurrence_rules")
@@ -168,28 +179,51 @@ export class CalendarService {
           .single();
 
       if (ruleError) {
-        this.logger.error({
-          message: "Failed to create recurrence rule",
-          eventId: eventData.id,
-          error: ruleError.message,
-        });
-        // Revert is_recurring to false to avoid leaving the event in an orphan
-        // state (is_recurring=true with no associated recurrence rule).
-        await this.databaseService.supabase
-          .from("calendar_events")
-          .update({ is_recurring: false })
-          .eq("id", eventData.id);
+        failure = ruleError.message;
       } else {
         recurrenceRule = this.mapRecurrenceRule(ruleData);
 
         // Update event with recurrence rule ID
-        await this.databaseService.supabase
+        const { error: linkError } = await this.databaseService.supabase
           .from("calendar_events")
           .update({ recurrence_rule_id: ruleData.id })
           .eq("id", eventData.id);
 
-        // Generate initial occurrences
-        await this.generateOccurrences(restaurantId, ruleData.id);
+        if (linkError) {
+          failure = linkError.message;
+        } else {
+          // Generate initial occurrences (throws on a failed write)
+          try {
+            await this.generateOccurrences(restaurantId, ruleData.id);
+          } catch (e) {
+            failure = (e as { message?: string })?.message ?? String(e);
+          }
+        }
+      }
+
+      if (failure !== null) {
+        this.logger.error({
+          message: "Failed to save recurrence; rolling back the event",
+          eventId: eventData.id,
+          error: failure,
+        });
+        const { error: undoError } = await this.databaseService.supabase
+          .from("calendar_events")
+          .delete()
+          .eq("id", eventData.id);
+        if (undoError) {
+          this.logger.error({
+            message: "Rollback of half-saved repeating event failed",
+            eventId: eventData.id,
+            error: undoError.message,
+          });
+          throw new InternalServerErrorException(
+            "The repeat could not be saved, and the single entry it left behind could not be removed. Check the calendar before trying again.",
+          );
+        }
+        throw new InternalServerErrorException(
+          "The repeat could not be saved, so nothing was saved. Try again.",
+        );
       }
     }
 

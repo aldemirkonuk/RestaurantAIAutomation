@@ -16,6 +16,8 @@ import type { TodayPulse } from "@/api/types";
 export const REVENUE_UNAVAILABLE_MESSAGE =
   "Connect Toast on the web dashboard to see live sales here.";
 
+export const DECISIONS_UNREAD_LABEL = "Couldn't check what's waiting";
+
 export type PulseRevenueView =
   | {
       status: "known";
@@ -57,7 +59,11 @@ export function resolvePulseStripView(data: TodayPulse): PulseStripView {
       };
 
   let decisionsLabel: string | null;
-  if (data.pendingDecisions > 0) {
+  if (data.pendingDecisions == null) {
+    // F-542: the feed could not be read. Unknown is said as unknown — never
+    // borrowed as "All clear", whatever revenue says.
+    decisionsLabel = DECISIONS_UNREAD_LABEL;
+  } else if (data.pendingDecisions > 0) {
     // Always true and always useful, independent of whether revenue loaded.
     decisionsLabel = `${data.pendingDecisions} decision${data.pendingDecisions === 1 ? "" : "s"} waiting`;
   } else if (revenueKnown) {
