@@ -164,7 +164,10 @@ export class ArrivalService {
             .limit(10),
         ),
       ),
-      this.source(() => this.menus.getMenu(actor.restaurantId)),
+      // No raw line for anyone here: nothing on /arrival reads it, and a CSV
+      // line is the whole row, cost and supplier cells included
+      // (menu-line-view.ts). Every line still says kitchen_line.
+      this.source(() => this.menus.getMenu(actor.restaurantId, { rawLine: false })),
     ]);
     return {
       restaurantId: actor.restaurantId,
