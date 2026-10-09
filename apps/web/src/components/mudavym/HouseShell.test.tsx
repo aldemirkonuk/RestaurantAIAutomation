@@ -10,6 +10,7 @@
  * chosen on /profile — the case below holds that.
  */
 
+import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -321,6 +322,63 @@ describe('The house said belongs to one person in one house', () => {
       </AuthContext.Provider>,
     );
     await waitFor(() => expect(getHouseSaid()).toHaveLength(0));
+  });
+});
+
+// F-220, F-233: a house switch happens in place (the route does not change),
+// so what a page or the Ask panel held for itself used to stay on screen
+// under the next house's name.
+describe('a house switch starts the page and the Ask panel afresh', () => {
+  function inHouse(house: string) {
+    return {
+      ...(auth('owner') as object),
+      activeRestaurantId: house,
+      availableRestaurants: [
+        { id: 'r-1', name: 'Larkspur & Vine', city: null, chain_id: null, chain_name: null },
+        { id: 'r-2', name: 'Harbor House', city: null, chain_id: null, chain_name: null },
+      ],
+    } as never;
+  }
+  function tree(house: string, page: React.ReactNode) {
+    return (
+      <AuthContext.Provider value={inHouse(house)}>
+        <MemoryRouter initialEntries={['/ask']}>
+          <Routes>
+            <Route element={<HouseShell />}>
+              <Route path="*" element={page} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    );
+  }
+
+  it("the page's own state does not survive into the next house", () => {
+    let mounts = 0;
+    function Held() {
+      const [n] = React.useState(() => ++mounts);
+      return <div>{`held in mount ${n}`}</div>;
+    }
+    const view = render(tree('r-1', <Held />));
+    expect(screen.getByText('held in mount 1')).toBeTruthy();
+    // A re-render in the same house keeps the page as it is.
+    view.rerender(tree('r-1', <Held />));
+    expect(screen.getByText('held in mount 1')).toBeTruthy();
+    view.rerender(tree('r-2', <Held />));
+    expect(screen.queryByText('held in mount 1')).toBeNull();
+    expect(screen.getByText('held in mount 2')).toBeTruthy();
+  });
+
+  it("an open Ask panel reads the new house's proposals instead of keeping the last one's", async () => {
+    const askAi = await import('../../services/api/askAi');
+    const proposals = vi.mocked(askAi.listOpenProposals);
+    const view = render(tree('r-1', <div>page</div>));
+    fireEvent.click(screen.getByRole('button', { name: /Ask Mudavym\./ }));
+    await screen.findByRole('complementary', { name: 'Ask Mudavym' });
+    await waitFor(() => expect(proposals).toHaveBeenCalled());
+    const before = proposals.mock.calls.length;
+    view.rerender(tree('r-2', <div>page</div>));
+    await waitFor(() => expect(proposals.mock.calls.length).toBeGreaterThan(before));
   });
 });
 
