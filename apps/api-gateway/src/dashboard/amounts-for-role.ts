@@ -51,17 +51,28 @@ export function statsForRole<
   };
 }
 
-/** The month ledger: each day keeps its deliveries, bottles and events. */
+/**
+ * The month ledger: each day keeps its deliveries, bottles and events. The
+ * per-currency spend lines are amounts too, so a withheld role is sent none.
+ */
 export function calendarForRole<
   T extends {
-    daily: Array<{ procurement_spend: number | null }>;
+    daily: Array<{
+      procurement_spend: number | null;
+      procurement_spend_by_currency?: unknown;
+    }>;
     monthly_procurement_spend: number | null;
+    monthly_procurement_spend_by_currency?: unknown;
   },
 >(ledger: T, role: string | null | undefined): T & { amounts: Amounts } {
   if (seesHouseAmounts(role)) return { ...ledger, amounts: "shown" };
+  const { monthly_procurement_spend_by_currency: _month, ...rest } = ledger;
   return {
-    ...ledger,
-    daily: ledger.daily.map((d) => ({ ...d, procurement_spend: null })),
+    ...(rest as T),
+    daily: ledger.daily.map((d) => {
+      const { procurement_spend_by_currency: _day, ...day } = d;
+      return { ...day, procurement_spend: null };
+    }),
     monthly_procurement_spend: null,
     amounts: "withheld",
   };
