@@ -147,6 +147,98 @@ describe("computeMatch", () => {
     });
   });
 
+  // F-414. A vendor who leaves the refused bottles off the invoice has billed
+  // correctly. That is the usual net invoice, not an over-delivery: no
+  // qty_over, no critical alert (isDiscrepancy), no claim.
+  describe("refused bottles left off the bill", () => {
+    it("treats 12 arrived, 2 refused, 10 billed as a clean bill", () => {
+      const r = computeMatch({
+        orderedQty: 12,
+        poUnitPrice: 20,
+        invoiceQty: 10,
+        invoiceUnitPrice: 20,
+        acceptedQty: 10,
+        rejectedQty: 2,
+      });
+
+      expect(r.verdict).toBe("matched");
+      expect(isDiscrepancy(r.verdict)).toBe(false);
+      expect(r.creditDue).toBe(false);
+      expect(r.creditAmount).toBeNull();
+      expect(r.effectiveUnitCost).toBe(20);
+      expect(check(r, "physical_vs_bill").ok).toBe(true);
+      expect(check(r, "damage").ok).toBe(false); // the refusal is still shown
+      expect(r.summary).toBe(
+        "10 accepted at the agreed price. The 2 refused at the door are not on the bill.",
+      );
+    });
+
+    it("treats a whole refused case billed at 0 as a clean bill", () => {
+      const r = computeMatch({
+        orderedQty: 6,
+        poUnitPrice: 20,
+        invoiceQty: 0,
+        invoiceUnitPrice: 20,
+        acceptedQty: 0,
+        rejectedQty: 6,
+      });
+
+      expect(r.verdict).toBe("matched");
+      expect(isDiscrepancy(r.verdict)).toBe(false);
+      expect(r.creditDue).toBe(false);
+      expect(r.creditAmount).toBeNull();
+      expect(r.summary).toBe(
+        "All 6 refused at the door, and none of them are on the bill.",
+      );
+    });
+
+    it("still reports partial when fewer arrived than were ordered", () => {
+      // Ordered 12, 10 arrived, 2 of those refused, 8 billed: the bill is right,
+      // but 2 never came.
+      const r = computeMatch({
+        orderedQty: 12,
+        poUnitPrice: 20,
+        invoiceQty: 8,
+        invoiceUnitPrice: 20,
+        acceptedQty: 8,
+        rejectedQty: 2,
+      });
+
+      expect(r.verdict).toBe("partial");
+      expect(r.creditDue).toBe(false);
+    });
+
+    it("claims only the refused bottles that were billed", () => {
+      // 2 refused, 1 of them billed: 1 owed back, not an over-delivery.
+      const r = computeMatch({
+        orderedQty: 12,
+        poUnitPrice: 20,
+        invoiceQty: 11,
+        invoiceUnitPrice: 20,
+        acceptedQty: 10,
+        rejectedQty: 2,
+      });
+
+      expect(r.verdict).toBe("rejected");
+      expect(r.creditAmount).toBe(20);
+    });
+
+    it("still reports qty_over when fewer were billed than were kept", () => {
+      const r = computeMatch({
+        orderedQty: 12,
+        poUnitPrice: 20,
+        invoiceQty: 8,
+        invoiceUnitPrice: 20,
+        acceptedQty: 10,
+        rejectedQty: 2,
+      });
+
+      expect(r.verdict).toBe("qty_over");
+      expect(r.summary).toBe("10 kept but only 8 were billed.");
+      expect(r.creditDue).toBe(false);
+    });
+  });
+
   describe("over delivery", () => {
     it("reports qty_over and never silently absorbs the extra", () => {
       const r = computeMatch({ ...base, acceptedQty: 26 });
@@ -373,6 +465,43 @@ describe("computeMatch", () => {
       expect(r.effectiveUnitCost).toBeCloseTo(24);
       expect(r.verdict).toBe("matched");
       expect(r.priceVerified).toBe(true);
+    });
+  });
+
+  // F-415. Units claimed back must not also raise the cost of the bottles we
+  // kept: the claim and the lot cost together come to the billed total plus
+  // charges, never more.
+  describe("landed cost when units are claimed back", () => {
+    const priced = {
+      orderedQty: 12,
+      poUnitPrice: 20,
+      invoiceQty: 12,
+      invoiceUnitPrice: 20,
+    };
+    it.each([
+      ["short shipment", { ...priced, acceptedQty: 10, rejectedQty: 0 }],
+      ["refused bottles billed", { ...priced, acceptedQty: 10, rejectedQty: 2 }],
+      [
+        "overbilled against their slip",
+        { ...priced, shippedQty: 10, acceptedQty: 10, rejectedQty: 0 },
+      ],
+      [
+        "short with freight",
+        { ...priced, acceptedQty: 10, rejectedQty: 0, allocatedCharges: 30 },
+      ],
+    ])("%s: the claim and the bottle cost hold together", (_label, input) => {
+      const r = computeMatch(input as MatchInput);
+      const charges = (input as MatchInput).allocatedCharges ?? 0;
+
+      expect(r.creditAmount).toBe(40); // 2 x $20 owed back
+      // The kept bottles cost the agreed $20 (plus their share of freight),
+      // not $24 — the $40 is already on the claim.
+      expect(r.effectiveUnitCost).toBeCloseTo(
+        20 + charges / 10,
+      );
+      expect(
+        (r.creditAmount as number) + (r.effectiveUnitCost as number) * 10,
+      ).toBeCloseTo(12 * 20 + charges);
     });
   });
 
