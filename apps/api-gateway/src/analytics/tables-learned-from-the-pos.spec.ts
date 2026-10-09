@@ -626,7 +626,7 @@ describe("a hide or show clears the stored table insights before the write and r
     expect(calls).toEqual([`drop:${RID}:tables`]);
   });
 
-  it("when the write is refused, the rows are still recomputed, so they come back as they were, and the refusal is still the answer", async () => {
+  it("when the write is refused, the rows are still recomputed from the house's current checks, and the refusal is still the answer", async () => {
     const { controller, calls } = build({
       write: async () => {
         throw new NotFoundException("This house has no such table.");
