@@ -374,6 +374,32 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(true);
   });
 
+  it("the restated lots take the invoice's currency, not the order's (F-343)", async () => {
+    // Ordered in TRY, invoiced in EUR. `revalue_lot` restates unit_cost only
+    // and the trigger fills a MISSING currency only, so before this the lot
+    // carried the euro price under the order's TRY label.
+    const { db, calls } = makeDb({ currency: "TRY" });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    const stamp = calls.updates.find(
+      (u) => u.table === "inventory_lots" && "unit_cost_currency" in u.values,
+    );
+    expect(stamp?.values).toEqual({ unit_cost_currency: "EUR" });
+    expect(stamp?.filters).toMatchObject({
+      restaurant_id: REST,
+      inventory_id: INVENTORY,
+      source_order_id: ORDER,
+      stock_state: "live",
+    });
+  });
+
   it("a receipt correction names a source the enum actually has", async () => {
     const valid = new Set(enumLabels("inventory_transaction_source"));
     const { db, calls } = makeDb();
@@ -427,7 +453,14 @@ const orderRow = {
  *   pre-delivery order rather than a fixture that agrees with it by accident.
  */
 function makeDb(orderOverrides: Record<string, any> = {}) {
-  const calls = { rpc: [] as { name: string; args: Record<string, any> }[] };
+  const calls = {
+    rpc: [] as { name: string; args: Record<string, any> }[],
+    updates: [] as {
+      table: string;
+      values: Record<string, any>;
+      filters: Record<string, any>;
+    }[],
+  };
 
   const supabase: any = {
     from(table: string) {
@@ -484,8 +517,9 @@ function makeDb(orderOverrides: Record<string, any> = {}) {
           op = "insert";
           return q;
         },
-        update: () => {
+        update: (values: Record<string, any>) => {
           op = "update";
+          calls.updates.push({ table, values, filters });
           return q;
         },
         delete: () => {

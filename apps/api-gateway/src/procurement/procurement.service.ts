@@ -5940,6 +5940,10 @@ export class ProcurementService {
    * @param userId Who verified the receipt. Recorded on the revaluation so the
    *   valuation change has an author. Resolves to `public.users(user_id)` —
    *   `auth.users` is a disjoint table and an FK to it 23503s on every write.
+   * @param unitCostCurrency The money `unitCost` is in: the invoice's stated
+   *   code, else the order's (F-343 follow-up). Written onto the lots the
+   *   revaluation restated, so a cost restated in euros does not keep the
+   *   order's lira label.
    */
   private async applyReceiptAdjustment(
     restaurantId: string,
@@ -5949,6 +5953,7 @@ export class ProcurementService {
     reason: string,
     unitCost?: number | null,
     userId?: string | null,
+    unitCostCurrency?: string | null,
   ): Promise<void> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
     // row it is pointed at, not from the caller — so an id this method does not
@@ -6099,6 +6104,29 @@ export class ProcurementService {
         throw new UnprocessableEntityException(
           `The count was corrected but the price was not, for item ${inventoryId}: ${revalError.message}`,
         );
+      }
+
+      // THE PRICE'S MONEY GOES WITH IT (F-343 follow-up). `revalue_lot` sets
+      // `unit_cost` and nothing else, and the database trigger only fills a
+      // currency that is missing — so a lot booked at the order's TRY price
+      // and restated at the invoice's EUR price kept saying TRY, and margin
+      // advice read euros as lira. Every live lot of this order for this item
+      // carries the invoice's price now (a positive delta above booked its new
+      // bottles at it too), so all of them take its code. Nothing converts.
+      // The price is already restated; a failed stamp is logged, not a refused
+      // verification, as at `delivery-stock.service.ts` stampCostCurrency.
+      if (unitCostCurrency) {
+        const { error: stampError } = await this.databaseService.supabase
+          .from("inventory_lots")
+          .update({ unit_cost_currency: unitCostCurrency })
+          .eq("restaurant_id", restaurantId)
+          .eq("inventory_id", inventoryId)
+          .eq("source_order_id", orderId)
+          .eq("stock_state", "live");
+        if (stampError)
+          this.logger.error(
+            `verifyReceipt restated ${inventoryId} on order ${orderId} at ${unitCost}, but the lots still name their old currency, not ${unitCostCurrency}: ${stampError.message}`,
+          );
       }
 
       // A revaluation that reached nothing is reported, not assumed away. It
@@ -6627,6 +6655,9 @@ export class ProcurementService {
         // really cost rather than what we expected it to.
         match.effectiveUnitCost,
         userId,
+        // ...in the invoice's money, else the order's (F-343 follow-up).
+        currencyCode(body.invoiceCurrency) ??
+          currencyCode((orderRow as any).currency),
       );
     }
 
