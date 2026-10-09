@@ -61,6 +61,9 @@ export function ilikeAnyOf(columns: readonly string[], term: string): string {
   return columns.map((column) => `${column}.ilike.${value}`).join(",");
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const LIBRARY_READ_FAILED =
   "The wine library could not be read. That is a failed read, not an empty result.";
 
@@ -165,6 +168,36 @@ export class WinesService {
   private readonly logger = new Logger(WinesService.name);
 
   constructor(private readonly dbService: DatabaseService) {}
+
+  /**
+   * The rows of the shared wine book one house may see (F-496, ADR 0130).
+   *
+   * Every read below goes through the service-role client, so RLS filters
+   * nothing; this is the only fence. Two kinds of row are hidden:
+   *
+   *  - a row a merge retired (`deleted_at` set by `merge_library_wines`, which
+   *    also repoints every reference to the keeper), so a deduped wine stops
+   *    showing twice;
+   *  - another house's own provisional wine (`provisional_for_restaurant_id`),
+   *    which ADR 0130 says "is never offered to another venue". The matcher
+   *    and the dedupe proposer already respect that; the book did not.
+   *
+   * No house, or a house id that is not a uuid, sees shared rows only — the
+   * id is pasted into a PostgREST filter, so anything else is refused rather
+   * than quoted.
+   */
+  private visibleTo<Q extends { is(column: string, value: null): Q; or(filters: string): Q }>(
+    supa: Q,
+    restaurantId?: string | null,
+  ): Q {
+    const live = supa.is("deleted_at", null);
+    if (restaurantId && UUID_PATTERN.test(restaurantId)) {
+      return live.or(
+        `provisional_for_restaurant_id.is.null,provisional_for_restaurant_id.eq.${restaurantId}`,
+      );
+    }
+    return live.is("provisional_for_restaurant_id", null);
+  }
 
   private mapWine(row: WineRow) {
     const bottleSizeMl = row.bottle_size_ml ?? 750;
@@ -487,7 +520,7 @@ export class WinesService {
     return { processed: results.length, results };
   }
 
-  async searchWines(query: GetWinesQueryDto) {
+  async searchWines(query: GetWinesQueryDto, restaurantId?: string | null) {
     const client = this.dbService.getClient();
     let supa = client.from("master_wine_library").select("*");
 
@@ -525,6 +558,8 @@ export class WinesService {
     if (query.maxPrice !== undefined) {
       supa = supa.lte("price_reference", query.maxPrice);
     }
+
+    supa = this.visibleTo(supa, restaurantId);
 
     if (query.sortBy) {
       const column =
@@ -578,13 +613,12 @@ export class WinesService {
     return (data || []).map((row: WineRow) => this.mapWine(row));
   }
 
-  async getWineById(wineId: string) {
+  async getWineById(wineId: string, restaurantId?: string | null) {
     const client = this.dbService.getClient();
-    const { data, error } = await client
-      .from("master_wine_library")
-      .select("*")
-      .eq("id", wineId)
-      .single();
+    const { data, error } = await this.visibleTo(
+      client.from("master_wine_library").select("*").eq("id", wineId),
+      restaurantId,
+    ).single();
 
     if (error) {
       if (error.code === "PGRST116") {
@@ -596,21 +630,27 @@ export class WinesService {
     return this.mapWine(data as WineRow);
   }
 
-  async getWineCategories() {
+  async getWineCategories(restaurantId?: string | null) {
     const client = this.dbService.getClient();
-    const { data, error } = await client
-      .from("master_wine_library")
-      .select("primary_type")
-      .not("primary_type", "is", null);
+    const { data, error } = await this.visibleTo(
+      client
+        .from("master_wine_library")
+        .select("primary_type")
+        .not("primary_type", "is", null),
+      restaurantId,
+    );
 
     if (error) throw error;
     const types = (data || []).map((row) => row.primary_type).filter(Boolean);
     return Array.from(new Set(types)).sort();
   }
 
-  async getWineRegions(query: WineMetaQueryDto) {
+  async getWineRegions(query: WineMetaQueryDto, restaurantId?: string | null) {
     const client = this.dbService.getClient();
-    let supa = client.from("master_wine_library").select("region, country");
+    let supa = this.visibleTo(
+      client.from("master_wine_library").select("region, country"),
+      restaurantId,
+    );
 
     if (query.country) {
       supa = supa.ilike("country", `%${query.country}%`);
@@ -622,19 +662,25 @@ export class WinesService {
     return Array.from(new Set(regions)).sort();
   }
 
-  async getWineCountries() {
+  async getWineCountries(restaurantId?: string | null) {
     const client = this.dbService.getClient();
-    const { data, error } = await client
-      .from("master_wine_library")
-      .select("country")
-      .not("country", "is", null);
+    const { data, error } = await this.visibleTo(
+      client
+        .from("master_wine_library")
+        .select("country")
+        .not("country", "is", null),
+      restaurantId,
+    );
 
     if (error) throw error;
     const countries = (data || []).map((row) => row.country).filter(Boolean);
     return Array.from(new Set(countries)).sort();
   }
 
-  async getWineSuggestions(query: WineSuggestionsQueryDto) {
+  async getWineSuggestions(
+    query: WineSuggestionsQueryDto,
+    restaurantId?: string | null,
+  ) {
     if (!query.text || query.text.length < 2) {
       return [];
     }
@@ -647,6 +693,7 @@ export class WinesService {
     suggestions = suggestions.or(
       `name.ilike.${textValue},producer.ilike.${textValue}`,
     );
+    suggestions = this.visibleTo(suggestions, restaurantId);
     const { data, error } = await suggestions.limit(query.limit || 10);
 
     if (error) {
@@ -658,12 +705,19 @@ export class WinesService {
     return (data || []).map((row: WineRow) => this.mapWine(row));
   }
 
-  async getSimilarWines(wineId: string, query: SimilarWinesQueryDto) {
-    const wine = await this.getWineById(wineId);
+  async getSimilarWines(
+    wineId: string,
+    query: SimilarWinesQueryDto,
+    restaurantId?: string | null,
+  ) {
+    const wine = await this.getWineById(wineId, restaurantId);
     if (!wine) return [];
 
     const client = this.dbService.getClient();
-    let supa = client.from("master_wine_library").select("*").neq("id", wineId);
+    let supa = this.visibleTo(
+      client.from("master_wine_library").select("*").neq("id", wineId),
+      restaurantId,
+    );
 
     if (wine.category) {
       supa = supa.ilike("primary_type", `%${wine.category}%`);

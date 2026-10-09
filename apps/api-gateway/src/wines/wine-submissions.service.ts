@@ -283,6 +283,26 @@ export class WineSubmissionsService {
         continue;
       }
 
+      // ADR 0130, the same gate resolveOrCreateLibraryWine applies (F-497). A
+      // generic identity — no producer, and not both a vintage and a region —
+      // never joins the SHARED library from one house's reading. A producer
+      // written in a script `normalizeSignatureText` drops (Greek, Georgian)
+      // or as "-" lands here too. The matcher answers nothing for such a
+      // query, so without this the worker fell through to creating a shared
+      // row. A person decides instead.
+      if (!isSpecificWineIdentity(identity)) {
+        await this.dbService.supabase
+          .from("master_wine_library_submissions")
+          .update({
+            status: "pending_review",
+            decision_reason: "generic_identity_not_shared",
+            signature_hash: signatureHash,
+          })
+          .eq("id", submission.id);
+        results.push({ id: submission.id, status: "pending_review" });
+        continue;
+      }
+
       // Matching is delegated to the same RPC the menu importer uses. This
       // path used to run its own ladder — exact signature, then
       // normalized_name + normalized_producer equality with `.limit(1)` and no
@@ -386,12 +406,21 @@ export class WineSubmissionsService {
         signature_source: "submission",
       };
 
+      // ignoreDuplicates, as in resolveOrCreateLibraryWine (F-497). A merging
+      // upsert rewrote an existing SHARED row with this one submission's
+      // fields — wine_id, primary_type, appellation, price_reference, the
+      // profiles — and wrote NULL over every one the submission left out, for
+      // every house that stocks that wine. An existing row keeps its fields;
+      // the submission is linked to it below.
       const { data: upserted, error: upsertError } =
         await this.dbService.supabase
           .from("master_wine_library")
-          .upsert(insertPayload, { onConflict: "signature_hash" })
+          .upsert(insertPayload, {
+            onConflict: "signature_hash",
+            ignoreDuplicates: true,
+          })
           .select("id")
-          .single();
+          .maybeSingle();
 
       if (upsertError) {
         this.logger.error("Failed to upsert master wine", {
@@ -406,6 +435,35 @@ export class WineSubmissionsService {
           })
           .eq("id", submission.id);
         results.push({ id: submission.id, status: "pending" });
+        continue;
+      }
+
+      // No row back means the insert was skipped: a shared row with this
+      // signature already exists. Link the submission to it, untouched.
+      if (!upserted?.id) {
+        const { data: existing } = await this.dbService.supabase
+          .from("master_wine_library")
+          .select("id")
+          .eq("signature_hash", signatureHash)
+          .maybeSingle();
+        if (!existing?.id) {
+          results.push({ id: submission.id, status: "pending" });
+          continue;
+        }
+        await this.dbService.supabase
+          .from("master_wine_library_submissions")
+          .update({
+            status: "merged",
+            matched_master_id: existing.id,
+            decision_reason: "existing_shared_row",
+            signature_hash: signatureHash,
+          })
+          .eq("id", submission.id);
+        results.push({
+          id: submission.id,
+          status: "merged",
+          matchedMasterId: existing.id,
+        });
         continue;
       }
 
