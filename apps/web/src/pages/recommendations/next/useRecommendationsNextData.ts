@@ -461,6 +461,15 @@ export interface RecommendationsData {
    */
   goalBook: GoalBookVM;
   /**
+   * Whether this person may see the house's goal figures and set or edit a
+   * goal: owners and managers (F-299, 2026-10-08). A goal is a money measure
+   * (the founder, round 5, 2026-09-21), so /ask already refuses its targets to
+   * staff and the gateway refuses staff its goal writes. Read from the house
+   * role alone, like `canRuleOutDays`, so the page fails closed while the role
+   * is unread.
+   */
+  canSeeGoals: boolean;
+  /**
    * False when this person's own snoozes could not be read — entries they
    * snoozed for themselves may be standing below, and the page says so.
    */
@@ -739,6 +748,8 @@ export function useRecommendationsNextData(): RecommendationsData {
 
   /** Owners and managers of this house, by the house's own role (see the type). */
   const canRuleOutDays = mayActForTheHouse(activeRole);
+  /** Owners and managers of this house: goal figures and goal writes (F-299). */
+  const canSeeGoals = mayActForTheHouse(activeRole);
 
   /**
    * Rule a day out of the analysis. Returns whether it landed — the caller
@@ -1289,6 +1300,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     ruleOutDay,
     includeDay,
     canRuleOutDays,
+    canSeeGoals,
     phase,
     entries,
     failure,

@@ -652,14 +652,48 @@ export class OrganizationsService {
     };
   }
 
+  /**
+   * The organisations this person OWNS, or a refusal in words (F-313,
+   * 2026-10-08). Groups ("chains") are the organisation's shape, so creating,
+   * renaming and deleting one are an organisation owner's acts, the same rule
+   * `createLocation` applies (ADR 0164; `org-role.ts`). Until 2026-10-08 any
+   * organisation member could do all three, and a house grant writes an
+   * organisation row for invited staff too (`orgRoleForHouseGrant`).
+   */
+  private async ownedOrgIdsOrRefuse(
+    userId: string,
+    act: string,
+  ): Promise<string[]> {
+    const { data: rows, error } = await this.databaseService.supabase
+      .from("organization_members")
+      .select("organization_id, role")
+      .eq("user_id", userId);
+    if (error) {
+      this.logger.error(
+        `could not read ${userId}'s organisations to ${act}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not confirm who owns this organisation. Nothing was changed; try again.",
+      );
+    }
+    const owned = (rows ?? [])
+      .filter((r: { role?: string | null }) => r.role === ORG_OWNER)
+      .map((r: { organization_id: string }) => r.organization_id);
+    if (owned.length === 0) {
+      throw new ForbiddenException({
+        message: `Only an owner of the organisation can ${act}. Nothing was changed.`,
+        code: "NOT_ORGANISATION_OWNER",
+      });
+    }
+    return owned;
+  }
+
   async renameChain(
     userId: string,
     chainId: string,
     name: string,
   ): Promise<void> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    if (orgIds.length === 0)
-      throw new ForbiddenException("User has no organization");
+    const orgIds = await this.ownedOrgIdsOrRefuse(userId, "rename a group");
 
     const { data: existing } = await this.databaseService.supabase
       .from("restaurant_chains")
@@ -684,9 +718,7 @@ export class OrganizationsService {
   }
 
   async deleteChain(userId: string, chainId: string): Promise<void> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    if (orgIds.length === 0)
-      throw new ForbiddenException("User has no organization");
+    const orgIds = await this.ownedOrgIdsOrRefuse(userId, "delete a group");
 
     const { data: existing } = await this.databaseService.supabase
       .from("restaurant_chains")
@@ -795,18 +827,22 @@ export class OrganizationsService {
       restaurantId?: string;
     },
   ): Promise<RestaurantChain> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    if (orgIds.length === 0)
-      throw new ForbiddenException("User has no organization");
+    const orgIds = await this.ownedOrgIdsOrRefuse(userId, "create a group");
 
     const { data: ownedOrg } = await this.databaseService.supabase
       .from("organizations")
       .select("id")
       .eq("owner_id", userId)
       .maybeSingle();
-    // Fall back to the single org the user belongs to (member/manager); only throw when truly ambiguous
+    // The organisation's recorded owner first, when they also own it by
+    // their organisation row; else the one organisation they own. Two owned
+    // and no recorded owner is ambiguous.
     const organizationId =
-      ownedOrg?.id ?? (orgIds.length === 1 ? orgIds[0] : null);
+      ownedOrg?.id && orgIds.includes(ownedOrg.id)
+        ? ownedOrg.id
+        : orgIds.length === 1
+          ? orgIds[0]
+          : null;
     if (!organizationId) {
       throw new BadRequestException(
         "Cannot determine target organization — please specify organizationId",

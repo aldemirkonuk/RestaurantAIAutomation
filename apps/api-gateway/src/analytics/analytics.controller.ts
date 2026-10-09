@@ -529,7 +529,14 @@ export class AnalyticsController {
     return this.scheduler.getPrefs(restaurantId);
   }
 
+  // The house's settings here (insight cadence, floor tables, venue profile),
+  // its goals and the finance consultants are owners' and managers' (F-315,
+  // F-299, 2026-10-08), the rule the catalogue toggle and the table rename
+  // below already follow. RolesGuard is exact, so admin is refused (ADR 0164).
+  // The reads stay open.
   @Put("insight-prefs/:restaurantId/:category")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Set refresh cadence for an insight category",
     description:
@@ -561,6 +568,8 @@ export class AnalyticsController {
   }
 
   @Post("tables/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Create/update a floor table",
     description:
@@ -589,6 +598,8 @@ export class AnalyticsController {
   }
 
   @Put("venue/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Set venue feature profile",
     description:
@@ -802,6 +813,8 @@ export class AnalyticsController {
   }
 
   @Post("goals/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Create a metric-linked goal",
     description:
@@ -847,6 +860,8 @@ export class AnalyticsController {
   }
 
   @Patch("goals/:restaurantId/:goalId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Edit a goal (name, targetValue, deadline, direction, period)",
     description:
@@ -916,6 +931,8 @@ export class AnalyticsController {
   }
 
   @Put("goals/:restaurantId/:goalId/status")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Update goal status (active|achieved|missed|archived)",
   })
@@ -952,6 +969,8 @@ export class AnalyticsController {
   }
 
   @Put("consultants/:restaurantId/toggle")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Enable/disable consultant agents",
     description: "Body: { enabled: boolean }. Default is disabled.",
@@ -967,6 +986,8 @@ export class AnalyticsController {
   }
 
   @Post("consult/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Run a consultant persona over the analytics evidence pack",
     description:
