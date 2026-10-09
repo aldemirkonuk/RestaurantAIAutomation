@@ -29,6 +29,27 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-600',
 }
 
+/**
+ * The discount as the owner reads it. The extractor stores `percent` /
+ * `amount` / `free_shipping` / `currency` in `discount_value`
+ * (promotion-extractor.service.ts); an older `{ value, type }` row is still
+ * read. Nothing readable → no line (sim F-346).
+ */
+export function discountLine(dv: Record<string, unknown> | null | undefined): string | null {
+  const d = dv ?? {}
+  const n = (v: unknown) => {
+    const x = typeof v === 'string' && v.trim() !== '' ? Number(v) : v
+    return typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : null
+  }
+  const currency = typeof d.currency === 'string' ? d.currency : null
+  const percent = n(d.percent) ?? (d.type === 'percentage' ? n(d.value) : null)
+  if (percent != null) return `${percent}% off`
+  const amount = n(d.amount) ?? (d.type !== 'percentage' ? n(d.value) : null)
+  if (amount != null) return `${formatStatedMoney(amount, currency)} off`
+  if (d.free_shipping === true) return 'Free delivery'
+  return null
+}
+
 interface Props {
   providerId?: string
   mode?: 'provider' | 'dashboard'
@@ -145,20 +166,13 @@ export function ProviderPromotionsPanel({ providerId, mode = 'provider' }: Props
                 <div className="text-right text-sm">
                   {/* A fixed amount off is the vendor's money: the currency the
                       promotion was read with, else the bare figure (sim F-341). */}
-                  {promo.discount_value && (
+                  {discountLine(promo.discount_value) && (
                     <p className="font-semibold text-green-600">
-                      {(promo.discount_value as any).value
-                        ? (promo.discount_value as any).type === 'percentage'
-                          ? `${(promo.discount_value as any).value}% off`
-                          : `${formatStatedMoney(Number((promo.discount_value as any).value), (promo.discount_value as any).currency)} off`
-                        : ''}
+                      {discountLine(promo.discount_value)}
                     </p>
                   )}
-                  {promo.savings_realized > 0 && (
-                    <p className="text-xs text-gray-500">
-                      Saved: {formatStatedMoney(promo.savings_realized, (promo.discount_value as any)?.currency)}
-                    </p>
-                  )}
+                  {/* No "Saved" figure: provider_promotions stores no realized
+                      savings, so any number here would be invented (sim F-346). */}
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-500">
