@@ -76,6 +76,19 @@ export function inventoryForRole<T extends Record<string, any>>(
   });
 }
 
+/**
+ * One item as this role may read it: the same rule as the list above, for
+ * every route that answers with a single wine (the drill-down, a Toast lookup
+ * and each write that hands the saved item back). Null stays null.
+ */
+export function inventoryItemForRole<T extends Record<string, any> | null>(
+  item: T,
+  role: string | null | undefined,
+): T {
+  if (!item || typeof item !== "object") return item;
+  return inventoryForRole([item as Record<string, any>], role)[0] as T;
+}
+
 @ApiTags("inventory")
 @Controller("inventory")
 @UseGuards(JwtAuthGuard)
@@ -224,7 +237,7 @@ export class InventoryController {
   async createInventoryItem(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: CreateInventoryItemDto,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     // A price set when the wine is added is a price edit: owner or manager
     // only, and it names the person (founder, 2026-09-21, answers 1 and 5).
@@ -233,10 +246,13 @@ export class InventoryController {
       await this.assertMayPrice(user?.userId, restaurantId);
     }
     try {
-      return await this.inventoryService.createInventoryItem(
-        restaurantId,
-        dto,
-        user?.userId ?? null,
+      return inventoryItemForRole(
+        await this.inventoryService.createInventoryItem(
+          restaurantId,
+          dto,
+          user?.userId ?? null,
+        ),
+        user?.role,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -290,9 +306,14 @@ export class InventoryController {
   @Get(":restaurantId/low-stock")
   @ApiOperation({ summary: "Get low stock items" })
   @ApiResponse({ status: 200, description: "Returns low stock items" })
-  async getLowStockItems(@Param("restaurantId") restaurantId: string) {
+  async getLowStockItems(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
     try {
-      return await this.inventoryService.getLowStockItems(restaurantId);
+      // v_low_stock_items selects the buying prices and margin beside the stock.
+      const rows = await this.inventoryService.getLowStockItems(restaurantId);
+      return rows ? inventoryForRole(rows, user?.role) : rows;
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch low stock items",
@@ -307,9 +328,13 @@ export class InventoryController {
   async getInventoryItem(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.inventoryService.getInventoryItem(restaurantId, itemId);
+      return inventoryItemForRole(
+        await this.inventoryService.getInventoryItem(restaurantId, itemId),
+        user?.role,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch inventory item",
@@ -390,6 +415,7 @@ export class InventoryController {
   async findByToastGuid(
     @Param("restaurantId") restaurantId: string,
     @Param("toastItemGuid") toastItemGuid: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     const item = await this.inventoryService.findByToastGuid(
       restaurantId,
@@ -401,7 +427,7 @@ export class InventoryController {
         HttpStatus.NOT_FOUND,
       );
     }
-    return item;
+    return inventoryItemForRole(item, user?.role);
   }
 
   @Post(":restaurantId/toast/map")
@@ -415,9 +441,13 @@ export class InventoryController {
   async mapToastItem(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: MapToastItemDto,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.inventoryService.mapToastItem(restaurantId, dto);
+      return inventoryItemForRole(
+        await this.inventoryService.mapToastItem(restaurantId, dto),
+        user?.role,
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -453,11 +483,12 @@ export class InventoryController {
   async unmapToastItem(
     @Param("restaurantId") restaurantId: string,
     @Param("inventoryId") inventoryId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.inventoryService.unmapToastItem(
-        restaurantId,
-        inventoryId,
+      return inventoryItemForRole(
+        await this.inventoryService.unmapToastItem(restaurantId, inventoryId),
+        user?.role,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -477,7 +508,7 @@ export class InventoryController {
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
     @Body() dto: UpdateInventoryItemDto,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     // Only an owner or a manager may change the house's own bottle or glass
     // price. Checked before anything in this PATCH is written, so a refused
@@ -486,11 +517,14 @@ export class InventoryController {
       await this.assertMayPrice(user?.userId, restaurantId);
     }
     try {
-      return await this.inventoryService.updateInventoryItem(
-        restaurantId,
-        itemId,
-        dto,
-        user?.userId ?? null,
+      return inventoryItemForRole(
+        await this.inventoryService.updateInventoryItem(
+          restaurantId,
+          itemId,
+          dto,
+          user?.userId ?? null,
+        ),
+        user?.role,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -514,14 +548,17 @@ export class InventoryController {
       qty: number;
       reason?: string;
     },
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     try {
-      return await this.inventoryService.transferStock(
-        restaurantId,
-        itemId,
-        dto,
-        user?.userId ?? null,
+      return inventoryItemForRole(
+        await this.inventoryService.transferStock(
+          restaurantId,
+          itemId,
+          dto,
+          user?.userId ?? null,
+        ),
+        user?.role,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -548,15 +585,16 @@ export class InventoryController {
       reason?: string;
       idempotencyKey?: string | null;
     },
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     try {
-      return await this.inventoryService.recordPour(
+      const out = await this.inventoryService.recordPour(
         restaurantId,
         itemId,
         dto,
         user?.userId ?? null,
       );
+      return out && { ...out, item: inventoryItemForRole(out.item, user?.role) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -583,10 +621,10 @@ export class InventoryController {
       clientCountId: string;
       reason?: string;
     },
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     try {
-      return await this.inventoryService.recordSpotCount(
+      const out = await this.inventoryService.recordSpotCount(
         restaurantId,
         itemId,
         // ADR 0078 (attribution): performedBy came from the request BODY, so a
@@ -596,6 +634,7 @@ export class InventoryController {
         // reads as evidence.
         { ...dto, performedBy: user?.userId ?? null },
       );
+      return out && { ...out, item: inventoryItemForRole(out.item, user?.role) };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
