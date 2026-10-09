@@ -492,3 +492,143 @@ describe("VendorTermsService — writing states, and the write is filed", () => 
     expect(audit.filed).toHaveLength(0);
   });
 });
+
+describe("VendorTermsService — the 365-day window is read whole (F-331 sibling)", () => {
+  /**
+   * `procurement_orders` behind a PostgREST double that honours the filters,
+   * the order, the limit and `count: "exact"`, and stops every response at
+   * 1,000 rows (`max_rows`, supabase/config.toml:18). The register used to read
+   * newest-first with a 4,000 limit, so past 1,000 orders a year its terms came
+   * from the newest thousand while the page said "the last 365 days".
+   */
+  const MAX_ROWS = 1000;
+
+  function cappedOrders(rows: Record<string, any>[], error?: { message: string; code?: string }) {
+    return () => {
+      const filters: Array<(r: Record<string, any>) => boolean> = [];
+      const orders: Array<{ col: string; asc: boolean }> = [];
+      let limitN = Infinity;
+      let counted = false;
+      const settle = () => {
+        if (error) return { data: null, error, count: null };
+        const hit = rows.filter((r) => filters.every((f) => f(r)));
+        const sorted = [...hit].sort((a, z) => {
+          for (const o of orders) {
+            if (a[o.col] === z[o.col]) continue;
+            const lt = a[o.col] < z[o.col] ? -1 : 1;
+            return o.asc ? lt : -lt;
+          }
+          return 0;
+        });
+        return {
+          data: sorted.slice(0, Math.min(limitN, MAX_ROWS)),
+          error: null,
+          count: counted ? hit.length : null,
+        };
+      };
+      const q: any = {
+        select: (_c: string, o?: { count?: string }) => ((counted = o?.count === "exact"), q),
+        eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
+        gte: (c: string, v: any) => (filters.push((r) => r[c] >= v), q),
+        gt: (c: string, v: any) => (filters.push((r) => r[c] > v), q),
+        order: (col: string, o?: { ascending?: boolean }) => (
+          orders.push({ col, asc: o?.ascending !== false }), q
+        ),
+        limit: (n: number) => ((limitN = n), q),
+        then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+          Promise.resolve(settle()).then(resolve, reject),
+      };
+      return q;
+    };
+  }
+
+  function houseWith(orders: () => any) {
+    const { databaseService } = makeDb({
+      restaurants: HOUSE,
+      providers: [
+        { id: "prov-old", name: "Ege", minimum_order: null, lead_time_days: null, payment_terms: null },
+        { id: PID, name: "Anadolu", minimum_order: null, lead_time_days: null, payment_terms: null },
+      ],
+      restaurant_providers: [],
+      restaurant_vendor_terms: [],
+      users: [],
+    });
+    const inner = databaseService.client;
+    return {
+      client: {
+        from: (table: string) => (table === "procurement_orders" ? orders() : inner.from(table)),
+      },
+    } as any;
+  }
+
+  const day = 86_400_000;
+  const at = (daysAgo: number) => new Date(Date.now() - daysAgo * day).toISOString();
+
+  /**
+   * 1,500 orders in the year. "Ege" was the house's vendor for the first 500
+   * (300 to 200 days ago) and "Anadolu" took the last 1,000.
+   */
+  const YEAR = [
+    ...Array.from({ length: 500 }, (_, i) => ({
+      id: `o-${String(i).padStart(5, "0")}`,
+      restaurant_id: RID,
+      provider_id: "prov-old",
+      requested_at: at(300 - i * 0.2),
+      delivered_at: at(298 - i * 0.2),
+      expected_delivery_date: null,
+      total_cost: 100,
+      status: "delivered",
+    })),
+    ...Array.from({ length: 1000 }, (_, i) => ({
+      id: `o-${String(500 + i).padStart(5, "0")}`,
+      restaurant_id: RID,
+      provider_id: PID,
+      requested_at: at(190 - i * 0.18),
+      delivered_at: at(188 - i * 0.18),
+      expected_delivery_date: null,
+      total_cost: 100,
+      status: "delivered",
+    })),
+    // Outside the window: never counted.
+    {
+      id: "o-99999",
+      restaurant_id: RID,
+      provider_id: "prov-old",
+      requested_at: at(400),
+      delivered_at: at(398),
+      expected_delivery_date: null,
+      total_cost: 100,
+      status: "delivered",
+    },
+  ];
+
+  it("counts every order of the year, not the newest 1,000", async () => {
+    const out = await new VendorTermsService(houseWith(cappedOrders(YEAR)), makeAudit().service).read(RID);
+
+    expect(out.windowDays).toBe(365);
+    expect(out.sources.orders).toEqual({ readable: true, reason: null, rows: 1500 });
+    const byId = new Map(out.vendors.map((v) => [v.providerId, v]));
+    expect(byId.get(PID)!.ordersInWindow).toBe(1000);
+    // The vendor whose orders were all older than the newest 1,000 read as
+    // never ordered from before; it is half the year's buying.
+    expect(byId.get("prov-old")!.ordersInWindow).toBe(500);
+  });
+
+  it("a refused page keeps the database's own words, and is never a count", async () => {
+    const out = await new VendorTermsService(
+      houseWith(cappedOrders(YEAR, { message: "connection reset", code: "08006" })),
+      makeAudit().service,
+    ).read(RID);
+    expect(out.sources.orders).toEqual({ readable: false, reason: "connection reset", rows: null });
+    expect(out.vendors.every((v) => v.ordersInWindow === 0)).toBe(true);
+    expect(out.vendors[0].deliveryWeekdays.reason).toContain("could not be read");
+  });
+
+  it("a missing order table is named as missing, as before", async () => {
+    const out = await new VendorTermsService(
+      houseWith(cappedOrders(YEAR, { message: "relation does not exist", code: "42P01" })),
+      makeAudit().service,
+    ).read(RID);
+    expect(out.sources.orders.reason).toBe("the table is not present on this database");
+  });
+});

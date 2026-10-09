@@ -1,6 +1,7 @@
 import { restoreArrivalEntry } from "../arrival/restore-entry";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
   SettingsAuditService,
   type FieldChange,
@@ -216,9 +217,6 @@ export const RESTAURANT_COLUMN_DEFAULTS = {
  */
 export const INFERENCE_WINDOW_DAYS = 365;
 
-/** Hard cap on rows pulled for inference, so one busy tenant cannot stall a read. */
-const ORDER_ROW_CAP = 4000;
-
 interface ProviderRow {
   id: string;
   name: string | null;
@@ -249,6 +247,7 @@ interface StatedTermsRow {
 }
 
 interface OrderRow {
+  id: string;
   provider_id: string;
   requested_at: string | null;
   delivered_at: string | null;
@@ -860,26 +859,38 @@ export class VendorTermsService {
       Date.now() - INFERENCE_WINDOW_DAYS * 86_400_000,
     ).toISOString();
     try {
-      const { data, error } = await this.databaseService.client
-        .from("procurement_orders")
-        .select(
-          "provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status",
-        )
-        .eq("restaurant_id", restaurantId)
-        .gte("requested_at", since)
-        .order("requested_at", { ascending: false })
-        .limit(ORDER_ROW_CAP);
-      if (error) {
-        return { rows: [], readable: false, status: unreadable(error) };
-      }
-      const rows = (data ?? []) as unknown as OrderRow[];
+      // Read whole or refused (ADR 0292, F-331 sibling). This was newest-first
+      // with a 4,000 cap that PostgREST's 1,000 overrode, so a busy house's
+      // terms came from its newest 1,000 orders while the page said "the last
+      // 365 days" and `sources.orders.rows` printed 1000. Every inference here
+      // buckets or sorts its own values, so the id order it comes back in is
+      // harmless.
+      const rows = await readWholeWindow<OrderRow>(
+        "This year's orders",
+        () =>
+          this.databaseService.client
+            .from("procurement_orders")
+            .select(
+              "id, provider_id, requested_at, delivered_at, expected_delivery_date, total_cost, status",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("requested_at", since),
+      );
       return {
         rows,
         readable: true,
         status: { readable: true, reason: null, rows: rows.length },
       };
     } catch (err) {
-      return { rows: [], readable: false, status: unreadable(err) };
+      // A refused page keeps the database's own words and code, as before
+      // this read was made whole: `page N: <code> <message>`.
+      const failed =
+        err instanceof WholeReadError && err.reason === "read_failed"
+          ? /^page \d+: (\S+) ([\s\S]*)$/.exec(err.detail)
+          : null;
+      const cause = failed ? { code: failed[1], message: failed[2] } : err;
+      return { rows: [], readable: false, status: unreadable(cause) };
     }
   }
 
