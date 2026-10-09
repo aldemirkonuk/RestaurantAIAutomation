@@ -285,6 +285,13 @@ export class RecommendationsService {
        * answer is the house's.
        */
       viewerId?: string | null;
+      /**
+       * Whether the viewer sees sales (ADR 0290 §5). The concentration card
+       * reads the till (ADR 0298 decision 9), so it is evaluated only when
+       * this is true. Absent, as for the digest, which one compose mails to
+       * every subscribed member, it is false.
+       */
+      withSales?: boolean;
     } = {},
   ): Promise<{
     recommendations: Recommendation[];
@@ -321,8 +328,12 @@ export class RecommendationsService {
       priceAdviceRes,
       priceLocksRes,
     ] = await Promise.allSettled([
-      this.analyticsService.getFinancialSummary(restaurantId),
-      this.analyticsService.getRiskProfile(restaurantId),
+      this.analyticsService.getFinancialSummary(restaurantId, 0, {
+        withSales: opts.withSales === true,
+      }),
+      this.analyticsService.getRiskProfile(restaurantId, {
+        withSales: opts.withSales === true,
+      }),
       this.analyticsService.getInventoryScience(restaurantId),
       this.advanced.getMenuEngineering(restaurantId),
       this.advanced.getSeasonality(restaurantId),

@@ -853,6 +853,42 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     expect(within(ledger).getByText(/the POS sales read failed/)).toBeInTheDocument();
   });
 
+  it('says the till figures are withheld, not unread, for a caller who does not see sales (ADR 0298 decision 9)', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {
+          revenue: "POS line price × qty — withheld: sales figures are an owner's or a manager's to see (ADR 0145 ROLE_POLICY, ADR 0290 §5), so the till was not read",
+        },
+        salesWithheld: true,
+        costCoverage: { total: 1, priced: 1, unpriced: 0, complete: true },
+        cogsCoverage: null,
+        salesCoverage: null,
+        inventoryValue: 100,
+        cogs: null,
+        revenue: null,
+        shelfValueAtMenuPrice: 300,
+        grossMargin: null,
+        cogsRatio: null,
+        inventoryTurnover: null,
+        daysInventoryOutstanding: null,
+        gmroi: null,
+        deadStockCapital: null,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    const at = (label: string) => within(ledger).getByText(label).closest('.rp-fig') as HTMLElement;
+    expect(within(at('Sales of stocked items, net (365d)')).getByText('—')).toBeInTheDocument();
+    const why = (label: string) => at(label).querySelector('dd')?.getAttribute('title');
+    expect(why('Sales of stocked items, net (365d)')).toBe('Sales are shown to owners and managers');
+    expect(why('Cost of goods (365d)')).toBe('Sales are shown to owners and managers');
+    expect(why('Gross margin')).toBe('Sales are shown to owners and managers');
+    expect(why('Days of inventory')).toBe('Sales are shown to owners and managers');
+    expect(within(ledger).getByText(/the till's figures are shown to owners and managers/)).toBeInTheDocument();
+    expect(within(at('Sell-price valuation')).getByText(/300/)).toBeInTheDocument();
+  });
+
   it('prints cost of goods and sales from the till when both are whole (ADR 0298)', () => {
     hook.current = withRegister(
       'ledger',

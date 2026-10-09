@@ -169,6 +169,12 @@ export interface LedgerRegister {
     itemsCostUnread?: number;
   };
   salesCoverage?: { unmappedLines: number; itemsSoldWithoutStockMove: number } | null;
+  /**
+   * ADR 0298 decision 9: the gateway read no till for this caller (ADR 0290
+   * §5: sales are an owner's or a manager's), so sales, cost of goods and the
+   * ratios built on them are withheld, not unread.
+   */
+  salesWithheld: boolean;
   inventoryValue: number | null;
   cogs: number | null;
   revenue: number | null;
@@ -203,6 +209,7 @@ const ledger = analysis<LedgerRegister>({
             itemsSoldWithoutStockMove: num(sc.itemsSoldWithoutStockMove) ?? 0,
           }
         : null,
+      salesWithheld: d.salesWithheld === true,
       inventoryValue: num(d.inventoryValue),
       cogs: num(d.cogs),
       revenue: num(d.revenue),
@@ -222,7 +229,10 @@ const ledger = analysis<LedgerRegister>({
     // ADR 0298: cost of goods is what the till sold at its recorded cost, and
     // sales are the till's. Turns, days and GMROI also divide by the cellar
     // at cost and annualise the till's span.
-    const turnsNote = 'Needs a complete cost basis and at least 28 days of POS sales';
+    const withheld = f.salesWithheld;
+    const tillNote = (otherwise: string) =>
+      withheld ? 'Sales are shown to owners and managers' : otherwise;
+    const turnsNote = tillNote('Needs a complete cost basis and at least 28 days of POS sales');
     const figures = [
       {
         label: 'Cellar at cost',
@@ -232,12 +242,12 @@ const ledger = analysis<LedgerRegister>({
       {
         label: 'Sales of stocked items, net (365d)',
         value: money(f.revenue),
-        note: 'No POS sale could be read: no closed check, a line that cannot be read, or a read that failed',
+        note: tillNote('No POS sale could be read: no closed check, a line that cannot be read, or a read that failed'),
       },
       {
         label: 'Cost of goods (365d)',
         value: money(f.cogs),
-        note: 'Not every item that sold carries a recorded cost, the POS moved no stock, or the read failed',
+        note: tillNote('Not every item that sold carries a recorded cost, the POS moved no stock, or the read failed'),
       },
       {
         label: 'Sell-price valuation',
@@ -247,9 +257,13 @@ const ledger = analysis<LedgerRegister>({
       {
         label: 'Gross margin',
         value: ratioPct(f.grossMargin),
-        note: 'Needs the cost of every item that sold and the POS sales',
+        note: tillNote('Needs the cost of every item that sold and the POS sales'),
       },
-      { label: 'COGS ratio', value: ratioPct(f.cogsRatio) },
+      {
+        label: 'COGS ratio',
+        value: ratioPct(f.cogsRatio),
+        ...(withheld ? { note: tillNote('') } : {}),
+      },
       { label: 'Inventory turns', value: figure(f.inventoryTurnover), note: turnsNote },
       { label: 'Days of inventory', value: figure(f.daysInventoryOutstanding), note: turnsNote },
       { label: 'GMROI', value: figure(f.gmroi), note: turnsNote },
@@ -260,6 +274,10 @@ const ledger = analysis<LedgerRegister>({
       },
     ];
     const notes: string[] = [];
+    if (withheld)
+      notes.push(
+        `Sales, cost of goods, margin, turns, days of inventory and GMROI are read from the till, and the till's figures are shown to owners and managers, so they read ${EM} here.`,
+      );
     if (gc && !gc.complete && gc.total > 0) {
       const gone = num(gc.itemsNotInBooks) ?? 0;
       const unread = num(gc.itemsCostUnread) ?? 0;

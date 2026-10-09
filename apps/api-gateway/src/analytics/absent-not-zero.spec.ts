@@ -29,7 +29,7 @@ import * as E from "./engine";
  * unless it is forced to prove presence.
  */
 
-type Rows = Record<string, any[]>;
+type Rows = Record<string, any[] | null>;
 
 /** What the fake's `.rpc("pos_item_sales")` answers. Unset is a null payload,
  *  which the service reads as a failed read (not the function's shape). */
@@ -58,11 +58,17 @@ function makeClient(rowsByTable: Rows, rpc: Rpc = {}) {
       builder.maybeSingle = jest.fn(() =>
         Promise.resolve({ data: null, error: null }),
       );
+      // A table set to `null` is a FAILED read, `{ data: null, error }`, the
+      // shape PostgREST gives a timed-out or refused query; absent is empty.
       builder.then = (resolve: any, reject: any) =>
-        Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
-          resolve,
-          reject,
-        );
+        Promise.resolve(
+          rowsByTable[table] === null
+            ? {
+                data: null,
+                error: { code: "57014", message: "statement timeout" },
+              }
+            : { data: rowsByTable[table] ?? [], error: null },
+        ).then(resolve, reject);
       return builder;
     }),
     rpc: jest.fn(() =>
@@ -74,6 +80,8 @@ function makeClient(rowsByTable: Rows, rpc: Rpc = {}) {
 }
 
 const RESTAURANT = "33333333-3333-3333-3333-333333333333";
+/** A caller with the sales class: an owner or manager (ADR 0290 §5). */
+const HOLDER = { withSales: true };
 
 const analytics = (rows: Rows, rpc?: Rpc) =>
   new AnalyticsService({ getClient: () => makeClient(rows, rpc) } as any);
@@ -166,7 +174,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED], procurement_orders: [DELIVERED] },
       { error: { message: "permission denied" } },
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBeNull();
     expect(out.revenue).toBeNull();
     // The load-bearing assertion: a null with no explanation is half a fix.
@@ -192,7 +200,7 @@ describe("financial never reports an empty result set as $0", () => {
       const out: any = await analytics(
         { restaurant_inventory: [STOCKED] },
         rpc,
-      ).getFinancialSummary(RESTAURANT);
+      ).getFinancialSummary(RESTAURANT, 0, HOLDER);
       expect(out.cogs).toBeNull();
       expect(out.revenue).toBeNull();
       expect(out.basis.cogs).toContain("read failed");
@@ -203,7 +211,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED], procurement_orders: [DELIVERED] },
       till(),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBeNull();
     expect(out.cogs).not.toBe(0);
     expect(out.revenue).toBeNull();
@@ -214,6 +222,8 @@ describe("financial never reports an empty result set as $0", () => {
   it("keeps purchases and shelf value under their own names, null when absent", async () => {
     const empty: any = await analytics({}, SOLD_THREE).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     expect(empty.deliveredPurchases).toBeNull();
     expect(empty.basis.deliveredPurchases).toContain(
@@ -230,7 +240,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED], procurement_orders: [DELIVERED] },
       SOLD_THREE,
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     // 3 bottles out × the recorded cost of 20. The pre-fix figure was 480,
     // the delivered order, printed as "Cost of goods (365d)".
     expect(out.cogs).toBe(60);
@@ -252,7 +262,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED] },
       SOLD_THREE,
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.revenue).toBe(180);
     expect(out.shelfValueAtMenuPrice).toBe(300); // 5 × 60: the old "revenue"
     expect(out.basis.revenue).toContain("2 checks");
@@ -276,7 +286,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED] },
       till({ ...SOLD_THREE.data, unreadable_lines: 1 }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.revenue).toBeNull();
     expect(out.basis.revenue).toContain("cannot be read");
     expect(out.cogsRatio).toBeNull();
@@ -303,7 +313,7 @@ describe("financial never reports an empty result set as $0", () => {
         lines: 5,
         first_sale_at: daysAgo(60),
       }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBeNull();
     expect(out.cogs).not.toBe(0);
     expect(out.revenue).toBe(500);
@@ -327,7 +337,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED] },
       till({ checks: 4, lines: 6, unmapped_lines: 6, unmapped_sales: 90 }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBeNull();
     expect(out.inventoryTurnover).toBeNull();
     expect(out.gmroi).toBeNull();
@@ -353,7 +363,7 @@ describe("financial never reports an empty result set as $0", () => {
           },
         ],
       }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBe(60);
     expect(out.basis.cogs).toContain(
       "1 item sold without moving stock, and its cost is not in it",
@@ -365,7 +375,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED] },
       SOLD_THREE,
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogsWindow).toMatchObject({ days: 60 });
     expect(out.inventoryValue).toBe(100); // 5 × 20
     // 60 of cost over 60 days is 365 a year, against 100 on the shelf.
@@ -391,7 +401,7 @@ describe("financial never reports an empty result set as $0", () => {
         first_check_at: check,
         first_move_at: move,
       }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBe(60);
     expect(out.cogsWindow).toMatchObject({
       since: check,
@@ -418,7 +428,7 @@ describe("financial never reports an empty result set as $0", () => {
         first_check_at: check,
         first_move_at: move,
       }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.basis.cogs).toContain(
       `stock moves start at the first POS ledger row in the window and sales at the first closed check 10 days later, so sales hold no check from those days while cost of goods and the span annualised include them`,
     );
@@ -435,7 +445,7 @@ describe("financial never reports an empty result set as $0", () => {
       const out: any = await analytics(
         { restaurant_inventory: [STOCKED] },
         till({ ...SOLD_THREE.data, first_sale_at: at, ...clocks }),
-      ).getFinancialSummary(RESTAURANT);
+      ).getFinancialSummary(RESTAURANT, 0, HOLDER);
       expect(out.cogs).toBe(60);
       expect(out.basis.cogs).not.toContain("first POS ledger row");
     }
@@ -445,7 +455,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED] },
       till({ ...SOLD_THREE.data, first_sale_at: daysAgo(10) }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogsWindow).toMatchObject({ days: 10 });
     expect(out.cogs).toBe(60);
     expect(out.inventoryTurnover).toBeNull();
@@ -462,7 +472,7 @@ describe("financial never reports an empty result set as $0", () => {
     const out: any = await analytics(
       { restaurant_inventory: [STOCKED] },
       { error: { message: "timeout" } },
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.costCoverage.complete).toBe(true);
     expect(out.inventoryValue).toBe(100); // 5 × 20, knowable, and kept
     expect(out.inventoryTurnover).toBeNull();
@@ -629,7 +639,7 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
     const out: any = await analytics(
       { restaurant_inventory: SHELF },
       sold(sales),
-    ).getRiskProfile(RESTAURANT);
+    ).getRiskProfile(RESTAURANT, HOLDER);
     const tillGini = E.risk.giniCoefficient(Object.values(sales)) as number;
     expect(out.revenueConcentration.gini).toBeCloseTo(tillGini, 10);
     expect(out.revenueConcentration.gini).toBeLessThan(0.6);
@@ -649,7 +659,7 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
     const out: any = await analytics(
       { restaurant_inventory: SHELF },
       sold({ i1: 500, i2: 0, i3: 0, i4: 0, i5: 0, gone: 100 }, ["gone"]),
-    ).getRiskProfile(RESTAURANT);
+    ).getRiskProfile(RESTAURANT, HOLDER);
     // Weights: 500, 0, 0, 0, 0 for the active items, plus 100 for "gone".
     expect(out.revenueConcentration.gini).toBeCloseTo(
       E.risk.giniCoefficient([500, 0, 0, 0, 0, 100]) as number,
@@ -690,7 +700,7 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
     const out: any = await analytics(
       { restaurant_inventory: [...SHELF, ...menuRows] },
       sold(sales),
-    ).getRiskProfile(RESTAURANT);
+    ).getRiskProfile(RESTAURANT, HOLDER);
     expect(out.revenueConcentration.gini).toBeCloseTo(tillGini, 10);
     expect(out.revenueConcentration.gini).toBeLessThan(0.6);
     expect(out.revenueConcentration.itemsWeighed).toBe(5);
@@ -708,7 +718,7 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
     const out: any = await analytics(
       { restaurant_inventory: SHELF },
       sold({ i1: 100, i2: 100, i3: -50 }),
-    ).getRiskProfile(RESTAURANT);
+    ).getRiskProfile(RESTAURANT, HOLDER);
     expect(out.revenueConcentration.itemsWeighed).toBe(3);
     expect(out.revenueConcentration.itemsWithSales).toBe(2);
     expect(out.revenueConcentration.gini).toBeCloseTo(
@@ -750,11 +760,31 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
           },
         ],
       }),
-    ).getRiskProfile(RESTAURANT);
+    ).getRiskProfile(RESTAURANT, HOLDER);
     expect(out.revenueConcentration.itemsWeighed).toBe(5);
     expect(out.revenueConcentration.gini).toBeCloseTo(
       E.risk.giniCoefficient(Object.values(sales)) as number,
       10,
+    );
+  });
+
+  it("is no answer, not a Gini over the sellers alone, when the active inventory read fails", async () => {
+    // CI gate at fd0a57669: a failed restaurant_inventory read came back as no
+    // active rows, so every mapped item that sold nothing dropped out, the
+    // Gini was computed over the sellers alone, and the basis said "0 active
+    // items ... are left out" (ADR 0067: a failed read is never an empty one).
+    const out: any = await analytics(
+      { restaurant_inventory: null },
+      sold({ i1: 500, i2: 100, i3: 0, i4: 0, i5: 0 }),
+    ).getRiskProfile(RESTAURANT, HOLDER);
+    expect(out.revenueConcentration.gini).toBeNull();
+    expect(out.revenueConcentration.hhi).toBeNull();
+    expect(out.revenueConcentration.itemsWeighed).toBeNull();
+    expect(out.revenueConcentration.itemsWithSales).toBeNull();
+    expect(out.revenueConcentration.activeItemsNotWeighed).toBeNull();
+    expect(out.revenueConcentration.interpretation).toBe("insufficient data");
+    expect(out.revenueConcentration.basis).toContain(
+      "null: the active inventory read failed",
     );
   });
 
@@ -769,10 +799,90 @@ describe("revenue concentration weighs what each item sold, not its shelf value"
       const out: any = await analytics(
         { restaurant_inventory: SHELF },
         rpc,
-      ).getRiskProfile(RESTAURANT);
+      ).getRiskProfile(RESTAURANT, HOLDER);
       expect(out.revenueConcentration.gini).toBeNull();
       expect(out.revenueConcentration.hhi).toBeNull();
       expect(out.revenueConcentration.interpretation).toBe("insufficient data");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The till is read only for a caller who sees sales (ADR 0298 decision 9)
+// ---------------------------------------------------------------------------
+
+describe("the till's figures reach only a caller who sees sales (ADR 0290 §5)", () => {
+  /** One client, so the test can see whether the till was asked at all. */
+  const shared = (rows: Rows, rpc: Rpc) => {
+    const client = makeClient(rows, rpc);
+    return {
+      client,
+      svc: new AnalyticsService({ getClient: () => client } as any),
+    };
+  };
+  const ROWS: Rows = {
+    restaurant_inventory: [STOCKED],
+    procurement_orders: [DELIVERED],
+  };
+
+  for (const [label, gate] of [
+    ["no gate", undefined],
+    ["an empty gate", {}],
+    ["withSales: false", { withSales: false }],
+  ] as const) {
+    it(`withholds sales, cost of goods and what is built on them with ${label}`, async () => {
+      const { client, svc } = shared(ROWS, SOLD_THREE);
+      const out: any = await svc.getFinancialSummary(
+        RESTAURANT,
+        0,
+        gate as any,
+      );
+      expect(client.rpc).not.toHaveBeenCalled();
+      expect(out.salesWithheld).toBe(true);
+      for (const k of [
+        "revenue",
+        "salesCoverage",
+        "cogs",
+        "cogsCoverage",
+        "cogsWindow",
+        "grossMarginDollars",
+        "grossMargin",
+        "cogsRatio",
+        "primeCostRatio",
+        "inventoryTurnover",
+        "daysInventoryOutstanding",
+        "gmroi",
+      ])
+        expect(out[k]).toBeNull();
+      expect(out.basis.revenue).toContain("withheld: sales figures");
+      expect(out.basis.cogs).toContain("withheld: sales figures");
+      // What does not read the till is unchanged.
+      expect(out.inventoryValue).toBe(100);
+      expect(out.shelfValueAtMenuPrice).toBe(300);
+      expect(out.deliveredPurchases).toBe(480);
+    });
+
+    it(`withholds the revenue concentration with ${label}`, async () => {
+      const { client, svc } = shared(ROWS, SOLD_THREE);
+      const out: any = await svc.getRiskProfile(RESTAURANT, gate as any);
+      expect(client.rpc).not.toHaveBeenCalled();
+      expect(out.salesWithheld).toBe(true);
+      expect(out.revenueConcentration.gini).toBeNull();
+      expect(out.revenueConcentration.hhi).toBeNull();
+      expect(out.revenueConcentration.itemsWeighed).toBeNull();
+      expect(out.revenueConcentration.basis).toContain(
+        "withheld: sales figures",
+      );
+      expect(out.vendorConcentration.vendorCount).toBe(1);
+    });
+  }
+
+  it("reads the till for a caller who sees sales", async () => {
+    const { client, svc } = shared(ROWS, SOLD_THREE);
+    const out: any = await svc.getFinancialSummary(RESTAURANT, 0, HOLDER);
+    expect(client.rpc).toHaveBeenCalledTimes(1);
+    expect(out.salesWithheld).toBe(false);
+    expect(out.revenue).toBe(180);
+    expect(out.cogs).toBe(60);
   });
 });

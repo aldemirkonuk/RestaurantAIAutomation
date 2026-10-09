@@ -26,7 +26,7 @@ import { join } from "path";
  * source the value did not come from cannot.
  */
 
-type Rows = Record<string, any[]>;
+type Rows = Record<string, any[] | null>;
 
 /** What `.rpc("pos_item_sales")` answers; unset reads as a failed read. */
 type Rpc = { data?: unknown; error?: unknown };
@@ -67,13 +67,22 @@ function makeClient(rowsByTable: Rows, rpc: Rpc = {}) {
       builder.maybeSingle = jest.fn(() =>
         Promise.resolve({ data: null, error: null }),
       );
+      // A table set to `null` is a FAILED read, `{ data: null, error }`, the
+      // shape PostgREST gives a timed-out or refused query; absent is empty.
       builder.then = (resolve: any, reject: any) =>
-        Promise.resolve({
-          data: (rowsByTable[table] ?? []).filter((r) =>
-            keep.every((k) => k(r)),
-          ),
-          error: null,
-        }).then(resolve, reject);
+        Promise.resolve(
+          rowsByTable[table] === null
+            ? {
+                data: null,
+                error: { code: "57014", message: "statement timeout" },
+              }
+            : {
+                data: (rowsByTable[table] ?? []).filter((r) =>
+                  keep.every((k) => k(r)),
+                ),
+                error: null,
+              },
+        ).then(resolve, reject);
       return builder;
     }),
     rpc: jest.fn(() =>
@@ -83,6 +92,8 @@ function makeClient(rowsByTable: Rows, rpc: Rpc = {}) {
 }
 
 const RESTAURANT = "33333333-3333-3333-3333-333333333333";
+/** A caller with the sales class: an owner or manager (ADR 0290 §5). */
+const HOLDER = { withSales: true };
 const recently = new Date(Date.now() - 3 * 86400000).toISOString();
 
 /** The production shape: a menu price, and no recorded cost of any kind. */
@@ -240,6 +251,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
   it("nulls the capital ratios when an on-hand row has no cost", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     // Turns, DIO and GMROI divide by today's inventory at cost.
     expect(out.inventoryValue).toBeNull();
@@ -254,6 +267,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     // neither side of these (ADR 0298).
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     expect(out.cogs).toBe(60);
     expect(out.revenue).toBe(180);
@@ -265,6 +280,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
   it("does not let the null become a zero anywhere in the payload", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     // The pre-fix payload reported a fabricated $600 + $100 valuation here.
     for (const field of [
@@ -282,7 +299,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build(
       [UNPRICED, RECORDED],
       till({ [UNPRICED.id]: [2, 200], [RECORDED.id]: [3, 180] }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     // What the till took for both, whatever either cost.
     expect(out.revenue).toBe(380);
     expect(out.basis.revenue).toContain("4 checks");
@@ -296,7 +313,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build(
       [{ ...UNPRICED, stock_live: 0 }, RECORDED],
       till({ [UNPRICED.id]: [2, 200], [RECORDED.id]: [3, 180] }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.inventoryValue).toBe(100);
     expect(out.cogs).toBeNull();
     expect(out.cogs).not.toBe(60);
@@ -345,7 +362,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build(
       [ACTIVE_RECORDED, RETIRED],
       till({ [RETIRED.id]: [1, 90], [RECORDED.id]: [3, 180] }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     // 1 × 30 for the deleted Barolo, 3 × 20 for the Chablis.
     expect(out.cogs).toBe(90);
     expect(out.cogsCoverage).toMatchObject({
@@ -383,9 +400,9 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
         ],
       },
       till({ [RETIRED.id]: [2, 180], [RECORDED.id]: [3, 180] }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBe(2 * 25 + 3 * 20);
-    expect(out.cogsCoverage.byBasis).toMatchObject({
+    expect(out.cogsCoverage!.byBasis).toMatchObject({
       invoice_lot_wac: 1,
       last_purchase_price: 1,
       unknown: 0,
@@ -396,7 +413,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build(
       [ACTIVE_RECORDED, { ...RETIRED, last_purchase_price: null }],
       till({ [RETIRED.id]: [1, 90], [RECORDED.id]: [3, 180] }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBeNull();
     expect(out.cogsCoverage).toMatchObject({
       priced: 1,
@@ -414,7 +431,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build(
       [ACTIVE_RECORDED],
       till({ "inv-gone": [1, 90], [RECORDED.id]: [3, 180] }),
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBeNull();
     expect(out.cogsCoverage).toMatchObject({
       total: 2,
@@ -456,7 +473,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     });
     const out = await new AnalyticsService({
       getClient: () => client,
-    } as any).getFinancialSummary(RESTAURANT);
+    } as any).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(reads).toBe(2);
     expect(out.cogs).toBeNull();
     expect(out.cogsCoverage).toMatchObject({
@@ -476,7 +493,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     );
     const out = await new AnalyticsService({
       getClient: () => client,
-    } as any).getFinancialSummary(RESTAURANT);
+    } as any).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBe(60);
     expect(
       client.from.mock.calls.filter(
@@ -504,7 +521,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
         ],
       },
       { error: { message: "timeout" } },
-    ).getFinancialSummary(RESTAURANT);
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.cogs).toBeNull();
     expect(out.cogs).not.toBe(480);
     expect(out.deliveredPurchases).toBe(480);
@@ -514,6 +531,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
   it("stops the basis claiming WAC for a value that never touched WAC", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     expect(out.basis.inventoryValue).not.toBe("on-hand qty × WAC (lot rollup)");
     expect(out.basis.inventoryValue).toContain("no recorded cost");
@@ -523,6 +542,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
   it("names the size of the gap so a page can say it out loud", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     expect(out.costCoverage).toMatchObject({
       total: 2,
@@ -533,7 +554,11 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
   });
 
   it("still reports real numbers when every on-hand row is costed", async () => {
-    const out = await build([RECORDED]).getFinancialSummary(RESTAURANT);
+    const out = await build([RECORDED]).getFinancialSummary(
+      RESTAURANT,
+      0,
+      HOLDER,
+    );
     expect(out.inventoryValue).toBe(100); // 5 × 20
     expect(out.costCoverage.complete).toBe(true);
     expect(out.basis.inventoryValue).toContain(
@@ -547,13 +572,15 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build([
       RECORDED,
       { ...UNPRICED, stock_live: 0 },
-    ]).getFinancialSummary(RESTAURANT);
+    ]).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.inventoryValue).toBe(100);
   });
 
   it("withholds deadStockCapital when an idle row has no recorded cost", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     // UNPRICED never moved, so it IS dead stock — we simply cannot price it.
     expect(out.deadStockTop.map((d: any) => d.name)).toEqual([
@@ -564,6 +591,30 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     // recommendations.service.ts gates the "discount these to cost" advice on
     // `(deadStockCapital ?? 0) > 0`, so a null must withhold it.
     expect((out.deadStockCapital ?? 0) > 0).toBe(false);
+  });
+
+  it("states no dead-stock capital, not $0, when the active inventory read fails", async () => {
+    // CI gate at fd0a57669 (check every consumer of the failed-read-as-empty
+    // inventory): the movement log had rows, so an empty cellar read as
+    // "nothing is idle" and summed to $0 of dead capital (ADR 0067).
+    const out: any = await build(null as any).getFinancialSummary(
+      RESTAURANT,
+      0,
+      HOLDER,
+    );
+    expect(out.deadStockCapital).toBeNull();
+    expect(out.deadStockTop).toEqual([]);
+    expect(out.basis.deadStock).toContain(
+      "null: the active inventory read failed",
+    );
+    expect(out.basis.shelfValueAtMenuPrice).toContain(
+      "null: the active inventory read failed",
+    );
+    expect(out.basis.inventoryValue).toContain(
+      "null: the active inventory read failed",
+    );
+    expect(out.inventoryValue).toBeNull();
+    expect(out.shelfValueAtMenuPrice).toBeNull();
   });
 });
 
@@ -837,9 +888,9 @@ describe("METRIC_REGISTRY claims only what a served field computes", () => {
     };
     const svc = analytics(rows, till({ [RECORDED.id]: [3, 180] }));
     const out: Record<Lens, unknown> = {
-      financial: await svc.getFinancialSummary(RESTAURANT),
+      financial: await svc.getFinancialSummary(RESTAURANT, 0, HOLDER),
       science: await svc.getInventoryScience(RESTAURANT),
-      risk: await svc.getRiskProfile(RESTAURANT),
+      risk: await svc.getRiskProfile(RESTAURANT, HOLDER),
       forecast: await svc.getDemandForecast(RESTAURANT),
       seasonality: await advanced(rows).getSeasonality(RESTAURANT),
       menu: await advanced(rows).getMenuEngineering(RESTAURANT),

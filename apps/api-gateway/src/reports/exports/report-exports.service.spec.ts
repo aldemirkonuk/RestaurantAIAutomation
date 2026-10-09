@@ -125,7 +125,7 @@ describe("ReportExportsService — a report export is written, or says why not (
     // shelfValueAtMenuPrice, so the sell-price valuation is withheld too.
     expect(row.withheld_count).toBe(9);
     expect(row.finished_at).not.toBeNull();
-    expect(analytics.getFinancialSummary).toHaveBeenCalledWith(HOUSE_A, 0);
+    expect(analytics.getFinancialSummary).toHaveBeenCalledWith(HOUSE_A, 0, { withSales: true });
   });
 
   it("writes the engine's nulls as withheld in both files, and the house's own currency", async () => {
