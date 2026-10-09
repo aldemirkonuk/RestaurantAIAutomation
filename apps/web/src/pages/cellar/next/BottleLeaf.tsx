@@ -47,6 +47,7 @@ import {
 } from './cellar-format';
 import OrderCeremony from './OrderCeremony';
 import PriceLockNote from './PriceLockNote';
+import SoldOutControl from './SoldOutControl';
 import { useCellarSettings, type BottleVM, type WineStructureVM } from './useCellarNextData';
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -436,6 +437,8 @@ export default function BottleLeaf({
               </dl>
               {/* ADR 0193 round 3, L8: a locked price is said wherever the price is shown. */}
               <PriceLockNote inventoryId={cellar.inventoryId} />
+              {/* F-145: a drink can be 86'd, with why; the stock-out is kept. */}
+              <SoldOutControl restaurantId={restaurantId} inventoryId={cellar.inventoryId} />
               {cellar.thresholdMin === null || cellar.menuPriceBottle === null || cellar.menuPriceGlass === null ? (
                 <p className="cl-note" style={{ marginTop: 4 }}>
                   {cellar.thresholdMin === null ? 'No par recorded on this row. ' : ''}

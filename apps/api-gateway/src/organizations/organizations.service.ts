@@ -1057,6 +1057,25 @@ export class OrganizationsService {
       throw new InternalServerErrorException("Failed to create location");
     }
 
+    // The new house's own checklist (F-240): progress is kept per person per
+    // house, so this house starts empty instead of showing the first house's.
+    // `first_house: false` because the column's default (true) is for the
+    // sign-up writers, and one account holds one first house
+    // (20261231800000_onboarding_progress_is_kept_per_house.sql). The house
+    // is usable without it, so a failure is logged, not thrown.
+    const { error: progressError } = await this.databaseService.supabase
+      .from("user_onboarding_progress")
+      .insert({
+        user_id: userId,
+        restaurant_id: restaurant.id,
+        first_house: false,
+      });
+    if (progressError) {
+      this.logger.warn(
+        `createLocation: no onboarding checklist for restaurant ${restaurant.id} (non-fatal): ${progressError.message}`,
+      );
+    }
+
     return { id: restaurant.id, name: restaurant.name };
   }
 }

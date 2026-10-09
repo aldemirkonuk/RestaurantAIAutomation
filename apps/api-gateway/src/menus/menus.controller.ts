@@ -255,17 +255,26 @@ export class OnboardingController {
 
   @Get("progress")
   @ApiOperation({ summary: "Get the authenticated user's onboarding progress" })
-  async getProgress(@CurrentUser() user: { userId: string }) {
-    return this.menusService.getOnboardingProgress(user.userId);
+  async getProgress(
+    @CurrentUser() user: { userId: string; restaurantId?: string | null },
+  ) {
+    return this.menusService.getOnboardingProgress(
+      user.userId,
+      user.restaurantId ?? null,
+    );
   }
 
   @Patch("progress")
   @ApiOperation({ summary: "Update onboarding progress fields" })
   async updateProgress(
     @Body() dto: UpdateOnboardingProgressDto,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: { userId: string; restaurantId?: string | null },
   ) {
-    return this.menusService.updateOnboardingProgress(user.userId, dto);
+    return this.menusService.updateOnboardingProgress(
+      user.userId,
+      user.restaurantId ?? null,
+      dto,
+    );
   }
 
   @Patch("threshold")

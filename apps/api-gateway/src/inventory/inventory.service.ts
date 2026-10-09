@@ -42,6 +42,10 @@ function roundOz(ml: number): number {
   return Math.round((ml / ML_PER_OZ) * 10) / 10;
 }
 
+/** Why a drink is sold out (stock_outs_cause_known, F-145). */
+export const STOCK_OUT_CAUSES = ["ran_out", "broken", "pulled", "other"] as const;
+export type StockOutCause = (typeof STOCK_OUT_CAUSES)[number];
+
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -2070,5 +2074,136 @@ export class InventoryService {
     });
 
     return this.mapInventoryItem(data);
+  }
+  // ==========================================================================
+  // STOCK-OUTS — a drink 86'd (F-145, 20261231900000). The item is sold out
+  // exactly while it has an open stock_outs row; ending it brings it back.
+  // Nothing here moves stock: a stock-out is availability, not a count.
+  // ==========================================================================
+
+  async getStockOuts(restaurantId: string, inventoryId: string) {
+    const client = this.dbService.getClient();
+    await assertInventoryBelongsToRestaurant(
+      client,
+      restaurantId,
+      inventoryId,
+      "getStockOuts",
+      this.logger,
+    );
+    return this.readStockOuts(client, restaurantId, inventoryId);
+  }
+
+  async startStockOut(
+    restaurantId: string,
+    inventoryId: string,
+    dto: { cause?: string; note?: string | null },
+    userId: string | null,
+  ) {
+    const cause = String(dto?.cause ?? "");
+    if (!(STOCK_OUT_CAUSES as readonly string[]).includes(cause)) {
+      throw new HttpException(
+        "Say why it is sold out: ran out, broken, pulled or other. Nothing was marked.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const note =
+      typeof dto?.note === "string" && dto.note.trim() ? dto.note.trim() : null;
+    if (note && note.length > 500) {
+      throw new HttpException(
+        "The note is longer than 500 characters. Nothing was marked.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const client = this.dbService.getClient();
+    await assertInventoryBelongsToRestaurant(
+      client,
+      restaurantId,
+      inventoryId,
+      "startStockOut",
+      this.logger,
+    );
+    const { error } = await client.from("stock_outs").insert({
+      restaurant_id: restaurantId,
+      inventory_id: inventoryId,
+      cause,
+      note,
+      started_by: userId,
+    });
+    // 23505: it is already sold out (one open stock-out per item). A second
+    // tap, or two people at once, answers with the one already open.
+    if (error && error.code !== "23505") {
+      this.logger.error(
+        `startStockOut ${inventoryId}: ${error.message}`,
+      );
+      throw new HttpException(
+        "Could not mark it sold out. Nothing was marked; try again.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    return this.readStockOuts(client, restaurantId, inventoryId);
+  }
+
+  async endStockOut(
+    restaurantId: string,
+    inventoryId: string,
+    userId: string | null,
+  ) {
+    const client = this.dbService.getClient();
+    await assertInventoryBelongsToRestaurant(
+      client,
+      restaurantId,
+      inventoryId,
+      "endStockOut",
+      this.logger,
+    );
+    const { error } = await client
+      .from("stock_outs")
+      .update({ ended_at: new Date().toISOString(), ended_by: userId })
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .is("ended_at", null);
+    if (error) {
+      this.logger.error(`endStockOut ${inventoryId}: ${error.message}`);
+      throw new HttpException(
+        "Could not bring it back. It is still marked sold out; try again.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    return this.readStockOuts(client, restaurantId, inventoryId);
+  }
+
+  /** The open stock-out (or null) and the last ten, newest first. */
+  private async readStockOuts(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    inventoryId: string,
+  ) {
+    const { data, error } = await client
+      .from("stock_outs")
+      .select("id, cause, note, started_at, started_by, ended_at, ended_by")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .order("started_at", { ascending: false })
+      .limit(10);
+    if (error) {
+      this.logger.error(`readStockOuts ${inventoryId}: ${error.message}`);
+      throw new HttpException(
+        "Whether this is sold out could not be read. That is not the same as not sold out.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    const rows = (data ?? []).map((r: any) => ({
+      id: r.id as string,
+      cause: r.cause as StockOutCause,
+      note: (r.note ?? null) as string | null,
+      startedAt: r.started_at as string,
+      startedBy: (r.started_by ?? null) as string | null,
+      endedAt: (r.ended_at ?? null) as string | null,
+      endedBy: (r.ended_by ?? null) as string | null,
+    }));
+    return {
+      open: rows.find((r) => r.endedAt === null) ?? null,
+      recent: rows,
+    };
   }
 }

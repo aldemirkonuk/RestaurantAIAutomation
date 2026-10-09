@@ -582,6 +582,48 @@ export class InventoryController {
     }
   }
 
+  // F-145: a drink 86'd. Any member of the house may mark and end one; the
+  // person is the JWT's, never the body's. Each answers the item's open
+  // stock-out (or null) and its last ten.
+  @Get(":restaurantId/item/:itemId/stock-out")
+  @ApiOperation({ summary: "Whether an item is sold out (86'd), and its recent stock-outs" })
+  async getStockOuts(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+  ) {
+    return this.inventoryService.getStockOuts(restaurantId, itemId);
+  }
+
+  @Post(":restaurantId/item/:itemId/stock-out")
+  @ApiOperation({ summary: "Mark an item sold out (86), with why" })
+  async startStockOut(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @Body() dto: { cause?: string; note?: string | null },
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    return this.inventoryService.startStockOut(
+      restaurantId,
+      itemId,
+      dto ?? {},
+      user?.userId ?? null,
+    );
+  }
+
+  @Post(":restaurantId/item/:itemId/stock-out/end")
+  @ApiOperation({ summary: "Bring a sold-out item back" })
+  async endStockOut(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    return this.inventoryService.endStockOut(
+      restaurantId,
+      itemId,
+      user?.userId ?? null,
+    );
+  }
+
   @Delete(":restaurantId/item/:itemId")
   @ApiOperation({
     summary: "Soft delete an inventory item (set is_active = false)",
