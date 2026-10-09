@@ -10,21 +10,23 @@
  * There is no date to show and there never will be from here: a browser keeps
  * the value, not a history of it. That is the em dash's reason, and it is one
  * of the four that survived being checked.
+ *
+ * F-501 (2026-10-09): only `measurementUnit` has readers (the inventory page,
+ * its row expansion and the add-wine dialog). `defaultPourMl`, `recipesEnabled`
+ * and `recipeYieldUnit` are written here and read by nothing in apps/web, so
+ * they render as `Dead` — the stored value, no control. The pour that does
+ * change advice is the house's confirmed pour size under "What margin does it
+ * need?", kept on the restaurant; the row says where to go instead.
  */
 
-import { useState } from 'react';
 import { useRestaurantSettingsStore } from '@/stores';
-import { COMMON_POUR_SIZES, formatVolumeWithBothUnits, isValidPourSize } from '@/utils/volumeUtils';
-import { Choice, Note, Row, Toggle, fieldStyle } from './SectionKit';
+import { formatVolumeWithBothUnits } from '@/utils/volumeUtils';
+import { Choice, Dead, Note, Row } from './SectionKit';
 import { KEPT_NOTE, PROVENANCE_UNKNOWN } from './st-format';
 
 export function MeasurementSection() {
-  const {
-    measurementUnit, defaultPourMl, recipesEnabled, recipeYieldUnit,
-    setMeasurementUnit, setDefaultPourMl, setRecipesEnabled, setRecipeYieldUnit,
-  } = useRestaurantSettingsStore();
-  const preset = COMMON_POUR_SIZES.some((s) => s.ml === defaultPourMl);
-  const [custom, setCustom] = useState(preset ? '' : String(defaultPourMl));
+  const { measurementUnit, defaultPourMl, recipesEnabled, recipeYieldUnit, setMeasurementUnit } =
+    useRestaurantSettingsStore();
 
   const browser = { kept: 'browser' as const, when: null, whenUnknown: PROVENANCE_UNKNOWN.browser };
 
@@ -45,56 +47,29 @@ export function MeasurementSection() {
             onChange={setMeasurementUnit} />
         }
       />
-      <Row
+      <Dead
         label="Default glass pour"
-        provenance={browser}
-        consequence={<>Used wherever a pour is assumed rather than measured. Currently {formatVolumeWithBothUnits(defaultPourMl)}. Any wine may override it.</>}
-        control={
-          <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-            <select
-              aria-label="Default glass pour"
-              value={preset ? String(defaultPourMl) : 'custom'}
-              onChange={(e) => {
-                if (e.target.value === 'custom') { setCustom(String(defaultPourMl)); return; }
-                const ml = parseInt(e.target.value, 10);
-                if (isValidPourSize(ml)) setDefaultPourMl(ml);
-              }}
-              className="st-focus"
-              style={fieldStyle}
-            >
-              {COMMON_POUR_SIZES.map((s) => <option key={s.ml} value={String(s.ml)}>{s.label}</option>)}
-              <option value="custom">Custom</option>
-            </select>
-            {!preset && (
-              <input
-                type="number" min={30} max={500} aria-label="Custom pour in millilitres" value={custom}
-                onChange={(e) => setCustom(e.target.value)}
-                onBlur={() => { const ml = parseInt(custom, 10); if (isValidPourSize(ml)) setDefaultPourMl(ml); }}
-                className="st-focus"
-                style={{ ...fieldStyle, width: 74 }}
-              />
-            )}
-          </span>
+        stored={`stored: ${formatVolumeWithBothUnits(defaultPourMl)}`}
+        consequence={
+          <>
+            Nothing uses this pour. The pour that prices your glasses is the one this restaurant confirms under{' '}
+            <a href="#st-section-target-margin" style={{ color: 'var(--seal-deep)' }}>What margin does it need?</a>
+          </>
         }
+        evidence="Kept in this browser and read by no page."
       />
-      <Row
+      <Dead
         label="Recipes"
-        provenance={browser}
-        consequence="Shows recipe yields and pour deductions in the product on this machine."
-        control={<Toggle label="Enable recipes" checked={recipesEnabled} onChange={setRecipesEnabled} />}
+        stored={recipesEnabled ? 'stored: on' : 'stored: off'}
+        consequence="Nothing shows recipe yields or pour deductions based on this, so a switch here would change nothing."
+        evidence="Kept in this browser and read by no page."
       />
-      {recipesEnabled && (
-        <Row
-          label="Recipe yield unit"
-          provenance={browser}
-          consequence={`Recipe yields may be written in a different unit from the display unit, which is ${measurementUnit} today.`}
-          control={
-            <Choice label="Recipe yield unit" value={recipeYieldUnit}
-              options={[{ value: 'ml' as const, label: 'Metric (ml)' }, { value: 'oz' as const, label: 'US (oz)' }]}
-              onChange={setRecipeYieldUnit} />
-          }
-        />
-      )}
+      <Dead
+        label="Recipe yield unit"
+        stored={`stored: ${recipeYieldUnit}`}
+        consequence="Nothing writes recipe yields in this unit; volumes follow the display unit above."
+        evidence="Kept in this browser and read by no page."
+      />
     </>
   );
 }

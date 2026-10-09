@@ -119,7 +119,13 @@ export type SettingsRegister =
    * The founder, 2026-10-04: *"Add it to the editor (Recommended)"* —
    * changed by owners only and recorded in the log.
    */
-  | "state-and-country";
+  | "state-and-country"
+  /**
+   * When the house is open (`restaurants.operating_hours`, ADR 0093 D1).
+   * Filed since F-503 (2026-10-09): until then a change to the hours left no
+   * row, and "What changed here" did not say so.
+   */
+  | "hours";
 
 /**
  * Every member of `SettingsRegister`, as a record the compiler holds to the
@@ -141,6 +147,7 @@ const KNOWN_REGISTERS: Record<SettingsRegister, true> = {
   "target-margin": true,
   "ask-training": true,
   "state-and-country": true,
+  hours: true,
 };
 
 /**
@@ -211,6 +218,8 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * wrote either column on a house that already existed.
    */
   "house_state_country_changed",
+  /** The house's opening hours changed (F-503, 2026-10-09). */
+  "operating_hours_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [
@@ -488,7 +497,9 @@ export class SettingsAuditService {
     try {
       const { data, error } = await this.databaseService.client
         .from("system_audit_log")
-        .select("id, actor_id, action, entity_type, entity_id, changes, created_at")
+        .select(
+          "id, actor_id, action, entity_type, entity_id, changes, created_at",
+        )
         .eq("restaurant_id", restaurantId)
         .in("action", readBackActionsFor(readerRole))
         .order("created_at", { ascending: false })
@@ -523,7 +534,8 @@ export class SettingsAuditService {
     return {
       ...empty,
       entries,
-      oldestAt: entries.length > 0 ? entries[entries.length - 1].occurredAt : null,
+      oldestAt:
+        entries.length > 0 ? entries[entries.length - 1].occurredAt : null,
     };
   }
 
@@ -538,7 +550,10 @@ export class SettingsAuditService {
     ids: string[],
   ): Promise<Map<string, { name: string | null; email: string | null }>> {
     const unique = [...new Set(ids)];
-    const out = new Map<string, { name: string | null; email: string | null }>();
+    const out = new Map<
+      string,
+      { name: string | null; email: string | null }
+    >();
     if (unique.length === 0) return out;
     try {
       const { data, error } = await this.databaseService.client
@@ -554,7 +569,10 @@ export class SettingsAuditService {
         name: string | null;
         email: string | null;
       }>) {
-        out.set(row.user_id, { name: row.name ?? null, email: row.email ?? null });
+        out.set(row.user_id, {
+          name: row.name ?? null,
+          email: row.email ?? null,
+        });
       }
     } catch (err: unknown) {
       this.logger.warn(
@@ -602,7 +620,9 @@ export class SettingsAuditService {
     };
   }
 
-  private readFields(changes: Record<string, unknown>): Record<string, FieldChange> {
+  private readFields(
+    changes: Record<string, unknown>,
+  ): Record<string, FieldChange> {
     const nested = changes.fields;
     const source =
       nested && typeof nested === "object" && !Array.isArray(nested)
@@ -611,7 +631,12 @@ export class SettingsAuditService {
     const out: Record<string, FieldChange> = {};
     for (const [key, value] of Object.entries(source)) {
       if (key === "register" || key === "subject" || key === "fields") continue;
-      if (value && typeof value === "object" && !Array.isArray(value) && "to" in value) {
+      if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        "to" in value
+      ) {
         const v = value as { from?: unknown; to?: unknown };
         out[key] = { from: v.from ?? null, to: v.to ?? null };
       }
@@ -619,7 +644,10 @@ export class SettingsAuditService {
     return out;
   }
 
-  private readRegister(action: string, stored: unknown): SettingsRegister | null {
+  private readRegister(
+    action: string,
+    stored: unknown,
+  ): SettingsRegister | null {
     // Every register the union admits, by the compiler's count (ADR 0289 R5).
     // Until 2026-10-04 this was a hand-typed list of the first five, so a row
     // filed under any of the seven added since (currency through ask-training)

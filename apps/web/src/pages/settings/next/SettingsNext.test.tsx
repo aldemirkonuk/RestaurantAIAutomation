@@ -63,6 +63,20 @@ vi.mock('../../../hooks/queries/useDataTerms', () => ({
   useDataTerms: () => ({ data: undefined }),
   useInvalidateDataTerms: () => vi.fn(),
 }));
+// F-499: the target-margin block reads its own register; resolve it as a
+// readable, unset house so nothing here reaches the network.
+const pricing = vi.hoisted(() => ({
+  getTargetMargin: vi.fn(async () => ({
+    restaurantId: 'r1', bottlePct: null, glassPct: null, bandPct: null,
+    pour: { confirmed: false, ml: null, confirmedAt: null, confirmedBy: null },
+    readable: true, reason: null, statedAt: null, statedBy: null,
+  })),
+}));
+vi.mock('@/services/api/pricing', () => ({
+  getTargetMargin: pricing.getTargetMargin,
+  setTargetMargin: vi.fn(),
+  confirmPourSize: vi.fn(),
+}));
 vi.mock('@/components/team/InviteTeamDialog', () => ({ InviteTeamDialog: () => null }));
 vi.mock('@/components/team/TeamLaborSettings', () => ({ TeamLaborSettings: () => null }));
 vi.mock('@/components/team/TeamGoalsSettings', () => ({ TeamGoalsSettings: () => null }));
@@ -136,6 +150,8 @@ vi.mock('@/lib/mudavym/useMudavymDesign', () => ({
 }));
 
 import SettingsNext from './SettingsNext';
+import { isSectionId } from './st-format';
+import { handOf } from '../../recommendations/next/rec-format';
 
 function remote(data: unknown, status = 'ok') {
   return { status, data, error: status === 'error' ? 'gateway unreachable' : null, reload: vi.fn(), set: vi.fn() };
@@ -577,6 +593,28 @@ describe('SettingsNext — the editorial spine', () => {
     expect(scrolledTo.id).toBe('st-section-digest');
   });
 
+  // F-499: /inventory's price cell ("no target set", "glass waits for your
+  // pour size") and /recommendations' "Set your target" all send the owner to
+  // `?tab=target-margin`. Before this, no such id existed and no control on
+  // the page could set a target or confirm a pour.
+  it('lands ?tab=target-margin on the margin and pour controls the price advice waits for', async () => {
+    mount('/settings?tab=target-margin');
+    const block = screen.getByTestId('st-section-target-margin');
+    expect(within(block).getByRole('heading', { name: 'What margin does it need?' })).toBeInTheDocument();
+    const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
+    expect(scrolledTo.id).toBe('st-section-target-margin');
+    expect(await within(block).findByLabelText('bottle')).toBeInTheDocument();
+    expect(within(block).getByRole('button', { name: 'Record' })).toBeInTheDocument();
+    expect(within(block).getByRole('button', { name: /Confirm/ })).toBeInTheDocument();
+  });
+
+  it('every link that promises the target in Settings names a register that exists', () => {
+    const tabOf = (href: string) => new URL(href, 'http://x').searchParams.get('tab');
+    expect(isSectionId(tabOf(handOf('margin_target_unset', 'pricing').href))).toBe(true);
+    // HousePriceCell.tsx's two links, spelled as they are there.
+    expect(isSectionId(tabOf('/settings?tab=target-margin'))).toBe(true);
+  });
+
   it('carries the mudavym token scope on its own root, and takes a forced ground', () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/settings']}>
@@ -763,8 +801,10 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(screen.getByRole('switch', { name: /Email notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /SMS notifications/i })).toBeInTheDocument();
     // The category that is off is shown as a stored value, not as a switch.
-    expect(screen.getAllByText('stored: off').length).toBe(1);
-    expect(screen.getAllByText('stored: on').length).toBeGreaterThanOrEqual(5);
+    // Scoped: Measurement's Recipes row is a stored value too since F-501.
+    const notify = within(screen.getByTestId('st-section-notifications'));
+    expect(notify.getAllByText('stored: off').length).toBe(1);
+    expect(notify.getAllByText('stored: on').length).toBeGreaterThanOrEqual(5);
   });
 
   it('keeps a real switch on quiet hours, because the alerting agent reads it', () => {
@@ -823,6 +863,21 @@ describe('SettingsNext — provenance and unknowns', () => {
   it('does not fabricate an empty roster out of a failed read', () => {
     mount('/settings?tab=team');
     expect(screen.getByText(/either a branch with nobody on it/i)).toBeInTheDocument();
+  });
+
+  // F-500 / F-501: a setting nothing reads shows its stored value and no control.
+  it('offers no control for the map view or the three measurement rows nothing reads', () => {
+    mount('/settings?tab=measurement');
+    const measurement = screen.getByTestId('st-section-measurement');
+    expect(within(measurement).queryByRole('switch')).not.toBeInTheDocument();
+    expect(within(measurement).queryByLabelText('Default glass pour')).not.toBeInTheDocument();
+    expect(within(measurement).queryByLabelText('Recipe yield unit')).not.toBeInTheDocument();
+    expect(within(measurement).getAllByText(/No switch: nothing in the product reads this/)).toHaveLength(3);
+    // The display unit still has readers, so it keeps its control.
+    expect(within(measurement).getByText('Display unit')).toBeInTheDocument();
+    const map = screen.getByTestId('st-section-map');
+    expect(within(map).queryByLabelText('Default map view')).not.toBeInTheDocument();
+    expect(within(map).getByText(/No switch: nothing in the product reads this/)).toBeInTheDocument();
   });
 
   it('says out loud that the measurement register never leaves this browser', () => {

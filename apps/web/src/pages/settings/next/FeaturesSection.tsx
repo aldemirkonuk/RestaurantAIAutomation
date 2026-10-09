@@ -111,11 +111,10 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
               tone={autonomyOn ? 'grave' : undefined}
               provenance={{
                 kept: 'restaurant', when: null, whenUnknown: NO_DATE,
-                // Was cited in the consequence prose as :1011 (a line inside this
-                // function's docblock, not the read) — corrected 2026-09-19 against
-                // the actual `.select("enable_ai_autonomous_send")` call, which
-                // matches the registry's own `readBy` for this key.
-                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1027</code>,
+                // Named by function, not line (F-504, 2026-10-09): the :1011 and
+                // then :1027 anchors each drifted off the read as the file grew,
+                // and only the flag registry's anchors are guarded.
+                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts › isAutonomousSendEnabled</code>,
               }}
               consequence={
                 <>
@@ -161,11 +160,9 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
               label="Let AI handle vendor email at all"
               provenance={{
                 kept: 'restaurant', when: null, whenUnknown: NO_DATE,
-                // Was cited in the consequence prose as :987 (inside this
-                // function's docblock, not the read) — corrected 2026-09-19 against
-                // the actual `.select("enable_ai_negotiation")` call, which matches
-                // the registry's own `readBy` for this key.
-                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1003</code>,
+                // Named by function, not line (F-504): :987 and then :1003 both
+                // drifted off the `.select("enable_ai_negotiation")` read.
+                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts › isNegotiationEnabled</code>,
               }}
               consequence={
                 <>
@@ -190,7 +187,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 tone={values[HOUSE_INBOX] === true ? 'grave' : undefined}
                 provenance={{
                   kept: 'restaurant', when: null, whenUnknown: NO_DATE,
-                  readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts:339</code>,
+                  readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts › isEnabled</code>,
                 }}
                 consequence={
                   <>

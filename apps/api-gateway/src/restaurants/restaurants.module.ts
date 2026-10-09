@@ -6,6 +6,9 @@ import { WebsocketModule } from "../websocket/websocket.module";
 // removal path. TeamModule reaches nothing that imports this module, so the
 // edge adds no ring (checked over every *.module.ts import, 2026-09-29).
 import { TeamModule } from "../team/team.module";
+// F-503: opening hours file to "What changed here" like every other house
+// register. SettingsAuditModule imports only DatabaseModule and AuthModule.
+import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
 import { MembersController } from "./members.controller";
 import { MembersService } from "./members.service";
 import { OperatingHoursController } from "./operating-hours.controller";
@@ -16,6 +19,7 @@ import { OperatingHoursService } from "./operating-hours.service";
     DatabaseModule,
     AuthModule,
     TeamModule,
+    SettingsAuditModule,
     forwardRef(() => WebsocketModule),
   ],
   controllers: [MembersController, OperatingHoursController],

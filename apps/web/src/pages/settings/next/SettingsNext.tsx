@@ -97,6 +97,7 @@ import { CarryingCostSection } from './CarryingCostSection';
 import { TimeZoneSection } from './TimeZoneSection';
 import { MailReadingSection } from './MailReadingSection';
 import { HoursSection } from './HoursSection';
+import { TargetMarginSection } from './TargetMarginSection';
 import { DigestRow } from './DigestRow';
 import { AskTrainingSection } from './AskTrainingSection';
 import { ConsentPanelOpener } from './ConsentPanel';
@@ -278,7 +279,8 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
           </p>
           <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-4)', margin: '8px 0 0', maxWidth: 660 }}>
             Six of these registers now record <em>who</em> changed a setting and what it was before — Features,
-            Vendor terms, Approval thresholds, Currency, Time zone and Mail reading, read back under{' '}
+            Vendor terms, Approval thresholds, Currency, Time zone and Mail reading — and so do the opening hours
+            and the target margin, all read back under{' '}
             <button type="button" className="st-focus" onClick={() => scrollToAnchor('a-record')}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here
@@ -424,6 +426,19 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                       {KEPT_NOTE.restaurant}
                     </p>
                     <HoursSection data={data} />
+                  </div>
+                )}
+
+                {/* F-499: the margin and pour the price advice on /inventory and /recommendations waits for. */}
+                {group.id === 'house' && (
+                  <div id="st-section-target-margin" data-testid="st-section-target-margin" style={{ margin: '0 0 28px' }}>
+                    <h3 style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, letterSpacing: '-0.005em', margin: 0 }}>
+                      What margin does it need?
+                    </h3>
+                    <p style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-4)', margin: '4px 0 14px' }}>
+                      {KEPT_NOTE.restaurant}
+                    </p>
+                    <TargetMarginSection canManage={data.canManage} />
                   </div>
                 )}
 

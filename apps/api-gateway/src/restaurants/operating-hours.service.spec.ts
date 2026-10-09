@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { MembersService } from "./members.service";
 import { OperatingHoursService } from "./operating-hours.service";
+import { SettingsAuditService } from "../settings-audit/settings-audit.service";
 import {
   asDatabaseService,
   makeStubDb,
@@ -95,10 +96,13 @@ function seed(overrides: Record<string, unknown> = {}): StubDb {
   });
 }
 
+const record = jest.fn(async () => ({ recorded: true, reason: null }));
+
 function service(db: StubDb): OperatingHoursService {
   const svc = new OperatingHoursService(
     asDatabaseService(db),
     new MembersService(asDatabaseService(db)),
+    { record } as unknown as SettingsAuditService,
   );
   jest.spyOn((svc as any).logger, "error").mockImplementation(() => undefined);
   return svc;
@@ -267,5 +271,40 @@ describe("OperatingHoursService — a failed read is never an empty one (ADR 006
     await expect(
       service(db).getOperatingHours(OWNER, "ghost"),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe("OperatingHoursService — a change files to What changed here (F-503)", () => {
+  beforeEach(() => record.mockClear());
+
+  it("files the hours before and after, naming the person who saved them", async () => {
+    const res = await service(seed()).putOperatingHours(MANAGER, RID, BISTRO);
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        restaurantId: RID,
+        actorUserId: MANAGER,
+        action: "operating_hours_changed",
+        register: "hours",
+        fields: { operating_hours: { from: null, to: BISTRO } },
+      }),
+    );
+    expect(res.audited).toBe(true);
+  });
+
+  it("re-saving the same hours files nothing, whatever order the stored keys come back in", async () => {
+    const reordered = Object.fromEntries(Object.entries(BISTRO).reverse());
+    const res = await service(
+      seed({ operating_hours: reordered }),
+    ).putOperatingHours(OWNER, RID, BISTRO);
+    expect(record).not.toHaveBeenCalled();
+    expect(res.audited).toBe(false);
+  });
+
+  it("a refused write files nothing", async () => {
+    await expect(
+      service(seed()).putOperatingHours(STAFF, RID, BISTRO),
+    ).rejects.toBeDefined();
+    expect(record).not.toHaveBeenCalled();
   });
 });

@@ -12,10 +12,11 @@ Handles:
 """
 
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import uuid
 
+import pytz
 import redis.asyncio as aioredis
 
 from core.base_agent import BaseAgent
@@ -1531,12 +1532,32 @@ Please try again or add items to inventory manually.""",
 
         return filtered
 
-    def _is_quiet_hours(self, preferences: Dict[str, Any]) -> bool:
-        """Check if current time is within quiet hours (e.g., 22:00 - 08:00)"""
+    def _is_quiet_hours(
+        self, preferences: Dict[str, Any], now_utc: Optional[datetime] = None
+    ) -> bool:
+        """Check if current time is within quiet hours (e.g., 22:00 - 08:00).
+
+        F-502: the window is the house's wall clock -- `restaurants.timezone`,
+        carried in as `house_timezone` by `_get_notification_preferences` --
+        not this container's, which runs on UTC (no TZ in the Dockerfile).
+        A house with no readable zone falls back to UTC, the same fallback the
+        gateway's low-stock digest uses, and says so in the log.
+        """
         if not preferences.get("quiet_hours_enabled", False):
             return False
 
-        now = datetime.now().time()
+        zone_name = preferences.get("house_timezone")
+        zone = pytz.utc
+        if zone_name:
+            try:
+                zone = pytz.timezone(zone_name)
+            except pytz.UnknownTimeZoneError:
+                self.logger.warning(
+                    f"Quiet hours: unknown house time zone {zone_name!r}, reading UTC"
+                )
+        else:
+            self.logger.warning("Quiet hours: this house has no time zone, reading UTC")
+        now = (now_utc or datetime.now(timezone.utc)).astimezone(zone).time()
         start_str = preferences.get("quiet_hours_start", "22:00")
         end_str = preferences.get("quiet_hours_end", "08:00")
 
@@ -1648,12 +1669,34 @@ Please try again or add items to inventory manually.""",
                 .execute()
             )
 
-            return response.data if response.data else {}
+            prefs = response.data if response.data else {}
+            if prefs.get("quiet_hours_enabled"):
+                prefs["house_timezone"] = await self._house_timezone(restaurant_id)
+            return prefs
         except Exception as e:
             self.logger.warning(
                 f"No preferences found for manager {manager_id} at restaurant {restaurant_id}: {e}"
             )
             return {}
+
+    async def _house_timezone(self, restaurant_id: str) -> Optional[str]:
+        """The house's IANA zone (`restaurants.timezone`), or None when it is
+        unset or unreadable -- the quiet-hours window is kept on this clock."""
+        try:
+            response = (
+                self.database.supabase.table("restaurants")
+                .select("timezone")
+                .eq("id", restaurant_id)
+                .limit(1)
+                .execute()
+            )
+            rows = response.data or []
+            return (rows[0] or {}).get("timezone") if rows else None
+        except Exception as e:
+            self.logger.warning(
+                f"Could not read the time zone of restaurant {restaurant_id}: {e}"
+            )
+            return None
 
     async def _get_push_subscriptions(self, manager_id: str) -> List[Dict[str, Any]]:
         """Get all push subscriptions for a manager.
