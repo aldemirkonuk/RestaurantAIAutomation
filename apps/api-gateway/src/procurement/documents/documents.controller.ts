@@ -46,6 +46,8 @@ import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
+import { assertOrderBelongsToRestaurant } from "../../common/tenant/assert-order-belongs-to-restaurant";
+import { assertProviderBelongsToRestaurant } from "../../common/tenant/assert-provider-belongs-to-restaurant";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
@@ -203,6 +205,41 @@ export class DocumentsController {
     // the module graph. See `document-seal.ts` for what each act binds.
     private readonly seals: SealChallengeService,
   ) {}
+
+  /**
+   * F-309. A vendor or order id taken from a request body is this house's, or
+   * the request is refused before anything is written. The intake and door
+   * count store these ids with no house check of their own, and the house's
+   * views then read the named row by id alone, so a foreign id would show
+   * another house's vendor or order lines here. Another house's id answers the
+   * same 404 as an id that does not exist (ADR 0147).
+   */
+  private async assertBodyIdsInHouse(
+    restaurantId: string,
+    providerId: string | null | undefined,
+    orderId: string | null | undefined,
+    context: string,
+    refused: string,
+  ): Promise<void> {
+    if (providerId)
+      await assertProviderBelongsToRestaurant(
+        this.db.getClient(),
+        restaurantId,
+        providerId,
+        context,
+        refused,
+        this.logger,
+      );
+    if (orderId)
+      await assertOrderBelongsToRestaurant(
+        this.db.getClient(),
+        restaurantId,
+        orderId,
+        context,
+        refused,
+        this.logger,
+      );
+  }
 
   /**
    * Redeem the seal one of the three sealed acts has to carry back, or refuse in
@@ -868,6 +905,16 @@ export class DocumentsController {
       "Writes the count as OUR document, with the lines somebody actually counted and, optionally, one photograph as evidence. `createDelivery` makes the commercial event in the same call and attaches the count to it with the `door_count` role; `deliveryId` attaches it to an existing one. Nothing here writes stock — a count is a record (ADR 0078), not a booking.",
   })
   async doorCount(@Body() body: DoorCountDto, @CurrentUser() user: AuthedUser) {
+    // F-309. Checked before the count is written, so a refused id leaves no
+    // half-made document behind. The order matters only when a delivery is
+    // made here; an existing delivery already carries its own.
+    await this.assertBodyIdsInHouse(
+      user.restaurantId,
+      body.providerId,
+      body.createDelivery ? body.orderId : undefined,
+      "doorCount",
+      "the count was not saved",
+    );
     let photo: {
       bytes: Buffer;
       filename: string | null;
@@ -1058,6 +1105,14 @@ export class DocumentsController {
     }
     if (!buffer.length)
       throw new HttpException("Document is empty", HttpStatus.BAD_REQUEST);
+
+    await this.assertBodyIdsInHouse(
+      user.restaurantId,
+      body.providerId,
+      body.orderId,
+      "upload",
+      "the document was not saved",
+    );
 
     const result = await this.intake.ingest({
       restaurantId: user.restaurantId,

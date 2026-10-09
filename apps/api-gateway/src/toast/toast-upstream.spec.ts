@@ -7,6 +7,22 @@ import {
 } from "./orchestrator-routes";
 
 /**
+ * F-310: a by-id Toast read first asks whether the caller's house has Toast
+ * connected. These tests are about the upstream, so the house always has it.
+ */
+function toastConnectedHouse(guid: string | null = "toast-guid-1"): any {
+  const q: any = {
+    select: () => q,
+    eq: () => q,
+    maybeSingle: async () => ({
+      data: { pos_system: "toast", toast_guid: guid },
+      error: null,
+    }),
+  };
+  return { from: () => q };
+}
+
+/**
  * The failure status for `/api/v1/toast/*` is DERIVED, not declared.
  *
  * Six gateway calls target an orchestrator router that has never existed, and a
@@ -74,7 +90,7 @@ function serviceWith(handlers: { get?: jest.Mock; post?: jest.Mock }) {
     invalidateByPattern: async () => 0,
   };
   const service = new ToastService(configService, cacheService, {
-    supabase: {},
+    supabase: toastConnectedHouse(),
   } as unknown as DatabaseService);
   const get = handlers.get ?? jest.fn();
   const post = handlers.post ?? jest.fn();
@@ -99,9 +115,9 @@ function allSixCalls(
 ): Array<[string, () => Promise<any>]> {
   return [
     ["getMenus", () => service.getMenus("r1")],
-    ["getMenu", () => service.getMenu(GUID)],
+    ["getMenu", () => service.getMenu("r1", GUID)],
     ["createOrder", () => service.createOrder("r1", ORDER_DTO)],
-    ["getOrder", () => service.getOrder(GUID)],
+    ["getOrder", () => service.getOrder("r1", GUID)],
     [
       "getSalesData",
       () => service.getSalesData("r1", new Date(0), new Date(3600000)),
@@ -172,13 +188,13 @@ describe("orchestrator has no /api/v1/toast router", () => {
     // verdict is memoised, so the second does not.
     const { service, get } = absentRouterService();
 
-    await expect(service.getMenu(GUID)).rejects.toMatchObject({
+    await expect(service.getMenu("r1", GUID)).rejects.toMatchObject({
       status: HttpStatus.NOT_IMPLEMENTED,
     });
     expect(get).toHaveBeenCalledTimes(2);
     expect(get.mock.calls[1][0]).toBe(TOAST_UPSTREAM_ROUTES.menus);
 
-    await expect(service.getOrder(GUID)).rejects.toMatchObject({
+    await expect(service.getOrder("r1", GUID)).rejects.toMatchObject({
       status: HttpStatus.NOT_IMPLEMENTED,
     });
     expect(get).toHaveBeenCalledTimes(3);
@@ -261,10 +277,12 @@ describe("orchestrator serves the router but the record is missing", () => {
     });
     const { service } = serviceWith({ get });
 
-    await expect(service.getOrder(GUID)).rejects.toMatchObject({
+    await expect(service.getOrder("r1", GUID)).rejects.toMatchObject({
       status: HttpStatus.NOT_FOUND,
     });
-    await expect(service.getOrder(GUID)).rejects.toThrow(/Order not found/);
+    await expect(service.getOrder("r1", GUID)).rejects.toThrow(
+      /Order not found/,
+    );
   });
 });
 

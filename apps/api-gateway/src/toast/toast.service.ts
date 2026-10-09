@@ -773,9 +773,10 @@ export class ToastService {
     webhookDto: ToastWebhookDto,
   ): Promise<string | undefined> {
     // Invalidate menu cache immediately
+    // Every house's copy of this menu, since the key now names the house.
     if (webhookDto.menu?.menuGuid) {
-      await this.cacheService.del(
-        this.getMenuCacheKey(webhookDto.menu.menuGuid),
+      await this.cacheService.invalidateByPattern(
+        `toast:menu:*:${webhookDto.menu.menuGuid}`,
       );
     }
     await this.cacheService.invalidateByPattern("toast:menus:*");
@@ -908,7 +909,7 @@ export class ToastService {
   /**
    * Get a single menu by ID
    */
-  async getMenu(menuId: string): Promise<ToastMenuDto> {
+  async getMenu(restaurantId: string, menuId: string): Promise<ToastMenuDto> {
     // CodeQL js/request-forgery (open since 2026-07-08). menuId comes from
     // @Param("menuId") and is interpolated into the outbound URL below; Express decodes
     // params, so `%2f` becomes a real slash and `..%2f..%2f…` escapes the /toast/ prefix
@@ -934,7 +935,9 @@ export class ToastService {
       return menu;
     }
 
-    const cacheKey = this.getMenuCacheKey(menuId);
+    await this.assertHouseHasToast(restaurantId, "menu");
+
+    const cacheKey = this.getMenuCacheKey(restaurantId, menuId);
     const cached = await this.cacheService.get<ToastMenuDto>(cacheKey);
     if (cached) {
       return cached;
@@ -968,8 +971,11 @@ export class ToastService {
     menuId?: string,
   ): Promise<number> {
     if (menuId) {
-      await this.cacheService.del(this.getMenuCacheKey(menuId));
-      return 1;
+      if (restaurantId) {
+        await this.cacheService.del(this.getMenuCacheKey(restaurantId, menuId));
+        return 1;
+      }
+      return this.cacheService.invalidateByPattern(`toast:menu:*:${menuId}`);
     }
 
     if (restaurantId) {
@@ -984,8 +990,57 @@ export class ToastService {
     return `toast:menus:${restaurantId}`;
   }
 
-  private getMenuCacheKey(menuId: string): string {
-    return `toast:menu:${menuId}`;
+  // F-310. The house is in the key: a menu one house read must never be
+  // answered from the cache to another.
+  private getMenuCacheKey(restaurantId: string, menuId: string): string {
+    return `toast:menu:${restaurantId}:${menuId}`;
+  }
+
+  /**
+   * F-310. A by-id Toast read is answered only for a house that has Toast
+   * connected: `pos_system` is toast and `pos_credentials` carries the Toast
+   * `restaurant_guid` (the mapping the orchestrator resolves a house by,
+   * pos_integration_agent.py `get_restaurant_id`; `pos_system` alone defaults
+   * to toast on every house). The orchestrator answers every by-id read
+   * with one Toast login, so without this any signed-in member of any house
+   * could read the connected restaurant's menus and orders by id. A failed
+   * read refuses rather than reading as a yes (ADR 0051).
+   *
+   * What this does NOT close: two houses that both have Toast connected
+   * still share the orchestrator's single login. Scoping that needs a login
+   * per house on the orchestrator side.
+   */
+  private async assertHouseHasToast(
+    restaurantId: string,
+    what: "menu" | "order",
+  ): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("pos_system, toast_guid:pos_credentials->>restaurant_guid")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `Could not read whether restaurant ${restaurantId} has Toast connected: ${error.message}`,
+      );
+      throw new HttpException(
+        `Could not confirm Toast is connected for this restaurant, so this ${what} was not shown. Please try again.`,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    const row = data as {
+      pos_system?: string | null;
+      toast_guid?: string | null;
+    } | null;
+    if (row?.pos_system !== "toast" || !row.toast_guid) {
+      this.logger.warn(
+        `Refused a Toast ${what} read for restaurant ${restaurantId}, which has no Toast connected`,
+      );
+      throw new HttpException(
+        `Toast is not connected for this restaurant, so this ${what} is unavailable.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
   }
 
   /**
@@ -1039,7 +1094,10 @@ export class ToastService {
   /**
    * Get order by ID
    */
-  async getOrder(orderId: string): Promise<ToastOrderResponseDto> {
+  async getOrder(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<ToastOrderResponseDto> {
     // Same defect and same reasoning as getMenu above (CodeQL js/request-forgery).
     if (!isSafePathSegment(orderId)) {
       this.logger.warn(
@@ -1055,6 +1113,8 @@ export class ToastService {
       }
       return this.getMockOrder(orderId);
     }
+
+    await this.assertHouseHasToast(restaurantId, "order");
 
     try {
       const response = await this.httpClient.get(

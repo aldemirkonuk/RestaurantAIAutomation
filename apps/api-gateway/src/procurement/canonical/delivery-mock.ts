@@ -18,6 +18,8 @@
 export interface Answer {
   data: unknown;
   error: { message: string; code?: string } | null;
+  /** What a `{ count: "exact", head: true }` read answers. */
+  count?: number | null;
 }
 
 export interface MockDb {
@@ -133,6 +135,7 @@ export function makeMockDb(): MockDb {
       return Promise.resolve({
         data: a.error ? null : (a.data ?? null),
         error: a.error,
+        count: a.error ? null : (a.count ?? null),
       }).then(resolve);
     };
     return chain;

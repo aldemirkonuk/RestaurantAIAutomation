@@ -3,6 +3,8 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
@@ -472,6 +474,36 @@ export class InventoryLedgerService {
     asOf: string,
     stockType: StockType = StockType.LIVE,
   ): Promise<InventoryBalanceResponseDto> {
+    // F-308. get_inventory_balance_at filters on the item id alone, and the
+    // gateway's service role skips RLS, so the house is checked here first.
+    // Another house's item and an id that does not exist get the same 404,
+    // so the answer never confirms that a foreign id exists (ADR 0147). A
+    // failed read refuses rather than reading as a yes (ADR 0051).
+    const { data: owned, error: ownershipError } =
+      await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .maybeSingle();
+    if (ownershipError) {
+      this.logger.error({
+        message: "getBalanceAt could not confirm the item's house",
+        inventoryId,
+        error: ownershipError.message,
+      });
+      throw new ServiceUnavailableException(
+        "Could not confirm this item belongs to this restaurant, so no count was shown. Please try again.",
+      );
+    }
+    if (!owned) {
+      this.logger.warn({
+        message: "getBalanceAt refused an item that is not this house's",
+        inventoryId,
+      });
+      throw new NotFoundException("Item not found");
+    }
+
     const { data, error } = await this.databaseService.supabase.rpc(
       "get_inventory_balance_at",
       {

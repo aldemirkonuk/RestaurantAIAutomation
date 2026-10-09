@@ -158,6 +158,8 @@ describe("DeliveryService", () => {
         }),
         error: null,
       };
+      // The order is this house's (F-309).
+      db.answers.procurement_orders = { data: null, error: null, count: 1 };
       const res = await service.create(REST, "u1", {
         orderId: "ord-1",
         documents: [{ documentId: "doc-count", role: "door_count" }],
@@ -168,6 +170,43 @@ describe("DeliveryService", () => {
         "ORDERED",
       );
       expect((write?.payload as { state: string }).state).toBe("DELIVERED");
+    });
+
+    // F-309. The order and the vendor arrive in the request body, and the
+    // insert stored them with no house check, so house A's delivery could
+    // carry house B's order and the difference scan then printed B's lines.
+    it("refuses another house's order, and writes nothing", async () => {
+      // The read is scoped by restaurant_id, so house B's order counts 0 here.
+      db.answers.procurement_orders = { data: null, error: null, count: 0 };
+      const res = await service.create(REST, "u1", { orderId: "ord-of-b" });
+      expect(res).toEqual({
+        ok: false,
+        status: 404,
+        error: "Order not found",
+      });
+      expect(db.writes).toEqual([]);
+    });
+
+    it("refuses another house's vendor, and writes nothing", async () => {
+      db.answers.providers = { data: null, error: null, count: 0 };
+      const res = await service.create(REST, "u1", { providerId: "prov-of-b" });
+      expect(res).toEqual({
+        ok: false,
+        status: 404,
+        error: "Vendor not found",
+      });
+      expect(db.writes).toEqual([]);
+    });
+
+    it("refuses when it cannot read the order's house, and writes nothing", async () => {
+      db.answers.procurement_orders = {
+        data: null,
+        error: { message: "timeout" },
+      };
+      const res = await service.create(REST, "u1", { orderId: "ord-1" });
+      expect(res.ok).toBe(false);
+      expect(res.ok === false && res.status).toBe(503);
+      expect(db.writes).toEqual([]);
     });
 
     it("refuses a document belonging to another tenant, and writes nothing", async () => {
