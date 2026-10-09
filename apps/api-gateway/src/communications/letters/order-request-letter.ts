@@ -30,14 +30,13 @@
  *   - Convert money. A price is written in its line's own currency, or says the
  *     currency was not recorded.
  *   - Claim more than it holds. The predicate refuses numerals, currency signs
- *     and words, links (as `URL_RE` defines them), stray brackets,
+ *     and words, links (as `holdsLink` reads them), stray brackets,
  *     money-and-terms words and commitment phrases in the house's prose. It
  *     does NOT stop a figure by reference ("same price as last time"), a
- *     domain spelled out, spaced or broken across lines after the dot
- *     ("evil dot com", "evil . com"), a dot-like character outside
- *     `DOT_LIKE_RE`, a scheme outside `LINK_SCHEMES` without "//", or a term
- *     in a language it does not list; the house's own reading is
- *     the backstop (0173:48, ADR 0313).
+ *     link in a shape `URL_RE`'s comment lists as not caught (a domain
+ *     spelled out, spaced or broken across lines after the dot, among
+ *     others), or a term in a language it does not list; the house's own
+ *     reading is the backstop (0173:48, ADR 0313).
  *
  * LOCALE (F3, answered 2026-10-08: "Approve + Turkish now"). Every string the
  * renderer owns (subject, greeting, block texts, the Mudavym line, number and
@@ -281,35 +280,48 @@ const CURRENCY_WORD_RE = word([
   "francs",
 ]);
 /**
- * A link (ADR 0313:37). Refused:
- *   - a scheme followed by "//" ("https://"), "www.", or an "@";
- *   - a known non-web scheme followed by a non-space character
+ * A link (ADR 0313:37). `holdsLink` refuses the prose when `URL_RE` matches
+ * either of the two views `linkViews` makes of it. `URL_RE` matches:
+ *   - one ASCII letter and up to 31 more letters, digits, "+", "." or "-",
+ *     followed by "//" after a colon ("https://"). Nothing is required before
+ *     the letter, so "-https://x", "+http://a", ".https://x" and "…https://x"
+ *     match on their "https://";
+ *   - "www.", or an "@";
+ *   - a known non-web scheme followed by a colon and a non-space character
  *     (`LINK_SCHEMES`: "javascript:", "data:text", "mailto:x", "tel:", "sms:",
- *     "ftp:", "file:", "vbscript:"). A space after the colon is prose, so
- *     "Data: as before" and "Note: thanks" are kept;
+ *     "ftp:", "file:", "vbscript:"), with no letter, digit or "_" right before
+ *     it. A space after the colon is prose, so "Data: as before" and
+ *     "Note: thanks" are kept, and so is "Metadata:kept";
  *   - a bare domain: two labels joined by a dot, the last starting with a
  *     letter and at least two characters long, with any path after it
  *     ("evil.xyz", "bit.ly/abc", "shop.example.ly"). A label may hold letters,
  *     digits, "_" and "-", so "evil_site.com" and "evil.com_" are refused.
  *     There is no suffix list, so an unlisted TLD is refused too. A one-letter
  *     last label passes, so "e.g." and "U.S." are kept; two words joined by a
- *     dot with no space ("St.Emilion") are refused. A last label starting
- *     with a digit is left to the numeral rule.
- * The test runs on `linkView(prose)`, not on the prose itself.
- * Not caught: a domain spelled out ("evil dot com"), spaced ("evil . com"),
- * or broken across lines after the dot ("evil.\ncom"); a dot-like character
- * not in `DOT_LIKE_RE`; and a scheme not in `LINK_SCHEMES` without "//"
- * ("foo:bar").
+ *     dot with no space ("St.Emilion", "Mod_name.Next") are refused. A last
+ *     label starting with a digit is left to the numeral rule.
+ * Not caught as a link (each pinned by a spec, ADR 0313:37):
+ *   - a domain spelled out ("evil dot com", "name AT evil DOT com"), spaced
+ *     ("evil . com"), or broken across lines after the dot ("evil.\ncom");
+ *   - a dot written as a word inside brackets other than "dot" ("[d0t]" holds
+ *     a digit, so the numeral rule refuses it in the house's prose);
+ *   - "dot" in a bracket on one side only ("evil [dot com"), and a space
+ *     outside an unmatched bracket ("evil [.com");
+ *   - a dot-like character not in `DOT_LIKE_RE`, and a bracket not in
+ *     `OPEN_BRACKETS` / `CLOSE_BRACKETS`;
+ *   - a scheme not in `LINK_SCHEMES` without "//" ("foo:bar"), and a "://"
+ *     whose nearest ASCII letter before it is more than 31 characters back.
  *
- * Every alternative starts behind a lookbehind that refuses to start inside
- * a run it could also have started earlier in, so a long run ("aaaa…",
- * "a-a-a-…") is scanned once, not once per position (gate note, 2e6ee4c48:
- * the unanchored scheme was quadratic, 1.4-6 s at 100 KB).
+ * Speed: the "://" alternative reads at most 35 characters from any start,
+ * and the bare-domain alternative starts only at the first character of a
+ * label run, so a long run ("aaaa…", "a-a-a-…") is scanned a bounded number
+ * of times per character (gate note, 2e6ee4c48: the unanchored scheme was
+ * quadratic, 1.4-6 s at 100 KB).
  */
 const LINK_SCHEMES = ["javascript", "vbscript", "data", "mailto", "tel", "sms", "ftp", "file"];
 const URL_RE = new RegExp(
   [
-    "(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\\/\\/",
+    "[a-z][a-z0-9+.-]{0,31}:\\/\\/",
     "www\\.",
     `(?<![\\p{L}\\p{N}_])(?:${LINK_SCHEMES.join("|")}):(?=\\S)`,
     "(?<![\\p{L}\\p{N}_-])[\\p{L}\\p{N}_-]+\\.\\p{L}[\\p{L}\\p{N}_-]+",
@@ -337,28 +349,80 @@ const URL_RE = new RegExp(
 const DOT_LIKE_RE =
   /[\u3002\u00B7\u0589\u06D4\u0700-\u0702\u0F0B\u0F0D\u1362\u166E\u1803\u1809\u1C3B\u2022\u2027\u2219\u22C5\u2E31\u2E33\u2E3C\u30FB\uA4FF\uA60E\uA6F3\u{10A56}\uFF0E\uFF61]/gu;
 /**
- * Defanged dots: "[.]", "(.)", "{.}", "[dot]", "(dot)", with or without
- * spaces inside or around ("evil (.) com"). It starts only at the first
- * space of a run (or at the bracket), so a long run of spaces is scanned once.
+ * Brackets a defanged dot may sit in, after NFKC (which already turns the
+ * fullwidth ( [ { < and the small ( { < into ASCII, the small tortoise shell
+ * into 〔, and U+2329 into 〈): ASCII ( [ { <, the CJK 【 〔 「 『 〖 〘 〚 《 〈,
+ * the math ⟨, and the guillemets « ‹ — with their closing pairs.
  */
-const DEFANGED_DOT_RE = /(?<!\s)\s*[[({]\s*(?:\.|dot)\s*[\])}]\s*/giu;
+const OPEN_BRACKETS = "\\[({<\u3010\u3014\u300C\u300E\u3016\u3018\u301A\u300A\u3008\u27E8\u00AB\u2039";
+const CLOSE_BRACKETS = "\\])}>\u3011\u3015\u300D\u300F\u3017\u3019\u301B\u300B\u3009\u27E9\u00BB\u203A";
+const O = `[${OPEN_BRACKETS}]`;
+const C = `[${CLOSE_BRACKETS}]`;
+/** "&period;", the HTML entity for ".". */
+const DOT_ENTITY_RE = /&period;/giu;
 /**
- * The copy of the prose the link test reads (the courtesy line and the
- * house's words keep their own characters):
- *   1. strip every combining mark (`\p{M}`: U+034F, U+0301, U+0338, the
- *      variation selectors U+FE00-U+FE0F, the Mongolian U+180B-U+180D …) and
- *      every format character (`\p{Cf}`). UTS 46 ignores or maps them, so
- *      "evil͏.com" reaches evil.com; here it reads "evil.com";
- *   2. fold every character in `DOT_LIKE_RE` to ".";
- *   3. fold a defanged dot (`DEFANGED_DOT_RE`) to ".".
- * Stripping a mark can only join characters into one label, so it never
- * turns a refused link into an accepted one.
+ * Whitespace before a dot that holds a line break ("evil\n.com"). It starts
+ * only at the first whitespace of a run, so a long run is scanned once.
  */
-function linkView(text: string): string {
+const BREAK_BEFORE_DOT_RE = /(?<!\s)\s+(?=\.)/gu;
+const LINE_BREAK_RE = /[\n\r\v\f\u0085\u2028\u2029]/u;
+/**
+ * A defanged dot: "." or "dot" with one or more brackets before it and one
+ * or more after it, any of them nested or mixed, spaces allowed inside and
+ * around ("evil[.]com", "evil (.) com", "evil[[.]]com", "evil【.】com",
+ * "evil<.>com", "evil [dot] com"). A nest of any depth is one run, so one
+ * pass folds it. It starts only at the first character of a run of spaces
+ * and opening brackets, so a long run is scanned once.
+ * Cost: it swallows the spaces around it, so prose that brackets a dot or
+ * "dot" between two words is refused ("Merci (dot) beaucoup", "Hello [.]
+ * Goodbye"). `OPEN_AFTER_DOT_RE` refuses "U.S.(as before)" and
+ * `CLOSE_AFTER_DOT_RE` refuses "(Thanks.)Next" the same way. Each is pinned
+ * by a spec (ADR 0313:37).
+ */
+const DEFANGED_DOT_RE = new RegExp(
+  `(?<![\\s${OPEN_BRACKETS}])[\\s${OPEN_BRACKETS}]*(?:\\.|dot)(?<=${O}\\s*(?:\\.|dot))(?=\\s*${C})[\\s${CLOSE_BRACKETS}]*`,
+  "giu",
+);
+/** An unmatched opening bracket before a dot ("evil[.com", "evil[[.com"). */
+const OPEN_BEFORE_DOT_RE = new RegExp(
+  `(?<![\\s${OPEN_BRACKETS}])(\\s*)${O}[\\s${OPEN_BRACKETS}]*\\.`,
+  "gu",
+);
+/** An unmatched closing bracket after a dot ("evil.]com"); spaces after it stay. */
+const CLOSE_AFTER_DOT_RE = new RegExp(`\\.(?=\\s*${C})[\\s${CLOSE_BRACKETS}]*`, "gu");
+/** An opening bracket between a dot and a letter ("evil.(com)", left by "(.)(com)"). */
+const OPEN_AFTER_DOT_RE = new RegExp(`\\.${O}+(?=\\p{L})`, "gu");
+
+/** Folds dot-like characters and defanged dots to "." (one pass, in this order). */
+function foldDots(text: string): string {
   return text
-    .replace(/[\p{M}\p{Cf}]/gu, "")
     .replace(DOT_LIKE_RE, ".")
-    .replace(DEFANGED_DOT_RE, ".");
+    .replace(DOT_ENTITY_RE, ".")
+    .replace(BREAK_BEFORE_DOT_RE, (ws) => (LINE_BREAK_RE.test(ws) ? "" : ws))
+    .replace(DEFANGED_DOT_RE, ".")
+    .replace(OPEN_BEFORE_DOT_RE, (_m, lead: string) => `${lead}.`)
+    .replace(CLOSE_AFTER_DOT_RE, (m) => `.${m.slice(m.trimEnd().length)}`)
+    .replace(OPEN_AFTER_DOT_RE, ".");
+}
+/**
+ * The two copies of the prose the link test reads (the courtesy line and the
+ * house's words keep their own characters). Both go through `foldDots`:
+ *   1. with every combining mark (`\p{M}`: U+034F, U+0301, U+0338, the
+ *      variation selectors U+FE00-U+FE0F, the Mongolian U+180B-U+180D …),
+ *      every format character (`\p{Cf}`) and every backslash stripped first.
+ *      UTS 46 ignores or maps the marks, so "evil͏.com" reaches evil.com; here
+ *      it reads "evil.com", and "evil\.com" reads "evil.com";
+ *   2. with nothing stripped. Stripping can join a letter onto a scheme word
+ *      ("x\u0301javascript:alert" reads "xjavascript:alert", which the
+ *      scheme's lookbehind lets through), so this copy keeps the separator.
+ * `holdsLink` refuses when either copy matches `URL_RE`, so anything the
+ * unstripped copy refuses stays refused.
+ */
+function linkViews(text: string): [string, string] {
+  return [foldDots(text.replace(/[\p{M}\p{Cf}\\]/gu, "")), foldDots(text)];
+}
+function holdsLink(text: string): boolean {
+  return linkViews(text).some((v) => URL_RE.test(v));
 }
 /** EN + TR money-and-terms words (ADR 0313; adversary change 3). */
 const MONEY_TERMS_EN_RE = word([
@@ -467,7 +531,7 @@ export function orderRequestProseRefusals(template: string): ProseRefusal[] {
       says: "Your words may not name money (a currency sign, code or word). A price, when one may be shown, comes from {{order_lines}}.",
     });
   }
-  if (URL_RE.test(linkView(prose))) {
+  if (holdsLink(prose)) {
     refusals.push({
       rule: "link",
       says: "Your words may not hold a link, a web address or an email address (ADR 0173 D5).",
@@ -524,6 +588,9 @@ export function courtesyLineOrNull(sentence: string | null | undefined): string 
   if (typeof sentence !== "string") return null;
   const line = normaliseProse(sentence).replace(/\s+/g, " ").trim();
   if (!line || line.length > 240) return null;
+  // The link test also reads the sentence before its whitespace is collapsed,
+  // so a line break before a dot ("evil\n.com") is folded as in house prose.
+  if (holdsLink(normaliseProse(sentence))) return null;
   if (/\p{N}|\p{Sc}|\[|\]|\{|\}/u.test(line)) return null;
   const lowers = [line.toLowerCase(), line.toLocaleLowerCase("tr")];
   if (lowers.some((l) => DATE_WORD_RE.test(l))) return null;

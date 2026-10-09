@@ -366,6 +366,93 @@ describe("the prose predicate", () => {
     expect(courtesyLineOrNull(sentence)).toBeNull();
   });
 
+  // Gate BLOCK at d48c23d, finding 1: a lookbehind on the "://" scheme let a
+  // prefix hide it. Every row of the report, in house prose and in the
+  // AI-written courtesy line.
+  it.each([
+    ["-", "See -https://intranet/x"],
+    ["+", "See +http://a"],
+    [".", "See .https://intranet"],
+    ["\u2026 (NFKC: ...)", "See \u2026https://intranet/x"],
+    ["\u2022 (bullet)", "See \u2022https://intranet/x"],
+    ["- before a two-letter host", "Visit -https://ai/x"],
+  ])("refuses a '://' link behind a %s prefix", (_label, text) => {
+    expect(rules(T(`${text} for details.`))).toContain("link");
+    expect(courtesyLineOrNull(`Thanks. ${text} as ever.`)).toBeNull();
+  });
+
+  // Finding 2: stripping a mark joined a letter onto a scheme word, and the
+  // scheme's lookbehind then let it through. Each listed scheme behind each
+  // of the five marks the report names.
+  it.each(
+    ["\u0301", "\u034F", "\uFE0F", "\u0338", "\u20DD"].flatMap((mark) =>
+      [
+        ["x", "javascript:alert"],
+        ["_", "mailto:a"],
+        ["x", "data:text"],
+        ["x", "tel:abc"],
+        ["x", "ftp:host"],
+        ["x", "file:host"],
+      ].map(([lead, scheme]) => [
+        `U+${mark.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`,
+        `${lead}${mark}${scheme}`,
+      ]),
+    ),
+  )("refuses a scheme behind a letter and %s: %s", (_mark, text) => {
+    expect(rules(T(`Open ${text} now.`))).toContain("link");
+    expect(courtesyLineOrNull(`Thanks, open ${text} now.`)).toBeNull();
+  });
+
+  // Finding 3: the defang families the report found, now folded to a dot.
+  it.each([
+    ["a backslash-escaped dot", "evil\\.com"],
+    ["a line break before the dot", "evil\n.com"],
+    ["spaces and a line break before the dot", "evil \n .com"],
+    ["CJK lenticular brackets", "evil\u3010.\u3011com"],
+    ["CJK tortoise-shell brackets", "evil\u3014.\u3015com"],
+    ["CJK corner brackets", "evil\u300C.\u300Dcom"],
+    ["guillemets", "evil\u00AB.\u00BBcom"],
+    ["a bracketed dot then a bracketed label", "evil(.)(com)"],
+    ["&period;", "evil&period;com"],
+    ["nested brackets", "evil[[.]]com"],
+    ["spaced nested brackets", "evil [[ . ]] com"],
+    ["a nested bracketed dot word", "evil [( dot )] com"],
+    ["deeply nested mixed brackets", `evil${"[(".repeat(500)}.${")]".repeat(500)}com`],
+    ["an unmatched opening bracket", "evil[.com"],
+    ["an unmatched closing bracket", "evil.]com"],
+    ["angle brackets", "evil<.>com"],
+  ])("refuses a link with %s", (_label, link) => {
+    expect(rules(T(`See ${link} for details.`))).toContain("link");
+  });
+
+  it.each([
+    ["a backslash-escaped dot", "evil\\.com"],
+    ["a line break before the dot", "evil\n.com"],
+    ["CJK lenticular brackets", "evil\u3010.\u3011com"],
+    ["guillemets", "evil\u00AB.\u00BBcom"],
+    ["a bracketed dot then a bracketed label", "evil(.)(com)"],
+    ["&period;", "evil&period;com"],
+  ])("drops a courtesy line whose domain is defanged with %s", (_label, link) => {
+    expect(courtesyLineOrNull(`Thanks from ${link} as ever.`)).toBeNull();
+  });
+
+  // Finding 4, named in ADR 0313:37: the fold swallows the spaces around a
+  // bracketed dot or "dot", and "_" is a label character, so this prose is
+  // refused although it holds no link. Fail closed; the house rewords it.
+  it.each([
+    "Thank you (dot) for the order.",
+    "Merci (dot) beaucoup.",
+    "Hello [.] Goodbye.",
+    "A note (.) below.",
+    "The Mod_name.Next case.",
+    // Added by this fold: a dot then a bracket then a word, a dot then a
+    // closing bracket then a word.
+    "As in the U.S.(as before).",
+    "(Thanks.)Next time.",
+  ])("refuses, as a named false refusal: %s", (text) => {
+    expect(rules(T(text))).toContain("link");
+  });
+
   it("keeps accented and Turkish prose next to a sentence dot", () => {
     expect(rules(T("Merci beaucoup. Teşekkürler. İyi çalışmalar. Café (as before)."))).toEqual([]);
   });
@@ -379,7 +466,15 @@ describe("the prose predicate", () => {
       "a.".repeat(N / 2),
       "a_".repeat(N / 2),
       " ".repeat(N) + "x",
+      "\n".repeat(N) + "x",
+      " \n".repeat(N / 2) + "x",
       "(".repeat(N),
+      "( ".repeat(N / 2),
+      "\u3010".repeat(N),
+      ".)".repeat(N / 2),
+      ". ".repeat(N / 2),
+      "\\".repeat(N),
+      "a-".repeat(N / 2) + "://",
     ];
     for (const input of inputs) {
       const t0 = Date.now();
@@ -399,6 +494,21 @@ describe("the prose predicate", () => {
     expect(rules(T("See evil\u2E30com for details."))).toEqual([]);
     // A scheme outside LINK_SCHEMES, without "//".
     expect(rules(T("Open foo:bar for details."))).toEqual([]);
+    // Spelled out with AT and DOT.
+    expect(rules(T("Write to name AT evil DOT com for details."))).toEqual([]);
+    // A dot written as another word in brackets: not a link; "[d0t]" holds a
+    // digit, so the numeral rule refuses it, and nothing else does.
+    expect(rules(T("See evil[d0t]com for details."))).toEqual(["numeral"]);
+    expect(rules(T("See evil[period]com for details."))).toEqual([]);
+    // "dot" in a bracket on one side only, and a space outside an unmatched
+    // bracket.
+    expect(rules(T("See evil [dot com for details."))).toEqual([]);
+    expect(rules(T("See evil [.com for details."))).toEqual([]);
+    // A bracket outside OPEN_BRACKETS / CLOSE_BRACKETS (U+2E28 / U+2E29).
+    expect(rules(T("See evil\u2E28.\u2E29com for details."))).toEqual([]);
+    // A "://" whose nearest ASCII letter is more than 31 characters back.
+    expect(rules(T(`See a${"-".repeat(40)}://x for details.`))).toEqual([]);
+    expect(rules(T(`See a${"-".repeat(30)}://x for details.`))).toContain("link");
   });
 
   it("keeps a known scheme word followed by a space, and a word that only ends in one", () => {
