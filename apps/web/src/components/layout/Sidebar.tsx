@@ -309,6 +309,15 @@ interface SidebarNavItemProps {
   onKeyboardFocus: (anchor: HTMLElement) => void
 }
 
+/**
+ * The rail prints the whole number, the same as the bell (HouseBell.tsx prints
+ * `unread` as is). It used to cap at "99+" while the bell said "150", so the
+ * two counts of the same inbox disagreed on one screen (F-266).
+ */
+export function railBadgeLabel(count: number): string | null {
+  return count > 0 ? String(count) : null
+}
+
 /** Stable module component — must not be declared inside Sidebar or tooltip state remounts links mid-click. */
 function SidebarNavItem({
   item,
@@ -322,7 +331,7 @@ function SidebarNavItem({
   onKeyboardFocus,
 }: SidebarNavItemProps) {
   const Icon = item.icon
-  const badgeLabel = badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null
+  const badgeLabel = railBadgeLabel(badgeCount)
   const isParentActive =
     isActive ||
     (item.children && item.children.some((child) => pathname.startsWith(child.href)))
@@ -512,10 +521,10 @@ export function Sidebar() {
         isActive={location.pathname === item.href}
         badgeCount={badgeCount}
         onNavigate={closeMobileNav}
-        onHover={(anchor) => openTooltip(anchor, item, badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null)}
+        onHover={(anchor) => openTooltip(anchor, item, railBadgeLabel(badgeCount))}
         onHoverEnd={closeTooltip}
         onKeyboardFocus={(anchor) =>
-          openTooltip(anchor, item, badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null, true)
+          openTooltip(anchor, item, railBadgeLabel(badgeCount), true)
         }
       />
     )

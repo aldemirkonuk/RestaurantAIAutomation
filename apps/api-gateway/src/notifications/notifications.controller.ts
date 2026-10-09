@@ -545,8 +545,12 @@ export class NotificationsController {
     @Req() req: ScopedRequest,
   ) {
     const userId = scopeOwnUserId(req, query?.userId);
+    const restaurantId = scopeRestaurantId(req);
     try {
-      const count = await this.notificationsService.deleteAllRead(userId);
+      const count = await this.notificationsService.deleteAllRead({
+        userId,
+        restaurantId,
+      });
       return { success: true, count };
     } catch (error) {
       this.logger.error(`Failed to delete all read: ${error.message}`);
