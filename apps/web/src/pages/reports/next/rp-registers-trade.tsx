@@ -214,11 +214,15 @@ const till = analysis<TillWindow>({
         : `Non-voided pos_checks.total between ${w.from || EM} and ${w.to || EM}.`,
       'The series is sparse on purpose: a day with no check is absent, not plotted at zero.',
     ];
+    // F-446 (the on-screen twin of F-412's export note): no refund reaches the
+    // till — the POS check carries no refund field and no adapter reads one —
+    // so "Taken" is what was rung up, and the page says so wherever it prints it.
+    const notes = w.revenue != null ? [TILL_REFUNDS_NOT_TAKEN_OFF] : [];
     if (w.dailySeries.length === 0)
       return {
         say: 'The till answered, and no check fell inside this window.',
         figures,
-        notes: [],
+        notes,
         basis,
       };
 
@@ -269,11 +273,22 @@ const till = analysis<TillWindow>({
             : undefined,
       },
       figures,
-      notes: [],
+      notes,
       basis,
     };
   },
 });
+
+/**
+ * Said beside every till figure: refunds are not taken off "Taken".
+ *
+ * Word for word the gateway's `TILL_REFUNDS_NOT_TAKEN_OFF`
+ * (`reports/exports/report-export-cuttings.ts`, fix/sim-reports-export), so the
+ * screen and the file a house hands on say the same thing. Web cannot import
+ * the gateway; when both have landed, change one and the other with it.
+ */
+export const TILL_REFUNDS_NOT_TAKEN_OFF =
+  "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.";
 
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 
