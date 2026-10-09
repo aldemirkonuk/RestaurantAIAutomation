@@ -755,16 +755,24 @@ describe('SettingsNext — provenance and unknowns', () => {
       })),
     });
     mount('/settings?tab=notifications');
-    // Push: stored, but nothing sends it — no control anywhere for it.
-    expect(screen.queryByRole('switch', { name: /^Push/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/Nothing in the product sends a push notification/i)).toBeInTheDocument();
-    expect(screen.getByText(/push-is-not-resolved-here/)).toBeInTheDocument();
+    // Push is read by the gateway's bell funnel now (F-528), so it is a real
+    // switch, and the old "nothing pushes" sentence is gone.
+    expect(screen.getByRole('switch', { name: /^Push notifications$/i })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByText(/Nothing in the product sends a push notification/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/your phone gets a push too/i)).toBeInTheDocument();
     // Email and SMS are real, so they keep their switches.
     expect(screen.getByRole('switch', { name: /Email notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /SMS notifications/i })).toBeInTheDocument();
     // The category that is off is shown as a stored value, not as a switch.
     expect(screen.getAllByText('stored: off').length).toBe(1);
-    expect(screen.getAllByText('stored: on').length).toBeGreaterThanOrEqual(5);
+    expect(screen.getAllByText('stored: on').length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('saves the Push switch, which decides whether the phone is pushed (F-528)', () => {
+    mock.current = base({ notif: remote(notifPrefs({})) });
+    mount('/settings?tab=notifications');
+    fireEvent.click(screen.getByRole('switch', { name: /^Push notifications$/i }));
+    expect(saveNotif).toHaveBeenCalledWith('push', { push: false });
   });
 
   it('keeps a real switch on quiet hours, because the alerting agent reads it', () => {
@@ -784,8 +792,9 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(saveNotif).toHaveBeenCalledWith('quiet.enabled', {
       quietHours: { enabled: false, startTime: '23:00', endTime: '07:00' },
     });
-    // And it is honest about the half that does NOT honour it.
-    expect(screen.getByText(/consult this window and sends on its own clock/i)).toBeInTheDocument();
+    // Phone pushes wait out the window (F-528); mail does not, and it says so.
+    expect(screen.getByText(/Inside this window your phone is not pushed/i)).toBeInTheDocument();
+    expect(screen.getByText(/for this window and goes out on its own clock/i)).toBeInTheDocument();
   });
 
   it('says what each date is a date OF — granted for access, issued for an invite', () => {

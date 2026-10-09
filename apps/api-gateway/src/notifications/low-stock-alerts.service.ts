@@ -219,7 +219,10 @@ export class LowStockAlertsService {
     try {
       // Before the read, for the same reason as `evaluateInventoryItems`.
       const lowReadStartedAt = new Date().toISOString();
-      const byRestaurant = await this.getLowStockByRestaurant();
+      let lowReadFailed = false;
+      const byRestaurant = await this.getLowStockByRestaurant(() => {
+        lowReadFailed = true;
+      });
       const names = await this.getRestaurantNames([...byRestaurant.keys()]);
       for (const [restaurantId, rows] of byRestaurant) {
         await this.evaluateRestaurant(
@@ -230,6 +233,8 @@ export class LowStockAlertsService {
       }
       // Reconcile restocks even for restaurants that dropped off the low list.
       await this.reconcileRecoveries(byRestaurant, lowReadStartedAt);
+      // A failed read is not "nothing is low": the bell keeps its lines.
+      if (!lowReadFailed) await this.resolveRecoveredBellLines(byRestaurant);
     } catch (e: any) {
       this.logger.error(`low-stock edge sweep failed: ${e?.message}`);
     }
@@ -810,6 +815,7 @@ export class LowStockAlertsService {
           count: wines.length,
           criticalCount,
           wines: wines.map((w) => ({
+            inventoryId: w.inventoryId,
             wineId: w.wineId,
             wineName: w.wineName,
             currentStock: w.currentStock,
@@ -902,6 +908,7 @@ export class LowStockAlertsService {
           count: rows.length,
           criticalCount,
           wines: rows.map((w) => ({
+            inventoryId: w.inventoryId,
             wineId: w.wineId,
             wineName: w.wineName,
             currentStock: w.currentStock,
@@ -1165,18 +1172,72 @@ export class LowStockAlertsService {
     }
   }
 
+  /**
+   * F-526: a low-stock line ("Critical: <wine>", "3 wines dropped below par",
+   * the digest) clears for every recipient once NONE of the wines it names is
+   * still below par. A line naming one wine that is still low stays, because
+   * it is still partly true. `byRestaurant` must come from a read that
+   * succeeded. Lines written before they carried `inventoryId` are matched on
+   * `wineId`, which the low list carries too.
+   */
+  private async resolveRecoveredBellLines(
+    byRestaurant: Map<string, LowStockRow[]>,
+  ): Promise<void> {
+    try {
+      const { data, error } = await this.db.supabase
+        .from("notifications")
+        .select("id, restaurant_id, metadata")
+        .eq("type", "inventory_low_stock")
+        .eq("status", "unread")
+        .limit(5000);
+      if (error) {
+        this.logger.warn(`low-stock bell lines could not be read to clear recovered ones: ${error.message}`);
+        return;
+      }
+      const recovered: string[] = [];
+      for (const row of (data ?? []) as Array<{ id: string; restaurant_id: string; metadata: any }>) {
+        const wines = Array.isArray(row.metadata?.wines) ? row.metadata.wines : [];
+        if (wines.length === 0) continue; // a line that names nothing is never guessed clear
+        const low = byRestaurant.get(row.restaurant_id) ?? [];
+        const stillLow = new Set(low.flatMap((r) => [r.inventoryId, r.wineId]));
+        const anyStillLow = wines.some(
+          (w: any) => stillLow.has(w?.inventoryId) || stillLow.has(w?.wineId),
+        );
+        if (!anyStillLow) recovered.push(row.id);
+      }
+      // In slices, so a long id list never outgrows a request URL.
+      const readAt = new Date().toISOString();
+      for (let i = 0; i < recovered.length; i += 200) {
+        const { error: updateError } = await this.db.supabase
+          .from("notifications")
+          .update({ status: "read", read_at: readAt })
+          .in("id", recovered.slice(i, i + 200))
+          .eq("status", "unread");
+        if (updateError) {
+          this.logger.warn(`recovered low-stock bell lines were not cleared: ${updateError.message}`);
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`clearing recovered low-stock bell lines failed: ${e?.message}`);
+    }
+  }
+
   // ==========================================================================
   // DATA HELPERS
   // ==========================================================================
 
   /** All currently-low wines across every restaurant, grouped by restaurant. */
-  private async getLowStockByRestaurant(): Promise<Map<string, LowStockRow[]>> {
+  private async getLowStockByRestaurant(
+    /** Told when the read failed, so an empty map is not taken for "nothing is low". */
+    onReadFailed?: () => void,
+  ): Promise<Map<string, LowStockRow[]>> {
     const map = new Map<string, LowStockRow[]>();
     const { data, error } = await this.db.supabase
       .from("v_low_stock_items")
       .select("*");
     if (error) {
       this.logger.warn(`v_low_stock_items query failed: ${error.message}`);
+      onReadFailed?.();
       return map;
     }
     for (const raw of data || []) {

@@ -91,7 +91,7 @@ export function HouseBell() {
   const navigate = useNavigate();
   const book = useBellBook(open);
 
-  const { register, unread, unreadNote, foldedCount, foldedById, folds, items, hasMore } = book;
+  const { register, unread, asleep, unreadNote, foldedCount, foldedById, folds, items, hasMore } = book;
 
   /* The badge. Three states and no fourth: a number the register gave, a
      hollow marker for "not read", and nothing at all for a real zero. */
@@ -176,6 +176,14 @@ export function HouseBell() {
           </p>
         ) : null}
 
+        {asleep > 0 ? (
+          <p className="mdv-quiet" role="status">
+            {asleep === 1
+              ? '1 line you put to sleep in this browser is hidden and not counted. Other devices still show it.'
+              : `${asleep} lines you put to sleep in this browser are hidden and not counted. Other devices still show them.`}
+          </p>
+        ) : null}
+
         {register.state === 'loading' ? (
           <p className="mdv-quiet">Reading the register…</p>
         ) : register.state === 'unreadable' ? (
@@ -198,9 +206,10 @@ export function HouseBell() {
             const sub = stackedNotificationLabel(n, foldedById[n.id]);
             /* Only an APPROVAL line that names its order gets the hand-off.
                Delivery and invoice lines name orders too and are not asking
-               for a seal, so they get none. The one `order_pending` producer
-               today writes a count and no order id (notifications.md §9), so
-               this control is built and not yet reachable from a real line. */
+               for a seal, so they get none. The real producer is the order
+               parked for an owner's seal (F-527, procurement.service.ts
+               `tellSealHolders`), which names its order; the recurring-orders
+               `order_pending` line writes a count and gets none. */
             const orderId = approvableOrderIdOf(n);
             return (
               <div key={n.id}>

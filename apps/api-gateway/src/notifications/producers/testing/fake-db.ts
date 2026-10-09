@@ -166,6 +166,16 @@ export class FakeQuery {
     return this;
   }
   eq(col: string, value: any) {
+    // PostgREST's `json->>key`, read as text, for a filter on a jsonb field.
+    const arrow = col.indexOf("->>");
+    if (arrow > 0) {
+      const [field, key] = [col.slice(0, arrow), col.slice(arrow + 3)];
+      this.filters.push((r) => {
+        const v = r[field]?.[key];
+        return v !== undefined && v !== null && String(v) === String(value);
+      });
+      return this;
+    }
     this.filters.push((r) => r[col] === value);
     return this;
   }

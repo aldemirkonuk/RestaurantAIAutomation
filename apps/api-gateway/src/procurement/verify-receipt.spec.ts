@@ -144,6 +144,8 @@ interface Calls {
   receiptEvents: Row[];
   /** `house_item_research` inserts: research queued for a wine the library lacks (ADR 0192, third amendment). */
   researchInserts: Row[];
+  /** `notifications` updates with the filters they were aimed by (F-526). */
+  notificationUpdates: Array<{ payload: Row; filters: Row }>;
 }
 
 /**
@@ -194,6 +196,7 @@ function makeDb(opts: {
     priceHistoryInserts: [],
     receiptEvents: [],
     researchInserts: [],
+    notificationUpdates: [],
   };
   const owned = new Set(opts.ownedInventoryIds ?? [OWN_INVENTORY]);
 
@@ -314,6 +317,8 @@ function makeDb(opts: {
           if (table === "procurement_orders") calls.orderUpdates.push(payload);
           if (table === "restaurant_inventory")
             calls.inventoryUpdates.push(payload);
+          if (table === "notifications")
+            calls.notificationUpdates.push({ payload, filters });
           return q;
         },
         delete: () => {
@@ -1497,5 +1502,90 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
     ).rejects.toThrow(/could not be checked.*nothing was changed/);
     expect(calls.receiptEvents).toEqual([]);
     expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+describe("verifyReceipt — the discrepancy line is house money, and clears when it stops being true (F-530, F-526)", () => {
+  const OWNER = "owner-1";
+  const MANAGER = "manager-1";
+  const withBell = (db: DatabaseService) => {
+    const notifications = {
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 2, ids: [] }),
+    };
+    const authority = {
+      ownersAndManagers: jest.fn().mockResolvedValue({ owners: [OWNER], managers: [MANAGER] }),
+    };
+    const svc = new ProcurementService(
+      db, events, ledger,
+      undefined, undefined, undefined, undefined, undefined,
+      notifications as any,
+      undefined, undefined, undefined,
+      authority as any,
+    );
+    return { svc, notifications };
+  };
+
+  it("a short delivery (a credit due) goes to the owners and managers only, and its push carries no figure", async () => {
+    const { db } = makeDb({ orderRow: deliveredOrder });
+    const { svc, notifications } = withBell(db);
+
+    await svc.verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 8,
+    } as any);
+
+    const discrepancy = notifications.persistForRestaurant.mock.calls.find(
+      ([, payload]: any[]) => payload.groupKey === `receipt_discrepancy:${ORDER}`,
+    );
+    expect(discrepancy).toBeDefined();
+    const [, , opts] = discrepancy as any[];
+    expect(opts.onlyUserIds).toEqual([OWNER, MANAGER]);
+    expect(Object.keys(opts.pushData).sort()).toEqual(["matchStatus", "orderId"]);
+  });
+
+  it("writes no money line at all when the owners and managers cannot be named", async () => {
+    const { db } = makeDb({ orderRow: deliveredOrder });
+    const notifications = { persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 0, ids: [] }) };
+    const svc = new ProcurementService(
+      db, events, ledger,
+      undefined, undefined, undefined, undefined, undefined,
+      notifications as any,
+    );
+
+    await svc.verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 8,
+    } as any);
+
+    expect(
+      notifications.persistForRestaurant.mock.calls.some(
+        ([, payload]: any[]) => payload.groupKey === `receipt_discrepancy:${ORDER}`,
+      ),
+    ).toBe(false);
+  });
+
+  it("a later check that matches clears the old discrepancy line for everyone", async () => {
+    const { db, calls } = makeDb({ orderRow: deliveredOrder });
+    const { svc } = withBell(db);
+
+    await svc.verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+    } as any);
+
+    expect(calls.notificationUpdates).toContainEqual({
+      payload: expect.objectContaining({ status: "read" }),
+      filters: expect.objectContaining({
+        restaurant_id: REST,
+        group_key: `receipt_discrepancy:${ORDER}`,
+        status: "unread",
+      }),
+    });
   });
 });

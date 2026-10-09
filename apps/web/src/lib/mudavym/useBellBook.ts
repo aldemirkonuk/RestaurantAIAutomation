@@ -45,6 +45,45 @@ import { collapseStackedNotifications } from '../notificationStack';
 export const BELL_PAGE = 25;
 
 /**
+ * LINES PUT TO SLEEP ON /notifications ARE ASLEEP HERE TOO (F-529)
+ * ---------------------------------------------------------------
+ * The page keeps a snooze in this browser only (`nt-snooze.ts` says why), under
+ * this key per house (`useNotificationsNextData.ts`, `SNOOZE_PREFIX`). Copied,
+ * not imported, for the reason in the header. The bell hides the same lines and
+ * takes them off its number, and says how many it took off, because the
+ * register itself still counts them. A line wakes here on the page's own three
+ * edges (`resolveSnoozes`): its deadline, a newer stamp, or one more folded
+ * repeat — and a line no longer unread is not asleep, it is settled.
+ */
+export const SNOOZE_PREFIX = 'mudavym.notifications.snooze.';
+
+export interface BellSnooze {
+  id: string;
+  until: number;
+  seenAt: number;
+  seenFolded: number;
+}
+
+export function readBellSnoozes(restaurantId: string | null): BellSnooze[] {
+  if (!restaurantId) return [];
+  try {
+    const raw = window.localStorage.getItem(SNOOZE_PREFIX + restaurantId);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (r): r is BellSnooze =>
+        !!r &&
+        typeof r.id === 'string' &&
+        typeof r.until === 'number' &&
+        typeof r.seenAt === 'number' &&
+        typeof r.seenFolded === 'number',
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
  * THE CADENCE, AND WHY IT IS A STAIRCASE (founder's call, 2026-09-04)
  * ------------------------------------------------------------------
  * The founder asked for the bell to be right sooner than a minute, and was
@@ -161,8 +200,13 @@ function numOf(v: unknown): number | null {
 
 export interface BellBook {
   register: BellRegister;
-  /** Unread rows the REGISTER holds. `null` = the count could not be read. */
+  /**
+   * Unread rows the REGISTER holds, less the ones asleep in this browser.
+   * `null` = the count could not be read.
+   */
   unread: number | null;
+  /** Unread rows hidden because they were put to sleep on /notifications here. */
+  asleep: number;
   /** Why the count is unknown, in words. `null` when it is known. */
   unreadNote: string | null;
   /** The envelope's total for this query; null when the gateway did not say. */
@@ -199,6 +243,8 @@ export function useBellBook(open: boolean): BellBook {
   const [refreshing, setRefreshing] = useState(false);
   const [actionNote, setActionNote] = useState<string | null>(null);
 
+  const [snoozes, setSnoozes] = useState<BellSnooze[]>(() => readBellSnoozes(activeRestaurantId));
+
   const tenant = useRef<string | null>(activeRestaurantId);
   const alive = useRef(true);
   const wantRows = useRef(open);
@@ -213,6 +259,7 @@ export function useBellBook(open: boolean): BellBook {
     setTotal(null);
     setHasMore(null);
     setActionNote(null);
+    setSnoozes(readBellSnoozes(activeRestaurantId));
   }, [activeRestaurantId]);
 
   const read = useCallback(async () => {
@@ -221,10 +268,14 @@ export function useBellBook(open: boolean): BellBook {
     setRefreshing(true);
 
     const params = { userId, restaurantId: forTenant };
+    // Asleep lines can only be taken off the number when their rows are read,
+    // so a house with any snooze reads its page of rows even with the bell shut.
+    const sleeping = readBellSnoozes(forTenant);
+    setSnoozes(sleeping);
 
     const [countRes, bookRes] = await Promise.allSettled([
       apiClient.get('/notifications/unread/count', { params }),
-      wantRows.current
+      wantRows.current || sleeping.length > 0
         ? apiClient.get('/notifications', {
             params: { ...params, status: 'unread', limit: BELL_PAGE, page: 1 },
           })
@@ -286,24 +337,45 @@ export function useBellBook(open: boolean): BellBook {
     // Step 1 of the cadence above: a tab returned to after an hour must not
     // print an hour-old count for up to a minute.
     window.addEventListener('focus', onLive);
+    // A snooze written in another tab of this browser.
+    window.addEventListener('storage', onLive);
     return () => {
       clearInterval(id);
       window.removeEventListener('notification_sent', onLive);
       window.removeEventListener('ws:dashboard-invalidate', onLive);
       window.removeEventListener('focus', onLive);
+      window.removeEventListener('storage', onLive);
     };
   }, [read]);
 
-  const { items, foldedById, foldedCount, folds } = useMemo(() => {
+  const { items, foldedById, foldedCount, folds, asleep } = useMemo(() => {
     const rows = register.state === 'ready' ? register.rows : [];
     const stacked = collapseStackedNotifications(rows);
+    const byId = new Map(snoozes.map((r) => [r.id, r]));
+    const now = Date.now();
+    let asleepRows = 0;
+    let awakeFolded = 0;
+    const awake = stacked.items.filter((n) => {
+      const rec = byId.get(n.id);
+      const folded = stacked.foldedById[n.id] ?? 0;
+      const sleeping =
+        !!rec &&
+        String(n.status) === 'unread' &&
+        now < rec.until &&
+        stampMs(n) <= rec.seenAt &&
+        folded <= rec.seenFolded;
+      if (sleeping) asleepRows += 1 + folded;
+      else awakeFolded += folded;
+      return !sleeping;
+    });
     return {
-      items: stacked.items,
+      items: awake,
       foldedById: stacked.foldedById,
-      foldedCount: stacked.foldedCount,
-      folds: foldFreshness(rows, stacked.items, stacked.foldedById),
+      foldedCount: awakeFolded,
+      folds: foldFreshness(rows, awake, stacked.foldedById),
+      asleep: asleepRows,
     };
-  }, [register]);
+  }, [register, snoozes]);
 
   const markRead = useCallback(
     (id: string) => {
@@ -340,7 +412,8 @@ export function useBellBook(open: boolean): BellBook {
 
   return {
     register,
-    unread,
+    unread: unread === null ? null : Math.max(0, unread - asleep),
+    asleep,
     unreadNote,
     total,
     hasMore,
