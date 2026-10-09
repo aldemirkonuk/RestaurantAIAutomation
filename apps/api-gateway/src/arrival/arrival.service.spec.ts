@@ -352,6 +352,34 @@ describe("Arrival's configuration boundary", () => {
       service.recordFolio({ userId: actor.userId }, "assistant", "skipped", {}),
     ).rejects.toThrow("Open a house");
   });
+  it.each([
+    ["an owner", undefined],
+    ["a staff member", 403],
+  ])("the opening menu sends %s no raw line: nothing on /arrival reads it", async (_who, refusal) => {
+    const service: any = Object.create(ArrivalService.prototype);
+    service.manage = refusal
+      ? jest.fn().mockRejectedValue({ getStatus: () => refusal })
+      : jest.fn().mockResolvedValue(undefined);
+    const unreadable = () => {
+      throw Error("not part of this case");
+    };
+    service.db = { client: { from: unreadable } };
+    service.currency = { read: unreadable };
+    service.cellar = { read: unreadable };
+    service.terms = { read: unreadable };
+    service.notifications = { getPreferences: unreadable };
+    const getMenu = jest.fn().mockResolvedValue({ menuId: null, items: [], rawLineWithheld: true });
+    service.menus = { getMenu };
+    const out = await service.read(actor);
+    expect(out.canManage).toBe(!refusal);
+    expect(getMenu).toHaveBeenCalledTimes(1);
+    expect(getMenu).toHaveBeenCalledWith(actor.restaurantId, { rawLine: false });
+    expect(out.openingMenu).toEqual({
+      readable: true,
+      data: { menuId: null, items: [], rawLineWithheld: true },
+      reason: null,
+    });
+  });
   it("preview extracts without touching menu, inventory or library writers", async () => {
     const scan = {
       parse: jest
