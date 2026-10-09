@@ -10,7 +10,7 @@
  * from the ledger silently, and the economic impact (value being written
  * off) is shown to the manager before they confirm.
  */
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, Loader2, Trash2, X } from 'lucide-react'
@@ -20,6 +20,7 @@ import { deleteInventoryItem, reconcileItem } from '../../services/api/inventory
 import { ThemedSelect } from '../ui/ThemedSelect'
 import { fmtMoney } from '../../pages/inventory/command/bits'
 import type { InventoryItem } from '../../pages/inventory/useInventoryPage'
+import { useModalDialog } from '../../hooks/useModalDialog'
 
 const REMOVE_REASONS = [
   { value: 'Discontinued', label: 'Discontinued — no longer carrying' },
@@ -59,6 +60,10 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
   )
   const totalValue = rows.reduce((s, r) => s + r.value, 0)
   const anyStock = rows.some((r) => r.total > 0 || r.openMl > 0)
+
+  const titleId = useId()
+  // Escape goes through the same `close` as the X, so it is refused mid-run too.
+  const dialogRef = useModalDialog(isOpen, () => close())
 
   if (!isOpen) return null
 
@@ -122,11 +127,16 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
         onClick={close}
       >
         <motion.div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden focus:outline-none"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-rose-50">
@@ -135,14 +145,14 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                 <Trash2 className="w-4.5 h-4.5 text-white" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-gray-900">
+                <h2 id={titleId} className="text-base font-bold text-gray-900">
                   Remove {rows.length === 1 ? rows[0].item.name : `${rows.length} wines`} from inventory
                 </h2>
                 <p className="text-xs text-gray-500">Keeps the wine in your Wine Library — re-add anytime</p>
               </div>
             </div>
-            <button onClick={close} className="p-2 hover:bg-white/60 rounded-lg transition-colors" disabled={phase === 'working'}>
-              <X className="w-4.5 h-4.5 text-gray-500" />
+            <button onClick={close} aria-label="Close" className="p-2 hover:bg-white/60 rounded-lg transition-colors" disabled={phase === 'working'}>
+              <X className="w-4.5 h-4.5 text-gray-500" aria-hidden />
             </button>
           </div>
 

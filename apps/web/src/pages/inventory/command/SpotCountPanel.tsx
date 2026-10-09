@@ -15,7 +15,7 @@
  * Submission goes through spotCountOutbox so a dead cellar signal doesn't
  * cost the count — it queues and syncs when connectivity returns.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { X, Mic, Camera, Loader2, Check } from 'lucide-react'
 import { useNotificationStore } from '../../../stores'
 import { estimateCountFromPhoto } from '../../../services/api/inventory'
@@ -23,6 +23,7 @@ import { submitSpotCount, newClientCountId } from '../../../lib/spotCountOutbox'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { SCAN_ACCEPT, resolveMimeType } from '../../../lib/uploadAccept'
+import { useModalDialog } from '../../../hooks/useModalDialog'
 
 interface SpotCountPanelProps {
   item: InventoryItem
@@ -100,6 +101,8 @@ function toBase64(file: File): Promise<string> {
 
 export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelProps) {
   const toast = useNotificationStore()
+  const dialogRef = useModalDialog(true, onClose)
+  const titleId = useId()
   const inventoryId = item.inventoryId || ''
   const fileRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
@@ -209,16 +212,21 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <h3 className="text-sm font-bold text-gray-900">Spot count</h3>
+            <h3 id={titleId} className="text-sm font-bold text-gray-900">Spot count</h3>
             <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">{item.name}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+            <X className="w-4 h-4" aria-hidden />
           </button>
         </div>
 

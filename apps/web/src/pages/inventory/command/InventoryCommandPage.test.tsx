@@ -25,6 +25,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -46,7 +47,9 @@ vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
 
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthContext', async () => ({
+  // An opened row mounts components that read the context directly.
+  AuthContext: (await import('react')).createContext(undefined),
   useAuth: () => ({
     user: { userId: 'user-1', restaurantId: 'rest-A', name: 'Ada Konuk', email: 'ada@sim.test', role: 'owner' },
     loading: false,
@@ -415,5 +418,57 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
       expect(second).toBe(first);
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+  });
+});
+
+/*
+ * F-320 — the page's arrow-key row navigation listens on the window. Once a row
+ * had the keyboard, Enter on ANY button folded that row away (taking the
+ * button's own panel with it) and Space ticked the row instead of pressing the
+ * button. The window keys now leave buttons and dialogs alone.
+ */
+describe('InventoryCommandPage — row keys leave buttons alone', () => {
+  // jsdom has no layout; the focused row scrolls itself into view.
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+  afterEach(() => {
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  const oneRow = () =>
+    routeGets({
+      'inventory-list': [
+        { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', stockLive: 6, shadowStock: 0, thresholdMin: 2 },
+      ],
+    });
+
+  async function openRowByKeyboard(user: ReturnType<typeof userEvent.setup>) {
+    mount();
+    await screen.findByRole('checkbox', { name: 'Select Produttori Barbaresco' });
+    (document.activeElement as HTMLElement | null)?.blur();
+    await user.keyboard('{ArrowDown}{Enter}');
+    return screen.findByRole('button', { name: 'Spot count' });
+  }
+
+  it('Enter on "Spot count" opens the count and keeps the row open', async () => {
+    oneRow();
+    const user = userEvent.setup();
+    const spot = await openRowByKeyboard(user);
+
+    spot.focus();
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('dialog', { name: 'Spot count' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View ledger' })).toBeInTheDocument();
+  });
+
+  it('Space on a row button presses the button, not the row checkbox', async () => {
+    oneRow();
+    const user = userEvent.setup();
+    await openRowByKeyboard(user);
+
+    screen.getByRole('button', { name: 'View ledger' }).focus();
+    await user.keyboard(' ');
+    expect(screen.getByRole('checkbox', { name: 'Select Produttori Barbaresco' })).not.toBeChecked();
   });
 });
