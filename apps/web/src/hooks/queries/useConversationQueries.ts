@@ -283,12 +283,14 @@ export interface ProcurementHistoryItem {
   sentAt: string
   /** `content ?? message_text ?? null` — the gateway may genuinely have none. */
   draftContent: string | null
-  constraintFlags: {
-    hard: string[]
-    annotating: string[]
-    soft_warnings: string[]
-    is_sensitive: boolean
-  } | null
+  /**
+   * The raw `procurement_conversations.constraint_flags` jsonb. Its shape
+   * depends on the writer: `{}` (column default, inbound replies), PO-letter
+   * metadata (`{llm_model, session_id, ...}`), AI-reply `{needs_approval,
+   * reasons}`, or the constraint verdict `{hard, annotating, ...}`. Read it
+   * through `hardCodesOf`, never by field.
+   */
+  constraintFlags: unknown
   rollingSummary: string | null
   /**
    * The relay gateway's own refusal sentence, set only when

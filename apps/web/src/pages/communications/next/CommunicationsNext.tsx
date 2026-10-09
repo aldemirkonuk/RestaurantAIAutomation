@@ -44,6 +44,7 @@ import {
   failedReadsSentence,
   fmtAsOf,
   fmtWhen,
+  hardCodesOf,
   heldBecause,
   readAgainFailed,
   sendState,
@@ -339,9 +340,9 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
               Not sent — it was refused on the way out: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
             </p>
           )}
-          {item.constraintFlags && item.constraintFlags.hard.length > 0 && (
+          {hardCodesOf(item.constraintFlags).length > 0 && (
             <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
-              {heldBecause(item.constraintFlags.hard)}
+              {heldBecause(hardCodesOf(item.constraintFlags))}
             </p>
           )}
           <p style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>

@@ -230,6 +230,22 @@ describe('CommunicationsNext', () => {
     expect(screen.getByText(/could you hold 6/).style.overflowWrap).toBe('anywhere');
   });
 
+  // F-423: constraint_flags is a jsonb each writer fills differently — `{}`
+  // by default (inbound replies), PO-letter metadata, AI-reply reasons.
+  // Opening any of them must show the letter, not the error screen.
+  it.each([
+    ['an inbound reply ({} default)', { direction: 'INBOUND', constraintFlags: {} }],
+    ['a sent PO letter (metadata)', { constraintFlags: { llm_model: 'm', session_id: 's' } }],
+    ['an AI reply (approval reasons)', { constraintFlags: { needs_approval: true, reasons: ['x'] } }],
+    ['a non-array hard', { constraintFlags: { hard: 'C-20' } }],
+  ])('opens %s without crashing (F-423)', (_label, over) => {
+    mockData.current = { ...base, rows: [item(over as never)] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByText(/could you hold 6/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Held because/)).toBeNull();
+  });
+
   it('says why a draft was held in words, never the rule code, and links its order (COMMS-W22)', () => {
     mockData.current = {
       ...base,
