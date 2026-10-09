@@ -19,6 +19,7 @@ import {
   rankWorthOf,
   roundEstimate,
   standingLine,
+  houseToday,
   ungradableOffers,
   verdictTone,
   verdictWord,
@@ -368,6 +369,15 @@ describe('onTheTable / ungradableOffers / putAwayOffers', () => {
   });
 });
 
+describe('houseToday — the house\'s date, the one the gateway read offers against (F-260)', () => {
+  it('reads the date on the house\'s clock, and UTC\'s with no zone', () => {
+    const eveningInLA = new Date('2026-10-09T01:00:00Z');
+    expect(houseToday('America/Los_Angeles', eveningInLA)).toBe('2026-10-08');
+    expect(houseToday(null, eveningInLA)).toBe('2026-10-09');
+    expect(houseToday('Not/AZone', eveningInLA)).toBe('2026-10-09');
+  });
+});
+
 describe('standingLine', () => {
   function read(offers: OfferDto[]): PromotionsReadDto {
     return {
@@ -377,10 +387,24 @@ describe('standingLine', () => {
     };
   }
 
-  it('an empty table states it is empty, with the window behind it — never a zero standing in for "not read"', () => {
-    const s = standingLine(read([]));
+  it('an empty table states it is empty, with how far back the house\'s own prices go — never the window (F-175)', () => {
+    const r = { ...read([]), ledger: { ...read([]).ledger, oldest_paid: '2026-07-01' } };
+    const s = standingLine(r);
     expect(s).toMatch(/No offers on the table/);
-    expect(s).toMatch(/540 days/);
+    expect(s).toMatch(/your prices paid since Jul 1, 2026/);
+    expect(s).not.toMatch(/540/);
+  });
+
+  it('an empty table with no prices paid says so rather than naming a span', () => {
+    const r = { ...read([]), ledger: { ...read([]).ledger, paid_lines: 0, oldest_paid: null } };
+    expect(standingLine(r)).toMatch(/No prices paid are on file yet/);
+  });
+
+  it('prints the read time on the house\'s clock, not the browser\'s (F-175)', () => {
+    // 12:00 UTC is 5:00 AM in Los Angeles and 3:00 PM in Istanbul.
+    const r = { ...read([]), time_zone: 'America/Los_Angeles' };
+    expect(standingLine(r)).toMatch(/\b5:00\s?AM\b/);
+    expect(standingLine({ ...r, time_zone: 'Europe/Istanbul' })).toMatch(/\b3:00\s?PM\b/);
   });
 
   it('counts offers, vendors and bottle lines separately, and only what is on the table', () => {

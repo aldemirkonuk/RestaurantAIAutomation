@@ -160,6 +160,8 @@ export interface LedgerSummaryDto {
   house_sightings: number;
   market_sightings: number;
   skipped_sightings: number;
+  /** The earliest paid line read: how far back the house's own prices go. Absent from an older gateway. */
+  oldest_paid?: string | null;
   /** The two capped ledger reads; `reached` means older lines in the window may not have been read. */
   caps?: {
     paid_lines: { cap: number; reached: boolean };
@@ -169,6 +171,8 @@ export interface LedgerSummaryDto {
 
 export interface PromotionsReadDto {
   read_at: string;
+  /** The house's clock, or null when none is recorded. Absent from an older gateway. */
+  time_zone?: string | null;
   offers: OfferDto[];
   ledger: LedgerSummaryDto;
   /** What the ladder stood on; absent only from a gateway older than it. */
@@ -523,12 +527,60 @@ export function putAwayOffers(offers: OfferDto[]): OfferDto[] {
 
 /* ── the standing line — provable facts only, never a saved figure ──────── */
 
+/**
+ * The date on the house's clock at `at` — the date the gateway read every
+ * offer's state against (F-260). No zone recorded: UTC's date, as the gateway
+ * uses then.
+ */
+export function houseToday(zone: string | null | undefined, at: Date = new Date()): string {
+  if (zone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(at);
+      const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+      return `${get('year')}-${get('month')}-${get('day')}`;
+    } catch {
+      /* an unknown zone falls through to UTC, as the gateway's does */
+    }
+  }
+  return at.toISOString().slice(0, 10);
+}
+
+/** When the page was read, on the house's clock when it has one (F-175). */
+function readWhen(read: PromotionsReadDto): string {
+  const at = new Date(read.read_at);
+  if (read.time_zone) {
+    try {
+      return at.toLocaleString(undefined, { timeZone: read.time_zone, dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      /* fall through */
+    }
+  }
+  return at.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/** A YYYY-MM-DD day as "Jul 1, 2026" — a calendar day, so read in UTC, never shifted. */
+function dayWord(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function standingLine(read: PromotionsReadDto): string {
   const onTable = read.offers.filter(onTheTable);
   const wineLines = onTable.reduce((n, o) => n + o.applicable_wines.length, 0);
   const vendors = new Set(onTable.map((o) => o.provider_id)).size;
   if (onTable.length === 0) {
-    return `No offers on the table — read ${new Date(read.read_at).toLocaleString()}, ${read.ledger.window_days} days of your own price history behind it.`;
+    // How far back the house's own prices go, never the window read (F-175).
+    const oldest = read.ledger.oldest_paid;
+    if (oldest) return `No offers on the table — read ${readWhen(read)}, with your prices paid since ${dayWord(oldest)} to judge the next one.`;
+    if (oldest === null) return `No offers on the table — read ${readWhen(read)}. No prices paid are on file yet to judge an offer by.`;
+    return `No offers on the table — read ${readWhen(read)}.`;
   }
   const offerWord = onTable.length === 1 ? 'offer' : 'offers';
   const vendorWord = vendors === 1 ? 'vendor' : 'vendors';

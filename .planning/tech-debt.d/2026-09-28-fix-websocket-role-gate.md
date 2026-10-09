@@ -39,7 +39,7 @@ Found by the ADR 0090 security review of PR #493, then inventoried and verified 
 - `persistManagerNotification`'s default path, `scheduled-tasks.service.ts` `persistRestaurantNotification` and Python `core/notifications.py` stay role-blind. See OD-180.
 - The six older role readers are not migrated. The CLAIMS row pins the count at 7.
 - The ungated `/providers/promotions/*` and `/providers/:id/promotions` routes on `provider-intelligence.controller.ts` are a sibling HTTP door to the same rows.
-- `getStats` and `cleanupIdleConnections` still read the root-Server shape. A working idle sweep would disconnect mobile sockets, which never send `ping`.
+- `getStats` still reads the root-Server shape, so it counts 0 rooms. `cleanupIdleConnections` read it too and threw every minute; it was removed on 2026-10-09 (F-173, fix/sim-misc-tail), since a working idle sweep would disconnect mobile sockets, which never send `ping`.
 - The connect-time membership read and the room joins are separated by awaits (TOCTOU).
 - There is no socket.io adapter, so an eviction on another instance does not reach this one's rooms.
 - Also seen: `IntegrationsOAuthService.safeReturnPath` returns `//evil.test` for `/.//evil.test`. Its one server caller prefixes the origin, so no redirect leaves the site. Not traced further.

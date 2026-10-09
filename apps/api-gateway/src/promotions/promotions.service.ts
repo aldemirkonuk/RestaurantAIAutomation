@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { MenusService } from "../menus/menus.service";
+import { resolveZone } from "../calendar/zoned-time";
 import {
   VENDOR_PRICE_OBSERVATIONS,
   scopePriceRegisterRead,
@@ -163,6 +164,12 @@ export interface LedgerSummaryDto {
   window_days: number;
   since: string;
   paid_lines: number;
+  /**
+   * The earliest day a paid line read here was dated: how far back the
+   * house's own prices actually go, which the window does not say (F-175).
+   * Null when no paid line was read.
+   */
+  oldest_paid: string | null;
   house_sightings: number;
   market_sightings: number;
   /** Register rows that could not become a comparable line (no pack size or volume, or an outlier). */
@@ -193,6 +200,13 @@ export interface HouseScopeDto {
 
 export interface PromotionsReadDto {
   read_at: string;
+  /**
+   * The house's own clock (`restaurants.timezone`), or null when none is
+   * recorded; `today` is the date on it that every offer's state was read
+   * against — UTC's date when no zone is recorded (F-260).
+   */
+  time_zone: string | null;
+  today: string;
   offers: OfferDto[];
   ledger: LedgerSummaryDto;
   house: HouseScopeDto;
@@ -273,6 +287,23 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The calendar date at `now` on the house's clock. An offer runs through its
+ * last day where the house is, not where UTC is: on UTC's date a Los Angeles
+ * offer ended at 5 PM on its last day (F-260). No zone: UTC's date, as before.
+ */
+export function houseDay(now: Date, zone: string | null): string {
+  if (!zone) return isoDate(now);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 function num(v: unknown): number | null {
@@ -377,9 +408,16 @@ export class PromotionsService {
     opts: { includeDismissed?: boolean; now?: Date } = {},
   ): Promise<PromotionsReadDto> {
     const now = opts.now ?? new Date();
-    const today = isoDate(now);
-    const since = isoDate(new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000));
     const db = this.databaseService.supabase;
+
+    // 0. The house's clock, so "today" is the house's date (F-260).
+    const zoneRes = await db.from("restaurants").select("timezone").eq("id", restaurantId).limit(1);
+    if (zoneRes.error) {
+      throw new Error(`The house's time zone (restaurants) could not be read: ${zoneRes.error.message}`);
+    }
+    const timeZone = resolveZone(((zoneRes.data ?? []) as { timezone: string | null }[])[0]?.timezone);
+    const today = houseDay(now, timeZone);
+    const since = isoDate(new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000));
 
     // 1. The offers — this house's, live, on the table unless asked for the
     //    put-away ones too. Read whole (keyset pages), then ordered ends-soonest
@@ -595,13 +633,24 @@ export class PromotionsService {
       };
     });
 
+    const oldestPaid = paid.reduce<string | null>(
+      (min, l) => {
+        const d = l.date ? l.date.slice(0, 10) : null;
+        return d && (min === null || d < min) ? d : min;
+      },
+      null,
+    );
+
     return {
       read_at: now.toISOString(),
+      time_zone: timeZone,
+      today,
       offers,
       ledger: {
         window_days: LEDGER_WINDOW_DAYS,
         since,
         paid_lines: paid.length,
+        oldest_paid: oldestPaid,
         house_sightings: houseSightings,
         market_sightings: marketSightings,
         skipped_sightings: skippedSightings,

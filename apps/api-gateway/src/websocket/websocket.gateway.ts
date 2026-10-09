@@ -199,12 +199,10 @@ export class WebsocketGateway
   /**
    * At runtime this is the "/ws" Namespace, not the root Server (see
    * `socketOnNamespace`). Everything called on it outside this class is
-   * `.to(...)` or `.in(...)`, which a Namespace has. `getStats` and
-   * `cleanupIdleConnections` still read the root-Server shape, so they count
-   * 0 rooms and throw once any socket has been idle for 5 minutes. They are
-   * not fixed in this lane, because a working idle sweep would start
-   * disconnecting mobile sockets, which never send `ping`
-   * (apps/mobile/src/lib/socket.ts). See .planning/tech-debt.d/2026-09-28-fix-websocket-role-gate.md.
+   * `.to(...)` or `.in(...)`, which a Namespace has. `getStats` still reads
+   * the root-Server shape, so it counts 0 rooms. The idle sweep that also
+   * read it, and threw every minute, was removed for F-173 (see the note
+   * above `logMetrics`). See .planning/tech-debt.d/2026-09-28-fix-websocket-role-gate.md.
    */
   @WebSocketServer()
   server: Server;
@@ -229,7 +227,6 @@ export class WebsocketGateway
 
   // Configuration
   private readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
-  private readonly IDLE_TIMEOUT = 300000; // 5 minutes
   private readonly MAX_ROOMS_PER_CLIENT = 10;
   private readonly RATE_LIMIT_TOKENS = 100;
   private readonly RATE_LIMIT_REFILL = 10;
@@ -873,30 +870,11 @@ export class WebsocketGateway
   // SCHEDULED TASKS
   // =========================================================================
 
-  /**
-   * Cleanup idle connections (runs every minute)
-   */
-  @Interval(60000)
-  cleanupIdleConnections(): void {
-    const now = Date.now();
-    let cleaned = 0;
-
-    for (const [clientId, metadata] of this.clients.entries()) {
-      const idleTime = now - metadata.lastActivity.getTime();
-
-      if (idleTime > this.IDLE_TIMEOUT) {
-        const socket = this.server.sockets.sockets.get(clientId);
-        if (socket) {
-          socket.disconnect(true);
-          cleaned++;
-        }
-      }
-    }
-
-    if (cleaned > 0) {
-      this.logger.log(`🧹 Cleaned ${cleaned} idle connections`);
-    }
-  }
+  // There is no idle sweep (F-173, 2026-10-09). The one that ran here read
+  // `server.sockets.sockets`, undefined on the "/ws" Namespace, and threw
+  // every minute. A working one would hang up on every phone, which listens
+  // and never sends `ping` (apps/mobile/src/lib/socket.ts). socket.io's own
+  // heartbeat already drops a connection that has gone dead.
 
   /**
    * Log metrics (runs every 5 minutes)

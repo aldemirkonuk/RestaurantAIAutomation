@@ -119,7 +119,7 @@ function FacetRow({ value, options, onChange, counted }: FacetRowProps) {
       )}
       {counted && (
         <p className="pn-facets__note" id={`${searchId}-low`}>
-          Running low speaks only for stock someone counted — {counted.counted} of the {counted.active} wines you stock
+          Running low speaks only for stock someone counted — {counted.counted} of the {counted.active} drinks you stock
           {counted.counted === 1 ? ' has' : ' have'} a count. Categories are the wine library&rsquo;s own classification.
         </p>
       )}

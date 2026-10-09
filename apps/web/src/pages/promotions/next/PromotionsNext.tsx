@@ -56,7 +56,7 @@
  * is on the table, not what a filter shows.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { RestaurantBranchSwitcher } from '../../../components/layout/RestaurantBranchSwitcher';
 import OfferCard from './OfferCard';
@@ -71,6 +71,7 @@ import {
   putAwayOffers,
   rankOffers,
   standingLine,
+  houseToday,
   ungradableOffers,
   type OfferDto,
   type RankedOffer,
@@ -92,8 +93,25 @@ import {
 } from './promotions-scope';
 import './promotions-next.css';
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * The clock the page reads "today" on: re-read when the tab comes back and
+ * every minute, so a page left open past the house's midnight rolls over
+ * (F-260).
+ */
+function useNow(): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const id = window.setInterval(tick, 60_000);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, []);
+  return now;
 }
 
 export interface PromotionsNextProps {
@@ -104,9 +122,10 @@ export interface PromotionsNextProps {
 export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
   const [showPutAway, setShowPutAway] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const today = useMemo(todayIso, []);
-
   const { data, isLoading, isError, error } = usePromotionsRead(true);
+  // The house's date, the one the gateway read every offer's state against (F-260).
+  const now = useNow();
+  const today = houseToday(data?.time_zone, now);
   const dismiss = useDismissOffer();
   const restore = useRestoreOffer();
 
