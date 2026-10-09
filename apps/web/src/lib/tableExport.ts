@@ -43,14 +43,86 @@ const EXTENSIONS: Partial<Record<TableExportFormat, string>> = {
   pdf: 'pdf',
 }
 
-function toMatrix<T>(rows: T[], columns: TableExportColumn<T>[]): string[][] {
+type Cell = string | number
+
+/**
+ * Cells as the columns gave them: a number stays a number, so a spreadsheet
+ * can sum it (an Excel cell written from the string "8.5" is text, and SUM
+ * over text is 0). Only the text formats stringify, through `cellText`.
+ */
+function toCells<T>(rows: T[], columns: TableExportColumn<T>[]): Cell[][] {
   return rows.map((row) =>
     columns.map((col) => {
       const raw = col.value(row)
       if (raw === null || raw === undefined) return ''
+      if (typeof raw === 'number') return Number.isFinite(raw) ? raw : ''
       return typeof raw === 'string' ? raw : String(raw)
     }),
   )
+}
+
+function cellText(cell: Cell): string {
+  return typeof cell === 'number' ? String(cell) : cell
+}
+
+/**
+ * The gateway's report CSV rule (`report-export-render.ts`, FORMULA_LEAD): a
+ * TEXT cell that begins with `=`, `+`, `-`, `@`, tab or CR is prefixed with
+ * `'`, so a staff name or a wine alias someone typed as `=HYPERLINK(...)`
+ * opens as words, not as a formula (OWASP CSV injection). Numbers are left
+ * alone, so a negative figure stays a number.
+ */
+const FORMULA_LEAD = /^[=+\-@\t\r]/
+
+function guardFormula(cell: Cell): Cell {
+  return typeof cell === 'string' && FORMULA_LEAD.test(cell) ? `'${cell}` : cell
+}
+
+/**
+ * A filename from a name someone typed: letters and digits of any script stay
+ * (Kavaklıdere Öküzgözü → kavaklıdere-öküzgözü), everything else is one dash.
+ */
+export function fileSafeName(name: string, fallback: string): string {
+  const safe = name
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+  return safe || fallback
+}
+
+/**
+ * jsPDF's built-in Helvetica speaks WinAnsi only: ş ğ ı İ Ş Ğ have no glyph in
+ * it, and one such letter turns the whole string to garble. The PDF carries
+ * Inter instead (OFL, `public/fonts/OFL-inter.txt`), fetched only when a PDF
+ * is made so it stays out of every other page load.
+ */
+const PDF_FONT_URL = '/fonts/inter-regular.ttf'
+const PDF_FONT = 'Inter'
+
+async function embedPdfFont(doc: {
+  addFileToVFS: (name: string, data: string) => unknown
+  addFont: (file: string, name: string, style: string) => unknown
+  setFont: (name: string) => unknown
+}): Promise<void> {
+  let bytes: Uint8Array
+  try {
+    const res = await fetch(PDF_FONT_URL)
+    if (!res.ok) throw new Error(String(res.status))
+    bytes = new Uint8Array(await res.arrayBuffer())
+  } catch {
+    // Never fall back to Helvetica: that writes a PDF whose Turkish names are
+    // garbled, and nothing on it would say so.
+    throw new Error('The PDF could not be made: its lettering did not load. Check the connection and try again.')
+  }
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  doc.addFileToVFS('inter-regular.ttf', btoa(binary))
+  // One weight serves both: the table header asks for bold.
+  doc.addFont('inter-regular.ttf', PDF_FONT, 'normal')
+  doc.addFont('inter-regular.ttf', PDF_FONT, 'bold')
+  doc.setFont(PDF_FONT)
 }
 
 function download(blob: Blob, filename: string) {
@@ -111,23 +183,26 @@ export async function exportTable<T>({
   title = filename,
 }: TableExportOptions<T>): Promise<void> {
   const headers = columns.map((c) => c.header)
-  const matrix = toMatrix(rows, columns)
+  const cells = toCells(rows, columns)
+  const matrix = cells.map((row) => row.map(cellText))
   const ext = EXTENSIONS[format]
   const fullName = ext ? `${filename}.${ext}` : filename
 
   switch (format) {
     case 'csv': {
-      const body = [headers, ...matrix]
+      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c))))]
         .map((row) => row.map(escapeCsv).join(','))
         .join('\n')
-      download(new Blob([body], { type: 'text/csv;charset=utf-8' }), fullName)
+      // BOM so Excel opens it as UTF-8 (Turkish letters, em dashes), as the
+      // gateway's report CSV does.
+      download(new Blob(['\uFEFF' + body], { type: 'text/csv;charset=utf-8' }), fullName)
       break
     }
 
     case 'tsv': {
       // Tabs survive a paste straight into Excel / Google Sheets cells.
       const clean = (v: string) => v.replace(/[\t\r\n]+/g, ' ')
-      const body = [headers, ...matrix]
+      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c))))]
         .map((row) => row.map(clean).join('\t'))
         .join('\n')
       download(new Blob([body], { type: 'text/tab-separated-values;charset=utf-8' }), fullName)
@@ -185,7 +260,9 @@ export async function exportTable<T>({
         key: col.header,
         width: Math.min(Math.max(col.header.length + 6, 14), 40),
       }))
-      matrix.forEach((row) => sheet.addRow(row))
+      // Typed cells: numbers as numbers. A string is written as a text cell,
+      // which Excel shows and never evaluates, so no formula guard is needed.
+      cells.forEach((row) => sheet.addRow(row))
 
       const headerRow = sheet.getRow(1)
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
@@ -216,6 +293,7 @@ export async function exportTable<T>({
       const { default: autoTable } = await import('jspdf-autotable')
 
       const doc = new jsPDF({ orientation: columns.length > 6 ? 'landscape' : 'portrait' })
+      await embedPdfFont(doc)
       doc.setFontSize(16)
       doc.text(title, 14, 18)
       doc.setFontSize(10)
@@ -231,7 +309,7 @@ export async function exportTable<T>({
         head: [headers],
         body: matrix,
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 3 },
+        styles: { font: PDF_FONT, fontSize: 8, cellPadding: 3 },
         headStyles: { fillColor: [26,94,107], textColor: 255 },
         alternateRowStyles: { fillColor: [250, 250, 250] },
       })
