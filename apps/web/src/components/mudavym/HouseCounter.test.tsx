@@ -261,6 +261,15 @@ describe('identities is a count to read, not an act', () => {
     expect(screen.getByRole('button', { name: 'Decide: 1' })).toBeTruthy();
   });
 
+  it('sits under its own "For the record" heading after the acts, never under Decide', () => {
+    mount(state({ last: read([IDENTITIES, INVITES]) }));
+    const decide = screen.getByRole('region', { name: 'Decide' });
+    expect(within(decide).queryByText(/May be the same wine/)).toBeNull();
+    const record = screen.getByRole('region', { name: 'For the record' });
+    expect(within(record).getByText(/May be the same wine/)).toBeTruthy();
+    expect(decide.compareDocumentPosition(record) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('its row says what it is in plain words, with no act verb and no matcher codes', () => {
     mount(state({ last: read([IDENTITIES]) }));
     const row = screen.getByRole('button', { name: /May be the same wine/ });

@@ -161,7 +161,9 @@ export const VERB_WORD: Record<CounterVerb, string> = {
  * Registers that ask nobody to act today — a count to read, not a to-do.
  * Identities: no mounted page decides an identity link, so the gateway sends
  * the register as `not_yours` for every role (F-267). Such a register adds to
- * no verb's number on the tucked strip and its rows carry no act verb. Take
+ * no verb's number on the tucked strip, its rows carry no act verb, the open
+ * counter files it under RECORD_WORD after the acts, and the header dot
+ * ignores it whether it was read or not. Take
  * the key out of this set when a page that decides one is mounted.
  */
 export const INFORMATION_ONLY: ReadonlySet<CounterRegisterKey> = new Set<CounterRegisterKey>(['identities']);
@@ -306,6 +308,9 @@ export function verbMark(registers: readonly CounterRegister[], verb: CounterVer
 export function actsWaiting(registers: readonly CounterRegister[]): boolean | null {
   let unknown = false;
   for (const r of registers) {
+    // A register that asks nobody to act can hold no act for this person,
+    // read or not — it neither lights the dot nor hollows it (F-267).
+    if (INFORMATION_ONLY.has(r.key)) continue;
     if (r.state === 'unreadable') unknown = true;
     if (r.state === 'answered' && r.act === 'yours' && r.count > 0) return true;
   }

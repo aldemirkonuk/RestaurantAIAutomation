@@ -103,6 +103,12 @@ describe("a verb's mark on the tucked strip", () => {
 });
 
 describe('the dot: something waits on YOU, or cannot say', () => {
+  // F-267: identities asks nobody to act, so failing to read it hides no act.
+  it('an unread information-only register neither lights nor hollows the dot', () => {
+    const regs = [unread('identities', 'decide'), answered('invitations', 'decide', 0)];
+    expect(actsWaiting(regs)).toBe(false);
+  });
+
   it('true when an answered register of yours holds a row', () => {
     expect(actsWaiting(OWNER_ALL)).toBe(true);
   });
