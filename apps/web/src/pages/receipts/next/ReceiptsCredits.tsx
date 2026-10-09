@@ -37,6 +37,8 @@ import { Sheet } from '@/components/mudavym/Sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { VENDOR_UNNAMED } from '@/lib/mudavym/vendor';
+import { parseDecimal } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import type {
   CreditLetterOutcome,
   CreditLetterRef,
@@ -418,6 +420,7 @@ function SettleForm({
 }) {
   const [memoId, setMemoId] = useState<string | null>(null);
   const [amountRaw, setAmountRaw] = useState('');
+  const group = useHouseGroupMark();
   const [problem, setProblem] = useState<string | null>(null);
 
   // The claim's own vendor first: a memo from another vendor settles nothing
@@ -430,7 +433,7 @@ function SettleForm({
   }, [memos, claim.provider_id]);
 
   const submit = () => {
-    const amount = Number(amountRaw.trim());
+    const amount = parseDecimal(amountRaw, group) ?? Number.NaN;
     if (!memoId) {
       setProblem('Choose the credit memo that settles this claim.');
       return;

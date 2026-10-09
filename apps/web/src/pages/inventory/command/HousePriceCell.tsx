@@ -27,6 +27,8 @@
 import { useState } from 'react'
 import { cn } from '../../../lib/utils'
 import { fmtMoneyExact } from './bits'
+import { parseDecimal, type GroupMark } from '../../../lib/parseDecimal'
+import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
 import { updateInventoryItem } from '../../../services/api/inventory'
 import {
   acceptPriceAdvice,
@@ -99,12 +101,17 @@ function reasonOf(err: unknown): string {
   return e?.message || 'The price was not saved.'
 }
 
-/** '' clears the price; anything else must be a number of at least 0. */
-export function parsePriceInput(raw: string): { ok: true; value: number | null } | { ok: false } {
-  const t = raw.trim().replace(/^\$/, '')
-  if (t === '') return { ok: true, value: null }
-  const n = Number(t)
-  if (!Number.isFinite(n) || n < 0) return { ok: false }
+/**
+ * '' clears the price; anything else must be a number of at least 0, read the
+ * way the house writes it ("12,50", "1.250" in a "."-grouping house).
+ */
+export function parsePriceInput(
+  raw: string,
+  group: GroupMark | null = null,
+): { ok: true; value: number | null } | { ok: false } {
+  if (raw.trim() === '') return { ok: true, value: null }
+  const n = parseDecimal(raw, group)
+  if (n === null || n < 0) return { ok: false }
   return { ok: true, value: Math.round(n * 100) / 100 }
 }
 
@@ -133,6 +140,7 @@ export function HousePriceCell({
   const [pourText, setPourText] = useState('')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ tone: 'error' | 'info'; text: string } | null>(null)
+  const group = useHouseGroupMark()
 
   const wine = advice.status === 'ready' ? advice.byId.get(inventoryId) : undefined
   const winePour = wine?.pour?.source === 'wine' ? wine.pour.ml : null
@@ -146,8 +154,8 @@ export function HousePriceCell({
   }
 
   const save = async () => {
-    const b = parsePriceInput(bottleText)
-    const g = parsePriceInput(glassText)
+    const b = parsePriceInput(bottleText, group)
+    const g = parsePriceInput(glassText, group)
     if (!b.ok || !g.ok) {
       setNote({ tone: 'error', text: 'A price is a number of 0 or more. Leave it empty to take the price off.' })
       return

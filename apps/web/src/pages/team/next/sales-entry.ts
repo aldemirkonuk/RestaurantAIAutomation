@@ -51,10 +51,12 @@ export function readFigure(
 ): { ok: true; value: number } | { ok: false; why: string } {
   const s = raw.trim();
   if (s === '') return { ok: true, value: 0 };
-  // Plain digits with at most one decimal point. "1,200" is refused rather than
-  // read as 1 or 1200 — which one the person meant is not ours to decide.
-  if (!/^\d+(\.\d+)?$/.test(s)) return { ok: false, why: `“${s}” is not a plain number` };
-  const n = Number(s);
+  // Plain digits with at most one decimal mark. "1,200" is refused rather than
+  // read as 1 or 1200 — which one the person meant is not ours to decide. A
+  // comma with one or two digits after it ("1250,50", what Excel writes in a
+  // comma-decimal country) can only be a decimal mark, so it reads as one (F-364).
+  if (!/^\d+(\.\d+|,\d{1,2})?$/.test(s)) return { ok: false, why: `“${s}” is not a plain number` };
+  const n = Number(s.replace(',', '.'));
   if (!Number.isFinite(n)) return { ok: false, why: `“${s}” is not a plain number` };
   if (whole && !Number.isInteger(n)) return { ok: false, why: `“${s}” is not a whole number` };
   if (!whole && /\.\d{3,}$/.test(s)) return { ok: false, why: `“${s}” has more than two decimals` };
@@ -72,7 +74,10 @@ export type RowVerdict = { ok: true; entry: SalesEntry } | { ok: false; why: str
 export function checkRow(d: SalesDraft, today: string, memberIds: ReadonlySet<string>): RowVerdict {
   if (!d.memberId) return { ok: false, why: 'no person is named' };
   if (!memberIds.has(d.memberId)) return { ok: false, why: 'that person is not on this house’s roster' };
-  if (!ISO_DAY.test(d.serviceDate)) return { ok: false, why: 'no service day is given' };
+  if (!d.serviceDate.trim()) return { ok: false, why: 'no service day is given' };
+  if (!ISO_DAY.test(d.serviceDate)) {
+    return { ok: false, why: `the day “${d.serviceDate}” is not written as year-month-day, like 2026-10-09` };
+  }
   if (d.serviceDate > today) return { ok: false, why: 'the day is in the future, so it has no sales yet' };
   const out: SalesEntry = { memberId: d.memberId, serviceDate: d.serviceDate, source: d.source };
   for (const { field, label, whole } of FIGURES) {
@@ -113,8 +118,52 @@ const HEADERS = {
   name: ['name', 'member_name', 'server', 'person'],
 } as const;
 
-function cells(line: string): string[] {
-  return line.split(',').map((c) => c.trim().replace(/^"(.*)"$/, '$1').trim());
+/**
+ * One CSV line into its cells. A quoted cell may hold the delimiter ("Yılmaz,
+ * Ayşe") and a doubled quote stands for one. Before 2026-10-09 the line was
+ * split on every comma, so a quoted name shifted every later column (F-364).
+ */
+function cells(line: string, delimiter: string): string[] {
+  const out: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"' && cell.trim() === '') {
+      quoted = true;
+      cell = '';
+    } else if (ch === delimiter) {
+      out.push(cell.trim());
+      cell = '';
+    } else cell += ch;
+  }
+  out.push(cell.trim());
+  return out;
+}
+
+/**
+ * The mark the header row's columns are split by. Excel writes ";" in a country
+ * whose decimal mark is "," (Türkiye, most of Europe), and "," elsewhere; a tab
+ * comes from a copy out of a spreadsheet. Whichever splits the header into the
+ * most columns wins; a one-column header stays on ",".
+ */
+function delimiterOf(header: string): string {
+  let best = ',';
+  let most = cells(header, ',').length;
+  for (const d of [';', '\t']) {
+    const n = cells(header, d).length;
+    if (n > most) {
+      best = d;
+      most = n;
+    }
+  }
+  return best;
 }
 
 export type CsvRead =
@@ -138,10 +187,26 @@ export function readSalesCsv(
     .map((l) => l.trim())
     .filter(Boolean);
   if (lines.length < 2) return { ok: false, why: 'The file needs a header row and at least one row of figures.' };
-  const head = cells(lines[0]).map((h) => h.toLowerCase());
+  const delimiter = delimiterOf(lines[0]);
+  const head = cells(lines[0], delimiter).map((h) => h.toLowerCase());
   const at = (names: ReadonlyArray<string>) => head.findIndex((h) => names.includes(h));
   const iDate = at(HEADERS.date);
-  if (iDate < 0) return { ok: false, why: 'The file has no service_date (or date) column, so no row can be placed on a day.' };
+  if (iDate < 0) {
+    // Name what the file DOES say, so the owner can see why: a first row read as
+    // one column is a file whose columns could not be told apart, not a file
+    // missing a date.
+    if (head.length === 1) {
+      return {
+        ok: false,
+        why: `The first row reads as a single column (“${lines[0]}”), so the columns could not be told apart. Save the file as CSV with commas or semicolons between the columns.`,
+      };
+    }
+    const named = cells(lines[0], delimiter).map((h) => `“${h}”`).join(', ');
+    return {
+      ok: false,
+      why: `The file has no column called service_date or date, so no row can be placed on a day. Its first row names: ${named}.`,
+    };
+  }
   const iCovers = at(HEADERS.covers);
   const iNet = at(HEADERS.netSales);
   const iWine = at(HEADERS.wineSales);
@@ -160,7 +225,7 @@ export function readSalesCsv(
   const refused: Array<{ line: number; why: string }> = [];
   let unnamed = 0;
   lines.slice(1).forEach((line, i) => {
-    const c = cells(line);
+    const c = cells(line, delimiter);
     const lineNo = i + 2;
     let memberId = iMember >= 0 ? (c[iMember] ?? '') : '';
     if (!memberId && iName >= 0 && c[iName]) {

@@ -29,6 +29,8 @@ import {
   type PriceLock,
 } from '../../../services/api/pricing';
 import { useAuthStore } from '../../../stores';
+import { parseDecimal, type GroupMark } from '../../../lib/parseDecimal';
+import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark';
 
 const EM = '—';
 
@@ -45,12 +47,10 @@ function reasonOf(err: unknown): string {
   return e?.message || 'no reason was given';
 }
 
-/** '' is not a price here: a lock act always names one. */
-function readPrice(raw: string): number | null {
-  const t = raw.trim().replace(/^\$/, '');
-  if (t === '') return null;
-  const n = Number(t);
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+/** '' is not a price here: a lock act always names one. Read the way the house writes it ("12,50"). */
+function readPrice(raw: string, group: GroupMark | null = null): number | null {
+  const n = parseDecimal(raw, group);
+  return n !== null && n >= 0 ? Math.round(n * 100) / 100 : null;
 }
 
 /** One lock's facts, in words. The menu grouping says "not on the current menu" itself. */
@@ -71,6 +71,7 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
   const [price, setPrice] = useState('');
   const [target, setTarget] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const group = useHouseGroupMark();
   const done = (s: string) => {
     setMode('none');
     setPrice('');
@@ -99,13 +100,13 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
 
   const submitChange = (e: FormEvent) => {
     e.preventDefault();
-    const p = readPrice(price);
+    const p = readPrice(price, group);
     if (p === null) return setFormError('Say the new price: a number of 0 or more.');
     change.mutate(p);
   };
   const submitMove = (e: FormEvent) => {
     e.preventDefault();
-    const p = readPrice(price);
+    const p = readPrice(price, group);
     if (!target) return setFormError('Choose the wine this lock moves to.');
     if (p === null) return setFormError('Say the price it is locked at: a move never guesses one.');
     move.mutate({ target, price: p });
