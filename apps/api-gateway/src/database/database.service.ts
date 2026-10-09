@@ -39,14 +39,17 @@ export class DatabaseService implements OnModuleInit {
   }
 
   // Helper methods for common operations
-  async getRestaurantInventory(restaurantId: string) {
+  // `active = false` reads the wines a house marked inactive, so /inventory
+  // can list them and make one active again (F-429). Every other caller reads
+  // the active cellar, as before.
+  async getRestaurantInventory(restaurantId: string, active = true) {
     const { data, error } = await this.supabase
       .from("restaurant_inventory")
       .select(
         "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
       )
       .eq("restaurant_id", restaurantId)
-      .eq("is_active", true);
+      .eq("is_active", active);
 
     if (error) throw error;
     return data;

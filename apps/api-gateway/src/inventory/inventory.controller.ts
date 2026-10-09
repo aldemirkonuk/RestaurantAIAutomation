@@ -11,7 +11,13 @@ import {
   HttpStatus,
   UseGuards,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+} from "@nestjs/swagger";
 import { InventoryService } from "./inventory.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -148,9 +154,21 @@ export class InventoryController {
   @Get(":restaurantId")
   @ApiOperation({ summary: "Get all inventory items for a restaurant" })
   @ApiResponse({ status: 200, description: "Returns all inventory items" })
-  async getRestaurantInventory(@Param("restaurantId") restaurantId: string) {
+  @ApiQuery({
+    name: "active",
+    required: false,
+    description:
+      "`false` lists the wines marked inactive instead of the active cellar",
+  })
+  async getRestaurantInventory(
+    @Param("restaurantId") restaurantId: string,
+    @Query("active") active?: string,
+  ) {
     try {
-      return await this.inventoryService.getRestaurantInventory(restaurantId);
+      return await this.inventoryService.getRestaurantInventory(
+        restaurantId,
+        active !== "false",
+      );
     } catch (error) {
       const msg =
         error?.message || String(error) || "Failed to fetch inventory";

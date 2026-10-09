@@ -244,10 +244,10 @@ export class InventoryService {
     }
   }
 
-  async getRestaurantInventory(restaurantId: string) {
+  async getRestaurantInventory(restaurantId: string, active = true) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
     const [data, rollup, locations, analytics] = await Promise.all([
-      this.dbService.getRestaurantInventory(restaurantId),
+      this.dbService.getRestaurantInventory(restaurantId, active),
       this.fetchLotRollup(restaurantId),
       this.fetchLocationBreakdown(restaurantId),
       this.fetchAnalytics(restaurantId),

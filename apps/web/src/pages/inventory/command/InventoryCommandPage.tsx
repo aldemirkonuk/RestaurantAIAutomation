@@ -38,6 +38,7 @@ import {
   type WineLocationScore,
 } from "../../../lib/autoLocateEngine";
 import { RemoveFromInventoryModal } from "../../../components/inventory/RemoveFromInventoryModal";
+import { InactiveWinesPanel, MarkInactiveConfirm } from "./InactiveWines";
 import { PosMappingPanel } from "../../../components/inventory/PosMappingPanel";
 import { getUnresolvedLines } from "../../../services/api/posHub";
 import { getActiveRestaurantId } from "../../../services/api/client";
@@ -340,8 +341,13 @@ export function InventoryCommandPage() {
     [assignMany],
   );
 
-  // Active/inactive: a delisted wine stays in inventory but drops out of the
-  // active list other surfaces read. Only the legacy page could set this.
+  // Active/inactive: an inactive wine leaves this list and the stock value
+  // (here and on /reports) while its bottles stay in the cellar. Marking one
+  // inactive asks first; "Inactive wines" brings one back (F-429).
+  const [confirmInactive, setConfirmInactive] = useState<InventoryItem | null>(
+    null,
+  );
+  const [showInactive, setShowInactive] = useState(false);
   const toggleActive = useCallback(
     async (item: InventoryItem) => {
       const next = !item.isActive;
@@ -969,6 +975,12 @@ export function InventoryCommandPage() {
             className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
           >
             <MapPin className="w-3.5 h-3.5" /> Locations
+          </button>
+          <button
+            onClick={() => setShowInactive(true)}
+            className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+          >
+            <Power className="w-3.5 h-3.5" /> Inactive wines
           </button>
           <button
             onClick={() => setShowAddWineSelection(true)}
@@ -1830,7 +1842,8 @@ export function InventoryCommandPage() {
                 icon={Power}
                 label={item.isActive ? "Mark inactive" : "Mark active"}
                 onClick={() => {
-                  void toggleActive(item);
+                  if (item.isActive) setConfirmInactive(item);
+                  else void toggleActive(item);
                   setMenu(null);
                 }}
               />
@@ -1863,6 +1876,24 @@ export function InventoryCommandPage() {
             </div>
           );
         })()}
+
+      {confirmInactive && (
+        <MarkInactiveConfirm
+          item={confirmInactive}
+          onCancel={() => setConfirmInactive(null)}
+          onConfirm={() => {
+            void toggleActive(confirmInactive);
+            setConfirmInactive(null);
+          }}
+        />
+      )}
+
+      {showInactive && (
+        <InactiveWinesPanel
+          onClose={() => setShowInactive(false)}
+          onChanged={() => void refetchInventory()}
+        />
+      )}
 
       {removeTargets && (
         <RemoveFromInventoryModal

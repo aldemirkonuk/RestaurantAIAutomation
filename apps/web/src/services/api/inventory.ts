@@ -152,13 +152,21 @@ export async function reconcileItem(
 }
 
 /**
- * Get all inventory items for the active restaurant
+ * Get all inventory items for the active restaurant. `{ inactive: true }`
+ * lists the wines marked inactive instead, so /inventory can make one active
+ * again (F-429).
  */
-export async function getInventory(restaurantId?: string): Promise<InventoryItem[]> {
+export async function getInventory(
+  restaurantId?: string,
+  opts: { inactive?: boolean } = {}
+): Promise<InventoryItem[]> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  const response = await apiClient.get<InventoryItem[]>(`${INVENTORY_PATH}/${id}`);
+  const response = await apiClient.get<InventoryItem[]>(
+    `${INVENTORY_PATH}/${id}`,
+    opts.inactive ? { params: { active: 'false' } } : undefined
+  );
   return response.data;
 }
 

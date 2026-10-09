@@ -337,6 +337,32 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
   });
 
   describe("DASH-W7 — alerts in the house's words", () => {
+    it("calls a wine critical by the bell's rule: at or under half its minimum (F-432)", async () => {
+      const low = (id: string, stock_live: number) => ({
+        id,
+        stock_live,
+        threshold_min: 5,
+        wine_name: id,
+        vintage: null,
+      });
+      db.getClient.mockReturnValue(
+        makeClient({
+          v_low_stock_items: [low("two-of-five", 2), low("four-of-five", 4), low("none-of-five", 0)],
+        }),
+      );
+
+      const alerts = await service.getAlerts("r1");
+      const severity = Object.fromEntries(
+        alerts.map((a) => [a.id.replace("low-stock-", ""), a.severity]),
+      );
+
+      expect(severity).toEqual({
+        "two-of-five": "critical",
+        "four-of-five": "warning",
+        "none-of-five": "critical",
+      });
+    });
+
     it("names the wine with its vintage and counts one bottle as one", async () => {
       db.getClient.mockReturnValue(
         makeClient({

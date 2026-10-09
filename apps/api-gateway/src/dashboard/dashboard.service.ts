@@ -24,6 +24,7 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { houseFrame } from "../common/house-frame";
+import { isCritical } from "../common/stock-status";
 import {
   localDateIn,
   localMidnight,
@@ -1454,7 +1455,12 @@ export class DashboardService {
         alerts.push({
           id: `low-stock-${item.id}`,
           type: "low_stock",
-          severity: item.stock_live === 0 ? "critical" : "warning",
+          // "Critical" is the bell's and /inventory's word too: at or under
+          // half of the minimum (ADR 0129, common/stock-status.ts), not only
+          // an empty shelf (F-432).
+          severity: isCritical(item.stock_live, item.threshold_min)
+            ? "critical"
+            : "warning",
           title: "Low Stock",
           message: `${label} — ${bottles(item.stock_live)} left, you keep at least ${item.threshold_min}`,
           actionUrl: `/inventory?highlight=${item.id}`,
