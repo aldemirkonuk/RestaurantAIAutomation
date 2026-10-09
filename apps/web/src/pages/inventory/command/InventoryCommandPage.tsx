@@ -1367,9 +1367,34 @@ export function InventoryCommandPage() {
                   })}
                 </div>
 
-                {rows.length === 0 && (
+                {/* Three different empties (F-354): not read yet, a house
+                    that holds nothing, and a search or filter hiding what
+                    it holds. One sentence for all three told a day-one
+                    house a filter was hiding its stock. */}
+                {rows.length === 0 && figuresUnknown && (
                   <div className="p-10 text-center text-sm text-gray-400">
-                    No wines match the current filters.
+                    Your list is not in yet, so nothing is shown.
+                  </div>
+                )}
+                {rows.length === 0 && !figuresUnknown && inventory.length === 0 && (
+                  <div
+                    data-testid="inventory-nothing-yet"
+                    className="p-10 text-center text-sm text-gray-500"
+                  >
+                    <p>Nothing is in your inventory yet.</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddWineSelection(true)}
+                      className="mt-3 inline-flex items-center gap-1.5 h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white rounded-lg text-xs font-bold shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add the first bottle
+                    </button>
+                  </div>
+                )}
+                {rows.length === 0 && !figuresUnknown && inventory.length > 0 && (
+                  <div className="p-10 text-center text-sm text-gray-400">
+                    Nothing matches your search or filters. {inventory.length}{" "}
+                    {inventory.length === 1 ? "item is" : "items are"} hidden by them.
                   </div>
                 )}
 

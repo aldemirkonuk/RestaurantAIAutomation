@@ -144,6 +144,76 @@ describe("TeamService — T1: an unconfigured restaurant is not given a target",
   });
 });
 
+describe("TeamService — F-352: an owner's 28 is a target, the column's 28 is not", () => {
+  function withDefaultRow(db: StubDb) {
+    // A row created by switching something else: the target is the column
+    // DEFAULT 28, which nobody chose.
+    db.tables.team_settings.push({
+      restaurant_id: RID,
+      labor_tracking_enabled: true,
+      labor_target_pct: 28,
+    });
+  }
+
+  it("a stored 28 nobody set is not marked chosen", async () => {
+    const db = seed();
+    withDefaultRow(db);
+    const settings = await service(db).getSettings(OWNER, RID);
+    expect(settings.labor_target_chosen).toBe(false);
+  });
+
+  it("an unconfigured restaurant has not chosen a target", async () => {
+    const settings = await service(seed()).getSettings(OWNER, RID);
+    expect(settings.labor_target_chosen).toBe(false);
+  });
+
+  it("the owner typing the 28 already stored is recorded, and then reads as chosen", async () => {
+    const db = seed();
+    withDefaultRow(db);
+    const saved = await service(db).updateSettings(OWNER, RID, {
+      laborTargetPct: 28,
+    } as any);
+    expect(saved.labor_target_chosen).toBe(true);
+    const filed = db.tables.system_audit_log.filter(
+      (r: any) => r.action === "team_labour_settings_changed",
+    );
+    expect(filed).toHaveLength(1);
+    expect(filed[0].changes.labor_target_pct).toEqual({ from: 28, to: 28 });
+    const settings = await service(db).getSettings(OWNER, RID);
+    expect(settings.labor_target_chosen).toBe(true);
+  });
+
+  it("switching tracking alone does not make the stored 28 a choice", async () => {
+    const db = seed();
+    withDefaultRow(db);
+    await service(db).updateSettings(OWNER, RID, {
+      laborTrackingEnabled: false,
+    } as any);
+    const settings = await service(db).getSettings(OWNER, RID);
+    expect(settings.labor_target_chosen).toBe(false);
+  });
+
+  it("a chosen 28 saved again records nothing new", async () => {
+    const db = seed();
+    withDefaultRow(db);
+    await service(db).updateSettings(OWNER, RID, { laborTargetPct: 28 } as any);
+    await service(db).updateSettings(OWNER, RID, { laborTargetPct: 28 } as any);
+    expect(
+      db.tables.system_audit_log.filter(
+        (r: any) => r.action === "team_labour_settings_changed",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("an unreadable record answers unknown, not 'nobody chose it'", async () => {
+    const db = seed();
+    withDefaultRow(db);
+    db.errors["system_audit_log:select"] = { message: "boom" };
+    const settings = await service(db).getSettings(OWNER, RID);
+    expect(settings.labor_target_chosen).toBeNull();
+  });
+});
+
 describe("TeamService — T2: a removal leaves a record and tells the person", () => {
   async function removeSam(db: StubDb) {
     db.tables.team_members.push({
