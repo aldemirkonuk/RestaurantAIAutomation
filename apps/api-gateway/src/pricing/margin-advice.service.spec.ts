@@ -255,6 +255,43 @@ describe("MarginAdviceService.adviseHouse", () => {
   });
 });
 
+describe("MarginAdviceService -- a cost in another money is never set against the menu (F-343)", () => {
+  const TRY_HOUSE = { ...HOUSE_SET, currency: "TRY" };
+  const EUR_LOT = [{ ...ROLLUP[0], cost_currency: "EUR", cost_currency_count: 1 }];
+
+  it("a lot bought in EUR is not advised on against a menu in TRY, and says why", async () => {
+    const { svc } = service({ house: TRY_HOUSE, inventory: [WINE_A], rollup: EUR_LOT });
+    const a = (await svc.adviseHouse("rest-1")).wines[0];
+    expect(a.costBasis).toBe("other_currency");
+    expect(a.bottleCost).toBeNull();
+    expect(a.bottle).toMatchObject({ state: "no_cost", advisedPrice: null });
+    expect(a.bottle!.sentence).toMatch(/different currency from your menu prices/);
+    expect(a.glass).toMatchObject({ state: "no_cost", advisedPrice: null });
+  });
+
+  it("a WAC mixing two currencies is not advised on, whatever the house's money", async () => {
+    const mixed = [{ ...ROLLUP[0], cost_currency: null, cost_currency_count: 2 }];
+    const { svc } = service({ house: TRY_HOUSE, inventory: [WINE_A], rollup: mixed });
+    const a = (await svc.adviseHouse("rest-1")).wines[0];
+    expect(a.costBasis).toBe("other_currency");
+    expect(a.bottle!.state).toBe("no_cost");
+  });
+
+  it("a lot in the house's own money is advised on as before", async () => {
+    const tryLot = [{ ...ROLLUP[0], cost_currency: "TRY", cost_currency_count: 1 }];
+    const { svc } = service({ house: TRY_HOUSE, inventory: [WINE_A], rollup: tryLot });
+    const a = (await svc.adviseHouse("rest-1")).wines[0];
+    expect(a.bottle).toMatchObject({ state: "raise", advisedPrice: 57.14 });
+  });
+
+  it("accept refuses to apply a price worked from a cost in another money", async () => {
+    const { svc, inserts, rpcs } = service({ house: TRY_HOUSE, inventory: [WINE_A], rollup: EUR_LOT });
+    await expect(svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9")).rejects.toBeInstanceOf(ConflictException);
+    expect(inserts).toHaveLength(0);
+    expect(rpcs).toHaveLength(0);
+  });
+});
+
 describe("MarginAdviceService.accept — one tap, applied only when a manager accepts", () => {
   it("records the why, then writes the advised price as 'agent_accepted' by the person, pointing at that record", async () => {
     const { svc, inserts, rpcs } = service({

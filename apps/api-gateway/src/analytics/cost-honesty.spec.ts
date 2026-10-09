@@ -46,7 +46,7 @@ function makeClient(rowsByTable: Rows) {
       const builder: any = {};
       for (const m of passthrough) builder[m] = jest.fn(() => builder);
       builder.maybeSingle = jest.fn(() =>
-        Promise.resolve({ data: null, error: null }),
+        Promise.resolve({ data: rowsByTable[table]?.[0] ?? null, error: null }),
       );
       builder.then = (resolve: any, reject: any) =>
         Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
@@ -149,6 +149,32 @@ describe("resolveUnitCost never invents a number", () => {
     expect(
       resolveUnitCost({}, { has_invoice_cost: true, wac: null }).costBasis,
     ).toBe("unknown");
+  });
+
+  // F-343: a lot costs what its paper said, in that paper's money.
+  it("refuses a WAC in another money than the house's — null, never compared", () => {
+    expect(
+      resolveUnitCost(
+        { last_purchase_price: 18 },
+        { has_invoice_cost: true, wac: 20, cost_currency: "EUR", cost_currency_count: 1 },
+        "TRY",
+      ),
+    ).toEqual({ unitCost: null, costBasis: "other_currency" });
+  });
+
+  it("refuses a WAC that averages two currencies, even with no house currency", () => {
+    expect(
+      resolveUnitCost({}, { has_invoice_cost: true, wac: 20, cost_currency: null, cost_currency_count: 2 }, null)
+        .costBasis,
+    ).toBe("other_currency");
+  });
+
+  it("keeps a WAC in the house's money, or one whose lots state no currency", () => {
+    const lot = { has_invoice_cost: true, wac: 20, cost_currency: "try", cost_currency_count: 1 };
+    expect(resolveUnitCost({}, lot, "TRY")).toEqual({ unitCost: 20, costBasis: "invoice_lot_wac" });
+    expect(
+      resolveUnitCost({}, { has_invoice_cost: true, wac: 20, cost_currency_count: 0 }, "TRY").unitCost,
+    ).toBe(20);
   });
 
   it("reports coverage instead of hiding the gap", () => {
@@ -267,6 +293,26 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     expect(out.basis.inventoryValue).toContain(
       "every row in scope has a recorded cost",
     );
+  });
+
+  it("does not value stock bought in another money against a menu in the house's (F-343)", async () => {
+    const lot = {
+      inventory_id: RECORDED.id,
+      live_qty: 5,
+      wac: 20,
+      has_invoice_cost: true,
+      wac_qty: 5,
+      cost_currency: "EUR",
+      cost_currency_count: 1,
+    };
+    const rows = { restaurant_inventory: [RECORDED], inventory_lot_rollup: [lot] };
+    const out = await analytics({ ...rows, restaurants: [{ currency: "TRY" }] }).getFinancialSummary(RESTAURANT);
+    expect(out.inventoryValue).toBeNull();
+    expect(out.grossMarginDollars).toBeNull();
+    expect(out.basis.inventoryValue).toContain("different currency from the house's");
+    // The same lot in the house's own money is valued as before: 5 × 20.
+    const same = await analytics({ ...rows, restaurants: [{ currency: "EUR" }] }).getFinancialSummary(RESTAURANT);
+    expect(same.inventoryValue).toBe(100);
   });
 
   it("does not let a zero-quantity uncosted row block the valuation", async () => {
@@ -454,5 +500,20 @@ describe("getWine360", () => {
     expect(out.unitCost).toBe(20);
     expect(out.marginPerBottle).toBe(40);
     expect(out.basis.unitCost).toContain("last_purchase_price");
+  });
+
+  it("gives no margin for a cost bought in another money (F-343)", async () => {
+    const svc = advanced({
+      restaurant_inventory: [RECORDED],
+      wine_consumption_log: [],
+      restaurants: [{ currency: "TRY" }],
+      inventory_lot_rollup: [
+        { inventory_id: RECORDED.id, live_qty: 5, wac: 20, has_invoice_cost: true, wac_qty: 5, cost_currency: "EUR", cost_currency_count: 1 },
+      ],
+    });
+    const out = await svc.getWine360(RESTAURANT, RECORDED.master_wine_id);
+    expect(out.unitCost).toBeNull();
+    expect(out.marginPerBottle).toBeNull();
+    expect(out.costBasis).toBe("other_currency");
   });
 });

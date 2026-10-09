@@ -113,7 +113,7 @@ export class AnalyticsService {
 
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    const [invRes, rollupRes, houseRes] = await Promise.allSettled([
       client
         .from("restaurant_inventory")
         // Column names must match the live schema exactly. PostgREST rejects
@@ -137,9 +137,13 @@ export class AnalyticsService {
           // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
           // can tell a WAC that covers every on-hand bottle from one that
           // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+          // cost_currency / cost_currency_count (F-343): which money the WAC is in.
+          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
         )
         .eq("restaurant_id", restaurantId),
+      // The house's stated currency: its menu prices are in it, and a cost in
+      // other money is not set against them (F-343).
+      client.from("restaurants").select("currency").eq("id", restaurantId).maybeSingle(),
     ]);
 
     // allSettled makes a REJECTION invisible and `{ data, error }` makes a
@@ -149,6 +153,10 @@ export class AnalyticsService {
     // file, same directory and same tables, was not. See ADR 0067.
     this.reportSlice("restaurant_inventory", invRes);
     this.reportSlice("inventory_lot_rollup", rollupRes);
+    this.reportSlice("restaurants", houseRes);
+    // Unread or unstated, the house's money is null and a lot is read as before.
+    const houseCurrency =
+      houseRes.status === "fulfilled" ? (houseRes.value.data?.currency ?? null) : null;
 
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
@@ -164,7 +172,7 @@ export class AnalyticsService {
     return inventory.map((i: any) => {
       const lot = rollup.get(i.id);
       const unitPrice = Number(i.menu_price_current) || 0;
-      const { unitCost, costBasis } = resolveUnitCost(i, lot);
+      const { unitCost, costBasis } = resolveUnitCost(i, lot, houseCurrency);
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
       return {
         id: i.id,
