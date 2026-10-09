@@ -786,6 +786,23 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
     expect(calls.orderUpdates[0].discrepancy_notes).toBeNull();
   });
 
+  it("F-341: says a euro price difference in euros, never under a dollar sign", async () => {
+    // The order was placed in euros; until 2026-10-09 the refusal read
+    // "Billed $24.00 against an agreed $22.00".
+    const { db } = makeDb({ orderRow: { ...caseOrder, currency: "EUR" } });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 24,
+        invoiceUom: "bottle",
+        invoiceUnitPrice: 24,
+        invoiceCurrency: "EUR",
+        acceptedQuantity: 2,
+        countedUom: "case",
+      } as any),
+    ).rejects.toThrow("Billed €24.00 against an agreed €22.00.");
+  });
+
   it("raises no credit claim on a correct cases-vs-bottles delivery", async () => {
     // The verdict is not the only casualty: `qty_short` opens a claim, which
     // puts a restaurant in front of its distributor asking for money back over

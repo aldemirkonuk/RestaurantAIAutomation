@@ -26,6 +26,21 @@ describe('invoiceMatch (web mirror)', () => {
     expect(r.effectiveUnitCost).toBe(22)
   })
 
+  // F-341: until 2026-10-09 both prices printed under a bare "$".
+  it('says each price in its own money, never a guessed dollar', () => {
+    const euro = computeMatch({ ...base, poCurrency: 'EUR', invoiceCurrency: 'EUR', invoiceUnitPrice: 24 })
+    expect(euro.summary).toBe('Billed €24.00 against an agreed €22.00.')
+
+    const unrecorded = computeMatch({ ...base, invoiceUnitPrice: 24 })
+    expect(unrecorded.summary).toBe(
+      'Billed 24.00 (currency not recorded) against an agreed 22.00 (currency not recorded).',
+    )
+
+    // Word-for-word the gateway's sentence, money included.
+    const lira = { ...base, poCurrency: 'TRY', invoiceCurrency: 'TRY', invoiceUnitPrice: 2400 }
+    expect(computeMatch(lira).summary).toBe(computeMatchApi(lira).summary)
+  })
+
   it('blocks on any price deviation until a reason is given', () => {
     const flagged = computeMatch({ ...base, invoiceUnitPrice: 22.01 })
     expect(flagged.verdict).toBe('price_variance')
