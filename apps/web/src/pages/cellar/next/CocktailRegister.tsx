@@ -42,6 +42,7 @@ import {
   useCocktailRecipe,
   useCocktailRegister,
   useCocktailWrites,
+  useMayPriceCocktails,
   type CocktailInput,
   type RegisterVM,
 } from './useCellarNextData';
@@ -222,6 +223,7 @@ export default function CocktailRegister({
 }) {
   const { data, loading, error } = useCocktailRegister(true);
   const { create, amend, retire } = useCocktailWrites();
+  const mayPrice = useMayPriceCocktails();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -314,16 +316,19 @@ export default function CocktailRegister({
             <Field id="ck-method" label="Method" value={draft.method ?? ''} onChange={(v) => setDraft({ ...draft, method: v })} placeholder="Stirred" />
             <Field id="ck-glass" label="Glass" value={draft.glass ?? ''} onChange={(v) => setDraft({ ...draft, glass: v })} placeholder="Rocks" />
             <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => setDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
-            <Field
-              id="ck-price" label="Price" type="number"
-              value={draft.price === undefined ? '' : String(draft.price)}
-              onChange={(v) => setDraft({ ...draft, price: v === '' ? undefined : Number(v) })}
-              placeholder="leave blank if unpriced"
-            />
+            {mayPrice ? (
+              <Field
+                id="ck-price" label="Price" type="number"
+                value={draft.price === undefined ? '' : String(draft.price)}
+                onChange={(v) => setDraft({ ...draft, price: v === '' ? undefined : Number(v) })}
+                placeholder="leave blank if unpriced"
+              />
+            ) : null}
           </div>
           <p className="cl-note">
-            A blank price is unpriced — it is never recorded as zero, which on a
-            list reads as “free”.
+            {mayPrice
+              ? 'A blank price is unpriced — it is never recorded as zero, which on a list reads as “free”.'
+              : 'The price is set by the owner or a manager.'}
           </p>
           <span style={{ display: 'inline-flex', gap: 6, marginTop: 10 }}>
             <button
@@ -460,21 +465,24 @@ export default function CocktailRegister({
                               Amend
                             </button>
                             {/* Two-step, not a seal: the house ceremony is
-                                rationed to the one act that spends money. */}
-                            <button
-                              type="button"
-                              className="cl-btn cl-focus"
-                              data-on={confirmRetire === c.id}
-                              onClick={() =>
-                                confirmRetire === c.id
-                                  ? void doRetire(c.id, c.display_name ?? c.name)
-                                  : setConfirmRetire(c.id)
-                              }
-                              onBlur={() => setConfirmRetire(null)}
-                            >
-                              <Trash2 size={13} aria-hidden />
-                              {confirmRetire === c.id ? 'Take it off — confirm' : 'Take it off the list'}
-                            </button>
+                                rationed to the one act that spends money.
+                                Owner or manager only (F-270). */}
+                            {mayPrice ? (
+                              <button
+                                type="button"
+                                className="cl-btn cl-focus"
+                                data-on={confirmRetire === c.id}
+                                onClick={() =>
+                                  confirmRetire === c.id
+                                    ? void doRetire(c.id, c.display_name ?? c.name)
+                                    : setConfirmRetire(c.id)
+                                }
+                                onBlur={() => setConfirmRetire(null)}
+                              >
+                                <Trash2 size={13} aria-hidden />
+                                {confirmRetire === c.id ? 'Take it off — confirm' : 'Take it off the list'}
+                              </button>
+                            ) : null}
                           </span>
                         </div>
                         <Recipe cocktailId={c.id} />
