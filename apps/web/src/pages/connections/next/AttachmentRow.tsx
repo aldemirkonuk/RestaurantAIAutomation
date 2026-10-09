@@ -63,10 +63,15 @@ export interface RowControl {
    * a server-side seal MUST be one of these — a button that sends "I was
    * sealed" is the assertion-in-its-own-request flaw, and the type is what
    * stops the next person writing one.
+   *
+   * `onApprove` should RETURN the write's promise. `HoldToApprove` stamps
+   * "Sealed" at once on a void return, so a write that then failed would sit
+   * under a seal it never earned (F-418); a returned promise is waited on and
+   * a rejection rolls the gesture back.
    */
   hold?: {
     onChallenge: () => Promise<string | null>;
-    onApprove: (challenge?: string | null) => void;
+    onApprove: (challenge?: string | null) => void | Promise<unknown>;
   };
   /** Lets a long label wrap instead of being clipped. See `.cx-hold-wide`. */
   wrap?: boolean;

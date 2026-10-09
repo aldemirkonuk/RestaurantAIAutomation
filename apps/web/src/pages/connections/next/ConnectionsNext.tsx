@@ -274,6 +274,41 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   };
 
   /**
+   * What went wrong with the last Consent, Check again or re-consent on THIS
+   * server (F-420). None of the three had anywhere to say a failure, so a
+   * refused press put the button back to idle over an unchanged row — a
+   * failure reported as nothing. Keyed by the mutation's own `variables`, as
+   * `paymentAlert` is, and only the most recent attempt on the row speaks.
+   */
+  const mcpAlert = (serverId: string): string | null => {
+    const attempts = [
+      {
+        m: d.setConsent,
+        id: d.setConsent.variables?.id,
+        what: d.setConsent.variables?.given
+          ? 'Your consent was not recorded'
+          : 'Your consent was not withdrawn',
+      },
+      { m: d.probeServer, id: d.probeServer.variables, what: 'It was not checked' },
+      { m: d.grantTool, id: d.grantTool.variables?.id, what: 'The re-consent was not recorded' },
+    ]
+      .filter((a) => a.id === serverId)
+      .sort((a, b) => (b.m.submittedAt ?? 0) - (a.m.submittedAt ?? 0));
+    const latest = attempts[0];
+    return latest?.m.isError ? `${latest.what}: ${readError(latest.m.error)}` : null;
+  };
+
+  /** The same, for "Stop the house using it" / "Use it again" on one grant. */
+  const houseGrantAlert = (connectionId: string): string | null => {
+    const m = d.setHouseGrantAccess;
+    if (!m.isError || m.variables?.connectionId !== connectionId) return null;
+    const what = m.variables.houseUses
+      ? 'The house is still not using it'
+      : 'The house has NOT stopped using it';
+    return `${what}: ${readError(m.error)}`;
+  };
+
+  /**
    * The opening sentence, assembled from measurements rather than written.
    *
    * Every clause is dropped — not softened — when the register behind it could
@@ -537,15 +572,19 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   ? 'The last change Stripe reported for this house.'
                   : 'Stripe has not reported a change yet. That is not the same as healthy.'
               }
-              controls={[
-                { label: 'Connect', disabled: !d.provider.data?.connected },
-              ]}
+              // No control (F-421). There is no in-app way to connect Stripe:
+              // card payments are switched on by Mudavym for the whole
+              // service, not per house. The old "Connect" had no handler and
+              // was enabled only once already connected — dead either way —
+              // so the row says how it is switched on instead of offering a
+              // button that does nothing.
               stopNote={plainReason(
                 d.provider.data?.reason,
                 d.provider.data?.connected
                   ? 'Removing a card below removes it at Stripe too.'
                   : 'Card payments are not switched on yet.',
-              )}
+              ) +
+                ' Mudavym switches card payments on for every house at once; there is no button for it on this page.'}
             />
           )}
 
@@ -914,8 +953,10 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                                 tool: g.toolName,
                                 writes: nowWrites,
                               }),
+                            // The write's promise, returned: a failed grant
+                            // rolls the hold back instead of sealing (F-418).
                             onApprove: (challenge?: string | null) =>
-                              d.grantTool.mutate({
+                              d.grantTool.mutateAsync({
                                 id: s.id,
                                 tool: g.toolName,
                                 writes: nowWrites,
@@ -925,6 +966,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                         };
                       }),
                   ]}
+                  alert={mcpAlert(s.id)}
                   stopNote={
                     s.status === 'revoked'
                       ? 'Revoked. It is kept so the register can show what was once trusted.'
@@ -1077,7 +1119,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                             onChallenge: () =>
                               d.paymentSeal({ act: 'set_default' as const, methodId: m.id }),
                             onApprove: (challenge?: string | null) =>
-                              d.setDefaultPayment.mutate({ methodId: m.id, challenge }),
+                              d.setDefaultPayment.mutateAsync({ methodId: m.id, challenge }),
                           },
                         },
                       ]),
@@ -1088,7 +1130,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       onChallenge: () =>
                         d.paymentSeal({ act: 'remove' as const, methodId: m.id }),
                       onApprove: (challenge?: string | null) =>
-                        d.removePayment.mutate({ methodId: m.id, challenge }),
+                        d.removePayment.mutateAsync({ methodId: m.id, challenge }),
                     },
                   },
                 ]}
@@ -1220,6 +1262,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                         }),
                     },
                   ]}
+                  alert={houseGrantAlert(g.connectionId)}
                   stopNote={`Only ${personName(g.ownerName)} can revoke the grant itself, from their own profile. This button stops the house using their sign-in — it stays theirs.`}
                 />
               ))}
@@ -1579,13 +1622,17 @@ function TextSenderRow({
                     const reason = stopReason.trim();
                     return reason.length > 0 ? reason : null;
                   },
+                  // Returns the write's promise, rejecting whenever the sender
+                  // was NOT stopped, so the hold rolls back rather than
+                  // stamping "Sealed" over the line saying so (F-418). A
+                  // refused press throws, which the hold reads the same way.
                   onApprove: (typedReason?: string | null) => {
-                    if (stopping) return;
+                    if (stopping) throw new Error('A stop is already being sent.');
                     const reason = typedReason ?? '';
-                    if (!reason) return;
+                    if (!reason) throw new Error('No reason was given.');
                     setStopping(true);
                     setStopError(null);
-                    void revokeTextSender({ senderId: sender.id, reason })
+                    return revokeTextSender({ senderId: sender.id, reason })
                       // Re-read rather than patch the row locally: the row's
                       // state is the SERVER's, and a client that painted
                       // 'Stopped' itself would be claiming a write it only asked
@@ -1597,17 +1644,21 @@ function TextSenderRow({
                       // `{revoked: false, words: ...}`, not a thrown error), so
                       // axios lands that case here too — check the body before
                       // treating it as a success.
-                      .then((result) => {
-                        if (result?.revoked !== true) {
-                          setStopError(
-                            result?.words ?? 'The gateway did not say why.',
-                          );
-                          return;
-                        }
-                        setStopReason('');
-                        onStopped?.();
-                      })
-                      .catch((e) => setStopError(getErrorMessage(e)))
+                      .then(
+                        (result) => {
+                          if (result?.revoked !== true) {
+                            const words = result?.words ?? 'The gateway did not say why.';
+                            setStopError(words);
+                            throw new Error(words);
+                          }
+                          setStopReason('');
+                          onStopped?.();
+                        },
+                        (e) => {
+                          setStopError(getErrorMessage(e));
+                          throw e;
+                        },
+                      )
                       .finally(() => setStopping(false));
                   },
                 },
