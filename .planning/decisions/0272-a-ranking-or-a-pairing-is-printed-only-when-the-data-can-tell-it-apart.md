@@ -83,7 +83,7 @@ A house of Tuzlu's size will therefore hear about a server whose checks run abou
 
 ## Not covered
 
-- `table.avg_check.driver_weights`: a ridge fit printed on r² > 0.15, with no test.
+- `table.avg_check.driver_weights`: a ridge fit printed on r² > 0.15, with no test. [2026-10-07: the founder ruled for an F-test on the fit at `SIGNIFICANCE_ALPHA`, then for keeping r² > 0.15 beside it as an effect floor, as this ADR keeps |r| ≥ 0.35 beside the correlation test. The sentence prints only when the fitted averages vary, the fit leaves a residual degree of freedom, its p ≤ `SIGNIFICANCE_ALPHA` and its r² > 0.15. Built on `fix/hidden-tables-leave-insights` (#625), ADR 0303 *Ruling 2026-10-07*. Not corrected for multiplicity: it is one test of one model.]
 - Multiplicity across the whole feed (many rules, one owner reading them).
 - F-132, the twin finding on another surface.
 - The C15 sample cap (the Lucas inversion itself) and the C05 dating.
