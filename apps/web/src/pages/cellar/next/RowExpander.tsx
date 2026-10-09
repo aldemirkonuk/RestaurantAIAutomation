@@ -420,7 +420,9 @@ export default function RowExpander({
           <p className="cl-said cl-dim" style={{ margin: 0 }} data-testid="ledger-none">
             {order?.readable === false || invoice?.readable === false
               ? 'The order and invoice books could not both be read, so nothing is listed. Unread, not empty.'
-              : 'Never ordered and never invoiced. It reached this house some other way — the books above say which.'}
+              : order?.truncated || invoice?.truncated
+                ? 'Neither book names it among the newest lines read. Older lines were not read, so this does not say it was never ordered or invoiced.'
+                : 'Never ordered and never invoiced. It reached this house some other way — the books above say which.'}
           </p>
         ) : (
           <div>

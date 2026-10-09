@@ -126,8 +126,8 @@ function makeDb(opts: {
           }
           if (opts.ledgerError)
             return { data: null, error: opts.ledgerError };
-          // The prior-price probe selects exactly two columns; the whole-house
-          // walk selects seven. Told apart by the projection so one stub can
+          // The prior-price probe selects exactly two columns; the pending
+          // read selects six. Told apart by the projection so one stub can
           // answer both without either quietly receiving the other's rows.
           if (selectedColumns.includes("final_price, requested_at"))
             return { data: opts.priorPrices ?? [], error: null };
@@ -193,6 +193,8 @@ function makeDb(opts: {
         eq: () => q,
         neq: () => q,
         gte: () => q,
+        gt: () => q,
+        in: () => q,
         order: () => q,
         limit: () => q,
         update(payload: Row) {

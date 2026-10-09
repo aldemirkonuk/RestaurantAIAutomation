@@ -16,6 +16,7 @@ import {
 import { Interval } from "@nestjs/schedule";
 import { currencyCode, isIso4217 } from "../common/iso-4217";
 import { DatabaseService } from "../database/database.service";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
@@ -266,15 +267,6 @@ const PENDING_APPROVAL_STATUSES = new Set<string>([
   ProcurementOrderStatus.PENDING,
   ProcurementOrderStatus.APPROVAL_NEEDED,
 ]);
-
-/**
- * How far back the approval gate walks the order ledger for first-order-ness
- * and price history. Matches `RETROSPECTIVE_WINDOW_DAYS` in
- * `settings/approval-thresholds.service.ts:43` on purpose: the register tells a
- * house how often a rule WOULD have fired over this window, and a gate that
- * judged over a different one would make that number a different question.
- */
-const APPROVAL_GATE_WINDOW_DAYS = 365;
 
 /**
  * The facts handed to `decideApproval` when the house has no rule switched on:
@@ -4459,11 +4451,13 @@ export class ProcurementService {
    * What every pending order in this house needs, and whether the caller can
    * give it — the read behind `/orders`' honest ceremony.
    *
-   * ONE query set for the whole house rather than one call per row: the facts
-   * the rules test (first-order-ness, the premium over the last price paid) are
-   * a single forward walk through the order ledger, exactly as the settings
-   * register's retrospective computes them. Asking per row would recompute that
-   * walk once per row and still not agree with itself.
+   * The pending orders are read by their status, and each one's facts come
+   * from `orderUnderTest`, the builder `approveOrder`'s gate and "Waiting on
+   * you" already use, so the page and the gate cannot learn two different
+   * answers (F-331). This used to walk the year's ledger forward and filter
+   * for pending orders afterwards; the walk was capped at PostgREST's 1,000
+   * rows from the OLDEST end, so the newest orders (the pending ones) fell
+   * outside it and /orders got no verdict for them.
    *
    * The page uses this to render the ceremony DISABLED with the reason in
    * words. It is a courtesy, not a gate: `approveOrder` refuses independently,
@@ -4525,39 +4519,71 @@ export class ProcurementService {
       restaurantId,
     );
 
-    const walk = await this.walkOrdersUnderTest(restaurantId);
-    if (!walk.readable) {
+    let pending: Array<{
+      id: string;
+      status: string | null;
+      provider_id: string | null;
+      inventory_id: string | null;
+      total_cost: string | number | null;
+      final_price: string | number | null;
+    }>;
+    try {
+      pending = await readWholeWindow(
+        "The orders waiting for a signature",
+        () =>
+          this.databaseService.supabase
+            .from("procurement_orders")
+            .select(
+              "id, status, provider_id, inventory_id, total_cost, final_price",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .in("status", [...PENDING_APPROVAL_STATUSES]),
+      );
+    } catch (err: any) {
+      // A refused page keeps the database's own words (`page N: <code>
+      // <message>`), as the walk this replaced reported them.
+      const failed =
+        err instanceof WholeReadError && err.reason === "read_failed"
+          ? /^page \d+: \S+ ([\s\S]*)$/.exec(err.detail)
+          : null;
       return {
         ...base,
         callerRole,
         policySet: !readout.policyEmpty,
         policyNote: policyNote(!readout.policyEmpty),
-        reason: walk.reason,
+        reason: failed ? failed[1] : (err?.message ?? String(err)),
       };
     }
 
-    const orders = walk.rows
-      .filter((r) =>
-        PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase()),
-      )
-      .map((r) => {
-        const decision: ApprovalDecision = decideApproval(
-          readout.thresholds,
-          r.test,
-        );
-        const mayApprove =
-          decision.requiredRole === null ||
-          roleSatisfies(callerRole, decision.requiredRole);
-        return {
-          orderId: r.id,
-          requiredRole: decision.requiredRole,
-          firedBy: decision.firedBy,
-          reasons: decision.reasons,
-          untestable: decision.untestable,
-          mayApprove,
-          sentence: mayApprove ? null : refusalSentence(decision, callerRole),
-        };
+    // With no rule switched on there is nothing for the facts to decide, so
+    // the per-order reads are skipped, as "Waiting on you" skips them.
+    const anyRuleOn = readout.thresholds.some((t) => t.enabled);
+    const orders: typeof base.orders = [];
+    for (const r of pending) {
+      if (!PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase())) {
+        continue;
+      }
+      const test = anyRuleOn
+        ? (await this.orderUnderTest(restaurantId, r.id, r)).test
+        : NO_RULE_FACTS;
+      const decision: ApprovalDecision = decideApproval(
+        readout.thresholds,
+        test,
+      );
+      const mayApprove =
+        decision.requiredRole === null ||
+        roleSatisfies(callerRole, decision.requiredRole);
+      orders.push({
+        orderId: r.id,
+        requiredRole: decision.requiredRole,
+        firedBy: decision.firedBy,
+        reasons: decision.reasons,
+        untestable: decision.untestable,
+        mayApprove,
+        sentence: mayApprove ? null : refusalSentence(decision, callerRole),
       });
+    }
 
     return {
       restaurantId,
@@ -4718,80 +4744,6 @@ export class ProcurementService {
       return { pct: ((unitPrice - prior) / prior) * 100, unread: false };
     } catch {
       return { pct: null, unread: true };
-    }
-  }
-
-  /**
-   * The order ledger walked forward once, reduced to the facts the rules test.
-   *
-   * Same window and same arithmetic as `ApprovalThresholdsService`'s
-   * retrospective, and the caveat travels with it: a "first order" is first
-   * among the orders inside the window, so a vendor last used two years ago
-   * reads as new here.
-   */
-  private async walkOrdersUnderTest(restaurantId: string): Promise<{
-    rows: Array<{ id: string; status: string | null; test: OrderUnderTest }>;
-    readable: boolean;
-    reason: string | null;
-  }> {
-    const since = new Date(
-      Date.now() - APPROVAL_GATE_WINDOW_DAYS * 86_400_000,
-    ).toISOString();
-    try {
-      const { data, error } = await this.databaseService.supabase
-        .from("procurement_orders")
-        .select(
-          "id, status, provider_id, inventory_id, requested_at, total_cost, final_price",
-        )
-        .eq("restaurant_id", restaurantId)
-        .gte("requested_at", since)
-        .order("requested_at", { ascending: true })
-        .limit(4000);
-      if (error) {
-        return { rows: [], readable: false, reason: error.message };
-      }
-      const seenVendors = new Set<string>();
-      const lastPriceByItem = new Map<string, number>();
-      const rows: Array<{
-        id: string;
-        status: string | null;
-        test: OrderUnderTest;
-      }> = [];
-      for (const raw of (data ?? []) as Array<{
-        id: string;
-        status: string | null;
-        provider_id: string | null;
-        inventory_id: string | null;
-        total_cost: string | number | null;
-        final_price: string | number | null;
-      }>) {
-        const vendor = raw.provider_id;
-        const isFirst = vendor ? !seenVendors.has(vendor) : null;
-        if (vendor) seenVendors.add(vendor);
-
-        const unit = toFiniteNumber(raw.final_price);
-        let premium: number | null = null;
-        if (raw.inventory_id && unit !== null && unit > 0) {
-          const prior = lastPriceByItem.get(raw.inventory_id);
-          if (prior !== undefined && prior > 0) {
-            premium = ((unit - prior) / prior) * 100;
-          }
-          lastPriceByItem.set(raw.inventory_id, unit);
-        }
-
-        rows.push({
-          id: raw.id,
-          status: raw.status,
-          test: {
-            total: toFiniteNumber(raw.total_cost),
-            isFirstOrderToVendor: isFirst,
-            pricePremiumPct: premium,
-          },
-        });
-      }
-      return { rows, readable: true, reason: null };
-    } catch (err: any) {
-      return { rows: [], readable: false, reason: err?.message ?? String(err) };
     }
   }
 

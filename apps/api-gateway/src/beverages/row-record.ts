@@ -130,6 +130,11 @@ export interface BookRecord {
   ledger: LedgerEntry[];
   /** Which table this came from, named so the claim is checkable. */
   source: string;
+  /**
+   * True when the read stopped at its cap with lines left unread (F-333). The
+   * ledger is then the newest lines only, and an empty one is NOT "never".
+   */
+  truncated: boolean;
 }
 
 export interface RowRecord {
@@ -183,6 +188,32 @@ export function matchLine(
   return null;
 }
 
+/**
+ * The pieces of a row's label a database filter can safely look for (F-333).
+ *
+ * Every line `matchLine` accepts holds the folded label inside it, so it holds
+ * each of these runs of plain letters and digits too, in this order. Anything
+ * else (a space, punctuation, a letter outside a-z such as an accented or
+ * Turkish one, whose case a database may fold differently from JavaScript) is
+ * left out of the runs rather than guessed at. A filter on these runs is
+ * therefore WIDER than `matchLine`, never narrower: it narrows the read to
+ * candidate lines in SQL, and `matchLine` still decides each one.
+ */
+export function nameRuns(label: string): string[] {
+  // Split BEFORE lowercasing: JavaScript lowercases "İ" to "i" plus a dot, and
+  // that "i" is not a letter the stored line holds.
+  return label
+    .split(/[^A-Za-z0-9]+/)
+    .filter((run) => run !== "")
+    .map((run) => run.toLowerCase());
+}
+
+/** `%run%run%`, an ILIKE pattern over one column, or null with no run. */
+export function nameRunsPattern(label: string): string | null {
+  const runs = nameRuns(label);
+  return runs.length === 0 ? null : `%${runs.join("%")}%`;
+}
+
 /** A book nobody could read. The reason is the caller's, never invented here. */
 export function unreadableBook(
   book: RowRecordBook,
@@ -198,6 +229,7 @@ export function unreadableBook(
     quantity: [],
     ledger: [],
     source,
+    truncated: false,
   };
 }
 
@@ -219,6 +251,7 @@ export function emptyBook(
     quantity: [],
     ledger: [],
     source,
+    truncated: false,
   };
 }
 
@@ -236,9 +269,19 @@ export function composeBook(input: {
   source: string;
   ledger: LedgerEntry[];
   emptyReason: string;
+  /** The capped read's own sentence, when it stopped with lines left unread. */
+  truncatedReason?: string | null;
 }): BookRecord {
   const { book, source, ledger, emptyReason } = input;
-  if (ledger.length === 0) return emptyBook(book, source, emptyReason);
+  const truncatedReason = input.truncatedReason ?? null;
+  if (ledger.length === 0) {
+    // A capped read that found nothing has not shown the book is empty: the
+    // line may sit past the cap. It says so, and is never "never" (F-333).
+    if (truncatedReason !== null) {
+      return { ...emptyBook(book, source, truncatedReason), truncated: true };
+    }
+    return emptyBook(book, source, emptyReason);
+  }
 
   const price: SeriesPoint[] = [];
   const quantity: SeriesPoint[] = [];
@@ -257,7 +300,7 @@ export function composeBook(input: {
   return {
     book,
     readable: true,
-    reason: null,
+    reason: truncatedReason,
     rows: ledger.length,
     price,
     quantity,
@@ -268,6 +311,7 @@ export function composeBook(input: {
       return Date.parse(z.at) - Date.parse(a.at); // newest first, as a ledger reads
     }),
     source,
+    truncated: truncatedReason !== null,
   };
 }
 
@@ -286,8 +330,10 @@ export function composeRowRecord(input: {
     matchRule: ROW_RECORD_MATCH_RULE,
     books,
     named,
-    // Only claimable when every book was actually readable. A row whose books
-    // could not be read is not a row nothing names.
-    nothingNamesIt: named.length === 0 && books.every((b) => b.readable),
+    // Only claimable when every book was actually readable, and read whole. A
+    // row whose books could not be read, or were read only to a cap, is not a
+    // row nothing names.
+    nothingNamesIt:
+      named.length === 0 && books.every((b) => b.readable && !b.truncated),
   };
 }

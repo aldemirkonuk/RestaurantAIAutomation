@@ -8,6 +8,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
@@ -734,21 +735,28 @@ export class InventoryService {
     const since = new Date();
     since.setDate(since.getDate() - 28);
 
-    const { data, error } = await client
-      .from("inventory_transactions")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .eq("inventory_id", itemId)
-      .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: true })
-      .limit(2000);
-
-    // A FAILED READ IS NOT AN EMPTY LEDGER (ADR 0067). Returning zeroes here
-    // made an outage indistinguishable from a shelf nothing had moved on.
-    if (error) {
-      this.logger.error(`getItemActivity ledger query failed: ${error.message}`);
+    // Read whole or refused (ADR 0292, F-334). This was ascending with
+    // `.limit(2000)`, which PostgREST's 1,000-row cap cut to the OLDEST 1,000
+    // movements, so a fast mover's last days drew as zero.
+    let data: any[];
+    try {
+      data = await readWholeWindow<any>(
+        "This item's movements in the last 28 days",
+        () =>
+          client
+            .from("inventory_transactions")
+            .select("*", { count: "exact" })
+            .eq("restaurant_id", restaurantId)
+            .eq("inventory_id", itemId)
+            .gte("created_at", since.toISOString()),
+      );
+    } catch (err: any) {
+      // A FAILED READ IS NOT AN EMPTY LEDGER (ADR 0067). Returning zeroes here
+      // made an outage indistinguishable from a shelf nothing had moved on.
+      const message = err?.message ?? String(err);
+      this.logger.error(`getItemActivity ledger query failed: ${message}`);
       throw new Error(
-        `the movement history of item ${itemId} could not be read (${error.message}). Nothing is claimed about this shelf — an empty chart here would mean "nothing moved", which is not what we know.`,
+        `the movement history of item ${itemId} could not be read (${message}). Nothing is claimed about this shelf — an empty chart here would mean "nothing moved", which is not what we know.`,
       );
     }
 
@@ -765,7 +773,7 @@ export class InventoryService {
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-    for (const row of (data as any[]) || []) {
+    for (const row of data) {
       const qty = Number(row.quantity_change ?? row.quantity ?? 0);
       if (!Number.isFinite(qty) || qty === 0) continue;
       const type = String(row.transaction_type || "").toLowerCase();
