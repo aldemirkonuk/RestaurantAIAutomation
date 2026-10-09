@@ -32,6 +32,13 @@
  * staff-disabled control here would be a gate the server does not enforce —
  * the same disagreement between page and gateway, running the other way, that
  * every other screen in this corridor is written to avoid.
+ * [Corrected 2026-10-07, fix/document-money-writes-for-holders: the gateway
+ * now refuses both routes AND their seal mints to a token that does not hold
+ * the house's money (`document-money-gate.ts`, ADR 0145's money row), so the
+ * premise above no longer holds. This page has not been changed to match: a
+ * staff member still sees the controls, and the hold fails at the mint in the
+ * control's own "could not be issued" words. Disabling them for staff is a
+ * named follow-up in that branch's tech-debt fragment.]
  *
  * LIVE FOR EVERY HOUSE since ADR 0149 row 36 (2026-09-17). `/documents/:id`
  * still renders through PageGate on the `document` page name, but `document`

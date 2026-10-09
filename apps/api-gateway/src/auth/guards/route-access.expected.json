@@ -53,8 +53,14 @@
   "POST /analytics/recommendations/:restaurantId/snoozed-for-me/wake (AnalyticsController.wakeForMe)": "open",
   "GET /analytics/recommendations/:restaurantId/history (AnalyticsController.recommendationHistory)": "open",
   "GET /analytics/exclusions/:restaurantId (AnalyticsController.listDayExclusions)": "open",
-  "POST /analytics/exclusions/:restaurantId (AnalyticsController.excludeDay)": "open",
-  "DELETE /analytics/exclusions/:restaurantId/:businessDate (AnalyticsController.includeDay)": "open",
+  "POST /analytics/exclusions/:restaurantId (AnalyticsController.excludeDay)": [
+    "owner",
+    "manager"
+  ],
+  "DELETE /analytics/exclusions/:restaurantId/:businessDate (AnalyticsController.includeDay)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/recommendations/:restaurantId/digest (AnalyticsController.getRecommendationDigest)": "open",
   "PUT /analytics/recommendations/:restaurantId/digest (AnalyticsController.setRecommendationDigest)": "open",
   "GET /analytics/health (AnalyticsController.healthCheck)": "open",
