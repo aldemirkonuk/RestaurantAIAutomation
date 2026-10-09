@@ -5,7 +5,15 @@ import GetStarted from './GetStarted'
 import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
 
-const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, auth } = vi.hoisted(() => ({
+  auth: {
+    user: { name: 'Selin Kaya', emailVerified: true } as {
+      name: string
+      emailVerified: boolean
+      userId?: string
+      restaurantId?: string
+    },
+  },
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
@@ -19,7 +27,7 @@ vi.mock('react-router-dom', async () => {
 })
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { name: 'Selin Kaya', emailVerified: true },
+    user: auth.user,
     createFirstHouse,
   }),
 }))
@@ -107,7 +115,9 @@ beforeEach(() => {
     needsReview: false,
   })
   addCustomProvider.mockResolvedValue({ id: 'vendor-1', name: 'Suvla' })
+  auth.user = { name: 'Selin Kaya', emailVerified: true }
   sessionStorage.clear()
+  localStorage.clear()
 })
 
 function fillRestaurantStep() {
@@ -570,5 +580,91 @@ describe('approved arrival flow', () => {
     expect(screen.getByText(/Last invoice · kept for later — suvla-sept.pdf/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open later' }))
     expect(navigate).toHaveBeenCalledWith('/settings?tab=cellar')
+  })
+})
+
+describe('a new owner is told what each step does, and a reload resumes it', () => {
+  it('says the timezone is this device\'s clock, not the address\'s (F-003)', async () => {
+    await toRestaurantStep()
+    expect(screen.queryByText(/address sets the house's timezone/)).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/The timezone is this device's clock, not the address's/),
+    ).toHaveTextContent('change it in Settings once the house is open')
+  })
+
+  it('says how to go on when the restaurant is not on Google yet (F-005)', async () => {
+    await toRestaurantStep()
+    expect(screen.getByText(/New, or not on Google yet\?/)).toHaveTextContent(
+      'Type the name and address in the boxes below',
+    )
+    expect(screen.queryByText(/VITE_GOOGLE_MAPS_API_KEY/)).not.toBeInTheDocument()
+  })
+
+  it('caps the name where the account keeps it (F-243)', () => {
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(screen.getByLabelText('Your name')).toHaveAttribute('maxLength', '100')
+  })
+
+  it('comes back on step 02 with the role and what was typed after a reload (F-007)', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, userId: 'user-1', restaurantId: '' }
+    const first = render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Owner' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    fillRestaurantStep()
+    first.unmount()
+
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Your restaurant' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Restaurant name')).toHaveValue('Meyhane')
+    expect(screen.getByLabelText('Address')).toHaveValue('1 House Street')
+    expect(screen.getByLabelText('City')).toHaveValue('Istanbul')
+    expect(screen.getByText('Currency · TRY')).toBeInTheDocument()
+  })
+
+  it('keeps the role chip chosen on step 01 across a reload (F-007)', async () => {
+    const first = render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Owner' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    first.unmount()
+
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(screen.getByRole('button', { name: 'Owner' }).className).toContain('bg-[#1a5e6b]')
+  })
+
+  it('comes back on the menu step only when the house is really open (F-007)', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, userId: 'user-1', restaurantId: '' }
+    const first = render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    fillRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    first.unmount()
+
+    auth.user = { ...auth.user, restaurantId: 'house-1' }
+    const second = render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Skip for now/ }))
+    expect(navigate).toHaveBeenCalledWith('/house', { replace: true })
+    second.unmount()
+
+    // Skipping on to the house ends the arrival: nothing is resumed after it.
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(screen.getByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
+  })
+
+  it('never resumes another account\'s half-finished arrival (F-007)', async () => {
+    auth.user = { name: 'Selin Kaya', emailVerified: true, userId: 'user-1', restaurantId: '' }
+    const first = render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    fillRestaurantStep()
+    first.unmount()
+
+    auth.user = { name: 'Deniz Ak', emailVerified: true, userId: 'user-2', restaurantId: '' }
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    expect(screen.getByRole('heading', { name: /Welcome, Deniz/ })).toBeInTheDocument()
   })
 })

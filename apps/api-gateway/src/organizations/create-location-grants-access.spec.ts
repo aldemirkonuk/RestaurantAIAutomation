@@ -1,5 +1,8 @@
 import { InternalServerErrorException } from "@nestjs/common";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
 import { OrganizationsService } from "./organizations.service";
+import { CreateLocationDto } from "./dto/create-location.dto";
 
 /**
  * `POST /organizations/locations` — a location its creator could not open.
@@ -230,5 +233,68 @@ describe("OrganizationsService#createLocation — timezone", () => {
 
   it("stores nothing when no zone was sent — never a default", async () => {
     expect(await storedZone(undefined)).toBeNull();
+  });
+});
+
+/**
+ * F-241: a second house (Add a location) recorded neither a currency nor a
+ * map point, while the first house records both. The dialog now sends the
+ * currency it stated from the country and the picked place's point; the
+ * route writes them, a point only as a whole finite pair.
+ */
+describe("OrganizationsService#createLocation — currency and map point", () => {
+  const stored = async (extra: Record<string, unknown>) => {
+    const { svc, calls } = makeService();
+    await svc.createLocation(USER_ID, { ...DTO, ...extra });
+    expect(calls.restaurantInserts).toHaveLength(1);
+    const row = calls.restaurantInserts[0];
+    return {
+      currency: row.currency,
+      latitude: row.latitude,
+      longitude: row.longitude,
+    };
+  };
+
+  it("stores the currency and the point the dialog sent", async () => {
+    expect(
+      await stored({ currency: "USD", latitude: 37.7594, longitude: -122.4211 }),
+    ).toEqual({ currency: "USD", latitude: 37.7594, longitude: -122.4211 });
+  });
+
+  it("stores nothing for what was not sent — never a default", async () => {
+    expect(await stored({})).toEqual({
+      currency: null,
+      latitude: null,
+      longitude: null,
+    });
+  });
+
+  it.each([
+    ["one coordinate alone", { latitude: 37.7594 }],
+    ["a non-finite coordinate", { latitude: Infinity, longitude: 10 }],
+    ["an out-of-range coordinate", { latitude: 91, longitude: 10 }],
+  ])("stores no point for %s", async (_label, point) => {
+    const row = await stored(point);
+    expect([row.latitude, row.longitude]).toEqual([null, null]);
+  });
+});
+
+describe("CreateLocationDto — currency and map point", () => {
+  const check = (extra: Record<string, unknown>) =>
+    validate(plainToInstance(CreateLocationDto, { ...DTO, ...extra }));
+
+  it("accepts an ISO 4217 code and a point in range", async () => {
+    expect(
+      await check({ currency: "TRY", latitude: 41.03, longitude: 28.98 }),
+    ).toEqual([]);
+  });
+
+  it("refuses a made-up currency and a point off the map", async () => {
+    const errors = await check({ currency: "XXQ", latitude: 91, longitude: 181 });
+    expect(errors.map((e) => e.property).sort()).toEqual([
+      "currency",
+      "latitude",
+      "longitude",
+    ]);
   });
 });

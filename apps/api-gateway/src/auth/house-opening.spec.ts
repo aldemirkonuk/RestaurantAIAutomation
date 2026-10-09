@@ -7,7 +7,13 @@ import {
 } from "@nestjs/common";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
-import { AuthService } from "./auth.service";
+import {
+  ACCOUNT_DETAIL_TOO_LONG,
+  ACCOUNT_NOT_CREATED,
+  AuthService,
+  EMAIL_IN_USE,
+} from "./auth.service";
+import { RegisterAccountDto } from "./dto/register-account.dto";
 import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import {
@@ -869,5 +875,78 @@ describe("registerRestaurant", () => {
     });
     const slug = run.restaurantRows()[0].slug as string;
     expect(slug.length).toBeLessThanOrEqual(100);
+  });
+});
+
+/**
+ * F-243: the account route (/register's first step) said the database's own
+ * text — "Registration failed: value too long for type character
+ * varying(255)" — and capped a name nowhere, while /get-started's PATCH
+ * /auth/me caps it at 100. One cap now, and fixed sentences.
+ */
+describe("registerAccount", () => {
+  const ACCOUNT = {
+    name: "Selin Kaya",
+    email: "selin@example.com",
+    password: "long-enough",
+  };
+
+  it("caps the name where /get-started caps it, in plain words (H1)", async () => {
+    const at = (name: string) =>
+      validate(plainToInstance(RegisterAccountDto, { ...ACCOUNT, name }));
+    expect(await at("a".repeat(100))).toEqual([]);
+    const errors = await at("a".repeat(101));
+    expect(errors).toHaveLength(1);
+    expect(Object.values(errors[0].constraints ?? {})).toEqual([
+      "Your name is longer than 100 characters, so nothing was recorded. Shorten it and try again.",
+    ]);
+  });
+
+  it("says a too-long detail plainly and logs the database text (H2)", async () => {
+    const run = makeService({ single: { users: [{ error: VALUE_TOO_LONG }] } });
+    const exception = await refusal(run.svc.registerAccount(ACCOUNT));
+    expectPlain(exception, BadRequestException, ACCOUNT_DETAIL_TOO_LONG);
+    expect(run.logError).toHaveBeenCalledWith(
+      `registerAccount did not create the account: 22001 ${VALUE_TOO_LONG.message}`,
+    );
+  });
+
+  it("tells the loser of a same-email race to sign in (H3)", async () => {
+    const run = makeService({ single: { users: [{ error: EMAIL_TAKEN }] } });
+    expectPlain(
+      await refusal(run.svc.registerAccount(ACCOUNT)),
+      ConflictException,
+      EMAIL_IN_USE,
+    );
+  });
+
+  it("says anything else as a plain 500 (H4)", async () => {
+    for (const error of [NUL_IN_TEXT, NO_ANSWER, null]) {
+      const run = makeService({
+        single: { users: [{ data: null, error }] },
+      });
+      expectPlain(
+        await refusal(run.svc.registerAccount(ACCOUNT)),
+        InternalServerErrorException,
+        ACCOUNT_NOT_CREATED,
+      );
+    }
+  });
+
+  it("says a failed Google link plainly and removes the account it made (H5)", async () => {
+    const run = makeService({ then: { user_oauth_accounts: [{ error: EMAIL_TAKEN }] } });
+    (run.svc as any).verifyGoogleToken = jest.fn().mockResolvedValue({
+      email: "selin@example.com",
+      name: "Selin Kaya",
+      sub: "google-1",
+    });
+    expectPlain(
+      await refusal(run.svc.registerAccountWithGoogle("token")),
+      InternalServerErrorException,
+      ACCOUNT_NOT_CREATED,
+    );
+    expect(run.deletes).toEqual([
+      { table: "users", col: "user_id", v: "user-1" },
+    ]);
   });
 });
