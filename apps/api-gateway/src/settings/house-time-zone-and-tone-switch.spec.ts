@@ -647,6 +647,41 @@ describe("the Jev switch", () => {
     expect(houseA(db).vendor_tone_scoring_enabled).toBe(false);
   });
 
+  it("names when and who when the data-terms acceptance turned it on, and skips an acceptance that left it alone (F-055)", async () => {
+    const { db, controller } = make();
+    houseA(db).vendor_tone_scoring_enabled = true;
+    db.tables.system_audit_log.push(
+      {
+        restaurant_id: A,
+        actor_id: "owner-a",
+        action: "house_data_terms_accepted",
+        changes: {
+          register: "data-terms",
+          fields: {
+            terms_version: { from: null, to: 1 },
+            vendor_tone_scoring_enabled: { from: false, to: true },
+          },
+        },
+        created_at: "2026-10-01T10:00:00.000Z",
+      },
+      {
+        restaurant_id: A,
+        actor_id: "manager-a",
+        action: "house_data_terms_accepted",
+        changes: {
+          register: "data-terms",
+          fields: { terms_version: { from: 1, to: 2 } },
+        },
+        created_at: "2026-10-02T10:00:00.000Z",
+      },
+    );
+    expect(await controller.getHouseToneScoring(A)).toMatchObject({
+      enabled: true,
+      statedAt: "2026-10-01T10:00:00.000Z",
+      statedBy: { userId: "owner-a", name: "Owner A" },
+    });
+  });
+
   it("files both actions in the settings trail's allow-list", () => {
     expect(SETTINGS_AUDIT_ACTIONS).toContain(TIME_ZONE_AUDIT_ACTION);
     expect(SETTINGS_AUDIT_ACTIONS).toContain(TONE_SCORING_AUDIT_ACTION);

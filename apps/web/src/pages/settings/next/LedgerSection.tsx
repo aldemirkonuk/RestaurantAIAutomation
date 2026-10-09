@@ -39,7 +39,7 @@ import { Micro, Note, Register } from './SectionKit';
 import { EM, MONO, SANS, SERIF, fmtExact, fmtWhen } from './st-format';
 import type { LedgerEntry, LedgerRegister, SettingsNextData } from './useSettingsNextData';
 
-/** Registers whose writes do NOT reach this log yet, and where they go instead. */
+/** Registers whose writes do NOT reach this log yet; `hint` is the service that writes each (for engineers, not shown). */
 const NOT_YET_FILED: Array<{ id: string; label: string; hint: string }> = [
   { id: 'email', label: 'Email sign-off', hint: 'restaurant-templates.service.ts' },
   { id: 'notifications', label: 'Notifications', hint: 'notifications.service.ts' },
@@ -218,16 +218,15 @@ export function LedgerSection({ data }: { data: SettingsNextData }) {
           <div style={{ borderTop: '1px solid var(--paper-2)', marginTop: 18, paddingTop: 12 }}>
             <Micro>What this record does not yet cover</Micro>
             <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-2)', margin: '5px 0 0', maxWidth: 720 }}>
-              Eight registers write through services this pass did not touch, so
-              a change made in one of them files no row and its silence here means
-              nothing. Each needs the same two lines the three above got: read the
-              row before the write, then call the recorder.
+              {/* Each needs the same two lines the others got: read the row before the write, then call the recorder. */}
+              Eight registers do not record their changes here yet, so a change
+              made in one of them leaves no line in this list, and its silence
+              here means nothing.
             </p>
             <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
               {NOT_YET_FILED.map((r) => (
                 <li key={r.id} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
-                  {r.label}{' '}
-                  <span style={{ fontFamily: MONO, fontSize: 10, opacity: 0.8 }}>{r.hint}</span>
+                  {r.label}
                 </li>
               ))}
             </ul>

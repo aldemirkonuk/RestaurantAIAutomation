@@ -33,7 +33,7 @@
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Action, Choice, Note, Register, Row, SaveFailure, Toggle, fieldStyle } from './SectionKit';
-import { EM, MONO, SANS, SERIF } from './st-format';
+import { EM, MONO, SANS, SERIF, fmtMoney } from './st-format';
 import type {
   ApprovalRule,
   SettingsNextData,
@@ -213,6 +213,15 @@ function RuleEditor({
 }
 
 export function ThresholdsSection({ data }: { data: SettingsNextData }) {
+  // F-057: the ceiling is money, so it carries the house's currency mark. Only
+  // a currency read that ANSWERED decides it (a code, or null = nobody chose
+  // one, which fmtMoney says in words); while that read is pending or failed,
+  // the bare number stands rather than a mark nobody recorded.
+  const cur = data.houseCurrency;
+  const money = (n: number) =>
+    cur.status === 'ok' && cur.data && cur.data.readable
+      ? fmtMoney(n, cur.data.code)
+      : n.toLocaleString('en-GB');
   return (
     <Register<ThresholdsRegister> remote={data.thresholds} name="the approval thresholds">
       {(reg) => (
@@ -231,19 +240,18 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
             <span>
               {reg.enforcement.enforcedBy.length === 0 ? (
                 <>
+                  {/* reg.enforcement.note / wouldBeEnforcedAt say where the check would go. */}
                   <strong>Nothing stops an order yet.</strong> These rules are
-                  recorded and read back, and no code consults them before an
-                  order is sealed: {reg.enforcement.note} Enforcement has to be
-                  added at <code style={{ fontFamily: MONO, fontSize: 11.5 }}>{reg.enforcement.wouldBeEnforcedAt}</code>.
-                  Until then this register is the house&rsquo;s written policy,
-                  not a gate, and it is shown as one.
+                  recorded, but nothing checks them before an order is sealed.
+                  Until something does, they are the house&rsquo;s written policy,
+                  not a gate, and they are shown as one.
                 </>
               ) : (
                 <>
-                  <strong>Enforced.</strong> {reg.enforcement.enforcedBy.length} code
-                  path{reg.enforcement.enforcedBy.length === 1 ? '' : 's'} consult
-                  these rules before an order can be sealed:{' '}
-                  {reg.enforcement.enforcedBy.join(', ')}.
+                  {/* reg.enforcement.enforcedBy lists the code that checks them. */}
+                  <strong>Enforced.</strong> Every order is checked against these
+                  rules before it can be sealed: an order over a limit can only be
+                  sealed by the person the rule names.
                 </>
               )}
             </span>
@@ -285,7 +293,8 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
                         when: row.updatedAt,
                         whenUnknown: 'the rule carries no date, which should be impossible',
                         verb: row.setBy?.name ? `set by ${row.setBy.name}` : 'set',
-                        readBy: <code style={{ fontFamily: MONO }}>settings/approval-thresholds.ts:135</code>,
+                        // read by: settings/approval-thresholds.ts:135
+                        readBy: 'the approval check, before an order is sealed',
                       }
                     : undefined
                 }
@@ -311,8 +320,8 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
                 <p style={{ fontFamily: MONO, fontSize: 13, color: 'var(--ink-1)', margin: '6px 0 0', fontVariantNumeric: 'tabular-nums' }}>
                   {row
                     ? row.enabled
-                      ? describe(spec.kind, row)
-                      : `${describe(spec.kind, row)} — switched off, and the number is kept`
+                      ? describe(spec.kind, row, money)
+                      : `${describe(spec.kind, row, money)} — switched off, and the number is kept`
                     : `${EM} not set`}
                 </p>
                 <Retrospective reg={reg} rule={spec.id} />
@@ -373,12 +382,16 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
   );
 }
 
-function describe(kind: 'amount' | 'always' | 'percent', row: ThresholdRow): string {
+function describe(
+  kind: 'amount' | 'always' | 'percent',
+  row: ThresholdRow,
+  money: (n: number) => string,
+): string {
   const who = row.requiredRole === 'owner' ? 'an owner' : 'a manager';
   if (kind === 'amount') {
     return row.amountLimit === null
       ? `${EM} no amount is recorded`
-      : `over ${row.amountLimit.toLocaleString('en-GB')} — ${who} must sign`;
+      : `over ${money(row.amountLimit)} — ${who} must sign`;
   }
   if (kind === 'percent') {
     return row.percentLimit === null

@@ -282,9 +282,9 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
             <button type="button" className="st-focus" onClick={() => scrollToAnchor('a-record')}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here
-            </button>. The other {connectionsOn ? 'four' : 'eight'} write through services this pass did not touch, so their changes are still
+            </button>. The other {connectionsOn ? 'four' : 'eight'} do not record who changed them yet, so their changes are
             anonymous; where one is dated the date is shown with the word for what it is a date of, and where nothing
-            dates it the line is an em dash naming the file it was checked against.
+            dates it the line is an em dash saying why.
           </p>
           {tallyLine && (
             <p

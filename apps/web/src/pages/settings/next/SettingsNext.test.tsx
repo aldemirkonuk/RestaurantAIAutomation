@@ -505,7 +505,7 @@ describe('SettingsNext — the editorial spine', () => {
     // author: it names which six — Currency joined them 2026-09-05, Time zone
     // and Mail reading 2026-09-21 (ADR 0207) — and admits the other eight still do not.
     expect(screen.getByText(/Six of these registers now record/i)).toBeInTheDocument();
-    expect(screen.getByText(/other eight write through services this pass did not touch/i)).toBeInTheDocument();
+    expect(screen.getByText(/other eight do not record who changed them yet/i)).toBeInTheDocument();
   });
 
   /**
@@ -623,7 +623,7 @@ describe('SettingsNext — features', () => {
     mount('/settings?tab=features');
     expect(screen.queryByRole('switch', { name: /Settings — Mudavym design/i })).not.toBeInTheDocument();
     expect(screen.getByText(/live for everyone/i)).toBeInTheDocument();
-    expect(screen.getByText(/resolves the Mudavym design in code, not from this switch/i)).toBeInTheDocument();
+    expect(screen.getByText(/so this switch no longer changes anything/i)).toBeInTheDocument();
     expect(saveFlag).not.toHaveBeenCalledWith('mudavym_design_settings', expect.anything());
   });
 
@@ -743,7 +743,7 @@ describe('SettingsNext — provenance and unknowns', () => {
     // reason, and never a fabricated "just now".
     mock.current = base({ flags: remote({ enable_ai_negotiation: true, enable_ai_autonomous_send: false }) });
     mount('/settings?tab=features');
-    const dashes = screen.getAllByText(/— the settings row has no changed-at column/);
+    const dashes = screen.getAllByText(/— no date is kept for this switch/);
     expect(dashes.length).toBeGreaterThan(0);
     expect(screen.queryByText(/changed · just now/)).not.toBeInTheDocument();
   });
@@ -758,7 +758,7 @@ describe('SettingsNext — provenance and unknowns', () => {
     // Push: stored, but nothing sends it — no control anywhere for it.
     expect(screen.queryByRole('switch', { name: /^Push/i })).not.toBeInTheDocument();
     expect(screen.getByText(/Nothing in the product sends a push notification/i)).toBeInTheDocument();
-    expect(screen.getByText(/push-is-not-resolved-here/)).toBeInTheDocument();
+    expect(screen.getByText(/Your choice is kept, so it is not lost if push is built later/i)).toBeInTheDocument();
     // Email and SMS are real, so they keep their switches.
     expect(screen.getByRole('switch', { name: /Email notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /SMS notifications/i })).toBeInTheDocument();
@@ -799,9 +799,12 @@ describe('SettingsNext — provenance and unknowns', () => {
     mount('/settings?tab=team');
     expect(screen.getByText(/granted · 3 days ago/i)).toBeInTheDocument();
     expect(screen.getByText(/issued · 3 days ago/i)).toBeInTheDocument();
-    // "granted" is not "changed", and the row says where a change WOULD be filed.
-    expect(screen.getByText(/no column records a later change to this access/i)).toBeInTheDocument();
-    expect(screen.getByText(/member_role_changed/)).toBeInTheDocument();
+    // "granted" is not "changed", and the row says where a role change IS
+    // read back (F-060): the settings record lists member_role_changed.
+    expect(screen.getByText(/not when their role last changed/i)).toBeInTheDocument();
+    const record = screen.getByRole('link', { name: 'What changed here' });
+    expect(record).toHaveAttribute('href', '#st-section-ledger');
+    expect(screen.queryByText(/member_role_changed|system_audit_log|page note/)).not.toBeInTheDocument();
   });
 
   it('shows the chain and branch dates the gateway now returns', () => {
@@ -1066,6 +1069,52 @@ describe('SettingsNext — vendor terms', () => {
   });
 });
 
+describe('SettingsNext — owner words (F-027, F-052, F-055, F-057)', () => {
+  it('prints no source file, grep date or build note anywhere on the owner page', () => {
+    mock.current = base({
+      notif: remote(notifPrefs()),
+      flags: remote({ enable_ai_negotiation: true, enable_ai_autonomous_send: false }),
+    });
+    const { container } = mount('/settings');
+    const text = container.textContent ?? '';
+    for (const leak of [
+      /[\w/-]+\.(?:ts|tsx|py)\b/, // a source file, with or without a line
+      /[Gg]repped/,
+      /this pass did/,
+      /page note|§\s?\d/,
+      /system_audit_log|changed-at column|code path/,
+    ]) {
+      expect(text).not.toMatch(leak);
+    }
+    // The read-by line itself stays (ADR 0160 §109), in words.
+    expect(screen.getAllByText(/read by ·/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/the approval check, before an order is sealed/)).toBeInTheDocument();
+  });
+
+  it('writes the approval ceiling in the house currency once the house has stated one', () => {
+    mock.current = base({ houseCurrency: remote(currencyRegister({ code: 'USD' })) });
+    mount('/settings?tab=thresholds');
+    expect(screen.getByText(/over US\$15,000 — an owner must sign/)).toBeInTheDocument();
+  });
+
+  it('says no currency is recorded rather than guessing a mark', () => {
+    mount('/settings?tab=thresholds');
+    expect(screen.getByText(/over 15,000 \(currency not recorded\) — an owner must sign/)).toBeInTheDocument();
+  });
+
+  it('never says the Jev switch is off while it reads on (F-055)', () => {
+    mock.current = base({
+      houseToneScoring: remote({
+        restaurantId: 'r1', enabled: true, readable: true, reason: null, statedAt: null, statedBy: null,
+      }),
+    });
+    const { container } = mount('/settings?tab=mail-reading');
+    const section = within(container).getByTestId('st-section-mail-reading');
+    expect(within(section).queryByText(/it is off/)).not.toBeInTheDocument();
+    expect(within(section).getByText(/no record says when it was turned on/)).toBeInTheDocument();
+  });
+});
+
 describe('SettingsNext — approval thresholds', () => {
   /**
    * REGRESSION OF ADR 0116, inverted rather than deleted.
@@ -1077,10 +1126,11 @@ describe('SettingsNext — approval thresholds', () => {
    * sentence being authored for the state it describes. Both branches are
    * tested; testing only one would let the page hard-code either claim.
    */
-  it('says it is ENFORCED, and names the path that enforces it', () => {
+  it('says it is ENFORCED, in words — never the code path that enforces it (F-052)', () => {
     mount('/settings?tab=thresholds');
     expect(screen.getByText(/Enforced\./i)).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(ENFORCED_AT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument();
+    expect(screen.getByText(/Every order is checked against these rules before it can be sealed/)).toBeInTheDocument();
+    expect(screen.queryByText(/procurement\.service\.ts|assertApprovalAllowed/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing stops an order yet/i)).not.toBeInTheDocument();
   });
 
@@ -1228,7 +1278,8 @@ describe('SettingsNext — the settings record', () => {
     // page now (e.g. "Email sign-off" is both this list's item and its own
     // register's `<h3>`), since the interview renders all sixteen together.
     const section = screen.getByTestId('st-section-ledger');
-    expect(within(section).getByText(/Eight registers write through services this pass did not touch/i)).toBeInTheDocument();
+    expect(within(section).getByText(/Eight registers do not record their changes here yet/i)).toBeInTheDocument();
+    expect(within(section).queryByText(/\.service\.ts/)).not.toBeInTheDocument();
     for (const label of ['Email sign-off', 'Locations & chains', 'Cellar registers']) {
       expect(within(section).getByText(label)).toBeInTheDocument();
     }

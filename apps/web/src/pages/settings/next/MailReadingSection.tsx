@@ -39,6 +39,13 @@ import { useDataTerms } from '../../../hooks/queries/useDataTerms';
 import { DataTermsAcceptSheet } from '../../../components/settings/DataTermsAcceptSheet';
 
 const NO_DATE = 'never changed — it is off, as every house starts';
+/**
+ * On, with no dated record of the act that turned it on (F-055). The gateway
+ * reads both acts that can turn it on — this switch and an owner's first
+ * acceptance of the data terms — so this is a house whose record predates
+ * either, or whose record could not be read. It must never say "off".
+ */
+const NO_DATE_ON = 'on — no record says when it was turned on';
 
 export function MailReadingSection({ data }: { data: SettingsNextData }) {
   const { houseToneScoring, isOwner, saveToneScoring, writer } = data;
@@ -122,7 +129,7 @@ function Body({
             </>
           )
         }
-        provenance={{ kept: 'restaurant', when: reg.statedAt, whenUnknown: NO_DATE, verb: 'set' }}
+        provenance={{ kept: 'restaurant', when: reg.statedAt, whenUnknown: on ? NO_DATE_ON : NO_DATE, verb: 'set' }}
         control={
           <Action
             disabled={!isOwner || busy}
