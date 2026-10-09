@@ -59,14 +59,22 @@ export interface EndpaperShellProps {
   ground?: 'paper' | 'charcoal'
   className?: string
   /**
-   * The Easter egg (/login only; founder, 2026-09-19): the endpaper becomes a
-   * page you can turn back, to the inside cover and a short poem about the
-   * book the house keeps. Nothing on the page advertises it — no dog-ear,
-   * no hint (his words: "not intrigued by that") — but it is a real button,
-   * reachable and named for keyboard and screen-reader users. The leaf's own
-   * content stays mounted underneath, so whatever was typed survives.
+   * The Easter egg (founder, 2026-09-19, on `/login`; 2026-10-09, on
+   * `/register` as well): the endpaper becomes a page you can turn back, to
+   * the inside cover and a short poem about the book the house keeps. Nothing
+   * on the page advertises it — no dog-ear, no hint (his words: "not intrigued
+   * by that") — but it is a real button, reachable and named for keyboard and
+   * screen-reader users. The leaf's own content stays mounted underneath, so
+   * whatever was typed survives.
    */
   frontMatter?: boolean
+  /**
+   * The front matter's way back, in the door's own words: "Turn back to sign
+   * in" on `/login` (the default), "Turn back to register" on `/register`. It
+   * names the hidden endpaper button while the poem is open and the poem's
+   * own link; the arrow is added by the poem.
+   */
+  backLabel?: string
 }
 
 /**
@@ -97,6 +105,7 @@ export function EndpaperShell({
   ground = 'paper',
   className,
   frontMatter = false,
+  backLabel = 'Turn back to sign in',
 }: EndpaperShellProps) {
   const tileId = useId()
   const playRef = useRef<boolean | null>(null)
@@ -107,6 +116,65 @@ export function EndpaperShell({
   const voiceRef = useRef<HTMLSpanElement>(null)
   const leafRef = useRef<HTMLDivElement>(null)
   const lastPage = useRef(pageKey)
+
+  // ── the leaf's length ───────────────────────────────────────────────────
+  // Pages of this book are not all the same length: the sign-in address step,
+  // its method step, the front matter and each register step are each their
+  // own height, and the leaf (so the book, and the colophon under it) takes
+  // the length of the page that is on it. A turn therefore changes the book's
+  // height, and until 2026-10-09 it did so in one frame, at the instant the
+  // new page was on the DOM — the book and the footer under it jumped 67px
+  // when the front matter opened, 112px from address to methods (measured
+  // on production at 1512×982). Now the leaf eases from the old length to
+  // the new one through the turn itself, on the turn's own curve, and lets
+  // go when the page has landed, so the book never snaps.
+  const leafBoxRef = useRef<HTMLDivElement>(null)
+  /** The leaf's last settled height, kept by the observer below. */
+  const leafHeight = useRef<number | null>(null)
+  const heightRun = useRef<Animation | null>(null)
+
+  /** Lets a height run go, if it is still the live one; the leaf is its natural length again. */
+  const letGo = useCallback((run: Animation) => {
+    if (heightRun.current === run) {
+      heightRun.current = null
+      run.cancel()
+      if (leafBoxRef.current) leafHeight.current = leafBoxRef.current.offsetHeight
+    } else {
+      run.cancel()
+    }
+  }, [])
+
+  /**
+   * Eases the leaf from one length to another on `token`'s curve. A run that
+   * is still live is taken over from where it is, never from the recorded
+   * height. `hold` keeps the old length until that fraction of the run — the
+   * closing turn holds until the leaf is edge-on, while the poem is still
+   * wholly on the page. `settles` ends the run by itself when it finishes;
+   * the front-matter turn is let go by the landing instead.
+   */
+  const easeHeight = useCallback(
+    (from: number | null, to: number, token: MotionToken, options: { hold?: number; settles?: boolean } = {}) => {
+      const leaf = leafBoxRef.current
+      if (!leaf) return
+      const live = heightRun.current ? parseFloat(getComputedStyle(leaf).height) : from
+      if (heightRun.current) letGo(heightRun.current)
+      // jsdom measures nothing (0); a page the same length as the last needs no run
+      if (live === null || !(live > 0) || !(to > 0) || Math.abs(live - to) < 1) return
+      const frames: Keyframe[] = options.hold
+        ? [{ height: `${live}px` }, { height: `${live}px`, offset: options.hold }, { height: `${to}px` }]
+        : [{ height: `${live}px` }, { height: `${to}px` }]
+      const run = animate(leaf, frames, token)
+      if (!run) return
+      heightRun.current = run
+      if (options.settles && run.finished && typeof run.finished.then === 'function') {
+        run.finished.then(
+          () => letGo(run),
+          () => undefined, // cancelled by a later run or a landing: nothing to do
+        )
+      }
+    },
+    [letGo],
+  )
 
   // ── the front matter ────────────────────────────────────────────────────
   // closed → opening → open → closing → closed. While turning, both spreads
@@ -168,6 +236,18 @@ export function EndpaperShell({
     ]
     const runs = pairs.flatMap(([el, frames]) => (el ? [animate(el, frames, LEAF_TURN)] : []))
     turnRuns.current = runs
+    // The leaf's length follows the turn: out to the poem's, back to the page's.
+    // Both pages sit in one grid cell, each at its own height (endpaper.css),
+    // so the cell is the longer of the two while the poem is mounted and the
+    // page's own length is the leaf-inner plus the leaf's padding.
+    const box = leafBoxRef.current
+    const inner = leafRef.current
+    if (box && inner) {
+      const style = getComputedStyle(box)
+      const pageLength = inner.offsetHeight + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+      if (opening) easeHeight(pageLength, box.offsetHeight, LEAF_TURN)
+      else easeHeight(box.offsetHeight, pageLength, LEAF_TURN, { hold: 0.53 })
+    }
     // The runs hold their last frame (fill both) until the settled page has
     // committed; they are cancelled in the layout effect below, after React
     // has written the settled state and before the browser paints it, so no
@@ -179,13 +259,26 @@ export function EndpaperShell({
     }
     const done = window.setTimeout(settle, LEAF_TURN.ms)
     return () => window.clearTimeout(done)
-  }, [phase])
+  }, [phase, easeHeight])
 
   useLayoutEffect(() => {
     if (phase !== 'open' && phase !== 'closed') return
     for (const run of turnRuns.current) run?.cancel()
     turnRuns.current = []
-  }, [phase])
+    if (heightRun.current) letGo(heightRun.current)
+  }, [phase, letGo])
+
+  // The band and reduced motion change the page in place (closed → open in
+  // one commit); the leaf still eases to the new page's length, on the same
+  // curve as the poem dropping over the form.
+  const lastPhase = useRef(phase)
+  useLayoutEffect(() => {
+    const was = lastPhase.current
+    lastPhase.current = phase
+    const inPlace = (was === 'closed' && phase === 'open') || (was === 'open' && phase === 'closed')
+    if (!inPlace || !leafBoxRef.current) return
+    easeHeight(leafHeight.current, leafBoxRef.current.offsetHeight, turn, { settles: true })
+  }, [phase, easeHeight])
   useEffect(
     () => () => {
       for (const run of turnRuns.current) run?.cancel()
@@ -251,6 +344,10 @@ export function EndpaperShell({
   useLayoutEffect(() => {
     if (lastPage.current === pageKey) return
     lastPage.current = pageKey
+    // The new page is already on the DOM, so the leaf is its length; ease to
+    // it from the length the observer recorded before this commit. This holds
+    // under the poem too — the book's edge is seen even when the page is not.
+    if (leafBoxRef.current) easeHeight(leafHeight.current, leafBoxRef.current.offsetHeight, turn, { settles: true })
     // A sign-in step that lands while the front matter is open (or turning)
     // changes under the poem, unseen; it must not animate over it.
     if (phaseNow.current !== 'closed') return
@@ -265,7 +362,24 @@ export function EndpaperShell({
       turn,
       { fill: 'none' },
     )
-  }, [pageKey])
+  }, [pageKey, easeHeight])
+
+  // The leaf's settled length, after every commit and on every resize (a
+  // validation line appearing, the address picker, the window), never while
+  // a height run is live — that would record a frame of the run.
+  useLayoutEffect(() => {
+    if (leafBoxRef.current && !heightRun.current) leafHeight.current = leafBoxRef.current.offsetHeight
+  })
+  useEffect(() => {
+    const leaf = leafBoxRef.current
+    if (!leaf || typeof ResizeObserver !== 'function') return
+    const watch = new ResizeObserver(() => {
+      if (!heightRun.current) leafHeight.current = leaf.offsetHeight
+    })
+    if (typeof watch.observe !== 'function') return // a test double without one
+    watch.observe(leaf)
+    return () => watch.disconnect()
+  }, [])
 
   const endpaperFace = (
     <>
@@ -311,7 +425,7 @@ export function EndpaperShell({
                 type="button"
                 ref={turnRef}
                 className="mdv-ep-turn"
-                aria-label={front ? 'Turn back to sign in' : 'Turn back to the front of the book'}
+                aria-label={front ? backLabel : 'Turn back to the front of the book'}
                 aria-expanded={front}
                 aria-controls={poemId}
                 aria-describedby={voiceId}
@@ -329,7 +443,7 @@ export function EndpaperShell({
               </span>
             )}
           </div>
-          <div className={cn('mdv-ep-leaf', frontMatter && 'mdv-ep-leaf--front-matter')} data-front={front ? '' : undefined}>
+          <div ref={leafBoxRef} className={cn('mdv-ep-leaf', frontMatter && 'mdv-ep-leaf--front-matter')} data-front={front ? '' : undefined}>
             {(phase === 'opening' || front ? 'Front matter' : folio) && (
               <span className="mdv-ep-folio">{phase === 'opening' || front ? 'Front matter' : folio}</span>
             )}
@@ -338,7 +452,7 @@ export function EndpaperShell({
             </div>
             {frontMatter && shown && (
               <div id={poemId} ref={poemRef} className="mdv-ep-poem-page" data-endpaper-chrome="">
-                <FrontMatterPoem id={poemId} ref={poemTitleRef} onBack={() => turnTo(false)} />
+                <FrontMatterPoem id={poemId} ref={poemTitleRef} backLabel={backLabel} onBack={() => turnTo(false)} />
               </div>
             )}
           </div>
