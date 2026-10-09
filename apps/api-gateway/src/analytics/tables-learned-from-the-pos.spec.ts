@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -524,6 +525,130 @@ describe("the route is the owner's or a manager's (founder fork F1)", () => {
     expect(Reflect.getMetadata("path", handler)).toBe(
       "tables/:restaurantId/:tableId",
     );
+  });
+});
+
+/* ── a hide reaches the stored insights at once ────────────────────────── */
+
+describe("a hide or show clears the stored table insights before the write and recomputes them after (ADR 0303, amendment item 7)", () => {
+  const RID = "11111111-1111-4111-8111-111111111111";
+  const T7 = "77777777-7777-4777-8777-777777777777";
+  const build = (
+    opts: {
+      gone?: boolean;
+      write?: () => Promise<unknown>;
+      refresh?: "refreshed" | "dropped" | "stale";
+    } = {},
+  ) => {
+    const calls: string[] = [];
+    const generator = {
+      dropStored: jest.fn(async (rid: string, cats: string[]) => {
+        calls.push(`drop:${rid}:${cats.join(",")}`);
+        return opts.gone ?? true;
+      }),
+      refreshStored: jest.fn(async (rid: string, cats: string[]) => {
+        calls.push(`refresh:${rid}:${cats.join(",")}`);
+        return opts.refresh ?? "refreshed";
+      }),
+    };
+    const tables = {
+      renameOrHideTable: jest.fn(async (_r: string, id: string) => {
+        calls.push("write");
+        return opts.write ? opts.write() : { id, label: "T7" };
+      }),
+    };
+    const controller = new AnalyticsController(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      tables as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      generator as any,
+      {} as any,
+      {} as any,
+    );
+    return { controller, calls, tables };
+  };
+
+  it("hide: drops the house's stored `tables` rows, writes, then recomputes them, in that order", async () => {
+    const { controller, calls, tables } = build();
+    const out = await controller.renameOrHideTable(RID, T7, { hidden: true });
+    expect(out).toEqual({ id: T7, label: "T7" });
+    expect(calls).toEqual([
+      `drop:${RID}:tables`,
+      "write",
+      `refresh:${RID}:tables`,
+    ]);
+    expect(tables.renameOrHideTable).toHaveBeenCalledWith(RID, T7, {
+      hidden: true,
+    });
+  });
+
+  it("show again: the same", async () => {
+    const { controller, calls } = build();
+    await controller.renameOrHideTable(RID, T7, { hidden: false });
+    expect(calls).toEqual([
+      `drop:${RID}:tables`,
+      "write",
+      `refresh:${RID}:tables`,
+    ]);
+  });
+
+  it("a rename alone touches no stored row", async () => {
+    const { controller, calls } = build();
+    await controller.renameOrHideTable(RID, T7, { label: "Patio" });
+    expect(calls).toEqual(["write"]);
+  });
+
+  it("hidden that is not a boolean, or no body, touches no stored row either (the service refuses it)", async () => {
+    const { controller, calls } = build({
+      write: async () => {
+        throw new BadRequestException("hidden is true or false.");
+      },
+    });
+    await expect(
+      controller.renameOrHideTable(RID, T7, { hidden: "yes" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      controller.renameOrHideTable(RID, T7, null as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(calls).toEqual(["write", "write"]);
+  });
+
+  it("when the stored rows cannot be cleared, answers 503 and writes nothing", async () => {
+    const { controller, calls } = build({ gone: false });
+    await expect(
+      controller.renameOrHideTable(RID, T7, { hidden: true }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(calls).toEqual([`drop:${RID}:tables`]);
+  });
+
+  it("when the write is refused, nothing is recomputed", async () => {
+    const { controller, calls } = build({
+      write: async () => {
+        throw new NotFoundException("This house has no such table.");
+      },
+    });
+    await expect(
+      controller.renameOrHideTable(RID, T7, { hidden: true }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(calls).toEqual([`drop:${RID}:tables`, "write"]);
+  });
+
+  it("a recompute that could only drop, or leave, the rows does not undo the hide", async () => {
+    for (const refresh of ["dropped", "stale"] as const) {
+      const { controller, calls } = build({ refresh });
+      const out = await controller.renameOrHideTable(RID, T7, { hidden: true });
+      expect(out).toEqual({ id: T7, label: "T7" });
+      expect(calls).toEqual([
+        `drop:${RID}:tables`,
+        "write",
+        `refresh:${RID}:tables`,
+      ]);
+    }
   });
 });
 

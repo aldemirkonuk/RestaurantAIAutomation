@@ -473,6 +473,7 @@ export class InsightGeneratorService {
     // category's next rebuild — a day for `daily`, a week for `weekly`, never
     // for `manual`. Same for a dismissal or a done returned to the book.
     // Bounded: at most twice the per-category cap.
+    let persisted: boolean | null = null;
     if (opts.persist && !narrowed) {
       const shown = new Set(ranked);
       const firedPerCat = new Map<string, number>();
@@ -488,7 +489,7 @@ export class InsightGeneratorService {
         ...ranked,
         ...firedCapped.filter((i) => !shown.has(i)),
       ].sort((a, b) => b.score - a.score);
-      await this.persist(restaurantId, toStore, opts.categories);
+      persisted = await this.persist(restaurantId, toStore, opts.categories);
     }
 
     return {
@@ -532,6 +533,11 @@ export class InsightGeneratorService {
       // built on it, and the per-table and wine-mover insights that take a
       // label or a name from it (`readWasRefused`; ADR 0292).
       sourcesUnread: bundle.unread,
+      // Whether the stored rows of the requested categories were replaced:
+      // null when no persist was asked (or the read was narrowed), false when
+      // the database refused the delete or the insert (logged), in which case
+      // whatever rows stood may still stand.
+      persisted,
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };
@@ -683,11 +689,88 @@ export class InsightGeneratorService {
     return byRestaurant;
   }
 
+  /**
+   * Drop the stored rows of `categories` for one house, so that the next
+   * read of those categories computes them live. For a write that changes
+   * what the rows may say — a table hidden, or shown again (ADR 0303,
+   * amendment item 7) — where a row stored at the 06:00 run would otherwise
+   * stand, naming the table, until the category's next run. Returns whether
+   * the rows are gone; a caller whose write must not outrun them refuses the
+   * write on false. With no category named, nothing is dropped.
+   */
+  async dropStored(
+    restaurantId: string,
+    categories: InsightCategory[],
+  ): Promise<boolean> {
+    if (!categories.length) return true;
+    const { error } = await this.dbService
+      .getClient()
+      .from("analytics_insights")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .in("category", categories);
+    if (error) {
+      this.logger.warn(
+        `dropStored(${categories.join(",")}) failed, the rows stand: ` +
+          error.message,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Recompute `categories` for one house and replace their stored rows now,
+   * outside the cadence. Never throws: the caller has already made the
+   * change the rows must reflect. "refreshed" means the rows were replaced;
+   * "dropped" means the fresh rows could not be written, so the stale ones
+   * were removed and the next read of those categories computes live;
+   * "stale" means neither worked, which is logged as an error, and the rows
+   * stand until the category's next run.
+   */
+  async refreshStored(
+    restaurantId: string,
+    categories: InsightCategory[],
+  ): Promise<"refreshed" | "dropped" | "stale"> {
+    try {
+      const out = await this.generate(restaurantId, {
+        categories,
+        persist: true,
+      });
+      if (out.persisted) return "refreshed";
+    } catch (err: any) {
+      this.logger.warn(
+        `refreshStored(${categories.join(",")}) compute failed: ${err?.message}`,
+      );
+    }
+    let dropped = false;
+    try {
+      dropped = await this.dropStored(restaurantId, categories);
+    } catch (err: any) {
+      this.logger.warn(
+        `refreshStored(${categories.join(",")}) drop failed: ${err?.message}`,
+      );
+    }
+    if (dropped) return "dropped";
+    this.logger.error(
+      `refreshStored(${categories.join(",")}): the stored rows could be ` +
+        `neither replaced nor dropped, so they stand until the next run`,
+    );
+    return "stale";
+  }
+
+  /**
+   * Replace the stored rows of `categories` (every category when none is
+   * named) with `insights`. Returns whether both the delete and the insert
+   * were accepted: PostgREST answers an error rather than throwing, so each
+   * answer is read, and a refused write is logged and reported, never taken
+   * for a write.
+   */
   private async persist(
     restaurantId: string,
     insights: InsightRecord[],
     categories?: InsightCategory[],
-  ) {
+  ): Promise<boolean> {
     const client = this.dbService.getClient();
     try {
       // Replace the refreshed categories atomically-enough for analytics.
@@ -696,32 +779,37 @@ export class InsightGeneratorService {
         .delete()
         .eq("restaurant_id", restaurantId);
       if (categories?.length) del = del.in("category", categories);
-      await del;
+      const { error: deleteError } = (await del) ?? {};
+      if (deleteError) throw new Error(`delete: ${deleteError.message}`);
       if (insights.length) {
-        await client.from("analytics_insights").insert(
-          insights.map((i) => ({
-            restaurant_id: restaurantId,
-            candidate_key: i.candidateKey,
-            category: i.category,
-            entity_key: i.entityKey ?? null,
-            entity_label: i.entityLabel ?? null,
-            sentence: i.sentence,
-            score: i.score,
-            effect_pct: i.effectPct ?? null,
-            z_score: i.z ?? null,
-            evidence: i.evidence,
-            period_start: i.periodStart ?? null,
-            period_end: i.periodEnd ?? null,
-            // The item's identity, so a stored read resolves its shared
-            // state at every scope (ADR 0191, `20260925120000`).
-            subject: i.subject ?? null,
-            period_key: i.periodKey ?? null,
-            generator_version: INSIGHT_GENERATOR_VERSION,
-          })),
-        );
+        const { error: insertError } =
+          (await client.from("analytics_insights").insert(
+            insights.map((i) => ({
+              restaurant_id: restaurantId,
+              candidate_key: i.candidateKey,
+              category: i.category,
+              entity_key: i.entityKey ?? null,
+              entity_label: i.entityLabel ?? null,
+              sentence: i.sentence,
+              score: i.score,
+              effect_pct: i.effectPct ?? null,
+              z_score: i.z ?? null,
+              evidence: i.evidence,
+              period_start: i.periodStart ?? null,
+              period_end: i.periodEnd ?? null,
+              // The item's identity, so a stored read resolves its shared
+              // state at every scope (ADR 0191, `20260925120000`).
+              subject: i.subject ?? null,
+              period_key: i.periodKey ?? null,
+              generator_version: INSIGHT_GENERATOR_VERSION,
+            })),
+          )) ?? {};
+        if (insertError) throw new Error(`insert: ${insertError.message}`);
       }
+      return true;
     } catch (err: any) {
       this.logger.warn(`persist insights failed: ${err?.message}`);
+      return false;
     }
   }
 

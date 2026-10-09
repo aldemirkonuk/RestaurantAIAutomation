@@ -850,11 +850,270 @@ describe("A table list that could not be read leaves every table insight silent 
   });
 });
 
+/**
+ * A stand-in whose `analytics_insights` is a real store: a select answers the
+ * rows that match its eq/in/gte filters, a delete removes them, an insert
+ * appends. Every other table is the passthrough of `makeClient`. `refuse`
+ * names the writes the database refuses (a Supabase error, not a throw).
+ */
+function makeStoreClient(
+  rowsByTable: Rows,
+  store: any[],
+  refuse: Array<"delete" | "insert"> = [],
+) {
+  const inner = makeClient(rowsByTable);
+  const log: string[] = [];
+  const client = {
+    selects: inner.selects,
+    store,
+    log,
+    from: (table: string) => {
+      if (table !== "analytics_insights") return inner.from(table);
+      const filters: Array<(r: any) => boolean> = [];
+      let op: "select" | "delete" | "insert" = "select";
+      let toInsert: any[] = [];
+      const b: any = {};
+      b.select = () => b;
+      b.order = () => b;
+      b.limit = () => b;
+      b.delete = () => ((op = "delete"), b);
+      b.insert = (rows: any[]) => ((op = "insert"), (toInsert = rows), b);
+      b.eq = (col: string, v: any) => (filters.push((r) => r[col] === v), b);
+      b.in = (col: string, vs: any[]) => (
+        filters.push((r) => vs.includes(r[col])),
+        b
+      );
+      b.gte = (col: string, v: any) => (filters.push((r) => r[col] >= v), b);
+      b.then = (resolve: any, reject: any) => {
+        const hit = (r: any) => filters.every((f) => f(r));
+        let out: any;
+        if (op === "select") out = { data: store.filter(hit), error: null };
+        else if (refuse.includes(op)) {
+          log.push(`${op}:refused`);
+          out = {
+            data: null,
+            error: { code: "57014", message: `${op} refused` },
+          };
+        } else if (op === "delete") {
+          const n = store.length;
+          for (let i = store.length - 1; i >= 0; i--)
+            if (hit(store[i])) store.splice(i, 1);
+          log.push(`delete:${n - store.length}`);
+          out = { data: null, error: null };
+        } else {
+          store.push(...toInsert);
+          log.push(`insert:${toInsert.length}`);
+          out = { data: null, error: null };
+        }
+        return Promise.resolve(out).then(resolve, reject);
+      };
+      return b;
+    },
+  };
+  return client;
+}
+
+function generatorOn(client: any) {
+  return new InsightGeneratorService(
+    { getClient: () => client, supabase: client } as any,
+    {
+      load: async () => ({ dates: new Set(), readable: true, problem: null }),
+    } as any,
+    {
+      readState: async () => ({
+        book: stateBookFrom([]),
+        readable: true,
+        problem: null,
+      }),
+    } as any,
+  );
+}
+
+/** A row the 06:00 run stored, at this build's version. */
+const storedRow = (
+  category: string,
+  candidateKey: string,
+  entity: string,
+  restaurantId = "r1",
+) => ({
+  restaurant_id: restaurantId,
+  candidate_key: candidateKey,
+  category,
+  entity_key: entity,
+  entity_label: entity,
+  sentence: `Table ${entity} ranks #1 of 5 by average check`,
+  score: 1,
+  evidence: { entity },
+  subject: null,
+  period_key: null,
+  generator_version: INSIGHT_GENERATOR_VERSION,
+});
+
+/** Four shown tables and one hidden since HIDDEN_AT, the hidden one richest. */
+const houseWithPatioHidden = () => ({
+  restaurant_tables: [
+    table("t1", "1"),
+    table("t2", "2"),
+    table("t3", "3"),
+    table("t4", "4"),
+    table("tp", "Patio", { hidden_at: HIDDEN_AT }),
+  ],
+  pos_checks: [
+    ...around("tp", 400, 40),
+    ...around("t1", 260, 40),
+    ...around("t2", 180, 40),
+    ...around("t3", 180, 40),
+    ...around("t4", 180, 40),
+  ],
+});
+
 describe("The stored insight cache", () => {
   // [2026-10-08, merge of be9a16ccf (#652): was "version 8 or later"; #652
   // landed 10 on main first, so this change is 11.] [2026-10-08, merge of
   // 8b22448dc: #626 (ADR 0297) landed 11 on main first, so this change is 12.]
   it("is at version 12 or later, so a row that ranked a hidden table is recomputed", () => {
     expect(INSIGHT_GENERATOR_VERSION).toBeGreaterThanOrEqual(12);
+  });
+
+  // ADR 0303, amendment item 7 (2026-10-08). A row the 06:00 run stored at
+  // THIS version can still name a table hidden since, and `readStored` would
+  // serve it until the category's next run. The PATCH that hides a table
+  // drops the house's `tables` rows before its write and recomputes them
+  // after; these cases pin the two generator calls it makes.
+  it("refreshStored replaces the `tables` rows: a stored row naming a table hidden since is gone, and the next stored read ranks only shown tables", async () => {
+    const store = [
+      storedRow("tables", TABLE_RANK, "Patio"),
+      storedRow("consumption", "wine.velocity.spike", "Barolo"),
+      storedRow("tables", TABLE_RANK, "9", "r2"),
+    ];
+    const client = makeStoreClient(houseWithPatioHidden(), store);
+    const generator = generatorOn(client);
+    expect(await generator.refreshStored("r1", ["tables"])).toBe("refreshed");
+    const read = await generator.readStored("r1", { categories: ["tables"] });
+    expect(read.read).toBeGreaterThan(0);
+    expect(read.rows.map((r) => r.category)).toEqual(
+      read.rows.map(() => "tables"),
+    );
+    expect(read.rows.filter((r) => /Patio/.test(r.sentence))).toEqual([]);
+    expect(
+      read.rows
+        .filter((r) => r.candidate_key === TABLE_RANK)
+        .map((r) => r.sentence),
+    ).toEqual([
+      expect.stringMatching(/^Table 1 ranks #1 of 4 by average check/),
+    ]);
+    // Only the house's `tables` rows were touched: the other category and the
+    // other house keep theirs.
+    expect(store.filter((r) => r.restaurant_id === "r2")).toHaveLength(1);
+    expect(store.filter((r) => r.category === "consumption")).toHaveLength(1);
+    expect(client.log[0]).toMatch(/^delete:1$/);
+  });
+
+  it("a show again refreshes the same way: the table shown is ranked by the next stored read", async () => {
+    const house = houseWithPatioHidden();
+    house.restaurant_tables[4] = table("tp", "Patio");
+    const store = [storedRow("tables", TABLE_RANK, "1")];
+    const generator = generatorOn(makeStoreClient(house, store));
+    expect(await generator.refreshStored("r1", ["tables"])).toBe("refreshed");
+    const read = await generator.readStored("r1", { categories: ["tables"] });
+    expect(
+      read.rows
+        .filter((r) => r.candidate_key === TABLE_RANK)
+        .map((r) => r.sentence),
+    ).toEqual([
+      expect.stringMatching(/^Table Patio ranks #1 of 5 by average check/),
+    ]);
+  });
+
+  it("generate({persist: true}) reports whether the rows were written: a refused insert is false, not swallowed", async () => {
+    const quiet = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+    try {
+      const ok = generatorOn(makeStoreClient(houseWithPatioHidden(), []));
+      expect(
+        (await ok.generate("r1", { categories: ["tables"], persist: true }))
+          .persisted,
+      ).toBe(true);
+      const refused = generatorOn(
+        makeStoreClient(houseWithPatioHidden(), [], ["insert"]),
+      );
+      expect(
+        (
+          await refused.generate("r1", {
+            categories: ["tables"],
+            persist: true,
+          })
+        ).persisted,
+      ).toBe(false);
+      expect(
+        (await ok.generate("r1", { candidateKeys: KEYS, persist: true }))
+          .persisted,
+      ).toBeNull();
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+
+  it("when the fresh rows cannot be written, the stale ones are dropped, so the next read computes live", async () => {
+    const quiet = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+    try {
+      const store = [
+        storedRow("tables", TABLE_RANK, "Patio"),
+        storedRow("consumption", "wine.velocity.spike", "Barolo"),
+      ];
+      const generator = generatorOn(
+        makeStoreClient(houseWithPatioHidden(), store, ["insert"]),
+      );
+      expect(await generator.refreshStored("r1", ["tables"])).toBe("dropped");
+      expect(store.map((r) => r.category)).toEqual(["consumption"]);
+      expect(
+        (await generator.readStored("r1", { categories: ["tables"] })).read,
+      ).toBe(0);
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+
+  it("when they can be neither replaced nor dropped, says so (stale) and leaves them, logged", async () => {
+    const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+    const error = jest.spyOn(Logger.prototype, "error").mockImplementation();
+    try {
+      const store = [storedRow("tables", TABLE_RANK, "Patio")];
+      const generator = generatorOn(
+        makeStoreClient(houseWithPatioHidden(), store, ["delete"]),
+      );
+      expect(await generator.refreshStored("r1", ["tables"])).toBe("stale");
+      expect(store).toHaveLength(1);
+      expect(error).toHaveBeenCalledWith(
+        expect.stringMatching(/neither replaced nor dropped/),
+      );
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+
+  it("dropStored removes only the named categories of the one house, and says whether they are gone", async () => {
+    const quiet = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+    try {
+      const store = [
+        storedRow("tables", TABLE_RANK, "Patio"),
+        storedRow("tables", HOT, "1"),
+        storedRow("consumption", "wine.velocity.spike", "Barolo"),
+        storedRow("tables", TABLE_RANK, "9", "r2"),
+      ];
+      const generator = generatorOn(makeStoreClient({}, store));
+      expect(await generator.dropStored("r1", [])).toBe(true);
+      expect(store).toHaveLength(4);
+      expect(await generator.dropStored("r1", ["tables"])).toBe(true);
+      expect(store.map((r) => `${r.restaurant_id}/${r.category}`)).toEqual([
+        "r1/consumption",
+        "r2/tables",
+      ]);
+      const refused = generatorOn(makeStoreClient({}, store, ["delete"]));
+      expect(await refused.dropStored("r1", ["consumption"])).toBe(false);
+      expect(store).toHaveLength(2);
+    } finally {
+      quiet.mockRestore();
+    }
   });
 });
