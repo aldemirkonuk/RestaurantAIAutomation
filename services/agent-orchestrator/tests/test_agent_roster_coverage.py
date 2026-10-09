@@ -109,7 +109,6 @@ class TestBusDrivenAgentsAreStartable:
 
     COMMUNICATION_AGENTS = [
         "email_intel_agent",
-        "email_parsing_agent",
         "provider_conversation_agent",
         "provider_communication_agent",
     ]

@@ -845,8 +845,13 @@ class MessageBus:
                 try:
                     if registration["stopping"]:
                         raise ConsumerUnavailable("Subscription is stopping")
-                    # Check idempotency (async Redis-backed)
+                    # Check idempotency (async Redis-backed), per queue: one
+                    # event fans out to a queue per subscribing agent, and the
+                    # first queue to finish must not mark it seen for the rest
+                    # (sim F-456).
                     idempotency_key = message.headers.get("x-idempotency-key", "")
+                    if idempotency_key:
+                        idempotency_key = f"{queue_name}:{idempotency_key}"
                     if idempotency_key and await self._is_duplicate_async(
                         idempotency_key
                     ):

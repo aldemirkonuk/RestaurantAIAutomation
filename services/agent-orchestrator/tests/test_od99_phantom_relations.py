@@ -283,7 +283,6 @@ class TestNoPhantomRelationNamesRemain:
         "services/restaurant_dataset_service.py",
         "services/wine_matcher.py",
         "agents/reporting_agent.py",
-        "agents/email_parsing_agent.py",
         "agents/provider_conversation_agent.py",
         "core/database.py",
         "demo/weekly_report_scheduler.py",
@@ -334,21 +333,6 @@ class TestPhantomRpcCallsAreGone:
     `_find_provider_by_email` returned None for every inbound email ever
     parsed, and why `_check_relationship_health` has never emitted an alert.
     """
-
-    def test_find_provider_by_email_no_longer_calls_the_rpc(self):
-        source = _source_of("agents/email_parsing_agent.py")
-        assert "find_provider_by_email" not in _rpc_names(source)
-
-    def test_provider_lookup_reaches_the_contact_email_query(self):
-        """
-        The repair is not "the RPC is gone" but "the search that was
-        unreachable now runs". This drives the method and asserts it reaches
-        the `providers` table, which it never did before.
-        """
-        source = _source_of("agents/email_parsing_agent.py")
-        # Both searches the old code intended are present and independent.
-        assert '.ilike("contact_email"' in source
-        assert '"primary_contact->>email"' in source
 
     def test_relationship_health_no_longer_calls_the_rpc(self):
         source = _source_of("agents/provider_conversation_agent.py")

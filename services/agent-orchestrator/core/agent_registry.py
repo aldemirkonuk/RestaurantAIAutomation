@@ -109,7 +109,7 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
     },
     # Communication agents (Phase 24 inbound email, Phase 32 outbound drafts).
     #
-    # These four are CORE for one reason: ON_DEMAND does not start anything.
+    # These are CORE for one reason: ON_DEMAND does not start anything.
     # start_all_agents() walks get_startup_order(), which filters to CORE, and
     # nothing in the repo calls registry.get_or_create() or start_agent() — so a
     # bus-driven agent left at the ON_DEMAND default is proxied, never
@@ -128,17 +128,13 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "dependencies": ["procurement_agent", "notification_agent", "calendar_agent"],
         "description": "Provider communication gateway — sessions, intelligence extraction, approvals",
     },
-    "email_parsing_agent": {
-        "tier": AgentTier.CORE,
-        "dependencies": ["procurement_agent"],
-        "description": "Inbound vendor email threading and conversation storage",
-    },
+    # email_parsing_agent was removed (sim F-454, 2026-10-09). It never parsed a
+    # mail, and the gateway's RabbitMQ bridge stores each inbound reply for the
+    # house the event names and stages the one-tap reply. Reviving it would have
+    # made a second writer of every inbound row, for a house guessed from config.
     "email_intel_agent": {
-        # Ordered after email_parsing_agent because it re-publishes OPERATIONAL
-        # mail onto email.inbound.received: a topic exchange drops messages with
-        # no bound queue, so the consumer has to be up first.
         "tier": AgentTier.CORE,
-        "dependencies": ["email_parsing_agent", "notification_agent"],
+        "dependencies": ["notification_agent"],
         "description": "Inbox triage — OPERATIONAL/PROMO/NOISE classification and promo extraction",
     },
     "provider_communication_agent": {

@@ -48,7 +48,6 @@ from agents.drift_agent import DriftAgent
 
 # Phase 24 Agents — inbound email intelligence
 from agents.email_intel_agent import EmailIntelAgent
-from agents.email_parsing_agent import EmailParsingAgent
 
 # Phase 32 Agents
 from agents.provider_communication_agent import ProviderCommunicationAgent
@@ -206,8 +205,13 @@ class AgentOrchestrator:
             # took two arguments where BaseAgent passes one. Three defects, each of
             # which alone would have made the pipeline dead, and the missing
             # registration hid the other two.
+            #
+            # EmailParsingAgent was removed (sim F-454, 2026-10-09): it never
+            # parsed a mail (self.db was never set), and the gateway's RabbitMQ
+            # bridge already stores each inbound reply for the right house and
+            # hands it to the one-tap responder (rabbitmq-bridge.service.ts,
+            # handleInboundEmail).
             "email_intel_agent": EmailIntelAgent,
-            "email_parsing_agent": EmailParsingAgent,
             # Phase 32 agents
             "provider_communication_agent": ProviderCommunicationAgent,
             # ADR 0039 Track A3 — scheduled purchasing.

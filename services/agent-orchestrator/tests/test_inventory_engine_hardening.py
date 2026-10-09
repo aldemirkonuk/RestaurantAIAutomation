@@ -58,7 +58,7 @@ class TestHARD01Idempotency:
     async def test_duplicate_message_skipped(self, agent, mock_db):
         """Send same message_id twice; database.update_inventory_stock called once."""
         # First call: not processed; second call: already processed
-        mock_db.supabase.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
+        mock_db.supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.side_effect = [
             MagicMock(data=[]),  # first call — proceed
             MagicMock(data=[{"message_id": "abc"}]),  # second call — duplicate
         ]
@@ -95,7 +95,7 @@ class TestHARD01Idempotency:
     @pytest.mark.asyncio
     async def test_idempotency_check_fail_open(self, agent, mock_db):
         """If _check_idempotency raises, processing continues (fail open)."""
-        mock_db.supabase.table.return_value.select.return_value.eq.return_value.execute.side_effect = Exception(
+        mock_db.supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.side_effect = Exception(
             "DB connection lost"
         )
 
@@ -153,7 +153,7 @@ class TestHARD01Idempotency:
     @pytest.mark.asyncio
     async def test_delivery_idempotency(self, agent, mock_db):
         """Duplicate order.delivered message: update_inventory_stock called once."""
-        mock_db.supabase.table.return_value.select.return_value.eq.return_value.execute.side_effect = [
+        mock_db.supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.side_effect = [
             MagicMock(data=[]),
             MagicMock(data=[{"message_id": "del-dup"}]),
         ]

@@ -136,7 +136,6 @@ class TestCoreRosterStarts:
             "provider_communication_agent",
             "provider_conversation_agent",
             "email_intel_agent",
-            "email_parsing_agent",
         ):
             assert name in orch.agents, f"{name} did not start"
 

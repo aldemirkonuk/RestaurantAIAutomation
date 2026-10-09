@@ -285,7 +285,9 @@ class ProcurementAgent(BaseAgent):
             ("stock.events", "stock.threshold.breached"),
             ("procurement.events", "procurement.manual_order_request"),
             ("procurement.events", "procurement.intent_response"),
-            ("procurement.events", "procurement.vendor_response"),
+            # procurement.vendor_response is not heard (sim F-455): it turned a
+            # vendor's mail into an order status by keyword, with no person in
+            # the loop. The gateway stages a one-tap reply for each vendor mail.
             # Voice call events
             ("voice.events", "voice.call_completed"),
             ("voice.events", "voice.transcription_ready"),
@@ -300,8 +302,6 @@ class ProcurementAgent(BaseAgent):
             await self._handle_manual_order(message)
         elif routing_key == "procurement.intent_response":
             await self._handle_intent_response(message)
-        elif routing_key == "procurement.vendor_response":
-            await self._handle_vendor_email_response(message)
         elif routing_key == "voice.call_completed":
             await self._process_voice_call_completed(message)
         elif routing_key == "voice.transcription_ready":
@@ -693,13 +693,19 @@ class ProcurementAgent(BaseAgent):
                 return
 
             if response_type in ("price_acceptance", "acceptance", "confirmed"):
-                await self.database.supabase.table("procurement_orders").update(
-                    {
-                        "status": "CONFIRMED",
-                        "negotiated_price_per_bottle": parsed_price,
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }
-                ).eq("id", order_id).execute()
+                # negotiated_price, not negotiated_price_per_bottle: the latter
+                # is not a procurement_orders column, so this write failed
+                # (sim F-455). The sync client's execute() is not awaitable;
+                # awaiting it raised after the write and before the notice.
+                confirmed = {
+                    "status": "CONFIRMED",
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+                if parsed_price is not None:
+                    confirmed["negotiated_price"] = parsed_price
+                self.database.supabase.table("procurement_orders").update(confirmed).eq(
+                    "id", order_id
+                ).execute()
 
                 await self.publish(
                     exchange_name="procurement.events",
@@ -746,13 +752,15 @@ class ProcurementAgent(BaseAgent):
                 self.logger.info(f"Order {order_id} confirmed at ${parsed_price}")
 
             elif response_type == "counter_offer":
-                await self.database.supabase.table("procurement_orders").update(
-                    {
-                        "status": "COUNTER_OFFERED",
-                        "negotiated_price_per_bottle": parsed_price,
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }
-                ).eq("id", order_id).execute()
+                countered = {
+                    "status": "COUNTER_OFFERED",
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+                if parsed_price is not None:
+                    countered["negotiated_price"] = parsed_price
+                self.database.supabase.table("procurement_orders").update(countered).eq(
+                    "id", order_id
+                ).execute()
 
                 await self.publish(
                     exchange_name="notification.events",
@@ -799,7 +807,7 @@ class ProcurementAgent(BaseAgent):
                 # responder before this runs. Not copied onto the order: two
                 # accounts of one event can disagree, and the row is the one a
                 # person reads in the responses sheet.
-                await self.database.supabase.table("procurement_orders").update(
+                self.database.supabase.table("procurement_orders").update(
                     {
                         "status": "NEGOTIATING",
                         "updated_at": datetime.utcnow().isoformat(),
@@ -853,7 +861,7 @@ class ProcurementAgent(BaseAgent):
                 # (named, not fixed here — ADR 0207 §5, the procurement-agent
                 # owner's follow-up).
                 _cancel_at_iso = datetime.utcnow().isoformat()
-                await self.database.supabase.table("procurement_orders").update(
+                self.database.supabase.table("procurement_orders").update(
                     {
                         "status": "CANCELLED",
                         "rejection_reason": "Out of stock — provider email confirmation",
@@ -974,74 +982,6 @@ class ProcurementAgent(BaseAgent):
         except Exception as e:
             self.logger.warning(f"_find_alternative_providers failed: {e}")
             return []
-
-    async def _handle_vendor_email_response(self, message: Dict[str, Any]) -> None:
-        """Handle a vendor email response routed by EmailParsingAgent.
-
-        Maps the email-level fields (subject, body, source) to the intent_response
-        format the state machine already handles, using keyword-based intent detection.
-        """
-        payload = message.get("payload", message)
-        order_id = payload.get("order_id")
-        body = payload.get("body", "")
-        subject = payload.get("subject", "")
-
-        if not order_id:
-            self.logger.warning("Vendor email response missing order_id — ignoring")
-            return
-
-        text = f"{subject} {body}".lower()
-
-        # Map email text to response_type
-        response_type = "unknown"
-        parsed_price = None
-        if any(
-            w in text
-            for w in [
-                "confirm",
-                "approved",
-                "agreed",
-                "accept",
-                "deal",
-                "order confirmed",
-            ]
-        ):
-            response_type = "confirmed"
-        elif any(w in text for w in ["cancel", "reject", "unable", "sorry", "cannot"]):
-            response_type = "rejection"
-        elif any(w in text for w in ["unavailable", "out of stock", "sold out"]):
-            response_type = "unavailable"
-        elif any(
-            w in text for w in ["price", "cost", "quote", "offer", "$", "per bottle"]
-        ):
-            response_type = "price_update"
-
-            # Try to extract a price
-            import re
-
-            price_match = re.search(r"\$\s*(\d+(?:\.\d{1,2})?)", text)
-            if price_match:
-                try:
-                    parsed_price = float(price_match.group(1))
-                except ValueError:
-                    pass
-
-        self.logger.info(
-            f"Vendor email for order {order_id}: detected response_type={response_type}"
-        )
-
-        # Delegate to the existing intent_response handler
-        await self._handle_intent_response(
-            {
-                "payload": {
-                    "order_id": order_id,
-                    "response_type": response_type,
-                    "parsed_price": parsed_price,
-                    "provider_id": payload.get("provider_id"),
-                    "restaurant_id": payload.get("restaurant_id"),
-                }
-            }
-        )
 
     async def _get_price_history(
         self, inventory_id: str, provider_id: str, limit: int = 10
@@ -1396,7 +1336,7 @@ class ProcurementAgent(BaseAgent):
             await self.database.procurement.update(
                 order_id,
                 {
-                    "negotiated_price_per_bottle": price,
+                    "negotiated_price": price,
                     "status": "PENDING_APPROVAL",
                     "state_machine_state": "NEGOTIATION_REVIEW",
                 },
@@ -1410,7 +1350,7 @@ class ProcurementAgent(BaseAgent):
             await self.database.procurement.update(
                 order_id,
                 {
-                    "negotiated_price_per_bottle": price,
+                    "negotiated_price": price,
                     "status": "PENDING_APPROVAL",
                     "state_machine_state": "NEGOTIATION_REVIEW",
                 },
