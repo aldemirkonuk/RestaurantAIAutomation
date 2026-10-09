@@ -127,8 +127,15 @@ export function useHouseCounter(houseKey: string | null, enabled = true): HouseC
 
   useEffect(() => {
     if (!enabled) return;
-    const id = setInterval(() => void read(), COUNTER_POLL_MS);
+    // A hidden tab skips its tick and reads once when it is shown again, so
+    // five open tabs cost one tab's reads, not five (F-450).
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'hidden') void read();
+    }, COUNTER_POLL_MS);
     const onFocus = () => void read();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void read();
+    };
     const onOnline = () => {
       setOffline(false);
       void read();
@@ -137,8 +144,10 @@ export function useHouseCounter(houseKey: string | null, enabled = true): HouseC
     window.addEventListener('focus', onFocus);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);

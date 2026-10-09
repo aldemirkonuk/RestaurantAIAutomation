@@ -7,7 +7,7 @@
  * so both are pinned by a request assertion rather than by a rendered string.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 const auth = vi.hoisted(() => ({
@@ -36,7 +36,13 @@ vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
 
-import { BOOK_PAGE, useNotificationsNextData } from './useNotificationsNextData';
+import {
+  BOOK_PAGE,
+  POLL_MS,
+  mergeTopPage,
+  useNotificationsNextData,
+} from './useNotificationsNextData';
+import type { Notification } from '@/services/api/notifications';
 
 /** One page of the gateway's `{ data, total, page, limit, hasMore }` envelope. */
 function bookPage(page: number, total: number, restaurantId: string) {
@@ -291,5 +297,139 @@ describe('useNotificationsNextData — the register does the narrowing', () => {
       status: null,
       day: null,
     }));
+  });
+});
+
+/* ── F-451: the poll reads the top page only, one read at a time ─────────── */
+
+function pageCalls(): number[] {
+  return api.get.mock.calls
+    .filter((c) => c[0] === '/notifications')
+    .map((c) => Number((c[1] as { params?: Record<string, unknown> }).params?.page));
+}
+
+function row(id: string, createdAt: string) {
+  return { id, createdAt } as unknown as Notification;
+}
+
+describe('the poll and the live nudges', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('re-reads page 1 only on a tick, never every page already read back', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    serve(300);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+    act(() => result.current.readFurtherBack());
+    await waitFor(() => expect(result.current.book.pages).toBe(2));
+    act(() => result.current.readFurtherBack());
+    await waitFor(() => expect(result.current.book.pages).toBe(3));
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+
+    api.get.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+    });
+    await waitFor(() => expect(pageCalls()).toEqual([1]));
+    expect(result.current.book.pages).toBe(3);
+  });
+
+  it('a nudge during a read waits for it, and many nudges make one more read', async () => {
+    serve(300);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+    act(() => result.current.readFurtherBack());
+    await waitFor(() => expect(result.current.book.pages).toBe(2));
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    api.get.mockClear();
+    api.get.mockImplementation(async (_url: string, cfg?: { params?: Record<string, unknown> }) => {
+      await gate;
+      return { data: bookPage(Number(cfg?.params?.page ?? 1), 300, 'rest-A') };
+    });
+    act(() => {
+      window.dispatchEvent(new Event('notification_sent'));
+      window.dispatchEvent(new Event('ws:dashboard-invalidate'));
+      window.dispatchEvent(new Event('notification_sent'));
+    });
+    expect(pageCalls()).toEqual([1]);
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(pageCalls()).toEqual([1, 1]));
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+    expect(pageCalls()).toEqual([1, 1]);
+  });
+
+  it('an older read that lands late never publishes over a newer one', async () => {
+    serve(10);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+
+    let releaseOld: () => void = () => {};
+    const oldGate = new Promise<void>((r) => (releaseOld = r));
+    let n = 0;
+    api.get.mockImplementation(async (_url: string, cfg?: { params?: Record<string, unknown> }) => {
+      n += 1;
+      if (n === 1) {
+        await oldGate;
+        return { data: bookPage(1, 3, 'rest-A') };
+      }
+      return { data: bookPage(Number(cfg?.params?.page ?? 1), 7, 'rest-A') };
+    });
+    act(() => result.current.refresh());
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.book.total).toBe(7));
+    await act(async () => {
+      releaseOld();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.book.total).toBe(7);
+  });
+
+  it('skips its tick while the tab is hidden and reads when it is shown again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let state: DocumentVisibilityState = 'visible';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => state);
+    serve(10);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+    api.get.mockClear();
+    state = 'hidden';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS * 3);
+    });
+    expect(pageCalls()).toEqual([]);
+    state = 'visible';
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(pageCalls()).toEqual([1]));
+  });
+});
+
+describe('mergeTopPage', () => {
+  const page = Array.from({ length: BOOK_PAGE }, (_, i) =>
+    row(`t-${i}`, new Date(Date.UTC(2026, 0, 2, 0, 0, BOOK_PAGE - i)).toISOString()),
+  );
+
+  it('keeps held rows older than the fresh page and drops ones gone from inside it', () => {
+    const pushedDown = row('old-1', '2026-01-01T12:00:00.000Z');
+    const gone = row('gone', page[50].createdAt);
+    const merged = mergeTopPage(page, [page[0], gone, pushedDown]);
+    expect(merged.map((r) => r.id)).toEqual([...page.map((r) => r.id), 'old-1']);
+  });
+
+  it('a short first page is the whole book', () => {
+    const merged = mergeTopPage(page.slice(0, 3), [row('old-1', '2020-01-01T00:00:00.000Z')]);
+    expect(merged.map((r) => r.id)).toEqual(['t-0', 't-1', 't-2']);
   });
 });

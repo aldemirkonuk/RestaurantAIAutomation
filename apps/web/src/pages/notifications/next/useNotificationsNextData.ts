@@ -88,6 +88,23 @@ interface BookEnvelope {
   hasMore?: unknown;
 }
 
+/**
+ * A poll's fresh first page laid over the rows already on screen (F-451).
+ *
+ * The gateway orders the book newest first (`notifications.service.ts`
+ * `.order("created_at", { ascending: false })`), so a held row that is not in
+ * the fresh page is kept only when it is older than that page's oldest row: it
+ * was pushed down by newer lines. A missing row inside the page's span was
+ * ruled off, archived or deleted elsewhere, and goes. A short first page is
+ * the whole book.
+ */
+export function mergeTopPage(top: Notification[], held: Notification[]): Notification[] {
+  if (top.length < BOOK_PAGE) return top;
+  const seen = new Set(top.map((r) => r.id));
+  const edge = top[top.length - 1].createdAt;
+  return [...top, ...held.filter((r) => !seen.has(r.id) && r.createdAt <= edge)];
+}
+
 /* ──────────────────────────────────────────────── snooze (per browser) ─── */
 
 /**
@@ -220,6 +237,12 @@ export function useNotificationsNextData(): NotificationsNextData {
 
   const pagesRef = useRef(1);
   const alive = useRef(true);
+  /** Only the newest read may publish; an older one that lands late is dropped. */
+  const generation = useRef(0);
+  const inFlight = useRef(false);
+  /** A poll or nudge that arrived mid-read: one more top-page read after it. */
+  const queued = useRef(false);
+  const nudgeRef = useRef<() => void>(() => {});
   const tenant = useRef<string | null>(activeRestaurantId);
   /** Mirror of the rendered rows, so an optimistic write can be rolled back. */
   const rowsRef = useRef<Notification[] | null>(null);
@@ -262,79 +285,120 @@ export function useNotificationsNextData(): NotificationsNextData {
     // `window_` is derived from `filters.day`, which is the real dependency.
   }, [filters.type, filters.status, filters.day]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const read = useCallback(async () => {
+  /**
+   * `all` re-reads every page asked for (mount, filters, further back, after a
+   * write). `top` is the poll and the live nudges: page 1 only, merged over
+   * the rows already held, so an owner twenty pages back costs one request a
+   * tick, not twenty (F-451).
+   */
+  const read = useCallback(async (scope: 'all' | 'top' = 'all') => {
     if (!userId || !activeRestaurantId) return; // identity still resolving — stay loading
     const forTenant = activeRestaurantId;
     const wanted = pagesRef.current;
+    const topOnly = scope === 'top' && wanted > 1 && rowsRef.current !== null;
+    const gen = ++generation.current;
+    inFlight.current = true;
     setRefreshing(true);
-
-    const [bookRes] = await Promise.allSettled([
-      apiClient.get('/notifications', {
-        params: {
-          userId,
-          restaurantId: forTenant,
-          limit: BOOK_PAGE,
-          page: 1,
-          ...filterParams,
-        },
-      }),
-    ]);
-
-    // Older pages are asked for one at a time and appended: the gateway caps
-    // `limit` at 100 (`notifications.dto.ts` @Max(100)), so "further back" is
-    // more requests, never a bigger one.
-    //
-    // `deepest` is the envelope of the LAST page actually read, and it — not
-    // page 1's — decides `hasMore`. The gateway computes `hasMore` per queried
-    // page as `count > offset + limit` (`notifications.service.ts:821`), so
-    // page 1's answer is the constant `total > 100`: it can never clear, and
-    // taking it verbatim left "Read further back" offered forever once a
-    // restaurant passed a hundred lines, even after every row was on screen.
-    const older: Notification[] = [];
-    let olderFailure: FailureVM | null = null;
-    let deepest: BookEnvelope | null = null;
-    for (let p = 2; p <= wanted; p++) {
-      try {
-        const res = await apiClient.get('/notifications', {
+    try {
+      const [bookRes] = await Promise.allSettled([
+        apiClient.get('/notifications', {
           params: {
             userId,
             restaurantId: forTenant,
             limit: BOOK_PAGE,
-            page: p,
+            page: 1,
             ...filterParams,
           },
+        }),
+      ]);
+
+      // Older pages are asked for one at a time and appended: the gateway caps
+      // `limit` at 100 (`notifications.dto.ts` @Max(100)), so "further back" is
+      // more requests, never a bigger one.
+      //
+      // `deepest` is the envelope of the LAST page actually read, and it — not
+      // page 1's — decides `hasMore`. The gateway computes `hasMore` per queried
+      // page as `count > offset + limit` (`notifications.service.ts:821`), so
+      // page 1's answer is the constant `total > 100`: it can never clear, and
+      // taking it verbatim left "Read further back" offered forever once a
+      // restaurant passed a hundred lines, even after every row was on screen.
+      const older: Notification[] = [];
+      let olderFailure: FailureVM | null = null;
+      let deepest: BookEnvelope | null = null;
+      for (let p = 2; p <= (topOnly ? 1 : wanted); p++) {
+        try {
+          const res = await apiClient.get('/notifications', {
+            params: {
+              userId,
+              restaurantId: forTenant,
+              limit: BOOK_PAGE,
+              page: p,
+              ...filterParams,
+            },
+          });
+          older.push(...rowsOf(res.data));
+          deepest = res.data as BookEnvelope | null;
+        } catch (err) {
+          olderFailure = failureOf(err);
+          break;
+        }
+      }
+      if (!alive.current || tenant.current !== forTenant || gen !== generation.current) return;
+
+      if (bookRes.status === 'rejected') {
+        const failure = failureOf(bookRes.reason);
+        rowsRef.current = null;
+        setBook((b) => ({ ...b, register: { state: 'unreadable', failure } }));
+      } else if (topOnly) {
+        const payload = bookRes.value.data as BookEnvelope | null;
+        const rows = mergeTopPage(rowsOf(payload), rowsRef.current ?? []);
+        const total = num(payload?.total);
+        publish({
+          register: { state: 'ready', rows },
+          total,
+          hasMore: total === null ? null : total > rows.length,
+          pages: wanted,
         });
-        older.push(...rowsOf(res.data));
-        deepest = res.data as BookEnvelope | null;
-      } catch (err) {
-        olderFailure = failureOf(err);
-        break;
+      } else {
+        const payload = bookRes.value.data as BookEnvelope | null;
+        // The deepest page read is the one that knows whether anything is left.
+        const edge = deepest ?? payload;
+        publish({
+          register: { state: 'ready', rows: [...rowsOf(payload), ...older] },
+          total: num(edge?.total) ?? num(payload?.total),
+          hasMore: typeof edge?.hasMore === 'boolean' ? edge.hasMore : null,
+          pages: wanted,
+        });
+      }
+      // A top-page read did not touch the older pages, so it leaves their note.
+      if (!topOnly) {
+        setFailureNote(
+          olderFailure ? `Pages further back could not be read (${olderFailure.message}).` : null,
+        );
+      }
+
+      setLastReadAt(new Date());
+      setRefreshing(false);
+    } finally {
+      if (gen === generation.current) {
+        inFlight.current = false;
+        if (queued.current && alive.current) {
+          queued.current = false;
+          nudgeRef.current();
+        }
       }
     }
-    if (!alive.current || tenant.current !== forTenant) return;
-
-    if (bookRes.status === 'rejected') {
-      const failure = failureOf(bookRes.reason);
-      rowsRef.current = null;
-      setBook((b) => ({ ...b, register: { state: 'unreadable', failure } }));
-    } else {
-      const payload = bookRes.value.data as BookEnvelope | null;
-      // The deepest page read is the one that knows whether anything is left.
-      const edge = deepest ?? payload;
-      publish({
-        register: { state: 'ready', rows: [...rowsOf(payload), ...older] },
-        total: num(edge?.total) ?? num(payload?.total),
-        hasMore: typeof edge?.hasMore === 'boolean' ? edge.hasMore : null,
-        pages: wanted,
-      });
-    }
-    setFailureNote(
-      olderFailure ? `Pages further back could not be read (${olderFailure.message}).` : null,
-    );
-
-    setLastReadAt(new Date());
-    setRefreshing(false);
   }, [userId, activeRestaurantId, publish, filterParams]);
+
+  /** Poll ticks and live nudges coalesce: never a second read on top of one. */
+  const nudge = useCallback(() => {
+    if (inFlight.current) {
+      queued.current = true;
+      return;
+    }
+    void read('top');
+  }, [read]);
+  nudgeRef.current = nudge;
 
   useEffect(() => {
     alive.current = true;
@@ -345,18 +409,26 @@ export function useNotificationsNextData(): NotificationsNextData {
   }, [read]);
 
   // The live contract: poll while mounted so stacked digests update in place,
-  // plus the same realtime nudges the legacy page listened for.
+  // plus the same realtime nudges the legacy page listened for. A hidden tab
+  // skips its tick and reads once when it is shown again (F-450).
   useEffect(() => {
-    const id = setInterval(() => void read(), POLL_MS);
-    const onLive = () => void read();
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'hidden') nudge();
+    }, POLL_MS);
+    const onLive = () => nudge();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') nudge();
+    };
     window.addEventListener('notification_sent', onLive);
     window.addEventListener('ws:dashboard-invalidate', onLive);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(id);
       window.removeEventListener('notification_sent', onLive);
       window.removeEventListener('ws:dashboard-invalidate', onLive);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [read]);
+  }, [nudge]);
 
   /* ── writes: optimistic, but a refusal rolls back AND says so ─────────── */
 

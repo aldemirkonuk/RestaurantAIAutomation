@@ -44,6 +44,26 @@ describe('the cadence: 60 s and on focus', () => {
     expect(DAY_POLL_MS).toBe(60_000);
   });
 
+  it('skips its tick while the tab is hidden and reads once when it is shown again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let state: DocumentVisibilityState = 'visible';
+    const vis = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => state);
+    readDay.mockResolvedValue(answer('2026-09-21T14:00:00Z'));
+    renderHook(() => useHouseDay('r-1'));
+    await waitFor(() => expect(readDay).toHaveBeenCalledTimes(1));
+    state = 'hidden';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DAY_POLL_MS * 3);
+    });
+    expect(readDay).toHaveBeenCalledTimes(1);
+    state = 'visible';
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(readDay).toHaveBeenCalledTimes(2));
+    vis.mockRestore();
+  });
+
   it('holds its reads while the device is offline', async () => {
     const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     readDay.mockResolvedValue(answer('2026-09-21T14:00:00Z'));

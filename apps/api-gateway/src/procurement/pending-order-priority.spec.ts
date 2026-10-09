@@ -56,9 +56,56 @@ function makeDb(opts: DbOpts) {
       let head = false;
       let op: "select" | "update" | "insert" = "select";
       let id: string | null = null;
+      let inIds: string[] = [];
       const orders: Array<[string, { ascending?: boolean } | undefined]> = [];
 
       const settle = (shape: "one" | "many") => {
+        // The facts builder's set reads (F-449): each vendor or item with at
+        // most two of its orders embedded, newest first, as PostgREST's
+        // `limit 2` per embed hands them back. The pending rows are orders
+        // too, so each one's own row sits among them.
+        if (table === "providers") {
+          log.countReads += 1;
+          const others = opts.priorOrdersToVendor;
+          if (others === "error") {
+            return { data: null, error: { message: "count failed" } };
+          }
+          return {
+            data: inIds.map((v) => ({
+              id: v,
+              orders: [
+                ...(opts.pending ?? [])
+                  .filter((r) => r.provider_id === v)
+                  .map((r) => ({ id: r.id })),
+                ...Array.from(
+                  { length: others ?? 1 },
+                  (_, k) => ({ id: `other-${k}` }),
+                ),
+              ].slice(0, 2),
+            })),
+            error: null,
+          };
+        }
+        if (table === "restaurant_inventory") {
+          log.priceReads += 1;
+          if (opts.priorPrice === "error") {
+            return { data: null, error: { message: "statement timeout" } };
+          }
+          return {
+            data: inIds.map((item) => ({
+              id: item,
+              orders: [
+                ...(opts.pending ?? [])
+                  .filter((r) => r.inventory_id === item)
+                  .map((r) => ({ id: r.id, final_price: r.final_price })),
+                ...(opts.priorPrice == null
+                  ? []
+                  : [{ id: "prior", final_price: opts.priorPrice }]),
+              ].slice(0, 2),
+            })),
+            error: null,
+          };
+        }
         if (table !== "procurement_orders" || op !== "select") {
           return { data: null, error: null };
         }
@@ -112,7 +159,10 @@ function makeDb(opts: DbOpts) {
           return q;
         },
         neq: () => q,
-        in: () => q,
+        in(_col: string, v: string[]) {
+          inIds = v;
+          return q;
+        },
         gte: () => q,
         limit: () => q,
         order(col: string, o?: { ascending?: boolean }) {
@@ -509,6 +559,42 @@ describe("an unreadable read is unknown, never 'not flagged'", () => {
       ],
     });
     expect(out.map((o) => o.id)).toEqual(["c", "a", "b"]);
+  });
+});
+
+describe("the facts are read for the whole queue at once (F-449)", () => {
+  it("250 pending orders cost a bounded number of reads, not two per order", async () => {
+    const pending = Array.from({ length: 250 }, (_, i) =>
+      row(`o${String(i).padStart(3, "0")}`, 1 + (i % 28), {
+        provider_id: `prov-${i % 40}`,
+        final_price: i === 7 ? 300 : 100,
+      }),
+    );
+    const { out, log } = await list({ pending, priorPrice: 100 }, [
+      rule("price_jump"),
+      rule("new_vendor"),
+    ]);
+    expect(out).toHaveLength(250);
+    // 40 vendors in one read; 250 items in three reads of 100.
+    expect(log.countReads).toBe(1);
+    expect(log.priceReads).toBe(3);
+    // The facts still land on the right order.
+    expect(byId(out, "o007").reasons).toContain("price_jump");
+    expect(byId(out, "o008").reasons).not.toContain("price_jump");
+  });
+
+  it("an order is the vendor's first only when no other order of the house's is embedded", async () => {
+    const pending = [
+      row("a", 1, { provider_id: "prov-alone" }),
+      row("b", 2, { provider_id: "prov-pair" }),
+      row("c", 3, { provider_id: "prov-pair" }),
+    ];
+    const { out } = await list({ pending, priorOrdersToVendor: 0 }, [
+      rule("new_vendor"),
+    ]);
+    expect(byId(out, "a").reasons).toContain("needs_signature");
+    expect(byId(out, "b").reasons).not.toContain("needs_signature");
+    expect(byId(out, "c").reasons).not.toContain("needs_signature");
   });
 });
 

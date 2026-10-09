@@ -1038,6 +1038,65 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(tables.menu_items[0].price_flag ?? null).toBeNull();
     });
 
+    it("a large menu is carried in sets and side by side, never one line after another (F-448)", async () => {
+      const N = 300;
+      const lines = Array.from({ length: N }, (_, i) => ({ name: `Wine ${i}`, bottle_price: 40 + (i % 7) }));
+      const many = {
+        resolveLibraryWinesBatch: async (items: unknown[]) =>
+          items.map((_, i) => ({ masterWineId: `mw-big-${i}`, matched: true, libraryTier: 1, confidence: 99 })),
+        normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+      };
+      const calls: RpcCall[] = [];
+      const tables: Record<string, Row[]> = base();
+      const rpc = makeCurrentRpc(tables);
+      let inFlight = 0;
+      let widest = 0;
+      const service = makeService(tables, {
+        wineSubmissions: many,
+        rpcCalls: calls,
+        scanParser: { parse: async () => lines },
+        rpc: ((fn: string, args: Row) => {
+          if (fn !== "set_house_menu_price") return rpc(fn, args);
+          inFlight += 1;
+          widest = Math.max(widest, inFlight);
+          return new Promise((done) =>
+            setTimeout(() => {
+              inFlight -= 1;
+              done(rpc(fn, args));
+            }, 1),
+          );
+        }) as any,
+      });
+      const read = await service.importMenu(
+        { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+        "user-1",
+      );
+      const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
+
+      const supabase = (service as any).dbService.supabase;
+      const from = supabase.from;
+      let houseRowReads = 0;
+      supabase.from = (table: string) => {
+        const q = from(table);
+        if (table !== "restaurant_inventory") return q;
+        const select = q.select;
+        q.select = (...a: unknown[]) => {
+          houseRowReads += 1;
+          return select(...a);
+        };
+        return q;
+      };
+
+      const r = await service.makeCurrent("rest-1", read.menuId, "user-2", fp);
+      expect(r).toMatchObject({ outcome: "made_current", lines: N, priceSync: { changed: N }, failed: [] });
+      expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(N);
+      // The plan's read plus the carry's reads of 100 at a time, plus the
+      // inserts' `.select("id")` for the new wines -- not one read per line.
+      expect(houseRowReads - N).toBeLessThanOrEqual(10);
+      expect(widest).toBeGreaterThan(1);
+      expect(tables.menu_items.filter((l) => l.menu_id === read.menuId).every((l) => l.inventory_item_id)).toBe(true);
+    });
+
     it("a switch that returns no outcome is an error, never a success", async () => {
       const service = makeService(base(), { rpc: () => ({ data: {}, error: null }) });
       await expect(choose(service, "menu-old")).rejects.toThrow(/no outcome/);

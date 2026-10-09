@@ -281,6 +281,17 @@ const APPROVAL_GATE_WINDOW_DAYS = 365;
  * nothing is tested, so nothing is read. Every field is "unknown", and with no
  * enabled rule `decideApproval` neither fires nor reports anything untestable.
  */
+/** The facts builder reads this many orders' vendors and items per request. */
+const UNDER_TEST_CHUNK = 100;
+
+/** The order columns the house's rules are tested against. */
+interface OrderUnderTestRow {
+  total_cost: string | number | null;
+  provider_id: string | null;
+  inventory_id: string | null;
+  final_price: string | number | null;
+}
+
 const NO_RULE_FACTS: OrderUnderTest = {
   total: null,
   isFirstOrderToVendor: null,
@@ -4614,111 +4625,171 @@ export class ProcurementService {
   }
 
   /**
-   * Has this house ordered from this vendor before THIS order?
-   *
-   * `null` when it cannot be told — no vendor on the row, or a read that failed.
-   * Never `false`: `decideApproval` treats `null` as untestable and refuses to
-   * fire `new_vendor` on it, which is the difference between a rule and a rule
-   * that fires during a database outage.
-   */
-  private async isFirstOrderToVendor(
-    restaurantId: string,
-    orderId: string,
-    providerId: string | null,
-  ): Promise<boolean | null> {
-    if (!providerId) return null;
-    try {
-      const { count, error } = await this.databaseService.supabase
-        .from("procurement_orders")
-        .select("id", { count: "exact", head: true })
-        .eq("restaurant_id", restaurantId)
-        .eq("provider_id", providerId)
-        .neq("id", orderId);
-      if (error || count === null || count === undefined) return null;
-      return count === 0;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * The facts the house's rules test for ONE order — the approve gate's and
-   * "Waiting on you"'s, from this one builder (ADR 0256).
-   *
-   * `priceUnread` is the one thing the gate does not use: it says the last-price
-   * read FAILED, where `pricePremiumPct: null` alone cannot tell that from
-   * "there is no earlier price". The gate keeps its pre-existing reading (both
-   * are `null`, and `price_jump` does not fire); the flag reports the first as
-   * unknown. Awaited in the gate's original order.
+   * The facts the house's rules test for ONE order — the approve gate's. It is
+   * {@link ordersUnderTest} over a list of one, so the gate and "Waiting on
+   * you" still share one builder (ADR 0256) and cannot disagree.
    */
   private async orderUnderTest(
     restaurantId: string,
     orderId: string,
-    row: {
-      total_cost: string | number | null;
-      provider_id: string | null;
-      inventory_id: string | null;
-      final_price: string | number | null;
-    },
+    row: OrderUnderTestRow,
   ): Promise<{ test: OrderUnderTest; priceUnread: boolean }> {
-    const isFirstOrderToVendor = await this.isFirstOrderToVendor(
-      restaurantId,
-      orderId,
-      row.provider_id,
-    );
-    const premium = await this.readPricePremium(
-      restaurantId,
-      orderId,
-      row.inventory_id,
-      toFiniteNumber(row.final_price),
-    );
-    return {
-      test: {
-        total: toFiniteNumber(row.total_cost),
-        isFirstOrderToVendor,
-        pricePremiumPct: premium.pct,
-      },
-      priceUnread: premium.unread,
-    };
+    const facts = await this.ordersUnderTest(restaurantId, [
+      { ...row, id: orderId },
+    ]);
+    return facts.get(orderId)!;
   }
 
   /**
-   * How far above the last unit price this house paid for the same item.
+   * The facts the house's rules test, for every order in the list at once, in
+   * two set-based reads per {@link UNDER_TEST_CHUNK} orders rather than two
+   * reads per order (F-449: "Waiting on you" ran 2 serial reads per pending
+   * order, from every open tab, every minute).
    *
-   * `pct: null` when there is no earlier price — a first purchase has no
-   * premium, it has no comparison at all, and `new_vendor` is the rule that
-   * covers it. `unread: true` when the read itself failed, which is a different
-   * fact and is kept apart (the arithmetic is unchanged from the gate's
-   * original `pricePremiumPct`).
+   * - **First order to the vendor.** Each vendor with at most two of this
+   *   house's orders embedded (`limit 2` per vendor). The order is the first
+   *   when none of them is another order. `null` when it cannot be told — no
+   *   vendor on the row, or a read that failed. Never `false`:
+   *   `decideApproval` treats `null` as untestable and refuses to fire
+   *   `new_vendor` on it, which is the difference between a rule and a rule
+   *   that fires during a database outage.
+   * - **Premium over the last price.** Each item with its two latest orders
+   *   (`requested_at` newest first). The newest that is not this order is the
+   *   last price, exactly the old per-order `.neq(id).order(desc).limit(1)`.
+   *   `pct: null` when there is no earlier price — a first purchase has no
+   *   premium, and `new_vendor` is the rule that covers it. `priceUnread` says
+   *   the read itself FAILED, which `pct: null` alone cannot tell apart; the
+   *   gate keeps its pre-existing reading (`price_jump` does not fire) and the
+   *   flag reports it as unknown.
+   *
+   * Both embeds hang off the order's own foreign keys, which are NO ACTION, so
+   * an order's vendor and item rows always exist while the order does.
    */
-  private async readPricePremium(
+  private async ordersUnderTest(
     restaurantId: string,
-    orderId: string,
-    inventoryId: string | null,
-    unitPrice: number | null,
-  ): Promise<{ pct: number | null; unread: boolean }> {
-    if (!inventoryId || unitPrice === null || unitPrice <= 0) {
-      return { pct: null, unread: false };
+    rows: Array<OrderUnderTestRow & { id: string }>,
+  ): Promise<Map<string, { test: OrderUnderTest; priceUnread: boolean }>> {
+    const db = this.databaseService.supabase;
+    const vendorIds = [
+      ...new Set(
+        rows.map((r) => r.provider_id).filter((v): v is string => !!v),
+      ),
+    ];
+    const itemIds = [
+      ...new Set(
+        rows
+          .filter((r) => {
+            const unit = toFiniteNumber(r.final_price);
+            return r.inventory_id && unit !== null && unit > 0;
+          })
+          .map((r) => r.inventory_id as string),
+      ),
+    ];
+
+    // Absent from the map = could not be read.
+    const vendorOrders = new Map<string, string[]>();
+    for (let i = 0; i < vendorIds.length; i += UNDER_TEST_CHUNK) {
+      const chunk = vendorIds.slice(i, i + UNDER_TEST_CHUNK);
+      try {
+        const { data, error } = await db
+          .from("providers")
+          .select(
+            "id, orders:procurement_orders!procurement_orders_provider_id_fkey(id)",
+          )
+          .in("id", chunk)
+          .eq("orders.restaurant_id", restaurantId)
+          .limit(2, { referencedTable: "orders" });
+        if (error) continue;
+        for (const v of (data ?? []) as Array<{
+          id: string;
+          orders: Array<{ id: string }> | null;
+        }>) {
+          vendorOrders.set(
+            v.id,
+            (v.orders ?? []).map((o) => o.id),
+          );
+        }
+      } catch {
+        // The chunk stays unread: its orders' first-order fact is `null`.
+      }
     }
-    try {
-      const { data, error } = await this.databaseService.supabase
-        .from("procurement_orders")
-        .select("final_price, requested_at")
-        .eq("restaurant_id", restaurantId)
-        .eq("inventory_id", inventoryId)
-        .neq("id", orderId)
-        .order("requested_at", { ascending: false })
-        .limit(1);
-      if (error) return { pct: null, unread: true };
-      const prior = toFiniteNumber(
-        (data as Array<{ final_price: string | number | null }> | null)?.[0]
-          ?.final_price ?? null,
-      );
-      if (prior === null || prior <= 0) return { pct: null, unread: false };
-      return { pct: ((unitPrice - prior) / prior) * 100, unread: false };
-    } catch {
-      return { pct: null, unread: true };
+
+    const itemOrders = new Map<
+      string,
+      Array<{ id: string; final_price: string | number | null }>
+    >();
+    const itemsUnread = new Set<string>();
+    for (let i = 0; i < itemIds.length; i += UNDER_TEST_CHUNK) {
+      const chunk = itemIds.slice(i, i + UNDER_TEST_CHUNK);
+      try {
+        const { data, error } = await db
+          .from("restaurant_inventory")
+          .select(
+            "id, orders:procurement_orders!procurement_orders_inventory_id_fkey(id, final_price, requested_at)",
+          )
+          .in("id", chunk)
+          .eq("orders.restaurant_id", restaurantId)
+          .order("requested_at", {
+            referencedTable: "orders",
+            ascending: false,
+          })
+          .limit(2, { referencedTable: "orders" });
+        if (error) {
+          chunk.forEach((id) => itemsUnread.add(id));
+          continue;
+        }
+        for (const it of (data ?? []) as Array<{
+          id: string;
+          orders: Array<{
+            id: string;
+            final_price: string | number | null;
+          }> | null;
+        }>) {
+          itemOrders.set(it.id, it.orders ?? []);
+        }
+      } catch {
+        chunk.forEach((id) => itemsUnread.add(id));
+      }
     }
+
+    const out = new Map<
+      string,
+      { test: OrderUnderTest; priceUnread: boolean }
+    >();
+    for (const row of rows) {
+      let isFirstOrderToVendor: boolean | null = null;
+      if (row.provider_id && vendorOrders.has(row.provider_id)) {
+        isFirstOrderToVendor = !vendorOrders
+          .get(row.provider_id)!
+          .some((id) => id !== row.id);
+      }
+
+      const unit = toFiniteNumber(row.final_price);
+      let pct: number | null = null;
+      let unread = false;
+      if (row.inventory_id && unit !== null && unit > 0) {
+        if (itemsUnread.has(row.inventory_id)) {
+          unread = true;
+        } else {
+          const prior = toFiniteNumber(
+            (itemOrders.get(row.inventory_id) ?? []).find(
+              (o) => o.id !== row.id,
+            )?.final_price ?? null,
+          );
+          if (prior !== null && prior > 0) pct = ((unit - prior) / prior) * 100;
+        }
+      }
+
+      out.set(row.id, {
+        test: {
+          total: toFiniteNumber(row.total_cost),
+          isFirstOrderToVendor,
+          pricePremiumPct: pct,
+        },
+        priceUnread: unread,
+      });
+    }
+    return out;
   }
 
   /**
@@ -7131,10 +7202,14 @@ export class ProcurementService {
     // With no rule switched on there is nothing for the facts to decide, so
     // the per-order reads are skipped; `decideApproval` fires nothing either way.
     const anyRuleOn = Boolean(policy?.some((p) => p.enabled));
+    const factsById = anyRuleOn
+      ? await this.ordersUnderTest(restaurantId, rows)
+      : null;
     for (const row of rows) {
-      const facts = anyRuleOn
-        ? await this.orderUnderTest(restaurantId, row.id, row)
-        : { test: NO_RULE_FACTS, priceUnread: false };
+      const facts = factsById?.get(row.id) ?? {
+        test: NO_RULE_FACTS,
+        priceUnread: false,
+      };
       const inventory = Array.isArray(row.inventory)
         ? row.inventory[0]
         : row.inventory;

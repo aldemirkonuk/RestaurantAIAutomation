@@ -35,6 +35,23 @@ const SOURCE_URL_SECONDS = 300;
 /** PostgREST's max_rows (supabase/config.toml): a page never holds more. */
 const PAGE_ROWS = 1000;
 const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
+/**
+ * A large menu made current (F-448): the house's rows for its wines are read
+ * this many at a time, and this many lines are carried side by side. Done one
+ * line at a time, a 2,000-line menu was ~8,000 serial round trips and the page
+ * gave up waiting long before the carry ended.
+ */
+const CARRY_READ_CHUNK = 100;
+const CARRY_CONCURRENCY = 12;
+
+/** Run `work` over `items`, at most `size` at once. Never throws past `work`. */
+async function inPool<T>(items: T[], size: number, work: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) await work(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, lane));
+}
 const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
 
 interface ResolvedItem {
@@ -1913,13 +1930,37 @@ export class MenusService {
 
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
 
-    for (const item of validItems) {
-      const { data: existing, error: existingErr } = await this.dbService.supabase
+    type HouseRow = {
+      id: string;
+      master_wine_id?: string;
+      menu_price_current?: number | string | null;
+      menu_price_glass?: number | string | null;
+    };
+    type HouseRead = { data: HouseRow | null; error: { message: string } | null };
+
+    // The house's rows for the menu's wines, read in sets (F-448). Each wine's
+    // answer, or the read's failure, is kept for its first line.
+    const wineIds = [...new Set(validItems.map((i) => i.wine_library_id as string))];
+    const prefetched = new Map<string, HouseRead>();
+    for (let i = 0; i < wineIds.length; i += CARRY_READ_CHUNK) {
+      const chunk = wineIds.slice(i, i + CARRY_READ_CHUNK);
+      const { data, error } = await this.dbService.supabase
         .from("restaurant_inventory")
-        .select("id, menu_price_current, menu_price_glass")
+        .select("id, master_wine_id, menu_price_current, menu_price_glass")
         .eq("restaurant_id", restaurantId)
-        .eq("master_wine_id", item.wine_library_id)
-        .maybeSingle();
+        .in("master_wine_id", chunk);
+      for (const wine of chunk) {
+        prefetched.set(
+          wine,
+          error
+            ? { data: null, error }
+            : { data: ((data ?? []) as HouseRow[]).find((r) => r.master_wine_id === wine) ?? null, error: null },
+        );
+      }
+    }
+
+    const carryLine = async (item: InsertedMenuItem, read: HouseRead) => {
+      const { data: existing, error: existingErr } = read;
 
       // A failed read is not "no row" (last-call review, 2026-09-21). Read as
       // one, it tried a duplicate INSERT (refused by the house+wine UNIQUE),
@@ -1929,7 +1970,7 @@ export class MenusService {
         const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${existingErr.message}`;
         this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
         priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
-        continue;
+        return;
       }
 
       let inventoryId: string | null = existing?.id ?? null;
@@ -1955,11 +1996,11 @@ export class MenusService {
           const message = `the wine could not be added to the house's inventory, so no price was set: ${error.message}`;
           this.logger.warn(`inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`);
           priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
-          continue;
+          return;
         }
         inventoryId = created?.id ?? null;
       }
-      if (!inventoryId) continue;
+      if (!inventoryId) return;
       result.set(item.id, inventoryId);
       if (!existing) result.created.add(item.id);
       const entry = await this.carryMenuPrice(
@@ -1975,7 +2016,30 @@ export class MenusService {
       );
       priceSync.set(item.id, entry);
       await this.writeLineFlag(item.id, entry);
+    };
+
+    // Lines naming the same wine are carried one after another in menu order,
+    // as before: the later line reads the house's row the earlier one wrote.
+    // Different wines are carried side by side, CARRY_CONCURRENCY at a time.
+    const byWine = new Map<string, InsertedMenuItem[]>();
+    for (const item of validItems) {
+      const wine = item.wine_library_id as string;
+      byWine.set(wine, [...(byWine.get(wine) ?? []), item]);
     }
+    await inPool([...byWine.entries()], CARRY_CONCURRENCY, async ([wine, group]) => {
+      for (const [n, item] of group.entries()) {
+        const read: HouseRead =
+          n === 0
+            ? prefetched.get(wine)!
+            : await this.dbService.supabase
+                .from("restaurant_inventory")
+                .select("id, menu_price_current, menu_price_glass")
+                .eq("restaurant_id", restaurantId)
+                .eq("master_wine_id", wine)
+                .maybeSingle();
+        await carryLine(item, read);
+      }
+    });
 
     return { inventoryMap: result, priceSync };
   }
@@ -2087,7 +2151,9 @@ export class MenusService {
     menuItemToValue: Map<string, string>,
     column: "inventory_item_id" | "submission_id",
   ): Promise<void> {
-    for (const [menuItemId, value] of menuItemToValue.entries()) {
+    // Side by side, CARRY_CONCURRENCY at a time (F-448): one write per line,
+    // never one line after another for a 2,000-line menu.
+    await inPool([...menuItemToValue.entries()], CARRY_CONCURRENCY, async ([menuItemId, value]) => {
       const { error } = await this.dbService.supabase
         .from("menu_items")
         .update({ [column]: value })
@@ -2098,7 +2164,7 @@ export class MenusService {
           `Failed to backfill ${column} for menu_item ${menuItemId}: ${error.message}`,
         );
       }
-    }
+    });
   }
 
   private async markMenuUploaded(restaurantId: string): Promise<void> {

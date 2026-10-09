@@ -77,9 +77,12 @@ function newVendorRule(): ThresholdRow {
 /**
  * Supabase stub that records what the gate tries to write.
  *
- * `priorOrdersToVendor` is returned as the `count` on the head query the gate
- * uses for first-order-ness; `countErrors` makes that read fail so the
- * "unknown is not false" case can be driven.
+ * `priorOrdersToVendor` is how many OTHER orders the house has with the
+ * vendor; the facts builder reads the vendor with up to two orders embedded,
+ * so the order itself plus that many others, capped at two, are handed back.
+ * `countErrors` makes that read fail so the "unknown is not false" case can be
+ * driven. `priorPrices` are the item's earlier orders, newest first, embedded
+ * behind the order itself the same way.
  */
 function makeDb(opts: {
   order?: Row | null;
@@ -100,6 +103,38 @@ function makeDb(opts: {
       let selectedColumns = "";
 
       const settle = (shape: "one" | "many") => {
+        if (table === "providers") {
+          if (opts.countErrors)
+            return { data: null, error: { message: "count failed" } };
+          return {
+            data: [
+              {
+                id: opts.order?.provider_id,
+                orders: [
+                  { id: opts.order?.id },
+                  ...Array.from({ length: opts.priorOrdersToVendor ?? 0 }, (_, k) => ({
+                    id: `other-${k}`,
+                  })),
+                ].slice(0, 2),
+              },
+            ],
+            error: null,
+          };
+        }
+        if (table === "restaurant_inventory") {
+          return {
+            data: [
+              {
+                id: opts.order?.inventory_id,
+                orders: [
+                  { id: opts.order?.id, final_price: opts.order?.final_price },
+                  ...(opts.priorPrices ?? []).map((p, k) => ({ id: `prior-${k}`, ...p })),
+                ].slice(0, 2),
+              },
+            ],
+            error: null,
+          };
+        }
         if (table === "system_audit_log") {
           return {
             data: null,
@@ -192,6 +227,7 @@ function makeDb(opts: {
         },
         eq: () => q,
         neq: () => q,
+        in: () => q,
         gte: () => q,
         order: () => q,
         limit: () => q,
