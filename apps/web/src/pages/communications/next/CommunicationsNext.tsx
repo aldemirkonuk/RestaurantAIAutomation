@@ -32,6 +32,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
 import { Stub, Wordmark } from '@/components/mudavym';
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import {
@@ -566,6 +567,10 @@ export default function CommunicationsNext() {
             />
           </div>
         </header>
+
+        {/* F-279: the mailbox picker below starts consent flows that return
+            here; the outcome is said on the page they started from. */}
+        <IntegrationReturnNotice />
 
         {/* The banner covers EVERY source this page owns, not just the
             conversation book. Before ADR 0083 it read `historyQ.isError`

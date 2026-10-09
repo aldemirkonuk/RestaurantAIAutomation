@@ -1,6 +1,6 @@
 import { webcrypto } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { forgetConsentBrowser, prepareConsentBrowser, readConsentBrowser, sameSiteReturnPath } from './consent-browser'
+import { forgetConsentBrowser, prepareConsentBrowser, readConsentBrowser, returnLanding, sameSiteReturnPath } from './consent-browser'
 
 describe('the initiating browser holds the consent proof', () => {
   beforeEach(() => { vi.stubGlobal('crypto', webcrypto); sessionStorage.clear() })
@@ -38,6 +38,21 @@ describe('the initiating browser holds the consent proof', () => {
 
   it.each(['//other.test', '/\\other.test', '/\n/other.test', 'https://other.test', null])('refuses external return %s', value => {
     expect(sameSiteReturnPath(value)).toBe('/settings')
+  })
+
+  it.each(['/logout', '/authorize/gmail_send', '/communications/../logout', '/profiles'])('refuses a same-site page off the return list %s (F-279)', value => {
+    expect(sameSiteReturnPath(value)).toBe('/settings')
+  })
+
+  it('lands a finished flow on the page it started from, query kept (F-279)', () => {
+    const url = new URL('/communications?reply=o1&integration_status=error&integration=gmail_read&integration_reason=membership_refused', window.location.origin)
+    expect(returnLanding(url)).toBe('/communications?reply=o1&integration_status=error&integration=gmail_read&integration_reason=membership_refused')
+  })
+
+  it('never follows a path off the return list; lands on /profile with only the outcome (F-279)', () => {
+    const url = new URL('/logout?next=x&integration_status=error&integration_reason=exchange_failed', window.location.origin)
+    expect(returnLanding(url)).toBe('/profile?integration_status=error&integration_reason=exchange_failed')
+    expect(returnLanding(new URL('/authorize/gmail_send', window.location.origin))).toBe('/profile')
   })
 
   it('retains a same-site destination, query and fragment', () => {

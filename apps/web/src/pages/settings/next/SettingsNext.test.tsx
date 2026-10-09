@@ -45,7 +45,7 @@ vi.mock('./useSettingsNextData', async () => {
 
 // The staff gate now reads role from AuthContext BEFORE the data hook mounts
 // (PR #419). Mirror `mock.current.role` so existing fixtures keep driving it.
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthContext', async () => ({
   useAuth: () => ({
     user: { userId: 'u1', role: (mock.current.role as string | null | undefined) ?? 'owner' },
     activeRole: (mock.current.role as string | null | undefined) ?? 'owner',
@@ -53,6 +53,8 @@ vi.mock('@/contexts/AuthContext', () => ({
     availableRestaurants: [],
     refreshBranches: vi.fn(),
   }),
+  // F-279: the outcome line read through context; no provider here, so no user.
+  AuthContext: (await import('react')).createContext(undefined),
 }));
 
 // Transient legacy modals — mounted by the team/locations registers, and not
@@ -1301,6 +1303,13 @@ describe('the collapse — four connection tabs become one line', () => {
       expect(screen.getByTestId('where')).toHaveTextContent(`/connections#${anchor}`);
       view.unmount();
     }
+  });
+
+  it('carries a consent flow’s outcome to /connections and nothing else from the query (F-279)', () => {
+    mount('/settings?tab=services&integration_status=error&integration=gmail_send&integration_reason=membership_refused&other=1');
+    expect(screen.getByTestId('where')).toHaveTextContent(
+      '/connections?integration_status=error&integration=gmail_send&integration_reason=membership_refused#grants',
+    );
   });
 
   it('recognises a collapsed id rather than silently opening the default register', () => {

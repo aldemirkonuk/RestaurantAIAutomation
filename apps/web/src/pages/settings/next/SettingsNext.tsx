@@ -100,6 +100,7 @@ import { HoursSection } from './HoursSection';
 import { DigestRow } from './DigestRow';
 import { AskTrainingSection } from './AskTrainingSection';
 import { ConsentPanelOpener } from './ConsentPanel';
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice';
 
 const CSS = `
 .st-ink, .st-ink * { transition: border-color ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}, transform ${ink.ms}ms ${ink.easing} }
@@ -247,7 +248,15 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
   // fragment is the register, not the page, so a bookmark to the till opens
   // on the till rather than at the top of a list it has to be found in again.
   if (collapsed && isCollapsedSection(tabParam)) {
-    return <Navigate to={`/connections#${CONNECTIONS_ANCHOR[tabParam]}`} replace />;
+    // F-279: a consent flow started from Settings returns here with its
+    // outcome in the query; it rides along so /connections can say it.
+    const outcome = new URLSearchParams();
+    for (const key of ['integration_status', 'integration', 'integration_reason']) {
+      const value = searchParams.get(key);
+      if (value !== null) outcome.set(key, value);
+    }
+    const query = outcome.toString();
+    return <Navigate to={`/connections${query ? `?${query}` : ''}#${CONNECTIONS_ANCHOR[tabParam]}`} replace />;
   }
 
   // The interview groups, each carrying the registers `TAB_TO_ANCHOR` maps to
@@ -295,6 +304,10 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
             </p>
           )}
         </header>
+
+        {/* F-279: the services register's Connect returns here (when it is not
+            folded into /connections); the outcome is said on this page. */}
+        <IntegrationReturnNotice />
 
         <div aria-hidden style={{ borderTop: '1px solid var(--ink-1)', borderBottom: '1px solid var(--ink-1)', height: 3, opacity: 0.5, margin: '16px 0 20px' }} />
 

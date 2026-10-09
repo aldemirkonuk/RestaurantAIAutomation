@@ -11,6 +11,9 @@ const REASONS: Record<string, string> = {
   invalid_callback: 'The provider return did not match this permission.',
   invalid_browser_origin: 'The original app address is no longer configured.',
   exchange_failed: 'The connection outcome could not be established. Check the connection below before starting again.',
+  // F-279: these two are this house's answer, not the provider's.
+  membership_refused: 'Nothing was connected: by the time the provider answered, your account was no longer a confirmed member of this house. Ask an owner to check your place here, then start again.',
+  membership_unreadable: 'Nothing was connected: your place in this house could not be checked just then, so the connection was not kept. Start again in a moment.',
 }
 
 /** Query parameters trigger a status read; they are not proof of a connection. */

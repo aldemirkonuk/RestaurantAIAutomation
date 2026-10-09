@@ -32,12 +32,40 @@ export function forgetConsentBrowser(requestId: string) {
   try { sessionStorage.removeItem(PREFIX + requestId) } catch { /* Navigation need not depend on cleanup. */ }
 }
 
+/**
+ * The pages a consent flow may start from, and so the only pages it may return
+ * to (F-279). Each one shows the outcome line (IntegrationReturnNotice), so a
+ * person lands where they pressed Connect and reads what happened there.
+ * Exact paths, not prefixes: a new start page is added here on purpose.
+ */
+export const RETURN_PAGES: readonly string[] = ['/communications', '/connections', '/profile', '/settings']
+const OUTCOME_KEYS = ['integration_status', 'integration', 'integration_reason']
+
 export function sameSiteReturnPath(value: string | null) {
   // Control characters are the point of the check: a path carrying one is refused.
   // eslint-disable-next-line no-control-regex
   if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\x00-\x20\x7f]/.test(value)) return '/settings'
   try {
     const url = new URL(value, window.location.origin)
-    return url.origin === window.location.origin ? `${url.pathname}${url.search}${url.hash}` : '/settings'
+    return url.origin === window.location.origin && RETURN_PAGES.includes(url.pathname)
+      ? `${url.pathname}${url.search}${url.hash}`
+      : '/settings'
   } catch { return '/settings' }
+}
+
+/**
+ * Where a finished consent flow lands, as a same-origin path. A page on the
+ * list keeps its own query (the letter panel's place, the settings tab); any
+ * other path is never followed — the person lands on /profile, where their own
+ * grants live, carrying only the outcome so the line still shows.
+ */
+export function returnLanding(url: URL): string {
+  if (RETURN_PAGES.includes(url.pathname)) return `${url.pathname}${url.search}${url.hash}`
+  const outcome = new URLSearchParams()
+  for (const key of OUTCOME_KEYS) {
+    const value = url.searchParams.get(key)
+    if (value !== null) outcome.set(key, value)
+  }
+  const query = outcome.toString()
+  return query ? `/profile?${query}` : '/profile'
 }

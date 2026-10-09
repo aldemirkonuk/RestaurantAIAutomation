@@ -218,6 +218,16 @@ describe('CommunicationsNext', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('says the outcome of a mailbox connection started from this page (F-279)', () => {
+    mockData.current = { ...base };
+    render(
+      <CommunicationsNext />,
+      '/communications?integration_status=error&integration=gmail_read&integration_reason=membership_refused',
+    );
+    expect(screen.getByText(/Nothing was connected/)).toBeInTheDocument();
+    expect(screen.queryByText(/provider flow returned/)).toBeNull();
+  });
+
   it('keeps the row short and the prose inside the expansion', () => {
     mockData.current = { ...base, rows: [item({})] };
     render(<CommunicationsNext />);

@@ -109,6 +109,15 @@ describe('completion and return status', () => {
     expect(integrationsApi.completeConsent).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['membership_refused', /no longer a confirmed member of this house/],
+    ['membership_unreadable', /could not be checked just then/],
+  ])('says %s in the house’s words, never blaming the provider (F-279)', (reason, words) => {
+    render(<MemoryRouter initialEntries={[`/communications?integration_status=error&integration=gmail_read&integration_reason=${reason}`]}><IntegrationReturnNotice /></MemoryRouter>)
+    expect(screen.getByRole('status')).toHaveTextContent(words)
+    expect(screen.queryByText(/provider flow returned/)).toBeNull()
+  })
+
   it('does not believe a forged connected query parameter', async () => {
     vi.mocked(integrationsApi.getConnections).mockResolvedValue([])
     render(<MemoryRouter initialEntries={['/profile?integration_status=connected&integration=gmail_send']}><IntegrationReturnNotice /></MemoryRouter>)
