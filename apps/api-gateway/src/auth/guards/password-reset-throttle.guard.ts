@@ -6,6 +6,7 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { Request } from "express";
+import { clientIp } from "../../common/rate-limit/client-ip";
 
 /**
  * Per-IP rate limit on POST /auth/request-password-reset.
@@ -66,13 +67,8 @@ export class PasswordResetThrottleGuard implements CanActivate {
   }
 
   private resolveIp(req: Request): string {
-    // x-forwarded-for can carry a comma-separated chain when behind a proxy;
-    // the client is the first entry. Falls back to the socket address for a
-    // direct connection (e.g. local dev, health checks).
-    const forwarded = req.headers["x-forwarded-for"];
-    if (typeof forwarded === "string" && forwarded.length > 0) {
-      return forwarded.split(",")[0].trim();
-    }
-    return req.ip || req.socket?.remoteAddress || "unknown";
+    // The last x-forwarded-for hop, not the client-typed first one; falls
+    // back to the socket address for a direct connection (`client-ip.ts`).
+    return clientIp(req);
   }
 }

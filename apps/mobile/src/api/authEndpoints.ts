@@ -32,7 +32,7 @@ export const AUTH_ENDPOINTS = {
     path: "sign-in-methods",
     usedBy: "app/login.tsx",
   },
-  checkEmail: { method: "GET", path: "check-email", usedBy: "app/register.tsx" },
+  checkEmail: { method: "POST", path: "check-email", usedBy: "app/register.tsx" },
   join: { method: "POST", path: "join", usedBy: "app/register.tsx (Path A)" },
   registerRestaurant: {
     method: "POST",

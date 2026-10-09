@@ -58,10 +58,12 @@ export function fetchSignInMethods(email: string) {
   });
 }
 
+/** A POST so the address stays out of URLs and access logs (F-515). */
 export function checkEmailAvailable(email: string) {
-  return api<{ available: boolean; email: string }>(
-    `/auth/check-email?email=${encodeURIComponent(email)}`,
-  );
+  return api<{ available: boolean; email: string }>("/auth/check-email", {
+    method: "POST",
+    body: { email },
+  });
 }
 
 /** Path A — join an existing restaurant with an 8-character invite code. */

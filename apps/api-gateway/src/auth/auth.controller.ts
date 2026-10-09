@@ -47,7 +47,18 @@ import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.gua
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
 import { RateLimit } from "../common/rate-limit";
 import { Request } from "express";
+import { createHash } from "crypto";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
+
+/**
+ * How a log line names an invite (F-514): a short hash, never the code. A
+ * live code still grants a role in a real house for up to seven days, and the
+ * web already scrubs `/invite/<code>` from error reports for that reason.
+ */
+export function inviteLogRef(code: unknown): string {
+  const raw = typeof code === "string" ? code.trim().toUpperCase() : "";
+  return `#${createHash("sha256").update(raw).digest("hex").slice(0, 8)}`;
+}
 
 @Controller("auth")
 export class AuthController {
@@ -472,7 +483,7 @@ export class AuthController {
     @Param("code") code: string,
   ) {
     this.logger.log(
-      `Invite accept by authenticated user ${req.user.userId}, code: ${code}`,
+      `Invite accept by authenticated user ${req.user.userId}, invite ${inviteLogRef(code)}`,
     );
     const result = await this.authService.acceptInviteAsExistingUser(
       req.user.userId,
@@ -553,7 +564,7 @@ export class AuthController {
   @Post("join")
   @Public()
   async joinViaInvite(@Body() dto: JoinViaInviteDto) {
-    this.logger.log(`Path A join attempt with code: ${dto.code}`);
+    this.logger.log(`Path A join attempt, invite ${inviteLogRef(dto.code)}`);
     const tokens = await this.authService.joinViaInvite(dto);
     return { success: true, ...tokens, message: "Joined successfully" };
   }
@@ -683,14 +694,22 @@ export class AuthController {
   /**
    * Check if an email is already registered.
    * Public endpoint for registration form validation.
+   *
+   * Under the same rule as `sign-in-methods` below (F-515, 2026-10-09): POST,
+   * so the address stays out of URLs and access logs, and 10 per 10 minutes
+   * per IP, because it answers the same question about an address a stranger
+   * supplied. It was a GET with only the 10-per-60s `/auth/` default; the GET
+   * is gone, and the web and mobile sign-up forms both send the POST.
    */
-  @Get("check-email")
+  @Post("check-email")
   @Public()
-  async checkEmail(@Query() query: CheckEmailDto) {
-    const exists = await this.authService.checkEmailExists(query.email);
+  @RateLimit({ limit: 10, windowSeconds: 600, keyPrefix: "check-email" })
+  @HttpCode(HttpStatus.OK)
+  async checkEmail(@Body() body: CheckEmailDto) {
+    const exists = await this.authService.checkEmailExists(body.email);
     return {
       available: !exists,
-      email: query.email,
+      email: body.email,
     };
   }
 
@@ -699,7 +718,7 @@ export class AuthController {
    *
    * Public by necessity — the caller has not signed in yet, that being the
    * point. POST rather than GET so the address stays out of URLs, access logs
-   * and proxy caches (`check-email` above predates that rule).
+   * and proxy caches (`check-email` above now follows the same rule).
    *
    * Rate-limited to 10 per 10 minutes per IP via the existing `@RateLimit`
    * decorator on the global `RateLimitGuard` (app.module.ts). That is tighter
