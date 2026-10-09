@@ -30,10 +30,12 @@
  *   - Convert money. A price is written in its line's own currency, or says the
  *     currency was not recorded.
  *   - Claim more than it holds. The predicate refuses numerals, currency signs
- *     and words, links, stray brackets, money-and-terms words and commitment
- *     phrases in the house's prose. It does NOT stop a figure by reference
- *     ("same price as last time") or a term in a language it does not list;
- *     the house's own reading is the backstop (0173:48, ADR 0313).
+ *     and words, links (as `URL_RE` defines them), stray brackets,
+ *     money-and-terms words and commitment phrases in the house's prose. It
+ *     does NOT stop a figure by reference ("same price as last time"), a
+ *     domain spelled out or spaced ("evil dot com"), or a term in a language
+ *     it does not list; the house's own reading is the backstop (0173:48,
+ *     ADR 0313).
  *
  * LOCALE (F3, answered 2026-10-08: "Approve + Turkish now"). Every string the
  * renderer owns (subject, greeting, block texts, the Mudavym line, number and
@@ -276,8 +278,28 @@ const CURRENCY_WORD_RE = word([
   "franc",
   "francs",
 ]);
+/**
+ * A link (ADR 0313:37). Refused: a scheme ("https://"), "www.", an "@", or a
+ * bare domain — two labels joined by a dot, the last starting with a letter and
+ * at least two characters long, with any path after it ("evil.xyz",
+ * "bit.ly/abc", "shop.example.ly"). There is no suffix list, so an unlisted
+ * TLD is refused too. A one-letter last label passes, so "e.g." and "U.S." are
+ * kept; two words joined by a dot with no space ("St.Emilion") are refused.
+ * A last label starting with a digit is left to the numeral rule. Not caught: a
+ * domain spelled out or spaced ("evil dot com", "evil . com"). Tested on the
+ * prose with the IDNA label dots folded to ".", see `foldIdnaDots`.
+ */
 const URL_RE =
-  /(?:[a-z][a-z0-9+.-]*:\/\/|www\.|(?<![\p{L}\p{N}_])[\p{L}\p{N}-]+\.(?:com|net|org|io|co|tr|uk|de|fr|it|es|eu|info|biz|app|shop|wine|me|us)(?![\p{L}\p{N}_])|@)/iu;
+  /(?:[a-z][a-z0-9+.-]*:\/\/|www\.|(?<![\p{L}\p{N}_])[\p{L}\p{N}-]+\.\p{L}[\p{L}\p{N}-]+(?![\p{L}\p{N}_])|@)/iu;
+/**
+ * The dots IDNA (UTS 46) treats as a label separator: U+3002, U+FF0E, U+FF61.
+ * NFKC already turns U+FF0E into "." and U+FF61 into U+3002, but U+3002 itself
+ * survives NFKC, and IDNA maps it to ".", so "evil。com" names evil.com.
+ * Folded only for the link test; the courtesy line keeps its own characters.
+ */
+function foldIdnaDots(text: string): string {
+  return text.replace(/[\u3002\uFF0E\uFF61]/g, ".");
+}
 /** EN + TR money-and-terms words (ADR 0313; adversary change 3). */
 const MONEY_TERMS_EN_RE = word([
   "price",
@@ -385,7 +407,7 @@ export function orderRequestProseRefusals(template: string): ProseRefusal[] {
       says: "Your words may not name money (a currency sign, code or word). A price, when one may be shown, comes from {{order_lines}}.",
     });
   }
-  if (URL_RE.test(prose)) {
+  if (URL_RE.test(foldIdnaDots(prose))) {
     refusals.push({
       rule: "link",
       says: "Your words may not hold a link, a web address or an email address (ADR 0173 D5).",

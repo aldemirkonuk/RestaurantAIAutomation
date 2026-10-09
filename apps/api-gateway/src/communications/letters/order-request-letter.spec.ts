@@ -187,11 +187,24 @@ describe("the courtesy line (F2)", () => {
     ["a merge token", "Thanks {{name}}."],
     ["a commitment", "We accept your terms gladly."],
     ["a money word", "Thanks for the free delivery last time."],
+    ["a bare domain", "Thanks, and see evil.xyz for more."],
+    ["a short link with a path", "Thanks, more at bit.ly/abc as well."],
+    ["a nested domain", "Thanks from shop.example.ly as ever."],
+    ["an ideographic dot domain", "Thanks from evil\u3002com as ever."],
+    ["a fullwidth dot domain", "Thanks from evil\uFF0Ecom as ever."],
   ])("is dropped on %s", (_label, sentence) => {
     expect(courtesyLineOrNull(sentence)).toBeNull();
     const r = renderOrderRequest(facts(), { courtesySentence: sentence });
     expect(r.courtesyDropped).toBe(true);
     expect(r.parts.courtesy_line).toBe("");
+  });
+
+  it.each([
+    "Thanks. See you soon.",
+    "Thank you again for the lovely selection.",
+    "With warm regards from all of us, e.g. the kitchen team.",
+  ])("is kept as written: %s", (s) => {
+    expect(courtesyLineOrNull(s)).toBe(s);
   });
 
   it("is kept when it holds no figure", () => {
@@ -273,6 +286,13 @@ describe("the prose predicate", () => {
     ["link", T("See https://example.org for details.")],
     ["link", T("See example.com for details.")],
     ["link", T("Write to orders@house.example.")],
+    ["link", T("See evil.xyz for details.")],
+    ["link", T("See bit.ly/abc for details.")],
+    ["link", T("See shop.example.ly for details.")],
+    ["link", T("See evil\u3002com for details.")],
+    ["link", T("See evil\uFF0Ecom for details.")],
+    ["link", T("See evil\uFF61com for details.")],
+    ["link", T("See пример.рф for details.")],
     ["stray_bracket", T("Thanks { team.")],
     ["stray_bracket", T("Thanks <b>team</b>.")],
     ["stray_bracket", "{{greeting}}\n{{{order_lines}}}\n{{ask}}\n{{signer}}"],
@@ -292,6 +312,17 @@ describe("the prose predicate", () => {
 
   it("does not refuse everyday words that collide with numbers or dates", () => {
     expect(rules(T("Bir sorumuz var. May we ask for an early slot on Pazar? No one minds."))).toEqual([]);
+  });
+
+  it("keeps sentence dots and one-letter abbreviations, refuses two words joined by a dot", () => {
+    expect(rules(T("Thanks. See you soon. Regards, e.g. as before, U.S. style."))).toEqual([]);
+    expect(rules(T("Thanks again.\nSee you soon."))).toEqual([]);
+    expect(rules(T("A case of St.Emilion as before."))).toContain("link");
+  });
+
+  it("does not catch a domain spelled out or spaced (the stated gap, ADR 0313:37)", () => {
+    expect(rules(T("See evil dot com for details."))).toEqual([]);
+    expect(rules(T("See evil . com for details."))).toEqual([]);
   });
 
   it("a refused template never renders", () => {
