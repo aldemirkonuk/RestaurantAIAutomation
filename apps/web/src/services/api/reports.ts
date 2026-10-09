@@ -281,9 +281,15 @@ export async function downloadReportExport(
   })
   if (typeof data !== 'string') throw new Error('the gateway answered without the file')
   const day = exp.finishedAt ? exp.finishedAt.slice(0, 10) : 'undated'
+  // The gateway writes a BOM so Excel opens the CSV as UTF-8, but reading the
+  // body as text strips it (UTF-8 decode drops a leading BOM), and the file
+  // saved from that string would open as ANSI: "Rüzgar" and every em dash in
+  // mojibake. Put it back. The body stays text so an error body (a 409's
+  // sentence) still reads as words.
+  const body = format === 'csv' && !data.startsWith('\uFEFF') ? `\uFEFF${data}` : data
   return {
     filename: `mudavym-${exp.cutting}-${day}.${format}`,
     mime: format === 'csv' ? 'text/csv;charset=utf-8' : 'text/html;charset=utf-8',
-    body: data,
+    body,
   }
 }
