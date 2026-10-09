@@ -5,6 +5,14 @@ import {
 } from "./insight-generator.service";
 
 /**
+ * The house's zone row, which the insight bundle reads before filing any day
+ * (ADR 0296, F-295). UTC here keeps this spec's dates on the calendar it
+ * builds them on; the house-day filing itself is asserted in
+ * `insight-unread-sources.spec.ts`.
+ */
+const HOUSE_ROW = [{ timezone: "UTC", country: null }];
+
+/**
  * "Lucas ranks #1 of 5 by average check ($188)."
  *
  * Read from production on 2026-10-03 (A-003), about a house whose servers were
@@ -50,7 +58,8 @@ function makeClient(rowsByTable: Rows) {
   ];
   return {
     from: (table: string) => {
-      const all = rowsByTable[table] ?? [];
+      const all =
+        rowsByTable[table] ?? (table === "restaurants" ? HOUSE_ROW : []);
       const page: { byId?: boolean; after?: string; limit?: number } = {};
       const builder: any = {};
       for (const m of passthrough) builder[m] = (..._args: any[]) => builder;

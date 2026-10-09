@@ -455,6 +455,12 @@ export interface RecommendationsData {
    */
   sourcesUnread: string[] | null;
   /**
+   * The engine's record reads that answered with no rows (`sourcesEmpty`:
+   * "till checks", "pour history", …). Their rules had nothing to judge, so
+   * an empty book is not a clear one (F-298). null = the gateway did not say.
+   */
+  sourcesEmpty: string[] | null;
+  /**
    * The house's active goals WITH progress (`GET /analytics/goals/:rid/progress`)
    * — the masthead's margin (sketch 122 direction B). undefined = not asked,
    * null = unreadable.
@@ -529,6 +535,7 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [note, setNote] = useState<string | null>(null);
   const [undo, setUndo] = useState<UndoVM | null>(null);
   const [sourcesUnread, setSourcesUnread] = useState<string[] | null>(null);
+  const [sourcesEmpty, setSourcesEmpty] = useState<string[] | null>(null);
   const [goalBook, setGoalBook] = useState<GoalBookVM>(undefined);
   const seq = useRef(0);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -588,6 +595,11 @@ export function useRecommendationsNextData(): RecommendationsData {
           setSourcesUnread(
             Array.isArray(data?.sourcesUnread)
               ? (data.sourcesUnread as unknown[]).map(String)
+              : null,
+          );
+          setSourcesEmpty(
+            Array.isArray(data?.sourcesEmpty)
+              ? (data.sourcesEmpty as unknown[]).map(String)
               : null,
           );
           const sc = data?.stateCounts as Partial<StateCounts> | undefined;
@@ -1323,6 +1335,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     personalSnoozesReadable,
     personalProblem,
     sourcesUnread,
+    sourcesEmpty,
     goalBook,
   };
 }

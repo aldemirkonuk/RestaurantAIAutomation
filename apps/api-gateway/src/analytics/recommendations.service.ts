@@ -301,6 +301,13 @@ export class RecommendationsService {
      * "till checks", …). Empty = all answered.
      */
     sourcesUnread: string[];
+    /**
+     * The insight generator's record reads that answered with no rows
+     * ("till checks", "pour history", …): their rules had nothing to judge, so
+     * an empty book is not a clear one (F-298). `null` when the generator did
+     * not answer, so nothing is known either way.
+     */
+    sourcesEmpty: string[] | null;
     /** Standing cards withheld because this viewer snoozed them for themselves. */
     hiddenForYou: number;
     /**
@@ -979,6 +986,11 @@ export class RecommendationsService {
       priceAdviceReadable: priceAdviceRes.status === "fulfilled",
       priceAdviceReason,
       sourcesUnread,
+      sourcesEmpty:
+        insightsRes.status === "fulfilled" &&
+        Array.isArray((insightsRes.value as any)?.sourcesEmpty)
+          ? ((insightsRes.value as any).sourcesEmpty as unknown[]).map(String)
+          : null,
       hiddenForYou: mine.hiddenForYou,
       personalSnoozesReadable: mine.personalSnoozesReadable,
     };

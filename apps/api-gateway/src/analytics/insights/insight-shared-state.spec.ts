@@ -5,6 +5,14 @@ import {
 import { StateRow, stateBookFrom } from "./item-state";
 
 /**
+ * The house's zone row, which the insight bundle reads before filing any day
+ * (ADR 0296, F-295). UTC here keeps this spec's dates on the calendar it
+ * builds them on; the house-day filing itself is asserted in
+ * `insight-unread-sources.spec.ts`.
+ */
+const HOUSE_ROW = [{ timezone: "UTC", country: null }];
+
+/**
  * The generator's half of the ONE shared per-item state (ADR 0191; founder,
  * 2026-09-21: "Build it right, in order").
  *
@@ -27,7 +35,9 @@ function makeClient(rowsByTable: Rows) {
   const client: any = {
     writes,
     from: (table: string) => {
-      let rows = [...(rowsByTable[table] ?? [])];
+      let rows = [
+        ...(rowsByTable[table] ?? (table === "restaurants" ? HOUSE_ROW : [])),
+      ];
       const builder: any = {};
       for (const m of [
         "select",

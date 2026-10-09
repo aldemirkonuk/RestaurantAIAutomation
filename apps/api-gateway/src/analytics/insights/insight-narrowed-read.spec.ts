@@ -2,6 +2,14 @@ import { stateBookFrom } from "./item-state";
 import { InsightGeneratorService } from "./insight-generator.service";
 
 /**
+ * The house's zone row, which the insight bundle reads before filing any day
+ * (ADR 0296, F-295). UTC here keeps this spec's dates on the calendar it
+ * builds them on; the house-day filing itself is asserted in
+ * `insight-unread-sources.spec.ts`.
+ */
+const HOUSE_ROW = [{ timezone: "UTC", country: null }];
+
+/**
  * The catalogue's "open live items" (ADR 0191) reads ONE type's live list.
  *
  * Built first as a client-side filter over `GET insights/:id?categories=X`,
@@ -37,7 +45,8 @@ function makeClient(rowsByTable: Rows) {
   const client = {
     writes,
     from: (table: string) => {
-      const rows = rowsByTable[table] ?? [];
+      const rows =
+        rowsByTable[table] ?? (table === "restaurants" ? HOUSE_ROW : []);
       const builder: any = {};
       for (const m of passthrough) builder[m] = () => builder;
       builder.delete = () => {

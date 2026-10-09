@@ -4,9 +4,18 @@ import { sourcesUnreadWords } from "../digest/digest-schedule";
 import { RecommendationsService } from "../recommendations.service";
 import {
   BUNDLE_READ_WORDS,
+  HOUSE_ZONE_WORDS,
   InsightGeneratorService,
 } from "./insight-generator.service";
 import { stateBookFrom } from "./item-state";
+
+/**
+ * The house's zone row, which the insight bundle reads before filing any day
+ * (ADR 0296, F-295). UTC here keeps this spec's dates on the calendar it
+ * builds them on; the house-day filing itself is asserted at the foot of
+ * this file.
+ */
+const HOUSE_ROW = [{ timezone: "UTC", country: null }];
 
 /**
  * ADR 0292, fork 3 follow-on. The founder, 2026-10-07: *"Say it couldn't be
@@ -52,7 +61,8 @@ const READS = Object.keys(BUNDLE_READ_WORDS) as Array<
 function clientFor(answers: Partial<Record<string, Answer>>) {
   return {
     from(table: string) {
-      const a: Answer = answers[table] ?? { rows: [] };
+      const a: Answer =
+        answers[table] ?? { rows: table === "restaurants" ? HOUSE_ROW : [] };
       let gt: string | null = null;
       let limit = Number.POSITIVE_INFINITY;
       let counted = false;
@@ -523,5 +533,228 @@ describe("/recommendations says which insight read could not be made", () => {
     expect(sourcesUnreadWords(out.sourcesUnread)).toBe(
       "The engine could not read one of its sources (till checks), so entries that depend on it could not fire.",
     );
+  });
+});
+
+/* ── the house's day, and a house with nothing recorded ──────────────── */
+
+/**
+ * F-295 (ADR 0296): the sales rules file each check on the house's day.
+ *
+ * The bundle filed a check by the UTC prefix of its close. In a Los Angeles
+ * dinner house a Wednesday dinner closing at 8 PM is 03:00Z Thursday, so
+ * "Wednesday's sales" were Tuesday's dinner, yesterday's dinner sat on "today"
+ * and was dropped, and a day the manager ruled out removed the wrong dinner.
+ * /reports and the page's own day strip file on the house's day; these pin the
+ * generator to the same day.
+ *
+ * F-298: a house with nothing recorded is named as such (`sourcesEmpty`), so
+ * the page can say so rather than call the book clear.
+ */
+
+const ZONE = "America/Los_Angeles";
+/** Thursday 2026-10-08, 3 PM in Los Angeles: the house's today is 10-08. */
+const NOW = new Date("2026-10-08T22:00:00.000Z");
+const HOUSE_YESTERDAY = "2026-10-07"; // a Wednesday
+
+type Rows = Record<string, any[]>;
+
+function makeClient(rowsByTable: Rows) {
+  return {
+    from: (table: string) => {
+      const rows = rowsByTable[table] ?? [];
+      const builder: any = {};
+      for (const m of [
+        "select",
+        "eq",
+        "neq",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "is",
+        "or",
+        "not",
+        "order",
+        "limit",
+        "in",
+      ])
+        builder[m] = () => builder;
+      builder.maybeSingle = () =>
+        Promise.resolve({ data: rows[0] ?? null, error: null });
+      builder.single = builder.maybeSingle;
+      builder.then = (resolve: any, reject: any) =>
+        Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+      return builder;
+    },
+  };
+}
+
+/** A house date `n` days before `day`. */
+function back(day: string, n: number): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+/** A dinner on house date `day`: opens 6 PM and closes 8 PM Los Angeles. */
+function dinner(day: string, total: number) {
+  // 8 PM in Los Angeles is 03:00Z (PDT) or 04:00Z (PST) the next UTC day.
+  const at = (h: number) => {
+    const guess = new Date(`${day}T${String(h).padStart(2, "0")}:00:00Z`);
+    const local = new Date(guess.toLocaleString("en-US", { timeZone: ZONE }));
+    const utc = new Date(guess.toLocaleString("en-US", { timeZone: "UTC" }));
+    return new Date(
+      guess.getTime() + (utc.getTime() - local.getTime()),
+    ).toISOString();
+  };
+  return {
+    id: `chk-${day}`,
+    source: "test",
+    table_id: null,
+    server_name: null,
+    server_external_id: null,
+    opened_at: at(18),
+    closed_at: at(20),
+    covers: 2,
+    total,
+    tip: 0,
+    items: null,
+  };
+}
+
+function weekdayOf(day: string): number {
+  return new Date(`${day}T00:00:00Z`).getUTCDay();
+}
+
+function generatorFor(opts: {
+  checks: any[];
+  excluded?: string[];
+  house?: { timezone: string | null; country: string | null };
+}) {
+  const client = makeClient({
+    restaurants: [opts.house ?? { timezone: ZONE, country: "US" }],
+    pos_checks: opts.checks,
+    wine_consumption_log: [],
+    procurement_orders: [],
+    restaurant_inventory: [],
+    restaurant_tables: [],
+    restaurant_venue_profiles: [],
+    analytics_goals: [],
+  });
+  return new InsightGeneratorService(
+    { getClient: () => client, supabase: client } as any,
+    {
+      load: async () => ({
+        dates: new Set(opts.excluded ?? []),
+        readable: true,
+        problem: null,
+      }),
+    } as any,
+    {
+      readState: async () => ({
+        book: stateBookFrom([]),
+        readable: true,
+        problem: null,
+      }),
+    } as any,
+  );
+}
+
+/**
+ * 90 house days of dinners: Wednesdays earn 1000, other days 800, yesterday
+ * (a Wednesday) 600. `extra` overrides single days.
+ */
+function history(extra: Record<string, number> = {}) {
+  const target = weekdayOf(HOUSE_YESTERDAY);
+  const checks: any[] = [];
+  for (let n = 90; n >= 1; n--) {
+    const day = back("2026-10-08", n);
+    const total =
+      extra[day] ??
+      (day === HOUSE_YESTERDAY ? 600 : weekdayOf(day) === target ? 1000 : 800);
+    checks.push(dinner(day, total));
+  }
+  return checks;
+}
+
+const WEEKDAY_BASELINE = "overall.revenue.vs_same_weekday";
+
+describe("insight bundle — the house's day (F-295)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers({
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "clearImmediate",
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+        "queueMicrotask",
+        "hrtime",
+        "performance",
+      ],
+      now: NOW,
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("names Wednesday's dinner as Wednesday's sales in a Los Angeles house", async () => {
+    const out = await generatorFor({ checks: history() }).generate("r1", {
+      persist: false,
+    });
+    const hit = out.insights.find((i) => i.candidateKey === WEEKDAY_BASELINE);
+    expect(hit).toBeDefined();
+    expect(hit!.periodKey).toBe(`d:${HOUSE_YESTERDAY}`);
+    expect(hit!.sentence).toMatch(
+      /^Wednesday sales came in 40% lower than your average Wednesday \(\$600 vs \$1\.0k/,
+    );
+  });
+
+  it("a house day the manager ruled out leaves that day's dinner out of the average", async () => {
+    // A private party last Wednesday, struck from the analysis.
+    const party = back(HOUSE_YESTERDAY, 7);
+    const out = await generatorFor({
+      checks: history({ [party]: 20000 }),
+      excluded: [party],
+    }).generate("r1", { persist: false });
+    const hit = out.insights.find((i) => i.candidateKey === WEEKDAY_BASELINE);
+    expect(hit).toBeDefined();
+    // Had the party stayed in, the average Wednesday would be far above $1.0k.
+    expect(hit!.sentence).toContain("($600 vs $1.0k");
+  });
+
+  it("with no zone, files no day and names the zone as unread rather than reading UTC", async () => {
+    const out = await generatorFor({
+      checks: history(),
+      house: { timezone: null, country: null },
+    }).generate("r1", { persist: false });
+    expect(
+      out.insights.find((i) => i.candidateKey === WEEKDAY_BASELINE),
+    ).toBeUndefined();
+    expect(out.sourcesUnread).toContain(HOUSE_ZONE_WORDS);
+  });
+});
+
+describe("insight bundle — a house with nothing recorded (F-298)", () => {
+  it("names every empty record read in sourcesEmpty", async () => {
+    const out = await generatorFor({ checks: [] }).generate("r1", {
+      persist: false,
+    });
+    expect(out.sourcesUnread).toEqual([]);
+    expect(out.sourcesEmpty).toEqual([
+      BUNDLE_READ_WORDS.pos_checks,
+      BUNDLE_READ_WORDS.wine_consumption_log,
+      BUNDLE_READ_WORDS.procurement_orders,
+      BUNDLE_READ_WORDS.restaurant_inventory,
+    ]);
+  });
+
+  it("does not name a read that has rows", async () => {
+    const out = await generatorFor({ checks: history() }).generate("r1", {
+      persist: false,
+    });
+    expect(out.sourcesEmpty).not.toContain(BUNDLE_READ_WORDS.pos_checks);
   });
 });

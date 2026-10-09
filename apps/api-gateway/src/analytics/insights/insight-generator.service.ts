@@ -19,6 +19,13 @@ import {
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
 import {
+  HOUSE_DAY_LOOKBACK_MS,
+  houseDayOf,
+  houseToday,
+  readHouseZone,
+  shiftHouseDay,
+} from "../../common/house-day";
+import {
   BottleHow,
   UnitsLabel,
   bottlesOf,
@@ -231,8 +238,14 @@ export const BASKET_MIN_LIFT = 1.3;
  *       at its merge. [2026-10-08: 11 also covers the bundle's own wording
  *       for `evidence.units.basis` (ADR 0297 round 4b); not bumped, since 11
  *       has never been on `main`.]
+ *  12 — 2026-10-08 (F-295, ADR 0296): every daily series is filed on the
+ *       house's day, where it read the UTC prefix of a timestamp: a Los
+ *       Angeles dinner was filed on the next day, so "Thursday's sales" named
+ *       Wednesday's dinner, and a day the manager ruled out removed the wrong
+ *       day. A row below 12 may name the wrong day, so it is recomputed.
+ *       Re-checked at merge like 11.
  */
-export const INSIGHT_GENERATOR_VERSION = 11;
+export const INSIGHT_GENERATOR_VERSION = 12;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -272,6 +285,29 @@ export const BUNDLE_READ_WORDS = {
   analytics_goals: "goals",
 } as const;
 type BundleRead = keyof typeof BUNDLE_READ_WORDS;
+
+/**
+ * The house's time zone, in the same house words, when it is unset or could
+ * not be read. Every daily series is filed on the house's day (ADR 0296), so
+ * without a zone no day can be filed and every rule built on one says nothing;
+ * this names why in `sourcesUnread`. Never UTC in its place: that filed a Los
+ * Angeles dinner on the next day (F-295).
+ */
+export const HOUSE_ZONE_WORDS = "the house's time zone";
+
+/**
+ * The bundle's reads that hold the house's own records, in the order the page
+ * lists them. A read here that answered with no rows is named in
+ * `sourcesEmpty`: its rules had nothing to judge, which is not the same as
+ * judging the house clear (F-298). The table list, venue profile and goals
+ * are settings, not records, and an empty one is not named.
+ */
+const RECORD_READS = [
+  "pos_checks",
+  "wine_consumption_log",
+  "procurement_orders",
+  "restaurant_inventory",
+] as const;
 
 /**
  * Whether this bundle read was refused or failed: its slice is `[]` because
@@ -513,6 +549,19 @@ export class InsightGeneratorService {
       // built on it, and the per-table and wine-mover insights that take a
       // label or a name from it (`readWasRefused`; ADR 0292).
       sourcesUnread: bundle.unread,
+      // The record reads that answered with no rows, in the same words. A
+      // house with nothing recorded has rules with nothing to judge, and the
+      // page says so rather than call the book clear (F-298).
+      sourcesEmpty: RECORD_READS.filter(
+        (r) =>
+          !readWasRefused(bundle, r) &&
+          {
+            pos_checks: bundle.checks,
+            wine_consumption_log: bundle.consumption,
+            procurement_orders: bundle.orders,
+            restaurant_inventory: bundle.inventory,
+          }[r].length === 0,
+      ).map((r) => BUNDLE_READ_WORDS[r]),
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };
@@ -729,13 +778,33 @@ export class InsightGeneratorService {
 
   private async loadBundle(restaurantId: string): Promise<Bundle> {
     const client = this.dbService.getClient();
-    const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
+    // A day back, so the first house day of the 90 is read whole (ADR 0296).
+    const since90 = new Date(
+      Date.now() - 90 * 86400000 - HOUSE_DAY_LOOKBACK_MS,
+    ).toISOString();
     const since180 = new Date(Date.now() - 180 * 86400000).toISOString();
 
     // The manager's own exclusions — closures, buyouts, outages. Loaded with
     // the data, not after it, because every daily series below is built
     // through `toDaily` and every one of them must honour the same list.
     const exclusions = await this.dayExclusions.load(restaurantId);
+
+    // Every row is filed on the house's day, as /reports files it (ADR 0296):
+    // the exclusions above are house dates, and a UTC prefix filed a Los
+    // Angeles dinner on the next day (F-295). With no zone, or a zone read
+    // that failed, no row gets a day, so no daily rule fires, and the zone is
+    // named in `unread` rather than read as UTC.
+    let zone: string | null = null;
+    try {
+      zone = (await readHouseZone(client, restaurantId)).zone;
+    } catch (err: any) {
+      this.logger.error(`insight bundle zone read failed: ${err?.message}`);
+    }
+    const dayOf = (
+      subject:
+        | string
+        | { closed_at?: string | null; opened_at?: string | null },
+    ) => (zone ? (houseDayOf(subject, zone) ?? "") : "");
 
     // The two window reads go through `readWholeWindow` (ADR 0292). Unranged,
     // they stopped at PostgREST's 1,000 rows: the sales-dip rule then read
@@ -824,7 +893,7 @@ export class InsightGeneratorService {
       ["restaurant_venue_profiles", venue],
       ["analytics_goals", goals],
     ];
-    const unread: string[] = [];
+    const unread: string[] = zone ? [] : [HOUSE_ZONE_WORDS];
     for (const [table, r] of slices) {
       if (r.status === "rejected") {
         this.logger.error(
@@ -857,16 +926,17 @@ export class InsightGeneratorService {
         // figure (ADR 0297). `quantity` counts servings, never bottles.
         qty: bottlesOf(c).bottles,
         how: bottlesOf(c).how,
-        date: (c.created_at || "").substring(0, 10),
+        date: dayOf(c.created_at || ""),
       })),
       orders: ok<any>(ords).map((o: any) => ({
         vendorId: o.provider_id || "unknown",
         vendorName: o.providers?.name || o.provider_id || "unknown vendor",
         cost: o.total_cost || o.final_price || 0,
-        date: (o.delivered_at || o.created_at || "").substring(0, 10),
+        date: dayOf(o.delivered_at || o.created_at || ""),
       })),
       inventory: ok<any>(inv),
-      checks: ok<any>(checks),
+      // Each check carries its house day, by close else open (`houseDayOf`).
+      checks: ok<any>(checks).map((c: any) => ({ ...c, houseDay: dayOf(c) })),
       tables: ok<any>(tables),
       venueFeatures:
         venue.status === "fulfilled" && !venue.value.error
@@ -877,6 +947,7 @@ export class InsightGeneratorService {
       excludedDates: exclusions.dates,
       exclusionsReadable: exclusions.readable,
       unread,
+      zone,
     };
 
     if (bundle.consumption.length) bundle.availability.add("consumption");
@@ -920,6 +991,7 @@ export class InsightGeneratorService {
   private toDaily(
     rows: Array<{ date: string; value: number }>,
     days: number,
+    zone: string | null,
     excluded?: ReadonlySet<string>,
   ): { dates: string[]; values: number[]; observed: boolean[] } {
     const byDay = new Map<string, number>();
@@ -930,12 +1002,13 @@ export class InsightGeneratorService {
     const dates: string[] = [];
     const values: number[] = [];
     const observed: boolean[] = [];
-    const today = new Date();
+    // The days are the house's (ADR 0296). With no zone no row carries a day
+    // (`loadBundle`), so the series is empty and no day is named.
+    if (!zone) return { dates, values, observed };
+    const today = houseToday(zone);
     for (let d = days; d >= 1; d--) {
       // exclude today (partial day would distort baselines)
-      const day = new Date(today.getTime() - d * 86400000)
-        .toISOString()
-        .substring(0, 10);
+      const day = shiftHouseDay(today, -d);
       dates.push(day);
       values.push(byDay.get(day) || 0);
       observed.push(byDay.has(day) && !excluded?.has(day));
@@ -967,6 +1040,7 @@ export class InsightGeneratorService {
     const { dates, values, observed } = this.toDaily(
       rows,
       90,
+      bundle.zone,
       uncountedDays.size > 0
         ? new Set([...bundle.excludedDates, ...uncountedDays])
         : bundle.excludedDates,
@@ -1018,7 +1092,7 @@ export class InsightGeneratorService {
     } | null = null;
     const namesUnread = readWasRefused(bundle, "restaurant_inventory");
     for (const [wineId, wineRows] of namesUnread ? [] : byWine) {
-      const daily = this.toDaily(wineRows, 28);
+      const daily = this.toDaily(wineRows, 28, bundle.zone);
       const s = daily.values;
       const cmp = E.periodOverPeriod(s, 7);
       if (!cmp || cmp.deltaPct === null || cmp.previous < 2) continue;
@@ -1155,6 +1229,7 @@ export class InsightGeneratorService {
     const { dates, values, observed } = this.toDaily(
       rows,
       90,
+      bundle.zone,
       bundle.excludedDates,
     );
 
@@ -1261,6 +1336,7 @@ export class InsightGeneratorService {
             .filter((c) => c.wineId === item.master_wine_id && c.qty != null)
             .map((c) => ({ date: c.date, value: c.qty as number })),
           90,
+          bundle.zone,
         ).values,
       );
       if (!profile || profile.mean <= 0) continue;
@@ -1329,12 +1405,13 @@ export class InsightGeneratorService {
 
     // Overall revenue series insights.
     const revRows = checks.map((c: any) => ({
-      date: (c.closed_at || c.opened_at || "").substring(0, 10),
+      date: c.houseDay || "",
       value: c.total || 0,
     }));
     const { dates, values, observed } = this.toDaily(
       revRows,
       90,
+      bundle.zone,
       bundle.excludedDates,
     );
     this.timeSeriesInsights({
@@ -2153,4 +2230,6 @@ interface Bundle {
    * slice, asks `readWasRefused` first.
    */
   unread: string[];
+  /** The house's IANA zone; every `date` above is a day on its clock (ADR 0296). */
+  zone: string | null;
 }
