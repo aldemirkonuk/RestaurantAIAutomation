@@ -329,7 +329,15 @@ until the founder approves its deletion separately (ADR 0149).**
   against the caller's own restaurant. Not fixed in this pass, and in
   `not_fixed`: discard still has no undo, and add still reuses the
   onboarding review pipeline (forcing every new line to `status: 'flagged'`
-  with no way to approve it from `/menu` itself).
+  with no way to approve it from `/menu` itself). [2026-10-08, F-268,
+  fix/sim-menu-restore: discard and put-back are owner/manager only; discard
+  now keeps the line's status in `menu_items.prior_status` (migration
+  `a_discarded_menu_line_remembers_its_status`) and
+  `PATCH /menus/:restaurantId/items/:id/restore` puts it back at that status,
+  or `in_review` for a line discarded before the column existed, which the
+  page says. `/menu` offers "Put it back" right after a discard and lists the
+  lines taken off (`GET /menus/:restaurantId/discarded`). The ledger and
+  register reads filter on `status`, so a put-back line counts again.]
 - **Item 8, NOTE ONLY, not built.** The founder: the fast-moving
   non-alcoholic lines (Turkish coffee, tea, American black coffee, water) need
   their own analytics — the present heat map "looks blue as hell," unreadable.
