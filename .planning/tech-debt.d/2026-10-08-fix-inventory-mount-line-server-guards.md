@@ -16,6 +16,9 @@ counts go through `POST …/reconcile`, and pours through `POST
 /inventory/:restaurantId/item/:itemId/pour`. Reconcile and every read stay
 open. No web or mobile caller of either POST exists on `main`; the only web
 call on this controller is reconcile (`apps/web/src/services/api/inventory.ts:148`).
+The InventoryNext write-off sheet on #677 will call `POST /transactions`,
+and it shows the sheet only when the role is owner or manager
+(`useInventoryNextData.ts:572` on #677).
 The proof is `route-access.expected.json`: 8 rows added, none changed.
 
 **(b) A retry confirmed an amount the ledger did not hold.**
@@ -25,7 +28,13 @@ write-off of 3 that landed behind a 5xx, retried as 1, read "recorded: 1" over
 a ledger holding 3. Now a replay whose item, type, amount or stock state differs
 is a 409 that says nothing new was recorded. A pour replay is a 409 when its
 item, glass count or named glass size differs, or when the recorded pour cannot
-be read. A matching replay answers as before. No migration was needed. The
+be read. A matching replay answers as before. No migration was needed.
+Both SQL lookups match the key across every house. So a ledger key that
+another house has already spent is refused with a 409 before the RPC runs,
+and the pour read-back is filtered to this house. Neither refusal names the
+other house's movement. **Still open:** the lookups themselves stay global
+(`20261222100000_a_pos_sale_is_dated_by_its_check.sql:188`, `:314`). Scoping
+them to the house is a migration, left for the ledger's own lane. The
 proof is `inventory-ledger/a-replayed-key-must-match.spec.ts` and
 `inventory.service.spec.ts` ("a replayed pour key must match…").
 
@@ -37,6 +46,7 @@ spends the seal. It refuses an already-approved order, or a status
 `decideTransition` will not take to APPROVED, and it writes with a
 compare-and-set on the raw stored status (`.eq("status", fromStatus)`), so two
 approvals racing each other write once. The loser gets a 409 that says nothing
-more was reserved. The proof is `procurement/order-seal.spec.ts`.
+more was reserved; its seal is spent, as any single-use seal is once
+presented. The proof is `procurement/order-seal.spec.ts`.
 
 Claims: `claims.d/fix-inventory-mount-line-server-guards.jsonl:1-3`.

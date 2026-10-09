@@ -694,6 +694,33 @@ describe("InventoryService", () => {
       ).rejects.toThrow(ConflictException);
     });
 
+    it("reads the replayed pour inside this house only, and names no figures it did not read", async () => {
+      // A key another house spent: the house-scoped read finds nothing.
+      replay({ data: null, error: null });
+      const call = service.recordPour("rest-1", "inv-1", {
+        pours: 2,
+        idempotencyKey: "k-1",
+      });
+      await expect(call).rejects.toThrow(ConflictException);
+      await expect(call).rejects.toThrow(/could not be read/);
+      // Only the filters applied after the pour_events read began count; the
+      // ownership check earlier filters restaurant_id on another table.
+      const fromCalls = mockSupabaseChain.from.mock.calls;
+      const at = fromCalls.findIndex(([t]: [string]) => t === "pour_events");
+      expect(at).toBeGreaterThanOrEqual(0);
+      const since = mockSupabaseChain.from.mock.invocationCallOrder[at];
+      const filters = mockSupabaseChain.eq.mock.calls.filter(
+        (_: unknown, i: number) =>
+          mockSupabaseChain.eq.mock.invocationCallOrder[i] > since,
+      );
+      expect(filters).toEqual(
+        expect.arrayContaining([
+          ["id", "pe-1"],
+          ["restaurant_id", "rest-1"],
+        ]),
+      );
+    });
+
     it("refuses when the recorded pour cannot be read", async () => {
       replay({ data: null, error: { message: "boom" } });
       await expect(

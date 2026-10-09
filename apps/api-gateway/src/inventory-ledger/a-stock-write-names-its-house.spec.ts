@@ -77,6 +77,10 @@ function makeDb(opts: DbOptions) {
       const q: any = {
         select: () => q,
         eq: () => q,
+        neq: () => q,
+        // The cross-house key check (ADR 0315 mount-line fix b): no other
+        // house has spent this key.
+        limit: () => Promise.resolve({ data: [], error: null }),
         maybeSingle: () =>
           Promise.resolve(
             table === "restaurant_inventory"

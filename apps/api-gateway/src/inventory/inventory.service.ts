@@ -440,8 +440,10 @@ export class InventoryService {
   /**
    * The pour a replayed key points at must be the pour this request asks for:
    * the same item, the same number of glasses, and the same glass size when
-   * the caller named one. An event that cannot be read is a refusal, never a
-   * pass: nothing new was poured either way, and "recorded" would be a guess.
+   * the caller named one. The read is scoped to this house, so a key another
+   * house spent reads as unreadable and its figures never reach this caller.
+   * An event that cannot be read is a refusal, never a pass: nothing new was
+   * poured either way, and "recorded" would be a guess.
    */
   private async assertReplayedPourMatches(
     client: ReturnType<DatabaseService["getClient"]>,
@@ -454,6 +456,7 @@ export class InventoryService {
       .from("pour_events")
       .select("restaurant_id, inventory_id, pours, pour_ml")
       .eq("id", pourEventId as string)
+      .eq("restaurant_id", restaurantId)
       .maybeSingle();
     const first = data as {
       restaurant_id: string;

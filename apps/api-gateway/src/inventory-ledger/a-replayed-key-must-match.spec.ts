@@ -112,6 +112,23 @@ describe("a replayed ledger key must match the movement it recorded", () => {
     );
   });
 
+  it("refuses a key another house already spent, and writes nothing", async () => {
+    const t = build();
+    t.db.tables.inventory_transactions.push({
+      id: "txn-elsewhere",
+      restaurant_id: "house-2",
+      inventory_id: "44444444-4444-4444-8444-444444444444",
+      stock_type: "live",
+      quantity_change: -9,
+      transaction_type: "waste",
+      idempotency_key: "key-1",
+    });
+    const call = writeOff(t);
+    await expect(call).rejects.toThrow(ConflictException);
+    await expect(writeOff(t)).rejects.not.toThrow(/-9|waste|house-2/);
+    expect(t.db.tables.inventory_transactions).toHaveLength(1);
+  });
+
   it("refuses a replay aimed at another stock state", async () => {
     const t = build();
     await writeOff(t);

@@ -4290,14 +4290,6 @@ export class ProcurementService {
   }
 
   /**
-   * Spend it. Throws with the whole sentence on every refusal.
-   *
-   * Runs AFTER `assertApprovalAllowed` and BEFORE the write. After, so a person
-   * whose role cannot seal this order is told that rather than having their
-   * seal burned by a request that was never going to succeed. Before, so the
-   * status is never written on an unproven seal.
-   */
-  /**
    * The order's stored status, if it may become APPROVED now; otherwise a 409
    * that says why. APPROVED itself is refused: `canTransition` permits
    * re-entering it, and the database trigger skips a same-state write, so
@@ -4337,6 +4329,14 @@ export class ProcurementService {
     return raw as string;
   }
 
+  /**
+   * Spend it. Throws with the whole sentence on every refusal.
+   *
+   * Runs AFTER `assertApprovalAllowed` and BEFORE the write. After, so a person
+   * whose role cannot seal this order is told that rather than having their
+   * seal burned by a request that was never going to succeed. Before, so the
+   * status is never written on an unproven seal.
+   */
   private async redeemOrderSeal(
     restaurantId: string,
     orderId: string,

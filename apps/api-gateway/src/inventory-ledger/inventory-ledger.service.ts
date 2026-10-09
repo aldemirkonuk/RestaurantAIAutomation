@@ -124,6 +124,30 @@ export class InventoryLedgerService {
     // p_order_id/p_location_id (transfers are not yet modeled as a single
     // atomic movement — from/to would need two calls, which is out of scope
     // for this port and unchanged from the pre-existing gap).
+    // `apply_stock_movement` looks a key up across every house. A key already
+    // spent by another house would come back as that house's movement, and
+    // the house-scoped read-back below would then report a write that never
+    // happened here. Refuse it first, naming nothing about the other row.
+    if (dto.idempotencyKey) {
+      const { data: elsewhere, error: keyError } =
+        await this.databaseService.supabase
+          .from("inventory_transactions")
+          .select("id")
+          .eq("idempotency_key", dto.idempotencyKey)
+          .neq("restaurant_id", restaurantId)
+          .limit(1);
+      if (keyError) {
+        throw new InternalServerErrorException(
+          "The request's key could not be checked, so nothing was recorded.",
+        );
+      }
+      if (elsewhere && elsewhere.length > 0) {
+        throw new ConflictException(
+          "This request's key was already used, so nothing new was recorded. Read the item again before writing.",
+        );
+      }
+    }
+
     const { data, error } = await this.databaseService.supabase.rpc(
       "apply_stock_movement",
       {
