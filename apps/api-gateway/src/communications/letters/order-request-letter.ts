@@ -33,9 +33,10 @@
  *     and words, links (as `URL_RE` defines them), stray brackets,
  *     money-and-terms words and commitment phrases in the house's prose. It
  *     does NOT stop a figure by reference ("same price as last time"), a
- *     domain spelled out or spaced ("evil dot com"), or a term in a language
- *     it does not list; the house's own reading is the backstop (0173:48,
- *     ADR 0313).
+ *     domain spelled out or spaced ("evil dot com"), a dot-like character
+ *     outside `DOT_LIKE_RE`, a scheme outside `LINK_SCHEMES` without "//",
+ *     or a term in a language it does not list; the house's own reading is
+ *     the backstop (0173:48, ADR 0313).
  *
  * LOCALE (F3, answered 2026-10-08: "Approve + Turkish now"). Every string the
  * renderer owns (subject, greeting, block texts, the Mudavym line, number and
@@ -279,26 +280,56 @@ const CURRENCY_WORD_RE = word([
   "francs",
 ]);
 /**
- * A link (ADR 0313:37). Refused: a scheme ("https://"), "www.", an "@", or a
- * bare domain — two labels joined by a dot, the last starting with a letter and
- * at least two characters long, with any path after it ("evil.xyz",
- * "bit.ly/abc", "shop.example.ly"). There is no suffix list, so an unlisted
- * TLD is refused too. A one-letter last label passes, so "e.g." and "U.S." are
- * kept; two words joined by a dot with no space ("St.Emilion") are refused.
- * A last label starting with a digit is left to the numeral rule. Not caught: a
- * domain spelled out or spaced ("evil dot com", "evil . com"). Tested on the
- * prose with the IDNA label dots folded to ".", see `foldIdnaDots`.
+ * A link (ADR 0313:37). Refused:
+ *   - a scheme followed by "//" ("https://"), "www.", or an "@";
+ *   - a known non-web scheme followed by a non-space character
+ *     (`LINK_SCHEMES`: "javascript:", "data:text", "mailto:x", "tel:", "sms:",
+ *     "ftp:", "file:", "vbscript:"). A space after the colon is prose, so
+ *     "Data: as before" and "Note: thanks" are kept;
+ *   - a bare domain: two labels joined by a dot, the last starting with a
+ *     letter and at least two characters long, with any path after it
+ *     ("evil.xyz", "bit.ly/abc", "shop.example.ly"). There is no suffix list,
+ *     so an unlisted TLD is refused too. A one-letter last label passes, so
+ *     "e.g." and "U.S." are kept; two words joined by a dot with no space
+ *     ("St.Emilion") are refused. A last label starting with a digit is left
+ *     to the numeral rule.
+ * The test runs on the prose with every character in `DOT_LIKE_RE` folded to ".".
+ * Not caught: a domain spelled out or spaced ("evil dot com", "evil . com"),
+ * a dot-like character not in `DOT_LIKE_RE`, and a scheme not in `LINK_SCHEMES`
+ * without "//" ("foo:bar").
  */
-const URL_RE =
-  /(?:[a-z][a-z0-9+.-]*:\/\/|www\.|(?<![\p{L}\p{N}_])[\p{L}\p{N}-]+\.\p{L}[\p{L}\p{N}-]+(?![\p{L}\p{N}_])|@)/iu;
+const LINK_SCHEMES = ["javascript", "vbscript", "data", "mailto", "tel", "sms", "ftp", "file"];
+const URL_RE = new RegExp(
+  [
+    "[a-z][a-z0-9+.-]*:\\/\\/",
+    "www\\.",
+    `(?<![\\p{L}\\p{N}_])(?:${LINK_SCHEMES.join("|")}):(?=\\S)`,
+    "(?<![\\p{L}\\p{N}_])[\\p{L}\\p{N}-]+\\.\\p{L}[\\p{L}\\p{N}-]+(?![\\p{L}\\p{N}_])",
+    "@",
+  ].join("|"),
+  "iu",
+);
 /**
- * The dots IDNA (UTS 46) treats as a label separator: U+3002, U+FF0E, U+FF61.
- * NFKC already turns U+FF0E into "." and U+FF61 into U+3002, but U+3002 itself
- * survives NFKC, and IDNA maps it to ".", so "evil。com" names evil.com.
- * Folded only for the link test; the courtesy line keeps its own characters.
+ * Dot-like characters that survive NFKC, folded to "." for the link test
+ * only (the courtesy line keeps its own characters). NFKC already turns
+ * U+FF0E, U+FE52, U+2024 into "."; U+FF61, U+FE12 into U+3002; U+0387 into
+ * U+00B7; U+FF65 into U+30FB; U+0F0C into U+0F0B — so those are covered too.
+ *   U+3002 ideographic full stop (an IDNA label dot), U+00B7 middle dot,
+ *   U+0589 Armenian full stop, U+06D4 Arabic full stop, U+0700-U+0702 Syriac
+ *   end/full stops, U+0F0B and U+0F0D Tibetan tsheg and shad, U+1362
+ *   Ethiopic full stop, U+166E Canadian syllabics full stop, U+1803 and
+ *   U+1809 Mongolian full stops, U+1C3B Lepcha punctuation, U+2022 bullet,
+ *   U+2027 hyphenation point, U+2219 bullet operator, U+22C5 dot operator,
+ *   U+2E31 word separator middle dot, U+2E33 raised dot, U+2E3C stenographic
+ *   full stop, U+30FB katakana middle dot, U+A4FF Lisu full stop, U+A60E Vai
+ *   full stop, U+A6F3 Bamum full stop, U+10A56 Kharoshthi danda.
+ * Cost: letters joined by one of these with no space are refused like
+ * "St.Emilion" (Catalan "l·l", a katakana name split by ・, Tibetan prose).
  */
-function foldIdnaDots(text: string): string {
-  return text.replace(/[\u3002\uFF0E\uFF61]/g, ".");
+const DOT_LIKE_RE =
+  /[\u3002\u00B7\u0589\u06D4\u0700-\u0702\u0F0B\u0F0D\u1362\u166E\u1803\u1809\u1C3B\u2022\u2027\u2219\u22C5\u2E31\u2E33\u2E3C\u30FB\uA4FF\uA60E\uA6F3\u{10A56}\uFF0E\uFF61]/gu;
+function foldDotLike(text: string): string {
+  return text.replace(DOT_LIKE_RE, ".");
 }
 /** EN + TR money-and-terms words (ADR 0313; adversary change 3). */
 const MONEY_TERMS_EN_RE = word([
@@ -407,7 +438,7 @@ export function orderRequestProseRefusals(template: string): ProseRefusal[] {
       says: "Your words may not name money (a currency sign, code or word). A price, when one may be shown, comes from {{order_lines}}.",
     });
   }
-  if (URL_RE.test(foldIdnaDots(prose))) {
+  if (URL_RE.test(foldDotLike(prose))) {
     refusals.push({
       rule: "link",
       says: "Your words may not hold a link, a web address or an email address (ADR 0173 D5).",

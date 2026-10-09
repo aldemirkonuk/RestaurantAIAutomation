@@ -293,6 +293,19 @@ describe("the prose predicate", () => {
     ["link", T("See evil\uFF0Ecom for details.")],
     ["link", T("See evil\uFF61com for details.")],
     ["link", T("See пример.рф for details.")],
+    ["link", T("Open javascript:alert for details.")],
+    ["link", T("Open JavaScript:void for details.")],
+    ["link", T("Open data:text/html for details.")],
+    ["link", T("Write to mailto:orders for details.")],
+    ["link", T("Ring tel:house for details.")],
+    ["link", T("Fetch ftp:host or file:host or vbscript:x or sms:x.")],
+    ...[
+      "\u00B7", "\u0387", "\u0589", "\u06D4", "\u0700", "\u0701", "\u0702", "\u0F0B",
+      "\u0F0C", "\u0F0D", "\u1362", "\u166E", "\u1803", "\u1809", "\u1C3B", "\u2022",
+      "\u2024", "\u2027", "\u2219", "\u22C5", "\u2E31", "\u2E33", "\u2E3C", "\u3002",
+      "\u30FB", "\uFF65", "\uA4FF", "\uA60E", "\uA6F3", "\u{10A56}", "\uFE12", "\uFE52",
+      "\uFF0E", "\uFF61",
+    ].map((dot) => ["link", T(`See evil${dot}com for details.`)] as [string, string]),
     ["stray_bracket", T("Thanks { team.")],
     ["stray_bracket", T("Thanks <b>team</b>.")],
     ["stray_bracket", "{{greeting}}\n{{{order_lines}}}\n{{ask}}\n{{signer}}"],
@@ -320,9 +333,17 @@ describe("the prose predicate", () => {
     expect(rules(T("A case of St.Emilion as before."))).toContain("link");
   });
 
-  it("does not catch a domain spelled out or spaced (the stated gap, ADR 0313:37)", () => {
+  it("does not catch the stated gaps (ADR 0313:37)", () => {
     expect(rules(T("See evil dot com for details."))).toEqual([]);
     expect(rules(T("See evil . com for details."))).toEqual([]);
+    // A dot-like character outside DOT_LIKE_RE (U+2E30 ring point is not in it).
+    expect(rules(T("See evil\u2E30com for details."))).toEqual([]);
+    // A scheme outside LINK_SCHEMES, without "//".
+    expect(rules(T("Open foo:bar for details."))).toEqual([]);
+  });
+
+  it("keeps a known scheme word followed by a space, and a word that only ends in one", () => {
+    expect(rules(T("Data: as before. Note: thanks. Metadata:kept."))).toEqual([]);
   });
 
   it("a refused template never renders", () => {
