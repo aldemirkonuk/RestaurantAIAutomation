@@ -27,9 +27,11 @@ export interface QueueItem {
 interface QueueRowProps {
   item: QueueItem
   onDecide: (id: string, decision: 'approved' | 'rejected', note?: string) => Promise<void>
+  /** False for a role the server refuses decisions to (F-289): no buttons, a plain note. */
+  canDecide?: boolean
 }
 
-export function QueueRow({ item, onDecide }: QueueRowProps) {
+export function QueueRow({ item, onDecide, canDecide = true }: QueueRowProps) {
   const [isRejecting, setIsRejecting] = useState(false)
   const [rejectNote, setRejectNote] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -108,6 +110,10 @@ export function QueueRow({ item, onDecide }: QueueRowProps) {
       </td>
       <td className="px-4 py-3 min-w-[160px]">
         <div className="flex flex-col gap-1">
+          {!canDecide ? (
+            <span className="text-xs text-slate-400">A review admin decides</span>
+          ) : (
+          <>
           <div className="flex items-center gap-1">
             <button
               onClick={handleApprove}
@@ -162,6 +168,8 @@ export function QueueRow({ item, onDecide }: QueueRowProps) {
               </motion.div>
             )}
           </AnimatePresence>
+          </>
+          )}
 
           {/* D-12 trust progress — only for certified_contributors */}
           {isCertifiedContributor && typeof item.trust_count === 'number' && (

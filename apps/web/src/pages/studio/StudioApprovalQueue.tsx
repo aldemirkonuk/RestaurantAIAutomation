@@ -7,7 +7,8 @@ import { QueueItem } from './queue/QueueRow'
 import { Badge } from '../../components/ui/badge'
 import { EmptyState } from '../../components/ui/empty-state'
 import { Skeleton } from '../../components/ui/loading-skeleton'
-import { studioRequest, studioJsonRequest, studioErrorMessage } from './studioApi'
+import { useAuth } from '../../contexts/AuthContext'
+import { studioRequest, studioJsonRequest, studioErrorMessage, canReviewStudio } from './studioApi'
 
 // Orchestrator, not the gateway — a relative /api/v1/studio/* path resolves to the
 // NestJS gateway, which has no studio module, so both of these 404'd. See studioApi.ts.
@@ -21,6 +22,8 @@ function decideOverride(id: string, decision: 'approved' | 'rejected', note?: st
 
 export default function StudioApprovalQueue() {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const canDecide = canReviewStudio(user?.studioRoles)
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['studio-queue'],
     queryFn: fetchQueue,
@@ -91,7 +94,7 @@ export default function StudioApprovalQueue() {
             />
           </div>
         ) : (
-          <QueueTable items={data!.queue} onDecide={handleDecide} />
+          <QueueTable items={data!.queue} onDecide={handleDecide} canDecide={canDecide} />
         )}
       </div>
     </StudioLayout>

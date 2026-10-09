@@ -131,6 +131,7 @@ export default function DevSandbox() {
       wineName: selectedWine.name,
       quantity: -saleQuantity,
       source: 'manual',
+      sandbox: true,
       timestamp: new Date().toISOString(),
       metadata: {
         action: 'pos_sale',
@@ -156,6 +157,7 @@ export default function DevSandbox() {
       wineName: stockWine.name,
       quantity,
       source: 'manual',
+      sandbox: true,
       timestamp: new Date().toISOString(),
       metadata: {
         stockType,
@@ -301,6 +303,7 @@ export default function DevSandbox() {
       date: futureDate.toISOString().split('T')[0],
       description: 'Created from DevSandbox',
       source: 'manual',
+      sandbox: true,
       timestamp: new Date().toISOString()
     })
     

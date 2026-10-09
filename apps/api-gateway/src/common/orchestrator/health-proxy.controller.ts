@@ -216,12 +216,14 @@ export class HealthProxyController {
     // correctly configured provider amber before anyone has decided legacy
     // may degrade. `status` carries the more honest "not probed" language
     // instead; legacy only displays that string, it never branches on it.
+    // `desc` is read by a house owner on /admin: what the service does, in
+    // plain words — no vendor, model or route names (F-290).
     return {
       providers: [
         {
           id: "supabase",
           name: "Database",
-          desc: "Supabase PostgreSQL",
+          desc: "Where the restaurant's records are kept",
           status: supabaseUrl ? "Configured · not probed" : "Not configured",
           healthy: Boolean(supabaseUrl),
           configured: Boolean(supabaseUrl),
@@ -229,7 +231,7 @@ export class HealthProxyController {
         {
           id: "gemini",
           name: "AI Engine",
-          desc: "Gemini Pro",
+          desc: "Reads supplier mail and drafts replies",
           status: geminiKey ? "Configured · not probed" : "Key missing",
           healthy: Boolean(geminiKey),
           configured: Boolean(geminiKey),
@@ -237,7 +239,7 @@ export class HealthProxyController {
         {
           id: "claude",
           name: "Studio Vision",
-          desc: "Claude API (Haiku / Sonnet — /studio extract)",
+          desc: "Reads wine lists from menu photos and PDFs",
           status: claudeKey ? "Configured · not probed" : "Key missing",
           healthy: Boolean(claudeKey),
           configured: Boolean(claudeKey),

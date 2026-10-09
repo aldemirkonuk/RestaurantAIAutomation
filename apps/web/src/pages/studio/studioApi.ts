@@ -133,3 +133,15 @@ export function studioJsonRequest<T = unknown>(
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   })
 }
+
+/**
+ * Whether these studio roles may approve/reject overrides and invite, revoke,
+ * enable or disable contributors. Mirrors the orchestrator, which allows those
+ * endpoints to `review_admin` only (`api/studio_routes.py` decide, invite,
+ * revoke, enable, disable) — a `developer` can read the queue and the
+ * contributor list but every one of those actions 403s, so the buttons are
+ * hidden rather than offered (F-289).
+ */
+export function canReviewStudio(studioRoles: readonly string[] | undefined): boolean {
+  return studioRoles?.includes('review_admin') ?? false
+}

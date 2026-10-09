@@ -11,9 +11,10 @@ const THEAD_COLS = ['Wine', 'Field', 'Change', 'Actor', 'Reason', 'Citation', 'S
 interface QueueTableProps {
   items: QueueItem[]
   onDecide: (id: string, decision: 'approved' | 'rejected', note?: string) => Promise<void>
+  canDecide?: boolean
 }
 
-export function QueueTable({ items, onDecide }: QueueTableProps) {
+export function QueueTable({ items, onDecide, canDecide = true }: QueueTableProps) {
   return (
     <div className="rounded-xl border border-slate-200 shadow-xs bg-white overflow-hidden">
       <table className="w-full border-collapse">
@@ -28,7 +29,7 @@ export function QueueTable({ items, onDecide }: QueueTableProps) {
         </thead>
         <motion.tbody variants={containerVariants} initial="hidden" animate="visible">
           {items.map((item) => (
-            <QueueRow key={item.id} item={item} onDecide={onDecide} />
+            <QueueRow key={item.id} item={item} onDecide={onDecide} canDecide={canDecide} />
           ))}
         </motion.tbody>
       </table>
