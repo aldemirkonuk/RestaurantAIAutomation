@@ -119,5 +119,7 @@ describe('collapseStackedNotifications — a folded line is every row it folds (
   it('is ruled off only when every member is', () => {
     const out = collapseStackedNotifications([row('a', 9, 'read'), row('c', 11, 'read')]);
     expect(String(out.items[0].status)).toBe('read');
+    // a ruled-off fold still names both rows, so archiving it reaches both
+    expect(out.membersById.c).toEqual(['c', 'a']);
   });
 });

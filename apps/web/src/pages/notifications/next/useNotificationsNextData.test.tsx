@@ -398,6 +398,8 @@ describe('a folded line — every act reaches every row it folds', () => {
     });
     await waitFor(() => expect(api.patch).toHaveBeenCalled());
     expect(api.patch.mock.calls[0][0]).toBe('/notifications/n-rest-A-0/read');
+    // a line that folds nothing names no fold members
+    expect(result.current.stack.membersById).toEqual({});
   });
 });
 

@@ -946,6 +946,12 @@ describe('NotificationsNext — a till’s refused checks (ADR 0281, founder F7)
 describe('the standing sentence stands on the register count', () => {
   it('says every line is ruled off only when the register count is zero', () => {
     const done = row({ id: 'n2', status: 'read' });
+    // the same loaded pages, an open line further back: not done
+    mockData.current = { ...base([done]), unread: 1 };
+    const { unmount } = draw();
+    expect(screen.queryByText(/Every line in the book has been ruled off/)).not.toBeInTheDocument();
+    unmount();
+
     mockData.current = { ...base([done]), unread: 0 };
     draw();
     expect(
@@ -1002,10 +1008,14 @@ describe('a line handed over by the bell', () => {
     expect(container.querySelector('.nt-expand')?.getAttribute('data-open')).toBe('true');
   });
 
-  it('leaves the band closed with no hand-over', () => {
+  it('leaves the band closed with no hand-over, and opens it only for one', () => {
     const handled = row({ id: 'n9', status: 'read', title: 'Order delivered', type: 'order_delivered' });
     mockData.current = { ...base([handled]), unread: 0 };
-    const { container } = draw();
+    const { container, unmount } = draw();
     expect(container.querySelector('.nt-expand')?.getAttribute('data-open')).toBe('false');
+    unmount();
+
+    const handedOver = drawWith({ selectedNotificationId: 'n9' });
+    expect(handedOver.container.querySelector('.nt-expand')?.getAttribute('data-open')).toBe('true');
   });
 });

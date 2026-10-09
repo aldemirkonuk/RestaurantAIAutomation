@@ -90,5 +90,9 @@ describe('Sidebar — the Notifications badge', () => {
     renderSidebar()
     act(() => publishUnreadCount({ restaurantId: 'rest-2', count: 3, note: null }))
     expect(screen.getByRole('link', { name: 'Notifications, 140 pending' })).toBeInTheDocument()
+
+    // ...while a count read for this house still lands
+    act(() => publishUnreadCount({ restaurantId: 'rest-1', count: 5, note: null }))
+    expect(screen.getByRole('link', { name: 'Notifications, 5 pending' })).toBeInTheDocument()
   })
 })
