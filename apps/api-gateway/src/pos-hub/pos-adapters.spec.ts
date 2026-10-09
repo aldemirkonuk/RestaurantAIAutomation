@@ -333,7 +333,7 @@ describe("money from a till is read in either locale, never guessed (sim F-396)"
     expect(readMoney(raw)).toEqual({ value: want });
   });
 
-  it.each([["1.250"], ["1,250"], ["12,50,1"], ["abc"]])("does not guess %p", (raw) => {
+  it.each([["1.250"], ["1,250"], ["12,50,1"], ["abc"], ["1,25.50"], ["1.2,5"], ["1.250,00,5"]])("does not guess %p", (raw) => {
     expect(readMoney(raw)).toEqual({ value: null, unread: raw });
   });
 

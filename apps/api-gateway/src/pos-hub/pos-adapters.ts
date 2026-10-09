@@ -81,7 +81,14 @@ export const readMoney = (v: unknown): { value: number | null; unread?: unknown 
   if (lastDot >= 0 && lastComma >= 0) {
     const decimal = lastDot > lastComma ? "." : ",";
     const group = decimal === "." ? "," : ".";
-    plain = s.split(group).join("").replace(decimal, ".");
+    // Every group after the first is three digits, and the decimal mark
+    // comes once, after the groups: "1,25.50" and "1.2,5" are not amounts.
+    const [whole, frac, ...extra] = s.split(decimal);
+    const groups = whole.split(group);
+    if (extra.length > 0 || frac.includes(group) || groups.slice(1).some((g) => g.length !== 3)) {
+      return { value: null, unread: v };
+    }
+    plain = `${groups.join("")}.${frac}`;
   } else {
     const sep = lastDot >= 0 ? "." : lastComma >= 0 ? "," : null;
     if (sep === null) plain = s;
