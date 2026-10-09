@@ -26,10 +26,12 @@
  *    (`settings-audit.service.ts:80-84`). So the trail is one existing route
  *    and no new table — the reader is reused, not forked.
  *
- * WHAT IS STILL MISSING, AND IT IS NAMED ON SCREEN: nothing files an audit row
- * when a labour setting or a coverage rule changes, so those two lines can show
- * a date and never an author. §13 carries the `record()` calls that would close
- * it.
+ * WHAT IS STILL MISSING, AND IT IS NAMED ON SCREEN: a labour setting change IS
+ * recorded — `TeamService.recordSettingsChange` files
+ * `team_labour_settings_changed` (who, as what role, each field from → to) —
+ * but `GET /settings-audit` does not read that action back, so the line still
+ * shows a date and no author. A coverage rule change files nothing at all.
+ * §13 carries the rest.
  */
 
 import { useMemo } from 'react';
@@ -222,7 +224,7 @@ export function TeamRecordSection({
                 ? `the stored value cannot be told apart from the column default of ${LABOR_TARGET_COLUMN_DEFAULT}`
                 : whenUnknown
             }
-            whoUnknown="nothing files an audit row when a labour setting changes"
+            whoUnknown="each change is recorded with who made it, as what role, and from what to what, but this page cannot show that record yet"
           />
         }
       />
@@ -383,8 +385,9 @@ export function TrailSheet({
               </div>
             ))}
             <p className="tm-hint">
-              Recording began on {fmtDayShort(trail.recordingSince)}. Labour settings and
-              coverage rules file nothing yet, so a change to either is real and absent
+              Recording began on {fmtDayShort(trail.recordingSince)}. A labour setting
+              change is recorded but not shown in this list yet, and a coverage rule
+              change is not recorded at all, so a change to either is real and absent
               from this list.
             </p>
           </>

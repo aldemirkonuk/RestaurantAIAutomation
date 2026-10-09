@@ -489,6 +489,19 @@ describe('the labour target is read against its column default', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('says a labour setting change is recorded, not that nothing records it', async () => {
+    // `recordSettingsChange` files `team_labour_settings_changed` on every
+    // labour save that moves a value; the page only lacks the read-back.
+    render(<TeamNext />, { wrapper });
+    const section = await screen.findByRole('region', { name: 'How this desk is configured' });
+    expect(
+      within(section).getByText(/each change is recorded with who made it/),
+    ).toBeInTheDocument();
+    expect(
+      within(section).queryByText(/nothing files an audit row when a labour setting changes/),
+    ).not.toBeInTheDocument();
+  });
+
   it('does not render an empty trail as "nothing ever happened"', async () => {
     render(<TeamNext />, { wrapper });
     fireEvent.click(await screen.findByRole('button', { name: 'What changed here' }));
