@@ -183,12 +183,33 @@ export class ScheduleService {
       labor,
       receipts,
       settings,
+      timezone: await this.houseZone(restaurantId),
       // The currency travels with the money, and only to whoever gets the
       // money: /team printed every figure in US dollars (ADR 0215).
       ...(seesMoney(viewer)
         ? { money: await this.houseMoney(restaurantId) }
         : {}),
     };
+  }
+
+  /**
+   * The house's own time zone, so a phone elsewhere still reads "tonight" as
+   * the house's night (F-252). `null` when none is stated or it could not be
+   * read; the client then falls back to its own clock.
+   */
+  private async houseZone(restaurantId: string): Promise<string | null> {
+    const { data, error } = await this.sb
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `houseZone: could not read the time zone of ${restaurantId}: ${error.message}`,
+      );
+      return null;
+    }
+    return data?.timezone ?? null;
   }
 
   /**
@@ -266,7 +287,14 @@ export class ScheduleService {
         .maybeSingle();
       acknowledged = !!receipt;
     }
-    return { member, schedule, mine, open, acknowledged };
+    return {
+      member,
+      schedule,
+      mine,
+      open,
+      acknowledged,
+      timezone: await this.houseZone(restaurantId),
+    };
   }
 
   /**
