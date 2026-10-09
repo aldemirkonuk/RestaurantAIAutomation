@@ -58,6 +58,9 @@ export interface CanonicalCheck {
    *  as yes or no (the raw value, as sent). ingest() refuses such a check:
    *  guessing either way moves stock the wrong way. */
   voidedUnread?: unknown;
+  /** Set only when a money field (subtotal, total, tip, a line price) was
+   *  present but not read as an amount: ingest() refuses the check. */
+  moneyUnread?: { field: string; value: unknown };
   /** Source POS table reference — resolved against restaurant_tables.pos_refs
    *  or label. */
   tableRef?: string | null;

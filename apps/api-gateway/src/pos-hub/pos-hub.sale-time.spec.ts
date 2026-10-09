@@ -873,3 +873,25 @@ describe('voided: "false" from a till is a sale, not a void (sim F-397)', () => 
     expect(deltas.every((d) => Number(d) < 0)).toBe(true);
   });
 });
+
+describe("an amount the import does not read is refused, not stored wrong (sim F-396)", () => {
+  it("writes nothing for the check and names the field", async () => {
+    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const res = await ingest(service, [
+      check("c-m", "2026-07-14T21:00:00Z", [line(BOTTLE)], { total: "1.350" }),
+    ]);
+    expect(calls.checks).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(res.errors).toEqual([
+      'c-m: not imported, total not readable as an amount — write it as 1250.00 (it was "1.350")',
+    ]);
+  });
+
+  it("stores a Turkish-written total as the amount it says", async () => {
+    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    await ingest(service, [
+      check("c-t", "2026-07-14T21:00:00Z", [line(BOTTLE)], { total: "1.350,50", tip: "100,00" }),
+    ]);
+    expect(calls.checks[0]).toMatchObject({ total: 1350.5, tip: 100 });
+  });
+});
