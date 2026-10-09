@@ -10,6 +10,8 @@
  * `supabase/migrations/20260903092000_restaurant_cellar_registers.sql` for why.
  */
 
+import { foldText } from "../common/text-fold";
+
 export const REGISTER_IDS = [
   "wines",
   "beer",
@@ -162,9 +164,13 @@ export function beverageTypesForRegister(id: RegisterId): string[] {
     .map(([type]) => type);
 }
 
-/** Lowercase, strip punctuation to single spaces, pad so \b-style tests are easy. */
+/**
+ * Fold case and accents, strip punctuation to single spaces, pad so \b-style
+ * tests are easy. The fold is what lets "Rakı" meet "raki" and "Çay" meet
+ * "cay": without it the Turkish letters were deleted and the word lost.
+ */
 export function normalizeLabel(text: string): string {
-  return ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+  return ` ${foldText(text).replace(/[^a-z0-9]+/g, " ").trim()} `;
 }
 
 /**

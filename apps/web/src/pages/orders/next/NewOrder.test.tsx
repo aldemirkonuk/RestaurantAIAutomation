@@ -398,3 +398,14 @@ describe('lineRefusal, on its own', () => {
     expect(lineRefusal({ ...base, price: '0' })).toMatch(/above zero/);
   });
 });
+
+describe('the search folds Turkish letters', () => {
+  it('finds Öküzgözü typed as okuzgozu, and Kavaklıdere typed as kavaklidere', async () => {
+    draw();
+    fireEvent.change(screen.getByTestId('new-order-search'), { target: { value: 'okuzgozu' } });
+    expect(await screen.findByText(/Öküzgözü 2022/)).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('new-order-search'), { target: { value: 'kavaklidere' } });
+    expect(await screen.findByText(/Öküzgözü 2022/)).toBeInTheDocument();
+    expect(screen.queryByText(/Chianti Classico/)).not.toBeInTheDocument();
+  });
+});

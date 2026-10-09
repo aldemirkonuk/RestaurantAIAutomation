@@ -33,6 +33,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Panel } from '@/components/mudavym/Sheet';
 import { failureLine } from './rp-format';
 import type { ReadingRow, Register } from './useReportsNextData';
+import { foldText } from '@/lib/textFold';
 
 /** Question scaffolding carries no signal — dropping it lets "why did tuesday
  *  dip?" match on `tuesday`, instead of failing on `why`. */
@@ -49,7 +50,9 @@ const STOPWORDS = new Set([
 
 export function tokensOf(query: string): string[] {
   const seen = new Set<string>();
-  for (const raw of query.toLowerCase().split(/[^a-z0-9]+/)) {
+  // Folded, so "Öküzgözü" and "şarap" keep their letters and meet the ASCII
+  // spelling too; split on anything that is not a letter or digit in any script.
+  for (const raw of foldText(query).split(/[^\p{L}\p{N}]+/u)) {
     if (raw.length < 3 || STOPWORDS.has(raw)) continue;
     seen.add(raw);
   }
@@ -62,7 +65,7 @@ export function rank(rows: ReadingRow[], query: string): ReadingRow[] {
   if (tokens.length === 0) return rows;
   const scored = rows
     .map((r) => {
-      const hay = `${r.sentence} ${r.category} ${r.entityLabel ?? ''}`.toLowerCase();
+      const hay = foldText(`${r.sentence} ${r.category} ${r.entityLabel ?? ''}`);
       return { r, matched: tokens.filter((t) => hay.includes(t)).length };
     })
     .filter((s) => s.matched > 0);
