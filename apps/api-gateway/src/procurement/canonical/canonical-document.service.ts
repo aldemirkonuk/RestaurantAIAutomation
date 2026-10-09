@@ -593,6 +593,9 @@ export class CanonicalDocumentService {
             "provisional_until_first_order",
         )
         .eq("id", providerId)
+        // The caller's house too: a vendor id from another house names no
+        // seller here, so its name and tax id never reach this house's sheet.
+        .eq("restaurant_id", restaurantId)
         .maybeSingle();
       if (provider.error)
         return {

@@ -1734,9 +1734,13 @@ export class DeliveryService {
          */
         .select(
           "id, wine_name, vendor_sku, vintage, quantity, bottles_per_unit, " +
-            "total_bottles, quoted_unit_price, final_unit_price, inventory_id",
+            "total_bottles, quoted_unit_price, final_unit_price, inventory_id, " +
+            "procurement_orders!inner(restaurant_id)",
         )
-        .eq("order_id", delivery.order_id),
+        .eq("order_id", delivery.order_id)
+        // Read through the order's house: an order id from another house
+        // yields no lines, so its quantities never print on this delivery.
+        .eq("procurement_orders.restaurant_id", delivery.restaurant_id),
       this.linesFor(comparable),
     ]);
 

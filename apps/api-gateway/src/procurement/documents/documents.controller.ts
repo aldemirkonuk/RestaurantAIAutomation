@@ -1332,6 +1332,7 @@ export class DocumentsController {
    * name rather than a placeholder (ADR 0020).
    */
   private async vendorNamesFor(
+    restaurantId: string,
     rows: Record<string, unknown>[],
   ): Promise<Map<string, string | null>> {
     const providerIds = [
@@ -1347,7 +1348,10 @@ export class DocumentsController {
         .getClient()
         .from("providers")
         .select("id, name, company_name")
-        .in("id", providerIds);
+        .in("id", providerIds)
+        // Only this house's vendors: another house's id falls back to the
+        // name the paper carried, never to that house's vendor record.
+        .eq("restaurant_id", restaurantId);
       if (error)
         this.logger.warn(
           `List: vendors could not be read (${error.message}); rows name the vendor the paper carried.`,
@@ -1453,7 +1457,10 @@ export class DocumentsController {
      */
     const [verdicts, vendorNames] = await Promise.all([
       this.tieOutsAsRuledNow((data ?? []) as Record<string, unknown>[]),
-      this.vendorNamesFor((data ?? []) as Record<string, unknown>[]),
+      this.vendorNamesFor(
+        user.restaurantId,
+        (data ?? []) as Record<string, unknown>[],
+      ),
     ]);
     const items = (data ?? []).map((row) => ({
       ...(row as Record<string, unknown>),

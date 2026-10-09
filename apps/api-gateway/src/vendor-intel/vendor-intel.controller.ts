@@ -19,6 +19,8 @@ import { OutlierRejudgeService } from "./outlier-rejudge.service";
 import { ShopReferenceSweepService } from "./shop-reference-sweep.service";
 import { IdentityService } from "./identity.service";
 import { ManualObservationDto } from "./dto/manual-observation.dto";
+import { DatabaseService } from "../database/database.service";
+import { assertProviderBelongsToRestaurant } from "../common/tenant/assert-provider-belongs-to-restaurant";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,6 +46,7 @@ export class VendorIntelController {
     private readonly rejudge: OutlierRejudgeService,
     private readonly shopSweep: ShopReferenceSweepService,
     private readonly identity: IdentityService,
+    private readonly db: DatabaseService,
   ) {}
 
   @Get("compare")
@@ -200,6 +203,16 @@ export class VendorIntelController {
     },
   ) {
     if (!body?.url) throw new BadRequestException("url is required");
+    // The sighting is filed against the vendor named here, so it must be this
+    // house's vendor; another house's id gets "Vendor not found".
+    if (body.providerId)
+      await assertProviderBelongsToRestaurant(
+        this.db.getClient(),
+        user.restaurantId,
+        body.providerId,
+        "vendorIntel.scrape",
+        "the page was not read",
+      );
     const result = await this.extractor.extractFromUrl({
       url: body.url,
       // The sighting is filed to the house that asked for it. A null here is a
