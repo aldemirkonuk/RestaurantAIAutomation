@@ -32,6 +32,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { fmtMoney, fmtMoneyWhole, sumByCurrency } from './format';
 
 vi.mock('@/services/api/orders', () => ({ mintOrderSeal: vi.fn(async () => 'seal') }));
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
@@ -64,6 +65,7 @@ function wire(over: Record<string, unknown> = {}) {
     bottlesTotal: 60,
     finalPrice: 420,
     totalCost: 2100,
+    currency: 'USD',
     status: 'PENDING',
     requestedAt: '2026-09-01T10:00:00Z',
     wineName: 'Barolo Riserva',
@@ -263,5 +265,58 @@ describe('a count is said in words (ORD-W17)', () => {
   it('says one of a unit in the singular, and a split case as two words', () => {
     mount({ priceUom: null, pricePackSize: null, quantity: 1, unitType: 'split_case' });
     expect(screen.getByTestId('row-no-working').textContent).toContain('1 split case —');
+  });
+});
+
+describe('every amount is in the order’s own currency (F-341)', () => {
+  it('prints a euro order in euros — the total, the price, the working and the seal', () => {
+    const { container } = render(
+      <LedgerRow
+        row={toRow(wire({ currency: 'EUR' }), NO_PROVIDERS)}
+        expanded
+        onToggle={() => {}}
+        selected={false}
+        onSelectChange={() => {}}
+        bulkRunning={false}
+      />,
+    );
+    expect(screen.getByTestId('agreed-price').textContent).toContain('€420.00 per case');
+    expect(screen.getByTestId('row-working').textContent).toBe(
+      '60 bottles ÷ 12 = 5 cases × €420.00.',
+    );
+    // Pre-fix every one of these was a dollar sign, the seal's label included.
+    expect(container.innerHTML).toContain('Hold to approve · €2,100.00');
+    expect(container.textContent).not.toContain('$');
+  });
+
+  it('falls back to the house’s currency, never to dollars', () => {
+    const row = toRow(wire({ currency: null }), NO_PROVIDERS, 'TRY');
+    expect(row.currency).toBe('TRY');
+    expect(fmtMoney(row.total, row.currency)).not.toContain('$');
+    // The order's own currency wins over the house's.
+    expect(toRow(wire({ currency: 'eur' }), NO_PROVIDERS, 'TRY').currency).toBe('EUR');
+  });
+
+  it('says so when neither the order nor the house names one', () => {
+    const row = toRow(wire({ currency: null }), NO_PROVIDERS, null);
+    expect(row.currency).toBeNull();
+    expect(fmtMoney(2100, row.currency)).toBe('2,100.00 (currency not recorded)');
+    expect(fmtMoneyWhole(12480, 'EUR')).toBe('€12,480');
+  });
+
+  it('never adds two currencies into one month figure', () => {
+    const mixed = sumByCurrency([
+      { amount: 12000, currency: 'TRY' },
+      { amount: 400, currency: 'EUR' },
+      { amount: 250.5, currency: 'TRY' },
+      { amount: null, currency: 'EUR' },
+    ]);
+    // Pre-fix this was one figure, 12650.5, printed as dollars.
+    expect(mixed.total).toBeNull();
+    expect(mixed.byCurrency).toEqual([
+      { currency: 'TRY', amount: 12250.5 },
+      { currency: 'EUR', amount: 400 },
+    ]);
+    expect(sumByCurrency([{ amount: 100, currency: 'EUR' }, { amount: 50, currency: 'EUR' }]).total).toBe(150);
   });
 });

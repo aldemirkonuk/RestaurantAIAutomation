@@ -18,7 +18,7 @@ import { Seal } from '@/components/mudavym';
 import { animate, pour, stamp, tuck, useReducedMotion } from '@/lib/mudavym/motion';
 import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
-import { MONO, SANS, fmtMoney } from './format';
+import { MONO, SANS, fmtMoney, sumByCurrency } from './format';
 import type { OrderRowVM } from './useOrdersNextData';
 
 export interface BulkApproveBarProps {
@@ -92,7 +92,10 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   const [sealNote, setSealNote] = useState<string | null>(null);
 
   const count = selectedRows.length;
-  const knownTotal = selectedRows.reduce((s, r) => s + (r.total ?? 0), 0);
+  // Per currency: a € order and a ₺ order are two figures, not one (F-341).
+  const knownTotals = sumByCurrency(
+    selectedRows.map((r) => ({ amount: r.total, currency: r.currency })),
+  ).byCurrency;
   const unpriced = selectedRows.filter((r) => r.total === null).length;
 
   useEffect(
@@ -304,7 +307,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
               ? result.refused > 0
                 ? `${result.refused} refused by the gateway — still pending, still selected.`
                 : 'The rows settle; the seal stays rationed.'
-              : `${fmtMoney(knownTotal)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
+              : `${knownTotals.length ? knownTotals.map((c) => fmtMoney(c.amount, c.currency)).join(' and ') : fmtMoney(0, selectedRows[0]?.currency)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
           </span>
           {phase === 'done' && result && result.reasons.length > 0 && (
             <span

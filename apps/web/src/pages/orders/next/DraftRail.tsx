@@ -663,10 +663,13 @@ function DraftCard({
   draft,
   focused,
   onOpenResponses,
+  currency,
 }: {
   draft: ActiveConversationDto;
   focused: boolean;
   onOpenResponses?: () => void;
+  /** The order's money (F-341); null says "currency not recorded", never `$`. */
+  currency: string | null;
 }) {
   const [expanded, setExpanded] = useState(focused);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -745,7 +748,7 @@ function DraftCard({
             flex: "none",
           }}
         >
-          {qty !== null ? `${qty} × ${fmtMoney(price)}` : fmtMoney(total)}
+          {qty !== null ? `${qty} × ${fmtMoney(price, currency)}` : fmtMoney(total, currency)}
         </span>
         <span
           aria-hidden
@@ -780,11 +783,14 @@ function DraftCard({
 export function DraftRail({
   focusOrderId = null,
   onOpenResponses,
+  currencyOf,
 }: {
   /** The order opened on the ledger; its letter is opened and marked (ORD-W8). */
   focusOrderId?: string | null;
   /** Opens the vendor's answers for an order, when the page can (ORD-W11). */
   onOpenResponses?: (orderId: string) => (() => void) | undefined;
+  /** The money an order is in: its own, else the house's (F-341). */
+  currencyOf?: (orderId: string) => string | null;
 } = {}) {
   const drafts = useActiveConversations();
   const list = drafts.data ?? [];
@@ -872,6 +878,7 @@ export function DraftRail({
               draft={d}
               focused={focusOrderId !== null && d.orderId === focusOrderId}
               onOpenResponses={onOpenResponses?.(d.orderId)}
+              currency={currencyOf?.(d.orderId) ?? null}
             />
           ))}
         </div>

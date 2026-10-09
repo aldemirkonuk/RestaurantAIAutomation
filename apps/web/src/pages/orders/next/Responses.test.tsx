@@ -127,6 +127,7 @@ function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
     bottlesTotal: 60,
     unitType: 'case',
     priceUnit: { read: true, stated: { priceUom: 'case', pricePackSize: 12 } },
+    currency: 'USD',
     // ADR 0119 Q3: the list route reads the line's fee columns, and this
     // agreement names none. `read: true` with three nulls is "looked, found
     // nothing"; `read: false` would be "never looked".

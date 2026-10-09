@@ -34,7 +34,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const postMock = vi.hoisted(() => vi.fn(async () => ({ data: { id: 'new-order' } })));
 
 vi.mock('@/services/api/client', () => ({
-  apiClient: { post: postMock },
+  // The sheet asks the gateway which currency to offer (F-341: its total and
+  // working are said in that currency, never a hard-coded `$`).
+  apiClient: {
+    post: postMock,
+    get: vi.fn(async () => ({
+      data: { code: 'USD', basis: 'house', sentence: 'Defaulted to USD, the house’s currency.' },
+    })),
+  },
   getErrorMessage: (e: unknown) =>
     (e as { response?: { data?: { message?: string } }; message?: string })?.response?.data
       ?.message ??
@@ -136,13 +143,16 @@ describe('the price-unit picker', () => {
 });
 
 describe('the total is drawn from the pair and says so', () => {
-  it('totals five cases of twelve at $420 per case as $2,100, not $25,200', () => {
+  it('totals five cases of twelve at $420 per case as $2,100, not $25,200', async () => {
     mount();
     fillCaseOrder();
     fireEvent.change(screen.getByTestId('price-uom'), { target: { value: 'case' } });
     fireEvent.change(screen.getByTestId('price-pack'), { target: { value: '12' } });
 
-    expect(screen.getByTestId('agreement-total').textContent).toBe('$2,100.00');
+    // In the currency the gateway offered (USD here), once it has answered.
+    await waitFor(() =>
+      expect(screen.getByTestId('agreement-total').textContent).toBe('$2,100.00'),
+    );
     // The pre-fix arithmetic, asserted as the number the page must not show.
     expect(screen.getByTestId('agreement-total').textContent).not.toBe('$25,200.00');
     expect(screen.getByTestId('agreement-working').textContent).toContain(
@@ -150,12 +160,14 @@ describe('the total is drawn from the pair and says so', () => {
     );
   });
 
-  it('totals the same order priced per bottle by the bottle, and calls it ordinary', () => {
+  it('totals the same order priced per bottle by the bottle, and calls it ordinary', async () => {
     mount();
     fillCaseOrder({ price: '35' });
     fireEvent.change(screen.getByTestId('price-uom'), { target: { value: 'bottle' } });
 
-    expect(screen.getByTestId('agreement-total').textContent).toBe('$2,100.00');
+    await waitFor(() =>
+      expect(screen.getByTestId('agreement-total').textContent).toBe('$2,100.00'),
+    );
     expect(screen.getByTestId('agreement-working').textContent).toContain(
       '60 × $35.00 per bottle',
     );
@@ -273,17 +285,17 @@ describe('the lists are honest about not having been read', () => {
 
 describe('the page arithmetic agrees with the words it prints', () => {
   it('describes a case price with its pack and a bottle price without one', () => {
-    expect(describeStatedPrice(420, { priceUom: 'case', pricePackSize: 12 })).toBe(
+    expect(describeStatedPrice(420, { priceUom: 'case', pricePackSize: 12 }, 'USD')).toBe(
       '$420.00 per case (12 bottles)',
     );
-    expect(describeStatedPrice(35, { priceUom: 'bottle', pricePackSize: 1 })).toBe(
+    expect(describeStatedPrice(35, { priceUom: 'bottle', pricePackSize: 1 }, 'USD')).toBe(
       '$35.00 per bottle',
     );
   });
 
   it('groups thousands like every other figure on the page (ORD-W14)', () => {
-    expect(describeStatedPrice(1090, null)).toBe('$1,090.00');
-    expect(describeStatedPrice(2400, { priceUom: 'case', pricePackSize: 6 })).toBe(
+    expect(describeStatedPrice(1090, null, 'USD')).toBe('$1,090.00');
+    expect(describeStatedPrice(2400, { priceUom: 'case', pricePackSize: 6 }, 'USD')).toBe(
       '$2,400.00 per case (6 bottles)',
     );
   });
@@ -295,6 +307,7 @@ describe('the page arithmetic agrees with the words it prints', () => {
       quantity: 10,
       unitType: 'bottle',
       bottlesPerUnit: 1,
+      currency: 'USD',
     });
     expect(r?.ok).toBe(true);
     if (!r || !r.ok) throw new Error('unreachable');
@@ -304,7 +317,7 @@ describe('the page arithmetic agrees with the words it prints', () => {
   });
 
   it('never renders an absent price as $0.00', () => {
-    expect(describeStatedPrice(null, null)).toBeNull();
+    expect(describeStatedPrice(null, null, 'USD')).toBeNull();
     expect(
       agreementTotal({
         price: null,
@@ -312,6 +325,7 @@ describe('the page arithmetic agrees with the words it prints', () => {
         quantity: 5,
         unitType: 'case',
         bottlesPerUnit: 12,
+        currency: 'USD',
       }),
     ).toBeNull();
   });

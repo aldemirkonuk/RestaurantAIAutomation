@@ -240,3 +240,56 @@ describe('what the keyboard reaches is what the click shows', () => {
     expect(body.hasAttribute('inert')).toBe(false);
   });
 });
+
+describe('the month figure never adds two currencies (F-341)', () => {
+  function mountMonth(month: OrdersNextData['month'], houseCurrency: string | null) {
+    state.current = { ...ordersData([row()]), month, houseCurrency };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/orders']}>
+          <Routes>
+            <Route path="/orders" element={<OrdersNext />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('prints one line per currency when the month mixes them', () => {
+    mountMonth(
+      {
+        thisMonth: null,
+        lastMonth: 900,
+        thisMonthByCurrency: [
+          { currency: 'TRY', amount: 12000 },
+          { currency: 'EUR', amount: 400 },
+        ],
+        lastMonthByCurrency: [{ currency: 'EUR', amount: 900 }],
+        unpricedThisMonth: 0,
+      },
+      'TRY',
+    );
+    // Intl puts a no-break space after a code; read it as a space.
+    const lines = screen
+      .getAllByTestId('month-line')
+      .map((l) => (l.textContent ?? '').replace(/\s/g, ' '));
+    expect(lines).toEqual(['TRY 12,000', '€400']);
+    expect(screen.getByText(/last month/).textContent).toContain('€900');
+  });
+
+  it('says a single-currency month in that currency, not dollars', () => {
+    mountMonth(
+      {
+        thisMonth: 1250,
+        lastMonth: null,
+        thisMonthByCurrency: [{ currency: 'EUR', amount: 1250 }],
+        lastMonthByCurrency: [],
+        unpricedThisMonth: 0,
+      },
+      'TRY',
+    );
+    expect(screen.queryByTestId('month-line')).toBeNull();
+    expect(screen.getByText('€1,250')).toBeInTheDocument();
+  });
+});
