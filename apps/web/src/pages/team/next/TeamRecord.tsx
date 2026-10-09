@@ -26,15 +26,16 @@
  *    (`settings-audit.service.ts:80-84`). So the trail is one existing route
  *    and no new table — the reader is reused, not forked.
  *
- * WHAT IS STILL MISSING, AND IT IS NAMED ON SCREEN: a labour setting change IS
- * recorded — `TeamService.recordSettingsChange` files
- * `team_labour_settings_changed` (who, as what role, each field from → to) —
- * but `GET /settings-audit` does not read that action back, so the line still
- * shows a date and no author. A coverage rule change files nothing at all.
- * §13 carries the rest.
+ * A labour setting change is recorded — `TeamService.recordSettingsChange`
+ * files `team_labour_settings_changed` (who, as what role, each field from →
+ * to) — and `GET /settings-audit` reads it back (F-375), so the trail sheet
+ * says who moved the target, from what to what, and when on the house's clock.
+ * WHAT IS STILL MISSING, AND IT IS NAMED ON SCREEN: a coverage rule change
+ * files nothing at all. §13 carries the rest.
  */
 
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { EM, LE, fmtDayShort, resolveName } from './tm-format';
 import { Alert } from './tm-bits';
@@ -46,6 +47,8 @@ import {
   type TeamTrail,
 } from './useTeamNextData';
 import type { TeamMember } from '../../../services/api/team';
+import { apiClient } from '../../../services/api/client';
+import { formatVenueTime } from '@/lib/venueTime';
 
 /** Relative time, the way `/settings` says it. */
 function fmtWhen(iso: string | null): string {
@@ -224,7 +227,7 @@ export function TeamRecordSection({
                 ? `the stored value cannot be told apart from the column default of ${LABOR_TARGET_COLUMN_DEFAULT}`
                 : whenUnknown
             }
-            whoUnknown="each change is recorded with who made it, as what role, and from what to what, but this page cannot show that record yet"
+            whoUnknown="each change is recorded with who made it, as what role, and from what to what — open What changed here to read it"
           />
         }
       />
@@ -296,7 +299,23 @@ function describe(action: string): string {
   if (action === 'area_lead_removed') return 'removed an area lead';
   if (action === 'away_set_for_member') return "set someone's Away dates";
   if (action === 'away_ended_for_member') return "ended someone's Away";
+  if (action === 'team_labour_settings_changed') return 'changed the labour settings';
   return action.replace(/_/g, ' ');
+}
+
+/** A labour field's from → to in the owner's words; anything else as stored. */
+function fieldWords(field: string, change: { from: unknown; to: unknown }): string {
+  const pct = (v: unknown) =>
+    v === null || v === undefined || !Number.isFinite(Number(v)) ? 'none' : `${Number(v)}%`;
+  const onOff = (v: unknown) => (v === true ? 'on' : v === false ? 'off' : EM);
+  const allowed = (v: unknown) => (v === true ? 'allowed' : v === false ? 'not allowed' : EM);
+  if (field === 'labor_target_pct')
+    return `labour target ${pct(change.from)} → ${pct(change.to)}`;
+  if (field === 'labor_tracking_enabled')
+    return `labour tracking ${onOff(change.from)} → ${onOff(change.to)}`;
+  if (field === 'allow_double_booking')
+    return `double booking ${allowed(change.from)} → ${allowed(change.to)}`;
+  return `${field}: ${String(change.from ?? EM)} → ${String(change.to ?? EM)}`;
 }
 
 export function TrailSheet({
@@ -320,6 +339,22 @@ export function TrailSheet({
     (TEAM_TRAIL_ACTIONS as readonly string[]).includes(e.action),
   );
 
+  // The house's clock (ADR 0207 round 3), so "when" is the restaurant's time,
+  // not the reader's. Unanswered or unread, `formatVenueTime` says whose clock
+  // it used instead of passing the reader's off as the house's.
+  const zoneQ = useQuery({
+    queryKey: ['team-next-house-zone'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ zone?: unknown }>('/settings/time-zone');
+      return typeof data?.zone === 'string' ? data.zone : null;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const houseZone = zoneQ.data ?? null;
+  const notHouseClock = zoneQ.isError
+    ? " on your clock — the house's time zone could not be read"
+    : ' on your clock — no house time zone is set';
+
   return (
     <Sheet
       open
@@ -331,8 +366,8 @@ export function TrailSheet({
         <span>
           The last {LE}
           {TEAM_SERVER_WINDOWS.TRAIL_ROWS} changes on this restaurant, from the same trail
-          `/settings` reads, filtered to the actions that are about people: access, areas,
-          leads, and Away set for someone else. A ceiling,
+          `/settings` reads, filtered to the actions about this team: access, areas,
+          leads, Away set for someone else, and the labour settings. A ceiling,
           not a total: the route caps the read and offers no count of what is behind it.
           There is no write route and no delete route — a log a manager can edit is not a
           log.
@@ -375,20 +410,30 @@ export function TrailSheet({
                 </p>
                 <p className="tm-fact__k" style={{ textTransform: 'none', letterSpacing: '0.1em' }}>
                   {fmtWhen(e.occurredAt)}
+                  {e.occurredAt && !zoneQ.isPending
+                    ? (() => {
+                        const at = formatVenueTime(e.occurredAt, houseZone);
+                        return (
+                          <span title={at.title}>
+                            {' · '}
+                            {at.text}
+                            {at.inVenueZone ? '' : notHouseClock}
+                          </span>
+                        );
+                      })()
+                    : null}
                   {Object.entries(e.fields).map(([field, change]) => (
                     <span key={field}>
                       {' · '}
-                      {field}: {String(change.from ?? EM)} → {String(change.to ?? EM)}
+                      {fieldWords(field, change)}
                     </span>
                   ))}
                 </p>
               </div>
             ))}
             <p className="tm-hint">
-              Recording began on {fmtDayShort(trail.recordingSince)}. A labour setting
-              change is recorded but not shown in this list yet, and a coverage rule
-              change is not recorded at all, so a change to either is real and absent
-              from this list.
+              Recording began on {fmtDayShort(trail.recordingSince)}. A coverage rule
+              change is not recorded at all, so one is real and absent from this list.
             </p>
           </>
         )}

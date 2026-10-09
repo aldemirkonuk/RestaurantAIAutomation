@@ -349,3 +349,65 @@ describe("SettingsAuditService.list — what a staff reader is never handed", ()
     expect(readBackActionsFor("manager")).toEqual([...READ_BACK_ACTIONS]);
   });
 });
+
+describe("SettingsAuditService.list — a labour setting change reads back (F-375)", () => {
+  // The exact row `TeamService.recordSettingsChange` files: the fields at the
+  // TOP level of `changes`, next to the actor's role as a bare string.
+  const LABOUR_ROW = {
+    id: "l1",
+    actor_id: "u-owner",
+    action: "team_labour_settings_changed",
+    entity_type: "team_settings",
+    entity_id: "rest-1",
+    changes: { labor_target_pct: { from: "28.00", to: 31 }, role: "owner" },
+    created_at: "2026-10-08T01:30:00Z",
+  };
+
+  function honouringDb() {
+    const client = {
+      from(table: string) {
+        let allow: Set<string> | null = null;
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          in: (column: string, values: string[]) => {
+            if (table === "system_audit_log" && column === "action") allow = new Set(values);
+            return chain;
+          },
+          order: () => chain,
+          limit: () => chain,
+          then: (resolve: (v: unknown) => unknown) => {
+            const all =
+              table === "system_audit_log"
+                ? [LABOUR_ROW]
+                : [{ user_id: "u-owner", name: "Ayla Tuzlu", email: null }];
+            const data = allow ? all.filter((r: any) => allow!.has(r.action)) : all;
+            return Promise.resolve({ data, error: null }).then(resolve);
+          },
+        };
+        return chain;
+      },
+    };
+    return { client } as any;
+  }
+
+  it.each(["owner", "manager", "staff"])(
+    "hands a %s the row: who, from what to what, when — and not the role as a field",
+    async (role) => {
+      const out = await new SettingsAuditService(honouringDb()).list(
+        "rest-1",
+        50,
+        undefined,
+        role,
+      );
+      expect(out.entries).toHaveLength(1);
+      expect(out.entries[0]).toMatchObject({
+        action: "team_labour_settings_changed",
+        occurredAt: "2026-10-08T01:30:00Z",
+        actor: { userId: "u-owner", name: "Ayla Tuzlu" },
+        fields: { labor_target_pct: { from: "28.00", to: 31 } },
+      });
+      expect(out.entries[0].fields).not.toHaveProperty("role");
+    },
+  );
+});
