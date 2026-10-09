@@ -2,7 +2,7 @@
 
 Scope: one house-only key, `max_acceptable_price`, read from the intent
 passed to the drafting call. It is stripped from the prompt, and a draft
-that states its exact figure (in the forms listed below) is replaced.
+that states its figure (in the forms listed below) is replaced.
 
 A procurement intent carries `max_acceptable_price`, the house's ceiling.
 The agent uses it only for its own accept test
@@ -20,70 +20,118 @@ There are two layers here:
      memories or history.
   2. `withheld_figures_in` checks the drafted text for the ceiling figure in
      these forms: 1199, 1,199, 1.199, 1 199, 1'199 (also with U+2019, U+2018
-     or U+02BC as the apostrophe), 1199.00 and 1.199,00, also when another
-     number follows it in the same sentence ("$1,199. 6 bottles"). The text
-     is normalised first: NFKC (so "1，199" with a full-width comma
-     counts as "1,199"), then every format character (category Cf, e.g.
-     zero-width space, word joiner, BOM, soft hyphen) is deleted, then every
-     separator character (category Z: any Unicode space, and also the line
-     and paragraph separators U+2028 and U+2029) is read as a plain space.
-     The caller replaces a draft that holds it with
-     `order_letter_without_ceiling`. A ceiling equal to the target is not
-     withheld, because the target is the price the house means to propose.
+     or U+02BC as the apostrophe), 1·199 (also with U+2027 or U+30FB as the
+     dot), 1199.00 and 1.199,00, also when another number follows it in the
+     same sentence ("$1,199. 6 bottles"). A ceiling with a part below the
+     cent is also found cut to the cent and rounded half-up to the cent
+     (13.607 is found as 13.607, 13.60 and 13.61). The text is normalised
+     first, as described at `_normalised`. The caller replaces a draft that
+     holds it with `order_letter_without_ceiling`. A form of the ceiling
+     (the ceiling itself, or its cut or rounded cent form) that equals the
+     target is not looked for, because the target is the price the house
+     means to propose.
+
+The ceiling is read from a number, or from a string holding one figure,
+optionally with one currency symbol (category Sc) or three ASCII letters
+("EUR") before or after it: "1199", "1,199", "$1,199.00", "1.199,00 EUR".
+A string that can be read two ways ("1,199" is 1199 or 1.199) is looked
+for in both readings. A ceiling that is set but cannot be read (zero or
+less, NaN, infinity, a bool, "n/a") is logged as a warning and nothing is
+looked for.
 
 Not covered: a figure in words ("eleven hundred"), a rounded one ("about
-1,200", "1.2k"), a figure the model works out from others ("ten percent
-over our target"), and shapes the tokenizer does not join: "1, 199", the
-groups split by a tab or by a line break that is a control character (LF,
-CR, U+0085: category Cc, not Z, so unlike U+2028 they are not read as a
-space), "1_199", "1.199.00", "1 1 99", the figure run into other digits
-("6,1199"), and the Arabic separators U+066C and U+066B.
+1,200", "1.2k"), one cut or rounded to whole units (13 for 13.60), a figure
+the model works out from others ("ten percent over our target"), and
+shapes the tokenizer does not join: "1, 199", the groups split by a
+whitespace control character (tab, LF, VT, FF, CR, U+001C to U+001F,
+U+0085: category Cc, so unlike U+2028 they are not read as a space), the
+groups split by a hyphen or minus ("1-199", U+2010, U+2011, U+2212), "1_199",
+"1.199.00", "1 1 99", the figure run into other digits ("6,1199"), the
+Arabic separators U+066C and U+066B, and any other character between the
+groups that `_normalised` neither deletes nor maps, including characters
+some fonts draw blank whose category is Lo, So, Mc, Co, Cn or Cs (other
+than the five fillers it deletes).
 
 An exact match is not proof of a leak: a quantity or a date can equal the
-ceiling. That is why the replacement still says everything the order needs,
-and why the drop is recorded in `constraint_flags.audit_trail` on the
-conversation row (no screen reads that field yet).
+ceiling. That is why the replacement asks for a quote on the wine, the
+quantity and the target price (when the intent has them) and for
+availability, price and the earliest delivery date, and why the drop is
+recorded in `constraint_flags.audit_trail` on the conversation row (no
+screen reads that field yet).
 """
 
 from __future__ import annotations
 
+import logging
+import math
 import re
-import sys
 import unicodedata
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Dict, List, Mapping
+
+logger = logging.getLogger(__name__)
 
 # Top-level intent keys that hold the house's own decision figures; they are
 # kept out of the drafting prompt.
 HOUSE_ONLY_INTENT_KEYS = frozenset({"max_acceptable_price"})
 
-# Before matching, the text is normalised so that characters a reader does
-# not see as separate from the digits cannot hide the figure:
-#   1. NFKC normalisation, so compatibility forms fold to the plain ones
-#      (the full-width comma U+FF0C becomes ",", full-width digits become
-#      ASCII digits);
-#   2. every format character (category Cf: zero-width space U+200B, word
-#      joiner U+2060, BOM U+FEFF, soft hyphen U+00AD, the bidi marks and the
-#      rest) is deleted, because it is invisible: "1<U+200B>199" shows as 1199;
-#   3. every separator character (category Z: the space separators Zs, the
-#      line separator U+2028 and the paragraph separator U+2029) becomes a
-#      plain space. They are mapped, not deleted, so two figures side by side
-#      stay two figures ("6 1199").
-# Tab, \n, \r and U+0085 are control characters (Cc), not Z, and are left
-# alone, so a figure split by them is not joined (disclosed in the docstring).
+# Before matching, `_normalised` rewrites the text:
+#   1. NFKC, so compatibility forms fold to the plain ones (the full-width
+#      comma U+FF0C becomes ",", full-width digits become ASCII digits, the
+#      half-width katakana middle dot U+FF65 becomes U+30FB);
+#   2. these are deleted: every format character (category Cf, e.g. U+200B,
+#      U+2060, U+FEFF, U+00AD), every combining mark (Mn and Me, e.g.
+#      U+0300, U+034F, U+17B4, the variation selectors U+FE00-U+FE0F), every
+#      control character that is not whitespace (Cc, e.g. U+0000, U+007F),
+#      and five blank fillers: U+115F, U+1160, U+3164, U+FFA0 (Lo) and
+#      U+2800 (So). So "1<U+200B>199" and "1<U+FE0F>199" read 1199;
+#   3. every separator character (category Z: the space separators Zs,
+#      U+2028 and U+2029) becomes a plain space. They are mapped, not
+#      deleted, so two figures side by side stay two figures ("6 1199");
+#   4. the middle dots U+00B7, U+2027 and U+30FB become ".", so they group
+#      digits as "." does ("1\u00b7199" reads 1199 and 1.199).
+# The whitespace controls (tab, LF, VT, FF, CR, U+001C-U+001F, U+0085), the
+# hyphens and every other character are left alone, so a figure split by
+# them is not joined.
+
+_BLANK_FILLERS = (0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800)
+_MIDDLE_DOTS = (0x00B7, 0x2027, 0x30FB)
+
+# Outside these ranges, in the Unicode version this was written against
+# (14.0, Python 3.11), there is no character of category Cf, Mn, Me, Cc, Z
+# or Sc, so the build below walks only these ranges (about 200k code points
+# instead of 1.1M). `test_no_character_the_build_reads_lies_outside_the_walk`
+# walks every code point to check that for the Unicode version in use.
+_WALKED = ((0x0, 0x30000), (0xE0000, 0xE1000))
 
 
-def _format_and_separator_table() -> Dict[int, str | None]:
+def _deleted(cp: int, cat: str) -> bool:
+    if cat in ("Cf", "Mn", "Me"):
+        return True
+    return cat == "Cc" and not chr(cp).isspace()
+
+
+def _build() -> tuple[Dict[int, str | None], str]:
+    """The reading table for `_normalised`, and every currency symbol."""
     table: Dict[int, str | None] = {}
-    for cp in range(sys.maxunicode + 1):
-        cat = unicodedata.category(chr(cp))
-        if cat == "Cf":
-            table[cp] = None
-        elif cat[0] == "Z" and cp != 0x20:
-            table[cp] = " "
-    return table
+    currency: List[str] = []
+    for start, stop in _WALKED:
+        for cp in range(start, stop):
+            cat = unicodedata.category(chr(cp))
+            if _deleted(cp, cat):
+                table[cp] = None
+            elif cat[0] == "Z" and cp != 0x20:
+                table[cp] = " "
+            elif cat == "Sc":
+                currency.append(chr(cp))
+    for cp in _BLANK_FILLERS:
+        table[cp] = None
+    for cp in _MIDDLE_DOTS:
+        table[cp] = "."
+    return table, "".join(currency)
 
 
-_FORMAT_AND_SEPARATORS = _format_and_separator_table()
+_READING, _CURRENCY = _build()
 
 # The apostrophes used for Swiss-style grouping: ', U+2019, U+2018, U+02BC.
 _APOS = "'\u2019\u2018\u02bc"
@@ -94,8 +142,8 @@ _APOS = "'\u2019\u2018\u02bc"
 _NUMBER = re.compile(rf"\d+(?:[,.{_APOS} ]\d+)*")
 
 
-def _as_the_vendor_sees_it(text: str) -> str:
-    return unicodedata.normalize("NFKC", text).translate(_FORMAT_AND_SEPARATORS)
+def _normalised(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).translate(_READING)
 
 
 def vendor_safe_intent(intent: Mapping[str, Any] | None) -> Dict[str, Any]:
@@ -104,11 +152,13 @@ def vendor_safe_intent(intent: Mapping[str, Any] | None) -> Dict[str, Any]:
 
 
 def _as_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
     try:
         n = float(value)
     except (TypeError, ValueError):
         return None
-    return n if n > 0 else None
+    return n if math.isfinite(n) and n > 0 else None
 
 
 _EN = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
@@ -162,23 +212,75 @@ def _readings(token: str) -> List[float]:
     return out
 
 
+# A ceiling string: one figure, with an optional currency symbol or three
+# ASCII letters before or after it ("$1,199", "1.199,00 EUR").
+_AFFIX = rf"(?:[{re.escape(_CURRENCY)}]|[A-Za-z]{{3}})?"
+_CEILING_TEXT = re.compile(
+    rf"\s*{_AFFIX}\s*(?P<n>\d[\d,.{_APOS} ]*\d|\d)\s*{_AFFIX}\s*"
+)
+_SPACE_GROUPED = re.compile(r"\d{1,3}(?: \d{3})+(?:[.,]\d+)?")
+
+
+def _ceiling_values(value: Any) -> List[float]:
+    """Every value the ceiling may be, or [] when it is unset or unreadable."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return []
+    if isinstance(value, str):
+        m = _CEILING_TEXT.fullmatch(_normalised(value))
+        token = m.group("n") if m else ""
+        if _SPACE_GROUPED.fullmatch(token):
+            token = token.replace(" ", "")
+        found = sorted({v for v in _plain_readings(token) if v > 0})
+    else:
+        n = _as_number(value)
+        found = [n] if n is not None else []
+    if not found:
+        logger.warning(
+            "house_only_figures: a set ceiling could not be read as a figure "
+            "(%r); nothing is withheld for it",
+            type(value).__name__,
+        )
+    return found
+
+
+def _ceiling_forms(ceiling: float) -> List[float]:
+    """The ceiling, cut to the cent and rounded half-up to the cent.
+
+    A ceiling too large to hold to the cent in 28 significant digits is
+    looked for as it is.
+    """
+    cent = Decimal("0.01")
+    try:
+        d = Decimal(repr(ceiling))
+        forms = {
+            float(d.quantize(cent, ROUND_DOWN)),
+            float(d.quantize(cent, ROUND_HALF_UP)),
+        }
+    except InvalidOperation:
+        return [ceiling]
+    return [ceiling, *sorted(forms - {ceiling})]
+
+
 def withheld_figures_in(text: str, intent: Mapping[str, Any] | None) -> List[str]:
     """The house-only keys whose figure appears in `text` (empty when none).
 
-    A key whose value equals the intent's target price is skipped: that
-    figure is meant to be said.
+    A form of the ceiling that equals the intent's target price is skipped:
+    that figure is meant to be said.
     """
     if not text or not intent:
         return []
     target = _as_number(intent.get("target_price"))
-    spaced = _as_the_vendor_sees_it(text)
-    values = [_readings(m.group(0)) for m in _NUMBER.finditer(spaced)]
+    spaced = _normalised(text)
+    values = [v for m in _NUMBER.finditer(spaced) for v in _readings(m.group(0))]
     hits: List[str] = []
     for key in sorted(HOUSE_ONLY_INTENT_KEYS):
-        ceiling = _as_number(intent.get(key))
-        if ceiling is None or (target is not None and abs(ceiling - target) < 0.005):
-            continue
-        if any(abs(v - ceiling) < 0.005 for vs in values for v in vs):
+        forms = [
+            f
+            for ceiling in _ceiling_values(intent.get(key))
+            for f in _ceiling_forms(ceiling)
+            if target is None or abs(f - target) >= 0.005
+        ]
+        if any(abs(v - f) < 0.005 for v in values for f in forms):
             hits.append(key)
     return hits
 

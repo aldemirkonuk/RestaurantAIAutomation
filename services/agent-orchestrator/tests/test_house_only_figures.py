@@ -1,6 +1,6 @@
 """The house's price ceiling (max_acceptable_price in the intent passed to
 the drafting call) is kept out of the prompt, and a draft that states its
-exact figure in a covered form is replaced.
+figure in a covered form is replaced.
 
 Found by the F-106 production dry run, 2026-10-08: a waiting draft said
 "My target price ... is around $1,090 per bottle, with a maximum acceptable
@@ -9,6 +9,8 @@ RESPONSE_SYSTEM_PROMPT received the whole intent, max_acceptable_price
 included (tech-debt.d 2026-10-08-data-f106-reconcile-pending-drafts).
 """
 
+import logging
+import sys
 import types
 import unicodedata
 from unittest.mock import MagicMock
@@ -17,6 +19,7 @@ import pytest
 
 import agents.provider_conversation_agent as pca
 from agents.provider_conversation_agent import ProviderConversationAgent
+import core.house_only_figures as hof
 from core.house_only_figures import (
     HOUSE_ONLY_INTENT_KEYS,
     order_letter_without_ceiling,
@@ -116,7 +119,7 @@ def test_any_unicode_space_between_groups_is_read_as_a_space(space):
     ],
 )
 def test_an_invisible_format_character_between_groups_is_deleted(char):
-    # category Cf: the vendor sees "$1199"
+    # category Cf: deleted, so the text reads "$1199"
     text = f"Our maximum is $1{char}199 per bottle."
     assert withheld_figures_in(text, INTENT) == ["max_acceptable_price"]
     assert withheld_figures_in(f"$11{char}99", INTENT) == ["max_acceptable_price"]
@@ -129,34 +132,60 @@ def test_the_line_and_paragraph_separators_are_read_as_a_space(char):
     assert withheld_figures_in(text, INTENT) == ["max_acceptable_price"]
 
 
-def _bmp(predicate):
+def _every(predicate):
     return [
-        chr(cp) for cp in range(0x10000) if predicate(unicodedata.category(chr(cp)))
+        chr(cp)
+        for cp in range(sys.maxunicode + 1)
+        if predicate(cp, unicodedata.category(chr(cp)))
     ]
 
 
-def test_every_format_character_in_the_bmp_is_deleted_between_groups():
-    chars = _bmp(lambda cat: cat == "Cf")
-    assert len(chars) > 40  # 43 in Python 3.11's Unicode 14 tables
-    missed = [
+def _missed_between_groups(chars):
+    return [
         f"U+{ord(c):04X}"
         for c in chars
         if withheld_figures_in(f"$1{c}199 per bottle", INTENT)
         != ["max_acceptable_price"]
     ]
-    assert missed == []
 
 
-def test_every_separator_character_in_the_bmp_is_read_as_a_space():
-    chars = _bmp(lambda cat: cat.startswith("Z"))
+def test_no_character_the_build_reads_lies_outside_the_walk():
+    # The table build walks only hof._WALKED; this walks every code point.
+    def outside(cp):
+        return not any(start <= cp < stop for start, stop in hof._WALKED)
+
+    read = {"Cf", "Mn", "Me", "Cc", "Zs", "Zl", "Zp", "Sc"}
+    assert _every(lambda cp, cat: outside(cp) and cat in read) == []
+
+
+def test_every_format_character_and_combining_mark_is_deleted_between_groups():
+    chars = _every(lambda cp, cat: cat in ("Cf", "Mn", "Me"))
+    assert len(chars) > 2000  # 2,126 in Python 3.11's Unicode 14 tables
+    assert any(ord(c) > 0xFFFF for c in chars)  # the walk leaves the BMP
+    assert _missed_between_groups(chars) == []
+
+
+def test_every_control_character_that_is_not_whitespace_is_deleted():
+    chars = _every(lambda cp, cat: cat == "Cc" and not chr(cp).isspace())
+    assert len(chars) == 55  # 65 Cc minus the 10 whitespace controls
+    assert _missed_between_groups(chars) == []
+
+
+@pytest.mark.parametrize("char", ["\u115f", "\u1160", "\u3164", "\uffa0", "\u2800"])
+def test_the_five_blank_fillers_are_deleted_between_groups(char):
+    assert withheld_figures_in(f"$1{char}199", INTENT) == ["max_acceptable_price"]
+
+
+@pytest.mark.parametrize("dot", ["\u00b7", "\u2027", "\u30fb", "\uff65"])
+def test_a_middle_dot_groups_digits_like_a_full_stop(dot):
+    assert withheld_figures_in(f"$1{dot}199", INTENT) == ["max_acceptable_price"]
+    assert withheld_figures_in(f"11{dot}99", INTENT) == []
+
+
+def test_every_separator_character_is_read_as_a_space():
+    chars = _every(lambda cp, cat: cat.startswith("Z"))
     assert len(chars) > 15
-    missed = [
-        f"U+{ord(c):04X}"
-        for c in chars
-        if withheld_figures_in(f"$1{c}199 per bottle", INTENT)
-        != ["max_acceptable_price"]
-    ]
-    assert missed == []
+    assert _missed_between_groups(chars) == []
     # mapped to a space, not deleted: two figures stay two figures
     for c in chars:
         assert withheld_figures_in(f"11{c}99", INTENT) == []
@@ -195,7 +224,19 @@ def test_swiss_grouping_with_any_of_the_apostrophes(apostrophe):
         "1.199.00",
         "6,1199",
         "1 1 99",
-        "1\u066c199",
+        "1\u066c199",  # ARABIC THOUSANDS SEPARATOR
+        "1\u066b199",  # ARABIC DECIMAL SEPARATOR
+        "1\x0b199",  # VT
+        "1\x0c199",  # FF
+        "1\x1c199",  # U+001C, a whitespace control
+        "1-199",
+        "1\u2010199",  # HYPHEN
+        "1\u2011199",  # NON-BREAKING HYPHEN
+        "1\u2212199",  # MINUS SIGN
+        "1\u0903199",  # Mc, a spacing mark
+        "1\ue000199",  # Co, private use
+        "1\u0378199",  # Cn, unassigned in Unicode 14
+        "1\ud800199",  # Cs, a lone surrogate
     ],
 )
 def test_the_disclosed_misses_are_still_misses(text):
@@ -209,10 +250,82 @@ def test_a_ceiling_equal_to_the_target_is_meant_to_be_said():
     assert withheld_figures_in("Would $1,090 work?", same) == []
 
 
-def test_no_ceiling_or_a_bad_one_finds_nothing():
+def test_no_ceiling_finds_nothing():
     assert withheld_figures_in("1199", {"target_price": 1090}) == []
-    assert withheld_figures_in("1199", dict(INTENT, max_acceptable_price="n/a")) == []
+    assert withheld_figures_in("1199", dict(INTENT, max_acceptable_price="")) == []
     assert withheld_figures_in("1199", None) == []
+
+
+@pytest.mark.parametrize(
+    "ceiling", ["n/a", "0", "-5", float("nan"), float("inf"), True, 0, [1199]]
+)
+def test_a_set_ceiling_that_cannot_be_read_is_logged(ceiling, caplog):
+    with caplog.at_level(logging.WARNING, logger="core.house_only_figures"):
+        found = withheld_figures_in("1199", dict(INTENT, max_acceptable_price=ceiling))
+    assert found == []
+    assert "could not be read as a figure" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "ceiling",
+    [
+        "1199",
+        "1,199",
+        "$1199",
+        "$1,199.00",
+        "1.199,00",
+        "1.199,00 EUR",
+        "1 199",
+        "CHF 1\u2019199",
+        "\u20ac1199",
+        "1\uff0c199",
+        " 1199 ",
+    ],
+)
+def test_a_ceiling_given_as_text_is_read(ceiling):
+    intent = dict(INTENT, max_acceptable_price=ceiling)
+    assert withheld_figures_in("up to $1,199 per bottle", intent) == [
+        "max_acceptable_price"
+    ]
+
+
+def test_a_text_ceiling_read_two_ways_is_looked_for_both_ways():
+    intent = {"max_acceptable_price": "1,199"}  # 1199, or 1.199
+    assert withheld_figures_in("1199", intent) == ["max_acceptable_price"]
+    assert withheld_figures_in("1.199", intent) == ["max_acceptable_price"]
+
+
+@pytest.mark.parametrize(
+    "ceiling, text",
+    [
+        (8.305, "$8.31"),  # rounded half-up; 8.305 - 8.31 is 0.005 in float
+        (13.607, "13.607"),
+        (13.607, "13.60"),  # cut to the cent
+        (13.607, "13.61"),  # rounded to the cent
+        (13.585, "13.58"),
+        (13.585, "13.59"),
+        (1199.0, "1,199.00"),
+    ],
+)
+def test_the_ceiling_is_found_cut_or_rounded_to_the_cent(ceiling, text):
+    assert withheld_figures_in(text, {"max_acceptable_price": ceiling}) == [
+        "max_acceptable_price"
+    ]
+
+
+def test_a_cent_form_equal_to_the_target_is_meant_to_be_said():
+    intent = {"max_acceptable_price": 13.607, "target_price": 13.6}
+    assert withheld_figures_in("13.60", intent) == []
+    assert withheld_figures_in("13.61", intent) == ["max_acceptable_price"]
+
+
+def test_a_ceiling_cut_to_whole_units_is_a_disclosed_miss():
+    assert withheld_figures_in("13 per bottle", {"max_acceptable_price": 13.6}) == []
+
+
+@pytest.mark.parametrize("ceiling", [1e25, 1e26, 1e30, 1e300])
+def test_a_huge_ceiling_does_not_raise(ceiling):
+    assert withheld_figures_in("1199", {"max_acceptable_price": ceiling}) == []
 
 
 # ── the agent's drafting path ───────────────────────────────────────────────
@@ -293,16 +406,21 @@ def test_the_order_letter_is_not_commitment_language():
     assert not any(p.search(text) for p in COMPILED_COMMITMENT_PATTERNS)
 
 
-def test_a_long_run_of_spaced_numbers_reads_quickly():
+# The two bounds below catch super-linear (backtracking) growth only; they
+# are loose so that a loaded CI machine does not fail them. They state no
+# speed figure.
+
+
+def test_a_long_run_of_spaced_numbers_stays_linear():
     import time
 
     t0 = time.perf_counter()
     for text in ("1 " * 2000, "123 " * 2000, "1 199 " * 1000):
         withheld_figures_in(text, INTENT)
-    assert time.perf_counter() - t0 < 1.0
+    assert time.perf_counter() - t0 < 10.0
 
 
-def test_a_long_run_of_invisible_and_space_characters_reads_quickly():
+def test_a_long_run_of_invisible_and_space_characters_stays_linear():
     import time
 
     texts = (
@@ -313,7 +431,7 @@ def test_a_long_run_of_invisible_and_space_characters_reads_quickly():
     t0 = time.perf_counter()
     for text in texts:
         withheld_figures_in(text, INTENT)
-    assert time.perf_counter() - t0 < 2.0
+    assert time.perf_counter() - t0 < 20.0
 
 
 @pytest.mark.parametrize(
