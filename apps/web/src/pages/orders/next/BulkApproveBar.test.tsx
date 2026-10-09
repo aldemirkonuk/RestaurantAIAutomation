@@ -83,6 +83,17 @@ describe('bulk approve — one refused seal approves nothing, and says which and
     expect(approveMock.mutateAsync).not.toHaveBeenCalled();
   });
 
+  it('a mint that answers with no seal approves nothing (ADR 0116)', async () => {
+    mintMock.mockImplementation(async (id) => (id === 'b' ? null : `seal-${id}`));
+    const { onApproved } = mount(['a', 'b']);
+
+    await waitFor(() =>
+      expect(screen.getByText('The seals could not be issued — nothing approved.')).toBeTruthy(),
+    );
+    expect(approveMock.mutateAsync).not.toHaveBeenCalled();
+    expect(onApproved).not.toHaveBeenCalled();
+  });
+
   it('a mint that reached nobody still approves nothing and says so', async () => {
     mintMock.mockRejectedValue(refusal('Network Error', 0));
     const { onApproved } = mount(['a', 'b']);
