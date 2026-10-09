@@ -185,7 +185,8 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       color: color || undefined,
       eventTime: allDay || !startTime ? undefined : startTime,
       eventTimeEnd: allDay || !endTime ? undefined : endTime,
-      eventDateEnd: allDay || !endDate ? undefined : endDate,
+      // An all-day entry can span days too: a festival weekend (F-198).
+      eventDateEnd: endDate || undefined,
       reminderEnabled: remindOn,
       reminderDaysBefore: remindOn ? remindDays : 0,
     };
@@ -396,7 +397,6 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               className="cn-input"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              disabled={allDay}
             />
           </Field>
         </div>

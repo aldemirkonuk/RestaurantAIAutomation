@@ -26,6 +26,7 @@ describe("CalendarService", () => {
     eq: jest.fn().mockReturnThis(),
     gte: jest.fn().mockReturnThis(),
     lte: jest.fn().mockReturnThis(),
+    or: jest.fn().mockReturnThis(),
     is: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
@@ -265,9 +266,10 @@ describe("CalendarService", () => {
         endDate: "2024-02-28",
       });
 
-      expect(mockSupabaseClient.gte).toHaveBeenCalledWith(
-        "start_date",
-        "2024-02-01",
+      // Overlap, not start-in-window: an entry running into February from
+      // January still belongs to it (F-198).
+      expect(mockSupabaseClient.or).toHaveBeenCalledWith(
+        'start_date.gte."2024-02-01",end_date.gte."2024-02-01"',
       );
       expect(mockSupabaseClient.lte).toHaveBeenCalledWith(
         "start_date",

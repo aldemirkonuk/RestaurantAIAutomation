@@ -138,3 +138,40 @@ describe('useCalendarNextData — repeating entries (sweep row 16)', () => {
     ]);
   });
 });
+
+describe('useCalendarNextData — entries that span days (F-198)', () => {
+  it('places a multi-day all-day entry on every day it covers', async () => {
+    rows = [
+      {
+        ...base,
+        id: 'ev-fest',
+        title: 'Harvest festival',
+        eventDate: '2026-09-11',
+        eventDateEnd: '2026-09-13',
+        isRecurring: false,
+      },
+    ];
+    const { result } = renderHook(() => useCalendarNextData('month', cursor), { wrapper });
+    await waitFor(() => expect(result.current.events.length).toBe(1));
+    for (const day of ['2026-09-11', '2026-09-12', '2026-09-13']) {
+      expect(result.current.byDay.get(day)?.map((e) => e.id)).toEqual(['ev-fest']);
+    }
+    expect(result.current.byDay.get('2026-09-14')).toBeUndefined();
+  });
+
+  it('places an entry that began before the window on the window days it still covers', async () => {
+    rows = [
+      {
+        ...base,
+        id: 'ev-long',
+        title: 'Terrace closed',
+        eventDate: '2026-08-25',
+        eventDateEnd: '2026-09-01',
+        isRecurring: false,
+      },
+    ];
+    const { result } = renderHook(() => useCalendarNextData('month', cursor), { wrapper });
+    await waitFor(() => expect(result.current.events.length).toBe(1));
+    expect([...result.current.byDay.keys()].sort()).toEqual(['2026-08-31', '2026-09-01']);
+  });
+});

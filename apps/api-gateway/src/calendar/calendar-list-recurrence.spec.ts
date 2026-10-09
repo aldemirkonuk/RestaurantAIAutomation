@@ -129,19 +129,34 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
     // …except rows that do not repeat.
     expect(ev).toContainEqual({
       method: "or",
-      args: ['start_date.gte."2026-09-01",is_recurring.eq.true'],
+      args: ['start_date.gte."2026-09-01",end_date.gte."2026-09-01",is_recurring.eq.true'],
     });
     expect(ev).toContainEqual({ method: "lte", args: ["start_date", "2026-09-30"] });
   });
 
   it("keeps the strict lower bound for callers that count rows as dated entries", async () => {
     // house-day, /calendar/today and /calendar/upcoming count what comes back;
-    // a series master dated last month must not appear in "today".
+    // a series master dated last month must not appear in "today" — only an
+    // entry whose own dates still reach into the window does (F-198).
     const db = fakeDb({ calendar_events: { data: [], error: null, count: 0 } });
     await service(db).listEvents("r-1", { startDate: "2026-09-01", endDate: "2026-09-30" });
     const ev = db.calls.calendar_events;
-    expect(ev).toContainEqual({ method: "gte", args: ["start_date", "2026-09-01"] });
-    expect(ev.some((c) => c.method === "or")).toBe(false);
+    expect(ev).toContainEqual({
+      method: "or",
+      args: ['start_date.gte."2026-09-01",end_date.gte."2026-09-01"'],
+    });
+    expect(ev.some((c) => c.method === "or" && String(c.args[0]).includes("is_recurring"))).toBe(false);
+    expect(ev).toContainEqual({ method: "lte", args: ["start_date", "2026-09-30"] });
+  });
+
+  it("returns a multi-day entry that began before the window and runs into it (F-198)", async () => {
+    // A three-day festival from Aug 30 to Sep 1 overlaps September; reading
+    // only rows that START in the window lost it.
+    const db = fakeDb({ calendar_events: { data: [], error: null, count: 0 } });
+    await service(db).listEvents("r-1", { startDate: "2026-09-01", endDate: "2026-09-30" });
+    const ev = db.calls.calendar_events;
+    expect(ev).not.toContainEqual({ method: "gte", args: ["start_date", "2026-09-01"] });
+    expect(ev.some((c) => c.method === "or" && String(c.args[0]).includes('end_date.gte."2026-09-01"'))).toBe(true);
   });
 
   it("fails the read when the rules cannot be read — never a series that stops repeating", async () => {

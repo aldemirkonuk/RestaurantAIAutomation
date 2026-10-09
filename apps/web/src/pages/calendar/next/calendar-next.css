@@ -395,7 +395,11 @@
   text-align: left;
   cursor: grab;
   overflow: hidden;
-  touch-action: none;
+  /* A finger swiping across a block scrolls the week; only a held finger
+     picks the block up (TimeGrid.tsx HOLD_MS, F-200). */
+  touch-action: pan-x pan-y;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 .cn-block[data-spine='true'] {
   border-left-color: var(--seal);
@@ -431,6 +435,7 @@
   padding: 0;
   background: transparent;
   cursor: ns-resize;
+  touch-action: none;
 }
 .cn-handle::after {
   content: '';

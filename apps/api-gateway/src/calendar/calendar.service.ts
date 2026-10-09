@@ -292,12 +292,17 @@ export class CalendarService {
     // for the lower bound to spare repeating rows (sweep 2026-09-28 row 16).
     // The value is quoted for PostgREST's `or` grammar; `@IsDateString`
     // already refuses commas.
+    // An entry that began before the window but runs into it (a three-day
+    // festival) overlaps it too: `end_date >= startDate` keeps it (F-198). A
+    // null end_date fails that test, so a one-day row still needs its start.
     if (query.startDate && query.includeEarlierSeries) {
       supabaseQuery = supabaseQuery.or(
-        `start_date.gte."${query.startDate}",is_recurring.eq.true`,
+        `start_date.gte."${query.startDate}",end_date.gte."${query.startDate}",is_recurring.eq.true`,
       );
     } else if (query.startDate) {
-      supabaseQuery = supabaseQuery.gte("start_date", query.startDate);
+      supabaseQuery = supabaseQuery.or(
+        `start_date.gte."${query.startDate}",end_date.gte."${query.startDate}"`,
+      );
     }
     if (query.endDate) {
       supabaseQuery = supabaseQuery.lte("start_date", query.endDate);

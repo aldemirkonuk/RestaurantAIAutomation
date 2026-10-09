@@ -31,7 +31,7 @@ import { useOrders } from '../../../hooks/queries/useOrderQueries';
 import { canonicalStatus } from '../../../lib/mudavym/status';
 import { expandSeries } from './expand-series';
 import type { Order } from '../../../services/api/types';
-import { rangeFor, type CalView } from './cal-format';
+import { addDays, dayKey, parseDayKey, rangeFor, type CalView } from './cal-format';
 
 /* ── The gateway's own shape (calendar.dto.ts CalendarEventResponseDto) ───── */
 
@@ -631,12 +631,26 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     });
   }, [events, q, typeFilter, providersById]);
 
+  /**
+   * Every day an entry covers, not only its first: a three-day festival sits
+   * on all three days (F-198). The span is clamped to the window, so an entry
+   * that began last month still lands on this month's days it covers.
+   */
   const byDay = useMemo(() => {
     const m = new Map<string, CalEvent[]>();
-    for (const e of shown) {
-      const list = m.get(e.date);
+    const put = (key: string, e: CalEvent) => {
+      const list = m.get(key);
       if (list) list.push(e);
-      else m.set(e.date, [e]);
+      else m.set(key, [e]);
+    };
+    for (const e of shown) {
+      if (!e.endDate || e.endDate <= e.date) {
+        put(e.date, e);
+        continue;
+      }
+      const first = e.date < start ? start : e.date;
+      const last = e.endDate > end ? end : e.endDate;
+      for (let d = parseDayKey(first); dayKey(d) <= last; d = addDays(d, 1)) put(dayKey(d), e);
     }
     for (const list of m.values()) {
       list.sort((a, b) => {
@@ -645,7 +659,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       });
     }
     return m;
-  }, [shown]);
+  }, [shown, start, end]);
 
   /**
    * One lookup per cell. Built from the gateway's own arrays rather than
