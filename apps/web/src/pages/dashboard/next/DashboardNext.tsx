@@ -24,7 +24,7 @@
  * the app still does.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Wordmark } from '@/components/mudavym';
 import { DayLine } from '@/components/mudavym/DayLine';
@@ -96,7 +96,13 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
     );
   }, []);
 
-  const now = useMemo(() => new Date(), []);
+  // The device's clock, read again every 30 s: the greeting and the date
+  // follow the day on a dashboard left open past noon or midnight (F-221).
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const zone = houseZoneOf(spine.stats);
   const greeting = greetingFor(now, zone);
   const firstName = user?.name?.split(' ')[0];

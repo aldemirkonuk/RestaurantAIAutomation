@@ -73,6 +73,17 @@ function wineLabel(row: any): string {
     : name;
 }
 
+/**
+ * Where an alert about a wine opens: /inventory searched for the wine's name,
+ * the one deep link that page reads (`?wine=`). `?highlight=<id>` was read by
+ * no page (F-217). A row with no name opens the cellar as it is.
+ */
+function wineHref(row: any): string {
+  const lib = one(row?.master_wine_library) as any;
+  const name = row?.display_name || row?.wine_name || lib?.name || "";
+  return name ? `/inventory?wine=${encodeURIComponent(name)}` : "/inventory";
+}
+
 /** What an alert says when a cellar row has no name: an item, never a wine (DASH-W37, DASH-G7). */
 const UNNAMED_ITEM = "An item with no name";
 
@@ -1457,7 +1468,7 @@ export class DashboardService {
           severity: item.stock_live === 0 ? "critical" : "warning",
           title: "Low Stock",
           message: `${label} — ${bottles(item.stock_live)} left, you keep at least ${item.threshold_min}`,
-          actionUrl: `/inventory?highlight=${item.id}`,
+          actionUrl: wineHref(item),
           createdAt: new Date().toISOString(),
         });
       }
@@ -1475,7 +1486,7 @@ export class DashboardService {
             severity: "warning",
             title: "Overdue Order",
             message: `Order expected by ${order.expected_delivery_date}`,
-            actionUrl: `/orders?highlight=${order.id}`,
+            actionUrl: `/orders?order=${encodeURIComponent(order.id)}`,
             createdAt: order.created_at,
           });
         }
@@ -1490,7 +1501,7 @@ export class DashboardService {
             severity: "critical",
             title: "Out of Stock",
             message: `${wineLabel(item) || UNNAMED_ITEM} — out of stock`,
-            actionUrl: `/inventory?highlight=${item.id}`,
+            actionUrl: wineHref(item),
             createdAt: item.updated_at || new Date().toISOString(),
           });
         }
