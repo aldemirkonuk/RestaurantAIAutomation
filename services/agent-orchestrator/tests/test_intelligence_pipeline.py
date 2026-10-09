@@ -50,7 +50,9 @@ def mock_db():
         data=[
             {
                 "id": "order-uuid-1",
-                "wine_name": "Pommard 2019",
+                # The real shape: the name arrives through the inventory embed
+                # (procurement_orders has no wine_name column, F-533).
+                "inventory": {"wine_name": "Pommard 2019"},
                 "quantity": 6,
                 "created_at": "2026-05-10T10:00:00Z",
                 "status": "CONFIRMED",
