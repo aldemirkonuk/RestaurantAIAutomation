@@ -983,7 +983,7 @@ describe("The stored insight cache", () => {
   it("refreshStored replaces the `tables` rows: a stored row naming a table hidden since is gone, and the next stored read ranks only shown tables", async () => {
     const store = [
       storedRow("tables", TABLE_RANK, "Patio"),
-      storedRow("consumption", "wine.velocity.spike", "Barolo"),
+      storedRow("sales", "wine.velocity.spike", "Barolo"),
       storedRow("tables", TABLE_RANK, "9", "r2"),
     ];
     const client = makeStoreClient(houseWithPatioHidden(), store);
@@ -1005,7 +1005,7 @@ describe("The stored insight cache", () => {
     // Only the house's `tables` rows were touched: the other category and the
     // other house keep theirs.
     expect(store.filter((r) => r.restaurant_id === "r2")).toHaveLength(1);
-    expect(store.filter((r) => r.category === "consumption")).toHaveLength(1);
+    expect(store.filter((r) => r.category === "sales")).toHaveLength(1);
     expect(client.log[0]).toMatch(/^delete:1$/);
   });
 
@@ -1058,13 +1058,13 @@ describe("The stored insight cache", () => {
     try {
       const store = [
         storedRow("tables", TABLE_RANK, "Patio"),
-        storedRow("consumption", "wine.velocity.spike", "Barolo"),
+        storedRow("sales", "wine.velocity.spike", "Barolo"),
       ];
       const generator = generatorOn(
         makeStoreClient(houseWithPatioHidden(), store, ["insert"]),
       );
       expect(await generator.refreshStored("r1", ["tables"])).toBe("dropped");
-      expect(store.map((r) => r.category)).toEqual(["consumption"]);
+      expect(store.map((r) => r.category)).toEqual(["sales"]);
       expect(
         (await generator.readStored("r1", { categories: ["tables"] })).read,
       ).toBe(0);
@@ -1098,7 +1098,7 @@ describe("The stored insight cache", () => {
       const store = [
         storedRow("tables", TABLE_RANK, "Patio"),
         storedRow("tables", HOT, "1"),
-        storedRow("consumption", "wine.velocity.spike", "Barolo"),
+        storedRow("sales", "wine.velocity.spike", "Barolo"),
         storedRow("tables", TABLE_RANK, "9", "r2"),
       ];
       const generator = generatorOn(makeStoreClient({}, store));
@@ -1106,11 +1106,11 @@ describe("The stored insight cache", () => {
       expect(store).toHaveLength(4);
       expect(await generator.dropStored("r1", ["tables"])).toBe(true);
       expect(store.map((r) => `${r.restaurant_id}/${r.category}`)).toEqual([
-        "r1/consumption",
+        "r1/sales",
         "r2/tables",
       ]);
       const refused = generatorOn(makeStoreClient({}, store, ["delete"]));
-      expect(await refused.dropStored("r1", ["consumption"])).toBe(false);
+      expect(await refused.dropStored("r1", ["sales"])).toBe(false);
       expect(store).toHaveLength(2);
     } finally {
       quiet.mockRestore();
