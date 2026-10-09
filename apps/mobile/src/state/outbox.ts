@@ -58,7 +58,7 @@ interface OutboxState {
     graceMs?: number;
     invalidate?: unknown[][];
     feedItemId?: string;
-  }) => string;
+  }) => string | null;
   undo: (id: string) => boolean;
   dismissFailed: (id: string) => void;
   retryFailed: (id: string) => void;
@@ -113,14 +113,15 @@ export const useOutbox = create<OutboxState>((set, get) => ({
 
   enqueue: (input) => {
     const session = useSession.getState();
+    // Null, never a throw: every caller is a press handler, and a throw there
+    // dropped the press with no word to the person (F-404). Callers say
+    // NOT_SAVED_WORDS instead.
     if (
       session.status !== "signedIn" ||
       !session.user?.id ||
       !session.user.restaurantId
     ) {
-      throw new Error(
-        "Unlock your account and select a branch before saving an action.",
-      );
+      return null;
     }
     const graceMs = input.graceMs ?? 0;
     const entry: OutboxEntry = {
@@ -173,6 +174,40 @@ export const useOutbox = create<OutboxState>((set, get) => ({
 
   flush: () => scheduleDispatch(0),
 }));
+
+/** What a press handler tells the person when `enqueue` saved nothing. */
+export const NOT_SAVED_WORDS =
+  "Not saved. Unlock the app and choose your house, then try again.";
+
+/**
+ * The person's work still on this phone (F-407): in the house they are in, and
+ * in their other houses, where it waits until that house is opened again.
+ * Another account's saved work on a shared phone is never counted here.
+ */
+export function waitingWork(
+  entries: OutboxEntry[],
+  user: { id?: string; restaurantId?: string } | null,
+): { here: number; otherHouses: number } {
+  let here = 0;
+  let otherHouses = 0;
+  for (const e of entries) {
+    if (e.status === "failed" || !user?.id || e.actorUserId !== user.id) continue;
+    if (e.restaurantId === user.restaurantId) here += 1;
+    else otherHouses += 1;
+  }
+  return { here, otherHouses };
+}
+
+/** The strip's sentence, or null when nothing is waiting. */
+export function waitingWords(w: { here: number; otherHouses: number }): string | null {
+  const parts: string[] = [];
+  if (w.here > 0) parts.push(`${w.here} waiting to send from this phone.`);
+  if (w.otherHouses > 0)
+    parts.push(
+      `${w.otherHouses} saved for another of your houses; ${w.otherHouses === 1 ? "it sends" : "they send"} when you open that house.`,
+    );
+  return parts.length ? parts.join(" ") : null;
+}
 
 function scheduleDispatch(delayMs: number) {
   if (dispatchTimer) clearTimeout(dispatchTimer);

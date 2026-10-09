@@ -18,6 +18,13 @@ import {
 
 const ACCESS_KEY = "wineops_access_token";
 const REFRESH_KEY = "wineops_refresh_token";
+/**
+ * The last `/auth/me` answer for the saved session (F-404). A cold start with
+ * no signal, or one whose re-read fails, falls back to it instead of running
+ * the whole shift with no user — no house, so every tab looked empty and every
+ * action refused. Written beside the tokens and deleted with them.
+ */
+const USER_KEY = "wineops_session_user";
 
 export interface SessionUser {
   id: string;
@@ -114,11 +121,40 @@ function persistTokens(
   });
 }
 
-async function fetchMe(accessToken: string): Promise<SessionUser | null> {
+/** Persist the session's user only while the session is still `generation`. */
+function persistUser(
+  currentGeneration: () => number,
+  generation: number,
+  user: SessionUser | null,
+): Promise<void> {
+  return onTokenQueue(async () => {
+    if (!user?.id || currentGeneration() !== generation) return;
+    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+  }).catch(() => undefined);
+}
+
+async function readLastUser(): Promise<SessionUser | null> {
+  try {
+    const u = JSON.parse((await SecureStore.getItemAsync(USER_KEY)) ?? "null");
+    return u && typeof u.id === "string" && typeof u.email === "string"
+      ? (u as SessionUser)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `/auth/me`, telling a lapsed token ("expired": the server answered 401)
+ * apart from no answer at all (null: offline, timeout, a 5xx). Only the first
+ * is worth a refresh.
+ */
+async function readMe(accessToken: string): Promise<SessionUser | "expired" | null> {
   try {
     const res = await fetch(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+    if (res.status === 401) return "expired";
     if (!res.ok) return null;
     const body = await res.json();
     const u = body.user ?? body;
@@ -133,6 +169,58 @@ async function fetchMe(accessToken: string): Promise<SessionUser | null> {
   } catch {
     return null;
   }
+}
+
+async function fetchMe(accessToken: string): Promise<SessionUser | null> {
+  const me = await readMe(accessToken);
+  return me === "expired" ? null : me;
+}
+
+/**
+ * Requests that must still go out under the session being signed out — today
+ * only the push device's unregister (F-406). Each gets a `send` that carries
+ * the outgoing session's token and refreshes it once on a 401, so a phone
+ * idle past the 15-minute token still reaches the server. `/auth/logout` goes
+ * last, with whichever token is newest, so it is the one blacklisted.
+ */
+export type SignOutSend = (path: string, method: "POST" | "DELETE") => Promise<Response>;
+const signOutRequests = new Set<(send: SignOutSend) => Promise<void>>();
+export function beforeSignOutRequest(job: (send: SignOutSend) => Promise<void>): () => void {
+  signOutRequests.add(job);
+  return () => signOutRequests.delete(job);
+}
+
+function sayGoodbye(access: string | null, refresh: string | null): Promise<void> {
+  let token = access;
+  let canRefresh = !!refresh;
+  const send: SignOutSend = async (path, method) => {
+    const call = (t: string | null) =>
+      fetch(`${API_URL}${path}`, {
+        method,
+        headers: t ? { Authorization: `Bearer ${t}` } : {},
+      });
+    let res = await call(token);
+    if (res.status === 401 && canRefresh) {
+      canRefresh = false;
+      const r = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: refresh }),
+      });
+      const fresh: string | undefined = r.ok ? (await r.json())?.accessToken : undefined;
+      if (fresh) {
+        token = fresh;
+        res = await call(token);
+      }
+    }
+    return res;
+  };
+  return Promise.allSettled([...signOutRequests].map((job) => job(send)))
+    .then(() => (token ? send("/auth/logout", "POST") : undefined))
+    .then(
+      () => undefined,
+      () => undefined,
+    );
 }
 
 async function readMemory(): Promise<HouseMemory> {
@@ -202,17 +290,28 @@ export const useSession = create<SessionState>((set, get) => ({
       }
       // Tokens exist — require the biometric gate before showing data.
       set({ accessToken: access ?? null, status: "locked" });
-      // Profile can load behind the gate; stale is fine offline.
-      if (access) {
-        const user = await fetchMe(access);
-        if (user && get().generation === generation) {
-          set({ user });
-          // Opening the app is a real use of this house on this phone, same
-          // as signing in (item 6, 2026-09-19) — otherwise a phone someone
-          // opens daily without ever re-authenticating never touches its
-          // "last used" time, and looks like it has not been used in a week.
-          await rememberSessionHouse(user);
-        }
+      // Profile can load behind the gate; stale is fine offline. The access
+      // token lives 15 minutes, so a cold start on the next shift finds it
+      // lapsed: refresh it and read again (F-404). With no answer at all the
+      // last known user stands in, so the house's tabs and queued work still
+      // run; the API client refreshes once the signal is back.
+      let me = access ? await readMe(access) : "expired";
+      if (me === "expired" && refresh) {
+        const fresh = await refreshAccessToken();
+        me = fresh ? await readMe(fresh) : null;
+      }
+      if (get().generation !== generation) return;
+      if (me && me !== "expired") {
+        set({ user: me });
+        await persistUser(() => get().generation, generation, me);
+        // Opening the app is a real use of this house on this phone, same
+        // as signing in (item 6, 2026-09-19) — otherwise a phone someone
+        // opens daily without ever re-authenticating never touches its
+        // "last used" time, and looks like it has not been used in a week.
+        await rememberSessionHouse(me);
+      } else if (!get().user) {
+        const last = await readLastUser();
+        if (last && get().generation === generation && !get().user) set({ user: last });
       }
     } catch {
       if (get().generation === generation) set({ status: "signedOut" });
@@ -253,6 +352,7 @@ export const useSession = create<SessionState>((set, get) => ({
     clearPersistedQueries();
     useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
     await rememberSessionHouse(user);
+    await persistUser(current, generation, user);
     set({ accessToken, user, status: "signedIn" });
   },
 
@@ -271,6 +371,7 @@ export const useSession = create<SessionState>((set, get) => ({
     clearPersistedQueries();
     useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
     await rememberSessionHouse(user);
+    await persistUser(current, generation, user);
     set({ accessToken, user, status: "signedIn" });
     return true;
   },
@@ -278,8 +379,12 @@ export const useSession = create<SessionState>((set, get) => ({
   refreshUser: async () => {
     const token = get().accessToken;
     if (!token) return;
+    const generation = get().generation;
     const user = await fetchMe(token);
-    if (user && get().accessToken === token) set({ user });
+    if (user && get().accessToken === token) {
+      set({ user });
+      await persistUser(() => get().generation, generation, user);
+    }
   },
 
   chooseHouse: async (houseId) => {
@@ -325,19 +430,23 @@ export const useSession = create<SessionState>((set, get) => ({
     });
     clearPersistedQueries();
     useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
-    // Best-effort server logout; local teardown always wins.
-    if (token) {
-      fetch(`${API_URL}/auth/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
-    }
-    await onTokenQueue(() =>
-      Promise.all([
+    await onTokenQueue(async () => {
+      // Read before the delete: the goodbye requests may need one refresh.
+      let refresh: string | null = null;
+      try {
+        refresh = (await SecureStore.getItemAsync(REFRESH_KEY)) ?? null;
+      } catch {
+        /* the goodbye goes out with the access token alone */
+      }
+      await Promise.all([
         SecureStore.deleteItemAsync(ACCESS_KEY),
         SecureStore.deleteItemAsync(REFRESH_KEY),
-      ]),
-    );
+        SecureStore.deleteItemAsync(USER_KEY),
+      ]);
+      // Best-effort server goodbye (push device, then logout); local teardown
+      // always wins and never waits for it.
+      void sayGoodbye(token, refresh);
+    });
   },
 
   setAccessToken: (token) => {

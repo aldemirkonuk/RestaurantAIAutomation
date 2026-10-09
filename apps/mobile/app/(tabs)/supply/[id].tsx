@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { ScrollView, View } from "react-native";
+import { Alert, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText } from "@/components/ui/AppText";
@@ -17,7 +17,7 @@ import {
   useOrderConversations,
 } from "@/api/queries";
 import { OrderApprovalSeal } from "@/components/supply/OrderApprovalSeal";
-import { useOutbox } from "@/state/outbox";
+import { NOT_SAVED_WORDS, useOutbox } from "@/state/outbox";
 
 const TIMELINE: string[] = [
   "PENDING",
@@ -46,7 +46,7 @@ export default function OrderDetailScreen() {
 
   const markDelivered = () => {
     if (!order) return;
-    useOutbox.getState().enqueue({
+    const saved = useOutbox.getState().enqueue({
       path: `/procurement/orders/${order.id}/deliver`,
       label: "Marked delivered",
       graceMs: 0,
@@ -57,6 +57,10 @@ export default function OrderDetailScreen() {
         ["orders", "item", order.id],
       ],
     });
+    if (!saved) {
+      Alert.alert(NOT_SAVED_WORDS);
+      return;
+    }
     haptic.confirm();
     setTimeout(() => refetch(), 600);
   };
