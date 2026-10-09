@@ -272,11 +272,15 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
       { wrapper },
     );
     fireEvent.contextMenu(screen.getByText('Bar'));
-    fireEvent.click(screen.getByText('Duplicate onto the same day'));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Shift actions' })).getByText('Duplicate onto the same day'),
+    );
     await vi.waitFor(() => expect(api.createShift).toHaveBeenCalledTimes(1));
     expect(api.createShift.mock.calls[0][0]).toMatchObject({ shiftDate: '2026-08-31', breakMinutes: 45 });
     fireEvent.contextMenu(screen.getByText('Floor'));
-    fireEvent.click(screen.getByText('Duplicate onto the same day'));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Shift actions' })).getByText('Duplicate onto the same day'),
+    );
     await vi.waitFor(() => expect(api.createShift).toHaveBeenCalledTimes(2));
     expect('breakMinutes' in (api.createShift.mock.calls[1][0] as object)).toBe(false);
   });

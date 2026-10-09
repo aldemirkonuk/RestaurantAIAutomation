@@ -366,11 +366,11 @@ export function RowExpansion({
 
         <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Manual adjust</span>
         <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-          <button onClick={() => setDelta((d) => d - 1)} className="w-8 h-8 text-gray-500 hover:bg-gray-50">-</button>
-          <span className={cn('w-11 text-center font-mono text-sm font-bold border-x border-gray-100 leading-8', delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-gray-700')}>
+          <button type="button" aria-label="Decrease manual adjustment" onClick={() => setDelta((d) => d - 1)} className="w-8 h-8 text-gray-500 hover:bg-gray-50">-</button>
+          <span aria-live="polite" aria-label={`Manual adjustment ${delta > 0 ? `+${delta}` : delta}`} className={cn('w-11 text-center font-mono text-sm font-bold border-x border-gray-100 leading-8', delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-gray-700')}>
             {delta > 0 ? `+${delta}` : delta}
           </span>
-          <button onClick={() => setDelta((d) => d + 1)} className="w-8 h-8 text-gray-500 hover:bg-gray-50">+</button>
+          <button type="button" aria-label="Increase manual adjustment" onClick={() => setDelta((d) => d + 1)} className="w-8 h-8 text-gray-500 hover:bg-gray-50">+</button>
         </div>
         <ThemedSelect value={reason} options={ADJUST_REASONS} onChange={setReason} align="left" />
         <button

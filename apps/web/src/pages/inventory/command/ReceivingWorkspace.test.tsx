@@ -102,8 +102,8 @@ function renderWorkspace(props: Partial<Parameters<typeof ReceivingWorkspace>[0]
   return { onClose }
 }
 
-const plusButtons = () => screen.getAllByRole('button', { name: '+' })
-const minusButtons = () => screen.getAllByRole('button', { name: '-' })
+const plusButtons = () => screen.getAllByRole('button', { name: /^Increase / })
+const minusButtons = () => screen.getAllByRole('button', { name: /^Decrease / })
 const submit = () =>
   screen.getByRole('button', { name: /Accept|Reason required|Currency required/ })
 
@@ -961,5 +961,16 @@ describe('ReceivingWorkspace — the count starts from the ledger (ADR 0192)', (
     await user.click(submit())
     const [, body] = verifyOrderReceipt.mock.calls[0]
     expect(body.acceptedQuantityInCountedUom).toBe(5)
+  })
+})
+
+describe('ReceivingWorkspace — named controls (F-402)', () => {
+  it('names each stepper by what it counts, and the close icon', async () => {
+    const user = userEvent.setup()
+    const { onClose } = renderWorkspace()
+    expect(screen.getByRole('button', { name: 'Increase quantity accepted' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Decrease quantity rejected' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalled()
   })
 })

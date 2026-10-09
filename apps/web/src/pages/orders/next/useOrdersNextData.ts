@@ -14,6 +14,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
+import { readFailureWords } from '@/lib/readFailure';
 import { useOrders } from '@/hooks/queries/useOrderQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { type Order, type OrderStatus } from '@/services/api/types';
@@ -475,7 +476,6 @@ export function useOrdersNextData(): OrdersNextData {
       month.unpricedThisMonth = thisRows.filter((r) => r.total === null).length;
     }
 
-    const err = ordersQuery.error as { message?: string } | null;
 
     // A gate that has not answered is `null`, not an empty map: an empty map
     // reads as "every order is unrestricted", which is the one thing an
@@ -485,9 +485,8 @@ export function useOrdersNextData(): OrdersNextData {
       gate && gate.readable
         ? new Map(gate.orders.map((o) => [o.orderId, o]))
         : null;
-    const gateErr = gateQuery.error as { message?: string } | null;
     const approvalGateError = gateQuery.isError
-      ? gateErr?.message ?? 'the approval rules could not be read'
+      ? readFailureWords(gateQuery.error)
       : gate && !gate.readable
         ? gate.reason ?? 'the approval rules could not be read'
         : null;
@@ -506,7 +505,8 @@ export function useOrdersNextData(): OrdersNextData {
       dataUpdatedAt: known && ordersQuery.dataUpdatedAt ? ordersQuery.dataUpdatedAt : null,
       isLoading: ordersQuery.isLoading,
       isError: ordersQuery.isError,
-      errorMessage: ordersQuery.isError ? err?.message ?? 'request failed' : null,
+      // Plain words, never axios's "Request failed with status code 429" (F-403).
+      errorMessage: ordersQuery.isError ? readFailureWords(ordersQuery.error) : null,
       refetch: () => void ordersQuery.refetch(),
     };
   }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, gateQuery.data, gateQuery.isError, gateQuery.error]);

@@ -74,6 +74,7 @@ import { ChooseHouse } from './pages/ChooseHouse'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { PageGate } from './components/mudavym'
 import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
+import { readRetryDelay, shouldRetryRead } from './lib/readFailure'
 
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
@@ -153,7 +154,10 @@ const queryClient = new QueryClient({
       staleTime: 5_000, // 5s - short enough that page navigations trigger background refetch
       refetchOnWindowFocus: true, // Refetch when user tabs back
       refetchOnMount: 'always', // Always refetch on component mount for fresh data
-      retry: 1, // Only retry once
+      // Once, as before — but never a 4xx, which a second ask cannot change,
+      // and a 429 waits as long as the gateway said (F-403).
+      retry: shouldRetryRead,
+      retryDelay: readRetryDelay,
       throwOnError: false, // Don't throw errors to error boundary
     },
     mutations: {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RowExpansion } from './RowExpansion'
@@ -161,5 +161,16 @@ describe('RowExpansion — moving bottles between locations', () => {
 
     expect(transferStock.mock.calls[0][1].fromLocationId).toBe('loc-b')
     expect(transferStock.mock.calls[0][1].fromLocationId).not.toBeNull()
+  })
+})
+
+describe('RowExpansion — the manual adjustment is named (F-402)', () => {
+  it('says what the - and + change, and reads the value out', async () => {
+    renderRow()
+    const more = screen.getByRole('button', { name: 'Increase manual adjustment' })
+    expect(screen.getByRole('button', { name: 'Decrease manual adjustment' })).toBeTruthy()
+    fireEvent.click(more)
+    const value = screen.getByLabelText('Manual adjustment +1')
+    expect(value.getAttribute('aria-live')).toBe('polite')
   })
 })

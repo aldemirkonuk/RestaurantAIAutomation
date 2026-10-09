@@ -20,7 +20,7 @@
  *    table, and a schedule is one.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
   CalendarX2,
@@ -120,10 +120,47 @@ export function WeekGrid({
   const [selected, setSelected] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<Shift | null>(null);
   const menuAnchor = useRef<HTMLElement | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * The cell a write came from (F-401). Adding a shift removes the empty
+   * cell's `+` that opened the sheet, and deleting one removes the chip or the
+   * expander whose button opened it, so the Sheet's own "back to the opener"
+   * finds nothing and focus falls to <body>. When the week re-reads, focus goes
+   * back to that cell instead: its first shift, or its `+`.
+   */
+  const focusCell = useRef<string | null>(null);
+  /** Shifts already offered for cover in this sitting (F-398): one push each. */
+  const [offered, setOffered] = useState<ReadonlySet<string>>(() => new Set());
   // `shifts ?? []` inline would be a new array on every render, so every memo
   // below it would recompute on every render — the grid is the biggest thing on
   // the page and it redraws whenever an overlay opens.
   const rows = useMemo(() => shifts ?? [], [shifts]);
+
+  useEffect(() => {
+    const key = focusCell.current;
+    if (!key) return;
+    const active = document.activeElement;
+    // Focus that already landed back in the grid needs no help.
+    if (active && active !== document.body && gridRef.current?.contains(active)) {
+      focusCell.current = null;
+      return;
+    }
+    if (active && active !== document.body) return; // still inside the sheet
+    const cell = gridRef.current?.querySelector<HTMLElement>(`[data-cell="${key}"]`);
+    const target = cell?.querySelector<HTMLElement>('.tm-chip, .tm-add');
+    if (target) {
+      focusCell.current = null;
+      target.focus();
+    }
+  }, [rows]);
+
+  function rememberCell(memberId: string | null | undefined, date: string | undefined) {
+    focusCell.current = memberId && date ? `${memberId}|${date}` : null;
+  }
+  function editShift(t: ShiftSheetTarget) {
+    rememberCell(t.shift?.member_id ?? t.memberId, t.shift?.shift_date ?? t.date);
+    onEditShift(t);
+  }
 
   /** WORKED hours per person: breaks out, a called-out shift out (ADR 0215). */
   const hoursById = useMemo(() => {
@@ -212,8 +249,9 @@ export function WeekGrid({
   }
 
   const duplicate = useMutation({
-    mutationFn: (s: Shift) =>
-      createShift({
+    mutationFn: (s: Shift) => {
+      rememberCell(s.member_id, s.shift_date);
+      return createShift({
         scheduleId: s.schedule_id ?? scheduleId ?? undefined,
         memberId: s.member_id ?? undefined,
         shiftDate: s.shift_date,
@@ -224,7 +262,8 @@ export function WeekGrid({
         // The copy keeps the break on record, as a copied week does (ADR
         // 0215); nothing on record stays nothing on record, so it is assumed.
         ...(recordedBreakMinutes(s) != null ? { breakMinutes: recordedBreakMinutes(s) } : {}),
-      }),
+      });
+    },
     onSuccess: onChanged,
   });
   const callout = useMutation({
@@ -232,7 +271,10 @@ export function WeekGrid({
     onSuccess: onChanged,
   });
   const drop = useMutation({
-    mutationFn: (shiftId: string) => deleteShift(shiftId),
+    mutationFn: (s: Shift) => {
+      rememberCell(s.member_id, s.shift_date);
+      return deleteShift(s.id);
+    },
     onSuccess: () => {
       setSelected(null);
       onChanged();
@@ -246,6 +288,10 @@ export function WeekGrid({
    */
   const cover = useMutation({
     mutationFn: (s: Shift) => offerCover(s.id, candidatesFor(s).map((m) => m.id)),
+    // Nothing records the offer against the shift, so a second press would
+    // push "Shift available" to the same people again. Once sent, it stays sent
+    // for as long as the page is open.
+    onSuccess: (_r, s) => setOffered((prev) => new Set(prev).add(s.id)),
   });
 
   function candidatesFor(s: Shift): TeamMember[] {
@@ -293,7 +339,7 @@ export function WeekGrid({
   }
 
   return (
-    <div className="tm-gridwrap">
+    <div className="tm-gridwrap" ref={gridRef}>
       <div className="tm-grid">
         <div className="tm-row">
           <div className="tm-dayhead" style={{ textAlign: 'left' }}>
@@ -345,7 +391,7 @@ export function WeekGrid({
                   <button
                     type="button"
                     className="tm-membercell"
-                    onClick={() => onEditShift({ date: days[0], memberId: m.id })}
+                    onClick={() => editShift({ date: days[0], memberId: m.id })}
                     title="Add a shift for this person"
                   >
                     <Mark name={name} avatarUrl={m.avatar_url} owner={m.role === 'owner'} />
@@ -367,7 +413,7 @@ export function WeekGrid({
                   {days.map((d) => {
                     const cell = rows.filter((s) => s.member_id === m.id && s.shift_date === d);
                     return (
-                      <div className="tm-cell" key={d}>
+                      <div className="tm-cell" key={d} data-cell={`${m.id}|${d}`}>
                         {cell.map((s) => {
                           const f = flagsFor(s);
                           const flagged =
@@ -401,7 +447,7 @@ export function WeekGrid({
                             type="button"
                             className="tm-add"
                             aria-label={`Add a shift for ${name.text} on ${fmtDayShort(d)}`}
-                            onClick={() => onEditShift({ date: d, memberId: m.id })}
+                            onClick={() => editShift({ date: d, memberId: m.id })}
                           >
                             <UserRoundPlus className="tm-icon" aria-hidden="true" />
                           </button>
@@ -415,14 +461,16 @@ export function WeekGrid({
                     shift={selectedShift}
                     member={m}
                     candidates={candidatesFor(selectedShift)}
-                    onEdit={() => onEditShift({ shift: selectedShift })}
+                    onEdit={() => editShift({ shift: selectedShift })}
+                    onDuplicate={() => duplicate.mutate(selectedShift)}
+                    duplicatePending={duplicate.isPending}
                     onCallout={() => callout.mutate(selectedShift.id)}
                     onCover={() => cover.mutate(selectedShift)}
                     calloutPending={callout.isPending}
                     calloutFailed={callout.isError}
                     coverPending={cover.isPending}
                     coverFailed={cover.isError}
-                    coverSent={cover.isSuccess}
+                    coverSent={offered.has(selectedShift.id)}
                     moneyVisible={moneyVisible}
                     money={money}
                   />
@@ -469,7 +517,7 @@ export function WeekGrid({
             type="button"
             className="mdv-item"
             onClick={() => {
-              onEditShift({ shift: menuFor });
+              editShift({ shift: menuFor });
               setMenuFor(null);
             }}
           >
@@ -501,19 +549,22 @@ export function WeekGrid({
           <button
             type="button"
             className="mdv-item"
+            disabled={offered.has(menuFor.id)}
             onClick={() => {
               cover.mutate(menuFor);
               setMenuFor(null);
             }}
           >
             <UsersRound size={14} aria-hidden className="mdv-item__icon" />
-            <span className="mdv-item__text">Offer cover</span>
+            <span className="mdv-item__text">
+              {offered.has(menuFor.id) ? 'Cover offered' : 'Offer cover'}
+            </span>
           </button>
           <button
             type="button"
             className="mdv-item"
             onClick={() => {
-              drop.mutate(menuFor.id);
+              drop.mutate(menuFor);
               setMenuFor(null);
             }}
           >
@@ -545,6 +596,8 @@ function ShiftDetail({
   member,
   candidates,
   onEdit,
+  onDuplicate,
+  duplicatePending,
   onCallout,
   onCover,
   calloutPending,
@@ -559,6 +612,8 @@ function ShiftDetail({
   member: TeamMember;
   candidates: TeamMember[];
   onEdit: () => void;
+  onDuplicate: () => void;
+  duplicatePending: boolean;
   onCallout: () => void;
   onCover: () => void;
   calloutPending: boolean;
@@ -633,6 +688,16 @@ function ShiftDetail({
         <button type="button" className="tm-ctl" onClick={onEdit}>
           Edit shift
         </button>
+        {/* The right-click menu's Duplicate, here too: a phone and a keyboard
+            have no right-click (F-400). */}
+        <button
+          type="button"
+          className="tm-ctl tm-ctl--quiet"
+          disabled={duplicatePending}
+          onClick={onDuplicate}
+        >
+          {duplicatePending ? 'Duplicating…' : 'Duplicate onto the same day'}
+        </button>
         <button
           type="button"
           className="tm-ctl tm-ctl--quiet"
@@ -644,10 +709,14 @@ function ShiftDetail({
         <button
           type="button"
           className="tm-ctl tm-ctl--quiet"
-          disabled={coverPending || candidates.length === 0}
+          disabled={coverPending || coverSent || candidates.length === 0}
           onClick={onCover}
         >
-          {coverPending ? 'Offering…' : `Offer cover to ${candidates.length}`}
+          {coverPending
+            ? 'Offering…'
+            : coverSent
+              ? 'Cover offered'
+              : `Offer cover to ${candidates.length}`}
         </button>
       </div>
       {calloutFailed && (
