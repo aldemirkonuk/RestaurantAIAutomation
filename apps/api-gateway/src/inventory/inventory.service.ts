@@ -509,6 +509,8 @@ export class InventoryService {
       clientCountId: string;
       reason?: string;
       performedBy?: string | null;
+      // F-291: the shelf that was counted. Absent = every shelf at once.
+      locationId?: string | null;
     },
   ) {
     if (
@@ -565,6 +567,10 @@ export class InventoryService {
         p_transaction_type: "reconciliation",
         p_performed_by: dto.performedBy ?? null,
         p_reason: dto.reason ?? "Spot count",
+        // F-291: with a shelf, record_stock_count compares and corrects that
+        // shelf only. Sent only when set, so a count of every shelf calls the
+        // function exactly as before.
+        ...(dto.locationId ? { p_location_id: dto.locationId } : {}),
       },
     );
     if (rpcErr) {

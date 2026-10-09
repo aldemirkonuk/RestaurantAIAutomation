@@ -357,6 +357,8 @@ export async function recordSpotCount(
     clientCountId?: string;
     reason?: string;
     performedBy?: string | null;
+    /** F-291: the shelf counted; absent = every shelf at once. */
+    locationId?: string;
   },
   restaurantId?: string
 ): Promise<{ item: InventoryItem | null }> {

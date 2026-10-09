@@ -15,11 +15,13 @@
  * Submission goes through spotCountOutbox so a dead cellar signal doesn't
  * cost the count — it queues and syncs when connectivity returns.
  *
- * The count is of the WHOLE wine, every shelf at once (F-291): the server has
- * no per-location count yet, and the number entered replaces the total across
- * every location. The panel says so, so nobody counts one shelf and wipes the
- * rest. The field opens empty (F-294): a count pre-filled with the book figure
- * recorded "the books were right" for anyone who tapped Submit without counting.
+ * F-291: a count of one shelf reconciles that shelf only. When the house has
+ * storage locations the counter picks where they counted (or "every shelf
+ * together"); the count then carries locationId and record_stock_count compares
+ * and corrects that shelf's lots only. With no locations, or "every shelf", the
+ * number replaces the total across every location, and the panel says so. The
+ * field opens empty (F-294): a count pre-filled with the book figure recorded
+ * "the books were right" for anyone who tapped Submit without counting.
  */
 import { useEffect, useRef, useState } from 'react'
 import { X, Mic, Camera, Loader2, Check } from 'lucide-react'
@@ -28,13 +30,19 @@ import { estimateCountFromPhoto } from '../../../services/api/inventory'
 import { submitSpotCount, newClientCountId } from '../../../lib/spotCountOutbox'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
+import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { SCAN_ACCEPT, resolveMimeType } from '../../../lib/uploadAccept'
 
 interface SpotCountPanelProps {
   item: InventoryItem
+  /** The house's storage locations. Empty = the count is of every shelf. */
+  houseLocations?: StorageLocation[]
   onClose: () => void
   onCommitted: () => void
 }
+
+/** The "every shelf together" choice in the where-counted picker. */
+const EVERY_SHELF = '__every_shelf__'
 
 // ---------------------------------------------------------------------------
 // Spoken-number parsing — small enough not to need a library. Bottle counts
@@ -104,7 +112,7 @@ function toBase64(file: File): Promise<string> {
   })
 }
 
-export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelProps) {
+export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted }: SpotCountPanelProps) {
   const toast = useNotificationStore()
   const inventoryId = item.inventoryId || ''
   const fileRef = useRef<HTMLInputElement>(null)
@@ -118,6 +126,14 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
   const [submitting, setSubmitting] = useState(false)
   const voiceSupported = !!getSpeechRecognition()
   const shelvesHolding = (item.locations ?? []).filter((l) => l.qty > 0).length
+  // With locations, the counter says where they counted before submitting:
+  // '' = not chosen yet, EVERY_SHELF = the whole total, else a location id.
+  const picksShelf = houseLocations.length > 0
+  const [where, setWhere] = useState<string>(picksShelf ? '' : EVERY_SHELF)
+  const shelf = houseLocations.find((l) => l.id === where) ?? null
+  const shelfBook = shelf
+    ? (item.locations ?? []).filter((l) => l.locationId === shelf.id).reduce((n, l) => n + l.qty, 0)
+    : null
 
   useEffect(() => {
     return () => {
@@ -198,11 +214,14 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
           countedQty,
           clientCountId: newClientCountId(),
           reason: 'Spot count',
+          ...(shelf ? { locationId: shelf.id } : {}),
         },
       })
       toast.success(
         synced ? 'Count recorded' : 'Count saved — will sync',
-        synced ? `${item.name}: ${countedQty} bottles` : 'No signal right now; it will sync automatically.',
+        synced
+          ? `${item.name}: ${countedQty} bottles${shelf ? ` on ${shelf.name}` : ''}`
+          : 'No signal right now; it will sync automatically.',
       )
       onCommitted()
       onClose()
@@ -221,7 +240,7 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <h3 className="text-sm font-bold text-gray-900">Count every shelf</h3>
+            <h3 className="text-sm font-bold text-gray-900">{picksShelf ? 'Count bottles' : 'Count every shelf'}</h3>
             <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">{item.name}</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -230,10 +249,36 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
         </div>
 
         <div className="p-5 space-y-4">
+          {picksShelf && (
+            <select
+              value={where}
+              onChange={(e) => setWhere(e.target.value)}
+              aria-label="Where you counted"
+              className="w-full h-10 px-3 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-wine-500"
+            >
+              <option value="" disabled>
+                Where did you count?
+              </option>
+              {houseLocations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+              <option value={EVERY_SHELF}>Every shelf together</option>
+            </select>
+          )}
           <p className="text-xs text-gray-600 leading-relaxed" data-testid="spot-count-scope">
-            Count every bottle of this wine in every room, then enter the total. It replaces the total for all of
-            them, so a count of one shelf would take the others off the books.
-            {shelvesHolding > 1 && ` The books have it in ${shelvesHolding} places.`}
+            {shelf ? (
+              `Count every bottle of this wine on ${shelf.name}, then enter that number. Only ${shelf.name} changes; the other places stay as they are.`
+            ) : where === EVERY_SHELF ? (
+              <>
+                Count every bottle of this wine in every room, then enter the total. It replaces the total for all of
+                them, so a count of one shelf would take the others off the books.
+                {shelvesHolding > 1 && ` The books have it in ${shelvesHolding} places.`}
+              </>
+            ) : (
+              'Pick the place you counted. Only that place changes.'
+            )}
           </p>
           <div className="text-center">
             <input
@@ -243,11 +288,13 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
               value={qty}
               onChange={(e) => setQty(e.target.value)}
               className="w-full text-center text-4xl font-mono font-bold text-gray-900 border border-gray-200 rounded-xl py-4 focus:outline-none focus:ring-2 focus:ring-wine-500"
-              placeholder="Total"
-              aria-label="Bottles counted, every shelf"
+              placeholder={shelf ? 'Bottles' : 'Total'}
+              aria-label={shelf ? `Bottles counted on ${shelf.name}` : 'Bottles counted, every shelf'}
             />
             <p className="text-[11px] text-gray-400 mt-1.5">
-              On the books, all shelves together: {item.liveStock ?? 'unknown'} bottles
+              {shelf
+                ? `On the books for ${shelf.name}: ${shelfBook} bottles`
+                : `On the books, all shelves together: ${item.liveStock ?? 'unknown'} bottles`}
             </p>
           </div>
 
@@ -304,7 +351,7 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
 
           <button
             onClick={handleSubmit}
-            disabled={submitting || qty === ''}
+            disabled={submitting || qty === '' || where === ''}
             className="w-full h-11 bg-wine-600 hover:bg-wine-700 text-white text-sm font-bold rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}

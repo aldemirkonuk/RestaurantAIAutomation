@@ -506,6 +506,29 @@ describe("InventoryService", () => {
       expect(usedRpcs).not.toContain("set_stock_absolute");
     });
 
+    // F-291: a count of one shelf names the shelf, so the database compares and
+    // corrects that shelf only; a count of every shelf sends no location at all.
+    it("passes the counted shelf as p_location_id, and sends none for a count of every shelf", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 6,
+        clientCountId: "shelf-1",
+        locationId: "loc-cellar",
+      });
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 9,
+        clientCountId: "all-1",
+      });
+
+      const counts = mockRpc.mock.calls.filter((c) => c[0] === "record_stock_count");
+      expect(counts).toHaveLength(2);
+      expect(counts[0][1]).toEqual(
+        expect.objectContaining({ p_counted_qty: 6, p_location_id: "loc-cellar" }),
+      );
+      expect(counts[1][1]).not.toHaveProperty("p_location_id");
+    });
+
     // The core claim. A count that AGREES produces a record.
     it("returns the recorded count when the count agrees — variance 0, no movement", async () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
