@@ -57,7 +57,7 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
       </p>
 
       {!hasData && !isError && (
-        <p style={{ fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>Reaching the gateway…</p>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>Looking for today’s deliveries…</p>
       )}
 
       {isError && (
@@ -80,8 +80,8 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
               // A refusal is not an outage. Retrying cannot fix it, so the
               // sentence sends the receiver to the only thing that can.
               <>
-                The gateway understood the request and refused it — this is a permission, not an
-                outage, and trying again will not change it. There may still be a truck outside:
+                Your account is not allowed to see deliveries — nothing is broken, and trying again
+                will not change it. There may still be a truck outside:
                 write the delivery down on paper and ask a manager to open your access.
               </>
             ) : (
@@ -188,7 +188,7 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
                     fontStyle: 'italic',
                   }}
                 >
-                  Distributor not named by the gateway — the line above is the wine
+                  The order does not name its distributor — the line above is the wine
                   {d.providerRef ? `, vendor ref ${d.providerRef}` : ''}.
                 </p>
               )}

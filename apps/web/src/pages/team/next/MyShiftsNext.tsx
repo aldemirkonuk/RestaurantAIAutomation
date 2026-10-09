@@ -50,6 +50,14 @@ import {
 import { MutationError } from './tm-bits';
 import './team-next.css';
 
+/** The gateway's own words when it has them — a 409 says why a claim was refused. */
+function serverMessage(e: unknown): string | null {
+  const m = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  if (typeof m === 'string' && m.trim()) return m;
+  if (Array.isArray(m) && typeof m[0] === 'string') return m[0];
+  return null;
+}
+
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rid = useActiveRestaurantId();
   const qc = useQueryClient();
@@ -113,6 +121,12 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   });
 
   const memberId = payload?.member?.id ?? null;
+  /**
+   * A week its manager has not published is still being drawn (F-506). The
+   * gateway sends staff none of its shifts; a day then is not "Off", it is not
+   * out yet.
+   */
+  const published = payload?.schedule?.status === 'published';
 
   return (
     <div className="tm-page mudavym" data-ground={ground === 'charcoal' ? 'charcoal' : undefined}>
@@ -170,7 +184,8 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
           Your manager was not told you have seen this week. Try again.
         </MutationError>
         <MutationError when={claim.isError}>
-          The shift was not claimed — it is still open for someone else.
+          {serverMessage(claim.error) ??
+            'The shift was not claimed — it is still open for someone else.'}
         </MutationError>
         <MutationError when={askOff.isError}>
           The request did not reach your manager. Nothing is on their desk.
@@ -198,10 +213,10 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             You have told your manager you have seen this week.
           </p>
         )}
-        {weekKnown && payload?.schedule === null && (
+        {weekKnown && !published && (
           <p className="tm-quiet" style={{ marginBottom: 14 }}>
-            No schedule has been published for this week yet, so anything below is a draft
-            your manager is still working on.
+            Your manager has not published this week yet. Your shifts, and any open ones
+            you can pick up, show here once they do.
           </p>
         )}
 
@@ -257,7 +272,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
           <p className="tm-quiet">Reading your week…</p>
         ) : (
           days.map((d, i) => {
-            const mine = (payload?.mine ?? []).filter((s) => s.shift_date === d);
+            const mine = published ? (payload?.mine ?? []).filter((s) => s.shift_date === d) : [];
             return (
               <div className="tm-day" key={d}>
                 <div className="tm-day__d">
@@ -267,7 +282,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                 <div className="tm-day__body">
                   {mine.length === 0 && (
                     <span className="tm-quiet">
-                      {weekKnown ? 'Off' : `${EM} not known`}
+                      {!weekKnown ? `${EM} not known` : published ? 'Off' : `${EM} not out yet`}
                     </span>
                   )}
                   {mine.map((s) => (
@@ -284,7 +299,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
           })
         )}
 
-        {(payload?.open ?? []).length > 0 && memberId && (
+        {published && (payload?.open ?? []).length > 0 && memberId && (
           <section className="tm-panel" style={{ marginTop: 18 }}>
             <h2 className="tm-panel__title">Open shifts you can pick up</h2>
             {payload!.open.map((s) => (
