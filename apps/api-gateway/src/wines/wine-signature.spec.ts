@@ -54,6 +54,14 @@ describe("normalizeSignatureText", () => {
     );
   });
 
+  it("folds the Turkish dotless i so every spelling of a label agrees", () => {
+    expect(normalizeSignatureText("Kalecik Karası")).toBe("kalecik karasi");
+    expect(normalizeSignatureText("Kavaklıdere")).toBe(
+      normalizeSignatureText("KAVAKLIDERE"),
+    );
+    expect(normalizeSignatureText("İzmir")).toBe("izmir");
+  });
+
   it("returns empty for null and undefined rather than the string 'null'", () => {
     expect(normalizeSignatureText(null)).toBe("");
     expect(normalizeSignatureText(undefined)).toBe("");

@@ -62,6 +62,19 @@ describe("WineSubmissionsService normalization contract", () => {
       ["", ""],
     ];
 
+    // F-356. The dotless ı has no NFD decomposition, so both sides used to
+    // turn it into a space: "Kalecik Karası" was "kalecik karas" and never met
+    // "KALECIK KARASI". Captured from public.wine_normalize_text() after
+    // migration 20261231500000_the_signature_folds_dotless_i, on local Postgres
+    // built from supabase/migrations (not the live database).
+    const turkish: Array<[string, string]> = [
+      ["Kalecik Karası", "kalecik karasi"],
+      ["KALECIK KARASI", "kalecik karasi"],
+      ["Kavaklıdere Öküzgözü", "kavaklidere okuzgozu"],
+      ["İZMİR Boğazkere", "izmir bogazkere"],
+      ["Rakı", "raki"],
+    ];
+
     // Trade abbreviations. Before these expanded, ZERO of 27 library
     // producers beginning with an abbreviable trade word auto-linked when
     // probed the way a menu prints them — every one created a duplicate.
@@ -81,6 +94,10 @@ describe("WineSubmissionsService normalization contract", () => {
     ];
 
     it.each(cases)("normalizes %j", (input, expected) => {
+      expect(normalize(input)).toBe(expected);
+    });
+
+    it.each(turkish)("folds the Turkish i in %j", (input, expected) => {
       expect(normalize(input)).toBe(expected);
     });
 
@@ -166,9 +183,32 @@ describe("WineSubmissionsService normalization contract", () => {
         .digest("hex");
       expect(hash).toBe(EXPECTED_CRISTAL_HASH);
     });
+
+    it("matches the hash Postgres computes for a Turkish label", () => {
+      // Captured from local Postgres after 20261231500000:
+      //   SELECT wine_signature_hash('Kavaklıdere',
+      //     'Prestige Kalecik Karası', 2019, 'Türkiye', 'Ankara', NULL);
+      const hash = createHash("sha256")
+        .update(
+          signature({
+            producer: "Kavaklıdere",
+            name: "Prestige Kalecik Karası",
+            vintage: 2019,
+            country: "Türkiye",
+            region: "Ankara",
+            grapeVariety: null,
+          }),
+        )
+        .digest("hex");
+      expect(hash).toBe(EXPECTED_KALECIK_HASH);
+    });
   });
 });
 
 /** Captured from the live database — see the test that uses it. */
 const EXPECTED_CRISTAL_HASH =
   "da01ebb089a30f45b7e24e1cda543ca341c0af65bb79a94ab4e3a7dfdec1e227";
+
+/** Captured from local Postgres — see the Turkish-label test. */
+const EXPECTED_KALECIK_HASH =
+  "3dc4395fd27ca8b670b07e591b059fc614d5692dafc710d7680b1a00dfbadc82";
