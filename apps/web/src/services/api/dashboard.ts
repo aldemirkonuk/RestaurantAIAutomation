@@ -84,6 +84,26 @@ export async function getRecentActivity(
 }
 
 /**
+ * One HOUSE day's activity (`date` is `YYYY-MM-DD`), read from the gateway
+ * bounded to that day on the house's wall clock. Unlike `getRecentActivity`
+ * this does not catch: a failed read must say "could not read", never "no
+ * recorded activity" (F-431).
+ */
+export async function getDayActivity(
+  date: string,
+  limit: number,
+  restaurantId?: string
+): Promise<unknown[]> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get(`${DASHBOARD_PATH}/activity/${id}`, {
+    params: { limit, date },
+  });
+  if (!Array.isArray(response.data)) throw new Error('Activity read returned no list');
+  return response.data;
+}
+
+/**
  * Get alerts/notifications for dashboard
  */
 export async function getAlerts(restaurantId?: string): Promise<any[]> {
@@ -345,6 +365,7 @@ export const dashboardApi = {
   getDashboardStats,
   getDashboardSummary,
   getRecentActivity,
+  getDayActivity,
   getAlerts,
   getSalesChartData,
   getInventoryBreakdown,

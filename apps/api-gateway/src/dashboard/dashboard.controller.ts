@@ -253,6 +253,12 @@ export class DashboardController {
     required: false,
     description: "Max items (default 20)",
   })
+  @ApiQuery({
+    name: "date",
+    required: false,
+    description:
+      "YYYY-MM-DD, the house's day: only that day's lines, on the house's wall clock. 409 when the house has no time zone.",
+  })
   @ApiResponse({
     status: 200,
     description: "Activity feed",
@@ -261,11 +267,23 @@ export class DashboardController {
   async getActivity(
     @Param("restaurantId") restaurantId: string,
     @Query("limit") limitStr?: string,
+    @Query("date") date?: string,
   ): Promise<ActivityItemDto[]> {
+    if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new HttpException(
+        "date must be a day written YYYY-MM-DD.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     try {
       const limit = limitStr ? parseInt(limitStr, 10) : 20;
-      return await this.dashboardService.getActivity(restaurantId, limit);
+      return await this.dashboardService.getActivity(
+        restaurantId,
+        limit,
+        date,
+      );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to fetch activity feed",
         HttpStatus.INTERNAL_SERVER_ERROR,

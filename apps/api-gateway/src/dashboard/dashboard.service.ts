@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { HttpException, HttpStatus, Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import {
@@ -1283,39 +1283,73 @@ export class DashboardService {
   // ACTIVITY
   // ==========================================================================
 
+  /**
+   * `date` (`YYYY-MM-DD`, the HOUSE's day) bounds every leg to that day on the
+   * house's wall clock (ADR 0290). The day sheet asks for its own day this way:
+   * filtering the newest twelve lines by date told every older day "No
+   * recorded activity" however busy it was (F-431). A house with no zone has
+   * no day to bound, so a dated read is refused rather than answered empty.
+   */
   async getActivity(
     restaurantId: string,
     limit: number = 20,
+    date?: string,
   ): Promise<ActivityItemDto[]> {
     const client = this.dbService.getClient();
 
     try {
+      let bounds: { start: string; end: string } | null = null;
+      if (date) {
+        const zone = await this.houseZoneOrNull(client, restaurantId);
+        if (!zone) {
+          throw new HttpException(
+            "The house's time zone isn't set, so no activity can be filed on a day.",
+            HttpStatus.CONFLICT,
+          );
+        }
+        bounds = {
+          start: localMidnight(date, zone).toISOString(),
+          end: localMidnight(shiftLocalDate(date, 1), zone).toISOString(),
+        };
+      }
+      const onTheDay = (query: any, column: string) =>
+        bounds ? query.gte(column, bounds.start).lt(column, bounds.end) : query;
+
       const [ordersResult, eventsResult, inventoryResult] =
         await Promise.allSettled([
-          client
-            .from("procurement_orders")
-            .select(
-              `id, order_number, status, bottles_total, quantity, created_at, updated_at,
+          onTheDay(
+            client
+              .from("procurement_orders")
+              .select(
+                `id, order_number, status, bottles_total, quantity, created_at, updated_at,
                restaurant_inventory(display_name, wine_name, master_wine_library(name, vintage)),
                providers(name)`,
-            )
-            .eq("restaurant_id", restaurantId)
+              )
+              .eq("restaurant_id", restaurantId),
+            "updated_at",
+          )
             .order("updated_at", { ascending: false })
             .limit(limit),
-          client
-            .from("events")
-            .select("id, event_type, payload, created_at")
-            .eq("restaurant_id", restaurantId)
+          onTheDay(
+            client
+              .from("events")
+              .select("id, event_type, payload, created_at")
+              .eq("restaurant_id", restaurantId),
+            "created_at",
+          )
             .order("created_at", { ascending: false })
             .limit(limit),
-          client
-            .from("restaurant_inventory")
-            .select(
-              "id, display_name, wine_name, stock_live, updated_at, master_wine_library(name, vintage)",
-            )
-            .eq("restaurant_id", restaurantId)
-            .is("deleted_at", null)
-            .eq("is_active", true)
+          onTheDay(
+            client
+              .from("restaurant_inventory")
+              .select(
+                "id, display_name, wine_name, stock_live, updated_at, master_wine_library(name, vintage)",
+              )
+              .eq("restaurant_id", restaurantId)
+              .is("deleted_at", null)
+              .eq("is_active", true),
+            "updated_at",
+          )
             .order("updated_at", { ascending: false })
             .limit(limit),
         ]);
@@ -1414,7 +1448,7 @@ export class DashboardService {
     const alerts: AlertDto[] = [];
 
     try {
-      const [lowStockResult, overdueResult, inventoryResult] =
+      const [lowStockResult, overdueResult, inventoryResult, zoneResult] =
         await Promise.allSettled([
           client
             .from("v_low_stock_items")
@@ -1434,6 +1468,7 @@ export class DashboardService {
             .is("deleted_at", null)
             .eq("is_active", true)
             .eq("stock_live", 0),
+          this.houseZoneOrNull(client, restaurantId),
         ]);
 
       // The cellar is the active, undeleted wines — the rule
@@ -1463,11 +1498,21 @@ export class DashboardService {
       }
 
       const overdue = rowsOrThrow(overdueResult, "procurement_orders");
-      const now = new Date();
+      if (zoneResult.status === "rejected") throw zoneResult.reason;
+      // `expected_delivery_date` is a `date`: a day on the house's calendar,
+      // with no clock. It is overdue once the HOUSE's day has passed it.
+      // `new Date("2026-10-05")` is UTC midnight, which turned an order due
+      // tomorrow overdue at 17:00 today in Los Angeles (F-430). A house with
+      // no zone has no day of its own, so a date is overdue only once it has
+      // passed everywhere: the last zone to leave a day is UTC-12.
+      const houseToday = localDateIn(
+        new Date(),
+        zoneResult.value ?? "Etc/GMT+12",
+      );
       for (const order of overdue) {
         if (
           order.expected_delivery_date &&
-          new Date(order.expected_delivery_date) < now
+          String(order.expected_delivery_date).slice(0, 10) < houseToday
         ) {
           alerts.push({
             id: `overdue-${order.id}`,

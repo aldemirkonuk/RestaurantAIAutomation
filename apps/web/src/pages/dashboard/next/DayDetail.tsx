@@ -19,9 +19,9 @@ import { vendorLine } from '@/lib/mudavym/vendor';
 import {
   NOT_RECORDED,
   fromChecks,
-  houseDateOf,
-  type ActivityItem,
+  DAY_ACTIVITY_LIMIT,
   type AlertItem,
+  type DayActivityState,
   type DayLedger,
   type DayOrdersState,
   type MonthSales,
@@ -191,8 +191,10 @@ export interface DayDetailProps {
   zone?: string | null;
   sales?: MonthSales;
   dayOrders: DayOrdersState;
+  /** The house's alerts as they stand NOW: listed on today only (F-430). */
   alerts: AlertItem[] | undefined;
-  activity: ActivityItem[] | undefined;
+  /** The day's own activity, read for that day (F-431). */
+  dayActivity: DayActivityState;
   onScrub: (date: string) => void;
   onClose: () => void;
   /** DASH-W22: false for a role that sees counts, not money (staff). */
@@ -208,7 +210,7 @@ export function DayDetail({
   sales,
   dayOrders,
   alerts,
-  activity,
+  dayActivity,
   onScrub,
   onClose,
   seesAmounts = true,
@@ -217,22 +219,17 @@ export function DayDetail({
   if (!day) return <div className="min-h-[1px]" />;
 
   const salesShown = sales === 'shown';
-  // Timestamps arrive as UTC ISO strings; the calendar's days are the
-  // HOUSE's (ADR 0290). Match in the house's zone, or a 23:00 alert lands on
-  // the wrong square. With no zone set nothing can be matched to a day; an
-  // older gateway that does not say keeps the browser's zone, as before.
-  const onThisDay = (iso: string | undefined) => {
-    if (!iso || zone === null) return false;
-    if (zone) return houseDateOf(iso, zone) === day.date;
-    const t = new Date(iso);
-    return !Number.isNaN(t.getTime()) && dateIn(t, zone) === day.date;
-  };
-  const dayAlerts = (alerts ?? []).filter((a) => onThisDay(a.createdAt));
-  const dayActivity = (activity ?? []).filter((a) => onThisDay(a.timestamp));
   // DASH-W13 (founder, 2026-10-01): a future day opens only when something is
   // on the calendar, and it shows only that — its money, deliveries, alerts
   // and activity do not exist yet.
-  const isFuture = day.date > (today ?? dateIn(new Date(), zone));
+  const houseToday = today ?? dateIn(new Date(), zone);
+  const isFuture = day.date > houseToday;
+  // The alerts are the house's state NOW — what is low, late or out at this
+  // moment — and none carries the day it began. Filing them by a stamp
+  // invented at read time put every one of them under today in any month,
+  // and an overdue order under the day it was placed (F-430). So they are
+  // listed on today alone, and an earlier day says why it shows none.
+  const isToday = day.date === houseToday;
 
   const calendarSection = (
     <Section title="On the calendar">
@@ -412,11 +409,15 @@ export function DayDetail({
 
         {calendarSection}
 
-        <Section title="Alerts raised">
-          {dayAlerts.length === 0 && (
-            <EmptyLine>{zone === null ? noZoneLine : 'No alerts carry this date.'}</EmptyLine>
-          )}
-          {dayAlerts.map((a) => (
+        <Section title={isToday ? 'Alerts now' : 'Alerts'}>
+          {zone === null ? (
+            <EmptyLine>{noZoneLine}</EmptyLine>
+          ) : !isToday ? (
+            <EmptyLine>Alerts are listed on today: they say what needs attention now, not the day it began.</EmptyLine>
+          ) : (alerts ?? []).length === 0 ? (
+            <EmptyLine>Nothing needs attention right now.</EmptyLine>
+          ) : null}
+          {zone !== null && isToday && (alerts ?? []).map((a) => (
             <div key={a.id} className="flex items-baseline gap-2 text-[13px]">
               <span
                 className={`mt-0.5 inline-block h-[7px] w-[7px] shrink-0 rounded-full ${a.severity === 'critical' ? 'bg-seal' : 'bg-seal-ring'}`}
@@ -430,10 +431,13 @@ export function DayDetail({
         </Section>
 
         <Section title="Activity">
-          {dayActivity.length === 0 && (
-            <EmptyLine>{zone === null ? noZoneLine : 'No recorded activity for this day.'}</EmptyLine>
+          {(dayActivity.state === 'no-zone' || zone === null) && <EmptyLine>{noZoneLine}</EmptyLine>}
+          {dayActivity.state === 'loading' && <EmptyLine>Reading the day’s activity…</EmptyLine>}
+          {dayActivity.state === 'unknown' && <EmptyLine>Couldn’t read this day’s activity. Try again in a moment.</EmptyLine>}
+          {dayActivity.state === 'ready' && zone !== null && dayActivity.items.length === 0 && (
+            <EmptyLine>No recorded activity for this day.</EmptyLine>
           )}
-          {dayActivity.map((a) => (
+          {dayActivity.state === 'ready' && zone !== null && dayActivity.items.map((a) => (
             <div key={a.id} className="flex items-baseline justify-between gap-3 text-[13px]">
               {/* DASH-W31 (P7): two lines, then an ellipsis — not one line cut mid-word. */}
               <span className="min-w-0 line-clamp-2 leading-snug text-inkm-2">
@@ -445,6 +449,9 @@ export function DayDetail({
               </span>
             </div>
           ))}
+          {dayActivity.state === 'ready' && zone !== null && dayActivity.cut && (
+            <EmptyLine>Showing the latest {DAY_ACTIVITY_LIMIT} lines of this day; earlier ones aren’t listed here.</EmptyLine>
+          )}
         </Section>
       </div>
     </div>
