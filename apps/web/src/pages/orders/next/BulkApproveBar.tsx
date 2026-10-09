@@ -88,16 +88,16 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
    * mechanism exists to prevent. Fourteen approvals need fourteen
    * proofs; what is rationed is the wax, not the evidence.
    *
-   * A mint that fails for ONE row refuses THAT row, not the run (F-416,
-   * 2026-10-09). The gateway refuses the seal for everything that would
-   * refuse the approval (`issueOrderSealChallenge` runs
-   * `assertApprovalAllowed` first), so an order over the manager's ceiling
-   * fails at the mint with the rule's own sentence. Aborting the run threw
-   * that sentence away and approved none of the orders under the ceiling
-   * either. Each order is its own commitment, so each is decided on its own:
-   * the ones that minted are approved, the refused stay selected with their
-   * reason, and the bar counts both — the same split the approve loop
-   * already makes when an approval itself is refused.
+   * A mint that fails for ANY row aborts the whole run (ADR 0116, locked:
+   * "approves NOTHING if any mint fails"): approving the subset that happened
+   * to mint would make the bar's count a lie about what the operator agreed
+   * to. What F-416 (2026-10-09) fixes is the silence: the gateway refuses the
+   * seal for everything that would refuse the approval
+   * (`issueOrderSealChallenge` runs `assertApprovalAllowed` first), so an
+   * order over the manager's ceiling fails at the mint with the rule's own
+   * sentence. Every mint is now settled, and each refusal's sentence is
+   * printed with the order it belongs to, so the operator can deselect it
+   * and hold again. Approving the rest needs ADR 0116 superseded first.
    */
   const sealsRef = useRef<Map<string, string> | null>(null);
   /** Rows whose seal was refused, with the gateway's sentence when it gave one. */
@@ -141,9 +141,9 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   };
 
   /**
-   * Mint every seal, once per gesture, each on its own. Resolves false only
-   * when NO seal was issued and no row was refused with a reason — a dropped
-   * connection, not a decision — and the caller then approves nothing.
+   * Mint every seal, once per gesture, each settled on its own so every
+   * refusal keeps its sentence. Resolves false when ANY seal was not issued,
+   * and the caller then approves NOTHING (ADR 0116).
    */
   const beginSeals = (): Promise<boolean> => {
     if (sealMintRef.current) return sealMintRef.current;
@@ -158,7 +158,7 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
       });
       sealsRef.current = seals;
       mintRefusalsRef.current = refusals;
-      return seals.size > 0 || [...refusals.values()].some((r) => r !== null);
+      return refusals.size === 0 && seals.size === rows.length;
     })();
     sealMintRef.current = mint;
     return mint;
@@ -174,14 +174,24 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   const run = async () => {
     if (runningRef.current) return;
     // The seals were begun when the gesture began; this only waits for them.
-    // A row whose seal was refused is counted as refused below; only a mint
-    // that reached nobody at all stops the run, and the bar says so.
+    // Nothing is approved if any of them failed (ADR 0116), and the bar says
+    // which orders were refused and why.
     const sealed = await beginSeals();
     if (!sealed) {
+      const why = [...mintRefusalsRef.current.entries()]
+        .filter(([, reason]) => reason)
+        .map(([id, reason]) => {
+          const row = selectedRows.find((r) => r.id === id);
+          return `${row?.orderNumber ?? 'One order'}: ${reason}`;
+        });
       abandonSeals();
       setPhase('idle');
       setFill(0);
-      setSealNote('The seals could not be issued — nothing approved.');
+      setSealNote(
+        why.length > 0
+          ? `Nothing was approved — the house would not seal every order. ${why.join(' ')} Take ${why.length === 1 ? 'it' : 'them'} out of the selection and hold again.`
+          : 'The seals could not be issued — nothing approved.',
+      );
       return;
     }
     runningRef.current = true;
@@ -195,18 +205,10 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     const reasons: string[] = [];
     for (let i = 0; i < ids.length; i++) {
       setProgress({ done: i, total: ids.length });
-      const seal = sealsRef.current?.get(ids[i]);
-      if (!seal) {
-        // Refused at the mint: never sent to approve, still selected.
-        refused += 1;
-        const why = mintRefusalsRef.current.get(ids[i]);
-        if (why && !reasons.includes(why)) reasons.push(why);
-        continue;
-      }
       try {
         await approve.mutateAsync({
           orderId: ids[i],
-          challenge: seal,
+          challenge: sealsRef.current?.get(ids[i]) ?? null,
         });
         okIds.push(ids[i]);
       } catch (err) {

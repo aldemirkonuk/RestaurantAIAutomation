@@ -45,7 +45,7 @@ function refusal(message: string, status = 403) {
 }
 
 const rows = (ids: string[]) =>
-  ids.map((id) => ({ id, total: 100 }) as unknown as OrderRowVM);
+  ids.map((id) => ({ id, orderNumber: `PO-${id}`, total: 100 }) as unknown as OrderRowVM);
 
 function mount(ids: string[]) {
   const onApproved = vi.fn();
@@ -69,26 +69,18 @@ beforeEach(() => {
   mintMock.mockReset();
 });
 
-describe('bulk approve — one refused seal refuses one order, not the run', () => {
-  it('approves the orders that minted and keeps the refused one with its sentence', async () => {
+describe('bulk approve — one refused seal approves nothing, and says which and why (ADR 0116, F-416)', () => {
+  it('approves NOTHING when one order is refused, and names it with the gateway sentence', async () => {
     mintMock.mockImplementation(async (id) => {
       if (id === 'over') throw refusal(CEILING);
       return `seal-${id}`;
     });
-    const { onApproved } = mount(['a', 'over', 'b']);
+    mount(['a', 'over', 'b']);
 
-    await waitFor(() => expect(onApproved).toHaveBeenCalled());
-    expect(onApproved).toHaveBeenCalledWith(['a', 'b']);
-    expect(approveMock.mutateAsync).toHaveBeenCalledTimes(2);
-    expect(approveMock.mutateAsync).toHaveBeenCalledWith({ orderId: 'a', challenge: 'seal-a' });
-    expect(approveMock.mutateAsync).toHaveBeenCalledWith({ orderId: 'b', challenge: 'seal-b' });
-    expect(approveMock.mutateAsync).not.toHaveBeenCalledWith(
-      expect.objectContaining({ orderId: 'over' }),
-    );
-    expect(screen.getByText('2 approved — one impression.')).toBeTruthy();
-    expect(screen.getByText(/1 refused by the gateway — still pending, still selected/)).toBeTruthy();
-    expect(screen.getByText(CEILING)).toBeTruthy();
-    expect(screen.queryByText(/could not be issued/)).toBeNull();
+    await waitFor(() => expect(screen.getByText(/Nothing was approved/)).toBeTruthy());
+    expect(screen.getByText(new RegExp(`PO-over: ${CEILING}`))).toBeTruthy();
+    expect(screen.getByText(/Take it out of the selection and hold again\./)).toBeTruthy();
+    expect(approveMock.mutateAsync).not.toHaveBeenCalled();
   });
 
   it('a mint that reached nobody still approves nothing and says so', async () => {
