@@ -20,6 +20,8 @@ const api = vi.hoisted(() => ({
   reports: [] as unknown[],
   reportsTotal: null as number | null,
   reportsReject: false,
+  /** Reports only GET /reports/:id answers — older than the list's window. */
+  olderReports: [] as unknown[],
   paper: [] as unknown[],
   review: [] as unknown[],
   paperPending: false,
@@ -58,13 +60,19 @@ vi.mock('../../../services/api/reports', () => ({
     'financial_summary',
     'compliance_report',
   ],
-  listReportsWithTotal: () =>
+  listReportsWithTotal: (opts: { limit?: number; offset?: number } = {}) =>
     api.reportsReject
       ? Promise.reject(new Error('reports register down'))
       : Promise.resolve({
-          reports: api.reports,
+          reports: api.reports.slice(opts.offset ?? 0, (opts.offset ?? 0) + (opts.limit ?? 100)),
           total: api.reportsTotal ?? api.reports.length,
         }),
+  getReport: (id: string) => {
+    const hit = api.olderReports.find((r) => (r as { id: string }).id === id);
+    return hit
+      ? Promise.resolve(hit)
+      : Promise.reject(Object.assign(new Error('404'), { response: { status: 404 } }));
+  },
   getReportCrossFile: () =>
     api.crossFileHangs
       ? new Promise(() => {})
@@ -171,6 +179,7 @@ beforeEach(() => {
   api.reports = [];
   api.reportsTotal = null;
   api.reportsReject = false;
+  api.olderReports = [];
   api.paper = [];
   api.review = [];
   api.paperPending = false;
@@ -311,6 +320,38 @@ describe('DocumentsReportsNext', () => {
     await waitFor(() =>
       expect(screen.getByText(/That report is no longer here/)).toBeTruthy(),
     );
+  });
+
+  it('lists past the newest 20 and fetches past the first 100 (sim F-284)', async () => {
+    api.reports = Array.from({ length: 130 }, (_, i) =>
+      report(`r${i}`, { title: `Report ${i}`, createdAt: new Date(Date.UTC(2026, 0, 1) - i * 864e5).toISOString() }),
+    );
+    api.reportsTotal = 130;
+    renderPage();
+    const drawer = () => screen.getByLabelText('House reports');
+    await waitFor(() => expect(drawer().textContent).toContain('110 more filed'));
+    expect(screen.queryByText('Report 20')).toBeNull();
+    for (let i = 0; i < 4; i++) {
+      fireEvent.click(screen.getByText('Show older reports'));
+      await waitFor(() => expect(screen.getByText(`Report ${20 * (i + 2) - 1}`)).toBeTruthy());
+    }
+    // 100 shown, all read on the first page; the fifth click reads the next page.
+    fireEvent.click(screen.getByText('Show older reports'));
+    await waitFor(() => expect(screen.getByText('Report 119')).toBeTruthy());
+    fireEvent.click(screen.getByText('Report 105'));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Report 105'),
+    );
+  });
+
+  it('opens a share link to a report older than the list instead of calling it gone (sim F-284)', async () => {
+    api.reports = [report('r1')];
+    api.olderReports = [report('r-old', { title: 'Last spring’s count' })];
+    renderPage(['/documents-reports?doc=r-old']);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Last spring’s count'),
+    );
+    expect(screen.queryByText(/no longer here/)).toBeNull();
   });
 
   it('an empty house says so in words instead of an empty pane', async () => {

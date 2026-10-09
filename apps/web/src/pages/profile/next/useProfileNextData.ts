@@ -377,6 +377,7 @@ export function useProfileNextData() {
     setActiveRestaurantId,
     refreshBranches,
     logout,
+    refreshUser,
   } = useAuth();
 
   /**
@@ -632,10 +633,28 @@ export function useProfileNextData() {
 
   /* ── writes ─────────────────────────────────────────────────────────── */
 
+  /**
+   * An emptied phone field is sent as `""`, which REMOVES the number. It used
+   * to be sent as `undefined`, which the gateway reads as "leave it", so the
+   * old number came back under "Saved." (sim F-283). When the account record
+   * was never read there is nothing to compare against, so the phone is left
+   * out entirely, as before.
+   *
+   * The display name on this page and in the header is the signed-in user, not
+   * `meQ`, so that is re-read too — otherwise the old name came back next to
+   * "Saved." (sim F-282). A failed re-read does not turn a save that landed
+   * into "Not saved"; the header then catches up on the next reload.
+   */
   const saveAccount = useCallback(async (name: string, phone: string) => {
-    await profileApi.updateMe({ name: name.trim(), phone: phone.trim() || undefined });
-    await meQ.refetch();
-  }, [meQ]);
+    await profileApi.updateMe({
+      name: name.trim(),
+      ...(readState(meQ, true) === 'ok' ? { phone: phone.trim() } : {}),
+    });
+    await Promise.all([
+      meQ.refetch(),
+      refreshUser ? refreshUser().catch(() => undefined) : undefined,
+    ]);
+  }, [meQ, refreshUser]);
 
   const changePassword = useCallback(
     async (currentPassword: string, newPassword: string) => {

@@ -503,6 +503,11 @@ export class DocumentsController {
     @Param("id") id: string,
     @CurrentUser() user: AuthedUser,
   ) {
+    // A READ of an id that is not one names no document, so it gets the same
+    // 404 as a document in another house. Unguarded, Postgres answered 22P02
+    // and this route a 500, and the page said the read broke (sim F-286).
+    if (!UUID_RE.test(id))
+      throw new HttpException("Not found", HttpStatus.NOT_FOUND);
     const built = await this.canonical.buildFromDocumentId(
       user.restaurantId,
       id,

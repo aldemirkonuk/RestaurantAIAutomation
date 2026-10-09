@@ -1,4 +1,4 @@
-import { HttpException } from "@nestjs/common";
+import { HttpException, HttpStatus } from "@nestjs/common";
 import { DocumentsController } from "./documents.controller";
 
 /**
@@ -12,8 +12,12 @@ import { DocumentsController } from "./documents.controller";
  * shape that cannot be misread.
  */
 
+// Real uuids: the route answers 404 to an id that is not one, before any read.
+const DOC_1 = "11111111-1111-4111-8111-000000000001";
+const DOC_X = "11111111-1111-4111-8111-0000000000ff";
+
 const CANONICAL = {
-  documentId: "doc-1",
+  documentId: DOC_1,
   restaurantId: "rest-1",
   docType: "invoice",
   direction: "issued_by_vendor",
@@ -141,13 +145,13 @@ describe("DocumentsController.canonicalDocument", () => {
       value: [
         spineRow("dl-1", [
           spineDoc("doc-po", "purchase_order"),
-          spineDoc("doc-1", "invoice", true),
+          spineDoc(DOC_1, "invoice", true),
         ]),
       ],
     });
 
-    const res: any = await controller.canonicalDocument("doc-1", user);
-    expect(res.canonical.documentId).toBe("doc-1");
+    const res: any = await controller.canonicalDocument(DOC_1, user);
+    expect(res.canonical.documentId).toBe(DOC_1);
     expect(res.deliveries).toHaveLength(1);
     // Siblings exclude the document being shown.
     expect(res.siblings.map((s: any) => s.documentId)).toEqual(["doc-po"]);
@@ -157,7 +161,7 @@ describe("DocumentsController.canonicalDocument", () => {
   });
 
   it("returns an EMPTY spine when the document is on no delivery", async () => {
-    const res: any = await controller.canonicalDocument("doc-1", user);
+    const res: any = await controller.canonicalDocument(DOC_1, user);
     // A real answer: the page collapses the spine and shows the sheet alone.
     expect(res.deliveries).toEqual([]);
     expect(res.siblings).toEqual([]);
@@ -167,9 +171,9 @@ describe("DocumentsController.canonicalDocument", () => {
   it("reports a failed spine read as failedRead with a NULL spine, never []", async () => {
     spine.forDocument.mockResolvedValue({
       ok: false,
-      error: "document_deliveries read failed for doc-1: connection reset",
+      error: `document_deliveries read failed for ${DOC_1}: connection reset`,
     });
-    const res: any = await controller.canonicalDocument("doc-1", user);
+    const res: any = await controller.canonicalDocument(DOC_1, user);
     expect(res.deliveries).toBeNull();
     expect(res.siblings).toBeNull();
     expect(res.failedRead.join(" ")).toContain("connection reset");
@@ -180,7 +184,7 @@ describe("DocumentsController.canonicalDocument", () => {
       data: { storage_path: null, content_type: null, filename: null },
       error: null,
     });
-    const res: any = await controller.canonicalDocument("doc-1", user);
+    const res: any = await controller.canonicalDocument(DOC_1, user);
     expect(res.original.imageUrl).toBeNull();
     expect(res.original.reason).toContain("no original was stored");
   });
@@ -190,7 +194,7 @@ describe("DocumentsController.canonicalDocument", () => {
       data: null,
       error: { message: "object not found" },
     });
-    const res: any = await controller.canonicalDocument("doc-1", user);
+    const res: any = await controller.canonicalDocument(DOC_1, user);
     expect(res.original.imageUrl).toBeNull();
     expect(res.original.reason).toContain("could not be signed");
   });
@@ -204,7 +208,7 @@ describe("DocumentsController.canonicalDocument", () => {
       data: null,
       error: { message: "column procurement_documents.nope does not exist" },
     });
-    const res: any = await controller.canonicalDocument("doc-1", user);
+    const res: any = await controller.canonicalDocument(DOC_1, user);
     expect(res.original.imageUrl).toBeNull();
     expect(res.original.reason).toMatch(/could not be read/);
     expect(res.original.reason).not.toMatch(/no original was stored/);
@@ -214,11 +218,23 @@ describe("DocumentsController.canonicalDocument", () => {
   it("404s a document that is not this restaurant's", async () => {
     canonical.buildFromDocumentId.mockResolvedValue({
       ok: false,
-      error: "document doc-x not found for restaurant rest-1",
+      error: `document ${DOC_X} not found for restaurant rest-1`,
     });
-    await expect(controller.canonicalDocument("doc-x", user)).rejects.toThrow(
+    await expect(controller.canonicalDocument(DOC_X, user)).rejects.toThrow(
       HttpException,
     );
+  });
+
+  it("404s an id that is not one, before any read (sim F-286)", async () => {
+    // A mistyped address names no document. Postgres would answer 22P02 and
+    // the route a 500, which reads to the person as the server breaking.
+    const err = await controller.canonicalDocument("not-a-uuid", user).then(
+      () => null,
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(HttpException);
+    expect(err.getStatus()).toBe(HttpStatus.NOT_FOUND);
+    expect(canonical.buildFromDocumentId).not.toHaveBeenCalled();
   });
 
   it("carries the canonical read's notes out to the page", async () => {
@@ -227,7 +243,7 @@ describe("DocumentsController.canonicalDocument", () => {
       value: CANONICAL,
       notes: ["migration 20260904120000 has not been applied"],
     });
-    const res: any = await controller.canonicalDocument("doc-1", user);
+    const res: any = await controller.canonicalDocument(DOC_1, user);
     expect(res.notes).toHaveLength(1);
   });
 });

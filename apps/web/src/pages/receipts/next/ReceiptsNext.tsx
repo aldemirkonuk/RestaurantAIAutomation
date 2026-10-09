@@ -548,6 +548,29 @@ const PAPER_NOTE: CSSProperties = {
  * out" are three different facts, and only the first means the manager should
  * stop looking for a scan.
  */
+/**
+ * How the stored original can be drawn, by its stored CONTENT TYPE first and
+ * its filename only when no type was recorded (sim F-285). Deciding by the
+ * `.pdf` extension alone sent an extensionless PDF and an iPhone HEIC photo
+ * into an <img>, which fails and then blamed the link.
+ */
+export function previewKind(
+  doc: Pick<ProcurementDocument, 'content_type' | 'filename' | 'storage_path'>,
+): 'pdf' | 'image' | 'heic' | 'other' {
+  const type = (doc.content_type ?? '').toLowerCase().split(';')[0].trim();
+  if (type) {
+    if (type === 'application/pdf') return 'pdf';
+    if (type === 'image/heic' || type === 'image/heif') return 'heic';
+    if (type.startsWith('image/')) return 'image';
+    // A generic type says nothing; fall through to the filename.
+    if (type !== 'application/octet-stream' && type !== 'binary/octet-stream') return 'other';
+  }
+  const name = `${doc.filename ?? ''} ${doc.storage_path ?? ''}`;
+  if (/\.pdf\b/i.test(name)) return 'pdf';
+  if (/\.hei[cf]\b/i.test(name)) return 'heic';
+  return 'image';
+}
+
 export function PaperPane({
   doc,
   detailKnown,
@@ -574,7 +597,7 @@ export function PaperPane({
   }, []);
 
   const expired = !!doc.imageUrl && isSignedUrlExpired(fetchedAt, now);
-  const isPdf = /\.pdf$/i.test(doc.filename ?? '') || /\.pdf$/i.test(doc.storage_path ?? '');
+  const kind = previewKind(doc);
 
   const frame = (children: ReactNode) => (
     <div
@@ -653,7 +676,18 @@ export function PaperPane({
         {again('Try again')}
       </>
     );
-  } else if (isPdf) {
+  } else if (kind === 'heic' || kind === 'other') {
+    // A file this browser cannot draw is not a failing link: retrying it would
+    // fail the same way every time (sim F-285).
+    body = (
+      <p style={PAPER_NOTE}>
+        {kind === 'heic'
+          ? 'This is an iPhone photo (HEIC), which this browser cannot show here.'
+          : 'This kind of file cannot be shown here.'}{' '}
+        The paper is stored — use “Open the paper ↗” above to open or download it.
+      </p>
+    );
+  } else if (kind === 'pdf') {
     body = (
       <object
         data={doc.imageUrl}

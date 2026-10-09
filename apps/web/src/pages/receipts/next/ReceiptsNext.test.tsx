@@ -135,7 +135,7 @@ vi.mock('../../../services/api/orders', () => ({
         }),
 }));
 
-import ReceiptsNext, { PaperPane } from './ReceiptsNext';
+import ReceiptsNext, { PaperPane, previewKind } from './ReceiptsNext';
 import { isSignedUrlExpired } from './rc2-format';
 
 function doc(over: Partial<ProcurementDocument>): ProcurementDocument {
@@ -432,6 +432,38 @@ describe('ReceiptsNext', () => {
 
     render(pane(doc({ storage_path: 'r/1/inv.jpg', imageUrl: null })), { wrapper });
     expect(await screen.findByText(/a viewing link could not be created/)).toBeInTheDocument();
+  });
+
+  it('picks the renderer by the stored content type, not the filename (sim F-285)', async () => {
+    const pane = (d: ReturnType<typeof doc>) => (
+      <PaperPane doc={d} detailKnown fetchedAt={Date.now()} onRefresh={() => {}} refreshing={false} />
+    );
+    // A PDF stored without the extension is still drawn as a PDF.
+    const pdf = render(
+      pane(doc({ storage_path: 'r/1/document', content_type: 'application/pdf', imageUrl: 'https://signed.example/d' })),
+      { wrapper },
+    );
+    expect(pdf.container.querySelector('object[type="application/pdf"]')).not.toBeNull();
+    expect(screen.queryByAltText('Stored document')).not.toBeInTheDocument();
+    pdf.unmount();
+
+    // An iPhone photo is said plainly, with no "Try again" that would fail the same way.
+    render(
+      pane(doc({ storage_path: 'r/1/inv.heic', content_type: 'image/heic', imageUrl: 'https://signed.example/h' })),
+      { wrapper },
+    );
+    expect(screen.getByText(/iPhone photo \(HEIC\)/)).toBeInTheDocument();
+    expect(screen.queryByAltText('Stored document')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Try again/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/link failing/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the filename only when no type was recorded (sim F-285)', () => {
+    expect(previewKind({ content_type: null, filename: 'inv.pdf', storage_path: null })).toBe('pdf');
+    expect(previewKind({ content_type: 'application/octet-stream', filename: null, storage_path: 'r/1/a.HEIF' })).toBe('heic');
+    expect(previewKind({ content_type: 'image/jpeg', filename: 'mislabelled.pdf', storage_path: null })).toBe('image');
+    expect(previewKind({ content_type: 'text/csv', filename: 'lines.csv', storage_path: null })).toBe('other');
+    expect(previewKind({ content_type: null, filename: null, storage_path: 'r/1/inv.jpg' })).toBe('image');
   });
 
   /* ─── R2 — tenant keying ──────────────────────────────────────────────── */

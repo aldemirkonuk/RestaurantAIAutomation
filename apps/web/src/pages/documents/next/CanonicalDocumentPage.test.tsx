@@ -8,6 +8,8 @@
  * All data is SYNTHETIC.
  */
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -269,6 +271,34 @@ describe('CanonicalDocumentPage', () => {
     // No sheet at all — an empty one would read as a document with no lines.
     expect(screen.queryByTestId('money-block')).toBeNull()
     expect(screen.queryByTestId('sheet-line')).toBeNull()
+  })
+
+  it('says plainly there is no such document on a 404, with no Try again (sim F-286)', async () => {
+    documentMock.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 404'), {
+        response: { status: 404 },
+      }),
+    )
+    mount()
+    await waitFor(() => expect(screen.getByTestId('canonical-not-found')).toBeTruthy())
+    const box = screen.getByTestId('canonical-not-found')
+    expect(box.textContent).toMatch(/no document at this address/)
+    expect(box.textContent).not.toMatch(/status code|could not be read/)
+    expect(screen.queryByText('Try again')).toBeNull()
+    expect(screen.queryByTestId('canonical-error')).toBeNull()
+  })
+
+  it('stacks the sheet and the original on a phone: the columns live in CSS, not inline (sim F-281)', async () => {
+    documentMock.mockResolvedValue(response())
+    mount()
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    const body = screen.getByTestId('cd-body')
+    // An inline template outranks every media query, so it must not be set.
+    expect(body.style.gridTemplateColumns).toBe('')
+    expect(body.className).toBe('cd-body')
+    const css = readFileSync(join(__dirname, 'canonical-document.css'), 'utf8')
+    const phone = css.match(/@media screen and \(max-width: 639px\) \{\s*\.cd-body,\s*\.cd-gates \{\s*grid-template-columns: minmax\(0, 1fr\);/)
+    expect(phone).not.toBeNull()
   })
 
   it('raises the NOT EXTRACTED banner for an empty layer 1', async () => {
