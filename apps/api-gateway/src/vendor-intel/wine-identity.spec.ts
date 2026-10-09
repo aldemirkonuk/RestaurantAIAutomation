@@ -12,6 +12,21 @@ describe("normalizeIdentityText", () => {
     );
   });
 
+  it("folds the Turkish dotless and dotted i, so a Turkish label meets its capitals (F-373)", () => {
+    // ı has no NFD decomposition; before the fold it became a word break and
+    // "Kalecik Karası" keyed as "kalecik karas".
+    expect(normalizeIdentityText("Kavaklıdere")).toBe("kavaklidere");
+    expect(normalizeIdentityText("Kalecik Karası")).toBe(
+      normalizeIdentityText("KALECIK KARASI"),
+    );
+    expect(normalizeIdentityText("İZMİR")).toBe("izmir");
+    expect(
+      hashWineIdentity({ producer: "Kavaklıdere", name: "Kalecik Karası", vintage: 2021 }),
+    ).toBe(
+      hashWineIdentity({ producer: "KAVAKLIDERE", name: "KALECIK KARASI", vintage: 2021 }),
+    );
+  });
+
   it("treats punctuation as a word break, not as deletion", () => {
     expect(normalizeIdentityText("Blanc-de-Blancs")).toBe(
       normalizeIdentityText("Blanc de Blancs"),

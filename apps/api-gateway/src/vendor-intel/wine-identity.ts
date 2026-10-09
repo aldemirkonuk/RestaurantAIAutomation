@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { foldText } from "../common/text-fold";
 
 /**
  * Cross-source identity for a bottle.
@@ -37,18 +38,17 @@ import { createHash } from "crypto";
 /**
  * Fold a source string down to comparable letters and digits.
  *
- * NFD + diacritic strip so "Château" and "Chateau" agree — vendor sites are
- * split roughly evenly on whether they bother with the accent. Punctuation
- * becomes a space rather than being deleted so "Blanc de Blancs" and
- * "Blanc-de-Blancs" agree while "StEmilion" does not silently become a word
+ * foldText (Turkish ı/İ to i, NFD + diacritic strip, lowercase) so "Château"
+ * and "Chateau" agree — vendor sites are split roughly evenly on whether they
+ * bother with the accent — and so do "Kavaklıdere" and "KAVAKLIDERE": ı has no
+ * NFD decomposition, so without the fold the pass below split the word on it.
+ * Punctuation becomes a space rather than being deleted so "Blanc de Blancs"
+ * and "Blanc-de-Blancs" agree while "StEmilion" does not silently become a word
  * that never existed.
  */
 export function normalizeIdentityText(value?: string | null): string {
   if (!value) return "";
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
+  return foldText(value)
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();

@@ -30,7 +30,8 @@ EVAL = ROOT / "datasets/merge_eval/entries.json"
 
 
 def norm(value) -> str:
-    s = unicodedata.normalize("NFD", str(value or ""))
+    # Turkish ı/İ fold to i first, mirroring beverage_normalize_text (F-373).
+    s = unicodedata.normalize("NFD", re.sub("[ıİ]", "i", str(value or "")))
     s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
 

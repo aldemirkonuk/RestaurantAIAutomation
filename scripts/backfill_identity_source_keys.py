@@ -72,7 +72,9 @@ MAX_SIZE_ML = 30_000
 def normalize_identity_text(value: Optional[str]) -> str:
     if not value:
         return ""
-    s = unicodedata.normalize("NFD", value)
+    # Turkish ı/İ fold to i first, as foldText does: ı has no NFD
+    # decomposition and was otherwise split off as punctuation.
+    s = unicodedata.normalize("NFD", re.sub("[ıİ]", "i", value))
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
     s = s.lower()
     s = re.sub(r"[^a-z0-9\s]", " ", s)
@@ -325,7 +327,8 @@ def self_test() -> int:
         if got != expected:
             print(f"FAIL build_identity_key{args} -> {got!r}, expected {expected!r}")
             failures += 1
-    if normalize_identity_text("Château Margaux") != "chateau margaux":
+    if (normalize_identity_text("Château Margaux") != "chateau margaux"
+            or normalize_identity_text("Kavaklıdere") != "kavaklidere"):
         print("FAIL normalize_identity_text does not match normalizeIdentityText")
         failures += 1
     for upc, ok in [("00088004022723", True), ("00088004022724", False)]:
