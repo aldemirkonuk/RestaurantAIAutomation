@@ -40,6 +40,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { apiClient, getErrorMessage } from '../../services/api/client';
 import type { Notification } from '../../services/api/notifications';
 import { collapseStackedNotifications } from '../notificationStack';
+import { publishUnreadCount, useSharedUnreadCount } from './unreadCount';
 
 /** How many unread lines the bell asks for. The whole book is one click away. */
 export const BELL_PAGE = 25;
@@ -155,6 +156,45 @@ function rowsOf(payload: unknown): Notification[] {
   return [];
 }
 
+/**
+ * How many ids one bulk request carries. The gateway filters with
+ * `.in("id", ids)` (`notifications.service.ts` `markBulkAsRead` / `deleteBulk`),
+ * which travels in the URL to the database, so a fold of six hundred is sent in
+ * slices rather than as one request that a proxy could refuse for its length.
+ */
+const BULK_SLICE = 100;
+
+function slices(ids: string[]): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += BULK_SLICE) out.push(ids.slice(i, i + BULK_SLICE));
+  return out;
+}
+
+/**
+ * Rule off every row a line stands for (F-253). One id goes through the
+ * single-row route as before; a fold goes through `PATCH /notifications/read/bulk`.
+ */
+export async function ruleOffRows(ids: string[]): Promise<void> {
+  if (ids.length === 1) {
+    await apiClient.patch(`/notifications/${ids[0]}/read`);
+    return;
+  }
+  for (const part of slices(ids)) {
+    await apiClient.patch('/notifications/read/bulk', { ids: part });
+  }
+}
+
+/** Delete every row a line stands for; a fold goes through `DELETE /notifications/bulk`. */
+export async function deleteRows(ids: string[]): Promise<void> {
+  if (ids.length === 1) {
+    await apiClient.delete(`/notifications/${ids[0]}`);
+    return;
+  }
+  for (const part of slices(ids)) {
+    await apiClient.delete('/notifications/bulk', { data: { ids: part } });
+  }
+}
+
 function numOf(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
@@ -192,8 +232,12 @@ export function useBellBook(open: boolean): BellBook {
   const userId = user?.userId ?? null;
 
   const [register, setRegister] = useState<BellRegister>({ state: 'loading' });
-  const [unread, setUnread] = useState<number | null>(null);
-  const [unreadNote, setUnreadNote] = useState<string | null>(null);
+  // The count is the one every surface shares (F-256): this hook publishes
+  // what it read, and draws whatever was read last — by the page, the rail
+  // or itself — so ruling a line off anywhere moves the bell at once.
+  const shared = useSharedUnreadCount(activeRestaurantId);
+  const unread = shared?.count ?? null;
+  const unreadNote = shared?.note ?? null;
   const [total, setTotal] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState<boolean | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -208,8 +252,6 @@ export function useBellBook(open: boolean): BellBook {
   useEffect(() => {
     tenant.current = activeRestaurantId;
     setRegister({ state: 'loading' });
-    setUnread(null);
-    setUnreadNote(null);
     setTotal(null);
     setHasMore(null);
     setActionNote(null);
@@ -236,18 +278,20 @@ export function useBellBook(open: boolean): BellBook {
     if (countRes.status === 'fulfilled') {
       const payload = countRes.value.data as { count?: unknown } | null;
       const n = numOf(payload?.count);
-      setUnread(n);
-      setUnreadNote(
-        n === null ? 'The register answered without a count, so the number is unknown.' : null,
-      );
+      publishUnreadCount({
+        restaurantId: forTenant,
+        count: n,
+        note: n === null ? 'The register answered without a count, so the number is unknown.' : null,
+      });
     } else {
       const f = bellFailureOf(countRes.reason);
-      setUnread(null);
-      setUnreadNote(
-        f.forbidden
+      publishUnreadCount({
+        restaurantId: forTenant,
+        count: null,
+        note: f.forbidden
           ? `Your account is not allowed to read this register (${f.status ?? 'refused'}).`
           : `The unread count could not be read (${f.message}).`,
-      );
+      });
     }
 
     if (bookRes.status === 'rejected') {
@@ -294,7 +338,7 @@ export function useBellBook(open: boolean): BellBook {
     };
   }, [read]);
 
-  const { items, foldedById, foldedCount, folds } = useMemo(() => {
+  const { items, foldedById, foldedCount, folds, membersById } = useMemo(() => {
     const rows = register.state === 'ready' ? register.rows : [];
     const stacked = collapseStackedNotifications(rows);
     return {
@@ -302,14 +346,15 @@ export function useBellBook(open: boolean): BellBook {
       foldedById: stacked.foldedById,
       foldedCount: stacked.foldedCount,
       folds: foldFreshness(rows, stacked.items, stacked.foldedById),
+      membersById: stacked.membersById,
     };
   }, [register]);
 
   const markRead = useCallback(
     (id: string) => {
       setActionNote(null);
-      apiClient
-        .patch(`/notifications/${id}/read`)
+      // A folded line is every row it folds; ruling it off rules them all off.
+      ruleOffRows(membersById[id] ?? [id])
         .then(() => read())
         .catch((err) => {
           const f = bellFailureOf(err);
@@ -320,7 +365,7 @@ export function useBellBook(open: boolean): BellBook {
           );
         });
     },
-    [read],
+    [read, membersById],
   );
 
   const markAllRead = useCallback(() => {

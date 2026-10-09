@@ -30,6 +30,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { apiClient, getErrorMessage } from '@/services/api/client';
 import type { Notification } from '@/services/api/notifications';
 import { collapseStackedNotifications } from '@/lib/notificationStack';
+import { deleteRows, ruleOffRows } from '@/lib/mudavym/useBellBook';
+import { publishUnreadCount, useSharedUnreadCount } from '@/lib/mudavym/unreadCount';
 import { num } from './nt-format';
 import { localToday, monthOf } from '@/components/mudavym';
 import { DayCell, FoldFreshness, dayCells, daySpan, foldFreshness } from './nt-book';
@@ -136,6 +138,8 @@ export interface BookStack {
   items: Notification[];
   foldedById: Record<string, number>;
   foldedCount: number;
+  /** For a folded line: every row it stands for, winner first. */
+  membersById: Record<string, string[]>;
 }
 
 /**
@@ -163,6 +167,11 @@ export const NO_FILTERS: BookFilters = { type: null, status: null, day: null };
 export interface NotificationsNextData {
   book: BookVM;
   stack: BookStack;
+  /**
+   * Unread rows in the WHOLE register, not just the pages on screen — the
+   * count the bell prints. Null when it could not be read (F-254).
+   */
+  unread: number | null;
   /** Wall-clock of the last completed read of the book; null before the first. */
   lastReadAt: Date | null;
   /** True while a poll or a manual refresh is in flight. */
@@ -225,6 +234,8 @@ export function useNotificationsNextData(): NotificationsNextData {
   const rowsRef = useRef<Notification[] | null>(null);
   /** Mirror of the fold counts, so `snooze()` can record what it saw. */
   const foldedRef = useRef<Record<string, number>>({});
+  /** Mirror of each folded line's rows, so an act reaches all of them. */
+  const foldMembersRef = useRef<Record<string, string[]>>({});
 
   // A restaurant switch must never leave the previous tenant's rows on screen.
   useEffect(() => {
@@ -268,7 +279,14 @@ export function useNotificationsNextData(): NotificationsNextData {
     const wanted = pagesRef.current;
     setRefreshing(true);
 
-    const [bookRes] = await Promise.allSettled([
+    const [countRes, bookRes] = await Promise.allSettled([
+      // The whole register's open count, so the page can only say "every line
+      // has been ruled off" when the register says so — not when the newest
+      // hundred happen to hold nothing open (F-254). Published to the bell and
+      // the rail too, so the three agree the moment this page reads it.
+      apiClient.get('/notifications/unread/count', {
+        params: { userId, restaurantId: forTenant },
+      }),
       apiClient.get('/notifications', {
         params: {
           userId,
@@ -312,6 +330,21 @@ export function useNotificationsNextData(): NotificationsNextData {
       }
     }
     if (!alive.current || tenant.current !== forTenant) return;
+
+    if (countRes.status === 'fulfilled') {
+      const n = num((countRes.value.data as { count?: unknown } | null)?.count);
+      publishUnreadCount({
+        restaurantId: forTenant,
+        count: n,
+        note: n === null ? 'The register answered without a count, so the number is unknown.' : null,
+      });
+    } else {
+      publishUnreadCount({
+        restaurantId: forTenant,
+        count: null,
+        note: `The unread count could not be read (${failureOf(countRes.reason).message}).`,
+      });
+    }
 
     if (bookRes.status === 'rejected') {
       const failure = failureOf(bookRes.reason);
@@ -361,14 +394,15 @@ export function useNotificationsNextData(): NotificationsNextData {
   /* ── writes: optimistic, but a refusal rolls back AND says so ─────────── */
 
   const patchRow = useCallback(
-    async (id: string, next: string | null, request: () => Promise<unknown>, what: string) => {
+    async (ids: string[], next: string | null, request: () => Promise<unknown>, what: string) => {
       setFailureNote(null);
       const previous = rowsRef.current;
+      const hit = new Set(ids);
       if (previous) {
         const rows =
           next === null
-            ? previous.filter((r) => r.id !== id)
-            : previous.map((r) => (r.id === id ? ({ ...r, status: next } as Notification) : r));
+            ? previous.filter((r) => !hit.has(r.id))
+            : previous.map((r) => (hit.has(r.id) ? ({ ...r, status: next } as Notification) : r));
         rowsRef.current = rows;
         setBook((b) => ({ ...b, register: { state: 'ready', rows } }));
       }
@@ -391,24 +425,62 @@ export function useNotificationsNextData(): NotificationsNextData {
     [read],
   );
 
-  const markRead = useCallback(
-    (id: string) =>
-      void patchRow(id, 'read', () => apiClient.patch(`/notifications/${id}/read`), 'rule this off'),
-    [patchRow],
+  /**
+   * A folded line is every row it folds (F-253). Ruling it off, archiving it or
+   * deleting it reaches each of them; acting on the winner alone left the rest
+   * unread behind a line that said it was done. Only the rows still open are
+   * ruled off, so a row ruled off yesterday keeps yesterday's stamp.
+   */
+  const membersOf = useCallback((id: string): string[] => foldMembersRef.current[id] ?? [id], []);
+  const openMembersOf = useCallback(
+    (id: string): string[] => {
+      const members = membersOf(id);
+      if (members.length === 1) return members;
+      const open = new Set(
+        (rowsRef.current ?? []).filter((r) => String(r.status) === 'unread').map((r) => r.id),
+      );
+      const ids = members.filter((m) => open.has(m));
+      return ids.length > 0 ? ids : [id];
+    },
+    [membersOf],
   );
+
+  const markRead = useCallback(
+    (id: string) => {
+      const ids = openMembersOf(id);
+      void patchRow(ids, 'read', () => ruleOffRows(ids), 'rule this off');
+    },
+    [patchRow, openMembersOf],
+  );
+  // Reopening puts the line back by its newest row; the rest stay as they are.
   const markUnread = useCallback(
     (id: string) =>
-      void patchRow(id, 'unread', () => apiClient.patch(`/notifications/${id}/unread`), 'reopen this'),
+      void patchRow([id], 'unread', () => apiClient.patch(`/notifications/${id}/unread`), 'reopen this'),
     [patchRow],
   );
+  // There is no bulk archive route: the line's own row is archived and the
+  // rows folded under it are ruled off, so none is left open behind it.
   const archive = useCallback(
-    (id: string) =>
-      void patchRow(id, 'archived', () => apiClient.patch(`/notifications/${id}/archive`), 'archive this'),
-    [patchRow],
+    (id: string) => {
+      const rest = openMembersOf(id).filter((m) => m !== id);
+      void patchRow(
+        [id, ...rest],
+        'archived',
+        async () => {
+          if (rest.length > 0) await ruleOffRows(rest);
+          await apiClient.patch(`/notifications/${id}/archive`);
+        },
+        'archive this',
+      );
+    },
+    [patchRow, openMembersOf],
   );
   const remove = useCallback(
-    (id: string) => void patchRow(id, null, () => apiClient.delete(`/notifications/${id}`), 'delete this'),
-    [patchRow],
+    (id: string) => {
+      const ids = membersOf(id);
+      void patchRow(ids, null, () => deleteRows(ids), 'delete this');
+    },
+    [patchRow, membersOf],
   );
 
   /**
@@ -490,11 +562,14 @@ export function useNotificationsNextData(): NotificationsNextData {
   }, [read]);
 
   const stack: BookStack = useMemo(() => {
-    if (book.register.state !== 'ready') return { items: [], foldedById: {}, foldedCount: 0 };
+    if (book.register.state !== 'ready')
+      return { items: [], foldedById: {}, foldedCount: 0, membersById: {} };
     return collapseStackedNotifications(book.register.rows);
   }, [book.register]);
 
   foldedRef.current = stack.foldedById;
+  foldMembersRef.current = stack.membersById;
+  const unread = useSharedUnreadCount(activeRestaurantId)?.count ?? null;
 
   const folds = useMemo(
     () =>
@@ -554,6 +629,7 @@ export function useNotificationsNextData(): NotificationsNextData {
   return {
     book,
     stack,
+    unread,
     lastReadAt,
     refreshing,
     asleep: verdict.asleep,

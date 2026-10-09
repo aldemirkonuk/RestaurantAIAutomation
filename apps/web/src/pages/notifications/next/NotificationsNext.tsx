@@ -200,9 +200,20 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
   // The header bell hands over one line to open (Header.tsx:191,226).
   const wanted = (location.state as { selectedNotificationId?: string } | null)
     ?.selectedNotificationId;
+  /**
+   * The line that stands for the handed-over row. The bell folds only its
+   * unread page, so its line can sit folded under a newer row here; the open
+   * line is then the one whose fold holds it.
+   */
+  const wantedLine = useMemo(() => {
+    if (!wanted) return null;
+    if (data.stack.items.some((n) => n.id === wanted)) return wanted;
+    const members = data.stack.membersById ?? {};
+    return Object.keys(members).find((id) => members[id].includes(wanted)) ?? wanted;
+  }, [wanted, data.stack]);
   useEffect(() => {
-    if (wanted) setOpenId(wanted);
-  }, [wanted]);
+    if (wantedLine) setOpenId(wantedLine);
+  }, [wantedLine]);
 
   /**
    * The book after the two SCREEN-side narrowings — the search and the sleep.
@@ -238,6 +249,25 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
     sleeping.sort((a, b) => age(a) - age(b));
     return { drafts, needs, ruled, sleeping };
   }, [visible, data.asleep]);
+
+  /**
+   * The bell rules a line off as it hands it over, so the line lands under the
+   * double rule — which starts closed, and the owner saw nothing open (F-255).
+   * Open that band once for the handed-over line and bring the line into view;
+   * after that the band is the reader's to close.
+   */
+  const handedOff = useRef<string | null>(null);
+  useEffect(() => {
+    if (!wantedLine || handedOff.current === wantedLine) return;
+    if (!bands.ruled.some((n) => n.id === wantedLine)) return;
+    handedOff.current = wantedLine;
+    setShowRuledOff(true);
+    setHideRead(false);
+    const el = rowRefs.current.get(wantedLine);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center' });
+    }
+  }, [wantedLine, bands.ruled]);
 
   /** The order j and k walk: the bands as drawn, top to bottom. */
   const walk = useMemo(
@@ -374,7 +404,24 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
   } else if (!ready) {
     standing = 'Opening the book…';
   } else if ((needCount ?? 0) === 0) {
-    standing = 'Nothing is waiting on you. Every line in the book has been ruled off.';
+    // The loaded pages are the newest hundred or so; only the register's own
+    // count may say the whole book is ruled off (F-254).
+    const rows = data.book.register.state === 'ready' ? data.book.register.rows : [];
+    const openHere = rows.filter((n) => String(n.status) === 'unread').length;
+    const elsewhere =
+      typeof data.unread === 'number' ? Math.max(0, data.unread - openHere) : null;
+    if (data.unread === 0) {
+      standing = 'Nothing is waiting on you. Every line in the book has been ruled off.';
+    } else if (elsewhere === null) {
+      standing =
+        'Nothing shown here needs a hand. The count of open lines could not be read, so older pages may still hold some.';
+    } else if (elsewhere > 0) {
+      standing = `Nothing shown here needs a hand, but the book still holds ${elsewhere} open ${
+        elsewhere === 1 ? 'line' : 'lines'
+      } further back or outside your filters.`;
+    } else {
+      standing = 'Nothing is waiting on you.';
+    }
   } else {
     standing = `${needCount} ${needCount === 1 ? 'line needs' : 'lines need'} a hand.`;
   }

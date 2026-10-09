@@ -94,7 +94,11 @@ export function CommandPalette({
     if (!open || !restaurantId) return;
     let cancelled = false;
     apiClient
-      .get<any>(`/analytics/recommendations/${restaurantId}`)
+      // A glance, not a sighting: the palette shows one card, so it must not
+      // log the whole feed as shown on the recommendations page (F-257).
+      .get<any>(`/analytics/recommendations/${restaurantId}`, {
+        params: { recordImpressions: "false" },
+      })
       .then(({ data: body }) => {
         if (cancelled) return;
         const rec = body?.recommendations?.[0];
