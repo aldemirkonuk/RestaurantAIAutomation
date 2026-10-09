@@ -1399,7 +1399,10 @@ describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 
     await expect(
       service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
     ).rejects.toThrow(/could not be recorded .*nothing was changed/);
-    expect(calls.orderUpdates).toEqual([]);
+    // F-371: the line is written after the status compare-and-set, so a
+    // failed line puts the order's status back the way it was.
+    expect(calls.orderUpdates).toHaveLength(2);
+    expect(calls.orderUpdates[1].status).toBe(bottleOrder.status);
     expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
   });
 
@@ -1574,5 +1577,20 @@ describe("verifyReceipt — a check already made is not written over (F-349)", (
       .catch((e) => e);
     expect(err.getStatus?.()).toBe(409);
     expect(err.getResponse().message).toMatch(/at the same moment/);
+  });
+
+  it("writes no counts-confirmed line when the tap loses the compare-and-set (F-371)", async () => {
+    // The receipt record is append-only: a line written before the lost
+    // compare-and-set could never be taken back.
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      statusChangedMeanwhile: true,
+      latestReconciledEvent: null,
+    });
+    const err = await service(db)
+      .verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any)
+      .catch((e) => e);
+    expect(err.getStatus?.()).toBe(409);
+    expect(calls.receiptEvents).toEqual([]);
   });
 });

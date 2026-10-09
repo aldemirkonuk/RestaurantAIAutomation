@@ -59,3 +59,25 @@ describe("mobile feed — a delivery discrepancy is its own card (F-349)", () =>
     expect(feed.counts.receiptVerifications).toBe(1);
   });
 });
+
+describe("mobile feed — a receipt notice with no order is not a delivery to check (F-372)", () => {
+  it("files an invoice_received notice with no orderId as an informational alert", async () => {
+    const feed = await feedOf([
+      {
+        id: "n-orphan",
+        type: "invoice_received",
+        title: "Invoice received",
+        message: "An invoice arrived from your vendor.",
+        createdAt,
+        metadata: {},
+      },
+    ]);
+    expect(feed.items).toHaveLength(1);
+    expect(feed.items[0]).toMatchObject({
+      kind: "alert",
+      orderId: null,
+      notificationId: "n-orphan",
+    });
+    expect(feed.counts.receiptVerifications).toBe(0);
+  });
+});

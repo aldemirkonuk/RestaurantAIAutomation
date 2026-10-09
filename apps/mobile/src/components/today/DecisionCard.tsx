@@ -18,6 +18,7 @@ import { feedKey, pulseKey } from "@/api/queries";
 import { useOutbox } from "@/state/outbox";
 import { useFeedLocal } from "@/state/feedLocal";
 import type { FeedItem } from "@/api/types";
+import { countsMatchRequest } from "./countsMatchRequest";
 
 const KIND_LABEL: Record<FeedItem["kind"], string> = {
   order_approval: "Order",
@@ -198,17 +199,27 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
         return { label: "Review & approve", run: open };
       case "draft_approval":
         return { label: "Review & send", run: open };
-      case "receipt_verification":
+      case "receipt_verification": {
+        // F-372: a card with no order never posts; it only clears.
+        const countsMatch = countsMatchRequest(item);
+        if (!countsMatch)
+          return {
+            label: "Done",
+            run: () =>
+              instantAction(
+                `/notifications/${item.notificationId}/read`,
+                "Marked as seen",
+                undefined,
+                "PATCH",
+              ),
+          };
         return {
           label: "Counts match",
           run: () =>
-            instantAction(
-              `/procurement/orders/${item.orderId}/verify-receipt`,
-              "Receipt verified",
-              { adjustments: [] },
-            ),
+            instantAction(countsMatch.path, "Receipt verified", countsMatch.body),
           secondaryLabel: "Count it",
         };
+      }
       // The check is already made: this card reports what it found. No
       // "Counts match" here — that tap completed the order over its backorder
       // and owed invoice (F-349). Opening it shows the order; this clears it.
