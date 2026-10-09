@@ -30,7 +30,7 @@
  *
  * Progress comes from `GET /analytics/goals/:rid/progress`, which recomputes
  * each goal rather than reading the stored `current_value` column — that column
- * is only refreshed when someone opens one goal, so a bar drawn off the list
+ * is only refreshed by the hourly insight sweep, so a bar drawn off the list
  * would read "nothing done yet" for a goal that is half met.
  */
 

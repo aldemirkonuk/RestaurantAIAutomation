@@ -634,7 +634,7 @@ each showing the focus ring, the ghost outline and the announcement.
 
 | Route | Why it did not exist before, and what it fixes |
 |---|---|
-| `GET /analytics/goals/:rid/progress` | `listGoals` returns the STORED `current_value`, written at creation as the baseline and refreshed only when one goal's progress is opened (`goals.service.ts:359`). A bar drawn off the list reads "nothing done yet" for a goal that is half met — an absence rendered as a measurement. This recomputes each one, caps at six and **reports the cap** rather than applying it silently |
+| `GET /analytics/goals/:rid/progress` | `listGoals` returns the STORED `current_value`, written at creation as the baseline and refreshed only by the hourly insight sweep (`refreshStoredCurrentValues`; progress reads write nothing since F-264). A bar drawn off the list reads "nothing done yet" for a goal that is half met — an absence rendered as a measurement. This recomputes each one, caps at six and **reports the cap** rather than applying it silently |
 | `PATCH /analytics/goals/:rid/:goalId` | There was no edit route at all; only status. `metricKey` is deliberately NOT editable — the baseline was measured against the old metric and every figure is counted from it — and the form says so |
 | `POST /analytics/goals/:rid/:goalId/cutting-spec` | "AI will create the analytics" (below) |
 

@@ -511,10 +511,11 @@ describe("GoalsService — the till and goal progress read the whole window", ()
     created_at: at(60),
     period: "custom",
     direction: "at_least",
+    status: "active",
     deadline: null,
   };
 
-  it("getGoalProgress stores the whole window's count as current_value", async () => {
+  it("getGoalProgress counts the whole window and stores nothing (F-264)", async () => {
     const { db, writes } = cappedDb({
       pos_checks: rows,
       analytics_goals: [goal],
@@ -522,9 +523,30 @@ describe("GoalsService — the till and goal progress read the whole window", ()
     });
     const out: any = await goalsOver(db).getGoalProgress("r1", "g1");
     expect(out.current).toBe(3313);
+    expect(writes.filter((w) => w.table === "analytics_goals")).toEqual([]);
+  });
+
+  it("the sweep's refresh stores the whole window's count as current_value", async () => {
+    const { db, writes } = cappedDb({
+      pos_checks: rows,
+      analytics_goals: [goal],
+      restaurants,
+    });
+    const out = await goalsOver(db).refreshStoredCurrentValues("r1");
+    expect(out).toEqual({ refreshed: 1, failed: 0 });
     const stored = writes.filter((w) => w.table === "analytics_goals");
     expect(stored).toHaveLength(1);
     expect((stored[0].payload as any).current_value).toBe(3313);
+  });
+
+  it("the sweep's refresh writes no current_value from a refused read", async () => {
+    const { db, writes } = cappedDb(
+      { pos_checks: rows, analytics_goals: [goal], restaurants },
+      { pos_checks: { failOn: [2] } },
+    );
+    const out = await goalsOver(db).refreshStoredCurrentValues("r1");
+    expect(out).toEqual({ refreshed: 0, failed: 1 });
+    expect(writes.filter((w) => w.table === "analytics_goals")).toEqual([]);
   });
 
   it("getGoalProgress writes no current_value from a refused read", async () => {

@@ -395,10 +395,10 @@ export class GoalsService {
    * Progress for every goal of one status, in one call.
    *
    * `listGoals` alone cannot drive a progress bar honestly: `current_value` is
-   * a STORED column, written at creation as the baseline and only refreshed
-   * when someone opens that one goal's progress (`getGoalProgress`, :359). A
-   * bar drawn off the list would therefore read "0% of the way there" for a
-   * goal that is in fact half done — an absence reported as a measurement,
+   * a STORED column, written at creation as the baseline and refreshed only
+   * by the hourly insight sweep (`refreshStoredCurrentValues`). A bar drawn
+   * off the list would therefore read "0% of the way there" for a goal set
+   * this morning that is in fact half done — an absence reported as a measurement,
    * which is the fault ADR 0020 exists to stop.
    *
    * Capped at `MAX_PROGRESS_GOALS`, and the cap is REPORTED rather than
@@ -458,6 +458,67 @@ export class GoalsService {
     };
   }
 
+  /**
+   * A goal's current value over its own window. The window opens on the house
+   * date the goal was created (ADR 0296), not the UTC date: a goal set at
+   * 22:00 in Los Angeles was set that day.
+   */
+  private async measureGoal(restaurantId: string, goal: any, house: HouseZone) {
+    const zone = house.zone;
+    const periodStart = zone
+      ? (houseDayOf(goal.created_at, zone) ??
+        this.periodStart(goal.period, zone))
+      : null;
+    const measured = await this.computeMetricWithSeries(
+      restaurantId,
+      goal.metric_key,
+      periodStart,
+      undefined,
+      zone,
+    );
+    return { zone, periodStart, ...measured };
+  }
+
+  /**
+   * Writes each active goal's recomputed value into the stored
+   * `current_value`, which the insight goals family, the recommendation goal
+   * rules and the goal lists read. The progress reads never write (F-264);
+   * this is the column's one refresh, run by the hourly insight sweep.
+   * `updated_at` is left alone: it says when someone last edited the goal.
+   *
+   * A goal whose value could not be read keeps its last stored value and is
+   * counted in `failed`; it is never written as zero.
+   */
+  async refreshStoredCurrentValues(
+    restaurantId: string,
+  ): Promise<{ refreshed: number; failed: number }> {
+    const [goals, house] = await Promise.all([
+      this.listGoals(restaurantId, "active"),
+      readHouseZone(this.dbService.getClient(), restaurantId),
+    ]);
+    let refreshed = 0;
+    let failed = 0;
+    for (const goal of goals) {
+      try {
+        const { current } = await this.measureGoal(restaurantId, goal, house);
+        const { error } = await this.dbService
+          .getClient()
+          .from("analytics_goals")
+          .update({ current_value: current })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", goal.id);
+        if (error) throw new Error(error.message);
+        refreshed += 1;
+      } catch (err: any) {
+        failed += 1;
+        this.logger.warn(
+          `stored goal value not refreshed for ${goal.id}: ${err?.message ?? err}`,
+        );
+      }
+    }
+    return { refreshed, failed };
+  }
+
   /** Recomputing progress is several queries per goal; six is a screenful. */
   static readonly MAX_PROGRESS_GOALS = 6;
 
@@ -485,27 +546,12 @@ export class GoalsService {
     if (error || !goal) throw new Error(error?.message || "Goal not found");
 
     const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
-    // The goal's window opens on the house date it was created (ADR 0296),
-    // not the UTC date: a goal set at 22:00 in Los Angeles was set that day.
-    const zone = house.zone;
-    const periodStart = zone
-      ? (houseDayOf(goal.created_at, zone) ??
-        this.periodStart(goal.period, zone))
-      : null;
-    const { current, dailySeries, units } = await this.computeMetricWithSeries(
-      restaurantId,
-      goal.metric_key,
-      periodStart,
-      undefined,
-      zone,
-    );
-
-    // Refresh stored current_value (cheap side effect, keeps insights honest).
-    await this.dbService
-      .getClient()
-      .from("analytics_goals")
-      .update({ current_value: current, updated_at: new Date().toISOString() })
-      .eq("id", goalId);
+    // A read writes nothing (F-264): this ran an UPDATE of `current_value` and
+    // `updated_at` on every GET, so opening a goal moved its "last edited"
+    // time. The stored column is refreshed by `refreshStoredCurrentValues`,
+    // which the hourly insight sweep runs.
+    const { zone, periodStart, current, dailySeries, units } =
+      await this.measureGoal(restaurantId, goal, house);
 
     const target = Number(goal.target_value) || 0;
     const progressPct = target > 0 ? current / target : 0;

@@ -10,8 +10,8 @@
  *  - THE MARGIN. The house's decided goals sit in a narrow column at the
  *    masthead's right, under "The Morning Letter", read from
  *    `GET /analytics/goals/:rid/progress` — the one read that RECOMPUTES a
- *    goal (the stored `current_value` column is only refreshed when someone
- *    opens one goal, so a bar drawn off the plain list reads "nothing done"
+ *    goal (the stored `current_value` column is only refreshed by the hourly
+ *    insight sweep, so a bar drawn off the plain list reads "nothing done"
  *    for a goal that is half met; `rp-registers-goals.tsx` says the same).
  *  - THE SUGGESTION. One standing entry whose rule maps to a goal metric
  *    (`rec-forward.ts`'s own map) on which the house holds NO active goal. Its
