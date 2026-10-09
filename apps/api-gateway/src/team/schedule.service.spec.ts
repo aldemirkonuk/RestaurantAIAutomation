@@ -497,3 +497,30 @@ describe("ScheduleService — T8: no emoji reaches the inbox", () => {
     expect(src).toContain('priority: "critical"');
   });
 });
+
+/**
+ * F-217 — a notice about one shift opens /team on the week that holds it.
+ * /team reads `week`; `?shift=` alone opened on this week, whatever the date.
+ */
+describe("ScheduleService — F-217: a shift's link names its week", () => {
+  it("a call-out's cover notice links the week of the shift", async () => {
+    const db = seed();
+    db.tables.schedules.push({ id: "s1", restaurant_id: RID, week_start: WEEK, status: "published" });
+    db.tables.shifts.push({
+      id: "sh-fri",
+      restaurant_id: RID,
+      schedule_id: "s1",
+      member_id: "m-priced",
+      shift_date: "2026-09-11", // the Friday of WEEK
+      start_time: "17:00",
+      end_time: "23:00",
+      role: "server",
+      state: "assigned",
+    });
+
+    const res = await service(db).reportCallout(OWNER, RID, "sh-fri", {} as any);
+
+    const payload = lastNotifications.persistForRestaurant.mock.calls[0][1];
+    expect(payload.actionUrl).toBe(`/team?shift=${(res.open as any).id}&week=${WEEK}`);
+  });
+});
