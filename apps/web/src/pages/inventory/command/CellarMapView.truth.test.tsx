@@ -63,7 +63,7 @@ describe('cellar map — unknown is not healthy (INV-W19)', () => {
   it("a reconcile tile's side-panel number carries no severity tint", () => {
     // Short of par with stock awaiting reconcile: the tile is violet, so the
     // number beside it is not tinted rose or amber.
-    draw([item('v', 'Waiting', 1, 6, 2)])
+    draw([item('v', 'Waiting', 1, 6, 2, 1)])
     expect(tile('Waiting').className).toContain('bg-violet-50')
     const number = screen.getByText('3')
     expect(number.className).toContain('text-gray-900')
