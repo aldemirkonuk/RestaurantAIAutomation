@@ -299,9 +299,21 @@ describe("setting a recurrence", () => {
     await expect(
       service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
         frequency: "monthly",
-        anchorDay: 31,
+        anchorDay: 32,
       }),
     ).rejects.toMatchObject({ response: { reason: "anchor_out_of_range" } });
+  });
+
+  it("takes 31 as the last day of the month, and a 30-day month gets its 30th (F-307)", async () => {
+    const { service, calls } = makeService({ order: PARENT });
+    await service.setRecurrence("rest-1", "order-parent", "11111111-1111-4111-8111-111111111111", {
+      frequency: "monthly",
+      anchorDay: 31,
+      startsOn: "2026-09-05",
+    });
+    expect(calls.orderUpdates).toHaveLength(1);
+    expect(calls.orderUpdates[0].recurrence_anchor_day).toBe(31);
+    expect(calls.orderUpdates[0].recurrence_next_due_on).toBe("2026-09-30");
   });
 
   it("404s on an order that is not this restaurant's, rather than writing", async () => {

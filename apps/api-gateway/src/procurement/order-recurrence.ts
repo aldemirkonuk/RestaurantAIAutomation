@@ -145,7 +145,7 @@ export function readRecurrenceStatus(
 
 /**
  * Which frequencies take a WEEKDAY anchor (0=Mon..6=Sun) and which take a DAY
- * OF MONTH (1..28). `daily` takes neither — an anchor on a daily rule is not a
+ * OF MONTH (1..31, 31 being the last day). `daily` takes neither — an anchor on a daily rule is not a
  * narrowing, it is a contradiction, and it is refused rather than ignored.
  */
 export function anchorKindFor(
@@ -169,10 +169,11 @@ export function anchorRangeFor(
 ): { min: number; max: number } | null {
   const kind = anchorKindFor(frequency);
   if (kind === "weekday") return { min: 0, max: 6 };
-  // 28, not 31, and the ceiling is the same one `recurring_orders.frequency_day`
-  // carries: a monthly rule anchored on the 30th has no February, and a rule
-  // whose date silently moves twice a year is not a rule anybody agreed to.
-  if (kind === "monthday") return { min: 1, max: 28 };
+  // 1..31. 31 means "the last day of the month" (F-307): every month has one,
+  // and a short month is clamped on its own, from the anchor, never carried
+  // forward. 29 and 30 clamp the same way in February. Migration
+  // 20261231200000_an_order_can_repeat_on_the_last_day widened the CHECK to match.
+  if (kind === "monthday") return { min: 1, max: 31 };
   return null;
 }
 
@@ -204,7 +205,7 @@ export function validateAnchorDay(
       "anchor_out_of_range",
       kind === "weekday"
         ? `A ${frequency} order is anchored to a weekday, 0 (Monday) to 6 (Sunday). ${anchorDay} is not one.`
-        : `A ${frequency} order is anchored to a day of the month, 1 to 28 — 28 so that every month has one. ${anchorDay} is not one.`,
+        : `A ${frequency} order is anchored to a day of the month, 1 to 31 — 31 meaning the last day, whatever the month's length. ${anchorDay} is not one.`,
     );
   }
   return { ok: true, value: anchorDay };

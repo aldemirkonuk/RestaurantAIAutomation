@@ -38,19 +38,19 @@ export class SetOrderRecurrenceDto {
 
   @ApiPropertyOptional({
     minimum: 0,
-    maximum: 28,
+    maximum: 31,
     example: 1,
     description:
-      "What to anchor the rule to. Weekly/biweekly: a weekday, 0 = Monday to 6 = Sunday. Monthly/quarterly: a day of the month, 1 to 28 — 28 so that every month has one, which is why 29-31 are refused rather than clamped silently. Daily takes no anchor and is refused if given one. Omit for 'every N days from the start date'.",
+      "What to anchor the rule to. Weekly/biweekly: a weekday, 0 = Monday to 6 = Sunday. Monthly/quarterly: a day of the month, 1 to 31; 31 means the last day of the month, and 29-31 take a shorter month's last day without moving the rule. Daily takes no anchor and is refused if given one. Omit for 'every N days from the start date'.",
   })
   @IsOptional()
   @IsInt({ message: "anchorDay must be a whole number." })
-  // The outer bounds only. Which of 0-6 and 1-28 applies depends on the
+  // The outer bounds only. Which of 0-6 and 1-31 applies depends on the
   // frequency, and `validateAnchorDay` in `order-recurrence.ts` decides that —
   // one place, shared with the generator and asserted by the same tests, rather
   // than a class-validator rule that can only see one field at a time.
   @Min(0, { message: "anchorDay must be 0 or more." })
-  @Max(28, { message: "anchorDay must be 28 or less." })
+  @Max(31, { message: "anchorDay must be 31 or less." })
   anchorDay?: number;
 
   @ApiPropertyOptional({

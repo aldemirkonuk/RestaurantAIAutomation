@@ -215,7 +215,9 @@ export function recurrenceLabel(
       ? null
       : r.frequency === 'weekly' || r.frequency === 'biweekly'
         ? (WEEKDAY_WORD[r.anchorDay] ?? null)
-        : `the ${ordinal(r.anchorDay)}`;
+        : r.anchorDay >= 31
+          ? 'the last day'
+          : `the ${ordinal(r.anchorDay)}`;
 
   const rule = anchor ? `recurs ${word} on ${anchor}` : `recurs ${word}`;
 
