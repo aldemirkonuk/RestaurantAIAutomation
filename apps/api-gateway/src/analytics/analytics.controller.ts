@@ -10,6 +10,7 @@ import {
   Query,
   HttpException,
   HttpStatus,
+  ServiceUnavailableException,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -84,7 +85,8 @@ const MAX_FORECAST_HORIZON = 365;
 function parseHorizon(raw?: string): number | undefined {
   if (raw === undefined || raw === "") return undefined;
   const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 1 || n > MAX_FORECAST_HORIZON) return undefined;
+  if (!Number.isFinite(n) || n < 1 || n > MAX_FORECAST_HORIZON)
+    return undefined;
   return n;
 }
 
@@ -96,7 +98,9 @@ function parseHorizon(raw?: string): number | undefined {
  * next to the sentence, so a page can word that one refusal as its own.
  */
 function refusedAct(error: ActRefused): HttpException {
-  const status = error.forbidden ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST;
+  const status = error.forbidden
+    ? HttpStatus.FORBIDDEN
+    : HttpStatus.BAD_REQUEST;
   if (!error.code) return new HttpException(error.message, status);
   return new HttpException(
     { statusCode: status, message: error.message, code: error.code },
@@ -351,7 +355,8 @@ export class AnalyticsController {
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Turn a catalogue type on or off for this house (owner/manager, audited)",
+    summary:
+      "Turn a catalogue type on or off for this house (owner/manager, audited)",
     description:
       "Body: { enabled: boolean, reason?: not_relevant|disagree }. 'Off' (reason required) suppresses every live instance of this type house-wide (feed, Reports, contextual rails) by writing recommendation_actions at rule scope — the same store and the same `insight:<candidate_key>` key NEW-434 already uses. 'On' restores it. The actor is the authenticated caller, not the body; each toggle files a system_audit_log row and returns its receipt as `audit`, and is kept in the append-only history (receipt `history`).",
   })
@@ -455,9 +460,7 @@ export class AnalyticsController {
     restaurantId: string,
     user: { userId?: string } | undefined,
     answer: T,
-  ): Promise<
-    T & { hiddenForYou?: number; personalSnoozesReadable?: boolean }
-  > {
+  ): Promise<T & { hiddenForYou?: number; personalSnoozesReadable?: boolean }> {
     const list = (answer as { insights?: unknown }).insights;
     if (!Array.isArray(list)) return answer;
     const view = await this.recommendationActions.viewFor(
@@ -616,6 +619,28 @@ export class AnalyticsController {
    * only (founder fork F1, 2026-10-04); RolesGuard is exact, so admin is not
    * admitted (ADR 0164). The class JwtAuthGuard pins :restaurantId to the
    * caller's house, and the service scopes every read and write to it.
+   *
+   * A hide, or a show, reaches the stored table insights at once (amendment
+   * item 7). The live compute already leaves a hidden table out, but the
+   * `tables` rows the 06:00 run stored (ADR 0191's cache) may name it, and
+   * would otherwise stand until the category's next run. So the house's
+   * stored `tables` rows go BEFORE the write (when they cannot go, nothing
+   * is written: 503) and are recomputed after it in a `finally`, whether the
+   * write was taken or refused, so the next read is answered from the cache
+   * as before. On that path no stored row names the old state once the
+   * PATCH has answered. Not serialized: a read that computes the category
+   * between the drop and the write and persists after the recompute (a
+   * cold-start GET, the sweep, a second toggle's own `refreshStored`)
+   * stores rows naming the old state until the
+   * next run; `analytics_insights` has no unique index (residual 5). A
+   * rename touches no stored row: it does not change which tables are
+   * ranked. A body refused by the service after the drop (a bad name beside
+   * `hidden`, an unknown table) has cost one recompute: the rows are
+   * recomputed from the house's current checks, not restored from the
+   * dropped copy. When the fresh rows cannot be written, `refreshStored`
+   * drops the stale ones (a read of the category computes live; a mixed
+   * read goes without it until the next run), and when even that is refused
+   * leaves them and logs an error (residual 4).
    */
   @Patch("tables/:restaurantId/:tableId")
   @UseGuards(RolesGuard)
@@ -623,14 +648,37 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Rename or hide a table",
     description:
-      "Body: { label?: string (1-60 characters), hidden?: boolean }. 400 on a bad body, 404 for a table that is not this house's, 409 when another table of the house already has the name. A hidden table still catches its checks, and they stay in takings; the room (table-performance), its export and hot-tables leave it out and count those checks. The insight generator does not read hidden_at yet (ADR 0303 residual 1).",
+      "Body: { label?: string (1-60 characters), hidden?: boolean }. 400 on a bad body, 404 for a table that is not this house's, 409 when another table of the house already has the name. A hidden table still catches its checks, and they stay in takings; the room (table-performance), its export and hot-tables leave it out and count those checks, and every table insight leaves it out: with hidden in the body, the house's stored table insights are cleared before the write (503 and no change when they cannot be) and recomputed after it, so that, when the recompute writes, the next read does not name a table hidden just now, and names one shown again; when the fresh rows cannot be written, the stored table insights are left out until the next run (a read of the tables category alone computes it live), and when they cannot be cleared after that, the stale rows stand until the next run (ADR 0303 residual 4). Its checks stay in the servers' figures and in the waiter adjustment's table control (ADR 0303).",
   })
   async renameOrHideTable(
     @Param("restaurantId") restaurantId: string,
     @Param("tableId") tableId: string,
     @Body() body: { label?: unknown; hidden?: unknown },
   ) {
-    return this.tableAnalytics.renameOrHideTable(restaurantId, tableId, body);
+    const togglesHidden =
+      !!body && typeof body === "object" && typeof body.hidden === "boolean";
+    if (togglesHidden) {
+      const gone = await this.insightGenerator.dropStored(restaurantId, [
+        "tables",
+      ]);
+      if (!gone)
+        throw new ServiceUnavailableException(
+          "The table insights could not be cleared, so the table was left as it was. Try again.",
+        );
+    }
+    try {
+      return await this.tableAnalytics.renameOrHideTable(
+        restaurantId,
+        tableId,
+        body,
+      );
+    } finally {
+      // For a taken write and for a refused one alike: the rows went before
+      // the write, so they are recomputed from the house's current checks
+      // either way (amendment item 7).
+      if (togglesHidden)
+        await this.insightGenerator.refreshStored(restaurantId, ["tables"]);
+    }
   }
 
   @Get("table-performance/:restaurantId")
@@ -858,7 +906,11 @@ export class AnalyticsController {
     @Body() body: any,
   ) {
     try {
-      return await this.goalsService.updateGoal(restaurantId, goalId, body || {});
+      return await this.goalsService.updateGoal(
+        restaurantId,
+        goalId,
+        body || {},
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to update goal",
@@ -1383,6 +1435,20 @@ export class AnalyticsController {
   // average down is not answered by hiding the sentence — the average is still
   // wrong. Stored separately from `recommendation_actions` on purpose: one is
   // what a manager did with a card, the other is what the analysis may look at.
+  //
+  // Ruling a day out and counting it again are an owner's or a manager's
+  // (OPS-04, 2026-10-07; ADR 0317). Two readers count with a struck day:
+  // (a) every baseline the insight generator builds (`InsightGeneratorService`)
+  // leaves it out; (b) the calendar's forecast/actual pairing does not pair it
+  // on its trading, so a struck day with no weather observation writes no row
+  // to `prediction_outcomes` (`calendar/day-record.service.ts` `keepPairs`).
+  // Sales are owners' and managers' (ADR 0145's `sales` class, ADR 0290 §5).
+  // Both writes carry `RolesGuard`
+  // with `@Roles("owner", "manager")`,
+  // the pattern the insight-catalog toggle and the table rename above use:
+  // the role is the one on the caller's access row in the token's house, and
+  // RolesGuard is exact, so admin is not admitted (ADR 0164). The read stays
+  // open, so staff still see which days are struck.
 
   @Get("exclusions/:restaurantId")
   @ApiOperation({
@@ -1395,14 +1461,18 @@ export class AnalyticsController {
   }
 
   @Post("exclusions/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Exclude a business date from every baseline",
-    description: "Body: { businessDate: 'YYYY-MM-DD', reason?, createdBy? }.",
+    summary: "Exclude a business date from the insight baselines (owner/manager)",
+    description:
+      "Body: { businessDate: 'YYYY-MM-DD', reason? }. Owner or manager of this house only; anyone else is 403. created_by is the signed-in caller; a body `createdBy` is ignored.",
   })
   async excludeDay(
     @Param("restaurantId") restaurantId: string,
     @Body()
     body: { businessDate?: string; reason?: string | null; createdBy?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       if (!body?.businessDate) throw new Error("businessDate is required");
@@ -1410,7 +1480,9 @@ export class AnalyticsController {
         restaurantId,
         body.businessDate,
         body.reason ?? null,
-        body.createdBy ?? null,
+        // Who ruled the day out is the person on the token, never a body
+        // field: the rule the page's card acts already follow (ADR 0191).
+        actorOf(user).userId,
       );
     } catch (error) {
       throw new HttpException(
@@ -1421,7 +1493,12 @@ export class AnalyticsController {
   }
 
   @Delete("exclusions/:restaurantId/:businessDate")
-  @ApiOperation({ summary: "Put an excluded business date back in the analysis" })
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Put an excluded business date back in the analysis (owner/manager)",
+    description: "Owner or manager of this house only; anyone else is 403.",
+  })
   async includeDay(
     @Param("restaurantId") restaurantId: string,
     @Param("businessDate") businessDate: string,
