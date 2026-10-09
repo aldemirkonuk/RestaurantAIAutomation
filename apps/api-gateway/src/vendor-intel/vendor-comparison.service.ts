@@ -7,6 +7,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { hashWineIdentity, wineDisplayLabel } from "./wine-identity";
 import { isIso4217 } from "../common/iso-4217";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
   BelowAverageResult,
   ComparisonClass,
@@ -657,30 +658,39 @@ export class VendorComparisonService {
     const windowDays = params.windowDays ?? 30;
     const from = new Date(Date.now() - windowDays * 86_400_000).toISOString();
 
-    const { data, error } = await scopePriceRegisterRead(
-      this.databaseService.supabase
-        .from("vendor_price_observations")
-        .select(
-          "identity_id, master_wine_id, signature_hash, product_name_raw, vendor_name_raw, provider_id, source_type, observed_at, raw_price, currency, pack_size, unit_volume_ml, yield_factor",
-        ),
-      VENDOR_PRICE_OBSERVATIONS,
-      { kind: "houseAndOpenMarket", restaurantId: params.restaurantId },
-    )
-      .gte("observed_at", from)
-      .eq("is_outlier", false)
-      .order("observed_at", { ascending: true })
-      .limit(2000);
-
-    if (error) {
-      this.logger.error(
-        `Failed to sweep vendor price observations: ${error.message}`,
+    // The window is read WHOLE, page by page (ADR 0292's reader), or the
+    // sweep refuses. It was `order(observed_at asc).limit(2000)`, which
+    // PostgREST's max_rows cut to the OLDEST 1000 sightings, so in a busy
+    // window "newest below the earlier mean" never saw the newest prices and
+    // still printed as a complete scan (F-262).
+    let data: ObservationRow[];
+    try {
+      data = await readWholeWindow<ObservationRow>(
+        "The price register for this window",
+        () =>
+          scopePriceRegisterRead(
+            this.databaseService.supabase
+              .from("vendor_price_observations")
+              .select(
+                "id, identity_id, master_wine_id, signature_hash, product_name_raw, vendor_name_raw, provider_id, source_type, observed_at, raw_price, currency, pack_size, unit_volume_ml, yield_factor",
+                { count: "exact" },
+              ),
+            VENDOR_PRICE_OBSERVATIONS,
+            { kind: "houseAndOpenMarket", restaurantId: params.restaurantId },
+          )
+            .gte("observed_at", from)
+            .eq("is_outlier", false),
       );
+    } catch (err) {
+      if (!(err instanceof WholeReadError)) throw err;
+      this.logger.error(`Failed to sweep vendor price observations: ${err.message}`);
+      if (err.reason !== "read_failed") throw err;
       throw new InternalServerErrorException(
-        `Could not read the price register: ${error.message}`,
+        `Could not read the price register: ${err.detail}`,
       );
     }
 
-    const result = priceBelowAverage((data ?? []) as ObservationRow[], {
+    const result = priceBelowAverage(data, {
       minObservations: params.minObservations,
       limit: params.limit,
     });

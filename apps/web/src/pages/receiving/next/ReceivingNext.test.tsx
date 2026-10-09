@@ -508,7 +508,7 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     expect(short).not.toHaveTextContent('≥1')
   })
 
-  it('marks the uncounted strip as a floor — it is built behind a 500-row window', async () => {
+  it('prints the uncounted strip as a count, not a floor — the server reads every receipt event (F-259)', async () => {
     get.mockResolvedValue(
       queuePayload({
         unverified: [
@@ -517,10 +517,11 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
       }),
     )
     harness(ManagerBody)
-    expect(await screen.findByText('≥1')).toBeInTheDocument()
+    expect(await screen.findByText(/counted by case and not yet by bottle/)).toBeInTheDocument()
+    expect(screen.queryByText('≥1')).not.toBeInTheDocument()
   })
 
-  it('marks every owner figure as a floor — stats read at most 5000 unordered rows', async () => {
+  it('marks every owner figure as a floor — stats read at most 1000 unordered rows', async () => {
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')
         ? {

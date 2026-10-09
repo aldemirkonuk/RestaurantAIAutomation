@@ -276,10 +276,7 @@ function UnverifiedStrip({ items, atFloor }: { items: UnverifiedDelivery[]; atFl
     >
       <span style={{ ...capStyle, flex: 'none' }}>Uncounted</span>
       <span>
-        <strong
-          style={{ color: 'var(--ink-1, #211C16)' }}
-          title={`At least this many. The list is built from the newest ${SERVER_WINDOWS.UNVERIFIED} receipt events, so an older uncounted delivery falls outside it.`}
-        >
+        <strong style={{ color: 'var(--ink-1, #211C16)' }}>
           {fmtIntFloor(items.length, atFloor)}
         </strong>{' '}
         deliver{items.length === 1 ? 'y' : 'ies'} counted by case and not yet by bottle — oldest{' '}

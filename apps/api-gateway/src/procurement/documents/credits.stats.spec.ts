@@ -24,7 +24,9 @@ function controllerOver(
     },
     limit(n: number) {
       seen.limit = n;
-      return Promise.resolve({ data: rows, error: null });
+      // PostgREST's max_rows: one response holds at most 1000 rows, whatever
+      // the limit asks (F-263).
+      return Promise.resolve({ data: rows.slice(0, Math.min(n, 1000)), error: null });
     },
   };
   const db = { getClient: () => ({ from: () => builder }) };
@@ -75,6 +77,13 @@ describe("CreditsController.stats", () => {
     const at = await controllerOver(full).stats(user);
     expect(at.rowsCounted).toBe(seen.limit);
     expect(at.capped).toBe(true);
+  });
+
+  it("past the 1000 rows one response holds, says the figures are a floor (F-263)", async () => {
+    const many = Array.from({ length: 1500 }, () => row({ claimed_amount: "1.00" }));
+    const s = await controllerOver(many).stats(user);
+    expect(s.rowsCounted).toBe(1000);
+    expect(s.capped).toBe(true);
   });
 
   it("answers an empty ledger with no currency groups", async () => {

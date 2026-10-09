@@ -92,6 +92,8 @@ function makeDb(opts: {
       // equality checks — `arrivedToday` scopes by a date range, not a
       // single value, on the same `occurred_at` column `eq` never touches.
       const ranges: Array<["gte" | "lt", string, any]> = [];
+      // `.gt(col, v)` — the keyset cursor `readWholeWindow` pages with.
+      const after: Array<[string, string]> = [];
       const q: any = {
         _table: tableName,
         select: () => q,
@@ -105,6 +107,10 @@ function makeDb(opts: {
         },
         lt: (col: string, val: any) => {
           ranges.push(["lt", col, val]);
+          return q;
+        },
+        gt: (col: string, val: any) => {
+          after.push([col, String(val)]);
           return q;
         },
         in: () => q,
@@ -215,18 +221,30 @@ function makeDb(opts: {
           const rv = new Date(r[c]).getTime();
           const cv = new Date(v).getTime();
           return op === "gte" ? rv >= cv : rv < cv;
-        });
+        }) &&
+        after.every(([c, v]) => String(r[c]) > v);
       if (tableName === "procurement_receipt_events") {
         (q as any).limit = async (n: number) => {
           const rows = table.filter(matches);
           const dir = q._ascending === false ? -1 : 1;
-          rows.sort(
-            (a, b) =>
-              dir *
-              (new Date(a.occurred_at).getTime() -
-                new Date(b.occurred_at).getTime()),
-          );
-          return { data: rows.slice(0, n), error: null };
+          if (q._orderCol === "id") {
+            const a = (r: Row) => String(r.id);
+            rows.sort((x, y) => dir * (a(x) < a(y) ? -1 : a(x) > a(y) ? 1 : 0));
+          } else {
+            rows.sort(
+              (a, b) =>
+                dir *
+                (new Date(a.occurred_at).getTime() -
+                  new Date(b.occurred_at).getTime()),
+            );
+          }
+          // PostgREST's max_rows: no response holds more than 1000 rows,
+          // whatever the limit asked (F-259). The count is every matching row.
+          return {
+            data: rows.slice(0, Math.min(n, 1000)),
+            error: null,
+            count: rows.length,
+          };
         };
         // `doorTotals` awaits the builder directly, with no `.limit()`.
         (q as any).then = (resolve: (v: any) => void) =>
@@ -1068,6 +1086,38 @@ describe("listUnverified", () => {
     expect(items.map((i) => i.orderId)).toEqual(["new-order"]);
   });
 
+  it("still lists an old open case count after 1200 newer events (F-259)", async () => {
+    // The oldest event in the house is a case count nobody went back to.
+    // 1200 newer, closed events pushed it out of the newest-500 read, so the
+    // delivery left the list without ever being counted by bottle. Age must
+    // never decide whether an open delivery is visible.
+    const newer = Array.from({ length: 1200 }, (_, i) => ({
+      order_id: `done-${i}`,
+      stage: "reconciled",
+      counted_qty_bottles: 0,
+      occurred_at: hoursAgo(1200 - i),
+    }));
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "old-order",
+          stage: "case_count",
+          counted_qty_bottles: 12,
+          occurred_at: hoursAgo(2000),
+        },
+        ...newer,
+      ],
+      orders: [
+        { id: "old-order", order_number: "PO-OLD", status: "PARTIALLY_RECEIVED" },
+      ],
+    });
+
+    const items = await new ReceivingService(db).listUnverified("r1");
+
+    expect(items.map((i) => i.orderId)).toEqual(["old-order"]);
+    expect(items[0].severity).toBe("overdue");
+  });
+
   it("keeps the latest case count when a delivery was recounted, regardless of fetch order", async () => {
     const { db } = makeDb({
       events: [
@@ -1157,7 +1207,7 @@ describe("listUnverifiedCapped", () => {
   const hoursAgo = (h: number) =>
     new Date(Date.now() - h * 3_600_000).toISOString();
 
-  it("reports capped: false under the 500-event ceiling", async () => {
+  it("reports capped: false for a short history", async () => {
     const { db } = makeDb({
       events: [
         {
@@ -1175,16 +1225,14 @@ describe("listUnverifiedCapped", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("reports capped: true when the read hits exactly the 500-row page", async () => {
-    // 500 events, none of them closed — the read returns exactly 500 rows,
-    // so the register does not know whether an order's qualifying event was
-    // pushed out past the window. `complete` (house-counter.service.ts) must
-    // derive from THIS, not print `true` unconditionally.
-    const events = Array.from({ length: 500 }, (_, i) => ({
+  it("reads past 500 and past 1000 events whole, so it is never capped (F-259)", async () => {
+    // 1500 open case counts: more than the old 500 cap and more than one
+    // response holds. Every one is listed and the list is not a floor.
+    const events = Array.from({ length: 1500 }, (_, i) => ({
       order_id: `o-${i}`,
       stage: "case_count",
       counted_qty_bottles: 6,
-      occurred_at: hoursAgo(500 - i),
+      occurred_at: hoursAgo(1500 - i),
     }));
     const orders = events.map((e) => ({
       id: e.order_id,
@@ -1194,8 +1242,8 @@ describe("listUnverifiedCapped", () => {
     const { db } = makeDb({ events, orders });
 
     const { rows, capped } = await new ReceivingService(db).listUnverifiedCapped("r1");
-    expect(capped).toBe(true);
-    expect(rows).toHaveLength(500);
+    expect(capped).toBe(false);
+    expect(rows).toHaveLength(1500);
   });
 });
 

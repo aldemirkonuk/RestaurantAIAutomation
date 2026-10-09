@@ -165,24 +165,72 @@ describe("VendorComparisonService.belowTrailingAverage", () => {
       or: [],
       eq: [],
     };
-    const q: any = {
-      select: () => q,
-      gte: () => q,
-      order: () => q,
-      limit: () => q,
-      eq: (c: string, v: any) => {
-        calls.eq.push([c, v]);
-        return q;
-      },
-      or: (clause: string) => {
-        calls.or.push(clause);
-        return q;
-      },
-      then: (resolve: any) => resolve({ data: rows, error }),
+    // Honours the keyset page (`order(id)`, `gt(id)`, `limit`), answers at
+    // most 1000 rows as PostgREST's max_rows does, and counts what remains
+    // past the cursor — so a read that stops at one response is caught.
+    const from = () => {
+      let after: string | null = null;
+      let limit = Infinity;
+      const q: any = {
+        select: () => q,
+        gte: () => q,
+        order: () => q,
+        gt: (_c: string, v: string) => {
+          after = v;
+          return q;
+        },
+        limit: (n: number) => {
+          limit = n;
+          return q;
+        },
+        eq: (c: string, v: any) => {
+          calls.eq.push([c, v]);
+          return q;
+        },
+        or: (clause: string) => {
+          calls.or.push(clause);
+          return q;
+        },
+        then: (resolve: any) => {
+          if (rows === null) return resolve({ data: null, error, count: null });
+          const left = [...rows]
+            .sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1))
+            .filter((r) => after === null || String(r.id) > after);
+          resolve({ data: left.slice(0, Math.min(limit, 1000)), error, count: left.length });
+        },
+      };
+      return q;
     };
-    const db: any = { supabase: { from: () => q } };
+    const db: any = { supabase: { from } };
     return { service: new VendorComparisonService(db), calls };
   }
+
+  it("sweeps the whole window, not the oldest 1000 sightings (F-262)", async () => {
+    // 1500 older sightings at 100, then the newest one at 60. The old read
+    // (oldest first, cut to 1000 rows) never saw the newest price.
+    const row = (i: number, price: number, at: string) => ({
+      id: `obs-${String(i).padStart(5, "0")}`,
+      identity_id: null,
+      master_wine_id: "mw-1",
+      signature_hash: null,
+      product_name_raw: "Narince",
+      vendor_name_raw: "Sevilen",
+      provider_id: "vendor-a",
+      source_type: "vendor_quote",
+      observed_at: at,
+      raw_price: price,
+      currency: "TRY",
+      pack_size: 1,
+      unit_volume_ml: 750,
+      yield_factor: 1,
+    });
+    const old = Array.from({ length: 1500 }, (_, i) =>
+      row(i, 100, new Date(Date.now() - (20 * 86_400_000 - i * 60_000)).toISOString()),
+    );
+    const { service } = makeService([...old, row(99999, 60, new Date(Date.now() - 3_600_000).toISOString())]);
+    const out = await service.belowTrailingAverage({ restaurantId: "rest-1" });
+    expect(out.scanned.observations).toBe(1501);
+  });
 
   it("reads market rows and this tenant's own, and no other tenant's", async () => {
     const { service, calls } = makeService([]);

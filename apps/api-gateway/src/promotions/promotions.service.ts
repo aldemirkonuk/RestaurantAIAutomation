@@ -118,9 +118,69 @@ const SHELF_COLUMNS =
  */
 const PAGE_ROWS = 1000;
 
-/** The ledger reads' caps — stated on the wire (`LedgerSummaryDto.caps`), never silent. */
+/**
+ * The ledger reads' caps — stated on the wire (`LedgerSummaryDto.caps`), never
+ * silent. Both are read newest first in pages (`readNewestUpTo`), because a
+ * single read capped at 2000 came back at PostgREST's 1000 and the cap flag, which
+ * compared against 2000, could never fire (F-258).
+ */
 export const PAID_LINES_CAP = 2000;
 export const SIGHTINGS_CAP = 2000;
+
+/** One ledger read: the rows (at most the cap), whether older rows were left, and the window's size. */
+interface CappedRead<T> {
+  rows: T[];
+  reached: boolean;
+  /** Rows in the window as the first page counted them; null when no count came. */
+  total: number | null;
+}
+
+/**
+ * Read a ledger window newest first, page by page, until it ends or holds
+ * `cap` rows (F-258). `build` is a factory (a supabase-js builder is a
+ * single-use thenable) that carries the reader's filters and its newest-first
+ * order and selects with `{ count: "exact" }`; this adds only the `range`.
+ *
+ * `reached` is true only when a row past the cap exists — one row more than
+ * the cap is asked for, or the count says so — so the flag no longer depends
+ * on any one response reaching a round number. A page shorter than asked
+ * while the count says more remain is the server's own cap and does not end
+ * the read. Offsets can repeat a row when one lands mid-read; a repeat is
+ * dropped by id.
+ */
+async function readNewestUpTo<T extends { id?: unknown }>(
+  what: string,
+  build: () => any,
+  cap: number,
+): Promise<CappedRead<T>> {
+  const rows: T[] = [];
+  const seen = new Set<string>();
+  let total: number | null = null;
+  let offset = 0;
+  for (let page = 0; rows.length <= cap; page++) {
+    const want = Math.min(PAGE_ROWS, cap + 1 - rows.length);
+    const res = await build().range(offset, offset + want - 1);
+    if (res.error) {
+      throw new Error(`${what} could not be read: ${res.error.message}`);
+    }
+    const data = (res.data ?? []) as T[];
+    if (page === 0 && typeof res.count === "number") total = res.count;
+    for (const r of data) {
+      const key = r.id == null ? null : String(r.id);
+      if (key !== null) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      rows.push(r);
+    }
+    offset += data.length;
+    if (data.length === 0) break;
+    const more = total !== null ? offset < total : data.length === want;
+    if (!more) break;
+  }
+  const reached = rows.length > cap || (total !== null && total > cap);
+  return { rows: rows.slice(0, cap), reached, total };
+}
 
 const PAID_COLUMNS =
   "id, provider_id, master_wine_id, identity_id, price, unit, currency, quantity, effective_date, source, master_wine_library(name, vintage)";
@@ -168,13 +228,14 @@ export interface LedgerSummaryDto {
   /** Register rows that could not become a comparable line (no pack size or volume, or an outlier). */
   skipped_sightings: number;
   /**
-   * The two ledger reads are capped (newest first). `reached` is true when a
-   * read came back AT its cap, so older lines may exist that were not read —
-   * the page says so rather than grade as if the window were whole.
+   * The two ledger reads are capped (newest first). `reached` is true when
+   * the window held more rows than the cap, so older lines were not read —
+   * the page says so rather than grade as if the window were whole. `total`
+   * is the window's size, so the page can say "the newest N of M".
    */
   caps: {
-    paid_lines: { cap: number; reached: boolean };
-    sightings: { cap: number; reached: boolean };
+    paid_lines: { cap: number; reached: boolean; total: number | null };
+    sightings: { cap: number; reached: boolean; total: number | null };
   };
 }
 
@@ -448,17 +509,19 @@ export class PromotionsService {
     //    by unit, currency and identity before anything is compared (ADR
     //    0119 Q4, ADR 0117 Q25, ADR 0124 Q5) — `offer-grade.ts` does the
     //    grouping; this only reads the columns it needs to do it.
-    const paidRes = await db
-      .from("price_history")
-      .select(PAID_COLUMNS)
-      .eq("restaurant_id", restaurantId)
-      .gte("effective_date", since)
-      .order("effective_date", { ascending: false })
-      .limit(PAID_LINES_CAP);
-    if (paidRes.error) {
-      throw new Error(`The house's price series (price_history) could not be read: ${paidRes.error.message}`);
-    }
-    const paidRows = (paidRes.data ?? []) as unknown as PaidRow[];
+    const paidRead = await readNewestUpTo<PaidRow>(
+      "The house's price series (price_history)",
+      () =>
+        db
+          .from("price_history")
+          .select(PAID_COLUMNS, { count: "exact" })
+          .eq("restaurant_id", restaurantId)
+          .gte("effective_date", since)
+          .order("effective_date", { ascending: false })
+          .order("id", { ascending: false }),
+      PAID_LINES_CAP,
+    );
+    const paidRows = paidRead.rows;
     const paid: LedgerLine[] = [];
     for (const r of paidRows) {
       const price = num(r.price);
@@ -489,18 +552,20 @@ export class PromotionsService {
 
     // 5. What was SEEN — the register, this house's rows plus the open market,
     //    through the one scoping function (ADR 0126/0128).
-    const sightingsRes = await scopePriceRegisterRead(
-      db.from(VENDOR_PRICE_OBSERVATIONS).select(SIGHTING_COLUMNS),
-      VENDOR_PRICE_OBSERVATIONS,
-      { kind: "houseAndOpenMarket", restaurantId },
-    )
-      .gte("observed_at", `${since}T00:00:00Z`)
-      .order("observed_at", { ascending: false })
-      .limit(SIGHTINGS_CAP);
-    if (sightingsRes.error) {
-      throw new Error(`The price register (vendor_price_observations) could not be read: ${sightingsRes.error.message}`);
-    }
-    const sightingRows = (sightingsRes.data ?? []) as unknown as SightingRow[];
+    const sightingsRead = await readNewestUpTo<SightingRow>(
+      "The price register (vendor_price_observations)",
+      () =>
+        scopePriceRegisterRead(
+          db.from(VENDOR_PRICE_OBSERVATIONS).select(SIGHTING_COLUMNS, { count: "exact" }),
+          VENDOR_PRICE_OBSERVATIONS,
+          { kind: "houseAndOpenMarket", restaurantId },
+        )
+          .gte("observed_at", `${since}T00:00:00Z`)
+          .order("observed_at", { ascending: false })
+          .order("id", { ascending: false }),
+      SIGHTINGS_CAP,
+    );
+    const sightingRows = sightingsRead.rows;
     const sightings: LedgerLine[] = [];
     let skippedSightings = 0;
     let houseSightings = 0;
@@ -606,8 +671,8 @@ export class PromotionsService {
         market_sightings: marketSightings,
         skipped_sightings: skippedSightings,
         caps: {
-          paid_lines: { cap: PAID_LINES_CAP, reached: paidRows.length >= PAID_LINES_CAP },
-          sightings: { cap: SIGHTINGS_CAP, reached: sightingRows.length >= SIGHTINGS_CAP },
+          paid_lines: { cap: PAID_LINES_CAP, reached: paidRead.reached, total: paidRead.total },
+          sightings: { cap: SIGHTINGS_CAP, reached: sightingsRead.reached, total: sightingsRead.total },
         },
       },
       house: {

@@ -431,6 +431,9 @@ export class ReceivingController {
         overdue: items.filter((i) => i.severity === "overdue").length,
       };
     } catch (error) {
+      // A history that could not be read whole answers 503 with its own
+      // sentence (F-259), never a 500 that hides why.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to load unverified deliveries",
         HttpStatus.INTERNAL_SERVER_ERROR,

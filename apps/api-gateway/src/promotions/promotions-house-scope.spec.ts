@@ -5,10 +5,13 @@ import { PAID_LINES_CAP, PromotionsService } from "./promotions.service";
 /**
  * The house-first ladder, end to end through `readForHouse` with the real
  * `MenusService` (founder item 36; research-filters.md adversarial pass test
- * list). The fake HONOURS `limit` and `gt`, so the keyset paging loops really
+ * list). The fake HONOURS `limit`, `range` and `gt`, so the paging loops really
  * run — a fake that ignored the page size would pass a read that stops at
- * 1000 rows, which is the exact silent cap these cases exist to catch.
+ * 1000 rows, which is the exact silent cap these cases exist to catch. It also
+ * answers at most `MAX_ROWS` per response, as PostgREST does, and reports the
+ * matching count, so a `.limit(2000)` comes back holding 1000 (F-258).
  */
+const MAX_ROWS = 1000;
 
 type Row = Record<string, any>;
 
@@ -22,6 +25,7 @@ function fakeSupabase(tables: Record<string, Row[]>, calls: Call[]) {
     const eqs: Array<[string, unknown]> = [];
     const preds: Array<(r: Row) => boolean> = [];
     let limit = Infinity;
+    let offset = 0;
     const call: Call = { table, eqs };
     calls.push(call);
     const api: any = new Proxy(
@@ -55,13 +59,19 @@ function fakeSupabase(tables: Record<string, Row[]>, calls: Call[]) {
                 limit = n;
                 return api;
               };
+            case "range":
+              return (from: number, to: number) => {
+                offset = from;
+                limit = to - from + 1;
+                return api;
+              };
             case "then":
               return (resolve: any) => {
-                const rows = (tables[table] ?? [])
+                const matched = (tables[table] ?? [])
                   .filter((r) => preds.every((p) => p(r)))
-                  .sort((a, b) => String(a.id).localeCompare(String(b.id)))
-                  .slice(0, limit);
-                resolve({ data: rows, error: null });
+                  .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+                const rows = matched.slice(offset, offset + Math.min(limit, MAX_ROWS));
+                resolve({ data: rows, error: null, count: matched.length });
               };
             default:
               // select / order / gte / or / … — narrowing this fake does not model.
@@ -237,29 +247,45 @@ describe("readForHouse — no silent caps (F12) and the house's own rows only", 
     expect(read.offers).toHaveLength(1200);
   });
 
-  it("says when a ledger read came back at its cap, rather than grading as if the window were whole", async () => {
-    const paid = Array.from({ length: PAID_LINES_CAP }, (_, i) => ({
-      id: `p${pad(i)}`,
-      restaurant_id: HOUSE,
-      provider_id: "vendor-a",
-      master_wine_id: null,
-      identity_id: null,
-      price: 100,
-      unit: "bottle",
-      currency: "TRY",
-      quantity: 1,
-      effective_date: "2026-09-01",
-      source: "receipt_verified",
-      master_wine_library: null,
-    }));
-    const read = await service({
+  const paidLine = (i: number) => ({
+    id: `p${pad(i)}`,
+    restaurant_id: HOUSE,
+    provider_id: "vendor-a",
+    master_wine_id: null,
+    identity_id: null,
+    price: 100,
+    unit: "bottle",
+    currency: "TRY",
+    quantity: 1,
+    effective_date: "2026-09-01",
+    source: "receipt_verified",
+    master_wine_library: null,
+  });
+  const readPaid = (n: number) =>
+    service({
       provider_promotions: [],
       restaurant_inventory: [],
       restaurant_menus: [],
       menu_items: [],
-      price_history: paid,
+      price_history: Array.from({ length: n }, (_, i) => paidLine(i)),
     }).readForHouse(HOUSE, { now: NOW });
-    expect(read.ledger.caps.paid_lines).toEqual({ cap: PAID_LINES_CAP, reached: true });
+
+  it("grades every paid line under the cap, past the 1000 one response holds (F-258)", async () => {
+    const read = await readPaid(1500);
+    expect(read.ledger.paid_lines).toBe(1500);
+    expect(read.ledger.caps.paid_lines).toEqual({ cap: PAID_LINES_CAP, reached: false, total: 1500 });
+  });
+
+  it("says the cap was reached, and of how many, when the window holds more than the cap (F-258)", async () => {
+    const read = await readPaid(PAID_LINES_CAP + 1);
+    expect(read.ledger.paid_lines).toBe(PAID_LINES_CAP);
+    expect(read.ledger.caps.paid_lines).toEqual({ cap: PAID_LINES_CAP, reached: true, total: PAID_LINES_CAP + 1 });
+  });
+
+  it("a window exactly at the cap is whole, not reached", async () => {
+    const read = await readPaid(PAID_LINES_CAP);
+    expect(read.ledger.paid_lines).toBe(PAID_LINES_CAP);
+    expect(read.ledger.caps.paid_lines.reached).toBe(false);
     expect(read.ledger.caps.sightings.reached).toBe(false);
   });
 
