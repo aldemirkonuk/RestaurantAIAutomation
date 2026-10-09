@@ -376,16 +376,26 @@ describe("the counter refuses by role, in words, per register (refused)", () => 
       state: "answered",
       act: "not_yours",
     });
-    // Identity links are staff's to decide; door counts are theirs to do.
-    expect(reg(res, "identities")).toMatchObject({
-      state: "answered",
-      act: "yours",
-    });
+    // Door counts are staff's to do.
     expect(reg(res, "deliveries")).toMatchObject({
       state: "answered",
       act: "yours",
     });
   });
+
+  // F-267: no mounted page decides an identity link, so the register asks no
+  // role to act — a count to read that lights no dot, for every role.
+  it.each(["owner", "manager", "staff"] as const)(
+    "identities is the house's count, never %s's act, while no page decides one",
+    async (role) => {
+      const { svc } = build();
+      const res = await svc.read(HOUSE, USER, role);
+      expect(reg(res, "identities")).toMatchObject({
+        state: "answered",
+        act: "not_yours",
+      });
+    },
+  );
 
   it("a null role (a house with no row for this person) never opens a manager's register", async () => {
     const { svc } = build();

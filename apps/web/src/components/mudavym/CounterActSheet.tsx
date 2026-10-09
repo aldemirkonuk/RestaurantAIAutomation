@@ -198,10 +198,12 @@ export function CounterActSheet({ target, read, onClose, onChanged }: CounterAct
       </div>
     );
   } else if (register.key === 'identities') {
+    // F-267: no mounted page decides these yet, so the sheet asks nothing of
+    // the reader — it says what the record is, in the house's words.
     foot = (
       <p className="mdv-note">
-        No page decides identity links yet. The count is the house's; deciding one needs the
-        evidence beside it, and that surface is not built.
+        These are bottles Mudavym thinks may be the same wine. They are kept for the record;
+        nothing is needed from you now.
       </p>
     );
   } else if (register.key === 'proposals') {

@@ -58,7 +58,9 @@ export const COUNTER_REGISTERS: ReadonlyArray<{
  *   yours      — this role may take the act the rows ask for.
  *   not_yours  — this role may READ the register (the gateway hands it to
  *                them) but the act belongs to an owner or a manager. The rows
- *                are the house's count, not this person's to-do.
+ *                are the house's count, not this person's to-do. Also the
+ *                value for a register whose act no mounted page can take yet
+ *                (identities, F-267): a count to read, nobody's to-do.
  */
 export type CounterAct = "yours" | "not_yours";
 
