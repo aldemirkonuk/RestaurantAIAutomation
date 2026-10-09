@@ -187,6 +187,7 @@ import {
   decideTransition,
   readOrderStatus,
   refuseUnreadableStatus,
+  statusInWords,
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
 import {
@@ -3395,6 +3396,13 @@ export class ProcurementService {
       cancelledFromStatus?: ProcurementOrderStatus;
       cancelledAt?: string;
       /**
+       * F-350. The stored status `cancelOrder` read and checked; the write is
+       * compared-and-set on it, so an approval landing in between is not
+       * overwritten with a cancel whose shadow-stock release was decided from
+       * the state before it.
+       */
+      cancelledFromStoredStatus?: string;
+      /**
        * F-300. The signed-in person behind `PATCH orders/:id`, from the token,
        * never the body. A status or price write without one is refused.
        */
@@ -3565,9 +3573,31 @@ export class ProcurementService {
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId);
     if (pricedFromStatus !== null) write = write.eq("status", pricedFromStatus);
+    const cancelFrom = opts?.cancelledFromStoredStatus ?? null;
+    if (cancelFrom !== null) write = write.eq("status", cancelFrom);
     const { data, error } = await write
       .select("*, inventory:inventory_id(wine_name)")
       .single();
+
+    if (error && cancelFrom !== null && error.code === "PGRST116") {
+      // Read again only to say where the order now stands. A failed read
+      // still refuses; it just cannot name the state.
+      const { data: now, error: nowError } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("status")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
+      const nowStatus = nowError
+        ? null
+        : readOrderStatus((now as { status?: string } | null)?.status);
+      throw new ConflictException({
+        reason: "order_changed_while_cancelling",
+        message: nowStatus
+          ? `This order became ${statusInWords(nowStatus)} while it was being cancelled, so it was not cancelled. Open the order again and cancel it from there if you still want to.`
+          : "This order changed while it was being cancelled, so it was not cancelled. Open the order again to see where it stands.",
+      });
+    }
 
     if (error && pricedFromStatus !== null && error.code === "PGRST116") {
       throw new ConflictException({
@@ -3888,6 +3918,7 @@ export class ProcurementService {
         cancelReasonCode,
         cancelledFromStatus: preStatus,
         cancelledAt: cancelledAtIso,
+        cancelledFromStoredStatus: (preRow as { status: string }).status,
       },
     );
 
@@ -4084,7 +4115,7 @@ export class ProcurementService {
       // closed on the write either way; what it did not do was say so.
       const { data: inv, error: invError } = await this.databaseService.supabase
         .from("restaurant_inventory")
-        .select("shadow_stock, in_transit_quantity")
+        .select("shadow_stock")
         .eq("restaurant_id", restaurantId)
         .eq("id", inventoryId)
         .maybeSingle();
@@ -4104,7 +4135,6 @@ export class ProcurementService {
 
       {
         const currentShadow = (inv as any).shadow_stock ?? 0;
-        const currentInTransit = (inv as any).in_transit_quantity ?? 0;
         const release = Math.min(quantity, currentShadow);
         if (release > 0) {
           const { error } = await this.databaseService.supabase.rpc(
@@ -4124,13 +4154,7 @@ export class ProcurementService {
           );
           if (error) throw new Error(error.message);
         }
-        await this.databaseService.supabase
-          .from("restaurant_inventory")
-          .update({
-            in_transit_quantity: Math.max(0, currentInTransit - quantity),
-          })
-          .eq("restaurant_id", restaurantId)
-          .eq("id", inventoryId);
+        await this.moveInTransit(restaurantId, inventoryId, -quantity);
         this.logger.log(
           `Released ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
         );
@@ -4168,26 +4192,43 @@ export class ProcurementService {
       );
       if (error) throw new Error(error.message);
 
-      const { data: inv } = await this.databaseService.supabase
-        .from("restaurant_inventory")
-        .select("in_transit_quantity")
-        .eq("restaurant_id", restaurantId)
-        .eq("id", inventoryId)
-        .single();
-      await this.databaseService.supabase
-        .from("restaurant_inventory")
-        .update({
-          in_transit_quantity:
-            ((inv as any)?.in_transit_quantity ?? 0) + quantity,
-        })
-        .eq("restaurant_id", restaurantId)
-        .eq("id", inventoryId);
+      await this.moveInTransit(restaurantId, inventoryId, quantity);
       this.logger.log(
         `Reserved ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
       );
     } catch (e: any) {
       this.logger.warn(`reserveOrderShadowStock failed: ${e?.message}`);
     }
+  }
+
+  /**
+   * F-351. Move the in-transit display counter by `delta` in one statement
+   * (`move_in_transit_by_delta`, floored at 0). It used to be read here and
+   * written back as an absolute figure, so an approval and another order's
+   * release or delivery on the same item at once lost one of the two changes.
+   * Never throws: the counter is a display figure, and a stock move that
+   * already happened must not be reported as failed because of it.
+   */
+  private async moveInTransit(
+    restaurantId: string,
+    inventoryId: string,
+    delta: number,
+  ): Promise<string | null> {
+    const { error } = await this.databaseService.supabase.rpc(
+      "move_in_transit_by_delta",
+      {
+        p_restaurant_id: restaurantId,
+        p_inventory_id: inventoryId,
+        p_delta: delta,
+      },
+    );
+    if (error) {
+      this.logger.warn(
+        `The in-transit figure for item ${inventoryId} was not moved by ${delta} (${error.message}).`,
+      );
+      return error.message;
+    }
+    return null;
   }
 
   /**
@@ -5466,7 +5507,7 @@ export class ProcurementService {
             await this.databaseService.supabase
               .from("restaurant_inventory")
               .select(
-                "master_wine_id, wine_name, display_name, shadow_stock, in_transit_quantity",
+                "master_wine_id, wine_name, display_name, shadow_stock",
               )
               .eq("restaurant_id", restaurantId)
               .eq("id", inventoryId)
@@ -5489,8 +5530,6 @@ export class ProcurementService {
               typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
             itemName = nameOf(itemRow.wine_name) ?? nameOf(itemRow.display_name);
             const currentShadow = Number(itemRow.shadow_stock ?? 0) || 0;
-            const currentInTransit =
-              Number(itemRow.in_transit_quantity ?? 0) || 0;
             const shadowRelease = Math.min(receivedBottles, currentShadow);
 
             // WHAT KIND OF PRICE THIS IS.
@@ -5569,20 +5608,14 @@ export class ProcurementService {
               stockNotMoved = live.error.message ?? String(live.error);
             } else {
               // in_transit_quantity is a separate denormalized display counter.
-              const { error: inTransitError } =
-                await this.databaseService.supabase
-                  .from("restaurant_inventory")
-                  .update({
-                    in_transit_quantity: Math.max(
-                      0,
-                      currentInTransit - receivedBottles,
-                    ),
-                  })
-                  .eq("restaurant_id", restaurantId)
-                  .eq("id", inventoryId);
+              const inTransitError = await this.moveInTransit(
+                restaurantId,
+                inventoryId,
+                -receivedBottles,
+              );
               if (inTransitError)
                 this.logger.warn(
-                  `markDelivered: order ${orderId} booked, but the in-transit display counter was not lowered (${inTransitError.message})`,
+                  `markDelivered: order ${orderId} booked, but the in-transit display counter was not lowered (${inTransitError})`,
                 );
             }
           }
@@ -6353,6 +6386,26 @@ export class ProcurementService {
       throw new NotFoundException(`Order ${orderId} not found`);
     }
 
+    // F-349. A receipt that states no match (the mobile "Counts match" tap,
+    // an old offline payload) completes the order. On an order a match has
+    // already settled — COMPLETED, or PARTIALLY_RECEIVED with a recorded match
+    // (a backorder or an invoice still owed) — that erased the backorder and
+    // the open three-way match. Only a newer match may move such an order.
+    const verifiedStatus = readOrderStatus((orderRow as any).status);
+    const alreadySettled =
+      verifiedStatus === ProcurementOrderStatus.COMPLETED ||
+      (verifiedStatus === ProcurementOrderStatus.PARTIALLY_RECEIVED &&
+        (orderRow as any).match_verified_at != null);
+    if (alreadySettled && !hasMatchFields) {
+      throw new ConflictException({
+        reason: "receipt_already_checked",
+        message:
+          verifiedStatus === ProcurementOrderStatus.COMPLETED
+            ? "This delivery was already checked and the order is complete, so nothing was changed."
+            : "This delivery was already checked against the invoice and is still owed bottles or a bill, so nothing was changed. Open the order to see what is outstanding.",
+      });
+    }
+
     /*
      * ITEM A — STOCK PROCEEDS; THE PRICE IS REFUSED (founder, 2026-09-06 batch
      * 64: *"stock proceeds refuse the price at receving, and let them approve if
@@ -6900,14 +6953,25 @@ export class ProcurementService {
         orderRow as { provider_id?: string | null; currency?: string | null },
       );
 
+    // F-349. Compare-and-set on the status read above: a "Counts match" tap
+    // and a manager's match arriving together cannot both win, and a queued
+    // tap sent after the match landed matches no row.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update(update)
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
+      .eq("status", (orderRow as any).status)
       .select("*, inventory:inventory_id(wine_name)")
       .single();
 
+    if (error && error.code === "PGRST116") {
+      throw new ConflictException({
+        reason: "receipt_checked_meanwhile",
+        message:
+          "Someone else checked this delivery at the same moment, so this check was not written over theirs. Open the order to see where it stands.",
+      });
+    }
     if (error) {
       this.logger.error(`verifyReceipt status update failed: ${error.message}`);
       throw error;
