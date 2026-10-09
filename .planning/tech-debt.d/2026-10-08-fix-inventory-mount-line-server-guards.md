@@ -31,8 +31,10 @@ item, glass count or named glass size differs, or when the recorded pour cannot
 be read. A matching replay answers as before. No migration was needed.
 Both SQL lookups match the key across every house. So a ledger key that
 another house has already spent is refused with a 409 before the RPC runs,
-and the pour read-back is filtered to this house. Neither refusal names the
-other house's movement. **Still open:** the lookups themselves stay global
+and the pour read-back is filtered to this house. Each route answers every
+spent key with one refusal text, so a key spent in another house reads the
+same as one spent here on a different movement or pour; the reply never says
+another house holds it. **Still open:** the lookups themselves stay global
 (`20261222100000_a_pos_sale_is_dated_by_its_check.sql:188`, `:314`). Scoping
 them to the house is a migration, left for the ledger's own lane. The
 proof is `inventory-ledger/a-replayed-key-must-match.spec.ts` and

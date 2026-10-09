@@ -702,7 +702,7 @@ describe("InventoryService", () => {
         idempotencyKey: "k-1",
       });
       await expect(call).rejects.toThrow(ConflictException);
-      await expect(call).rejects.toThrow(/could not be read/);
+      const missing = await call.catch((e: Error) => e.message);
       // Only the filters applied after the pour_events read began count; the
       // ownership check earlier filters restaurant_id on another table.
       const fromCalls = mockSupabaseChain.from.mock.calls;
@@ -719,6 +719,12 @@ describe("InventoryService", () => {
           ["restaurant_id", "rest-1"],
         ]),
       );
+      // The refusal must not tell a missing pour from one spent here.
+      replay({ data: { ...first, pours: 9 }, error: null });
+      const spentHere = await service
+        .recordPour("rest-1", "inv-1", { pours: 2, idempotencyKey: "k-1" })
+        .catch((e: Error) => e.message);
+      expect(missing).toBe(spentHere);
     });
 
     it("refuses when the recorded pour cannot be read", async () => {

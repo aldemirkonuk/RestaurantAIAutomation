@@ -129,6 +129,30 @@ describe("a replayed ledger key must match the movement it recorded", () => {
     expect(t.db.tables.inventory_transactions).toHaveLength(1);
   });
 
+  it("answers a key spent in another house exactly as one spent here", async () => {
+    const reason = (p: Promise<unknown>) =>
+      p.then(
+        () => "recorded",
+        (e: Error) => e.message,
+      );
+    const here = build();
+    await writeOff(here);
+    const spentHere = await reason(writeOff(here, { quantityChange: -1 }));
+    const there = build();
+    there.db.tables.inventory_transactions.push({
+      id: "txn-elsewhere",
+      restaurant_id: "house-2",
+      inventory_id: "44444444-4444-4444-8444-444444444444",
+      stock_type: "live",
+      quantity_change: -9,
+      transaction_type: "waste",
+      idempotency_key: "key-1",
+    });
+    const spentThere = await reason(writeOff(there));
+    expect(spentThere).not.toBe("recorded");
+    expect(spentThere).toBe(spentHere);
+  });
+
   it("refuses a replay aimed at another stock state", async () => {
     const t = build();
     await writeOff(t);

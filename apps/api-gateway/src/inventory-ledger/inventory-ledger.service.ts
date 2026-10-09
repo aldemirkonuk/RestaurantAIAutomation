@@ -62,6 +62,12 @@ interface TransactionRow {
 // SERVICE
 // ============================================================================
 
+
+// One refusal for every spent key: a key spent in another house and a key
+// spent here on a different movement answer alike, so the reply never says
+// whether another house holds it.
+const KEY_ALREADY_USED =
+  "This request's key was already used, so nothing new was recorded. Read the item again before writing.";
 @Injectable()
 export class InventoryLedgerService {
   private readonly logger = new Logger(InventoryLedgerService.name);
@@ -143,7 +149,7 @@ export class InventoryLedgerService {
       }
       if (elsewhere && elsewhere.length > 0) {
         throw new ConflictException(
-          "This request's key was already used, so nothing new was recorded. Read the item again before writing.",
+          KEY_ALREADY_USED,
         );
       }
     }
@@ -232,7 +238,7 @@ export class InventoryLedgerService {
     );
     if (differs.length > 0) {
       throw new ConflictException(
-        `This request's key was already used for another movement (${transaction.transactionType} ${transaction.quantityChange} on ${transaction.stockType} stock), so nothing new was recorded. Read the item again before writing.`,
+        KEY_ALREADY_USED,
       );
     }
 

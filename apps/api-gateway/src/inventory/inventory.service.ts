@@ -43,6 +43,12 @@ function roundOz(ml: number): number {
   return Math.round((ml / ML_PER_OZ) * 10) / 10;
 }
 
+
+// One refusal for every spent pour key: a key whose pour is in another house
+// (it reads as missing here), one whose pour cannot be read, and one spent on
+// a different pour answer alike, so the reply never says which.
+const POUR_KEY_ALREADY_USED =
+  "This request's key was already used, so nothing new was poured. Read the item again before pouring.";
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -466,7 +472,7 @@ export class InventoryService {
     } | null;
     if (error || !first) {
       throw new ConflictException(
-        "This request's key was already used, and the pour it recorded could not be read, so nothing new was poured. Read the item again before pouring.",
+        POUR_KEY_ALREADY_USED,
       );
     }
     const same =
@@ -476,7 +482,7 @@ export class InventoryService {
       (dto.pourMl == null || first.pour_ml === dto.pourMl);
     if (!same) {
       throw new ConflictException(
-        `This request's key was already used for another pour (${first.pours} × ${first.pour_ml} ml), so nothing new was poured. Read the item again before pouring.`,
+        POUR_KEY_ALREADY_USED,
       );
     }
   }
