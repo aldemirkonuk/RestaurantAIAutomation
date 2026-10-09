@@ -32,6 +32,11 @@
  * (`POST /analytics/exclusions/:rid`), and it still asks for a reason before
  * it acts — a standing instruction about the house's own averages is not a
  * thing to store from a single click.
+ *
+ * Striking a day and counting it again are an owner's or a manager's (OPS-04,
+ * 2026-10-07): a struck day leaves every baseline the insight generator builds. The
+ * gateway refuses anyone else, so for them the strip draws the strike and its
+ * reason read-only and offers neither control (`canRuleOut`).
  */
 
 import { useEffect, useState } from 'react';
@@ -71,6 +76,11 @@ export interface RibbonProps {
   exclusionsProblem: string | null;
   onExclude: (date: string, reason: string) => void;
   onInclude: (date: string) => void;
+  /**
+   * Whether this person may strike a day or count one again (owners and
+   * managers). False draws the strike read-only, with neither control.
+   */
+  canRuleOut: boolean;
   /** Standing entries with no first-fired date — said, never hidden. */
   undated: number;
   /** How many entries the current selection leaves standing. */
@@ -214,13 +224,19 @@ export default function Ribbon(props: RibbonProps) {
                 Out of the analysis — “{cell.excludedReason ?? 'no reason given'}”. Its numbers
                 count toward no average, here or anywhere else.
               </span>
-              <button
-                type="button"
-                className="rc-quiet"
-                onClick={() => props.onInclude(cell.date)}
-              >
-                Count it again
-              </button>
+              {props.canRuleOut ? (
+                <button
+                  type="button"
+                  className="rc-quiet"
+                  onClick={() => props.onInclude(cell.date)}
+                >
+                  Count it again
+                </button>
+              ) : (
+                <span className="rc-why" data-testid="rc-ruleout-withheld">
+                  Only an owner or manager can count it again.
+                </span>
+              )}
             </div>
           ) : props.exclusionsReadable === false ? (
             <p className="rc-said" role="status">
@@ -231,6 +247,11 @@ export default function Ribbon(props: RibbonProps) {
           ) : cell.isFuture ? (
             <p className="rc-said">
               A day that has not happened cannot be ruled out of an analysis of days that have.
+            </p>
+          ) : !props.canRuleOut ? (
+            <p className="rc-why" data-testid="rc-ruleout-withheld">
+              Ruling a day out of the analysis is for an owner or manager {EM} it changes the
+              usual days every recommendation is measured against.
             </p>
           ) : !askExclude ? (
             <div className="rc-row">
