@@ -13,7 +13,9 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
 import { Public } from "../auth/decorators/public.decorator";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { ApiHeader, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
 import { CatalogMatcherService } from "./catalog-matcher.service";
@@ -50,6 +52,10 @@ import {
 // keyed per (provider, restaurant)).
 // Before this, catalog-match approve/reject were reachable unauthenticated, so the
 // human approval gate could be operated by anyone for any restaurant.
+// The writes that decide what a till button depletes — mappings, sale units,
+// catalog-match pulls, approvals and rejections — are owner-or-manager (F-387):
+// a staff member could otherwise set a pour to 0 or map a bottle button onto
+// another wine, and move stock, variance and cost-of-goods with it.
 @UseGuards(JwtAuthGuard)
 @Controller("pos-hub")
 export class PosHubController {
@@ -160,6 +166,8 @@ export class PosHubController {
   }
 
   @Post("mappings/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Create/update a POS item mapping",
     description:
@@ -219,6 +227,8 @@ export class PosHubController {
   }
 
   @Post("mappings/:restaurantId/sale-unit")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Record sale units for many mappings in one pass",
     description:
@@ -242,6 +252,8 @@ export class PosHubController {
   }
 
   @Post("mappings/:restaurantId/:mappingId/sale-unit")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Record the sale unit for one mapping",
     description:
@@ -268,6 +280,8 @@ export class PosHubController {
   }
 
   @Post("catalog-match/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Pull the POS catalog and match it against inventory (decisions D32-39)",
@@ -303,6 +317,8 @@ export class PosHubController {
   }
 
   @Post("catalog-match/:restaurantId/proposals/approve")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Approve many proposals in one request, each with its sale unit",
     description:
@@ -326,6 +342,8 @@ export class PosHubController {
   }
 
   @Post("catalog-match/:restaurantId/proposals/:proposalId/approve")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Approve a proposal — writes the pos_item_mappings row",
     description:
@@ -356,6 +374,8 @@ export class PosHubController {
   }
 
   @Post("catalog-match/:restaurantId/proposals/:proposalId/reject")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Reject a proposal — leaves the item unmapped" })
   async rejectProposal(
     @Param("restaurantId") restaurantId: string,

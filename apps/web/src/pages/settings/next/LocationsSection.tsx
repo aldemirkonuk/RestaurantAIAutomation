@@ -54,18 +54,22 @@ export function LocationsSection({ data }: { data: SettingsNextData }) {
     <>
       <Note>
         The branches below come from your own session — the same list the header switches between. Chains are read
-        separately, and only an owner may create or rename one. Both records carry their own last-changed date, kept by
+        separately, and only an owner may add a location or create or rename a chain. Both records carry their own last-changed date, kept by
         the database: a branch’s moves on any edit to it, a chain’s on a rename.
       </Note>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 0 8px' }}>
-        <button ref={addAnchor} type="button" onClick={() => setAdding(true)} className="st-ink st-focus"
-          style={{ fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: '6px 13px', borderRadius: 8,
-            border: '1px solid var(--seal-ring)', background: 'var(--seal-tint)', color: 'var(--seal-deep)', cursor: 'pointer' }}>
-          Add a location
-        </button>
-        {isOwner && <Action onClick={() => setCreatingChain(true)}>Create a chain</Action>}
-      </div>
+      {/* Only an owner may open a new location (the gateway refuses anyone else,
+          F-242), so the button is not offered to a role that would be refused. */}
+      {isOwner && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 0 8px' }}>
+          <button ref={addAnchor} type="button" onClick={() => setAdding(true)} className="st-ink st-focus"
+            style={{ fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: '6px 13px', borderRadius: 8,
+              border: '1px solid var(--seal-ring)', background: 'var(--seal-tint)', color: 'var(--seal-deep)', cursor: 'pointer' }}>
+            Add a location
+          </button>
+          <Action onClick={() => setCreatingChain(true)}>Create a chain</Action>
+        </div>
+      )}
 
       <Register remote={chains} name="the chain register"
         deniedNote="Chains were not opened for your role — an owner keeps them. The branches below are still yours.">

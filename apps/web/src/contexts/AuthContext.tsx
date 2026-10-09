@@ -331,6 +331,47 @@ api.interceptors.response.use(
   },
 );
 
+/**
+ * How long the first `/auth/me` keeps asking through a refusal that says "ask
+ * again later" (F-172) — a 429, a 5xx or a dropped connection — before the
+ * page stops waiting. The gateway's limit is per IP over 60 s and a house's
+ * devices share one IP, so ordinary use meets it; the session is valid the
+ * whole time, and the sign-in page is the wrong answer to it. The budget
+ * covers one full window plus margin. `Retry-After` is honoured when the
+ * gateway sends it.
+ */
+const ME_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000];
+const ME_RETRY_AFTER_CAP_MS = 60_000;
+
+function meRetryDelay(err: unknown, attempt: number): number | null {
+  const response = (err as { response?: { status?: number; headers?: Record<string, unknown> } })
+    ?.response;
+  const status = response?.status;
+  const transient =
+    status === undefined || status === 429 || (status >= 500 && status < 600);
+  if (!transient || attempt >= ME_RETRY_DELAYS_MS.length) return null;
+  const after = Number(response?.headers?.["retry-after"]);
+  if (Number.isFinite(after) && after > 0) {
+    return Math.min(after * 1000, ME_RETRY_AFTER_CAP_MS);
+  }
+  return ME_RETRY_DELAYS_MS[attempt];
+}
+
+/** The first `/auth/me`, retried through transient refusals; 401/403 are final. */
+async function readMeWithBackoff(isCancelled: () => boolean) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await api.get("/api/v1/auth/me");
+    } catch (err) {
+      const wait = meRetryDelay(err, attempt);
+      if (wait === null || isCancelled()) throw err;
+      console.warn(`/auth/me did not answer yet; asking again in ${Math.round(wait / 1000)} s.`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      if (isCancelled()) throw err;
+    }
+  }
+}
+
 /** `/auth/me`'s person, with the session's house taken from its token. */
 function userFrom(
   me: Record<string, unknown>,
@@ -421,13 +462,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const response = await api.get("/api/v1/auth/me");
+        const response = await readMeWithBackoff(() => cancelled);
+        if (cancelled) return;
         // Studio roles come from the JWT itself (app_metadata.roles), and the
         // session's house from the token when /auth/me names none.
         setUser(
           userFrom(response.data.user, localStorage.getItem("accessToken")),
         );
       } catch (err) {
+        if (cancelled) return;
         console.error("Failed to load user:", err);
         // Only a 401 means the token is invalid (POS lens, absence-as-health 9).
         //
@@ -475,11 +518,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           );
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
+    let cancelled = false;
     loadUser();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Centralized branch fetch — reused by initial load and refreshBranches()

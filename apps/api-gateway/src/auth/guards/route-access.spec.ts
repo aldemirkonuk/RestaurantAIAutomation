@@ -122,6 +122,10 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // orders/:id/history, a line's history on the desk, with
     // @Roles("owner", "manager") on the method, the queue's rule (ADR 0167)
     // applied to the desk's newest route. It admits no admin, like the queue.
+    // A nineteenth, PosHubController (F-387, 2026-10-09): the seven writes
+    // that decide what a till button depletes (mappings, sale units, the
+    // catalog-match pull, approve and reject) gained @Roles("owner",
+    // "manager"). Its reads, the HMAC webhook and the import stay "open".
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -135,6 +139,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "distributor-feed/distributor-feed.controller.ts",
       "house/house-counter.controller.ts",
       "house/house-day.controller.ts",
+      "pos-hub/pos-hub.controller.ts",
       "price-index/price-index.controller.ts",
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",

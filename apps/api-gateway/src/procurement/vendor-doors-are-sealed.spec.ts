@@ -17,6 +17,7 @@ import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { VendorSendAuthorityService } from "../organizations/vendor-send-authority.service";
 import { VendorSendRequestsService } from "../organizations/vendor-send-requests.service";
 import { installGrantLedger } from "../organizations/testing/grant-ledger-fake";
+import type { ThresholdRow } from "../settings/approval-thresholds";
 import {
   FakeDb,
   fakeNotifications,
@@ -31,7 +32,29 @@ const OWNER = "u-owner";
 const GRANTEE = "u-grantee";
 const VENDOR = "vendor@kavaklidere.example";
 
-function build() {
+/**
+ * The house's approval rules, as `ApprovalThresholdsService.read` hands them
+ * over. Empty = a house with no rule, which seals as before (F-386).
+ */
+function thresholds(rows: ThresholdRow[]) {
+  return {
+    read: async () => ({ restaurantId: HOUSE, thresholds: rows, policyEmpty: rows.length === 0, readable: true, reason: null }),
+  };
+}
+
+function ownerCeiling(amount: number): ThresholdRow {
+  return {
+    rule: "manager_ceiling",
+    enabled: true,
+    amountLimit: amount,
+    percentLimit: null,
+    requiredRole: "owner",
+    setBy: null,
+    updatedAt: null,
+  };
+}
+
+function build(rules: ThresholdRow[] = []) {
   const db = new FakeDb();
   db.tables.users = [
     { user_id: OWNER, name: "Olcay Owner", restaurant_id: HOUSE, role: "owner" },
@@ -94,8 +117,12 @@ function build() {
     undefined,
     undefined,
     fakeNotifications([OWNER, MANAGER, STAFF, GRANTEE]) as any,
-    undefined,
-    undefined,
+    thresholds(rules) as any,
+    {
+      // The role in this house, from the same access rows the authority reads.
+      resolveRestaurantRole: async (userId: string) =>
+        db.tables.user_restaurant_access.find((r: any) => r.user_id === userId && r.is_active)?.role ?? null,
+    } as any,
     seal,
     authority,
     new VendorSendRequestsService(database, authority),
@@ -244,6 +271,44 @@ describe("confirm-deal: sealed, gated by money, and named", () => {
     expect(t.order()).toMatchObject({ status: "APPROVED", approved_by: MANAGER });
     const letter = t.db.tables.procurement_conversations.find((r) => r.outbound_email_type === "ORDER_CONFIRMATION");
     expect(letter).toMatchObject({ sent_by_user_id: MANAGER, sent_under_grant_id: null });
+  });
+});
+
+describe("confirm-deal runs the house's approval rules, like approve (F-386)", () => {
+  // 190 x 6 = 1,140 TRY, over an owner ceiling of 1,000.
+  const terms = { finalPrice: 190, quantity: 6, sendConfirmation: true };
+
+  it("a manager over the owner's ceiling is refused at the seal, and nothing is minted", async () => {
+    const t = build([ownerCeiling(1000)]);
+    await expect(t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, terms)).rejects.toThrow(/owner/i);
+    expect(t.db.tables.mcp_seal_challenges).toHaveLength(0);
+    expect(t.order().status).toBe("NEGOTIATING");
+  });
+
+  it("a manager over the ceiling is refused at confirm too, and nothing is committed or mailed", async () => {
+    const t = build([ownerCeiling(1000)]);
+    await expect(t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, "any-seal")).rejects.toThrow(/owner/i);
+    expect(t.order().status).toBe("NEGOTIATING");
+    expect(t.order().approved_by).toBeUndefined();
+    expect(t.gmail.sendEmail.calls).toHaveLength(0);
+  });
+
+  it("raising the quantity at confirmation is tested, not the row's smaller amount", async () => {
+    const t = build([ownerCeiling(1000)]);
+    // 150 x 6 = 900 passes; 150 x 12 = 1,800 does not.
+    await expect(
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, { ...terms, finalPrice: 150 }),
+    ).resolves.toMatchObject({ act: "confirm_deal" });
+    await expect(
+      t.service.issueConfirmDealSeal(HOUSE, ORDER, MANAGER, { ...terms, finalPrice: 150, quantity: 12 }),
+    ).rejects.toThrow(/owner/i);
+  });
+
+  it("the owner confirms the same deal", async () => {
+    const t = build([ownerCeiling(1000)]);
+    const { challenge } = await t.service.issueConfirmDealSeal(HOUSE, ORDER, OWNER, terms);
+    await t.service.confirmDeal(HOUSE, ORDER, OWNER, terms, challenge);
+    expect(t.order()).toMatchObject({ status: "APPROVED", approved_by: OWNER });
   });
 });
 
