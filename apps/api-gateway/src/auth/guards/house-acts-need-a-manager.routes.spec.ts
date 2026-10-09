@@ -143,10 +143,12 @@ const ROUTES: Array<[string, Type<unknown>, string, string, unknown]> = [
   ["read the goals", AnalyticsController, "GET", `/analytics/goals/${HOUSE}`, undefined],
   ["read the goals' progress", AnalyticsController, "GET", `/analytics/goals/${HOUSE}/progress`, undefined],
   ["read one goal's progress", AnalyticsController, "GET", `/analytics/goals/${HOUSE}/g1/progress`, undefined],
+  ["ask which analysis shows a goal", AnalyticsController, "POST", `/analytics/goals/${HOUSE}/g1/cutting-spec`, {}],
 ];
 
-/** The goal reads gate in the controller, so their refusal is in words. */
-const isGoalRead = (method: string, path: string) => method === "GET" && path.includes("/goals/");
+/** The goal reads (and the cutting a goal asks for) gate in the controller, so their refusal is in words. */
+const isGoalRead = (method: string, path: string) =>
+  path.includes("/goals/") && (method === "GET" || path.endsWith("/cutting-spec"));
 
 const apps = new Map<Type<unknown>, { app: INestApplication; base: string }>();
 

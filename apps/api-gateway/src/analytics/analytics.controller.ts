@@ -914,8 +914,12 @@ export class AnalyticsController {
   async proposeGoalCuttingSpec(
     @Param("restaurantId") restaurantId: string,
     @Param("goalId") goalId: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
+    // It reads the goal's target and its figures to pick the cutting, so it is
+    // gated as the goal reads are (F-299 residual, 2026-10-08). Outside the
+    // try, so the refusal keeps its 403 and its sentence.
+    assertMayReadGoals(user);
     try {
       return await this.goalsService.proposeCuttingSpec(
         restaurantId,
