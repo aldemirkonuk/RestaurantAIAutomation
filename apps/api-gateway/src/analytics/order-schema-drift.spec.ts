@@ -405,6 +405,51 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       expect(out.spendLast30d).toBe(2000);
     });
 
+    // F-130: the panel read $0 beside a Figures of record that counted the
+    // same deliveries. The windows stopped at yesterday's UTC date, so a
+    // delivery taken in today was in neither; and an approved or partly
+    // received order sat in neither figure without a word.
+    it("counts a delivery taken in today, and names the orders in neither figure", async () => {
+      const order = (id: string, status: ProcurementOrderStatus, cost: number, deliveredAt: string | null) => ({
+        id,
+        provider_id: "p1",
+        providers: { name: "Rioja Imports" },
+        total_cost: cost,
+        final_price: cost,
+        bottles_total: 6,
+        quantity: 6,
+        created_at: day(2),
+        delivered_at: deliveredAt,
+        expected_delivery_date: day(-2).substring(0, 10),
+        status,
+      });
+      const client = makeClient({
+        procurement_orders: [
+          order("t1", ProcurementOrderStatus.COMPLETED, 700, new Date().toISOString()),
+          order("t2", ProcurementOrderStatus.APPROVED, 300, null),
+          order("t3", ProcurementOrderStatus.PARTIALLY_RECEIVED, 250, day(1)),
+        ],
+      });
+      const svc = new AdvancedAnalyticsService(
+        { getClient: () => client } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+      );
+
+      const out: any = await svc.getCashflow(RESTAURANT);
+      expect(client.schemaErrors).toEqual([]);
+      expect(out.spendLast30d).toBe(700);
+      expect(out.committedOpenOrders).toBe(0);
+      expect(out.notCounted).toEqual({
+        approved: 1,
+        partlyReceived: 1,
+        other: 0,
+        orderValue: 550,
+      });
+      expect(out.basis.notCounted).toMatch(/in neither figure/);
+    });
+
     it("logs, rather than swallows, a query that really does fail", async () => {
       // A column that does not exist anywhere: the loader must still degrade to
       // an empty lens (one dead query must not 500 the page) but must say so.

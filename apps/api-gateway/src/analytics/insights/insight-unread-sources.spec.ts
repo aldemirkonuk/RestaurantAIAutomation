@@ -443,6 +443,41 @@ describe("an insight that takes a name from a read that could not be made does n
     expect(of(xs, MOVER).map((i) => i.entityLabel)).toEqual(["Wine M1"]);
   });
 
+  // F-381: a week in which the house filed nothing is an absence. The mover
+  // read it as "fell 100%" and the weekly-demand-slide card fired on it.
+  it("a week with no records at all is not a 100% fall: the mover does not fire", async () => {
+    const answers = mover();
+    const rows = (answers.wine_consumption_log as { rows: Row[] }).rows;
+    (answers.wine_consumption_log as { rows: Row[] }).rows = rows.filter(
+      (_r, i) => i >= 7,
+    );
+    const xs = await fire(answers);
+    expect(of(xs, MOVER)).toEqual([]);
+  });
+
+  it("a wine that sold nothing in a week the house traded did fall, and the mover says so", async () => {
+    const answers = mover();
+    const rows = (answers.wine_consumption_log as { rows: Row[] }).rows;
+    // M1 sells only last-but-one week; another wine sells every day, so the
+    // house filed records on all fourteen days.
+    const kept = rows.filter((_r, i) => i >= 7);
+    for (let d = 1; d <= 14; d++)
+      kept.push({
+        id: `o${String(d).padStart(3, "0")}`,
+        inventory_id: "inv-2",
+        consumption_type: "bottle",
+        quantity: 1,
+        volume_ml: null,
+        created_at: dayBack(d),
+        restaurant_inventory: { master_wine_id: "M2" },
+      });
+    (answers.wine_consumption_log as { rows: Row[] }).rows = kept;
+    const xs = await fire(answers);
+    const moved = of(xs, MOVER);
+    expect(moved.map((i) => i.entityLabel)).toEqual(["Wine M1"]);
+    expect(moved[0].evidence.deltaPct).toBe(-1);
+  });
+
   it.each([
     ["failing", { error: "canceling statement due to statement timeout" }],
     ["rejecting", { throws: "fetch failed" }],

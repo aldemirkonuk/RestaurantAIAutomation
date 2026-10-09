@@ -147,7 +147,24 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     }
     case "concentration": {
       if (e.topShare == null || e.topCount == null) return null;
-      return `Your top ${e.topCount} ${entity.toLowerCase()} hold ${fmtPct(e.topShare)} of ${e.measureLabel}${e.hhi != null ? ` (HHI ${(e.hhi * 10000).toFixed(0)})` : ""} — concentration worth watching.`;
+      // One is "your top vendor holds", not "your top 1 vendors hold" (F-132).
+      const plural = entity.toLowerCase();
+      const who =
+        e.topCount === 1
+          ? `Your top ${plural.replace(/s$/, "")} holds`
+          : `Your top ${e.topCount} ${plural} hold`;
+      // "Worth watching" only where the index says so: below 1,500 the usual
+      // reading is unconcentrated, and the sentence says that instead (F-132).
+      const hhi10k = e.hhi != null ? e.hhi * 10000 : null;
+      const reading =
+        hhi10k === null
+          ? ""
+          : hhi10k >= 2500
+            ? " — highly concentrated, worth watching"
+            : hhi10k >= 1500
+              ? " — moderately concentrated, worth watching"
+              : " — well spread, not concentrated";
+      return `${who} ${fmtPct(e.topShare)} of ${e.measureLabel}${hhi10k !== null ? ` (HHI ${hhi10k.toFixed(0)})` : ""}${reading}.`;
     }
     case "correlation": {
       if (e.r == null || !e.attribute) return null;

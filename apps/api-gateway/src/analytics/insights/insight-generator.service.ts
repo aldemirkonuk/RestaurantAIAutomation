@@ -250,8 +250,16 @@ export const BASKET_MIN_LIFT = 1.3;
  *       [2026-10-08, merge of `origin/main` at 8b22448dc: #626 (ADR 0297)
  *       landed 11 on `main` first, so this change is 12, one past every
  *       value on `main`; no row was ever written at 11 for this change.]
+ *  13 — 2026-10-09 (F-381, F-132): the wine mover compares two weeks only
+ *       when the house filed records on enough days of each (the overall
+ *       comparison's rule), where a week with no records read "fell 100%"
+ *       and raised the weekly-demand-slide card; and a concentration
+ *       sentence says "worth watching" only above the usual 1,500 line, and
+ *       names "your top vendor" in the singular. A row below 13 may hold
+ *       either sentence, so it is recomputed, not served. Renumbered at
+ *       merge if another change takes 13 first.
  */
-export const INSIGHT_GENERATOR_VERSION = 12;
+export const INSIGHT_GENERATOR_VERSION = 13;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -1124,7 +1132,25 @@ export class InsightGeneratorService {
       cmp: E.PeriodComparison;
     } | null = null;
     const namesUnread = readWasRefused(bundle, "restaurant_inventory");
-    for (const [wineId, wineRows] of namesUnread ? [] : byWine) {
+    // The two weeks are compared only when the HOUSE filed records on enough
+    // days of each, by the same rule as the overall comparison: a wine with
+    // no line on a trading day sold none, but a week with no records at all
+    // is an absence, not "fell 100%" (F-381). `observed` is the overall
+    // series' (it holds the manager's exclusions and the uncounted days), and
+    // its last 28 days are the per-wine series' 28.
+    const houseObserved = observed.slice(-28);
+    const obsIn = (from: number, to: number) =>
+      houseObserved.slice(from, to).filter(Boolean).length;
+    const curObs = obsIn(21, 28);
+    const prevObs = obsIn(14, 21);
+    const weeksComparable =
+      houseObserved.length === 28 &&
+      curObs >= MIN_PERIOD_OBSERVED &&
+      prevObs >= MIN_PERIOD_OBSERVED &&
+      Math.abs(curObs - prevObs) <= MAX_PERIOD_OBSERVED_GAP;
+    for (const [wineId, wineRows] of namesUnread || !weeksComparable
+      ? []
+      : byWine) {
       const daily = this.toDaily(wineRows, 28);
       const s = daily.values;
       const cmp = E.periodOverPeriod(s, 7);

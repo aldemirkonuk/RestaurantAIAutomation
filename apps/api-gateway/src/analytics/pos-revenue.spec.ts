@@ -6,7 +6,11 @@ import { RecommendationsService } from "./recommendations.service";
 import { RecommendationActionsService } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { ConfigService } from "@nestjs/config";
-import { GoalsService } from "./goals.service";
+import {
+  GoalsService,
+  goalExpectedByNow,
+  percentTargetRefusal,
+} from "./goals.service";
 import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
 import { ConsultantsService } from "./consultants.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -1377,5 +1381,166 @@ describe("ScenarioVerifyService — pos revenue on the house's day (ADR 0296)", 
     // One day back by UTC; one more for the house's clock, so Sep 1 is in.
     expect(spy).toHaveBeenCalledWith("r-sim", 2);
     expect([row.status, row.actual]).toEqual(["pass", 125]);
+  });
+});
+
+/**
+ * F-183 / F-184 / F-383 — a goal's pace is honest about what it measures.
+ *
+ * An average check, an attach rate and days of stock are LEVELS, not running
+ * totals: 12 against "keep at most 15" is met, not "behind a linear ramp". A
+ * goal with no check to read is "not measured", never 0. A percent target
+ * typed as 35 is refused rather than stored as 3,500%. And the recommendations
+ * card reads the goals desk's own pace instead of a second arithmetic.
+ */
+describe("goal pace for levels, unmeasured goals and percent targets (F-183, F-184, F-383)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const level = {
+    id: "g-avg",
+    restaurant_id: "r1",
+    metric_key: "avg_check",
+    target_value: 15,
+    baseline_value: 25,
+    direction: "at_most",
+    period: "custom",
+    deadline: "2026-09-30",
+    created_at: "2026-08-02T04:30:00Z",
+  };
+
+  it("ramps a level from its baseline and a running total from nothing", () => {
+    expect(goalExpectedByNow("checks", 600, 100, 0.5)).toBe(300);
+    expect(goalExpectedByNow("avg_check", 15, 25, 0.5)).toBe(20);
+    // No baseline to ramp from: the target itself is the line.
+    expect(goalExpectedByNow("wine_attach_rate", 0.35, null, 0.1)).toBe(0.35);
+  });
+
+  it("reads a met 'keep the average check at most 15' as on pace", async () => {
+    const { service } = makeGoals({
+      analytics_goals: [level],
+      pos_checks: checksClosing(4, "2026-08-20T03:00:00Z", 30, 12),
+    });
+
+    const progress: any = await service.getGoalProgress("r1", "g-avg");
+
+    expect(progress.current).toBe(12);
+    expect(progress.onTrack).toBe(true);
+    // Halfway-ish through the schedule the line sits between 25 and 15.
+    expect(progress.expectedByNow).toBeGreaterThan(15);
+    expect(progress.expectedByNow).toBeLessThan(25);
+  });
+
+  it("says an average check with no check filed is not measured, never 0", async () => {
+    const { service } = makeGoals({
+      analytics_goals: [level],
+      pos_checks: [],
+    });
+
+    const list: any = await service.listGoalsWithProgress("r1");
+
+    expect(list.goals[0].unreadable).toBe(true);
+    expect(list.goals[0].reason).toMatch(/no average check to measure yet/);
+    expect(list.goals[0].zoneUnset).toBe(false);
+  });
+
+  it("sets an attach-rate goal with no check filed yet, with no baseline rather than 0", async () => {
+    const inserted: any[] = [];
+    const { service, client } = makeGoals({ pos_checks: [] });
+    const realFrom = client.from;
+    client.from = jest.fn((table: string) => {
+      const b: any = realFrom(table);
+      if (table === "analytics_goals")
+        b.insert = jest.fn((row: any) => {
+          inserted.push(row);
+          return b;
+        });
+      return b;
+    }) as any;
+
+    await service.createGoal("r1", {
+      name: "Attach",
+      metricKey: "wine_attach_rate",
+      targetValue: 0.35,
+    });
+
+    expect(inserted[0].baseline_value).toBeNull();
+  });
+
+  it("refuses a percent target typed as a whole number, in words", async () => {
+    expect(percentTargetRefusal("wine_attach_rate", 35)).toMatch(
+      /cannot be above 100%/,
+    );
+    expect(percentTargetRefusal("wine_attach_rate", 0.35)).toBeNull();
+    expect(percentTargetRefusal("checks", 35)).toBeNull();
+
+    const { service } = makeGoals({ pos_checks: [] });
+    await expect(
+      service.createGoal("r1", {
+        name: "Attach",
+        metricKey: "wine_attach_rate",
+        targetValue: 35,
+      }),
+    ).rejects.toThrow(/Send 35% as 0.35/);
+  });
+
+  it("refuses the same on an edit of a percent goal", async () => {
+    const { service } = makeGoals({
+      analytics_goals: [{ ...level, metric_key: "wine_attach_rate" }],
+    });
+    await expect(
+      service.updateGoal("r1", "g-avg", { targetValue: 35 }),
+    ).rejects.toThrow(/cannot be above 100%/);
+  });
+
+  it("raises the 'behind' card only from the desk's own pace (F-383)", async () => {
+    const created = "2026-08-12T00:00:00Z";
+    const goals = [
+      // Met "at most" goal: the old arithmetic read 2/15 as behind.
+      { id: "a", name: "Spend cap", metric_key: "purchase_spend", target_value: 15, current_value: 2, direction: "at_most", deadline: "2026-09-12", created_at: created },
+      // Nothing measured: the old arithmetic read the stored 0 as 0% done.
+      { id: "b", name: "Avg check", metric_key: "avg_check", target_value: 30, current_value: 0, direction: "at_least", deadline: "2026-09-12", created_at: created },
+      // Genuinely behind, a running total chased upward.
+      { id: "c", name: "Covers", metric_key: "checks", target_value: 600, current_value: 60, direction: "at_least", deadline: "2026-09-12", created_at: created },
+    ];
+    const progress: Record<string, any> = {
+      a: { onTrack: true, progressPct: 2 / 15 },
+      c: { onTrack: false, progressPct: 0.1 },
+    };
+    const goalsService = {
+      listGoals: async () => goals,
+      getGoalProgress: async (_r: string, id: string) => {
+        if (!progress[id]) throw new Error("No check has been filed since this goal was set");
+        return progress[id];
+      },
+    };
+    const client: any = {
+      from: () => {
+        const b: any = {};
+        for (const m of ["select", "order", "limit", "insert", "eq", "gte", "in", "is", "gt", "neq"]) b[m] = () => b;
+        b.maybeSingle = async () => ({ data: null, error: null });
+        b.then = (res: any, rej: any) => Promise.resolve({ data: [], error: null }).then(res, rej);
+        return b;
+      },
+    };
+    const svc = new RecommendationsService(
+      { getFinancialSummary: async () => null, getRiskProfile: async () => null, getInventoryScience: async () => null } as any,
+      { getMenuEngineering: async () => null, getSeasonality: async () => null, getCashflow: async () => null } as any,
+      { generate: async () => ({ insights: [] }) } as any,
+      goalsService as any,
+      { readDispositions: async () => ({ map: new Map(), readable: true, problem: null }) } as any,
+      { supabase: client, getClient: () => client } as any,
+    );
+
+    const out = await svc.getRecommendations("r1");
+    const cards = out.recommendations.filter((r) => r.ruleKey.startsWith("goal_behind_"));
+
+    expect(cards.map((c) => c.ruleKey)).toEqual(["goal_behind_c"]);
+    expect(cards[0].observation).toBe(
+      'Goal "Covers" is behind the pace it needs to make its deadline (10% done).',
+    );
   });
 });
