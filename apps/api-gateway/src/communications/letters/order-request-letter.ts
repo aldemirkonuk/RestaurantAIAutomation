@@ -33,9 +33,10 @@
  *     and words, links (as `URL_RE` defines them), stray brackets,
  *     money-and-terms words and commitment phrases in the house's prose. It
  *     does NOT stop a figure by reference ("same price as last time"), a
- *     domain spelled out or spaced ("evil dot com"), a dot-like character
- *     outside `DOT_LIKE_RE`, a scheme outside `LINK_SCHEMES` without "//",
- *     or a term in a language it does not list; the house's own reading is
+ *     domain spelled out, spaced or broken across lines after the dot
+ *     ("evil dot com", "evil . com"), a dot-like character outside
+ *     `DOT_LIKE_RE`, a scheme outside `LINK_SCHEMES` without "//", or a term
+ *     in a language it does not list; the house's own reading is
  *     the backstop (0173:48, ADR 0313).
  *
  * LOCALE (F3, answered 2026-10-08: "Approve + Turkish now"). Every string the
@@ -288,23 +289,30 @@ const CURRENCY_WORD_RE = word([
  *     "Data: as before" and "Note: thanks" are kept;
  *   - a bare domain: two labels joined by a dot, the last starting with a
  *     letter and at least two characters long, with any path after it
- *     ("evil.xyz", "bit.ly/abc", "shop.example.ly"). There is no suffix list,
- *     so an unlisted TLD is refused too. A one-letter last label passes, so
- *     "e.g." and "U.S." are kept; two words joined by a dot with no space
- *     ("St.Emilion") are refused. A last label starting with a digit is left
- *     to the numeral rule.
- * The test runs on the prose with every character in `DOT_LIKE_RE` folded to ".".
- * Not caught: a domain spelled out or spaced ("evil dot com", "evil . com"),
- * a dot-like character not in `DOT_LIKE_RE`, and a scheme not in `LINK_SCHEMES`
- * without "//" ("foo:bar").
+ *     ("evil.xyz", "bit.ly/abc", "shop.example.ly"). A label may hold letters,
+ *     digits, "_" and "-", so "evil_site.com" and "evil.com_" are refused.
+ *     There is no suffix list, so an unlisted TLD is refused too. A one-letter
+ *     last label passes, so "e.g." and "U.S." are kept; two words joined by a
+ *     dot with no space ("St.Emilion") are refused. A last label starting
+ *     with a digit is left to the numeral rule.
+ * The test runs on `linkView(prose)`, not on the prose itself.
+ * Not caught: a domain spelled out ("evil dot com"), spaced ("evil . com"),
+ * or broken across lines after the dot ("evil.\ncom"); a dot-like character
+ * not in `DOT_LIKE_RE`; and a scheme not in `LINK_SCHEMES` without "//"
+ * ("foo:bar").
+ *
+ * Every alternative starts behind a lookbehind that refuses to start inside
+ * a run it could also have started earlier in, so a long run ("aaaa…",
+ * "a-a-a-…") is scanned once, not once per position (gate note, 2e6ee4c48:
+ * the unanchored scheme was quadratic, 1.4-6 s at 100 KB).
  */
 const LINK_SCHEMES = ["javascript", "vbscript", "data", "mailto", "tel", "sms", "ftp", "file"];
 const URL_RE = new RegExp(
   [
-    "[a-z][a-z0-9+.-]*:\\/\\/",
+    "(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\\/\\/",
     "www\\.",
     `(?<![\\p{L}\\p{N}_])(?:${LINK_SCHEMES.join("|")}):(?=\\S)`,
-    "(?<![\\p{L}\\p{N}_])[\\p{L}\\p{N}-]+\\.\\p{L}[\\p{L}\\p{N}-]+(?![\\p{L}\\p{N}_])",
+    "(?<![\\p{L}\\p{N}_-])[\\p{L}\\p{N}_-]+\\.\\p{L}[\\p{L}\\p{N}_-]+",
     "@",
   ].join("|"),
   "iu",
@@ -328,8 +336,29 @@ const URL_RE = new RegExp(
  */
 const DOT_LIKE_RE =
   /[\u3002\u00B7\u0589\u06D4\u0700-\u0702\u0F0B\u0F0D\u1362\u166E\u1803\u1809\u1C3B\u2022\u2027\u2219\u22C5\u2E31\u2E33\u2E3C\u30FB\uA4FF\uA60E\uA6F3\u{10A56}\uFF0E\uFF61]/gu;
-function foldDotLike(text: string): string {
-  return text.replace(DOT_LIKE_RE, ".");
+/**
+ * Defanged dots: "[.]", "(.)", "{.}", "[dot]", "(dot)", with or without
+ * spaces inside or around ("evil (.) com"). It starts only at the first
+ * space of a run (or at the bracket), so a long run of spaces is scanned once.
+ */
+const DEFANGED_DOT_RE = /(?<!\s)\s*[[({]\s*(?:\.|dot)\s*[\])}]\s*/giu;
+/**
+ * The copy of the prose the link test reads (the courtesy line and the
+ * house's words keep their own characters):
+ *   1. strip every combining mark (`\p{M}`: U+034F, U+0301, U+0338, the
+ *      variation selectors U+FE00-U+FE0F, the Mongolian U+180B-U+180D …) and
+ *      every format character (`\p{Cf}`). UTS 46 ignores or maps them, so
+ *      "evil͏.com" reaches evil.com; here it reads "evil.com";
+ *   2. fold every character in `DOT_LIKE_RE` to ".";
+ *   3. fold a defanged dot (`DEFANGED_DOT_RE`) to ".".
+ * Stripping a mark can only join characters into one label, so it never
+ * turns a refused link into an accepted one.
+ */
+function linkView(text: string): string {
+  return text
+    .replace(/[\p{M}\p{Cf}]/gu, "")
+    .replace(DOT_LIKE_RE, ".")
+    .replace(DEFANGED_DOT_RE, ".");
 }
 /** EN + TR money-and-terms words (ADR 0313; adversary change 3). */
 const MONEY_TERMS_EN_RE = word([
@@ -438,7 +467,7 @@ export function orderRequestProseRefusals(template: string): ProseRefusal[] {
       says: "Your words may not name money (a currency sign, code or word). A price, when one may be shown, comes from {{order_lines}}.",
     });
   }
-  if (URL_RE.test(foldDotLike(prose))) {
+  if (URL_RE.test(linkView(prose))) {
     refusals.push({
       rule: "link",
       says: "Your words may not hold a link, a web address or an email address (ADR 0173 D5).",

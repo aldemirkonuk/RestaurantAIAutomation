@@ -333,9 +333,68 @@ describe("the prose predicate", () => {
     expect(rules(T("A case of St.Emilion as before."))).toContain("link");
   });
 
+  it.each([
+    ["U+034F before the dot", "evil\u034F.com"],
+    ["U+034F after the dot", "evil.\u034Fcom"],
+    ["U+FE0F before the dot", "evil\uFE0F.com"],
+    ["U+FE0F after the dot", "evil.\uFE0Fcom"],
+    ["U+FE00 before the dot", "evil\uFE00.com"],
+    ["U+180B before the dot", "evil\u180B.com"],
+    ["U+180D after the dot", "evil.\u180Dcom"],
+    ["U+0338 before the dot", "evil\u0338.com"],
+    ["U+0301 after the dot", "evil.\u0301com"],
+    ["U+20DD (Me) before the dot", "evil\u20DD.com"],
+    ["a mark splitting a scheme", "javascript\u034F:alert"],
+    ["an underscore inside a label", "evil_site.com"],
+    ["an underscore after the domain", "evil.com_"],
+    ["an underscore before the domain", "_evil.com"],
+    ["a [.] defanged dot", "evil[.]com"],
+    ["a (.) defanged dot", "evil(.)com"],
+    ["a spaced (.) defanged dot", "evil (.) com"],
+    ["a [dot] defanged dot", "evil [dot] com"],
+  ])("refuses a link with %s", (_label, link) => {
+    expect(rules(T(`See ${link} for details.`))).toContain("link");
+  });
+
+  it.each([
+    ["U+034F", "Thanks from evil\u034F.com as ever."],
+    ["U+FE0F", "Thanks from evil.\uFE0Fcom as ever."],
+    ["U+180B", "Thanks from evil\u180B.com as ever."],
+    ["U+0338", "Thanks from evil\u0338.com as ever."],
+    ["U+0301", "Thanks from evil.\u0301com as ever."],
+  ])("drops a courtesy line whose domain hides behind %s", (_label, sentence) => {
+    expect(courtesyLineOrNull(sentence)).toBeNull();
+  });
+
+  it("keeps accented and Turkish prose next to a sentence dot", () => {
+    expect(rules(T("Merci beaucoup. Teşekkürler. İyi çalışmalar. Café (as before)."))).toEqual([]);
+  });
+
+  it("scans a 100 KB adversarial input in linear time (gate note at 2e6ee4c48)", () => {
+    const N = 100_000;
+    const inputs = [
+      "a".repeat(N),
+      "a-".repeat(N / 2),
+      "a+".repeat(N / 2),
+      "a.".repeat(N / 2),
+      "a_".repeat(N / 2),
+      " ".repeat(N) + "x",
+      "(".repeat(N),
+    ];
+    for (const input of inputs) {
+      const t0 = Date.now();
+      orderRequestProseRefusals(T(input));
+      // Quadratic was 1.4-6 s at 100 KB; linear is a few ms. The bound is loose.
+      expect(Date.now() - t0).toBeLessThan(750);
+    }
+  });
+
   it("does not catch the stated gaps (ADR 0313:37)", () => {
     expect(rules(T("See evil dot com for details."))).toEqual([]);
     expect(rules(T("See evil . com for details."))).toEqual([]);
+    // Broken across lines after the dot (the courtesy line collapses
+    // whitespace first, so it reads "evil. com" there and passes too).
+    expect(rules(T("See evil.\ncom for details."))).toEqual([]);
     // A dot-like character outside DOT_LIKE_RE (U+2E30 ring point is not in it).
     expect(rules(T("See evil\u2E30com for details."))).toEqual([]);
     // A scheme outside LINK_SCHEMES, without "//".
