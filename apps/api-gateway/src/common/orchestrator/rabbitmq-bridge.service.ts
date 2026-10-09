@@ -792,9 +792,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       // with no in_reply_to (a deal confirmation written before confirmDeal
       // recorded it, or any reply, a deal confirmation included, to an inbound
       // message that had no Message-ID) that opens a new thread still names
-      // its order there. Rows written in one transaction share created_at, so
-      // ties break on id. Direction is compared in lower case because
-      // stage_order_letter accepts it in any case.
+      // its order there. Rows written in one transaction share created_at; a
+      // tie then breaks on id, a random UUID: arbitrary, but the same on every
+      // read. Direction is compared lower-cased (stage_order_letter takes any).
       let orderId: string | null = null;
       let threadOrderId: string | null = null;
       let threadId: string | null = null;
