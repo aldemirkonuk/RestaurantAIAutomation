@@ -47,6 +47,12 @@
  *         with the seal unspent, no seal refusal filed and no audit row; staff
  *         with no seal hear the role, not the seal; and the two canonical-face
  *         acts consult no role at all, so the seal is their first refusal.
+ *         [Corrected 2026-10-07, fix/document-money-writes-for-holders: every
+ *         document act that writes money now refuses a token that does not
+ *         hold the house's money BEFORE the seal (`document-money-gate.ts`).
+ *         Case 28 is rewritten to pin that, and a demoted manager's
+ *         field-correction seal is shown to stay unspent. The currency write
+ *         still asks the house's role row; the other acts read the token's.]
  */
 
 import { HttpException } from "@nestjs/common";
@@ -63,9 +69,15 @@ const DOC = "44444444-4444-4444-8444-444444444444";
 const LINE = "55555555-5555-4555-8555-555555555555";
 
 type Row = Record<string, unknown>;
-type Authed = { userId: string; restaurantId: string };
+type Authed = { userId: string; restaurantId: string; role?: string | null };
 
-const manager: Authed = { userId: MANAGER, restaurantId: HOUSE };
+/**
+ * `role` is the TOKEN's role in this house. The money acts read it
+ * (`document-money-gate.ts`); the currency write reads the house's own role
+ * row through `organizations`, which `build({ role })` stages separately.
+ */
+const manager: Authed = { userId: MANAGER, restaurantId: HOUSE, role: "manager" };
+const staffAtDoor: Authed = { userId: MANAGER, restaurantId: HOUSE, role: "staff" };
 
 /**
  * A supabase-js double over in-memory tables.
@@ -524,7 +536,7 @@ describe("DocumentsController — the five write acts carry a redeemed seal", ()
     await expect(
       h.controller.verify(
         DOC,
-        { userId: OTHER_MANAGER, restaurantId: HOUSE } as never,
+        { userId: OTHER_MANAGER, restaurantId: HOUSE, role: "manager" } as never,
         token,
       ),
     ).rejects.toThrow(/issued to somebody else/i);
@@ -780,31 +792,65 @@ describe("DocumentsController — the five write acts carry a redeemed seal", ()
     expect(h.tables.procurement_document_currency_changes).toHaveLength(0);
   });
 
-  it("the two canonical-face acts check NO role, so their first refusal is the seal's", async () => {
-    // The audit's third case is conditional: "the same two for the new acts IF
-    // their writes check the role before the seal". They check no role at all --
-    // neither route has had one beyond the token and the house scope, and batch
-    // 69 sealed them without adding one -- so the demotion case cannot arise.
-    // Pinned so that adding a role gate later is a visible change to this file.
+  it("the two canonical-face acts refuse a staff token in the ROLE's words, before the seal", async () => {
+    // [Rewritten 2026-10-07. This case used to pin that these two acts checked
+    // NO role, "so that adding a role gate later is a visible change to this
+    // file". This is that change: a field correction and a field tick write the
+    // money on the record the house pays from, so a token that does not hold
+    // the house's money is refused first, and the seal is never consulted.]
     const h = build({ role: "staff" });
-    await expect(
-      h.controller.correctField(
+    const correctErr = await h.controller
+      .correctField(
         DOC,
         { path: "documentNumber", value: "INV-2" } as never,
-        manager as never,
-      ),
-    ).rejects.toThrow(/must be proven rather than asserted/i);
-    await expect(
-      h.controller.verifyFieldTick(
+        staffAtDoor as never,
+      )
+      .catch((e: Error) => e);
+    expect(String((correctErr as Error).message)).toMatch(
+      /owner's or a manager's act/i,
+    );
+    expect(String((correctErr as Error).message)).toMatch(/signed in as staff/i);
+    expect(String((correctErr as Error).message)).not.toMatch(
+      /must be proven rather than asserted/i,
+    );
+    const tickErr = await h.controller
+      .verifyFieldTick(
         DOC,
         { path: "lines[0].netPrice" } as never,
-        manager as never,
-      ),
-    ).rejects.toThrow(/must be proven rather than asserted/i);
+        staffAtDoor as never,
+      )
+      .catch((e: Error) => e);
+    expect(String((tickErr as Error).message)).toMatch(
+      /owner's or a manager's act/i,
+    );
+    // The gate reads the token, so the house's role row is never asked.
     expect(h.organizations.resolveRestaurantRole).not.toHaveBeenCalled();
     expect(h.organizations.assertCanManageRestaurant).not.toHaveBeenCalled();
+    // Nothing redeemed, nothing filed against the person, nothing appended.
+    expect(sealRefusals(h)).toHaveLength(0);
     expect(h.corrections.correct).not.toHaveBeenCalled();
     expect(h.corrections.verifyField).not.toHaveBeenCalled();
+  });
+
+  it("refuses a manager demoted between the field-correction mint and the write, spending nothing", async () => {
+    const h = build();
+    const body = { path: "documentNumber", value: "INV-2" };
+    const token = (
+      await h.controller.mintFieldCorrectSeal(DOC, body as never, manager as never)
+    ).challenge;
+    expect(h.tables.mcp_seal_challenges).toHaveLength(1);
+
+    // The same person, whose next request carries the role the access row now
+    // says (`JwtStrategy` re-derives it per request).
+    const err = await h.controller
+      .correctField(DOC, body as never, staffAtDoor as never, token)
+      .catch((e: Error) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(403);
+    expect(String((err as Error).message)).toMatch(/signed in as staff/i);
+    expect(h.tables.mcp_seal_challenges[0].redeemed_at ?? null).toBeNull();
+    expect(sealRefusals(h)).toHaveLength(0);
+    expect(h.corrections.correct).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------
