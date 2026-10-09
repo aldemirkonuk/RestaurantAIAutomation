@@ -41,6 +41,9 @@ const DTO: SetApprovalThresholdDto = {
 function controller(opts: {
   role?: "owner" | "manager" | "staff" | null;
   write?: jest.Mock;
+  /** The rules already on record, as the register reads them back. */
+  existing?: Array<{ rule: string; requiredRole: "owner" | "manager"; enabled?: boolean }>;
+  readable?: boolean;
 }) {
   const write = opts.write ?? jest.fn().mockResolvedValue({
     readout: { thresholds: [] },
@@ -57,7 +60,11 @@ function controller(opts: {
     .spyOn(organizations, "resolveRestaurantRole")
     .mockResolvedValue(opts.role ?? null);
 
-  const thresholds = { write } as unknown as ApprovalThresholdsService;
+  const read = jest.fn().mockResolvedValue({
+    readable: opts.readable ?? true,
+    thresholds: (opts.existing ?? []).map((t) => ({ enabled: true, ...t })),
+  });
+  const thresholds = { write, read } as unknown as ApprovalThresholdsService;
   const settings = {} as unknown as SettingsService;
 
   return {
@@ -125,6 +132,59 @@ describe("PUT /settings/approval-thresholds — who may write a rule", () => {
     const { controller: c, write } = controller({ role: "owner" });
     await expect(c.setApprovalThreshold("", DTO, USER)).rejects.toThrow(
       /not attached to a restaurant/,
+    );
+    expect(write).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F-419 (sim wave 9, 2026-10-09): a manager could switch off, raise or re-role
+ * the very rule that names an owner as the signer, seal the order it stopped,
+ * and switch it back on. A rule an owner must sign moves only for an owner.
+ */
+describe("PUT /settings/approval-thresholds — a rule an owner must sign", () => {
+  const OWNER_RULE = [{ rule: "manager_ceiling", requiredRole: "owner" as const }];
+  const MANAGER_RULE = [{ rule: "manager_ceiling", requiredRole: "manager" as const }];
+  const OFF: SetApprovalThresholdDto = { ...DTO, enabled: false };
+  const TO_MANAGER: SetApprovalThresholdDto = { ...DTO, requiredRole: "manager" };
+  const RAISED: SetApprovalThresholdDto = { ...DTO, amountLimit: 50000 };
+
+  it.each([
+    ["switch it off", OFF],
+    ["hand it to a manager", TO_MANAGER],
+    ["raise its number", RAISED],
+  ])("a MANAGER may not %s, and NOTHING is written", async (_label, dto) => {
+    const { controller: c, write } = controller({ role: "manager", existing: OWNER_RULE });
+    await expect(c.setApprovalThreshold(REST, dto, USER)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("the refusal says who can change it", async () => {
+    const { controller: c } = controller({ role: "manager", existing: OWNER_RULE });
+    await expect(c.setApprovalThreshold(REST, OFF, USER)).rejects.toThrow(
+      /Only an owner can change or switch off a rule that needs an owner's signature/,
+    );
+  });
+
+  it("an OWNER may switch it off", async () => {
+    const { controller: c, write } = controller({ role: "owner", existing: OWNER_RULE });
+    await c.setApprovalThreshold(REST, OFF, USER);
+    expect(write).toHaveBeenCalledWith(REST, OFF, USER);
+  });
+
+  it("a MANAGER may still change a rule a manager signs", async () => {
+    const { controller: c, write } = controller({ role: "manager", existing: MANAGER_RULE });
+    const dto: SetApprovalThresholdDto = { ...DTO, requiredRole: "manager", enabled: false };
+    await c.setApprovalThreshold(REST, dto, USER);
+    expect(write).toHaveBeenCalledWith(REST, dto, USER);
+  });
+
+  it("a MANAGER is refused when the policy could not be read — an unknown is not permission", async () => {
+    const { controller: c, write } = controller({ role: "manager", readable: false });
+    await expect(c.setApprovalThreshold(REST, DTO, USER)).rejects.toBeInstanceOf(
+      ForbiddenException,
     );
     expect(write).not.toHaveBeenCalled();
   });

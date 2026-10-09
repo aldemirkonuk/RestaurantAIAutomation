@@ -33,6 +33,17 @@ type Phase = 'idle' | 'holding' | 'armed' | 'running' | 'done';
 
 const ARM_WINDOW_MS = 3000;
 
+/**
+ * The gateway's sentence, when the failure was a refusal. Only a 403 carries
+ * an explanation. A network error's message is not one, and printing it as a
+ * reason would attribute a policy decision to a dropped connection.
+ */
+function refusalReason(err: unknown): string | null {
+  const status = (err as { response?: { status?: number } })?.response?.status;
+  const msg = (err as { message?: string })?.message;
+  return status === 403 && msg ? msg : null;
+}
+
 export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningChange }: BulkApproveBarProps) {
   const approve = useApproveOrder();
   const reduced = useReducedMotion();
@@ -77,11 +88,20 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
    * mechanism exists to prevent. Fourteen approvals need fourteen
    * proofs; what is rationed is the wax, not the evidence.
    *
-   * A mint that fails for ANY row aborts the whole run: the alternative
-   * is approving the subset that happened to mint, which would make the
-   * bar's count a lie about what the operator agreed to.
+   * A mint that fails for ONE row refuses THAT row, not the run (F-416,
+   * 2026-10-09). The gateway refuses the seal for everything that would
+   * refuse the approval (`issueOrderSealChallenge` runs
+   * `assertApprovalAllowed` first), so an order over the manager's ceiling
+   * fails at the mint with the rule's own sentence. Aborting the run threw
+   * that sentence away and approved none of the orders under the ceiling
+   * either. Each order is its own commitment, so each is decided on its own:
+   * the ones that minted are approved, the refused stay selected with their
+   * reason, and the bar counts both — the same split the approve loop
+   * already makes when an approval itself is refused.
    */
   const sealsRef = useRef<Map<string, string> | null>(null);
+  /** Rows whose seal was refused, with the gateway's sentence when it gave one. */
+  const mintRefusalsRef = useRef<Map<string, string | null>>(new Map());
   /**
    * The IN-FLIGHT mint. Held separately from the result because `run()` waits
    * for the same mint `startHold()` began: without this, the hold completing
@@ -121,22 +141,24 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   };
 
   /**
-   * Mint every seal, once per gesture. Resolves false when any of them failed,
-   * and the caller then approves NOTHING.
+   * Mint every seal, once per gesture, each on its own. Resolves false only
+   * when NO seal was issued and no row was refused with a reason — a dropped
+   * connection, not a decision — and the caller then approves nothing.
    */
   const beginSeals = (): Promise<boolean> => {
     if (sealMintRef.current) return sealMintRef.current;
     const rows = selectedRows.map((r) => r.id);
     const mint = (async () => {
-      try {
-        const tokens = await Promise.all(rows.map((id) => ordersApi.mintOrderSeal(id)));
-        if (tokens.some((t) => !t)) throw new Error('a seal was not issued');
-        sealsRef.current = new Map(rows.map((id, i) => [id, tokens[i] as string]));
-        return true;
-      } catch {
-        sealsRef.current = null;
-        return false;
-      }
+      const settled = await Promise.allSettled(rows.map((id) => ordersApi.mintOrderSeal(id)));
+      const seals = new Map<string, string>();
+      const refusals = new Map<string, string | null>();
+      settled.forEach((s, i) => {
+        if (s.status === 'fulfilled' && s.value) seals.set(rows[i], s.value);
+        else refusals.set(rows[i], s.status === 'rejected' ? refusalReason(s.reason) : null);
+      });
+      sealsRef.current = seals;
+      mintRefusalsRef.current = refusals;
+      return seals.size > 0 || [...refusals.values()].some((r) => r !== null);
     })();
     sealMintRef.current = mint;
     return mint;
@@ -145,15 +167,18 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   /** The gesture ended without approval, so the seals it began are abandoned. */
   const abandonSeals = () => {
     sealsRef.current = null;
+    mintRefusalsRef.current = new Map();
     sealMintRef.current = null;
   };
 
   const run = async () => {
     if (runningRef.current) return;
     // The seals were begun when the gesture began; this only waits for them.
-    // Nothing is approved if any of them failed, and the bar says so.
+    // A row whose seal was refused is counted as refused below; only a mint
+    // that reached nobody at all stops the run, and the bar says so.
     const sealed = await beginSeals();
     if (!sealed) {
+      abandonSeals();
       setPhase('idle');
       setFill(0);
       setSealNote('The seals could not be issued — nothing approved.');
@@ -170,20 +195,24 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     const reasons: string[] = [];
     for (let i = 0; i < ids.length; i++) {
       setProgress({ done: i, total: ids.length });
+      const seal = sealsRef.current?.get(ids[i]);
+      if (!seal) {
+        // Refused at the mint: never sent to approve, still selected.
+        refused += 1;
+        const why = mintRefusalsRef.current.get(ids[i]);
+        if (why && !reasons.includes(why)) reasons.push(why);
+        continue;
+      }
       try {
         await approve.mutateAsync({
           orderId: ids[i],
-          challenge: sealsRef.current?.get(ids[i]) ?? null,
+          challenge: seal,
         });
         okIds.push(ids[i]);
       } catch (err) {
         refused += 1;
-        // Only a 403 carries an explanation. A network error's message is not
-        // one, and printing it as a reason would attribute a policy decision to
-        // a dropped connection.
-        const status = (err as { response?: { status?: number } })?.response?.status;
-        const msg = (err as { message?: string })?.message;
-        if (status === 403 && msg && !reasons.includes(msg)) reasons.push(msg);
+        const msg = refusalReason(err);
+        if (msg && !reasons.includes(msg)) reasons.push(msg);
       }
     }
     setProgress({ done: ids.length, total: ids.length });
