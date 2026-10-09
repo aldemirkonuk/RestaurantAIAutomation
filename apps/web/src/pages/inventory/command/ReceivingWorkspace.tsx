@@ -1149,7 +1149,18 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
           ) : match.backorderQty > 0 ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600">
               <AlertTriangle className="w-3.5 h-3.5" />
-              {match.backorderQty} bottle{match.backorderQty === 1 ? ' stays' : 's stay'} on backorder
+              {/* In the unit the screen counts in (F-177): a case-counted
+                  order's shortfall is cases, and said "1 bottle" before. */}
+              <span data-testid="receiving-backorder-footer">
+                {match.backorderQty}{' '}
+                {inBottles
+                  ? match.backorderQty === 1 ? 'bottle' : 'bottles'
+                  : unitWord(
+                      (order.unitType ?? 'bottle').toString().trim().toLowerCase() || 'bottle',
+                      match.backorderQty,
+                    )}{' '}
+                {match.backorderQty === 1 ? 'stays' : 'stay'} on backorder
+              </span>
             </span>
           ) : (
             <span className="text-xs text-gray-400">Order will close</span>

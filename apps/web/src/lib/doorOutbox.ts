@@ -403,6 +403,44 @@ export async function notSentDoorCount(): Promise<number> {
   return all.filter((m) => !!m.parked).length
 }
 
+/** A door receipt for one order that is still on this phone, sent or not. */
+export interface QueuedDoorReceiptRef {
+  id: string
+  idempotencyKey: string | null
+  /** True when the server refused it and it waits on a person (Receiving). */
+  parked: boolean
+}
+
+/**
+ * The receipt for this order still held on this phone, if any (F-247).
+ *
+ * The door screen makes a fresh idempotency key per mount, and the server
+ * treats a new key as a new delivery. So a delivery counted offline and then
+ * opened again at the door — from the lane, after a reload — would be booked
+ * twice once both sent. The door asks this first: a receipt already on the
+ * phone is reused (its key, its entry), never joined by a second one.
+ */
+export async function queuedDoorReceiptFor(
+  orderId: string,
+): Promise<QueuedDoorReceiptRef | null> {
+  const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  const m = all.find((x) => (x.data as QueuedDoorReceipt | undefined)?.orderId === orderId)
+  if (!m) return null
+  const key = (m.data as QueuedDoorReceipt).body?.idempotencyKey
+  return { id: m.id, idempotencyKey: typeof key === 'string' ? key : null, parked: !!m.parked }
+}
+
+/** The orders that have a door receipt still on this phone. Drives the lane. */
+export async function queuedDoorOrderIds(): Promise<Set<string>> {
+  const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
+  const ids = new Set<string>()
+  for (const m of all) {
+    const id = (m.data as QueuedDoorReceipt | undefined)?.orderId
+    if (typeof id === 'string') ids.add(id)
+  }
+  return ids
+}
+
 /**
  * "Send again" on one parked receipt: un-park it and flush.
  *

@@ -163,3 +163,43 @@ describe('RowExpansion — moving bottles between locations', () => {
     expect(transferStock.mock.calls[0][1].fromLocationId).not.toBeNull()
   })
 })
+
+describe('RowExpansion — the menu price is the house price (F-390)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('[REVERT-FAILS] shows the bottle price the house set, not "not set"', () => {
+    renderRow({ menuPriceBottle: 126, wac: 42 } as Partial<InventoryItem>)
+    const row = screen.getByText('Menu price').parentElement as HTMLElement
+    expect(row.textContent).not.toContain('not set')
+    expect(row.textContent).toContain('3.0x')
+  })
+
+  it('says "not set" when the house has no bottle price', () => {
+    renderRow({ menuPriceBottle: undefined } as Partial<InventoryItem>)
+    const row = screen.getByText('Menu price').parentElement as HTMLElement
+    expect(row.textContent).toContain('not set')
+  })
+})
+
+describe('RowExpansion — the adjust steppers are thumb-sized (F-226)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('[REVERT-FAILS] gives each stepper a 44px target', () => {
+    renderRow()
+    for (const name of ['One fewer', 'One more']) {
+      const b = screen.getByRole('button', { name })
+      expect(b.className).toContain('w-11')
+      expect(b.className).toContain('h-11')
+    }
+  })
+})

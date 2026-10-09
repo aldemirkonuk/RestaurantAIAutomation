@@ -24,8 +24,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const api = vi.hoisted(() => ({
@@ -45,6 +45,10 @@ vi.mock('@/services/api/client', () => ({
   getActiveRestaurantId: () => 'rest-A',
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
+
+// The open row's own content is RowExpansion.test.tsx's to test; here only the
+// frame it sits in matters (F-226), and the real one needs a design context.
+vi.mock('./RowExpansion', () => ({ RowExpansion: () => <div>row expansion</div> }));
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -415,5 +419,80 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
       expect(second).toBe(first);
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+  });
+});
+
+describe('InventoryCommandPage — the filters survive a reload and Back (F-370)', () => {
+  const list = {
+    'inventory-low-stock': [],
+    'inventory-summary': { totalWines: 0, totalValue: 0 },
+    'inventory-list': [],
+  };
+  let seen = '';
+  function Where() {
+    seen = useLocation().search;
+    return null;
+  }
+  const mountAt = (url: string) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[url]}>
+          <InventoryCommandPage />
+          <Where />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  };
+  const search = () =>
+    screen.getByPlaceholderText(/Search wines, producers, grapes/) as HTMLInputElement;
+
+  it('[REVERT-FAILS] starts from the search in the URL', async () => {
+    routeGets(list);
+    mountAt('/inventory?q=Barolo');
+    await waitFor(() => expect(search().value).toBe('Barolo'));
+  });
+
+  it('[REVERT-FAILS] writes the search into the URL, keeping params it does not own', async () => {
+    routeGets(list);
+    mountAt('/inventory?verify=o-9');
+    fireEvent.change(search(), { target: { value: 'Etna' } });
+    await waitFor(() => expect(new URLSearchParams(seen).get('q')).toBe('Etna'));
+    expect(new URLSearchParams(seen).get('verify')).toBe('o-9');
+  });
+});
+
+describe('InventoryCommandPage — an open row fits the screen it is on (F-226)', () => {
+  it('[REVERT-FAILS] pins the open row to the visible width, not the 1330px grid', async () => {
+    routeGets({
+      'inventory-low-stock': [],
+      'inventory-summary': { totalWines: 0, totalValue: 0 },
+      'inventory-list': [
+        { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', wineProducer: 'P', stockLive: 6, shadowStock: 0, thresholdMin: 2 },
+      ],
+    });
+    mount();
+    const name = await screen.findAllByText('Produttori Barbaresco');
+    fireEvent.click(name[0]);
+    const frame = await screen.findByTestId('row-expansion-frame');
+    expect(frame.className).toContain('sticky');
+    expect(frame.style.width).toBe('100cqw');
+  });
+});
+
+describe('InventoryCommandPage — Match invoice lists the deliveries waiting (F-177)', () => {
+  it('[REVERT-FAILS] lists every delivery instead of opening the first one', async () => {
+    const waiting = [
+      { id: 'o-1', status: 'DELIVERED', orderNumber: 'PO-1', providerName: 'Kegmoor', wineName: 'Pliny the Elder' },
+      { id: 'o-2', status: 'DELIVERED', orderNumber: 'PO-2', providerName: 'Vino', wineName: 'Barbaresco' },
+    ];
+    routeGets({ orders: { orders: waiting, total: 2 } });
+    mount();
+    const chip = await screen.findByRole('button', { name: /Match invoice/ });
+    fireEvent.click(chip);
+    const list = await screen.findByTestId('match-invoice-list');
+    // The mock answers both status reads with the same pair, so each shows twice.
+    expect(within(list).getAllByText('Pliny the Elder').length).toBeGreaterThan(0);
+    expect(within(list).getAllByText('Barbaresco').length).toBeGreaterThan(0);
   });
 });

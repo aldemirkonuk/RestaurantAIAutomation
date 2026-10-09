@@ -219,7 +219,20 @@ class EmailParsingAgent(BaseAgent):
                 }
             ),
             "confidence_score": confidence,
+            # The columns the gateway's own dedupe reads (F-047): written here
+            # too, so whichever writer lands second sees the first one's row.
+            "gmail_message_id": gmail_message_id or None,
+            "gmail_thread_id": gmail_thread_id or None,
         }
+
+        # F-047: the gateway (rabbitmq-bridge handleInboundEmail) stores the same
+        # message off the same routing key. One reply is one row, so skip it
+        # when a row for this Gmail message is already there.
+        if gmail_message_id and await self._already_stored(gmail_message_id):
+            self.logger.info(
+                f"Inbound email already stored (gmail_message_id={gmail_message_id}), skipping"
+            )
+            return
 
         try:
             await self.db.supabase.table("procurement_conversations").insert(
@@ -646,6 +659,25 @@ Respond with ONLY valid JSON:
             self.logger.error(f"Thread summary generation failed: {e}")
 
     # ── Helper Methods ───────────────────────────────────────────────
+
+    async def _already_stored(self, gmail_message_id: str) -> bool:
+        """Whether procurement_conversations already holds this Gmail message.
+
+        A failed read answers False: storing a possible duplicate is the old
+        behaviour, losing the reply is worse.
+        """
+        try:
+            result = (
+                await self.db.supabase.table("procurement_conversations")
+                .select("id")
+                .eq("gmail_message_id", gmail_message_id)
+                .limit(1)
+                .execute()
+            )
+            return bool(getattr(result, "data", None))
+        except Exception as e:
+            self.logger.warning(f"Could not check for an earlier copy: {e}")
+            return False
 
     def _extract_email(self, from_header: str) -> Optional[str]:
         """Extract email address from 'Name <email>' format"""

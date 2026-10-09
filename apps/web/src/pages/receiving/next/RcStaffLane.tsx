@@ -14,7 +14,9 @@
  * because this is used one-handed next to a double-parked truck.
  */
 
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { queuedDoorOrderIds } from '@/lib/doorOutbox';
 import { ink } from '@/lib/mudavym/motion';
 import { EM, GE, MONO, SANS, SERIF, capStyle, fmtDate, fmtInt, fmtUnits } from './rc-format';
 import type { DeliveryVM, StaffLaneData } from './useReceivingNextData';
@@ -48,6 +50,18 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
     failure,
     refetch,
   } = data;
+  // Deliveries already counted on this phone and not yet on the server
+  // (F-247): the card says so, so nobody counts the same boxes twice.
+  const [onPhone, setOnPhone] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    let alive = true;
+    queuedDoorOrderIds()
+      .then((ids) => alive && setOnPhone(ids))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [deliveries]);
 
   return (
     <section aria-label="Deliveries expected today" style={{ fontFamily: SANS }}>
@@ -206,6 +220,14 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
               <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
                 {d.vendor && d.line ? `${d.line} · ` : ''}ordered {fmtDate(d.requestedAt)}
               </p>
+              {onPhone.has(d.id) && (
+                <p
+                  data-ux-key="receiving-next:staff-on-phone"
+                  style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--amber-ink, #8A5A0B)', margin: '4px 0 0' }}
+                >
+                  Already counted on this phone — waiting to send.
+                </p>
+              )}
             </div>
             {/* The hand-off: the card's whole right edge, one-thumb sized. */}
             <button

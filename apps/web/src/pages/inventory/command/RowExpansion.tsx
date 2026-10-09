@@ -149,6 +149,7 @@ export function RowExpansion({
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
   const paid = item.wac ?? item.price
+  const menuBottle = item.menuPriceBottle
   const delta$ = marketDeltaPct(item)
   const counted = daysSinceCounted(item)
   const run = runwayDays(item)
@@ -248,7 +249,10 @@ export function RowExpansion({
             v={delta$ == null ? 'n/a' : `${delta$ > 0 ? '+' : ''}${delta$.toFixed(0)}%${delta$ >= 15 ? ', appreciating, hold' : delta$ <= -5 ? ', re-quote vendor' : ''}`}
             tone={delta$ != null && delta$ > 0 ? 'green' : 'amber'}
           />
-          <KV k="Menu price" v={item.menuPrice ? `${fmtMoneyExact(item.menuPrice)}${paid ? ` (${(item.menuPrice / paid).toFixed(1)}x)` : ''}` : 'not set'} tone="blue" />
+          {/* The house's own bottle price (ADR 0193), the figure the row's
+              price cell shows. `menuPrice` is the library wine's and is never
+              set for a house row, so this said "not set" on every row (F-390). */}
+          <KV k="Menu price" v={menuBottle ? `${fmtMoneyExact(menuBottle)}${paid ? ` (${(menuBottle / paid).toFixed(1)}x)` : ''}` : 'not set'} tone="blue" />
           <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
             Alerts fire when a vendor quote exceeds market or margin slips under 1.8x.
           </p>
@@ -366,11 +370,11 @@ export function RowExpansion({
 
         <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Manual adjust</span>
         <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-          <button onClick={() => setDelta((d) => d - 1)} className="w-8 h-8 text-gray-500 hover:bg-gray-50">-</button>
-          <span className={cn('w-11 text-center font-mono text-sm font-bold border-x border-gray-100 leading-8', delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-gray-700')}>
+          <button onClick={() => setDelta((d) => d - 1)} aria-label="One fewer" className="w-11 h-11 text-gray-500 hover:bg-gray-50">-</button>
+          <span className={cn('w-11 text-center font-mono text-sm font-bold border-x border-gray-100 leading-[44px]', delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-gray-700')}>
             {delta > 0 ? `+${delta}` : delta}
           </span>
-          <button onClick={() => setDelta((d) => d + 1)} className="w-8 h-8 text-gray-500 hover:bg-gray-50">+</button>
+          <button onClick={() => setDelta((d) => d + 1)} aria-label="One more" className="w-11 h-11 text-gray-500 hover:bg-gray-50">+</button>
         </div>
         <ThemedSelect value={reason} options={ADJUST_REASONS} onChange={setReason} align="left" />
         <button

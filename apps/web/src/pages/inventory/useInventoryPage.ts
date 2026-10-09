@@ -60,12 +60,22 @@ function getDefaultMenuPrice(costPrice: number): number {
 export interface UseInventoryPageOptions {
   /** Hide these `restaurant_inventory.id` rows until the server list no longer contains them */
   excludeInventoryRowIds?: string[];
+  /**
+   * Where the filters start, read from the page's URL so a reload or Back
+   * lands on the same list the person left (F-370).
+   */
+  initialFilters?: {
+    searchQuery?: string;
+    filterType?: string;
+    location?: string | null;
+  };
 }
 
 export function useInventoryPage(options: UseInventoryPageOptions = {}) {
   // Filter state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState("all");
+  const initial = options.initialFilters;
+  const [searchQuery, setSearchQuery] = useState(initial?.searchQuery ?? "");
+  const [filterType, setFilterType] = useState(initial?.filterType ?? "all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterActiveStatus, setFilterActiveStatus] = useState<
     "all" | "active" | "inactive"
@@ -76,7 +86,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
   const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [selectedLocationFilter, setSelectedLocationFilter] = useState<
     string | null
-  >(null);
+  >(initial?.location ?? null);
 
   // Sort state
   const [sortField, setSortField] = useState<SortField>("name");
