@@ -121,15 +121,17 @@ function CellarSettingsControls() {
         </p>
       ) : (
         <Note>
-          Hold-to-order stays the default — a real commitment gets a real gesture. Pick a lighter
-          ceremony here if this house wants one; every order still goes to the vendor either way.
+          Hold-to-order stays the default — a real commitment gets a real gesture. This applies to
+          orders placed from a bottle in the cellar; orders sent from Orders keep their own approval.
+          Pick a lighter ceremony here if this house wants one; the order still goes to the vendor
+          either way.
         </Note>
       )}
       {readFailed || !canChangeCeremony ? null : (
         <Note>
           Only an owner, a manager, or an admin of this house can change this — "auto" still holds
-          before it sends, but is a standing decision to skip the are-you-sure on every order from
-          now on.
+          before it sends, but is a standing decision to skip the are-you-sure on every order placed
+          from the cellar from now on.
         </Note>
       )}
       <Choice<HoldCeremony>

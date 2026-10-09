@@ -908,6 +908,23 @@ jobs:
           printf '%s\n' "$out"
           printf '%s\n' "$out" | awk '$1 == "SELF-TEST" && $2 == "OK" && $3 == "--" && $5 == "cases" && $6 == "run," && $4 + 0 >= 95 { ok = 1 } END { exit !ok }'
 
+      # F-532, 2026-10-09. The step above never looks at views. OD-72 flipped
+      # every public view to security_invoker once; a CREATE OR REPLACE VIEW
+      # without the WITH clause reset two of them a week later and three more
+      # were born without it. This replays the corpus and fails on any public
+      # view left running as its owner. The self-test asserts its own report
+      # (at least 20 cases, every one held), not only its exit code.
+      - name: Every public view reads as its caller
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_views_security_invoker.py
+
+      - name: The view guard fires on an owner-rights view (self-test)
+        if: ${{ !cancelled() }}
+        run: |
+          out="$(./scripts/check_views_security_invoker.py --self-test)" || { rc=$?; printf '%s\n' "$out"; exit "$rc"; }
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | awk '$1 == "SELF-TEST" && $2 == "OK" && $3 == "--" && $5 == "cases" && $6 == "run," && $4 + 0 >= 20 { ok = 1 } END { exit !ok }'
+
       # ADR 0096. On a controller with no class-level guard, a route carrying
       # `@Public()` and a route carrying nothing are runtime-identical, so a
       # reader cannot tell a decision from an omission — which is how OD-20's

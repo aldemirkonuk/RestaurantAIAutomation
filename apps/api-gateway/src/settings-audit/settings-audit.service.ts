@@ -119,7 +119,14 @@ export type SettingsRegister =
    * The founder, 2026-10-04: *"Add it to the editor (Recommended)"* —
    * changed by owners only and recorded in the log.
    */
-  | "state-and-country";
+  | "state-and-country"
+  /**
+   * The cellar's order-hold ceremony and its "in the building tonight" tiles
+   * (`restaurant_cellar_settings`). Filed since F-503 (2026-10-09): until then
+   * both shared one `set_by`, so a staff tile change read as the ceremony's
+   * setter, and neither change left a row here.
+   */
+  | "cellar-settings";
 
 /**
  * Every member of `SettingsRegister`, as a record the compiler holds to the
@@ -141,6 +148,7 @@ const KNOWN_REGISTERS: Record<SettingsRegister, true> = {
   "target-margin": true,
   "ask-training": true,
   "state-and-country": true,
+  "cellar-settings": true,
 };
 
 /**
@@ -211,6 +219,12 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * wrote either column on a house that already existed.
    */
   "house_state_country_changed",
+  /**
+   * The cellar's order-hold ceremony, and the tiles it shows tonight — one
+   * row per field, so each keeps its own setter (F-503, 2026-10-09).
+   */
+  "cellar_hold_ceremony_changed",
+  "cellar_tiles_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

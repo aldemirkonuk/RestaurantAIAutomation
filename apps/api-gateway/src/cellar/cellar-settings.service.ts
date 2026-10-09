@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { SettingsAuditService } from "../settings-audit/settings-audit.service";
 import type { SetCellarSettingsDto } from "./dto/cellar-settings.dto";
 import {
   DEFAULT_GAZETTEER_MEASURES,
@@ -7,6 +8,24 @@ import {
   type GazetteerMeasureId,
   type HoldCeremony,
 } from "./dto/hold-ceremony";
+
+/**
+ * F-503: each field files its own row under the "cellar-settings" register,
+ * and the newest row of each action is that field's setter. The table's own
+ * `set_by` / `set_at` are shared by both fields, so they only ever say who
+ * touched either one last.
+ */
+export const HOLD_CEREMONY_AUDIT_ACTION = "cellar_hold_ceremony_changed" as const;
+export const TILES_AUDIT_ACTION = "cellar_tiles_changed" as const;
+
+/**
+ * Rows created before the fields filed their own setters. On those a row
+ * meant "somebody saved the ceremony" (the only way in at the time this was
+ * read that way), so they keep reading as a chosen ceremony. A row created
+ * after it counts as a chosen ceremony only when the ceremony itself was
+ * filed — a tile-only first save no longer reads as one.
+ */
+export const CELLAR_FIELD_STAMPS_SINCE = "2026-10-10T00:00:00Z";
 
 /** The table does not exist on every database until the migration lands. */
 const MISSING_RELATION_CODES = new Set(["42P01", "PGRST205", "PGRST202"]);
@@ -19,8 +38,15 @@ export interface CellarSettingsReadout {
   gazetteerMeasures: GazetteerMeasureId[];
   /** True only once a person has actually saved a measure list. */
   gazetteerMeasuresConfigured: boolean;
+  /** Who touched EITHER field last — the row's own shared stamp. */
   setBy: string | null;
   setAt: string | null;
+  /** Who chose the ceremony, and when; null when no filed row says so. */
+  holdCeremonySetBy: string | null;
+  holdCeremonySetAt: string | null;
+  /** Who chose the tiles, and when; null when no filed row says so. */
+  gazetteerMeasuresSetBy: string | null;
+  gazetteerMeasuresSetAt: string | null;
   /** Null when the table could not be read — genuinely unknown, never a default dressed up as one. */
   readable: boolean;
   readError: string | null;
@@ -31,7 +57,20 @@ interface SettingsRow {
   gazetteer_measures: string[] | null;
   set_by: string | null;
   set_at: string | null;
+  created_at?: string | null;
 }
+
+interface FieldStamp {
+  by: string | null;
+  at: string | null;
+}
+
+const NO_STAMPS = {
+  holdCeremonySetBy: null,
+  holdCeremonySetAt: null,
+  gazetteerMeasuresSetBy: null,
+  gazetteerMeasuresSetAt: null,
+};
 
 function sanitizeMeasures(ids: string[] | null): GazetteerMeasureId[] | null {
   if (ids === null) return null;
@@ -43,13 +82,16 @@ function sanitizeMeasures(ids: string[] | null): GazetteerMeasureId[] | null {
 export class CellarSettingsService {
   private readonly logger = new Logger(CellarSettingsService.name);
 
-  constructor(private readonly dbService: DatabaseService) {}
+  constructor(
+    private readonly dbService: DatabaseService,
+    private readonly audit: SettingsAuditService,
+  ) {}
 
   async read(restaurantId: string): Promise<CellarSettingsReadout> {
     const { data, error } = await this.dbService
       .getClient()
       .from("restaurant_cellar_settings")
-      .select("hold_ceremony, gazetteer_measures, set_by, set_at")
+      .select("hold_ceremony, gazetteer_measures, set_by, set_at, created_at")
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
 
@@ -70,6 +112,7 @@ export class CellarSettingsService {
         gazetteerMeasuresConfigured: false,
         setBy: null,
         setAt: null,
+        ...NO_STAMPS,
         readable: false,
         readError: missing
           ? "the restaurant_cellar_settings table is not on this database yet — the migration has not been applied"
@@ -79,18 +122,76 @@ export class CellarSettingsService {
 
     const row = data as SettingsRow | null;
     const storedMeasures = row ? sanitizeMeasures(row.gazetteer_measures) : null;
+    const stamps = row ? await this.fieldStamps(restaurantId) : null;
+    const createdMs = row?.created_at ? Date.parse(row.created_at) : NaN;
+    const legacyRow =
+      !Number.isFinite(createdMs) ||
+      createdMs < Date.parse(CELLAR_FIELD_STAMPS_SINCE);
 
     return {
       restaurantId,
       holdCeremony: (row?.hold_ceremony as HoldCeremony | undefined) ?? "hold",
-      holdCeremonyConfigured: row !== null,
+      // An unreadable trail keeps the row's old meaning rather than hiding a
+      // ceremony somebody chose.
+      holdCeremonyConfigured:
+        row !== null &&
+        (stamps === null || stamps.ceremony !== null || legacyRow),
       gazetteerMeasures: storedMeasures ?? DEFAULT_GAZETTEER_MEASURES,
       gazetteerMeasuresConfigured: storedMeasures !== null,
       setBy: row?.set_by ?? null,
       setAt: row?.set_at ?? null,
+      holdCeremonySetBy: stamps?.ceremony?.by ?? null,
+      holdCeremonySetAt: stamps?.ceremony?.at ?? null,
+      gazetteerMeasuresSetBy: stamps?.tiles?.by ?? null,
+      gazetteerMeasuresSetAt: stamps?.tiles?.at ?? null,
       readable: true,
       readError: null,
     };
+  }
+
+  /**
+   * The newest filed row for each field, or null when the trail could not be
+   * read (said in the log, never read as "nobody chose").
+   */
+  private async fieldStamps(
+    restaurantId: string,
+  ): Promise<{ ceremony: FieldStamp | null; tiles: FieldStamp | null } | null> {
+    try {
+      const { data, error } = await this.dbService
+        .getClient()
+        .from("system_audit_log")
+        .select("actor_id, action, created_at")
+        .eq("restaurant_id", restaurantId)
+        .in("action", [HOLD_CEREMONY_AUDIT_ACTION, TILES_AUDIT_ACTION])
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) {
+        this.logger.warn(
+          `The cellar settings' own trail could not be read for ${restaurantId}: ${error.message}`,
+        );
+        return null;
+      }
+      const rows = (data ?? []) as Array<{
+        actor_id: string | null;
+        action: string;
+        created_at: string | null;
+      }>;
+      const newest = (action: string): FieldStamp | null => {
+        const r = rows.find((x) => x.action === action);
+        return r ? { by: r.actor_id ?? null, at: r.created_at ?? null } : null;
+      };
+      return {
+        ceremony: newest(HOLD_CEREMONY_AUDIT_ACTION),
+        tiles: newest(TILES_AUDIT_ACTION),
+      };
+    } catch (err: unknown) {
+      this.logger.warn(
+        `The cellar settings' own trail threw for ${restaurantId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
   }
 
   async write(
@@ -180,6 +281,53 @@ export class CellarSettingsService {
         ),
         { code: (error as { code?: string }).code },
       );
+    }
+
+    // F-503: each field files its own row, and only a field this write moved.
+    // A ceremony that was never chosen counts as moved even when the choice
+    // matches the default: choosing "hold" is still a choice.
+    if (userId) {
+      if (
+        dto.holdCeremony !== undefined &&
+        (!before.holdCeremonyConfigured ||
+          dto.holdCeremony !== before.holdCeremony)
+      ) {
+        await this.audit.record({
+          restaurantId,
+          actorUserId: userId,
+          action: HOLD_CEREMONY_AUDIT_ACTION,
+          register: "cellar-settings",
+          entityType: "restaurant_cellar_settings",
+          entityId: restaurantId,
+          subject: "order-hold ceremony",
+          fields: {
+            hold_ceremony: {
+              from: before.holdCeremonyConfigured ? before.holdCeremony : null,
+              to: nextCeremony,
+            },
+          },
+        });
+      }
+      const priorMeasures = before.gazetteerMeasuresConfigured
+        ? before.gazetteerMeasures
+        : null;
+      if (
+        dto.gazetteerMeasures !== undefined &&
+        JSON.stringify(priorMeasures) !== JSON.stringify(nextMeasures)
+      ) {
+        await this.audit.record({
+          restaurantId,
+          actorUserId: userId,
+          action: TILES_AUDIT_ACTION,
+          register: "cellar-settings",
+          entityType: "restaurant_cellar_settings",
+          entityId: restaurantId,
+          subject: "tiles shown tonight",
+          fields: {
+            gazetteer_measures: { from: priorMeasures, to: nextMeasures },
+          },
+        });
+      }
     }
 
     return this.read(restaurantId);
