@@ -109,7 +109,7 @@ function num(v: string): number | null {
 }
 
 export type LotCost =
-  | { ok: true; total: number; bottles: number; perBottle: number; working: string }
+  | { ok: true; total: number; bottles: number; perBottle: number; perBottleExact: number; working: string }
   | { ok: false; why: string };
 
 /**
@@ -137,13 +137,19 @@ export function lotCost(lot: AuctionLot): LotCost {
   if (bottles === null || !Number.isInteger(bottles) || bottles < 1)
     return { ok: false, why: 'Say how many bottles were in the lot, as a whole number.' };
 
-  const total = hammer + premium;
-  const perBottle = Math.round((total / bottles) * 100) / 100;
+  // Whole cents, added once (F-342): 100.10 + 20.02 in floating point is
+  // 120.11999999999999, and the working printed exactly that. The per-bottle
+  // figure is shown to the cent; the exact one is what a stated rate scales,
+  // so the rounding is not multiplied by the rate (the gateway does the same).
+  const totalCents = Math.round(hammer * 100) + Math.round(premium * 100);
+  const total = totalCents / 100;
+  const perBottle = Math.round(totalCents / bottles) / 100;
   return {
     ok: true,
     total,
     bottles,
     perBottle,
+    perBottleExact: total / bottles,
     working: `${hammer} hammer + ${premium} premium = ${total}, over ${bottles} ${
       bottles === 1 ? 'bottle' : 'bottles'
     } = ${perBottle} each.`,
@@ -281,6 +287,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
             } as const)
           : lotBookedCost({
               lotPerBottle: cost.perBottle,
+              lotPerBottleExact: cost.perBottleExact,
               currency: lot.currency,
               houseCurrency,
               exchangeRate: lot.exchangeRate,

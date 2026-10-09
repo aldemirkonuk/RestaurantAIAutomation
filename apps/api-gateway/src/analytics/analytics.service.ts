@@ -193,7 +193,7 @@ export class AnalyticsService {
     const { data, error } = await client
       .from("procurement_orders")
       .select(
-        "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+        "id, provider_id, total_cost, final_price, currency, bottles_total, quantity, delivered_at, created_at, status",
       )
       .eq("restaurant_id", restaurantId)
       .in("status", ORDER_SPEND_STATUSES)
@@ -205,6 +205,11 @@ export class AnalyticsService {
     return (data || []).map((o: any) => ({
       providerId: o.provider_id || "unknown",
       cost: o.total_cost || o.final_price || 0,
+      // The code the order was placed in; null when it names none (F-339).
+      currency:
+        typeof o.currency === "string" && o.currency.trim()
+          ? o.currency.trim().toUpperCase()
+          : null,
       bottles: o.bottles_total || o.quantity || 0,
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
     }));
@@ -476,8 +481,17 @@ export class AnalyticsService {
     // it is the absence of any row to measure, so it is null and the basis
     // says which. A restaurant that genuinely placed orders still gets its
     // real total, including a real 0 if every order carried no cost.
+    //
+    // Orders placed in two named currencies have no single COGS: there is no
+    // rate to add a €400 order to a ₺12,000 one by (F-339). An order naming
+    // no currency is added in, as every order was before the column existed.
+    const orderCurrencies = new Set(
+      orders.map((o) => o.currency).filter((c): c is string => c !== null),
+    );
     const cogs =
-      orders.length === 0 ? null : E.stats.sum(orders.map((o) => o.cost));
+      orders.length === 0 || orderCurrencies.size > 1
+        ? null
+        : E.stats.sum(orders.map((o) => o.cost));
 
     // Revenue basis: sell-price valuation of purchased bottles (proxy until a
     // POS revenue feed lands). Menu price is recorded, so this survives an
@@ -586,7 +600,9 @@ export class AnalyticsService {
         cogs:
           orders.length === 0
             ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
-            : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
+            : orderCurrencies.size > 1
+              ? `delivered procurement_orders (trailing 365d) — null: the orders were placed in ${Array.from(orderCurrencies).sort().join(", ")}, and with no exchange rate on record they cannot be added into one figure`
+              : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
         revenue:
           inventory.length === 0
             ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"

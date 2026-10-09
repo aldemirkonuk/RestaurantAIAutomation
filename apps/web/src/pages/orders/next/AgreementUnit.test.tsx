@@ -288,6 +288,21 @@ describe('the page arithmetic agrees with the words it prints', () => {
     );
   });
 
+  it('prints a part case rounded, never a raw fraction (F-344)', () => {
+    const r = agreementTotal({
+      price: 60,
+      stated: { priceUom: 'case', pricePackSize: 6 },
+      quantity: 10,
+      unitType: 'bottle',
+      bottlesPerUnit: 1,
+    });
+    expect(r?.ok).toBe(true);
+    if (!r || !r.ok) throw new Error('unreachable');
+    expect(r.total).toBe(100);
+    expect(r.working).toContain('10 bottles ÷ 6 = about 1.67 cases × $60.00.');
+    expect(r.working).not.toContain('1.666');
+  });
+
   it('never renders an absent price as $0.00', () => {
     expect(describeStatedPrice(null, null)).toBeNull();
     expect(

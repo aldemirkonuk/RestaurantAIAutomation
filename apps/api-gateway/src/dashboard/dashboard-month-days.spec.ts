@@ -1,5 +1,9 @@
 import { BadRequestException } from "@nestjs/common";
-import { DashboardService, netSalesByHouseDay } from "./dashboard.service";
+import {
+  DashboardService,
+  netSalesByHouseDay,
+  spendByCurrency,
+} from "./dashboard.service";
 import { DashboardController } from "./dashboard.controller";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
@@ -45,6 +49,7 @@ const COLUMNS: Record<string, string[]> = {
     "status",
     "final_price",
     "total_cost",
+    "currency",
     "bottles_total",
     "quantity",
     "delivered_at",
@@ -275,6 +280,61 @@ describe("C18 — the month's deliveries", () => {
     await expect(
       serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10),
     ).rejects.toThrow(/permission denied/);
+  });
+});
+
+// F-339: a TRY house with one EUR vendor read "₺12,400 paid to vendors" on a
+// ₺12,000 + €400 day. Two currencies have no single figure and no rate exists
+// to convert by, so the figure is unknown and each currency is carried apart.
+describe("F-339 — vendor spend never adds two currencies", () => {
+  const mixed = () =>
+    fakeDb({
+      restaurants: house(LA),
+      procurement_orders: [
+        { ...order(1, "2026-10-02T21:00:00Z", 12000, 10), currency: "TRY" },
+        { ...order(2, "2026-10-02T21:30:00Z", 400, 2), currency: "EUR" },
+      ],
+    });
+
+  it("leaves the day and the month without a sum, and carries each currency", async () => {
+    const month = await serviceOver(mixed()).getCalendarRevenue(HOUSE, 2026, 10);
+    expect(day(month, "2026-10-02")).toMatchObject({
+      procurement_spend: null,
+      procurement_spend_by_currency: [
+        { currency: "TRY", amount: 12000 },
+        { currency: "EUR", amount: 400 },
+      ],
+      order_count: 2,
+    });
+    expect(month.monthly_procurement_spend).toBeNull();
+    expect(month.monthly_procurement_spend_by_currency).toEqual([
+      { currency: "TRY", amount: 12000 },
+      { currency: "EUR", amount: 400 },
+    ]);
+    // A day with no deliveries is still a measured zero.
+    expect(day(month, "2026-10-03").procurement_spend).toBe(0);
+  });
+
+  // The spend cards (getStats) total through this same function.
+  it("sums one named currency beside an order that names none, and refuses two", () => {
+    expect(
+      spendByCurrency([
+        { total_cost: 12000, currency: "try" },
+        { total_cost: 250, currency: null },
+      ]),
+    ).toEqual({
+      total: 12250,
+      byCurrency: [
+        { currency: "TRY", amount: 12000 },
+        { currency: null, amount: 250 },
+      ],
+    });
+    expect(
+      spendByCurrency([
+        { total_cost: 12000, currency: "TRY" },
+        { total_cost: 400, currency: "EUR" },
+      ]).total,
+    ).toBeNull();
   });
 });
 

@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { lotBookedCost } from './auctionLotCost';
+import { lotCost } from './AuctionLotStart';
 
 const base = { lotPerBottle: 208.33, currency: 'GBP', exchangeRate: '', houseCost: '' };
 
@@ -29,5 +30,27 @@ describe('lotBookedCost', () => {
   });
   it.each(['0', '-1', 'abc'])('a rate of %s is refused', (rate) => {
     expect(lotBookedCost({ ...base, houseCurrency: 'EUR', exchangeRate: rate }).ok).toBe(false);
+  });
+});
+
+describe('the lot working (F-342)', () => {
+  it('adds hammer and premium in whole cents, with no float noise', () => {
+    const out = lotCost({ hammer: '100.10', premium: '20.02', bottles: '1' } as Parameters<typeof lotCost>[0]);
+    expect(out.ok && out.working).toBe('100.1 hammer + 20.02 premium = 120.12, over 1 bottle = 120.12 each.');
+  });
+  it('a stated rate scales the exact per-bottle cost, rounding once', () => {
+    const out = lotCost({ hammer: '90', premium: '10', bottles: '3' } as Parameters<typeof lotCost>[0]);
+    if (!out.ok) throw new Error('unreachable');
+    expect(out.perBottle).toBe(33.33);
+    expect(
+      lotBookedCost({
+        lotPerBottle: out.perBottle,
+        lotPerBottleExact: out.perBottleExact,
+        currency: 'GBP',
+        houseCurrency: 'TRY',
+        exchangeRate: '35',
+        houseCost: '',
+      }),
+    ).toMatchObject({ ok: true, booked: 1166.67, lotPerBottle: 33.33 });
   });
 });

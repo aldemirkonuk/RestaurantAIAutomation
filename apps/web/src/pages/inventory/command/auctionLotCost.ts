@@ -30,6 +30,12 @@ function numberOrNull(v: string): number | null {
 
 export function lotBookedCost(input: {
   lotPerBottle: number;
+  /**
+   * The lot's per-bottle cost before rounding. A stated rate scales this one,
+   * so the cents rounding happens once, after the rate (F-342): 33.333 at 35
+   * books 1166.67, not 33.33 × 35 = 1166.55. Absent, the rounded figure is used.
+   */
+  lotPerBottleExact?: number;
   /** The lot's ISO-4217 code. */
   currency: string;
   /** The house's code; null when the house has not stated one (or it could not be read). */
@@ -63,7 +69,8 @@ export function lotBookedCost(input: {
     return { ok: true, booked: input.lotPerBottle, basis: 'same_currency', lotPerBottle: input.lotPerBottle };
   }
   if (rate !== null) {
-    return { ok: true, booked: cents(input.lotPerBottle * rate), basis: 'stated_rate', lotPerBottle: input.lotPerBottle };
+    const exact = input.lotPerBottleExact ?? input.lotPerBottle;
+    return { ok: true, booked: cents(exact * rate), basis: 'stated_rate', lotPerBottle: input.lotPerBottle };
   }
   return {
     ok: false,

@@ -170,8 +170,13 @@ export interface CalendarDayEvent {
 /** One house day. Null is "not known", never zero (ADR 0016, DASH-G2). */
 export interface CalendarDay {
   date: string;
-  /** Delivered orders' value: money paid to vendors, not sales. */
+  /**
+   * Delivered orders' value: money paid to vendors, not sales. Null when the
+   * day's orders were placed in more than one currency (F-339);
+   * `procurement_spend_by_currency` then carries each one.
+   */
   procurement_spend: number | null;
+  procurement_spend_by_currency?: SpendInCurrency[];
   /** Bottles DELIVERED by vendors (the frozen key is a misnomer). */
   bottles_sold: number | null;
   order_count: number | null;
@@ -198,7 +203,9 @@ export interface CalendarMonth {
   /** The house's own today, `YYYY-MM-DD`; null when it has no zone. */
   today: string | null;
   daily: CalendarDay[];
+  /** Null when the month's orders name more than one currency (F-339). */
   monthly_procurement_spend: number | null;
+  monthly_procurement_spend_by_currency?: SpendInCurrency[];
   monthly_bottles: number | null;
   /**
    * The month so far: the sum over the begun days the register counted, said
@@ -241,6 +248,52 @@ const pad2 = (n: number): string => String(n).padStart(2, "0");
 
 /** Money to whole cents, so a sum of cents does not drift in the last digit. */
 const cents = (n: number): number => Math.round(n * 100) / 100;
+
+/** One currency's part of a vendor-spend figure; null is "the order names none". */
+export interface SpendInCurrency {
+  currency: string | null;
+  amount: number;
+}
+
+/**
+ * Vendor spend that never adds two currencies into one figure (F-339).
+ *
+ * An order carries the currency it was placed in (`procurement_orders.currency`,
+ * 20260906170000), and every spend read here used to sum `total_cost` across
+ * all of them: a TRY house with one EUR vendor read "₺12,400 paid to vendors"
+ * on a ₺12,000 + €400 day. There is no exchange-rate source to convert by, so:
+ *
+ *   - `byCurrency` is the spend per currency, always;
+ *   - `total` is one figure only when the orders name at most one currency.
+ *     An order that names none is added to it, as every order was before the
+ *     column existed, and is still listed apart in `byCurrency` (null code);
+ *   - two named currencies give `total: null`, which every reader already
+ *     draws as "not known", never as a sum.
+ *
+ * Same rule as the receiving queue's `totalAtRiskByCurrency`.
+ */
+export function spendByCurrency(
+  orders: any[],
+): { total: number | null; byCurrency: SpendInCurrency[] } {
+  const by = new Map<string | null, number>();
+  for (const o of orders) {
+    const code =
+      typeof o.currency === "string" && o.currency.trim()
+        ? o.currency.trim().toUpperCase()
+        : null;
+    by.set(
+      code,
+      cents((by.get(code) ?? 0) + (Number(o.total_cost) || Number(o.final_price) || 0)),
+    );
+  }
+  const byCurrency = Array.from(by, ([currency, amount]) => ({ currency, amount }));
+  const named = byCurrency.filter((c) => c.currency !== null).length;
+  return {
+    total:
+      named > 1 ? null : cents(byCurrency.reduce((sum, c) => sum + c.amount, 0)),
+    byCurrency,
+  };
+}
 
 /**
  * One check's net sales, from its subtotal only: a missing, empty or
@@ -333,8 +386,9 @@ function houseDayOf(
  *   (`houseDayOf`), read on the house's wall clock in `zone`.
  * - Net is `subtotal`. `total` and `tip` are never read: the founder's AW17
  *   ruling. `subtotal` is before tax and surcharge only where the POS adapter
- *   writes it so: generic/CSV pass it through, Square maps
- *   `net_amounts.total_money`, Toast `amount`, Clover null (pos-adapters.ts).
+ *   writes it so: generic/CSV pass it through, Square takes tax, tip and
+ *   service charge off `net_amounts.total_money` (F-340), Toast `amount`,
+ *   Clover null (pos-adapters.ts).
  *   Lane netsales owns the adapters' basis.
  * - Each day is folded by `foldNetSales`: the subtotals that were stated are
  *   summed, and the day says how many of its checks stated one.
@@ -1029,7 +1083,7 @@ export class DashboardService {
           let q = client
             .from("procurement_orders")
             .select(
-              "id, final_price, total_cost, bottles_total, quantity, delivered_at",
+              "id, final_price, total_cost, currency, bottles_total, quantity, delivered_at",
             )
             .eq("restaurant_id", restaurantId)
             .in("status", ORDER_SPEND_STATUSES)
@@ -1045,7 +1099,7 @@ export class DashboardService {
 
       const spend = new Map<
         string,
-        { spend: number; bottles: number; count: number }
+        { orders: any[]; bottles: number; count: number }
       >();
       for (const o of orders) {
         const date = houseDayOf(
@@ -1053,10 +1107,11 @@ export class DashboardService {
           zone,
         );
         if (!date) continue;
-        const day = spend.get(date) ?? { spend: 0, bottles: 0, count: 0 };
-        // The method is unchanged: the order's total, else its final price;
-        // its bottle total, else its quantity.
-        day.spend += Number(o.total_cost) || Number(o.final_price) || 0;
+        const day = spend.get(date) ?? { orders: [], bottles: 0, count: 0 };
+        // The method is unchanged: the order's total, else its final price
+        // (summed per currency by `spendByCurrency`); its bottle total, else
+        // its quantity.
+        day.orders.push(o);
         day.bottles += Number(o.bottles_total) || Number(o.quantity) || 0;
         day.count += 1;
         spend.set(date, day);
@@ -1067,6 +1122,7 @@ export class DashboardService {
       const until = takings?.until ?? null;
       const daily: CalendarDay[] = dates.map((date) => {
         const s = spend.get(date);
+        const paid = spendByCurrency(s?.orders ?? []);
         const sold = takings?.days.get(date);
         // A day the register was there for: from its first check's house day
         // to its latest check's. A quiet day between them is a measured zero.
@@ -1077,7 +1133,8 @@ export class DashboardService {
           since !== null && until !== null && date >= since && date <= until;
         return {
           date,
-          procurement_spend: cents(s?.spend ?? 0),
+          procurement_spend: paid.total,
+          procurement_spend_by_currency: paid.byCurrency,
           bottles_sold: s?.bottles ?? 0,
           order_count: s?.count ?? 0,
           net_sales: counted ? (sold ? sold.net_sales : 0) : null,
@@ -1097,6 +1154,9 @@ export class DashboardService {
       // that stated one counted beside every check. No counted day, or
       // counted days whose checks all lack a subtotal, states no figure; a
       // month not yet begun states none.
+      const monthSpend = spendByCurrency(
+        dates.flatMap((date) => spend.get(date)?.orders ?? []),
+      );
       const begun = daily.filter((d) => today !== null && d.date <= today);
       const known = begun.filter((d) => d.checks !== null);
       const monthlyChecks = known.reduce((sum, d) => sum + (d.checks ?? 0), 0);
@@ -1118,9 +1178,10 @@ export class DashboardService {
         zone_unset: false,
         today,
         daily,
-        monthly_procurement_spend: cents(
-          daily.reduce((sum, d) => sum + (d.procurement_spend ?? 0), 0),
-        ),
+        // From the month's orders, not the days' figures: a day that is
+        // null for mixing currencies must not drop out of the sum (F-339).
+        monthly_procurement_spend: monthSpend.total,
+        monthly_procurement_spend_by_currency: monthSpend.byCurrency,
         monthly_bottles: daily.reduce(
           (sum, d) => sum + (d.bottles_sold ?? 0),
           0,
@@ -1183,7 +1244,7 @@ export class DashboardService {
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
-            .select("id, status, total_cost, final_price, bottles_total, quantity, delivered_at")
+            .select("id, status, total_cost, final_price, currency, bottles_total, quantity, delivered_at")
             .eq("restaurant_id", restaurantId),
           this.houseZone(client, restaurantId),
         ]);
@@ -1225,15 +1286,16 @@ export class DashboardService {
       // Sums vendor invoices on delivered procurement orders. This was named
       // `salesFrom` and published as todaySales/weekSales/monthSales, which the
       // web dashboard rendered as "Total Revenue" — the exact opposite of what
-      // the number is. Nothing here is a sale.
+      // the number is. Nothing here is a sale. Null when the orders were placed
+      // in more than one currency: there is no rate to add them by (F-339).
       const spendWhere = (items: any[], onDay: (day: string) => boolean) =>
-        items
-          .filter(
+        spendByCurrency(
+          items.filter(
             (o) =>
               o.delivered_at &&
               onDay(localDateIn(new Date(o.delivered_at), zone)),
-          )
-          .reduce((sum, o) => sum + (o.total_cost || o.final_price || 0), 0);
+          ),
+        ).total;
 
       const deliveredOrders = orders.filter((o) =>
         hasStatus(o.status, ORDER_SPEND_STATUSES),
