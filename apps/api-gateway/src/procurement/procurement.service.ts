@@ -182,13 +182,16 @@ import {
   type VendorSendRequestView,
 } from "../organizations/vendor-send-requests.service";
 import {
+  ORDER_ENDS_ITS_SERIES_STATUSES,
   ORDER_GOODS_ARRIVED_STATUSES,
   ORDER_TERMINAL_STATUSES,
   decideTransition,
   readOrderStatus,
   refuseUnreadableStatus,
+  statusInWords,
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
+import { RECURRENCE_ACTS } from "./order-recurrence";
 import {
   CANCEL_REASON_REFUSAL_WORDS,
   CancelReasonCode,
@@ -3394,6 +3397,11 @@ export class ProcurementService {
       cancelReasonCode?: CancelReasonCode;
       cancelledFromStatus?: ProcurementOrderStatus;
       cancelledAt?: string;
+      /**
+       * Who made the change. Read only to record who ended a standing order's
+       * series when this write closes its parent.
+       */
+      actorUserId?: string;
     },
   ): Promise<OrderResponseDto> {
     // ADR 0192 — WHAT AN ORDER RECEIVED IS NOT TYPED IN. This route used to
@@ -3513,7 +3521,93 @@ export class ProcurementService {
         row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
     };
 
+    // A standing order whose own order is cancelled or rejected stops here,
+    // in this write's wake — not at the next generator run, which would
+    // otherwise keep raising orders for an agreement the house just ended.
+    if (dto.status && ORDER_ENDS_ITS_SERIES_STATUSES.includes(dto.status)) {
+      await this.endSeriesOfClosedOrder(
+        restaurantId,
+        orderId,
+        row,
+        dto.status,
+        opts?.actorUserId ?? null,
+      );
+    }
+
     return this.mapOrderRow(orderRow);
+  }
+
+  /**
+   * End the recurrence on an order that has just been cancelled, rejected or
+   * failed. Never throws: the order IS closed, and turning that into a 500
+   * because the series write failed would say something false. The audit row
+   * is the one `OrderRecurrenceService` files for "End it", so the life of the
+   * series reads in one register.
+   */
+  private async endSeriesOfClosedOrder(
+    restaurantId: string,
+    orderId: string,
+    row: { recurrence_status?: string | null; order_number?: string | null },
+    closedAs: ProcurementOrderStatus,
+    actorUserId: string | null,
+  ): Promise<void> {
+    const from = row.recurrence_status;
+    if (from !== "active" && from !== "paused") return;
+    const actor = asUuid(actorUserId);
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .update({
+          recurrence_status: "ended",
+          recurrence_status_at: new Date().toISOString(),
+          ...(actor ? { recurrence_status_by: actor } : {}),
+        })
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        // Compare-and-set: a series somebody else moved is left as they left it.
+        .eq("recurrence_status", from)
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        this.logger.error(
+          `Order ${row.order_number ?? orderId} is ${statusInWords(closedAs)} but its ` +
+            `recurrence could not be ended: ${error.message}. The generator skips a ` +
+            `closed order, so no order will be raised for it.`,
+        );
+        return;
+      }
+      if (!data) return;
+      const { error: auditError } = await this.databaseService.supabase
+        .from("system_audit_log")
+        .insert({
+          actor_type: actorUserId ? "user" : "system",
+          actor_id: actorUserId,
+          action: RECURRENCE_ACTS.ENDED,
+          entity_type: "procurement_order",
+          entity_id: orderId,
+          changes: {
+            register: "orders",
+            subject: orderId,
+            from,
+            to: "ended",
+            act: RECURRENCE_ACTS.ENDED,
+            sealed: false,
+            detail: { endedBecauseOrderWas: closedAs },
+          },
+          restaurant_id: restaurantId,
+          reason: `Recurrence ${from} -> ended (order ${statusInWords(closedAs)})`,
+        });
+      if (auditError) {
+        this.logger.error(
+          `${RECURRENCE_ACTS.ENDED} happened but the audit row failed to write: ` +
+            `${auditError.message}. Order ${orderId}'s recurrence IS ended and the log does not say so.`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Ending the recurrence on closed order ${orderId} threw: ${err?.message}.`,
+      );
+    }
   }
 
   /**
@@ -3785,6 +3879,7 @@ export class ProcurementService {
         cancelReasonCode,
         cancelledFromStatus: preStatus,
         cancelledAt: cancelledAtIso,
+        actorUserId: userId,
       },
     );
 

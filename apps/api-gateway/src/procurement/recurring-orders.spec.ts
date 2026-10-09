@@ -4,6 +4,13 @@ import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
+import {
+  AUTO_APPROVE_REFUSED,
+  CreateRecurringOrderDto,
+  UpdateRecurringOrderDto,
+} from "./dto/recurring-order.dto";
 
 /**
  * A standing order that can actually be materialised.
@@ -392,6 +399,57 @@ describe("executeDueRecurringOrders — the cron finally produces an order", () 
       (k) => !RECURRING_COLUMNS.has(k),
     );
     expect(unknown).toEqual([]);
+  });
+});
+
+describe("a schedule still set to approve itself (F-306)", () => {
+  it("is raised for approval and ADVANCES, rather than failing at the seal every morning", async () => {
+    // Pre-fix: approveOrder ran with no seal, was refused, and threw before the
+    // next date was written — so the schedule never moved and nobody was told.
+    const approve = jest
+      .spyOn(ProcurementService.prototype, "approveOrder")
+      .mockRejectedValue(new Error("the seal was absent"));
+    const { db, calls } = makeDb({
+      dueSchedules: [scheduleRow({ auto_approve: true })],
+      insertedOrder,
+      inventory: inventoryRow,
+    });
+    await service(db).executeDueRecurringOrders();
+
+    expect(approve).not.toHaveBeenCalled();
+    expect(calls.orderInserts).toHaveLength(1);
+    const advance = calls.scheduleUpdates.at(-1)!;
+    expect(advance.next_order_date).toBe("2026-09-08");
+    expect(orchestrator.publishEvent).toHaveBeenCalledWith(
+      "recurring.events",
+      "recurring.order.approval_needed",
+      expect.objectContaining({ recurring_order_id: SCHEDULE }),
+    );
+    approve.mockRestore();
+  });
+
+  it("cannot be created or edited to approve itself", async () => {
+    const create = plainToInstance(CreateRecurringOrderDto, {
+      inventory_id: INVENTORY,
+      quantity: 5,
+      frequency: "weekly",
+      auto_approve: true,
+    });
+    const createErrors = await validate(create);
+    const onCreate = createErrors.find((e) => e.property === "auto_approve");
+    expect(Object.values(onCreate?.constraints ?? {})).toContain(
+      AUTO_APPROVE_REFUSED,
+    );
+
+    const update = plainToInstance(UpdateRecurringOrderDto, { auto_approve: true });
+    const updateErrors = await validate(update);
+    expect(updateErrors.map((e) => e.property)).toContain("auto_approve");
+
+    // An old client that sends `false` is still accepted.
+    const off = await validate(
+      plainToInstance(UpdateRecurringOrderDto, { auto_approve: false }),
+    );
+    expect(off.map((e) => e.property)).not.toContain("auto_approve");
   });
 });
 

@@ -199,6 +199,18 @@ export const ORDER_GOODS_ARRIVED_STATUSES: readonly ProcurementOrderStatus[] = [
   ProcurementOrderStatus.COMPLETED,
 ];
 
+/**
+ * The final states that END a standing order's series: the order closed with
+ * nothing arriving (cancelled, rejected, failed). A delivered or completed
+ * order keeps its rule — "we took this last Tuesday, again every Tuesday" is
+ * how most standing orders begin. Derived from the two lists above, never
+ * typed a third time.
+ */
+export const ORDER_ENDS_ITS_SERIES_STATUSES: readonly ProcurementOrderStatus[] =
+  ORDER_TERMINAL_STATUSES.filter(
+    (s) => !ORDER_GOODS_ARRIVED_STATUSES.includes(s),
+  );
+
 /** Parse a stored value into a member, or `null`. Never guesses. */
 export function readOrderStatus(
   value: unknown,
