@@ -30,7 +30,7 @@
  *     the app boundary.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -131,7 +131,14 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
   const [busy, setBusy] = useState<string | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [proposal, setProposal] = useState<Proposal | null>(null);
+  // A proposal is the book's answer about ONE house's goal (F-525): it is
+  // kept beside the house it was asked in, shown only there, and placed only
+  // on that house's sheet. An ask that answers after a switch is dropped.
+  const [proposalOf, setProposalOf] = useState<{ house: string; p: Proposal } | null>(null);
+  const proposal =
+    proposalOf && proposalOf.house === activeRestaurantId ? proposalOf.p : null;
+  const houseNow = useRef(activeRestaurantId);
+  houseNow.current = activeRestaurantId;
   const scenarios = useGoalScenarios();
 
   const canWrite = activeRole === 'owner' || activeRole === 'manager';
@@ -213,9 +220,13 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
   const ask = useCallback(
     (goalId: string, goalName: string) => {
       if (!activeRestaurantId) return;
+      const house = activeRestaurantId;
+      const setProposal = (p: Proposal) => {
+        if (houseNow.current === house) setProposalOf({ house, p });
+      };
       setAsking(goalId);
       setError(null);
-      setProposal(null);
+      setProposalOf(null);
       void (async () => {
         try {
           const { data } = await apiClient.post<{
@@ -295,16 +306,28 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
             (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
             (err as { message?: string })?.message ??
             'the request failed';
-          setError(`Asking the book did not go through: ${detail}`);
+          if (houseNow.current === house) setError(`Asking the book did not go through: ${detail}`);
         } finally {
-          setAsking(null);
+          if (houseNow.current === house) setAsking(null);
         }
       })();
     },
     [activeRestaurantId],
   );
 
-  const dismiss = useCallback(() => setProposal(null), []);
+  const dismiss = useCallback(() => setProposalOf(null), []);
+
+  /** Place the proposal's cutting, only ever on the sheet of the house it was asked in. */
+  const placeProposed = useCallback(
+    (cutting: { id: AnalysisId; graph: GraphType; days: number | null }) => {
+      if (!proposalOf || proposalOf.house !== houseNow.current) {
+        setProposalOf(null);
+        return;
+      }
+      place(cutting);
+    },
+    [place, proposalOf],
+  );
   const clearError = useCallback(() => setError(null), []);
 
   /**
@@ -360,6 +383,18 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
     [activeRestaurantId, requesting],
   );
 
+  // A switch leaves nothing of the last house's desk on this one (F-525):
+  // its proposal, its asking mark, its error and its request sentence.
+  const [deskOf, setDeskOf] = useState(activeRestaurantId);
+  if (deskOf !== activeRestaurantId) {
+    setDeskOf(activeRestaurantId);
+    setProposalOf(null);
+    setAsking(null);
+    setError(null);
+    setRequestNote(null);
+    setRequestError(null);
+  }
+
   const resetScenarioRequest = useCallback(() => {
     setRequestNote(null);
     setRequestError(null);
@@ -390,7 +425,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
       asking,
       proposal,
       dismiss,
-      place,
+      place: placeProposed,
       scenarios,
       scenarioRequest,
     }),
@@ -404,7 +439,7 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
       create,
       dismiss,
       error,
-      place,
+      placeProposed,
       proposal,
       readOnlyReason,
       scenarioRequest,

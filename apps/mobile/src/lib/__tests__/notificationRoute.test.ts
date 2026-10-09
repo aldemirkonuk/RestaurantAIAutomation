@@ -1,6 +1,7 @@
 import {
   routeForActionUrl,
   routeForNotificationData,
+  openNotificationTap,
 } from "@/lib/notificationRoute";
 
 describe("routeForActionUrl", () => {
@@ -93,5 +94,49 @@ describe("routeForNotificationData", () => {
     expect(routeForNotificationData({ actionUrl: "/promotions" })).toBe(
       "/notifications",
     );
+  });
+});
+
+describe("openNotificationTap (F-523)", () => {
+  const deps = (currentHouse: string | null, moved = true) => {
+    const calls: string[] = [];
+    return {
+      calls,
+      d: {
+        currentHouse,
+        chooseHouse: jest.fn(async (h: string) => {
+          calls.push(`switch:${h}`);
+          return moved;
+        }),
+        navigate: jest.fn((r: string) => void calls.push(`open:${r}`)),
+        refused: jest.fn((m: string) => void calls.push(`refused:${m}`)),
+      },
+    };
+  };
+
+  it("opens a push of this house where it points, with no switch", async () => {
+    const { d, calls } = deps("house-b");
+    await openNotificationTap({ orderId: "o1", restaurantId: "house-b" }, d);
+    expect(calls).toEqual(["open:/supply/o1"]);
+  });
+
+  it("moves to the push's house BEFORE opening its order", async () => {
+    const { d, calls } = deps("house-b");
+    await openNotificationTap({ orderId: "o1", restaurantId: "house-a" }, d);
+    expect(calls).toEqual(["switch:house-a", "open:/supply/o1"]);
+  });
+
+  it("opens nothing, and says so, when the move is refused", async () => {
+    const { d, calls } = deps("house-b", false);
+    await openNotificationTap({ orderId: "o1", restaurantId: "house-a" }, d);
+    expect(calls[0]).toBe("switch:house-a");
+    expect(d.navigate).not.toHaveBeenCalled();
+    expect(d.refused).toHaveBeenCalledWith(expect.stringMatching(/another of your restaurants/));
+  });
+
+  it("opens a push that names no house as before", async () => {
+    const { d, calls } = deps("house-b");
+    await openNotificationTap({ orderId: "o1" }, d);
+    expect(calls).toEqual(["open:/supply/o1"]);
   });
 });

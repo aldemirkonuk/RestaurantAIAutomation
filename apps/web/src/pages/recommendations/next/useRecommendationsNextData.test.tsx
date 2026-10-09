@@ -958,3 +958,62 @@ describe('a house switch, the figures and the roster (OPS-03)', () => {
     );
   });
 });
+
+describe('a house switch, the note line and its Undo (F-524)', () => {
+  const choice = {
+    reason: 'not_relevant',
+    scope: 'insight' as const,
+    key: 'margin_to_target',
+    excludeDate: null,
+    said: 'Dismissed.',
+  };
+
+  it('an Undo offered in one house is gone in the next, and so is its sentence', async () => {
+    api.post.mockResolvedValue({ data: {} });
+    const { result, rerender } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], choice);
+    });
+    expect(result.current.undo?.ruleKey).toBe('margin_to_target');
+    expect(result.current.note).toMatch(/Undo here/);
+
+    auth.rid = 'r2';
+    rerender();
+    expect(result.current.undo).toBeNull();
+    expect(result.current.note).toBeNull();
+    // Back in the first house, the Undo does not come back either: it was
+    // dropped, not hidden, so nothing can reverse the dismissal from here.
+    auth.rid = 'r1';
+    rerender();
+    expect(result.current.undo).toBeNull();
+  });
+
+  it('a write of the last house that answers after the switch offers no Undo here', async () => {
+    let release: (v: unknown) => void = () => {};
+    api.post.mockImplementation(
+      () =>
+        new Promise((res) => {
+          release = res;
+        }),
+    );
+    const { result, rerender } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.dismiss(result.current.entries[0], choice);
+    });
+    auth.rid = 'r2';
+    rerender();
+    await act(async () => {
+      release({ data: {} });
+      await pending;
+    });
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ ruleKey: 'margin_to_target' }),
+    );
+    expect(result.current.undo).toBeNull();
+    expect(result.current.note).toBeNull();
+  });
+});
