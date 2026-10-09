@@ -34,6 +34,31 @@ const num = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
+/**
+ * A till's voided flag, read strictly. `Boolean("false")` is `true`, which
+ * voided real checks (sim F-397): revenue dropped out and stock went up.
+ * Absent reads as not voided; a value that is neither yes nor no is returned
+ * as `unread` so ingest() can refuse the check and say why.
+ */
+export const readVoided = (v: unknown): { voided: boolean; unread?: unknown } => {
+  if (v === null || v === undefined || v === "") return { voided: false };
+  if (typeof v === "boolean") return { voided: v };
+  if (typeof v === "number") {
+    if (v === 1) return { voided: true };
+    if (v === 0) return { voided: false };
+    return { voided: false, unread: v };
+  }
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (["true", "1", "yes", "y", "t"].includes(s)) return { voided: true };
+    if (["false", "0", "no", "n", "f"].includes(s)) return { voided: false };
+  }
+  return { voided: false, unread: v };
+};
+const voidedOf = (v: unknown): { voided: boolean; voidedUnread?: unknown } => {
+  const r = readVoided(v);
+  return "unread" in r ? { voided: false, voidedUnread: r.unread } : { voided: r.voided };
+};
 const cents = (v: unknown): number | null => {
   const n = num(v);
   return n === null ? null : n / 100;
@@ -54,10 +79,10 @@ export const genericAdapter: PosAdapter = {
     return rows
       .filter((r) => r && (r.externalCheckId || r.external_check_id))
       .map((r) => ({
+        ...voidedOf(r.voided ?? r.is_voided),
         externalCheckId: String(r.externalCheckId ?? r.external_check_id),
         openedAt: String(r.openedAt ?? r.opened_at ?? new Date().toISOString()),
         closedAt: r.closedAt ?? r.closed_at ?? null,
-        voided: Boolean(r.voided ?? r.is_voided ?? false),
         tableRef: r.tableRef ?? r.table_ref ?? r.table ?? null,
         // ADR 0302: read exactly, never guessed from the table ref.
         channel: checkChannelOf(r.channel),

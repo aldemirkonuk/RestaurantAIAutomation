@@ -4,6 +4,7 @@ import {
   squareAdapter,
   cloverAdapter,
   toastAdapter,
+  readVoided,
 } from "./pos-adapters";
 import { POS_PROVIDERS, registrySummary } from "./pos-provider.registry";
 import { CHECK_CHANNELS, checkChannelOf } from "./pos-types";
@@ -287,5 +288,29 @@ describe("a check carries its channel (ADR 0302)", () => {
   it("the registry says Clover sends no table", () => {
     const clover = POS_PROVIDERS.find((p) => p.key === "clover");
     expect(clover?.capabilities.tables).toBe(false);
+  });
+});
+
+describe("generic adapter reads voided strictly (sim F-397)", () => {
+  const one = (voided: unknown) =>
+    genericAdapter.normalize([{ externalCheckId: "c1", voided, items: [] }])[0];
+
+  it("reads the word false as not voided", () => {
+    expect(one("false").voided).toBe(false);
+    expect(one("false").voidedUnread).toBeUndefined();
+  });
+
+  it.each([[true], ["true"], ["1"], [1], ["YES"]])("reads %p as voided", (v) => {
+    expect(one(v).voided).toBe(true);
+  });
+
+  it.each([[false], ["0"], [0], ["no"], [null], [undefined], [""]])("reads %p as not voided", (v) => {
+    expect(one(v).voided).toBe(false);
+    expect(one(v).voidedUnread).toBeUndefined();
+  });
+
+  it("hands back a value it cannot read instead of guessing", () => {
+    expect(one("maybe")).toMatchObject({ voided: false, voidedUnread: "maybe" });
+    expect(readVoided(2)).toEqual({ voided: false, unread: 2 });
   });
 });

@@ -845,3 +845,31 @@ describe("a closed_at the import does not read is refused, not imported (ADR 028
     expect(calls.consumption).toHaveLength(0);
   });
 });
+
+describe("a voided flag the import does not read is refused, not guessed (sim F-397)", () => {
+  it("writes nothing for the check and says how to write it", async () => {
+    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const res = await ingest(service, [
+      check("c-v", "2026-07-14T21:00:00Z", [line(BOTTLE)], { voided: "maybe" }),
+    ]);
+    expect(calls.checks).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(res.upserted).toBe(0);
+    expect(res.errors).toEqual([
+      'c-v: not imported, voided not readable — write true or false (voided was "maybe")',
+    ]);
+  });
+});
+
+describe('voided: "false" from a till is a sale, not a void (sim F-397)', () => {
+  it("depletes the bottle instead of returning one", async () => {
+    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    await ingest(service, [
+      check("c-f", "2026-07-14T21:00:00Z", [line(BOTTLE)], { voided: "false" }),
+    ]);
+    expect(calls.checks[0].voided).toBe(false);
+    const deltas = calls.rpc.map((c) => c.args.p_delta).filter((d) => d !== undefined);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(deltas.every((d) => Number(d) < 0)).toBe(true);
+  });
+});

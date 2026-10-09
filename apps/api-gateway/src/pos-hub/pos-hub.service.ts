@@ -1042,6 +1042,14 @@ export class PosHubService {
           }
           continue;
         }
+        // sim F-397: a voided flag that reads as neither yes nor no is not
+        // guessed at — either guess moves stock the wrong way.
+        if (check.voidedUnread !== undefined) {
+          errors.push(
+            `${check.externalCheckId}: not imported, voided not readable — write true or false (voided was ${quoteClosedAt(check.voidedUnread)})`,
+          );
+          continue;
+        }
         const items = check.items.map((it) => {
           const mapped = this.resolveWine(it.name, it.externalItemId, mappings);
           const is_wine =

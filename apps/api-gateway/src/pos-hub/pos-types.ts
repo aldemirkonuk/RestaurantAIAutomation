@@ -54,6 +54,10 @@ export interface CanonicalCheck {
    *  hub reverses stock for every line instead of depleting it (decision B19:
    *  voids reverse glasses as well as bottles). */
   voided?: boolean;
+  /** Set only when the till sent a voided value the adapter could not read
+   *  as yes or no (the raw value, as sent). ingest() refuses such a check:
+   *  guessing either way moves stock the wrong way. */
+  voidedUnread?: unknown;
   /** Source POS table reference — resolved against restaurant_tables.pos_refs
    *  or label. */
   tableRef?: string | null;
