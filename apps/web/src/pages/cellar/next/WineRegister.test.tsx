@@ -78,13 +78,13 @@ function bottle(over: Partial<BottleVM> = {}): BottleVM {
   };
 }
 
-function mkData(bottles: BottleVM[]): CellarData {
+function mkData(bottles: BottleVM[], providers: { id: string; name: string }[] = []): CellarData {
   return {
     activeRestaurantId: 'r1',
     authLoading: false,
     bottles,
     building: { titles: bottles.length, bottles: 0, belowPar: 0, offBook: 0, parUnset: 0 },
-    providers: [],
+    providers,
     bookTruncated: false,
     bookLimit: 500,
     loadingMoreBook: false,
@@ -108,12 +108,12 @@ function mkData(bottles: BottleVM[]): CellarData {
   } as unknown as CellarData;
 }
 
-function mount(bottles: BottleVM[]) {
+function mount(bottles: BottleVM[], providers: { id: string; name: string }[] = []) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <MemoryRouter>
       <QueryClientProvider client={qc}>
-        <WineRegister data={mkData(bottles)} />
+        <WineRegister data={mkData(bottles, providers)} />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -174,6 +174,27 @@ describe('WineRegister — sketch 121, the record opens beside a narrowed index'
     firstRow.focus();
     await user.keyboard('{Enter}');
     expect(within(screen.getByTestId('bottle-leaf')).getByRole('heading', { name: 'Boğazkere 2021' })).toBeInTheDocument();
+  });
+
+  // sim wave 8 (F-409): switching bottles from the narrowed index used to
+  // keep the previous bottle's leaf state — its vendor, its status line and
+  // its "Order sent" — because the leaf was reused, not remounted.
+  it('opens the next bottle with its own vendor, not the previous bottle\'s', async () => {
+    const user = userEvent.setup();
+    const cellarRow = {
+      inventoryId: 'inv-b', stockLive: 4, thresholdMin: 2, providerId: 'pY', providerName: 'Vendor Y',
+      lastCountedAt: null, glassesPerBottle: null, menuPriceGlass: null, menuPriceBottle: null,
+      velocityPerDay: null, daysSinceSale: null, analyticsReadable: true,
+    } as unknown as BottleVM['cellar'];
+    mount(
+      [bottle(), bottle({ id: 'w2', name: 'Barolo Riserva', cellar: cellarRow })],
+      [{ id: 'pX', name: 'Vendor X' }, { id: 'pY', name: 'Vendor Y' }],
+    );
+    await user.click(screen.getByText('Boğazkere 2021'));
+    const otherRow = within(screen.getByTestId('wine-split')).getByText('Barolo Riserva').closest('button')!;
+    await user.click(otherRow);
+    const leaf = screen.getByTestId('bottle-leaf');
+    expect((within(leaf).getByLabelText('Vendor') as HTMLSelectElement).value).toBe('pY');
   });
 
   it('marks the open bottle in the narrowed index, and only that one', async () => {

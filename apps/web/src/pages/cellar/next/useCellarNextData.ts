@@ -1005,7 +1005,8 @@ export interface CocktailInput {
   method?: string;
   glass?: string;
   garnish?: string;
-  price?: number;
+  /** null on an amend clears the price (unpriced); absent leaves it alone. */
+  price?: number | null;
   description?: string;
 }
 
