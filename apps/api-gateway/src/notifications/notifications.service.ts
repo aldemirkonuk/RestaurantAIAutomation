@@ -551,7 +551,8 @@ export class NotificationsService {
         channels: ["in_app"],
         restaurant_id: data.restaurantId,
         type: data.type,
-        title: data.title,
+        // notifications.title is varchar(255); a longer title fails the insert (F-560).
+        title: data.title?.slice(0, 255),
         message: data.message,
         priority: data.priority ?? "medium",
         status: "unread",
@@ -733,7 +734,8 @@ export class NotificationsService {
         channels: ["in_app"],
         restaurant_id: restaurantId,
         type: payload.type,
-        title: payload.title.slice(0, 500),
+        // notifications.title is varchar(255); a longer title fails the insert (F-560).
+        title: payload.title.slice(0, 255),
         message: payload.message,
         priority: payload.priority ?? "medium",
         status: "unread",
