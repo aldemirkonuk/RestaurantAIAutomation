@@ -54,6 +54,7 @@ import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { HousePageLoader } from './components/mudavym/HousePageLoader'
 import { RouteHead } from './lib/seo/RouteHead'
+import { RootDoor } from './pages/landing/RootDoor'
 import { RenamedRoute } from './lib/renamedRoute'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
@@ -78,6 +79,8 @@ import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
 const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/DashboardNext'))
+// The landing page a stranger sees at `/` (ADR 0320); RootDoor picks it or the dashboard.
+const Landing = lazyWithRefresh(() => import('./pages/landing/Landing'))
 const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
 const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
@@ -188,6 +191,12 @@ function App() {
             <RouteHead />
             <Suspense fallback={<HousePageLoader />}>
               <Routes>
+                {/* The root: a stranger's landing page, a signed-in person's dashboard
+                    (ADR 0320). The dashboard is this route's index child so that it
+                    renders through the same DashboardLayout outlet as before. */}
+                <Route path="/" element={<RootDoor landing={<Landing />} />}>
+                  <Route index element={<PageGate page="dashboard" next={<DashboardNext />} />} />
+                </Route>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
@@ -359,7 +368,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="/" element={<PageGate page="dashboard" next={<DashboardNext />} />} />
                   {/* `/inventory` is enrolled in the gate (founder, 2026-09-04) with the
                       SAME page on both branches. The command page is not being
                       redesigned — the gate is what mounts `HouseHeader`
