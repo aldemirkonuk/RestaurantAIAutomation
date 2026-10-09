@@ -39,7 +39,10 @@ vi.mock('react-router-dom', async () => {
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => auth.value,
 }))
-vi.mock('../services/api/client', () => ({
+// The real getErrorStatus and isUnconfirmedWrite stay: the failure sentences
+// are chosen by them (F-006).
+vi.mock('../services/api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/api/client')>()),
   apiClient: { patch, get },
 }))
 vi.mock('../components/brand/BrandMark', () => ({
@@ -216,7 +219,7 @@ beforeEach(() => {
   get.mockResolvedValue({ data: { houses: [], held: [], accessEnded: false } })
   reviewMenuItem.mockResolvedValue({})
   patch.mockResolvedValue({})
-  createFirstHouse.mockResolvedValue('house-1')
+  createFirstHouse.mockResolvedValue({ restaurantId: 'house-1', detailsLoaded: true })
   addMenuItem.mockResolvedValue({
     menuItemId: 'added',
     submissionId: null,
@@ -236,12 +239,36 @@ beforeEach(() => {
   sessionStorage.clear()
 })
 
+function fillRestaurantStep() {
+  fireEvent.change(screen.getByLabelText('Restaurant name'), { target: { value: 'Meyhane' } })
+  fireEvent.change(screen.getByLabelText('Address'), { target: { value: '1 House Street' } })
+  fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Istanbul' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Choose Türkiye' }))
+}
+
+async function toRestaurantStep() {
+  const view = render(<MemoryRouter><GetStarted /></MemoryRouter>)
+  // The wizard opens once the entry check has answered (SETUP-01).
+  await screen.findByRole('heading', { name: /Welcome, Selin/ })
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  await screen.findByRole('heading', { name: 'Your restaurant' })
+  fillRestaurantStep()
+  return view
+}
+
+const W1 =
+  'We could not open the house with these details. Check the name, the address and the phone number. If you picked the address from the list, try typing it in yourself.'
+const NOT_CREATED = 'We could not create the house.'
+const UNCONFIRMED =
+  'We could not confirm the house opened. Try again in a moment: if it did open, we will tell you, and no second house is opened.'
+const ALREADY_OPEN = 'This account already has a house, so no second one was opened.'
+
 describe('approved arrival flow', () => {
   it('creates the house on the restaurant screen and offers skip only on menu', async () => {
     createFirstHouse.mockImplementation(async () => {
       // The house now exists: the entry check must not fire again mid-wizard.
       signedIn({ ...SELIN, restaurantId: 'house-1' })
-      return 'house-1'
+      return { restaurantId: 'house-1', detailsLoaded: true }
     })
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
@@ -256,12 +283,10 @@ describe('approved arrival flow', () => {
     })
     expect(screen.queryByText(/Skip for now/)).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Restaurant name'), { target: { value: 'Meyhane' } })
-    fireEvent.change(screen.getByLabelText('Address'), { target: { value: '1 House Street' } })
-    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Istanbul' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Choose Türkiye' }))
+    fillRestaurantStep()
     fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
     await screen.findByRole('heading', { name: 'Your menu' })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(createFirstHouse).toHaveBeenCalledWith(
       expect.objectContaining({
         restaurantName: 'Meyhane',
@@ -280,6 +305,102 @@ describe('approved arrival flow', () => {
     expect(screen.queryByText(/likely/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('Skip for now — open the house'))
     expect(navigate).toHaveBeenCalledWith('/house', { replace: true })
+  })
+
+  it('says a refused house plainly and keeps the form (F-006)', async () => {
+    createFirstHouse.mockRejectedValue({
+      response: { status: 400, data: { message: 'value too long for type character varying(100)' } },
+    })
+    await toRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(W1)
+    expect(screen.getByRole('heading', { name: 'Your restaurant' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Restaurant name')).toHaveValue('Meyhane')
+    expect(screen.getByLabelText('City')).toHaveValue('Istanbul')
+    expect(document.body.textContent).not.toContain('character varying')
+  })
+
+  it('says every 400 the same way, never in the gateway\'s words (F-006)', async () => {
+    const placeTooLong =
+      'The place picked from the list is longer than we can keep, so nothing was recorded. Type the address in yourself instead of picking it from the list.'
+    for (const message of [placeTooLong, ['property foo should not exist']]) {
+      createFirstHouse.mockRejectedValueOnce({ response: { status: 400, data: { message } } })
+      const { unmount } = await toRestaurantStep()
+      fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+      expect((await screen.findByRole('alert')).textContent).toBe(W1)
+      expect(document.body.textContent).not.toContain('nothing was recorded')
+      expect(document.body.textContent).not.toContain('should not exist')
+      unmount()
+    }
+  })
+
+  it('says a 5xx or a lost answer as unconfirmed, with no raw text (F-006)', async () => {
+    const serverError = {
+      response: {
+        status: 500,
+        data: {
+          message:
+            'Restaurant creation failed: duplicate key value violates unique constraint "idx_restaurants_google_place_id"',
+        },
+      },
+    }
+    const noAnswer = Object.assign(new Error('timeout of 20000ms exceeded'), {
+      isAxiosError: true,
+      request: {},
+    })
+    for (const cause of [serverError, noAnswer]) {
+      createFirstHouse.mockRejectedValueOnce(cause)
+      const { unmount } = await toRestaurantStep()
+      fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+      expect((await screen.findByRole('alert')).textContent).toBe(UNCONFIRMED)
+      for (const raw of ['duplicate', 'idx_', 'constraint', 'timeout'])
+        expect(document.body.textContent).not.toContain(raw)
+      unmount()
+    }
+  })
+
+  it('says a press after a lost answer met the house it opened (F-006, OPEN-2 unbuilt)', async () => {
+    createFirstHouse
+      .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { isAxiosError: true, request: {} }))
+      .mockRejectedValueOnce({
+        response: { status: 409, data: { message: 'This account already has a house' } },
+      })
+    await toRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(UNCONFIRMED)
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(ALREADY_OPEN))
+    // Where the person goes from here is F-006 OPEN-2; nothing moves yet.
+    expect(screen.getByRole('heading', { name: 'Your restaurant' })).toBeInTheDocument()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('keeps the fallback for anything that is not an answer (F-006)', async () => {
+    createFirstHouse.mockRejectedValue(new Error('createFirstHouse is not a function'))
+    await toRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(NOT_CREATED)
+    expect(document.body.textContent).not.toContain('not a function')
+  })
+
+  it('says a throttled press in words (F-006)', async () => {
+    createFirstHouse.mockRejectedValue({ response: { status: 429, data: { message: 'ThrottlerException' } } })
+    await toRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Too many tries in a short time. Wait a minute, then try again.',
+    )
+  })
+
+  it('opens the menu step when only the account details failed to load (F-006)', async () => {
+    createFirstHouse.mockResolvedValue({ restaurantId: 'house-1', detailsLoaded: false })
+    await toRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    expect(screen.getByRole('status').textContent).toBe(
+      'The house is open. Your account details did not load just now; they will catch up the next time the page loads.',
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows SMS consent only after a mobile number is entered', async () => {

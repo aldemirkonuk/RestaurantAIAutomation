@@ -144,16 +144,26 @@ export interface UnverifiedDelivery {
   severity: 'fresh' | 'stale' | 'overdue'
 }
 
+/**
+ * What `POST /procurement/documents` answers. An owner or a manager gets the
+ * whole parse. Anyone else gets only the keys the door reads (`docType`,
+ * `docNumber`, and per line `lineNo`, `qty`, `uom`, `packSize`, `qtyBottles`)
+ * and `amountsWithheld: true`: the figure keys are OMITTED, never null
+ * (`document-money-gate.ts`, `doorEchoOf`). So every key the door does not
+ * read is optional here, and `readPaper` must not lean on one.
+ */
 export interface UploadedDocument {
   documentId: string | null
   duplicate: boolean
+  /** Present, and true, only when the parse was cut to the door's keys. */
+  amountsWithheld?: true
   document: {
     docType: string
     docNumber: string | null
-    total: number | null
-    tiesOut: boolean | null
-    confidence: number
-    warnings: string[]
+    total?: number | null
+    tiesOut?: boolean | null
+    confidence?: number
+    warnings?: string[]
     lines: unknown[]
   } | null
 }

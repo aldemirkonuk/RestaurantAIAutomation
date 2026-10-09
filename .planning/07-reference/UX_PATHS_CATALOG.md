@@ -224,7 +224,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Sort row (8 fields, asc/desc; Type cycles orderings). List view: sortable column headers.
 - ✅ Row/card click → Wine Detail modal; Add to Inventory; Reorder (rich modal: qty steppers, presets, price mode, provider multi-select + search + select-all, notes, "save for recurring" + frequency); Remove from library (`confirm`).
 - ✅ Grid-only favorite star toggle. Pagination (24 grid / 50 list).
-- ✅ Add Wine → selection modal → single-label scan (`AddWineModal`, mocked detection) or Menu Scanner.
+- ✅ Add Wine → selection modal → single-label scan (`AddWineModal`, mocked detection) or Menu Scanner. [2026-10-03, ADR 0314: the single-label scan is deleted — its "detection" was a fixed Château Latour 2010 for any photo. Menu Scanner is the photo path.]
 - ❌ Grid/table bulk multi-select is stubbed but has no UI. Single "Add Wine" and menu-scan batch-add don't persist. Reorder does a full-page reload to `/orders`. Favorite exists in grid but not list.  `[⏳ unverified 2026-07-31]`
 
 ## 7. Sommelier AI (`pages/SommelierAI.tsx`, route `/sommelier`)

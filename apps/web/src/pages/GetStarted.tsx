@@ -14,6 +14,7 @@ import { currencyForCountry } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
+import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
 
 type Step = 'you' | 'restaurant' | 'menu' | 'reading'
 /** Whether this account may start a house here, decided once on arrival (SETUP-01). */
@@ -78,6 +79,7 @@ export default function GetStarted() {
   const [pendingResult, setPendingResult] = useState<MenuImportResult | null>(null)
   const [sourceImage, setSourceImage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [dropping, setDropping] = useState(false)
 
@@ -206,7 +208,7 @@ export default function GetStarted() {
     setSaving(true)
     setError(null)
     try {
-      await createFirstHouse({
+      const opened = await createFirstHouse({
         restaurantName: restaurantName.trim(),
         address: address.trim(),
         city: city.trim(),
@@ -220,9 +222,12 @@ export default function GetStarted() {
         longitude: placePoint?.longitude,
         googlePlaceId: placePoint?.googlePlaceId,
       })
+      setNotice(opened.detailsLoaded ? null : HOUSE_OPEN_DETAILS_LATER)
       setStep('menu')
-    } catch (cause: any) {
-      setError(cause?.response?.data?.message || cause?.message || 'We could not create the house.')
+    } catch (cause) {
+      // Said from the status alone (F-006). A 409 means an earlier press
+      // opened the house; going on into it from here is F-006 OPEN-2.
+      setError(houseNotOpened(cause, 'arrival'))
     } finally {
       setSaving(false)
     }
@@ -418,6 +423,7 @@ export default function GetStarted() {
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The first inscription</p>
         <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
         <p className="mt-3 text-[#6d685f]">Drop the menu here. Mudavym will set it as the house&apos;s own list.</p>
+        {notice && <p role="status" className="mt-3 text-sm text-[#6d685f]">{notice}</p>}
         <button
           type="button"
           onClick={() => setMenuMethod(menuMethod === 'photo' ? null : 'photo')}
