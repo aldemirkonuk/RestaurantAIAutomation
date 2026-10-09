@@ -15,6 +15,7 @@ import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { ExpoPushService } from "../push/expo-push.service";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
+import { leavesNoOwner, NO_OWNER_LEFT } from "../restaurants/last-owner";
 import { noticeToHouseLeads, recordAccessChange } from "./access-audit";
 import { recordOwnWageChange, type OwnWageReceipt } from "./own-wage-notice";
 import {
@@ -1293,6 +1294,11 @@ export class TeamService {
         .eq("user_id", member.user_id)
         .eq("restaurant_id", restaurantId);
       if (revokeErr) {
+        // The database's own last-owner guard (F-582): two owners removing
+        // each other at once both pass the count above; this one is refused,
+        // and the person keeps their access.
+        if (leavesNoOwner(revokeErr))
+          throw new ForbiddenException(NO_OWNER_LEFT);
         this.logger.error(
           `deleteMember could not revoke access for ${member.user_id} in ` +
             `${restaurantId}: ${revokeErr.message}`,
@@ -1368,7 +1374,7 @@ export class TeamService {
         : {
             title: "Your access to this restaurant was removed",
             message:
-              actor.via === "TeamService.deleteMember" || actor.role !== "owner"
+              actor.role !== "owner"
                 ? "A manager removed you from the team, so your access to this restaurant has ended. " +
                   "Talk to them if this was not expected."
                 : "An owner removed you from the team, so your access to this restaurant has ended. " +

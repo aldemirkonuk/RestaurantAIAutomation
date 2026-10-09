@@ -438,6 +438,15 @@ describe('"Replace with" on the remove dialog', () => {
     ...over,
   });
 
+  // F-578: the notice the removal files sits under the house they just lost,
+  // which they can no longer open, so the dialog does not promise they are
+  // told; it says what they will see.
+  it('does not promise the removed person a message they cannot read', () => {
+    openRemove({ doubleBooking: 'refuse', unjudged: 0, shifts: [] });
+    expect(screen.queryByText(/they are notified/)).toBeNull();
+    expect(screen.getByText(/They are not sent a message: they find their access has ended/)).toBeTruthy();
+  });
+
   it('lists everyone else on the roster, and with nobody chosen removes as before (open pool)', async () => {
     openRemove({ doubleBooking: 'refuse', unjudged: 0, shifts: [] });
     const picker = screen.getByRole('combobox', { name: 'Replace with' });

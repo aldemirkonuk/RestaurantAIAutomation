@@ -869,7 +869,8 @@ export function MemberSheet({
             <p style={{ margin: 0 }}>
               Removing {resolved?.known ? resolved.text : 'this person'} deletes their
               roster row and revokes their access to this restaurant. It is written to the
-              audit log and they are notified. This cannot be undone. Their shifts that have
+              audit log. They are not sent a message: they find their access has ended the
+              next time they open the app. This cannot be undone. Their shifts that have
               not started yet go back to the open pool, for someone else to take. A shift they
               are working right now is cut at this minute: the part worked stays theirs, paid
               for the time worked, and the rest of it goes to the open pool. Their past
