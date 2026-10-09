@@ -596,7 +596,9 @@ export class MenusService {
       .from("restaurant_menus")
       .insert({
         restaurant_id: restaurantId,
-        name: "Wine List",
+        // Named for what it holds, every drink on the menu, not only the
+        // wine (F-018). Versions kept before this keep their old name.
+        name: "Drinks list",
         menu_type: "beverage",
         status: "draft",
         cadence: dto.cadence ?? null,

@@ -833,6 +833,8 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
     expect(version).toMatchObject({
       restaurant_id: "rest-1",
+      // F-018: named for every drink it holds, not "Wine List".
+      name: "Drinks list",
       status: "draft",
       cadence: "monthly",
       menu_date: "2026-10-01",

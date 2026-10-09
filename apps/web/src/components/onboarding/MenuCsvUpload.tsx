@@ -12,6 +12,7 @@ import {
   isTabular,
   resetFileInput,
 } from '../../lib/uploadAccept'
+import { skippedMenuColumns } from '../../lib/menuColumns'
 
 interface MenuCsvUploadProps {
   onSuccess: MenuImportSuccess
@@ -234,6 +235,9 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
     : 0
 
   const hasFile = !!csvContent || !!fileBase64
+  // F-017: a column the importer does not read is named before anything is
+  // read, not dropped in silence.
+  const skipped = csvContent ? skippedMenuColumns(headers) : []
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
@@ -295,12 +299,14 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
 
           {isExcelFile ? (
             <div className="mb-4 p-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
-              Excel file ready. We'll read the first sheet and match its columns
-              (Name, Producer, Vintage, Region, Grape, Glass/Bottle price) when you import.
+              Spreadsheet ready. We'll read its first sheet by these column names: Name,
+              Producer, Vintage, Region, Grape, Category, Glass, Bottle. Any other column is
+              not read.
             </div>
           ) : isScanFile ? (
             <div className="mb-4 p-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
-              Document ready. We'll extract your wines using AI when you import.
+              Ready. We'll read every drink on it when you import, and show you the lines
+              before anything is set.
             </div>
           ) : (
             preview.length > 0 && (
@@ -330,6 +336,13 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
                     ))}
                   </tbody>
                 </table>
+                {skipped.length > 0 && (
+                  <p role="status" className="px-3 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-100">
+                    {skipped.length === 1 ? 'This column will not be read' : 'These columns will not be read'}:{' '}
+                    <strong>{skipped.join(', ')}</strong>. A price column reads only when it is named
+                    Glass or Bottle — rename it in the file to keep it.
+                  </p>
+                )}
                 {estimatedTotal > 5 && (
                   <p className="px-3 py-2 text-xs text-gray-400 text-center border-t border-gray-100">
                     Showing first {rowCount} of {estimatedTotal} rows
@@ -354,9 +367,13 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             ) : queue.length > 0 ? (
               `Import ${queue.length + 1} files`
             ) : isExcelFile || isScanFile ? (
-              'Import wines'
+              'Import the menu'
+            ) : estimatedTotal === 1 ? (
+              'Import 1 line'
+            ) : estimatedTotal > 1 ? (
+              `Import ${estimatedTotal} lines`
             ) : (
-              `Import ${estimatedTotal > 0 ? estimatedTotal : ''} wines`
+              'Import the menu'
             )}
           </Button>
         </div>
