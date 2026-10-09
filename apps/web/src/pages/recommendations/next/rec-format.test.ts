@@ -40,6 +40,29 @@ function entry(over: Partial<Parameters<typeof receiptFor>[0]> = {}) {
   };
 }
 
+describe('handOf — a link carries only what its page reads (F-478)', () => {
+  const RULES = [
+    'stockout_imminent', 'dead_stock_capital', 'plowhorse_repricing', 'puzzle_activation',
+    'vendor_concentration', 'revenue_concentration', 'spend_acceleration', 'pairing_promotion',
+    'staff_spread', 'margin_to_target', 'margin_advice_blind', 'margin_target_unset',
+    'price_locks_to_review', 'goal_behind_g-1',
+  ];
+  const CATEGORIES = ['inventory', 'purchasing', 'risk', 'sales', 'efficiency', 'staff', 'basket', 'goals', 'other'];
+
+  it('no hand carries rec, from or draft — no page reads them', () => {
+    for (const href of [
+      ...RULES.map((r) => handOf(r, 'sales').href),
+      ...CATEGORIES.map((c) => handOf('unknown_rule', c).href),
+    ]) {
+      expect(href, href).not.toMatch(/[?&](rec|from|draft)=/);
+    }
+  });
+
+  it('"Draft the PO" opens the order composer, which /orders reads from ?new=1', () => {
+    expect(handOf('stockout_imminent', 'purchasing')).toMatchObject({ href: '/orders?new=1', label: 'Draft the PO' });
+  });
+});
+
 describe('receiptFor', () => {
   it('stays silent on a dismissed entry — that leaf renders its own fuller sentence directly, from the real stored key', () => {
     const lines = receiptFor(entry({ status: 'dismissed' }), false);
@@ -291,9 +314,9 @@ describe('a key named on Object.prototype is an unknown rule, never an inherited
 
   it.each(PROTO_KEYS)('the hand of the rule %s falls back to its category, then Reports', (key) => {
     expect(handOf(key, 'inventory')).toMatchObject({ label: 'Open Inventory', where: 'Inventory' });
-    expect(handOf(key, 'inventory').href).toMatch(/^\/inventory\?rec=/);
+    expect(handOf(key, 'inventory').href).toBe('/inventory');
     expect(handOf(key, key)).toMatchObject({ label: 'Open Reports', where: 'Reports' });
-    expect(handOf(key, key).href).toMatch(/^\/reports\?rec=/);
+    expect(handOf(key, key).href).toBe('/reports');
   });
 
   /*

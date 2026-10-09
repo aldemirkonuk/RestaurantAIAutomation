@@ -194,8 +194,8 @@ function CardFoot({ offer, showDraft, onOpenDetail, onDismiss, onRestore, busy }
         Details
       </button>
       {showDraft && !dismissed && (
-        <a className="pn-btn pn-btn--primary" href={`/orders?new=1&promo=${encodeURIComponent(offer.id)}`}>
-          Draft an order
+        <a className="pn-btn pn-btn--primary" href="/orders?new=1">
+          Write a new order
         </a>
       )}
       <button

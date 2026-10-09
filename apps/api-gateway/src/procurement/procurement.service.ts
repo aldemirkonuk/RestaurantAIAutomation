@@ -4685,6 +4685,13 @@ export class ProcurementService {
   /**
    * How far above the last unit price this house paid for the same item.
    *
+   * "Paid" means the goods arrived (`ORDER_GOODS_ARRIVED_STATUSES`): a
+   * cancelled, rejected or still-pending order states a price nobody paid, so
+   * a half-price draft that was thrown away must not make a normal reorder
+   * read as a jump, and an unpriced draft must not hide a real one (F-479).
+   * A short delivery counts — its unit price is the price paid, only the
+   * quantity is short.
+   *
    * `pct: null` when there is no earlier price — a first purchase has no
    * premium, it has no comparison at all, and `new_vendor` is the rule that
    * covers it. `unread: true` when the read itself failed, which is a different
@@ -4707,6 +4714,8 @@ export class ProcurementService {
         .eq("restaurant_id", restaurantId)
         .eq("inventory_id", inventoryId)
         .neq("id", orderId)
+        .in("status", [...ORDER_GOODS_ARRIVED_STATUSES])
+        .not("final_price", "is", null)
         .order("requested_at", { ascending: false })
         .limit(1);
       if (error) return { pct: null, unread: true };
@@ -4776,7 +4785,15 @@ export class ProcurementService {
           if (prior !== undefined && prior > 0) {
             premium = ((unit - prior) / prior) * 100;
           }
-          lastPriceByItem.set(raw.inventory_id, unit);
+          // Only a price that was paid becomes the next order's comparison —
+          // the same rule `readPricePremium` reads by (F-479).
+          if (
+            ORDER_GOODS_ARRIVED_STATUSES.includes(
+              raw.status as ProcurementOrderStatus,
+            )
+          ) {
+            lastPriceByItem.set(raw.inventory_id, unit);
+          }
         }
 
         rows.push({

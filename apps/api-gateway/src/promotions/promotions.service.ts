@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { MenusService } from "../menus/menus.service";
+import { houseToday, readHouseZone } from "../common/house-day";
 import {
   VENDOR_PRICE_OBSERVATIONS,
   scopePriceRegisterRead,
@@ -377,9 +378,14 @@ export class PromotionsService {
     opts: { includeDismissed?: boolean; now?: Date } = {},
   ): Promise<PromotionsReadDto> {
     const now = opts.now ?? new Date();
-    const today = isoDate(now);
-    const since = isoDate(new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000));
     const db = this.databaseService.supabase;
+    // "Today" is the house's own day (F-481): an offer that runs until the
+    // 25th is still open on the evening of the 25th in Los Angeles, when the
+    // UTC day has already turned. A house with no zone set keeps the UTC day,
+    // as before — an offer's end is a date, so at worst it reads one day off.
+    const { zone } = await readHouseZone(db, restaurantId);
+    const today = zone ? houseToday(zone, now) : isoDate(now);
+    const since = isoDate(new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000));
 
     // 1. The offers — this house's, live, on the table unless asked for the
     //    put-away ones too. Read whole (keyset pages), then ordered ends-soonest

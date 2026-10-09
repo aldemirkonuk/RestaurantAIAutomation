@@ -113,6 +113,7 @@ function makeDb(opts: DbOpts) {
         },
         neq: () => q,
         in: () => q,
+        not: () => q,
         gte: () => q,
         limit: () => q,
         order(col: string, o?: { ascending?: boolean }) {

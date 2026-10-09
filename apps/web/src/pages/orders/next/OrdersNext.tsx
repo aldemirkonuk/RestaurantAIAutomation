@@ -209,6 +209,27 @@ export default function OrdersNext() {
     setOrdering(true);
   };
 
+  /* `?new=1` opens the composer — the command palette's "New order", a
+     vendor offer's "Write a new order" (F-477) and a recommendation's "Draft
+     the PO" (F-478). Waits for the vendor list, so the add-a-vendor-first
+     guard still speaks; the param is then dropped, so a reload or Back does
+     not reopen it. The composer starts empty: it has no way to be handed a
+     vendor or lines yet. */
+  const askedToWrite = searchParams.get('new') === '1';
+  useEffect(() => {
+    if (!askedToWrite || vendorList.isLoading) return;
+    openTheComposer();
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('new');
+        return p;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedToWrite, vendorList.isLoading]);
+
   return (
     <div
       className="mudavym min-h-screen"

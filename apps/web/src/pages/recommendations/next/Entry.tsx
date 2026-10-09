@@ -1037,7 +1037,7 @@ export default function Entry(props: EntryProps) {
               ? `${briefs ? 'The tap is the briefing: it is recorded at once, stays standing, and can be undone for a few seconds. ' : ''}The work is done in ${e.hand.where}, which only ${held.opens} can open ${EM} this card keeps you informed, and nothing here sends you there.`
               : briefs
               ? `The tap is the briefing: it is recorded at once, stays standing, and can be undone for a few seconds. “${e.hand.label}” opens ${e.hand.where} and records nothing.`
-              : (e.hand.href ?? '').includes('draft=1')
+              : (e.hand.href ?? '').includes('new=1')
                 ? `Opens ${e.hand.where} to draft it by hand ${EM} nothing is recorded here, and the order is sealed there with the hold.`
                 : `Opens ${e.hand.where} ${EM} nothing is recorded here until the work is done there.`}
           </p>
