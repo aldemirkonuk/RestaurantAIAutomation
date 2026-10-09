@@ -13,12 +13,12 @@ import { Logger } from "@nestjs/common";
  * What happens to the row, row by row:
  * - It was made FOR this invite (created at or after the invite) and has no
  *   history: it is deleted. It was only ever a stand-in.
- * - It has history (shifts, leave, wage changes, sales, credentials, schedule
- *   receipts) or it existed before the invite (an owner's own roster row the
- *   invite was attached to by email): it is kept, and only its link to the
- *   dead invite is cleared. Deleting it would take records with it —
- *   `server_sales` and `schedule_receipts` still cascade from `team_members`
- *   (baseline `:13462`, `:13478`) — so whether such a person stays is the
+ * - It has history (any row in `HISTORY_COLUMNS`: shifts, leave, wages,
+ *   sales, credentials, availability, areas, crew notes, swaps, breaks) or it
+ *   existed before the invite (an owner's own roster row the invite was
+ *   attached to by email): it is kept, and only its link to the dead invite is
+ *   cleared. Deleting it would take records with it — most of those tables
+ *   still cascade from `team_members` — so whether such a person stays is the
  *   owner's call, made with Remove.
  *
  * Every write is pinned to `user_id IS NULL` and the same `invite_id`, so a
@@ -29,15 +29,31 @@ import { Logger } from "@nestjs/common";
  * Returns the ids of the rows it deleted.
  */
 
-/** Tables that hold a person's record by `member_id`. */
-const HISTORY_TABLES = [
-  "shifts",
-  "time_off_requests",
-  "team_member_wage_changes",
-  "server_sales",
-  "schedule_receipts",
-  "team_certifications",
-] as const;
+/**
+ * Every column that holds a roster row's record. It is every foreign key to
+ * `team_members` in `supabase/migrations` — the spec reads them and fails when
+ * one is missing here — plus the four `member_id` columns that dropped or never
+ * had theirs so the record outlives a removal (shifts and leave `20261201110200`,
+ * credentials `20261201110210`, wages `20261201110000`).
+ */
+export const HISTORY_COLUMNS: ReadonlyArray<readonly [table: string, column: string]> = [
+  ["shifts", "member_id"],
+  ["time_off_requests", "member_id"],
+  ["team_member_wage_changes", "member_id"],
+  ["team_certifications", "member_id"],
+  // Cascade from team_members: a delete would take these with it.
+  ["server_sales", "member_id"],
+  ["schedule_receipts", "member_id"],
+  ["team_availability", "member_id"],
+  ["house_area_members", "member_id"],
+  ["team_note_recipients", "member_id"],
+  ["team_note_deliveries", "member_id"],
+  ["house_away_held", "member_id"],
+  // Set to null by a delete: the record would lose who it was about.
+  ["swap_requests", "from_member_id"],
+  ["swap_requests", "to_member_id"],
+  ["shift_breaks", "covered_by"],
+];
 
 export interface DeadInvite {
   id: string;
@@ -134,11 +150,11 @@ export async function retireLapsedInvitePlaceholders(
 
 /** Any record held for this roster row. A read that fails counts as history. */
 async function hasHistory(sb: any, memberId: string): Promise<boolean> {
-  for (const table of HISTORY_TABLES) {
+  for (const [table, column] of HISTORY_COLUMNS) {
     const { count, error } = await sb
       .from(table)
       .select("*", { count: "exact", head: true })
-      .eq("member_id", memberId);
+      .eq(column, memberId);
     if (error || (count ?? 0) > 0) return true;
   }
   return false;

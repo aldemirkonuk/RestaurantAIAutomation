@@ -1,4 +1,7 @@
+import { readdirSync, readFileSync } from "fs";
+import { join } from "path";
 import { TeamService } from "./team.service";
+import { HISTORY_COLUMNS } from "./invite-placeholders";
 import { MembersService } from "../restaurants/members.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
@@ -139,5 +142,87 @@ describe("MembersService.revokeInvite — the revoked invite's stand-in goes wit
     await new MembersService(asDatabaseService(db)).revokeInvite(OWNER, RID, "inv-1");
 
     expect(ids(db)).toEqual(["m-arrived", "m-owner"]);
+  });
+});
+
+describe("a stand-in with any record on it is kept, never deleted", () => {
+  const recordOn = (table: string, column: string, memberId: string) => ({
+    [table]: [{ id: "r1", restaurant_id: RID, [column]: memberId }],
+  });
+
+  it.each(HISTORY_COLUMNS.map(([t, c]) => [t, c]))(
+    "an expired invite keeps a stand-in held by %s.%s",
+    async (table, column) => {
+      const db = seed({
+        organization_invites: [invite("inv-1", { expires_at: PAST })],
+        team_members: [
+          { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
+          standIn("m-held", "inv-1"),
+        ],
+        ...recordOn(table, column, "m-held"),
+      });
+      await new TeamService(asDatabaseService(db)).listMembers(OWNER, RID);
+
+      expect(ids(db)).toEqual(["m-held", "m-owner"]);
+      expect(db.tables[table]).toHaveLength(1);
+      const row = db.tables.team_members.find((m: any) => m.id === "m-held");
+      expect(row?.invite_id).toBeNull();
+    },
+  );
+
+  it.each(HISTORY_COLUMNS.map(([t, c]) => [t, c]))(
+    "a revoke keeps a stand-in held by %s.%s",
+    async (table, column) => {
+      const db = seed({
+        organization_invites: [invite("inv-1")],
+        team_members: [
+          { id: "m-owner", restaurant_id: RID, user_id: OWNER, display_name: "Ada", created_at: BEFORE },
+          standIn("m-held", "inv-1"),
+        ],
+        ...recordOn(table, column, "m-held"),
+      });
+      await new MembersService(asDatabaseService(db)).revokeInvite(OWNER, RID, "inv-1");
+
+      expect(ids(db)).toEqual(["m-held", "m-owner"]);
+      expect(db.opsOn("team_members", "delete")).toEqual([]);
+    },
+  );
+});
+
+/**
+ * Every foreign key to `team_members` in the migrations, as `table.column`.
+ * A new table that points at a person is history the moment it exists; this
+ * fails until it is named in HISTORY_COLUMNS, so a stand-in carrying a row of
+ * it is never deleted with that row cascading away unseen.
+ */
+function foreignKeysToTeamMembers(): string[] {
+  const dir = join(__dirname, "../../../../supabase/migrations");
+  const found = new Set<string>();
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql"))) {
+    const sql = readFileSync(join(dir, file), "utf8").replace(/--[^\n]*/g, "");
+    for (const stmt of sql.split(";")) {
+      if (!/references\s+(?:public\.)?"?team_members"?\s*\(/i.test(stmt)) continue;
+      const table = /(?:create\s+table(?:\s+if\s+not\s+exists)?|alter\s+table(?:\s+only)?(?:\s+if\s+exists)?)\s+(?:public\.)?"?(\w+)/i.exec(stmt)?.[1];
+      const ref = /references\s+(?:public\.)?"?team_members"?\s*\(/gi;
+      let m: RegExpExecArray | null;
+      while ((m = ref.exec(stmt))) {
+        const before = stmt.slice(0, m.index);
+        const column =
+          /foreign\s+key\s*\(\s*"?(\w+)"?[^)]*\)\s*$/i.exec(before)?.[1] ??
+          /(?:^|[,(])\s*"?(\w+)"?\s+uuid(?:\s+not\s+null)?\s*$/i.exec(before)?.[1];
+        expect([file, table, column]).toEqual([file, expect.any(String), expect.any(String)]);
+        found.add(`${table}.${column}`);
+      }
+    }
+  }
+  return [...found].sort();
+}
+
+describe("HISTORY_COLUMNS covers every table that points at a roster row", () => {
+  it("names every foreign key to team_members in the migrations", () => {
+    const named = new Set(HISTORY_COLUMNS.map(([t, c]) => `${t}.${c}`));
+    const fks = foreignKeysToTeamMembers();
+    expect(fks.length).toBeGreaterThanOrEqual(10);
+    expect(fks.filter((fk) => !named.has(fk))).toEqual([]);
   });
 });
