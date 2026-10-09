@@ -899,6 +899,13 @@ export function useRecommendationsNextData(): RecommendationsData {
     let cancelled = false;
     setGoals(undefined);
     if (!rid) return;
+    // Staff are not sent for the goals at all (F-299): the gateway refuses
+    // them the read, and the page draws none of a goal's figures for them.
+    // An empty list, not a failed one: nothing was asked, so nothing failed.
+    if (!canSeeGoals) {
+      setGoals([]);
+      return;
+    }
     apiClient
       .get<Record<string, unknown>[]>(`/analytics/goals/${rid}?status=active`)
       .then(({ data }) => {
@@ -910,7 +917,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     return () => {
       cancelled = true;
     };
-  }, [rid]);
+  }, [rid, canSeeGoals]);
 
   /**
    * The masthead's margin (sketch 122 direction B): the house's active goals
@@ -920,7 +927,8 @@ export function useRecommendationsNextData(): RecommendationsData {
   useEffect(() => {
     let cancelled = false;
     setGoalBook(undefined);
-    if (!rid) return;
+    // The margin draws the held sentence for staff, never this book (F-299).
+    if (!rid || !canSeeGoals) return;
     apiClient
       .get<Record<string, unknown>>(`/analytics/goals/${rid}/progress?status=active`)
       .then(({ data }) => {
@@ -932,17 +940,17 @@ export function useRecommendationsNextData(): RecommendationsData {
     return () => {
       cancelled = true;
     };
-  }, [rid]);
+  }, [rid, canSeeGoals]);
 
   /** Kept for the goal sheet: a re-read after a failed one, never a second read. */
   const loadGoals = useCallback(() => {
-    if (!rid || goals !== undefined) return;
+    if (!rid || !canSeeGoals || goals !== undefined) return;
     setGoals(null);
     apiClient
       .get<Record<string, unknown>[]>(`/analytics/goals/${rid}?status=active`)
       .then(({ data }) => setGoals(Array.isArray(data) ? data.map(toGoal) : []))
       .catch(() => setGoals(null));
-  }, [rid, goals]);
+  }, [rid, canSeeGoals, goals]);
 
   /* ── the till window, for the ribbon's record marks ──────────────────── */
 

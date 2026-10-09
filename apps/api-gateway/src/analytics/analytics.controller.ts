@@ -95,6 +95,25 @@ function parseHorizon(raw?: string): number | undefined {
  * of someone else's note (round 5, `not_your_note`) — says it in the body
  * next to the sentence, so a page can word that one refusal as its own.
  */
+/**
+ * WHO READS THE HOUSE'S GOALS (F-299, 2026-10-08). A goal's target and its
+ * progress are money-class: /ask refuses `goals.targets` to staff
+ * (`reading-catalogue.ts`, ADR 0253's money rule), and the goal writes below
+ * are owners' and managers' (`@Roles`). The three goal reads now say the same,
+ * in words rather than RolesGuard's bare "Forbidden resource", because Reports
+ * shows a refused read's own sentence. Exact like RolesGuard: the token's role
+ * at this house, owner or manager, so admin is refused too (ADR 0164).
+ */
+function assertMayReadGoals(user?: { role?: string | null }): void {
+  const role = user?.role ? String(user.role).trim().toLowerCase() : "";
+  if (role === "owner" || role === "manager") return;
+  throw new HttpException(
+    "The house's goals and their figures are kept for its owners and managers. " +
+      "Ask one of them to go through the goals with you.",
+    HttpStatus.FORBIDDEN,
+  );
+}
+
 function refusedAct(error: ActRefused): HttpException {
   const status = error.forbidden ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST;
   if (!error.code) return new HttpException(error.message, status);
@@ -808,7 +827,9 @@ export class AnalyticsController {
   async listGoals(
     @Param("restaurantId") restaurantId: string,
     @Query("status") status?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
+    assertMayReadGoals(user);
     return this.goalsService.listGoals(restaurantId, status || "active");
   }
 
@@ -845,7 +866,9 @@ export class AnalyticsController {
   async listGoalsWithProgress(
     @Param("restaurantId") restaurantId: string,
     @Query("status") status?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
+    assertMayReadGoals(user);
     try {
       return await this.goalsService.listGoalsWithProgress(
         restaurantId,
@@ -919,7 +942,9 @@ export class AnalyticsController {
   async getGoalProgress(
     @Param("restaurantId") restaurantId: string,
     @Param("goalId") goalId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
+    assertMayReadGoals(user);
     try {
       return await this.goalsService.getGoalProgress(restaurantId, goalId);
     } catch (error) {

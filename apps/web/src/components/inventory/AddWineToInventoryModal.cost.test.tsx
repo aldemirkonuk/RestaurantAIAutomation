@@ -6,9 +6,14 @@ import { AddWineToInventoryModal } from "./AddWineToInventoryModal";
 
 const useWines = vi.hoisted(() => vi.fn());
 const useStorageLocations = vi.hoisted(() => vi.fn());
+// The person's house role: a manager unless a test says otherwise (F-312).
+const mayAct = vi.hoisted(() => ({ value: true }));
 
 vi.mock("../../hooks/queries", () => ({ useWines }));
 vi.mock("../../hooks/useStorageLocations", () => ({ useStorageLocations }));
+vi.mock("../../hooks/useMayActForTheHouse", () => ({
+  useMayActForTheHouse: () => mayAct.value,
+}));
 vi.mock("../../stores/restaurantSettingsStore", () => ({
   useRestaurantSettingsStore: () => ({ measurementUnit: "ml" }),
 }));
@@ -28,6 +33,7 @@ const wine = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mayAct.value = true;
   useWines.mockReturnValue({ data: [wine] });
   useStorageLocations.mockReturnValue({ locations: [] });
 });
@@ -127,5 +133,40 @@ describe("AddWineToInventoryModal — an unknown cost is expressible", () => {
 
     await waitFor(() => expect(onAddWine).toHaveBeenCalled());
     expect(onAddWine.mock.calls[0][4].costPerBottle).toBe(42);
+  });
+});
+
+/**
+ * F-312 (2026-10-08): what the house paid is an owner's or a manager's to set,
+ * and the gateway refuses a cost or a free sample from staff. The field and the
+ * sample tick are not offered to staff; their wine goes in with its cost unknown.
+ */
+describe("AddWineToInventoryModal — the cost is a manager's (F-312)", () => {
+  it("[REVERT-FAILS] does not offer staff the cost or the free-sample tick, and sends no cost", async () => {
+    mayAct.value = false;
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+
+    expect(screen.queryByPlaceholderText(/leave blank if unknown/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Free sample/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("cost-held")).toHaveTextContent(
+      "What the house paid for this wine is entered by a manager or an owner.",
+    );
+
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    const volumeFields = onAddWine.mock.calls[0][4];
+    expect("costPerBottle" in volumeFields).toBe(false);
+    expect("isSample" in volumeFields).toBe(false);
+  });
+
+  it("offers a manager the cost and the free-sample tick", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    expect(screen.getByPlaceholderText(/leave blank if unknown/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Free sample/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("cost-held")).not.toBeInTheDocument();
   });
 });
