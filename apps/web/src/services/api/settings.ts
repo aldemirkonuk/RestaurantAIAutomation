@@ -53,6 +53,17 @@ export interface HouseCurrency {
   statedAt: string | null;
 }
 
+/**
+ * The house's clock, as `GET /settings/time-zone` answers it. Only what a
+ * reader outside Settings needs; the settings page owns the full register
+ * (`HouseTimeZoneRegister`). `zone: null` is an unanswered question,
+ * `readable: false` a failed read.
+ */
+export interface HouseTimeZone {
+  zone: string | null;
+  readable: boolean;
+}
+
 export const settingsApi = {
   /**
    * Read-only. Used by the receiving door to OFFER the house's code beside a
@@ -61,6 +72,12 @@ export const settingsApi = {
    */
   async houseCurrency(): Promise<HouseCurrency> {
     const response = await apiClient.get<HouseCurrency>('/settings/currency');
+    return response.data;
+  },
+
+  /** Read-only. /orders files its month figure on this clock (F-230). */
+  async houseTimeZone(): Promise<HouseTimeZone> {
+    const response = await apiClient.get<HouseTimeZone>('/settings/time-zone');
     return response.data;
   },
 

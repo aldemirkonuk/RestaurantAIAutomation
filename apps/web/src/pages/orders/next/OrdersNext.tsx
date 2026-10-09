@@ -284,7 +284,7 @@ export default function OrdersNext() {
                 color: 'var(--ink-4, #665D50)',
               }}
             >
-              {monthName.format(now)} so far
+              {data.month.label ?? monthName.format(now)} so far
             </span>
             {/* One line per currency, never one sum across them (F-341). */}
             {(data.month.thisMonthByCurrency?.length ?? 0) > 1 ? (
