@@ -28,11 +28,15 @@ export type MatchVerdict =
   | "qty_short"
   | "rejected"
   | "partial"
-  | "unmatched";
+  | "unmatched"
+  /** Agreed and billed in two different moneys: the price was not compared (F-341). */
+  | "currency_differs";
 
 export interface MatchInput {
   orderedQty: number;
   poUnitPrice?: number | null;
+  /** The money the agreed price is in (F-341). Absent compares as before. */
+  poCurrency?: string | null;
   invoiceQty?: number | null;
   invoiceUnitPrice?: number | null;
   invoiceCurrency?: string | null;
@@ -51,7 +55,57 @@ export interface MatchResult {
   effectiveUnitCost: number | null;
 }
 
-export const money = (n: number) => `$${n.toFixed(2)}`;
+/** A three-letter code, trimmed and in capitals, or null when none is stated. */
+const codeOf = (c: string | null | undefined): string | null => {
+  const x = (c ?? "").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(x) ? x : null;
+};
+
+/**
+ * A figure in the money it is in (F-341), as the gateway's `moneyIn` says it.
+ * This printed a bare "$" until 2026-10-09, so a euro or lira delivery was
+ * checked under a dollar sign. No money stated says so, never USD.
+ */
+export const money = (n: number, currency: string | null | undefined) => {
+  const code = codeOf(currency);
+  if (code) {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: code,
+        useGrouping: false,
+      }).format(n);
+    } catch {
+      return `${n.toFixed(2)} ${code}`;
+    }
+  }
+  return `${n.toFixed(2)} (currency not recorded)`;
+};
+
+/**
+ * Both moneys stated and not the same: the price is not compared (F-341).
+ * Mirrors the gateway's `differentMoney` in invoice-match.ts.
+ */
+export function differentMoney(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const x = (a ?? "").trim().toUpperCase();
+  const y = (b ?? "").trim().toUpperCase();
+  return x !== "" && y !== "" && x !== y;
+}
+
+/** The gateway's sentence for a price held because the two moneys differ. */
+export function notComparedWords(
+  agreedIn: string | null | undefined,
+  billedIn: string | null | undefined,
+): string {
+  return (
+    `The price was not compared: the agreement is in ${(agreedIn ?? "").trim().toUpperCase()} ` +
+    `and the invoice is in ${(billedIn ?? "").trim().toUpperCase()}, and nothing here converts one ` +
+    `into the other. You decide whether this price is right.`
+  );
+}
 
 /** Compare as cents so 22.000000001 still equals 22. */
 const priceEquals = (a: number, b: number) =>
@@ -72,10 +126,15 @@ export function computeMatch(input: MatchInput): MatchResult {
   const overrideReason = (input.priceOverrideReason ?? "").trim();
 
   const bothPriced = poUnitPrice != null && invoiceUnitPrice != null;
+  // Two stated, different moneys are never compared as numbers (F-341); the
+  // price is held for the owner instead of passing or asking for an override.
+  const currencyDiffers =
+    bothPriced && differentMoney(input.poCurrency, input.invoiceCurrency);
   const priceVerified =
     bothPriced &&
+    !currencyDiffers &&
     priceEquals(poUnitPrice as number, invoiceUnitPrice as number);
-  const priceMismatch = bothPriced && !priceVerified;
+  const priceMismatch = bothPriced && !currencyDiffers && !priceVerified;
   const requiresOverride = priceMismatch && overrideReason.length === 0;
 
   const backorderQty = Math.max(0, orderedQty - acceptedQty);
@@ -87,6 +146,7 @@ export function computeMatch(input: MatchInput): MatchResult {
   else if (receivedQty > (invoiceQty as number)) verdict = "qty_over";
   else if (receivedQty < (invoiceQty as number)) verdict = "qty_short";
   else if (rejectedQty > 0) verdict = "rejected";
+  else if (currencyDiffers) verdict = "currency_differs";
   else if (!fullyFulfilled) verdict = "partial";
   else verdict = "matched";
 
@@ -98,14 +158,14 @@ export function computeMatch(input: MatchInput): MatchResult {
       ? ((invoiceQty as number) * invoiceUnitPrice) / acceptedQty
       : null;
 
-  const summary = (() => {
+  const headline = (() => {
     switch (verdict) {
       case "matched":
         return priceVerified
           ? `All ${acceptedQty} accepted; the stated prices match.`
           : `All ${acceptedQty} accepted; the entered quantities match. Price verification is pending.`;
       case "price_variance":
-        return `Billed ${(invoiceUnitPrice as number).toFixed(2)} against a stated ${(poUnitPrice as number).toFixed(2)} per bottle. The server will check the agreement and currency.`;
+        return `Billed ${money(invoiceUnitPrice as number, input.invoiceCurrency)} against a stated ${money(poUnitPrice as number, input.poCurrency)} per bottle. The server will check the agreement.`;
       case "qty_over":
         return `${receivedQty} arrived but only ${invoiceQty} were billed.`;
       case "qty_short":
@@ -118,8 +178,14 @@ export function computeMatch(input: MatchInput): MatchResult {
         return `${acceptedQty} of ${orderedQty} accepted, ${backorderQty} still outstanding.`;
       case "unmatched":
         return `${acceptedQty} counted; no invoice quantities entered on this form.`;
+      case "currency_differs":
+        return `All ${acceptedQty} accepted. Agreed ${money(poUnitPrice as number, input.poCurrency)}, billed ${money(invoiceUnitPrice as number, input.invoiceCurrency)} per bottle.`;
     }
   })();
+  // The sentence rides along whichever verdict headlines, as on the gateway.
+  const summary = currencyDiffers
+    ? `${headline} ${notComparedWords(input.poCurrency, input.invoiceCurrency)}`
+    : headline;
 
   return {
     verdict,
@@ -173,6 +239,11 @@ const VERDICT_TONES: Record<MatchVerdict, VerdictTone> = {
     label: "No invoice yet",
     bg: color.fill,
     text: color.inkTertiary,
+  },
+  currency_differs: {
+    label: "Different money",
+    bg: color.warningTint,
+    text: color.warning,
   },
 };
 
