@@ -1695,8 +1695,10 @@ export class PosHubService {
     // always did. Only for a line its own key booked unchanged: a line a
     // correction added or changed was mirrored under the correction's key,
     // and writing it again under its own would count the sale twice.
+    // A voided check never writes demand (main never did), even when its
+    // sale's row once failed: the sale it would record did not stand.
     const replayConsumption = async (l: PlannedStockLine, amount: number) => {
-      if (ledger?.ok && ledger.byKey.get(l.idem) === amount) {
+      if (!isVoid && ledger?.ok && ledger.byKey.get(l.idem) === amount) {
         await consume(l, l.consumed, l.consumedQty, l.idem);
       }
       tally.alreadyBooked++;

@@ -376,6 +376,23 @@ describe("a replayed check repairs a consumption row that failed (F-395 audit)",
     expect(consumption.size).toBe(1);
   });
 
+  it("never writes a sale's missing row when the check comes back voided", async () => {
+    const { service, stock, consumption } = makeDb({ consumptionFailures: 1 });
+
+    await service.ingest("r1", "generic_webhook", [
+      check("c-1", [line("caymus", 2)]),
+    ]);
+    const voided = () =>
+      service.ingest("r1", "generic_webhook", [
+        check("c-1", [line("caymus", 2)], { voided: true }),
+      ]);
+    await voided();
+    await voided();
+
+    expect(stock["inv-caymus"].sealed).toBe(12);
+    expect(consumption.size).toBe(0);
+  });
+
   it("does not write a line a correction added again under its own key", async () => {
     const { service, consumption } = makeDb();
     const first = [line("caymus", 1)];
