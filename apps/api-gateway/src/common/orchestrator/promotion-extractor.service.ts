@@ -7,6 +7,7 @@ import { extractPromotion } from "./promo-extract";
 import { computePriority } from "./priority";
 import { InboundResponderService } from "./inbound-responder.service";
 import { OWNER_AND_MANAGER } from "../tenant/live-membership";
+import { houseToday, readHouseZone } from "../house-day";
 
 interface PromoContext {
   conversationId: string;
@@ -47,7 +48,14 @@ export class PromotionExtractorService {
         looksPromotional(ctx.subject, ctx.body);
       if (!likelyPromo) return { stored: false, reason: "not promotional" };
 
-      const promo = extractPromotion(ctx.subject, ctx.body);
+      // The house's clock dates the offer (F-322): on an LA evening the
+      // server's UTC date is already tomorrow. No zone keeps the server's.
+      const { zone } = await readHouseZone(
+        this.databaseService.supabase,
+        ctx.restaurantId,
+      );
+      const now = new Date();
+      const promo = extractPromotion(ctx.subject, ctx.body, now, zone);
       if (!promo) return { stored: false, reason: "no promo terms extracted" };
 
       // Dedup: same provider already has an active promo with this signature?
@@ -132,7 +140,9 @@ export class PromotionExtractorService {
           conditions,
           discount_value,
           applicable_wines: applicableWines,
-          start_date: new Date().toISOString().slice(0, 10),
+          start_date: zone
+            ? houseToday(zone, now)
+            : now.toISOString().slice(0, 10),
           end_date: promo.valid_until,
           is_active: true,
           source_conversation_id: ctx.conversationId,

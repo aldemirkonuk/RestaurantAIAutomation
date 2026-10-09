@@ -21,6 +21,8 @@ import type { ScheduledTenant } from "./scheduled-tenants.service";
 // ORDER_ARRIVED_STATUSES went with the payment-due reminder — it was that job's
 // only consumer here. See the tombstone below and ADR 0077.
 import { ORDER_IN_FLIGHT_STATUSES } from "../procurement/order-status";
+import { houseToday, shiftHouseDay } from "../common/house-day";
+import { resolveZone } from "../calendar/zoned-time";
 import {
   RECURRING_REMINDER_FLAG,
   describeRecurringOrder,
@@ -629,9 +631,18 @@ export class ScheduledTasksService implements OnModuleInit {
         if (!ordersMode.enabled) return;
 
         const client = this.databaseService.getClient();
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowStr = tomorrow.toISOString().split("T")[0];
+        // "Tomorrow" is the house's (F-325): this cron fires at 17:00 New
+        // York, which is past midnight in Istanbul, where UTC's tomorrow is
+        // already today. With no zone it stays UTC's. The fire hour itself is
+        // still New York's for every house (OD-90).
+        const zone = resolveZone(tenant.timezone);
+        const tomorrowStr = zone
+          ? shiftHouseDay(houseToday(zone), 1)
+          : (() => {
+              const tomorrow = new Date();
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              return tomorrow.toISOString().split("T")[0];
+            })();
 
         // Query orders with delivery expected tomorrow
         const read = this.readRows<any>(

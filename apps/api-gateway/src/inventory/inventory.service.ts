@@ -27,6 +27,11 @@ import {
   type HouseItemResearchView,
 } from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
+import { readHouseZone, shiftHouseDay } from "../common/house-day";
+import {
+  houseWallAt,
+  type WallReading,
+} from "../notifications/low-stock-digest-clock";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -752,7 +757,18 @@ export class InventoryService {
       );
     }
 
-    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    // The house's clock files each movement (F-323): on the server's UTC
+    // clock an LA dinner pour (17:00-23:59) read as 00:00-06:59, fell below
+    // the 16:00 slot and was dropped, and tonight's bars sat on tomorrow. No
+    // zone keeps the server's clock, as before.
+    const { zone } = await readHouseZone(client, restaurantId);
+    const wallAt = (d: Date): WallReading =>
+      zone
+        ? houseWallAt(d, zone)
+        : {
+            dateKey: d.toISOString().slice(0, 10),
+            minutes: d.getHours() * 60 + d.getMinutes(),
+          };
     const outMap = new Map<string, number>();
     const inMap = new Map<string, number>();
     // heat[dow][slot]: dow 0=Mon..6=Sun, slot 0..7 = 16:00..23:00. Depletion
@@ -775,14 +791,15 @@ export class InventoryService {
       const isOut = qty < 0 || ["sale", "pour", "glass_pour"].includes(type);
       const magnitude = Math.abs(qty);
       const ts = new Date(row.created_at);
-      const k = dayKey(ts);
+      const wall = wallAt(ts);
+      const k = wall.dateKey;
 
       if (isOut) {
         totalOut += magnitude;
         if (ts >= fourteenDaysAgo)
           outMap.set(k, (outMap.get(k) ?? 0) + magnitude);
-        const dow = (ts.getDay() + 6) % 7; // Mon=0
-        const slot = ts.getHours() - 16;
+        const dow = (new Date(`${k}T00:00:00Z`).getUTCDay() + 6) % 7; // Mon=0
+        const slot = Math.floor(wall.minutes / 60) - 16;
         if (slot >= 0 && slot < 8) heat[dow][slot] += magnitude;
       } else {
         // EVERY inbound writer, named or not: a delivery booking
@@ -797,10 +814,9 @@ export class InventoryService {
 
     // Dense 14-day series (zero-filled) so the chart has a stable x-axis.
     const daily: Array<{ date: string; out: number; in: number }> = [];
+    const today = wallAt(new Date()).dateKey;
     for (let i = 13; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const k = dayKey(d);
+      const k = shiftHouseDay(today, -i);
       daily.push({ date: k, out: outMap.get(k) ?? 0, in: inMap.get(k) ?? 0 });
     }
 

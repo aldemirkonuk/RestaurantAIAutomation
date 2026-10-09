@@ -8,6 +8,8 @@
  * onto the `provider_promotions` CHECK enum, dedups on `signature`, and writes + notifies.
  */
 
+import { houseToday } from "../house-day";
+
 /** Must stay EXACTLY in sync with the provider_promotions.promo_type CHECK constraint. */
 export type PromoType =
   | "volume_discount"
@@ -100,11 +102,28 @@ function num(v: string | undefined | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Today as a calendar date, held at UTC midnight so the `getUTC*` reads below
+ * are plain calendar arithmetic. With a zone it is the house's date (F-322: an
+ * LA evening is already tomorrow on the server's UTC clock, so "ends Oct 8"
+ * rolled a year and "today only" landed on tomorrow); without one it is the
+ * server's own date, as before.
+ */
+function calendarToday(now: Date, zone?: string | null): Date {
+  if (zone) {
+    const [y, m, d] = houseToday(zone, now).split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d));
+  }
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
 /** Best-effort validity date → ISO (YYYY-MM-DD). Handles "Month DD", "M/D[/YY]", weekday, this week(end). */
 function parseValidUntil(
   text: string,
-  now: Date = new Date(),
+  at: Date = new Date(),
+  zone?: string | null,
 ): { iso: string | null; raw: string | null } {
+  const now = calendarToday(at, zone);
   const t = text.toLowerCase();
   const cue =
     /(?:valid\s+(?:through|until|thru|til)|through|thru|until|til|ends?|expires?(?:\s+on)?|offer\s+ends?|by)\s+([a-z0-9,/\s]{3,22}?)(?:[.!,;)]|\s+(?:only|est|pst|edt|at)\b|$)/i.exec(
@@ -137,8 +156,11 @@ function parseValidUntil(
     );
     const d = parseInt(md[2], 10);
     if (mi >= 0 && d >= 1 && d <= 31) {
-      let y = now.getFullYear();
-      if (mi < now.getMonth() || (mi === now.getMonth() && d < now.getDate()))
+      let y = now.getUTCFullYear();
+      if (
+        mi < now.getUTCMonth() ||
+        (mi === now.getUTCMonth() && d < now.getUTCDate())
+      )
         y += 1;
       return { iso: iso(y, mi, d), raw };
     }
@@ -148,12 +170,13 @@ function parseValidUntil(
   if (slash) {
     const m = parseInt(slash[1], 10) - 1;
     const d = parseInt(slash[2], 10);
-    let y = slash[3] ? parseInt(slash[3], 10) : now.getFullYear();
+    let y = slash[3] ? parseInt(slash[3], 10) : now.getUTCFullYear();
     if (y < 100) y += 2000;
     if (m >= 0 && m <= 11 && d >= 1 && d <= 31) {
       if (
         !slash[3] &&
-        (m < now.getMonth() || (m === now.getMonth() && d < now.getDate()))
+        (m < now.getUTCMonth() ||
+          (m === now.getUTCMonth() && d < now.getUTCDate()))
       )
         y += 1;
       return { iso: iso(y, m, d), raw };
@@ -162,9 +185,9 @@ function parseValidUntil(
   // "this weekend" / "this week" → upcoming Sunday
   if (/\bthis\s+week(?:end)?\b|\bweekend\b/i.test(t)) {
     const d = new Date(now);
-    d.setDate(now.getDate() + ((7 - now.getDay()) % 7));
+    d.setUTCDate(now.getUTCDate() + ((7 - now.getUTCDay()) % 7));
     return {
-      iso: iso(d.getFullYear(), d.getMonth(), d.getDate()),
+      iso: iso(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
       raw: raw ?? "this week",
     };
   }
@@ -183,16 +206,16 @@ function parseValidUntil(
   );
   if (wd >= 0) {
     const d = new Date(now);
-    const delta = (wd - now.getDay() + 7) % 7 || 7;
-    d.setDate(now.getDate() + delta);
+    const delta = (wd - now.getUTCDay() + 7) % 7 || 7;
+    d.setUTCDate(now.getUTCDate() + delta);
     return {
-      iso: iso(d.getFullYear(), d.getMonth(), d.getDate()),
+      iso: iso(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
       raw: raw ?? wdNames[wd],
     };
   }
   if (/\btoday\s+only\b|\bends?\s+today\b/i.test(t)) {
     return {
-      iso: iso(now.getFullYear(), now.getMonth(), now.getDate()),
+      iso: iso(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
       raw: raw ?? "today",
     };
   }
@@ -212,6 +235,8 @@ export function extractPromotion(
   subject: string | null | undefined,
   body: string | null | undefined,
   now: Date = new Date(),
+  /** The house's zone, so "today", a weekday and the year roll are read on its clock. */
+  zone?: string | null,
 ): ExtractedPromo | null {
   const rawText = `${subject ?? ""}\n${body ?? ""}`;
   if (!rawText.trim()) return null;
@@ -262,7 +287,11 @@ export function extractPromotion(
     );
   const promo_code = codeM ? codeM[1] : null;
 
-  const { iso: valid_until, raw: valid_text } = parseValidUntil(rawText, now);
+  const { iso: valid_until, raw: valid_text } = parseValidUntil(
+    rawText,
+    now,
+    zone,
+  );
 
   // Nothing promotional at all → not a promo.
   const anySignal =

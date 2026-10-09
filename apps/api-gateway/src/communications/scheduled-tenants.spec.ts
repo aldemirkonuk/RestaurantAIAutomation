@@ -497,9 +497,11 @@ describe("scheduled jobs — a failed recipient lookup is a FAILED run, not an e
     return d.toISOString().split("T")[0];
   })();
 
-  function build(opts: { failing: string[] }) {
+  function build(opts: { failing: string[]; timezone?: string }) {
     const tenants = makeTenantsService({
-      restaurants: [restaurant("r1", "One")],
+      restaurants: [
+        restaurant("r1", "One", { timezone: opts.timezone ?? "UTC" }),
+      ],
       flags: [optIn("r1")],
       legacyId: null,
     });
@@ -536,9 +538,17 @@ describe("scheduled jobs — a failed recipient lookup is a FAILED run, not an e
       },
       opts.failing,
     );
+    const deliveryWindow: string[] = [];
     const client = {
       from: (table: string) => {
         const b = base.from(table);
+        if (table === "procurement_orders") {
+          const gte = b.gte;
+          b.gte = jest.fn((col: string, v: string) => {
+            deliveryWindow.push(v);
+            return gte(col, v);
+          });
+        }
         b.insert = jest.fn((rows: any) => {
           inserts.push({ table, rows });
           return Promise.resolve({ data: null, error: null });
@@ -585,8 +595,47 @@ describe("scheduled jobs — a failed recipient lookup is a FAILED run, not an e
         .spyOn((service as any).logger, level as any)
         .mockImplementation(() => {});
     }
-    return { service, gmailService, inserts, tenantErrors, jobErrors };
+    return {
+      service,
+      gmailService,
+      inserts,
+      tenantErrors,
+      jobErrors,
+      deliveryWindow,
+    };
   }
+
+  // F-325: the cron fires at 17:00 New York, 00:00 in Istanbul. "Tomorrow" is
+  // the house's, so at that midnight it is the day after the one just begun.
+  it("an Istanbul house at its midnight asks for the house's tomorrow", async () => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] });
+    jest.setSystemTime(new Date("2026-10-08T21:00:00Z"));
+    try {
+      const { service, deliveryWindow } = build({
+        failing: [],
+        timezone: "Europe/Istanbul",
+      });
+      await service.sendDeliveryETANotifications();
+      expect(deliveryWindow).toEqual(["2026-10-10T00:00:00"]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("an LA house late in the evening asks for the house's tomorrow", async () => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] });
+    jest.setSystemTime(new Date("2026-10-09T05:30:00Z"));
+    try {
+      const { service, deliveryWindow } = build({
+        failing: [],
+        timezone: "America/Los_Angeles",
+      });
+      await service.sendDeliveryETANotifications();
+      expect(deliveryWindow).toEqual(["2026-10-09T00:00:00"]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 
   it("[REVIEW-FAILS] an email-only job fails the tenant with recipient_lookup_failed and sends nothing", async () => {
     const { service, gmailService, tenantErrors, jobErrors } = build({

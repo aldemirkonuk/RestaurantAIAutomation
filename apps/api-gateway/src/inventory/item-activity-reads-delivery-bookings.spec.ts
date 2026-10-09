@@ -120,3 +120,60 @@ describe("item activity reads what the delivery door booked", () => {
     expect(activity.totalIn28d).toBe(0);
   });
 });
+
+/**
+ * F-323: the heatmap and the 14-day bars file a pour on the house's clock.
+ * Thursday 2026-10-08 20:00 in Los Angeles is Friday 03:00 UTC: on the server
+ * clock it fell below the 4pm slot and was dropped, and its bar sat on Friday.
+ */
+describe("item activity on the house's clock", () => {
+  let db: MockDb;
+  let inventory: InventoryService;
+  const pourAt = (iso: string) => ({
+    restaurant_id: REST,
+    inventory_id: ITEM,
+    quantity_change: -1,
+    transaction_type: "pour",
+    created_at: iso,
+  });
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    inventory = new InventoryService(db.client as unknown as DatabaseService);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("an LA dinner pour lands on Thursday 8pm, and on Thursday's bar", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-09T06:30:00Z"));
+    db.answers.restaurants = {
+      data: { timezone: "America/Los_Angeles", country: "US" },
+      error: null,
+    };
+    db.answers.inventory_transactions = {
+      data: [pourAt("2026-10-09T03:00:00Z")],
+      error: null,
+    };
+    const a = await inventory.getItemActivity(REST, ITEM);
+    // Thu = 3 (Mon=0), 20:00 = slot 4 (16:00 = 0).
+    expect(a.heat[3][4]).toBe(1);
+    expect(a.daily[a.daily.length - 1].date).toBe("2026-10-08");
+    expect(a.daily[a.daily.length - 1].out).toBe(1);
+  });
+
+  it("an Istanbul 17:00 pour lands on the 5pm cell, not dropped", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-08T22:30:00Z"));
+    db.answers.restaurants = {
+      data: { timezone: "Europe/Istanbul", country: "TR" },
+      error: null,
+    };
+    db.answers.inventory_transactions = {
+      data: [pourAt("2026-10-08T14:00:00Z")],
+      error: null,
+    };
+    const a = await inventory.getItemActivity(REST, ITEM);
+    expect(a.heat[3][1]).toBe(1);
+    // 01:30 Friday in Istanbul: today's bar is Friday.
+    expect(a.daily[a.daily.length - 1].date).toBe("2026-10-09");
+  });
+});

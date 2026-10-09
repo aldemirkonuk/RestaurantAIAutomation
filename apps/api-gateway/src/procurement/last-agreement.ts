@@ -40,6 +40,8 @@
  * bottle.
  */
 
+import { houseDayOf } from "../common/house-day";
+
 export type LastAgreementState = "found" | "none" | "unreadable" | "ambiguous";
 
 export interface LastAgreementLine {
@@ -87,13 +89,16 @@ function priceWords(line: LastAgreementLine): string {
   return `${money} per ${line.priceUom}${pack}`;
 }
 
-/** The date, as a day rather than a timestamp; the dash when there is none. */
-function dayWords(iso: string | null): string {
+/**
+ * The date, as a day rather than a timestamp; the dash when there is none.
+ * The day is the house's when its zone is known (F-328: an order sealed at
+ * 18:00 in Los Angeles read as the next day on UTC's clock), else UTC's.
+ */
+function dayWords(iso: string | null, zone: string | null): string {
   if (!iso) return "on a date the row does not carry";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? "on a date the row does not carry"
-    : `on ${d.toISOString().slice(0, 10)}`;
+  if (Number.isNaN(d.getTime())) return "on a date the row does not carry";
+  return `on ${zone ? houseDayOf(d, zone) : d.toISOString().slice(0, 10)}`;
 }
 
 /**
@@ -112,6 +117,8 @@ export function lastAgreementAnswer(
   readFailed: boolean,
   vendorName?: string | null,
   ambiguous = false,
+  /** The house's zone, so the agreed day is the house's. */
+  zone: string | null = null,
 ): LastAgreement {
   const vendor = vendorName?.trim() ? vendorName.trim() : "this vendor";
 
@@ -155,7 +162,7 @@ export function lastAgreementAnswer(
     agreedOn: line.agreedOn,
     orderNumber: line.orderNumber,
     sentence:
-      `Last agreed with ${vendor} ${dayWords(line.agreedOn)}: ` +
+      `Last agreed with ${vendor} ${dayWords(line.agreedOn, zone)}: ` +
       `${priceWords(line)}` +
       (line.orderNumber ? ` (order ${line.orderNumber})` : "") +
       `. Offered, not applied — change it if the vendor has moved.`,
