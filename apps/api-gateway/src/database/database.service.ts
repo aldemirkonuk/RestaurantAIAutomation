@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { readWholeWindow } from "../common/read-whole-window";
 
 @Injectable()
 export class DatabaseService implements OnModuleInit {
@@ -39,17 +40,20 @@ export class DatabaseService implements OnModuleInit {
   }
 
   // Helper methods for common operations
+  // Read whole (ADR 0292, F-293): an unranged select stopped at PostgREST's
+  // 1,000 rows with a 200, so a house past 1,000 active items lost wines from
+  // /inventory with no notice.
   async getRestaurantInventory(restaurantId: string) {
-    const { data, error } = await this.supabase
-      .from("restaurant_inventory")
-      .select(
-        "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true);
-
-    if (error) throw error;
-    return data;
+    return readWholeWindow("The inventory list", () =>
+      this.supabase
+        .from("restaurant_inventory")
+        .select(
+          "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
+          { count: "exact" },
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true),
+    );
   }
 
   async getLowStockItems(restaurantId: string) {

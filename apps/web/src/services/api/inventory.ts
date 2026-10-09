@@ -137,8 +137,9 @@ export async function getItemActivity(
 
 /**
  * Ledger reconcile — sets the physical count as truth (clears shadow, writes
- * an auditable transaction). Also powers manual +/- adjustments: pass the
- * resulting actual count.
+ * an auditable transaction). NOT for manual +/- adjustments: a count built
+ * from the page's cached stock undoes whatever moved since (F-292); those go
+ * through adjustStock below.
  */
 export async function reconcileItem(
   inventoryId: string,
@@ -148,6 +149,28 @@ export async function reconcileItem(
     `/inventory-ledger/inventory/${inventoryId}/reconcile`,
     body
   );
+  return response.data;
+}
+
+/**
+ * A manual +/- adjustment, sent as the change itself (F-292). The server adds
+ * it to the stock it holds at that moment, so two managers each logging "-1
+ * Breakage" take off two bottles, and a sale that landed after the page loaded
+ * is not put back. A take-off below zero is refused, never clamped.
+ */
+export async function adjustStock(
+  inventoryId: string,
+  body: { wineId?: string; quantityChange: number; reason: string; idempotencyKey: string }
+): Promise<unknown> {
+  const response = await apiClient.post('/inventory-ledger/transactions', {
+    inventoryId,
+    ...(body.wineId ? { wineId: body.wineId } : {}),
+    transactionType: 'adjustment',
+    source: 'manual',
+    quantityChange: body.quantityChange,
+    reason: body.reason,
+    idempotencyKey: body.idempotencyKey,
+  });
   return response.data;
 }
 

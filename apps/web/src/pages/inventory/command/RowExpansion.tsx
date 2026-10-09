@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getItemActivity, recordPour, reconcileItem, transferStock, fetchAuctionLotRecords } from '../../../services/api/inventory'
+import { adjustStock, getItemActivity, recordPour, reconcileItem, transferStock, fetchAuctionLotRecords } from '../../../services/api/inventory'
 import { getOrders } from '../../../services/api/orders'
 import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
@@ -22,6 +22,7 @@ import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDa
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
+import { newClientCountId } from '../../../lib/spotCountOutbox'
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -108,6 +109,25 @@ export function RowExpansion({
   const reconcile = useMutation({
     mutationFn: (p: { actualCount: number; notes: string }) =>
       reconcileItem(inventoryId, { wineId: item.id, actualCount: p.actualCount, notes: p.notes }),
+    onSuccess: () => {
+      invalidate()
+      toast.success('Ledger updated')
+      setDelta(0)
+    },
+    onError: (e: any) => toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
+  })
+
+  // Manual adjust sends the change, not a new total (F-292). A total built from
+  // the list's cached stock (refreshed once a minute) lost a second manager's
+  // "-1 Breakage" and put back bottles the till had sold since the page loaded.
+  const adjust = useMutation({
+    mutationFn: (p: { quantityChange: number; reason: string }) =>
+      adjustStock(inventoryId, {
+        wineId: item.id || undefined,
+        quantityChange: p.quantityChange,
+        reason: p.reason,
+        idempotencyKey: `adjust:${inventoryId}:${newClientCountId()}`,
+      }),
     onSuccess: () => {
       invalidate()
       toast.success('Ledger updated')
@@ -357,9 +377,10 @@ export function RowExpansion({
       <div className="flex flex-wrap items-center gap-3 mt-3.5 bg-white border border-gray-100 rounded-xl px-4 py-3">
         <button
           onClick={() => setShowSpotCount(true)}
+          title="Count this wine on every shelf at once"
           className="h-9 px-4 border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg"
         >
-          Spot count
+          Count every shelf
         </button>
 
         <span className="w-px h-6 bg-gray-200" />
@@ -374,8 +395,8 @@ export function RowExpansion({
         </div>
         <ThemedSelect value={reason} options={ADJUST_REASONS} onChange={setReason} align="left" />
         <button
-          onClick={() => reconcile.mutate({ actualCount: Math.max(0, live + delta), notes: reason })}
-          disabled={delta === 0 || reconcile.isPending}
+          onClick={() => adjust.mutate({ quantityChange: delta, reason })}
+          disabled={delta === 0 || adjust.isPending}
           className="h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white text-xs font-bold rounded-lg disabled:opacity-40"
         >
           Apply

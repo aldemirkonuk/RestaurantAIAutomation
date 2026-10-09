@@ -10,13 +10,15 @@ const getItemActivity = vi.hoisted(() => vi.fn())
 const getOrders = vi.hoisted(() => vi.fn())
 const transferStock = vi.hoisted(() => vi.fn())
 const fetchAuctionLotRecords = vi.hoisted(() => vi.fn())
+const adjustStock = vi.hoisted(() => vi.fn())
+const reconcileItem = vi.hoisted(() => vi.fn())
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 vi.mock('../../../services/api/inventory', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/inventory')>(
     '../../../services/api/inventory',
   )
-  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords }
+  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem }
 })
 vi.mock('../../../services/api/orders', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/orders')>(
@@ -161,5 +163,92 @@ describe('RowExpansion — moving bottles between locations', () => {
 
     expect(transferStock.mock.calls[0][1].fromLocationId).toBe('loc-b')
     expect(transferStock.mock.calls[0][1].fromLocationId).not.toBeNull()
+  })
+})
+
+/**
+ * F-292: "Manual adjust" used to send a new TOTAL built from the list's cached
+ * stock (live + delta, clamped at zero) to the count endpoint, so two managers
+ * each logging "-1 Breakage" on a page showing 10 both sent 9 and one bottle was
+ * lost, and a sale since the page loaded was put back. It now sends the change.
+ */
+describe('RowExpansion — manual adjust sends the change, not a total', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+    adjustStock.mockResolvedValue({})
+  })
+
+  it('posts -1 as a change and never a count built from cached stock', async () => {
+    renderRow({ liveStock: 10 })
+
+    await userEvent.click(screen.getByRole('button', { name: '-' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    expect(reconcileItem).not.toHaveBeenCalled()
+    expect(adjustStock).toHaveBeenCalledTimes(1)
+    const [id, body] = adjustStock.mock.calls[0]
+    expect(id).toBe('inv-1')
+    expect(body).toMatchObject({ wineId: 'wine-1', quantityChange: -1, reason: 'Count correction' })
+    expect(body).not.toHaveProperty('actualCount')
+    expect(body.idempotencyKey).toMatch(/^adjust:inv-1:/)
+  })
+
+  it('does not clamp a take-off larger than the cached stock', async () => {
+    renderRow({ liveStock: 2 })
+
+    for (let i = 0; i < 5; i++) await userEvent.click(screen.getByRole('button', { name: '-' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    // The server holds the real stock and refuses below zero out loud; the page
+    // no longer books -2 while showing -5.
+    expect(adjustStock.mock.calls[0][1].quantityChange).toBe(-5)
+  })
+})
+
+/**
+ * F-294 + F-291: the count field opened pre-filled with the book figure, so a
+ * Submit without counting recorded "the books were right"; and the panel never
+ * said that the number replaces the total on every shelf.
+ */
+describe('RowExpansion — the count panel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('opens with an empty field and Submit off until a number is typed', async () => {
+    renderRow({ liveStock: 8 })
+
+    await userEvent.click(screen.getByRole('button', { name: /count every shelf/i }))
+
+    const field = screen.getByLabelText(/bottles counted/i) as HTMLInputElement
+    expect(field.value).toBe('')
+    expect(screen.getByRole('button', { name: /submit count/i })).toBeDisabled()
+    // The book figure is still there, as a hint beside the field.
+    expect(screen.getByText(/on the books, all shelves together: 8 bottles/i)).toBeInTheDocument()
+
+    await userEvent.type(field, '7')
+    expect(screen.getByRole('button', { name: /submit count/i })).toBeEnabled()
+  })
+
+  it('says the count is of every shelf, and how many places hold the wine', async () => {
+    renderRow({
+      liveStock: 11,
+      locations: [
+        { locationId: 'loc-a', qty: 8, wac: null },
+        { locationId: 'loc-b', qty: 3, wac: null },
+      ],
+    } as Partial<InventoryItem>)
+
+    await userEvent.click(screen.getByRole('button', { name: /count every shelf/i }))
+
+    const scope = screen.getByTestId('spot-count-scope')
+    expect(scope).toHaveTextContent(/every bottle of this wine in every room/i)
+    expect(scope).toHaveTextContent(/in 2 places/i)
   })
 })

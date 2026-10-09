@@ -6,7 +6,9 @@ import {
   Optional,
   Inject,
   forwardRef,
+  ServiceUnavailableException,
 } from "@nestjs/common";
+import { WHOLE_READ_PAGE } from "../common/read-whole-window";
 import { DatabaseService } from "../database/database.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
@@ -40,6 +42,44 @@ const ML_PER_OZ = 29.5735;
 
 function roundOz(ml: number): number {
   return Math.round((ml / ML_PER_OZ) * 10) / 10;
+}
+
+/**
+ * Read a view with no `id` column whole, by range (F-293). PostgREST stops
+ * every answer at 1,000 rows (supabase/config.toml:18) with a 200, so these
+ * joins were cut with no notice. Pages are ranged over a stable order and the
+ * exact count proves the read whole; an error, or a total that moved while the
+ * pages were read, refuses rather than answering from part of the view.
+ */
+async function readEveryRange(
+  what: string,
+  page: (from: number, to: number) => PromiseLike<{
+    data: any[] | null;
+    error: { message?: string } | null;
+    count?: number | null;
+  }>,
+): Promise<any[]> {
+  const rows: any[] = [];
+  let total: number | null = null;
+  for (let from = 0; ; ) {
+    const { data, error, count } = await page(from, from + WHOLE_READ_PAGE - 1);
+    if (error || !Array.isArray(data)) {
+      throw new ServiceUnavailableException(
+        `${what} could not be read (${error?.message ?? "no rows and no error"}). Nothing is shown from part of them.`,
+      );
+    }
+    if (total === null && typeof count === "number") total = count;
+    rows.push(...data);
+    from += data.length;
+    const more = total !== null ? rows.length < total : data.length === WHOLE_READ_PAGE;
+    if (!more || data.length === 0) break;
+  }
+  if (total !== null && rows.length !== total) {
+    throw new ServiceUnavailableException(
+      `${what} could not be read whole: ${rows.length} rows read against ${total} counted. Nothing is shown from part of them.`,
+    );
+  }
+  return rows;
 }
 
 @Injectable()
@@ -170,42 +210,60 @@ export class InventoryService {
   /** Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots. */
   private async fetchLotRollup(
     restaurantId: string,
+    refuseOnError = false,
   ): Promise<Map<string, any>> {
+    // F-293: read every page. This used to read only `data` with no range, so
+    // past 1,000 rows the later wines lost their lot totals and cost, and a
+    // failed read looked like "no lots". The list refuses on a failed read
+    // (`refuseOnError`); the single-item paths keep the old log-and-carry-on.
     const map = new Map<string, any>();
-    try {
-      const client = this.dbService.getClient();
-      const { data } = await client
+    const client = this.dbService.getClient();
+    const rows = await readEveryRange("The lot totals", (from, to) =>
+      client
         .from("inventory_lot_rollup")
         .select(
           "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
+          { count: "exact" },
         )
-        .eq("restaurant_id", restaurantId);
-      for (const r of data || []) map.set(r.inventory_id, r);
-    } catch (err: any) {
+        .eq("restaurant_id", restaurantId)
+        .order("inventory_id", { ascending: true })
+        .range(from, to),
+    ).catch((err: any) => {
+      if (refuseOnError) throw err;
       this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
-    }
+      return [] as any[];
+    });
+    for (const r of rows) map.set(r.inventory_id, r);
     return map;
   }
 
   /** Phase 2 multi-location: per-inventory live lot quantities by location. */
   private async fetchLocationBreakdown(
     restaurantId: string,
+    refuseOnError = false,
   ): Promise<Map<string, any[]>> {
+    // F-293: one row per (wine, location), so 400 wines in 3 rooms is 1,200
+    // rows; unpaged, the cap at 1,000 dropped shelves from the later wines.
     const map = new Map<string, any[]>();
-    try {
-      const client = this.dbService.getClient();
-      const { data } = await client
+    const client = this.dbService.getClient();
+    const rows = await readEveryRange("The shelf totals", (from, to) =>
+      client
         .from("inventory_location_breakdown")
-        .select("inventory_id, location_id, qty, wac")
+        .select("inventory_id, location_id, qty, wac", { count: "exact" })
         .eq("restaurant_id", restaurantId)
-        .eq("stock_state", "live");
-      for (const r of data || []) {
-        const arr = map.get(r.inventory_id) ?? [];
-        arr.push({ locationId: r.location_id, qty: r.qty, wac: r.wac });
-        map.set(r.inventory_id, arr);
-      }
-    } catch (err: any) {
+        .eq("stock_state", "live")
+        .order("inventory_id", { ascending: true })
+        .order("location_id", { ascending: true, nullsFirst: true })
+        .range(from, to),
+    ).catch((err: any) => {
+      if (refuseOnError) throw err;
       this.logger.warn(`fetchLocationBreakdown failed: ${err?.message}`);
+      return [] as any[];
+    });
+    for (const r of rows) {
+      const arr = map.get(r.inventory_id) ?? [];
+      arr.push({ locationId: r.location_id, qty: r.qty, wac: r.wac });
+      map.set(r.inventory_id, arr);
     }
     return map;
   }
@@ -229,14 +287,18 @@ export class InventoryService {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data, error } = await client
-        .from("inventory_analytics")
-        .select(
-          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
-        )
-        .eq("restaurant_id", restaurantId);
-      if (error) throw error;
-      for (const r of data || []) map.set(r.inventory_id, r);
+      const rows = await readEveryRange("The sales pace", (from, to) =>
+        client
+          .from("inventory_analytics")
+          .select(
+            "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .order("inventory_id", { ascending: true })
+          .range(from, to),
+      );
+      for (const r of rows) map.set(r.inventory_id, r);
       return { map, ok: true };
     } catch (err: any) {
       this.logger.warn(`fetchAnalytics failed: ${err?.message}`);
@@ -248,8 +310,8 @@ export class InventoryService {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
     const [data, rollup, locations, analytics] = await Promise.all([
       this.dbService.getRestaurantInventory(restaurantId),
-      this.fetchLotRollup(restaurantId),
-      this.fetchLocationBreakdown(restaurantId),
+      this.fetchLotRollup(restaurantId, true),
+      this.fetchLocationBreakdown(restaurantId, true),
       this.fetchAnalytics(restaurantId),
     ]);
     return (data || []).map((row) => ({

@@ -75,6 +75,14 @@ export class InventoryLedgerController {
       if (error.message?.includes("Insufficient stock")) {
         throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
       }
+      // apply_stock_movement refuses a take-off below zero (F-292: manual
+      // adjust now sends the change, so this is the refusal a manager meets).
+      if (error.message?.includes("stock would go negative")) {
+        throw new HttpException(
+          "That takes off more bottles than the books hold right now. Count the shelf, or take off fewer.",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
 
       throw new HttpException(
         error.message || "Failed to create transaction",
