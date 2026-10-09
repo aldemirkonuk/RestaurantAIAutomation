@@ -168,25 +168,37 @@ export function projectOccurrences(
     }
   }
 
+  // A month is clamped from the rule's own day each time, never from the
+  // occurrence before it: from the 31st, February is the 28th and March is the
+  // 31st again (F-307). Unanchored, the day is the start date's.
+  const monthDay = anchorDay ?? toParts(startsOn).d;
   const out = [fromParts(cur)];
   while (out.length < count) {
     let next = toParts(out[out.length - 1]);
     if (frequency === 'daily') next = addDays(next, 1);
     else if (frequency === 'weekly') next = addDays(next, 7);
     else if (frequency === 'biweekly') next = addDays(next, 14);
-    else if (frequency === 'monthly') next = addMonths(next, 1);
-    else next = addMonths(next, 3);
-    if (anchorDay !== null) {
-      next =
-        anchorKind(frequency) === 'weekday'
-          ? snapWeekday(next, anchorDay)
-          : anchorKind(frequency) === 'monthday'
-            ? snapMonthDay(next, anchorDay)
-            : next;
+    else if (frequency === 'monthly') next = snapMonthDay(addMonths({ ...next, d: 1 }, 1), monthDay);
+    else next = snapMonthDay(addMonths({ ...next, d: 1 }, 3), monthDay);
+    if (anchorDay !== null && anchorKind(frequency) === 'weekday') {
+      next = snapWeekday(next, anchorDay);
     }
     out.push(fromParts(next));
   }
   return out;
+}
+
+/**
+ * What an unanchored monthly rule says about its day. From the 29th, 30th or
+ * 31st a short month takes its last day, and the month after goes back.
+ */
+export function monthDaySentence(startsOn: string): string {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(startsOn) ? toParts(startsOn).d : 0;
+  if (d === 31) return 'On the last day of every month.';
+  if (d >= 29) {
+    return `On the ${ordinal(d)}, or the last day of a shorter month, then back to the ${ordinal(d)}.`;
+  }
+  return 'Measured from the start date.';
 }
 
 export interface RecurrenceSheetProps {
@@ -420,9 +432,9 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
                   style={field}
                 />
                 <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-                  {/* Why the ceiling is 28 and not 31, stated where it is imposed. */}
-                  29, 30 and 31 are refused rather than clamped: a date that silently
-                  moves twice a year is not a rule anybody agreed to.
+                  {/* The ceiling is 28; the month end is reached by the start date (F-307). */}
+                  For the end of the month, leave this empty and start on the 29th,
+                  30th or 31st: a shorter month takes its last day.
                 </span>
               </label>
             )}
@@ -456,8 +468,8 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
                 <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
                   {frequency === 'monthly' || frequency === 'quarterly'
                     ? anchorDay === null
-                      ? 'Measured from the start date.'
-                      : `On the ${ordinal(anchorDay)} of the month, clamped to the last day of a short one.`
+                      ? monthDaySentence(startsOn)
+                      : `On the ${ordinal(anchorDay)} of the month.`
                     : anchorDay === null
                       ? 'Measured from the start date.'
                       : `On ${WEEKDAYS[anchorDay]}.`}

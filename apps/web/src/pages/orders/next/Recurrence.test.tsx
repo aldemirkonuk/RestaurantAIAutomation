@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { toRow } from './useOrdersNextData';
-import { localTodayIso, recurrenceBlockedReason } from './RecurrenceSheet';
+import {
+  localTodayIso,
+  monthDaySentence,
+  projectOccurrences,
+  recurrenceBlockedReason,
+} from './RecurrenceSheet';
 import {
   RECURRENCE_UNREAD,
   emptyStationSentence,
@@ -376,5 +381,38 @@ describe("the start date's today (F-304, F-307)", () => {
     // 23:30 local on 7 Sep, whatever the zone the test runs in.
     expect(localTodayIso(new Date(2026, 8, 7, 23, 30))).toBe('2026-09-07');
     expect(localTodayIso(new Date(2026, 0, 1, 0, 5))).toBe('2026-01-01');
+  });
+});
+
+describe('a monthly rule from the end of the month (F-307)', () => {
+  it('goes back to the 31st after February, never keeps the 28th', () => {
+    expect(projectOccurrences('2026-01-31', 'monthly', null, 5)).toEqual([
+      '2026-01-31',
+      '2026-02-28',
+      '2026-03-31',
+      '2026-04-30',
+      '2026-05-31',
+    ]);
+    expect(projectOccurrences('2026-11-30', 'quarterly', null, 3)).toEqual([
+      '2026-11-30',
+      '2027-02-28',
+      '2027-05-30',
+    ]);
+  });
+
+  it('still lands an anchored rule on its day', () => {
+    expect(projectOccurrences('2026-01-20', 'monthly', 5, 3)).toEqual([
+      '2026-02-05',
+      '2026-03-05',
+      '2026-04-05',
+    ]);
+  });
+
+  it('tells the owner what a short month does, and never claims a clamp it does not make', () => {
+    expect(monthDaySentence('2026-01-31')).toBe('On the last day of every month.');
+    expect(monthDaySentence('2026-01-30')).toBe(
+      'On the 30th, or the last day of a shorter month, then back to the 30th.',
+    );
+    expect(monthDaySentence('2026-01-12')).toBe('Measured from the start date.');
   });
 });

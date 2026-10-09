@@ -45,7 +45,9 @@
  *      scheduling bug can have. Everything below is Y/M/D integers and
  *      `Date.UTC`, never a Date built from an ISO string.
  *   2. Adding a month to 31 January must CLAMP to 28/29 February, not roll into
- *      March. `addMonths` clamps.
+ *      March — and the month after must go back to the 31st, so the clamp is
+ *      taken from the series' own day each step (`nextOccurrenceOn`), never
+ *      from the clamped date before it.
  *
  * ===========================================================================
  * NO `default:` ARM
@@ -295,7 +297,7 @@ function snapToWeekday(
   return diff === 0 ? at : addDays(at.y, at.m, at.d, diff);
 }
 
-/** Snap to `anchorDay` as a day of the month, clamped to the month's length. */
+/** Snap to a day of the month (1..31), clamped to the month's length. */
 function snapToMonthDay(
   at: { y: number; m: number; d: number },
   anchorDay: number,
@@ -305,6 +307,12 @@ function snapToMonthDay(
 
 /**
  * The next occurrence AFTER `from`.
+ *
+ * `anchoredOn` is the start date the series was set from. An unanchored
+ * monthly or quarterly rule takes ITS day every time, clamped to each month on
+ * its own, never the previous occurrence's day: stepping from a clamped
+ * 28 February would make "monthly from the 31st" the 28th for ever after
+ * (F-307). Without it, the day of `from` is used.
  *
  * This is the only thing that advances a series. `recurrence_next_due_on` is a
  * stored column, but it is stored so the generator can find its work with an
@@ -316,11 +324,18 @@ export function nextOccurrenceOn(
   from: string,
   frequency: OrderRecurrenceFrequency,
   anchorDay: number | null | undefined,
+  anchoredOn?: string | null,
 ): RecurrenceResult<string> {
   const parsed = readCalendarDate(from);
   if (!parsed.ok) return parsed;
   const anchor = validateAnchorDay(frequency, anchorDay);
   if (!anchor.ok) return anchor;
+  let startDay = parsed.value.d;
+  if (anchoredOn !== null && anchoredOn !== undefined) {
+    const start = readCalendarDate(anchoredOn);
+    if (!start.ok) return start;
+    startDay = start.value.d;
+  }
 
   const { y, m, d } = parsed.value;
   const day = anchor.value;
@@ -343,18 +358,12 @@ export function nextOccurrenceOn(
       };
     }
     case "monthly": {
-      const stepped = addMonths(y, m, d, 1);
-      return {
-        ok: true,
-        value: isoOf(day === null ? stepped : snapToMonthDay(stepped, day)),
-      };
+      const stepped = addMonths(y, m, 1, 1);
+      return { ok: true, value: isoOf(snapToMonthDay(stepped, day ?? startDay)) };
     }
     case "quarterly": {
-      const stepped = addMonths(y, m, d, 3);
-      return {
-        ok: true,
-        value: isoOf(day === null ? stepped : snapToMonthDay(stepped, day)),
-      };
+      const stepped = addMonths(y, m, 1, 3);
+      return { ok: true, value: isoOf(snapToMonthDay(stepped, day ?? startDay)) };
     }
   }
   // Unreachable for a member of the union; reached only by a caller that cast
@@ -436,7 +445,12 @@ export function occurrencesFrom(
 
   const out = [isoOf(start.value)];
   while (out.length < count) {
-    const next = nextOccurrenceOn(out[out.length - 1], frequency, anchorDay);
+    const next = nextOccurrenceOn(
+      out[out.length - 1],
+      frequency,
+      anchorDay,
+      first,
+    );
     if (!next.ok) return next;
     out.push(next.value);
   }
