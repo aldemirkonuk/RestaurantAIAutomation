@@ -165,15 +165,19 @@ describe("iCal feed structure", () => {
   it("publishes a timed event in the RESTAURANT's zone, not the server's", async () => {
     // The defect: `new Date('2026-08-03T09:00:00')` resolves on the process
     // clock, so a 09:00 Palo Alto delivery published as 09:00Z — 02:00 local —
-    // for every subscriber. 09:00 PDT is 16:00Z, and this assertion is
-    // independent of the TZ the test runner happens to have.
+    // for every subscriber. Since F-376 the wall clock is published with the
+    // house's TZID (a UTC instant drifts an hour across DST in a repeat), and
+    // this assertion is independent of the TZ the test runner happens to have.
     const out = feed({
       restaurant: { id: "r1", name: "R", timezone: "America/Los_Angeles" },
       events: [EVENT],
     });
 
-    expect(out).toContain("DTSTART:20260803T160000Z");
-    expect(out).toContain("DTEND:20260803T170000Z");
+    expect(out).toContain("DTSTART;TZID=America/Los_Angeles:20260803T090000");
+    expect(out).toContain("DTEND;TZID=America/Los_Angeles:20260803T100000");
+    expect(out).toContain("BEGIN:VTIMEZONE\r\nTZID:America/Los_Angeles");
+    // DTSTAMP is still a UTC instant.
+    expect(out).toMatch(/DTSTAMP:\d{8}T\d{6}Z/);
   });
 
   it("uses the same restaurant's zone for a house that is not in the US", async () => {
@@ -182,8 +186,11 @@ describe("iCal feed structure", () => {
       events: [{ ...EVENT, start_time: "19:30", end_time: "21:00" }],
     });
 
-    expect(out).toContain("DTSTART:20260803T163000Z");
-    expect(out).toContain("DTEND:20260803T180000Z");
+    expect(out).toContain("DTSTART;TZID=Europe/Istanbul:20260803T193000");
+    expect(out).toContain("DTEND;TZID=Europe/Istanbul:20260803T210000");
+    // Istanbul has no DST: one observance, +0300 throughout.
+    expect(out).toContain("TZOFFSETFROM:+0300\r\nTZOFFSETTO:+0300");
+    expect(out).not.toContain("BEGIN:DAYLIGHT");
   });
 
   it("publishes a floating time when the restaurant has no zone, never a false UTC", async () => {
@@ -218,9 +225,7 @@ describe("iCal feed structure", () => {
     // server-local midnight shifts the published date by a day east of UTC.
     const out = feed({
       restaurant: { id: "r1", name: "R", timezone: "America/Los_Angeles" },
-      events: [
-        { ...EVENT, all_day: true, start_time: null, end_time: null },
-      ],
+      events: [{ ...EVENT, all_day: true, start_time: null, end_time: null }],
     });
 
     expect(out).toContain("DTSTART;VALUE=DATE:20260803");
@@ -248,5 +253,97 @@ describe("iCal feed structure", () => {
     expect(out).toMatch(/RRULE:.*FREQ=WEEKLY/);
     expect(out).toMatch(/BYDAY=MO,WE/);
     expect(out).toMatch(/COUNT=10/);
+  });
+
+  // F-376: a repeat must keep the house's wall clock across a DST change.
+  // With a UTC DTSTART every client expands in UTC, so a Thursday 18:30
+  // tasting showed at 17:30 from 5 November.
+  const TASTING = {
+    ...EVENT,
+    start_date: "2026-10-22",
+    start_time: "18:30",
+    end_date: "2026-10-22",
+    end_time: "20:00",
+    is_recurring: true,
+  };
+
+  it("keeps a weekly evening repeat on the house clock across the fall-back", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "America/Los_Angeles" },
+      events: [TASTING],
+      rules: [
+        {
+          calendar_event_id: EVENT.id,
+          frequency: "weekly",
+          end_type: "never",
+          days_of_week: [4],
+        },
+      ],
+    });
+
+    expect(out).toContain("DTSTART;TZID=America/Los_Angeles:20261022T183000");
+    expect(out).not.toContain("DTSTART:20261023T013000Z");
+    // BYDAY is read against the TZID start, so Thursday stays Thursday.
+    expect(out).toMatch(/RRULE:FREQ=WEEKLY;BYDAY=TH\r\n/);
+    // The zone's own change on 1 Nov 2026 is in the VTIMEZONE.
+    expect(out).toContain(
+      "BEGIN:STANDARD\r\nDTSTART:20261101T020000\r\nTZOFFSETFROM:-0700\r\nTZOFFSETTO:-0800",
+    );
+  });
+
+  it("ends a series at the end of its last house day, never with COUNT as well", () => {
+    // A this-and-future split leaves end_after_count on the row and sets
+    // end_on_date + end_type 'on_date'. T000000Z cut the last evening off,
+    // and UNTIL with COUNT is forbidden (RFC 5545 §3.3.10).
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "America/Los_Angeles" },
+      events: [TASTING],
+      rules: [
+        {
+          calendar_event_id: EVENT.id,
+          frequency: "weekly",
+          end_type: "on_date",
+          end_on_date: "2026-11-26",
+          end_after_count: 10,
+          days_of_week: [4],
+        },
+      ],
+    });
+
+    // 26 Nov 23:59:59 PST is 27 Nov 07:59:59Z — after the 18:30 that night.
+    expect(out).toContain("UNTIL=20261127T075959Z");
+    expect(out).not.toMatch(/COUNT=/);
+  });
+
+  it("writes UNTIL as a date for an all-day repeat and as local for a floating one", () => {
+    const allDay = feed({
+      restaurant: { id: "r1", name: "R", timezone: "America/Los_Angeles" },
+      events: [{ ...TASTING, all_day: true }],
+      rules: [
+        {
+          calendar_event_id: EVENT.id,
+          frequency: "daily",
+          end_type: "on_date",
+          end_on_date: "2026-11-26",
+        },
+      ],
+    });
+    expect(allDay).toMatch(/UNTIL=20261126(;|\r\n)/);
+
+    const floating = feed({
+      restaurant: { id: "r1", name: "R", timezone: null },
+      events: [TASTING],
+      rules: [
+        {
+          calendar_event_id: EVENT.id,
+          frequency: "daily",
+          end_type: "on_date",
+          end_on_date: "2026-11-26",
+        },
+      ],
+    });
+    expect(floating).toContain("UNTIL=20261126T235959");
+    expect(floating).not.toContain("UNTIL=20261126T235959Z");
+    expect(floating).not.toContain("BEGIN:VTIMEZONE");
   });
 });

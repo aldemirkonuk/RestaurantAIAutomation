@@ -640,7 +640,8 @@ describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it,
 
   it("the shift writers: an owner's shift comes back to a switched-on manager without its cost, and is still priced", async () => {
     const db = seed({ managerPay: true });
-    db.tables.shifts.push(shift({ id: "sh-open", member_id: null, state: "open", labor_cost: null }));
+    // Tuesday: the same 09:00 for the same person would be a double booking (F-377).
+    db.tables.shifts.push(shift({ id: "sh-open", member_id: null, state: "open", labor_cost: null, shift_date: "2026-09-08" }));
     const svc = scheduleOf(db);
     const created = await svc.createShift(MANAGER, RID, {
       memberId: "m-owner",
@@ -686,7 +687,8 @@ describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it,
     expect(db.tables.shifts.find((s) => s.id === "sh3")?.labor_cost).toBeNull();
 
     // Unassigned alone, with nothing else changed, it is priced as nobody's too.
-    db.tables.shifts.push(shift({ id: "sh4", member_id: "m-owner", labor_cost: 300 }));
+    // Tuesday: the same 09:00 for the same person would be a double booking (F-377).
+    db.tables.shifts.push(shift({ id: "sh4", member_id: "m-owner", labor_cost: 300, shift_date: "2026-09-08" }));
     const bare = await svc.updateShift(MANAGER, RID, "sh4", { memberId: null } as any);
     expect(bare.labor_cost).toBeNull();
     expect(db.tables.shifts.find((s) => s.id === "sh4")?.labor_cost).toBeNull();

@@ -129,7 +129,8 @@ describe("POST /auth/invite grants no role above the inviter's own", () => {
   it("writes the default role only when the inviter may grant it", async () => {
     const { invite, invitedRoles } = makeService(asRole("manager"));
     await invite(undefined);
-    expect(invitedRoles()).toEqual(["manager"]);
+    // The default is the least role, staff (F-190), never manager.
+    expect(invitedRoles()).toEqual(["staff"]);
   });
 
   it("refuses a role the rank table does not know", async () => {

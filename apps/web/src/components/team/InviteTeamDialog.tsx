@@ -40,7 +40,8 @@ const EMAIL_HINT =
 
 export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRosterOnly }: InviteTeamDialogProps) {
   const [targetEmail, setTargetEmail] = useState('')
-  const [role, setRole] = useState<'manager' | 'staff'>('manager')
+  // Staff unless the inviter picks more: the least role by default (F-190).
+  const [role, setRole] = useState<'manager' | 'staff'>('staff')
   const [isGenerating, setIsGenerating] = useState(false)
   const [invite, setInvite] = useState<GeneratedInvite | null>(null)
   const [copied, setCopied] = useState(false)
@@ -81,7 +82,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
   const handleClose = () => {
     setInvite(null)
     setTargetEmail('')
-    setRole('manager')
+    setRole('staff')
     setCopied(false)
     onClose()
   }

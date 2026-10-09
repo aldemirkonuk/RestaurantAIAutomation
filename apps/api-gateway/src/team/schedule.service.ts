@@ -13,6 +13,8 @@ import { ExpoPushService } from "../push/expo-push.service";
 import { TeamService } from "./team.service";
 import {
   breakCounted,
+  handoverChecks,
+  HandoverShift,
   hoursBetween,
   isWorked,
   leaveInWeek,
@@ -47,6 +49,44 @@ function toMinutes(t: string): number {
 function periodOf(start: string): "am" | "pm" {
   return toMinutes(start) < 15 * 60 ? "am" : "pm";
 }
+
+/**
+ * Whether a shift counts toward a coverage rule's period (F-170). By its start
+ * time, as before, and also by its Kind: a shift the owner set to "evening"
+ * or "double" that is still on the clock after 15:00 counts toward the
+ * evening, so an 11:00–23:00 evening shift fills an evening rule and a double
+ * fills both. The Kind alone is not enough: the shift form starts every new
+ * shift as "evening", so a 09:00–14:00 shift left at that never counts.
+ */
+export function servesPeriod(
+  shift: { start_time: string; end_time: string; shift_type?: string | null },
+  period: string,
+): boolean {
+  if (periodOf(shift.start_time) === period) return true;
+  if (period !== "pm") return false;
+  const kind = String(shift.shift_type ?? "").toLowerCase();
+  if (kind !== "pm" && kind !== "double") return false;
+  const start = toMinutes(shift.start_time);
+  const end = toMinutes(shift.end_time);
+  // Past 15:00, or past midnight (an end at or before the start).
+  return end > 15 * 60 || end <= start;
+}
+
+/** "2026-10-09" → "Fri 9 Oct", the date as the refusal says it. */
+function dayWords(iso: string): string {
+  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+/** A shift as the one conflict check reads it. */
+type GivenShift = Pick<
+  HandoverShift,
+  "id" | "shift_date" | "start_time" | "end_time"
+>;
 
 @Injectable()
 export class ScheduleService {
@@ -395,29 +435,44 @@ export class ScheduleService {
       for (const w of wages ?? []) wageOf.set(w.id, w.hourly_wage ?? null);
     }
 
-    let deleted = 0;
-    if (inTheWay > 0) {
-      // By id, the rows counted above: a date-range delete would also take a
-      // removed person's kept shifts in that week (ADR 0215 item 20).
-      const { error: deleteErr } = await this.sb
-        .from("shifts")
-        .delete()
-        .eq("restaurant_id", restaurantId)
-        .in("id", inTheWayIds);
-      if (deleteErr) {
-        this.logger.error(
-          `copyWeek: could not clear the target week ${dto.toWeekStart} for ` +
-            `restaurant ${restaurantId}: ${deleteErr.message}`,
-        );
-        throw new InternalServerErrorException(
-          "Could not clear the week you are copying into, so nothing was copied.",
-        );
-      }
-      deleted = inTheWay;
-    }
-
     const dayShift = daysBetween(dto.fromWeekStart, dto.toWeekStart);
+    // Each copied shift is checked like a new one (F-377, F-171): one whose
+    // person is inactive, on approved leave that day, or already working then
+    // arrives as an open shift for the crew to claim, never on them. Read
+    // before anything is deleted, so a failed read changes nothing.
+    const givenBy = new Map<string, GivenShift[]>();
+    for (const s of copyable) {
+      if (!s.member_id) continue;
+      const list = givenBy.get(s.member_id) ?? [];
+      list.push({
+        id: s.id,
+        shift_date: addDays(s.shift_date, dayShift),
+        start_time: s.start_time,
+        end_time: s.end_time,
+      });
+      givenBy.set(s.member_id, list);
+    }
+    const refused = await this.whyNotFor(restaurantId, givenBy, {
+      ignore: inTheWayIds,
+      inactiveToo: true,
+    });
     const rows = copyable.map((s: any) => {
+      if (s.member_id && refused.has(s.id)) {
+        return {
+          restaurant_id: restaurantId,
+          schedule_id: target.id,
+          member_id: null,
+          shift_date: addDays(s.shift_date, dayShift),
+          start_time: s.start_time,
+          end_time: s.end_time,
+          role: s.role,
+          shift_type: "open",
+          state: "open",
+          note: s.note,
+          recorded_break_min: recordedBreakMinutes(s),
+          labor_cost: null,
+        };
+      }
       // The copy carries the source's break ON RECORD as its own recorded
       // break (the planned `shift_breaks` rows are not copied, as before; their
       // minutes are). Nothing on record stays nothing on record, so the copy is
@@ -445,10 +500,37 @@ export class ScheduleService {
           : null,
       };
     });
+    let deleted = 0;
+    if (inTheWay > 0) {
+      // By id, the rows counted above: a date-range delete would also take a
+      // removed person's kept shifts in that week (ADR 0215 item 20).
+      const { error: deleteErr } = await this.sb
+        .from("shifts")
+        .delete()
+        .eq("restaurant_id", restaurantId)
+        .in("id", inTheWayIds);
+      if (deleteErr) {
+        this.logger.error(
+          `copyWeek: could not clear the target week ${dto.toWeekStart} for ` +
+            `restaurant ${restaurantId}: ${deleteErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "Could not clear the week you are copying into, so nothing was copied.",
+        );
+      }
+      deleted = inTheWay;
+    }
+
     if (!rows.length) return { copied: 0, deleted, schedule: target };
     const { error } = await this.sb.from("shifts").insert(rows);
     if (error) throw new InternalServerErrorException("Failed to copy week");
-    return { copied: rows.length, deleted, schedule: target };
+    return {
+      copied: rows.length,
+      deleted,
+      // How many arrived as open shifts instead of on their person.
+      openedInstead: refused.size,
+      schedule: target,
+    };
   }
 
   /**
@@ -658,8 +740,17 @@ export class ScheduleService {
       "manager",
       { payAccess: true },
     );
-    if (dto.memberId)
+    if (dto.memberId) {
       await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
+      await this.assertMayWork(restaurantId, dto.memberId, [
+        {
+          id: "new",
+          shift_date: dto.shiftDate,
+          start_time: dto.startTime,
+          end_time: dto.endTime,
+        },
+      ]);
+    }
     // The break whoever writes the shift records, if they record one (ADR
     // 0215). Omitted, nothing is recorded, and the shift — any length,
     // founder round 6y — is counted with the Art. 68 minimum and shown as
@@ -788,8 +879,35 @@ export class ScheduleService {
       }
     }
 
-    // Rebind schedule when the date moves into another week.
+    // The person the shift will have, checked like a new shift whenever who,
+    // when or how long changes (F-377, F-171): an edit could move a shift onto
+    // their approved leave, or onto another of their shifts.
     const nextDate = dto.shiftDate ?? cur.shift_date;
+    const nextMember =
+      dto.memberId !== undefined ? dto.memberId : cur.member_id;
+    if (
+      nextMember &&
+      (nextMember !== cur.member_id ||
+        dto.shiftDate !== undefined ||
+        dto.startTime !== undefined ||
+        dto.endTime !== undefined)
+    ) {
+      await this.assertMayWork(
+        restaurantId,
+        nextMember,
+        [
+          {
+            id: shiftId,
+            shift_date: nextDate,
+            start_time: nextStart,
+            end_time: nextEnd,
+          },
+        ],
+        { inactiveToo: nextMember !== cur.member_id },
+      );
+    }
+
+    // Rebind schedule when the date moves into another week.
     if (
       dto.shiftDate !== undefined &&
       mondayOf(dto.shiftDate) !== mondayOf(cur.shift_date)
@@ -817,19 +935,15 @@ export class ScheduleService {
       dto.endTime !== undefined ||
       recordedBreak !== undefined
     ) {
-      patch.labor_cost = await this.laborCost(
-        restaurantId,
-        pricedMember,
-        {
-          start_time: nextStart,
-          end_time: nextEnd,
-          shift_breaks: cur.shift_breaks ?? [],
-          recorded_break_min:
-            recordedBreak !== undefined
-              ? recordedBreak
-              : (cur.recorded_break_min ?? null),
-        },
-      );
+      patch.labor_cost = await this.laborCost(restaurantId, pricedMember, {
+        start_time: nextStart,
+        end_time: nextEnd,
+        shift_breaks: cur.shift_breaks ?? [],
+        recorded_break_min:
+          recordedBreak !== undefined
+            ? recordedBreak
+            : (cur.recorded_break_min ?? null),
+      });
     }
 
     const { data, error } = await this.sb
@@ -1018,15 +1132,20 @@ export class ScheduleService {
     shiftId: string,
     dto: AssignCoverDto,
   ) {
-    const viewer = await this.team.assertAccess(userId, restaurantId, undefined, {
-      payAccess: true,
-    });
+    const viewer = await this.team.assertAccess(
+      userId,
+      restaurantId,
+      undefined,
+      {
+        payAccess: true,
+      },
+    );
     const { role } = viewer;
     await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
 
     const { data: shift } = await this.sb
       .from("shifts")
-      .select("id, member_id, state, start_time, end_time")
+      .select("id, member_id, state, shift_date, start_time, end_time")
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -1047,12 +1166,16 @@ export class ScheduleService {
         );
       }
     }
-
     const cost = await this.recomputeCostForMember(
       restaurantId,
       shiftId,
       dto.memberId,
     );
+    // A cover or a claim is a shift given to someone, checked like one
+    // (F-377, F-171). Before the write, so a refusal changes nothing.
+    await this.assertMayWork(restaurantId, dto.memberId, [shift], {
+      self: role === "staff",
+    });
     const { data, error } = await this.sb
       .from("shifts")
       .update({
@@ -1070,6 +1193,138 @@ export class ScheduleService {
     // Only the owner sees labor_cost — it is the wage times the hours, so it
     // is the wage (ADR 0215). Staff never did; a manager no longer does.
     return shiftForViewer(data, viewer);
+  }
+
+  /**
+   * The one check every write that puts a person on a shift makes — create,
+   * edit, a manager's cover, a staff claim and copy-week (F-377, F-171).
+   * Before, only the leaving-person hand-over read leave and overlap
+   * (`handoverChecks`, ADR 0215 item 27), so every everyday path scheduled
+   * over approved leave and double-booked with no word, and an inactive
+   * person could be given an 11-hour shift and its wage.
+   *
+   * A shift may not go to someone who is inactive on the roster (only when
+   * they are being put on it — editing the times of a shift they already hold
+   * is not), who has approved time off that day, or who already works then
+   * unless the owner allowed double booking. Refused, not warned: the fix is
+   * at the source — set them active, change the time off, move the other
+   * shift (coordinator's call, sim-run/bulletproof/reconcile/
+   * calendar-team-decisions.md). Returns the reason per given shift id; a
+   * failed read refuses, because not knowing their leave is not their having
+   * none.
+   */
+  private async whyNotFor(
+    restaurantId: string,
+    givenBy: ReadonlyMap<string, readonly GivenShift[]>,
+    opts: {
+      ignore?: readonly string[];
+      inactiveToo?: boolean;
+      self?: boolean;
+    } = {},
+  ): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const memberIds = [...givenBy.keys()];
+    const all = [...givenBy.values()].flat();
+    if (!all.length) return out;
+    const dates = all.map((g) => g.shift_date.slice(0, 10)).sort();
+    const from = dates[0];
+    const until = dates[dates.length - 1];
+    const fail = (what: string, err: { message: string }): never => {
+      this.logger.error(
+        `whyNotFor: could not read ${what} in ${restaurantId}: ${err.message}`,
+      );
+      throw new InternalServerErrorException(
+        `Could not read ${what}, so the shift was not given to anyone. Nothing was changed.`,
+      );
+    };
+
+    const { data: people, error: peopleErr } = await this.sb
+      .from("team_members")
+      .select("id, status")
+      .eq("restaurant_id", restaurantId)
+      .in("id", memberIds);
+    if (peopleErr) fail("who is active on the team", peopleErr);
+    // A day either side: an overnight shift reaches into the next day.
+    const { data: theirs, error: theirsErr } = await this.sb
+      .from("shifts")
+      .select(
+        "id, member_id, shift_date, start_time, end_time, state, recorded_break_min",
+      )
+      .eq("restaurant_id", restaurantId)
+      .in("member_id", memberIds)
+      .gte("shift_date", addDays(from, -1))
+      .lte("shift_date", addDays(until, 1));
+    if (theirsErr) fail("their other shifts", theirsErr);
+    const { data: leave, error: leaveErr } = await this.sb
+      .from("time_off_requests")
+      .select("member_id, start_date, end_date, status")
+      .eq("restaurant_id", restaurantId)
+      .in("member_id", memberIds)
+      .eq("status", "approved")
+      .lte("start_date", until)
+      .gte("end_date", from);
+    if (leaveErr) fail("their time off", leaveErr);
+    const { data: settings, error: settingsErr } = await this.sb
+      .from("team_settings")
+      .select("allow_double_booking")
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (settingsErr) fail("whether double booking is allowed", settingsErr);
+    const allowDoubleBooking = settings?.allow_double_booking === true;
+
+    const ignore = new Set([...(opts.ignore ?? []), ...all.map((g) => g.id)]);
+    for (const [memberId, given] of givenBy) {
+      const inactive = (people ?? []).some(
+        (p: any) => p.id === memberId && p.status === "inactive",
+      );
+      const checks = handoverChecks(
+        given.map((g) => ({ ...g })),
+        {},
+        (theirs ?? []).filter(
+          (t: any) => t.member_id === memberId && !ignore.has(t.id),
+        ) as any[],
+        (leave ?? []).filter((l: any) => l.member_id === memberId) as any[],
+        allowDoubleBooking,
+      );
+      for (const g of given) {
+        const codes = new Map(
+          (checks.get(g.id) ?? []).map((c) => [c.code, c.level]),
+        );
+        const day = dayWords(g.shift_date);
+        const reason =
+          opts.inactiveToo && inactive
+            ? opts.self
+              ? "You are set to inactive on the team, so this shift cannot go to you. Ask your manager."
+              : "This person is set to inactive on the team. Set them active first, or give the shift to someone else."
+            : codes.has("time_off")
+              ? opts.self
+                ? `You have approved time off on ${day}, so this shift cannot go to you.`
+                : `This person has approved time off on ${day}. Change their time off first, or give the shift to someone else.`
+              : codes.get("overlap") === "refuse"
+                ? opts.self
+                  ? `You already have a shift at that time on ${day}, and double booking is off in this house.`
+                  : `This person already has a shift at that time on ${day}, and double booking is off in this house. Give the shift to someone else.`
+                : null;
+        if (reason) out.set(g.id, reason);
+      }
+    }
+    return out;
+  }
+
+  /** `whyNotFor` for one person, refused in words (409) when it says no. */
+  private async assertMayWork(
+    restaurantId: string,
+    memberId: string,
+    given: readonly GivenShift[],
+    opts: { inactiveToo?: boolean; self?: boolean } = {},
+  ): Promise<void> {
+    const refused = await this.whyNotFor(
+      restaurantId,
+      new Map([[memberId, given]]),
+      { inactiveToo: opts.inactiveToo ?? true, self: opts.self },
+    );
+    const reason = [...refused.values()][0];
+    if (reason) throw new ConflictException(`${reason} Nothing was saved.`);
   }
 
   private async recomputeCostForMember(
@@ -1138,7 +1393,7 @@ export class ScheduleService {
         const staffed = dayShifts.filter((s) => {
           const srole = (s.role ?? "").trim().toLowerCase();
           // Exact role match only (case-insensitive). Fuzzy includes() false-matched roles.
-          return srole === trole && periodOf(s.start_time) === r.shift_period;
+          return srole === trole && servesPeriod(s, r.shift_period);
         }).length;
         if (staffed < r.min_staff) {
           gaps.push({
@@ -1326,7 +1581,12 @@ export class ScheduleService {
         `leaveThisWeek: could not read approved leave for ${restaurantId} ` +
           `week ${weekStart}: ${error.message}`,
       );
-      return { readable: false, paid: null, paidDays: null, unknownTypeDays: null };
+      return {
+        readable: false,
+        paid: null,
+        paidDays: null,
+        unknownTypeDays: null,
+      };
     }
     // A removed person's leave is kept, not counted (ADR 0215 item 20).
     return {

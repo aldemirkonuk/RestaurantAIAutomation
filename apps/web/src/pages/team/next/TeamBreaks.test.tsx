@@ -85,7 +85,14 @@ vi.mock('../../../services/api/client', () => ({
       Promise.resolve({
         data: { entries: [], readable: true, reason: null, oldestAt: null, recordingSince: '2026-09-03' },
       }),
+    // The invite dialog's post (F-190, below).
+    post: vi.fn(() =>
+      Promise.resolve({
+        data: { code: 'AB12CD34', expiresAt: '2026-09-11T18:00:00.000Z', inviteUrl: 'https://app.mudavym.com/invite/AB12CD34' },
+      }),
+    ),
   },
+  getErrorMessage: (e: unknown) => String(e),
 }));
 
 vi.mock('../../../contexts/AuthContext', () => ({
@@ -101,6 +108,8 @@ import { ShiftSheet } from './ShiftSheet';
 import { WeekGrid } from './WeekGrid';
 import { MyShiftsNext } from './MyShiftsNext';
 import { TeamLaborSettings } from '../../../components/team/TeamLaborSettings';
+import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog';
+import { apiClient } from '../../../services/api/client';
 import {
   art68MinimumBreak,
   breakCounted,
@@ -439,5 +448,114 @@ describe('L3 — a person may say whether their own leave is paid', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ask for this week off' }));
     await vi.waitFor(() => expect(api.createTimeOff).toHaveBeenCalled());
     expect(api.createTimeOff.mock.calls[0][0]).toMatchObject({ memberId: 'm1', leaveType: 'paid' });
+  });
+});
+
+/*
+ * Calendar-team lane (sim F-379, F-171, F-377, F-190): a close that runs past
+ * midnight is a close; an inactive person is not offered a shift; and when
+ * the gateway refuses a shift, the sheet says the gateway's reason. An
+ * invite is for staff unless the owner picks manager.
+ */
+describe('weekend closes, inactive people and a refused shift', () => {
+  const member = (id: string, name: string, status: string) => ({
+    id,
+    restaurant_id: 'r1',
+    display_name: name,
+    role: 'staff',
+    position: null,
+    employment_type: 'full_time',
+    avatar_url: null,
+    status,
+  });
+
+  it('counts a Saturday and a Sunday close that end after midnight as two weekend closes', () => {
+    const mk = (id: string, shift_date: string) => ({
+      ...baseShift,
+      id,
+      member_id: 'm1',
+      state: 'scheduled',
+      role: 'Bar',
+      shift_type: 'pm',
+      shift_date,
+      start_time: '18:00',
+      end_time: '01:00',
+      // A recorded break, so the chip's reason is the weekend, not the break.
+      recorded_break_min: 60,
+    });
+    render(
+      <WeekGrid
+        weekStart="2026-08-31"
+        shifts={[mk('w1', '2026-09-05'), mk('w2', '2026-09-06')] as never}
+        members={[member('m1', 'Sam', 'active')] as never}
+        membersFailed={false}
+        certs={[]}
+        coverage={[]}
+        weekFailed={false}
+        engineIdle
+        lens="fairness"
+        labourEnabled
+        moneyVisible={false}
+        money={null}
+        scheduleId="sch1"
+        onEditShift={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(screen.getAllByText('2 weekend closes').length).toBeGreaterThan(0);
+  });
+
+  it('does not offer an inactive person a new shift, but keeps them on a shift that is theirs', () => {
+    const people = [member('m1', 'Sam', 'active'), member('m2', 'Lucas', 'inactive')];
+    const { unmount } = render(
+      <ShiftSheet target={{ date: '2026-09-07' }} members={people as never} scheduleId="sch1" onClose={() => {}} onChanged={() => {}} />,
+      { wrapper },
+    );
+    const who = () => screen.getByRole('combobox', { name: /Who/ });
+    expect(within(who()).queryByRole('option', { name: /Lucas/ })).toBeNull();
+    expect(within(who()).getByRole('option', { name: /Sam/ })).toBeInTheDocument();
+    unmount();
+
+    render(
+      <ShiftSheet
+        target={{ shift: { ...baseShift, member_id: 'm2', state: 'scheduled' } as never }}
+        members={people as never}
+        scheduleId="sch1"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(within(who()).getByRole('option', { name: /Lucas/ })).toBeInTheDocument();
+  });
+
+  it("says the gateway's reason when a shift is refused", async () => {
+    const reason =
+      'This person has approved time off on Mon 7 Sep. Change their time off first, or give the shift to someone else. Nothing was saved.';
+    api.createShift.mockImplementationOnce(() =>
+      Promise.reject({ response: { status: 409, data: { message: reason } } }),
+    );
+    render(
+      <ShiftSheet
+        target={{ date: '2026-09-07' }}
+        members={[member('m1', 'Sam', 'active')] as never}
+        scheduleId="sch1"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add the shift' }));
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(screen.queryByText(/The shift was not saved/)).toBeNull();
+  });
+
+  it('invites as staff unless the owner picks manager (F-190: the least access is the default)', async () => {
+    render(<InviteTeamDialog open onClose={() => {}} restaurantId="r1" />);
+    expect(screen.getByRole('combobox')).toHaveValue('staff');
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Invite Link' }));
+    await vi.waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    expect(vi.mocked(apiClient.post).mock.calls[0][1]).toMatchObject({ role: 'staff' });
   });
 });

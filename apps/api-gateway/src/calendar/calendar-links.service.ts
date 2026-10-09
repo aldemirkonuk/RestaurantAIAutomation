@@ -689,7 +689,7 @@ export class CalendarLinksService {
     const { data, error } = await this.db
       .from("calendar_recurrence_rules")
       .select(
-        "calendar_event_id, frequency, interval_value, end_on_date, end_after_count, days_of_week",
+        "calendar_event_id, frequency, interval_value, end_on_date, end_after_count, end_type, days_of_week",
       )
       .in("calendar_event_id", ids);
     if (error) {

@@ -146,7 +146,10 @@ export function WeekGrid({
       const dow = new Date(`${s.shift_date}T00:00:00`).getDay();
       if (dow !== 0 && dow !== 6) continue;
       const endH = Number(s.end_time.split(':')[0] ?? 0);
-      if (endH < 22 && endH !== 0) continue;
+      // A close ends late, or after midnight: an end at or before the start
+      // (18:00–01:00) is the next morning and counts too (F-379).
+      const overnight = s.end_time.slice(0, 5) <= s.start_time.slice(0, 5);
+      if (endH < 22 && !overnight) continue;
       m.set(s.member_id, (m.get(s.member_id) ?? 0) + 1);
     }
     return m;
