@@ -160,6 +160,30 @@ describe("DashboardController", () => {
         undefined,
       );
     });
+
+    // F-447: a date that has the shape but is not on the calendar answered 500.
+    it.each(["2026-13-45", "2026-02-30", "2026-00-10"])(
+      "answers 400 in words for %s, and reads nothing",
+      async (date) => {
+        const err = await controller
+          .getActivity(restaurantId, undefined, date)
+          .catch((e) => e);
+        expect(err).toBeInstanceOf(HttpException);
+        expect(err.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+        expect(err.message).toMatch(/not a day on the calendar/);
+        expect(mockDashboardService.getActivity).not.toHaveBeenCalled();
+      },
+    );
+
+    it("passes a real day through", async () => {
+      mockDashboardService.getActivity.mockResolvedValue([]);
+      await controller.getActivity(restaurantId, undefined, "2028-02-29");
+      expect(mockDashboardService.getActivity).toHaveBeenCalledWith(
+        restaurantId,
+        20,
+        "2028-02-29",
+      );
+    });
   });
 
   describe("GET /dashboard/alerts/:restaurantId", () => {

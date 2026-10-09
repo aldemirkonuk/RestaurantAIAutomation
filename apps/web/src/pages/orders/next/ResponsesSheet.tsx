@@ -63,7 +63,7 @@ import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useCancelOrder } from '@/hooks/queries/useOrderQueries';
 import { useDealProposal, useOrderConversations } from '@/hooks/queries/useDraftEmailQueries';
 import * as ordersApi from '@/services/api/orders';
-import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
+import { AMOUNTS_WITHHELD, EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
   ROW_PRICE_UNIT_NOT_READ,
   ROW_UNSTATED_PRICE_UNIT,
@@ -353,6 +353,8 @@ export function ResponsesSheet({
     );
   };
 
+  // Staff: no money came for this order (F-441); the sheet says so once.
+  const withheld = row.amountsWithheld === true;
   const priceLine = describeStatedPrice(row.unitPrice, row.priceUnit.stated);
   const orderedLine = describeOrderedQuantity({
     quantity: row.quantity,
@@ -396,7 +398,7 @@ export function ResponsesSheet({
                 <div style={{ marginTop: 4 }}>
                   <HoldToApprove
                     key={`confirm-${row.id}-${attempt}`}
-                    label={`Hold to confirm · ${fmtMoney(row.total)}`}
+                    label={withheld ? 'Hold to confirm' : `Hold to confirm · ${fmtMoney(row.total)}`}
                     approvedLabel="Confirmed"
                     disabled={approve.isPending || cancel.isPending || heldForApproval}
                     onApprove={onApprove}
@@ -535,6 +537,12 @@ export function ResponsesSheet({
         >
           <Field name="Vendor">{row.providerName ?? EM}</Field>
           <Field name="Ordered">{orderedLine ?? EM}</Field>
+          {withheld ? (
+            <Field name="Amounts">
+              <span data-testid="sheet-amounts-withheld">{AMOUNTS_WITHHELD}</span>
+            </Field>
+          ) : (
+            <>
           <Field name="Agreed price">
             <span data-testid="sheet-agreed-price" style={{ fontFamily: MONO, fontSize: 12.5 }}>
               {priceLine ?? EM}
@@ -543,12 +551,14 @@ export function ResponsesSheet({
           <Field name="Order total">
             <span style={{ fontFamily: MONO, fontSize: 12.5 }}>{fmtMoney(row.total)}</span>
           </Field>
+            </>
+          )}
         </div>
 
         {/* The price's unit is the whole point of ADR 0119: the same two
             refusals the ledger row prints, in the same words, because the sheet
             and the row describe one agreement. */}
-        {!row.priceUnit.read ? (
+        {withheld ? null : !row.priceUnit.read ? (
           <p style={quiet} data-testid="sheet-price-unit-unread">
             {ROW_PRICE_UNIT_NOT_READ}
           </p>

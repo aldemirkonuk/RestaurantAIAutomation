@@ -52,10 +52,20 @@ export async function getOrders(
   if (!id) throw new Error('No restaurant ID available');
 
   const apiParams = params ? { ...params, status: toBackendStatus(params.status) } : undefined;
-  const response = await apiClient.get<{ orders: Order[]; total: number }>(`${ORDERS_PATH}`, {
+  const response = await apiClient.get<{
+    orders: Order[];
+    total: number;
+    amountsWithheld?: true;
+  }>(`${ORDERS_PATH}`, {
     params: apiParams,
   });
-  return response.data?.orders ?? (response.data as unknown as Order[]) ?? [];
+  const orders = response.data?.orders ?? (response.data as unknown as Order[]) ?? [];
+  // Staff get the page with no money and the marker at its root (F-441). The
+  // array is all a caller sees, so each row carries it: an absent total on a
+  // staff row is withheld, and a page must not sum it into a $0.
+  return response.data?.amountsWithheld === true
+    ? orders.map((o) => ({ ...o, amountsWithheld: true as const }))
+    : orders;
 }
 
 /**

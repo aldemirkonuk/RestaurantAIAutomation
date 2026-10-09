@@ -86,6 +86,7 @@ function controllerWith(): ProcurementController {
   const svc = {
     listPendingOrders: jest.fn().mockResolvedValue([{ ...ORDER }]),
     listOrders: jest.fn().mockResolvedValue(list),
+    getOrder: jest.fn().mockResolvedValue({ ...ORDER }),
   } as unknown as ProcurementService;
   return new ProcurementController(svc);
 }
@@ -133,5 +134,48 @@ describe("GET /procurement/orders/history — amounts by role (F-433)", () => {
     const res = await controllerWith().listOrderHistory({} as any, as(role));
     expect(res).not.toHaveProperty("amountsWithheld");
     expect(res.orders[0]).toEqual(ORDER);
+  });
+});
+
+/**
+ * F-441 (wave 21 residual): the ledger and the single order still carried the
+ * money. Same rule, same allowlist, one spec per route.
+ */
+describe("GET /procurement/orders — amounts by role (F-441)", () => {
+  it.each(["staff", null])(
+    "%s read the page without an amount, told at the root",
+    async (role) => {
+      const res = await controllerWith().listOrders({} as any, as(role));
+      expect(res.amountsWithheld).toBe(true);
+      expect(res.total).toBe(1);
+      const [row] = res.orders;
+      for (const key of MONEY_KEYS) expect(row).not.toHaveProperty(key);
+      expect(Object.keys(row).sort()).toEqual(STAFF_KEYS);
+    },
+  );
+
+  it.each(["owner", "manager"])("%s reads the whole page", async (role) => {
+    const res = await controllerWith().listOrders({} as any, as(role));
+    expect(res).not.toHaveProperty("amountsWithheld");
+    expect(res.orders[0]).toEqual(ORDER);
+  });
+});
+
+describe("GET /procurement/orders/:id — amounts by role (F-441)", () => {
+  it.each(["staff", null])(
+    "%s read the order without an amount, and are told",
+    async (role) => {
+      const row = await controllerWith().getOrder("o-1", as(role));
+      for (const key of MONEY_KEYS) expect(row).not.toHaveProperty(key);
+      expect(row.amountsWithheld).toBe(true);
+      const { amountsWithheld: _m, ...rest } = row;
+      expect(Object.keys(rest).sort()).toEqual(STAFF_KEYS);
+    },
+  );
+
+  it.each(["owner", "manager"])("%s reads the whole order", async (role) => {
+    const row = await controllerWith().getOrder("o-1", as(role));
+    expect(row).toEqual(ORDER);
+    expect(row).not.toHaveProperty("amountsWithheld");
   });
 });
