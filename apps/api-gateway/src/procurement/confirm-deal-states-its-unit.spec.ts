@@ -52,6 +52,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
         bottlesPerUnit: 12,
         wineName: WINE,
         finalPrice: 120,
+        currency: "USD",
       },
       expected:
         "We'd like to confirm our order: 5 cases (12 bottles each) of Château Test 2019 at $120.00 per case.",
@@ -64,6 +65,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
         bottlesPerUnit: null,
         wineName: WINE,
         finalPrice: 120,
+        currency: "USD",
       },
       expected:
         "We'd like to confirm our order: 5 cases of Château Test 2019 at $120.00 per case." +
@@ -77,6 +79,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
         bottlesPerUnit: 1,
         wineName: WINE,
         finalPrice: 22,
+        currency: "USD",
       },
       expected:
         "We'd like to confirm our order: 24 bottles of Château Test 2019 at $22.00 per bottle.",
@@ -90,6 +93,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
         bottlesPerUnit: null,
         wineName: WINE,
         finalPrice: 180,
+        currency: "USD",
       },
       expected:
         "We'd like to confirm our order: 2 kegs of Château Test 2019 at $180.00 per keg." +
@@ -121,6 +125,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
         bottlesPerUnit: 12,
         wineName: WINE,
         finalPrice: 99,
+        currency: "USD",
       });
       expect(sentence).toContain(`per ${unitType}`);
       expect(sentence).not.toContain("per bottle");
@@ -135,6 +140,7 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
         bottlesPerUnit: null,
         wineName: WINE,
         finalPrice: 50,
+        currency: "USD",
       }),
     ).toBe(
       "We'd like to confirm our order: 4 units of Château Test 2019 at $50.00 per unit." +

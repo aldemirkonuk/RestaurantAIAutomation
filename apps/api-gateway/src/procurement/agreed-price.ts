@@ -42,7 +42,52 @@
  * to attributable.
  */
 
+import { currencyCode } from "../common/iso-4217";
 import { Uom, normalizeUom } from "./documents/document-types";
+
+/**
+ * A figure in the money it is in (F-341) — "€420.00", "TRY 35.00", "$35.00".
+ *
+ * Every sentence in this file wrote a bare `$` until 2026-10-09, so a € or ₺
+ * agreement was worked and mailed under a dollar sign. The caller names the
+ * money: the line's own currency, else the house's. A code nobody recorded
+ * prints the number and says so — never a guessed symbol, and never USD. Not
+ * grouped, as these sentences always printed it ("× $2100.00"); the web twin is
+ * `fmtWorking` in `pages/orders/next/format.ts`. A code-led figure keeps Intl's
+ * no-break space ("TRY\u00a035.00"), so a letter never wraps the code away.
+ */
+export function moneyIn(
+  amount: number,
+  currency: string | null | undefined,
+  opts: { digits?: number; unrecorded?: "say" | "bare" } = {},
+): string {
+  const code = currencyCode(currency);
+  const shape =
+    opts.digits === undefined
+      ? { useGrouping: false }
+      : {
+          useGrouping: false,
+          minimumFractionDigits: opts.digits,
+          maximumFractionDigits: opts.digits,
+        };
+  if (code) {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: code,
+        ...shape,
+      }).format(amount);
+    } catch {
+      // A member of the list this runtime's Intl does not hold: the code
+      // beside the number still names the money.
+    }
+  }
+  const figure = amount.toFixed(opts.digits ?? 2);
+  if (code) return `${figure} ${code}`;
+  return opts.unrecorded === "bare"
+    ? figure
+    : `${figure} (currency not recorded)`;
+}
 
 /**
  * The units a price may be stated in.
@@ -191,7 +236,7 @@ export function readStatedPriceUnit(
 }
 
 /**
- * "$420.00 per case (12 bottles)" — the phrase a person and a vendor both read.
+ * "€420.00 per case (12 bottles)" — the phrase a person and a vendor both read.
  *
  * The pack is named only for a unit that actually holds more than one, because
  * "per bottle (1 bottle)" is noise, and named ALWAYS for one that does, because
@@ -200,6 +245,12 @@ export function readStatedPriceUnit(
 export function describeAgreedPrice(input: {
   price: number | null | undefined;
   stated: StatedPriceUnit | null;
+  /**
+   * The money the price is in (F-341): the line's own, else the house's. With
+   * neither, the figure is printed bare — a vendor letter that guessed a
+   * symbol would quote a price in money nobody agreed.
+   */
+  currency?: string | null;
 }): string | null {
   // `Number(null)` is 0 and `Number.isFinite(0)` is true, so the absence has to
   // be tested before the coercion. Without this line an order with no price
@@ -208,7 +259,7 @@ export function describeAgreedPrice(input: {
   if (input.price == null) return null;
   const price = Number(input.price);
   if (!Number.isFinite(price)) return null;
-  const money = `$${price.toFixed(2)}`;
+  const money = moneyIn(price, input.currency, { unrecorded: "bare" });
   if (!input.stated) return money;
   const { priceUom, pricePackSize } = input.stated;
   const pack =
@@ -256,6 +307,8 @@ export type PerBottleResolution =
 export function perBottleFromAgreedPrice(input: {
   price: number | null | undefined;
   stated: StatedPriceUnit;
+  /** The money the price is in (F-341); absent says "currency not recorded". */
+  currency?: string | null;
 }): PerBottleResolution {
   const price = Number(input.price);
   if (!Number.isFinite(price) || price <= 0) {
@@ -284,7 +337,7 @@ export function perBottleFromAgreedPrice(input: {
   return {
     ok: true,
     perBottle: Math.round((price / pricePackSize) * 10000) / 10000,
-    note: `Price stated as $${price.toFixed(2)} per ${priceUom} of ${pricePackSize}; recorded per bottle as $${(price / pricePackSize).toFixed(4)}.`,
+    note: `Price stated as ${moneyIn(price, input.currency)} per ${priceUom} of ${pricePackSize}; recorded per bottle as ${moneyIn(price / pricePackSize, input.currency, { digits: 4 })}.`,
   };
 }
 
@@ -332,6 +385,8 @@ export function agreedOrderTotal(input: {
   unitType: Uom;
   /** `resolveOrderUnits().opaque` — true when bottlesTotal is not a bottle count. */
   opaque: boolean;
+  /** The money the price is in (F-341); absent says "currency not recorded". */
+  currency?: string | null;
 }): AgreedTotalResolution {
   const price = Number(input.price);
   const safePrice = Number.isFinite(price) ? price : 0;
@@ -351,7 +406,7 @@ export function agreedOrderTotal(input: {
       return {
         ok: true,
         total: safePrice * input.quantity,
-        note: `Totalled as ${input.quantity} × $${safePrice.toFixed(2)} per ${priceUom}.`,
+        note: `Totalled as ${input.quantity} × ${moneyIn(safePrice, input.currency)} per ${priceUom}.`,
       };
     }
     return {
@@ -367,8 +422,8 @@ export function agreedOrderTotal(input: {
     total: Math.round(safePrice * priceUnitsBought * 100) / 100,
     note:
       pricePackSize === 1
-        ? `Totalled as ${input.bottlesTotal} × $${safePrice.toFixed(2)} per ${priceUom}.`
-        : `Totalled as ${input.bottlesTotal} bottles ÷ ${pricePackSize} = ${priceUnitsBought} ${priceUom}(s) × $${safePrice.toFixed(2)}.`,
+        ? `Totalled as ${input.bottlesTotal} × ${moneyIn(safePrice, input.currency)} per ${priceUom}.`
+        : `Totalled as ${input.bottlesTotal} bottles ÷ ${pricePackSize} = ${priceUnitsBought} ${priceUom}(s) × ${moneyIn(safePrice, input.currency)}.`,
   };
 }
 
@@ -588,6 +643,8 @@ export function agreementLineTotal(input: {
   unitType: Uom;
   opaque: boolean;
   fees: AgreementFees;
+  /** The money the price and the fees are in (F-341); absent says "currency not recorded". */
+  currency?: string | null;
 }): AgreementLineTotal {
   const goodsResolution = agreedOrderTotal(input);
   if (!goodsResolution.ok) return goodsResolution;
@@ -604,10 +661,11 @@ export function agreementLineTotal(input: {
       (goods - (allowance ?? 0) + (deposit ?? 0) + (freight ?? 0)) * 100,
     ) / 100;
 
-  const parts: string[] = [`Goods $${goods.toFixed(2)}`];
-  if (allowance !== null) parts.push(`less allowance $${allowance.toFixed(2)}`);
-  if (deposit !== null) parts.push(`plus deposit $${deposit.toFixed(2)}`);
-  if (freight !== null) parts.push(`plus freight $${freight.toFixed(2)}`);
+  const m = (n: number) => moneyIn(n, input.currency);
+  const parts: string[] = [`Goods ${m(goods)}`];
+  if (allowance !== null) parts.push(`less allowance ${m(allowance)}`);
+  if (deposit !== null) parts.push(`plus deposit ${m(deposit)}`);
+  if (freight !== null) parts.push(`plus freight ${m(freight)}`);
 
   // NO trailing "= $total" here. Both callers print the figure themselves —
   // the sheet above the working, the ledger row after it — and a sentence that
@@ -768,6 +826,8 @@ export type DoorPriceResolution =
 export function agreedPricePerBottleForDoor(input: {
   price: number | null | undefined;
   stated: StatedPriceUnit | null;
+  /** The money the agreement is in (F-341); absent says "currency not recorded". */
+  currency?: string | null;
 }): DoorPriceResolution {
   if (!input.stated) {
     // Nothing changed for an order that states no unit: the door compares the
@@ -793,6 +853,7 @@ export function agreedPricePerBottleForDoor(input: {
   const converted = perBottleFromAgreedPrice({
     price: input.price,
     stated: input.stated,
+    currency: input.currency,
   });
   if (!converted.ok) {
     const { priceUom } = input.stated;
@@ -812,7 +873,7 @@ export function agreedPricePerBottleForDoor(input: {
     note:
       pricePackSize === 1
         ? `Agreed per ${priceUom}, which holds one bottle; compared as-is.`
-        : `Agreed at $${Number(input.price).toFixed(2)} per ${priceUom} of ${pricePackSize}; compared per bottle at $${converted.perBottle.toFixed(4)}.`,
+        : `Agreed at ${moneyIn(Number(input.price), input.currency)} per ${priceUom} of ${pricePackSize}; compared per bottle at ${moneyIn(converted.perBottle, input.currency, { digits: 4 })}.`,
   };
 }
 
