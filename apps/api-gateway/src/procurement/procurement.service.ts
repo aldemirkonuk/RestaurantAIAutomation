@@ -19,7 +19,11 @@ import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
-import { InboundResponderService } from "../common/orchestrator/inbound-responder.service";
+import {
+  AgentApprovalOutcome,
+  INBOUND_RESPONDER_AGENT_ID,
+  InboundResponderService,
+} from "../common/orchestrator/inbound-responder.service";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 import { GmailService } from "../communications/gmail.service";
 import type { SendRefusalKind } from "../communications/send-failure";
@@ -78,6 +82,7 @@ import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import {
   OrderSource,
   PriceHistorySource,
+  reservationBottles,
   resolveOrderUnits,
 } from "./order-units";
 import {
@@ -648,7 +653,14 @@ export class ProcurementService {
     // the ask route refuses when it is missing.
     @Optional()
     private readonly vendorSendRequests?: VendorSendRequestsService,
-  ) {}
+  ) {
+    // ADR 0325 (F-492). The vendor-reply agent approves an accepted order only
+    // through `approveAcceptedOrderAsAgent`, the house's own rules and the same
+    // reservation path. Handed over here rather than injected there because
+    // ProcurementModule imports OrchestratorModule, and the reverse import is a
+    // cycle Nest resolves to `undefined`.
+    this.inboundResponder?.useOrderApprover?.(this);
+  }
 
   /**
    * The one door every vendor send goes through for WHO: an owner, a manager,
@@ -3828,24 +3840,11 @@ export class ProcurementService {
     // The delivery calendar event is cancelled by the table, for every writer:
     // migration `a_delivery_event_follows_its_order` (ADR 0284).
 
-    // Release shadow stock if the order had already been approved/sent and
-    // inventory was reserved (shadow_stock was incremented for this order).
-    const RESERVED_STATUSES = [
-      ProcurementOrderStatus.APPROVED,
-      ProcurementOrderStatus.CONFIRMED,
-      ProcurementOrderStatus.IN_TRANSIT,
-    ];
-    if (
-      order.inventoryId &&
-      order.quantity &&
-      RESERVED_STATUSES.includes(preStatus)
-    ) {
-      await this.releaseOrderShadowStock(
-        restaurantId,
-        order.inventoryId,
-        order.quantity,
-      );
-    }
+    // Release what THIS order put on order, from its own record (F-491). It
+    // was decided from the status it left, so a vendor's decline (APPROVED ->
+    // NEGOTIATING) followed by a reject released nothing and the bottles
+    // stayed "on order" for good.
+    await this.releaseOrderReservation(restaurantId, orderId);
 
     // The paper. Best-effort in the same sense as `recordApprovalRefusal`: the
     // cancellation has already happened, and turning a 200 into a 500 because
@@ -4037,12 +4036,15 @@ export class ProcurementService {
     }
   }
 
-  /** Add order quantity to shadow_stock + in_transit_quantity (marks stock as "on order"). Non-fatal. */
+  /**
+   * Add order quantity to shadow_stock + in_transit_quantity (marks stock as
+   * "on order"). Non-fatal; says whether the shadow movement was written.
+   */
   private async reserveOrderShadowStock(
     restaurantId: string,
     inventoryId: string,
     quantity: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       // Shadow stock is a projection of inventory_lots — reserve via the ledger RPC (creates a
       // shadow lot). in_transit_quantity is a separate denormalized display counter.
@@ -4082,8 +4084,138 @@ export class ProcurementService {
       this.logger.log(
         `Reserved ${quantity} shadow/in-transit stock for inventory ${inventoryId}`,
       );
+      return true;
     } catch (e: any) {
       this.logger.warn(`reserveOrderShadowStock failed: ${e?.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Put this order's bottles "on order" ONCE, and write down how many on the
+   * order itself (`procurement_orders.reserved_bottles`, F-491).
+   *
+   * The record is claimed first with a compare-and-set from NULL, so an order
+   * that is approved again after a vendor's decline (NEGOTIATING -> APPROVED),
+   * or by two paths at once, reserves nothing the second time. The count is in
+   * bottles (F-494): an order in cases needs its pack size, and an order whose
+   * pack size is not known reserves nothing and records 0, said in the log
+   * rather than guessed. Non-fatal, like the movement it wraps; a failed
+   * movement gives the claim back so a later approval can try again.
+   */
+  private async reserveOrderOnce(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<void> {
+    try {
+      const { data: row, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("inventory_id, quantity, unit_type, bottles_total, reserved_bottles")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
+      if (error || !row) {
+        throw new Error(
+          error
+            ? `the order could not be read (${error.message})`
+            : "the order is not an order of this restaurant",
+        );
+      }
+      const order = row as Record<string, any>;
+      if (order.reserved_bottles != null) return; // Already on order, once.
+      const quantity = Number(order.quantity);
+      if (!order.inventory_id || !(quantity > 0)) return;
+
+      const units = await this.resolveOrderMatchUnits(restaurantId, orderId, order);
+      const bottles = reservationBottles(quantity, units.unitType, units.bottlesPerUnit);
+      const { data: claimed, error: claimError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .update({ reserved_bottles: bottles ?? 0 })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .is("reserved_bottles", null)
+          .select("id");
+      if (claimError) throw new Error(claimError.message);
+      if (!Array.isArray(claimed) || claimed.length === 0) return; // Another call holds it.
+
+      if (bottles == null) {
+        this.logger.warn(
+          `Order ${orderId} is in ${units.unitType ?? "an unknown unit"} and how many bottles ` +
+            `one holds is not known, so nothing was put on order for it.`,
+        );
+        return;
+      }
+      const moved = await this.reserveOrderShadowStock(
+        restaurantId,
+        order.inventory_id,
+        bottles,
+      );
+      if (!moved) {
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .update({ reserved_bottles: null })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .eq("reserved_bottles", bottles);
+      }
+    } catch (e: any) {
+      this.logger.warn(`reserveOrderOnce failed for order ${orderId}: ${e?.message}`);
+    }
+  }
+
+  /**
+   * Take this order's reservation off its record and return how many bottles
+   * it held (F-491). Compare-and-set to 0, so a cancel and a delivery racing,
+   * or a delivery recorded twice, release it once. 0 when the order holds
+   * nothing or the record could not be read — a release that cannot be
+   * proven to belong to this order would drain another order's bottles.
+   */
+  private async takeOrderReservation(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<{ bottles: number; inventoryId: string | null }> {
+    const none = { bottles: 0, inventoryId: null };
+    try {
+      const { data: row, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("inventory_id, reserved_bottles")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      const held = Number((row as any)?.reserved_bottles ?? 0) || 0;
+      if (!row || held <= 0) return none;
+      const { data: taken, error: takeError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .update({ reserved_bottles: 0 })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .eq("reserved_bottles", held)
+          .select("id");
+      if (takeError) throw new Error(takeError.message);
+      if (!Array.isArray(taken) || taken.length === 0) return none;
+      return { bottles: held, inventoryId: (row as any).inventory_id ?? null };
+    } catch (e: any) {
+      this.logger.warn(
+        `Order ${orderId}'s on-order bottles could not be read, so none were released (${e?.message}).`,
+      );
+      return none;
+    }
+  }
+
+  /** Release whatever this order put on order (cancel, from any status). Non-fatal. */
+  private async releaseOrderReservation(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<void> {
+    const { bottles, inventoryId } = await this.takeOrderReservation(
+      restaurantId,
+      orderId,
+    );
+    if (bottles > 0 && inventoryId) {
+      await this.releaseOrderShadowStock(restaurantId, inventoryId, bottles);
     }
   }
 
@@ -4167,14 +4299,9 @@ export class ProcurementService {
 
     const order = this.mapOrderRow(orderRow);
 
-    // Reserve shadow stock so managers can see "X bottles on order" before delivery.
-    if (order.inventoryId && order.quantity) {
-      await this.reserveOrderShadowStock(
-        restaurantId,
-        order.inventoryId,
-        order.quantity,
-      );
-    }
+    // Reserve shadow stock so managers can see "X bottles on order" before
+    // delivery — once per order, in bottles (F-491, F-494).
+    await this.reserveOrderOnce(restaurantId, orderId);
 
     // NOTE: Calendar event is intentionally NOT created here.
     // It is created in approveDraft(), only after the manager reviews and approves
@@ -4356,6 +4483,121 @@ export class ProcurementService {
    * whole sentence; none of them returns a boolean, because a boolean is a
    * thing a caller can forget to check.
    */
+  /**
+   * A vendor accepted our terms and the house lets the AI write to vendors:
+   * may the agent approve this order? (ADR 0325, F-492.)
+   *
+   * An AI vendor reply never approves past the owner's rules. It used to write
+   * APPROVED straight from PENDING, APPROVAL_NEEDED or NEGOTIATING with no
+   * rule read, no `approved_by` and nothing put on order. Now:
+   *
+   *   - an order already waiting for a person (APPROVAL_NEEDED) stays waiting;
+   *   - the same `decideApproval` the approve button answers to is read, and
+   *     ANY rule that fires — or that cannot be tested, or a policy that cannot
+   *     be read — parks the order in APPROVAL_NEEDED for a person. The agent
+   *     holds no role, so a rule that names one is never satisfied by it;
+   *   - otherwise the order is approved with a compare-and-set on the status
+   *     read, `approved_by` names the agent, and its bottles go on order
+   *     through `reserveOrderOnce`, the button's own path.
+   *
+   * Never throws: the caller is a background mail sync. What it did not do is
+   * returned in words, so the caller can tell the owner.
+   */
+  async approveAcceptedOrderAsAgent(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<AgentApprovalOutcome> {
+    try {
+      const { data: orderRow, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("id, total_cost, provider_id, inventory_id, final_price, status")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
+      if (error || !orderRow) {
+        return { approved: false, why: "the order could not be read" };
+      }
+      const row = orderRow as {
+        total_cost: string | number | null;
+        provider_id: string | null;
+        inventory_id: string | null;
+        final_price: string | number | null;
+        status: string;
+      };
+      const status = readOrderStatus(row.status);
+      if (status === ProcurementOrderStatus.APPROVAL_NEEDED) {
+        return {
+          approved: false,
+          why: "it was already waiting for an owner or a manager to approve it",
+        };
+      }
+      if (
+        status !== ProcurementOrderStatus.PENDING &&
+        status !== ProcurementOrderStatus.NEGOTIATING
+      ) {
+        return { approved: false, why: "it had already moved on" };
+      }
+
+      const hold = async (why: string): Promise<AgentApprovalOutcome> => {
+        const { error: parkError } = await this.databaseService.supabase
+          .from("procurement_orders")
+          .update({ status: ProcurementOrderStatus.APPROVAL_NEEDED })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .eq("status", row.status);
+        if (parkError) {
+          this.logger.error(
+            `ORDER_NOT_PARKED order=${orderId} — ${parkError.message}. The agent did not approve it.`,
+          );
+        }
+        return { approved: false, why };
+      };
+
+      const readout = this.approvalThresholds
+        ? await this.approvalThresholds.read(restaurantId)
+        : null;
+      if (!readout?.readable) {
+        return hold("the house's approval rules could not be read");
+      }
+      const { test, priceUnread } = await this.orderUnderTest(
+        restaurantId,
+        orderId,
+        row,
+      );
+      const decision = decideApproval(readout.thresholds, test);
+      if (decision.requiredRole) {
+        return hold(decision.reasons.join("; "));
+      }
+      if (decision.untestable.length > 0 || priceUnread) {
+        return hold("one of the house's approval rules could not be checked");
+      }
+
+      const { data: approved, error: approveError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .update({
+            status: ProcurementOrderStatus.APPROVED,
+            approved_at: new Date().toISOString(),
+            approved_by: INBOUND_RESPONDER_AGENT_ID,
+          })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .eq("status", row.status)
+          .select("id")
+          .maybeSingle();
+      if (approveError || !approved) {
+        return { approved: false, why: "the order changed while it was being approved" };
+      }
+      await this.reserveOrderOnce(restaurantId, orderId);
+      return { approved: true };
+    } catch (e: any) {
+      this.logger.warn(
+        `approveAcceptedOrderAsAgent failed for order ${orderId}: ${e?.message}`,
+      );
+      return { approved: false, why: "the house's approval rules could not be checked" };
+    }
+  }
+
   private async assertApprovalAllowed(
     restaurantId: string,
     orderId: string,
@@ -5360,7 +5602,12 @@ export class ProcurementService {
             const currentShadow = Number(itemRow.shadow_stock ?? 0) || 0;
             const currentInTransit =
               Number(itemRow.in_transit_quantity ?? 0) || 0;
-            const shadowRelease = Math.min(receivedBottles, currentShadow);
+            // What THIS order put on order, from its own record (F-491,
+            // F-494) — not the bottles that arrived. Releasing the received
+            // count drained other orders' reservations whenever an order in
+            // cases had reserved its case count, or reserved nothing at all.
+            const reserved = await this.takeOrderReservation(restaurantId, orderId);
+            const shadowRelease = Math.min(reserved.bottles, currentShadow);
 
             // WHAT KIND OF PRICE THIS IS.
             //
@@ -5444,7 +5691,7 @@ export class ProcurementService {
                   .update({
                     in_transit_quantity: Math.max(
                       0,
-                      currentInTransit - receivedBottles,
+                      currentInTransit - reserved.bottles,
                     ),
                   })
                   .eq("restaurant_id", restaurantId)

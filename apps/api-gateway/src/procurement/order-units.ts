@@ -213,6 +213,25 @@ export function resolveOrderUnits(input: OrderUnitInput): OrderUnitResolution {
 }
 
 /**
+ * How many bottles an order puts "on order" (F-494), or `null` when that
+ * cannot be known. Shadow stock and the delivery that releases it count
+ * bottles; an order of 2 cases used to reserve 2. A unit that holds one is
+ * its own count. A case, pack or split case needs its pack size, and without
+ * one the answer is `null` — reserve nothing — never a guess.
+ */
+export function reservationBottles(
+  quantity: number,
+  unitType: string | null | undefined,
+  bottlesPerUnit: number | null | undefined,
+): number | null {
+  const plain = resolveOrderUnits({ quantity, unitType });
+  if (plain.ok) return plain.bottlesTotal;
+  if (plain.reason !== "pack_size_required") return null;
+  const packed = resolveOrderUnits({ quantity, unitType, bottlesPerUnit });
+  return packed.ok ? packed.bottlesTotal : null;
+}
+
+/**
  * Where a procurement order came from. Byte-identical rows for a manual order,
  * an Ask-AI order and a recurring materialisation made it impossible to answer
  * "did the AI place this?" — which is the first question anyone asks of an
