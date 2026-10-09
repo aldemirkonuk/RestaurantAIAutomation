@@ -29,9 +29,13 @@ const house = vi.hoisted(() => ({ currency: vi.fn() }));
 vi.mock('@/services/api/wines', () => ({
   searchWines: (...a: unknown[]) => wines.search(...a),
 }));
-vi.mock('@/services/api/client', () => ({
-  getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
-}));
+vi.mock('@/services/api/client', async () => {
+  const actual = await vi.importActual<typeof import('@/services/api/client')>('@/services/api/client');
+  return {
+    getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
+    isUnconfirmedWrite: actual.isUnconfirmedWrite,
+  };
+});
 vi.mock('@/services/api/inventory', () => ({
   createAuctionLotRecord: (...a: unknown[]) => auctionApi.createAuctionLotRecord(...a),
 }));
@@ -195,6 +199,30 @@ describe('the sheet', () => {
     );
     expect(await screen.findByTestId('auction-done')).toHaveTextContent(/were saved/);
     expect(screen.getByTestId('auction-done')).not.toHaveTextContent(/NOT saved/);
+  });
+
+  it('says "nothing was written" only for a refusal, never after a write with no answer (F-338)', async () => {
+    const onCarry = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('timeout of 30000ms exceeded'), { isAxiosError: true, code: 'ECONNABORTED', request: {} }),
+      )
+      .mockRejectedValueOnce(
+        Object.assign(new Error('This wine is already in inventory'), {
+          isAxiosError: true,
+          request: {},
+          response: { status: 409, data: { message: 'This wine is already in inventory' } },
+        }),
+      );
+    draw({ onCarry });
+    await fillALot('6');
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    const said = await screen.findByTestId('auction-failure');
+    expect(said).toHaveTextContent(/They may already be in the book/);
+    expect(said).not.toHaveTextContent(/Nothing was written/);
+
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    await waitFor(() => expect(screen.getByTestId('auction-failure')).toHaveTextContent(/Nothing was written to the book/));
   });
 
   it('the lot number is optional: a lot without one carries and is recorded as not stated (founder answer 11)', async () => {

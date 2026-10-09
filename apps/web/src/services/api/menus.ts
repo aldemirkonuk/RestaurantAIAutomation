@@ -124,6 +124,15 @@ type MenuImportData =
   | { items: WineExtractItem[]; imageBase64?: never; csvContent?: never; fileBase64?: never }
   | { fileBase64: string; imageBase64?: never; csvContent?: never; items?: never }
 
+/**
+ * How long the web waits for a menu read. The gateway's model read alone may
+ * run 180 s (scan-parser.service.ts: a 199-wine list measured 73 s), and the
+ * read is kept and billed whether or not anyone is still waiting, so the
+ * default 30 s gave up on reads that then landed, and each re-upload was
+ * read, billed and kept again (F-567).
+ */
+export const MENU_IMPORT_TIMEOUT_MS = 300_000
+
 export async function importMenu(
   method: 'scan' | 'csv' | 'manual',
   data: MenuImportData,
@@ -140,7 +149,7 @@ export async function importMenu(
     // Sent only when the person gave them: a missing tag stays missing.
     ...(labels.cadence ? { cadence: labels.cadence } : {}),
     ...(labels.menuDate ? { menuDate: labels.menuDate } : {}),
-  })
+  }, { timeout: MENU_IMPORT_TIMEOUT_MS })
   return response.data
 }
 

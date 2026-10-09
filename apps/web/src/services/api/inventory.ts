@@ -191,14 +191,20 @@ export async function createInventoryItem(
  */
 export async function bulkCreateInventoryItems(
   data: BulkCreateInventoryRequest,
-  restaurantId?: string
+  restaurantId?: string,
+  options: { idempotencyKey?: string } = {}
 ): Promise<BulkCreateInventoryResult> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
+  // A line for a wine already on hand adds its quantity again, so a re-sent
+  // batch whose first reply was lost would book every bottle twice. With a
+  // key, the gateway's IdempotencyInterceptor answers the re-send with the
+  // stored first result instead of running it again (F-566).
   const response = await apiClient.post<BulkCreateInventoryResult>(
     `${INVENTORY_PATH}/${id}/items/bulk`,
-    data
+    data,
+    options.idempotencyKey ? { headers: { 'Idempotency-Key': options.idempotencyKey } } : undefined
   );
   return response.data;
 }

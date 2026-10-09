@@ -335,20 +335,23 @@ export class ProviderIntelligenceController {
         restaurantId,
       );
       // This publishes an event that the ProviderConversationAgent picks up
-      const { error } = await this.databaseService.supabase
-        .from("provider_conversation_sessions")
-        .insert({
-          provider_id: providerId,
-          restaurant_id: restaurantId,
-          session_type: body.outreachType || "relationship_building",
-          status: "active",
-          initiated_by: "manual_outreach",
-          intent: { outreach_type: body.outreachType, topic: body.topic },
-        });
+      const { sessionId, alreadyOpen } = await this.openSessionOnce({
+        provider_id: providerId,
+        restaurant_id: restaurantId,
+        session_type: body.outreachType || "relationship_building",
+        status: "active",
+        initiated_by: "manual_outreach",
+        intent: { outreach_type: body.outreachType, topic: body.topic },
+      });
 
-      if (error) throw error;
-
-      return { success: true, message: "Outreach scheduled" };
+      return {
+        success: true,
+        sessionId,
+        alreadyOpen,
+        message: alreadyOpen
+          ? "This is already under way with this vendor. Nothing new was started."
+          : "Outreach scheduled",
+      };
     } catch (error) {
       rethrow(error, "Failed to trigger outreach");
     }
@@ -367,23 +370,62 @@ export class ProviderIntelligenceController {
         providerId,
         restaurantId,
       );
-      const { error } = await this.databaseService.supabase
-        .from("provider_conversation_sessions")
-        .insert({
-          provider_id: providerId,
-          restaurant_id: restaurantId,
-          session_type: "onboarding",
-          status: "active",
-          initiated_by: "onboarding",
-          intent: { intent_type: "onboarding" },
-        });
+      const { sessionId, alreadyOpen } = await this.openSessionOnce({
+        provider_id: providerId,
+        restaurant_id: restaurantId,
+        session_type: "onboarding",
+        status: "active",
+        initiated_by: "onboarding",
+        intent: { intent_type: "onboarding" },
+      });
 
-      if (error) throw error;
-
-      return { success: true, message: "Onboarding conversation initiated" };
+      return {
+        success: true,
+        sessionId,
+        alreadyOpen,
+        message: alreadyOpen
+          ? "Onboarding is already under way with this vendor. Nothing new was started."
+          : "Onboarding conversation initiated",
+      };
     } catch (error) {
       rethrow(error, "Failed to trigger onboarding");
     }
+  }
+
+  /**
+   * One active session per vendor and kind (F-568). A second tap, or a retry
+   * whose first answer was lost, gets the session already open instead of a
+   * new one: the agent reads only the newest active session, so every extra
+   * row was an orphan. Two requests at the same instant can still both
+   * insert; nothing in the table forbids it.
+   */
+  private async openSessionOnce(row: {
+    provider_id: string;
+    restaurant_id: string;
+    session_type: string;
+    status: "active";
+    initiated_by: string;
+    intent: Record<string, unknown>;
+  }): Promise<{ sessionId: string; alreadyOpen: boolean }> {
+    const sessions = () =>
+      this.databaseService.supabase.from("provider_conversation_sessions");
+    const { data: open, error: readError } = await sessions()
+      .select("id")
+      .eq("provider_id", row.provider_id)
+      .eq("restaurant_id", row.restaurant_id)
+      .eq("session_type", row.session_type)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (open) return { sessionId: open.id, alreadyOpen: true };
+
+    const { data: created, error } = await sessions()
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) throw error;
+    return { sessionId: created.id, alreadyOpen: false };
   }
 
   // =========================================================================
