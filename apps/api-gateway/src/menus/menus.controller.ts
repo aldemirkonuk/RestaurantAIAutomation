@@ -59,6 +59,11 @@ export class MenusController {
     description:
       "ADR 0193 (menu versions): every read is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A scan's AI spend ceiling fails CLOSED: if the spend record cannot be read, the read waits (503) and says why.",
   })
+  // F-475 (2026-10-09): left open to every member on purpose. A read only makes
+  // a draft (ADR 0193 §7); making it current is the owner/manager act, and the
+  // /menu page draws "Read a menu" for every role (MenuVersions.tsx ReadMenuForm,
+  // canManage gates only the make-current buttons). The zip-bomb risk is closed
+  // by the size check in parsers/xlsx-size-guard.ts, not by narrowing who reads.
   async importMenu(
     @Body() dto: ImportMenuDto,
     @CurrentUser() user: { userId: string; restaurantId: string },

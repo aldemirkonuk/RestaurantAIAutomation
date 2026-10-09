@@ -1,5 +1,6 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
+import { XlsxRefusedError, assertXlsxWithinLimits } from "./xlsx-size-guard";
 
 // Maps lowercased CSV/Excel header aliases → WineExtractItem field names
 const HEADER_MAP: Record<string, keyof WineExtractItem> = {
@@ -71,6 +72,21 @@ export class CsvParserService {
     const ExcelJS = await import("exceljs");
     const buffer = Buffer.from(base64, "base64");
     const workbook = new ExcelJS.Workbook();
+
+    // F-475: size the archive before ExcelJS inflates it. A sub-1 MB zip bomb
+    // used to take the gateway down for every house; now it is refused here.
+    try {
+      assertXlsxWithinLimits(buffer);
+    } catch (err) {
+      if (!(err instanceof XlsxRefusedError)) throw err;
+      this.logger.warn(`Refused Excel workbook: ${err.detail}`);
+      if (err.tooLarge) {
+        throw new BadRequestException(
+          "This spreadsheet is too big to read. Save the wine list on its own in a smaller file, or as a CSV, and try again. Nothing was imported.",
+        );
+      }
+      return []; // not a workbook ExcelJS could open either; same answer as before
+    }
 
     try {
       await workbook.xlsx.load(buffer as unknown as ArrayBuffer);

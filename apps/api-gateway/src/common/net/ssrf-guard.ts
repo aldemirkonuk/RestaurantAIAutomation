@@ -1,5 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { privateAddressReason } from "../../mcp-runtime/mcp-endpoint.guard";
 
 /**
  * SSRF guard for server-side fetches of user-supplied URLs (OD-54).
@@ -68,23 +69,16 @@ function isBlockedV4(ip: string): boolean {
   });
 }
 
+/**
+ * IPv6 is judged as 16 bytes, never as text (F-474). `new URL()` rewrites
+ * `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]` before this code sees it, so the
+ * old dotted-only regex let loopback and 169.254.169.254 through. The MCP
+ * guard already parses every form that carries a v4 address (mapped,
+ * compatible, NAT64, 6to4, Teredo) and fails closed on anything it cannot
+ * parse; one parser for both guards, so the two cannot drift again.
+ */
 function isBlockedV6(ip: string): boolean {
-  const a = ip.toLowerCase().split("%")[0]; // strip any zone index
-  if (a === "::" || a === "::1") return true; // unspecified, loopback
-  // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible — judge by the v4 address,
-  // or a private v4 sails through wearing a v6 costume.
-  const mapped = a.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isBlockedV4(mapped[1]);
-  if (
-    a.startsWith("fe8") ||
-    a.startsWith("fe9") ||
-    a.startsWith("fea") ||
-    a.startsWith("feb")
-  )
-    return true; // fe80::/10 link-local
-  if (a.startsWith("fc") || a.startsWith("fd")) return true; // fc00::/7 unique-local
-  if (a.startsWith("ff")) return true; // ff00::/8 multicast
-  return false;
+  return privateAddressReason(ip) !== null;
 }
 
 export function isBlockedAddress(ip: string): boolean {

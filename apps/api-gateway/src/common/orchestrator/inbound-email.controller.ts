@@ -9,6 +9,7 @@ import {
   Query,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { createHash, timingSafeEqual } from "crypto";
 import { Public } from "../../auth/decorators/public.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { InboundAddressService } from "./inbound-address.service";
@@ -39,6 +40,15 @@ interface NormalizedInbound {
  * Security: gated by a shared secret (`INBOUND_WEBHOOK_SECRET`, sent as `x-inbound-secret`
  * header or `?secret=` query). With no secret configured the endpoint refuses, so it can never
  * act as an open relay.
+ *
+ * F-476 (2026-10-09): the secret is compared in constant time (`secretMatches`). The header
+ * wins whenever it is sent. The `?secret=` form is KEPT, on purpose: `.railway/railway.ts`
+ * preserves `INBOUND_WEBHOOK_SECRET` and `INBOUND_EMAIL_PROVIDER` on the gateway, and nothing
+ * in the repo says which provider is pointed here or whether it can send a custom header
+ * (perimeter-ingress-integrity agenda, open question 3). Removing the query form blind would
+ * turn a live inbound feed into silent 200 "unauthorized" replies. Instead every query-form
+ * hit logs a warning naming the fix, so whoever moves the provider to the header can then
+ * delete the fallback.
  */
 @Controller("webhooks")
 export class InboundEmailController {
@@ -67,12 +77,18 @@ export class InboundEmailController {
       );
       return { status: "disabled" };
     }
-    const provided = (headerSecret || querySecret || "").trim();
-    if (provided !== configured) {
+    const header = (headerSecret || "").trim();
+    const provided = header || (querySecret || "").trim();
+    if (!secretMatches(provided, configured)) {
       this.logger.warn(
         "inbound-email webhook: bad or missing secret — rejected.",
       );
       return { status: "unauthorized" };
+    }
+    if (!header) {
+      this.logger.warn(
+        "inbound-email webhook: secret arrived in the ?secret= query, which lands in access logs. Point the provider at the x-inbound-secret header instead.",
+      );
     }
 
     try {
@@ -217,4 +233,16 @@ export class InboundEmailController {
       headers: headerMap,
     };
   }
+}
+
+/**
+ * Constant-time secret check (F-476). Both sides are hashed first so the buffers
+ * handed to `timingSafeEqual` are always the same length, and neither the
+ * secret's length nor its prefix leaks through response timing.
+ */
+export function secretMatches(provided: string, configured: string): boolean {
+  if (!provided || !configured) return false;
+  const a = createHash("sha256").update(provided, "utf8").digest();
+  const b = createHash("sha256").update(configured, "utf8").digest();
+  return timingSafeEqual(a, b);
 }
