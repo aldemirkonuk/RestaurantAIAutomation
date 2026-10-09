@@ -154,6 +154,14 @@ describe('Settings → Point of sale: tables the till has named (ADR 0303)', () 
     expect(screen.getByText(/No till word is recorded for it yet\. Hidden/)).toBeTruthy();
   });
 
+  it('says a hidden table leaves every table figure, the insights included (ADR 0303, 2026-10-05)', async () => {
+    draw();
+    await screen.findByText('T7');
+    expect(screen.getByText(/they stay in takings and in each server’s\s+figures, and leave every table figure, the insights included\./)).toBeTruthy();
+    expect(screen.getByText(/No till word is recorded for it yet\. Hidden: its checks are in takings, not in any table figure\./)).toBeTruthy();
+    expect(screen.queryByText(/room register/)).toBeNull();
+  });
+
   it('Hide and Show patch hidden through the writer', async () => {
     const data = settingsData();
     draw(data);

@@ -19,6 +19,7 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
+import { lineForViewer, type LineView } from "./menu-line-view";
 import {
   setHouseMenuPrice,
   type HeldKind,
@@ -248,8 +249,17 @@ export interface MenuVersion {
 const VERSION_SELECT =
   "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
-const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, created_at";
+/**
+ * The columns every line read asks for. `raw_extracted_text` is read so
+ * `lineForViewer` (menu-line-view.ts) can say `kitchen_line`; it leaves this
+ * read only when the caller's view allows it (`MenuVersionsController.one`,
+ * for a role that sees money and suppliers). A CSV line is the whole row
+ * (csv-parser.service.ts:55), cost and supplier cells included, and no header
+ * is kept to tell them apart. Other paths still carry the same text: the
+ * import's reply and the kept source file (tech-debt.d, this branch's entries).
+ */
+export const LINE_SELECT =
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, raw_extracted_text, created_at";
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
@@ -939,12 +949,18 @@ export class MenusService {
    * Read path for the interactive menu (decision 39 — the menus module had
    * no GET at all, which is why no menu page could exist). Returns the
    * restaurant's active menu with its items, newest first within category.
+   * A line's raw line is sent only when `view.rawLine` says so (default: not);
+   * a reply without it says `rawLineWithheld: true`.
    */
-  async getMenu(restaurantId: string): Promise<{
+  async getMenu(
+    restaurantId: string,
+    view: LineView = { rawLine: false },
+  ): Promise<{
     menuId: string | null;
     name: string | null;
     status: string | null;
     items: Array<Record<string, unknown>>;
+    rawLineWithheld?: true;
   }> {
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
@@ -954,19 +970,21 @@ export class MenusService {
       .maybeSingle();
 
     if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
-    if (!menu) return { menuId: null, name: null, status: null, items: [] };
+    const withheld = view.rawLine ? {} : { rawLineWithheld: true as const };
+    if (!menu) return { menuId: null, name: null, status: null, items: [], ...withheld };
 
     // A discarded line (migration 20260922230100, ADR 0160 sec110 item 7) is
     // a soft remove: the row stays for the record, but this read path must
     // not keep serving it as live. Read in pages: PostgREST stops at 1000
     // rows without saying so, and a long wine list is exactly that long.
-    const items = await this.readLines(menu.id, restaurantId);
+    const items = await this.readLines(menu.id, restaurantId, view);
 
     return {
       menuId: menu.id,
       name: menu.name,
       status: menu.status,
       items,
+      ...withheld,
     };
   }
 
@@ -1017,9 +1035,16 @@ export class MenusService {
   /**
    * Every live line of one menu of this house, keyset-paged on id and then
    * ordered for reading (section, then name). A failed page is an error, never
-   * a shorter menu.
+   * a shorter menu. Each row goes through `lineForViewer`: the allowlisted
+   * keys and `kitchen_line` for everyone, the raw line only when the caller
+   * says the viewer may see it (default: not). The plan, make-current and
+   * readCurrentMenus readers pass no view, so they get no raw line.
    */
-  private async readLines(menuId: string, restaurantId: string): Promise<Array<Record<string, unknown>>> {
+  private async readLines(
+    menuId: string,
+    restaurantId: string,
+    view: LineView = { rawLine: false },
+  ): Promise<Array<Record<string, unknown>>> {
     const out: Array<Record<string, unknown>> = [];
     let after: string | null = null;
     for (;;) {
@@ -1042,7 +1067,7 @@ export class MenusService {
       (a, b) =>
         key(a.category).localeCompare(key(b.category)) || key(a.name).localeCompare(key(b.name)),
     );
-    return out;
+    return out.map((row) => lineForViewer(row, view));
   }
 
   // ── Menu versions (ADR 0193; founder 2026-09-21, answer 7) ────────────────
@@ -1097,23 +1122,30 @@ export class MenusService {
     };
   }
 
-  /** One kept menu of this house and its lines. Another house's id is a 404. */
+  /**
+   * One kept menu of this house and its lines. Another house's id is a 404.
+   * A line's raw line is sent only when `view.rawLine` says so (default: not);
+   * a reply without it says `rawLineWithheld: true`.
+   */
   async getVersion(
     restaurantId: string,
     menuId: string,
+    view: LineView = { rawLine: false },
   ): Promise<{
     version: MenuVersion;
     items: Array<Record<string, unknown>>;
     namesReadable: boolean;
     namesReason: string | null;
+    rawLineWithheld?: true;
   }> {
     const row = await this.readVersionRow(restaurantId, menuId);
     const { names, error } = await this.namesOf([row.extracted_by, row.made_current_by, row.retired_by]);
     return {
       version: this.toVersion(row, names),
-      items: await this.readLines(menuId, restaurantId),
+      items: await this.readLines(menuId, restaurantId, view),
       namesReadable: error === null,
       namesReason: error === null ? null : `who read or chose this menu could not be named: ${error}`,
+      ...(view.rawLine ? {} : { rawLineWithheld: true as const }),
     };
   }
 
