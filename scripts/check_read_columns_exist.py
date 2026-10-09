@@ -207,10 +207,6 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
     "notifications.manager_id": (
         "The table has `recipient_id` and `user_id`. database.service.ts:113."
     ),
-    "restaurants.toast_restaurant_guid": (
-        "No such column on `restaurants`; the POS linkage lives in the toast "
-        "tables. toast.service.ts:340."
-    ),
 }
 
 
