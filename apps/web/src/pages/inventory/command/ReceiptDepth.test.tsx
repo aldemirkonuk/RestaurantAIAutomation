@@ -89,6 +89,25 @@ describe('ReceiptDepth', () => {
     expect(screen.getAllByText('Invoice')).toHaveLength(1)
   })
 
+  it('prints the day on the paper, not the day before it (F-570)', async () => {
+    // Tests run in New York (src/__tests__/setup.ts), where reading
+    // '2026-08-28' as an instant lands on 27 Aug.
+    api.byOrder = { o1: [doc({ doc_date: '2026-08-28' })] }
+    render(<ReceiptDepth orders={[{ id: 'o1' }]} />, { wrapper })
+    const want = new Date(Date.UTC(2026, 7, 28)).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    })
+    const early = new Date(Date.UTC(2026, 7, 27)).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    })
+    expect(await screen.findByText(want)).toBeInTheDocument()
+    expect(screen.queryByText(early)).toBeNull()
+  })
+
   it('admits an empty paper trail without claiming verification', async () => {
     api.byOrder = { o1: [] }
     render(<ReceiptDepth orders={[{ id: 'o1' }]} />, { wrapper })

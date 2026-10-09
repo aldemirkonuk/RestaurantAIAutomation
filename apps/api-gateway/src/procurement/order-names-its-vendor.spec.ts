@@ -329,3 +329,29 @@ describe("what the order received is the ledger's count (ADR 0192)", () => {
     expect("received" in wire).toBe(false);
   });
 });
+
+describe("the detail route states the day the order arrives (F-569)", () => {
+  // The bell's approve panel reads `GET /procurement/orders/:id` and printed
+  // "no date is recorded" for every order, because the mapper never sent the
+  // `expected_delivery_date` column it had just read.
+  it("sends the stated day as a bare calendar day", async () => {
+    const { db } = makeDb({
+      data: orderRow({ expected_delivery_date: "2026-10-10" }),
+    });
+    const order = await service(db).getOrder("rest-1", "ord-1");
+    expect(order.expectedDeliveryDate).toBe("2026-10-10");
+  });
+
+  it("sends null when the order states no day", async () => {
+    const { db } = makeDb({ data: orderRow({ expected_delivery_date: null }) });
+    const order = await service(db).getOrder("rest-1", "ord-1");
+    expect("expectedDeliveryDate" in order).toBe(true);
+    expect(order.expectedDeliveryDate).toBeNull();
+  });
+
+  it("sends no key when the route did not read the column", () => {
+    const svc: any = service(makeDb({ data: null }).db);
+    const wire = JSON.parse(JSON.stringify(svc.mapOrderRow(orderRow())));
+    expect("expectedDeliveryDate" in wire).toBe(false);
+  });
+});

@@ -70,7 +70,8 @@ const ORDER = {
   status: 'PENDING',
   currency: 'TRY',
   requestedAt: '2026-09-01T09:00:00.000Z',
-  expectedDeliveryDate: '2026-09-11T00:00:00.000Z',
+  // What the gateway sends: the bare day of a `date` column (F-569).
+  expectedDeliveryDate: '2026-09-11',
 };
 
 /**
@@ -122,6 +123,14 @@ describe('the figures are the order’s, read now', () => {
     expect(figures).toHaveTextContent(`${tryMoney(2400)} per case`);
     expect(figures).toHaveTextContent(`${tryMoney(12000)} in all`);
     expect(figures).toHaveTextContent('Kavaklıdere');
+    // The stated day, not the day before: tests run in New York, where
+    // `new Date('2026-09-11')` is still 10 Sept (F-569).
+    expect(figures).toHaveTextContent(
+      new Date(Date.UTC(2026, 8, 11)).toLocaleDateString(undefined, { timeZone: 'UTC' }),
+    );
+    expect(figures).not.toHaveTextContent(
+      new Date(Date.UTC(2026, 8, 10)).toLocaleDateString(undefined, { timeZone: 'UTC' }),
+    );
     expect(screen.getByTestId('bell-approve-provenance')).toHaveTextContent(
       /Read from the order itself just now/,
     );

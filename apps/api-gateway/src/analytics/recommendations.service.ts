@@ -26,6 +26,8 @@ import {
 import type { PriceAdvice } from "../pricing/margin-to-target";
 import { PriceLocksService, type LockReadout } from "../pricing/price-locks.service";
 import { resolveItemState, stateBookFrom } from "./insights/item-state";
+import { houseDayOf, readHouseZone } from "../common/house-day";
+import { localMidnight } from "../notifications/producers/service-day";
 
 /**
  * A rule's own firing period, from the horizon the rule itself declares
@@ -41,6 +43,48 @@ export function firingPeriodOf(urgency: Recommendation["urgency"]): FiringPeriod
   if (urgency === "now") return "day";
   if (urgency === "this_month") return "month";
   return "week";
+}
+
+/**
+ * Whether a goal is behind its linear pace — the goals desk's own schedule
+ * (`goals.service.ts` `getGoalProgress`, ADR 0296), so the card and the desk
+ * can never judge one goal two ways (F-383).
+ *
+ * The schedule runs from the midnight that opened the house date the goal was
+ * set on to the midnight that opens its deadline day, both on the house's
+ * clock. An at-most goal is behind when it is over its share of the limit, an
+ * at-least goal when it is under its share of the target, with the desk's
+ * 10% grace either way. No zone (the deadline has no midnight), no deadline,
+ * no target, or a goal not yet measured (`current_value` null) is not judged:
+ * an unmeasured goal is not 0% done.
+ */
+export function goalBehindPace(
+  g: {
+    target_value?: unknown;
+    current_value?: unknown;
+    direction?: string | null;
+    deadline?: string | null;
+    created_at?: string | null;
+  },
+  zone: string | null,
+  now: number = Date.now(),
+): boolean {
+  if (!g.deadline || !zone) return false;
+  if (g.current_value === null || g.current_value === undefined) return false;
+  const target = Number(g.target_value);
+  const current = Number(g.current_value);
+  if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(current))
+    return false;
+  const periodStart = houseDayOf(g.created_at ?? null, zone);
+  if (!periodStart) return false;
+  const start = localMidnight(periodStart, zone).getTime();
+  const end = localMidnight(String(g.deadline).slice(0, 10), zone).getTime();
+  const totalDays = Math.max(1, (end - start) / 86400000);
+  const elapsed = Math.min(totalDays, Math.max(0, (now - start) / 86400000));
+  const expectedByNow = target * (elapsed / totalDays);
+  return g.direction === "at_most"
+    ? current > expectedByNow * 1.1
+    : current < expectedByNow * 0.9;
 }
 
 /**
@@ -781,30 +825,26 @@ export class RecommendationsService {
     }));
 
     // ---- Goal rules -------------------------------------------------------
-    for (const g of ctx.goals.slice(0, 3)) {
+    // The pace is judged on the house's clock (ADR 0296), so the zone is read
+    // once for the goals that have a deadline. An unreadable zone judges no
+    // pace, as the desk does with none: no card, never a guessed one.
+    const paceGoals = ctx.goals.slice(0, 3);
+    let goalZone: string | null = null;
+    if (paceGoals.some((g: any) => g.deadline)) {
+      try {
+        goalZone = (await readHouseZone(this.dbService.getClient(), restaurantId)).zone;
+      } catch (err: any) {
+        this.logger.warn(`goal pace not judged, zone unread: ${err?.message ?? err}`);
+      }
+    }
+    for (const g of paceGoals) {
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;
-      const behind =
-        g.deadline &&
-        target > 0 &&
-        current / target <
-          Math.max(
-            0,
-            1 -
-              Math.max(
-                0,
-                (new Date(g.deadline).getTime() - Date.now()) / 86400000,
-              ) /
-                Math.max(
-                  1,
-                  (new Date(g.deadline).getTime() -
-                    new Date(g.created_at).getTime()) /
-                    86400000,
-                ),
-          ) *
-            0.9;
-      rule(`goal_behind_${g.id}`, !!behind, () => ({
-        observation: `Goal "${g.name}" is behind its linear pace (${Math.round((current / target) * 100)}% done).`,
+      const atMost = g.direction === "at_most";
+      rule(`goal_behind_${g.id}`, goalBehindPace(g, goalZone), () => ({
+        observation: atMost
+          ? `Goal "${g.name}" is running over its pace (${Math.round((current / target) * 100)}% of the limit used).`
+          : `Goal "${g.name}" is behind its linear pace (${Math.round((current / target) * 100)}% done).`,
         recommendation:
           "Pick the single biggest lever from the insight feed for this goal's category and commit to it for 7 days before adding anything else.",
         rationale:

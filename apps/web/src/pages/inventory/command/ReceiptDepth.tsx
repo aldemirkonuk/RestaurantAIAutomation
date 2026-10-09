@@ -111,8 +111,14 @@ export function ReceiptDepth({
                 {dashNull(doc.doc_number)}
               </span>
               <span className="text-gray-500">
+                {/* `doc_date` is a `date` column: the day on the paper, read in
+                    UTC so it is not moved a day west of Greenwich (F-570). */}
                 {doc.doc_date
-                  ? new Date(doc.doc_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                  ? new Date(doc.doc_date).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      timeZone: 'UTC',
+                    })
                   : '—'}
               </span>
               {orderNumber && <span className="font-mono text-[10px] text-gray-400">{orderNumber}</span>}

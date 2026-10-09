@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { WeatherService } from "../weather/weather.service";
 import { RecordedDaysService, RecordedDay } from "./recorded-days.service";
+import { houseToday, readHouseZone } from "../common/house-day";
 
 /**
  * A passed day, holding both halves — ADR 0111 slice 3.
@@ -363,15 +364,42 @@ export class DayRecordService {
     return viewer.seesHouseMoney === true ? window : withholdHouseMoney(window);
   }
 
+  /**
+   * Today on the house's clock (ADR 0296), the default day for every calendar
+   * route that is not handed one (F-086). Before this the default was the UTC
+   * date, so from 17:00 in Los Angeles the calendar's "today" was already
+   * tomorrow and the evening still running read as a passed day.
+   *
+   * A house with no zone keeps the UTC date: the till register still files
+   * that house's checks by their UTC day, and "today" has to agree with it.
+   * A failed read of the house record throws (`readHouseZone`), never folded
+   * into "no zone".
+   */
+  async houseToday(restaurantId: string, now: Date = new Date()): Promise<string> {
+    const { zone } = await readHouseZone(this.databaseService.supabase, restaurantId);
+    return zone ? houseToday(zone, now) : now.toISOString().slice(0, 10);
+  }
+
   private async fullWindow(
     restaurantId: string,
     from: string,
     to: string,
   ): Promise<DayRecordWindow> {
-    const [ledger, weather, currency] = await Promise.all([
+    const [ledger, weather, currency, today] = await Promise.all([
       this.recorded.windowFor(restaurantId, from, to),
       this.weather.windowFor(restaurantId, from, to),
       this.houseCurrency(restaurantId),
+      // An unreadable house record already shows as an unreadable currency;
+      // it must not sink the whole window, and it must not pass for "no zone"
+      // either. So the cut falls on the EARLIEST date any clock reads
+      // (UTC-12): a day still running anywhere is never shown as passed, and
+      // the cost is a passed day withheld for a few hours.
+      this.houseToday(restaurantId).catch((error: Error) => {
+        this.logger.warn(
+          `House zone unreadable for ${restaurantId}; holding back any day not yet over everywhere: ${error.message}`,
+        );
+        return houseToday("Etc/GMT+12");
+      }),
     ]);
 
     // A refused ledger answers nothing about the register, so the window says
@@ -387,7 +415,6 @@ export class DayRecordService {
       weather.observations.map((r) => [r.businessDate, r]),
     );
 
-    const today = new Date().toISOString().slice(0, 10);
     const dates = [
       ...new Set([
         ...recordedByDay.keys(),
