@@ -10,12 +10,20 @@
  * replaces them.
  */
 
+import { houseMoney } from "../../common/house-money";
+
 export interface InsightEvidence {
   /** Entity display name (e.g. "Table 4", "Tuesday", "Caymus Cab"). */
   entity?: string;
   /** Measure display label ("sales", "average check"). */
   measureLabel: string;
   unit: "currency" | "count" | "percent" | "ratio" | "units";
+  /**
+   * The house's own currency code (`restaurants.currency`) for a `currency`
+   * figure; null or absent prints the figure with no symbol, never as
+   * dollars (F-341, ADR 0117 Q25).
+   */
+  currency?: string | null;
   value?: number;
   baseline?: number;
   deltaPct?: number | null;
@@ -45,8 +53,6 @@ export interface InsightEvidence {
   n?: number;
 }
 
-const fmtMoney = (v: number) =>
-  `$${Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)}`;
 
 const fmtNum = (v: number) =>
   Math.abs(v) >= 100
@@ -55,10 +61,14 @@ const fmtNum = (v: number) =>
       ? v.toFixed(1)
       : v.toFixed(2);
 
-export function fmtValue(v: number, unit: InsightEvidence["unit"]): string {
+export function fmtValue(
+  v: number,
+  unit: InsightEvidence["unit"],
+  currency?: string | null,
+): string {
   switch (unit) {
     case "currency":
-      return fmtMoney(v);
+      return houseMoney(v, currency, { compact: true });
     case "percent":
       return `${(v * 100).toFixed(1)}%`;
     default:
@@ -105,7 +115,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       if (e.deltaPct == null || e.baseline == null || e.value == null)
         return null;
       if (e.direction === "in_line")
-        return `${entity} ${e.measureLabel} (${fmtValue(e.value, e.unit)}) is in line with the typical ${entity.toLowerCase()}.`;
+        return `${entity} ${e.measureLabel} (${fmtValue(e.value, e.unit, e.currency)}) is in line with the typical ${entity.toLowerCase()}.`;
       const dir = e.deltaPct > 0 ? "higher" : "lower";
       // `date` on a baseline means the day compared was NOT the newest day in
       // the series — the generator skipped back past days with no records. The
@@ -115,7 +125,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       // Wednesday" is a different statement over four Wednesdays than over
       // three, and the reader is entitled to know which one they are reading.
       const support = e.n ? `, over ${e.n} past ${entity}s` : "";
-      return `${when}${e.measureLabel} came in ${fmtPct(e.deltaPct)} ${dir} than your average ${entity} (${fmtValue(e.value, e.unit)} vs ${fmtValue(e.baseline, e.unit)}${support}).`;
+      return `${when}${e.measureLabel} came in ${fmtPct(e.deltaPct)} ${dir} than your average ${entity} (${fmtValue(e.value, e.unit, e.currency)} vs ${fmtValue(e.baseline, e.unit, e.currency)}${support}).`;
     }
     case "period": {
       if (e.deltaPct == null || e.value == null || e.baseline == null)
@@ -123,7 +133,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       const verb =
         e.deltaPct > 0 ? "rose" : e.deltaPct < 0 ? "fell" : "held flat";
       const prefix = e.entity ? `${e.entity} ` : "";
-      return `${prefix}${e.measureLabel} ${verb} ${fmtPct(e.deltaPct)} vs the previous ${e.windowLabel ?? "period"} (${fmtValue(e.value, e.unit)} vs ${fmtValue(e.baseline, e.unit)}).`;
+      return `${prefix}${e.measureLabel} ${verb} ${fmtPct(e.deltaPct)} vs the previous ${e.windowLabel ?? "period"} (${fmtValue(e.value, e.unit, e.currency)} vs ${fmtValue(e.baseline, e.unit, e.currency)}).`;
     }
     case "trend": {
       if (e.trendPctPerWeek == null) return null;
@@ -134,14 +144,14 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     case "anomaly": {
       if (e.z == null || e.value == null || !e.date) return null;
       const dir = e.z > 0 ? "above" : "below";
-      return `${e.date} was unusual${e.entity ? ` for ${e.entity}` : ""}: ${e.measureLabel} of ${fmtValue(e.value, e.unit)} sits ${Math.abs(e.z).toFixed(1)}σ ${dir} typical.`;
+      return `${e.date} was unusual${e.entity ? ` for ${e.entity}` : ""}: ${e.measureLabel} of ${fmtValue(e.value, e.unit, e.currency)} sits ${Math.abs(e.z).toFixed(1)}σ ${dir} typical.`;
     }
     case "peer": {
       if (e.rank == null || e.peerCount == null || e.value == null) return null;
       let s = `${entity} ranks #${e.rank} of ${e.peerCount} by ${e.measureLabel}`;
       if (e.deltaPct != null && Math.abs(e.deltaPct) >= 0.03)
         s += `, ${fmtPct(e.deltaPct)} ${e.deltaPct > 0 ? "above" : "below"} the group average`;
-      s += ` (${fmtValue(e.value, e.unit)}).`;
+      s += ` (${fmtValue(e.value, e.unit, e.currency)}).`;
       if (e.attributeReading) s += ` ${e.attributeReading}`;
       return s;
     }
@@ -195,7 +205,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     }
     case "hot": {
       if (e.value == null || e.z == null) return null;
-      return `${entity} is surging right now: ${fmtValue(e.value, e.unit)}${e.surgeMinutes ? ` in ${e.surgeMinutes} min` : ""}, ${Math.abs(e.z).toFixed(1)}σ above its normal pace — worth a visit from the floor manager.`;
+      return `${entity} is surging right now: ${fmtValue(e.value, e.unit, e.currency)}${e.surgeMinutes ? ` in ${e.surgeMinutes} min` : ""}, ${Math.abs(e.z).toFixed(1)}σ above its normal pace — worth a visit from the floor manager.`;
     }
     default:
       return null;

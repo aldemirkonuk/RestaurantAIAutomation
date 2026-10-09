@@ -94,6 +94,8 @@ interface Scenario {
   exclusionsReadable?: boolean;
   suppressions?: string[];
   suppressionsReadable?: boolean;
+  /** `restaurants.currency`; the founder's sentence was a dollar house. */
+  currency?: string | null;
 }
 
 function generatorFor(s: Scenario) {
@@ -108,6 +110,7 @@ function generatorFor(s: Scenario) {
     restaurant_tables: [],
     restaurant_venue_profiles: [],
     analytics_goals: [],
+    restaurants: [{ currency: s.currency === undefined ? "USD" : s.currency }],
   });
   return new InsightGeneratorService(
     { getClient: () => client, supabase: client } as any,
@@ -183,6 +186,26 @@ describe("baseline honesty — the 100% sentence", () => {
     expect(hit!.sentence).toMatch(
       /^\w+ sales came in 40% lower than your average \w+ \(\$600 vs \$1\.0k, over \d+ past \w+s\)\.$/,
     );
+  });
+
+  // F-341: the figures are in the house's own money. A euro house read "$600
+  // vs $1.0k" about euros; a house that never said read dollars too.
+  it("prints the figures in the house's own currency, and with none when none is recorded", async () => {
+    const { revenue } = tradingHistory({ yesterday: 600 });
+    const sentenceFor = async (currency: string | null) =>
+      (
+        await generatorFor({ revenue, currency }).generate("r1", {
+          persist: false,
+        })
+      ).insights.find((i) => i.candidateKey === WEEKDAY_BASELINE)!.sentence;
+    expect(await sentenceFor("EUR")).toContain("(€600 vs €1.0k, over");
+    // en-US sets a code it has no symbol for with a no-break space.
+    expect(await sentenceFor("TRY")).toContain(
+      "(TRY\u00a0600 vs TRY\u00a01.0k, over",
+    );
+    const none = await sentenceFor(null);
+    expect(none).toContain("(600 vs 1.0k, over");
+    expect(none).not.toContain("$");
   });
 
   it("withholds rather than claiming a 100% collapse from a day with no records", async () => {

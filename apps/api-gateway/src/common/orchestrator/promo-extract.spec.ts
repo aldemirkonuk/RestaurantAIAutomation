@@ -1,4 +1,10 @@
-import { extractPromotion, PROMO_TYPES, PromoType } from "./promo-extract";
+import {
+  extractPromotion,
+  promoMoney,
+  PROMO_TYPES,
+  PromoType,
+} from "./promo-extract";
+import { PromotionExtractorService } from "./promotion-extractor.service";
 
 const NOW = new Date(2026, 6, 8); // 2026-07-08 (Wed), local — deterministic date math
 
@@ -111,5 +117,29 @@ describe("promo-extract (deterministic, no LLM)", () => {
     const a = extractPromotion("x", "15% off cases of 12+ until July 31", NOW)!;
     const b = extractPromotion("y", "15% off cases of 12+ until July 31", NOW)!;
     expect(a.signature).toBe(b.signature);
+  });
+});
+
+// F-341: an offer in any currency but euros or pounds printed as dollars.
+describe("an offer's amount keeps its own currency", () => {
+  it("prints the symbol for EUR, GBP and USD", () => {
+    expect(promoMoney("EUR", 20)).toBe("€20");
+    expect(promoMoney("GBP", 15)).toBe("£15");
+    expect(promoMoney("USD", 50)).toBe("$50");
+  });
+
+  it("prints any other code as itself, and no symbol when none was named", () => {
+    expect(promoMoney("TRY", 500)).toBe("TRY 500");
+    expect(promoMoney("chf", 40)).toBe("CHF 40");
+    expect(promoMoney(null, 40)).toBe("40");
+  });
+
+  it("the daily digest line says a lira offer in lira", () => {
+    const svc = new PromotionExtractorService({} as any, {} as any);
+    const line = (svc as any).digestLine({
+      providers: { name: "Acme" },
+      discount_value: { amount: 500, currency: "TRY" },
+    });
+    expect(line).toBe("Acme — TRY 500 off");
   });
 });
