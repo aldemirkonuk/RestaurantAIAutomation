@@ -217,7 +217,9 @@ describe('sitemap and llms.txt', () => {
     const xml = renderPagesSitemap();
     expect(xml).toContain('<loc>https://mudavym.com/login</loc>');
     expect(xml).toContain('<loc>https://mudavym.com/privacy</loc>');
-    expect(xml).not.toContain('<loc>https://mudavym.com/</loc>');
+    // The root is the landing page (ADR 0320), so it is listed; until then it
+    // redirected strangers to /login and was held out.
+    expect(xml).toContain('<loc>https://mudavym.com/</loc>');
     expect(xml).not.toContain('lastmod');
   });
 
