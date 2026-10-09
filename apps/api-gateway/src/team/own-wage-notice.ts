@@ -124,7 +124,8 @@ export async function recordOwnWageChange(
         channels: ["in_app"],
         restaurant_id: change.restaurantId,
         type: "system",
-        title: title.slice(0, 500),
+        // notifications.title is varchar(255); a longer title fails the insert (F-560).
+        title: title.slice(0, 255),
         message,
         priority: "high",
         status: "unread",

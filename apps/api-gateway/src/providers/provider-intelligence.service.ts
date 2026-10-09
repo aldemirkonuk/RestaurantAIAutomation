@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 
@@ -187,8 +192,16 @@ export class ProviderIntelligenceService {
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false });
 
+    // `provider_promotions` has no `status` column (baseline :4808, plus
+    // only alerted_at and dismissed_at since), so filtering on it failed
+    // with a 500 (F-558). What it does hold is `is_active`.
     if (status) {
-      query = query.eq("status", status);
+      if (status !== "active" && status !== "inactive") {
+        throw new BadRequestException(
+          "Offers can be shown as active or inactive only.",
+        );
+      }
+      query = query.eq("is_active", status === "active");
     }
 
     const { data, error } = await query;

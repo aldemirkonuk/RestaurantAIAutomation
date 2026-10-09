@@ -3409,6 +3409,18 @@ export class ProcurementService {
       });
     }
 
+    // F-557 — `procurement_orders` has no location column in any migration,
+    // so a `locationId` reached the UPDATE as `location_id` and the whole
+    // edit failed with a 500. Refused before anything is read or written,
+    // in words; a null says nothing and is let through.
+    if (dto.locationId != null) {
+      throw new BadRequestException({
+        reason: "order_has_no_location",
+        message:
+          "An order does not keep a storage place yet, so none was set. Nothing was changed.",
+      });
+    }
+
     // ADR 0125 — the state change is the one field on this DTO that is not a
     // note about the order but a claim about where the order IS. Until this,
     // `status: dto.status ?? undefined` reached the UPDATE unread, so any
@@ -3437,33 +3449,6 @@ export class ProcurementService {
       await this.assertStatusTransition(restaurantId, orderId, dto.status);
     }
 
-    // D-06: Block location assignment while order is in a pending state.
-    if (dto.locationId !== undefined) {
-      const BLOCKED_STATUSES = [
-        ProcurementOrderStatus.PENDING,
-        ProcurementOrderStatus.APPROVAL_NEEDED,
-        ProcurementOrderStatus.NEGOTIATING,
-      ];
-      const { data: existing, error: fetchError } =
-        await this.databaseService.supabase
-          .from("procurement_orders")
-          .select("status")
-          .eq("restaurant_id", restaurantId)
-          .eq("id", orderId)
-          .single();
-
-      if (
-        !fetchError &&
-        existing &&
-        BLOCKED_STATUSES.includes((existing as any).status)
-      ) {
-        throw new UnprocessableEntityException({
-          reason: "order_not_approved",
-          message: "Location can only be assigned after the order is approved.",
-        });
-      }
-    }
-
     const updatePayload: Record<string, any> = {
       status: dto.status ?? undefined,
       quoted_price: dto.quotedPrice ?? undefined,
@@ -3477,7 +3462,6 @@ export class ProcurementService {
       price_verified: dto.priceVerified ?? undefined,
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
-      location_id: dto.locationId ?? undefined,
       // Whose failure a cancellation was (ADR 0207 round 4). NOT on
       // UpdateOrderDto: that class is bound to the public `PATCH orders/:id`
       // body, and these three columns are proven, not asserted — a client
