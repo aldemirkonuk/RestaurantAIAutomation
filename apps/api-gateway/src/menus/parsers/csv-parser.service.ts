@@ -107,6 +107,46 @@ export class CsvParserService {
     return items;
   }
 
+  /**
+   * The header cells of a CSV menu that name no field, as the file spells
+   * them (F-070). Those columns are dropped by parse(); the import reply
+   * names them so the person learns a `glass` column was not read rather
+   * than finding its prices missing. Matched exactly as parse() matches a
+   * header (lowercased, trimmed): change the two together.
+   */
+  unreadColumns(csvContent: string): string[] {
+    const first = csvContent.split(/\r?\n/).find((l) => l.trim().length > 0);
+    return first ? this.unreadOf(this.parseLine(first)) : [];
+  }
+
+  /** unreadColumns for an .xlsx/.xls workbook: its first sheet's first row. */
+  async unreadExcelColumns(base64: string): Promise<string[]> {
+    const ExcelJS = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    try {
+      await workbook.xlsx.load(Buffer.from(base64, "base64") as unknown as ArrayBuffer);
+    } catch {
+      return [];
+    }
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) return [];
+    const headers: string[] = [];
+    worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      headers[colNumber - 1] = this.cellToString(cell.value);
+    });
+    return this.unreadOf(headers);
+  }
+
+  private unreadOf(headers: Array<string | undefined>): string[] {
+    return headers
+      .map((h) => (h ?? "").trim())
+      .filter(
+        (h) =>
+          h.length > 0 &&
+          !Object.prototype.hasOwnProperty.call(HEADER_MAP, h.toLowerCase().trim()),
+      );
+  }
+
   private cellToString(value: unknown): string {
     if (value === null || value === undefined) return "";
     if (typeof value === "object" && "text" in (value as any)) {

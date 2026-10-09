@@ -163,6 +163,18 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(result));
   });
 
+  it('while it is being made current, says what it is doing and how long it has taken (F-069)', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockReturnValue(new Promise(() => {}));
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    const working = await screen.findByTestId('menu-plan-working');
+    expect(working).toHaveAttribute('role', 'status');
+    expect(working).toHaveTextContent('Putting 2 lines on the menu and setting their prices.');
+    expect(working).toHaveTextContent('0s so far.');
+    await waitFor(() => expect(screen.getByTestId('menu-plan-working')).toHaveTextContent('1s so far.'), { timeout: 2500 });
+  });
+
   it('a plan that moved (409) is said, nothing is changed, and it is read again', async () => {
     mockPlan.mockResolvedValue(plan());
     mockMake.mockRejectedValue({ response: { status: 409, data: { message: 'changed since it was shown' } } });

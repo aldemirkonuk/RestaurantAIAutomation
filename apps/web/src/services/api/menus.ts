@@ -76,6 +76,8 @@ export interface MenuImportResult {
   sourceImage?: string | null
   /** Whether the source file (photo, PDF, CSV) was kept, and why not when it was not. */
   source?: { kept: boolean; failure: string | null }
+  /** A CSV or workbook's column headings that were not read, as written (F-070). */
+  unreadColumns?: string[]
 }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const
@@ -148,7 +150,12 @@ export async function reviewMenuItem(
   menuItemId: string,
   fieldName: EditableMenuItemField,
   newValue: string
-): Promise<{ menuItemId: string; fieldName: string; newValue: string }> {
+): Promise<
+  { menuItemId: string; fieldName: string; newValue: string } & Pick<
+    MenuImportReviewItem,
+    'priceSync' | 'priceSyncError' | 'priceHeld'
+  >
+> {
   const response = await apiClient.patch(`/menus/items/${menuItemId}`, { fieldName, newValue })
   return response.data
 }
@@ -180,6 +187,8 @@ export interface MenuLine {
   inventory_item_id: string | null
   source: 'scan' | 'csv' | 'manual'
   status: 'approved' | 'flagged' | 'in_review'
+  /** Why the line is flagged, in the gateway's note (F-151); /menu says it in plain words. */
+  review_notes?: string | null
   /** Blank menu price: the house kept its last known one, or had none either; a manager can change it. */
   price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
   price_flag_note?: string | null

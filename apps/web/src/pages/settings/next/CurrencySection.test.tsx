@@ -131,6 +131,20 @@ describe('the Currency register — what it writes', () => {
     expect(saveCurrency).not.toHaveBeenCalled();
   });
 
+  it('lists the house’s own country’s currency first, then every currency once (F-053)', () => {
+    mount({ houseCurrency: remote(reg({ code: 'USD', country: 'United States' })) });
+    const groups = screen.getByRole('combobox').querySelectorAll('optgroup');
+    expect(groups).toHaveLength(2);
+    expect(groups[0].getAttribute('label')).toBe('United States’s currency');
+    expect([...groups[0].querySelectorAll('option')].map((o) => o.value)).toEqual(['USD']);
+    expect(groups[1].getAttribute('label')).toBe('Every currency');
+    const rest = [...groups[1].querySelectorAll('option')].map((o) => o.value);
+    expect(rest).not.toContain('USD');
+    expect(rest).toContain('EUR');
+    // The recorded code is still what the select shows.
+    expect(screen.getByRole('combobox')).toHaveValue('USD');
+  });
+
   it('Record sends exactly the code shown, once a person has accepted it', () => {
     const { saveCurrency } = mount();
     fireEvent.click(screen.getByRole('button', { name: 'Record' }));

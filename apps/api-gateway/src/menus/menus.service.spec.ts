@@ -250,7 +250,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
   const MEMBER_KEYS = [
     "id", "name", "producer", "category", "vintage", "region", "country", "grape_variety",
     "by_glass_price", "bottle_price", "wine_library_id", "inventory_item_id", "source", "status",
-    "price_flag", "price_flag_note", "created_at",
+    "review_notes", "price_flag", "price_flag_note", "created_at",
   ];
   const ROOT_KEYS = ["menuId", "name", "status", "items"];
 
@@ -273,6 +273,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
       inventory_item_id: null,
       source: "csv",
       status: "approved",
+      review_notes: null,
       price_flag: null,
       price_flag_note: null,
       raw_extracted_text: null,
@@ -792,7 +793,11 @@ describe("MenusService.addMenuItem — the line's prices reach the house (ADR 01
     // Round 6c answer 4, "Flag it": no price on the line, none at the house.
     expect(item.priceFlag).toBe("blank_no_house_price");
     expect(tables.menu_items[0].price_flag).toBe("blank_no_house_price");
-    expect(tables.menu_items[0].price_flag_note).toMatch(/shows no price, and the house had no price for this wine either/);
+    // Kind-neutral (F-066): a beer or a tea is not "this wine", and the price
+    // is set on the line itself (F-065), not on Inventory.
+    expect(tables.menu_items[0].price_flag_note).toBe(
+      "The menu line shows no price, and the house had no price for it either, so it stands on the menu unpriced. An owner or a manager can set one here, with Edit on this line.",
+    );
   });
 });
 
@@ -851,6 +856,16 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.items[0].priceSync).toBe("not_current");
     // Lines are stored against the new version, not appended to the old menu.
     expect(tables.menu_items.every((l) => l.menu_id === r.menuId)).toBe(true);
+  });
+
+  it("names the CSV columns it did not read, as the file spells them (F-070)", async () => {
+    const service = makeService(base(), { wineSubmissions, csvParser: new CsvParserService() });
+    const file = "Name,Producer,Cost,Bottle, Notes \nBarolo,Vietti,38,120,house pour\n";
+    const r = await service.importMenu({ method: "csv", data: { csvContent: file }, restaurantId: "rest-1" } as any, "user-1");
+    expect(r.unreadColumns).toEqual(["Cost", "Notes"]);
+    // A file whose every column is read says none.
+    const clean = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
+    expect(clean.unreadColumns).toEqual([]);
   });
 
   it("a source that could not be stored is SAID on the version, and the read is still kept", async () => {

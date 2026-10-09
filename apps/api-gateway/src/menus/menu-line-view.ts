@@ -58,6 +58,9 @@ export const MEMBER_LINE_KEYS = [
   "inventory_item_id",
   "source",
   "status",
+  // Why a line is flagged, in the gateway's note ("Manually added during
+  // review", "Manager corrected <field>"); /menu says it in plain words (F-151).
+  "review_notes",
   "price_flag",
   "price_flag_note",
   "created_at",
