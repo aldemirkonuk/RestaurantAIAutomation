@@ -70,6 +70,7 @@ const WRITES: Array<[string, (r: Rig) => Promise<unknown>]> = [
   ["DELETE /providers/:id/locations/:locationId", (r) => r.providers.deleteProviderLocation("p1", "l1", user as never)],
   ["POST /providers/:id/outreach", (r) => r.intelligence.triggerOutreach("p1", {}, user as never)],
   ["POST /providers/:id/onboard", (r) => r.intelligence.triggerOnboarding("p1", user as never)],
+  ["POST /providers/:id/retroactive-order", (r) => r.providers.createRetroactiveOrder("p1", {} as never, user as never)],
   ["PUT /vendor-terms/:providerId", (r) => r.terms.write(HOUSE, "p1", {} as never, { user })],
 ];
 

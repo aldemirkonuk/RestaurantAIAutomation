@@ -960,6 +960,9 @@ export class ProvidersController {
     orderNumber: string;
     conversationId: string;
   }> {
+    // Recording a past purchase against a vendor is a money act: manager or
+    // owner only, the same rule as every other vendor write (VEN-W30).
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Recording a past purchase from a vendor");
     try {
       return await this.providersService.createRetroactiveOrder(
         providerId,
