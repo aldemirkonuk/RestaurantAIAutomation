@@ -134,7 +134,14 @@ describe("dashboard reads procurement_orders.status as the enum, not a lowercase
     db.getRestaurantInventory.mockResolvedValue([]);
     db.getLowStockItems.mockResolvedValue([]);
     db.getProcurementOrders.mockResolvedValue(ORDERS);
-    db.getClient.mockReturnValue(makeFilteringClient({ procurement_orders: ORDERS }));
+    db.getClient.mockReturnValue(
+      makeFilteringClient({
+        procurement_orders: ORDERS,
+        // A house with a zone: with none, the stat cards withhold their day
+        // figures (F-188), which is not this file's subject.
+        restaurants: [{ timezone: "UTC" }],
+      }),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [DashboardService, { provide: DatabaseService, useValue: db }],

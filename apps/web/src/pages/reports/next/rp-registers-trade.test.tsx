@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { till, type TillWindow } from './rp-registers-trade';
+import { till, week, type TillWindow, type WeekRegister } from './rp-registers-trade';
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import type { GoalsDesk } from './useGoalsDesk';
 import { paceOf, toProgressRow } from '@/pages/recommendations/next/rec-masthead';
@@ -250,5 +250,38 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
   it('calls it "Pace unknown" in the recommendations margin, and keeps "No deadline" for a goal with none', () => {
     expect(paceOf(toProgressRow(STOCK))).toBe('Pace unknown');
     expect(paceOf(toProgressRow(NO_DEADLINE))).toBe('No deadline');
+  });
+});
+
+describe("the week's shape — a bottle belongs to the house day (F-185)", () => {
+  const readWeek = (raw: unknown) => week.select(raw) as WeekRegister;
+
+  it('says a house with no zone has no weekdays to file on, links to the setting, and never says nothing was sold', () => {
+    const view = week.view(
+      readWeek({
+        weekdayProfile: [],
+        bestDay: null,
+        worstDay: null,
+        tie: false,
+        trendPerDayPct: null,
+        timezone: null,
+        zoneUnset: true,
+        basis: { weekday: 'This house’s time zone isn’t set.' },
+      }),
+      ctx,
+    );
+    expect(view.figures).toEqual([]);
+    expect(view.cats).toBeUndefined();
+    render(<MemoryRouter>{view.say}</MemoryRouter>);
+    expect(screen.getByText(/no bottle can be filed on a weekday yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/No consumption is recorded/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Set the time zone in Settings' })).toHaveAttribute(
+      'href',
+      '/settings?tab=time-zone',
+    );
+  });
+
+  it('reads a payload without the flag as a house with a zone', () => {
+    expect(readWeek({ weekdayProfile: [] }).zoneUnset).toBe(false);
   });
 });
