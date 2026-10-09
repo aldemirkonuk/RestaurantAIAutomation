@@ -91,6 +91,36 @@ describe('the act — the write the question never had', () => {
     expect(onConfirmed).toHaveBeenCalledWith('sub-1');
   });
 
+  it('a confirm with a taker does not also close: the next reading is still asked (F-207)', async () => {
+    // WineRegister's wiring: onConfirmed takes the head of the queue, onClose
+    // empties it. Closing after a confirm threw away every reading behind it.
+    const { useState } = await import('react');
+    const second: BottleReading = { ...READING, name: 'Narince', type: 'white' };
+    function Queue() {
+      const [rows, setRows] = useState([READING, second]);
+      return (
+        <IsThisTheBottlePanel
+          open={rows.length > 0}
+          reading={rows[0] ?? null}
+          onClose={() => setRows([])}
+          onRejected={() => setRows((r) => r.slice(1))}
+          onConfirmed={() => setRows((r) => r.slice(1))}
+        />
+      );
+    }
+    render(<Queue />);
+    fireEvent.click(screen.getByTestId('bottle-confirm'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect((await screen.findAllByText('Narince')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('a confirm with no taker closes the panel', async () => {
+    const { onClose } = draw({ onConfirmed: undefined });
+    fireEvent.click(screen.getByTestId('bottle-confirm'));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
   it('says what "yes" does — the library, not a shelf', () => {
     draw();
     expect(

@@ -196,6 +196,37 @@ describe("InventoryService", () => {
     });
   });
 
+  // F-209: `dto.thresholdMin || 6` turned a stated par of 0 into 6, and gave a
+  // row with no par 6 bottles nobody chose.
+  describe("createInventoryItem — the par is the person's or the house's, never an invented 6", () => {
+    function notFoundThenInserted() {
+      mockSingle
+        .mockResolvedValueOnce({ data: { name: "Rioja" }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { code: "PGRST116", message: "not found" } })
+        .mockResolvedValueOnce({ data: { id: "inv-par", wine_name: "Rioja" }, error: null });
+    }
+
+    it("keeps a stated par of 0", async () => {
+      notFoundThenInserted();
+      await service.createInventoryItem("rest-1", { wineId: "mw-p", stockLive: 1, thresholdMin: 0 } as any);
+      expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(0);
+    });
+
+    it("uses the house's default par when none is given", async () => {
+      notFoundThenInserted();
+      mockMaybeSingle.mockResolvedValueOnce({ data: { default_threshold_min: 4 }, error: null });
+      await service.createInventoryItem("rest-1", { wineId: "mw-p", stockLive: 1 } as any);
+      expect(mockSupabaseChain.from).toHaveBeenCalledWith("restaurants");
+      expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(4);
+    });
+
+    it("falls back to the column's own default (3), not 6, when the house row is unread", async () => {
+      notFoundThenInserted();
+      await service.createInventoryItem("rest-1", { wineId: "mw-p", stockLive: 1 } as any);
+      expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(3);
+    });
+  });
+
   // ADR 0193 (founder, 2026-09-21: "it should be changed whenever the manager
   // wants"). The house's own bottle price IS `menu_price_current` -- the
   // column every margin, valuation and POS path already reads. The cellar
