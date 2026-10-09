@@ -437,6 +437,9 @@ describe('InventoryCommandPage — the empty table says which of three facts it 
     expect(await screen.findByText('No wines on the books yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Add your first wine/ })).toBeInTheDocument();
     expect(screen.queryByText(/Showing 0 of 0/)).not.toBeInTheDocument();
+    // The sentence sits outside the wide scroller, so a narrow screen sees it.
+    expect(document.querySelector('.min-w-\\[1330px\\]')).not.toBeNull();
+    expect(screen.getByText('No wines on the books yet.').closest('.min-w-\\[1330px\\]')).toBeNull();
   });
 
   it('a search that hides every row says so, and Show all wines clears it', async () => {

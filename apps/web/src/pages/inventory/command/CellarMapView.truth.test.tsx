@@ -53,6 +53,23 @@ describe('cellar map — unknown is not healthy (INV-W19)', () => {
     expect(screen.queryByText('Critical')).toBeNull()
   })
 
+  it("the old page's legend keeps its words and gains the not-read swatch", () => {
+    draw([item('h', 'Plenty', 12, 6)])
+    for (const w of ['Healthy', 'Below par', 'Critical', 'Needs reconcile', 'Stock not read, or no par']) {
+      expect(screen.getByText(w)).toBeTruthy()
+    }
+  })
+
+  it("a reconcile tile's side-panel number carries no severity tint", () => {
+    // Short of par with stock awaiting reconcile: the tile is violet, so the
+    // number beside it is not tinted rose or amber.
+    draw([item('v', 'Waiting', 1, 6, 2)])
+    expect(tile('Waiting').className).toContain('bg-violet-50')
+    const number = screen.getByText('3')
+    expect(number.className).toContain('text-gray-900')
+    expect(number.className).not.toMatch(/text-(rose|amber)-600/)
+  })
+
   it('the side panel says the total could not be read instead of counting it as 0', () => {
     draw([item('u', 'Unread', null, 6)])
     expect(screen.getByText('3 here; the total could not be read')).toBeTruthy()
