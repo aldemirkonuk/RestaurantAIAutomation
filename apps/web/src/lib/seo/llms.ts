@@ -39,7 +39,7 @@ export function renderLlmsTxt(): string {
     '',
     `Almost everything at ${SITE.host} is behind a sign-in and is not public. The pages below are. Vendors also publish their own catalogues here, at ${absoluteUrl(VENDOR_PREFIX)}{slug}. Prices, stock and product details on a catalogue are that vendor's statements, not Mudavym's. Search and answer engines may read and cite catalogues; they are not offered for model training.`,
     '',
-    "This site does not publish a price for Mudavym itself, customer counts, ratings or reviews, or any restaurant's own records.",
+    "Mudavym's own price is not published: the first houses are not charged, and what comes after is not decided. This site publishes no customer counts, ratings or reviews, and no restaurant's own records.",
     '',
     '## Pages',
     '',

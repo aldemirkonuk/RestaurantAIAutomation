@@ -31,7 +31,7 @@ export interface PublicRoute {
   /** File under dist that serves this path, without the leading slash. */
   file: string;
   head: HeadMeta;
-  /** Listed in sitemap-pages.xml. `/` is not: it redirects strangers to /login. */
+  /** Listed in sitemap-pages.xml. `/` is, since the landing page (ADR 0320). */
   sitemap: boolean;
 }
 
@@ -41,15 +41,17 @@ function indexable(path: string, title: string, description: string, jsonLd?: un
 
 export const PUBLIC_ROUTES: readonly PublicRoute[] = [
   {
-    // The house has no landing page; a stranger's home is the sign-in door
-    // (ADR 0143). The root still carries the site graph, and only the root:
+    // A stranger's home is the landing page (ADR 0320; it replaced the sign-in
+    // door of ADR 0143). The root carries the site graph, and only the root:
     // Google reads the WebSite name from the domain's home page and nowhere
     // else. It is written into dist/index.html itself, because the host serves
-    // that file for "/" before any rewrite runs (vite-plugin.ts).
+    // that file for "/" before any rewrite runs (vite-plugin.ts). The head's
+    // description is the site sentence, which is also the landing page's
+    // one-line summary under its headline.
     path: '/',
     file: 'index.html',
     head: indexable('/', SITE.name, SITE.sentence, siteGraph()),
-    sitemap: false,
+    sitemap: true,
   },
   {
     path: '/login',
