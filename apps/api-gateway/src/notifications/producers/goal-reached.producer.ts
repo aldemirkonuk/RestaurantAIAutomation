@@ -262,7 +262,9 @@ export class GoalReachedProducer {
       tally.withheldReason =
         ceilingGoals > 0 && tally.considered === 0
           ? `${goals.length} active goal(s), of which ${ceilingGoals} are 'at most' ceilings this producer does not report on — crossing a ceiling is not a success. No 'at least' goal has reached its target.`
-          : "No active goal has reached its target.";
+          : goalAudience.roleUnread > 0
+            ? "No goal that could be read has reached its target."
+            : "No active goal has reached its target.";
       const gated = goalAudience.sentence();
       if (gated) tally.withheldReason = `${tally.withheldReason} ${gated}`;
     }

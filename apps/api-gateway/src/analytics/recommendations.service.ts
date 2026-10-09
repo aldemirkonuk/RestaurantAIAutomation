@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
-import { GoalsService } from "./goals.service";
+import { GoalsService, SALES_GATED_GOAL_METRICS } from "./goals.service";
 import { DatabaseService } from "../database/database.service";
 import {
   RecommendationActionsService,
@@ -793,7 +793,16 @@ export class RecommendationsService {
     }));
 
     // ---- Goal rules -------------------------------------------------------
-    for (const g of ctx.goals.slice(0, 3)) {
+    // A goal read from the till keeps its last score in `current_value`
+    // (written by an owner's read or by the goal producers), so "N% done"
+    // would hand the till's figure to a viewer without sales. Such a goal is
+    // left out unless the gate is open (ADR 0298 decision 9).
+    const goalsForViewer = ctx.goals.filter(
+      (g: { metric_key?: unknown }) =>
+        opts.withSales === true ||
+        !SALES_GATED_GOAL_METRICS.has(String(g?.metric_key ?? "")),
+    );
+    for (const g of goalsForViewer.slice(0, 3)) {
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;
       const behind =

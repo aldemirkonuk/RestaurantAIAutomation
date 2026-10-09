@@ -85,6 +85,7 @@ interface EngineOpts {
    */
   tillConcentrated?: boolean;
   riskGates?: Array<boolean>;
+  goals?: Row[];
 }
 
 function engine(db: FakeDb, o: EngineOpts = {}) {
@@ -111,7 +112,7 @@ function engine(db: FakeDb, o: EngineOpts = {}) {
     {
       generate: async () => ({ insights: o.insights ?? [weekdayInsight()] }),
     } as any,
-    { listGoals: async () => [] } as any,
+    { listGoals: async () => o.goals ?? [] } as any,
     {
       readDispositions: async () => ({
         map: new Map(),
@@ -1404,6 +1405,35 @@ describe("the concentration card reaches owners and managers only", () => {
     const rows = sends(db);
     expect(rows.find((r) => r.user_id === ANA)?.rule_keys).toContain("revenue_concentration");
     expect(rows.find((r) => r.user_id === BORA)?.rule_keys).not.toContain("revenue_concentration");
+  });
+
+  it("[REVERT-FAILS] a days-of-stock goal's stored score reaches the owner's letter, not the staff member's", async () => {
+    const db = houseWithRoles({ [ANA]: "owner" });
+    const goal = (id: string, name: string, metric_key: string) => ({
+      id,
+      name,
+      metric_key,
+      target_value: 30,
+      current_value: 3,
+      deadline: new Date(Date.now() + 10 * 86400000).toISOString(),
+      created_at: new Date(Date.now() - 80 * 86400000).toISOString(),
+    });
+    const { service, gmail } = build({
+      db,
+      engine: {
+        goals: [
+          goal("g-dos", "Days of stock", "days_of_inventory"),
+          goal("g-cov", "Covers", "covers"),
+        ],
+      },
+    });
+    await service.sweepTenant(TENANT, DUE_PLUS_5);
+    const owner = letterTo(gmail, "ana@house.test");
+    const staff = letterTo(gmail, "bora@house.test");
+    expect(owner).toMatch(/Goal "Days of stock" is behind/);
+    expect(staff).not.toMatch(/Days of stock/);
+    // A goal not read from the till still reaches everyone, as before.
+    expect(staff).toMatch(/Goal "Covers" is behind/);
   });
 
   it("a house with no owner or manager subscribed reads the till for nobody", async () => {
