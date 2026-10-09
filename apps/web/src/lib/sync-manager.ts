@@ -562,14 +562,15 @@ class SyncManagerService {
   }
 
   /**
-   * Before sign-out: try once to send what this session has waiting, then say
+   * Before sign-out: try once to send what this session has waiting — door
+   * receipts and spot counts included, since `syncNow` skips them — then say
    * how many of THIS PERSON's changes (any house) are still unsent — the
    * number the sign-out warning names (OD-203 (c)).
    */
   async unsentBeforeSignOut(userId: string): Promise<number> {
     if (this._isOnline && this._pendingCount > 0) {
       try {
-        await this.syncNow({ ignoreBackoff: true })
+        await this.sendEverything({ ignoreBackoff: true })
       } catch {
         /* counted below either way */
       }
