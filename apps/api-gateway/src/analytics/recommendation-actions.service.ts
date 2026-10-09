@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import { INSIGHT_CANDIDATES } from "./insights/insight-catalog";
 import { insightRuleId } from "./insights/suppression";
 import { SuppressionTarget } from "./insights/suppression";
@@ -328,14 +329,21 @@ export class RecommendationActionsService {
   }> {
     const map = new Map<string, RecommendationActionRow>();
     try {
-      const { data, error } = await this.dbService
-        .getClient()
-        .from("recommendation_actions")
-        .select("*")
-        .eq("restaurant_id", restaurantId);
-      if (error) throw new Error(error.message);
+      // Read WHOLE (ADR 0292, F-385): an unranged select stopped at
+      // PostgREST's 1,000 rows, so past that many acted keys the rest of the
+      // house's dismissals, snoozes and pins silently stopped holding. A
+      // refusal lands in the catch below, as `readable: false`.
+      const client = this.dbService.getClient();
+      const data = await readWholeWindow<any>(
+        "The house's dismissals, snoozes and pins",
+        () =>
+          client
+            .from("recommendation_actions")
+            .select("*", { count: "exact" })
+            .eq("restaurant_id", restaurantId),
+      );
       const now = Date.now();
-      for (const r of data || []) {
+      for (const r of data) {
         const expiredSnooze =
           r.status === "snoozed" &&
           r.snooze_until &&

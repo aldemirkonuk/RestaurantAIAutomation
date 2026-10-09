@@ -311,7 +311,21 @@ export function BookRow({
             )}
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {target ? (
+              {target?.external ? (
+                <a
+                  href={target.to}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="nt-ink rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+                  style={{
+                    fontFamily: SANS,
+                    border: '1px solid var(--seal-ring)',
+                    color: 'var(--seal-deep)',
+                  }}
+                >
+                  {target.label} →
+                </a>
+              ) : target ? (
                 <Link
                   to={target.to}
                   className="nt-ink rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"

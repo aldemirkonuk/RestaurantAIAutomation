@@ -134,6 +134,22 @@ export function mondayOf(d: Date): string {
 }
 
 /**
+ * The week a /team link opens on: the Monday of its `week` (YYYY-MM-DD, as
+ * the "Schedule published" notice writes it), else this week. The page read
+ * no param, so every notice opened on this week whatever it was about (F-217).
+ */
+export function weekFromLink(search: string, now: Date = new Date()): string {
+  const w = new URLSearchParams(search).get('week');
+  const m = w ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(w) : null;
+  if (m) {
+    const [y, mo, d] = [Number(m[1]), Number(m[2]) - 1, Number(m[3])];
+    const day = new Date(y, mo, d);
+    if (day.getFullYear() === y && day.getMonth() === mo && day.getDate() === d) return mondayOf(day);
+  }
+  return mondayOf(now);
+}
+
+/**
  * Parse a coverage period like "17:00–23:00" (en-dash, hyphen or "to").
  * Returns null when the string doesn't carry two clock times — the caller
  * must then disable the one-tap assign and say why, never guess.

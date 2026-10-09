@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bandsOf,
   bundleWorthReason,
+  capsSentence,
   claimSentence,
   conditionsOf,
   discountOf,
@@ -409,5 +410,29 @@ describe('bandsOf — direction A, a row per tier in strict rank order', () => {
     expect(bands.hero).toBeNull();
     expect(bands.large).toEqual([]);
     expect(bands.compact.map((r) => r.offer.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('capsSentence (F-258)', () => {
+  it('says how much of the window was read when the gateway counted it', () => {
+    expect(
+      capsSentence({
+        paid_lines: { cap: 2000, reached: true, total: 3412 },
+        sightings: { cap: 2000, reached: true, total: 2001 },
+      }),
+    ).toBe(
+      ' Only the newest 2,000 of 3,412 paid lines were read; older ones in the window were not graded.' +
+        ' Only the newest 2,000 of 2,001 sightings were read.',
+    );
+  });
+
+  it('names only the cap when no count came, and nothing when nothing was cut', () => {
+    expect(
+      capsSentence({
+        paid_lines: { cap: 2000, reached: true, total: null },
+        sightings: { cap: 2000, reached: false, total: 12 },
+      }),
+    ).toBe(' Only the newest 2,000 paid lines were read; older ones in the window were not graded.');
+    expect(capsSentence(undefined)).toBe('');
   });
 });

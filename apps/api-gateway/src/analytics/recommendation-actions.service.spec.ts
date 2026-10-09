@@ -251,3 +251,69 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
     expect(calls).toEqual([]);
   });
 });
+
+
+/**
+ * F-385: the house's dispositions are read WHOLE. An unranged select stopped
+ * at PostgREST's 1,000 rows, so past that many acted keys every later
+ * dismissal, snooze and pin silently stopped holding.
+ */
+describe("RecommendationActionsService.readDispositions", () => {
+  /** PostgREST's shape: at most 1,000 rows a response, keyset on `id`. */
+  function pagedDb(rows: Array<Record<string, unknown>>) {
+    return {
+      getClient: () => ({
+        from: () => {
+          let after: string | null = null;
+          let lim = 1000;
+          const b: any = {};
+          for (const m of ["select", "eq", "order"]) b[m] = () => b;
+          b.gt = (_c: string, v: string) => ((after = v), b);
+          b.limit = (n: number) => ((lim = Math.min(n, 1000)), b);
+          b.then = (resolve: any, reject: any) =>
+            Promise.resolve({
+              data: rows
+                .filter((r) => after === null || String(r.id) > after)
+                .slice(0, lim),
+              error: null,
+            }).then(resolve, reject);
+          return b;
+        },
+      }),
+    } as any;
+  }
+
+  it("holds the 1,001st dismissal", async () => {
+    const rows = Array.from({ length: 1001 }, (_, i) => ({
+      id: `a-${String(i).padStart(5, "0")}`,
+      rule_key: `rule-${i}`,
+      status: "dismissed",
+    }));
+    const out = await new RecommendationActionsService(
+      pagedDb(rows),
+    ).readDispositions("r-1");
+    expect(out.readable).toBe(true);
+    expect(out.map.size).toBe(1001);
+    expect(out.map.get("rule-1000")?.status).toBe("dismissed");
+  });
+
+  it("a refused page reads as unreadable, never as nothing dismissed", async () => {
+    const db = {
+      getClient: () => ({
+        from: () => {
+          const b: any = {};
+          for (const m of ["select", "eq", "order", "gt", "limit"]) b[m] = () => b;
+          b.then = (resolve: any, reject: any) =>
+            Promise.resolve({ data: null, error: { message: "timeout" } }).then(
+              resolve,
+              reject,
+            );
+          return b;
+        },
+      }),
+    } as any;
+    const out = await new RecommendationActionsService(db).readDispositions("r-1");
+    expect(out.readable).toBe(false);
+    expect(out.map.size).toBe(0);
+  });
+});

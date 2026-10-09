@@ -45,6 +45,7 @@ import {
   fmtTime,
   fmtWeekRange,
   mondayOf,
+  weekFromLink,
   weekDays,
 } from './tm-format';
 import { MutationError } from './tm-bits';
@@ -53,7 +54,7 @@ import './team-next.css';
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rid = useActiveRestaurantId();
   const qc = useQueryClient();
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  const [weekStart, setWeekStart] = useState(() => weekFromLink(window.location.search));
   const days = weekDays(weekStart);
   const { user } = useAuth();
   const house = useHouseAreas();

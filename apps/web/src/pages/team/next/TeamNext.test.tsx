@@ -118,7 +118,7 @@ vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 
 import TeamNext from './TeamNext';
 import { useTeamNextData } from './useTeamNextData';
-import { mondayOf } from './tm-format';
+import { fmtWeekRange, mondayOf, weekFromLink } from './tm-format';
 
 const member = (id: string, name: string, position: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -193,6 +193,34 @@ describe('mondayOf', () => {
     expect(mondayOf(new Date(2026, 8, 2, 12, 0))).toBe('2026-08-31'); // Wed noon
     expect(mondayOf(new Date(2026, 8, 6, 23, 30))).toBe('2026-08-31'); // Sun, late evening
     expect(mondayOf(new Date(2026, 8, 7, 0, 10))).toBe('2026-09-07'); // Mon, just after midnight
+  });
+});
+
+describe('weekFromLink (F-217)', () => {
+  const now = new Date(2026, 8, 2, 12, 0); // a Wednesday; this week is 2026-08-31
+
+  it("opens on the Monday of the link's week", () => {
+    expect(weekFromLink('?schedule=s1&week=2026-09-14', now)).toBe('2026-09-14');
+    expect(weekFromLink('?shift=sh1&week=2026-09-18', now)).toBe('2026-09-14'); // a Friday
+  });
+
+  it('opens on this week for no week, or one that is not a date', () => {
+    expect(weekFromLink('?shift=sh1', now)).toBe('2026-08-31');
+    expect(weekFromLink('?week=2026-02-30', now)).toBe('2026-08-31');
+    expect(weekFromLink('?week=next', now)).toBe('2026-08-31');
+  });
+
+  it("the manager's desk opens on the linked week", async () => {
+    window.history.pushState({}, '', '/team?shift=sh1&week=2026-10-16');
+    try {
+      render(<TeamNext />, { wrapper });
+      const range = fmtWeekRange('2026-10-12');
+      expect(
+        await screen.findByText((_, el) => el?.className === 'tm-sub' && (el.textContent ?? '').startsWith(range)),
+      ).toBeInTheDocument();
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
   });
 });
 

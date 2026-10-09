@@ -262,7 +262,12 @@ export function InventoryCommandPage() {
   const [view, setView] = useState<"table" | "map">("table");
   const [sort, setSort] = useState<SortKey>("runway");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [activeFlag, setActiveFlag] = useState<RowFlag | null>(null);
+  // Deep-link: /inventory?filter=low-stock (the low-stock notifications, the
+  // digest email and its push) opens on "Below par". No page read it, so the
+  // link landed on the whole cellar (F-217).
+  const [activeFlag, setActiveFlag] = useState<RowFlag | null>(() =>
+    searchParams.get("filter") === "low-stock" ? "low" : null,
+  );
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAddWine, setShowAddWine] = useState(false);
   /* THE FOURTH START (census 102; the founder, 2026-09-05). An auction bottle

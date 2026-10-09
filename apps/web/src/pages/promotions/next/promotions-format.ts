@@ -160,11 +160,39 @@ export interface LedgerSummaryDto {
   house_sightings: number;
   market_sightings: number;
   skipped_sightings: number;
-  /** The two capped ledger reads; `reached` means older lines in the window may not have been read. */
+  /**
+   * The two capped ledger reads; `reached` means older lines in the window
+   * may not have been read. `total` is how many the window holds, when the
+   * gateway counted them (null or absent otherwise).
+   */
   caps?: {
-    paid_lines: { cap: number; reached: boolean };
-    sightings: { cap: number; reached: boolean };
+    paid_lines: LedgerCap;
+    sightings: LedgerCap;
   };
+}
+
+export interface LedgerCap {
+  cap: number;
+  reached: boolean;
+  total?: number | null;
+}
+
+/**
+ * What the read-at line says about a capped ledger read, or '' when nothing
+ * was cut. With the window's count it says how much was left out ("the newest
+ * 2,000 of 3,412"); without one it says only the cap, never a guessed total
+ * (F-258).
+ */
+export function capsSentence(caps: LedgerSummaryDto['caps']): string {
+  if (!caps) return '';
+  const n = (v: number) => v.toLocaleString('en-GB');
+  const of = (c: LedgerCap) =>
+    typeof c.total === 'number' && c.total > c.cap ? `${n(c.cap)} of ${n(c.total)}` : n(c.cap);
+  let out = '';
+  if (caps.paid_lines.reached)
+    out += ` Only the newest ${of(caps.paid_lines)} paid lines were read; older ones in the window were not graded.`;
+  if (caps.sightings.reached) out += ` Only the newest ${of(caps.sightings)} sightings were read.`;
+  return out;
 }
 
 export interface PromotionsReadDto {

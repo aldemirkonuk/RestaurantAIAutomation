@@ -65,6 +65,7 @@ import ScopeBar, { useNarrow } from './ScopeBar';
 import { useDismissOffer, usePromotionsRead, useRestoreOffer } from './usePromotionsNextData';
 import {
   bandsOf,
+  capsSentence,
   failureOf,
   failureSentence,
   onTheTable,
@@ -174,12 +175,7 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
                 {data.ledger.house_sightings} house sightings, {data.ledger.market_sightings} market sightings over{' '}
                 {data.ledger.window_days} days
                 {data.ledger.skipped_sightings > 0 ? ` (${data.ledger.skipped_sightings} register rows skipped — no pack size or volume, or an outlier)` : ''}.
-                {data.ledger.caps?.paid_lines.reached
-                  ? ` Only the newest ${data.ledger.caps.paid_lines.cap} paid lines were read; older ones in the window were not graded.`
-                  : ''}
-                {data.ledger.caps?.sightings.reached
-                  ? ` Only the newest ${data.ledger.caps.sightings.cap} sightings were read.`
-                  : ''}
+                {capsSentence(data.ledger.caps)}
               </p>
             </>
           )}
