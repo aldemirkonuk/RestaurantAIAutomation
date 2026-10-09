@@ -16,6 +16,8 @@
  *    asserts nothing.
  */
 
+import { formatHouseMoney } from '../../../lib/houseCurrency';
+
 export const EM = '—';
 
 /**
@@ -43,11 +45,14 @@ export function text(v: unknown): string | null {
   return t;
 }
 
-/** Money of record, or the dash. */
-export function money(v: number | null | undefined): string {
+/**
+ * Money of record, or the dash. `currency` omitted means the house's own
+ * (lib/houseCurrency.ts); it was a literal `$` for every house (sim F-341).
+ */
+export function money(v: number | null | undefined, currency?: string | null): string {
   const n = num(v);
   if (n === null) return EM;
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatHouseMoney(n, currency);
 }
 
 /**

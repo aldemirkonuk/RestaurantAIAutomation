@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { formatHouseMoney } from './houseCurrency'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -9,27 +10,26 @@ export type FormatMode = 'compact' | 'full' | 'table'
 
 /**
  * Format monetary values with context-appropriate display:
- * - compact: KPI cards, badges, calendar ($1.4K, $2.3M)
- * - full: default display ($845.50, $14,523)
- * - table: data tables, modals ($845.50, $14,523.80)
+ * - compact: KPI cards, badges, calendar (€1.4K, $2.3M)
+ * - full: default display (€845.50, $14,523)
+ * - table: data tables, modals (€845.50, $14,523.80)
+ *
+ * `currency` omitted means the house's own (`lib/houseCurrency.ts`); it used to
+ * be a literal `$`, so every house read its money in dollars (sim F-341).
  */
-export function formatMoney(value: number, mode: FormatMode = 'full'): string {
-  if (value == null || isNaN(value)) return '$0'
+export function formatMoney(value: number, mode: FormatMode = 'full', currency?: string | null): string {
+  if (value == null || isNaN(value)) return formatHouseMoney(0, currency, { maximumFractionDigits: 0 })
 
   if (mode === 'compact') {
-    const abs = Math.abs(value)
-    const sign = value < 0 ? '-' : ''
-    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`
-    if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`
-    return `${sign}$${abs.toFixed(0)}`
+    return formatHouseMoney(value, currency, { compact: true, minimumFractionDigits: 0, maximumFractionDigits: 0 })
   }
 
   if (mode === 'table') {
-    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return formatHouseMoney(value, currency)
   }
 
   // 'full' -- general display
-  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+  return formatHouseMoney(value, currency, { minimumFractionDigits: 0 })
 }
 
 /**

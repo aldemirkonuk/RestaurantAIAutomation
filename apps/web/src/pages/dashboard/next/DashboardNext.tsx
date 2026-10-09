@@ -39,6 +39,7 @@ import OneTapPanel from './OneTapPanel';
 import { ActivityPanel, LowStockPanel, WeekAhead } from './RailPanels';
 import { TryAgain } from './TryAgain';
 import './dashboard-next.css';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
 
 /**
  * Time-of-day voice — the Editorial opening the founder named as liked. Read
@@ -68,6 +69,8 @@ export interface DashboardNextProps {
 }
 
 export default function DashboardNext({ ground }: DashboardNextProps) {
+  // Money on this page prints in the house's own currency (sim F-341).
+  useHouseCurrency();
   const { user, activeRestaurantId, activeRole } = useAuth();
   const spine = useDashboardSpine(activeRestaurantId);
   // DASH-W22 (founder, 2026-10-01, "A: hide amounts for staff"): staff see
