@@ -502,6 +502,88 @@ describe("an insight that takes a name from a read that could not be made does n
   );
 });
 
+/**
+ * F-383 / F-183: the insight feed's goal card reads the goals desk's own pace
+ * (`goalExpectedByNow`, `goalPaceHolds`), not `current / target` against the
+ * calendar, so the desk, the recommendation card and this card agree.
+ */
+describe("the goal card keeps the goals desk's pace", () => {
+  const GOAL = "overall.revenue.goal_pace";
+  const goalsOnly = (goal: Row): Record<string, Answer> => ({
+    ...empty(),
+    analytics_goals: {
+      rows: [
+        {
+          id: "g1",
+          name: "The goal",
+          status: "active",
+          // 100 days long, 80 of them gone.
+          created_at: new Date(Date.now() - 80 * 86400000).toISOString(),
+          deadline: new Date(Date.now() + 20 * 86400000).toISOString(),
+          baseline_value: null,
+          direction: "at_least",
+          ...goal,
+        },
+      ],
+    },
+  });
+  const cards = async (goal: Row) =>
+    (
+      await generatorOver(goalsOnly(goal)).generate("r1", { persist: false })
+    ).insights.filter((i) => i.candidateKey === GOAL);
+
+  it("a 'keep at most' days-of-stock goal under its line is on pace, not behind", async () => {
+    const xs = await cards({
+      metric_key: "days_of_inventory",
+      direction: "at_most",
+      target_value: 10,
+      current_value: 6,
+      baseline_value: 14,
+    });
+    expect(xs).toHaveLength(1);
+    expect(xs[0].evidence.goalOnTrack).toBe(true);
+    expect(xs[0].evidence.goalProgressPct).toBeUndefined();
+    expect(xs[0].sentence).toContain("the current pace gets you there");
+    expect(xs[0].sentence).not.toMatch(/of the way/);
+  });
+
+  it("an average check with nothing measured yet raises no card: not 0%, not behind", async () => {
+    expect(
+      await cards({
+        metric_key: "avg_check",
+        target_value: 15,
+        current_value: 0,
+      }),
+    ).toEqual([]);
+  });
+
+  it("an average check ramps from where the house stood, not from nothing", async () => {
+    // Baseline 18 toward 20, 80% gone: the line is 19.6, and 15 is behind it
+    // (a ramp from 0 put the line at 16 and read 15 as on pace).
+    const xs = await cards({
+      metric_key: "avg_check",
+      target_value: 20,
+      current_value: 15,
+      baseline_value: 18,
+    });
+    expect(xs).toHaveLength(1);
+    expect(xs[0].evidence.goalOnTrack).toBe(false);
+    expect(xs[0].sentence).toContain("the current pace falls short");
+  });
+
+  it("a running total still says how far along it is", async () => {
+    const xs = await cards({
+      metric_key: "wine_revenue",
+      target_value: 1000,
+      current_value: 500,
+    });
+    expect(xs).toHaveLength(1);
+    expect(xs[0].evidence.goalProgressPct).toBe(0.5);
+    expect(xs[0].evidence.goalOnTrack).toBe(false);
+    expect(xs[0].sentence).toMatch(/of the way to "The goal"/);
+  });
+});
+
 describe("/recommendations says which insight read could not be made", () => {
   it("a refused pour read is named in sourcesUnread, so the feed is not 'nothing to recommend'", async () => {
     const out = await feedOver(

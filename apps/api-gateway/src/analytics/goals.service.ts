@@ -3,7 +3,12 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { AnalyticsService } from "./analytics.service";
 import * as E from "./engine";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  InsightGeneratorService,
+  LEVEL_GOAL_METRICS,
+  goalExpectedByNow,
+  goalPaceHolds,
+} from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
@@ -69,35 +74,11 @@ import {
  */
 export class UnmeasuredGoalError extends Error {}
 
-/**
- * Goal measures that are a LEVEL read at an instant or as a ratio over the
- * window (an average, a share, days of stock), not a running total. Their
- * pace is not `target × elapsed/total`: an average check of 25 against a
- * target of 15 is already met, not "a quarter of the way there" (F-183).
- */
-export const LEVEL_GOAL_METRICS: ReadonlySet<string> = new Set([
-  "avg_check",
-  "wine_attach_rate",
-  "days_of_inventory",
-]);
-
-/**
- * Where a goal should stand by now, as a fraction `elapsed` (0–1) of its
- * schedule. A running total ramps from nothing to the target. A level ramps
- * from where the house stood when the goal was set (its baseline) to the
- * target; with no baseline to ramp from, the target itself is the line.
- */
-export function goalExpectedByNow(
-  metricKey: string,
-  target: number,
-  baseline: number | null,
-  elapsed: number,
-): number {
-  if (!LEVEL_GOAL_METRICS.has(metricKey)) return target * elapsed;
-  if (baseline === null || !Number.isFinite(baseline) || baseline <= 0)
-    return target;
-  return baseline + (target - baseline) * elapsed;
-}
+// The pace rule lives beside the insight feed's goal family, which reads it
+// too: this file already imports the generator, so the rule sits there and
+// not here, where importing it back would make the two files a cycle (F-183,
+// F-383). Re-exported so the reports desk and recommendations keep one import.
+export { LEVEL_GOAL_METRICS, goalExpectedByNow, goalPaceHolds };
 
 /**
  * A percent measure is stored as a share (0.35 is 35%). A target above 1 is
@@ -633,10 +614,7 @@ export class GoalsService {
         baseline,
         elapsed / totalDays,
       );
-      onTrack =
-        goal.direction === "at_most"
-          ? current <= expectedByNow * 1.1
-          : current >= expectedByNow * 0.9;
+      onTrack = goalPaceHolds(goal.direction, current, expectedByNow);
 
       // Projection: Holt trend on the cumulative series → deadline.
       if (dailySeries.length >= 7) {

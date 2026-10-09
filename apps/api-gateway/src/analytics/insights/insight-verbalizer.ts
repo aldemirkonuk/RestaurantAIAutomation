@@ -199,15 +199,23 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       return `${prefix}${e.measureLabel} is running ${fmtPct(e.forecastGapPct)} ${dir} forecast${e.windowLabel ? ` over the last ${e.windowLabel}` : ""}.`;
     }
     case "goal": {
-      if (e.goalProgressPct == null || !e.goalName) return null;
+      if (!e.goalName) return null;
+      const days =
+        e.goalDaysLeft != null ? ` with ${e.goalDaysLeft} days left` : "";
+      // A level (average check, attach rate) or a "keep at most" goal has no
+      // "of the way": it is said by its pace alone (F-383).
+      if (e.goalProgressPct == null) {
+        if (e.goalOnTrack == null) return null;
+        return e.goalOnTrack
+          ? `On "${e.goalName}"${days}, the current pace gets you there.`
+          : `On "${e.goalName}"${days}, the current pace falls short — consider acting on the levers below.`;
+      }
       const pace =
         e.goalOnTrack == null
           ? ""
           : e.goalOnTrack
             ? " Current pace gets you there."
             : " Current pace falls short — consider acting on the levers below.";
-      const days =
-        e.goalDaysLeft != null ? ` with ${e.goalDaysLeft} days left` : "";
       return `You're ${fmtPct(e.goalProgressPct)} of the way to "${e.goalName}"${days}.${pace}`;
     }
     case "hot": {
