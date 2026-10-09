@@ -18,14 +18,31 @@ import {
   WindowDays,
   isMeasureKey,
   isWindowDays,
+  Amounts,
 } from "./vendor-scorecard";
 import { VendorScorecardService } from "./vendor-scorecard.service";
 import { COPY } from "./vendor-scorecard.copy";
 import { VendorMailToneService } from "./vendor-mail-tone.service";
 import { MAIL_COPY } from "./vendor-mail-tone.copy";
 import { OrganizationsService } from "../../organizations/organizations.service";
+import { holdsHouseMoney } from "../../procurement/documents/document-money-gate";
 
-type AuthUser = { userId?: string; id?: string; restaurantId?: string };
+type AuthUser = {
+  userId?: string;
+  id?: string;
+  restaurantId?: string;
+  role?: string | null;
+};
+
+/**
+ * Whether this reader is sent the scorecard's money: claim amounts asked and
+ * allowed, and the agreed and invoiced unit prices. The token's role, read
+ * through the one money test (`holdsHouseMoney`, ADR 0145): owners and
+ * managers are; staff, an unknown role and no role are not.
+ */
+export function amountsFor(user: AuthUser | null | undefined): Amounts {
+  return holdsHouseMoney(user?.role ?? null) ? "shown" : "withheld";
+}
 
 /**
  * The caller's house, from the verified token and nowhere else. A session that
@@ -69,10 +86,12 @@ export function parseMeasure(raw: string | undefined): MeasureKey | null {
  * lane keeps its routes out of that file (lane E is rebuilding the vendor
  * sheet beside it).
  *
- * Readable by every member of the house, as the credits and orders registers
- * it reads already are (`credits.controller.ts` carries no role gate). Whether
- * a staff member should see the money lines is sketch 117's open question,
- * recorded in ADR 0207 — this route does not widen what staff could read.
+ * Readable by every member of the house — the counts and percents are how
+ * the vendor behaves, not what the house pays. The money is not: the credit
+ * ledger it reads is owner/manager only (`credits.controller.ts`), and staff
+ * see counts, never amounts (ADR 0145). So a reader who does not hold the
+ * house's money (`amountsFor`) is sent no claim amount and no unit price; the
+ * on-time, as-ordered, price and credit verdicts and their percents stay.
  *
  * NO ALERT is sent, queued or computed here. Every answer says so.
  */
@@ -97,7 +116,11 @@ export class VendorScorecardController {
     @CurrentUser() user: AuthUser,
     @Query("window") window?: string,
   ) {
-    return this.scorecard.rollCall(houseOf(user), parseWindow(window));
+    return this.scorecard.rollCall(
+      houseOf(user),
+      parseWindow(window),
+      amountsFor(user),
+    );
   }
 
   @Get(":providerId")
@@ -116,6 +139,7 @@ export class VendorScorecardController {
       houseOf(user),
       providerId,
       parseWindow(window),
+      amountsFor(user),
     );
   }
 
@@ -165,6 +189,7 @@ export class VendorScorecardController {
       providerId,
       parseWindow(window),
       parseMeasure(measure),
+      amountsFor(user),
     );
   }
 }

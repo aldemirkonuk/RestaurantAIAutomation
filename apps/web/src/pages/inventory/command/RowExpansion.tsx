@@ -56,9 +56,12 @@ const ADJUST_REASONS = [
 export function RowExpansion({
   item,
   locations,
+  seesCost = true,
 }: {
   item: InventoryItem
   locations: StorageLocation[]
+  /** False for a reader the gateway sends no cost (staff, ADR 0145): no "You paid" line. */
+  seesCost?: boolean
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -242,7 +245,7 @@ export function RowExpansion({
           }
         >
           <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
-          <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />
+          {seesCost && <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />}
           <KV
             k="Delta"
             v={delta$ == null ? 'n/a' : `${delta$ > 0 ? '+' : ''}${delta$.toFixed(0)}%${delta$ >= 15 ? ', appreciating, hold' : delta$ <= -5 ? ', re-quote vendor' : ''}`}

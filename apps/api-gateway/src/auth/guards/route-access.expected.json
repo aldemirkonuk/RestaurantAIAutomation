@@ -552,5 +552,37 @@
     "owner",
     "manager",
     "staff"
-  ]
+  ],
+  "GET /providers/:id/knowledge (ProviderIntelligenceController.getKnowledge)": "open",
+  "GET /providers/:id/knowledge/contradictions (ProviderIntelligenceController.getContradictions)": "open",
+  "PUT /providers/:id/knowledge/:knowledgeId/verify (ProviderIntelligenceController.verifyKnowledge)": "open",
+  "GET /providers/:id/promotions (ProviderIntelligenceController.getPromotions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/promotions/active (ProviderIntelligenceController.getAllActivePromotions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/promotions/expiring (ProviderIntelligenceController.getExpiringPromotions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/promotions/compare (ProviderIntelligenceController.comparePromotions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/promotions/savings (ProviderIntelligenceController.getPromoSavings)": [
+    "owner",
+    "manager"
+  ],
+  "GET /providers/:id/conversation-memory (ProviderIntelligenceController.getConversationMemory)": "open",
+  "POST /providers/:id/conversation-memory/search (ProviderIntelligenceController.searchConversationMemory)": "open",
+  "GET /providers/:id/sessions (ProviderIntelligenceController.getSessions)": "open",
+  "GET /providers/:id/sessions/:sessionId/summary (ProviderIntelligenceController.getSessionSummary)": "open",
+  "GET /providers/:id/sentiment (ProviderIntelligenceController.getSentimentTrend)": "open",
+  "POST /providers/:id/outreach (ProviderIntelligenceController.triggerOutreach)": "open",
+  "POST /providers/:id/onboard (ProviderIntelligenceController.triggerOnboarding)": "open",
+  "GET /providers/intelligence/compare (ProviderIntelligenceController.compareProviders)": "open",
+  "GET /providers/intelligence/leverage (ProviderIntelligenceController.getLeverageSignals)": "open"
 }

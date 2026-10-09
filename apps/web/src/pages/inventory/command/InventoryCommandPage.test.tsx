@@ -46,14 +46,20 @@ vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
 
-vi.mock('@/contexts/AuthContext', () => ({
+/** The signed-in role; a case about staff sets it and `beforeEach` resets it. */
+const who = vi.hoisted(() => ({ role: 'owner' }));
+
+vi.mock('@/contexts/AuthContext', async () => ({
+  // A row's expansion reads the context directly (useMudavymDesign); an empty
+  // one is "no house", which that hook already answers.
+  AuthContext: (await import('react')).createContext(null),
   useAuth: () => ({
-    user: { userId: 'user-1', restaurantId: 'rest-A', name: 'Ada Konuk', email: 'ada@sim.test', role: 'owner' },
+    user: { userId: 'user-1', restaurantId: 'rest-A', name: 'Ada Konuk', email: 'ada@sim.test', role: who.role },
     loading: false,
     error: null,
     clearError: vi.fn(),
     activeRestaurantId: 'rest-A',
-    activeRole: 'owner',
+    activeRole: who.role,
     availableRestaurants: [{ id: 'rest-A', name: 'Test House', city: null, chain_id: null, chain_name: null }],
     setActiveRestaurantId: vi.fn().mockResolvedValue(undefined),
     login: vi.fn(),
@@ -181,6 +187,7 @@ function mount() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  who.role = 'owner';
 });
 
 afterEach(() => {
@@ -415,5 +422,41 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
       expect(second).toBe(first);
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+  });
+});
+
+describe('InventoryCommandPage — staff are shown stock, not what the house paid (F-562)', () => {
+  // The gateway sends staff no `wac`; before this, the page priced the
+  // missing cost at $0 and printed "$0" as the value on hand and per row.
+  const staffRow = {
+    id: 'row-1',
+    wineId: 'wine-1',
+    wineName: 'Produttori Barbaresco',
+    stockLive: 6,
+    shadowStock: 0,
+    thresholdMin: 2,
+  };
+
+  it('draws no value card, value column or "You paid" line for staff', async () => {
+    who.role = 'staff';
+    routeGets({ 'inventory-list': [staffRow] });
+    mount();
+    const wine = await screen.findByText('Produttori Barbaresco');
+    expect(await screen.findByText('On hand')).toBeInTheDocument();
+    expect(screen.queryByText('Value on hand')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Value' })).not.toBeInTheDocument();
+    wine.click();
+    expect(await screen.findByText('Market price')).toBeInTheDocument();
+    expect(screen.queryByText('You paid (WAC)')).not.toBeInTheDocument();
+  });
+
+  it('keeps them for an owner', async () => {
+    routeGets({ 'inventory-list': [{ ...staffRow, wac: 40 }] });
+    mount();
+    const wine = await screen.findByText('Produttori Barbaresco');
+    expect(screen.getByText('Value on hand')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Value' })).toBeInTheDocument();
+    wine.click();
+    expect(await screen.findByText('You paid (WAC)')).toBeInTheDocument();
   });
 });

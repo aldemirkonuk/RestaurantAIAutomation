@@ -30,6 +30,51 @@ import {
   AuctionLotRecordResponseDto,
 } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
+
+/**
+ * What the house paid for a wine, on an inventory row: the weighted-average
+ * cost (`wac`, per row and per location), the buying prices on the row, and
+ * the markup and margin, from which the cost follows once the menu price is
+ * known. The menu prices and the market price stay: they are what the floor
+ * sells at and what the wine costs anywhere, not what this house paid.
+ */
+const HOUSE_COST_KEYS = [
+  "wac",
+  "last_purchase_price",
+  "negotiated_price",
+  "target_price",
+  "max_price",
+  "custom_price",
+  "margin_percentage",
+  "markup_ratio",
+  "markupRatio",
+] as const;
+
+/**
+ * The inventory as this role may read it (F-562). Staff see stock, never
+ * money (ADR 0145; the founder's "do not give money ... to the staff"), and
+ * hiding the cost on the page alone would not keep it private. A reader who
+ * does not hold the house's money (`holdsHouseMoney`) gets every row with its
+ * cost keys OMITTED, never nulled: a null `wac` reads as "no cost recorded".
+ */
+export function inventoryForRole<T extends Record<string, any>>(
+  items: T[],
+  role: string | null | undefined,
+): T[] {
+  if (holdsHouseMoney(role ?? null)) return items;
+  return items.map((item) => {
+    const out: Record<string, any> = { ...item };
+    for (const k of HOUSE_COST_KEYS) delete out[k];
+    if (Array.isArray(out.locations))
+      out.locations = out.locations.map((l: Record<string, any>) => {
+        const loc = { ...l };
+        delete loc.wac;
+        return loc;
+      });
+    return out as T;
+  });
+}
 
 @ApiTags("inventory")
 @Controller("inventory")
@@ -148,9 +193,13 @@ export class InventoryController {
   @Get(":restaurantId")
   @ApiOperation({ summary: "Get all inventory items for a restaurant" })
   @ApiResponse({ status: 200, description: "Returns all inventory items" })
-  async getRestaurantInventory(@Param("restaurantId") restaurantId: string) {
+  async getRestaurantInventory(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    let items: Record<string, any>[];
     try {
-      return await this.inventoryService.getRestaurantInventory(restaurantId);
+      items = await this.inventoryService.getRestaurantInventory(restaurantId);
     } catch (error) {
       const msg =
         error?.message || String(error) || "Failed to fetch inventory";
@@ -161,6 +210,7 @@ export class InventoryController {
       console.error("[inventory] GET /:restaurantId 500:", msg, error?.stack);
       throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+    return inventoryForRole(items, user?.role);
   }
 
   @Post(":restaurantId/items")

@@ -1054,7 +1054,9 @@ export function creditEntries(
   b: Bounds,
   now: Date,
   fmt: Fmt,
+  amounts: Amounts = "shown",
 ): DocketEntry[] {
+  const shown = amounts === "shown";
   const out: DocketEntry[] = [];
   for (const c of rows) {
     const at = ms(c.opened_at);
@@ -1066,12 +1068,12 @@ export function creditEntries(
     const currency = c.currency ? c.currency.toUpperCase() : null;
     const open =
       c.state === "open" || c.state === "requested" || c.state === "promised";
-    const askedText = fmt.money(asked, currency);
+    const askedText = shown ? fmt.money(asked, currency) : null;
     let detail: string;
     switch (c.state) {
       case "credited":
         detail = COPY.entry.credited(
-          fmt.money(allowed as number, currency),
+          shown ? fmt.money(allowed as number, currency) : null,
           askedText,
         );
         break;
@@ -1108,6 +1110,8 @@ export function creditEntries(
       title: COPY.entry.claim(c.id, c.reason),
       detail,
       source: { table: "procurement_credits", id: c.id, orderId: c.order_id },
+      // Kept here even when withheld: the tally sums them. `withoutMoney`
+      // drops them after the figures are counted.
       amountAsked: asked,
       amountAllowed: allowed,
       currency,
@@ -1273,7 +1277,13 @@ function measureSentence(
       );
       break;
     case "credits": {
-      const money = t.money ?? [];
+      // No money on the tally means it was withheld from this reader
+      // (`BuildInput.amounts`): counts only.
+      if (t.money === null) {
+        head = COPY.head.creditsCounted(t.percent, t.sample, t.hits as number);
+        break;
+      }
+      const money = t.money;
       head = COPY.head.credits(
         money.map((m) => ({
           allowed: fmt.money(m.allowed, m.currency),
@@ -1382,6 +1392,14 @@ function priorSentence(
 // The whole card
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether the reader holds the house's money (`holdsHouseMoney`, the `money`
+ * row of ROLE_POLICY, ADR 0145). "withheld" keeps every count and percent and
+ * drops every amount: claim money asked and allowed, and the agreed and
+ * invoiced unit prices.
+ */
+export type Amounts = "shown" | "withheld";
+
 export interface BuildInput {
   providerId: string;
   providerName: string;
@@ -1390,6 +1408,8 @@ export interface BuildInput {
   /** The house's clock and formats (`common/house-frame.ts`). */
   house: HouseFrame;
   registers: HouseRegisters;
+  /** Defaults to "shown". */
+  amounts?: Amounts;
 }
 
 export interface BuiltScorecard {
@@ -1411,6 +1431,7 @@ function newestFirst(a: DocketEntry, c: DocketEntry): number {
 
 export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
   const { providerId, providerName, days, now, house, registers: R } = input;
+  const shown = (input.amounts ?? "shown") === "shown";
   const b = windowBounds(now, days);
   const fmt = makeFmt(house.locale);
 
@@ -1446,7 +1467,13 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
       replyEntries(forVendor(rows, providerId), b, fmt),
     ),
     credits: fromRegister(R.credits, (rows) =>
-      creditEntries(forVendor(rows, providerId), b, now, fmt),
+      creditEntries(
+        forVendor(rows, providerId),
+        b,
+        now,
+        fmt,
+        shown ? "shown" : "withheld",
+      ),
     ),
   };
 
@@ -1456,6 +1483,10 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
     const pri = entries.filter((e) => e.window === "prior");
     const t = tally(key, cur, blocked, fmt);
     const p = tally(key, pri, blocked, fmt);
+    if (!shown) {
+      t.money = null;
+      p.money = null;
+    }
     const result: MeasureResult = {
       key,
       label: MEASURE_LABEL[key],
@@ -1472,7 +1503,7 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
       priorSentence: priorSentence(key, p, days, fmt),
       listed:
         key === "credits" && t.outcome === "too_few" && cur.length > 0
-          ? [...cur].sort(newestFirst)
+          ? [...cur].map((e) => (shown ? e : withoutMoney(e))).sort(newestFirst)
           : null,
     };
     if (key === "replyTime" && t.outcome === "answered")
@@ -1493,9 +1524,12 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
         0,
     );
 
-  const entries = MEASURE_KEYS.flatMap((k) => perMeasure[k].entries).sort(
-    newestFirst,
-  );
+  // The tallies and sentences have been counted from the amounts and unit
+  // prices; past that point a reader who does not hold the money gets the
+  // verdicts, counts and percents, never the amounts themselves.
+  const entries = MEASURE_KEYS.flatMap((k) => perMeasure[k].entries)
+    .map((e) => (shown ? e : withoutMoney(e)))
+    .sort(newestFirst);
 
   return {
     card: {
@@ -1515,6 +1549,20 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
     },
     entries,
   };
+}
+
+/**
+ * An entry without its money. Keys are OMITTED, never nulled: a null amount
+ * reads as "the record holds none", a claim about the record, and this is a
+ * claim about the reader.
+ */
+function withoutMoney(e: DocketEntry): DocketEntry {
+  const out = { ...e };
+  delete out.agreed;
+  delete out.invoiced;
+  delete out.amountAsked;
+  delete out.amountAllowed;
+  return out;
 }
 
 function fromRegister<T>(

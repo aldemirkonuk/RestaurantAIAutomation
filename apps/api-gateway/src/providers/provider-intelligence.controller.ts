@@ -13,6 +13,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 import { DatabaseService } from "../database/database.service";
@@ -122,9 +124,16 @@ export class ProviderIntelligenceController {
 
   // =========================================================================
   // PROMOTIONS
+  //
+  // Owner/manager only, as `/promotions` is (ADR 0124:357-362): an offer
+  // carries what a vendor charges this house and what it saves, and staff
+  // see counts, never amounts (ADR 0145). These reads were the legacy door
+  // round that gate (`promotions.controller.ts` says so); F-563 closes it.
   // =========================================================================
 
   @Get(":id/promotions")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Get this restaurant's promotions for a provider" })
   @ApiQuery({ name: "status", required: false })
   async getPromotions(
@@ -144,6 +153,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("promotions/active")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Get this restaurant's active promotions across its providers",
   })
@@ -158,6 +169,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("promotions/expiring")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Get this restaurant's promotions expiring soon" })
   @ApiQuery({ name: "days", required: false })
   async getExpiringPromotions(
@@ -175,6 +188,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("promotions/compare")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Cross-vendor promotion comparison matrix for this restaurant",
   })
@@ -187,6 +202,8 @@ export class ProviderIntelligenceController {
   }
 
   @Get("promotions/savings")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Total savings from this restaurant's promotions" })
   async getPromoSavings(@CurrentUser() user: AuthUser) {
     try {

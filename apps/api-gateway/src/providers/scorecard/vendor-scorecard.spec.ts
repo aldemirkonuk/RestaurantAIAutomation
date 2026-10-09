@@ -22,6 +22,7 @@ import {
   docketFor,
 } from "./vendor-scorecard";
 import { HouseFrame, houseFrame } from "../../common/house-frame";
+import { amountsFor } from "./vendor-scorecard.controller";
 
 /**
  * The house most cases run in: its clock is UTC and it names no country, so
@@ -1266,5 +1267,98 @@ describe("percent with count, in the house's formats (questions 3 and 7)", () =>
     expect(at(12, 14)).toBe("86%");
     expect(at(5, 5)).toBe("100%");
     expect(at(0, 5)).toBe("0%");
+  });
+});
+
+describe("a reader who does not hold the house's money (F-561, ADR 0145)", () => {
+  const claims = () => [
+    claim("credited", 182.5, 182.5, "2026-07-03T10:00:00Z"),
+    claim("credited", 118, 103.5, "2026-07-27T10:00:00Z"),
+    claim("promised", 112, null, "2026-08-09T10:00:00Z", {
+      promised_at: "2026-08-09T10:00:00Z",
+    }),
+    claim("credited", 50, 40, "2026-08-20T10:00:00Z"),
+    claim("rejected", 20, null, "2026-09-01T10:00:00Z"),
+  ];
+  const prices = () => [
+    verified("2026-09-01T10:00:00Z", true, 20, 20),
+    verified("2026-09-02T10:00:00Z", false, 21, 20),
+  ];
+  const withheld = (r: HouseRegisters) =>
+    buildVendorScorecard({
+      providerId: V,
+      providerName: "Skurnik",
+      days: 90,
+      now: NOW,
+      house: UTC_HOUSE,
+      registers: r,
+      amounts: "withheld",
+    });
+
+  it("keeps the credit counts and percent and sends no amount, in figures or words", () => {
+    const built = withheld(regs({ credits: ok(claims()) }));
+    const m = measure(built.card, "credits");
+    expect(m).toMatchObject({
+      outcome: "answered",
+      sample: 5,
+      hits: 3,
+      percent: "68%",
+      money: null,
+    });
+    expect(m.prior.money).toBeNull();
+    expect(m.sentence).toBe(
+      "68% recovered — 3 of 5 claims credited. Amounts are for the house's owners and managers. 1 claim is still open or promised — in what was asked, not in what was recovered.",
+    );
+    const rows = docketFor(built, "credits");
+    expect(rows).toHaveLength(5);
+    for (const e of rows) {
+      expect(e).not.toHaveProperty("amountAsked");
+      expect(e).not.toHaveProperty("amountAllowed");
+      expect(e.detail).not.toMatch(/\$|\d+\.\d\d/);
+    }
+    expect(rows.map((e) => e.detail)).toContain("Credited by the vendor.");
+    expect(rows.map((e) => e.detail)).toContain(
+      "The vendor refused the claim.",
+    );
+  });
+
+  it("lists claims under the minimum without their money", () => {
+    const built = withheld(regs({ credits: ok(claims().slice(0, 3)) }));
+    const m = measure(built.card, "credits");
+    expect(m.outcome).toBe("too_few");
+    for (const e of m.listed ?? []) {
+      expect(e).not.toHaveProperty("amountAsked");
+      expect(e.detail).not.toContain("$");
+    }
+  });
+
+  it("keeps the price verdicts and drops the agreed and invoiced unit prices", () => {
+    const built = withheld(regs({ verified: ok(prices()) }));
+    const rows = docketFor(built, "priceAsAgreed");
+    expect(rows.map((e) => e.hit)).toEqual([false, true]);
+    expect(rows[0].detail).toBe("Invoiced above the agreed price by 5.0%.");
+    for (const e of rows) {
+      expect(e).not.toHaveProperty("agreed");
+      expect(e).not.toHaveProperty("invoiced");
+    }
+  });
+
+  it("an owner's read is unchanged", () => {
+    const built = build(
+      regs({ credits: ok(claims()), verified: ok(prices()) }),
+    );
+    expect(measure(built.card, "credits").money).not.toBeNull();
+    expect(docketFor(built, "priceAsAgreed")[0].invoiced).toBe(21);
+  });
+});
+
+describe("who is sent the scorecard's money (F-561)", () => {
+  it("owners and managers are; staff, an unknown role and no role are not", () => {
+    expect(amountsFor({ role: "owner" })).toBe("shown");
+    expect(amountsFor({ role: "manager" })).toBe("shown");
+    expect(amountsFor({ role: "staff" })).toBe("withheld");
+    expect(amountsFor({ role: "sommelier" })).toBe("withheld");
+    expect(amountsFor({ role: null })).toBe("withheld");
+    expect(amountsFor(null)).toBe("withheld");
   });
 });

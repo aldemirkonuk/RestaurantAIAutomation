@@ -34,6 +34,29 @@ import {
   StockType,
   ReconcileResultDto,
 } from "./dto/inventory-ledger.dto";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
+
+type LedgerReader = {
+  userId: string;
+  restaurantId: string;
+  role?: string | null;
+};
+
+/**
+ * A movement as this role may read it (F-565). Staff see what moved, when
+ * and why, never what it cost (ADR 0145): `unitCost` and `totalCost` are
+ * OMITTED for a reader who does not hold the house's money (`holdsHouseMoney`).
+ */
+export function transactionForRole(
+  t: InventoryTransactionResponseDto,
+  role: string | null | undefined,
+): InventoryTransactionResponseDto {
+  if (holdsHouseMoney(role ?? null)) return t;
+  const out = { ...t };
+  delete out.unitCost;
+  delete out.totalCost;
+  return out;
+}
 
 @ApiTags("inventory-ledger")
 @Controller("inventory-ledger")
@@ -122,13 +145,19 @@ export class InventoryLedgerController {
   })
   async listTransactions(
     @Query() query: GetTransactionsQueryDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: LedgerReader,
   ): Promise<TransactionsListResponseDto> {
     try {
-      return await this.ledgerService.listTransactions(
+      const list = await this.ledgerService.listTransactions(
         user.restaurantId,
         query,
       );
+      return {
+        ...list,
+        transactions: list.transactions.map((t) =>
+          transactionForRole(t, user.role),
+        ),
+      };
     } catch (error) {
       this.logger.error({
         message: "List transactions failed",
@@ -152,12 +181,15 @@ export class InventoryLedgerController {
   })
   async getTransaction(
     @Param("transactionId") transactionId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: LedgerReader,
   ): Promise<InventoryTransactionResponseDto> {
     try {
-      return await this.ledgerService.getTransaction(
-        user.restaurantId,
-        transactionId,
+      return transactionForRole(
+        await this.ledgerService.getTransaction(
+          user.restaurantId,
+          transactionId,
+        ),
+        user.role,
       );
     } catch (error) {
       this.logger.error({
@@ -225,14 +257,15 @@ export class InventoryLedgerController {
   async getTransactionHistory(
     @Param("inventoryId") inventoryId: string,
     @Query("days") days: number = 30,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: LedgerReader,
   ): Promise<InventoryTransactionResponseDto[]> {
     try {
-      return await this.ledgerService.getTransactionHistory(
+      const history = await this.ledgerService.getTransactionHistory(
         user.restaurantId,
         inventoryId,
         days,
       );
+      return history.map((t) => transactionForRole(t, user.role));
     } catch (error) {
       this.logger.error({
         message: "Get history failed",
