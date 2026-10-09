@@ -214,6 +214,11 @@ function scheduleDispatch(delayMs: number) {
   dispatchTimer = setTimeout(runDispatch, delayMs);
 }
 
+/** Server errors in a row before an entry stops holding up the queue (F-590). */
+export const MAX_SERVER_ATTEMPTS = 5;
+export const SERVER_GAVE_UP_WORDS =
+  `We tried ${MAX_SERVER_ATTEMPTS} times and couldn't save it. Try again later, or dismiss it.`;
+
 let dispatching = false;
 async function runDispatch() {
   if (dispatching) return;
@@ -291,6 +296,21 @@ async function runDispatch() {
             ? err.message
             : "Rejected",
         alreadyDone: refused != null,
+      });
+      scheduleDispatch(0);
+    } else if (
+      err instanceof ApiError &&
+      err.status >= 500 &&
+      next.attempts + 1 >= MAX_SERVER_ATTEMPTS
+    ) {
+      // F-590: the house keeps answering with a server error. Retrying it
+      // forever held every later entry behind it with no word to the person;
+      // park it as failed (the feed shows it with Try again / dismiss) and let
+      // the rest of the queue go. Offline (no answer at all) still waits.
+      mark(next.id, {
+        status: "failed",
+        attempts: next.attempts + 1,
+        lastError: SERVER_GAVE_UP_WORDS,
       });
       scheduleDispatch(0);
     } else {
