@@ -346,6 +346,43 @@ describe('doorFacts — the structured half, in columns', () => {
   });
 });
 
+describe('doorFacts — the truck that completes a split order (F-468)', () => {
+  const facts = (alreadyReceived: Parameters<typeof doorFacts>[0]['alreadyReceived']) => {
+    const order = caseOrder(10);
+    return doorFacts({
+      outcome: 'accepted',
+      reason: null,
+      counted: 4,
+      broken: 0,
+      order,
+      match: matchLine(4, order, alreadyReceived),
+      hasPhoto: false,
+      driverName: '',
+      initials: 'AK',
+      alreadyReceived,
+    });
+  };
+
+  it('[REVERT-FAILS] expects only what is still owed, not the whole order', () => {
+    // 6 of 10 cases came on truck one. Sent as 10, the server stored 120
+    // bottles expected against 48 counted and the bell said "arrived short".
+    expect(facts({ bottles: 72, packSize: 12 }).expectedQtyInCountedUom).toBe(4);
+  });
+
+  it('keeps a remainder that is not whole boxes exact', () => {
+    // 5 boxes + 7 bottles earlier: 53 bottles still owed, 53/12 boxes.
+    expect(facts({ bottles: 67, packSize: 12 }).expectedQtyInCountedUom).toBe(53 / 12);
+  });
+
+  it('states no expectation when the earlier trucks could not be read', () => {
+    expect(facts('unread').expectedQtyInCountedUom).toBeNull();
+  });
+
+  it('expects the whole order on the first truck', () => {
+    expect(facts(null).expectedQtyInCountedUom).toBe(10);
+  });
+});
+
 describe('the second truck', () => {
   it('counts against the running total, not against the whole order', () => {
     // Truck one brought 8 of 16. Truck two brings 6. Compared against the whole
