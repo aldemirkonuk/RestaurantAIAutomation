@@ -374,6 +374,46 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(true);
   });
 
+  it("[REVERT-FAILS] a cost billed in another money does not restate the lot (F-341)", async () => {
+    // The lot was booked in the order's euros; the invoice bills lira. Nothing
+    // converts, so the lot keeps its delivery cost rather than carrying a lira
+    // figure in a euro cost history. The price series keeps the billed figure
+    // with its own money.
+    const { db, calls } = makeDb({ currency: "EUR" });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      // The same figure as the agreed 40 on purpose: the price check reads
+      // it as equal on this base, so the only thing under test is the lot.
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "TRY",
+      acceptedQuantity: 10,
+    } as any);
+
+    expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(false);
+    expect(
+      calls.rpc.some(
+        (c) => c.name === "apply_stock_movement" && c.args.p_unit_cost != null,
+      ),
+    ).toBe(false);
+  });
+
+  it("a cost billed in the order's own money still restates the lot (F-341)", async () => {
+    const { db, calls } = makeDb({ currency: "EUR" });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "eur",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    const reval = calls.rpc.find((c) => c.name === "revalue_lot");
+    expect(reval).toBeDefined();
+    expect(reval!.args.p_unit_cost).toBeCloseTo(43);
+  });
+
   it("a receipt correction names a source the enum actually has", async () => {
     const valid = new Set(enumLabels("inventory_transaction_source"));
     const { db, calls } = makeDb();

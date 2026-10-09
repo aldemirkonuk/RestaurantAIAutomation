@@ -7,7 +7,8 @@ import {
   type ProducerAudience,
   type ProducerTally,
 } from "./producer-ledger.service";
-import { clockIn, dayIn, onShiftPhrase, percent } from "./producer-copy";
+import { readHouseCurrency } from "../../common/house-money";
+import { clockIn, dayIn, money, onShiftPhrase, percent } from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
 import { localMidnight, shiftLocalDate } from "./service-day";
 
@@ -115,6 +116,10 @@ export class CeilingHeldProducer {
       return tally;
     }
 
+    // The house's own money, for a goal counted in money (F-341). These lines
+    // said `$` whatever the house sold in; `null` prints the figure bare.
+    const currency = await readHouseCurrency(client, restaurantId);
+
     let stillOpen = 0;
     let tooOld = 0;
     let breached = 0;
@@ -199,6 +204,7 @@ export class CeilingHeldProducer {
             type: "goal_reached",
             title: `${name} stayed under its ceiling`,
             message: this.sentence({
+              currency,
               label,
               unit,
               current,
@@ -263,6 +269,7 @@ export class CeilingHeldProducer {
 
   /** The sentence of record: the fact, then the arithmetic, then the people. */
   private sentence(input: {
+    currency: string | null;
     label: string;
     unit: string;
     current: number;
@@ -275,11 +282,7 @@ export class CeilingHeldProducer {
   }): string {
     const shown = (v: number) =>
       input.unit === "currency"
-        ? new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-            maximumFractionDigits: 2,
-          }).format(v)
+        ? money(v, input.currency)
         : input.unit === "percent"
           ? `${(v * 100).toFixed(1)}%`
           : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(

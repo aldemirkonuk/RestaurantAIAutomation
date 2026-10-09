@@ -31,7 +31,13 @@ function build() {
     notifications as any,
   );
   const producer = new SaleRecordProducer(database as any, ledger);
-  db.tables.restaurants.push({ id: TENANT, operating_hours: null });
+  // A USD house, said outright: the takings line prints the house's own
+  // money since F-341, and these cases were written against dollars.
+  db.tables.restaurants.push({
+    id: TENANT,
+    operating_hours: null,
+    currency: "USD",
+  });
   return { db, notifications, producer };
 }
 
@@ -53,6 +59,28 @@ function check(over: Record<string, any> = {}) {
 }
 
 describe("SaleRecordProducer", () => {
+  it("[REVERT-FAILS] says the night's takings in the house's own money, never a defaulted dollar (F-341)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.restaurants[0].currency = "TRY";
+    db.tables.pos_checks.push(check());
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).not.toContain("$");
+    expect(call.message).toMatch(/1 check, TRY\s218\.40\./);
+    expect(call.metadata.currency).toBe("TRY");
+  });
+
+  it("[REVERT-FAILS] a house that never named its money reads the figure with no symbol (F-341)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.restaurants[0].currency = null;
+    db.tables.pos_checks.push(check());
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("1 check, 218.40.");
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBeNull();
+  });
+
   it("[REVERT-FAILS] writes NO row when no POS has ever landed", async () => {
     const { db, notifications, producer } = build();
     db.tables.pos_checks.push(check());

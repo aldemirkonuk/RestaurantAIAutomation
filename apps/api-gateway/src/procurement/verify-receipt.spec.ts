@@ -864,6 +864,29 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
     expect(calls.creditInserts[0].claimed_amount).toBe(264);
   });
 
+  it("[REVERT-FAILS] a claim worked at the billed price is in the invoice's money, not the order's (F-341)", async () => {
+    // A euro order billed in lira: the 12 bottles owed back are 12 x 22 TRY,
+    // so a claim filed under EUR would chase 264 euros nobody billed.
+    const { db, calls } = makeDb({
+      orderRow: { ...caseOrder, currency: "EUR" },
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 22,
+      invoiceCurrency: "TRY",
+      acceptedQuantity: 1,
+      rejectedQuantity: 1,
+      rejectedReason: "case crushed",
+      countedUom: "case",
+    } as any);
+
+    expect(calls.creditInserts).toHaveLength(1);
+    expect(calls.creditInserts[0].claimed_amount).toBe(264);
+    expect(calls.creditInserts[0].currency).toBe("TRY");
+  });
+
   it("prefers the order LINE's stated pack size over deriving one", async () => {
     // `bottles_total / quantity` is a back-derivation, and back-deriving pack
     // size is what let a legacy order booking 5 bottles for 5 cases teach the

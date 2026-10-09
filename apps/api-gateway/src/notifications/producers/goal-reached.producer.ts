@@ -8,7 +8,14 @@ import {
   type ProducerAudience,
   type ProducerTally,
 } from "./producer-ledger.service";
-import { clockIn, dayIn, earliness, onShiftPhrase } from "./producer-copy";
+import { readHouseCurrency } from "../../common/house-money";
+import {
+  clockIn,
+  dayIn,
+  earliness,
+  money,
+  onShiftPhrase,
+} from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
 
 /**
@@ -115,6 +122,10 @@ export class GoalReachedProducer {
       return tally;
     }
 
+    // The house's own money, for a goal counted in money (F-341). These lines
+    // said `$` whatever the house sold in; `null` prints the figure bare.
+    const currency = await readHouseCurrency(client, restaurantId);
+
     let ceilingGoals = 0;
 
     for (const goal of goals) {
@@ -162,6 +173,7 @@ export class GoalReachedProducer {
       const name = String(goal.name || "Untitled goal");
 
       const message = this.sentence({
+        currency,
         label,
         unit,
         current,
@@ -306,6 +318,7 @@ export class GoalReachedProducer {
 
   /** The sentence of record. Facts, then the arithmetic, then the people. */
   private sentence(input: {
+    currency: string | null;
     label: string;
     unit: string;
     current: number;
@@ -330,11 +343,7 @@ export class GoalReachedProducer {
 
     const shown = (v: number) =>
       unit === "currency"
-        ? new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-            maximumFractionDigits: 2,
-          }).format(v)
+        ? money(v, input.currency)
         : unit === "percent"
           ? `${(v * 100).toFixed(1)}%`
           : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(
