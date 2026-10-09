@@ -14,6 +14,7 @@ import { DatabaseService } from "../database/database.service";
 import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 import { grantRefusal } from "../auth/role-grant";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
+import { stopGrantsOnLeaving } from "../integrations/stop-grants-on-leaving";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
 import {
@@ -528,6 +529,15 @@ export class MembersService {
         via: "MembersService.removeMember",
       },
     );
+    // The leaver's Google/Microsoft grants made in this house stop too, at the
+    // same point (F-458): their mailbox must not keep sending or reading this
+    // house's mail. See `integrations/stop-grants-on-leaving.ts`.
+    await stopGrantsOnLeaving(this.databaseService.supabase, this.logger, {
+      restaurantId,
+      userId: targetUserId,
+      actorUserId,
+      via: "MembersService.removeMember",
+    });
   }
 
   /**

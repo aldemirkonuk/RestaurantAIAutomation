@@ -254,6 +254,10 @@ describe("the house's own access to a person's grant", () => {
         },
       ],
       restaurant_personal_grant_access: [],
+      // F-458: the token is the house's to use only while Selin works here.
+      user_restaurant_access: [
+        { user_id: "u-selin", restaurant_id: HOUSE_A, is_active: true },
+      ],
     });
 
     await expect(
