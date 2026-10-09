@@ -27,7 +27,7 @@
  * not be read — each in words, none as an empty page.
  */
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -131,12 +131,14 @@ function FolioDocument({
   readingTitle,
   onChoose,
   onCheckAgain,
+  onAskAgain,
   busy,
 }: {
   folio: AskFolio;
   readingTitle: string | null;
   onChoose: (choiceId: string) => void;
   onCheckAgain: () => void;
+  onAskAgain: () => void;
   busy: boolean;
 }) {
   const v = folioView(folio);
@@ -151,6 +153,7 @@ function FolioDocument({
       <p className="ak-q">{folio.utterance}</p>
       <p className="ak-title">{v.title}</p>
       {v.line && <p className="ak-line" data-testid="ak-line">{v.line}</p>}
+      {v.day && <p className="ak-note" data-testid="ak-day">{v.day}</p>}
       {v.knowledge !== null && (
         <p className="ak-line" style={{ whiteSpace: 'pre-wrap' }}>
           {v.knowledge}
@@ -225,6 +228,13 @@ function FolioDocument({
           </button>
         </div>
       )}
+      {v.tone === 'interrupted' && (
+        <div className="ak-chips">
+          <button type="button" className="ak-btn" disabled={busy} onClick={onAskAgain}>
+            Ask again
+          </button>
+        </div>
+      )}
     </article>
   );
 }
@@ -251,6 +261,19 @@ export default function AskNext({ ground }: AskNextProps) {
   /** The last request, kept so "Check again" re-sends the SAME id (the gateway returns the saved folio). */
   const [lastRequest, setLastRequest] = useState<AskSubmit | null>(null);
   const [answered, setAnswered] = useState<AskFolio | null>(null);
+  /**
+   * False once the person has left this page. An answer can take up to 60 s,
+   * and react-router's navigate still pushes after unmount, so without this an
+   * owner who asked and moved on to /inventory was pulled back to the folio
+   * when the answer landed (F-232). The answer is still saved to the book.
+   */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const fromSommelier = (location.state as { from?: string } | null)?.from === 'sommelier';
   const readings = shelf.data ?? [];
@@ -268,7 +291,7 @@ export default function AskNext({ ground }: AskNextProps) {
       queryClient.setQueryData(keys.folio(saved.id), saved);
       void queryClient.invalidateQueries({ queryKey: keys.book });
       setLastRequest(null);
-      if (saved.id !== folioId) navigate(`/ask/f/${saved.id}`);
+      if (mounted.current && saved.id !== folioId) navigate(`/ask/f/${saved.id}`);
     } catch (e) {
       setFailure(askFailure(e));
     } finally {
@@ -308,6 +331,19 @@ export default function AskNext({ ground }: AskNextProps) {
       readingVersion: shown.reading_version ?? 1,
       args,
       previousFolioId: shown.id,
+    });
+  }
+
+  /** An interrupted folio is asked afresh under a new id: the old id would only return the same unfinished folio (F-235). */
+  function onAskAgain() {
+    if (!shown || busy) return;
+    void send({
+      requestId: newRequestId(),
+      utterance: shown.utterance,
+      ...(shown.reading_id
+        ? { readingId: shown.reading_id, readingVersion: shown.reading_version ?? 1, args: shown.reading_args ?? {} }
+        : {}),
+      ...(shown.previous_folio_id ? { previousFolioId: shown.previous_folio_id } : {}),
     });
   }
 
@@ -402,6 +438,7 @@ export default function AskNext({ ground }: AskNextProps) {
                 readingTitle={shown.reading_id ? titleOf.get(shown.reading_id) ?? null : null}
                 onChoose={onChoose}
                 onCheckAgain={() => void onCheckFolio()}
+                onAskAgain={onAskAgain}
                 busy={busy}
               />
               <p className="ak-note">

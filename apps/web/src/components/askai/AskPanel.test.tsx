@@ -640,3 +640,39 @@ describe('where it sits', () => {
     expect(onClose).toHaveBeenCalled()
   })
 })
+
+// F-238: the gateway caps the request at 2000 characters WITH the page note,
+// so the box stops where the gateway does and an over-long one is said in words.
+describe('the Propose length limit counts the page note', () => {
+  it('caps the box below 2000 when the page note is on, and never sends an over-long request', async () => {
+    const user = userEvent.setup()
+    renderPanel({ route: `/inventory/${INVENTORY}` })
+    await user.click(modeRadio(/propose an action/i))
+    const box = screen.getByLabelText(/the action to propose/i) as HTMLInputElement
+    expect(box.maxLength).toBeLessThan(2000)
+    expect(box.maxLength).toBeGreaterThan(1800)
+    fireEvent.change(box, { target: { value: 'x'.repeat(1990) } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(await screen.findByTestId('askai-error')).toHaveTextContent(/too long once the note about this page is added/)
+    expect(api.propose).not.toHaveBeenCalled()
+  })
+})
+
+// F-235: a panel answer cut off mid-way offers to ask again, never "Check again" forever.
+describe('an interrupted answer in the panel', () => {
+  it('offers Ask again, which sends the same words under a new id', async () => {
+    const user = userEvent.setup()
+    const old = new Date(Date.now() - 10 * 60_000).toISOString()
+    api.submit.mockResolvedValueOnce(folio({ status: 'pending', answer: null, utterance: 'what arrives today?', created_at: old }))
+    renderPanel()
+    await user.type(screen.getByLabelText(/your question for the books/i), 'what arrives today?{Enter}')
+    expect(await screen.findByText('This answer was interrupted')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull()
+    api.submit.mockResolvedValueOnce(folio({ id: 'f-2', utterance: 'what arrives today?', answer: { kind: 'no_reading_matched', reason: 'no_matching_question' } }))
+    await user.click(screen.getByRole('button', { name: 'Ask again' }))
+    await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(2))
+    expect(api.submit.mock.calls[1][0].utterance).toBe('what arrives today?')
+    expect(api.submit.mock.calls[1][0].requestId).not.toBe(api.submit.mock.calls[0][0].requestId)
+  })
+})
+

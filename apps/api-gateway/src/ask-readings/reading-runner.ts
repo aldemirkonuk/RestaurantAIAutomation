@@ -1,5 +1,7 @@
 import { isBelowPar } from "../common/stock-status";
 import { isIso4217 } from "../common/iso-4217";
+import { houseToday } from "../common/house-day";
+import { houseFrame } from "../common/house-frame";
 import { ORDER_CLOSED_STATUSES } from "../procurement/order-status";
 import { READING_CATALOGUE, shownFields } from "./reading-catalogue";
 import { BookRow, Evidence, recordedNumber, RecordingSession, ReadingFailure } from "./recording-session";
@@ -27,6 +29,13 @@ export function readingWindow(args: ReadingArgs): { from: string; to: string } {
 export class ReadingRunner {
   constructor(private readonly client: any, private readonly clock: () => Date = () => new Date()) {}
   async run(restaurantId: string, id: ReadingId, args: ReadingArgs, version = 1): Promise<Finding> {
+    // A Reading that reads "today" says which date and which clock (F-236).
+    const day: { value?: Finding["day"] } = {};
+    const finding = await this.readBooks(restaurantId, id, args, version, day);
+    return day.value ? { ...finding, day: day.value } : finding;
+  }
+  private async readBooks(restaurantId: string, id: ReadingId, args: ReadingArgs, version: number,
+    day: { value?: Finding["day"] }): Promise<Finding> {
     const descriptor = READING_CATALOGUE.find(r => r.id === id);
     // Cells may come only from the fields this Reading declares: those are
     // the fields whose data classes decided who may receive it.
@@ -130,9 +139,10 @@ export class ReadingRunner {
             // today. A window reaching today or later would list deliveries
             // that are not late under a title that says they are (KL audit
             // J10). Refused rather than clamped: clamping silently answers a
-            // different question than the one asked. Today is the runner's
-            // clock in UTC; the house's own time zone is not on this path.
-            const today = this.clock().toISOString().slice(0, 10);
+            // different question than the one asked. Today is the house's
+            // (F-236), else UTC, said on the Finding.
+            day.value = await this.today(s, sources);
+            const today = day.value.date;
             if (args.to! >= today) throw new ReadingFailure("invalid_window");
           }
           const orders = await sources.orders();
@@ -149,9 +159,10 @@ export class ReadingRunner {
           // book stays "not in your books" rather than a quiet zero. Cells come
           // only from the `due_today` view, whose rows are exactly those; the
           // book's own count is in the trace, withheld from a role that does
-          // not see suppliers. Today is the runner's clock in UTC, as for
-          // orders.late_deliveries; the house's time zone is not on this path.
-          const today = this.clock().toISOString().slice(0, 10);
+          // not see suppliers. Today is on the house's clock, as for
+          // orders.late_deliveries (F-236).
+          day.value = await this.today(s, sources);
+          const today = day.value.date;
           const orders = await sources.orders();
           resultEvidence = s.view(orders, "due_today", r => typeof r.status === "string" && !ORDER_CLOSED_STATUSES.includes(r.status as any) &&
             typeof r.expected_delivery_date === "string" && r.expected_delivery_date.slice(0, 10) === today);
@@ -283,5 +294,20 @@ export class ReadingRunner {
       const requirements = ["missing_unit", "missing_pack", "missing_window", "invalid_window", "missing_verified_link", "missing_currency_provenance", "unsupported_recurrence"].includes(reason);
       return s.finish(id, args, [], requirements ? "requirements_unsatisfied" : "could_not_read", reason);
     }
+  }
+
+  /**
+   * Today on the house's clock (F-236): its own zone, else its country's only
+   * zone (`houseFrame`, ADR 0207 question 6). With neither, today is read in
+   * UTC and `zone: null` says so on the Finding; Tuzlu's dinner service read
+   * tomorrow's deliveries from 17:00 while this was UTC with nothing said. The
+   * house record is a traced source like any other, so a failed read of it is
+   * a failed read, never "no zone".
+   */
+  private async today(s: RecordingSession, sources: ReadingSources): Promise<NonNullable<Finding["day"]>> {
+    const house = s.rows(await sources.houseClock())[0];
+    const zone = houseFrame(house ? { timezone: house.timezone as string | null, country: house.country as string | null } : null).zone;
+    const now = this.clock();
+    return { date: zone ? houseToday(zone, now) : now.toISOString().slice(0, 10), zone };
   }
 }

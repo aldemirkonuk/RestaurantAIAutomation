@@ -74,12 +74,14 @@ export interface AskFinding {
   trace: AskTrace[];
   rows: AskFindingRow[];
   choices?: Array<{ id: string; label: string }>;
+  /** The date a "today" reading read as today, and on whose clock; `zone: null` = read in UTC, no zone set (F-236). */
+  day?: { date: string; zone: string | null };
 }
 
 export type AskReply =
   | { kind: 'reading'; finding: AskFinding; focus: Array<{ cellId: string }> }
   | { kind: 'model_knowledge'; sourceLabel: string; text: string }
-  | { kind: 'could_not_answer'; reason: string; finding?: AskFinding }
+  | { kind: 'could_not_answer'; reason: string; finding?: AskFinding; earlierCallPaid?: true }
   | { kind: 'not_permitted'; reason: string; line: string; readingId?: string }
   | {
       kind:

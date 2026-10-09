@@ -156,9 +156,41 @@ describe('a folio, in words', () => {
   });
 
   it('a pending folio says it is saved, never that it failed', () => {
-    const v = folioView(folio({ status: 'pending', answer: null }));
+    const justAsked = new Date('2026-09-25T14:14:30Z');
+    const v = folioView(folio({ status: 'pending', answer: null }), justAsked);
     expect(v.tone).toBe('pending');
-    expect(folioChip({ status: 'pending', reply_kind: null })).toBe('still answering');
+    expect(folioChip(folio({ status: 'pending', reply_kind: null }), justAsked)).toBe('still answering');
+  });
+
+  // F-235: a question cut off mid-answer (a restart) stays pending forever;
+  // past twice the page's 60 s wait it says so and offers to ask again.
+  it('a pending folio older than twice the answer wait says it was interrupted', () => {
+    const pending = folio({ status: 'pending', answer: null });
+    expect(folioView(pending, new Date('2026-09-25T14:15:59Z')).tone).toBe('pending');
+    const v = folioView(pending, new Date('2026-09-25T14:16:01Z'));
+    expect(v.tone).toBe('interrupted');
+    expect(v.line).toMatch(/will not arrive/);
+    expect(v.line).not.toMatch(/Check again/);
+    expect(folioChip(pending, new Date('2026-09-25T14:30:00Z'))).toBe('interrupted');
+    // A finished folio is never called interrupted, however old.
+    expect(folioView(folio({ answer: { kind: 'could_not_answer', reason: 'model_unavailable' } }), new Date('2026-10-01T00:00:00Z')).tone).toBe('stopped');
+  });
+
+  // F-234: the pick was read and paid before the allowance ran out.
+  it('a spend ceiling after a paid step never says nothing was charged', () => {
+    const v = folioView(folio({ answer: { kind: 'could_not_answer', reason: 'spend_ceiling', earlierCallPaid: true } }));
+    expect(v.line).not.toMatch(/nothing was charged/i);
+    expect(v.line).toMatch(/charged/);
+    expect(v.line).toMatch(/midnight UTC/);
+  });
+
+  // F-236: a reading of "today" says which date and whose clock.
+  it('a reading of today says the date and the clock it was read on', () => {
+    const house = folioView(folio({ answer: { kind: 'reading', finding: { ...finding, day: { date: '2026-09-13', zone: 'America/Los_Angeles' } }, focus: [] } }));
+    expect(house.day).toBe('“Today” here is 2026-09-13, on the house\'s clock (America/Los_Angeles).');
+    const utc = folioView(folio({ answer: { kind: 'not_in_your_books', reason: 'empty_register', finding: { ...finding, day: { date: '2026-09-14', zone: null } } } }));
+    expect(utc.day).toMatch(/2026-09-14 in UTC, because the house has no time zone set/);
+    expect(folioView(folio({ answer: { kind: 'reading', finding, focus: [] } })).day).toBeNull();
   });
 });
 

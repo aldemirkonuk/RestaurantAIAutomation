@@ -19,7 +19,7 @@
  */
 
 import axios from 'axios';
-import type { AskCell, AskCount, AskFinding, AskFolio, AskReading, AskReply, AskTrace } from '@/services/api/ask';
+import { ASK_CLIENT_BUDGET_MS, type AskCell, type AskCount, type AskFinding, type AskFolio, type AskReading, type AskReply, type AskTrace } from '@/services/api/ask';
 
 const LINK_ID = 'mudavym-fraunces';
 
@@ -187,6 +187,36 @@ const MODEL_FAILURE_LINE: Record<string, string> = {
     "Today's AI allowance could not be checked, so nothing was sent. A check that fails is never read as nothing spent.",
 };
 
+/**
+ * The allowance ran out AFTER the question had already been read and paid for
+ * (the gateway's `earlierCallPaid`), so "nothing was charged" would be false (F-234).
+ */
+const SPEND_CEILING_AFTER_PAID_LINE =
+  "The house's AI allowance for today ran out partway through. Your question was read, and that step was charged, but no answer was written. It resets at midnight UTC.";
+
+/**
+ * A question still unanswered this long after it was asked never will be: the
+ * page waits 60 seconds for an answer, and nothing on the gateway finishes a
+ * question whose answer was cut off (a restart mid-answer). Twice the wait (F-235).
+ */
+export const INTERRUPTED_AFTER_MS = 2 * ASK_CLIENT_BUDGET_MS;
+
+/** True when a folio is still unanswered past `INTERRUPTED_AFTER_MS`; an undated one is never called interrupted. */
+export function isInterrupted(folio: Pick<AskFolio, 'status' | 'answer' | 'created_at'>, now: Date = new Date()): boolean {
+  if (folio.status !== 'pending' && folio.answer) return false;
+  const asked = new Date(folio.created_at).getTime();
+  return Number.isFinite(asked) && now.getTime() - asked > INTERRUPTED_AFTER_MS;
+}
+
+/** Which day "today" was, and on whose clock, for a reading that reads today (F-236). Null when it did not. */
+export function dayLine(finding: Pick<AskFinding, 'day'> | null | undefined): string | null {
+  const day = finding?.day;
+  if (!day) return null;
+  return day.zone
+    ? `“Today” here is ${day.date}, on the house's clock (${day.zone}).`
+    : `“Today” here is ${day.date} in UTC, because the house has no time zone set. An owner can set one in Settings.`;
+}
+
 const KIND_TITLE: Record<AskReply['kind'], string> = {
   reading: 'Read from the house’s books',
   model_knowledge: 'Not from the house’s books',
@@ -201,7 +231,7 @@ const KIND_TITLE: Record<AskReply['kind'], string> = {
 };
 
 /** The short chip a folio carries in the book. */
-export const KIND_CHIP: Record<AskReply['kind'] | 'pending', string> = {
+export const KIND_CHIP: Record<AskReply['kind'] | 'pending' | 'interrupted', string> = {
   reading: 'answered',
   model_knowledge: 'not from the books',
   could_not_answer: 'no answer',
@@ -213,9 +243,10 @@ export const KIND_CHIP: Record<AskReply['kind'] | 'pending', string> = {
   not_in_your_books: 'none in the books',
   could_not_read: 'could not read',
   pending: 'still answering',
+  interrupted: 'interrupted',
 };
 
-export type FolioTone = 'answer' | 'knowledge' | 'refused' | 'stopped' | 'pending' | 'clarify';
+export type FolioTone = 'answer' | 'knowledge' | 'refused' | 'stopped' | 'pending' | 'interrupted' | 'clarify';
 
 export interface FolioView {
   tone: FolioTone;
@@ -226,11 +257,21 @@ export interface FolioView {
   finding: AskFinding | null;
   knowledge: string | null;
   choices: Array<{ id: string; label: string }>;
+  /** Which date "today" was and on whose clock, when the reading read today (F-236). */
+  day: string | null;
 }
 
-export function folioView(folio: Pick<AskFolio, 'status' | 'answer'>): FolioView {
-  const empty = { figures: [], finding: null, knowledge: null, choices: [] };
+export function folioView(folio: Pick<AskFolio, 'status' | 'answer' | 'created_at'>, now: Date = new Date()): FolioView {
+  const empty = { figures: [], finding: null, knowledge: null, choices: [], day: null };
   const answer = folio.answer;
+  if (isInterrupted(folio, now)) {
+    return {
+      ...empty,
+      tone: 'interrupted',
+      title: 'This answer was interrupted',
+      line: 'Mudavym stopped partway through answering, and this answer will not arrive. Ask the question again to get one.',
+    };
+  }
   if (folio.status === 'pending' || !answer) {
     return {
       ...empty,
@@ -248,6 +289,7 @@ export function folioView(folio: Pick<AskFolio, 'status' | 'answer'>): FolioView
         line: null,
         figures: focusCells(answer.finding, answer.focus ?? []),
         finding: answer.finding,
+        day: dayLine(answer.finding),
       };
     case 'model_knowledge':
       return { ...empty, tone: 'knowledge', title: answer.sourceLabel || KIND_TITLE.model_knowledge, line: null, knowledge: answer.text };
@@ -258,7 +300,10 @@ export function folioView(folio: Pick<AskFolio, 'status' | 'answer'>): FolioView
         ...empty,
         tone: 'stopped',
         title: KIND_TITLE.could_not_answer,
-        line: MODEL_FAILURE_LINE[answer.reason] ?? `No answer was written (${answer.reason}).`,
+        line:
+          answer.reason === 'spend_ceiling' && answer.earlierCallPaid
+            ? SPEND_CEILING_AFTER_PAID_LINE
+            : MODEL_FAILURE_LINE[answer.reason] ?? `No answer was written (${answer.reason}).`,
         finding: answer.finding ?? null,
       };
     default: {
@@ -271,12 +316,14 @@ export function folioView(folio: Pick<AskFolio, 'status' | 'answer'>): FolioView
         line,
         finding: answer.finding ?? null,
         choices,
+        day: dayLine(answer.finding),
       };
     }
   }
 }
 
-export function folioChip(folio: Pick<AskFolio, 'status' | 'reply_kind'>): string {
+export function folioChip(folio: Pick<AskFolio, 'status' | 'reply_kind' | 'answer' | 'created_at'>, now: Date = new Date()): string {
+  if (isInterrupted(folio, now)) return KIND_CHIP.interrupted;
   if (folio.status === 'pending' || !folio.reply_kind) return KIND_CHIP.pending;
   return KIND_CHIP[folio.reply_kind] ?? folio.reply_kind;
 }

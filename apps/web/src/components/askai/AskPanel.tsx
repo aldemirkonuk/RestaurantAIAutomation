@@ -69,7 +69,7 @@ import {
   type AskFailure,
 } from '../../pages/ask/next/ask-format'
 import { ProposalCard } from './ProposalCard'
-import { composeUtterance, derivePageContext } from './page-context'
+import { composeUtterance, derivePageContext, type AskAiPageContext } from './page-context'
 import { MODE_CONTRACT, MODE_WORD, suggestAskMode, type AskMode } from './ask-mode'
 import type { AskOpenDetail } from './events'
 import { Panel } from '../mudavym/Sheet'
@@ -85,6 +85,18 @@ export const STAFF_PROPOSE_LINE = 'You can propose an action. An owner or a mana
 
 /** How many of this sitting's answers the panel keeps in view; the rest are in the book at /ask. */
 const PANEL_FOLIOS = 5
+
+/** The gateway's cap on a Propose request, page note included (`ask-ai.dto.ts`, `@MaxLength(2000)`). */
+const PROPOSE_MAX_CHARS = 2000
+
+/**
+ * How many characters of the person's own words fit once the page note is
+ * added (`composeUtterance`), so the box stops at the limit the gateway
+ * actually enforces instead of a 2000 the request then fails (F-238).
+ */
+function roomForWords(context: AskAiPageContext | null): number {
+  return PROPOSE_MAX_CHARS - (context ? `\n\n${context.line}`.length : 0)
+}
 
 export interface AskPanelProps {
   placement: 'docked' | 'overlay'
@@ -117,11 +129,13 @@ function PanelFolio({
   folio,
   busy,
   onCheckAgain,
+  onAskAgain,
   onPropose,
 }: {
   folio: AskFolio
   busy: boolean
   onCheckAgain: (f: AskFolio) => void
+  onAskAgain: (utterance: string) => void
   onPropose: (utterance: string) => void
 }) {
   const v = folioView(folio)
@@ -132,6 +146,11 @@ function PanelFolio({
       {v.line && (
         <p className="mdv-askp__line" data-testid="askpanel-line">
           {v.line}
+        </p>
+      )}
+      {v.day && (
+        <p className="mdv-askp__line" data-testid="askpanel-day">
+          {v.day}
         </p>
       )}
       {v.knowledge !== null && <p className="mdv-askp__line mdv-askp__line--pre">{v.knowledge}</p>}
@@ -149,6 +168,11 @@ function PanelFolio({
         {v.tone === 'pending' && (
           <button type="button" className="mdv-link" disabled={busy} onClick={() => onCheckAgain(folio)}>
             Check again
+          </button>
+        )}
+        {v.tone === 'interrupted' && (
+          <button type="button" className="mdv-link" disabled={busy} onClick={() => onAskAgain(folio.utterance)}>
+            Ask again
           </button>
         )}
         <Link className="mdv-link" to={`/ask/f/${folio.id}`}>
@@ -318,7 +342,18 @@ function AskPanelBody({
       setRefusal(null)
       setError(null)
       try {
-        const result = await proposeAction(composeUtterance(words, sendContext ? pageContext : null))
+        const context = sendContext ? pageContext : null
+        const over = words.trim().length - roomForWords(context)
+        if (over > 0) {
+          // Said here in words, before the gateway refuses it in its own (F-238).
+          setError(
+            context
+              ? `Your request is ${over} characters too long once the note about this page is added. Shorten it, or switch the page note off.`
+              : `Your request is ${over} characters too long. Shorten it a little.`,
+          )
+          return
+        }
+        const result = await proposeAction(composeUtterance(words, context))
         if (!result.proposed || !result.proposal) {
           // The honest answer, shown in full. The text is kept so the
           // operator can adjust two words instead of retyping the sentence.
@@ -416,7 +451,7 @@ function AskPanelBody({
           aria-label={mode === 'ask' ? 'Your question for the books' : 'The action to propose'}
           autoComplete="off"
           spellCheck={false}
-          maxLength={2000}
+          maxLength={mode === 'propose' ? roomForWords(sendContext ? pageContext : null) : 2000}
           disabled={busy}
         />
         {busy ? <Loader2 size={14} aria-hidden style={{ color: 'var(--ink-4)', flex: 'none' }} /> : <kbd className="mdv-kbd">esc</kbd>}
@@ -506,7 +541,14 @@ function AskPanelBody({
 
         {mode === 'ask' &&
           folios.map((f) => (
-            <PanelFolio key={f.id} folio={f} busy={busy} onCheckAgain={(x) => void checkFolio(x)} onPropose={proposeInstead} />
+            <PanelFolio
+              key={f.id}
+              folio={f}
+              busy={busy}
+              onCheckAgain={(x) => void checkFolio(x)}
+              onAskAgain={(words) => void askTheBooks(words)}
+              onPropose={proposeInstead}
+            />
           ))}
 
         {proposalsUnread && (
