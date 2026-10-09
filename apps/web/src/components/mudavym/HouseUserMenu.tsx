@@ -58,6 +58,14 @@ export function HouseUserMenu() {
     setOpen(false);
   };
 
+  // A chosen sign-out goes to a clean sign-in: no `from`, so the next person
+  // on a shared tablet does not open on this one's page (F-438). `false`: they
+  // kept their unsent changes and stayed signed in (ADR 0241).
+  const signOut = () =>
+    void logout().then((out) => {
+      if (out) navigate('/login', { replace: true });
+    });
+
   return (
     <div className="mdv-hdr__slot">
       <button
@@ -100,7 +108,7 @@ export function HouseUserMenu() {
           <HelpCircle size={14} aria-hidden className="mdv-item__icon" />
           <span className="mdv-item__text">Help &amp; Support</span>
         </button>
-        <button type="button" className="mdv-item mdv-hdr__ruled" onClick={() => void logout()}>
+        <button type="button" className="mdv-item mdv-hdr__ruled" onClick={signOut}>
           <LogOut size={14} aria-hidden className="mdv-item__icon" />
           <span className="mdv-item__text">Log out</span>
         </button>

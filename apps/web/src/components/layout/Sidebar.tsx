@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -403,6 +403,7 @@ export function Sidebar() {
   const checklistButtonRef = useRef<HTMLButtonElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
+  const navigate = useNavigate()
   const { user, logout } = useAuth()
   // One flag read for the one gated entry (ADR 0114). The hook caches per
   // restaurant+flag for the session, so this costs at most one request.
@@ -823,7 +824,12 @@ export function Sidebar() {
               role="menuitem"
               onClick={() => {
                 setAccountOpen(false)
-                void logout()
+                // A chosen sign-out goes to a clean sign-in: no `from`, so the
+                // next person on a shared tablet does not open on this one's
+                // page (F-438). `false`: they kept unsent changes (ADR 0241).
+                void logout().then((out) => {
+                  if (out) navigate('/login', { replace: true })
+                })
               }}
               className="flex w-full items-center gap-2.5 border-t border-gray-100 px-3 py-2 text-left text-[13px] font-medium text-gray-600 hover:bg-red-50 hover:text-red-600"
             >

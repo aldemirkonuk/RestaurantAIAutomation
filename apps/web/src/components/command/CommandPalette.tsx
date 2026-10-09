@@ -23,7 +23,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles, Inbox, RotateCw } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
-import { LANDING_KEY } from "./CommandProvider";
+import { landingKeyFor } from "./CommandProvider";
 import {
   Command,
   CommandSection,
@@ -82,6 +82,7 @@ export function CommandPalette({
   const shell = useMudavymShell();
   const shellPalette = useShellPalette();
   const restaurantId = user?.restaurantId;
+  const userId = user?.userId ?? null;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [topRec, setTopRec] = useState<Command | null>(null);
@@ -159,29 +160,31 @@ export function CommandPalette({
       : statics;
 
     // NEW-518 / NEW-681: default landing page, set from wherever you are.
-    // Per-device (localStorage); CommandProvider honors it once per app boot.
+    // Per person on this device (F-438); CommandProvider honors it once per
+    // app boot. No signed-in person, no landing commands.
     const here = location.pathname;
+    const landingKey = landingKeyFor(userId);
     const stored = (() => {
-      try { return localStorage.getItem(LANDING_KEY); } catch { return null; }
+      try { return landingKey ? localStorage.getItem(landingKey) : null; } catch { return null; }
     })();
     const landing: Command[] = [];
-    if (here !== "/" && here !== stored) {
+    if (landingKey && here !== "/" && here !== stored) {
       landing.push({
         id: "landing-set",
         title: `Set "${routeLabel(here)}" as default landing page`,
-        subtitle: "Opens this page after sign-in on this device",
+        subtitle: "Opens this page when you sign in on this device",
         section: "Navigation",
         icon: Home,
         keywords: "default landing homepage start page after login",
         action: () => {
-          try { localStorage.setItem(LANDING_KEY, here); } catch { /* ignore */ }
+          try { localStorage.setItem(landingKey, here); } catch { /* ignore */ }
           toast.success(`${routeLabel(here)} is now your landing page`, {
             description: "Applies on this device, next time you open the app.",
           });
         },
       });
     }
-    if (stored && stored !== "/") {
+    if (landingKey && stored && stored !== "/") {
       landing.push({
         id: "landing-clear",
         title: `Clear default landing page (currently ${routeLabel(stored)})`,
@@ -189,7 +192,7 @@ export function CommandPalette({
         icon: Home,
         keywords: "default landing homepage reset dashboard",
         action: () => {
-          try { localStorage.removeItem(LANDING_KEY); } catch { /* ignore */ }
+          try { localStorage.removeItem(landingKey); } catch { /* ignore */ }
           toast.success("Landing page reset to Dashboard");
         },
       });
@@ -212,7 +215,7 @@ export function CommandPalette({
 
     const merged = [...base, askAi, ...landing];
     return topRec ? [topRec, ...merged] : merged;
-  }, [topRec, location.pathname, toast, shellPalette]);
+  }, [topRec, location.pathname, toast, shellPalette, userId]);
 
   // Ranked + grouped result set.
   const groups = useMemo(() => {

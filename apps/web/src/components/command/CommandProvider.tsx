@@ -30,9 +30,20 @@ import { RecentlyViewed } from "./RecentlyViewed";
 import { GOTO_MAP, routeLabel } from "./commands";
 import { ASK_AI_OPEN_EVENT } from "../askai/events";
 import { recordView } from "./recents-store";
+import { AuthContext } from "../../contexts/AuthContext";
 
-/** localStorage key for the default landing route (NEW-518 / NEW-681). */
+/**
+ * localStorage key for the default landing route (NEW-518 / NEW-681). Held
+ * bare, it was one value per device, so on a shared tablet the next person was
+ * sent to whatever the last one chose (F-438). It is only a prefix now; the
+ * bare key is removed wherever it is still found.
+ */
 export const LANDING_KEY = "wineops.defaultLanding";
+
+/** The landing page is one person's choice, kept per user on this device. */
+export function landingKeyFor(userId: string | null | undefined): string | null {
+  return userId ? `${LANDING_KEY}.${userId}` : null;
+}
 
 interface CommandContextValue {
   openPalette: () => void;
@@ -63,6 +74,9 @@ function isTypingTarget(el: EventTarget | null): boolean {
 export function CommandProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
+  // Read without `useAuth` so the provider still mounts where no AuthProvider
+  // is (its own tests); no signed-in person means no landing page to honour.
+  const userId = useContext(AuthContext)?.user?.userId ?? null;
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
@@ -78,15 +92,17 @@ export function CommandProvider({ children }: { children: ReactNode }) {
    * NEW-518 / NEW-681: default landing page. Fires exactly once per app boot,
    * and only when the app was ENTERED at "/" — a later deliberate visit to the
    * dashboard is never hijacked (the ref is already consumed). Stored in
-   * localStorage, so it is a per-device preference; set/cleared from the ⌘K
-   * palette.
+   * localStorage per signed-in person (F-438); set/cleared from the ⌘K palette.
    */
   const bootRedirected = useRef(false);
   useEffect(() => {
     if (bootRedirected.current) return;
     bootRedirected.current = true;
     try {
-      const dest = localStorage.getItem(LANDING_KEY);
+      // The old device-wide value belongs to no one we can name.
+      localStorage.removeItem(LANDING_KEY);
+      const key = landingKeyFor(userId);
+      const dest = key ? localStorage.getItem(key) : null;
       if (dest && dest !== "/" && location.pathname === "/") {
         navigate(dest, { replace: true });
       }
