@@ -34,6 +34,11 @@ import expected from "./route-access.expected.json";
  * therefore read "open" here; the gate they rely on is pinned by the
  * `ADR-0171-CONVERSATION-ROUTES-HOUSE-SCOPED` claim and
  * `vendor-send-authority.spec.ts`, not by `RolesGuard`.
+ *
+ * One row changed as decided by wave 13's F-490 (2026-10-09):
+ * `POST /ask-ai/actions/:id/discard` took `@Roles("owner", "manager")`, the
+ * standing that applies a proposal, so a staff member can no longer throw away
+ * a proposal they could not have applied.
  */
 
 const ctx = (handler: object, cls: object, role: string | null) =>

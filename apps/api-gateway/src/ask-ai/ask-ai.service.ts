@@ -566,15 +566,22 @@ export class AskAiService {
     return "Draft a reply to the vendor on the selected order.";
   }
 
-  async listOpen(restaurantId: string) {
-    const { data, error } = await this.databaseService
+  /**
+   * Open proposals for this house. `askedBy` narrows them to one person's own
+   * (F-490: staff see what they asked, not what the owner asked); null means
+   * every open proposal, for an owner or manager.
+   */
+  async listOpen(restaurantId: string, askedBy: string | null = null) {
+    let query = this.databaseService
       .getClient()
       .from("ai_proposed_actions")
       .select(
         "id, utterance, family, action_type, payload, summary, status, created_at",
       )
       .eq("restaurant_id", restaurantId)
-      .eq("status", "proposed")
+      .eq("status", "proposed");
+    if (askedBy) query = query.eq("created_by", askedBy);
+    const { data, error } = await query
       .order("created_at", { ascending: false })
       .limit(20);
     if (error) {
