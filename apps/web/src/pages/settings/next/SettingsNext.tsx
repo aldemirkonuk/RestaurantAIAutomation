@@ -99,6 +99,7 @@ import { MailReadingSection } from './MailReadingSection';
 import { HoursSection } from './HoursSection';
 import { DigestRow } from './DigestRow';
 import { AskTrainingSection } from './AskTrainingSection';
+import { LocationSection } from './LocationSection';
 import { ConsentPanelOpener } from './ConsentPanel';
 
 const CSS = `
@@ -424,6 +425,19 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                       {KEPT_NOTE.restaurant}
                     </p>
                     <HoursSection data={data} />
+                  </div>
+                )}
+
+                {/* F-174: the calendar's weather sends the owner here by this heading. */}
+                {group.id === 'house' && (
+                  <div id="st-section-location" data-testid="st-section-location" style={{ margin: '0 0 28px' }}>
+                    <h3 style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, letterSpacing: '-0.005em', margin: 0 }}>
+                      Address and map point
+                    </h3>
+                    <p style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-4)', margin: '4px 0 14px' }}>
+                      {KEPT_NOTE.restaurant}
+                    </p>
+                    <LocationSection data={data} />
                   </div>
                 )}
 

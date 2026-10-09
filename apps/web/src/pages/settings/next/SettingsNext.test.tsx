@@ -228,6 +228,9 @@ function base(over: Record<string, unknown> = {}) {
       statedAt: null,
       statedBy: null,
     }),
+    houseLocation: remote({
+      restaurantId: 'r1', street: '12 Rıhtım Caddesi', latitude: null, longitude: null, readable: true, reason: null,
+    }),
     // ADR 0207 (2026-09-21): Time zone and Mail reading are eager registers
     // on the interview page like every other, so their fixtures are load-
     // bearing on every test that mounts the page.
@@ -249,6 +252,7 @@ function base(over: Record<string, unknown> = {}) {
     saveDigest: vi.fn(() => Promise.resolve(true)),
     saveAskTraining: vi.fn(() => Promise.resolve(true)),
     saveTimeZone: vi.fn(() => Promise.resolve(true)),
+    saveLocation: vi.fn(() => Promise.resolve(true)),
     saveToneScoring: vi.fn(() => Promise.resolve(true)),
     ...over,
   };
@@ -567,6 +571,14 @@ describe('SettingsNext — the editorial spine', () => {
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
     const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
     expect(scrolledTo.id).toBe('st-section-hours');
+  });
+
+  it('honours a ?tab=location deep link — the address the calendar sends an owner to lives under "The house"', () => {
+    mount('/settings?tab=location');
+    const section = screen.getByTestId('st-section-location');
+    expect(within(section).getByRole('heading', { level: 3 })).toHaveTextContent('Address and map point');
+    const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
+    expect(scrolledTo.id).toBe('st-section-location');
   });
 
   it('honours a ?tab=digest deep link the same way — the digest sender lives under "own"', () => {

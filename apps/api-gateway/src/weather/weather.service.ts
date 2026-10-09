@@ -289,8 +289,9 @@ export class WeatherService {
       return this.empty(
         from,
         to,
-        "No location is set for this house, so no forecast can be read. Set the " +
-          "address on Settings and the coordinate is captured with it.",
+        "No location is set for this house, so no forecast can be read. An " +
+          "owner or manager can pick its address from the search list in " +
+          "Settings, under Address and map point.",
         "no-coordinate",
       );
     }

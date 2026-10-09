@@ -435,6 +435,24 @@ export interface HouseAskTrainingRegister {
 }
 
 /**
+ * Where the house stands, as `GET /settings/location` answers (F-174). Mirrors
+ * `HouseLocationReadout` (`apps/api-gateway/src/settings/house-location.service.ts`).
+ * `latitude: null` means no map point is recorded, so the calendar can read no
+ * forecast; `readable: false` is a failed READ, never "no address".
+ */
+export interface HouseLocationRegister {
+  restaurantId: string;
+  street: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  readable: boolean;
+  reason: string | null;
+  /** Present on a write only. `false` = the change landed, the paper did not. */
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
+/**
  * The recommendations digest sender's own preference row, as
  * `GET /analytics/recommendations/:restaurantId/digest` answers
  * (`analytics.controller.ts:1143`, `recommendation-actions.service.ts:285-297`).
@@ -701,6 +719,11 @@ export function useSettingsNextData() {
     return data;
   });
 
+  const houseLocation = useRemote<HouseLocationRegister>(tenantKey('location'), async () => {
+    const { data } = await apiClient.get<HouseLocationRegister>('/settings/location');
+    return data;
+  });
+
   const houseTimeZone = useRemote<HouseTimeZoneRegister>(tenantKey('time-zone'), async () => {
     const { data } = await apiClient.get<HouseTimeZoneRegister>('/settings/time-zone');
     return data;
@@ -953,6 +976,20 @@ export function useSettingsNextData() {
     [writer, houseAskTraining, ledger],
   );
 
+  /** The street and map point of the place picked in the address search (F-174). */
+  const saveLocation = useCallback(
+    (street: string, latitude: number, longitude: number) =>
+      writer.run('location', async () => {
+        const { data } = await apiClient.put<HouseLocationRegister>('/settings/location', {
+          street, latitude, longitude,
+        });
+        if (data) houseLocation.set(data);
+        else houseLocation.reload();
+        ledger.reload();
+      }),
+    [writer, houseLocation, ledger],
+  );
+
   /**
    * Save the week — or `null`, an explicit "we do not know these hours".
    *
@@ -1038,13 +1075,13 @@ export function useSettingsNextData() {
     refreshBranches,
     team, flags, ical, icalIssued, sender, chains, pos, prefs, notif, integrations,
     vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost, houseAskTraining,
-    houseTimeZone, houseToneScoring,
+    houseLocation, houseTimeZone, houseToneScoring,
     hours, digest,
     writer,
     saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, createIcal, regenerateIcal, revokeIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
     saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost, saveAskTraining,
-    saveHours, saveDigest,
+    saveLocation, saveHours, saveDigest,
     saveTimeZone, saveToneScoring,
   };
 }
