@@ -7,8 +7,32 @@ import { queryClient } from "@/lib/queryClient";
 import { feedKey, pulseKey } from "@/api/queries";
 import { routeForNotificationData } from "@/lib/notificationRoute";
 import { color } from "@/design/tokens";
+import { beforeSignOutRequest } from "@/state/session";
 
 let registeredToken: string | null = null;
+
+function projectIdOption() {
+  const projectId =
+    Constants.easConfig?.projectId ??
+    (Constants.expoConfig as any)?.extra?.eas?.projectId;
+  return projectId ? { projectId } : undefined;
+}
+
+/**
+ * This phone's Expo token. `registeredToken` lives in memory, so after any
+ * restart it is null even though the gateway still holds the device (F-406);
+ * ask Expo again instead — the token is stable per install and asking never
+ * prompts. Null on a simulator or when Expo cannot answer.
+ */
+async function deviceToken(): Promise<string | null> {
+  if (registeredToken) return registeredToken;
+  try {
+    if (!Device.isDevice) return null;
+    return (await Notifications.getExpoPushTokenAsync(projectIdOption())).data || null;
+  } catch {
+    return null;
+  }
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -44,12 +68,7 @@ export async function registerPush(): Promise<void> {
     }
     if (!granted) return;
 
-    const projectId =
-      Constants.easConfig?.projectId ??
-      (Constants.expoConfig as any)?.extra?.eas?.projectId;
-    const token = (
-      await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined)
-    ).data;
+    const token = (await Notifications.getExpoPushTokenAsync(projectIdOption())).data;
 
     if (token && token !== registeredToken) {
       await api("/mobile/devices", {
@@ -67,13 +86,25 @@ export async function registerPush(): Promise<void> {
   }
 }
 
+/** Push off in Settings: the signed-in person's device stops receiving. */
 export async function unregisterPush(): Promise<void> {
-  if (!registeredToken) return;
-  await api(`/mobile/devices/${encodeURIComponent(registeredToken)}`, {
+  const token = await deviceToken();
+  if (!token) return;
+  await api(`/mobile/devices/${encodeURIComponent(token)}`, {
     method: "DELETE",
   }).catch(() => {});
   registeredToken = null;
 }
+
+// Every sign-out — Settings, lock, choose-house, no-access, a dead session —
+// unregisters the device under the outgoing session, so the next person on a
+// shared phone does not get the last person's pushes (F-406).
+beforeSignOutRequest(async (send) => {
+  const token = await deviceToken();
+  if (!token) return;
+  await send(`/mobile/devices/${encodeURIComponent(token)}`, "DELETE");
+  registeredToken = null;
+});
 
 /**
  * Map a notification's payload to an in-app route.

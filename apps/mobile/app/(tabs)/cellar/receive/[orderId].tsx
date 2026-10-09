@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { ScrollView, TextInput, View } from "react-native";
+import { Alert, ScrollView, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,7 +14,14 @@ import { BinBreath } from "@/components/cellar/BinBreath";
 import { color, font, radius, space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
 import { feedKey, pulseKey, useOrder } from "@/api/queries";
-import { useOutbox } from "@/state/outbox";
+import { NOT_SAVED_WORDS, useOutbox } from "@/state/outbox";
+import { WaitingStrip } from "@/components/today/WaitingStrip";
+import {
+  BOTTLE_BARCODE_TYPES,
+  newScanRun,
+  readScan,
+  type ScanOutcome,
+} from "@/lib/scanCount";
 import { useFeedLocal } from "@/state/feedLocal";
 import { receivingCountBasis } from "@/lib/receivingCountBasis";
 import { computeMatch, money, verdictTone } from "@/lib/invoiceMatch";
@@ -53,7 +60,8 @@ export default function ReceivingScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
-  const lastScanAt = useRef(0);
+  const scanRun = useRef(newScanRun());
+  const [scanNote, setScanNote] = useState<ScanOutcome | null>(null);
 
   // Physical count. null = untouched (defaults to what delivery stocked in).
   const [acceptedRaw, setAcceptedRaw] = useState<number | null>(null);
@@ -113,10 +121,14 @@ export default function ReceivingScreen() {
     Math.round(poUnitPrice * 100) !== Math.round(invoiceUnitPrice * 100);
   const receivedQty = acceptedQty + rejectedQty;
 
-  const onScan = useCallback(() => {
-    const now = Date.now();
-    if (now - lastScanAt.current < 900) return; // one bottle per read
-    lastScanAt.current = now;
+  // One bottle per bottle held up, and only this run's wine (F-405,
+  // lib/scanCount.ts).
+  const onScan = useCallback(({ data }: { data: string }) => {
+    const { run, outcome } = readScan(scanRun.current, data, Date.now());
+    scanRun.current = run;
+    if (outcome === "same-bottle") return;
+    setScanNote(outcome);
+    if (outcome !== "counted") return;
     haptic.tick();
     setSweepKey((k) => k + 1);
     setAcceptedRaw((prev) => (prev ?? 0) + 1);
@@ -128,12 +140,14 @@ export default function ReceivingScreen() {
       if (!res.granted) return;
     }
     setAcceptedRaw((prev) => prev ?? 0); // scanning counts from zero
+    scanRun.current = newScanRun();
+    setScanNote(null);
     setScanning(true);
   }, [permission, requestPermission]);
 
   const commit = useCallback(() => {
     if (!order || sealed || match.requiresOverride || !canCommit) return;
-    useOutbox.getState().enqueue({
+    const saved = useOutbox.getState().enqueue({
       path: `/procurement/orders/${orderId}/verify-receipt`,
       body: {
         // Steppers and camera both count individual bottles. Invoice figures
@@ -166,6 +180,10 @@ export default function ReceivingScreen() {
       ],
       feedItemId: typeof feedItemId === "string" ? feedItemId : undefined,
     });
+    if (!saved) {
+      Alert.alert(NOT_SAVED_WORDS);
+      return;
+    }
     if (typeof feedItemId === "string") {
       useFeedLocal.getState().hide(feedItemId, "receiving");
       useFeedLocal.getState().markCleared();
@@ -437,14 +455,8 @@ export default function ReceivingScreen() {
                 <CameraView
                   style={{ flex: 1 }}
                   barcodeScannerSettings={{
-                    barcodeTypes: [
-                      "ean13",
-                      "ean8",
-                      "upc_a",
-                      "upc_e",
-                      "code128",
-                      "qr",
-                    ],
+                    // Bottle codes only: a QR or a case label is not a bottle.
+                    barcodeTypes: [...BOTTLE_BARCODE_TYPES],
                   }}
                   onBarcodeScanned={onScan}
                 />
@@ -460,7 +472,11 @@ export default function ReceivingScreen() {
                   }}
                 >
                   <AppText variant="caption" tone="onWine">
-                    Each read adds one bottle. Confirm it belongs to this order.
+                    {scanNote === "other-wine"
+                      ? "That label is a different wine. Not counted."
+                      : scanNote === "not-a-bottle"
+                        ? "That is not a bottle barcode. Not counted."
+                        : "Hold each bottle up once. It counts one bottle."}
                   </AppText>
                 </View>
               </View>
@@ -790,6 +806,9 @@ export default function ReceivingScreen() {
                 {sealed ? "Saved on this phone" : primaryLabel}
               </AppText>
             </PressableScale>
+            {/* Earlier receipts still on this phone show here before this
+                one is added, and on Today after the screen closes (F-407). */}
+            <WaitingStrip />
           </>
         )}
       </ScrollView>

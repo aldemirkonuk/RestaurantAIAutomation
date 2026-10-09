@@ -30,7 +30,7 @@ jest.mock("@/state/session", () => {
 });
 import { api } from "@/api/client";
 import { useSession } from "../session";
-import { useOutbox } from "../outbox";
+import { useOutbox, waitingWork, waitingWords } from "../outbox";
 import { outboxStorage } from "@/lib/mmkv";
 
 beforeEach(() => {
@@ -117,4 +117,51 @@ it("does not run two dispatches when a reconnect occurs during an in-flight acti
   finish();
   await jest.advanceTimersByTimeAsync(1);
   expect(api).toHaveBeenCalledTimes(2);
+});
+
+it("saves nothing and does not throw from a press while the session has no house (F-404)", () => {
+  useSession.setState({ status: "locked" });
+  expect(
+    useOutbox.getState().enqueue({ path: "/orders/one/receive", label: "Receipt" }),
+  ).toBeNull();
+  useSession.setState({ status: "signedIn", user: null });
+  expect(
+    useOutbox.getState().enqueue({ path: "/orders/one/receive", label: "Receipt" }),
+  ).toBeNull();
+  expect(useOutbox.getState().entries).toHaveLength(0);
+});
+
+it("counts the person's waiting work here and in their other houses, never another account's (F-407)", () => {
+  const e = (id: string, actorUserId: string, restaurantId: string, status: any) =>
+    ({ id, actorUserId, restaurantId, status, path: "/x", method: "POST", label: "Receipt", createdAt: 0, holdUntil: 0, attempts: 0 }) as any;
+  const w = waitingWork(
+    [
+      e("1", "alice", "r1", "pending"),
+      e("2", "alice", "r1", "holding"),
+      e("3", "alice", "r1", "failed"),
+      e("4", "alice", "r2", "pending"),
+      e("5", "bob", "r1", "pending"),
+    ],
+    { id: "alice", restaurantId: "r1" },
+  );
+  expect(w).toEqual({ here: 2, otherHouses: 1 });
+  expect(waitingWords(w)).toBe(
+    "2 waiting to send from this phone. 1 saved for another of your houses; it sends when you open that house.",
+  );
+  expect(waitingWords({ here: 0, otherHouses: 0 })).toBeNull();
+});
+
+it("a failed receipt can be sent again with its figures kept (F-407)", async () => {
+  useOutbox.setState({
+    entries: [
+      { id: "f1", actorUserId: "alice", restaurantId: "r1", status: "failed", path: "/orders/one/verify-receipt", method: "POST", body: { acceptedQuantityInCountedUom: 12 }, label: "Receipt verification", createdAt: 0, holdUntil: 0, attempts: 3 },
+    ],
+  });
+  useOutbox.getState().retryFailed("f1");
+  await jest.advanceTimersByTimeAsync(1);
+  expect(api).toHaveBeenCalledWith(
+    "/orders/one/verify-receipt",
+    expect.objectContaining({ body: { acceptedQuantityInCountedUom: 12 } }),
+  );
+  expect(useOutbox.getState().entries).toHaveLength(0);
 });
