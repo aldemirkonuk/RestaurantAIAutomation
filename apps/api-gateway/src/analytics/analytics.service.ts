@@ -126,11 +126,14 @@ export class AnalyticsService {
         // menu price is `menu_price_current`, cost is `last_purchase_price`,
         // the reorder trigger is `threshold_min`, and the varietal/type
         // lives on master_wine_library.
+        // F-442: no `is_active` filter here. An inactive wine still holding
+        // bottles is stock in the cellar and counts in the valuation; rows
+        // are tagged `isActive` and the reorder and risk lenses keep only
+        // active ones (see `activeOnly`).
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, is_active, master_wine_library(primary_type)",
         )
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
+        .eq("restaurant_id", restaurantId),
       client
         .from("inventory_lot_rollup")
         .select(
@@ -161,13 +164,15 @@ export class AnalyticsService {
     // The third branch used to be `unitPrice * 0.6`, a magic number with no
     // ADR behind it, and it was the live path for ~70 of 72 production rows.
     // See ./inventory-cost.ts for why cost is now `number | null`.
-    return inventory.map((i: any) => {
+    const rows = inventory.map((i: any) => {
       const lot = rollup.get(i.id);
       const unitPrice = Number(i.menu_price_current) || 0;
       const { unitCost, costBasis } = resolveUnitCost(i, lot);
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
       return {
         id: i.id,
+        // Absent reads as active: only an explicit false took a wine off.
+        isActive: i.is_active !== false,
         name: i.wine_name || i.master_wine_id || i.id,
         type: i.master_wine_library?.primary_type || "unknown",
         qty,
@@ -185,6 +190,14 @@ export class AnalyticsService {
         inventoryValue: unitCost == null ? null : qty * unitCost,
       };
     });
+    // An inactive wine with nothing on hand is gone from every lens; one that
+    // still holds bottles stays, for the valuation only (F-442).
+    return rows.filter((r) => r.isActive || r.qty > 0);
+  }
+
+  /** The reorder and risk lenses: a wine marked inactive is not restocked. */
+  private activeOnly<T extends { isActive?: boolean }>(rows: T[]): T[] {
+    return rows.filter((r) => r.isActive !== false);
   }
 
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
@@ -461,6 +474,9 @@ export class AnalyticsService {
     // "no rows or no answer", and $0 for a dead query is precisely the silent
     // zero this endpoint has already been burned by once.
     const costCoverage = summarizeCostBasis(onHand);
+    // Bottles of a wine marked inactive are still in the cellar, so they are
+    // still stock and still valued here (F-442); the basis names how many.
+    const inactiveHeld = onHand.filter((i) => !i.isActive).length;
     // A total assembled from 2 of 72 SKUs is not "inventory value" — it is a
     // different, much smaller number wearing that label. ADR 0051: say we do
     // not know. `costCoverage` below says how far off complete we are, so the
@@ -594,7 +610,7 @@ export class AnalyticsService {
         // This string used to read "on-hand qty × WAC (lot rollup)"
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
-        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
+        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}${inactiveHeld > 0 ? `; includes ${inactiveHeld} wine${inactiveHeld === 1 ? "" : "s"} marked inactive that still hold bottles` : ""}`,
         deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
         costDerived:
           "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio",
@@ -628,10 +644,11 @@ export class AnalyticsService {
     const leadTime = opts.leadTimeDays ?? 7;
     const sinceDays = 90;
 
-    const [inventory, consumption] = await Promise.all([
+    const [allInventory, consumption] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
     ]);
+    const inventory = this.activeOnly(allInventory);
 
     // Demand series per master wine.
     const demandByWine = new Map<
@@ -791,11 +808,12 @@ export class AnalyticsService {
   // =========================================================================
 
   async getRiskProfile(restaurantId: string) {
-    const [inventory, orders, consumption] = await Promise.all([
+    const [allInventory, orders, consumption] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, 90),
     ]);
+    const inventory = this.activeOnly(allInventory);
 
     // Vendor concentration (HHI on spend share).
     const spendByVendor = new Map<string, number>();

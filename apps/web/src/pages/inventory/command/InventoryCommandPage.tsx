@@ -341,9 +341,10 @@ export function InventoryCommandPage() {
     [assignMany],
   );
 
-  // Active/inactive: an inactive wine leaves this list and the stock value
-  // (here and on /reports) while its bottles stay in the cellar. Marking one
-  // inactive asks first; "Inactive wines" brings one back (F-429).
+  // Active/inactive: an inactive wine leaves this list (and the valuation
+  // exported from it); its bottles stay in the cellar and /reports still
+  // values them (F-442). Marking one inactive asks first; "Inactive wines"
+  // brings one back (F-429).
   const [confirmInactive, setConfirmInactive] = useState<InventoryItem | null>(
     null,
   );

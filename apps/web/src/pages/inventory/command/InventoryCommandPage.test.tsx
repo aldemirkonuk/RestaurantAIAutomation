@@ -432,7 +432,7 @@ describe('InventoryCommandPage — marking a wine inactive (F-429)', () => {
     api.patch.mockResolvedValue({ data: {} });
   }
 
-  it('asks first, says how many bottles leave the stock value, and changes nothing until confirmed', async () => {
+  it('asks first, says the bottles stay in the stock value on Reports, and changes nothing until confirmed', async () => {
     routeWithInactive();
     mount();
 
@@ -442,7 +442,9 @@ describe('InventoryCommandPage — marking a wine inactive (F-429)', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /Mark Produttori Barbaresco inactive\?/ });
     expect(dialog).toHaveTextContent('6 bottles still on hand');
-    expect(dialog).toHaveTextContent('out of the stock value here and on Reports');
+    // F-442: bottles still in the cellar are still stock; Reports keeps them.
+    expect(dialog).toHaveTextContent('Reports still counts them in what your stock is worth');
+    expect(dialog).not.toHaveTextContent('out of the stock value here and on Reports');
     expect(api.patch).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Keep active' }));
