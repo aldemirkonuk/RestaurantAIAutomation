@@ -1,10 +1,10 @@
-## Three server holes behind the inventory mount line — CLOSED on `fix/inventory-mount-line-server-guards` — 2026-10-08
+## Three server holes behind the inventory mount line — fixed on `fix/inventory-mount-line-server-guards`, open until it merges — 2026-10-08
 
 ADR 0315 (PR #677, `Consequences`, "The mount line waits on three server
 fixes") holds InventoryNext's `App.tsx` mount line until these land. The
 coordinator ruled on 2026-10-08 that they ship as their own PR from `main`,
 under the founder's 2026-10-07T20:04:10Z delegation. Each fix has its own spec,
-and every mutant of each guard was caught (see the PR body).
+and each mutant listed in the PR body was caught.
 
 **(a) Staff could write a loss through the ledger.** `POST
 /inventory-ledger/transactions` and `/transactions/bulk` took any movement type
@@ -33,16 +33,23 @@ Both SQL lookups match the key across every house. So a ledger key that
 another house has already spent is refused with a 409 before the RPC runs,
 and the pour read-back is filtered to this house. Each route answers every
 spent key with one refusal text, so a key spent in another house reads the
-same as one spent here on a different movement or pour; the reply never says
-another house holds it. **Still open:** the lookups themselves stay global
+same as one spent here on a different movement or pour; the reply's words never
+say another house holds it. A ledger key another house spends between that
+check and the RPC comes back as that house's row id; the read-back cannot see
+it and answers with the same refusal, naming no row (the server log keeps the
+ADR 0141 contradiction line). An empty-string key is checked like any other.
+What the reply still tells a caller: a 409 against a 201 says the key exists
+somewhere, and the timing may differ. **Also open:** two fresh writes racing on
+one unspent key meet the unique index (`uq_inventory_transactions_idem`) and
+the loser gets the raw database error, as on `main`. **Still open:** the lookups themselves stay global
 (`20261222100000_a_pos_sale_is_dated_by_its_check.sql:188`, `:314`). Scoping
 them to the house is a migration, left for the ledger's own lane. The
 proof is `inventory-ledger/a-replayed-key-must-match.spec.ts` and
 `inventory.service.spec.ts` ("a replayed pour key must match…").
 
-**(c) `approveOrder` approved an already-approved order.** A same-state write
-is permitted by `canTransition` and skipped by the DB trigger, so APPROVED →
-APPROVED passed both: a second approve with a fresh seal reserved stock again
+**(c) `approveOrder` approved an already-approved order.** On `main` it read no
+status before writing, and the DB trigger skips a same-state write, so
+APPROVED → APPROVED went through: a second approve with a fresh seal reserved stock again
 and asked for a second letter. `approveOrder` now reads the status before it
 spends the seal. It refuses an already-approved order, or a status
 `decideTransition` will not take to APPROVED, and it writes with a

@@ -134,7 +134,7 @@ export class InventoryLedgerService {
     // spent by another house would come back as that house's movement, and
     // the house-scoped read-back below would then report a write that never
     // happened here. Refuse it first, naming nothing about the other row.
-    if (dto.idempotencyKey) {
+    if (dto.idempotencyKey != null) {
       const { data: elsewhere, error: keyError } =
         await this.databaseService.supabase
           .from("inventory_transactions")
@@ -214,6 +214,7 @@ export class InventoryLedgerService {
     const transaction = await this.readBackCreatedTransaction(
       restaurantId,
       data,
+      dto.idempotencyKey != null,
     );
 
     // A replayed key returns the FIRST movement it recorded, whatever this
@@ -373,6 +374,7 @@ export class InventoryLedgerService {
   private async readBackCreatedTransaction(
     restaurantId: string,
     transactionId: string,
+    keyed = false,
   ): Promise<InventoryTransactionResponseDto> {
     const { data, error } = await this.databaseService.supabase
       .from("inventory_transactions")
@@ -388,11 +390,34 @@ export class InventoryLedgerService {
         transactionId,
         error: error.message,
       });
+      // A keyed reply may carry another house's row id (see below), so it
+      // names no id.
+      if (keyed) {
+        throw new InternalServerErrorException(
+          "The movement's record could not be read back, so this reply cannot say what was recorded. Read the item again before writing.",
+        );
+      }
       throw new InternalServerErrorException(
         `The stock movement was written as transaction ${transactionId}, but ` +
           `reading it back failed (${error.message}). The movement stands — ` +
           `nothing was rolled back — and this response could not describe it.`,
       );
+    }
+
+    if (!data && keyed) {
+      // The key check in createTransaction ran before the RPC. If another
+      // house spent the key in between, the RPC handed back that house's row
+      // id (its key lookup is global). A keyed write lands in this house or
+      // replays, so an id not visible here is that race: answer with the
+      // pre-check's refusal and name nothing of the other row. The log keeps
+      // the ADR 0141 signal for whoever reads it.
+      this.logger.error({
+        message:
+          "A keyed stock write returned a row this restaurant cannot see — key spent elsewhere, or a tenant contradiction",
+        restaurantId,
+        transactionId,
+      });
+      throw new ConflictException(KEY_ALREADY_USED);
     }
 
     if (!data) {

@@ -64,6 +64,7 @@ const writeOff = (
     quantityChange: number;
     transactionType: TransactionType;
     stockType: StockType;
+    idempotencyKey: string;
   }> = {},
 ) =>
   t.service.createTransaction(HOUSE, USER, {
@@ -151,6 +152,60 @@ describe("a replayed ledger key must match the movement it recorded", () => {
     const spentThere = await reason(writeOff(there));
     expect(spentThere).not.toBe("recorded");
     expect(spentThere).toBe(spentHere);
+  });
+
+  it.each(["key-1", ""])(
+    "refuses a key (%j) another house spends between the check and the write, naming nothing of it",
+    async (KEY) => {
+      const t = build();
+      // This house already holds one movement, under another key.
+      await writeOff(t, { idempotencyKey: "key-0" });
+      const write = t.db.rpcHandlers.apply_stock_movement;
+      t.db.rpcHandlers.apply_stock_movement = (args) => {
+        t.db.tables.inventory_transactions.push({
+          id: "txn-elsewhere",
+          restaurant_id: "house-2",
+          inventory_id: "44444444-4444-4444-8444-444444444444",
+          stock_type: "live",
+          quantity_change: -9,
+          transaction_type: "waste",
+          idempotency_key: KEY,
+        });
+        return write(args);
+      };
+      const reason = await writeOff(t, { idempotencyKey: KEY }).then(
+        () => "recorded",
+        (e: Error) => e,
+      );
+      expect(reason).toBeInstanceOf(ConflictException);
+      expect((reason as Error).message).not.toMatch(/txn-elsewhere|house-2|-9/);
+      expect(
+        t.db.tables.inventory_transactions.filter(
+          (r: any) => r.restaurant_id === HOUSE,
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("checks an empty-string key against other houses too", async () => {
+    const t = build();
+    const KEY = "";
+    t.db.tables.inventory_transactions.push({
+      id: "txn-elsewhere",
+      restaurant_id: "house-2",
+      inventory_id: "44444444-4444-4444-8444-444444444444",
+      stock_type: "live",
+      quantity_change: -9,
+      transaction_type: "waste",
+      idempotency_key: KEY,
+    });
+    const write = jest.fn(t.db.rpcHandlers.apply_stock_movement);
+    t.db.rpcHandlers.apply_stock_movement = write;
+    await expect(writeOff(t, { idempotencyKey: "" })).rejects.toThrow(
+      ConflictException,
+    );
+    // Refused by the check before the write, not after it.
+    expect(write).not.toHaveBeenCalled();
   });
 
   it("refuses a replay aimed at another stock state", async () => {
