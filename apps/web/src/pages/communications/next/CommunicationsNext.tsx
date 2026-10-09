@@ -57,6 +57,7 @@ import WhoIsWriting from './WhoIsWriting';
 import { ComposeSheet, type HeldLetter } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
 import { QueuedPullBack } from './QueuedPullBack';
+import { AutoSendStop, CameWithIt } from './ReplyExtras';
 import { LetterRequestsPanel, PILL, useLetterRequests } from './LetterRequestsPanel';
 import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
@@ -217,6 +218,9 @@ function StateChip({
             ? { text: 'Not sent', bg: 'var(--alarm-tint, rgba(155,58,42,.10))', fg: 'var(--alarm-deep, #8C3322)', dashed: false }
       : state === 'sending'
         ? { text: 'Sending…', bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: false }
+        // F-424: staged to leave by itself — not sent, and not a draft anyone is deciding on.
+        : state === 'scheduled'
+          ? { text: 'Sends by itself · not yet sent', bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: true }
         : state === 'sent'
           ? { text: 'Sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: false }
           : state === 'unconfirmed'
@@ -295,6 +299,8 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
       </button>
       {/* COMMS-W23: a queued letter can be pulled back from the book, not only from the open sheet. */}
       {item.direction !== 'INBOUND' && sendState(item.status) === 'queued' && <QueuedPullBack id={item.id} />}
+      {/* F-424: an AI reply staged to auto-send can be stopped from the book, as on /orders. */}
+      {item.direction !== 'INBOUND' && sendState(item.status) === 'scheduled' && <AutoSendStop orderId={item.orderId} />}
       {open && (
         <div
           className="pb-3 pl-14 pr-2"
@@ -333,6 +339,8 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           >
             {item.draftContent || 'No message body was recorded for this exchange.'}
           </p>
+          {/* F-425: what the vendor attached, beside the letter it came with. */}
+          {item.direction === 'INBOUND' && <CameWithIt orderId={item.orderId} conversationId={item.id} />}
           {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
             // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
             // the manager sees why — the gateway's own sentence, verbatim.
@@ -467,8 +475,17 @@ export default function CommunicationsNext() {
      house's own drafted letters. The count is null until all three have
      answered, so it can never undercount a list still in flight. */
   const letterQ = useLetterRequests(letterStanding.restaurantId);
+  // F-426: a letter a person asked for waits on a manager, not on the person who
+  // asked — staff are sent only their own requests, so without this a staff
+  // member read "Waiting on you · 1" for the letter they had just asked for.
+  // The panel still lists it; only the count leaves it out.
+  const lettersWaitingOnViewer = letterQ.data
+    ? letterQ.data.requests.filter(
+        (r) => !letterQ.data?.viewer?.userId || r.requestedBy?.userId !== letterQ.data.viewer.userId,
+      ).length
+    : null;
   const waitingParts = [
-    letterStanding.restaurantId ? letterQ.data?.requests.length ?? null : 0,
+    letterStanding.restaurantId ? lettersWaitingOnViewer : 0,
     data.draftsKnown ? data.drafts.length : null,
     houseDrafts.drafts ? houseDrafts.drafts.length : null,
   ];

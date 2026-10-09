@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render as rtlRender, screen, fireEvent, within } from '@testing-library/react';
+import { act, render as rtlRender, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
@@ -132,6 +132,24 @@ vi.mock('./Compose/useComposeData', async (importOriginal) => ({
   useQueuedLetters: () => ({ restaurantId: 'r1', queued: [], failed: false }),
 }));
 
+// F-424 / F-425: the auto-send stop and the attachments read go through the
+// existing order hooks; only those two are replaced, so a test can say what the
+// gateway answered.
+const mockOrder = vi.hoisted(() => ({
+  cancel: vi.fn(),
+  cancelPending: false,
+  files: { data: undefined as unknown, isError: false },
+  filesFor: [] as Array<string | null>,
+}));
+vi.mock('../../../hooks/queries/useDraftEmailQueries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/queries/useDraftEmailQueries')>()),
+  useCancelScheduledSend: () => ({ mutate: mockOrder.cancel, isPending: mockOrder.cancelPending }),
+  useOrderAttachments: (orderId: string | null) => {
+    mockOrder.filesFor.push(orderId);
+    return mockOrder.files;
+  },
+}));
+
 // ADR 0160 §113 Open item 3: senders and strangers live on this page now. The
 // section is proved in `WhoIsWriting.test.tsx`; here it is a stub so this file
 // stays a test of the PAGE and needs no auth context.
@@ -202,6 +220,9 @@ beforeEach(() => {
   mockData.current = { ...base };
   mockLetters.current = { data: { requests: [] }, isError: false, dataUpdatedAt: 0, refetch: () => {} };
   mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
+  mockOrder.cancel = vi.fn();
+  mockOrder.files = { data: undefined, isError: false };
+  mockOrder.filesFor = [];
 });
 
 describe('CommunicationsNext', () => {
@@ -1118,5 +1139,100 @@ describe('the tour finds every step (COMMS-W38)', () => {
       expect(container.querySelector(step.element), step.element).not.toBeNull();
     }
     expect(container.querySelector('[data-tour="comms-write"]')?.textContent).toMatch(/Write a letter/);
+  });
+});
+
+describe('the sim wave-9 tail (F-424, F-425, F-426)', () => {
+  it('an AI reply set to send by itself says so in words, never the raw status (F-424)', () => {
+    mockData.current = { ...base, rows: [item({ status: 'AUTO_SEND_SCHEDULED' })] };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Sends by itself · not yet sent')).toBeInTheDocument();
+    expect(screen.queryByText(/auto_send_scheduled/i)).toBeNull();
+    expect(screen.queryByText(/^Sent$/)).toBeNull();
+    expect(screen.getByText('Mudavym will send this reply by itself shortly.')).toBeInTheDocument();
+  });
+
+  it('Cancel stops it through the order’s cancel route, and says what the gateway answered (F-424)', () => {
+    mockData.current = { ...base, rows: [item({ status: 'AUTO_SEND_SCHEDULED', orderId: 'o7' })] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel the send' }));
+    expect(mockOrder.cancel).toHaveBeenCalledTimes(1);
+    const [orderId, handlers] = mockOrder.cancel.mock.calls[0];
+    expect(orderId).toBe('o7');
+    act(() => handlers.onSuccess({ cancelled: false }));
+    // nothing was stopped: never said as a stop
+    expect(screen.getByRole('alert')).toHaveTextContent(/could not be stopped/);
+  });
+
+  it('a stopped send says it now waits for approval (F-424)', () => {
+    mockData.current = { ...base, rows: [item({ status: 'AUTO_SEND_SCHEDULED' })] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel the send' }));
+    act(() => mockOrder.cancel.mock.calls[0][1].onSuccess({ cancelled: true }));
+    expect(screen.getByRole('status')).toHaveTextContent('Stopped. It now waits for you to approve it.');
+  });
+
+  it('a scheduled send with no order says it cannot be stopped here, with no button (F-424)', () => {
+    mockData.current = { ...base, rows: [item({ status: 'AUTO_SEND_SCHEDULED', orderId: null })] };
+    render(<CommunicationsNext />);
+    expect(screen.queryByRole('button', { name: 'Cancel the send' })).toBeNull();
+    expect(screen.getByText(/cannot be stopped from here/)).toBeInTheDocument();
+  });
+
+  it('lists the files that came with a vendor reply beside it, each openable (F-425)', () => {
+    mockOrder.files = {
+      isError: false,
+      data: [
+        { id: 'a1', conversationId: 'in1', filename: 'price-list.pdf', mimeType: 'application/pdf', sizeBytes: 2048, createdAt: '', url: 'https://files.example/a1' },
+        { id: 'a2', conversationId: 'other', filename: 'someone-else.pdf', mimeType: null, sizeBytes: null, createdAt: '', url: 'https://files.example/a2' },
+        { id: 'a3', conversationId: 'in1', filename: 'invoice.jpg', mimeType: 'image/jpeg', sizeBytes: null, createdAt: '', url: null },
+      ],
+    };
+    mockData.current = { ...base, rows: [item({ id: 'in1', direction: 'INBOUND', emailType: null })] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(mockOrder.filesFor).toContain('o1');
+    const link = screen.getByRole('link', { name: 'price-list.pdf' });
+    expect(link).toHaveAttribute('href', 'https://files.example/a1');
+    expect(link).toHaveAttribute('target', '_blank');
+    // only this letter's files; one without a link is named, not hidden
+    expect(screen.queryByText('someone-else.pdf')).toBeNull();
+    expect(screen.getByText('invoice.jpg')).toBeInTheDocument();
+    expect(screen.getByText(/cannot be opened right now/)).toBeInTheDocument();
+  });
+
+  it('a failed attachments read is said, not shown as none (F-425)', () => {
+    mockOrder.files = { isError: true, data: undefined };
+    mockData.current = { ...base, rows: [item({ id: 'in1', direction: 'INBOUND', emailType: null })] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByText('Whether any files came with this letter could not be read.')).toBeInTheDocument();
+  });
+
+  it('a staff member’s own letter request is not waiting on them (F-426)', () => {
+    mockLetters.current = {
+      ...mockLetters.current,
+      data: {
+        requests: [{ id: 'r1', requestedBy: { userId: 'u-staff', name: 'Ada' } }],
+        viewer: { userId: 'u-staff', mayDecline: false },
+      } as never,
+    };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Waiting on you · 0')).toBeInTheDocument();
+  });
+
+  it('a manager still counts a request someone else made (F-426)', () => {
+    mockLetters.current = {
+      ...mockLetters.current,
+      data: {
+        requests: [
+          { id: 'r1', requestedBy: { userId: 'u-staff', name: 'Ada' } },
+          { id: 'r2', requestedBy: { userId: 'u-mgr', name: 'Me' } },
+        ],
+        viewer: { userId: 'u-mgr', mayDecline: true },
+      } as never,
+    };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Waiting on you · 1')).toBeInTheDocument();
   });
 });

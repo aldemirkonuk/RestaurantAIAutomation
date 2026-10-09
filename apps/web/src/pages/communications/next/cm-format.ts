@@ -43,6 +43,7 @@ export type SendState =
   | 'cancelled'
   | 'failed'
   | 'sending'
+  | 'scheduled'
   | 'sent'
   | 'unconfirmed'
   | 'closed'
@@ -85,6 +86,11 @@ export function sendState(status: string | null | undefined): SendState {
   // on it — and not yet sent, so it gets its own state rather than falling
   // through to 'other' and rendering as a raw enum.
   if (s === 'SENDING' || s === 'AUTO_SENDING') return 'sending';
+  // F-424: an AI reply the house's auto-send switch staged to leave by itself
+  // after its undo window (inbound-responder `AUTO_SEND_SCHEDULED`). It has NOT
+  // left, and it is not a draft waiting on anyone either — it goes unless a
+  // person stops it. It fell through to 'other' and printed the raw enum.
+  if (s === 'AUTO_SEND_SCHEDULED') return 'scheduled';
   if (s === 'AUTO_SENT' || s === 'SENT' || s === 'DELIVERED') return 'sent';
   // The vendor may already hold this email but we could not confirm it. It is
   // NOT 'sent' (that would overclaim) and NOT 'draft' (that would invite a
