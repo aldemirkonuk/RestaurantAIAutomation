@@ -107,6 +107,12 @@ const onlyForStatus =
   async (_url: string, config: any) =>
     config?.params?.status === status ? orderList(orders, over) : orderList([])
 
+/** `/credits/stats` as the gateway serves it: the figures, and the same figures under their currency. */
+const statsIn = (currency: string, f: Record<string, unknown>) => ({
+  ...f,
+  byCurrency: { [currency]: f },
+})
+
 const httpError = (status: number, message = 'request failed') =>
   Object.assign(new Error(message), { response: { status } })
 
@@ -524,10 +530,10 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')
         ? {
-            data: {
+            data: statsIn('USD', {
               recovered: 900, outstanding: 400, promised: 100, rejected: 250,
               openClaims: 3, oldestOpenDays: 12, settlementRate: 0.5, selfEvidencedOpen: 0,
-            },
+            }),
           }
         : { data: { items: [] } },
     )
@@ -880,10 +886,10 @@ describe('F9 — the trend says when it broke, instead of being honest by accide
     get.mockImplementation(async (url: string) => {
       if (url.endsWith('/stats'))
         return {
-          data: {
+          data: statsIn('USD', {
             recovered: 900, outstanding: 0, promised: 0, rejected: 0,
             openClaims: 0, oldestOpenDays: null, settlementRate: null, selfEvidencedOpen: 0,
-          },
+          }),
         }
       throw httpError(500, 'credits list down')
     })
@@ -902,10 +908,10 @@ describe('F9 — the trend says when it broke, instead of being honest by accide
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')
         ? {
-            data: {
+            data: statsIn('USD', {
               recovered: 0, outstanding: 0, promised: 0, rejected: 0,
               openClaims: 0, oldestOpenDays: null, settlementRate: null, selfEvidencedOpen: 0,
-            },
+            }),
           }
         : { data: { items: [] } },
     )
@@ -913,6 +919,48 @@ describe('F9 — the trend says when it broke, instead of being honest by accide
 
     await screen.findByText(/No discrepancies found yet/)
     expect(screen.queryByText(/settled-claims list did not load/i)).not.toBeInTheDocument()
+  })
+})
+
+/* ═════════════ F-453 — recovered money is never summed across currencies ══ */
+
+describe('F-453 — recovered from vendors keeps each currency on its own line', () => {
+  it('prints a lira claim and a euro claim apart, never as one dollar sum', async () => {
+    const settled = new Date().toISOString()
+    const fig = (recovered: number, outstanding: number) => ({
+      recovered, outstanding, promised: 0, rejected: 0,
+      openClaims: 0, oldestOpenDays: null, settlementRate: 1,
+    })
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? {
+            data: {
+              // The combined figures add lira to euros; the page must not print them.
+              ...fig(12400, 150),
+              selfEvidencedOpen: 0,
+              byCurrency: { EUR: fig(400, 50), TRY: fig(12000, 100) },
+            },
+          }
+        : {
+            data: {
+              items: [
+                { id: 'c1', state: 'credited', currency: 'TRY', credited_amount: 12000, settled_at: settled },
+                { id: 'c2', state: 'credited', currency: 'EUR', credited_amount: 400, settled_at: settled },
+              ],
+            },
+          },
+    )
+    harness(OwnerBody)
+
+    const section = await screen.findByRole('region', { name: 'Money recovered from vendors' })
+    await waitFor(() => expect(section).toHaveTextContent('€400'))
+    expect(section).toHaveTextContent(/TRY\s?12,000/)
+    // The month trend is kept apart too: each currency's own month.
+    expect(section).toHaveTextContent(/this month ≥€400/)
+    expect(section).toHaveTextContent(/this month ≥TRY\s?12,000/)
+    expect(section).not.toHaveTextContent('12,400')
+    expect(section).not.toHaveTextContent('$')
+    expect(screen.getByText('Still owed').closest('div')).toHaveTextContent(/≥€50\.00 · ≥TRY\s?100\.00/)
   })
 })
 
@@ -933,10 +981,10 @@ describe('F10 — the hand-off carries the order, and the rate names its populat
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')
         ? {
-            data: {
+            data: statsIn('USD', {
               recovered: 900, outstanding: 0, promised: 0, rejected: 250,
               openClaims: 0, oldestOpenDays: null, settlementRate: 0.5, selfEvidencedOpen: 0,
-            },
+            }),
           }
         : { data: { items: [] } },
     )

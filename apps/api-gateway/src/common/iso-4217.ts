@@ -206,3 +206,51 @@ export function notACurrencyBecause(value: unknown): string {
     `working around it.`
   );
 }
+
+/**
+ * The currencies whose minor unit is not two — ISO 4217's own counts, the same
+ * ones `apps/web/src/lib/currency.ts` carries per row (`minor`). The mirror spec
+ * reads that table and fails on a one-code difference, as it does for the codes.
+ *
+ * Needed here for one job (F-452): ROUNDING money before it is written. A flat
+ * `Math.round(x * 100) / 100` turned a 1.255 BHD agreement into 1.26, which is
+ * a different amount from the invoice, and kept two places on yen that have none.
+ */
+const MINOR_0: ReadonlySet<string> = new Set([
+  "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW",
+  "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+]);
+const MINOR_3: ReadonlySet<string> = new Set([
+  "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND",
+]);
+
+/** How many decimal places this money HAS, or `null` for a code this gateway does not hold. */
+export function currencyMinorUnits(code: unknown): 0 | 2 | 3 | null {
+  const c = currencyCode(code);
+  if (c === null) return null;
+  return MINOR_0.has(c) ? 0 : MINOR_3.has(c) ? 3 : 2;
+}
+
+/**
+ * An amount rounded to its currency's own minor unit — three places for a
+ * dinar, none for yen or dong, two otherwise.
+ *
+ * A missing or unknown currency rounds to two, which is exactly what every
+ * writer did before this existed, so an order that names no currency keeps the
+ * figure it always had. The arithmetic for two places is the old one, byte for
+ * byte (`10 ** 2 === 100`).
+ */
+export function roundMoney(
+  amount: number,
+  currency: unknown,
+  /**
+   * Never fewer places than this. A UNIT price is not an amount anyone pays:
+   * 1,000 yen a case is 83.33 a bottle, and rounding that to the yen's zero
+   * places would lose a third of a yen on every bottle of the series. Pass 2
+   * for a unit price; an amount (a total, a fee) passes nothing.
+   */
+  minDigits = 0,
+): number {
+  const scale = 10 ** Math.max(currencyMinorUnits(currency) ?? 2, minDigits);
+  return Math.round(amount * scale) / scale;
+}

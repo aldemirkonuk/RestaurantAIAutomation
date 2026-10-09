@@ -611,11 +611,41 @@ export function useApproveCreditDraft() {
 
 /* ───────────────────────────────────────────────────── owner: recovery ── */
 
+/**
+ * The recovery figures for ONE currency (F-453). Nothing converts, so a house
+ * that claims in lira and in euros gets two of these, never one sum that adds
+ * the two together and prints it in dollars.
+ */
+export interface RecoveredLine {
+  /** The claims' own ISO 4217 code, or `UNRECORDED` when they named none. */
+  currency: string;
+  /** Null when the stats read saw no claim in this currency (only the settled list did). */
+  recovered: number | null;
+  outstanding: number | null;
+  promised: number | null;
+  rejected: number | null;
+  /** Sum of credited_amount settled this calendar month / last. Null until known. */
+  thisMonth: number | null;
+  lastMonth: number | null;
+}
+
+/** The key the gateway groups a claim with no currency under (credit-ledger.ts CURRENCY_UNRECORDED). */
+export const CURRENCY_UNRECORDED = 'UNRECORDED';
+
+function currencyKey(code: string | null | undefined): string {
+  return typeof code === 'string' && code.trim() !== ''
+    ? code.trim().toUpperCase()
+    : CURRENCY_UNRECORDED;
+}
+
 export interface RecoveryData {
   stats: CreditStats | null;
-  /** Sum of credited_amount settled this calendar month / last. Null until known. */
-  creditedThisMonth: number | null;
-  creditedLastMonth: number | null;
+  /**
+   * One line per currency the claims are in, sorted by code. Empty until
+   * either read answers. A gateway older than `byCurrency` yields one UNRECORDED
+   * line holding its combined figures, which is what they are.
+   */
+  byCurrency: RecoveredLine[];
   /**
    * The trend's own failure. Separate from `isError` on purpose: the headline
    * figure is allowed to stand when only the trend broke, but the trend must
@@ -654,8 +684,37 @@ export function useOwnerRecovery(): RecoveryData {
   });
 
   return useMemo(() => {
-    let thisMonth: number | null = null;
-    let lastMonth: number | null = null;
+    const stats = statsQ.data ?? null;
+    const lines = new Map<string, RecoveredLine>();
+    const lineFor = (code: string): RecoveredLine => {
+      let line = lines.get(code);
+      if (!line) {
+        line = {
+          currency: code,
+          recovered: null,
+          outstanding: null,
+          promised: null,
+          rejected: null,
+          thisMonth: null,
+          lastMonth: null,
+        };
+        lines.set(code, line);
+      }
+      return line;
+    };
+    if (stats) {
+      // The gateway already keeps the figures apart by currency; the combined
+      // top-level ones add lira to euros, so they are read only from a gateway
+      // too old to send the split, and then as money of no stated currency.
+      const groups = stats.byCurrency ?? { [CURRENCY_UNRECORDED]: stats };
+      for (const [code, f] of Object.entries(groups)) {
+        const line = lineFor(currencyKey(code));
+        line.recovered = num(f.recovered);
+        line.outstanding = num(f.outstanding);
+        line.promised = num(f.promised);
+        line.rejected = num(f.rejected);
+      }
+    }
     if (Array.isArray(creditedQ.data)) {
       const now = new Date();
       const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -664,17 +723,25 @@ export function useOwnerRecovery(): RecoveryData {
         const d = new Date(iso);
         return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
       };
-      const sum = (ref: Date) =>
-        creditedQ.data!
-          .filter((c) => inMonth(c.settled_at, ref))
-          .reduce((s, c) => s + (num(c.credited_amount) ?? 0), 0);
-      thisMonth = sum(now);
-      lastMonth = sum(lastRef);
+      // Every line known so far gets a measured zero for a month nothing
+      // settled in; a currency only the settled list carries gets its own line.
+      for (const line of lines.values()) {
+        line.thisMonth = 0;
+        line.lastMonth = 0;
+      }
+      for (const c of creditedQ.data) {
+        const thisM = inMonth(c.settled_at, now);
+        const lastM = inMonth(c.settled_at, lastRef);
+        if (!thisM && !lastM) continue;
+        const line = lineFor(currencyKey(c.currency));
+        line.thisMonth = (line.thisMonth ?? 0) + (thisM ? (num(c.credited_amount) ?? 0) : 0);
+        line.lastMonth = (line.lastMonth ?? 0) + (lastM ? (num(c.credited_amount) ?? 0) : 0);
+      }
     }
+    const byCurrency = [...lines.values()].sort((a, b) => a.currency.localeCompare(b.currency));
     return {
-      stats: statsQ.data ?? null,
-      creditedThisMonth: thisMonth,
-      creditedLastMonth: lastMonth,
+      stats,
+      byCurrency,
       trendIsError: creditedQ.isError,
       trendFailure: failureOf(creditedQ.isError, creditedQ.error),
       // Not observable from the payload — /credits/stats returns aggregates,

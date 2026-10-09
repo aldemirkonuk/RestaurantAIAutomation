@@ -3,8 +3,10 @@ import { resolve } from "path";
 import {
   ISO_4217_CODES,
   currencyCode,
+  currencyMinorUnits,
   isIso4217,
   notACurrencyBecause,
+  roundMoney,
 } from "./iso-4217";
 
 /**
@@ -222,5 +224,34 @@ describe("notACurrencyBecause — the refusal names what it refused", () => {
   it("says nothing was sent when nothing was", () => {
     expect(notACurrencyBecause("")).toContain("No currency was sent");
     expect(notACurrencyBecause(null)).toContain("No currency was sent");
+  });
+});
+
+describe("currencyMinorUnits / roundMoney — money rounds to its own currency (F-452)", () => {
+  it("gives every code the web table's minor-unit count, in both directions", () => {
+    const rows = webCurrencyRows();
+    expect(rows.length).toBe(ISO_4217_CODES.length);
+    const differ = rows
+      .filter((r) => currencyMinorUnits(r.code) !== r.minor)
+      .map((r) => `${r.code} web=${r.minor} gateway=${currencyMinorUnits(r.code)}`);
+    expect(differ).toEqual([]);
+  });
+
+  it("keeps a dinar's third place and rounds dong to whole units", () => {
+    expect(roundMoney(1.255, "BHD")).toBe(1.255);
+    expect(roundMoney(0.1 + 0.2, "KWD")).toBe(0.3);
+    expect(roundMoney(1450000.4, "VND")).toBe(1450000);
+    expect(roundMoney(1234.5, "JPY")).toBe(1235);
+    // A unit price keeps at least two places whatever the currency.
+    expect(roundMoney(1000 / 12, "JPY", 2)).toBe(83.33);
+    expect(roundMoney(1.2555, "BHD", 2)).toBe(1.256);
+  });
+
+  it("rounds to two places when the currency is missing or unknown, as every writer did before", () => {
+    expect(roundMoney(1.255 * 2, "EUR")).toBe(2.51);
+    expect(roundMoney(12.345, null)).toBe(Math.round(12.345 * 100) / 100);
+    expect(roundMoney(12.345, "XYZ")).toBe(Math.round(12.345 * 100) / 100);
+    expect(currencyMinorUnits("XYZ")).toBeNull();
+    expect(currencyMinorUnits(" kwd ")).toBe(3);
   });
 });

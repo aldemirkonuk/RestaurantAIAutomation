@@ -648,6 +648,28 @@ describe("createOrder — the pair reaches the row, or the order is refused", ()
     expect(calls.lineInserts[0].line_total).toBe(2100);
   });
 
+  it("F-452: rounds a dinar order to three places on the header and the line", async () => {
+    const { db, calls } = makeDb();
+    await new ProcurementService(db, events, ledger).createOrder(
+      "rest-1",
+      USER,
+      {
+        ...CASE_ORDER,
+        currency: "KWD",
+        finalPrice: 15.065,
+        quantity: 1,
+        priceUom: "case",
+        pricePackSize: 12,
+        deposit: 0.125,
+      },
+    );
+    // One case at 15.065 KWD plus a 0.125 deposit is 15.190. A flat two
+    // places wrote the deposit as 0.13 and the total as 15.20.
+    expect(calls.orderInserts[0].total_cost).toBe(15.19);
+    expect(calls.lineInserts[0].line_total).toBe(15.19);
+    expect(calls.lineInserts[0].deposit).toBe(0.125);
+  });
+
   it("leaves an order with no stated unit on the old arithmetic exactly", async () => {
     const { db, calls } = makeDb();
     await new ProcurementService(db, events, ledger).createOrder(

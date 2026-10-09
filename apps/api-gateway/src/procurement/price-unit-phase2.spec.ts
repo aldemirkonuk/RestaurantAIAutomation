@@ -386,3 +386,54 @@ describe("Q2/Q3 — the receiving door compares like with like", () => {
     expect(after.reason).toContain("no agreed price");
   });
 });
+
+describe("F-452 — an agreement rounds to its currency's own minor unit", () => {
+  it("keeps a dinar's third place on the total and on a fee", () => {
+    const fees = readAgreementFees({ deposit: 0.125 }, "BHD");
+    expect(fees.deposit).toBe(0.125);
+    const r = agreementLineTotal({
+      price: 1.255,
+      stated: { priceUom: "bottle", pricePackSize: 1 },
+      bottlesTotal: 3,
+      quantity: 3,
+      unitType: "bottle",
+      opaque: false,
+      fees,
+      currency: "BHD",
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    // 3 × 1.255 = 3.765; a flat two places made it 3.76 and the deposit 0.13.
+    expect(r.goods).toBe(3.765);
+    expect(r.total).toBe(3.89);
+  });
+
+  it("rounds dong to whole units on a 104-million case order", () => {
+    const r = agreedOrderTotal({
+      price: 1450000.4,
+      stated: { priceUom: "bottle", pricePackSize: 1 },
+      bottlesTotal: 72,
+      quantity: 72,
+      unitType: "bottle",
+      opaque: false,
+      currency: "VND",
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.total).toBe(104400029);
+  });
+
+  it("rounds to two places when no currency is stated, as before", () => {
+    expect(readAgreementFees({ deposit: 0.125 }).deposit).toBe(0.13);
+    const r = agreedOrderTotal({
+      price: 1.255,
+      stated: { priceUom: "bottle", pricePackSize: 1 },
+      bottlesTotal: 3,
+      quantity: 3,
+      unitType: "bottle",
+      opaque: false,
+    });
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.total).toBe(Math.round(1.255 * 3 * 100) / 100);
+  });
+});
