@@ -48,6 +48,26 @@ export interface StubDb {
   opsOn(table: string, op?: RecordedOp["op"]): RecordedOp[];
 }
 
+/**
+ * ILIKE as PostgREST runs it, not as equality: `%` is any run, `_` any one
+ * character, `\` makes the next character literal, and PostgREST reads `*`
+ * as `%` before Postgres sees the pattern. A stub that compared lowercased
+ * strings could not see `%@gmail.com` finding any gmail address (F-189).
+ */
+function ilikeMatches(actual: string, pattern: unknown): boolean {
+  let re = "";
+  const p = String(pattern).replace(/\*/g, "%");
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i];
+    if (ch === "\\" && i + 1 < p.length) {
+      re += p[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    } else if (ch === "%") re += "[\\s\\S]*";
+    else if (ch === "_") re += "[\\s\\S]";
+    else re += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`, "i").test(actual);
+}
+
 function matches(row: Row, filters: Filter[]): boolean {
   return filters.every((f) => {
     const actual = row[f.column];
@@ -69,10 +89,7 @@ function matches(row: Row, filters: Filter[]): boolean {
       case "gt":
         return actual > f.value;
       case "ilike":
-        return (
-          typeof actual === "string" &&
-          actual.toLowerCase() === String(f.value).toLowerCase()
-        );
+        return typeof actual === "string" && ilikeMatches(actual, f.value);
       default:
         throw new Error(`supabase-stub: unhandled filter ${f.kind}`);
     }
