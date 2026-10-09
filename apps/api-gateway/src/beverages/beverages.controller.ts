@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -15,6 +16,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { BeveragesService } from "./beverages.service";
 import { isRegisterId } from "../cellar/cellar-registers";
 import {
@@ -53,12 +56,22 @@ import {
  * withheld until OD-113 decides the identity axis. The register response
  * carries that sentence in `stocking.reason` so the browser cannot invent a
  * cheerier one.
+ *
+ * WHO MAY PRICE AND RETIRE. A cocktail's price and taking it off the list are
+ * an owner's or a manager's, the same people who price a line on /menu
+ * (menus.controller.ts, POST /menus/items). The coordinator's call for the
+ * founder, 2026-10-08 (F-270). The rest of a cocktail (name, method, glass,
+ * garnish, section, description) and its recipe stay open to anyone of the
+ * house, so a bartender can still write down how a drink is made.
  */
 @ApiTags("beverages")
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class BeveragesController {
-  constructor(private readonly beverages: BeveragesService) {}
+  constructor(
+    private readonly beverages: BeveragesService,
+    private readonly organizations: OrganizationsService,
+  ) {}
 
   @Get("beverages/:restaurantId")
   @ApiOperation({
@@ -187,7 +200,13 @@ export class BeveragesController {
   async createCocktail(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: CreateCocktailDto,
+    @CurrentUser() user: { userId?: string },
   ) {
+    // An unpriced cocktail may be recorded by anyone of the house; a priced
+    // one is an owner's or a manager's.
+    if (dto.price !== undefined && dto.price !== null) {
+      await this.assertManages(user, restaurantId, "set a cocktail's price");
+    }
     return this.guard(() => this.beverages.createCocktail(restaurantId, dto));
   }
 
@@ -197,9 +216,19 @@ export class BeveragesController {
     @Param("restaurantId") restaurantId: string,
     @Param("cocktailId", new ParseUUIDPipe()) cocktailId: string,
     @Body() dto: UpdateCocktailDto,
+    @CurrentUser() user: { userId?: string },
   ) {
+    // The role is read only when a price is sent. The service refuses a
+    // CHANGED price from anyone else; the page sends the unchanged price
+    // back with every amend, so that alone is not refused.
+    const mayPrice =
+      dto.price !== undefined && user?.userId
+        ? ["owner", "manager"].includes(
+            (await this.organizations.resolveRestaurantRole(user.userId, restaurantId)) ?? "",
+          )
+        : false;
     return this.guard(() =>
-      this.beverages.updateCocktail(restaurantId, cocktailId, dto),
+      this.beverages.updateCocktail(restaurantId, cocktailId, dto, mayPrice),
     );
   }
 
@@ -210,7 +239,9 @@ export class BeveragesController {
   async deleteCocktail(
     @Param("restaurantId") restaurantId: string,
     @Param("cocktailId", new ParseUUIDPipe()) cocktailId: string,
+    @CurrentUser() user: { userId?: string },
   ) {
+    await this.assertManages(user, restaurantId, "take a cocktail off the list");
     return this.guard(() =>
       this.beverages.deleteCocktail(restaurantId, cocktailId),
     );
@@ -240,6 +271,20 @@ export class BeveragesController {
     return this.guard(() =>
       this.beverages.setCocktailIngredients(restaurantId, cocktailId, dto),
     );
+  }
+
+  /** Owner or manager of this house, or a refusal before anything is written. */
+  private async assertManages(
+    user: { userId?: string } | undefined,
+    restaurantId: string,
+    action: string,
+  ): Promise<void> {
+    if (!user?.userId) {
+      throw new ForbiddenException(
+        "This session names no one, so it cannot " + action + ". Nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, action);
   }
 
   /**

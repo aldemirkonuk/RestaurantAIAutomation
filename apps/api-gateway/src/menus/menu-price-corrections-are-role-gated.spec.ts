@@ -111,3 +111,31 @@ describe("POST /menu-versions/:menuId/make-current — owner or manager only", (
     expect(list).not.toHaveBeenCalled();
   });
 });
+
+describe("PATCH /menus/:rid/items/:id/discard — owner or manager only (F-268)", () => {
+  function controller(role: string | null) {
+    const discard = jest.fn(async () => ({ menuItemId: "mi-1", status: "discarded" }));
+    const c = new MenusController({ discardMenuItem: discard } as any, orgs(role));
+    return { c, discard };
+  }
+
+  it.each(["owner", "manager"])("a %s may take a line off the menu", async (role) => {
+    const { c, discard } = controller(role);
+    await c.discardMenuItem("rest-1", "mi-1", { userId: "u-1" });
+    expect(discard).toHaveBeenCalledWith("rest-1", "mi-1");
+  });
+
+  it.each(["staff", null])("%s is refused, and nothing is discarded", async (role) => {
+    const { c, discard } = controller(role as string | null);
+    await expect(c.discardMenuItem("rest-1", "mi-1", { userId: "u-1" })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(discard).not.toHaveBeenCalled();
+  });
+
+  it("a session naming no one is refused", async () => {
+    const { c, discard } = controller("owner");
+    await expect(c.discardMenuItem("rest-1", "mi-1", {})).rejects.toBeInstanceOf(ForbiddenException);
+    expect(discard).not.toHaveBeenCalled();
+  });
+});
