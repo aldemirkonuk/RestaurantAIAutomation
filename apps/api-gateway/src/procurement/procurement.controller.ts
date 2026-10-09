@@ -669,17 +669,26 @@ export class ProcurementController {
     description:
       "Invoice price differs from the agreed price and no override reason was given",
   })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The payload carries invoice money (price, invoice quantity, override reason, charges) or would open a vendor claim, and the caller is not an owner or a manager. The bottle count alone is open to staff.",
+  })
   async verifyReceipt(
     @Param("id") orderId: string,
     @Body() body: VerifyReceiptDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<OrderResponseDto> {
     try {
+      // The role in the token's house (ADR 0162): staff may record the
+      // bottle count; the invoice's money is an owner's or a manager's (F-466).
       return await this.procurementService.verifyReceipt(
         user.restaurantId,
         orderId,
         user.userId,
         body ?? {},
+        { role: user.role ?? null },
       );
     } catch (error) {
       throw new HttpException(
