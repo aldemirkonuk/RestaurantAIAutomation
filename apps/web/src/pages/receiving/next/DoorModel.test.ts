@@ -482,4 +482,25 @@ describe('readPaper — the photograph doing work', () => {
     expect(r?.boxes).toBeNull();
     expect(r?.bottles).toBeNull();
   });
+
+  it('pre-fills the same count from the echo a non-holder gets, with no figure keys', () => {
+    // The gateway cuts a staff member's parse to the door's keys and omits the
+    // rest (`doorEchoOf`): no total, tie-out, confidence or warnings.
+    const r = readPaper({
+      docType: 'invoice',
+      docNumber: 'INV-99',
+      lines: [
+        { lineNo: 1, qty: 10, uom: 'case', packSize: 12, qtyBottles: 120 },
+        { lineNo: 2, qty: 24, uom: 'bottle', packSize: 12, qtyBottles: 24 },
+      ],
+    });
+    expect(r).toEqual({
+      boxes: 12,
+      bottles: 144,
+      docType: 'invoice',
+      docNumber: 'INV-99',
+      lineCount: 2,
+      warnings: 0,
+    });
+  });
 });

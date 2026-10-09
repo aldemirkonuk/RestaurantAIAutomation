@@ -169,6 +169,7 @@ function renderSheet(
       canSnoozeForEveryone
       role="manager"
       exclusions={undefined}
+      canRuleOutDays
       openDismiss={false}
       onDismissOpened={vi.fn()}
       onToggleExpand={vi.fn()}
