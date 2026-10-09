@@ -889,6 +889,18 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     expect(within(at('Sell-price valuation')).getByText(/300/)).toBeInTheDocument();
   });
 
+  it('reads salesWithheld off the wire as true only when the gateway sent true (ADR 0298 decision 9)', () => {
+    const read = (salesWithheld: unknown) =>
+      (CATALOGUE.ledger.select({ salesWithheld, revenue: null, cogs: null }) as { salesWithheld: boolean })
+        .salesWithheld;
+    expect(read(true)).toBe(true);
+    // Absent (a gateway that predates the gate) and anything not the boolean
+    // true read as "not withheld", so the page keeps the per-figure reasons.
+    expect(read(undefined)).toBe(false);
+    expect(read('true')).toBe(false);
+    expect(read(1)).toBe(false);
+  });
+
   it('prints cost of goods and sales from the till when both are whole (ADR 0298)', () => {
     hook.current = withRegister(
       'ledger',

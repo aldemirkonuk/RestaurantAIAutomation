@@ -285,8 +285,10 @@ export class NotificationProducersService {
         () =>
           this.invoiceConfirmed.sweepTenant(tenant.id, timeZone, audience, now),
       ),
-      // Narrows the audience it is handed to owners and managers itself — the
-      // only producer that does, and the reason is in its own header.
+      // Narrows the audience it is handed to owners and managers itself, and
+      // the reason is in its own header. MailGrantAbsentProducer below does
+      // the same, and the goal-reached and ceiling-held producers do it for a
+      // goal read from the till (sales-holders.ts, ADR 0298 decision 9).
       [GrantSuspendedProducer.PRODUCER]: await this.runOne(
         tenant.id,
         GrantSuspendedProducer.PRODUCER,

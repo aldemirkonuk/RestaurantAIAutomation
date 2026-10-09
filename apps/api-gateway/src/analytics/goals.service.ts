@@ -51,6 +51,15 @@ export const DAYS_OF_STOCK_WITHHELD =
   "Days of stock is read from the till's sales, which are an owner's or a manager's to see, so it is not scored here.";
 
 /**
+ * The goal metrics scored only with the sales gate open (ADR 0298 decision
+ * 9). A reader that serves many people at once (the notification producers)
+ * reads these for its owners and managers alone.
+ */
+export const SALES_GATED_GOAL_METRICS: ReadonlySet<string> = new Set([
+  "days_of_inventory",
+]);
+
+/**
  * GoalsService — metric-linked goals with AI assistance.
  *
  * A goal = a measure key + target + deadline. Progress is computed from the

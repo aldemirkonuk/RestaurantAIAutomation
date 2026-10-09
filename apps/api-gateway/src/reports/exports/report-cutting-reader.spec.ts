@@ -30,7 +30,10 @@ function build(stored: unknown[] | null = null) {
     getInventoryScience: echo("getInventoryScience"),
     getDemandForecast: echo("getDemandForecast"),
     getPosConsumptionBreakdown: echo("getPosConsumptionBreakdown"),
+    getRiskProfile: echo("getRiskProfile"),
   };
+  const recommendations = { getRecommendations: echo("getRecommendations") };
+  const consultants = { consult: echo("consult") };
   const advanced = {
     getOverview: echo("getOverview"),
     getCashflow: echo("getCashflow"),
@@ -75,12 +78,12 @@ function build(stored: unknown[] | null = null) {
   const controller = new AnalyticsController(
     analytics as never,
     advanced as never,
-    null as never, // recommendations
+    recommendations as never,
     recommendationActions,
     tables as never,
     goals as never,
     null as never, // goal scenario requests
-    null as never, // consultants
+    consultants as never,
     insights as never,
     null as never, // scheduler
     null as never, // day exclusions
@@ -190,6 +193,29 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
         [RID, 0, gate],
         [RID, gate],
         [RID, "active", gate],
+      ]);
+    }
+  });
+
+  it("risk, consult and recommendations hand the caller's role gate on too (ADR 0298, decision 9)", async () => {
+    // A staff user's read goes out with the gate shut, so the service withholds
+    // the till's figures; an owner's goes out with it open.
+    const cases: Array<[{ userId?: string; role?: string }, boolean]> = [
+      [{ userId: "u-owner", role: "owner" }, true],
+      [{ userId: "u-manager", role: "manager" }, true],
+      [{ userId: "u-staff", role: "staff" }, false],
+      [{ userId: "u-none" }, false],
+    ];
+    for (const [user, withSales] of cases) {
+      const { controller } = build();
+      const risk = (await controller.getRisk(RID, user)) as unknown as { args: unknown[] };
+      const consult = (await controller.consult(RID, { persona: "finance" }, user)) as unknown as { args: unknown[] };
+      const recs = (await controller.getRecommendations(RID, undefined, user)) as unknown as { args: unknown[] };
+      expect([user, risk.args, consult.args, recs.args]).toEqual([
+        user,
+        [RID, { withSales }],
+        [RID, "finance", user.userId, { withSales }],
+        [RID, { includeHidden: false, withSales, viewerId: user.userId }],
       ]);
     }
   });

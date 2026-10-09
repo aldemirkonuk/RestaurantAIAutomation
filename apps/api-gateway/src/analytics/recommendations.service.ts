@@ -288,8 +288,9 @@ export class RecommendationsService {
       /**
        * Whether the viewer sees sales (ADR 0290 §5). The concentration card
        * reads the till (ADR 0298 decision 9), so it is evaluated only when
-       * this is true. Absent, as for the digest, which one compose mails to
-       * every subscribed member, it is false.
+       * this is true; absent, it is false. The digest composes twice and
+       * passes true only for its owner and manager recipients
+       * (recommendation-digest.service.ts, readSalesHolderIds).
        */
       withSales?: boolean;
     } = {},
