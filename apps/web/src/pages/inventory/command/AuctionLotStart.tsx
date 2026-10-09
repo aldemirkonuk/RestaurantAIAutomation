@@ -59,7 +59,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Sheet } from '@/components/mudavym';
-import { getErrorMessage } from '@/services/api/client';
+import { getErrorMessage, getErrorStatus, isUnconfirmedWrite } from '@/services/api/client';
 import { searchWines } from '@/services/api/wines';
 import { createAuctionLotRecord } from '@/services/api/inventory';
 import { settingsApi } from '@/services/api/settings';
@@ -302,8 +302,15 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       inventoryId = carried.inventoryId;
     } catch (e) {
       setBusy(false);
+      // Only a definite refusal may say "nothing was written" (F-338). A
+      // timeout or a server fault can land after the bottles were booked, and
+      // a second carry then meets "already in the book".
       setFailure(
-        `The bottles were not carried in (${getErrorMessage(e)}). Nothing was written to the book and your figures are still here.`,
+        isUnconfirmedWrite(e)
+          ? 'No answer came back, so the bottles may already be in the book. Check this wine’s count in the list before carrying them again. Your figures are still here.'
+          : getErrorStatus(e) === 409
+            ? 'This wine is already in the book, perhaps from an earlier try that did go through. Nothing more was carried. Check its count in the list; the lot’s own details were not saved, so your figures are still here to write down.'
+            : `The bottles were not carried in (${getErrorMessage(e)}). Nothing was written to the book and your figures are still here.`,
       );
       return;
     }

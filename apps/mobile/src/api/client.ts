@@ -1,5 +1,9 @@
 import { API_URL } from "@/config";
-import { refreshAccessToken, useSession } from "@/state/session";
+import {
+  RefreshNotReached,
+  refreshAccessToken,
+  useSession,
+} from "@/state/session";
 
 export class ApiError extends Error {
   constructor(
@@ -95,7 +99,20 @@ export async function api<T = unknown>(
   let res = await doFetch(token);
 
   if (res.status === 401) {
-    const refreshed = await refreshAccessToken();
+    let refreshed: string | null;
+    try {
+      refreshed = await refreshAccessToken();
+    } catch (err) {
+      if (!(err instanceof RefreshNotReached)) throw err;
+      // No signal, a timeout, a 503 or a 429 on the refresh: the sign-in was
+      // not refused, so keep it and let the caller try again (F-336). Signing
+      // out here made a receiver type the password again at the truck door.
+      assertScope();
+      throw new ApiError(
+        503,
+        "Could not reach Mudavym. You are still signed in; try again in a moment.",
+      );
+    }
     assertScope();
     if (!refreshed) {
       // Session is dead — sign out so the UI lands on login, not a spinner.

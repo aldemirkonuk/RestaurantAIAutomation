@@ -16,6 +16,7 @@ import {
   signInWithPasskey,
 } from '../services/api/passkeys'
 import { getErrorMessage } from '../services/api/client'
+import { SESSION_ENDED_WORDS } from '../lib/sessionEnded'
 import {
   canRender,
   type IdentityProviderDescriptor,
@@ -118,9 +119,13 @@ export function Login() {
   const on = usePublicDesign()
 
   const searchParams = new URLSearchParams(location.search)
-  const redirectQuery = searchParams.get('redirect')
+  // Only a path on this site: `//elsewhere` or `https://…` is ignored.
+  const redirectRaw = searchParams.get('redirect')
+  const redirectQuery = redirectRaw && /^\/(?![\/\\])/.test(redirectRaw) ? redirectRaw : null
   const from = redirectQuery || (location.state as { from?: { pathname: string } })?.from?.pathname || '/'
   const prefilledEmail = searchParams.get('email') ?? ''
+  // Sent here by the "sign in again" panel (F-335): say why.
+  const sessionEnded = searchParams.get('ended') === '1'
 
   const [email, setEmail] = useState(prefilledEmail)
   const [password, setPassword] = useState('')
@@ -295,6 +300,11 @@ export function Login() {
   // shell and today's card, and only the chrome around it branches below.
   const content = (
     <>
+      {sessionEnded && !(error || authError) && (
+        <p role="status" data-testid="login-session-ended" className={on ? 'mb-6 text-sm !text-inkm-2' : 'mb-6 text-sm text-gray-700'}>
+          {SESSION_ENDED_WORDS} You will go back to the page you were on.
+        </p>
+      )}
       {(error || authError) && on && (() => {
         const note = signInNote(refusal, (error || authError) as string)
         return (

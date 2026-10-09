@@ -369,19 +369,55 @@ export async function requestThenAdopt<
   return { result, outcome: adopted ? "adopted" : "superseded" };
 }
 
-/** Refresh flow used by the API client on 401. Returns the new token or null. */
+/**
+ * The refresh could not be answered (no signal, a timeout, a 503 or a 429).
+ * The sign-in is not refused, so the phone must keep it (F-336): only a 401
+ * from /auth/refresh means "sign in again". The web made the same split
+ * (lib/sessionRefresh.ts, ADR 0164).
+ */
+export class RefreshNotReached extends Error {
+  constructor(public readonly status: number | null) {
+    super("The sign-in could not be renewed right now.");
+  }
+}
+
+/** How long a refresh may take before it counts as not reached. */
+const REFRESH_TIMEOUT_MS = 15_000;
+
+/**
+ * Refresh flow used by the API client on 401. Returns the new token, or null
+ * when the refresh token was refused (or the account changed meanwhile).
+ * Throws RefreshNotReached when the gateway could not be reached or answered
+ * anything but a refusal: the caller keeps the session and tries later.
+ */
 export async function refreshAccessToken(): Promise<string | null> {
   const generation = useSession.getState().generation;
+  const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY).catch(
+    () => null,
+  );
+  if (!refreshToken) return null;
+  let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
   try {
-    const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
-    if (!refreshToken) return null;
-    const res = await fetch(`${API_URL}/auth/refresh`, {
+    res = await fetch(`${API_URL}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
+      signal: controller.signal,
     });
-    if (!res.ok) return null;
-    const body = await res.json();
+  } catch {
+    throw new RefreshNotReached(null);
+  } finally {
+    clearTimeout(timer);
+  }
+  if (res.status === 401) return null;
+  if (!res.ok) throw new RefreshNotReached(res.status);
+  // A body cut off by the signal is not a refusal either.
+  const body = await res.json().catch(() => {
+    throw new RefreshNotReached(res.status);
+  });
+  try {
     const access: string | undefined = body.accessToken;
     const nextRefresh: string | undefined = body.refreshToken;
     if (!access || useSession.getState().generation !== generation) return null;

@@ -4,7 +4,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * The shared API client and the session's house (ADR 0164): a 403
  * HOUSE_REQUIRED sends the person to the chooser; a refresh that says the house
  * ended does too, and does not sign them out; only a refused refresh token
- * (401) sends them to /login.
+ * (401) signs out, and it says so over the page instead of reloading to /login
+ * (F-335: the reload threw away every typed form).
  */
 
 const h = vi.hoisted(() => {
@@ -33,6 +34,7 @@ vi.mock("axios", () => ({
 
 import "./client";
 import { HOUSE_ENDED_KEY } from "../../lib/houseMemory";
+import { SESSION_ENDED_EVENT, SESSION_ENDED_WORDS } from "../../lib/sessionEnded";
 
 const U = "11111111-1111-4111-8111-111111111111";
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -122,14 +124,43 @@ describe("apiClient and the session house", () => {
     expect(href).toBe("/inventory");
   });
 
-  it("a 401 whose refresh token is refused signs out to /login", async () => {
+  it("a 401 whose refresh token is refused signs out and says so, without reloading the page", async () => {
     localStorage.setItem("accessToken", "a");
     localStorage.setItem("refreshToken", "r");
-    h.globalPost.mockRejectedValue({ response: { status: 401 } });
+    localStorage.setItem("activeRestaurantId", A);
+    h.globalPost.mockRejectedValue({
+      response: {
+        status: 401,
+        data: { code: "SESSION_ENDED", message: "Your password was changed. Sign in again." },
+      },
+    });
+    const heard: string[] = [];
+    const listen = (e: Event) => heard.push((e as CustomEvent).detail.message);
+    window.addEventListener(SESSION_ENDED_EVENT, listen);
 
     await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
+    window.removeEventListener(SESSION_ENDED_EVENT, listen);
 
     expect(localStorage.getItem("refreshToken")).toBeNull();
-    expect(href).toBe("/login");
+    expect(localStorage.getItem("accessToken")).toBeNull();
+    expect(localStorage.getItem("activeRestaurantId")).toBeNull();
+    // The page stays: what was typed is still there.
+    expect(href).toBe("/inventory");
+    expect(assign).not.toHaveBeenCalled();
+    expect(heard).toEqual(["Your password was changed. Sign in again."]);
+  });
+
+  it("a refused refresh with no reason of its own says the plain sentence", async () => {
+    localStorage.setItem("refreshToken", "r");
+    h.globalPost.mockRejectedValue({ response: { status: 401 } });
+    const heard: string[] = [];
+    const listen = (e: Event) => heard.push((e as CustomEvent).detail.message);
+    window.addEventListener(SESSION_ENDED_EVENT, listen);
+
+    await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
+    window.removeEventListener(SESSION_ENDED_EVENT, listen);
+
+    expect(heard).toEqual([SESSION_ENDED_WORDS]);
+    expect(href).toBe("/inventory");
   });
 });

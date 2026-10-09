@@ -11,7 +11,7 @@
 import { createElement, forwardRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 const h = vi.hoisted(() => {
   class LoginError extends Error {
@@ -116,5 +116,55 @@ describe('the refusal note on the endpaper', () => {
     h.googleError.current!('This Google account has no Mudavym account.')
     expect(await screen.findByText('This Google account has no Mudavym account.')).toBeInTheDocument()
     expect(screen.queryByText('That password did not match.')).toBeNull()
+  })
+})
+
+// F-335: a refused sign-in sends the person here with ?ended=1 and the page
+// they were on. Say why, and go back only to a page on this site.
+describe('sent back to sign in after a session ended', () => {
+  function Where() {
+    const l = useLocation()
+    return createElement('p', { 'data-testid': 'where' }, l.pathname)
+  }
+
+  async function signInFrom(url: string) {
+    h.auth.login.mockResolvedValue(undefined)
+    h.auth.resolveSignInMethods.mockResolvedValue({
+      email: 'someone@house.test',
+      methods: [method('password', 'Password')],
+      unavailable: [],
+      declared: [],
+      noSignInMethod: false,
+    })
+    render(
+      createElement(
+        MemoryRouter,
+        { initialEntries: [url] },
+        createElement(
+          Routes,
+          null,
+          createElement(Route, { path: '/login', element: createElement(Login) }),
+          createElement(Route, { path: '*', element: createElement(Where) }),
+        ),
+      ),
+    )
+    await screen.findByText('Change')
+  }
+
+  it('says the session was signed out', async () => {
+    await signInFrom('/login?email=someone%40house.test&ended=1&redirect=%2Forders')
+    expect(screen.getByTestId('login-session-ended').textContent).toContain('This session was signed out. Sign in again.')
+  })
+
+  it('goes back to the page the person was on', async () => {
+    await signInFrom('/login?email=someone%40house.test&ended=1&redirect=%2Forders')
+    await submitPassword()
+    expect((await screen.findByTestId('where')).textContent).toBe('/orders')
+  })
+
+  it('never follows a redirect off this site', async () => {
+    await signInFrom('/login?email=someone%40house.test&redirect=%2F%2Fevil.test%2Fx')
+    await submitPassword()
+    expect((await screen.findByTestId('where')).textContent).toBe('/')
   })
 })

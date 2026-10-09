@@ -17,6 +17,7 @@
 
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { goToChooser, noteHouseEnded, storeSession } from '../../lib/houseMemory';
+import { announceSessionEnded, sessionEndedMessage } from '../../lib/sessionEnded';
 
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -92,7 +93,8 @@ function createApiClient(): AxiosInstance {
   // When the server rejects a token (expired or revoked), we:
   //   1. Start a single refresh call (or join the in-flight one)
   //   2. Retry the original request with the new token
-  //   3. If refresh fails, clear auth and redirect to /login
+  //   3. If the refresh token is refused, clear auth and say so over the
+  //      page (SessionEndedPanel), never a reload that loses typed work
   client.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
@@ -116,11 +118,16 @@ function createApiClient(): AxiosInstance {
               // refresh route). A house that ended already sent the person to
               // the chooser; a 503 or a dropped connection says "try again",
               // not "you are not who you said you were" (ADR 0164).
+              // The page is NOT reloaded (F-335): a reload threw away every
+              // typed form. The panel says why and offers a way back.
               const status = (err as AxiosError)?.response?.status;
               if (!(err instanceof HouseAccessEnded) && status === 401) {
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('refreshToken');
-                window.location.href = '/login';
+                localStorage.removeItem('activeRestaurantId');
+                announceSessionEnded(
+                  sessionEndedMessage((err as AxiosError).response?.data),
+                );
               }
               throw err;
             })

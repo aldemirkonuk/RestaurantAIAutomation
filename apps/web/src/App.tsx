@@ -57,6 +57,7 @@ import { RouteHead } from './lib/seo/RouteHead'
 import { RenamedRoute } from './lib/renamedRoute'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
+import { SessionEndedPanel } from './components/mudavym/SessionEndedPanel'
 
 // Layout
 import { DashboardLayout } from './components/layout/DashboardLayout'
@@ -186,6 +187,8 @@ function App() {
                 <RealtimeProvider>
                   <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <RouteHead />
+            {/* A refused sign-in, said over the page (F-335). */}
+            <SessionEndedPanel />
             <Suspense fallback={<HousePageLoader />}>
               <Routes>
                 {/* Public Routes */}
