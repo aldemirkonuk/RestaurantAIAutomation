@@ -1573,6 +1573,8 @@ export function Register() {
     return (
       <EndpaperShell
         kicker="A new set of books"
+        frontMatter
+        backLabel="Turn back to register"
         houseLine={ep.houseLine}
         tag={ep.tag}
         folio={ep.folio}

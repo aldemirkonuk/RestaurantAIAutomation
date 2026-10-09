@@ -352,7 +352,7 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
   --mdv-ep-code-rule: var(--seal-deep);
 }
 
-/* ── the front matter (/login only) ──────────────────────────────────────
+/* ── the front matter (/login and, since 2026-10-09, /register) ──────────────────────────────────────
    The Easter egg, sketch 118 front-matter.html Direction 1 (founder,
    2026-09-19). The endpaper is a real button, and nothing about it says so:
    no dog-ear, no hover lift, no pointer ("not intrigued by that"). Only a
@@ -428,10 +428,13 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
 
 /* the front-matter page shares the leaf's cell with the sign-in content,
    which stays mounted (and inert) underneath so nothing typed is lost. Only
-   the leaf that carries the front matter (/login) becomes a grid; /register's
-   leaf keeps its block layout exactly. */
+   the leaf that carries the front matter becomes a grid; a leaf without it
+   keeps its block layout exactly. Each page keeps its own height in the cell
+   (no stretch), so the shell can read the page's length under the poem and
+   ease the leaf between the two through the turn. */
 .mdv-endpaper .mdv-ep-leaf--front-matter {
   display: grid;
+  align-items: start;
 }
 .mdv-ep-leaf--front-matter > .mdv-ep-leaf-inner,
 .mdv-ep-leaf--front-matter > .mdv-ep-poem-page {
@@ -439,6 +442,12 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
 }
 .mdv-ep-leaf[data-front] > .mdv-ep-leaf-inner {
   visibility: hidden;
+  /* and painted at nothing: the page's controls carry `transition: all`, and
+     a child's visibility keeps transitioning for its 150ms after the parent
+     hides, so the sign-in field, Continue and the door's act showed through
+     the poem for a frame or two at the landing (measured 2026-10-09). The
+     parent's opacity is not something a child can out-transition. */
+  opacity: 0;
 }
 .mdv-ep-poem-page {
   position: relative;
@@ -468,11 +477,16 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
 .mdv-ep-line {
   display: block;
   background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--mdv-ep-rule) calc(100% - 1px));
-  /* one rule per written line, so a line that wraps on a phone rests on two */
+  /* one rule per written line, so a line that wraps on a phone rests on two —
+     and the run-over is hung, the way verse is set: the second rule starts
+     1.4em in, so "cellar." and "low." read as the ends of their lines, not
+     as lines of their own (2026-10-09, 400px wide). */
   background-size: 100% 28px;
+  padding-left: 1.4em;
+  text-indent: -1.4em;
 }
 .mdv-ep-line--in {
-  padding-left: 1.4em;
+  padding-left: 2.8em;
 }
 .mdv-ep-stanza--closing {
   font-style: italic;
