@@ -316,3 +316,52 @@ describe('retryNotSent reaches the door and spot-count outboxes (ADR 0241 amendm
     expect(flushDoorOutbox).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('F-246: door receipts and spot counts send themselves when the network returns', () => {
+  beforeEach(() => {
+    flushDoorOutbox.mockClear()
+    flushSpotCountOutbox.mockClear()
+  })
+
+  it('flushes both outboxes when the browser comes back online, with no screen open', async () => {
+    vi.useFakeTimers()
+    try {
+      // A spot count waits in the queue; nothing on screen owns it.
+      vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+        mutation('count-1', 'inventory.spotCount', 0),
+      ])
+      await syncManager.refresh()
+
+      window.dispatchEvent(new Event('online'))
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      expect(flushSpotCountOutbox).toHaveBeenCalledTimes(1)
+      expect(flushDoorOutbox).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('flushes both outboxes on the start-up pass and again on the periodic pass', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.resetModules()
+      vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+        mutation('door-1', 'receiving.door', 0),
+      ])
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+      const fresh = (await import('./sync-manager')).syncManager
+      flushDoorOutbox.mockClear()
+      flushSpotCountOutbox.mockClear()
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(flushDoorOutbox).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(28_000)
+      expect(flushDoorOutbox).toHaveBeenCalledTimes(2)
+      expect(flushSpotCountOutbox).toHaveBeenCalledTimes(2)
+      fresh.destroy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

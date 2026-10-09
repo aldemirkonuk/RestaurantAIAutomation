@@ -532,6 +532,8 @@ export class InventoryController {
       stockState?: "live" | "shadow";
       clientCountId: string;
       reason?: string;
+      /** A queued count's age at send time (F-249); absent for a live count. */
+      countedAgoMs?: number;
     },
     @CurrentUser() user?: { userId?: string },
   ) {
