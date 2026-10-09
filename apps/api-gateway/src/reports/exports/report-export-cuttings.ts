@@ -265,6 +265,11 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
         "money",
       ),
     ],
+    // F-412: no refund reaches the till. The POS check carries no refund
+    // field (pos-hub/pos-types.ts CanonicalCheck), no adapter reads one, and
+    // Toast's `payment.refunded` has no handler. "Taken" is therefore what was
+    // rung up, and the file says so rather than letting it read as net.
+    notes: revenue != null ? [TILL_REFUNDS_NOT_TAKEN_OFF] : [],
     tables:
       series.length === 0
         ? []
@@ -293,6 +298,10 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
     ],
   });
 }
+
+/** Said on every till export that carries a figure: refunds are not taken off "Taken". */
+export const TILL_REFUNDS_NOT_TAKEN_OFF =
+  "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.";
 
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 

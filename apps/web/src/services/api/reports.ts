@@ -224,6 +224,12 @@ export interface ReportExport {
   requestedAt: string
   startedAt: string
   finishedAt: string | null
+  /**
+   * The file name without its extension, named by the gateway: the house, the
+   * cutting and its window in the house's own days. Null until written, and
+   * absent from a gateway that predates it.
+   */
+  fileStem?: string | null
 }
 
 export interface ReportExportList {
@@ -266,11 +272,12 @@ export async function retryReportExport(id: string): Promise<ReportExport> {
 /**
  * The written file's text. Fetched through `apiClient` because the route needs
  * the bearer token a plain link would not carry; the caller hands it to the
- * reader as a file. The filename is built here, from the row, rather than read
- * from `Content-Disposition`, which a cross-origin response does not expose.
+ * reader as a file. The filename comes from the row's `fileStem`, which the
+ * gateway names on the house's clock, rather than from `Content-Disposition`,
+ * which a cross-origin response does not expose.
  */
 export async function downloadReportExport(
-  exp: Pick<ReportExport, 'id' | 'cutting' | 'finishedAt'>,
+  exp: Pick<ReportExport, 'id' | 'cutting' | 'finishedAt' | 'fileStem'>,
   format: ReportExportFormat,
 ): Promise<{ filename: string; mime: string; body: string }> {
   const { data } = await apiClient.get<string>(`/reports/exports/${exp.id}/download`, {
@@ -280,9 +287,13 @@ export async function downloadReportExport(
     transformResponse: [(raw: unknown) => raw],
   })
   if (typeof data !== 'string') throw new Error('the gateway answered without the file')
-  const day = exp.finishedAt ? exp.finishedAt.slice(0, 10) : 'undated'
+  // A UTC date is the fallback only for a gateway that does not name the file;
+  // it is labelled as such rather than passed off as the house's day.
+  const stem =
+    exp.fileStem ||
+    `mudavym-${exp.cutting}-${exp.finishedAt ? `${exp.finishedAt.slice(0, 10)}-utc` : 'undated'}`
   return {
-    filename: `mudavym-${exp.cutting}-${day}.${format}`,
+    filename: `${stem}.${format}`,
     mime: format === 'csv' ? 'text/csv;charset=utf-8' : 'text/html;charset=utf-8',
     body: data,
   }
