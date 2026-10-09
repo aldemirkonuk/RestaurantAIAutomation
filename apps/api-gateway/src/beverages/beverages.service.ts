@@ -686,37 +686,70 @@ export class BeveragesService {
       );
     }
 
-    const { error: clearError } = await client
+    // Write the new lines BEFORE removing the old ones (F-473). The two steps
+    // are not one transaction, so the order decides what a failure leaves:
+    // delete-first lost the old recipe whenever the insert then failed, and the
+    // page still said "Nothing was changed". Insert-first means a failed insert
+    // leaves the old recipe exactly as it was.
+    const { data: before, error: beforeError } = await client
       .from("cocktail_ingredients")
-      .delete()
+      .select("id")
       .eq("cocktail_id", cocktailId);
-    if (clearError) throw this.explain(clearError, "cocktail_ingredients");
+    if (beforeError) throw this.explain(beforeError, "cocktail_ingredients");
+    const oldIds = ((before ?? []) as { id: string }[]).map((r) => r.id);
 
-    if (dto.lines.length === 0) {
-      return { cocktailId, lines: 0, recipesAvailable: true as const };
+    let newIds: string[] = [];
+    if (dto.lines.length > 0) {
+      const { data, error } = await client
+        .from("cocktail_ingredients")
+        .insert(
+          dto.lines.map((l, i) => ({
+            cocktail_id: cocktailId,
+            // `free_text` covers what no catalogue holds — "fresh lime juice",
+            // "egg white" — and the CHECK constraint requires one of the three.
+            free_text: l.freeText?.trim() ?? null,
+            beverage_id: l.beverageId ?? null,
+            wine_id: l.wineId ?? null,
+            quantity: l.quantity ?? null,
+            unit: l.unit?.trim() ?? null,
+            sort_order: l.sortOrder ?? i,
+          })),
+        )
+        .select("id");
+      if (error) {
+        throw new Error(
+          `${this.explain(error, "cocktail_ingredients").message}. Nothing was changed: the recipe you had is still there.`,
+        );
+      }
+      newIds = ((data ?? []) as { id: string }[]).map((r) => r.id);
     }
 
-    const { data, error } = await client
-      .from("cocktail_ingredients")
-      .insert(
-        dto.lines.map((l, i) => ({
-          cocktail_id: cocktailId,
-          // `free_text` covers what no catalogue holds — "fresh lime juice",
-          // "egg white" — and the CHECK constraint requires one of the three.
-          free_text: l.freeText?.trim() ?? null,
-          beverage_id: l.beverageId ?? null,
-          wine_id: l.wineId ?? null,
-          quantity: l.quantity ?? null,
-          unit: l.unit?.trim() ?? null,
-          sort_order: l.sortOrder ?? i,
-        })),
-      )
-      .select("id");
-    if (error) throw this.explain(error, "cocktail_ingredients");
+    if (oldIds.length > 0) {
+      const { error: clearError } = await client
+        .from("cocktail_ingredients")
+        .delete()
+        .eq("cocktail_id", cocktailId)
+        .in("id", oldIds);
+      if (clearError) {
+        // Take the new lines back out so the recipe is the old one, not both.
+        const undo =
+          newIds.length > 0
+            ? await client.from("cocktail_ingredients").delete().in("id", newIds)
+            : { error: null };
+        if (undo.error) {
+          throw new Error(
+            "The new lines were written but the old ones could not be cleared, so this recipe now shows both. Open it and save it again.",
+          );
+        }
+        throw new Error(
+          "The old recipe could not be cleared, so the new lines were taken back out. Nothing was changed: the recipe you had is still there.",
+        );
+      }
+    }
 
     return {
       cocktailId,
-      lines: (data ?? []).length,
+      lines: newIds.length,
       recipesAvailable: true as const,
     };
   }

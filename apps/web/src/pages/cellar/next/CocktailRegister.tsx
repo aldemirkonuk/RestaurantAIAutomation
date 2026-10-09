@@ -46,6 +46,21 @@ import {
   type RegisterVM,
 } from './useCellarNextData';
 
+/**
+ * The gateway's own sentence for a failed write. axios's "Request failed with
+ * status code 500" names neither the cause nor what was or was not changed.
+ */
+function serverSaid(e: unknown): string {
+  const m = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  const said =
+    typeof m === 'string' && m.trim() ? m
+      : Array.isArray(m) && typeof m[0] === 'string' ? m[0]
+        : e instanceof Error && e.message ? e.message
+          : 'no reason was given';
+  // Callers end the sentence themselves.
+  return said.trim().replace(/\.$/, '');
+}
+
 interface Draft extends CocktailInput {
   name?: string;
 }
@@ -127,9 +142,9 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
         `${out.lines} ${out.lines === 1 ? 'line' : 'lines'} recorded. This is the first recipe data this house has ever had — cocktail_ingredients was created empty in August and no extraction pass ever filled it.`,
       );
     } catch (e) {
-      setSaid(
-        `The recipe was NOT recorded${e instanceof Error ? ` — ${e.message}` : ''}. Nothing was changed.`,
-      );
+      // No blanket "Nothing was changed": the gateway's sentence says whether
+      // the old recipe is still standing, and a dropped connection cannot know.
+      setSaid(`The recipe was NOT recorded — ${serverSaid(e)}.`);
     }
   };
 
@@ -250,7 +265,7 @@ export default function CocktailRegister({
       setEditId(null);
     } catch (e) {
       setSaid(
-        `Nothing was written${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`,
+        `Nothing was written — ${serverSaid(e)}. The list is unchanged.`,
       );
     }
   };
@@ -262,7 +277,7 @@ export default function CocktailRegister({
         `“${name}” is off the list. The row was dated, not deleted — a cocktail that came off in September is a fact about the season.`,
       );
     } catch (e) {
-      setSaid(`“${name}” was NOT retired${e instanceof Error ? ` — ${e.message}` : ''}.`);
+      setSaid(`“${name}” was NOT retired — ${serverSaid(e)}.`);
     } finally {
       setConfirmRetire(null);
     }

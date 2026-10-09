@@ -20,7 +20,11 @@ import { analysis, arr, obj, str } from './rp-spec';
 export interface QuadrantItem {
   id: string;
   name: string;
-  velocityPerDay: number;
+  /**
+   * null when a line of this wine carries no bottle figure: its movement is
+   * not measured, which is not 0 bottles a day (F-470, ADR 0297).
+   */
+  velocityPerDay: number | null;
   /** null when the row has no recorded cost — it has NO quadrant, not "dog". */
   marginPerBottle: number | null;
   marginPct: number | null;
@@ -28,11 +32,13 @@ export interface QuadrantItem {
 }
 
 export interface QuadrantRegister {
-  basis?: { velocity?: string; margin?: string };
+  basis?: { velocity?: string; margin?: string; unpriced?: string };
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
   medians: { velocityPerDay: number | null; marginPerBottle: number | null };
   counts: Record<string, number>;
   items: QuadrantItem[];
+  /** Wines the engine could not price at all, by name (F-472). */
+  leftOut?: { id: string; name: string; reason: string }[];
 }
 
 const quadrants = analysis<QuadrantRegister>({
@@ -58,23 +64,46 @@ const quadrants = analysis<QuadrantRegister>({
       items: arr(d.items).map((i) => ({
         id: str(i.id),
         name: str(i.name),
-        velocityPerDay: num(i.velocityPerDay) ?? 0,
+        velocityPerDay: num(i.velocityPerDay),
         marginPerBottle: num(i.marginPerBottle),
         marginPct: num(i.marginPct),
         quadrant: (i.quadrant ?? null) as string | null,
+      })),
+      leftOut: arr(d.leftOut).map((w) => ({
+        id: str(w.id),
+        name: str(w.name),
+        reason: str(w.reason),
       })),
     };
   },
   view: (q) => {
     const unclassified = q.counts.unclassified ?? 0;
+    const unmeasured = q.counts.unmeasured ?? 0;
     const priced = q.items.filter((i) => i.marginPerBottle != null);
-    const basis = [q.basis?.velocity, q.basis?.margin];
+    // A wine whose movement is not measured has no place on the x axis.
+    const plotted = priced.filter((i) => i.velocityPerDay != null);
+    const leftOut = q.leftOut ?? [];
+    const basis = [q.basis?.velocity, q.basis?.margin, q.basis?.unpriced];
+    const offPlot = [
+      unclassified > 0
+        ? `${countOf(unclassified, 'wine is', 'wines are')} off the plot for want of a recorded cost — an uncosted wine is unknown, not a dog.`
+        : null,
+      unmeasured > 0
+        ? `${countOf(unmeasured, 'wine is', 'wines are')} off the plot because some of its sales were recorded without a bottle figure, so how fast it moves is not measured — not 0 bottles a day.`
+        : null,
+      leftOut.length > 0
+        ? `Not on this list at all, because the menu gives no price we can use (no bottle price, and no glass price with a confirmed pour): ${leftOut
+            .slice(0, 8)
+            .map((w) => w.name)
+            .join(', ')}${leftOut.length > 8 ? ` and ${leftOut.length - 8} more` : ''}.`
+        : null,
+    ].filter((n): n is string => n != null);
     const figures = [
       { label: 'Stars', value: figure(q.counts.star ?? 0) },
       { label: 'Plowhorses', value: figure(q.counts.plowhorse ?? 0) },
       { label: 'Puzzles', value: figure(q.counts.puzzle ?? 0) },
       { label: 'Dogs', value: figure(q.counts.dog ?? 0) },
-      { label: 'No quadrant', value: figure(unclassified) },
+      { label: 'No quadrant', value: figure(unclassified + unmeasured) },
     ];
     if (priced.length === 0)
       return {
@@ -84,7 +113,14 @@ const quadrants = analysis<QuadrantRegister>({
             : ' Nothing is filed in a quadrant, and nothing is guessed into one.'
         }`,
         figures,
-        notes: [],
+        notes: offPlot,
+        basis,
+      };
+    if (plotted.length === 0)
+      return {
+        say: 'No costed wine has a measured movement yet, so there is nothing to plot: some of their sales were recorded without a bottle figure.',
+        figures,
+        notes: offPlot,
         basis,
       };
     const ranked = [...priced].sort(
@@ -92,8 +128,8 @@ const quadrants = analysis<QuadrantRegister>({
     );
     return {
       points: {
-        data: priced.map((i) => ({
-          x: Number(i.velocityPerDay.toFixed(3)),
+        data: plotted.map((i) => ({
+          x: Number((i.velocityPerDay as number).toFixed(3)),
           y: Number((i.marginPerBottle as number).toFixed(2)),
           name: i.name,
         })),
@@ -130,19 +166,29 @@ const quadrants = analysis<QuadrantRegister>({
           key: i.id,
           cells: [
             i.name,
-            figure(i.velocityPerDay),
+            i.velocityPerDay == null ? 'not measured' : figure(i.velocityPerDay),
             money(i.marginPerBottle, 'table'),
             i.quadrant ?? EM,
           ],
         })),
         more:
-          unclassified > 0
-            ? `${countOf(unclassified, 'wine has', 'wines have')} no quadrant because no cost was ever recorded for them.`
+          unclassified + unmeasured > 0
+            ? [
+                unclassified > 0
+                  ? `${countOf(unclassified, 'wine has', 'wines have')} no quadrant because no cost was ever recorded for them.`
+                  : null,
+                unmeasured > 0
+                  ? `${countOf(unmeasured, 'wine has', 'wines have')} no quadrant because how fast it sells is not measured.`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' ')
             : undefined,
       },
       figures,
       notes: [
         `Fast is right of the vertical rule, fat-margin is above the horizontal one; both rules are the engine’s own medians. ${countOf(unclassified, 'wine is', 'wines are')} off the plot for want of a recorded cost — an uncosted wine is unknown, not a dog.`,
+        ...offPlot.slice(unclassified > 0 ? 1 : 0),
       ],
       basis,
     };
