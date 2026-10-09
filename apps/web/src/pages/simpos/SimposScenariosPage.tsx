@@ -42,6 +42,7 @@ import {
   type ScenarioVerifyResult,
 } from '../../services/api/simpos'
 import { cn } from '../../lib/utils'
+import { formatStatedMoney } from '../../lib/currency'
 
 function errorText(e: unknown): string {
   const anyErr = e as {
@@ -55,8 +56,9 @@ function errorText(e: unknown): string {
   )
 }
 
-function fmtMoney(n: number | undefined | null): string {
-  return n == null ? '—' : `$${Number(n).toFixed(2)}`
+/** A run's takings in the venue's own currency; the bare figure until it names one (sim F-341). */
+function fmtMoney(n: number | undefined | null, currency: string | null | undefined): string {
+  return n == null ? '—' : formatStatedMoney(Number(n), currency)
 }
 
 function preview(value: unknown): string {
@@ -216,6 +218,17 @@ export function SimposScenariosPage() {
     queryFn: () => simposApi.listScenarioRuns(restaurantId),
     enabled: !!restaurantId,
   })
+
+  // Same read as the order log: the venue names its money. `retry: false`
+  // because a venue we cannot read leaves the bare figure, not a spinner.
+  const venueQuery = useQuery({
+    queryKey: ['simpos-venue', restaurantId],
+    queryFn: () => simposApi.getVenue(restaurantId),
+    enabled: !!restaurantId,
+    retry: false,
+    staleTime: 300_000,
+  })
+  const venueCurrency = venueQuery.data?.currency ?? null
 
   const runs: ScenarioRunSummary[] = runsQuery.data?.runs ?? []
   const cap = runsQuery.data?.cap ?? 0
@@ -380,7 +393,7 @@ export function SimposScenariosPage() {
                     <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-gray-400 tabular-nums">
                       <span>{r.totals?.checks ?? '—'} checks</span>
                       <span>{r.totals?.wine_lines ?? '—'} wine</span>
-                      <span>{fmtMoney(r.totals?.revenue)}</span>
+                      <span>{fmtMoney(r.totals?.revenue, venueCurrency)}</span>
                     </div>
                   </button>
                 </li>

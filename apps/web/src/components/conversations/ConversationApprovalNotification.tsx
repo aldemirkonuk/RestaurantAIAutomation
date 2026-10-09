@@ -15,6 +15,7 @@ import {
   Send,
 } from 'lucide-react'
 import axios from 'axios'
+import { formatStatedMoney } from '../../lib/currency'
 
 const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -35,6 +36,8 @@ interface AIConversationApprovalEvent {
   wine_name: string
   target_price?: number
   current_offer?: number
+  /** The money the vendor is quoting in; absent prints the bare figure, never "$" (sim F-341). */
+  currency?: string | null
   urgency?: string
   actions?: Array<{ id: string; label: string; url: string; style?: string }>
 }
@@ -191,7 +194,7 @@ export function ConversationApprovalNotification({
               <p className="text-xs text-emerald-700 font-medium mb-1">Target Price</p>
               <div className="flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-emerald-600" />
-                <p className="text-sm font-bold text-emerald-900">${event.target_price.toFixed(2)}</p>
+                <p className="text-sm font-bold text-emerald-900">{formatStatedMoney(event.target_price, event.currency)}</p>
               </div>
             </div>
           )}
@@ -201,7 +204,7 @@ export function ConversationApprovalNotification({
               <p className="text-xs text-amber-700 font-medium mb-1">Current Offer</p>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-amber-600" />
-                <p className="text-sm font-bold text-amber-900">${event.current_offer.toFixed(2)}</p>
+                <p className="text-sm font-bold text-amber-900">{formatStatedMoney(event.current_offer, event.currency)}</p>
               </div>
             </div>
           )}

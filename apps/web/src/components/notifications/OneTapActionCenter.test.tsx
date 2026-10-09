@@ -13,6 +13,7 @@ import {
   markOrderDelivered,
 } from '../../services/api/orders'
 import { toast } from 'sonner'
+import { setHouseCurrency } from '../../lib/houseCurrency'
 
 vi.mock('../../contexts/RealtimeContext', () => ({
   useRealtime: vi.fn(() => ({})),
@@ -547,5 +548,56 @@ describe('the delivery card comes from the orders routes, and names the vendor',
     await waitFor(() =>
       expect(markOrderDelivered).toHaveBeenCalledWith('order-77', undefined, 'rest-1'),
     )
+  })
+})
+
+describe('money on the cards never borrows a dollar sign (sim F-341)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getOneTapActions).mockResolvedValue([])
+    localStorage.clear()
+  })
+
+  it('prints the reorder estimate in the house\'s own currency', async () => {
+    // The estimate is the house's own price times bottles, so it is the
+    // house's money; a house in Fethiye reads lira here, not dollars.
+    setHouseCurrency('TRY')
+    localStorage.setItem('wineops_pending_actions', JSON.stringify([MOCK_ACTION]))
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(screen.getByText(/Penfolds Grange/i))
+    await waitFor(() =>
+      expect(screen.getByText(/TRY\s?1,500\.00|₺1,500\.00/)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/\$1,500/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    // The vendor names its money: the counter-offer prints in it.
+    ['EUR', /€104(\.00)?/],
+    // It names none: the bare figure, never "$".
+    [undefined, /^104$/],
+  ])('prints a vendor counter-offer in the vendor\'s own money (%s)', async (currency, expected) => {
+    vi.mocked(getOneTapActions).mockResolvedValue([
+      {
+        id: '11111111-2222-3333-4444-555555555555',
+        restaurantId: 'rest-1',
+        actionType: 'price_change',
+        title: 'Vendor counter-offer',
+        description: 'Bordeaux case, +4%',
+        priority: 'high',
+        status: 'pending',
+        metadata: { originalPrice: 100, counterPrice: 104, deviation: 4, currency },
+        createdAt: '2026-08-20T10:00:00.000Z',
+      },
+    ] as any)
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(await screen.findByText(/Vendor counter-offer/i))
+    // The figure and the Accept button both carry it.
+    await waitFor(() => expect(screen.getAllByText(expected).length).toBeGreaterThan(0))
+    expect(screen.queryByText(/\$10[04]/)).not.toBeInTheDocument()
   })
 })

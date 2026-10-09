@@ -38,7 +38,7 @@ export interface Provider {
   primaryContact?: Record<string, any>
   /** Payment terms returned from backend (Net 30, COD, etc.) */
   paymentTerms?: string
-  /** Minimum order value in dollars */
+  /** Minimum order value, in the vendor's own money; the payload names no currency */
   minimumOrder?: number
   /** Lead time in days */
   leadTimeDays?: number

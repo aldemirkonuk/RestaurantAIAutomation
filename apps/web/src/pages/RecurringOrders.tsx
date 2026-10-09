@@ -4,6 +4,7 @@ import { Plus, Edit2, Trash2, Calendar, RefreshCw, Check, X, AlertCircle, Dollar
 import { Header } from '../components/layout/Header'
 import { useAuth } from '../contexts/AuthContext'
 import axios from 'axios'
+import { formatStatedMoney } from '../lib/currency'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -276,9 +277,9 @@ export function RecurringOrders() {
                         </p>
                         <p className="text-sm font-semibold text-gray-900">
                           {order.manager_override_price 
-                            ? `$${order.manager_override_price.toFixed(2)} (override)`
+                            ? `${formatStatedMoney(order.manager_override_price, null)} (override)`
                             : order.negotiated_price 
-                              ? `$${order.negotiated_price.toFixed(2)}`
+                              ? formatStatedMoney(order.negotiated_price, null)
                               : 'Not set'
                           }
                         </p>
@@ -656,7 +657,7 @@ function RecurringOrderModal({ isOpen, onClose, editingOrder, restaurantId, onSu
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="$0.00"
+                    placeholder="0.00"
                     value={formData.negotiated_price || ''}
                     onChange={(e) => setFormData({ ...formData, negotiated_price: e.target.value ? parseFloat(e.target.value) : undefined })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg"
@@ -688,7 +689,7 @@ function RecurringOrderModal({ isOpen, onClose, editingOrder, restaurantId, onSu
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="$0.00"
+                    placeholder="0.00"
                     value={formData.manager_override_price || ''}
                     onChange={(e) => setFormData({ ...formData, manager_override_price: e.target.value ? parseFloat(e.target.value) : undefined })}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg"

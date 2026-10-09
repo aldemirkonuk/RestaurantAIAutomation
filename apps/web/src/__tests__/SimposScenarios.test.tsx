@@ -21,6 +21,7 @@ const listScenarioRuns = vi.fn()
 const verifyScenarioRun = vi.fn()
 const runLowStockSweep = vi.fn()
 const generateInsights = vi.fn()
+const getVenue = vi.fn()
 
 vi.mock('../services/api/simpos', () => ({
   simposApi: {
@@ -28,6 +29,7 @@ vi.mock('../services/api/simpos', () => ({
     verifyScenarioRun: (...a: unknown[]) => verifyScenarioRun(...a),
     runLowStockSweep: (...a: unknown[]) => runLowStockSweep(...a),
     generateInsights: (...a: unknown[]) => generateInsights(...a),
+    getVenue: (...a: unknown[]) => getVenue(...a),
   },
 }))
 
@@ -115,6 +117,8 @@ beforeEach(() => {
   verifyScenarioRun.mockReset()
   runLowStockSweep.mockReset()
   generateInsights.mockReset()
+  getVenue.mockReset()
+  getVenue.mockResolvedValue({ id: 'r-sim', currency: null })
 })
 
 describe('SimPOS scenarios page renders honestly', () => {
@@ -271,5 +275,21 @@ describe('SimPOS scenarios page renders honestly', () => {
     expect(
       screen.getByText(/pos_checks: statement timeout/),
     ).toBeInTheDocument()
+  })
+
+  it.each([
+    // The venue names its money: the run's takings print in it, never "$" (sim F-341).
+    ['TRY', /TRY\s?412\.50|₺412\.50/],
+    // The venue names none: the bare figure, still never a dollar sign.
+    [null, /^412\.50$/],
+  ])('prints a run\'s takings in the venue\'s own currency (%s)', async (currency, expected) => {
+    getVenue.mockResolvedValue({ id: 'r-sim', currency })
+    listScenarioRuns.mockResolvedValue({ runs: [run()], cap: 50, capped: false })
+    verifyScenarioRun.mockResolvedValue(verdict())
+
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText(expected)).toBeInTheDocument())
+    expect(screen.queryByText(/\$412/)).not.toBeInTheDocument()
   })
 })
