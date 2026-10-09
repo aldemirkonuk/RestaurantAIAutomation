@@ -27,6 +27,7 @@ import {
   summarizeMenuScanPersist,
   type MenuScannerPersistResult,
 } from '../../lib/menuScannerPersistence'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 
 /** Single source of truth for the step order — the header copy and the dots both read it. */
 const FLOW_STEPS = ['capture', 'processing', 'results', 'stock-setup', 'done'] as const
@@ -61,6 +62,8 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
   const [isSaving, setIsSaving] = useState(false)
   const [persistResult, setPersistResult] = useState<MenuScannerPersistResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // "1.250" is 1250 in a "."-grouping house; the grid, the summary and the save all read it the same way.
+  const group = useHouseGroupMark()
 
   const reset = () => {
     setStep('capture')
@@ -123,7 +126,7 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
     setError(null)
     try {
       const result = await persistBatchToInventory(
-        batchRowsToBulkLines(stockRows),
+        batchRowsToBulkLines(stockRows, undefined, group),
         { source: 'menu_scan' },
       )
       setPersistResult((prev) => (prev ? mergePersistResults(prev, result) : result))
@@ -150,14 +153,14 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
     } finally {
       setIsSaving(false)
     }
-  }, [isSaving, stockRows, acceptedWines, onWinesAdded])
+  }, [isSaving, stockRows, acceptedWines, onWinesAdded, group])
 
   const handleRescan = useCallback(() => {
     reset()
   }, [])
 
-  const stockIssues = validateBatchRows(stockRows)
-  const stockSummary = batchTotals(stockRows)
+  const stockIssues = validateBatchRows(stockRows, group)
+  const stockSummary = batchTotals(stockRows, group)
   const savedCount = persistResult
     ? persistResult.added.length + persistResult.stockAdded.length + persistResult.reactivated.length
     : 0
@@ -318,6 +321,7 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
                   <BatchReceiveGrid
                     rows={stockRows}
                     onChange={setStockRows}
+                    group={group}
                     disabled={isSaving}
                     className="flex-1 min-h-0"
                     emptyState={

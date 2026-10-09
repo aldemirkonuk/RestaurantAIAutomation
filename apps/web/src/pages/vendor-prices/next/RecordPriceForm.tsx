@@ -34,6 +34,8 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Panel } from '../../../components/mudavym/Sheet'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useProviders } from '../../../hooks/queries/useProviderQueries'
+import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
+import { parseDecimal } from '../../../lib/parseDecimal'
 import { apiErrorMessage, attachPaper, type ManualObservationInput } from '../../../services/api/vendorIntel'
 import { SCAN_ACCEPT, resolveMimeType } from '../../../lib/uploadAccept'
 import { COMMON_CURRENCIES, HAND_SOURCES, MONO, SANS, dateWords } from './vp-format'
@@ -132,7 +134,9 @@ export function RecordPriceForm({
 
   const mutation = useRecordPrice({ kind: 'wine', id: wineId })
 
-  const priceNum = Number(price)
+  // "12,50" and, in a "."-grouping house, "1.250" — read the way the house writes them (F-358).
+  const group = useHouseGroupMark()
+  const priceNum = parseDecimal(price, group) ?? NaN
   const packNum = Number(packSize)
   const volNum = Number(unitVolumeMl)
   const canSubmit =
@@ -272,9 +276,8 @@ export function RecordPriceForm({
             <input
               id="vp-price"
               style={{ ...inputStyle, fontFamily: MONO }}
-              type="number"
-              step="0.01"
-              min="0"
+              type="text"
+              inputMode="decimal"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               required

@@ -147,6 +147,11 @@ interface BatchReceiveGridProps {
   /** Rendered in place of the table when there are no rows yet. */
   emptyState?: React.ReactNode
   className?: string
+  /**
+   * The house's thousands mark (useHouseGroupMark). The host must pass the same
+   * mark to the helpers it saves with, so the total shown here is the total sent.
+   */
+  group?: GroupMark | null
 }
 
 export function BatchReceiveGrid({
@@ -156,6 +161,7 @@ export function BatchReceiveGrid({
   disabled = false,
   emptyState,
   className,
+  group = null,
 }: BatchReceiveGridProps) {
   const { locations } = useStorageLocations()
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -165,10 +171,8 @@ export function BatchReceiveGrid({
     locationId: '',
   })
 
-  // No house group mark here: the two hosts read these rows with the same
-  // helpers and none passes one yet, and the grid must agree with what they send.
-  const totals = useMemo(() => batchTotals(rows), [rows])
-  const issues = useMemo(() => validateBatchRows(rows), [rows])
+  const totals = useMemo(() => batchTotals(rows, group), [rows, group])
+  const issues = useMemo(() => validateBatchRows(rows, group), [rows, group])
   const selectedCount = rows.filter((r) => r.selected).length
   const badKeys = useMemo(() => new Set(issues.map((i) => i.key)), [issues])
   const allSamples =

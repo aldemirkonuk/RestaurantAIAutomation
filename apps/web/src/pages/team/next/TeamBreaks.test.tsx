@@ -410,6 +410,23 @@ describe('S1 — a manager is not offered what only the owner may change', () =>
     fireEvent.click(toggle);
     await vi.waitFor(() => expect(api.updateTeamSettings).toHaveBeenCalledWith({ laborTrackingEnabled: false }));
   });
+
+  // F-358: the target was read with Number(), so "27,5" was refused as out of range.
+  it('reads a comma-decimal target, as a text field with the decimal keypad', async () => {
+    api.settings = {
+      restaurant_id: 'r1',
+      labor_tracking_enabled: true,
+      labor_target_pct: 30,
+      mayChange: { trackingOff: true, trackingOn: true, target: true },
+    };
+    render(<TeamLaborSettings />, { wrapper });
+    await screen.findByRole('button', { name: 'Labor cost tracking' });
+    const target = screen.getByLabelText('Labor target percent');
+    expect(target).toHaveAttribute('inputmode', 'decimal');
+    fireEvent.change(target, { target: { value: '27,5' } });
+    fireEvent.blur(target);
+    await vi.waitFor(() => expect(api.updateTeamSettings).toHaveBeenCalledWith({ laborTargetPct: 27.5 }));
+  });
 });
 
 // ── L3: the person asking may say paid or unpaid ─────────────────────────────
