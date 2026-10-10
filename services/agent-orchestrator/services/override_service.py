@@ -19,6 +19,7 @@ Security mitigations:
 """
 
 import logging
+import re
 import uuid
 from typing import Optional
 
@@ -488,6 +489,28 @@ def build_library_row(get_field, *, source: str, submission=None, audit=None) ->
     return {k: v for k, v in row.items() if v is not None}
 
 
+def _has_text(value) -> bool:
+    # wine_normalize_text keeps only letters and digits; a value that is all
+    # punctuation or blanks is no value at all.
+    return bool(re.sub(r"[\W_]+", "", str(value or "")))
+
+
+def is_specific_identity(row: dict) -> bool:
+    """
+    May this library row join the SHARED library unasked? (ADR 0130, F-810.)
+
+    Same rule as the gateway's isSpecificWineIdentity (wine-signature.ts:290) and
+    public.wine_identity_is_specific: a name plus EITHER a producer, OR a vintage
+    and a region. A hand-typed "Chianti Classico" alone is the house's draft, not a
+    wine every house's book should show.
+    """
+    if not _has_text(row.get("name")):
+        return False
+    if _has_text(row.get("producer")):
+        return True
+    return row.get("vintage") is not None and _has_text(row.get("region"))
+
+
 def _maybe_promote_submission(supabase, submission_id: str) -> str:
     """
     Attempt to promote a studio-approved submission to master_wine_library.
@@ -502,9 +525,13 @@ def _maybe_promote_submission(supabase, submission_id: str) -> str:
              the override response still succeeds, but carries the outcome (F-754).
     T-14-09: Promotion values come from server-side field_confidence JSONB, not user input.
 
-    Returns "promoted", "not_ready" (a gate is not clear yet), or "failed" (the
-    lookup or the library write raised). Callers put it in their response so a
-    failed promotion is not reported as a plain success.
+    Gate 4 (F-810): the identity must be specific (is_specific_identity). A
+    name-only record stays a submission; Promote is the deliberate way in.
+
+    Returns "promoted", "not_ready" (a gate is not clear yet), "not_specific"
+    (every gate is clear but the wine is named too generally to share), or
+    "failed" (the lookup or the library write raised). Callers put it in their
+    response so a failed promotion is not reported as a plain success.
     """
     try:
         from services.field_confidence import should_auto_block, JSONB_ENRICHMENT_KEYS
@@ -576,11 +603,25 @@ def _maybe_promote_submission(supabase, submission_id: str) -> str:
             )
             return "not_ready"
 
-        supabase.table("master_wine_library").insert(promo_row).execute()
+        if not is_specific_identity(promo_row):
+            logger.debug(
+                "_maybe_promote_submission: submission %s is named too generally to share",
+                sanitize_for_log(submission_id),
+            )
+            return "not_specific"
 
-        supabase.table("master_wine_library_submissions").update(
-            {"status": "approved"}
-        ).eq("id", submission_id).execute()
+        insert_resp = supabase.table("master_wine_library").insert(promo_row).execute()
+        inserted = getattr(insert_resp, "data", None)
+        new_id = inserted[0].get("id") if isinstance(inserted, list) and inserted else None
+
+        # matched_master_id lets Promote see this row later instead of inserting a
+        # second one once more fields are saved (F-810).
+        update: dict = {"status": "approved"}
+        if new_id:
+            update["matched_master_id"] = new_id
+        supabase.table("master_wine_library_submissions").update(update).eq(
+            "id", submission_id
+        ).execute()
 
         logger.info(
             "_maybe_promote_submission: promoted submission %s → master_wine_library",

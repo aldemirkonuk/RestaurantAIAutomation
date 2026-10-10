@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 const studioJsonRequest = vi.fn()
+const studioFetch = vi.fn()
 vi.mock('./studioApi', () => ({
   studioRequest: () => Promise.resolve({
     queue: [{
@@ -16,6 +17,8 @@ vi.mock('./studioApi', () => ({
   }),
   studioJsonRequest: (...args: unknown[]) => studioJsonRequest(...args),
   studioErrorMessage: (err: unknown) => String(err),
+  studioFetch: (...args: unknown[]) => studioFetch(...args),
+  readStudioError: () => Promise.resolve('nope'),
   canReviewStudio: () => true,
 }))
 vi.mock('../../contexts/AuthContext', () => ({
@@ -35,6 +38,7 @@ function renderQueue() {
 describe('StudioApprovalQueue — library outcome after an approval (F-754)', () => {
   beforeEach(() => {
     studioJsonRequest.mockReset()
+    studioFetch.mockReset()
     Object.values(toast).forEach((fn) => fn.mockReset())
   })
 
@@ -55,5 +59,32 @@ describe('StudioApprovalQueue — library outcome after an approval (F-754)', ()
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Override approved'))
     expect(toast.warning).not.toHaveBeenCalled()
+  })
+
+  it('offers the approver a way to add the wine to the library from the warning (F-811)', async () => {
+    studioJsonRequest.mockResolvedValue({ decision: 'approved', override_id: 'ov-1', library: 'failed' })
+    studioFetch.mockResolvedValue(new Response('{}', { status: 200 }))
+    renderQueue()
+    fireEvent.click(await screen.findByRole('button', { name: /approve/i }))
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled())
+    const options = toast.warning.mock.calls[0][1]
+    expect(options.description).not.toMatch(/Promote on the record/)
+    expect(options.action.label).toBe('Add to library')
+    options.action.onClick()
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Added to the library'))
+    const [path, init] = studioFetch.mock.calls[0]
+    expect(path).toBe('/api/v1/studio/promote')
+    expect(JSON.parse(init.body)).toEqual({ submission_id: 'sub-1' })
+  })
+
+  it('says a generically named wine was kept as a draft (F-810)', async () => {
+    studioJsonRequest.mockResolvedValue({ decision: 'approved', override_id: 'ov-1', library: 'not_specific' })
+    renderQueue()
+    fireEvent.click(await screen.findByRole('button', { name: /approve/i }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(toast.success.mock.calls[0][0]).toMatch(/kept as a draft, not in the library yet/)
   })
 })

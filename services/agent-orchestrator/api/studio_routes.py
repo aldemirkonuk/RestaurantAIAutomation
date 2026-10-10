@@ -1084,6 +1084,11 @@ def enable_contributor(
 
 
 # --- POST /promote ---
+# Submission statuses whose matched_master_id names the library row the wine IS:
+# approved (studio promotion), merged and accepted (gateway, wine-submissions.service.ts).
+_SETTLED_SUBMISSION_STATUSES = frozenset({"approved", "merged", "accepted"})
+
+
 @studio_router.post("/promote")
 def promote_to_library(
     body: PromoteRequest,
@@ -1118,6 +1123,22 @@ def promote_to_library(
 
     submission = sub_resp.data
 
+    # A submission already settled onto a library row (auto-promotion records the
+    # link, F-810) is in the library: a second Promote after more fields were saved
+    # would otherwise miss that row in the dedup below and insert the wine twice.
+    # Only a settled status counts: the gateway also writes matched_master_id on a
+    # near miss left in pending_review, a candidate nobody has confirmed, and a
+    # reviewer may still promote that submission as a distinct wine.
+    if (
+        submission.get("matched_master_id")
+        and submission.get("status") in _SETTLED_SUBMISSION_STATUSES
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Wine already exists in library",
+            headers={"X-Existing-Wine-Id": str(submission["matched_master_id"])},
+        )
+
     # Step 2: extract field values — prefer field_confidence values if present
     fc = submission.get("field_confidence") or {}
 
@@ -1149,7 +1170,10 @@ def promote_to_library(
             status_code=422, detail="Submission has no wine_name — cannot promote"
         )
 
-    # Step 3: dedup check — name + vintage + producer (case-insensitive)
+    # Step 3: dedup check — name + vintage + producer (case-insensitive). A missing
+    # vintage or producer matches only a row that is missing it too (F-810): left out
+    # of the filter, it matched any vintage or producer, so "Chianti" with no producer
+    # was refused as a duplicate of someone else's Chianti.
     name_lower = str(wine_name).strip().lower()
     producer_lower = str(producer).strip().lower() if producer else ""
     try:
@@ -1160,8 +1184,12 @@ def promote_to_library(
         )
         if vintage is not None:
             dedup_query = dedup_query.eq("vintage", vintage)
+        else:
+            dedup_query = dedup_query.is_("vintage", "null")
         if producer_lower:
             dedup_query = dedup_query.ilike("producer", producer_lower)
+        else:
+            dedup_query = dedup_query.is_("producer", "null")
         dedup_resp = dedup_query.limit(1).execute()
         if dedup_resp.data:
             existing = dedup_resp.data[0]
