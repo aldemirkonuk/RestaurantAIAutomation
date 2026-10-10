@@ -152,7 +152,7 @@ function Entry({ entry }: { entry: LedgerEntry }) {
 export function LedgerSection({ data }: { data: SettingsNextData }) {
   // Derived from the same register list the page opens with, so the two counts
   // cannot drift apart again (F-180).
-  const notYet = recordSplit(useMudavymDesign('connections')).notYet;
+  const { notYet, partly } = recordSplit(useMudavymDesign('connections'));
   return (
     <Register<LedgerRegister> remote={data.ledger} name="the settings record">
       {(reg) => (
@@ -221,6 +221,11 @@ export function LedgerSection({ data }: { data: SettingsNextData }) {
                 </li>
               ))}
             </ul>
+            {partly.map((p) => (
+              <p key={p.spec.id} style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-2)', margin: '8px 0 0', maxWidth: 720 }}>
+                {p.spec.title} files a line here only for {p.only}; its other changes leave none.
+              </p>
+            ))}
           </div>
 
           <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 12.5, lineHeight: 1.6, color: 'var(--ink-2)', margin: '14px 0 0', maxWidth: 720 }}>

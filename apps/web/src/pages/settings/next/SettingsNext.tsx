@@ -283,7 +283,8 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
             <button type="button" className="st-focus" onClick={() => scrollToAnchor('a-record')}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here
-            </button>. The other {word(split.notYet.length)} do not keep that record yet, so a change to one of them
+            </button>.{split.partly.map((p) => ` ${p.spec.label} records it only for ${p.only}.`).join('')} The
+            other {word(split.notYet.length)} do not keep that record yet, so a change to one of them
             does not say who made it; each still shows when it was last changed, where that is known.
           </p>
           {tallyLine && (
