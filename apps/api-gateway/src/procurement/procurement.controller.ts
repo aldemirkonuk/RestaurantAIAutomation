@@ -25,6 +25,8 @@ import { holdsHouseMoney } from "./documents/document-money-gate";
 import {
   OrderForRole,
   conversationsForRole,
+  dealProposalForRole,
+  flagsWithoutFigures,
   orderForRole,
   orderListForRole,
 } from "./order-amounts-for-role";
@@ -1130,12 +1132,18 @@ export class ProcurementController {
   @ApiResponse({ status: 200 })
   async getDealProposal(
     @Param("id") orderId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<Record<string, any> | null> {
     try {
-      return await this.procurementService.getDealProposal(
-        user.restaurantId,
-        orderId,
+      // The vendor's offer names the house's money; staff get the offer
+      // without it (F-981), as GET /orders/:id already cuts the order.
+      return dealProposalForRole(
+        await this.procurementService.getDealProposal(
+          user.restaurantId,
+          orderId,
+        ),
+        user?.role ?? null,
       );
     } catch (error: any) {
       throw new HttpException(
@@ -1387,14 +1395,15 @@ export class ProcurementController {
   ) {
     try {
       // The order's quoted price rides on every letter; staff get the
-      // letters without it (F-957), as GET /orders/:id already cuts it.
-      return conversationsForRole(
-        await this.procurementService.getOrderConversations(
-          user.restaurantId,
-          orderId,
-        ),
-        user?.role ?? null,
+      // letters without it (F-957), as GET /orders/:id already cuts it. The
+      // letters' words name prices too (F-982): only a non-holder who may
+      // send to vendors (ADR 0175 D10) keeps them. The standing is read only
+      // for a non-holder, and one that cannot be read keeps nothing.
+      const rows = await this.procurementService.getOrderConversations(
+        user.restaurantId,
+        orderId,
       );
+      return await this.lettersForRole(rows, user);
     } catch (error: any) {
       throw new HttpException(
         error.message || "Failed to get order conversations",
@@ -1437,13 +1446,23 @@ export class ProcurementController {
   @ApiResponse({ status: 200 })
   async getPendingDraft(
     @Param("id") orderId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<{ draft: Record<string, any> | null; sendOrAsk: SendOrAsk }> {
     try {
       const draft = await this.procurementService.getPendingDraft(
         user.restaurantId,
         orderId,
       );
+      // The review flags carry the house's target and the vendor's best
+      // price (F-982); a non-holder gets the flags without them. The words
+      // stay: a staff member edits them and asks (ADR 0175).
+      if (
+        draft &&
+        "constraint_flags" in draft &&
+        !holdsHouseMoney(user?.role ?? null)
+      )
+        draft.constraint_flags = flagsWithoutFigures(draft.constraint_flags);
       // `sendOrAsk` is the viewer's own standing (founder, 2026-09-21): the
       // panel says "hold to send" or "hold to ask a manager" BEFORE the hold,
       // never as a refusal after it. It is present even when no draft waits,
@@ -1477,11 +1496,26 @@ export class ProcurementController {
   })
   @ApiResponse({ status: 200 })
   async getActiveConversations(
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: {
+      userId: string;
+      restaurantId: string;
+      role?: string | null;
+    },
   ): Promise<any[]> {
     try {
-      return await this.procurementService.getActiveConversations(
-        user.restaurantId,
+      // The letters waiting for a send, one route over from
+      // /orders/:id/conversations: a non-holder gets them without the
+      // order's quoted price, the vendor's latest figure or the review
+      // flags' two figures (F-982). The words stay for every member here:
+      // this queue is where a staff member edits the letter and asks a
+      // manager to send that exact text (ADR 0175, "Staff ask, manager
+      // sends"), which nobody can do over words they cannot read. Whether
+      // they go too is the coordinator's fork, not this route's.
+      return conversationsForRole(
+        await this.procurementService.getActiveConversations(user.restaurantId),
+        user?.role ?? null,
+        { readsLetters: true },
       );
     } catch (error: any) {
       throw new HttpException(
@@ -1498,11 +1532,18 @@ export class ProcurementController {
   })
   @ApiResponse({ status: 200 })
   async getConversationHistory(
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: {
+      userId: string;
+      restaurantId: string;
+      role?: string | null;
+    },
   ): Promise<any[]> {
     try {
-      return await this.procurementService.getConversationHistory(
-        user.restaurantId,
+      // The sent letters' words name prices as the pending ones do (F-982).
+      return await this.lettersForRole(
+        await this.procurementService.getConversationHistory(user.restaurantId),
+        user,
       );
     } catch (error: any) {
       throw new HttpException(
@@ -1510,5 +1551,28 @@ export class ProcurementController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Letters as this caller may read them (F-957, F-982): a holder of the
+   * house's money gets them whole; a non-holder gets them without figures,
+   * and keeps their words only when they may send to vendors (ADR 0175 D10).
+   * The standing is read only for a non-holder, and one that cannot be read
+   * keeps nothing.
+   */
+  private async lettersForRole<T extends Record<string, unknown>>(
+    rows: T[],
+    user: { userId: string; restaurantId: string; role?: string | null },
+  ) {
+    const role = user?.role ?? null;
+    const readsLetters = holdsHouseMoney(role)
+      ? true
+      : (
+          await this.procurementService.sendOrAskFor(
+            user.userId,
+            user.restaurantId,
+          )
+        ).maySend;
+    return conversationsForRole(rows, role, { readsLetters });
   }
 }

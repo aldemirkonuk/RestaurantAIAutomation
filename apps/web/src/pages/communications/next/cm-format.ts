@@ -312,3 +312,12 @@ export function failedReadsSentence(reads: readonly FailedRead[]): string {
   if (!allStale) s += ' That does not mean there is nothing there.';
   return s;
 }
+
+/**
+ * F-982: said in place of a letter's words when the gateway withheld them
+ * (`wordsWithheld`): its words name prices, which only owners, managers and
+ * the people an owner allows to write to vendors read.
+ */
+export const LETTER_WORDS_WITHHELD =
+  'This letter names prices, so its words are shown to owners, managers and ' +
+  'the people an owner has allowed to write to vendors.';

@@ -70,6 +70,7 @@ import { LedgerRow } from './LedgerRow';
 import { RECURRENCE_UNREAD } from './recurrence';
 import { ResponsesSheet, REJECT_SEAL_NOTE } from './ResponsesSheet';
 import {
+  LETTER_WORDS_WITHHELD,
   NO_ANSWER_YET,
   NO_SUMMARY_WRITTEN,
   REJECT_NEEDS_A_REASON,
@@ -646,5 +647,45 @@ describe('words that hold for any item, not only wine (ORD-W20)', () => {
     const { REJECT_SEAL_NOTE } = await import('./ResponsesSheet');
     expect(REJECT_SEAL_NOTE).toContain('whose delivery has already arrived');
     expect(REJECT_SEAL_NOTE).not.toMatch(/wine/i);
+  });
+});
+
+/**
+ * F-982: a letter's words name prices. The gateway leaves out the words, the
+ * summary and the flagged conditions for staff who may not send to vendors,
+ * and marks the letter `wordsWithheld`. The sheet must say so in plain words,
+ * never print "no summary was written" or "no body at all" over a withheld one.
+ */
+describe('a letter whose words were withheld (F-982)', () => {
+  const withheld = () =>
+    convo({
+      draftContent: undefined,
+      rollingSummary: undefined,
+      specialConditions: undefined,
+      wordsWithheld: true,
+      amountsWithheld: true,
+    });
+
+  it('is carried onto the response the sheet renders', () => {
+    expect(readVendorResponses([withheld()])[0].wordsWithheld).toBe(true);
+    expect(readVendorResponses([convo()])[0].wordsWithheld).toBe(false);
+  });
+
+  it('says why in one plain sentence, in place of the summary and the words', () => {
+    convosMock.current = { data: [withheld()], isError: false, error: null };
+    mount();
+    expect(screen.getByTestId('response-words-withheld')).toHaveTextContent(
+      LETTER_WORDS_WITHHELD.slice(0, 40),
+    );
+    expect(screen.queryByTestId('response-no-summary')).toBeNull();
+    expect(screen.queryByTestId('response-no-body')).toBeNull();
+    // Who answered and when still read.
+    expect(screen.getByTestId('response-section')).toHaveTextContent('Anadolu');
+  });
+
+  it('prints the words as before when they were not withheld', () => {
+    mount();
+    expect(screen.queryByTestId('response-words-withheld')).toBeNull();
+    expect(screen.getByTestId('response-body')).toBeInTheDocument();
   });
 });
