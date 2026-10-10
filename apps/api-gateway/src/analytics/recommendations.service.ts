@@ -27,7 +27,11 @@ import {
 import type { PriceAdvice } from "../pricing/margin-to-target";
 import { PriceLocksService, type LockReadout } from "../pricing/price-locks.service";
 import { resolveItemState, stateBookFrom } from "./insights/item-state";
-import { houseMoney, readHouseMoney } from "../common/house-money";
+import {
+  houseMoney,
+  readHouseMoney,
+  usableLocale,
+} from "../common/house-money";
 import { houseDayOf } from "../common/house-day";
 import { localMidnight } from "../notifications/producers/service-day";
 
@@ -525,6 +529,15 @@ export class RecommendationsService {
         locale: house.locale ?? null,
       });
     };
+    /**
+     * A plain figure in the house's own marks: a Türkiye house reads "2,4"
+     * and "5.234" where `toFixed` printed "2.4" and "5234" (F-1040).
+     */
+    const num = (v: number, digits = 0) =>
+      Number(v).toLocaleString(usableLocale(house.locale), {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      });
     /** An insight's own sentence, restated: money when its figure is. */
     const restated = (i: any): string => {
       if (i?.evidence?.unit === "currency") printsMoney = true;
@@ -818,7 +831,7 @@ export class RecommendationsService {
     // ---- Risk rules -------------------------------------------------------
     const hhi = ctx.risk?.vendorConcentration?.hhi;
     rule("vendor_concentration", (hhi ?? 0) > 0.4, () => ({
-      observation: `Purchasing is highly concentrated (HHI ${(hhi * 10000).toFixed(0)} — effectively ${ctx.risk.vendorConcentration.effectiveVendors?.toFixed(1)} vendors).`,
+      observation: `Purchasing is highly concentrated (HHI ${num(hhi * 10000)} — effectively ${num(ctx.risk.vendorConcentration.effectiveVendors, 1)} vendors).`,
       recommendation:
         "Request quotes from one alternative vendor for your top category this month and move 10–20% of volume to establish the relationship before you need it.",
       rationale:
@@ -830,7 +843,7 @@ export class RecommendationsService {
 
     const gini = ctx.risk?.revenueConcentration?.gini;
     rule("revenue_concentration", (gini ?? 0) > 0.6, () => ({
-      observation: `Revenue rides on very few drinks (Gini ${gini.toFixed(2)}).`,
+      observation: `Revenue rides on very few drinks (Gini ${num(gini, 2)}).`,
       recommendation:
         "Protect the top sellers' stock first (raise their service level to 98%), then use pairing prompts to spread demand to adjacent wines.",
       rationale:

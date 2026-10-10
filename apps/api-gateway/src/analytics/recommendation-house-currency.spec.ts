@@ -10,6 +10,7 @@ import { RecommendationsService } from "./recommendations.service";
 function serviceFor(
   currency: string | null,
   house: { country?: string | null; timezone?: string | null } = {},
+  risk: any = null,
 ) {
   const supabase = {
     from: (table: string) => {
@@ -30,7 +31,7 @@ function serviceFor(
         deadStockCapital: 12400.4,
         deadStockTop: [{ name: "Old Rioja" }],
       }),
-      getRiskProfile: async () => null,
+      getRiskProfile: async () => risk,
       getInventoryScience: async () => null,
     } as any,
     {
@@ -120,4 +121,42 @@ describe("recommendation cards in the house's formats, tagged as money", () => {
         expect(RULES_THAT_PRINT_MONEY.has(key)).toBe(true);
     },
   );
+});
+
+/**
+ * F-1040: the concentration cards printed their figures with `toFixed`, so a
+ * Türkiye house read "2.4 vendors", which is 24 by its own decimal mark.
+ */
+describe("concentration cards in the house's number marks (F-1040)", () => {
+  const risk = {
+    vendorConcentration: { hhi: 0.5234, effectiveVendors: 2.4 },
+    revenueConcentration: { gini: 0.7123 },
+  };
+  const of = async (country: string | null) => {
+    const out = await serviceFor("TRY", { country }, risk).getRecommendations(
+      "r-1",
+    );
+    const obs = (key: string) =>
+      out.recommendations.find((r) => r.ruleKey === key)?.observation;
+    return {
+      vendor: obs("vendor_concentration"),
+      revenue: obs("revenue_concentration"),
+    };
+  };
+
+  it("a Turkish house reads its own decimal and group marks", async () => {
+    const o = await of("TR");
+    expect(o.vendor).toBe(
+      "Purchasing is highly concentrated (HHI 5.234 — effectively 2,4 vendors).",
+    );
+    expect(o.revenue).toBe("Revenue rides on very few drinks (Gini 0,71).");
+  });
+
+  it("a house with no known formats keeps the en-US marks", async () => {
+    const o = await of(null);
+    expect(o.vendor).toBe(
+      "Purchasing is highly concentrated (HHI 5,234 — effectively 2.4 vendors).",
+    );
+    expect(o.revenue).toBe("Revenue rides on very few drinks (Gini 0.71).");
+  });
 });

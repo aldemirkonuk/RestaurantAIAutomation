@@ -106,12 +106,30 @@ export class CalendarSummaryDto {
 export class ProcurementSpendSummaryDto {
   @ApiProperty({
     description:
-      "Total spent with vendors on delivered orders (all time). NOT revenue.",
+      "Total spent with vendors on delivered orders (all time). NOT revenue. " +
+      "Null when the orders were paid in more than one currency (F-1039).",
+    nullable: true,
   })
-  totalProcurementSpend: number;
+  totalProcurementSpend: number | null;
 
-  @ApiProperty({ description: "Vendor spend this month" })
-  monthlyProcurementSpend: number;
+  @ApiProperty({
+    description:
+      "Vendor spend this month; null when paid in more than one currency",
+    nullable: true,
+  })
+  monthlyProcurementSpend: number | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Each currency's part of the total; a null code is an order that names none",
+  })
+  procurementSpendByCurrency?: { currency: string | null; amount: number }[];
+
+  @ApiPropertyOptional({
+    description: "Why the total is null, in the owner's words; null otherwise",
+    nullable: true,
+  })
+  procurementSpendNote?: string | null;
 
   @ApiProperty({ description: "Total bottles delivered by vendors" })
   totalBottlesDelivered: number;
@@ -124,6 +142,11 @@ export class ProcurementSpendSummaryDto {
       "Delivered orders that carry no price, left out of every total above rather than counted as $0 (F-701)",
   })
   unpricedOrders: number;
+
+  @ApiPropertyOptional({
+    description: "This month's delivered orders that carry no price",
+  })
+  monthlyUnpricedOrders?: number;
 }
 
 export class ServiceErrorDto {
@@ -313,9 +336,21 @@ export class SalesChartPointDto {
 
   @ApiProperty({
     description:
-      "Vendor spend on orders delivered in this bucket. NOT sales revenue.",
+      "Vendor spend on orders delivered in this bucket. NOT sales revenue. " +
+      "Null when the bucket was paid in more than one currency (F-1039).",
+    nullable: true,
   })
-  procurementSpend: number;
+  procurementSpend: number | null;
+
+  @ApiPropertyOptional() procurementSpendByCurrency?: {
+    currency: string | null;
+    amount: number;
+  }[];
+  @ApiPropertyOptional({ nullable: true }) procurementSpendNote?: string | null;
+  @ApiPropertyOptional({
+    description: "Orders in this bucket with no price, left out of the spend",
+  })
+  unpricedOrders?: number;
 
   @ApiProperty() bottles: number;
   @ApiProperty() glasses: number;

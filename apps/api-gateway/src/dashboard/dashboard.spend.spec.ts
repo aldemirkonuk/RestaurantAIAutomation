@@ -135,12 +135,27 @@ describe("DashboardService — procurement spend is not revenue", () => {
     expect(result.procurementSpend).toEqual({
       totalProcurementSpend: 1250,
       monthlyProcurementSpend: 250,
+      procurementSpendByCurrency: [{ currency: null, amount: 1250 }],
+      procurementSpendNote: null,
       totalBottlesDelivered: 18,
       spendByMonth: [
-        { month: "2026-07", spend: 1000, bottles: 12 },
-        { month: "2026-08", spend: 250, bottles: 6 },
+        {
+          month: "2026-07",
+          spend: 1000,
+          spendByCurrency: [{ currency: null, amount: 1000 }],
+          unpricedOrders: 0,
+          bottles: 12,
+        },
+        {
+          month: "2026-08",
+          spend: 250,
+          spendByCurrency: [{ currency: null, amount: 250 }],
+          unpricedOrders: 0,
+          bottles: 6,
+        },
       ],
       unpricedOrders: 0,
+      monthlyUnpricedOrders: 0,
     });
   });
 
@@ -254,6 +269,8 @@ describe("DashboardService — a delivery with no price is counted, not summed a
     expect(result.procurementSpend.totalProcurementSpend).toBe(1250);
     expect(result.procurementSpend.monthlyProcurementSpend).toBe(250);
     expect(result.procurementSpend.unpricedOrders).toBe(1);
+    expect(result.procurementSpend.monthlyUnpricedOrders).toBe(1);
+    expect(result.procurementSpend.spendByMonth[1].unpricedOrders).toBe(1);
   });
 
   it("the calendar and the chart add nothing for it, not a bottle's price", async () => {
@@ -262,8 +279,93 @@ describe("DashboardService — a delivery with no price is counted, not summed a
     expect(day.procurement_spend).toBe(0);
 
     const points: any[] = await service.getSalesChart("r1", "year");
-    expect(points.find((p) => p.date === "2026-08")?.procurementSpend).toBe(
-      250,
+    const august = points.find((p) => p.date === "2026-08");
+    expect(august?.procurementSpend).toBe(250);
+    expect(august?.unpricedOrders).toBe(1);
+  });
+});
+
+// F-1039: the spend summary and the chart summed `total_cost` across every
+// order without reading its currency, so a lira house with one euro vendor
+// read ₺12,000 + €400 as "12,400 paid". Two named currencies now give null,
+// each currency's part, and a sentence saying why (F-339's rule).
+describe("DashboardService — spend in two currencies is not added (F-1039)", () => {
+  let service: DashboardService;
+  const order = (
+    total_cost: number,
+    currency: string,
+    delivered_at: string,
+  ) => ({
+    status: ProcurementOrderStatus.DELIVERED,
+    total_cost,
+    final_price: null,
+    currency,
+    bottles_total: 6,
+    quantity: 6,
+    delivered_at,
+    created_at: delivered_at,
+  });
+
+  beforeEach(async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-15T12:00:00Z"));
+    const db = {
+      getClient: jest.fn().mockReturnValue(
+        makeClient({
+          procurement_orders: [
+            order(12000, "TRY", "2026-07-04T00:00:00Z"),
+            order(5000, "try", "2026-08-09T00:00:00Z"),
+            order(400, "EUR", "2026-08-10T00:00:00Z"),
+          ],
+          restaurants: [{ timezone: "UTC" }],
+        }),
+      ),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [DashboardService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    service = module.get<DashboardService>(DashboardService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("the spend summary gives null, each currency's part, and why", async () => {
+    const result: any = await service.getDashboardSummary("r1");
+    const spend = result.procurementSpend;
+
+    expect(spend.totalProcurementSpend).toBeNull();
+    expect(spend.monthlyProcurementSpend).toBeNull();
+    expect(spend.procurementSpendByCurrency).toEqual([
+      { currency: "TRY", amount: 17000 },
+      { currency: "EUR", amount: 400 },
+    ]);
+    expect(spend.procurementSpendNote).toBe(
+      "Paid in EUR and TRY: with no exchange rate on record these are shown apart, not added into one figure.",
     );
+    // A month in one currency still has its figure.
+    expect(spend.spendByMonth[0]).toMatchObject({
+      month: "2026-07",
+      spend: 12000,
+    });
+    expect(spend.spendByMonth[1]).toMatchObject({
+      month: "2026-08",
+      spend: null,
+    });
+  });
+
+  it("the chart's bucket in two currencies is null with each part", async () => {
+    const points: any[] = await service.getSalesChart("r1", "year");
+    const july = points.find((p) => p.date === "2026-07");
+    const august = points.find((p) => p.date === "2026-08");
+
+    expect(july?.procurementSpend).toBe(12000);
+    expect(july?.procurementSpendNote).toBeNull();
+    expect(august?.procurementSpend).toBeNull();
+    expect(august?.procurementSpendByCurrency).toEqual([
+      { currency: "TRY", amount: 5000 },
+      { currency: "EUR", amount: 400 },
+    ]);
+    expect(august?.procurementSpendNote).toMatch(/^Paid in EUR and TRY/);
   });
 });
