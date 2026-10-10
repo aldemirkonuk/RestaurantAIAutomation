@@ -30,6 +30,7 @@ import {
   shiftLocalDate,
 } from "../notifications/producers/service-day";
 import { readAll } from "../providers/vendor-menu-supply";
+import { beverageCategoryOf } from "../common/beverage-category";
 
 /**
  * The rows of a settled read, or a throw. Supabase reports most failures in
@@ -1646,7 +1647,7 @@ export class DashboardService {
         // wine library, status from inventory_state, price from
         // menu_price_current.
         .select(
-          "id, stock_live, inventory_state, storage_location_id, menu_price_current, master_wine_library(primary_type)",
+          "id, kind, stock_live, inventory_state, storage_location_id, menu_price_current, master_wine_library(primary_type, beverage_kind)",
         )
         .eq("restaurant_id", restaurantId);
 
@@ -1665,9 +1666,11 @@ export class DashboardService {
         // supabase-js types a FK embed as an array; at runtime a to-one
         // relation comes back as an object. Accept either.
         const lib: any = (item as any).master_wine_library;
-        const type =
-          (Array.isArray(lib) ? lib[0]?.primary_type : lib?.primary_type) ||
-          "unknown";
+        // F-742: by kind of drink, wines by colour (beverageCategoryOf).
+        const type = beverageCategoryOf(
+          Array.isArray(lib) ? lib[0] : lib,
+          (item as any).kind,
+        );
         const typeEntry = typeMap.get(type) || { count: 0, value: 0 };
         typeEntry.count += item.stock_live || 0;
         typeEntry.value +=

@@ -43,7 +43,7 @@ export class DatabaseService implements OnModuleInit {
     const { data, error } = await this.supabase
       .from("restaurant_inventory")
       .select(
-        "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
+        "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, beverage_kind, grape_variety, country, region)",
       )
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true);

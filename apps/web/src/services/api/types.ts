@@ -83,6 +83,13 @@ export interface InventoryItem {
    */
   analyticsReadable?: boolean;
   locations?: WineLocationBreakdown[];
+  /**
+   * What the house item IS (`restaurant_inventory.kind`, ADR 0115): set by
+   * the house for a declared item, else from the library's kind.
+   */
+  kind?: string | null;
+  /** The linked library row's `beverage_kind`; null when there is no row. */
+  beverageKind?: string | null;
 }
 
 export interface WineLocationBreakdown {
@@ -518,6 +525,12 @@ export interface Wine {
    */
   abvPercent?: number;
   category?: string;
+  /**
+   * The library's `beverage_kind` (wine, beer, spirit, sake, cider, cocktail,
+   * non_alcoholic, unknown), sent by the gateway's /wines read. `category` is
+   * `primary_type`, a wine colour, and says nothing about a beer.
+   */
+  beverageKind?: string;
   region?: string;
   country?: string;
   appellation?: string;

@@ -11,6 +11,7 @@ import { GoalsService } from "./goals.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { stateBookFrom } from "./insights/item-state";
 import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
+import { beverageCategoryOf } from "../common/beverage-category";
 
 /**
  * A glass is not a bottle (AW02, ADR 0297).
@@ -999,6 +1000,29 @@ describe("seasonality reads counted lines only, and names the rest", () => {
       ],
     }).getSeasonality(RESTAURANT, 90);
     expect(out.categoryProfiles).toEqual([]);
+  });
+});
+
+// F-742: the weekday-by-category profile grouped by primary_type alone, so
+// every beer, spirit and menu-imported wine pooled into "unknown".
+describe("category profiles group by kind of drink, wines by colour", () => {
+  it("names a beer line beer, not unknown", async () => {
+    const beer = {
+      master_wine_library: { primary_type: "unknown", beverage_kind: "beer" },
+    };
+    const out: any = await advanced({
+      restaurant_inventory: [item(1, beer)],
+      wine_consumption_log: everyDay(1, 1, 10, BOTTLE),
+    }).getSeasonality(RESTAURANT, 90);
+    expect(out.categoryProfiles.map((p: any) => p.type)).toEqual(["beer"]);
+  });
+
+  it("beverageCategoryOf: kind first, a wine's colour next, a stored 'wine' is not evidence", () => {
+    expect(beverageCategoryOf({ primary_type: "unknown", beverage_kind: "spirit" })).toBe("spirit");
+    expect(beverageCategoryOf({ primary_type: "red", beverage_kind: "wine" })).toBe("red");
+    expect(beverageCategoryOf({ primary_type: "unknown", beverage_kind: "wine" })).toBe("wine");
+    expect(beverageCategoryOf(null, "beer")).toBe("beer");
+    expect(beverageCategoryOf({ primary_type: "unknown", beverage_kind: "unknown" }, "wine")).toBe("unknown");
   });
 });
 

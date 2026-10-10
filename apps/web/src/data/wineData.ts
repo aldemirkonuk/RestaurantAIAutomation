@@ -27,6 +27,14 @@ export interface Wine {
    * and unlike a blank it cannot be spotted by eye.
    */
   type: "red" | "white" | "sparkling" | "rose" | "dessert" | "unknown";
+  /**
+   * What the drink IS: the library's `beverage_kind` (wine, beer, spirit,
+   * sake, cider, cocktail, non_alcoholic, unknown) or the house item's own
+   * `kind`. `type` above is a wine colour and only means something when this
+   * is `wine`; a beer's `type` is `unknown`, never `red`. Undefined when no
+   * source said.
+   */
+  kind?: string;
   grape: string;
   country: string;
   region: string;

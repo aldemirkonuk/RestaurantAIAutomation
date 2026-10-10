@@ -35,12 +35,37 @@ function parseTempF(s: string | undefined): number | null {
   return null
 }
 
+// Wine colours only. A beer or a gin has no entry, so it earns no
+// temperature points rather than being filed at a red-wine zone (F-741).
 const TEMP_RANGES: Record<string, [number, number]> = {
   red:       [60, 65],
   white:     [45, 55],
   sparkling: [45, 55],
   rose:      [50, 60],
   dessert:   [55, 60],
+}
+
+/**
+ * The group a row is placed with: its kind for anything that is not a wine
+ * (beer with beer), its colour for a wine. A wine of unknown colour has no
+ * group, so it is neither grouped nor matched by name.
+ */
+function groupOf(wine: WineInput): string | null {
+  if (wine.kind && wine.kind !== 'wine' && wine.kind !== 'unknown') return wine.kind
+  return wine.type && wine.type !== 'unknown' ? wine.type : null
+}
+
+/** The words a zone name may use for a group, matched as whole words. */
+const GROUP_WORDS: Record<string, string[]> = {
+  rose: ['rose', 'rosé'],
+  non_alcoholic: ['alcohol-free', 'non-alcoholic'],
+}
+
+function nameSuggestsGroup(locationName: string, group: string): boolean {
+  const words = locationName.toLowerCase().split(/[^\p{L}\p{N}-]+/u)
+  return (GROUP_WORDS[group] ?? [group]).some(
+    (w) => words.includes(w) || words.includes(`${w}s`),
+  )
 }
 
 export function computeAutoLocatePlan(
@@ -66,9 +91,11 @@ export function computeAutoLocatePlan(
   for (const mapping of mappings) {
     const wine = wines.find(w => w.id === mapping.wineId)
     if (!wine) continue
+    const group = groupOf(wine)
+    if (!group) continue
     if (!locationTypeMap[mapping.locationId]) locationTypeMap[mapping.locationId] = {}
-    locationTypeMap[mapping.locationId][wine.type] =
-      (locationTypeMap[mapping.locationId][wine.type] || 0) + 1
+    locationTypeMap[mapping.locationId][group] =
+      (locationTypeMap[mapping.locationId][group] || 0) + 1
   }
 
   const assignments: WineLocationScore[] = []
@@ -76,6 +103,8 @@ export function computeAutoLocatePlan(
 
   for (const wine of candidates) {
     const wineQty = (wine.liveStock || 0) + (wine.shadowStock || 0) || 1
+    const group = groupOf(wine)
+    const isWine = !wine.kind || wine.kind === 'wine' || wine.kind === 'unknown'
 
     let bestScore = -1
     let bestLocation: StorageLocation | null = null
@@ -94,7 +123,7 @@ export function computeAutoLocatePlan(
 
       // Signal 1: Temperature match (+40)
       const tempF = parseTempF(loc.temperature)
-      const range = TEMP_RANGES[wine.type]
+      const range = isWine ? TEMP_RANGES[wine.type] : undefined
       if (tempF !== null && range && tempF >= range[0] && tempF <= range[1]) {
         score += 40
         reasons.push('Temperature match')
@@ -103,13 +132,14 @@ export function computeAutoLocatePlan(
       // Signal 2: Wine type grouping (+30 or +15)
       const typeMap = locationTypeMap[loc.id] || {}
       const totalInLoc = Object.values(typeMap).reduce((a, b) => a + b, 0)
-      const sameTypeCount = typeMap[wine.type] || 0
+      const sameTypeCount = group ? typeMap[group] || 0 : 0
       if (totalInLoc > 0 && sameTypeCount > totalInLoc / 2) {
         score += 30
-        reasons.push('Wine type grouping')
-      } else if (loc.name.toLowerCase().includes(wine.type)) {
+        reasons.push(isWine ? 'Wine type grouping' : 'Kept with the same drinks')
+      } else if (group && nameSuggestsGroup(loc.name, group)) {
+        // Whole words only: "Covered terrace" is not a red-wine zone.
         score += 15
-        reasons.push('Location name suggests wine type')
+        reasons.push(isWine ? 'Location name suggests wine type' : 'Location name suggests this drink')
       }
 
       // Signal 3: Capacity availability (+0–20 proportional; 0 when unrecorded)
@@ -149,7 +179,7 @@ export function computeAutoLocatePlan(
       assignments.push({
         wineId: wine.id,
         wineName: wine.name,
-        wineType: wine.type,
+        wineType: isWine ? wine.type : wine.kind!.replace(/_/g, ' '),
         locationId: bestLocation.id,
         locationName: bestLocation.name,
         locationColor: bestLocation.color,

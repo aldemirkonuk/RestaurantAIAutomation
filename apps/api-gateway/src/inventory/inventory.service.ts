@@ -107,6 +107,11 @@ export class InventoryService {
     const retailPriceAvg: number | null =
       row.master_wine_library?.retail_price_avg ?? null;
     const markupRatio: number | null = row.markup_ratio ?? null;
+    // F-739: what the drink IS. `kind` is the house item's own (ADR 0115);
+    // `beverageKind` is the library's verdict, which can be newer than a
+    // `kind` stamped when the item was added. Both travel; the page picks.
+    const beverageKind: string | null =
+      row.master_wine_library?.beverage_kind ?? null;
 
     const result = { ...row };
     if (row.master_wine_library) delete result.master_wine_library;
@@ -123,6 +128,8 @@ export class InventoryService {
       // fallback: `wineName` is non-null either way, so without this a caller
       // cannot see that a name is the library's rather than the house's.
       houseAlias,
+      kind: row.kind ?? null,
+      beverageKind,
       bottleSizeMl: effectiveBottleSizeMl,
       bottleSizeOz: roundOz(effectiveBottleSizeMl),
       pourSizeMl,
