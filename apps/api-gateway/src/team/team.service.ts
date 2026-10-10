@@ -2466,6 +2466,11 @@ export class TeamService {
    * save a labour setting gets a stored 28 it never chose. Making that column
    * nullable is a separate migration against a table with no rows; it is named
    * in `.planning/06-pages/team.md` §9 rather than silently carried.
+   *
+   * `labor_target_chosen` is the provenance that residual lacked (F-352): true
+   * when the settings record shows someone setting the target, so a page can
+   * tell an owner's 28 from the column's 28. `null` when the record could not
+   * be read — unknown, not "nobody chose it".
    */
   async getSettings(userId: string, restaurantId: string): Promise<any> {
     const { role } = await this.assertAccess(userId, restaurantId);
@@ -2489,6 +2494,7 @@ export class TeamService {
         moneyVisibleTo: "owner",
         mayChange,
         configured: true,
+        labor_target_chosen: await this.labourTargetChosen(restaurantId),
       };
     }
     return {
@@ -2499,7 +2505,36 @@ export class TeamService {
       moneyVisibleTo: "owner",
       mayChange,
       configured: false,
+      labor_target_chosen: false,
     };
+  }
+
+  /**
+   * Whether anyone ever set this restaurant's labour target: a
+   * `team_labour_settings_changed` row whose changes name `labor_target_pct`
+   * (written by `recordSettingsChange`). `null` when the record cannot be read.
+   */
+  private async labourTargetChosen(
+    restaurantId: string,
+  ): Promise<boolean | null> {
+    // One row per labour-settings save that moved something, so the set is
+    // small; the key is looked for here rather than in a JSON-path filter.
+    const { data, error } = await this.sb
+      .from("system_audit_log")
+      .select("changes")
+      .eq("restaurant_id", restaurantId)
+      .eq("action", "team_labour_settings_changed");
+    if (error) {
+      this.logger.error(
+        `labourTargetChosen: could not read the settings record of ` +
+          `${restaurantId}: ${error.message}`,
+      );
+      return null;
+    }
+    return (data ?? []).some(
+      (r: { changes?: Record<string, unknown> | null }) =>
+        r.changes != null && "labor_target_pct" in r.changes,
+    );
   }
 
   /**
@@ -2567,6 +2602,13 @@ export class TeamService {
         "Could not read the current team settings, so nothing was saved.",
       );
     }
+    // An owner who types the 28 the column already holds is choosing it for
+    // the first time, and that is recorded even though the value did not move
+    // (F-352): otherwise their 28 would read as "No target set" for ever.
+    const targetChosenBefore =
+      dto.laborTargetPct !== undefined
+        ? await this.labourTargetChosen(restaurantId)
+        : true;
     const patch: Record<string, any> = {
       restaurant_id: restaurantId,
       updated_at: new Date().toISOString(),
@@ -2597,6 +2639,7 @@ export class TeamService {
       role,
       before,
       patch,
+      targetChosenBefore === true,
     );
     return {
       ...rest,
@@ -2604,6 +2647,7 @@ export class TeamService {
       mayChange: this.labourSettingsMayChange(role),
       configured: true,
       audited,
+      labor_target_chosen: await this.labourTargetChosen(restaurantId),
     };
   }
 
@@ -2611,7 +2655,9 @@ export class TeamService {
    * Who changed the labour settings, when, as what role, and from what to what
    * (ADR 0215: the owner's alone to switch off or re-target, so the record
    * says who did). Only the fields the save wrote AND moved are recorded; a
-   * save that moved nothing records nothing. Never throws: the change has
+   * save that moved nothing records nothing — except a labour target of 28
+   * (the column DEFAULT) written while none had ever been chosen, which is the
+   * owner choosing it (F-352). Never throws: the change has
    * happened, and undoing it because the paper failed would be worse than
    * saying so, which the reply's `audited: false` does.
    */
@@ -2621,6 +2667,7 @@ export class TeamService {
     role: TeamRole,
     before: Record<string, any> | null,
     written: Record<string, any>,
+    targetChosenBefore = true,
   ): Promise<boolean | null> {
     const changes: Record<string, { from: unknown; to: unknown }> = {};
     for (const k of [
@@ -2640,7 +2687,11 @@ export class TeamService {
         !isNaN(Number(to))
           ? Number(from) === Number(to)
           : from === to;
-      if (!same) changes[k] = { from, to };
+      // Only 28, the column DEFAULT, is ambiguous: any other stored target
+      // was typed by someone, record or not.
+      const firstChoice =
+        k === "labor_target_pct" && !targetChosenBefore && Number(from) === 28;
+      if (!same || firstChoice) changes[k] = { from, to };
     }
     // Nothing moved: nothing to record, and `null` says so (not "failed").
     if (Object.keys(changes).length === 0) return null;

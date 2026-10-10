@@ -177,6 +177,10 @@ export interface TeamProvenance {
  *
  * So: 28 with no provenance is NOT a target. It is rendered as unknown, with
  * the default named, and the week is never measured against it.
+ *
+ * Provenance is the gateway's `labor_target_chosen` (F-352): true once the
+ * settings record shows someone setting the target, so an owner who chooses
+ * 28 gets 28.
  */
 export const LABOR_TARGET_COLUMN_DEFAULT = 28;
 
@@ -200,12 +204,12 @@ export function readLabourTarget(
   if (targetPct === LABOR_TARGET_COLUMN_DEFAULT && !hasProvenance) {
     return {
       pct: null,
-      why: `No target set. The stored value is ${LABOR_TARGET_COLUMN_DEFAULT}%, which is the column's own default (\`team_settings.labor_target_pct numeric(5,2) DEFAULT 28 NOT NULL\`), and nothing records anyone choosing it — so it is read as unknown rather than as a target this house set.`,
+      why: `No target set. ${LABOR_TARGET_COLUMN_DEFAULT}% is only the starting figure the system fills in, and nobody here has chosen it, so the week is not measured against it. Set one in Settings → Team.`,
     };
   }
   return {
     pct: targetPct,
-    why: 'Kept on the restaurant, in `team_settings`. No column records who set it.',
+    why: 'Set for this restaurant in Settings → Team.',
   };
 }
 
@@ -617,7 +621,12 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
   /** `configured` and `updated_at` are on the wire (measured 2026-09-04) but not
       on the shared `TeamSettings` type; §13 asks for the type to be widened. */
   const settingsRaw = weekQ.data?.settings as
-    | (WeekPayload['settings'] & { configured?: boolean; updated_at?: string })
+    | (WeekPayload['settings'] & {
+        configured?: boolean;
+        updated_at?: string;
+        /** Whether anyone ever set the labour target (F-352); `null` = could not be read. */
+        labor_target_chosen?: boolean | null;
+      })
     | undefined;
   const moneyVisible = laborRaw?.moneyVisible === true;
   const labor: LaborVM | null = laborRaw
@@ -668,10 +677,10 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     trailFailed: trailQ.isError,
     target: readLabourTarget(
       laborRaw && typeof laborRaw.targetPct === 'number' ? laborRaw.targetPct : null,
-      // Nothing files an audit row for a labour setting yet, so this is FALSE
-      // by measurement, not by omission: `TeamService.updateSettings` has no
-      // `record()` call (page note §13.5).
-      false,
+      // The gateway reads its settings record (`team_labour_settings_changed`)
+      // and says whether anyone set the target. Only a plain `true` counts:
+      // unknown (`null`) or an older gateway (absent) is not a choice.
+      settingsRaw?.labor_target_chosen === true,
     ),
     settingsUpdatedAt: settingsRaw?.updated_at ?? null,
     settingsConfigured: settingsRaw?.configured === true,

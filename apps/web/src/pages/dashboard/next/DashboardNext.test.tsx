@@ -221,6 +221,26 @@ describe('DashboardNext', () => {
 
   // DASH-W37 (founder, 2026-10-01, '"items" (Recommended)'): the house holds
   // every drink, so the page counts items, never wines.
+  it('does not call an empty cellar healthy (F-355)', async () => {
+    // The default stats hold 0 items and the low-stock list is empty.
+    routeGets();
+    mount();
+    expect(await screen.findByText(/The cellar is empty, so nothing can run low yet\./)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add the first bottle' })).toHaveAttribute('href', '/cellar');
+    expect(screen.queryByText(/The cellar holds/)).not.toBeInTheDocument();
+  });
+
+  it('says the cellar holds only when it holds something', async () => {
+    routeGets({
+      '/dashboard/stats/': {
+        totalWines: 4, totalBottles: 30, lowStockItems: 0, pendingOrders: 0, totalVolumeMl: 0, totalVolumeOz: 0,
+      },
+    });
+    mount();
+    expect(await screen.findByText('Nothing is running low. The cellar holds.')).toBeInTheDocument();
+    expect(screen.queryByText(/The cellar is empty/)).not.toBeInTheDocument();
+  });
+
   it('counts items, never wines', async () => {
     routeGets({
       '/low-stock': [

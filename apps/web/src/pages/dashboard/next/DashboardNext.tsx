@@ -235,7 +235,11 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
                 the day-book at /notifications. */}
             <OneTapPanel restaurantId={activeRestaurantId} />
             <WeekAhead restaurantId={activeRestaurantId} zone={zone} />
-            <LowStockPanel items={spine.lowStock} onRetry={spine.refetch} />
+            <LowStockPanel
+              items={spine.lowStock}
+              cellarSize={spine.stats ? spine.stats.totalWines : null}
+              onRetry={spine.refetch}
+            />
             <ActivityPanel items={spine.activity} onRetry={spine.refetch} />
           </div>
         </div>

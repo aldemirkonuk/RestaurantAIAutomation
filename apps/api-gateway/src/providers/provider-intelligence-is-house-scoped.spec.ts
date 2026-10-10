@@ -253,8 +253,6 @@ const seed = () => ({
       is_active: true,
       status: "active",
       end_date: "2026-09-22",
-      savings_realized: 10,
-      times_used: 1,
     },
     {
       id: "promo-b",
@@ -264,8 +262,6 @@ const seed = () => ({
       is_active: true,
       status: "active",
       end_date: "2026-09-22",
-      savings_realized: 990,
-      times_used: 9,
     },
     {
       id: "promo-cross",
@@ -275,8 +271,6 @@ const seed = () => ({
       is_active: true,
       status: "active",
       end_date: "2026-09-22",
-      savings_realized: 500,
-      times_used: 5,
     },
   ],
   conversation_embeddings: [
@@ -487,12 +481,13 @@ describe("provider intelligence answers only for the caller's house", () => {
     expect(rows.map((r: { id: string }) => r.id)).toEqual(["promo-a"]);
   });
 
-  it("promotions/savings totals only this house's savings", async () => {
+  it("promotions/savings gives no figure: nothing records a saving (F-347)", async () => {
     const { controller } = setup();
 
+    // `provider_promotions` has no savings_realized / times_used columns, so
+    // there is nothing to total for any house, this one included.
     const savings = await controller.getPromoSavings(userA);
-    expect(savings.totalSavings).toBe(10);
-    expect(savings.byProvider).toHaveLength(1);
+    expect(savings).toBeNull();
   });
 
   it("promotions/compare groups only this house's promotions", async () => {
