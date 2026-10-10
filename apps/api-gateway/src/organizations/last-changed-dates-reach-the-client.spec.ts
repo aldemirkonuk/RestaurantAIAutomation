@@ -161,9 +161,12 @@ describe("chains carry their own last-changed date", () => {
   });
 
   it("stamps updated_at on a rename, because the table has no trigger", async () => {
-    // Renaming a group is an organisation owner's act (F-313, 2026-10-08).
+    // Renaming a group is an organisation owner's act (F-313, 2026-10-08),
+    // who still owns one of its houses (F-935, 2026-10-10).
     const { service, probe } = makeService({
       orgMembers: [{ organization_id: "org-1", role: "owner" }],
+      ura: [{ restaurant_id: "r1" }],
+      restaurants: [{ organization_id: "org-1" }],
       chainRow: { id: "c1" },
     });
 

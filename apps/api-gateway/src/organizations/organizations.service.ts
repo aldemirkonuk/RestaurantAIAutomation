@@ -839,6 +839,12 @@ export class OrganizationsService {
    * `createLocation` applies (ADR 0164; `org-role.ts`). Until 2026-10-08 any
    * organisation member could do all three, and a house grant writes an
    * organisation row for invited staff too (`orgRoleForHouseGrant`).
+   *
+   * F-935 (2026-10-10): the organisation row alone is not enough. Nothing
+   * demotes or removes it when the person's house role changes, so a founder
+   * demoted to staff, or removed, kept renaming and deleting the groups. An
+   * organisation counts as owned only while the person is also an active
+   * owner of at least one of its houses (`user_restaurant_access`).
    */
   private async ownedOrgIdsOrRefuse(
     userId: string,
@@ -856,9 +862,12 @@ export class OrganizationsService {
         "Could not confirm who owns this organisation. Nothing was changed; try again.",
       );
     }
-    const owned = (rows ?? [])
+    const orgOwned = (rows ?? [])
       .filter((r: { role?: string | null }) => r.role === ORG_OWNER)
       .map((r: { organization_id: string }) => r.organization_id);
+    const houseOwned =
+      orgOwned.length > 0 ? await this.orgsOwnedByHouse(userId, act) : [];
+    const owned = orgOwned.filter((id: string) => houseOwned.includes(id));
     if (owned.length === 0) {
       throw new ForbiddenException({
         message: `Only an owner of the organisation can ${act}. Nothing was changed.`,
@@ -866,6 +875,45 @@ export class OrganizationsService {
       });
     }
     return owned;
+  }
+
+  /**
+   * The organisations of the houses this person is an active owner of (F-935).
+   * A failed read is a 503, never "owns nothing".
+   */
+  private async orgsOwnedByHouse(
+    userId: string,
+    act: string,
+  ): Promise<string[]> {
+    const unreadable = (message: string): never => {
+      this.logger.error(
+        `could not read ${userId}'s houses to ${act}: ${message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not confirm who owns this organisation. Nothing was changed; try again.",
+      );
+    };
+    const { data: access, error: accessErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("restaurant_id")
+        .eq("user_id", userId)
+        .eq("role", "owner")
+        .eq("is_active", true);
+    if (accessErr) unreadable(accessErr.message);
+    const houseIds = (access ?? [])
+      .map((a: { restaurant_id?: string | null }) => a.restaurant_id)
+      .filter((id): id is string => typeof id === "string");
+    if (houseIds.length === 0) return [];
+    const { data: houses, error: housesErr } =
+      await this.databaseService.supabase
+        .from("restaurants")
+        .select("organization_id")
+        .in("id", houseIds);
+    if (housesErr) unreadable(housesErr.message);
+    return (houses ?? [])
+      .map((h: { organization_id?: string | null }) => h.organization_id)
+      .filter((id): id is string => typeof id === "string");
   }
 
   async renameChain(

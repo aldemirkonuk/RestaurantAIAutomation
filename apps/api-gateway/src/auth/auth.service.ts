@@ -2715,12 +2715,15 @@ export class AuthService {
     role: string;
   }): Promise<void> {
     try {
-      const position =
+      // The placeholder's NAME says which role it waits for; its job title
+      // stays empty, because the access role is not a title and a copy of it
+      // goes stale on the first role change (F-931).
+      const roleWord =
         params.role === "owner"
-          ? "Owner"
+          ? "owner"
           : params.role === "manager"
-            ? "Manager"
-            : "Staff";
+            ? "manager"
+            : "staff";
       if (params.email) {
         const existing = await this.findTeamMemberByEmail(
           params.restaurantId,
@@ -2743,7 +2746,7 @@ export class AuthService {
           invite_id: params.inviteId,
           email: params.email,
           display_name: params.email.split("@")[0] || "Invited member",
-          position,
+          position: null,
           employment_type: "full_time",
           status: "active",
         });
@@ -2753,8 +2756,8 @@ export class AuthService {
       await this.databaseService.supabase.from("team_members").insert({
         restaurant_id: params.restaurantId,
         invite_id: params.inviteId,
-        display_name: `Pending ${position.toLowerCase()}`,
-        position,
+        display_name: `Pending ${roleWord}`,
+        position: null,
         employment_type: "full_time",
         status: "active",
       });
@@ -2816,12 +2819,8 @@ export class AuthService {
         invite_id: null,
         email: params.email ?? null,
         display_name: params.name || params.email || "Team member",
-        position:
-          params.role === "owner"
-            ? "Owner"
-            : params.role === "manager"
-              ? "Manager"
-              : "Staff",
+        // The job title, never a copy of the access role (F-931).
+        position: null,
         employment_type: "full_time",
         status: "active",
       });

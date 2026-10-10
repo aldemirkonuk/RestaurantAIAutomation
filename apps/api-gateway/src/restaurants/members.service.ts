@@ -25,6 +25,7 @@ import {
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { TeamService } from "../team/team.service";
 import { retireInvitePlaceholders } from "../team/invite-placeholders";
+import { roleWordPosition } from "../team/roster-position";
 
 @Injectable()
 export class MembersService {
@@ -321,6 +322,27 @@ export class MembersService {
       );
       if (!targetAccess) {
         throw new InternalServerErrorException("Failed to update member role");
+      }
+    }
+
+    // The roster's job title is not the access role (F-931). A title that is
+    // still the OLD role's word was copied from the role when the row was
+    // made, not chosen, and would now print beside the new role and disagree
+    // with it ("Staff · manager"), so it goes. A title someone chose stays.
+    // The role change has happened; a failed clear is logged, not refused.
+    const staleTitle = roleWordPosition(previousRole);
+    if (staleTitle && previousRole !== newRole) {
+      const { error: titleErr } = await this.databaseService.supabase
+        .from("team_members")
+        .update({ position: null, updated_at: new Date().toISOString() })
+        .eq("restaurant_id", restaurantId)
+        .eq("user_id", targetUserId)
+        .eq("position", staleTitle);
+      if (titleErr) {
+        this.logger.error(
+          `updateMemberRole could not clear the copied title "${staleTitle}" ` +
+            `for ${targetUserId} in ${restaurantId}: ${titleErr.message}`,
+        );
       }
     }
 

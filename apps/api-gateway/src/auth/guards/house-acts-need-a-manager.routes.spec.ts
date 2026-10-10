@@ -242,6 +242,12 @@ function chainWorld(orgRole: string | null): StubDb {
       { id: "chain-1", organization_id: CHAIN_ORG, name: "Harbour" },
     ],
     restaurants: [{ id: "house-1", organization_id: CHAIN_ORG, chain_id: "chain-1" }],
+    // An owner of the house, so only the organisation row decides here; the
+    // house-role half of the rule (F-935) is pinned in
+    // `organizations/chains-owner-and-reads.spec.ts`.
+    user_restaurant_access: [
+      { user_id: P, restaurant_id: "house-1", role: "owner", is_active: true },
+    ],
     users: [],
   });
 }
