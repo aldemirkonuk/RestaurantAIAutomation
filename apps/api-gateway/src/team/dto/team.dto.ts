@@ -51,6 +51,12 @@ export class UpdateTeamMemberDto {
   @IsOptional() @IsDateString() hireDate?: string;
   @IsOptional() @IsIn(["active", "inactive", "trial"]) status?: string;
   @IsOptional() @IsString() notes?: string | null;
+  /**
+   * The row's `updated_at` as the sheet opened it (F-1031). Sent, the save
+   * lands only if nobody changed the person since; otherwise a 409 in words,
+   * so a stale sheet never puts back a status or wage another manager set.
+   */
+  @IsOptional() @IsString() expectUpdatedAt?: string;
 }
 
 // ── Shifts ───────────────────────────────────────────────────────────────
@@ -185,6 +191,14 @@ export class CreateTimeOffDto {
 
 export class ReviewRequestDto {
   @IsIn(["approved", "denied"]) status: "approved" | "denied";
+  /**
+   * The status the reviewer saw (F-1034): `pending` from "Waiting on you",
+   * `approved` from "Mark paid". Sent, a request already decided otherwise is
+   * a 409 in words and is neither changed nor announced again.
+   */
+  @IsOptional()
+  @IsIn(["pending", "approved", "denied"])
+  expectStatus?: "pending" | "approved" | "denied";
   /** The reviewer says whether the days are paid (ADR 0215). */
   @IsOptional()
   @IsIn(["unknown", "paid", "unpaid"])

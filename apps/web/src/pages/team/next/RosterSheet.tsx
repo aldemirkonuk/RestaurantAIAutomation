@@ -524,7 +524,7 @@ export function MemberSheet({
 }) {
   const editing = member !== null;
   const resolved = member ? resolveName(member) : null;
-  const [form, setForm] = useState({
+  const [opening] = useState(() => ({
     displayName: resolved?.known ? resolved.text : '',
     email: member?.email ?? member?.linkedUser?.email ?? '',
     phone: member?.phone ?? '',
@@ -535,7 +535,8 @@ export function MemberSheet({
     skills: (member?.skills ?? []).join(', '),
     status: member?.status ?? 'active',
     notes: member?.notes ?? '',
-  });
+  }));
+  const [form, setForm] = useState(opening);
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const isSoleOwner = member?.role === 'owner' && ownerCount !== null && ownerCount <= 1;
@@ -606,7 +607,17 @@ export function MemberSheet({
           .filter(Boolean),
         notes: form.notes.trim() || blank,
       };
-      if (editing) payload.status = form.status;
+      if (editing) {
+        payload.status = form.status;
+        // Only what this sheet changed goes out, against the row as it
+        // opened (F-1031): re-sending the opening status and wage put back a
+        // deactivation or raise another manager had made since. The gateway
+        // refuses the save in words if the row moved under it.
+        for (const key of Object.keys(opening) as (keyof typeof opening)[]) {
+          if (form[key] === opening[key]) delete payload[key];
+        }
+        if (member?.updated_at) payload.expectUpdatedAt = member.updated_at;
+      }
       return editing
         ? updateTeamMember(member!.id, payload)
         : createTeamMember(payload as never);
@@ -1166,6 +1177,11 @@ export function memberFormRefusal(
 export function memberSaveRefusal(err: unknown): string | null {
   const raw = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
   const lines = (Array.isArray(raw) ? raw : [raw]).filter((m): m is string => typeof m === 'string');
+  // Someone else changed the person while the sheet was open (F-1031): the
+  // gateway's 409 is already in the owner's words.
+  if ((err as { response?: { status?: number } })?.response?.status === 409 && lines.length) {
+    return lines.join(' ');
+  }
   const said: string[] = [];
   for (const line of lines) {
     if (/^email /.test(line)) said.push('The email is not a full address.');

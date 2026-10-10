@@ -39,6 +39,8 @@ export interface TeamMember {
   hire_date: string | null
   status: string
   notes: string | null
+  /** The row's stamp; the roster sheet saves against it (F-1031). */
+  updated_at?: string
   role: 'owner' | 'manager' | 'staff' | null
   accountLinked: boolean
   linkedUser?: { name?: string; email?: string; avatar_url?: string } | null
@@ -536,10 +538,13 @@ export async function reviewTimeOff(
   status: 'approved' | 'denied',
   leaveType?: LeaveType,
   rid?: string,
+  /** The status the row showed; a request decided since is a 409 (F-1034). */
+  expectStatus?: 'pending' | 'approved' | 'denied',
 ) {
   const { data } = await apiClient.patch(`${base(rid)}/time-off/${requestId}`, {
     status,
     ...(leaveType ? { leaveType } : {}),
+    ...(expectStatus ? { expectStatus } : {}),
   })
   return data
 }

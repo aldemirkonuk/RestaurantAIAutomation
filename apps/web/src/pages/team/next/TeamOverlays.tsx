@@ -720,8 +720,14 @@ export function TimeOffSheet({
   }, [members]);
 
   const review = useMutation({
-    mutationFn: (v: { id: string; status: 'approved' | 'denied'; leaveType?: LeaveType }) =>
-      reviewTimeOff(v.id, v.status, v.leaveType),
+    // Each button says the status its row showed, so a request another
+    // manager decided since is refused, not overturned (F-1034).
+    mutationFn: (v: {
+      id: string;
+      status: 'approved' | 'denied';
+      leaveType?: LeaveType;
+      expect: 'pending' | 'approved';
+    }) => reviewTimeOff(v.id, v.status, v.leaveType, undefined, v.expect),
     onSuccess: onChanged,
   });
   const add = useMutation({
@@ -759,8 +765,8 @@ export function TimeOffSheet({
       <div className="tm-in">
         <div style={{ padding: '12px 16px 0' }}>
           <MutationError when={review.isError}>
-            The decision was not recorded, so the request is still where it was. If the
-            person withdrew it, it is no longer yours to decide.
+            {serverMessage(review.error) ??
+              'The decision was not recorded, so the request is still where it was. If the person withdrew it, it is no longer yours to decide.'}
           </MutationError>
           <MutationError when={add.isError}>
             {serverMessage(add.error) ??
@@ -798,7 +804,7 @@ export function TimeOffSheet({
                 type="button"
                 className="tm-ctl tm-ctl--sm"
                 disabled={review.isPending}
-                onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid' })}
+                onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid', expect: 'pending' })}
               >
                 Approve as paid
               </button>
@@ -806,7 +812,7 @@ export function TimeOffSheet({
                 type="button"
                 className="tm-ctl tm-ctl--sm"
                 disabled={review.isPending}
-                onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid' })}
+                onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid', expect: 'pending' })}
               >
                 Approve as unpaid
               </button>
@@ -814,7 +820,7 @@ export function TimeOffSheet({
                 type="button"
                 className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                 disabled={review.isPending}
-                onClick={() => review.mutate({ id: r.id, status: 'denied' })}
+                onClick={() => review.mutate({ id: r.id, status: 'denied', expect: 'pending' })}
               >
                 Deny
               </button>
@@ -845,7 +851,7 @@ export function TimeOffSheet({
                       type="button"
                       className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                       disabled={review.isPending}
-                      onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid' })}
+                      onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid', expect: 'approved' })}
                     >
                       Mark paid
                     </button>
@@ -853,7 +859,7 @@ export function TimeOffSheet({
                       type="button"
                       className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                       disabled={review.isPending}
-                      onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid' })}
+                      onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid', expect: 'approved' })}
                     >
                       Mark unpaid
                     </button>
@@ -865,7 +871,7 @@ export function TimeOffSheet({
                   type="button"
                   className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                   disabled={review.isPending}
-                  onClick={() => review.mutate({ id: r.id, status: 'denied' })}
+                  onClick={() => review.mutate({ id: r.id, status: 'denied', expect: 'approved' })}
                 >
                   Turn it down
                 </button>
