@@ -134,6 +134,64 @@ describe("F-657: a house goes only into a chain of its own organisation", () => 
   });
 });
 
+describe("F-912: moving a branch between chains is for an organisation owner", () => {
+  const asManager = () =>
+    world({
+      organization_members: [
+        { organization_id: ORG, user_id: P, role: "manager" },
+      ],
+      user_restaurant_access: [
+        {
+          user_id: P,
+          restaurant_id: "house-1",
+          role: "manager",
+          is_active: true,
+        },
+      ],
+    });
+  const chainOf = (db: StubDb) =>
+    db.tables.restaurants.find((r: any) => r.id === "house-1")?.chain_id;
+
+  it("refuses a manager who takes a branch out of its chain, and changes nothing", async () => {
+    const db = asManager();
+    const err = await settle(
+      service(db).updateLocation(P, "house-1", { chainId: null }),
+    );
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect((err as ForbiddenException).getResponse()).toMatchObject({
+      code: "NOT_ORGANISATION_OWNER",
+    });
+    expect(chainOf(db)).toBe("chain-a");
+  });
+
+  it("refuses a manager who moves a branch to another chain, and changes nothing", async () => {
+    const db = asManager();
+    const err = await settle(
+      service(db).updateLocation(P, "house-1", {
+        name: "Quay",
+        chainId: "chain-b",
+      }),
+    );
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(chainOf(db)).toBe("chain-a");
+    expect(
+      db.tables.restaurants.find((r: any) => r.id === "house-1")?.name,
+    ).toBeUndefined();
+  });
+
+  it("lets a manager rename a branch while resending its own chain", async () => {
+    const db = asManager();
+    await service(db).updateLocation(P, "house-1", {
+      name: "Quay",
+      chainId: "chain-a",
+    });
+    expect(chainOf(db)).toBe("chain-a");
+    expect(
+      db.tables.restaurants.find((r: any) => r.id === "house-1")?.name,
+    ).toBe("Quay");
+  });
+});
+
 describe("F-658: the chain register refuses on a failed read and never writes", () => {
   it("answers 503 when the organisation rows cannot be read", async () => {
     const db = world();

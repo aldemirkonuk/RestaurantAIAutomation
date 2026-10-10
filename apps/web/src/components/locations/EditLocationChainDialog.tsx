@@ -108,6 +108,9 @@ interface EditLocationChainDialogProps {
   open: boolean
   onClose: () => void
   onSaved: () => void
+  /** F-912: moving a branch between chains is the organisation owner's act;
+      anyone else sees the chain and cannot change it. */
+  canMoveChain?: boolean
 }
 
 
@@ -117,6 +120,7 @@ export function EditLocationChainDialog({
   open,
   onClose,
   onSaved,
+  canMoveChain = true,
 }: EditLocationChainDialogProps) {
   const [selectedChainId, setSelectedChainId] = useState<string>(branch.chain_id ?? '')
   const [locationName, setLocationName] = useState(branch.name)
@@ -215,7 +219,7 @@ export function EditLocationChainDialog({
     setFailure(null)
     try {
       const res = await apiClient.patch(`/organizations/locations/${branch.id}`, {
-        chainId: selectedChainId || null,
+        ...(canMoveChain ? { chainId: selectedChainId || null } : {}),
         name: locationName.trim() !== branch.name ? locationName.trim() : undefined,
         city: city.trim() !== (branch.city ?? '') ? (city.trim() || null) : undefined,
         // The pair travels together or not at all: the gateway reads the
@@ -401,6 +405,14 @@ export function EditLocationChainDialog({
             />
           </div>
 
+          {!canMoveChain ? (
+          <div>
+            <span className="mdv-label">Chain</span>
+            <p className="mdv-hintline">
+              {branch.chain_name ? `In ${branch.chain_name}` : 'Standalone'} — only an owner can move a branch to another chain.
+            </p>
+          </div>
+          ) : (
           <div>
             <span className="mdv-label">Chain</span>
             {/* `radiogroup` + `aria-checked`: one of these is true at a time,
@@ -429,6 +441,7 @@ export function EditLocationChainDialog({
               })}
             </div>
           </div>
+          )}
 
           {placeBlock}
 
@@ -519,6 +532,11 @@ export function EditLocationChainDialog({
               {/* Chain radio cards */}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Chain</label>
+                {!canMoveChain ? (
+                  <p className="text-xs text-gray-500">
+                    {branch.chain_name ? `In ${branch.chain_name}` : 'Standalone'} — only an owner can move a branch to another chain.
+                  </p>
+                ) : (
                 <div className="space-y-1.5">
                   {chainOptions.map((opt) => {
                     const selected = selectedChainId === opt.id
@@ -547,6 +565,7 @@ export function EditLocationChainDialog({
                     )
                   })}
                 </div>
+                )}
               </div>
 
               {/* Contextual warnings */}

@@ -15,7 +15,6 @@
     "apps/api-gateway/src/auth/auth.service.ts::user_oauth_accounts::rows": 1,
     "apps/api-gateway/src/auth/auth.service.ts::user_restaurant_access::data": 1,
     "apps/api-gateway/src/auth/auth.service.ts::user_restaurant_access::existingAccess": 1,
-    "apps/api-gateway/src/auth/auth.service.ts::user_restaurant_access::ownerRows": 1,
     "apps/api-gateway/src/auth/auth.service.ts::user_roles::data": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::actor": 1,
     "apps/api-gateway/src/auth/auth.service.ts::users::existingUser": 1,

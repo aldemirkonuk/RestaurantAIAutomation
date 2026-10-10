@@ -4860,20 +4860,39 @@ export class AuthService {
     // Soft-guard: block if sole owner of any restaurant. Unlike the guard
     // above, this one can be cleared: an owner can make another member an
     // owner of the house (MembersService.updateMemberRole).
-    const { data: ownerRows } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("restaurant_id, role")
-      .eq("user_id", userId)
-      .eq("role", "owner")
-      .eq("is_active", true);
+    // F-916: a failed read is not "owns nothing" — refuse before any house is left.
+    const { data: ownerRows, error: ownerError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("restaurant_id, role")
+        .eq("user_id", userId)
+        .eq("role", "owner")
+        .eq("is_active", true);
+    if (ownerError) {
+      this.logger.error(
+        `deleteAccount could not read ${userId}'s restaurants: ${ownerError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not check who owns your restaurants. Nothing was deleted; try again.",
+      );
+    }
 
     for (const row of ownerRows ?? []) {
-      const { count } = await this.databaseService.supabase
+      const { count, error: countError } = await this.databaseService.supabase
         .from("user_restaurant_access")
         .select("*", { count: "exact", head: true })
         .eq("restaurant_id", row.restaurant_id)
         .eq("role", "owner")
         .eq("is_active", true);
+      if (countError) {
+        this.logger.error(
+          `deleteAccount could not count the owners of restaurant ` +
+            `${row.restaurant_id}: ${countError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not check who owns your restaurants. Nothing was deleted; try again.",
+        );
+      }
       if ((count ?? 0) <= 1) {
         throw new BadRequestException(
           "You are the only owner of a restaurant. Make another member an owner " +

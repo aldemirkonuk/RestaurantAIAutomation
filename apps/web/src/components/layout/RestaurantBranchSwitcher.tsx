@@ -13,7 +13,10 @@ interface RestaurantBranchSwitcherProps {
 }
 
 export function RestaurantBranchSwitcher({ compact = true, className }: RestaurantBranchSwitcherProps) {
-  const { activeRestaurantId, availableRestaurants, setActiveRestaurantId } = useAuth()
+  const { activeRestaurantId, availableRestaurants, setActiveRestaurantId, activeRole } = useAuth()
+  // F-913: only an owner may open a location (the gateway refuses anyone
+  // else, F-242), so only an owner is offered the link.
+  const canAddLocation = activeRole === 'owner'
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
@@ -104,18 +107,20 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
           title="Switch location"
           showClose={false}
           footer={
-            <span style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-              <button
-                type="button"
-                className="mdv-link"
-                style={{ color: 'var(--ink-4)' }}
-                onClick={() => {
-                  navigate('/settings?tab=locations&action=add')
-                  setOpen(false)
-                }}
-              >
-                Add location
-              </button>
+            <span style={{ display: 'flex', justifyContent: canAddLocation ? 'space-between' : 'flex-end', gap: 12 }}>
+              {canAddLocation && (
+                <button
+                  type="button"
+                  className="mdv-link"
+                  style={{ color: 'var(--ink-4)' }}
+                  onClick={() => {
+                    navigate('/settings?tab=locations&action=add')
+                    setOpen(false)
+                  }}
+                >
+                  Add location
+                </button>
+              )}
               <button
                 type="button"
                 className="mdv-link"
@@ -228,18 +233,20 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
                 )}
               </div>
 
-              <div className="border-t border-gray-100 px-4 py-2.5 flex items-center justify-between bg-gray-50/50">
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigate('/settings')
-                    setOpen(false)
-                  }}
-                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
-                >
-                  <MapPin className="w-3 h-3" />
-                  Add location
-                </button>
+              <div className={`border-t border-gray-100 px-4 py-2.5 flex items-center ${canAddLocation ? 'justify-between' : 'justify-end'} bg-gray-50/50`}>
+                {canAddLocation && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate('/settings?tab=locations&action=add')
+                      setOpen(false)
+                    }}
+                    className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+                  >
+                    <MapPin className="w-3 h-3" />
+                    Add location
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {

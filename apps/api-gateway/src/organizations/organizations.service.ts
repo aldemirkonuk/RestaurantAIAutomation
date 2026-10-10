@@ -666,7 +666,7 @@ export class OrganizationsService {
     // "not found", a 404 for an outage.
     const { data: rest, error: restError } = await this.databaseService.supabase
       .from("restaurants")
-      .select("organization_id, name, country, state_province")
+      .select("organization_id, name, country, state_province, chain_id")
       .eq("id", restaurantId)
       .in("organization_id", orgIds)
       .maybeSingle();
@@ -694,6 +694,26 @@ export class OrganizationsService {
       await this.assertHouseOwnerForPlace(userId, restaurantId);
     } else if (touchesOps) {
       await this.assertManagerOrOwner(userId, restaurantId);
+    }
+    // F-912: moving a branch into, out of or between chains is the
+    // organisation owner's act, like creating or renaming a chain (F-313). A
+    // manager's Edit that resends the branch's own chain still passes.
+    if (
+      dto.chainId !== undefined &&
+      (dto.chainId ?? null) !==
+        ((rest as { chain_id?: string | null }).chain_id ?? null)
+    ) {
+      const owned = await this.ownedOrgIdsOrRefuse(
+        userId,
+        "move a branch to another chain",
+      );
+      if (!owned.includes(rest.organization_id)) {
+        throw new ForbiddenException({
+          message:
+            "Only an owner of the organisation can move a branch to another chain. Nothing was changed.",
+          code: "NOT_ORGANISATION_OWNER",
+        });
+      }
     }
 
     // The pair's own changes, decided before anything is written.
