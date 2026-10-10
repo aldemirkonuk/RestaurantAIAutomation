@@ -3401,9 +3401,10 @@ export class ProcurementService {
     dto: UpdateOrderDto,
     /**
      * Set by a caller that has ALREADY run `assertStatusTransition` for this
-     * exact move (today: `cancelOrder`). Not a way to opt out of the rule — a
-     * caller that sets it without having checked is writing an unchecked state
-     * change, and there is exactly one such caller, named here.
+     * exact move (today: `cancelOrder` and `closeOrderShort`). Not a way to
+     * opt out of the rule — a caller that sets it without having checked is
+     * writing an unchecked state change, and there are exactly two such
+     * callers, named here.
      */
     opts?: {
       statusTransitionAlreadyChecked?: boolean;
@@ -3455,7 +3456,27 @@ export class ProcurementService {
       });
     }
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
-      await this.assertStatusTransition(restaurantId, orderId, dto.status);
+      const { from } = await this.assertStatusTransition(
+        restaurantId,
+        orderId,
+        dto.status,
+      );
+      // F-826 — closing a partly received order is `closeOrderShort`'s act: a
+      // manager's or owner's, with a reason, and only while bottles are still
+      // owed and the invoice has been checked. A PATCH carrying COMPLETED
+      // skipped all of that, so a fully delivered order still waiting on its
+      // invoice could be closed by anyone, after which the invoice could never
+      // be checked.
+      if (
+        from === ProcurementOrderStatus.PARTIALLY_RECEIVED &&
+        dto.status === ProcurementOrderStatus.COMPLETED
+      ) {
+        throw new UnprocessableEntityException({
+          reason: "close_short_through_its_own_act",
+          message:
+            "A partly received order is closed through its own act, which a manager or owner gives with a reason once the invoice is checked and bottles are still owed — not by editing its status. Nothing was changed.",
+        });
+      }
     }
 
     // D-06: Block location assignment while order is in a pending state.

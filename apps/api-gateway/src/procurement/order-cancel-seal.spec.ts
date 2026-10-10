@@ -474,6 +474,21 @@ describe("the PATCH route is held to the same table", () => {
     expect(h.order.status).toBe(ProcurementOrderStatus.CONFIRMED);
   });
 
+  // F-826: a PATCH to COMPLETED skipped the role, the reason, the owed
+  // bottles and the invoice check that closing short asks for, and a closed
+  // order can never be checked against its invoice.
+  it("refuses to close a partly received order by PATCH, and writes nothing", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.PARTIALLY_RECEIVED });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, {
+        status: ProcurementOrderStatus.COMPLETED,
+      } as any),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(err.getResponse().reason).toBe("close_short_through_its_own_act");
+    expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
+  });
+
   it("leaves a PATCH that carries no status alone", async () => {
     const h = await makeService();
     await h.service.updateOrder(HOUSE, ORDER_ID, {
