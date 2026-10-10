@@ -140,6 +140,44 @@ export function transition(
   return { ok: true, next: { state: input.to } };
 }
 
+/** The paper a claim is marked credited against, as the house filed it. */
+export interface CreditMemo {
+  docType: string;
+  providerId: string | null;
+  /** Stored positive (x12-credit.ts sign convention); null when never read. */
+  total: number | null;
+}
+
+/**
+ * Whether `memo` can settle this claim for `creditedAmount`, given what other
+ * claims have already been credited against it (F-672).
+ *
+ * Settling two claims on one memo is legal (see `transition`), but the memo's
+ * own total is the ceiling: one $40 memo cannot settle two claims at $400 each,
+ * or `recovered` reports $800 the vendor never gave back. Returns the refusal
+ * in the owner's words, or null when it may go ahead. The house check is the
+ * caller's: a memo it cannot find in this house never reaches here.
+ */
+export function memoRefusal(
+  memo: CreditMemo,
+  claimProviderId: string | null,
+  creditedAmount: number,
+  alreadyCreditedOnMemo: number,
+): string | null {
+  if (memo.docType !== "credit_memo")
+    return "That paper is not a credit memo. Pick the vendor's credit memo that settles this claim.";
+  if (memo.providerId && claimProviderId && memo.providerId !== claimProviderId)
+    return "That credit memo is from a different vendor than this claim.";
+  if (memo.total == null) return null;
+  const total = Math.abs(memo.total);
+  const left = Math.round((total - alreadyCreditedOnMemo) * 100) / 100;
+  if (creditedAmount > left + 0.005)
+    return left <= 0
+      ? `That credit memo is for ${total.toFixed(2)}, and all of it is already credited to other claims.`
+      : `That credit memo is for ${total.toFixed(2)}, and only ${left.toFixed(2)} of it is left after other claims. Credit at most ${left.toFixed(2)}.`;
+  return null;
+}
+
 /**
  * Verdicts that justify asking a distributor for money back.
  *

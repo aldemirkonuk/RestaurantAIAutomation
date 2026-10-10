@@ -5,6 +5,7 @@ import { DeliveryClockService } from "./delivery-clock.service";
 import { ReadResult } from "./canonical-document.service";
 import { matchLines, MatchableLine } from "../documents/line-matcher";
 import { DeliveryStockService, CostReceipt } from "./delivery-stock.service";
+import type { CreditReason } from "../documents/credit-ledger";
 
 /**
  * DeliveryService — the delivery's own doors (ADR 0103 D1/D3/D5/D6/D7, A2, A4, A6).
@@ -66,6 +67,32 @@ export const REASON_CLASSES = [
   "DEPOSIT_OR_FEE",
 ] as const;
 export type ReasonClass = (typeof REASON_CLASSES)[number];
+
+/**
+ * What a refusal or a dispute carries outside the delivery (F-669): the
+ * verdict it puts on the order, the reason of the credit claim it opens when
+ * money is at risk, and the sentence both say. Other reasons stay on the
+ * delivery's own thread until it is agreed.
+ */
+const CARRIED: Partial<
+  Record<ReasonClass, { match: string; claim: CreditReason; words: string }>
+> = {
+  WRONG_VENUE: {
+    match: "rejected",
+    claim: "other",
+    words: "Refused at delivery: the truck was meant for another restaurant.",
+  },
+  DAMAGED: {
+    match: "rejected",
+    claim: "damaged",
+    words: "Disputed at delivery: goods arrived damaged.",
+  },
+  SHORT_SHIP: {
+    match: "short_shipped",
+    claim: "short_shipped",
+    words: "Disputed at delivery: the vendor sent less than was ordered.",
+  },
+};
 
 /** States a delivery has finished from. Nothing moves it out of these. */
 const SETTLED = ["VERIFIED", "CANCELLED", "REJECTED"];
@@ -589,6 +616,8 @@ export class DeliveryService {
       }
     }
 
+    await this.carryOutward(restaurantId, delivery, proposalId, userId, input);
+
     // D8 — "the vendor proposed …". Only for the vendor's side: the restaurant
     // does not need telling what it just typed.
     if (input.side === "vendor")
@@ -612,6 +641,151 @@ export class DeliveryService {
       );
 
     return { ok: true, value: { proposalId, delivery } };
+  }
+
+  /**
+   * A refusal or the house's own dispute reaches the order and the credits
+   * (F-669). Before this a refused truck left its order reading as delivered
+   * as ordered, and a damaged or short line with money at risk never became a
+   * claim on Receipts › Credits — so the vendor scorecard, which reads both,
+   * never saw either.
+   *
+   *   The order gets the sentence in its discrepancy notes, and the verdict
+   *   when it has none stronger yet (a later invoice verification rewrites
+   *   both, as it does for any order).
+   *   The house's own position with money at risk opens a claim, one per
+   *   delivery line and reason; a newer position on the same line moves the
+   *   amount while the claim is still open, and leaves it alone once it has
+   *   been asked for. Opened, never sent: asking the vendor stays a person's act.
+   *
+   * The proposal is already on the record when this runs, so a failure here is
+   * logged and does not undo it.
+   */
+  private async carryOutward(
+    restaurantId: string,
+    delivery: DeliveryRow,
+    proposalId: string,
+    userId: string | null,
+    input: {
+      side: "restaurant" | "vendor";
+      reason: ReasonClass;
+      documentId?: string | null;
+      lineNo?: number | null;
+      moneyAtRisk?: number | null;
+      note?: string | null;
+    },
+  ): Promise<void> {
+    const rule = CARRIED[input.reason];
+    if (!rule) return;
+    // A vendor's position is not the house's dispute; only a refusal is
+    // carried whoever recorded it.
+    if (input.side !== "restaurant" && input.reason !== "WRONG_VENUE") return;
+    const client = this.db.getClient();
+
+    let order: { provider_id: string | null; currency: string | null } | null =
+      null;
+    if (delivery.order_id) {
+      const read = await client
+        .from("procurement_orders")
+        .select("id, provider_id, currency, match_status, discrepancy_notes")
+        .eq("id", delivery.order_id)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (read.error)
+        this.logger.error(
+          `delivery ${delivery.id}: its order could not be read, so the ${input.reason} was not carried to it: ${read.error.message}`,
+        );
+      else if (read.data) {
+        const o = read.data as {
+          provider_id: string | null;
+          currency: string | null;
+          match_status: string | null;
+          discrepancy_notes: string | null;
+        };
+        order = o;
+        const notes = (o.discrepancy_notes ?? "").trim();
+        const patch: Record<string, unknown> = {};
+        if (!notes.includes(rule.words))
+          patch.discrepancy_notes = notes ? `${notes} ${rule.words}` : rule.words;
+        if (!o.match_status || o.match_status === "matched")
+          patch.match_status = rule.match;
+        if (Object.keys(patch).length) {
+          const upd = await client
+            .from("procurement_orders")
+            .update(patch)
+            .eq("id", delivery.order_id)
+            .eq("restaurant_id", restaurantId);
+          if (upd.error)
+            this.logger.error(
+              `delivery ${delivery.id}: the ${input.reason} could not be written to order ${delivery.order_id}: ${upd.error.message}`,
+            );
+        }
+      }
+    }
+
+    if (input.side !== "restaurant") return;
+    const amount = input.moneyAtRisk;
+    if (amount == null || !(amount > 0)) return;
+
+    const line = `${input.documentId ?? ""}:${input.lineNo ?? ""}`;
+    const existing = await client
+      .from("procurement_credits")
+      .select("id, state")
+      .eq("restaurant_id", restaurantId)
+      .eq("reason", rule.claim)
+      .eq("evidence->>deliveryId", delivery.id)
+      .eq("evidence->>line", line)
+      .neq("state", "written_off")
+      .limit(1);
+    if (existing.error) {
+      this.logger.error(
+        `delivery ${delivery.id}: whether a claim was already open could not be read, so none was opened: ${existing.error.message}`,
+      );
+      return;
+    }
+    const evidence = {
+      deliveryId: delivery.id,
+      proposalId,
+      line,
+      reason: input.reason,
+    };
+    const summary = input.note ? `${rule.words} ${input.note}` : rule.words;
+    const found = ((existing.data as { id: string; state: string }[] | null) ??
+      [])[0];
+    if (found) {
+      if (found.state !== "open") return;
+      const upd = await client
+        .from("procurement_credits")
+        .update({ claimed_amount: amount, summary, evidence })
+        .eq("id", found.id)
+        .eq("restaurant_id", restaurantId);
+      if (upd.error)
+        this.logger.error(
+          `delivery ${delivery.id}: claim ${found.id} could not be moved to ${amount}: ${upd.error.message}`,
+        );
+      return;
+    }
+    const row: Record<string, unknown> = {
+      restaurant_id: restaurantId,
+      order_id: delivery.order_id,
+      provider_id: delivery.provider_id ?? order?.provider_id ?? null,
+      document_id: input.documentId ?? null,
+      reason: rule.claim,
+      summary,
+      claimed_amount: amount,
+      self_evidenced: false,
+      state: "open",
+      opened_by: userId,
+      evidence,
+    };
+    // The order's own currency, or the column's default when it states none —
+    // the same rule `openCreditClaim` follows.
+    if (order?.currency) row.currency = order.currency;
+    const ins = await client.from("procurement_credits").insert(row);
+    if (ins.error)
+      this.logger.error(
+        `delivery ${delivery.id}: the ${input.reason} claim could not be opened: ${ins.error.message}`,
+      );
   }
 
   /** Answer one proposal with another (D7). The thread keeps both. */

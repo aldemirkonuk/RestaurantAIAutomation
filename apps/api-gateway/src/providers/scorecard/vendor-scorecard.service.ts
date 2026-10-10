@@ -386,6 +386,38 @@ export class VendorScorecardService {
         .order("id", { ascending: true }),
     );
     if (!events.ok) return events;
+    // A truck the house refused — a delivery REJECTED as sent to the wrong
+    // restaurant — is a refused verdict on its order, the same as a refusal
+    // at the door (F-669). Nothing moves a REJECTED delivery afterwards, so
+    // its last write is when it was refused.
+    const refused = await this.readAll<{
+      id: string;
+      order_id: string | null;
+      updated_at: string;
+    }>(() =>
+      this.client()
+        .from("deliveries")
+        .select("id, order_id, updated_at")
+        .eq("restaurant_id", house)
+        .eq("state", "REJECTED")
+        .not("order_id", "is", null)
+        .gte("updated_at", since)
+        .order("id", { ascending: true }),
+    );
+    if (!refused.ok) return refused;
+    events.rows.push(
+      ...refused.rows.map((d) => ({
+        id: d.id,
+        order_id: d.order_id,
+        stage: null,
+        outcome: "refused",
+        refusal_reason: "sent to the wrong restaurant",
+        rejected_qty: null,
+        damage_photo_path: null,
+        occurred_at: d.updated_at,
+        table: "deliveries",
+      })),
+    );
     // The event names its order; the order names its vendor. The order read is
     // house-scoped too — an event can never borrow another house's vendor.
     const ids = [
@@ -421,7 +453,7 @@ export class VendorScorecardService {
     if (!collected.ok) return collected;
     return {
       ok: true,
-      collected: collected.any,
+      collected: collected.any || refused.rows.length > 0,
       rows: events.rows.map((e) => ({
         ...e,
         provider_id: e.order_id

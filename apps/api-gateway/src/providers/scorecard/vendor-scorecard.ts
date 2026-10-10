@@ -172,6 +172,8 @@ export interface ReceiptEventRow {
   rejected_qty: number | string | null;
   damage_photo_path: string | null;
   occurred_at: string;
+  /** Where the verdict was read from, when not a door event (a refused truck). */
+  table?: string;
 }
 
 export interface VerifiedLineRow {
@@ -771,7 +773,11 @@ export function doorEntries(
       window: w,
       open: false,
       title: chosen.order_number || COPY.entry.order(orderId),
-      source: { table: "procurement_receipt_events", id: chosen.id, orderId },
+      source: {
+        table: chosen.table ?? "procurement_receipt_events",
+        id: chosen.id,
+        orderId,
+      },
     };
     if (!verdict) {
       out.push({

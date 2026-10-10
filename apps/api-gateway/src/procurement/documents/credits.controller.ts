@@ -38,6 +38,7 @@ import {
 import {
   Credit,
   CreditState,
+  memoRefusal,
   recoveryStats,
   recoveryStatsByCurrency,
   transition,
@@ -318,6 +319,16 @@ export class CreditsController {
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
 
+    if (outcome.next.state === "credited")
+      await refuseUnfitMemo(
+        this.db,
+        id,
+        row.provider_id ?? null,
+        outcome.next.creditDocumentId as string,
+        outcome.next.creditedAmount as number,
+        user,
+      );
+
     const now = new Date().toISOString();
     const patch: Record<string, unknown> = {
       state: outcome.next.state,
@@ -360,4 +371,61 @@ export class CreditsController {
     }
     return data;
   }
+}
+
+/**
+ * The memo must be this house's, a credit memo, from this claim's vendor,
+ * and not already spent past its total by other claims (F-672). Throws the
+ * refusal; returns when the memo may settle the claim.
+ */
+async function refuseUnfitMemo(
+  db: DatabaseService,
+  claimId: string,
+  claimProviderId: string | null,
+  memoId: string,
+  creditedAmount: number,
+  user: AuthedUser,
+): Promise<void> {
+  const client = db.getClient();
+  const { data: memo, error } = await client
+    .from("procurement_documents")
+    .select("id, doc_type, provider_id, total")
+    .eq("id", memoId)
+    .eq("restaurant_id", user.restaurantId)
+    .maybeSingle();
+  if (error)
+    throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+  if (!memo)
+    throw new HttpException(
+      "That credit memo is not among this house's papers.",
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+
+  const { data: others, error: othersErr } = await client
+    .from("procurement_credits")
+    .select("id, credited_amount")
+    .eq("restaurant_id", user.restaurantId)
+    .eq("credit_document_id", memoId)
+    .eq("state", "credited");
+  if (othersErr)
+    throw new HttpException(
+      othersErr.message,
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
+  const already = (others ?? [])
+    .filter((o) => o.id !== claimId)
+    .reduce((sum, o) => sum + Number(o.credited_amount ?? 0), 0);
+
+  const refusal = memoRefusal(
+    {
+      docType: memo.doc_type,
+      providerId: memo.provider_id ?? null,
+      total: memo.total == null ? null : Number(memo.total),
+    },
+    claimProviderId,
+    creditedAmount,
+    already,
+  );
+  if (refusal)
+    throw new HttpException(refusal, HttpStatus.UNPROCESSABLE_ENTITY);
 }

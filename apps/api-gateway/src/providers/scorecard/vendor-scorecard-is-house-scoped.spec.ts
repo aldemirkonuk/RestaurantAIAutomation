@@ -576,6 +576,56 @@ describe("the vendor scorecard is house-scoped", () => {
     ]);
   });
 
+  it("a truck house A refused counts as a refused line on its order; house B's refusal does not (F-669)", async () => {
+    const { controller, db } = make();
+    db.tables.deliveries = [
+      // House B's refused truck on house A's order: a read that lost its
+      // house clause would turn A-1 refused.
+      {
+        id: "b-truck-on-a",
+        restaurant_id: B,
+        order_id: "a-ord-2",
+        state: "REJECTED",
+        updated_at: day(16, 9),
+      },
+      {
+        id: "a-truck",
+        restaurant_id: A,
+        order_id: "a-ord-1",
+        state: "REJECTED",
+        updated_at: day(16, 9),
+      },
+      // Still open, and one with no order: neither is a verdict on an order.
+      {
+        id: "a-open-truck",
+        restaurant_id: A,
+        order_id: "a-ord-3",
+        state: "RECONCILING",
+        updated_at: day(16, 9),
+      },
+      {
+        id: "a-unordered-truck",
+        restaurant_id: A,
+        order_id: null,
+        state: "REJECTED",
+        updated_at: day(16, 9),
+      },
+    ];
+    const card = await controller.card(userA, PA, "90");
+    expect(m(card, "linesAsOrdered")).toMatchObject({
+      outcome: "answered",
+      sample: 5,
+      hits: 4,
+    });
+    const docket = await controller.docket(userA, PA, "90", "linesAsOrdered");
+    const a1 = docket.entries.find((e) => e.title === "A-1");
+    expect(a1).toMatchObject({
+      hit: false,
+      detail: "Refused at the door (sent to the wrong restaurant).",
+      source: { table: "deliveries", id: "a-truck", orderId: "a-ord-1" },
+    });
+  });
+
   it("refuses the on-time line when the arrival answers cannot be read — never reads every order as unconfirmed", async () => {
     const { controller, db } = make();
     db.tables.procurement_orders.push({
