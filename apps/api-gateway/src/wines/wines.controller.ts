@@ -44,9 +44,13 @@ export class WinesController {
   @Get()
   @ApiOperation({ summary: "Search wines in master wine library" })
   @ApiResponse({ status: 200, description: "Returns wine list" })
-  async searchWines(@Query() query: GetWinesQueryDto) {
+  async searchWines(
+    @Query() query: GetWinesQueryDto,
+    @CurrentUser() user?: { restaurantId?: string },
+  ) {
     try {
-      return await this.winesService.searchWines(query);
+      // The caller's house decides which provisional wines it may see (F-496).
+      return await this.winesService.searchWines(query, user?.restaurantId);
     } catch (error) {
       // The service already chose the status: 503 for a failed library read,
       // 400 for a malformed id. Rewriting every failure to 500 hid that, and
@@ -63,36 +67,56 @@ export class WinesController {
   }
 
   @Get("meta/categories")
-  async getCategories() {
-    return await this.winesService.getWineCategories();
+  async getCategories(@CurrentUser() user?: { restaurantId?: string }) {
+    return await this.winesService.getWineCategories(user?.restaurantId);
   }
 
   @Get("meta/regions")
-  async getRegions(@Query() query: WineMetaQueryDto) {
-    return await this.winesService.getWineRegions(query);
+  async getRegions(
+    @Query() query: WineMetaQueryDto,
+    @CurrentUser() user?: { restaurantId?: string },
+  ) {
+    return await this.winesService.getWineRegions(query, user?.restaurantId);
   }
 
   @Get("meta/countries")
-  async getCountries() {
-    return await this.winesService.getWineCountries();
+  async getCountries(@CurrentUser() user?: { restaurantId?: string }) {
+    return await this.winesService.getWineCountries(user?.restaurantId);
   }
 
   @Get("suggestions")
-  async getSuggestions(@Query() query: WineSuggestionsQueryDto) {
-    return await this.winesService.getWineSuggestions(query);
+  async getSuggestions(
+    @Query() query: WineSuggestionsQueryDto,
+    @CurrentUser() user?: { restaurantId?: string },
+  ) {
+    return await this.winesService.getWineSuggestions(
+      query,
+      user?.restaurantId,
+    );
   }
 
   @Get(":wineId/similar")
   async getSimilar(
     @Param("wineId") wineId: string,
     @Query() query: SimilarWinesQueryDto,
+    @CurrentUser() user?: { restaurantId?: string },
   ) {
-    return await this.winesService.getSimilarWines(wineId, query);
+    return await this.winesService.getSimilarWines(
+      wineId,
+      query,
+      user?.restaurantId,
+    );
   }
 
   @Get(":wineId")
-  async getById(@Param("wineId") wineId: string) {
-    const wine = await this.winesService.getWineById(wineId);
+  async getById(
+    @Param("wineId") wineId: string,
+    @CurrentUser() user?: { restaurantId?: string },
+  ) {
+    const wine = await this.winesService.getWineById(
+      wineId,
+      user?.restaurantId,
+    );
     if (!wine) {
       throw new HttpException("Wine not found", HttpStatus.NOT_FOUND);
     }
