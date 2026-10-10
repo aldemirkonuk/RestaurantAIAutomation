@@ -3394,6 +3394,11 @@ export class ProcurementService {
       cancelReasonCode?: CancelReasonCode;
       cancelledFromStatus?: ProcurementOrderStatus;
       cancelledAt?: string;
+      /**
+       * F-300. The signed-in person behind `PATCH orders/:id`, from the token,
+       * never the body. A status or price write without one is refused.
+       */
+      actorUserId?: string;
     },
   ): Promise<OrderResponseDto> {
     // ADR 0192 — WHAT AN ORDER RECEIVED IS NOT TYPED IN. This route used to
@@ -3433,8 +3438,73 @@ export class ProcurementService {
           "An order is cancelled through its own act, which asks whose failure it was and is held to confirm — not by editing its status. Nothing was changed.",
       });
     }
+    // F-300. Approving and delivering have their own acts too. Approval is
+    // held to confirm, checked against the house's ceilings and records who
+    // signed; a delivery is booked at the door. Writing either status here
+    // skipped all of that and left `approved_by` empty.
+    const OWN_ACT_WORDS: Partial<Record<ProcurementOrderStatus, string>> = {
+      [ProcurementOrderStatus.APPROVED]:
+        "An order is approved by holding to confirm, which checks the house's limits and records who signed — not by editing its status. Nothing was changed.",
+      [ProcurementOrderStatus.DELIVERED]:
+        "An order is marked delivered when the wine is booked in at the door — not by editing its status. Nothing was changed.",
+    };
+    if (dto.status !== undefined && OWN_ACT_WORDS[dto.status]) {
+      throw new UnprocessableEntityException({
+        reason: "status_through_its_own_act",
+        message: OWN_ACT_WORDS[dto.status],
+      });
+    }
+
+    // F-300. Where an order stands and what it costs are owner/manager acts
+    // (ADR 0253's money rule; ADR 0125 Q1 for the order's state). `cancelOrder`
+    // has already asked the same helper before it calls in here.
+    const writesMoney = dto.finalPrice != null || dto.totalCost != null;
+    const writesStatus = dto.status !== undefined && !opts?.cancelReasonCode;
+    if (writesMoney || writesStatus) {
+      await this.assertMayChangeOrder(
+        restaurantId,
+        opts?.actorUserId,
+        writesMoney ? "change what an order costs" : "change where an order stands",
+      );
+    }
+
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
       await this.assertStatusTransition(restaurantId, orderId, dto.status);
+    }
+
+    // F-300. The price is set while the order is still PENDING. After the
+    // seal it is the figure the manager approved (and the one a standing
+    // order copies into every repeat), so it is not edited in place. Read
+    // here and compared-and-set on the write, so an approval landing between
+    // the two cannot be repriced after the fact.
+    let pricedFromStatus: string | null = null;
+    if (writesMoney) {
+      const { data: current, error: readError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .select("status")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", orderId)
+          .maybeSingle();
+      if (readError) {
+        throw new InternalServerErrorException(
+          `This order could not be read (${readError.message}), so its price was not changed.`,
+        );
+      }
+      if (!current) {
+        throw new NotFoundException(
+          "No order with that id belongs to this restaurant, so there was nothing to change.",
+        );
+      }
+      const status = (current as { status: string }).status;
+      if (readOrderStatus(status) !== ProcurementOrderStatus.PENDING) {
+        throw new UnprocessableEntityException({
+          reason: "price_set_before_approval",
+          message:
+            "An order's price can only be changed before it is approved. This one has moved on, so the price stays as it was approved. Nothing was changed.",
+        });
+      }
+      pricedFromStatus = status;
     }
 
     // D-06: Block location assignment while order is in a pending state.
@@ -3489,14 +3559,23 @@ export class ProcurementService {
       cancelled_at: opts?.cancelledAt ?? undefined,
     };
 
-    const { data, error } = await this.databaseService.supabase
+    let write = this.databaseService.supabase
       .from("procurement_orders")
       .update(updatePayload)
       .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
+      .eq("id", orderId);
+    if (pricedFromStatus !== null) write = write.eq("status", pricedFromStatus);
+    const { data, error } = await write
       .select("*, inventory:inventory_id(wine_name)")
       .single();
 
+    if (error && pricedFromStatus !== null && error.code === "PGRST116") {
+      throw new ConflictException({
+        reason: "order_changed_while_pricing",
+        message:
+          "This order was approved or changed while its price was being edited, so the new price was not written.",
+      });
+    }
     if (error) {
       this.logger.error("Failed to update procurement order", {
         restaurantId,
@@ -3558,6 +3637,30 @@ export class ProcurementService {
       restaurantId,
       "cancel an order",
     );
+  }
+
+  /**
+   * F-300. The same rule for `PATCH orders/:id` when it writes a status or a
+   * price. Refuses, rather than allows, when the caller named nobody or the
+   * helper is not wired — the same posture as `assertMayCancelOrder`.
+   */
+  private async assertMayChangeOrder(
+    restaurantId: string,
+    userId: string | undefined,
+    action: string,
+  ): Promise<void> {
+    if (!userId) {
+      throw new ForbiddenException(
+        `Who is making this change could not be established, so nothing was changed. Only a manager or an owner of this restaurant can ${action}.`,
+      );
+    }
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may change an order could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(userId, restaurantId, action);
   }
 
   /**
@@ -4134,9 +4237,29 @@ export class ProcurementService {
     userId: string,
     challenge?: string | null,
   ): Promise<OrderResponseDto> {
+    // F-301. The state is read FIRST, so an order that was already approved —
+    // a second manager's hold, a stale tab — is told so before any seal is
+    // spent. `canTransition` lets APPROVED re-enter itself (it is not
+    // terminal), so the same-state case is refused here by name: a second
+    // approval overwrote `approved_by`, reserved the shadow stock twice and
+    // asked for a second vendor letter.
+    const { row: current } = await this.assertStatusTransition(
+      restaurantId,
+      orderId,
+      ProcurementOrderStatus.APPROVED,
+    );
+    if (readOrderStatus(current.status) === ProcurementOrderStatus.APPROVED) {
+      throw new ConflictException({
+        reason: "order_already_approved",
+        message:
+          "This order is already approved, so there is nothing to approve again. Nothing was changed.",
+      });
+    }
     await this.assertApprovalAllowed(restaurantId, orderId, userId);
     await this.redeemOrderSeal(restaurantId, orderId, userId, challenge);
 
+    // Compare-and-set on the state read above: two holds that both passed the
+    // read cannot both win. The second matches no row and is refused below.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
@@ -4146,9 +4269,17 @@ export class ProcurementService {
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
+      .eq("status", current.status)
       .select("*, inventory:inventory_id(wine_name)")
-      .single();
+      .maybeSingle();
 
+    if (!error && !data) {
+      throw new ConflictException({
+        reason: "order_changed_while_approving",
+        message:
+          "Someone else changed this order while it was being approved, so this approval was not written. Open the order again to see where it stands.",
+      });
+    }
     if (error) {
       this.logger.error("Failed to approve procurement order", {
         restaurantId,
