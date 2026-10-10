@@ -18,6 +18,7 @@ vi.mock('./offline-storage', () => ({
     removePendingMutation: vi.fn().mockResolvedValue(undefined),
     updatePendingMutation: vi.fn().mockResolvedValue(undefined),
     clearPendingMutations: vi.fn().mockResolvedValue(undefined),
+    countPendingMutationsOf: vi.fn().mockResolvedValue(0),
   },
 }))
 vi.mock('../services/api/client', () => ({
@@ -363,5 +364,27 @@ describe('F-246: door receipts and spot counts send themselves when the network 
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('F-246 (audit nit): sign-out sends door receipts and spot counts before it counts', () => {
+  it('flushes both outboxes before naming what is still unsent', async () => {
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+      mutation('door-1', 'receiving.door', 0),
+      mutation('count-1', 'inventory.spotCount', 0),
+    ])
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    window.dispatchEvent(new Event('online'))
+    await syncManager.refresh()
+    flushDoorOutbox.mockClear()
+    flushSpotCountOutbox.mockClear()
+    vi.mocked(offlineStorage.countPendingMutationsOf).mockClear()
+
+    await syncManager.unsentBeforeSignOut(U1)
+
+    expect(flushDoorOutbox).toHaveBeenCalledTimes(1)
+    expect(flushSpotCountOutbox).toHaveBeenCalledTimes(1)
+    const countedAt = vi.mocked(offlineStorage.countPendingMutationsOf).mock.invocationCallOrder[0]
+    expect(flushSpotCountOutbox.mock.invocationCallOrder[0]).toBeLessThan(countedAt)
   })
 })

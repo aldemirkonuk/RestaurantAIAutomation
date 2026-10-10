@@ -30,8 +30,6 @@ import {
 import { forgetJoin } from "../lib/joinResume";
 import { doRefresh } from "../lib/sessionRefresh";
 import { syncManager } from "../lib/sync-manager";
-import { flushDoorOutbox } from "../lib/doorOutbox";
-import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
 import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
 import { ensurePersisted } from "../lib/deviceStorage";
@@ -1171,10 +1169,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (who) {
       let unsent = 0;
       try {
-        // Door receipts and spot counts flush themselves; give them their
-        // chance too before anything is counted as lost.
-        if (navigator.onLine)
-          await Promise.allSettled([flushDoorOutbox(), flushSpotCountOutbox()]);
+        // Door receipts and spot counts get their chance too (inside
+        // `unsentBeforeSignOut`) before anything is counted as lost.
         unsent = await syncManager.unsentBeforeSignOut(who);
       } catch {
         unsent = 0;
