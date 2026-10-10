@@ -20,7 +20,7 @@ import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
 import { MONO, SANS, fmtMoney } from './format';
 import type { OrderRowVM } from './useOrdersNextData';
-import { approveConflict } from './approveConflict';
+import { approveConflict } from '@/services/api/approveConflict';
 
 export interface BulkApproveBarProps {
   selectedRows: OrderRowVM[];

@@ -25,7 +25,7 @@ import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrderQueries';
 import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
 import * as ordersApi from '@/services/api/orders';
-import { approveConflict } from './approveConflict';
+import { approveConflict } from '@/services/api/approveConflict';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
   PRICE_UOM_LABEL,

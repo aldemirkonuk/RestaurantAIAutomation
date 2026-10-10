@@ -248,3 +248,68 @@ describe('the report after a clean run', () => {
     expect(onApproved).toHaveBeenCalledWith(['o-1', 'o-2']);
   });
 });
+
+/**
+ * F-775. The dashboard's WaitingOnYou, the bell and the counter all seal
+ * through this control, so a 409 here reached a manager as "refused and still
+ * pending" about an order that was approved. Already approved is settled;
+ * any other 409 is printed as the gateway wrote it, never as "still pending".
+ */
+describe('a 409 from the gateway', () => {
+  const conflict = (reason: string, message: string) =>
+    Object.assign(new Error(message), { response: { status: 409, data: { reason, message } } });
+  const ALREADY =
+    'This order is already approved, so there is nothing to approve again. Nothing was changed.';
+  const CHANGED =
+    'Someone else changed this order while it was being approved, so this approval was not written.';
+
+  it('counts an order someone already approved as settled, not refused', async () => {
+    approveMock.mutateAsync.mockRejectedValue(conflict('order_already_approved', ALREADY));
+    const onApproved = vi.fn();
+    const onRefused = vi.fn();
+    render(
+      <SealedApproveDie
+        orderIds={['o-1']}
+        label="Hold to approve"
+        onApproved={onApproved}
+        onRefused={onRefused}
+      />,
+    );
+    seal();
+
+    expect(await screen.findByText(/1 already approved — nothing to do\./i)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/still pending/i)).not.toBeInTheDocument();
+    expect(onApproved).toHaveBeenCalledWith(['o-1']);
+    expect(onRefused).not.toHaveBeenCalled();
+  });
+
+  it('prints any other 409 sentence verbatim, outside the "still pending" frame', async () => {
+    approveMock.mutateAsync.mockImplementation(async ({ orderId }: { orderId: string }) => {
+      if (orderId === 'o-2') throw conflict('order_changed_while_approving', CHANGED);
+      if (orderId === 'o-3') throw conflict('order_already_approved', ALREADY);
+      return {};
+    });
+    const onApproved = vi.fn();
+    const onRefused = vi.fn();
+    render(
+      <SealedApproveDie
+        orderIds={['o-1', 'o-2', 'o-3']}
+        label="Hold to approve"
+        onApproved={onApproved}
+        onRefused={onRefused}
+      />,
+    );
+    seal();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      /1 sealed, 1 already approved, 1 not approved — the reason is below\./i,
+    );
+    expect(alert).toHaveTextContent(CHANGED);
+    expect(alert).not.toHaveTextContent(/still pending/i);
+    expect(alert).not.toHaveTextContent(/The gateway refused/i);
+    await waitFor(() => expect(onApproved).toHaveBeenCalledWith(['o-1', 'o-3']));
+    expect(onRefused).toHaveBeenCalledWith([CHANGED], 1);
+  });
+});

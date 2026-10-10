@@ -42,6 +42,11 @@
  *    that in "The gateway refused (…)" would bury a sentence written to be
  *    read. Anything that is not a 403 keeps the generic framing, because a
  *    dropped connection explains nothing about this order.
+ * 5. A 409 IS NOT "STILL PENDING" (F-775). "Already approved" — a second
+ *    manager, a stale tab — is the outcome the person wanted, so it counts as
+ *    approved and its id goes back to the caller. Any other 409 is printed as
+ *    the gateway wrote it and counted apart, because that order may no longer
+ *    be pending at all.
  *
  * ===========================================================================
  * THE GROUND — MEASURED, NOT ASSUMED
@@ -79,6 +84,7 @@ import { useRef, useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { useStandaloneGround } from './useStandaloneGround';
 import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
+import { approveConflict } from '@/services/api/approveConflict';
 import * as ordersApi from '@/services/api/orders';
 
 export interface SealedApproveDieProps {
@@ -89,7 +95,10 @@ export interface SealedApproveDieProps {
   approvedLabel?: string;
   disabled?: boolean;
   className?: string;
-  /** Ids the gateway actually approved. Never the ids that were attempted. */
+  /**
+   * Ids that are approved now — by this gesture, or already by someone else
+   * (a 409 `order_already_approved`). Never the ids that were merely attempted.
+   */
   onApproved?: (approvedIds: string[]) => void;
   /**
    * Called when any order in the gesture was refused, with the gateway's own
@@ -128,7 +137,12 @@ export function SealedApproveDie({
   const [running, setRunning] = useState(false);
   const [outcome, setOutcome] = useState<{
     approved: number;
+    /** Already approved by someone else: settled, nothing to do. */
+    already: number;
+    /** Refused and still pending (a 403, a dropped connection). */
     refused: number;
+    /** Refused with a 409 sentence: not approved, but not "still pending" either. */
+    conflicted: number;
     /** The distinct sentences the gateway gave, in the order first seen. */
     reasons: string[];
   } | null>(null);
@@ -164,7 +178,7 @@ export function SealedApproveDie({
     // a seal check that vanishes with its own dependency is the fault this
     // control exists to close.
     if (!seals) {
-      setOutcome({ approved: 0, refused: orderIds.length, reasons: [] });
+      setOutcome({ approved: 0, already: 0, refused: orderIds.length, conflicted: 0, reasons: [] });
       setAttempt((a) => a + 1);
       return;
     }
@@ -173,13 +187,25 @@ export function SealedApproveDie({
     setOutcome(null);
 
     const approvedIds: string[] = [];
+    const alreadyIds: string[] = [];
     const reasons: string[] = [];
     let refused = 0;
+    let conflicted = 0;
     for (const id of orderIds) {
       try {
         await approve.mutateAsync({ orderId: id, challenge: seals.get(id) ?? null });
         approvedIds.push(id);
       } catch (err) {
+        const conflict = approveConflict(err);
+        if (conflict?.settled) {
+          alreadyIds.push(id);
+          continue;
+        }
+        if (conflict) {
+          conflicted += 1;
+          if (!reasons.includes(conflict.message)) reasons.push(conflict.message);
+          continue;
+        }
         refused += 1;
         const status = (err as { response?: { status?: number } })?.response?.status;
         const msg = (err as { message?: string })?.message ?? 'request failed';
@@ -192,12 +218,14 @@ export function SealedApproveDie({
     sealsRef.current = null;
     setRunning(false);
     onRunningChange?.(false);
-    setOutcome({ approved: approvedIds.length, refused, reasons });
+    setOutcome({ approved: approvedIds.length, already: alreadyIds.length, refused, conflicted, reasons });
+    const notApproved = refused + conflicted;
     // A refusal must not leave the die reading "Approved" over an order that
-    // is still pending, so the ceremony is returned to rest.
-    if (refused > 0) setAttempt((a) => a + 1);
-    if (approvedIds.length > 0) onApproved?.(approvedIds);
-    if (refused > 0) onRefused?.(reasons, refused);
+    // was not approved, so the ceremony is returned to rest.
+    if (notApproved > 0) setAttempt((a) => a + 1);
+    const nowApproved = [...approvedIds, ...alreadyIds];
+    if (nowApproved.length > 0) onApproved?.(nowApproved);
+    if (notApproved > 0) onRefused?.(reasons, notApproved);
   };
 
   const noun = orderIds.length === 1 ? 'order' : 'orders';
@@ -226,12 +254,10 @@ export function SealedApproveDie({
           Sealing {orderIds.length} {noun}…
         </p>
       )}
-      {outcome && outcome.refused > 0 && (
+      {outcome && outcome.refused + outcome.conflicted > 0 && (
         <div role="alert" style={{ marginTop: 4 }}>
           <p style={{ fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-2, #4F473C)' }}>
-            {outcome.approved > 0
-              ? `${outcome.approved} sealed, ${outcome.refused} refused and still pending.`
-              : `Nothing was approved — ${outcome.refused} refused and still pending.`}
+            {refusedLine(outcome)}
           </p>
           {outcome.reasons.map((r) => (
             <p
@@ -248,16 +274,43 @@ export function SealedApproveDie({
           ))}
         </div>
       )}
-      {outcome && outcome.refused === 0 && outcome.approved > 0 && (
+      {outcome && outcome.refused + outcome.conflicted === 0 && outcome.approved + outcome.already > 0 && (
         <p
           role="status"
           style={{ marginTop: 4, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4, #665D50)' }}
         >
-          {outcome.approved} {outcome.approved === 1 ? 'order' : 'orders'} sealed.
+          {sealedLine(outcome)}
         </p>
       )}
     </div>
   );
+}
+
+function sealedLine(o: { approved: number; already: number }): string {
+  const parts: string[] = [];
+  if (o.approved > 0) parts.push(`${o.approved} ${o.approved === 1 ? 'order' : 'orders'} sealed.`);
+  if (o.already > 0) parts.push(`${o.already} already approved — nothing to do.`);
+  return parts.join(' ');
+}
+
+/**
+ * The head line over the gateway's sentences. "Still pending" is said only of
+ * the orders that are (a 403, a dropped connection) — never of a 409, whose
+ * order may have moved on (F-775).
+ */
+function refusedLine(o: {
+  approved: number;
+  already: number;
+  refused: number;
+  conflicted: number;
+}): string {
+  const parts: string[] = [];
+  if (o.approved > 0) parts.push(`${o.approved} sealed`);
+  if (o.already > 0) parts.push(`${o.already} already approved`);
+  if (o.refused > 0) parts.push(`${o.refused} refused and still pending`);
+  if (o.conflicted > 0) parts.push(`${o.conflicted} not approved — the reason is below`);
+  const line = `${parts.join(', ')}.`;
+  return o.approved + o.already > 0 ? line : `Nothing was approved — ${line}`;
 }
 
 export default SealedApproveDie;

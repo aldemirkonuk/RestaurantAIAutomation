@@ -63,6 +63,7 @@ import { ink, settle } from '@/lib/mudavym/motion';
 import { useApproveOrder, useCancelOrder } from '@/hooks/queries/useOrderQueries';
 import { useDealProposal, useOrderConversations } from '@/hooks/queries/useDraftEmailQueries';
 import * as ordersApi from '@/services/api/orders';
+import { approveConflict } from '@/services/api/approveConflict';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
   ROW_PRICE_UNIT_NOT_READ,
@@ -274,12 +275,23 @@ export function ResponsesSheet({
       { orderId: row.id, challenge },
       {
         onError: (err) => {
+          // F-775, as in `LedgerRow`: an order someone already approved is the
+          // outcome wanted, so the sheet closes as on success (the list
+          // refetches on settle). Any other 409 is printed as it came — never
+          // inside "still pending", since the order may have moved on.
+          const conflict = approveConflict(err);
+          if (conflict?.settled) {
+            onClose();
+            return;
+          }
           const status = (err as { response?: { status?: number } })?.response?.status;
           const msg = (err as { message?: string })?.message ?? 'request failed';
           setApproveError(
-            status === 403
-              ? msg
-              : `The gateway refused (${msg}) — still pending, nothing approved.`,
+            conflict
+              ? conflict.message
+              : status === 403
+                ? msg
+                : `The gateway refused (${msg}) — still pending, nothing approved.`,
           );
           setAttempt((a) => a + 1);
         },
