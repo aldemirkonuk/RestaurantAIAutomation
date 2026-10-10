@@ -273,9 +273,12 @@ export function linearRegression(
  * returns slope as a % of the mean level — an interpretable "growth per
  * period" figure for dashboards.
  */
-export function trendPerPeriodPct(ys: number[]): number | null {
+export function trendPerPeriodPct(ys: number[], at?: number[]): number | null {
   if (ys.length < 2) return null;
-  const xs = ys.map((_, i) => i);
+  // `at` places each value on its real period (F-708): a series with closed
+  // days dropped regresses on calendar position, not on index, so the slope
+  // stays "per period" instead of "per open period".
+  const xs = at && at.length === ys.length ? at : ys.map((_, i) => i);
   const reg = linearRegression(xs, ys);
   const m = mean(ys);
   if (!reg || m === null || Math.abs(m) < 1e-12) return null;

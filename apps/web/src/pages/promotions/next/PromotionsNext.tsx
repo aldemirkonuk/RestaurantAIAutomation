@@ -250,7 +250,8 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
             <>
               {onTable.length === 0 ? (
                 <div className="pn-state">
-                  <p>No offers are on the table right now. This lane is active and listening.</p>
+                  {/* F-706: "active and listening" claimed a health nothing on this page measures. */}
+                  <p>No offers are on the table right now. An offer appears here once a vendor's email offering one is read.</p>
                 </div>
               ) : shown.length === 0 && ungradable.length === 0 ? (
                 <div className="pn-state" data-testid="pn-scope-empty">

@@ -528,7 +528,14 @@ export function standingLine(read: PromotionsReadDto): string {
   const wineLines = onTable.reduce((n, o) => n + o.applicable_wines.length, 0);
   const vendors = new Set(onTable.map((o) => o.provider_id)).size;
   if (onTable.length === 0) {
-    return `No offers on the table — read ${new Date(read.read_at).toLocaleString()}, ${read.ledger.window_days} days of your own price history behind it.`;
+    // F-706: window_days is the window searched, not history the house has — name what is actually in it.
+    const readAt = new Date(read.read_at).toLocaleString();
+    const paid = read.ledger.paid_lines;
+    if (paid === 0) {
+      return `No offers on the table — read ${readAt}. No paid prices on record in the last ${read.ledger.window_days} days yet to judge an offer against.`;
+    }
+    const paidWord = paid === 1 ? 'paid line' : 'paid lines';
+    return `No offers on the table — read ${readAt}, ${paid} ${paidWord} from the last ${read.ledger.window_days} days to judge the next one against.`;
   }
   const offerWord = onTable.length === 1 ? 'offer' : 'offers';
   const vendorWord = vendors === 1 ? 'vendor' : 'vendors';

@@ -720,11 +720,16 @@ export class RecommendationsService {
     // ---- Seasonality rules ------------------------------------------------
     const worstDay = ctx.seasonality?.worstDay;
     const bestDay = ctx.seasonality?.bestDay;
+    // "Reliably" only when the two days stand apart from the rest
+    // (`weekdayExtremesSeparated`, F-709); otherwise it is a tendency.
+    const reliably = ctx.seasonality?.separated === true;
     rule(
       "weekday_gap",
       !!worstDay && !!bestDay && worstDay !== bestDay,
       () => ({
-        observation: `${bestDay} is reliably your strongest day; ${worstDay} the weakest.`,
+        observation: reliably
+          ? `${bestDay} is reliably your strongest day; ${worstDay} the weakest.`
+          : `${bestDay} has tended to be your strongest day and ${worstDay} the weakest, though not by enough yet to call it settled.`,
         recommendation: `Move staff training, deliveries, and inventory counts to ${worstDay}; test a ${worstDay}-only offer (corkage-free, flight special) rather than discounting strong days.`,
         rationale:
           "Weekday seasonality is structural — schedule costs into the trough and promotions where marginal demand is elastic, never where the room fills itself.",

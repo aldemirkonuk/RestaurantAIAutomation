@@ -1236,3 +1236,23 @@ describe("the exports carry the stand-in label the registers return", () => {
     );
   });
 });
+
+describe("the wine mover compares the days the house was open in both weeks (F-707)", () => {
+  it("a day the whole house was shut does not move a wine 14%", async () => {
+    // Two wines, steady every day, and nothing at all sold three days back.
+    const steady = (n: number) =>
+      everyDay(n, 1, 85, BOTTLE, 750, n * 2).filter(
+        (l) => l.created_at !== noonDaysAgo(3),
+      );
+    const out = await familyOver(
+      {
+        restaurant_inventory: [item(1), item(2)],
+        wine_consumption_log: [...steady(1), ...steady(2)],
+      },
+      "computeConsumptionFamily",
+    );
+    const mover = keyed(out, "wine.bottles.vs_prev_period_7d");
+    expect(mover?.evidence.deltaPct ?? 0).toBe(0);
+    for (const r of out) expect(r.sentence ?? "").not.toContain("14%");
+  });
+});

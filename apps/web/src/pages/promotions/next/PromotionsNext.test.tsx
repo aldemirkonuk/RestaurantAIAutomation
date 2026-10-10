@@ -127,7 +127,11 @@ describe('PromotionsNext — loading / failed / empty', () => {
     };
     renderPage();
     expect(screen.getByText(/No offers on the table/)).toBeInTheDocument();
-    expect(screen.getAllByText(/540 days/).length).toBeGreaterThan(0);
+    // F-706: no health claim, and no "history behind it" when the house has paid nothing in the window.
+    expect(screen.queryByText(/active and listening/)).not.toBeInTheDocument();
+    expect(screen.getByText(/once a vendor's email offering one is read/)).toBeInTheDocument();
+    expect(screen.queryByText(/price history behind it/)).not.toBeInTheDocument();
+    expect(screen.getByText(/No paid prices on record in the last 540 days/)).toBeInTheDocument();
   });
 });
 

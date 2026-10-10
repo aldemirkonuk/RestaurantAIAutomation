@@ -380,7 +380,15 @@ describe('standingLine', () => {
   it('an empty table states it is empty, with the window behind it — never a zero standing in for "not read"', () => {
     const s = standingLine(read([]));
     expect(s).toMatch(/No offers on the table/);
-    expect(s).toMatch(/540 days/);
+    expect(s).toMatch(/10 paid lines from the last 540 days/);
+  });
+
+  it('F-706: an empty house is not credited with price history it does not have', () => {
+    const r = read([]);
+    r.ledger.paid_lines = 0;
+    const s = standingLine(r);
+    expect(s).not.toMatch(/price history behind it/);
+    expect(s).toMatch(/No paid prices on record in the last 540 days/);
   });
 
   it('counts offers, vendors and bottle lines separately, and only what is on the table', () => {

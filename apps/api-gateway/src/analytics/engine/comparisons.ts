@@ -90,6 +90,45 @@ export function periodOverPeriod(
   return { current, previous, deltaPct, direction };
 }
 
+export interface MatchedPeriodComparison extends PeriodComparison {
+  /** Days of the current window paired with an open day `window` days before. */
+  matchedDays: number;
+}
+
+/**
+ * Like-for-like period over period (F-707). Each day of the current window is
+ * paired with the day exactly `window` days before it — the same weekday when
+ * `window` is a multiple of 7 — and a pair counts only when BOTH days are
+ * observed. A closed or excluded day therefore leaves both weeks, rather than
+ * one holiday reading as "sales fell 14%" or one excluded buyout as "rose
+ * 114%". `matchedDays` says how many open days the two sums cover, so a
+ * caller can withhold a comparison resting on too few of them.
+ */
+export function matchedPeriodOverPeriod(
+  series: number[],
+  observed: boolean[],
+  window: number,
+  flatBand = 0.02,
+): MatchedPeriodComparison | null {
+  if (window <= 0 || series.length < 2 * window) return null;
+  if (observed.length !== series.length) return null;
+  let current = 0;
+  let previous = 0;
+  let matchedDays = 0;
+  for (let i = series.length - window; i < series.length; i++) {
+    if (!observed[i] || !observed[i - window]) continue;
+    current += series[i];
+    previous += series[i - window];
+    matchedDays++;
+  }
+  const deltaPct =
+    previous !== 0 ? (current - previous) / Math.abs(previous) : null;
+  let direction: PeriodComparison["direction"] = "flat";
+  if (deltaPct !== null && deltaPct > flatBand) direction = "up";
+  else if (deltaPct !== null && deltaPct < -flatBand) direction = "down";
+  return { current, previous, deltaPct, direction, matchedDays };
+}
+
 export interface PeerStanding<T> {
   entity: T;
   value: number;
@@ -237,6 +276,36 @@ export function separableExtremes(profiles: WeekdayProfile[]): {
   const best = atMax.length === 1 ? atMax[0] : null;
   const worst = atMin.length === 1 ? atMin[0] : null;
   return { best, worst, tie: best === null || worst === null };
+}
+
+/** The fewest weeks a weekday needs before it can be called "reliably" anything. */
+export const MIN_WEEKS_TO_SEPARATE = 4;
+
+/**
+ * Whether the busiest and quietest weekdays stand apart from the rest (F-709).
+ * `separableExtremes` refuses only an exact tie, so a 0.1-bottle gap still
+ * named a "strongest day". Here the best day must beat the runner-up, and the
+ * worst day sit under the next-lowest, by more than the two days' spreads
+ * added together (their one-standard-deviation bands do not overlap), with at
+ * least `minWeeks` of each day behind the means.
+ */
+export function weekdayExtremesSeparated(
+  profiles: WeekdayProfile[],
+  best: WeekdayProfile | null,
+  worst: WeekdayProfile | null,
+  minWeeks = MIN_WEEKS_TO_SEPARATE,
+): boolean {
+  if (!best || !worst || profiles.length < 2) return false;
+  const apart = (hi: WeekdayProfile, lo: WeekdayProfile) =>
+    hi.n >= minWeeks &&
+    lo.n >= minWeeks &&
+    hi.stdev !== null &&
+    lo.stdev !== null &&
+    hi.mean - lo.mean > hi.stdev + lo.stdev;
+  const rest = (p: WeekdayProfile) => profiles.filter((q) => q !== p);
+  const runnerUp = rest(best).reduce((a, b) => (b.mean > a.mean ? b : a));
+  const nextLowest = rest(worst).reduce((a, b) => (b.mean < a.mean ? b : a));
+  return apart(best, runnerUp) && apart(nextLowest, worst);
 }
 
 export const WEEKDAY_NAMES = [

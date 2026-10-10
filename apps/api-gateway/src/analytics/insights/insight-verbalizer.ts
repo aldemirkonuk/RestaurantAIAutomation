@@ -24,7 +24,11 @@ export interface InsightEvidence {
   rank?: number;
   peerCount?: number;
   windowLabel?: string; // "week", "30 days"
+  /** Days open in both windows, when fewer than the window (F-707). */
+  openDays?: number;
   trendPctPerWeek?: number;
+  /** Calendar days a trend spans; `n` is how many of them were open (F-708). */
+  spanDays?: number;
   date?: string;
   topShare?: number;
   topCount?: number;
@@ -123,13 +127,25 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       const verb =
         e.deltaPct > 0 ? "rose" : e.deltaPct < 0 ? "fell" : "held flat";
       const prefix = e.entity ? `${e.entity} ` : "";
-      return `${prefix}${e.measureLabel} ${verb} ${fmtPct(e.deltaPct)} vs the previous ${e.windowLabel ?? "period"} (${fmtValue(e.value, e.unit)} vs ${fmtValue(e.baseline, e.unit)}).`;
+      // A comparison that left closed days out says so, or its two totals
+      // read as whole weeks (F-707).
+      const like = e.openDays
+        ? `, counting only the ${e.openDays} days open in both`
+        : "";
+      return `${prefix}${e.measureLabel} ${verb} ${fmtPct(e.deltaPct)} vs the previous ${e.windowLabel ?? "period"}${like} (${fmtValue(e.value, e.unit)} vs ${fmtValue(e.baseline, e.unit)}).`;
     }
     case "trend": {
       if (e.trendPctPerWeek == null) return null;
       const dir = e.trendPctPerWeek > 0 ? "climbing" : "sliding";
       const prefix = e.entity ? `${e.entity} ` : "";
-      return `${prefix}${e.measureLabel} has been ${dir} about ${fmtPct(e.trendPctPerWeek)} per week${e.n ? ` over the last ${e.n} days` : ""}.`;
+      // `n` counts open days; when the house closed some, the sentence names
+      // both the open days and the calendar span they sit in (F-708).
+      const over = !e.n
+        ? ""
+        : e.spanDays && e.n < e.spanDays
+          ? ` over the ${e.n} open days in the last ${e.spanDays}`
+          : ` over the last ${e.n} days`;
+      return `${prefix}${e.measureLabel} has been ${dir} about ${fmtPct(e.trendPctPerWeek)} per week${over}.`;
     }
     case "anomaly": {
       if (e.z == null || e.value == null || !e.date) return null;
