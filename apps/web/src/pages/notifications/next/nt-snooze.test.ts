@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { SnoozeRecord, resolveSnoozes, sleepsFor } from './nt-snooze';
+import { SnoozeRecord, resolveSnoozes, sleepsFor, snoozeUntil } from './nt-snooze';
 
 const NOW = Date.UTC(2026, 8, 3, 12, 0, 0);
 const rec = (over: Partial<SnoozeRecord> = {}): SnoozeRecord => ({
@@ -80,5 +80,30 @@ describe('sleepsFor', () => {
     expect(sleepsFor(NOW + 20 * 60_000, NOW)).toBe('20m');
     expect(sleepsFor(NOW - 1, NOW)).toBe('due back now');
     expect(sleepsFor(Number.NaN, NOW)).toBe('due back now');
+  });
+});
+
+describe('snoozeUntil — day words wake on the house calendar (F-927)', () => {
+  const NY = 'America/New_York';
+  // Thursday 2026-09-03 00:00 UTC = Wednesday 20:00 in New York.
+  const WED_8PM = Date.UTC(2026, 8, 3, 0, 0, 0);
+
+  it("'tomorrow' is the house's next midnight — four hours away at 20:00, not 24", () => {
+    expect(snoozeUntil('tomorrow', NY, WED_8PM)).toBe(Date.UTC(2026, 8, 3, 4, 0, 0));
+  });
+
+  it("'next week' is the house's next Monday at 00:00, not 7 × 24 h", () => {
+    expect(snoozeUntil('week', NY, WED_8PM)).toBe(Date.UTC(2026, 8, 7, 4, 0, 0));
+  });
+
+  it('an hour and after service name lengths, and keep them', () => {
+    expect(snoozeUntil('hour', NY, WED_8PM)).toBe(WED_8PM + 3_600_000);
+    expect(snoozeUntil('shift', NY, WED_8PM)).toBe(WED_8PM + 8 * 3_600_000);
+  });
+
+  it("counts the house's days to the wake, not hours divided by 24", () => {
+    // Wednesday 20:00 to Monday 00:00 is 4 d 4 h — and five house days.
+    const monday = snoozeUntil('week', NY, WED_8PM);
+    expect(sleepsFor(monday, WED_8PM, NY)).toBe('5d');
   });
 });

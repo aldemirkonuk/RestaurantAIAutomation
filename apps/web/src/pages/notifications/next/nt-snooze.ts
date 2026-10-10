@@ -34,6 +34,9 @@
  * not personally put to sleep.
  */
 
+import { houseDaysBetween } from '@/lib/houseCalendar';
+import { snoozeWake } from '@/lib/recommendationState';
+
 export type WakeReason = 'deadline' | 'activity' | 'settled';
 
 export interface SnoozeRecord {
@@ -73,12 +76,33 @@ export interface SnoozeVerdict {
  * ids for notifications that were deleted months ago.
  */
 
-export const DURATIONS: Array<{ key: string; label: string; ms: number }> = [
+export type SnoozeKey = 'hour' | 'shift' | 'tomorrow' | 'week';
+
+/**
+ * F-927 sibling (2026-10-10): "tomorrow" and "next week" were 24 h and
+ * 7 × 24 h from the click, so a line put down "for tomorrow" at 10:00 woke at
+ * 10:00 the next day. A day word names a day on the HOUSE's calendar: they
+ * now end at the house's next midnight and its next Monday (`snoozeWake`,
+ * lib/recommendationState.ts — the same rule as /recommendations). "An hour"
+ * and "after service" name lengths, not days, and keep them.
+ */
+export const DURATIONS: Array<{ key: SnoozeKey; label: string; ms?: number }> = [
   { key: 'hour', label: 'an hour', ms: 60 * 60 * 1000 },
   { key: 'shift', label: 'after service', ms: 8 * 60 * 60 * 1000 },
-  { key: 'tomorrow', label: 'tomorrow', ms: 24 * 60 * 60 * 1000 },
-  { key: 'week', label: 'next week', ms: 7 * 24 * 60 * 60 * 1000 },
+  { key: 'tomorrow', label: 'tomorrow' },
+  { key: 'week', label: 'next week' },
 ];
+
+/** The epoch ms a line put down for `key` at `now` comes back. */
+export function snoozeUntil(
+  key: SnoozeKey,
+  zone: string | null | undefined,
+  now: number = Date.now(),
+): number {
+  if (key === 'tomorrow' || key === 'week') return Date.parse(snoozeWake(key, zone, now));
+  const d = DURATIONS.find((x) => x.key === key);
+  return now + (d?.ms ?? 60 * 60 * 1000);
+}
 
 /**
  * Decide which snoozed lines are still asleep.
@@ -130,13 +154,21 @@ export function resolveSnoozes(
   return { asleep, woke, keep };
 }
 
-/** "asleep for another 3h 20m" — an unknown deadline is never guessed. */
-export function sleepsFor(until: number, now: number = Date.now()): string {
+/**
+ * "asleep for another 3h 20m" — an unknown deadline is never guessed. A day or
+ * more away counts the house's calendar days, so a line due back Monday reads
+ * the days to Monday, not hours divided by 24.
+ */
+export function sleepsFor(
+  until: number,
+  now: number = Date.now(),
+  zone?: string | null,
+): string {
   const ms = until - now;
   if (!Number.isFinite(ms) || ms <= 0) return 'due back now';
   const m = Math.round(ms / 60000);
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ${m % 60}m`;
-  return `${Math.round(h / 24)}d`;
+  return `${houseDaysBetween(zone, now, until)}d`;
 }

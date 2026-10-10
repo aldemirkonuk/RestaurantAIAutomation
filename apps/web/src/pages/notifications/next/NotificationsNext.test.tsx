@@ -88,7 +88,21 @@ vi.mock('./useHeldLowStock', () => ({
   useHeldLowStock: () => mockHeld.current,
 }));
 
+/** The house's zone; null = the device's clock stands in. */
+const mockZone = vi.hoisted(() => ({ current: null as string | null }));
+vi.mock('@/lib/houseZone', async () => {
+  const real = await vi.importActual<typeof import('@/lib/houseZone')>('@/lib/houseZone');
+  return { ...real, useHouseZone: () => mockZone.current };
+});
+
 import NotificationsNext from './NotificationsNext';
+import { houseClockTime, houseDaysBetween } from '@/lib/houseCalendar';
+
+/** The `until` the last snooze call asked for, as ms from now. */
+function lastSnoozeIn(): number {
+  const call = spies.snooze.mock.calls.at(-1) as [string, number];
+  return call[1] - Date.now();
+}
 
 function row(over: Partial<Notification>): Notification {
   return {
@@ -185,6 +199,7 @@ function draw() {
 
 beforeEach(() => {
   Object.values(spies).forEach((s) => s.mockClear());
+  mockZone.current = null;
   mockData.current = base([]);
   mockMarket.current = { ...EMPTY_MARKET };
   mockIndex.current = { ...EMPTY_INDEX };
@@ -501,7 +516,8 @@ describe('NotificationsNext — what the inbox lens asked for', () => {
     expect(spies.markRead).toHaveBeenCalledWith('n1');
 
     fireEvent.keyDown(window, { key: 's' });
-    expect(spies.snooze).toHaveBeenCalledWith('n1', 60 * 60 * 1000);
+    expect(spies.snooze).toHaveBeenCalledWith('n1', expect.any(Number));
+    expect(Math.abs(lastSnoozeIn() - 60 * 60 * 1000)).toBeLessThan(5_000);
 
     // The two irreversible ones are not reachable from the keyboard at all.
     fireEvent.keyDown(window, { key: 'd' });
@@ -525,7 +541,24 @@ describe('NotificationsNext — what the inbox lens asked for', () => {
 
     // The chord spent, the row keys answer again.
     fireEvent.keyDown(window, { key: 's' });
-    expect(spies.snooze).toHaveBeenCalledWith('n1', 60 * 60 * 1000);
+    expect(spies.snooze).toHaveBeenCalledWith('n1', expect.any(Number));
+    expect(Math.abs(lastSnoozeIn() - 60 * 60 * 1000)).toBeLessThan(5_000);
+  });
+
+  it("puts a line down 'tomorrow' until the house's next midnight, not 24 hours on (F-927)", () => {
+    // UTC+14: the house's midnight is never the device's, so a rolling 24 h
+    // and a device midnight both miss it.
+    mockZone.current = 'Pacific/Kiritimati';
+    mockData.current = base(two());
+    draw();
+    // Every line carries its menu; the first is n1's.
+    const menu = screen.getAllByText('Put it down for')[0].parentElement as HTMLElement;
+    fireEvent.click(within(menu).getByRole('button', { name: 'tomorrow' }));
+
+    const until = (spies.snooze.mock.calls.at(-1) as [string, number])[1];
+    expect(houseClockTime('Pacific/Kiritimati', until)).toBe('12:00 AM');
+    expect(houseDaysBetween('Pacific/Kiritimati', Date.now(), until)).toBe(1);
+    expect(until - Date.now()).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
   });
 
   it('does not answer a key someone nearer already took, or a key pressed on a button (F-725)', () => {
