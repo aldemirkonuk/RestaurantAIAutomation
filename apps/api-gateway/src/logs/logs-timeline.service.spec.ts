@@ -34,6 +34,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
       const containsFilters: Array<[string, Row]> = [];
       const inFilters: Array<[string, any[]]> = [];
       const notInFilters: Array<[string, string[]]> = [];
+      const nullFilters: Array<[string, boolean]> = [];
       const rec: Asked = { table, order: [], limit: null, or: [] };
       asked.push(rec);
       const api: any = {
@@ -52,10 +53,21 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
           inFilters.push([col, vals]);
           return api;
         },
-        // `.not(col, "in", "(a,b)")` — the ADR 0218 round-4 Away filter. Only
-        // the "in" operator is parsed; a wider call throws so a future caller
-        // does not get a filter that silently does nothing.
+        // `.is(col, null)` — the open half of the pos_checks read (F-261).
+        is(col: string, val: any) {
+          if (val !== null) throw new Error(`fake client cannot parse is(${col}, ${val})`);
+          nullFilters.push([col, true]);
+          return api;
+        },
+        // `.not(col, "in", "(a,b)")` — the ADR 0218 round-4 Away filter — and
+        // `.not(col, "is", null)`, the closed half of the pos_checks read. Any
+        // other operator throws so a future caller does not get a filter that
+        // silently does nothing.
         not(col: string, op: string, val: any) {
+          if (op === "is" && val === null) {
+            nullFilters.push([col, false]);
+            return api;
+          }
           if (op !== "in") {
             throw new Error(`fake client cannot parse not(${col}, ${op}, …)`);
           }
@@ -92,6 +104,9 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
           }
           for (const [col, excluded] of notInFilters) {
             rows = rows.filter((r) => !excluded.includes(String(r[col])));
+          }
+          for (const [col, isNull] of nullFilters) {
+            rows = rows.filter((r) => (r[col] == null) === isNull);
           }
           // The cursor filter the service writes: `<col>.lte.<iso>,<col>.is.null`.
           for (const expr of rec.or) {
@@ -287,6 +302,7 @@ describe("LogsTimelineService.getTimeline", () => {
           eq: () => api,
           contains: () => api,
           not: () => api,
+          is: () => api,
           order: () => api,
           limit: () => api,
           then: (resolve: any) => resolve({ data: [], error: null }),
@@ -412,11 +428,18 @@ describe("LogsTimelineService.getTimeline", () => {
     function clientWhereOneTableFails(failing: string) {
       return {
         from(table: string) {
+          // The pos_checks read is two halves (F-261); the one open check
+          // below comes back only from the open half, `.is(closed_at, null)`.
+          let openHalf = false;
           const api: any = {
             select: () => api,
             eq: () => api,
             contains: () => api,
             not: () => api,
+            is: () => {
+              openHalf = true;
+              return api;
+            },
             order: () => api,
             limit: () => api,
             then: (resolve: any) =>
@@ -425,7 +448,7 @@ describe("LogsTimelineService.getTimeline", () => {
                   ? { data: null, error: { message: "relation is down" } }
                   : {
                       data:
-                        table === "pos_checks"
+                        table === "pos_checks" && openHalf
                           ? [
                               {
                                 id: "pc-1",
@@ -544,9 +567,11 @@ describe("LogsTimelineService.getTimeline", () => {
       const asked: Asked[] = [];
       await service(EMPTY, asked).getTimeline("r1", { limit: 5 });
 
+      // pos_checks twice: its closed and open halves (F-261).
       expect(asked.map((a) => a.table).sort()).toEqual([
         "decision_log",
         "inventory_transactions",
+        "pos_checks",
         "pos_checks",
         "procurement_documents",
         "system_audit_log",
@@ -643,6 +668,56 @@ describe("LogsTimelineService.getTimeline", () => {
       expect(page.events).toHaveLength(2);
       expect(page.hasMore).toBe(true);
       expect(page.nextCursor).toBeNull();
+    });
+
+    it("pages a POS check by the time it is placed at, so a long table that just closed leads page one (F-261)", async () => {
+      // A long table opened at 18:00 and closed at 23:00, then three quick
+      // checks opened after it and are still open. Paged by opened_at, the
+      // long table was the OLDEST check and fell outside a window of 2 —
+      // while it is the NEWEST event on the night.
+      const check = (
+        id: string,
+        openedAt: string,
+        closedAt: string | null,
+      ): Row => ({
+        id,
+        restaurant_id: "r1",
+        external_check_id: id,
+        source: "simpos",
+        opened_at: openedAt,
+        closed_at: closedAt,
+        correlation_id: null,
+        items: [],
+      });
+      const tables = {
+        ...EMPTY,
+        pos_checks: [
+          check("long", "2026-09-01T18:00:00.000Z", "2026-09-01T23:00:00.000Z"),
+          check("q1", "2026-09-01T20:00:00.000Z", null),
+          check("q2", "2026-09-01T21:00:00.000Z", null),
+          check("q3", "2026-09-01T22:00:00.000Z", null),
+        ],
+      };
+
+      const first = await service(tables).getTimeline("r1", { limit: 2 });
+      expect(first.events.map((e) => e.id)).toEqual(["long", "q3"]);
+      expect(first.events[0].occurredAt).toBe("2026-09-01T23:00:00.000Z");
+      expect(first.hasMore).toBe(true);
+      expect(first.nextCursor).toBe("2026-09-01T22:00:00.000Z");
+
+      // The next page walks on from the cursor in the same order and never
+      // brings the long table back above rows already shown.
+      const second = await service(tables).getTimeline("r1", {
+        limit: 2,
+        before: first.nextCursor!,
+      });
+      expect(second.events.map((e) => e.id)).toEqual(["q3", "q2"]);
+      const third = await service(tables).getTimeline("r1", {
+        limit: 2,
+        before: second.nextCursor!,
+      });
+      expect(third.events.map((e) => e.id)).toEqual(["q2", "q1"]);
+      expect(third.hasMore).toBe(false);
     });
 
     it("refuses a cursor that does not parse as a 400, never as page one", async () => {
