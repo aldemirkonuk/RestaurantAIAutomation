@@ -418,6 +418,32 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(HOUSE_A, 30);
   });
 
+  it("lists, opens and downloads a written export under a neutral UTC name when the house row cannot be read (F-784)", async () => {
+    const { mem, service } = build();
+    mem.rows("restaurants").find((r) => r.id === HOUSE_A)!.timezone = "America/Los_Angeles";
+    const till = await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "till", days: 7 });
+    await till.settled;
+    for (const r of exportsOf(mem)) r.finished_at = "2026-10-10T01:00:00.000Z";
+    const neutral = "mudavym-house-till-7-days-as-of-2026-10-10-utc";
+
+    mem.failNext("restaurants", "select", "connection reset");
+    const listed = await service.listExports(HOUSE_A);
+    expect(listed.exports.map((e) => e.fileStem)).toEqual([neutral]);
+
+    mem.failNext("restaurants", "select", "connection reset");
+    expect((await service.getExport(HOUSE_A, till.export.id)).fileStem).toBe(neutral);
+
+    mem.failNext("restaurants", "select", "connection reset");
+    const file = await service.downloadExport(HOUSE_A, till.export.id, "csv");
+    expect(file.filename).toBe(`${neutral}.csv`);
+    expect(file.body.length).toBeGreaterThan(0);
+
+    // Once the row reads again, the name is the house's own.
+    expect((await service.downloadExport(HOUSE_A, till.export.id, "csv")).filename).toBe(
+      "mudavym-meyhouse-till-2026-10-03-to-2026-10-09.csv",
+    );
+  });
+
   it("names a till file by house and window in the house's days, and writes Written on its clock (F-413)", async () => {
     const { mem, service } = build();
     mem.rows("restaurants").find((r) => r.id === HOUSE_A)!.timezone = "America/Los_Angeles";
