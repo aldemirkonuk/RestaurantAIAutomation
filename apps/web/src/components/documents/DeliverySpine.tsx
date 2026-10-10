@@ -129,7 +129,11 @@ function Card({
         {fmtDate(doc.docDate ?? doc.createdAt)} · {doc.status ?? 'status unrecorded'}
       </span>
       <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-2, #4F473C)' }}>
-        {doc.total == null ? 'no money on this document' : fmtMoney(doc.total, doc.currency)}
+        {doc.total === undefined
+          ? 'amount kept for owners and managers'
+          : doc.total === null
+            ? 'no money on this document'
+            : fmtMoney(doc.total, doc.currency)}
       </span>
       {!doc.isSelected && onOpen && (
         <button

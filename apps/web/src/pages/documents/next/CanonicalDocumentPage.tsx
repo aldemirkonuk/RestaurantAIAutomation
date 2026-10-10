@@ -369,7 +369,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     push('Issue date', doc.layer1.issueDate)
     if (doc.layer1.seller.vatIdentifier.value)
       push('Seller VAT identifier', doc.layer1.seller.vatIdentifier)
-    doc.layer1.lines.forEach((l, i) => push(`Unit price, line ${i + 1}`, l.netPrice))
+    // A staff read carries no unit price (M2), so it has no footnote either.
+    doc.layer1.lines.forEach((l, i) => l.netPrice && push(`Unit price, line ${i + 1}`, l.netPrice))
     return out
   }, [doc])
 
@@ -853,7 +854,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             onRefresh={() => void q.refetch()}
             refreshing={q.isFetching}
             selectedEnvelope={
-              selectedLine != null ? doc.layer1.lines[selectedLine]?.netPrice : null
+              selectedLine != null ? (doc.layer1.lines[selectedLine]?.netPrice ?? null) : null
             }
             selectedLabel={
               selectedLine != null ? `Line ${selectedLine + 1}` : null

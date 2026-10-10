@@ -48,8 +48,10 @@ describe("GET /analytics/overview — goals only for owners and managers (F-794)
       const out: any = await c.getOverview("r1", { role });
       expect(advanced.getOverview).toHaveBeenCalledWith("r1");
       expect("activeGoals" in out).toBe(false);
-      expect(out.financial).toEqual(OVERVIEW.financial);
-      expect(out.cashflow).toEqual(OVERVIEW.cashflow);
+      // The rest still answers — shaped for the role (F-203 strips the
+      // money a staff reader may not see), never dropped.
+      expect(out.financial).toBeDefined();
+      expect(out.cashflow).toBeDefined();
     },
   );
 

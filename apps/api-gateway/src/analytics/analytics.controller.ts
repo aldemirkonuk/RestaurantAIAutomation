@@ -52,6 +52,112 @@ import {
 import { DataRequirement } from "./insights/insight-catalog";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { Persona } from "./metric-registry";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
+
+/**
+ * THE HOUSE'S MONEY ON THE ANALYTICS LENSES (F-203). Staff see counts, never
+ * amounts (ADR 0145), and the money class is prices, costs, values and
+ * margins. A reader who does not hold the house's money (`holdsHouseMoney`)
+ * gets each lens with those keys OMITTED, never nulled — a null here already
+ * means "no recorded cost" — and `amountsWithheld: true` at the root, so a
+ * page can say why a figure is missing. Counts, rates, days, velocities and
+ * quadrants stay. The menu price stays too, as it does on /inventory: it is
+ * what the floor sells at, not what the house paid.
+ */
+type Lens = Record<string, any>;
+
+function without(o: Lens, keys: readonly string[]): Lens {
+  const out: Lens = { ...o };
+  for (const k of keys) delete out[k];
+  return out;
+}
+
+const MENU_ITEM_MONEY = ["marginPerBottle", "marginPct"] as const;
+const VENDOR_MONEY = ["spend", "unitPrice"] as const;
+const CASHFLOW_MONEY = [
+  "spendLast30d",
+  "spendPrev30d",
+  "projectedNext4Weeks",
+  "committedOpenOrders",
+] as const;
+const WINE_MONEY = ["unitCost", "marginPerBottle"] as const;
+const FINANCIAL_MONEY = [
+  "inventoryValue",
+  "cogs",
+  "revenue",
+  "grossMarginDollars",
+  "grossMargin",
+  "cogsRatio",
+  "primeCostRatio",
+  "gmroi",
+  "deadStockCapital",
+] as const;
+const SKU_MONEY = ["unitCost", "inventoryValue"] as const;
+
+const withheld = (o: Lens): Lens => ({ ...o, amountsWithheld: true });
+
+export function menuEngineeringForRole(m: Lens, role?: string | null): Lens {
+  if (holdsHouseMoney(role ?? null)) return m;
+  return withheld({
+    ...m,
+    medians: without(m.medians ?? {}, ["marginPerBottle"]),
+    items: (m.items ?? []).map((i: Lens) => without(i, MENU_ITEM_MONEY)),
+  });
+}
+
+export function vendorScorecardForRole(v: Lens, role?: string | null): Lens {
+  if (holdsHouseMoney(role ?? null)) return v;
+  return withheld({
+    ...v,
+    vendors: (v.vendors ?? []).map((x: Lens) => without(x, VENDOR_MONEY)),
+  });
+}
+
+export function cashflowForRole(c: Lens, role?: string | null): Lens {
+  if (holdsHouseMoney(role ?? null)) return c;
+  return withheld(without(c, CASHFLOW_MONEY));
+}
+
+export function wine360ForRole(w: Lens, role?: string | null): Lens {
+  if (holdsHouseMoney(role ?? null)) return w;
+  return withheld(without(w, WINE_MONEY));
+}
+
+export function financialForRole(f: Lens, role?: string | null): Lens {
+  if (holdsHouseMoney(role ?? null)) return f;
+  return withheld({
+    ...without(f, FINANCIAL_MONEY),
+    deadStockTop: (f.deadStockTop ?? []).map((d: Lens) =>
+      without(d, ["value"]),
+    ),
+  });
+}
+
+/** The overview carries the lenses above; each part gets the same cut. */
+export function overviewForRole(o: Lens, role?: string | null): Lens {
+  if (holdsHouseMoney(role ?? null)) return o;
+  return withheld({
+    ...o,
+    financial: o.financial ? financialForRole(o.financial, role) : o.financial,
+    cashflow: o.cashflow ? cashflowForRole(o.cashflow, role) : o.cashflow,
+    menuEngineering: o.menuEngineering
+      ? {
+          ...o.menuEngineering,
+          top: (o.menuEngineering.top ?? []).map((i: Lens) =>
+            without(i, MENU_ITEM_MONEY),
+          ),
+        }
+      : o.menuEngineering,
+    inventory: o.inventory
+      ? {
+          ...o.inventory,
+          reorderTop: (o.inventory.reorderTop ?? []).map((s: Lens) =>
+            without(s, SKU_MONEY),
+          ),
+        }
+      : o.inventory,
+  });
+}
 
 /**
  * Analytics Controller — the quantitative API surface.
@@ -209,12 +315,16 @@ export class AnalyticsController {
   async getFinancial(
     @Param("restaurantId") restaurantId: string,
     @Query("labor") laborStr?: string,
+    @CurrentUser() user?: { role?: string },
   ) {
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
-      return await this.analyticsService.getFinancialSummary(
-        restaurantId,
-        Number.isFinite(labor) ? labor : 0,
+      return financialForRole(
+        await this.analyticsService.getFinancialSummary(
+          restaurantId,
+          Number.isFinite(labor) ? labor : 0,
+        ),
+        user?.role,
       );
     } catch (error) {
       throw new HttpException(
@@ -1138,8 +1248,14 @@ export class AnalyticsController {
     description:
       "Stars / Plowhorses / Puzzles / Dogs from margin (unit_price − WAC) × velocity, with a concrete action per quadrant.",
   })
-  async getMenuEngineering(@Param("restaurantId") restaurantId: string) {
-    return this.advanced.getMenuEngineering(restaurantId);
+  async getMenuEngineering(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string },
+  ) {
+    return menuEngineeringForRole(
+      await this.advanced.getMenuEngineering(restaurantId),
+      user?.role,
+    );
   }
 
   @Get("vendor-scorecard/:restaurantId")
@@ -1148,8 +1264,14 @@ export class AnalyticsController {
     description:
       "Per-vendor lead-time distribution (mean/median/p90/σ), on-time rate, unit-price trend, spend share + HHI.",
   })
-  async getVendorScorecard(@Param("restaurantId") restaurantId: string) {
-    return this.advanced.getVendorScorecard(restaurantId);
+  async getVendorScorecard(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string },
+  ) {
+    return vendorScorecardForRole(
+      await this.advanced.getVendorScorecard(restaurantId),
+      user?.role,
+    );
   }
 
   @Get("seasonality/:restaurantId")
@@ -1168,8 +1290,14 @@ export class AnalyticsController {
     description:
       "30-day purchasing spend vs prior, Holt 4-week projection, committed open-order exposure.",
   })
-  async getCashflow(@Param("restaurantId") restaurantId: string) {
-    return this.advanced.getCashflow(restaurantId);
+  async getCashflow(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string },
+  ) {
+    return cashflowForRole(
+      await this.advanced.getCashflow(restaurantId),
+      user?.role,
+    );
   }
 
   @Get("wine/:restaurantId/:masterWineId")
@@ -1181,8 +1309,12 @@ export class AnalyticsController {
   async getWine360(
     @Param("restaurantId") restaurantId: string,
     @Param("masterWineId") masterWineId: string,
+    @CurrentUser() user?: { role?: string },
   ) {
-    return this.advanced.getWine360(restaurantId, masterWineId);
+    return wine360ForRole(
+      await this.advanced.getWine360(restaurantId, masterWineId),
+      user?.role,
+    );
   }
 
   // ==========================================================================
@@ -1267,7 +1399,11 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
-    const overview = await this.advanced.getOverview(restaurantId);
+    // Staff read the overview without the house's money (F-203).
+    const overview = overviewForRole(
+      await this.advanced.getOverview(restaurantId),
+      user?.role,
+    );
     // The overview carries the active goals with their baseline, current and
     // target figures — the same money-class read the goal routes refuse to
     // anyone but owners and managers (F-299). For any other role the key is

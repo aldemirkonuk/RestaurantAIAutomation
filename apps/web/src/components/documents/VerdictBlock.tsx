@@ -171,7 +171,8 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
    */
   const nothingRead = doc.layer1.lines.length === 0
   /** The sheet's own rows against the sheet's own stated total. */
-  const ladder = ladderDisagreement(doc)
+  const withheld = doc.amountsWithheld === true
+  const ladder = withheld ? null : ladderDisagreement(doc)
   /**
    * NOTHING COMPARED IS NOT NOTHING WRONG EITHER — and it is not a difference.
    *
@@ -253,7 +254,7 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
           color: 'var(--ink-2, #4F473C)',
         }}
       >
-        {!clean && !nothingRead && !nothingCompared && (
+        {!clean && !nothingRead && !nothingCompared && !withheld && (
           <>
             <span data-testid="money-at-risk">
               {anyMoneyKnown
@@ -266,7 +267,9 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
         {/* Not "0.00 at risk", and not "nothing is being claimed" either: the
             note above already says no amount is claimed (W26). */}
         <span>
-          billed {fmtMoney(doc.layer1.totals.taxInclusiveAmount.value, currency)}
+          {withheld
+            ? 'amounts are kept for owners and managers'
+            : `billed ${fmtMoney(doc.layer1.totals.taxInclusiveAmount.value, currency)}`}
         </span>
         {states.length > 0 && (
           <>
@@ -291,7 +294,9 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
               ? 'The document states no total, so the arithmetic could not be checked. That is untested, not correct.'
               : doc.layer3.tiesOut
                 ? 'The lines add up to the stated total.'
-                : `The lines do not add up to the stated total (off by ${fmtMoney((doc.layer3.tieOutDeltaCents ?? 0) / 100, currency)}).`}
+                : withheld
+                  ? 'The lines do not add up to the stated total.'
+                  : `The lines do not add up to the stated total (off by ${fmtMoney((doc.layer3.tieOutDeltaCents ?? 0) / 100, currency)}).`}
       </p>
 
       {/* With no line compared, a card per line would say the heading again

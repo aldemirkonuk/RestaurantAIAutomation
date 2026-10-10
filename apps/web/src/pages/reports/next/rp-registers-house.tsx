@@ -15,6 +15,10 @@ import { FigureRow } from './rp-plot';
 import { EM, MONO, countOf, figure, money, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
+/** What a staff reader is told in place of the house's money (F-203). */
+export const AMOUNTS_WITHHELD =
+  'Prices, costs and margins are kept for owners and managers.';
+
 /* ────────────────────────────────────────── 6. margin against movement ── */
 
 export interface QuadrantItem {
@@ -32,6 +36,8 @@ export interface QuadrantItem {
 }
 
 export interface QuadrantRegister {
+  /** Staff are sent no margins (F-203); the gateway says so at the root. */
+  amountsWithheld?: boolean;
   basis?: { velocity?: string; margin?: string; unpriced?: string };
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
   medians: { velocityPerDay: number | null; marginPerBottle: number | null };
@@ -54,6 +60,7 @@ const quadrants = analysis<QuadrantRegister>({
     const d = obj(raw);
     const medians = obj(d.medians);
     return {
+      amountsWithheld: d.amountsWithheld === true,
       basis: d.basis as QuadrantRegister['basis'],
       costCoverage: d.costCoverage as QuadrantRegister['costCoverage'],
       medians: {
@@ -105,6 +112,13 @@ const quadrants = analysis<QuadrantRegister>({
       { label: 'Dogs', value: figure(q.counts.dog ?? 0) },
       { label: 'No quadrant', value: figure(unclassified + unmeasured) },
     ];
+    if (q.amountsWithheld)
+      return {
+        say: `${AMOUNTS_WITHHELD} The quadrant counts below still say how the list splits.`,
+        figures,
+        notes: [],
+        basis: [q.basis?.velocity],
+      };
     if (priced.length === 0)
       return {
         say: `No wine on the list carries both a recorded cost and a menu price, so there is no margin axis to plot against.${
@@ -198,6 +212,8 @@ const quadrants = analysis<QuadrantRegister>({
 /* ──────────────────────────────────────────────── 7. figures of record ── */
 
 export interface LedgerRegister {
+  /** Staff are sent no amounts or margins (F-203). */
+  amountsWithheld?: boolean;
   basis?: Record<string, string>;
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
   /** The on-hand wines with no recorded cost, by name (F-133); capped by the gateway. */
@@ -227,6 +243,7 @@ const ledger = analysis<LedgerRegister>({
   select: (raw) => {
     const d = obj(raw);
     return {
+      amountsWithheld: d.amountsWithheld === true,
       basis: d.basis as Record<string, string>,
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
       uncosted: arr(d.uncosted).map((u) => ({ id: str(u.id), name: str(u.name) || str(u.id) })),
@@ -246,7 +263,7 @@ const ledger = analysis<LedgerRegister>({
     const cc = f.costCoverage;
     const uncosted = f.uncosted ?? [];
     const pc = f.priceCoverage;
-    const figures = [
+    const all = [
       {
         label: 'Cellar at cost',
         value: money(f.inventoryValue),
@@ -273,6 +290,10 @@ const ledger = analysis<LedgerRegister>({
         note: 'No movement signal recorded, or an idle row has no cost',
       },
     ];
+    // Staff keep the two figures that are counts of turns and days.
+    const figures = f.amountsWithheld
+      ? all.filter((x) => x.label === 'Inventory turns' || x.label === 'Days of inventory')
+      : all;
     return {
       // The "table" of this register IS its figures — one label, one figure of
       // record — so it is rendered as the figure list rather than as a grid
@@ -285,7 +306,9 @@ const ledger = analysis<LedgerRegister>({
         </dl>
       ),
       figures,
-      notes: [
+      notes: f.amountsWithheld
+        ? [AMOUNTS_WITHHELD]
+        : [
         ...(cc && !cc.complete
           ? [
               cc.total === 0

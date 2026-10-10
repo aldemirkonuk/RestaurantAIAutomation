@@ -248,6 +248,12 @@ export interface CanonicalDocument {
     lines: ResolvedLine[];
   };
   layer3: Adjudicated;
+  /**
+   * Staff are sent the document with its prices, totals and tie-out amounts
+   * left out (M2, ADR 0145's money class). When this is true an absent amount
+   * is withheld, not missing from the paper.
+   */
+  amountsWithheld?: true;
 }
 
 export interface SpineDocument {
@@ -257,7 +263,8 @@ export interface SpineDocument {
   docNumber: string | null;
   docDate: string | null;
   status: string | null;
-  total: number | null;
+  /** Absent (not null) when the reader is sent no amounts (M2). */
+  total?: number | null;
   currency: string | null;
   createdAt: string | null;
   isSelected: boolean;
