@@ -165,3 +165,29 @@ it("a failed receipt can be sent again with its figures kept (F-407)", async () 
   );
   expect(useOutbox.getState().entries).toHaveLength(0);
 });
+
+it("parks a write the server keeps refusing with 5xx so later work still sends (F-590)", async () => {
+  const { ApiError } = jest.requireMock("@/api/client");
+  const serverDown = Object.assign(new ApiError("Request failed (500)"), { status: 500 });
+  (api as jest.Mock).mockImplementation((path: string) =>
+    path === "/stuck" ? Promise.reject(serverDown) : Promise.resolve({}),
+  );
+  useOutbox.getState().enqueue({ path: "/stuck", label: "Count" });
+  useOutbox.getState().enqueue({ path: "/later", label: "Receipt" });
+  await jest.advanceTimersByTimeAsync(120_000);
+  const calls = (api as jest.Mock).mock.calls.map((c) => c[0]);
+  expect(calls.filter((p) => p === "/stuck")).toHaveLength(5);
+  expect(calls).toContain("/later");
+  expect(useOutbox.getState().entries).toEqual([
+    expect.objectContaining({ path: "/stuck", status: "failed", lastError: expect.stringContaining("Try again") }),
+  ]);
+  (api as jest.Mock).mockResolvedValue({});
+});
+
+it("keeps waiting, without parking, while the phone gets no answer at all", async () => {
+  (api as jest.Mock).mockRejectedValue(new TypeError("Network request failed"));
+  useOutbox.getState().enqueue({ path: "/offline", label: "Count" });
+  await jest.advanceTimersByTimeAsync(300_000);
+  expect(useOutbox.getState().entries[0].status).not.toBe("failed");
+  (api as jest.Mock).mockResolvedValue({});
+});
