@@ -92,3 +92,32 @@ describe('canRuleOutDays — owners and managers of this house (OPS-04)', () => 
     });
   });
 });
+
+/**
+ * The goal reads follow the same house role (F-299, 2026-10-08). The gateway
+ * refuses `GET /analytics/goals/:rid` and `/progress` to anyone but an owner or
+ * a manager, so the page does not send for them on anyone else's behalf.
+ */
+describe('the goal reads — owners and managers of this house (F-299)', () => {
+  const goalReads = () =>
+    api.get.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/analytics/goals/'));
+
+  it('[REVERT-FAILS] staff are not sent for the goals or their progress', async () => {
+    who.activeRole = 'staff';
+    const result = await ready();
+    await waitFor(() => expect(result.current.goals).toEqual([]));
+    result.current.loadGoals();
+    expect(goalReads()).toEqual([]);
+    expect(result.current.goalBook).toBeUndefined();
+  });
+
+  it.each(['owner', 'manager'])('a %s reads both', async (r) => {
+    who.activeRole = r;
+    await ready();
+    await waitFor(() =>
+      expect(goalReads()).toEqual(
+        expect.arrayContaining(['/analytics/goals/r1?status=active', '/analytics/goals/r1/progress?status=active']),
+      ),
+    );
+  });
+});

@@ -139,7 +139,14 @@ const ROUTES: Array<[string, Type<unknown>, string, string, unknown]> = [
   ["set a goal", AnalyticsController, "POST", `/analytics/goals/${HOUSE}`, { name: "More wine", metricKey: "wine_revenue", targetValue: 9000 }],
   ["edit a goal", AnalyticsController, "PATCH", `/analytics/goals/${HOUSE}/g1`, { targetValue: 12000 }],
   ["change a goal's status", AnalyticsController, "PUT", `/analytics/goals/${HOUSE}/g1/status`, { status: "archived" }],
+  // F-299, the reads: a goal's target and progress are money-class, as /ask holds them
+  ["read the goals", AnalyticsController, "GET", `/analytics/goals/${HOUSE}`, undefined],
+  ["read the goals' progress", AnalyticsController, "GET", `/analytics/goals/${HOUSE}/progress`, undefined],
+  ["read one goal's progress", AnalyticsController, "GET", `/analytics/goals/${HOUSE}/g1/progress`, undefined],
 ];
+
+/** The goal reads gate in the controller, so their refusal is in words. */
+const isGoalRead = (method: string, path: string) => method === "GET" && path.includes("/goals/");
 
 const apps = new Map<Type<unknown>, { app: INestApplication; base: string }>();
 
@@ -168,7 +175,7 @@ async function call(
   const res = await fetch(`${base}${path}`, {
     method,
     headers: { "x-test-role": role, "content-type": "application/json" },
-    body: JSON.stringify(body),
+    ...(method === "GET" ? {} : { body: JSON.stringify(body) }),
   });
   const text = await res.text();
   return { status: res.status, text };
@@ -180,7 +187,7 @@ describe.each(ROUTES)("%s", (_label, controller, method, path, body) => {
     expect(res.status).toBe(403);
     // `RolesGuard` (the analytics routes) answers Nest's own "Forbidden
     // resource"; the in-controller gates say whose act it is in words.
-    if (controller !== AnalyticsController) {
+    if (controller !== AnalyticsController || isGoalRead(method, path)) {
       expect(res.text).toMatch(/owner|manager/i);
     }
     expect(calls).toEqual([]);
