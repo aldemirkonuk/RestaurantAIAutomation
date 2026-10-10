@@ -50,8 +50,10 @@ import {
   fmtDayShort,
   fmtWeekRange,
   resolveName,
+  todayIso,
   workedHours,
 } from './tm-format';
+import { houseToday, useHouseZone } from '@/lib/houseZone';
 import { MutationError, Tag } from './tm-bits';
 import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
@@ -673,6 +675,20 @@ export function TimeOffSheet({
   onChanged: () => void;
 }) {
   const [addFor, setAddFor] = useState('');
+  /**
+   * The days, picked like My Shifts does (F-936): the whole week on screen
+   * made Tuesday's sick day take the person off all seven. It opens on the
+   * house's today when that is in the week on screen, else the week's first
+   * day; a past day can still be picked.
+   */
+  const zone = useHouseZone();
+  const opening = (() => {
+    const today = todayIso(houseToday(zone));
+    return today >= weekStart && today <= addDays(weekStart, 6) ? today : weekStart;
+  })();
+  const [offFrom, setOffFrom] = useState(opening);
+  const [offTo, setOffTo] = useState(opening);
+  const rangeOk = offFrom !== '' && offTo !== '' && offFrom <= offTo;
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
     for (const x of members ?? []) m.set(x.id, resolveName(x).text);
@@ -688,8 +704,8 @@ export function TimeOffSheet({
     mutationFn: () =>
       createTimeOff({
         memberId: addFor,
-        startDate: weekStart,
-        endDate: addDays(weekStart, 6),
+        startDate: offFrom,
+        endDate: offTo,
         reason: 'Entered by a manager from the team desk',
       }),
     onSuccess: () => {
@@ -719,7 +735,8 @@ export function TimeOffSheet({
       <div className="tm-in">
         <div style={{ padding: '12px 16px 0' }}>
           <MutationError when={review.isError}>
-            The decision was not recorded, so the request is still where it was.
+            The decision was not recorded, so the request is still where it was. If the
+            person withdrew it, it is no longer yours to decide.
           </MutationError>
           <MutationError when={add.isError}>
             The request was not filed. Nothing is on the manager&apos;s desk.
@@ -784,29 +801,48 @@ export function TimeOffSheet({
         {settled.map((r) => (
           <div key={r.id} className="tm-rrow" style={{ padding: '8px 16px' }}>
             <div style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>
-              {nameOf.get(r.member_id) ?? 'Someone no longer on the roster'} · {r.status}
+              {nameOf.get(r.member_id) ?? 'Someone no longer on the roster'} ·{' '}
+              {r.status === 'denied'
+                ? 'turned down'
+                : r.status === 'withdrawn'
+                  ? 'withdrawn by them'
+                  : r.status}
             </div>
             <div className="tm-rrow__line">
               {fmtDayShort(r.start_date)} – {fmtDayShort(r.end_date)}
               {r.status === 'approved' ? ` · ${leaveWords(r.leave_type)}` : ''}
             </div>
-            {r.status === 'approved' && (r.leave_type ?? 'unknown') === 'unknown' && (
+            {r.status === 'approved' && (
               <div className="tm-actions">
+                {(r.leave_type ?? 'unknown') === 'unknown' && (
+                  <>
+                    <button
+                      type="button"
+                      className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+                      disabled={review.isPending}
+                      onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid' })}
+                    >
+                      Mark paid
+                    </button>
+                    <button
+                      type="button"
+                      className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+                      disabled={review.isPending}
+                      onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid' })}
+                    >
+                      Mark unpaid
+                    </button>
+                  </>
+                )}
+                {/* An approved request blocks shifts on its days, so it has to
+                    be undoable from here (F-936). The person is told. */}
                 <button
                   type="button"
                   className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                   disabled={review.isPending}
-                  onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid' })}
+                  onClick={() => review.mutate({ id: r.id, status: 'denied' })}
                 >
-                  Mark paid
-                </button>
-                <button
-                  type="button"
-                  className="tm-ctl tm-ctl--quiet tm-ctl--sm"
-                  disabled={review.isPending}
-                  onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid' })}
-                >
-                  Mark unpaid
+                  Turn it down
                 </button>
               </div>
             )}
@@ -828,20 +864,46 @@ export function TimeOffSheet({
                 </option>
               ))}
             </select>
-            <p className="tm-hint">
-              Covers the whole week on screen ({fmtWeekRange(weekStart)}). The gateway has
-              no route for a part-week request from here, so this page does not offer one.
-            </p>
           </label>
-          <div className="tm-actions">
+          <div className="tm-actions" style={{ flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="tm-label" style={{ margin: 0 }}>
+                First day off
+              </span>
+              <input
+                type="date"
+                className="tm-input"
+                value={offFrom}
+                disabled={add.isPending}
+                onChange={(e) => setOffFrom(e.target.value)}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="tm-label" style={{ margin: 0 }}>
+                Last day off
+              </span>
+              <input
+                type="date"
+                className="tm-input"
+                value={offTo}
+                min={offFrom || undefined}
+                disabled={add.isPending}
+                onChange={(e) => setOffTo(e.target.value)}
+              />
+            </label>
             <button
               type="button"
               className="tm-ctl"
-              disabled={add.isPending || addFor === ''}
+              disabled={add.isPending || addFor === '' || !rangeOk}
               onClick={() => add.mutate()}
             >
               {add.isPending ? 'Filing…' : 'File it'}
             </button>
+            {!rangeOk && (
+              <p className="tm-alert" role="alert" style={{ margin: 0, flexBasis: '100%' }}>
+                The last day off comes before the first. Pick the days again.
+              </p>
+            )}
           </div>
         </div>
       </div>

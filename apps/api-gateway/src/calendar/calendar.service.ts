@@ -78,6 +78,23 @@ interface RecurrenceRuleRow {
   updated_at: string;
 }
 
+/**
+ * An entry's end day may not come before its own day (F-937): the gateway
+ * stored it as sent, and the subscribed feed exported an end before the start.
+ * The same rule as time off (F-923).
+ */
+function endsOnOrAfterStart(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): void {
+  if (!start || !end) return;
+  if (end.slice(0, 10) < start.slice(0, 10)) {
+    throw new BadRequestException(
+      "The entry ends before it starts. Pick an end day on or after its day. Nothing was saved.",
+    );
+  }
+}
+
 // ============================================================================
 // SERVICE
 // ============================================================================
@@ -110,6 +127,7 @@ export class CalendarService {
       eventDate: dto.eventDate,
       isRecurring: !!dto.recurrence,
     });
+    endsOnOrAfterStart(dto.eventDate, dto.eventDateEnd);
 
     // Insert the calendar event
     const insertPayload = {
@@ -466,6 +484,11 @@ export class CalendarService {
 
     // Get existing event
     const existing = await this.getEvent(restaurantId, eventId);
+    // An edit may send one day and keep the other (F-937).
+    endsOnOrAfterStart(
+      dto.eventDate ?? existing.eventDate,
+      dto.eventDateEnd !== undefined ? dto.eventDateEnd : existing.eventDateEnd,
+    );
 
     this.logger.log({
       message: "Updating calendar event",

@@ -199,6 +199,13 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
     cancelRemindersForEvent(eventId);
   };
 
+  /**
+   * An end day before the entry's own day is not a range (F-937). The gateway
+   * refuses it too; before, it was stored and every subscribed calendar got
+   * an entry ending before it starts.
+   */
+  const reversed = endDate !== '' && date !== '' && endDate < date;
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !date) return;
@@ -248,6 +255,8 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
         }
         delete patch.eventDate;
         delete patch.eventDateEnd;
+      } else if (reversed) {
+        return;
       }
       setOccurrenceRefusal(null);
       ask('update');
@@ -263,6 +272,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       return;
     }
 
+    if (reversed) return;
     ask('create');
     data.create.mutate(
       {
@@ -470,10 +480,18 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               type="date"
               className="cn-input"
               value={endDate}
+              // A drawn occurrence's days are not sent; its own refusal says why.
+              min={editing?.isOccurrence ? undefined : date || undefined}
               onChange={(e) => setEndDate(e.target.value)}
             />
           </Field>
         </div>
+        {reversed && !editing?.isOccurrence && (
+          <p role="alert" className="cn-notice" style={{ marginTop: 6 }}>
+            It ends before it starts. Pick an end day on or after {longDay(date)}, or leave it
+            empty.
+          </p>
+        )}
 
         <label className="cn-field cn-check">
           <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />

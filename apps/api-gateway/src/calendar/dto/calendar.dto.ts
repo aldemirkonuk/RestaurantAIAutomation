@@ -12,8 +12,30 @@ import {
   Max,
   ValidateNested,
   IsObject,
+  Validate,
+  ValidatorConstraint,
+  type ValidationArguments,
+  type ValidatorConstraintInterface,
 } from "class-validator";
 import { Transform, Type } from "class-transformer";
+
+/**
+ * An "Ends on" day before the entry's own day is refused (F-937): it was
+ * stored as sent and exported to every subscribed calendar with its end
+ * before its start. Checked here when both days are in one body; the service
+ * checks again against the stored day when an edit sends only one of them.
+ */
+@ValidatorConstraint({ name: "endsOnOrAfterStart", async: false })
+export class EndsOnOrAfterStart implements ValidatorConstraintInterface {
+  validate(end: unknown, args: ValidationArguments): boolean {
+    const start = (args.object as { eventDate?: unknown }).eventDate;
+    if (typeof end !== "string" || typeof start !== "string") return true;
+    return end.slice(0, 10) >= start.slice(0, 10);
+  }
+  defaultMessage(): string {
+    return "The entry ends before it starts. Pick an end day on or after its day.";
+  }
+}
 
 // ============================================================================
 // ENUMS
@@ -155,6 +177,7 @@ export class CreateCalendarEventDto {
   @ApiPropertyOptional({ description: "End date for multi-day events" })
   @IsDateString()
   @IsOptional()
+  @Validate(EndsOnOrAfterStart)
   eventDateEnd?: string;
 
   @ApiPropertyOptional({ default: true })
@@ -253,6 +276,7 @@ export class UpdateCalendarEventDto {
   @ApiPropertyOptional()
   @IsDateString()
   @IsOptional()
+  @Validate(EndsOnOrAfterStart)
   eventDateEnd?: string | null;
 
   @ApiPropertyOptional()

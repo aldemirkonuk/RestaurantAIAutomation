@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   InternalServerErrorException,
+  NotFoundException,
 } from "@nestjs/common";
 import { ScheduleService } from "./schedule.service";
 import { TeamService } from "./team.service";
@@ -1106,12 +1108,101 @@ describe("F-191 — the person who asked for time off hears the answer", () => {
     expect(reviewed.requesterNotified).toBe(false);
   });
 
+  it("does not tell them again when an approved request is only marked paid or unpaid (F-939)", async () => {
+    const db = seed();
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+    } as any);
+    const marked = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+      leaveType: "paid",
+    } as any);
+    expect(marked.leave_type).toBe("paid");
+    expect(marked.requesterNotified).toBe(false);
+    expect(
+      db.tables.notifications.filter((n) => n.user_id === STAFF),
+    ).toHaveLength(1);
+    // Turning an approved request down is news, and is said (F-936).
+    const revoked = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "denied",
+    } as any);
+    expect(revoked.requesterNotified).toBe(true);
+    expect(
+      db.tables.notifications
+        .filter((n) => n.user_id === STAFF)
+        .map((n) => n.title),
+    ).toEqual(["Your time off was approved", "Your time off was turned down"]);
+  });
+
   it("sends no notice to a reviewer deciding their own request", async () => {
     const db = seed();
     const req = await teamOf(db).createTimeOff(MANAGER, RID, { memberId: "m-manager", startDate: WEEK, endDate: WEEK } as any);
     const reviewed = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, { status: "approved" } as any);
     expect(reviewed.requesterNotified).toBe(false);
     expect(db.tables.notifications).toHaveLength(0);
+  });
+});
+
+describe("F-936 — the person who asked can withdraw a request still waiting", () => {
+  const waiting = async (db: StubDb) => {
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    db.tables.time_off_requests.find((r) => r.id === req.id)!.status =
+      "pending";
+    return req;
+  };
+
+  it("marks it withdrawn and keeps the row; a manager cannot then decide it", async () => {
+    const db = seed();
+    const req = await waiting(db);
+    const out = await teamOf(db).withdrawTimeOff(STAFF, RID, req.id);
+    expect(out.status).toBe("withdrawn");
+    expect(
+      db.tables.time_off_requests.find((r) => r.id === req.id)?.status,
+    ).toBe("withdrawn");
+    await expect(
+      teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+        status: "approved",
+      } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(db.tables.notifications).toHaveLength(0);
+  });
+
+  it("refuses someone else's request, and one already answered", async () => {
+    const db = seed();
+    const req = await waiting(db);
+    await expect(
+      teamOf(db).withdrawTimeOff(MANAGER, RID, req.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+    } as any);
+    await expect(
+      teamOf(db).withdrawTimeOff(STAFF, RID, req.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(
+      db.tables.time_off_requests.find((r) => r.id === req.id)?.status,
+    ).toBe("approved");
+  });
+
+  it("withdraws nothing when the request cannot be read", async () => {
+    const db = seed();
+    const req = await waiting(db);
+    db.errors["time_off_requests:select"] = { message: "boom" };
+    await expect(
+      teamOf(db).withdrawTimeOff(STAFF, RID, req.id),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(
+      db.tables.time_off_requests.find((r) => r.id === req.id)?.status,
+    ).toBe("pending");
   });
 });
 

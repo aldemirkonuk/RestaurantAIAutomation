@@ -1860,6 +1860,26 @@ describe('CalendarNext — an all-day entry can span days (F-198)', () => {
   });
 });
 
+describe('CalendarNext — an entry may not end before it starts (F-937)', () => {
+  it('offers no earlier end day, says why, and sends nothing for a reversed range', () => {
+    const create = mutation();
+    state.current = mkData({ create });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByPlaceholderText('What is happening'), {
+      target: { value: 'Harvest festival' },
+    });
+    fireEvent.change(within(sheet).getByLabelText('Date'), { target: { value: '2026-09-11' } });
+    const ends = within(sheet).getByLabelText('Ends on (optional)');
+    expect(ends).toHaveAttribute('min', '2026-09-11');
+    fireEvent.change(ends, { target: { value: '2026-09-10' } });
+    expect(within(sheet).getByRole('alert')).toHaveTextContent(/ends before it starts/);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Write it in' }));
+    expect(create.mutate).not.toHaveBeenCalled();
+  });
+});
+
 describe("CalendarNext — the house's today (F-571)", () => {
   // The fixed clock is 12:00 on Sep 15 in New York (the suite's zone), which
   // is already 01:00 on Sep 16 in Tokyo.
