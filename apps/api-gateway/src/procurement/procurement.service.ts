@@ -6723,9 +6723,25 @@ export class ProcurementService {
     // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
     // and the verified landed cost never reached the books. A verified price is
     // now reason enough to write, on its own.
+    //
+    // A COST IN ANOTHER MONEY DOES NOT RESTATE THE LOT (F-341). The lot was
+    // booked in the order's money, and `effectiveUnitCost` is in the
+    // invoice's. When both are stated and differ, writing it would put a
+    // lira figure in a euro cost history with nothing to say so; nothing
+    // converts (20260905120000 rule 3), so the lot keeps its delivery cost
+    // and the price series below still records the billed figure in its own
+    // money. A money not stated on either side reads as before.
+    const orderMoney =
+      currencyCode(agreedLine.currency) ??
+      currencyCode((orderRow as any).currency);
+    const billedMoney = currencyCode(body.invoiceCurrency);
+    const landedCost =
+      orderMoney && billedMoney && orderMoney !== billedMoney
+        ? null
+        : (match?.effectiveUnitCost ?? null);
     if (
       match &&
-      (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
+      (match.ledgerDelta !== 0 || landedCost != null) &&
       (orderRow as any).inventory_id
     ) {
       await this.applyReceiptAdjustment(
@@ -6736,7 +6752,7 @@ export class ProcurementService {
         `receipt verification for order ${orderId}: ${match.summary}`,
         // Verified landed cost, so the corrected lot carries what the bottle
         // really cost rather than what we expected it to.
-        match.effectiveUnitCost,
+        landedCost,
         userId,
       );
     }
@@ -6886,7 +6902,12 @@ export class ProcurementService {
         orderId,
         userId,
         match,
-        orderRow as { provider_id?: string | null; currency?: string | null },
+        {
+          provider_id: (orderRow as any).provider_id ?? null,
+          // The claim is units at the BILLED price, so it is in the invoice's
+          // money; the order's only when the invoice states none (F-341).
+          currency: billedMoney ?? (orderRow as any).currency ?? null,
+        },
       );
 
     const { data, error } = await this.databaseService.supabase

@@ -31,6 +31,8 @@ function build(progress: any) {
     notifications as any,
   );
   const goals = { getGoalProgress: recorder(async () => progress) };
+  // A USD house, said outright (F-341: a money goal prints the house's money).
+  db.tables.restaurants.push({ id: TENANT, currency: "USD" });
   const producer = new CeilingHeldProducer(
     database as any,
     goals as any,
@@ -79,6 +81,17 @@ function seedShift(db: FakeDb) {
 }
 
 describe("CeilingHeldProducer", () => {
+  it("[REVERT-FAILS] a money ceiling is said in the house's own money (F-341)", async () => {
+    const { db, notifications, producer } = build(HELD);
+    db.tables.restaurants[0].currency = "EUR";
+    db.tables.analytics_goals.push(ceiling());
+    seedShift(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("stayed under by €1,580.00");
+    expect(call.message).not.toContain("$");
+  });
+
   it("reports a period that closed under the ceiling, with the headroom", async () => {
     const { db, notifications, producer } = build(HELD);
     db.tables.analytics_goals.push(ceiling());

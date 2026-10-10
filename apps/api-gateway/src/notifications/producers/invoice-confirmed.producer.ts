@@ -6,6 +6,7 @@ import {
   type ProducerAudience,
   type ProducerTally,
 } from "./producer-ledger.service";
+import { currencyCode } from "../../common/iso-4217";
 import { clockIn, dayIn, money } from "./producer-copy";
 
 /**
@@ -129,7 +130,10 @@ export class InvoiceConfirmedProducer {
       const number = doc.doc_number ? String(doc.doc_number) : null;
       const total =
         doc.total === null || doc.total === undefined ? null : Number(doc.total);
-      const currency = String(doc.currency || "USD");
+      // The document's own money, or null when it states none — never a
+      // defaulted USD (F-341, ADR 0117 Q25): the sentence then prints the
+      // figure with no symbol.
+      const currency = currencyCode(doc.currency);
 
       await this.ledger.emit(
         { restaurantId, producer: PRODUCER, audience, tally, now },
@@ -205,7 +209,7 @@ export class InvoiceConfirmedProducer {
     label: string;
     vendor: string | null;
     total: number | null;
-    currency: string;
+    currency: string | null;
     tiesOut: boolean | null;
     tieOutDelta: number | null;
     verifiedAt: Date;

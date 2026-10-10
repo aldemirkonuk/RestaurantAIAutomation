@@ -140,6 +140,26 @@ describe("InvoiceConfirmedProducer", () => {
     );
   });
 
+  it("[REVERT-FAILS] a document that states no money is not read as dollars (F-341)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.procurement_documents.push(doc({ currency: null }));
+    vendor(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("1,240.50 from Terroir Selections.");
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBeNull();
+  });
+
+  it("says a document's own money (F-341)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.procurement_documents.push(doc({ currency: "EUR" }));
+    vendor(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("€1,240.50 from Terroir Selections.");
+  });
+
   it("[REVERT-FAILS] a document with no extracted total is not a zero-dollar invoice", async () => {
     const { db, notifications, producer } = build();
     db.tables.procurement_documents.push(doc({ total: null }));

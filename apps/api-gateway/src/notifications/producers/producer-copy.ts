@@ -44,14 +44,39 @@
  * whole directory names `persistForRestaurant`.
  */
 
-/** `$1,240.50`. Whole dollars keep their `.00` — a figure of record is exact. */
-export function money(value: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
+import { currencyCode } from "../../common/iso-4217";
+
+/**
+ * `$1,240.50`, `€1,240.50`. Whole figures keep their `.00` — a figure of
+ * record is exact.
+ *
+ * The money is the caller's to name (F-341): this defaulted to USD, so a lira
+ * house read its night's takings in dollars. A money nobody recorded prints
+ * the figure with no symbol (ADR 0117 Q25), never a guessed dollar.
+ */
+export function money(
+  value: number,
+  currency: string | null | undefined,
+): string {
+  const code = currencyCode(currency);
+  if (code) {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: code,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
+    } catch {
+      // A member of the list this runtime's Intl does not hold: the code
+      // beside the figure still names the money.
+    }
+  }
+  const figure = new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+  return code ? `${code} ${figure}` : figure;
 }
 
 /** `18%` — rounded to whole percent, which is the precision a reader can act on. */
