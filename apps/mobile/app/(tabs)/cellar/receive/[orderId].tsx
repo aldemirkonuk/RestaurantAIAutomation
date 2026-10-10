@@ -15,8 +15,10 @@ import { color, font, radius, space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
 import { feedKey, pulseKey, useOrder } from "@/api/queries";
 import { useOutbox } from "@/state/outbox";
+import { useSession } from "@/state/session";
 import { useFeedLocal } from "@/state/feedLocal";
 import { receivingCountBasis } from "@/lib/receivingCountBasis";
+import { holdsHouseMoney } from "@/lib/receiptMoney";
 import {
   agreedCurrency,
   computeMatch,
@@ -75,8 +77,11 @@ export default function ReceivingScreen() {
   const [invoiceQtyRaw, setInvoiceQtyRaw] = useState<number | null>(null);
   const invoiceQty = invoiceQtyRaw;
   const [priceText, setPriceText] = useState<string | null>(null);
+  // The invoice price and the override are an owner's or a manager's (F-802);
+  // staff record the count, and the price is never queued for them (F-806).
+  const seesMoney = holdsHouseMoney(useSession((s) => s.user?.role));
   const invoiceUnitPrice =
-    priceText == null || priceText.trim() === ""
+    !seesMoney || priceText == null || priceText.trim() === ""
       ? null
       : Number(priceText.replace(",", "."));
   const [invoiceCurrency, setInvoiceCurrency] = useState("");
@@ -597,132 +602,143 @@ export default function ReceivingScreen() {
                     </View>
                   </View>
 
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <View>
-                      <AppText variant="body" tone="secondary">
-                        Billed unit price
-                      </AppText>
-                      {poUnitPrice == null ? (
-                        <AppText variant="caption" tone="tertiary">
-                          Agreed bottle price not available here
-                        </AppText>
-                      ) : currencyDiffers ? (
-                        <AppText variant="caption" tone="warning">
-                          Agreed in {poCurrency}, billed in{" "}
-                          {statedInvoiceCurrency}. Not compared
-                        </AppText>
-                      ) : priceDiffers ? (
-                        <AppText variant="caption" tone="danger">
-                          {money(
-                            Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice),
-                            poCurrency ?? statedInvoiceCurrency,
-                          )}
-                          /btl{" "}
-                          {(invoiceUnitPrice ?? 0) > poUnitPrice
-                            ? "over"
-                            : "under"}{" "}
-                          agreed
-                        </AppText>
-                      ) : (
-                        <AppText variant="caption" tone="success">
-                          {invoiceUnitPrice == null
-                            ? "No invoice price recorded"
-                            : "Matches stated bottle price"}
-                        </AppText>
-                      )}
-                    </View>
-                    <TextInput
-                      value={priceText ?? ""}
-                      onChangeText={setPriceText}
-                      editable={!sealed}
-                      keyboardType="decimal-pad"
-                      placeholder="0.00"
-                      placeholderTextColor={color.inkQuaternary}
-                      style={{
-                        width: 92,
-                        textAlign: "center",
-                        backgroundColor: color.surface,
-                        borderWidth: 1,
-                        borderColor: priceDiffers ? "#FDA4AF" : color.hairline,
-                        borderRadius: radius.control,
-                        paddingVertical: 9,
-                        fontSize: 15,
-                        fontFamily: font.sansMedium,
-                        color: color.ink,
-                      }}
-                    />
-                  </View>
-
-                  <View style={{ gap: space.xs }}>
-                    <AppText variant="caption" tone="secondary">
-                      Currency printed on the invoice
-                    </AppText>
-                    <TextInput
-                      value={invoiceCurrency}
-                      onChangeText={(value) =>
-                        setInvoiceCurrency(
-                          value
-                            .toUpperCase()
-                            .replace(/[^A-Z]/g, "")
-                            .slice(0, 3),
-                        )
-                      }
-                      autoCapitalize="characters"
-                      maxLength={3}
-                      placeholder="USD, TRY, GBP…"
-                      editable={!sealed}
-                      accessibilityLabel="Invoice currency code"
-                      style={{
-                        padding: space.md,
-                        color: color.ink,
-                        backgroundColor: color.fill,
-                        borderRadius: radius.control,
-                      }}
-                    />
-                    <AppText variant="caption" tone="tertiary">
-                      Copy the currency from the vendor's paper. It is required
-                      when recording a price.
-                    </AppText>
-                  </View>
-                  {priceDiffers && !sealed ? (
-                    <View
-                      style={{
-                        backgroundColor: color.dangerTint,
-                        borderRadius: 12,
-                        padding: space.md,
-                        gap: space.xs,
-                      }}
-                    >
-                      <AppText variant="caption" tone="danger">
-                        Why accept this price?
-                      </AppText>
-                      <TextInput
-                        value={priceOverrideReason}
-                        onChangeText={setPriceOverrideReason}
-                        placeholder="e.g. freight surcharge agreed with the rep by phone"
-                        placeholderTextColor={color.inkQuaternary}
+                  {seesMoney ? (
+                    <>
+                      <View
                         style={{
-                          backgroundColor: color.surface,
-                          borderRadius: 8,
-                          paddingHorizontal: space.md,
-                          paddingVertical: 9,
-                          fontSize: 14,
-                          fontFamily: font.sans,
-                          color: color.ink,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
                         }}
-                      />
-                      <AppText variant="caption" tone="tertiary">
-                        Recorded against the order. The price stays marked
-                        unverified either way.
-                      </AppText>
-                    </View>
-                  ) : null}
+                      >
+                        <View>
+                          <AppText variant="body" tone="secondary">
+                            Billed unit price
+                          </AppText>
+                          {poUnitPrice == null ? (
+                            <AppText variant="caption" tone="tertiary">
+                              Agreed bottle price not available here
+                            </AppText>
+                          ) : currencyDiffers ? (
+                            <AppText variant="caption" tone="warning">
+                              Agreed in {poCurrency}, billed in{" "}
+                              {statedInvoiceCurrency}. Not compared
+                            </AppText>
+                          ) : priceDiffers ? (
+                            <AppText variant="caption" tone="danger">
+                              {money(
+                                Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice),
+                                poCurrency ?? statedInvoiceCurrency,
+                              )}
+                              /btl{" "}
+                              {(invoiceUnitPrice ?? 0) > poUnitPrice
+                                ? "over"
+                                : "under"}{" "}
+                              agreed
+                            </AppText>
+                          ) : (
+                            <AppText variant="caption" tone="success">
+                              {invoiceUnitPrice == null
+                                ? "No invoice price recorded"
+                                : "Matches stated bottle price"}
+                            </AppText>
+                          )}
+                        </View>
+                        <TextInput
+                          value={priceText ?? ""}
+                          onChangeText={setPriceText}
+                          editable={!sealed}
+                          keyboardType="decimal-pad"
+                          placeholder="0.00"
+                          placeholderTextColor={color.inkQuaternary}
+                          style={{
+                            width: 92,
+                            textAlign: "center",
+                            backgroundColor: color.surface,
+                            borderWidth: 1,
+                            borderColor: priceDiffers
+                              ? "#FDA4AF"
+                              : color.hairline,
+                            borderRadius: radius.control,
+                            paddingVertical: 9,
+                            fontSize: 15,
+                            fontFamily: font.sansMedium,
+                            color: color.ink,
+                          }}
+                        />
+                      </View>
+
+                      <View style={{ gap: space.xs }}>
+                        <AppText variant="caption" tone="secondary">
+                          Currency printed on the invoice
+                        </AppText>
+                        <TextInput
+                          value={invoiceCurrency}
+                          onChangeText={(value) =>
+                            setInvoiceCurrency(
+                              value
+                                .toUpperCase()
+                                .replace(/[^A-Z]/g, "")
+                                .slice(0, 3),
+                            )
+                          }
+                          autoCapitalize="characters"
+                          maxLength={3}
+                          placeholder="USD, TRY, GBP…"
+                          editable={!sealed}
+                          accessibilityLabel="Invoice currency code"
+                          style={{
+                            padding: space.md,
+                            color: color.ink,
+                            backgroundColor: color.fill,
+                            borderRadius: radius.control,
+                          }}
+                        />
+                        <AppText variant="caption" tone="tertiary">
+                          Copy the currency from the vendor's paper. It is
+                          required when recording a price.
+                        </AppText>
+                      </View>
+                      {priceDiffers && !sealed ? (
+                        <View
+                          style={{
+                            backgroundColor: color.dangerTint,
+                            borderRadius: 12,
+                            padding: space.md,
+                            gap: space.xs,
+                          }}
+                        >
+                          <AppText variant="caption" tone="danger">
+                            Why accept this price?
+                          </AppText>
+                          <TextInput
+                            value={priceOverrideReason}
+                            onChangeText={setPriceOverrideReason}
+                            placeholder="e.g. freight surcharge agreed with the rep by phone"
+                            placeholderTextColor={color.inkQuaternary}
+                            style={{
+                              backgroundColor: color.surface,
+                              borderRadius: 8,
+                              paddingHorizontal: space.md,
+                              paddingVertical: 9,
+                              fontSize: 14,
+                              fontFamily: font.sans,
+                              color: color.ink,
+                            }}
+                          />
+                          <AppText variant="caption" tone="tertiary">
+                            Recorded against the order. The price stays marked
+                            unverified either way.
+                          </AppText>
+                        </View>
+                      ) : null}
+                    </>
+                  ) : (
+                    <AppText variant="caption" tone="tertiary">
+                      A manager checks the price. The count is recorded without
+                      it.
+                    </AppText>
+                  )}
                 </Animated.View>
               ) : null}
             </Card>

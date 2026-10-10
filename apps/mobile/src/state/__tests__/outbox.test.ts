@@ -118,3 +118,68 @@ it("does not run two dispatches when a reconnect occurs during an in-flight acti
   await jest.advanceTimersByTimeAsync(1);
   expect(api).toHaveBeenCalledTimes(2);
 });
+
+describe("a receipt refused for its price keeps its count (F-806)", () => {
+  // clearAllMocks keeps unconsumed once-values; start each case clean.
+  beforeEach(() => (api as jest.Mock).mockReset().mockResolvedValue({}));
+  // The mocked ApiError takes no arguments; the dispatcher reads `.status`.
+  const refusal = (message: string) =>
+    Object.assign(new (jest.requireMock("@/api/client").ApiError)(message), {
+      status: 403,
+    });
+  const path = "/procurement/orders/o1/verify-receipt";
+  const pricedBody = {
+    countedUom: "bottle",
+    acceptedQuantityInCountedUom: 12,
+    invoiceUnitPrice: 9.5,
+    invoiceCurrency: "USD",
+  };
+
+  it("re-sends a refused priced receipt once with the count alone", async () => {
+    (api as jest.Mock)
+      .mockRejectedValueOnce(refusal("owner's or a manager's act"))
+      .mockResolvedValueOnce({});
+    useOutbox.getState().enqueue({ path, body: pricedBody, label: "Receipt" });
+    await jest.advanceTimersByTimeAsync(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(api).toHaveBeenCalledTimes(2);
+    expect((api as jest.Mock).mock.calls[1][1].body).toEqual({
+      countedUom: "bottle",
+      acceptedQuantityInCountedUom: 12,
+    });
+    expect(useOutbox.getState().entries).toEqual([]);
+  });
+
+  it("parks with a sentence naming it when the count alone is refused too", async () => {
+    (api as jest.Mock)
+      .mockRejectedValueOnce(refusal("money"))
+      .mockRejectedValueOnce(refusal("Not your house."));
+    useOutbox.getState().enqueue({ path, body: pricedBody, label: "Receipt" });
+    await jest.advanceTimersByTimeAsync(1);
+    await jest.advanceTimersByTimeAsync(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(useOutbox.getState().entries[0]).toMatchObject({
+      status: "failed",
+      moneyStripped: true,
+      lastError:
+        "This count was sent again without the invoice price and was still refused. Not your house.",
+    });
+  });
+
+  it("parks a refused receipt that carried no price as before", async () => {
+    (api as jest.Mock).mockRejectedValueOnce(refusal("Not your house."));
+    useOutbox.getState().enqueue({
+      path,
+      body: { acceptedQuantityInCountedUom: 12 },
+      label: "Receipt",
+    });
+    await jest.advanceTimersByTimeAsync(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(useOutbox.getState().entries[0]).toMatchObject({
+      status: "failed",
+      lastError: "Not your house.",
+    });
+  });
+});
