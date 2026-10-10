@@ -26,7 +26,7 @@ export function ThresholdStep({ onDone }: ThresholdStepProps) {
       await setDefaultThreshold(value)
       onDone()
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Failed to save threshold.')
+      setError(e?.response?.data?.message || e?.message || 'We could not save the threshold yet. Try again.')
     } finally {
       setSaving(false)
     }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Camera, MapPin, PenLine } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
@@ -8,9 +9,10 @@ import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
+import { ThresholdStep } from '../components/onboarding/ThresholdStep'
 import { useAuth, type JobRole } from '../contexts/AuthContext'
 import { apiClient } from '../services/api/client'
-import { importMenu, type MenuImportResult } from '../services/api/menus'
+import { getOnboardingProgress, importMenu, type MenuImportResult } from '../services/api/menus'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { writeProof } from '../lib/firstProof'
@@ -19,7 +21,7 @@ import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWor
 import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../lib/menuReadWithoutAnswer'
 import { SCAN_ACCEPT, isImageFile, isScannable, isTabular, resetFileInput } from '../lib/uploadAccept'
 
-type Step = 'you' | 'restaurant' | 'menu' | 'reading'
+type Step = 'you' | 'restaurant' | 'menu' | 'reading' | 'threshold'
 type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
 type MenuMethod = 'photo' | 'file' | 'typed' | null
 
@@ -60,7 +62,16 @@ type ArrivalDraft = {
   postalCode: string
   restaurantPhone: string
   placePoint: { latitude: number; longitude: number; googlePlaceId?: string } | null
+  /** The currency picked on step 02, kept so a reload does not fall back to the country's (F-983). */
+  currencyChoice?: string | null
 }
+
+/**
+ * The role tapped on step 01, kept for this tab only and under the account
+ * that tapped it: a shared laptop's next account starts with none selected
+ * (F-984, ADR 0213 row 9).
+ */
+const arrivalRoleKey = (userId: string) => `mudavym:arrival-role:${userId}`
 
 function readArrivalDraft(userId: string): ArrivalDraft | null {
   try {
@@ -101,6 +112,7 @@ function ArrivalShell({
     restaurant: '02 · Your restaurant',
     menu: '03 · Your menu',
     reading: '04 · Reading',
+    threshold: 'Low stock',
   }[step]
   return (
     <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
@@ -135,12 +147,19 @@ function GetStartedSteps() {
   // A person whose house is already open comes here only to read a menu
   // (/house/menu's "Read a menu"): steps 01-02 would end in "This account
   // already has a house" (F-893, F-239). They start on the menu step.
-  const [step, setStep] = useState<Step>(() => (user?.restaurantId ? 'menu' : 'you'))
+  // The "Finish setup" nudge sends an open house that has not set its
+  // low-stock threshold here with ?step=threshold (F-985, F-239).
+  const [searchParams] = useSearchParams()
+  const askedThreshold = Boolean(user?.restaurantId) && searchParams.get('step') === 'threshold'
+  const [step, setStep] = useState<Step>(() =>
+    askedThreshold ? 'threshold' : user?.restaurantId ? 'menu' : 'you',
+  )
   const [name, setName] = useState(user?.name ?? '')
   const [mobile, setMobile] = useState('')
   const [role, setRole] = useState<Role | null>(() => {
+    if (!user?.userId) return null
     try {
-      const kept = sessionStorage.getItem('mudavym:arrival-role')
+      const kept = sessionStorage.getItem(arrivalRoleKey(user.userId))
       return roles.includes(kept as Role) ? (kept as Role) : null
     } catch {
       return null
@@ -210,8 +229,9 @@ function GetStartedSteps() {
     setPostalCode(draft.postalCode)
     setRestaurantPhone(draft.restaurantPhone)
     setPlacePoint(draft.placePoint)
-    setStep(hasHouse ? 'menu' : 'restaurant')
-  }, [hasHouse, userId])
+    setCurrencyChoice(draft.currencyChoice ?? null)
+    setStep(hasHouse ? (askedThreshold ? 'threshold' : 'menu') : 'restaurant')
+  }, [askedThreshold, hasHouse, userId])
 
   useEffect(() => {
     if (!userId || (step !== 'restaurant' && step !== 'menu')) return
@@ -226,8 +246,9 @@ function GetStartedSteps() {
       postalCode,
       restaurantPhone,
       placePoint,
+      currencyChoice,
     })
-  }, [address, city, country, placePoint, postalCode, restaurantName, restaurantPhone, role, stateProvince, step, userId])
+  }, [address, city, country, currencyChoice, placePoint, postalCode, restaurantName, restaurantPhone, role, stateProvince, step, userId])
 
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
@@ -248,7 +269,13 @@ function GetStartedSteps() {
         name: name.trim(),
         phone: mobile.trim() || undefined,
       })
-      if (role) sessionStorage.setItem('mudavym:arrival-role', role)
+      if (role && userId) {
+        try {
+          sessionStorage.setItem(arrivalRoleKey(userId), role)
+        } catch {
+          // A tab that keeps nothing still carries the role in this sitting.
+        }
+      }
       setStep('restaurant')
     } catch (cause: any) {
       setError(cause?.response?.data?.message || cause?.message || 'We could not save this yet.')
@@ -392,6 +419,10 @@ function GetStartedSteps() {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (step === 'threshold') {
+    return <ThresholdArrival onMenu={() => setStep('menu')} />
   }
 
   if (step === 'you') {
@@ -627,3 +658,23 @@ function GetStartedSteps() {
   )
 }
 
+
+/**
+ * The low-stock threshold, the half of "Finish setup" no page used to ask
+ * (F-985, F-239). Saved or skipped, the house's progress is read again so the
+ * nudge clears once both halves are done; a house with no menu yet goes on to
+ * the menu step, one with a menu goes back to the house.
+ */
+function ThresholdArrival({ onMenu }: { onMenu: () => void }) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const done = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['onboarding-progress'] })
+    const progress = await queryClient
+      .fetchQuery({ queryKey: ['onboarding-progress'], queryFn: getOnboardingProgress })
+      .catch(() => null)
+    if (progress && !progress.menu_uploaded) onMenu()
+    else navigate('/house', { replace: true })
+  }
+  return <ThresholdStep onDone={() => void done()} />
+}

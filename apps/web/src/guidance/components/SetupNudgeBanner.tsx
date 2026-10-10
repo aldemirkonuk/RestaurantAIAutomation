@@ -51,7 +51,11 @@ export function SetupNudgeBanner() {
       title="Finish setting up Mudavym."
       body="Upload your wine list and set a low-stock threshold to unlock inventory and ordering."
       primaryLabel="Finish setup"
-      onPrimary={() => navigate('/get-started')}
+      // The threshold is asked on its own step; the menu on /get-started's
+      // menu step. The nudge goes to whichever half is still missing (F-985).
+      onPrimary={() =>
+        navigate(progress?.threshold_configured ? '/get-started' : '/get-started?step=threshold')
+      }
       onLater={() => guidance?.snoozeSetupNudge()}
       onDismissForever={() => guidance?.dismissSetupNudgeForever()}
       dismissForeverLabel="Don't remind me"
