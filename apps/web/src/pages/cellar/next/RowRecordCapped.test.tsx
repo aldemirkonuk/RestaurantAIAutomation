@@ -3,10 +3,11 @@
  * the gateway says a book stopped at that cap (`truncated`), the record shows
  * the newest lines and never says the drink was never ordered.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import SeriesPanel from './SeriesPanel';
 import RowExpander from './RowExpander';
+import { setCellarCurrency } from './cellar-format';
 import type { BookRecordVM, RowRecordVM } from './useCellarNextData';
 
 const CAPPED_EMPTY =
@@ -90,5 +91,45 @@ describe('a capped order book (F-333)', () => {
     const none = screen.getByTestId('ledger-none');
     expect(none).not.toHaveTextContent(/Never ordered and never invoiced/);
     expect(none).toHaveTextContent(/does not say it was never ordered/);
+  });
+});
+
+// F-998: `beverages.price_reference` has no currency on record, so the card
+// must not print it in the house's money (₺28 here, $28 next door).
+describe('the catalogue reference on the record card (F-998)', () => {
+  afterEach(() => setCellarCurrency(undefined));
+
+  it('says its currency was not recorded instead of borrowing the house sign', () => {
+    setCellarCurrency('TRY');
+    render(
+      <RowExpander
+        row={{
+          key: 'k',
+          name: 'Efes Pilsen',
+          producer: null,
+          catalogue: {
+            id: 'b1',
+            beverageType: 'beer',
+            country: null,
+            region: null,
+            abvPct: null,
+            volumeMl: null,
+            packageFormat: null,
+            priceReference: 28,
+            matchedBy: 'exact',
+          },
+          house: null,
+        }}
+        register="beer"
+        record={record(book('order'))}
+        loading={false}
+        error={null}
+        stockingReason="none"
+        onOpenSeries={() => {}}
+      />,
+    );
+    const line = screen.getByText('Catalogue reference').parentElement!;
+    expect(line).toHaveTextContent(/28[.,]00 \(currency not recorded\)/);
+    expect(line).not.toHaveTextContent('₺');
   });
 });

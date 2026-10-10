@@ -704,7 +704,7 @@ export default function MenuNext() {
                 </p>
               )}
               {(() => {
-                const note = add.isSuccess ? housePriceNote(add.data) : null;
+                const note = add.isSuccess ? housePriceNote(add.data, currency) : null;
                 return note ? (
                   <p
                     role={note.tone === 'alert' ? 'alert' : 'status'}

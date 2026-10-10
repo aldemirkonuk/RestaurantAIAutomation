@@ -1,20 +1,23 @@
 import type { MenuImportReviewItem } from '../../../services/api/menus';
+import { formatMoney } from '@/lib/currency';
 
 /**
  * What an added line did to the house's own price (ADR 0193: "it could be
  * changed every time a menu is updated"). The gateway says it per line; the
  * page says it back, so a write that failed is never read as a price that
  * moved. Null when there is nothing to say (no price on the line, or a line
- * that matches no wine the house stocks).
+ * that matches no wine the house stocks). `currency` is the house's: a locked
+ * price is printed in it, as the table above the note prints it (F-1003).
  */
 export function housePriceNote(
   item: Pick<MenuImportReviewItem, 'priceSync' | 'priceSyncError' | 'priceHeld'> | null | undefined,
+  currency: string | null,
 ): { tone: 'alert' | 'said'; text: string } | null {
   // ADR 0193 round 3 (L5): a kind a lock held is always named, even when the
   // other kind changed -- "changed" alone would hide the hold.
   const held = item?.priceHeld ?? [];
   const heldWords = held
-    .map((h) => `the ${h.kind} price is locked${h.lockedPrice === null ? '' : ` at ${h.lockedPrice.toFixed(2)}`}`)
+    .map((h) => `the ${h.kind} price is locked${h.lockedPrice === null ? '' : ` at ${formatMoney(h.lockedPrice, currency)}`}`)
     .join(' and ');
   switch (item?.priceSync) {
     case 'changed':

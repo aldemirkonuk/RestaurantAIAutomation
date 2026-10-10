@@ -93,6 +93,17 @@ export function libraryMoney(v: number | null | undefined, currency?: string | n
   return n === null ? EM : money(n, currency);
 }
 
+/**
+ * The beer/spirits catalogue's reference price (`beverages.price_reference`),
+ * in the currency it was recorded in — and no row records one: the table has
+ * no currency column. Printing it in this house's money turned the same 28
+ * into ₺28 in one house and $28 in another (F-998, ADR 0117 Q25), so it reads
+ * "28.00 (currency not recorded)" until the catalogue names its currency.
+ */
+export function catalogueMoney(v: number | null | undefined): string {
+  return money(v, null);
+}
+
 /** Why a library figure that exists is not shown, in the owner's words; null when it is shown or there is none. */
 export function libraryHiddenWhy(v: number | null | undefined, currency?: string | null): string | null {
   if (num(v) === null || libraryFigure(v, currency) !== null) return null;

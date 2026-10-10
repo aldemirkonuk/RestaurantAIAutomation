@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import GetStarted from './GetStarted'
 import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
+import { setHouseCurrency } from '../lib/houseCurrency'
 
 const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, auth } = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -380,6 +381,41 @@ describe('approved arrival flow', () => {
     expect(screen.queryByText(/certain/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/likely/i)).not.toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/approve all/i)
+  })
+
+  // F-1001: the proof printed "45.5 glass · 1250 bottle" bare while /menu
+  // printed the same line in lira.
+  it('prints the proof prices in the house currency, not bare', () => {
+    setHouseCurrency('TRY')
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({
+        menuId: 'menu',
+        itemsExtracted: 1,
+        submissionsCreated: 0,
+        items: [
+          {
+            menuItemId: 'yakut',
+            submissionId: null,
+            name: 'Kavaklıdere Yakut',
+            producer: null,
+            category: 'red',
+            vintage: null,
+            region: null,
+            grapeVariety: null,
+            byGlassPrice: 45.5,
+            bottlePrice: 1250,
+            rawText: 'Yakut 45,50 / 1.250',
+            matched: true,
+            needsReview: false,
+          },
+        ],
+      }),
+    )
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    const line = screen.getByText(/glass ·/)
+    expect(line).not.toHaveTextContent('45.5 glass')
+    expect(line).toHaveTextContent(/(₺|TRY)\s?45[.,]50 glass · (₺|TRY)\s?1[.,]250[.,]00 bottle/)
   })
 
   it('counts kitchen lines instead of dropping them, and never prints an empty failed proof', () => {

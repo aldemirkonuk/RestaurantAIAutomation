@@ -316,9 +316,9 @@ describe('MenuNext — add', () => {
     await waitFor(() =>
       expect(screen.getByTestId('menu-add-price-note')).toHaveTextContent(/now matches the line/),
     );
-    expect(housePriceNote({ priceSync: 'no_price' })).toBeNull();
-    expect(housePriceNote({ priceSync: 'not_linked' })).toBeNull();
-    expect(housePriceNote({ priceSync: 'stale' })?.text).toMatch(/kept/);
+    expect(housePriceNote({ priceSync: 'no_price' }, null)).toBeNull();
+    expect(housePriceNote({ priceSync: 'not_linked' }, null)).toBeNull();
+    expect(housePriceNote({ priceSync: 'stale' }, null)?.text).toMatch(/kept/);
   });
 });
 

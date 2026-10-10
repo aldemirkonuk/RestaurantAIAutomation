@@ -11,6 +11,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LockedPrices, markerWords } from './LockedPrices';
 import { housePriceNote } from './menu-price-note';
+import { formatMoney } from '@/lib/currency';
 import {
   changeLockedPrice,
   getPriceAdvice,
@@ -336,11 +337,21 @@ describe('Locked prices', () => {
 describe('the add-a-line note names a held kind (L5)', () => {
   it('a line whose price a lock held says so -- never "now matches"', () => {
     expect(
-      housePriceNote({ priceSync: 'locked', priceHeld: [{ kind: 'bottle', lockId: 'k', lockedPrice: 95, lockedBy: 'u', lockedAt: 't' }] })?.text,
-    ).toBe("Added to the menu, but the bottle price is locked at 95.00, so the house's price was not changed. An owner or a manager changes it under Locked prices.");
+      housePriceNote({ priceSync: 'locked', priceHeld: [{ kind: 'bottle', lockId: 'k', lockedPrice: 95, lockedBy: 'u', lockedAt: 't' }] }, null)?.text,
+    ).toBe("Added to the menu, but the bottle price is locked at 95.00 (currency not recorded), so the house's price was not changed. An owner or a manager changes it under Locked prices.");
     expect(
-      housePriceNote({ priceSync: 'changed', priceHeld: [{ kind: 'glass', lockId: 'k', lockedPrice: 9, lockedBy: 'u', lockedAt: 't' }] })?.text,
-    ).toBe("This wine's own price on Inventory was updated where it could be; the glass price is locked at 9.00, so that one was not changed.");
-    expect(housePriceNote({ priceSync: 'changed', priceHeld: [] })?.text).toBe("This wine's own price on Inventory now matches the line.");
+      housePriceNote({ priceSync: 'changed', priceHeld: [{ kind: 'glass', lockId: 'k', lockedPrice: 9, lockedBy: 'u', lockedAt: 't' }] }, null)?.text,
+    ).toBe("This wine's own price on Inventory was updated where it could be; the glass price is locked at 9.00 (currency not recorded), so that one was not changed.");
+    expect(housePriceNote({ priceSync: 'changed', priceHeld: [] }, null)?.text).toBe("This wine's own price on Inventory now matches the line.");
+  });
+
+  // F-1003: "locked at 1250.00" sat under a table printing ₺1.250,00.
+  it('prints the locked price in the house currency, the way the table does', () => {
+    const text = housePriceNote(
+      { priceSync: 'locked', priceHeld: [{ kind: 'bottle', lockId: 'k', lockedPrice: 1250, lockedBy: 'u', lockedAt: 't' }] },
+      'TRY',
+    )?.text;
+    expect(text).toContain(`the bottle price is locked at ${formatMoney(1250, 'TRY')}, so`);
+    expect(text).not.toContain('1250.00');
   });
 });
