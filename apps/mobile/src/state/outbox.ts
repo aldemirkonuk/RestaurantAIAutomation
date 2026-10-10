@@ -33,6 +33,12 @@ export interface OutboxEntry {
   /** Epoch ms before which this entry must not dispatch. 0 = immediate. */
   holdUntil: number;
   attempts: number;
+  /**
+   * Server errors (5xx) only, apart from `attempts` (F-798): a receipt that
+   * waited out a dead signal must not be parked by the first 5xx after it.
+   * Optional so entries saved before this field read as 0.
+   */
+  serverAttempts?: number;
   status: OutboxStatus;
   lastError?: string;
   /**
@@ -164,7 +170,7 @@ export const useOutbox = create<OutboxState>((set, get) => ({
   retryFailed: (id) => {
     const entries = get().entries.map((e) =>
       e.id === id && e.actorUserId && e.restaurantId
-        ? { ...e, status: "pending" as const, attempts: 0 }
+        ? { ...e, status: "pending" as const, attempts: 0, serverAttempts: 0 }
         : e,
     );
     set({ entries });
@@ -301,7 +307,7 @@ async function runDispatch() {
     } else if (
       err instanceof ApiError &&
       err.status >= 500 &&
-      next.attempts + 1 >= MAX_SERVER_ATTEMPTS
+      (next.serverAttempts ?? 0) + 1 >= MAX_SERVER_ATTEMPTS
     ) {
       // F-590: the house keeps answering with a server error. Retrying it
       // forever held every later entry behind it with no word to the person;
@@ -310,12 +316,17 @@ async function runDispatch() {
       mark(next.id, {
         status: "failed",
         attempts: next.attempts + 1,
+        serverAttempts: (next.serverAttempts ?? 0) + 1,
         lastError: SERVER_GAVE_UP_WORDS,
       });
       scheduleDispatch(0);
     } else {
       const attempts = next.attempts + 1;
-      mark(next.id, { status: "pending", attempts });
+      // Only a 5xx counts toward parking (F-798); offline misses still back off.
+      const serverAttempts =
+        (next.serverAttempts ?? 0) +
+        (err instanceof ApiError && err.status >= 500 ? 1 : 0);
+      mark(next.id, { status: "pending", attempts, serverAttempts });
       // Offline or server down: back off, cap at 30s between rounds.
       scheduleDispatch(Math.min(30_000, 2 ** attempts * 1000));
     }
