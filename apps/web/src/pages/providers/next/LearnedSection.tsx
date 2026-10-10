@@ -15,10 +15,17 @@
  *      messages" box that is plain text matching (the gateway's `ilike`, OD-99),
  *      so it is never called anything cleverer.
  *
- * States: loading; EMPTY (nothing learned yet); ERROR — any of the four reads
- * failing renders the error sentence with Try again, because an unreachable
- * book must never look like an empty one (ADR 0020). A failed Confirm or a
+ * States: loading; EMPTY (nothing learned yet); ERROR — a failed read renders
+ * the error sentence with Try again IN ITS OWN PART, because an unreachable
+ * book must never look like an empty one (ADR 0020), and one part that cannot
+ * be reached never hides the parts that could (F-987). A failed Confirm or a
  * failed search says so on its own line.
+ *
+ * Offers and messages are for owners and managers: the gateway refuses
+ * `/providers/:id/promotions` to anyone else (F-563) and gates the
+ * conversation memory the same way (F-986), as MailTone is (ADR 0207). This
+ * page does not ask for them for anyone else and says who they are for, so
+ * staff keep the facts without a failure that Try again could never mend.
  *
  * W14b: Confirm is for owners and managers. The gateway refuses anyone else
  * with 403 (provider-intelligence.controller.ts `verifyKnowledge`); this page
@@ -285,6 +292,8 @@ export function LearnedSection({ providerId, providerName }: Props) {
   const { activeRole, user } = useAuth();
   const role = activeRole ?? user?.role ?? null;
   const canConfirm = role === 'owner' || role === 'manager';
+  // Offers and messages: the same owner/manager standing (F-563, F-986).
+  const readsMail = canConfirm;
   const qc = useQueryClient();
 
   const facts = useQuery({
@@ -298,12 +307,14 @@ export function LearnedSection({ providerId, providerName }: Props) {
   const offers = useQuery({
     queryKey: ['vendor-learned-offers', providerId],
     queryFn: () => fetchProviderPromotions(providerId),
+    enabled: readsMail,
   });
   const messages = useQuery({
     queryKey: ['vendor-learned-messages', providerId],
     queryFn: () => fetchConversationMemory(providerId, 20),
+    enabled: readsMail,
   });
-  const reads = [facts, changes, offers, messages];
+  const reads = readsMail ? [facts, changes, offers, messages] : [facts, changes];
 
   const [confirmError, setConfirmError] = useState<{ id: string; text: string } | null>(null);
   const confirm = useMutation({
@@ -351,30 +362,34 @@ export function LearnedSection({ providerId, providerName }: Props) {
     );
   }
 
-  if (reads.some((r) => r.isError)) {
-    return (
-      <section aria-label={`Learned from ${providerName}'s mail`}>
-        {heading}
-        <p role="alert" style={REFUSAL}>
-          Could not reach what was learned about them — this is not the same as nothing learned.{' '}
-          <button
-            type="button"
-            style={LINK_BUTTON}
-            onClick={() => {
-              for (const r of reads) if (r.isError) void r.refetch();
-            }}
-          >
-            Try again
-          </button>
-        </p>
-      </section>
-    );
-  }
+  // Each part fails on its own (F-987): a fact reads through both facts and
+  // changes, so either failing is the facts part failing.
+  const factsFailed = facts.isError || changes.isError;
+  const unreached = (sentence: string, failed: (typeof reads)[number][]) => (
+    <p role="alert" style={REFUSAL}>
+      {sentence}{' '}
+      <button
+        type="button"
+        style={LINK_BUTTON}
+        onClick={() => {
+          for (const r of failed) if (r.isError) void r.refetch();
+        }}
+      >
+        Try again
+      </button>
+    </p>
+  );
 
   const offerList = offers.data ?? [];
   const messageList = messages.data ?? [];
 
-  if (factList.length === 0 && offerList.length === 0 && messageList.length === 0) {
+  if (
+    readsMail &&
+    !reads.some((r) => r.isError) &&
+    factList.length === 0 &&
+    offerList.length === 0 &&
+    messageList.length === 0
+  ) {
     return (
       <section aria-label={`Learned from ${providerName}'s mail`}>
         {heading}
@@ -394,7 +409,12 @@ export function LearnedSection({ providerId, providerName }: Props) {
 
       {/* 1 — facts */}
       <h4 style={PART}>What their mail has told us</h4>
-      {factList.length === 0 ? (
+      {factsFailed ? (
+        unreached('Could not reach what their mail has told us — this is not the same as nothing learned.', [
+          facts,
+          changes,
+        ])
+      ) : factList.length === 0 ? (
         <p style={{ ...BODY, margin: 0 }}>No facts from their mail yet.</p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -440,7 +460,11 @@ export function LearnedSection({ providerId, providerName }: Props) {
 
       {/* 2 — offers */}
       <h4 style={PART}>Offers they have sent</h4>
-      {offerList.length === 0 ? (
+      {!readsMail ? (
+        <p style={{ ...BODY, margin: 0 }}>Their offers are for owners and managers to see.</p>
+      ) : offers.isError ? (
+        unreached('Could not reach their offers — this is not the same as no offers.', [offers])
+      ) : offerList.length === 0 ? (
         <p style={{ ...BODY, margin: 0 }}>No offers from them yet.</p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -468,73 +492,81 @@ export function LearnedSection({ providerId, providerName }: Props) {
 
       {/* 3 — messages */}
       <h4 style={PART}>Messages with them</h4>
-      <form
-        role="search"
-        style={{ display: 'flex', gap: 6, margin: '2px 0 6px' }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          const q = find.trim();
-          if (!q) {
-            setSearchedFor(null);
-            search.reset();
-            return;
-          }
-          setSearchedFor(q);
-          search.mutate(q);
-        }}
-      >
-        <input
-          type="search"
-          aria-label="Find in messages"
-          placeholder="Find in messages…"
-          value={find}
-          onChange={(e) => setFind(e.target.value)}
-          style={FIELD}
-        />
-        <button type="submit" style={SEAL_BUTTON} disabled={search.isPending}>
-          Find
-        </button>
-      </form>
-      {search.isError && searchedFor !== null && (
-        <p role="alert" style={REFUSAL}>
-          {serverMessage(search.error, 'The search could not reach their messages — this is not the same as no match.')}
-        </p>
-      )}
-      {searchedFor !== null && search.isSuccess && (
-        <p role="status" style={{ ...META, margin: '0 0 4px' }}>
-          {search.data.length === 0
-            ? `No message with them contains “${searchedFor}”.`
-            : search.data.length === 1
-              ? `1 message contains “${searchedFor}”.`
-              : `${search.data.length} messages contain “${searchedFor}”.`}{' '}
-          <button
-            type="button"
-            style={{ ...LINK_BUTTON, fontSize: 10 }}
-            onClick={() => {
-              setFind('');
+      {!readsMail ? (
+        <p style={{ ...BODY, margin: 0 }}>Messages with them are for owners and managers to read.</p>
+      ) : messages.isError ? (
+        unreached('Could not reach messages with them — this is not the same as no messages.', [messages])
+      ) : (
+        <>
+        <form
+          role="search"
+          style={{ display: 'flex', gap: 6, margin: '2px 0 6px' }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const q = find.trim();
+            if (!q) {
               setSearchedFor(null);
               search.reset();
-            }}
-          >
-            Show all
+              return;
+            }
+            setSearchedFor(q);
+            search.mutate(q);
+          }}
+        >
+          <input
+            type="search"
+            aria-label="Find in messages"
+            placeholder="Find in messages…"
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            style={FIELD}
+          />
+          <button type="submit" style={SEAL_BUTTON} disabled={search.isPending}>
+            Find
           </button>
-        </p>
-      )}
-      {shownMessages.length === 0 ? (
-        searchedFor === null && <p style={{ ...BODY, margin: 0 }}>No messages with them stored yet.</p>
-      ) : (
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {shownMessages.map((m) => (
-            <li key={m.id} data-testid="learned-message" style={ROW}>
-              <div style={META}>
-                {[who(m.role), m.channel ? words(m.channel) : null, fmtDay(m.created_at)]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </div>
-              <div style={BODY}>“{excerpt(m.message_text)}”</div>
-            </li>
-          ))}
-        </ul>
+        </form>
+        {search.isError && searchedFor !== null && (
+          <p role="alert" style={REFUSAL}>
+            {serverMessage(search.error, 'The search could not reach their messages — this is not the same as no match.')}
+          </p>
+        )}
+        {searchedFor !== null && search.isSuccess && (
+          <p role="status" style={{ ...META, margin: '0 0 4px' }}>
+            {search.data.length === 0
+              ? `No message with them contains “${searchedFor}”.`
+              : search.data.length === 1
+                ? `1 message contains “${searchedFor}”.`
+                : `${search.data.length} messages contain “${searchedFor}”.`}{' '}
+            <button
+              type="button"
+              style={{ ...LINK_BUTTON, fontSize: 10 }}
+              onClick={() => {
+                setFind('');
+                setSearchedFor(null);
+                search.reset();
+              }}
+            >
+              Show all
+            </button>
+          </p>
+        )}
+        {shownMessages.length === 0 ? (
+          searchedFor === null && <p style={{ ...BODY, margin: 0 }}>No messages with them stored yet.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {shownMessages.map((m) => (
+              <li key={m.id} data-testid="learned-message" style={ROW}>
+                <div style={META}>
+                  {[who(m.role), m.channel ? words(m.channel) : null, fmtDay(m.created_at)]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+                <div style={BODY}>“{excerpt(m.message_text)}”</div>
+              </li>
+            ))}
+          </ul>
+        )}
+        </>
       )}
     </section>
   );

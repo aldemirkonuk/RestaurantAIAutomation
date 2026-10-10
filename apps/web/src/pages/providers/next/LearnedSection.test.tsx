@@ -3,9 +3,11 @@
  *
  * Pinned here: the three parts render in the house's words; a disagreement is
  * "was X, now Y" and never JSON; an offer carries its own currency and never a
- * "$"; any failed read is an error with Try again, never the empty sentence;
- * Confirm is hidden from anyone but an owner or a manager (W14b) and a failed
- * Confirm or search says so on its own line.
+ * "$"; any failed read is an error with Try again in its own part, never the
+ * empty sentence, and never hides the other parts (F-987); Confirm is hidden
+ * from anyone but an owner or a manager (W14b) and a failed Confirm or search
+ * says so on its own line; offers and messages are not asked for anyone but
+ * an owner or a manager, and the sheet says who they are for (F-563, F-986).
  *
  * `apiClient` is mocked, so these assert what this component does with the
  * gateway's answers, never that the gateway gives them.
@@ -270,23 +272,78 @@ describe('LearnedSection', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('error: any failed read is the error sentence, never the empty one, and Try again refetches', async () => {
+  it('error: a failed read is the error sentence in its part, never the empty one, and Try again refetches', async () => {
     answer({ fail: ['promotions'] });
     renderIt();
 
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(
-      'Could not reach what was learned about them — this is not the same as nothing learned.',
-    );
+    expect(alert).toHaveTextContent('Could not reach their offers — this is not the same as no offers.');
     expect(screen.queryByText(/Nothing learned from their mail yet/)).not.toBeInTheDocument();
 
     const before = api.get.mock.calls.filter(([u]) => String(u).includes('/promotions')).length;
     full();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText('Offers they have sent')).toBeInTheDocument();
+    expect(await screen.findByTestId('learned-offer')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     const after = api.get.mock.calls.filter(([u]) => String(u).includes('/promotions')).length;
     expect(after).toBeGreaterThan(before);
+  });
+
+  it('one part that cannot be reached never hides the parts that could (F-987)', async () => {
+    answer({ knowledge: FACTS, contradictions: CHANGES, promotions: OFFERS, memory: MESSAGES, fail: ['memory'] });
+    renderIt();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach messages with them — this is not the same as no messages.',
+    );
+    expect(screen.getAllByTestId('learned-fact')).toHaveLength(3);
+    expect(screen.getAllByTestId('learned-offer')).toHaveLength(1);
+    expect(screen.queryByRole('searchbox', { name: 'Find in messages' })).not.toBeInTheDocument();
+  });
+
+  it('a failed facts read is said in the facts part; offers and messages still show', async () => {
+    answer({ promotions: OFFERS, memory: MESSAGES, fail: ['contradictions'] });
+    renderIt();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not reach what their mail has told us — this is not the same as nothing learned.',
+    );
+    expect(screen.getAllByTestId('learned-offer')).toHaveLength(1);
+    expect(screen.getAllByTestId('learned-message')).toHaveLength(2);
+  });
+
+  it.each(['staff', null])(
+    'role %s: offers and messages are not asked for, the facts still show, and no failure is said (F-987)',
+    async (role) => {
+      auth.role = role;
+      full();
+      const { container } = renderIt();
+
+      expect(await screen.findAllByTestId('learned-fact')).toHaveLength(3);
+      expect(screen.getByText('Their offers are for owners and managers to see.')).toBeInTheDocument();
+      expect(screen.getByText('Messages with them are for owners and managers to read.')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('learned-offer')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('learned-message')).not.toBeInTheDocument();
+      expect(screen.queryByRole('searchbox', { name: 'Find in messages' })).not.toBeInTheDocument();
+      const urls = api.get.mock.calls.map(([u]) => String(u));
+      expect(urls.some((u) => u.includes('/promotions'))).toBe(false);
+      expect(urls.some((u) => u.includes('/conversation-memory'))).toBe(false);
+      const text = container.textContent ?? '';
+      for (const w of BANNED) expect(text).not.toContain(w);
+    },
+  );
+
+  it('staff with no facts yet: the facts part says so and the sheet does not claim offers are empty', async () => {
+    auth.role = 'staff';
+    answer({});
+    renderIt();
+
+    expect(await screen.findByText('No facts from their mail yet.')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing learned from their mail yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText('No offers from them yet.')).not.toBeInTheDocument();
+    expect(screen.getByText('Their offers are for owners and managers to see.')).toBeInTheDocument();
   });
 
   it('a manager confirms a fact through the verify route', async () => {
