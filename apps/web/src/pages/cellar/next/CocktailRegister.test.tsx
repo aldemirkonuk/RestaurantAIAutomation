@@ -19,6 +19,8 @@ const mock = vi.hoisted(() => ({
 
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
+  // An owner here (F-270's role read needs no AuthProvider in this suite).
+  useMayPriceCocktails: () => true,
   useCocktailRegister: () => ({
     loading: false,
     error: null,
