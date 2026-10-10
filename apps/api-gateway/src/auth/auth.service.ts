@@ -4335,6 +4335,13 @@ export class AuthService {
       .eq("user_id", reset.user_id)
       .is("used_at", null);
 
+    // F-867: the wrong-password lock tells the person to use "Forgot
+    // password?", so a spent reset link must lift it. Following the link
+    // proved the mailbox, which is more than a right password would.
+    if (typeof reset.email === "string") {
+      this.signInAttempts.clear(reset.email);
+    }
+
     // ADR 0229 (founder 2026-09-26, round 7, item 44, superseding item 37's
     // "reset RETIRES every passkey"): a reset keeps every passkey -- what
     // Google, Apple, Microsoft, GitHub and Okta do -- and the account is told,

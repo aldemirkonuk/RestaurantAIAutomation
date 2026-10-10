@@ -1,5 +1,6 @@
 import { AuthService } from "./auth.service";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, HttpException } from "@nestjs/common";
+import { SignInAttempts } from "./sign-in-attempts";
 
 /**
  * v3.0 task 20 — password reset (request + reset-password).
@@ -357,6 +358,54 @@ describe("AuthService#resetPassword", () => {
     await expect(
       svc.resetPassword("good-token", "newpassword1"),
     ).resolves.toBeUndefined();
+  });
+
+  // F-867: the wrong-password lock says 'use "Forgot password?"', so a spent
+  // reset link must let the new password in at once.
+  it("lifts the wrong-password lock on the address the link was mailed to", async () => {
+    const svc = makeResetPasswordService({
+      id: "r1",
+      user_id: "u1",
+      email: "Owner@House.test",
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      used_at: null,
+    });
+    const attempts: SignInAttempts = (svc as any).signInAttempts;
+    for (let i = 0; i < SignInAttempts.MAX_FAILURES; i++) {
+      attempts.recordFailure("owner@house.test");
+      attempts.recordFailure("someone@else.test");
+    }
+    expect(() => attempts.assertOpen("owner@house.test")).toThrow(
+      HttpException,
+    );
+
+    await svc.resetPassword("good-token", "newpassword1");
+
+    expect(() => attempts.assertOpen("owner@house.test")).not.toThrow();
+    // Only the proved mailbox is lifted, never another address.
+    expect(() => attempts.assertOpen("someone@else.test")).toThrow(
+      HttpException,
+    );
+  });
+
+  it("keeps the lock when the link is refused", async () => {
+    const svc = makeResetPasswordService({
+      id: "r1",
+      user_id: "u1",
+      email: "owner@house.test",
+      expires_at: new Date(Date.now() - 60_000).toISOString(),
+      used_at: null,
+    });
+    const attempts: SignInAttempts = (svc as any).signInAttempts;
+    for (let i = 0; i < SignInAttempts.MAX_FAILURES; i++) {
+      attempts.recordFailure("owner@house.test");
+    }
+    await expect(
+      svc.resetPassword("expired-token", "newpassword1"),
+    ).rejects.toThrow("expired");
+    expect(() => attempts.assertOpen("owner@house.test")).toThrow(
+      HttpException,
+    );
   });
 
   it("surfaces a DB failure on the password update as a BadRequestException", async () => {
