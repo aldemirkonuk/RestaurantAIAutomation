@@ -357,6 +357,15 @@ export class TeamController {
     return this.team.reviewTimeOff(this.uid(req), rid, requestId, dto);
   }
 
+  @Post("time-off/:requestId/withdraw")
+  withdrawTimeOff(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("requestId") requestId: string,
+  ) {
+    return this.team.withdrawTimeOff(this.uid(req), rid, requestId);
+  }
+
   /*
    * `GET …/team/swaps` was removed (ADR 0088). No client called it, and
    * `swap_requests` has no writer anywhere in the repository — so it could

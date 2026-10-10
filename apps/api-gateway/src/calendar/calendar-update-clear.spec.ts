@@ -7,7 +7,11 @@
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { CalendarService } from "./calendar.service";
-import { UpdateCalendarEventDto } from "./dto/calendar.dto";
+import { BadRequestException } from "@nestjs/common";
+import {
+  CreateCalendarEventDto,
+  UpdateCalendarEventDto,
+} from "./dto/calendar.dto";
 
 const stored = {
   id: "ev-1",
@@ -91,5 +95,68 @@ describe("CalendarService.updateEvent — clearing a field (F-196)", () => {
     const { svc, writes } = harness();
     await svc.updateEvent("r-1", "u-1", "ev-1", { allDay: true });
     expect(writes[0]).toMatchObject({ all_day: true, start_time: null, end_time: null });
+  });
+});
+
+describe("an entry may not end before it starts (F-937)", () => {
+  it("the bodies refuse a reversed range and keep a same-day or later end", async () => {
+    const base = {
+      title: "Party",
+      eventType: "meeting",
+      eventDate: "2026-09-12",
+    };
+    const bad = plainToInstance(CreateCalendarEventDto, {
+      ...base,
+      eventDateEnd: "2026-09-11",
+    });
+    expect((await validate(bad)).map((e) => e.property)).toEqual([
+      "eventDateEnd",
+    ]);
+    const same = plainToInstance(CreateCalendarEventDto, {
+      ...base,
+      eventDateEnd: "2026-09-12",
+    });
+    expect(await validate(same)).toEqual([]);
+    const edit = plainToInstance(UpdateCalendarEventDto, {
+      eventDate: "2026-09-12",
+      eventDateEnd: "2026-09-10",
+    });
+    expect((await validate(edit)).map((e) => e.property)).toEqual([
+      "eventDateEnd",
+    ]);
+  });
+
+  it("createEvent saves nothing for a reversed range", async () => {
+    const { svc, writes } = harness();
+    await expect(
+      svc.createEvent("r-1", "u-1", {
+        title: "Party",
+        eventType: "meeting",
+        eventDate: "2026-09-12",
+        eventDateEnd: "2026-09-11",
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(writes).toHaveLength(0);
+  });
+
+  it("updateEvent checks a one-sided edit against the stored day", async () => {
+    const { svc, writes } = harness();
+    // Stored: 12th to 13th. Moving only the end before the 12th is refused,
+    await expect(
+      svc.updateEvent("r-1", "u-1", "ev-1", { eventDateEnd: "2026-09-11" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // and so is moving only the start past the stored end.
+    await expect(
+      svc.updateEvent("r-1", "u-1", "ev-1", { eventDate: "2026-09-14" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(writes).toHaveLength(0);
+    await svc.updateEvent("r-1", "u-1", "ev-1", {
+      eventDate: "2026-09-14",
+      eventDateEnd: null,
+    });
+    expect(writes[0]).toMatchObject({
+      start_date: "2026-09-14",
+      end_date: null,
+    });
   });
 });

@@ -794,10 +794,19 @@ export class CalendarLinksService {
       }
     }
 
+    // A week its manager has not published is still being drawn, and the app
+    // gives staff none of its shifts (F-506, `getMyWeek`). A staff link carries
+    // what the app shows that person, never more (F-938): their draft shifts
+    // stay off it until the week is published. A full-roster link sees drafts,
+    // as the manager does on /team, and marks them.
+    const served =
+      scope.shifts === "own"
+        ? shown.filter((s) => !!s.schedule_id && published.has(s.schedule_id))
+        : shown;
     const nameOf = new Map(
       roster.map((m) => [m.id, m.display_name?.trim() || null]),
     );
-    return shown.map((s) => {
+    return served.map((s) => {
       const what = s.role?.trim() ? `shift · ${s.role.trim()}` : "shift";
       const own = !!s.member_id && mine.has(s.member_id);
       const summary = own

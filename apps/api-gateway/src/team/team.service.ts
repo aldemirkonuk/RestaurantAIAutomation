@@ -2350,7 +2350,7 @@ export class TeamService {
     // `assertOnTheRoster`). A failed read is an error, not a missing request.
     const { data: cur, error: curErr } = await this.sb
       .from("time_off_requests")
-      .select("member_id")
+      .select("member_id, status")
       .eq("id", requestId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -2365,6 +2365,13 @@ export class TeamService {
     }
     if (!cur) throw new NotFoundException("Request not found");
     await this.assertOnTheRoster(restaurantId, cur, "Request not found");
+    // The person who asked took it back (F-936); there is nothing to decide.
+    if (cur.status === "withdrawn") {
+      throw new ConflictException(
+        "This request was withdrawn by the person who asked. Nothing was changed.",
+      );
+    }
+    const before: string | undefined = cur.status;
     const leaveType: LeaveType | undefined = dto.leaveType;
     const { data, error } = await this.sb
       .from("time_off_requests")
@@ -2384,14 +2391,71 @@ export class TeamService {
       throw new InternalServerErrorException("Failed to review request");
     if (!data) throw new NotFoundException("Request not found");
     // The person who asked hears the answer (F-191): before this, a decision
-    // reached nobody, and My Shifts said to look on the manager's desk.
-    const requesterNotified = await this.tellRequester(
-      userId,
-      restaurantId,
-      cur.member_id,
-      data,
-    );
+    // reached nobody, and My Shifts said to look on the manager's desk. Only a
+    // changed answer is news: marking an approved request paid or unpaid sends
+    // `approved` again, and used to tell them a second time (F-939).
+    const requesterNotified =
+      before === data.status
+        ? false
+        : await this.tellRequester(userId, restaurantId, cur.member_id, data);
     return { ...data, requesterNotified };
+  }
+
+  /**
+   * The person who asked takes back a request nobody has decided yet (F-936).
+   * Only their own, and only while it waits: a decided one is the manager's to
+   * change, and a manager turns a request down rather than withdrawing it. The
+   * row is kept, marked `withdrawn`, like every other answer it could have had.
+   */
+  async withdrawTimeOff(
+    userId: string,
+    restaurantId: string,
+    requestId: string,
+  ): Promise<any> {
+    await this.assertAccess(userId, restaurantId);
+    const mine = await this.ownMemberId(userId, restaurantId);
+    const { data: cur, error: curErr } = await this.sb
+      .from("time_off_requests")
+      .select("member_id, status")
+      .eq("id", requestId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (curErr) {
+      this.logger.error(
+        `withdrawTimeOff: could not read request ${requestId} in ` +
+          `${restaurantId}: ${curErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this request, so it was not withdrawn.",
+      );
+    }
+    if (!cur || !mine || cur.member_id !== mine) {
+      throw new NotFoundException("Request not found");
+    }
+    if (cur.status !== "pending") {
+      throw new ConflictException(
+        "This request has already been answered, so it cannot be withdrawn. Ask your manager to change it.",
+      );
+    }
+    const { data, error } = await this.sb
+      .from("time_off_requests")
+      .update({ status: "withdrawn", updated_at: new Date().toISOString() })
+      .eq("id", requestId)
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "pending")
+      .select()
+      .maybeSingle();
+    if (error)
+      throw new InternalServerErrorException(
+        "The request was not withdrawn. It is still waiting for your manager.",
+      );
+    // Answered between the read and the write.
+    if (!data) {
+      throw new ConflictException(
+        "This request has already been answered, so it cannot be withdrawn. Ask your manager to change it.",
+      );
+    }
+    return data;
   }
 
   /**

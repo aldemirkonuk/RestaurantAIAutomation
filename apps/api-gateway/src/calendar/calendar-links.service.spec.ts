@@ -394,13 +394,18 @@ describe("what each person's link shows", () => {
   it("STAFF (Ayse): her own shifts and the house calendar — never Bora's shift or the open one", async () => {
     const shown = await feedFor(seed(), AYSE);
     expect(shown).toEqual(
-      expect.arrayContaining([
-        "Your shift · bar",
-        "Your shift · bar (draft)",
-        "Bar delivery",
-      ]),
+      expect.arrayContaining(["Your shift · bar", "Bar delivery"]),
     );
     expect(shown.join("|")).not.toMatch(/Bora|kitchen|Open shift/);
+  });
+
+  // F-938: the app gives staff none of an unpublished week's shifts (F-506,
+  // `getMyWeek`); her link must not serve them either, while a manager's
+  // full-roster link still shows the draft, marked.
+  it("STAFF: her shift in a week not yet published stays off her link until it is", async () => {
+    const db = seed();
+    expect((await feedFor(db, AYSE)).join("|")).not.toMatch(/draft/);
+    expect(await feedFor(db, MANAGER)).toContain("Ayse — shift · bar (draft)");
   });
 
   // The founder, 2026-09-21 (round 6t): "Same as the app (Recommended)" —
@@ -448,16 +453,16 @@ describe("what each person's link shows", () => {
       .map((u) => u.replace(/@wineops\.app$/, ""));
     expect(eventIds.sort()).toEqual(app.events.map((e) => e.id).sort());
     expect(eventIds).not.toContain("e-elsewhere");
+    // Her draft-week shift is not in the app for her, so not here (F-938).
     expect(uids.filter((u) => u.startsWith("shift-")).sort()).toEqual([
-      "shift-sh-ayse-next@wineops.app",
       "shift-sh-ayse@wineops.app",
     ]);
   });
 
-  it("a shift in an unpublished week is marked a draft and TENTATIVE", async () => {
+  it("a shift in an unpublished week is marked a draft and TENTATIVE on a full-roster link", async () => {
     const db = seed();
     const svc = service(db);
-    const { secret } = await svc.create(HOUSE, AYSE);
+    const { secret } = await svc.create(HOUSE, MANAGER);
     const ics = unfold(await svc.renderFor(secret as string));
     const draft = ics.slice(ics.indexOf("UID:shift-sh-ayse-next@"));
     expect(draft.slice(0, draft.indexOf("END:VEVENT"))).toContain(
@@ -557,7 +562,7 @@ describe("what each person's link shows", () => {
     await svc.setCategories(HOUSE, AYSE, ["shifts"]);
     const shifts = summaries(await svc.renderFor(all.secret as string));
     expect(shifts.every((l) => ceiling.includes(l))).toBe(true);
-    expect(shifts).toEqual(["Your shift · bar", "Your shift · bar (draft)"]);
+    expect(shifts).toEqual(["Your shift · bar"]);
   });
 
   it("a pick saved as an owner still narrows after a demotion — never more than the new role allows", async () => {

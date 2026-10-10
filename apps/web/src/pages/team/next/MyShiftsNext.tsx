@@ -35,6 +35,7 @@ import {
   getTimeOff,
   getTeamNotes,
   openTeamNote,
+  withdrawTimeOff,
   type LeaveType,
   type MyWeekPayload,
 } from '../../../services/api/team';
@@ -76,6 +77,7 @@ const DECISION: Record<string, string> = {
   pending: 'waiting for your manager',
   approved: 'approved',
   denied: 'turned down',
+  withdrawn: 'withdrawn',
 };
 
 /** The gateway's own words when it has them — a 409 says why a claim was refused. */
@@ -178,6 +180,14 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
     },
   });
 
+  /** Taking back a request nobody has answered yet (F-936). */
+  const withdraw = useMutation({
+    mutationFn: (requestId: string) => withdrawTimeOff(requestId),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['team-next-my-time-off', rid] });
+    },
+  });
+
   const memberId = payload?.member?.id ?? null;
   const myRequests = (mineQ.data ?? []).filter((r) => !memberId || r.member_id === memberId);
   /**
@@ -247,6 +257,10 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
         </MutationError>
         <MutationError when={askOff.isError}>
           The request did not reach your manager. Nothing is on their desk.
+        </MutationError>
+        <MutationError when={withdraw.isError}>
+          {serverMessage(withdraw.error) ??
+            'The request was not withdrawn. It is still waiting for your manager.'}
         </MutationError>
 
         {payload?.schedule?.status === 'published' && !payload.acknowledged && (
@@ -519,6 +533,17 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                     {' · '}
                     {DECISION[r.status] ?? r.status}
                     {r.leave_type === 'paid' ? ' · paid' : r.leave_type === 'unpaid' ? ' · unpaid' : ''}
+                    {r.status === 'pending' && (
+                      <button
+                        type="button"
+                        className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+                        style={{ marginLeft: 8 }}
+                        disabled={withdraw.isPending}
+                        onClick={() => withdraw.mutate(r.id)}
+                      >
+                        Withdraw it
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

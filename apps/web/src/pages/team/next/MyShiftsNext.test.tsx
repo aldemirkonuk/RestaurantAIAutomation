@@ -14,6 +14,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const api = vi.hoisted(() => ({
   myWeek: {} as Record<string, unknown>,
   assignCover: vi.fn(),
+  timeOff: [] as Record<string, unknown>[],
+  withdrawTimeOff: vi.fn((..._a: unknown[]) => Promise.resolve({})),
 }));
 
 vi.mock('../../../services/api/team', () => ({
@@ -23,6 +25,8 @@ vi.mock('../../../services/api/team', () => ({
   acknowledgeSchedule: vi.fn(),
   assignCover: api.assignCover,
   createTimeOff: vi.fn(),
+  getTimeOff: () => Promise.resolve(api.timeOff),
+  withdrawTimeOff: api.withdrawTimeOff,
 }));
 vi.mock('./useTeamNextData', () => ({ useActiveRestaurantId: () => 'r-1' }));
 vi.mock('./useHouseAreas', () => ({
@@ -110,5 +114,28 @@ describe('a published week', () => {
     fireEvent.click(await screen.findByText('Take it'));
     expect(await screen.findByText(/already ended/)).toBeTruthy();
     expect(screen.queryByText(/has not published this week yet/)).toBeNull();
+  });
+});
+
+describe('a time-off request still waiting can be taken back (F-936)', () => {
+  it('offers Withdraw on a waiting request only, and sends it', async () => {
+    api.myWeek = {
+      member: { id: 'm-1', display_name: 'Sam' },
+      schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+      mine: [],
+      open: [],
+    };
+    api.timeOff = [
+      { id: 't-wait', member_id: 'm-1', start_date: '2026-09-09', end_date: '2026-09-09', status: 'pending' },
+      { id: 't-done', member_id: 'm-1', start_date: '2026-09-01', end_date: '2026-09-01', status: 'approved' },
+      { id: 't-back', member_id: 'm-1', start_date: '2026-08-20', end_date: '2026-08-20', status: 'withdrawn' },
+    ];
+    mount();
+    const buttons = await screen.findAllByRole('button', { name: 'Withdraw it' });
+    expect(buttons).toHaveLength(1);
+    expect(screen.getByText(/· withdrawn/)).toBeTruthy();
+    fireEvent.click(buttons[0]);
+    await vi.waitFor(() => expect(api.withdrawTimeOff).toHaveBeenCalledWith('t-wait'));
+    api.timeOff = [];
   });
 });

@@ -537,6 +537,12 @@ export async function reviewTimeOff(
   return data
 }
 
+/** The person who asked takes back a request still waiting (F-936). */
+export async function withdrawTimeOff(requestId: string, rid?: string) {
+  const { data } = await apiClient.post(`${base(rid)}/time-off/${requestId}/withdraw`)
+  return data
+}
+
 // ── Coverage templates ─────────────────────────────────────────────────
 export async function getCoverageTemplates(rid?: string) {
   const { data } = await apiClient.get(`${base(rid)}/coverage-templates`)

@@ -19,6 +19,7 @@ const api = vi.hoisted(() => ({
   week: {} as Record<string, unknown>,
   members: [] as unknown[],
   reviewTimeOff: vi.fn((..._args: unknown[]) => Promise.resolve({})),
+  createTimeOff: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   exportTable: vi.fn((..._args: unknown[]) => Promise.resolve(undefined)),
 }));
 
@@ -44,7 +45,7 @@ vi.mock('../../../services/api/team', () => ({
   copyWeek: vi.fn(() => Promise.resolve({})),
   acknowledgeSchedule: vi.fn(() => Promise.resolve({})),
   assignCover: vi.fn(() => Promise.resolve({})),
-  createTimeOff: vi.fn(() => Promise.resolve({})),
+  createTimeOff: api.createTimeOff,
   reviewTimeOff: api.reviewTimeOff,
   updateShift: vi.fn(() => Promise.resolve({})),
   deleteShift: vi.fn(() => Promise.resolve(undefined)),
@@ -368,6 +369,60 @@ describe('paid leave is not a free week', () => {
     expect(screen.getByText(/paid or unpaid not said/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Approve as paid' }));
     await vi.waitFor(() => expect(api.reviewTimeOff).toHaveBeenCalledWith('t1', 'approved', 'paid'));
+  });
+
+  // F-936: the manager's form filed the whole week on screen, and an approved
+  // request had no way back.
+  it('files the days the manager picks, not the whole week', async () => {
+    render(
+      <TimeOffSheet
+        requests={[]}
+        failed={false}
+        members={[member()] as never}
+        weekStart="2026-09-07"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'm1' } });
+    fireEvent.change(screen.getByLabelText('First day off'), { target: { value: '2026-09-08' } });
+    fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-09-07' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/comes before the first/);
+    expect(screen.getByRole('button', { name: 'File it' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-09-08' } });
+    fireEvent.click(screen.getByRole('button', { name: 'File it' }));
+    await vi.waitFor(() =>
+      expect(api.createTimeOff).toHaveBeenCalledWith(
+        expect.objectContaining({ memberId: 'm1', startDate: '2026-09-08', endDate: '2026-09-08' }),
+      ),
+    );
+  });
+
+  it('can turn down a request already approved, and says a withdrawn one in words', async () => {
+    const row = {
+      member_id: 'm1', start_date: '2026-09-07', end_date: '2026-09-08', reason: null,
+      leave_type: 'paid' as const, reviewed_by: null, created_at: '2026-09-01',
+    };
+    render(
+      <TimeOffSheet
+        requests={[
+          { ...row, id: 't-ok', status: 'approved' },
+          { ...row, id: 't-back', status: 'withdrawn' },
+        ]}
+        failed={false}
+        members={[member()] as never}
+        weekStart="2026-09-07"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByText(/withdrawn by them/)).toBeInTheDocument();
+    const turnDown = screen.getAllByRole('button', { name: 'Turn it down' });
+    expect(turnDown).toHaveLength(1);
+    fireEvent.click(turnDown[0]);
+    await vi.waitFor(() => expect(api.reviewTimeOff).toHaveBeenCalledWith('t-ok', 'denied', undefined));
   });
 });
 
