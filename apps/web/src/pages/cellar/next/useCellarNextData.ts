@@ -41,6 +41,7 @@ import { useWineSubscription } from '../../../contexts/RealtimeContext';
 import { animate, ink } from '../../../lib/mudavym/motion';
 import { queryKeys } from '../../../lib/query-keys';
 import { apiClient } from '../../../services/api/client';
+import { settingsApi } from '../../../services/api/settings';
 import type { Wine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
 import {
@@ -1205,6 +1206,22 @@ export interface CellarSettingsVM {
   /** False while unread or on a failed read — never true on a guess. */
   readable: boolean;
   readError: string | null;
+}
+
+/**
+ * The house's reporting currency — the same read, under the same cache key,
+ * as /menu's `useHouseCurrency` (`GET /settings/currency`). A failed or
+ * unanswered read resolves to null, which `money()` prints as "currency not
+ * recorded" rather than a dollar sign.
+ */
+export function useHouseCurrency(): string | null {
+  const { activeRestaurantId } = useAuth();
+  const { data } = useQuery({
+    queryKey: ['settings', 'currency', activeRestaurantId],
+    queryFn: () => settingsApi.houseCurrency(),
+    staleTime: 5 * 60_000,
+  });
+  return data?.readable ? (data.code ?? null) : null;
 }
 
 export function useCellarSettings() {

@@ -45,6 +45,9 @@ import { HOUSE_SPINE } from './cellar-columns';
 
 const mock = vi.hoisted(() => ({
   current: {} as Record<string, unknown>,
+  // The house currency (`GET /settings/currency`). The top-level beforeEach
+  // makes it a dollar house for the `$` assertions; the TRY test sets its own.
+  currency: null as string | null,
   beverages: { data: null, loading: false, error: null } as Record<string, unknown>,
   cocktails: { data: null, loading: false, error: null } as Record<string, unknown>,
   register: { data: null, loading: false, error: null, refetch: () => {} } as Record<string, unknown>,
@@ -88,6 +91,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useZones: () => mock.zones,
   useConfirmZone: () => mock.confirmZone,
   useCellarSettings: () => mock.settings,
+  useHouseCurrency: () => mock.currency,
 }));
 
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
@@ -235,6 +239,7 @@ function draw(props: Partial<CellarNextProps> = {}, route = '/cellar') {
 
 beforeEach(() => {
   localStorage.clear();
+  mock.currency = 'USD';
   mock.current = { ...base };
   mock.beverages = { data: null, loading: false, error: null };
   mock.cocktails = { data: null, loading: false, error: null };
@@ -778,6 +783,53 @@ describe('CellarNext — the registers that are not wines', () => {
     // A book that names it nowhere is the dash, never a zero.
     expect(within(row).getAllByText('—').length).toBeGreaterThanOrEqual(1);
     expect(within(row).queryByText('$0.00')).not.toBeInTheDocument();
+  });
+
+  // F-271: a TRY house saw `$618.40` here while /menu printed lira.
+  it('prints the house currency, and never a dollar sign when the house is not in dollars', () => {
+    mock.currency = 'TRY';
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(row).toHaveTextContent(/618\.40/);
+    expect(row).not.toHaveTextContent('$');
+  });
+
+  it('says the currency is not recorded rather than assuming dollars', () => {
+    mock.currency = null;
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' });
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(row).toHaveTextContent('618.40 (currency not recorded)');
+    expect(row).not.toHaveTextContent('$');
+  });
+
+  // F-269: /beer and /whiskey render the same element, so a search typed on
+  // one page used to still be filtering the next.
+  it('starts each register with clear filters when moving from one drinks page to the next', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const page = (category: RegisterId) => (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/beer']}>
+          <CellarNext category={category} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(page('beer'));
+    const search = screen.getByPlaceholderText('Search bottle, producer, type, origin…');
+    fireEvent.change(search, { target: { value: 'lager' } });
+    expect(search).toHaveValue('lager');
+
+    mock.register = {
+      data: registerVM({ register: 'whiskey' }), loading: false, error: null, refetch: () => {},
+    };
+    rerender(page('whiskey'));
+    expect(screen.getByPlaceholderText('Search bottle, producer, type, origin…')).toHaveValue('');
+    expect(screen.getByText('Efes Pilsen')).toBeInTheDocument();
   });
 
   it('opens the whole record on the stand, naming the table each fact came from', () => {

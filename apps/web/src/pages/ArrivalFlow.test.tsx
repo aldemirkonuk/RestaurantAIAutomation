@@ -5,12 +5,15 @@ import GetStarted from './GetStarted'
 import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
 
-const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, reviewMenuItem, listMenuVersions, auth } = vi.hoisted(() => ({
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
   addMenuItem: vi.fn(),
   addCustomProvider: vi.fn(),
+  reviewMenuItem: vi.fn(),
+  listMenuVersions: vi.fn(),
+  auth: { activeRestaurantId: undefined as string | undefined },
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -21,6 +24,7 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { name: 'Selin Kaya', emailVerified: true },
     createFirstHouse,
+    activeRestaurantId: auth.activeRestaurantId,
   }),
 }))
 // The real getErrorStatus and isUnconfirmedWrite stay: the failure sentences
@@ -81,14 +85,37 @@ vi.mock('../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../services/api/menus')>(
     '../services/api/menus',
   )
-  return { ...actual, reviewMenuItem: vi.fn().mockResolvedValue({}), addMenuItem }
+  return { ...actual, reviewMenuItem, addMenuItem, listMenuVersions }
 })
 vi.mock('../services/api/vendors', () => ({
   addCustomProvider,
 }))
 
+const pencilLine = {
+  menuItemId: 'pencil',
+  submissionId: null,
+  name: 'Smoky No. 4',
+  producer: null,
+  category: null,
+  vintage: null,
+  region: null,
+  grapeVariety: null,
+  byGlassPrice: null,
+  bottlePrice: 18,
+  rawText: 'Smoky No. 4 18',
+  matched: false,
+  needsReview: true,
+}
+
+function proofWith(items: unknown[]) {
+  return { menuId: 'menu', itemsExtracted: items.length, submissionsCreated: 0, items }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
+  auth.activeRestaurantId = undefined
+  reviewMenuItem.mockResolvedValue({})
+  listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] })
   patch.mockResolvedValue({})
   createFirstHouse.mockResolvedValue({ restaurantId: 'house-1', detailsLoaded: true })
   addMenuItem.mockResolvedValue({
@@ -524,6 +551,72 @@ describe('approved arrival flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add this line' }))
     await waitFor(() => expect(addMenuItem).toHaveBeenCalledWith('menu', { name: 'House Cider', category: 'cider' }))
     expect(await screen.findByText('House Cider')).toBeInTheDocument()
+  })
+
+  // F-272: a failed write said nothing; the spinner cleared and the line sat.
+  it('says on the line when placing it failed, and keeps it pencilled', async () => {
+    reviewMenuItem.mockRejectedValue(new Error('500'))
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(proofWith([pencilLine])))
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: /Smoky No. 4/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cocktail' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('This line was not placed. Nothing changed — try again.')
+    expect(screen.getByRole('group', { name: 'The reading count' })).toHaveTextContent(/1pencilled/)
+  })
+
+  it('says when adding a line failed, and keeps what was typed', async () => {
+    addMenuItem.mockRejectedValue(new Error('500'))
+    sessionStorage.setItem('mudavym:first-proof', JSON.stringify(proofWith([pencilLine])))
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Add it.' }))
+    fireEvent.change(screen.getByLabelText('New menu line'), { target: { value: 'House Cider' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this line' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('This line was not added. What you typed is still here — try again.')
+    expect(screen.getByLabelText('New menu line')).toHaveValue('House Cider')
+  })
+
+  // F-273: the proof lives in one tab; the menu lives on the server.
+  it('does not offer to read the menu again when the house already holds one', async () => {
+    listMenuVersions.mockResolvedValue({ current: { menuId: 'm1' }, lastUsed: null, versions: [{ menuId: 'm1' }] })
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'Your menu is already with us.' })).toBeInTheDocument()
+    expect(screen.queryByText('No menu has been read yet.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Read a menu' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open your menu' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
+  })
+
+  it('says no menu was read only when the house holds none', async () => {
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'No menu has been read yet.' })).toBeInTheDocument()
+  })
+
+  it('does not claim no menu was read when it could not check', async () => {
+    listMenuVersions.mockRejectedValue(new Error('offline'))
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: 'We could not check for your menu just now.' })).toBeInTheDocument()
+    expect(screen.queryByText('No menu has been read yet.')).not.toBeInTheDocument()
+  })
+
+  it('does not show another house’s first proof after a house switch', async () => {
+    auth.activeRestaurantId = 'house-2'
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({ ...proofWith([pencilLine]), restaurantId: 'house-1' }),
+    )
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(screen.queryByText(/Smoky No. 4/)).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No menu has been read yet.' })).toBeInTheDocument()
+  })
+
+  it('shows the first proof read for this house', () => {
+    auth.activeRestaurantId = 'house-1'
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({ ...proofWith([pencilLine]), restaurantId: 'house-1' }),
+    )
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    expect(screen.getByRole('button', { name: /Smoky No. 4/ })).toBeInTheDocument()
   })
 
   it('opens the house contents page with exactly one ask', async () => {

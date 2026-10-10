@@ -30,7 +30,6 @@
     "apps/web/src/pages/VendorPriceCompare.tsx": 1,
     "apps/web/src/pages/WineLibrary.tsx": 1,
     "apps/web/src/pages/calendar/EventCard.tsx": 1,
-    "apps/web/src/pages/cellar/next/cellar-format.ts": 1,
     "apps/web/src/pages/dashboard/useDashboardPage.ts": 1,
     "apps/web/src/pages/documents-reports/next/DocumentsReportsNext.test.tsx": 1,
     "apps/web/src/pages/inventory/command/ReceiptDepth.tsx": 2,

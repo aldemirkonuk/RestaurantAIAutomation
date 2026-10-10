@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
+import { useAuth } from '../contexts/AuthContext'
 import {
   addMenuItem,
+  listMenuVersions,
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
@@ -50,8 +52,28 @@ function price(item: MenuImportReviewItem) {
 
 export default function HouseMenu() {
   const navigate = useNavigate()
-  const proof = useMemo(readProof, [])
+  const { activeRestaurantId } = useAuth()
+  // Only the proof read for THIS house (F-273): after a house switch in the
+  // same tab, the other house's proof is not shown.
+  const proof = useMemo(() => readProof(activeRestaurantId), [activeRestaurantId])
   const [items, setItems] = useState(proof?.items ?? [])
+  useEffect(() => setItems(proof?.items ?? []), [proof])
+  // With no proof in this tab, ask the house's books whether a menu is
+  // already held, so a new tab never invites reading the same menu twice.
+  const [held, setHeld] = useState<'checking' | 'held' | 'none' | 'unknown'>('checking')
+  useEffect(() => {
+    if (proof) return
+    let live = true
+    setHeld('checking')
+    listMenuVersions()
+      .then((v) => live && setHeld(v.current || v.versions.length > 0 ? 'held' : 'none'))
+      .catch(() => live && setHeld('unknown'))
+    return () => {
+      live = false
+    }
+  }, [proof])
+  const [lineError, setLineError] = useState<{ id: string; message: string } | null>(null)
+  const [addError, setAddError] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [showOriginal, setShowOriginal] = useState(false)
@@ -81,10 +103,41 @@ export default function HouseMenu() {
       <div className="min-h-screen bg-[#fbfaf7] px-6 py-16 text-[#211f1b]">
         <div className="mx-auto max-w-2xl">
           <BrandMark size={24} alt="Mudavym" />
-          <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
-          <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
-            Read a menu
-          </button>
+          {held === 'checking' ? (
+            <h1 className="mt-8 font-serif text-4xl">Looking for your menu…</h1>
+          ) : held === 'none' ? (
+            <>
+              <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
+              <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
+                Read a menu
+              </button>
+            </>
+          ) : held === 'held' ? (
+            <>
+              <h1 className="mt-8 font-serif text-4xl">Your menu is already with us.</h1>
+              <p className="mt-4 text-[#6d685f]">
+                Its first proof stayed in the window where it was read. Every line is on your menu page.
+              </p>
+              <button onClick={() => navigate('/menu')} className="mt-6 text-[#1a5e6b] underline">
+                Open your menu
+              </button>
+            </>
+          ) : (
+            <>
+              <h1 className="mt-8 font-serif text-4xl">We could not check for your menu just now.</h1>
+              <p className="mt-4 text-[#6d685f]">
+                If you have already read one, it is on your menu page. Reading it again would add a second copy.
+              </p>
+              <div className="mt-6 flex gap-6">
+                <button onClick={() => navigate('/menu')} className="text-[#1a5e6b] underline">
+                  Open your menu
+                </button>
+                <button onClick={() => navigate('/get-started')} className="text-[#1a5e6b] underline">
+                  Read a menu
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
@@ -112,6 +165,7 @@ export default function HouseMenu() {
 
   const place = async (item: MenuImportReviewItem, category: string) => {
     setSaving(item.menuItemId)
+    setLineError(null)
     try {
       await reviewMenuItem(item.menuItemId, 'category', category)
       setItems((current) =>
@@ -122,6 +176,9 @@ export default function HouseMenu() {
         ),
       )
       setOpen(null)
+    } catch {
+      // F-272: said on the line, not swallowed. The line stays pencilled.
+      setLineError({ id: item.menuItemId, message: 'This line was not placed. Nothing changed — try again.' })
     } finally {
       setSaving(null)
     }
@@ -131,6 +188,7 @@ export default function HouseMenu() {
     const category = addSection || absent[0]
     if (!addName.trim() || !category || !proof) return
     setSaving('add')
+    setAddError(null)
     try {
       const created = await addMenuItem(proof.menuId, { name: addName.trim(), category })
       setItems((current) => [
@@ -139,6 +197,9 @@ export default function HouseMenu() {
       ])
       setAddName('')
       setAdding(false)
+    } catch {
+      // F-272: the typed name stays in the box so a retry is one tap.
+      setAddError('This line was not added. What you typed is still here — try again.')
     } finally {
       setSaving(null)
     }
@@ -258,6 +319,9 @@ export default function HouseMenu() {
                                 </button>
                               ))}
                             </div>
+                            {lineError?.id === item.menuItemId && (
+                              <p role="alert" className="mt-3 text-sm text-red-700">{lineError.message}</p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -317,6 +381,7 @@ export default function HouseMenu() {
                 <button type="submit" disabled={!addName.trim() || saving === 'add'} className="bg-[#1a5e6b] px-3 py-1.5 text-white disabled:opacity-40">
                   {saving === 'add' ? 'Adding…' : 'Add this line'}
                 </button>
+                {addError && <p role="alert" className="w-full text-sm text-red-700">{addError}</p>}
               </form>
             )}
           </div>

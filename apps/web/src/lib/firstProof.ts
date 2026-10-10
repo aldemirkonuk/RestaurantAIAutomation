@@ -42,11 +42,20 @@ export function pencilledCount(items: MenuImportReviewItem[]) {
   return items.filter((item) => !isKitchenLine(item) && lineNeedsPencil(item)).length
 }
 
-export function readProof(): (MenuImportResult & { sourceImage?: string | null }) | null {
+type StoredProof = MenuImportResult & { sourceImage?: string | null; restaurantId?: string | null }
+
+/**
+ * The proof this tab kept for `restaurantId` (F-273). A proof is stored with
+ * the house it was read for; one kept for another house, or kept before the
+ * house was recorded, is not this house's menu and reads as none. Without a
+ * house to check against, the kept proof is returned as before.
+ */
+export function readProof(restaurantId?: string | null): StoredProof | null {
   try {
     const value = sessionStorage.getItem(FIRST_PROOF_KEY)
     if (!value) return null
-    const proof = JSON.parse(value) as MenuImportResult & { sourceImage?: string | null }
+    const proof = JSON.parse(value) as StoredProof
+    if (restaurantId && proof.restaurantId !== restaurantId) return null
     if (!proof.sourceImage) {
       proof.sourceImage = sessionStorage.getItem(FIRST_PROOF_SOURCE_KEY)
     }
@@ -56,8 +65,12 @@ export function readProof(): (MenuImportResult & { sourceImage?: string | null }
   }
 }
 
-export function writeProof(result: MenuImportResult, sourceImage?: string | null) {
-  sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify(result))
+export function writeProof(
+  result: MenuImportResult,
+  sourceImage?: string | null,
+  restaurantId?: string | null,
+) {
+  sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify({ ...result, restaurantId: restaurantId ?? null }))
   if (sourceImage) {
     try {
       sessionStorage.setItem(FIRST_PROOF_SOURCE_KEY, sourceImage)

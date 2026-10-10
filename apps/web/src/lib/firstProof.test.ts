@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { lineNeedsPencil, lineSourceCrop } from './firstProof'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { lineNeedsPencil, lineSourceCrop, readProof, writeProof } from './firstProof'
 
 describe('lineNeedsPencil', () => {
   it('keeps the unmatched fallback', () => {
@@ -28,5 +28,28 @@ describe('lineSourceCrop', () => {
 
   it('uses a box only when the extractor already named one', () => {
     expect(lineSourceCrop({ bbox: box }, image)).toEqual({ image, box })
+  })
+})
+
+// F-273: a proof is kept with the house it was read for.
+describe('readProof', () => {
+  const result = { menuId: 'm', itemsExtracted: 0, submissionsCreated: 0, items: [] }
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  it('returns the proof to the house it was read for', () => {
+    writeProof(result, null, 'house-1')
+    expect(readProof('house-1')?.menuId).toBe('m')
+  })
+
+  it('returns nothing to another house', () => {
+    writeProof(result, null, 'house-1')
+    expect(readProof('house-2')).toBeNull()
+  })
+
+  it('returns nothing to a house when the proof never recorded one', () => {
+    writeProof(result, null)
+    expect(readProof('house-1')).toBeNull()
   })
 })
