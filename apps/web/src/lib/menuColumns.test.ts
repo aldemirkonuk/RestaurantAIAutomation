@@ -23,4 +23,8 @@ describe('menu columns (F-017)', () => {
   it('reads a heading whatever its case, spacing or byte-order mark', () => {
     expect(skippedMenuColumns(['﻿Name', 'Glass Price', 'BOTTLE-PRICE'])).toEqual([])
   })
+
+  it('reads accented and Turkish headings as the gateway does, and skips a bare Fiyat', () => {
+    expect(skippedMenuColumns(['Ad', 'Üretici', 'Şişe Fiyatı', 'Kadeh', 'Château', 'Fiyat'])).toEqual(['Fiyat'])
+  })
 })

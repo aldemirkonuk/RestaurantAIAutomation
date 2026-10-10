@@ -429,7 +429,13 @@ export function MenuPlan({
       ) : null}
 
       <div className="cl-row-controls" style={{ marginTop: 14 }}>
-        {canManage && !plan.current ? (
+        {canManage && !plan.current && plan.lines.length === 0 ? (
+          // F-681: an empty menu made current archived the house's real one.
+          <p className="cl-said" data-testid="plan-empty">
+            This menu has no lines, so it cannot become the current menu.
+          </p>
+        ) : null}
+        {canManage && !plan.current && plan.lines.length > 0 ? (
           <button
             type="button"
             className="cl-btn cl-ink cl-focus"
