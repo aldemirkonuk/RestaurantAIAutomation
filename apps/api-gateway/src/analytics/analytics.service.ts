@@ -1052,13 +1052,24 @@ export class AnalyticsService {
       this.loadConsumption(restaurantId, 90, zone),
     ]);
 
-    // Vendor concentration (HHI on spend share).
+    // Vendor concentration (HHI on spend share). An order with no price is
+    // left out and counted, not added as 0 (F-701), and orders paid in two
+    // currencies have no shares to take: there is no rate to set a €8,000
+    // order beside a ₺300,000 one, as COGS says under F-339 (F-1015).
+    const orderCurrencies = Array.from(
+      new Set(
+        orders.map((o) => o.currency).filter((c): c is string => c !== null),
+      ),
+    ).sort();
+    const mixedCurrency = orderCurrencies.length > 1;
+    const vendorUnpricedCount = orders.filter((o) => o.cost == null).length;
     const spendByVendor = new Map<string, number>();
     for (const o of orders)
-      spendByVendor.set(
-        o.providerId,
-        (spendByVendor.get(o.providerId) || 0) + (o.cost ?? 0),
-      );
+      if (o.cost != null && !mixedCurrency)
+        spendByVendor.set(
+          o.providerId,
+          (spendByVendor.get(o.providerId) || 0) + o.cost,
+        );
     const vendorWeights = Array.from(spendByVendor.values());
     const hhi = E.finance.herfindahlIndex(vendorWeights);
     const effectiveVendors = E.finance.effectiveCount(vendorWeights);
@@ -1114,15 +1125,28 @@ export class AnalyticsService {
       basis: {
         demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}`,
         revenueConcentration: `over what each drink sold in the last 90d (${skuRevenue.length} drink(s) with sales)${unpricedSales.size > 0 ? `; ${unpricedSales.size} drink(s) left out because a sale carried no price` : ""}`,
+        vendorConcentration: mixedCurrency
+          ? `delivered procurement_orders (trailing 365d) — null: the orders were placed in ${orderCurrencies.join(", ")}, and with no exchange rate on record their spend shares cannot be compared`
+          : `delivered procurement_orders (trailing 365d) — shares of ${orders.length - vendorUnpricedCount} priced order${orders.length - vendorUnpricedCount === 1 ? "" : "s"}` +
+            (vendorUnpricedCount > 0
+              ? `; ${vendorUnpricedCount} delivered order${vendorUnpricedCount === 1 ? "" : "s"} with no price left out`
+              : ""),
       },
       vendorConcentration: {
         hhi,
         hhiPoints: hhi === null ? null : Math.round(hhi * 10000),
         effectiveVendors,
         cr4,
-        vendorCount: vendorWeights.length,
-        interpretation:
-          hhi === null
+        // Vendors with a priced order, counted even when their shares
+        // cannot be taken.
+        vendorCount: new Set(
+          orders.filter((o) => o.cost != null).map((o) => o.providerId),
+        ).size,
+        // Orders left out of the shares because they carry no price (F-1015).
+        unpricedCount: vendorUnpricedCount,
+        interpretation: mixedCurrency
+          ? "not comparable — orders paid in more than one currency"
+          : hhi === null
             ? "insufficient data"
             : hhi > 0.25
               ? "highly concentrated — single-vendor risk"

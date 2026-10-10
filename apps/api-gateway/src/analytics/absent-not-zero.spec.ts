@@ -3,7 +3,10 @@ import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { separableExtremes, type WeekdayProfile } from "./engine/comparisons";
 import { GoalsService } from "./goals.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
-import { UnpricedSpendError } from "../procurement/order-spend";
+import {
+  MixedCurrencySpendError,
+  UnpricedSpendError,
+} from "../procurement/order-spend";
 
 /**
  * Regression guard — three places where analytics answered an ABSENCE with a
@@ -490,5 +493,190 @@ describe("every purchases reader leaves an unpriced order out and says so", () =
     };
     svc.computeOrdersFamily(bundle, (r: any) => pushed.push(r));
     expect(pushed).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-1015 (rehit of F-339): the other spend readers add no lira to euros
+// ---------------------------------------------------------------------------
+
+describe("no spend reader adds orders paid in two currencies", () => {
+  // A lira house buying from a euro importer and a lira supplier.
+  const EUR_ORDER = {
+    ...DELIVERED,
+    id: "po-eur",
+    provider_id: "prov-importer",
+    currency: "EUR",
+    total_cost: 8000,
+  };
+  const TRY_ORDER = {
+    ...DELIVERED,
+    id: "po-try",
+    provider_id: "prov-local",
+    currency: "try",
+    total_cost: 300000,
+  };
+  const UNPRICED = { ...DELIVERED, id: "po-0", total_cost: 0, final_price: 17 };
+
+  it("the risk lens takes no vendor shares across two currencies, and says why", async () => {
+    const out: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [EUR_ORDER, TRY_ORDER],
+    }).getRiskProfile(RESTAURANT);
+    expect(out.vendorConcentration.hhi).toBeNull();
+    expect(out.vendorConcentration.effectiveVendors).toBeNull();
+    expect(out.vendorConcentration.cr4).toBeNull();
+    expect(out.vendorConcentration.vendorCount).toBe(2);
+    expect(out.basis.vendorConcentration).toContain("placed in EUR, TRY");
+  });
+
+  it("the risk lens leaves an unpriced order out of the shares and counts it", async () => {
+    const priced = { ...DELIVERED, provider_id: "prov-2", total_cost: 480 };
+    const out: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      // prov-1's only order carries no price: it is not a vendor at 0 share.
+      procurement_orders: [{ ...UNPRICED, provider_id: "prov-1" }, priced],
+    }).getRiskProfile(RESTAURANT);
+    expect(out.vendorConcentration.hhi).toBe(1);
+    expect(out.vendorConcentration.vendorCount).toBe(1);
+    expect(out.vendorConcentration.unpricedCount).toBe(1);
+    expect(out.basis.vendorConcentration).toContain(
+      "1 delivered order with no price left out",
+    );
+  });
+
+  it("the risk lens still takes shares when one currency is named", async () => {
+    const out: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [
+        { ...TRY_ORDER, total_cost: 100 },
+        {
+          ...TRY_ORDER,
+          id: "po-2",
+          provider_id: "prov-other",
+          total_cost: 100,
+        },
+      ],
+    }).getRiskProfile(RESTAURANT);
+    expect(out.vendorConcentration.hhi).toBeCloseTo(0.5);
+    expect(out.basis.vendorConcentration).toContain(
+      "shares of 2 priced orders",
+    );
+  });
+
+  const goals = (rows: Rows) =>
+    new GoalsService(
+      { getClient: () => makeClient(rows) } as any,
+      { getStored: async () => [] } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { getFinancialSummary: async () => ({}) } as any,
+    );
+  const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
+  it("the purchase spend goal refuses a total across two currencies", async () => {
+    const err = await (
+      goals({ procurement_orders: [EUR_ORDER, TRY_ORDER] }) as any
+    )
+      .computeMetricWithSeries(
+        RESTAURANT,
+        "purchase_spend",
+        since,
+        undefined,
+        "UTC",
+      )
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MixedCurrencySpendError);
+    expect((err as Error).message).toContain("paid in EUR and TRY");
+  });
+
+  const insights = (rows: Rows) =>
+    new InsightGeneratorService(
+      { getClient: () => makeClient(rows) } as any,
+      {
+        load: async () => ({ dates: new Set<string>(), readable: true }),
+      } as any,
+      {} as any,
+    );
+
+  it("the insight bundle carries each order's currency", async () => {
+    const bundle = await (
+      insights({ procurement_orders: [EUR_ORDER, TRY_ORDER] }) as any
+    ).loadBundle(RESTAURANT);
+    expect(bundle.orders.map((o: any) => o.currency).sort()).toEqual([
+      "EUR",
+      "TRY",
+    ]);
+  });
+
+  const familyOver = (orders: any[], currency: string | null) => {
+    const svc = insights({}) as any;
+    const pushed: any[] = [];
+    svc.computeOrdersFamily(
+      {
+        availability: new Set(["orders"]),
+        excludedDates: new Set<string>(),
+        currency,
+        locale: null,
+        zone: null,
+        orders,
+      },
+      (r: any) => pushed.push(r),
+    );
+    return pushed;
+  };
+  const day = (n: number) =>
+    new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+
+  it("says nothing about purchasing spend when the orders were paid in two currencies", () => {
+    expect(
+      familyOver(
+        [
+          {
+            vendorId: "a",
+            vendorName: "A",
+            cost: 8000,
+            currency: "EUR",
+            date: day(3),
+          },
+          {
+            vendorId: "b",
+            vendorName: "B",
+            cost: 300000,
+            currency: "TRY",
+            date: day(2),
+          },
+        ],
+        "TRY",
+      ),
+    ).toEqual([]);
+  });
+
+  it("prints vendor shares in the money the orders were paid in", () => {
+    const pushed = familyOver(
+      [
+        {
+          vendorId: "a",
+          vendorName: "A",
+          cost: 900,
+          currency: "EUR",
+          date: day(3),
+        },
+        {
+          vendorId: "b",
+          vendorName: "B",
+          cost: 100,
+          currency: "EUR",
+          date: day(2),
+        },
+      ],
+      "TRY",
+    );
+    const share = pushed.find(
+      (r) => r?.candidateKey === "vendor.purchase_spend.concentration",
+    );
+    expect(share).toBeDefined();
+    expect(share.evidence.currency).toBe("EUR");
   });
 });

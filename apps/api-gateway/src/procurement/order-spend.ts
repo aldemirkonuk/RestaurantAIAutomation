@@ -54,3 +54,40 @@ export class UnpricedSpendError extends Error {
     this.name = "UnpricedSpendError";
   }
 }
+
+/**
+ * The currency an order names, upper-cased; null when it names none (F-339).
+ * An order with no code is read as the house's money, as every order was
+ * before the column existed.
+ */
+export function orderCurrency(o: { currency?: unknown }): string | null {
+  return typeof o.currency === "string" && o.currency.trim()
+    ? o.currency.trim().toUpperCase()
+    : null;
+}
+
+/** The distinct currencies a set of orders names, sorted (F-1015). */
+export function namedCurrencies(
+  orders: ReadonlyArray<{ currency?: unknown }>,
+): string[] {
+  const codes = new Set<string>();
+  for (const o of orders) {
+    const c = orderCurrency(o);
+    if (c) codes.add(c);
+  }
+  return Array.from(codes).sort();
+}
+
+/**
+ * A spend total refused because its orders were placed in more than one
+ * currency (F-1015): with no exchange rate on record, a lira order and a euro
+ * order have no single total, as COGS already says (F-339).
+ */
+export class MixedCurrencySpendError extends Error {
+  constructor(readonly currencies: string[]) {
+    super(
+      `Purchase spend could not be totalled: the deliveries in this window were paid in ${currencies.join(" and ")}, and with no exchange rate on record they cannot be added into one figure.`,
+    );
+    this.name = "MixedCurrencySpendError";
+  }
+}
