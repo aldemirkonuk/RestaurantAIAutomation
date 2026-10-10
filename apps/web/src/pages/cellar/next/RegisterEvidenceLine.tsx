@@ -11,7 +11,7 @@
  * house's stock: `public.beverages` has no `restaurant_id` at all.
  */
 
-import { EM, confidenceLabel, type Confidence } from './cellar-format';
+import { confidenceLabel, count, type Confidence } from './cellar-format';
 import type { RegisterEvidenceVM } from './useCellarNextData';
 
 export default function RegisterEvidenceLine({
@@ -21,7 +21,7 @@ export default function RegisterEvidenceLine({
   evidence: RegisterEvidenceVM;
   confidence: Confidence;
 }) {
-  const fig = (n: number | null) => (n === null ? EM : n.toLocaleString('en-US'));
+  const fig = count;
   return (
     <p className="cl-note" style={{ marginTop: 4 }}>
       <span className="cl-num">{fig(evidence.inventoryRows)}</span> in the cellar ·{' '}
