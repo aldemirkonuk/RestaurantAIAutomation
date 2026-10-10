@@ -77,8 +77,12 @@ export const ROOT = 'reports-next';
  * gateway refuses every other role, and the page does not offer them to that
  * role at all, rather than laying a refusal line on the sheet. A role not yet
  * known is treated as not allowed — the cuttings appear once it is.
+ *
+ * Goals joined them with F-299: the gateway refuses the goal reads to every
+ * role but owner and manager, so staff are not offered the cutting either
+ * (F-795) — otherwise their default sheet carried the refusal line.
  */
-const OWNERS_AND_MANAGERS_ONLY: readonly AnalysisId[] = ['seats', 'service'];
+const OWNERS_AND_MANAGERS_ONLY: readonly AnalysisId[] = ['seats', 'service', 'goals'];
 
 export function offeredFor(role: string | null | undefined): AnalysisId[] {
   if (role === 'owner' || role === 'manager') return [...ANALYSIS_IDS];

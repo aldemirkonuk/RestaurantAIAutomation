@@ -65,6 +65,9 @@ export interface BenchRegister {
   tie: boolean;
   weekdays: Array<{ day: string; mean: number | null; n: number | null }>;
   goals: BenchGoalRow[];
+  /** True when the gateway left the goals out — it does for any role but
+   *  owner and manager (F-794) — so the cutting says nothing about them. */
+  goalsWithheld: boolean;
   /** True when the whole cashflow lens failed inside the parallel call. */
   cashflowMissing: boolean;
   seasonalityMissing: boolean;
@@ -110,6 +113,7 @@ export const bench = analysis<BenchRegister>({
         target: num(g.target_value),
         direction: str(g.direction) || 'at_least',
       })),
+      goalsWithheld: !('activeGoals' in d),
       // `getOverview` runs its eight lenses through Promise.allSettled and
       // returns `null` for any that threw. A null lens is a read that did not
       // happen — never "this house bought nothing".
@@ -128,7 +132,7 @@ export const bench = analysis<BenchRegister>({
       {
         label: 'Bought, last 30 days',
         value: money(b.spendLast30d),
-        note: b.cashflowMissing ? 'the cashflow lens did not answer' : undefined,
+        note: b.cashflowMissing ? 'the buying lens did not answer' : undefined,
       },
       { label: 'Bought, the 30 before', value: money(b.spendPrev30d) },
       {
@@ -144,12 +148,14 @@ export const bench = analysis<BenchRegister>({
         label: 'Trend per day, last 28 days',
         value: b.trendPerDayPct === null ? EM : pct(b.trendPerDayPct),
       },
-      { label: 'Goals running', value: figure(b.goals.length) },
+      ...(b.goalsWithheld ? [] : [{ label: 'Goals running', value: figure(b.goals.length) }]),
     ];
 
     if (b.cashflowMissing && b.seasonalityMissing && b.goals.length === 0)
       return {
-        say: `Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running. ${noPeers}`,
+        say: b.goalsWithheld
+          ? `Nothing in the overview register answered — neither the buying lens nor the weekday lens returned. ${noPeers}`
+          : `Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running. ${noPeers}`,
         figures,
         notes: [],
         basis: b.basis,
@@ -233,17 +239,13 @@ export const bench = analysis<BenchRegister>({
       figures,
       notes: [
         noPeers,
-        // Measured on the running gateway, 2026-09-03: this tenant returns
-        // spendLast30d = spendPrev30d = 0. `getCashflow` sums a loader that
-        // degrades a FAILED query to `[]` (`advanced-analytics.service.ts:125-146`,
-        // logged but not signalled in the payload), so a pair of zeros is "no
-        // delivered order came back", which is either no buying or a read that
-        // did not answer. That is the same shape `financial.cogs` was fixed for
-        // (§9.2); it is NOT fixed in cashflow yet, so the cutting says so rather
-        // than presenting $0 against $0 as a measured standstill. This is a
-        // statement about the register, not a verdict dressed as the server's.
+        // Since ADR 0292 / F-186 the cashflow loader reads the whole window or
+        // refuses (`loadOrders`, advanced-analytics.service.ts); a refusal
+        // nulls the lens, which `cashflowMissing` below says in its own words.
+        // So a pair of zeros that did come back is a measured "no delivered
+        // order in either window", not an unanswered read (F-797).
         b.spendLast30d === 0 && b.spendPrev30d === 0
-          ? 'Both buying windows came back at zero, so no bars are drawn — two bars at zero would say the same thing less clearly. And the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so a pair of zeros means "no delivered order was returned", not necessarily "nothing was bought".'
+          ? 'Both buying windows came back at zero, so no bars are drawn — two bars at zero would say the same thing less clearly. The zeros mean no order was delivered in either window; if the buying records could not be read, this cutting says the buying lens did not answer instead.'
           : null,
         b.cashflowMissing
           ? 'The buying lens did not answer inside the overview call, so its four figures are em dashes rather than zeros.'
@@ -251,7 +253,7 @@ export const bench = analysis<BenchRegister>({
         b.seasonalityMissing
           ? 'The weekday lens did not answer inside the overview call.'
           : null,
-        b.goals.length === 0
+        b.goals.length === 0 && !b.goalsWithheld
           ? 'No goal is running, so there is nothing to measure against a baseline. Set one on the goals desk and it appears here.'
           : null,
       ].filter((n): n is string => n !== null),
