@@ -10,7 +10,7 @@
  * replaces them.
  */
 
-import { houseMoney } from "../../common/house-money";
+import { houseMoney, usableLocale } from "../../common/house-money";
 
 export interface InsightEvidence {
   /** Entity display name (e.g. "Table 4", "Tuesday", "Caymus Cab"). */
@@ -62,13 +62,24 @@ export interface InsightEvidence {
   n?: number;
 }
 
+/**
+ * `v` to exactly `digits` decimals with the house's decimal mark — "1,8σ" and
+ * "r=0,62" in a lira house, as its money already reads (F-1058). Same digits as
+ * `toFixed`, and no grouping, so only the mark changes.
+ */
+const fmtFixed = (v: number, digits: number, locale?: string | null) =>
+  new Intl.NumberFormat(usableLocale(locale), {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  }).format(v);
 
-const fmtNum = (v: number) =>
+const fmtNum = (v: number, locale?: string | null) =>
   Math.abs(v) >= 100
-    ? v.toFixed(0)
+    ? fmtFixed(v, 0, locale)
     : Math.abs(v) >= 10
-      ? v.toFixed(1)
-      : v.toFixed(2);
+      ? fmtFixed(v, 1, locale)
+      : fmtFixed(v, 2, locale);
 
 export function fmtValue(
   v: number,
@@ -80,9 +91,9 @@ export function fmtValue(
     case "currency":
       return houseMoney(v, currency, { compact: true, locale });
     case "percent":
-      return `${(v * 100).toFixed(1)}%`;
+      return `${fmtFixed(v * 100, 1, locale)}%`;
     default:
-      return fmtNum(v);
+      return fmtNum(v, locale);
   }
 }
 
@@ -102,13 +113,17 @@ export const fmtPct = (p: number) => `${Math.abs(p * 100).toFixed(0)}%`;
  * template below, which read the identical r as "goes with higher average
  * check". Two contradictory sentences from one number.
  */
-export function tableAttributeReading(attribute: string, r: number): string {
+export function tableAttributeReading(
+  attribute: string,
+  r: number,
+  locale?: string | null,
+): string {
   const DIST = "distance to ";
   const higher = r > 0 ? "higher" : "lower";
   const phrase = attribute.startsWith(DIST)
     ? `tables farther from the ${attribute.slice(DIST.length)}`
     : `tables with more ${attribute === "seat count" ? "seats" : attribute}`;
-  return `Across your floor, ${phrase} average ${higher} checks (r=${r.toFixed(2)}).`;
+  return `Across your floor, ${phrase} average ${higher} checks (r=${fmtFixed(r, 2, locale)}).`;
 }
 
 /** Render an insight sentence for a template family. Returns null if the
@@ -166,7 +181,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     case "anomaly": {
       if (e.z == null || e.value == null || !e.date) return null;
       const dir = e.z > 0 ? "above" : "below";
-      return `${e.date} was unusual${e.entity ? ` for ${e.entity}` : ""}: ${e.measureLabel} of ${fmtValue(e.value, e.unit, e.currency, e.locale)} sits ${Math.abs(e.z).toFixed(1)}σ ${dir} typical.`;
+      return `${e.date} was unusual${e.entity ? ` for ${e.entity}` : ""}: ${e.measureLabel} of ${fmtValue(e.value, e.unit, e.currency, e.locale)} sits ${fmtFixed(Math.abs(e.z), 1, e.locale)}σ ${dir} typical.`;
     }
     case "peer": {
       if (e.rank == null || e.peerCount == null || e.value == null) return null;
@@ -207,7 +222,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
             ? "moderate"
             : "weak";
       const dir = e.r > 0 ? "higher" : "lower";
-      return `${strength.charAt(0).toUpperCase() + strength.slice(1)} link (r=${e.r.toFixed(2)}): ${e.attribute} goes with ${dir} ${e.measureLabel}.${e.attributeReading ? ` ${e.attributeReading}` : ""}`;
+      return `${strength.charAt(0).toUpperCase() + strength.slice(1)} link (r=${fmtFixed(e.r, 2, e.locale)}): ${e.attribute} goes with ${dir} ${e.measureLabel}.${e.attributeReading ? ` ${e.attributeReading}` : ""}`;
     }
     case "driver": {
       if (!e.drivers?.length) return null;
@@ -215,14 +230,14 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
         .slice(0, 3)
         .map(
           (d) =>
-            `${d.attribute} (${d.weight >= 0 ? "+" : "−"}${Math.abs(d.weight).toFixed(2)})`,
+            `${d.attribute} (${d.weight >= 0 ? "+" : "−"}${fmtFixed(Math.abs(d.weight), 2, e.locale)})`,
         )
         .join(", ");
       return `Biggest ${e.measureLabel} drivers right now: ${top} — weights learned from your own data.`;
     }
     case "basket": {
       if (!e.pairA || !e.pairB || e.lift == null) return null;
-      return `${e.pairA} and ${e.pairB} land on the same check ${e.lift.toFixed(1)}× more than chance — a pairing worth promoting.`;
+      return `${e.pairA} and ${e.pairB} land on the same check ${fmtFixed(e.lift, 1, e.locale)}× more than chance — a pairing worth promoting.`;
     }
     case "forecast": {
       if (e.forecastGapPct == null) return null;
@@ -252,7 +267,7 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     }
     case "hot": {
       if (e.value == null || e.z == null) return null;
-      return `${entity} is surging right now: ${fmtValue(e.value, e.unit, e.currency, e.locale)}${e.surgeMinutes ? ` in ${e.surgeMinutes} min` : ""}, ${Math.abs(e.z).toFixed(1)}σ above its normal pace — worth a visit from the floor manager.`;
+      return `${entity} is surging right now: ${fmtValue(e.value, e.unit, e.currency, e.locale)}${e.surgeMinutes ? ` in ${e.surgeMinutes} min` : ""}, ${fmtFixed(Math.abs(e.z), 1, e.locale)}σ above its normal pace — worth a visit from the floor manager.`;
     }
     default:
       return null;

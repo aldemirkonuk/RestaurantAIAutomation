@@ -1867,7 +1867,11 @@ export class InsightGeneratorService {
             Math.abs(best.r) >= 0.35 &&
             corr.pAdjusted <= SIGNIFICANCE_ALPHA
           ) {
-            attributeReading = tableAttributeReading(best.name, best.r);
+            attributeReading = tableAttributeReading(
+              best.name,
+              best.r,
+              bundle.locale,
+            );
             const evc: InsightEvidence = {
               entity: "tables",
               measureLabel: "average check",

@@ -19,6 +19,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn() }));
 const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
+const house = vi.hoisted(() => ({ group: null as '.' | ',' | null }));
 
 vi.mock('../../../services/api/client', () => ({
   apiClient: api,
@@ -27,6 +28,8 @@ vi.mock('../../../services/api/client', () => ({
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRole: auth.role, user: { role: auth.role } }),
 }));
+
+vi.mock('../../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => house.group }));
 
 import { LearnedSection } from './LearnedSection';
 
@@ -191,6 +194,7 @@ function full() {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.role = 'manager';
+  house.group = null;
 });
 
 describe('LearnedSection', () => {
@@ -251,6 +255,29 @@ describe('LearnedSection', () => {
     expect(offer).toHaveTextContent('Barolo — 40 EUR off, 12 or more');
     expect(offer).toHaveTextContent('until 31 Oct · from their message of 15 Sep');
     expect(container.textContent).not.toContain('$');
+  });
+
+  it('a lira house reads the figures in facts and offers with its own marks (F-1080)', async () => {
+    house.group = '.';
+    answer({
+      knowledge: FACTS,
+      contradictions: [{ ...CHANGES[0], attributes: { days: 1250 }, previous_value: { days: 1000 } }],
+      promotions: [
+        {
+          ...OFFERS[0],
+          conditions: { min_qty: 1200, min_amount: 2500.5 },
+          discount_value: { amount: 1250.5, currency: 'EUR', percent: 7.5 },
+        },
+      ],
+    });
+    renderIt();
+
+    const facts = (await screen.findAllByTestId('learned-fact')).map((li) => li.textContent ?? '');
+    expect(facts[0]).toContain('Payment terms: was 1.000, now 1.250');
+    expect(facts[1]).toContain('Minimum order: 1.500 USD');
+    expect(await screen.findByTestId('learned-offer')).toHaveTextContent(
+      'Barolo — 7,5% off, 1.250,5 EUR off, 1.200 or more, on orders of at least 2.500,5 EUR',
+    );
   });
 
   it('an offer with no stated currency says so rather than guessing', async () => {

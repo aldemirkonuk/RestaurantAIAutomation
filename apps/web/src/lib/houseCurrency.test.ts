@@ -106,6 +106,18 @@ describe('money groups the house’s way (F-908)', () => {
     expect(formatMoney(29000, 'compact')).toMatch(/29,0K/);
   });
 
+  it('compact lira keeps the house’s sign and marks, as the full figure does (F-1057)', () => {
+    setHouseCurrency('TRY');
+    setHouseLocale(localeOfCountry('Türkiye'));
+    expect(formatHouseMoney(12400, undefined, { compact: true })).toBe('₺12,4K');
+    expect(formatHouseMoney(-12400, undefined, { compact: true })).toBe('-₺12,4K');
+    expect(formatMoney(29000, 'compact')).toBe('₺29,0K');
+    expect(formatMoney(29000, 'compact')).not.toMatch(/TRY/);
+    // A house with no recorded country still reads its English compact figure.
+    setHouseLocale(null);
+    expect(formatHouseMoney(12400, 'USD', { compact: true })).toBe('$12.4K');
+  });
+
   it('a house with no recorded country keeps en-US', () => {
     setHouseCurrency('USD');
     setHouseLocale(localeOfCountry(null));
