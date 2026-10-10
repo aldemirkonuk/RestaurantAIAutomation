@@ -108,7 +108,9 @@ function makeService(rows: Rows): {
   return { service: new OrganizationsService(db), probe };
 }
 
-const ORG = [{ organization_id: "org-1" }];
+// An owner: chains are shown with a house count only to an owner, and only
+// an owner may rename one (F-313, F-659).
+const ORG = [{ organization_id: "org-1", role: "owner" }];
 
 describe("chains carry their own last-changed date", () => {
   it("asks for updated_at and hands it to the caller", async () => {
@@ -120,6 +122,7 @@ describe("chains carry their own last-changed date", () => {
           name: "Harbour Group",
           cuisine_type: "seafood",
           updated_at: "2026-08-30T10:00:00.000Z",
+          organization_id: "org-1",
         },
       ],
     });
@@ -135,6 +138,7 @@ describe("chains carry their own last-changed date", () => {
         name: "Harbour Group",
         cuisine_type: "seafood",
         updated_at: "2026-08-30T10:00:00.000Z",
+        location_count: 0,
       },
     ]);
   });
@@ -142,7 +146,14 @@ describe("chains carry their own last-changed date", () => {
   it("keeps a missing date missing rather than substituting now()", async () => {
     const { service } = makeService({
       orgMembers: ORG,
-      chains: [{ id: "c1", name: "Harbour Group", cuisine_type: null }],
+      chains: [
+        {
+          id: "c1",
+          name: "Harbour Group",
+          cuisine_type: null,
+          organization_id: "org-1",
+        },
+      ],
     });
 
     const [chain] = await service.getChainsForUser("u1");

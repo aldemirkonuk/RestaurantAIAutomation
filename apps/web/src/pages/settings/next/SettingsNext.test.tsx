@@ -896,6 +896,25 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(screen.getByText(/reached your session without one/i)).toBeInTheDocument();
   });
 
+  it("prints a chain's real size, and counts only your branches when the gateway sends none (F-659)", () => {
+    mock.current = base({
+      chains: remote([
+        // An owner's chain: five branches, one of them in this session.
+        { id: 'c1', name: 'Harbour Group', updated_at: THREE_DAYS_AGO, location_count: 5 },
+        // Not the reader's to count: the line must not read as the whole chain.
+        { id: 'c2', name: 'Uplands', updated_at: THREE_DAYS_AGO, location_count: null },
+      ]),
+      locations: [
+        { id: 'r1', name: 'Kadikoy', city: 'Istanbul', chain_id: 'c1', chain_name: 'Harbour Group', updated_at: THREE_DAYS_AGO },
+        { id: 'r2', name: 'Besiktas', city: null, chain_id: 'c2', chain_name: 'Uplands' },
+      ],
+    });
+    mount('/settings?tab=locations');
+    expect(screen.getByText('5 branches in this chain.')).toBeInTheDocument();
+    expect(screen.getByText('1 of your branches is in this chain.')).toBeInTheDocument();
+    expect(screen.queryByText('1 branch in this chain.')).not.toBeInTheDocument();
+  });
+
   it('says an empty roster in plain words, now that a failed read arrives as an error (F-195)', () => {
     mount('/settings?tab=team');
     expect(screen.getByText(/Nobody is on this branch.s team yet/i)).toBeInTheDocument();
