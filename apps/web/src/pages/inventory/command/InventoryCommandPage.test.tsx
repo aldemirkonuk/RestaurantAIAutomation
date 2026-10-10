@@ -667,3 +667,39 @@ describe('InventoryCommandPage — marking a wine inactive (F-429)', () => {
     );
   });
 });
+
+describe('InventoryCommandPage — staff are shown stock, not what the house paid (F-562)', () => {
+  // The gateway sends staff no `wac`; before this, the page priced the
+  // missing cost at $0 and printed "$0" as the value on hand and per row.
+  const staffRow = {
+    id: 'row-1',
+    wineId: 'wine-1',
+    wineName: 'Produttori Barbaresco',
+    stockLive: 6,
+    shadowStock: 0,
+    thresholdMin: 2,
+  };
+
+  it('draws no value card, value column or "You paid" line for staff', async () => {
+    who.role = 'staff';
+    routeGets({ 'inventory-list': [staffRow] });
+    mount();
+    const wine = await screen.findByText('Produttori Barbaresco');
+    expect(await screen.findByText('On hand')).toBeInTheDocument();
+    expect(screen.queryByText('Value on hand')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Value' })).not.toBeInTheDocument();
+    wine.click();
+    expect(await screen.findByText('Market price')).toBeInTheDocument();
+    expect(screen.queryByText('You paid (WAC)')).not.toBeInTheDocument();
+  });
+
+  it('keeps them for an owner', async () => {
+    routeGets({ 'inventory-list': [{ ...staffRow, wac: 40 }] });
+    mount();
+    const wine = await screen.findByText('Produttori Barbaresco');
+    expect(screen.getByText('Value on hand')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Value' })).toBeInTheDocument();
+    wine.click();
+    expect(await screen.findByText('You paid (WAC)')).toBeInTheDocument();
+  });
+});

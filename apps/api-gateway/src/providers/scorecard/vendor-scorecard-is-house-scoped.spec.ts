@@ -418,7 +418,7 @@ function make() {
   return { db, service, controller };
 }
 
-const userA = { userId: "u-a", restaurantId: A };
+const userA = { userId: "u-a", restaurantId: A, role: "owner" };
 
 function m(card: VendorScorecard, key: MeasureResult["key"]): MeasureResult {
   return card.measures.find((x) => x.key === key) as MeasureResult;

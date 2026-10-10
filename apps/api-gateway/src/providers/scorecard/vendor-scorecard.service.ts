@@ -12,6 +12,7 @@ import { ProcurementOrderStatus } from "../../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../../procurement/overdue-order-reads";
 import {
   AgreedLineRow,
+  Amounts,
   BuiltScorecard,
   ConversationRow,
   CreditRow,
@@ -103,7 +104,11 @@ export class VendorScorecardService {
   // -------------------------------------------------------------------------
 
   /** The Roll Call: every vendor of this house on the five measures. */
-  async rollCall(house: string, days: WindowDays): Promise<RollCall> {
+  async rollCall(
+    house: string,
+    days: WindowDays,
+    amounts: Amounts = "shown",
+  ): Promise<RollCall> {
     const now = this.clock();
     const frame = await this.houseFrameOf(house);
     const vendors = await this.vendorsOfHouse(house);
@@ -117,6 +122,7 @@ export class VendorScorecardService {
           now,
           house: frame,
           registers,
+          amounts,
         }).card,
     );
     // A scanning order — most orders on the on-time line first, then by name.
@@ -145,8 +151,9 @@ export class VendorScorecardService {
     house: string,
     providerId: string,
     days: WindowDays,
+    amounts: Amounts = "shown",
   ): Promise<VendorScorecard> {
-    return (await this.build(house, providerId, days)).card;
+    return (await this.build(house, providerId, days, amounts)).card;
   }
 
   /** The Docket: the rows behind the figures, optionally one measure's. */
@@ -155,8 +162,9 @@ export class VendorScorecardService {
     providerId: string,
     days: WindowDays,
     measure: MeasureKey | null,
+    amounts: Amounts = "shown",
   ): Promise<Docket> {
-    const built = await this.build(house, providerId, days);
+    const built = await this.build(house, providerId, days, amounts);
     return { card: built.card, measure, entries: docketFor(built, measure) };
   }
 
@@ -164,6 +172,7 @@ export class VendorScorecardService {
     house: string,
     providerId: string,
     days: WindowDays,
+    amounts: Amounts,
   ): Promise<BuiltScorecard> {
     const now = this.clock();
     const frame = await this.houseFrameOf(house);
@@ -176,6 +185,7 @@ export class VendorScorecardService {
       now,
       house: frame,
       registers,
+      amounts,
     });
   }
 

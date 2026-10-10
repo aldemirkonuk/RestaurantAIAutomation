@@ -7,6 +7,9 @@ import {
   measureRouteAccess,
 } from "./route-access.testing";
 import expected from "./route-access.expected.json";
+import { InventoryController } from "../../inventory/inventory.controller";
+import { InventoryLedgerController } from "../../inventory-ledger/inventory-ledger.controller";
+import { DeliveriesController } from "../../procurement/deliveries.controller";
 
 /**
  * "Keep managers in" (ADR 0164, founder 2026-09-18): `RolesGuard` became exact
@@ -135,6 +138,10 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // that decide what a till button depletes (mappings, sale units, the
     // catalog-match pull, approve and reject) gained @Roles("owner",
     // "manager"). Its reads, the HMAC webhook and the import stay "open".
+    // ProviderIntelligenceController is F-563's: its five promotions reads
+    // (one vendor's, active, expiring, compare, savings) gained
+    // @Roles("owner", "manager"), the /promotions gate, because they carried
+    // the same vendor money round it. Its other routes stay "open".
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -153,6 +160,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",
       "promotions/promotions.controller.ts",
+      "providers/provider-intelligence.controller.ts",
       "reports/exports/report-exports.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",
     ]);
@@ -180,5 +188,212 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     for (const route of relabelled) {
       expect([route, measured[route]]).toEqual([route, ["owner", "manager"]]);
     }
+  });
+});
+
+/**
+ * Beyond the route gate: reads that carry the house's money send it to
+ * holders only (F-562, F-564,
+ * F-565; ADR 0145). One test, `holdsHouseMoney`: owners and managers get the
+ * money; staff, an unknown role and no role get the same rows without it.
+ * Each case drives the real controller handler over a stubbed service, so a
+ * handler that stops passing the role through fails here, not only the helper.
+ */
+
+const OWNER = { userId: "u-o", restaurantId: "r-1", role: "owner" };
+const MANAGER = { userId: "u-m", restaurantId: "r-1", role: "manager" };
+const STAFF = { userId: "u-s", restaurantId: "r-1", role: "staff" };
+const NO_ROLE = { userId: "u-n", restaurantId: "r-1", role: null };
+
+describe("GET /inventory/:restaurantId withholds what the house paid (F-562)", () => {
+  const row = () => ({
+    id: "inv-1",
+    wineName: "Barolo",
+    stock_live: 6,
+    menuPriceBottle: 120,
+    menuPriceGlass: 24,
+    retailPriceAvg: 60,
+    wac: 41.5,
+    last_purchase_price: 42,
+    negotiated_price: 40,
+    target_price: 38,
+    max_price: 45,
+    custom_price: 39,
+    margin_percentage: 65.4,
+    markup_ratio: 2.89,
+    markupRatio: 2.89,
+    costProvenance: "invoice",
+    locations: [{ locationId: "loc-1", qty: 6, wac: 41.5 }],
+  });
+  const controller = () =>
+    new InventoryController(
+      { getRestaurantInventory: jest.fn(async () => [row()]) } as any,
+      {} as any,
+      {} as any,
+    );
+  const COST_KEYS = [
+    "wac",
+    "last_purchase_price",
+    "negotiated_price",
+    "target_price",
+    "max_price",
+    "custom_price",
+    "margin_percentage",
+    "markup_ratio",
+    "markupRatio",
+  ];
+
+  it.each([
+    ["staff", STAFF],
+    ["a session with no role", NO_ROLE],
+  ])("sends %s stock and menu prices, and no cost", async (_who, user) => {
+    const [item] = await controller().getRestaurantInventory("r-1", undefined, user);
+    for (const k of COST_KEYS) expect(item).not.toHaveProperty(k);
+    expect(item.locations).toEqual([{ locationId: "loc-1", qty: 6 }]);
+    expect(item).toMatchObject({
+      stock_live: 6,
+      menuPriceBottle: 120,
+      menuPriceGlass: 24,
+      retailPriceAvg: 60,
+    });
+  });
+
+  it.each([
+    ["an owner", OWNER],
+    ["a manager", MANAGER],
+  ])("sends %s the whole row", async (_who, user) => {
+    const [item] = await controller().getRestaurantInventory("r-1", undefined, user);
+    expect(item).toEqual(row());
+  });
+
+  // Every other route that answers with a wine row: the drill-down, low
+  // stock, the Toast lookup and map/unmap, and each write that hands the
+  // saved item back (the audit of this branch found the drill-down and low
+  // stock still carrying the cost).
+  const service = () => ({
+    getLowStockItems: jest.fn(async () => [row()]),
+    getInventoryItem: jest.fn(async () => row()),
+    findByToastGuid: jest.fn(async () => row()),
+    mapToastItem: jest.fn(async () => row()),
+    unmapToastItem: jest.fn(async () => row()),
+    createInventoryItem: jest.fn(async () => row()),
+    updateInventoryItem: jest.fn(async () => row()),
+    transferStock: jest.fn(async () => row()),
+    recordPour: jest.fn(async () => ({ pour: { pours: 1 }, item: row() })),
+    recordSpotCount: jest.fn(async () => ({ item: row(), variance: 0 })),
+  });
+  const routes: Array<[string, (c: InventoryController, u: any) => Promise<any>]> = [
+    ["low-stock", async (c, u) => (await c.getLowStockItems("r-1", u))[0]],
+    ["item/:itemId", (c, u) => c.getInventoryItem("r-1", "inv-1", u)],
+    ["toast/lookup", (c, u) => c.findByToastGuid("r-1", "g-1", u)],
+    ["toast/map", (c, u) => c.mapToastItem("r-1", {} as any, u)],
+    ["toast/map DELETE", (c, u) => c.unmapToastItem("r-1", "inv-1", u)],
+    ["items POST", (c, u) => c.createInventoryItem("r-1", {} as any, u)],
+    ["item PATCH", (c, u) => c.updateInventoryItem("r-1", "inv-1", {} as any, u)],
+    ["transfer", (c, u) => c.transferStock("r-1", "inv-1", { qty: 1 }, u)],
+    ["pour", async (c, u) => (await c.recordPour("r-1", "inv-1", {}, u)).item],
+    [
+      "count",
+      async (c, u) =>
+        (await c.recordSpotCount("r-1", "inv-1", { countedQty: 6, clientCountId: "k" }, u)).item,
+    ],
+  ];
+  const withService = () =>
+    new InventoryController(service() as any, {} as any, {} as any);
+
+  it.each(routes)("%s sends staff the wine with no cost", async (_route, call) => {
+    for (const user of [STAFF, NO_ROLE]) {
+      const item = await call(withService(), user);
+      for (const k of COST_KEYS) expect(item).not.toHaveProperty(k);
+      expect(item.locations).toEqual([{ locationId: "loc-1", qty: 6 }]);
+      expect(item).toMatchObject({ stock_live: 6, menuPriceBottle: 120 });
+    }
+  });
+
+  it.each(routes)("%s sends an owner and a manager the whole row", async (_route, call) => {
+    for (const user of [OWNER, MANAGER]) {
+      expect(await call(withService(), user)).toEqual(row());
+    }
+  });
+});
+
+describe("GET /procurement/deliveries/:id/proposals withholds the dispute's money (F-564)", () => {
+  const proposal = () => ({
+    id: "p-1",
+    reason: "PRICE_DIFFERENCE",
+    qty_proposed: 2,
+    unit_price_proposed: 18.5,
+    money_at_risk: 37,
+    status: "open",
+  });
+  const controller = () =>
+    new DeliveriesController(
+      {} as any,
+      {
+        proposalsFor: jest.fn(async () => ({ ok: true, value: [proposal()] })),
+      } as any,
+      {} as any,
+    );
+
+  it("sends staff the reason, quantity and status without the money", async () => {
+    const { proposals } = await controller().proposals("d-1", STAFF as any);
+    expect(proposals[0]).not.toHaveProperty("unit_price_proposed");
+    expect(proposals[0]).not.toHaveProperty("money_at_risk");
+    expect(proposals[0]).toMatchObject({
+      reason: "PRICE_DIFFERENCE",
+      qty_proposed: 2,
+    });
+  });
+
+  it("sends a manager the whole proposal", async () => {
+    const { proposals } = await controller().proposals("d-1", MANAGER as any);
+    expect(proposals[0]).toEqual(proposal());
+  });
+});
+
+describe("inventory-ledger reads withhold each movement's cost (F-565)", () => {
+  const tx = () =>
+    ({
+      id: "t-1",
+      quantityChange: 6,
+      unitCost: 41.5,
+      totalCost: 249,
+      reason: "delivery",
+    }) as any;
+  const controller = () =>
+    new InventoryLedgerController({
+      listTransactions: jest.fn(async () => ({
+        transactions: [tx()],
+        total: 1,
+        page: 1,
+        limit: 50,
+        hasMore: false,
+      })),
+      getTransaction: jest.fn(async () => tx()),
+      getTransactionHistory: jest.fn(async () => [tx()]),
+    } as any);
+
+  it("sends staff no unit or total cost on the list, one movement or the history", async () => {
+    const c = controller();
+    const list = await c.listTransactions({} as any, STAFF);
+    const one = await c.getTransaction("t-1", STAFF);
+    const history = await c.getTransactionHistory("inv-1", 30, STAFF);
+    for (const t of [list.transactions[0], one, history[0]]) {
+      expect(t).not.toHaveProperty("unitCost");
+      expect(t).not.toHaveProperty("totalCost");
+      expect(t).toMatchObject({ quantityChange: 6, reason: "delivery" });
+    }
+    expect(list.total).toBe(1);
+  });
+
+  it("sends an owner the cost", async () => {
+    const c = controller();
+    expect((await c.getTransaction("t-1", OWNER)).unitCost).toBe(41.5);
+    expect(
+      (await c.listTransactions({} as any, OWNER)).transactions[0].totalCost,
+    ).toBe(249);
+    expect(
+      (await c.getTransactionHistory("inv-1", 30, OWNER))[0].unitCost,
+    ).toBe(41.5);
   });
 });

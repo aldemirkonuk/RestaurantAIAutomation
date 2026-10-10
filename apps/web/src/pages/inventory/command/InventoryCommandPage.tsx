@@ -96,6 +96,11 @@ import { CellarMapView } from "./CellarMapView";
 // bottle / glass price, editable, beside the market figure it is not.
 const GRID =
   "34px minmax(215px,1.5fr) 80px 128px 195px 90px 78px 150px 84px 92px 106px 32px";
+/** The same grid without the Value column, for a reader who is sent no cost. */
+const GRID_NO_COST =
+  "34px minmax(215px,1.5fr) 80px 128px 195px 90px 78px 150px 84px 106px 32px";
+/** Export columns that print what the house paid. */
+const COST_HEADERS = new Set(["WAC", "Value"]);
 
 const SORTS = [
   { value: "runway", label: "Runway, shortest first" },
@@ -263,6 +268,11 @@ export function InventoryCommandPage() {
   const canEditPrice =
     ((activeRole ?? user?.role ?? null) as string | null) === "owner" ||
     ((activeRole ?? user?.role ?? null) as string | null) === "manager";
+  // What the house paid (WAC) and the value on hand are owners' and managers'
+  // figures (ADR 0145, F-562). The gateway sends staff no cost, so for them
+  // the page draws no value column, value sort, value card or cost export --
+  // never a $0 that reads as a fact about the cellar.
+  const seesCost = canEditPrice;
 
   // Per-wine advice toward the house's target margin (ADR 0193). A failed
   // read is shown as "advice unavailable" on each row, never as no advice.
@@ -735,7 +745,7 @@ export function InventoryCommandPage() {
     return notes.join("; ");
   };
 
-  const valuationColumns: TableExportColumn<InventoryItem>[] = useMemo(
+  const valuationColumnsAll: TableExportColumn<InventoryItem>[] = useMemo(
     () => [
       { header: "Wine", value: (i) => i.name },
       { header: "Producer", value: (i) => i.producer ?? "" },
@@ -770,8 +780,13 @@ export function InventoryCommandPage() {
     ],
     [],
   );
+  const valuationColumns = useMemo(
+    () =>
+      valuationColumnsAll.filter((c) => seesCost || !COST_HEADERS.has(c.header)),
+    [valuationColumnsAll, seesCost],
+  );
 
-  const countSheetColumns: TableExportColumn<InventoryItem>[] = useMemo(
+  const countSheetColumnsAll: TableExportColumn<InventoryItem>[] = useMemo(
     () => [
       {
         header: "Location",
@@ -827,6 +842,13 @@ export function InventoryCommandPage() {
     ],
     // countObservation closes over helpers; recreate when inventory shape changes
     [locations, measurementUnit],
+  );
+  const countSheetColumns = useMemo(
+    () =>
+      countSheetColumnsAll.filter(
+        (c) => seesCost || !COST_HEADERS.has(c.header),
+      ),
+    [countSheetColumnsAll, seesCost],
   );
 
   const runInventoryExport = useCallback(
@@ -1251,7 +1273,10 @@ export function InventoryCommandPage() {
 
       {/* KPI strip */}
       <div
-        className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3.5"
+        className={cn(
+          "grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-3.5",
+          seesCost ? "xl:grid-cols-6" : "xl:grid-cols-5",
+        )}
       >
         <Kpi
           label="On hand"
@@ -1272,18 +1297,20 @@ export function InventoryCommandPage() {
           active={activeFlag === "recon"}
           onClick={() => setActiveFlag(activeFlag === "recon" ? null : "recon")}
         />
-        <Kpi
-          label="Value on hand"
-          value={figuresUnknown ? UNKNOWN : fmtMoney(kpis.valueOnHand)}
-          sub={
-            figuresUnknown
-              ? UNKNOWN
-              : kpis.menuPotential > 0
-                ? `${fmtMoney(kpis.menuPotential)} menu`
-                : "cost basis"
-          }
-          tone="green"
-        />
+        {seesCost && (
+          <Kpi
+            label="Value on hand"
+            value={figuresUnknown ? UNKNOWN : fmtMoney(kpis.valueOnHand)}
+            sub={
+              figuresUnknown
+                ? UNKNOWN
+                : kpis.menuPotential > 0
+                  ? `${fmtMoney(kpis.menuPotential)} menu`
+                  : "cost basis"
+            }
+            tone="green"
+          />
+        )}
         <Kpi
           label="Below par"
           value={fig(stats.low + stats.critical)}
@@ -1508,7 +1535,9 @@ export function InventoryCommandPage() {
         <div className="flex-1" />
         <ThemedSelect
           value={sort}
-          options={SORTS}
+          options={
+            seesCost ? SORTS : SORTS.filter((o) => o.value !== "value")
+          }
           onChange={(v) => {
             setSort(v as SortKey);
             setSortDir(SORT_DEFAULT_DIR[v as SortKey]);
@@ -1563,7 +1592,7 @@ export function InventoryCommandPage() {
               <div className="min-w-[1330px]">
                 <div
                   className="grid items-center gap-x-3 px-5 h-10 bg-gray-50 border-b border-gray-100"
-                  style={{ gridTemplateColumns: GRID }}
+                  style={{ gridTemplateColumns: seesCost ? GRID : GRID_NO_COST }}
                 >
                   <div className="flex items-center">
                     <input
@@ -1587,6 +1616,7 @@ export function InventoryCommandPage() {
                     "Status",
                     "",
                   ].map((h, i) => {
+                    if (h === "Value" && !seesCost) return null;
                     const sortKey = SORTABLE_COL[i];
                     const rightAlign = i === 6 || i === 7 || i === 8;
                     if (sortKey) {
@@ -1692,7 +1722,9 @@ export function InventoryCommandPage() {
                               : "hover:bg-gray-50/60",
                           isFocused && "ring-2 ring-inset ring-wine-300",
                         )}
-                        style={{ gridTemplateColumns: GRID }}
+                        style={{
+                          gridTemplateColumns: seesCost ? GRID : GRID_NO_COST,
+                        }}
                       >
                         <div
                           className="flex items-center"
@@ -1813,9 +1845,11 @@ export function InventoryCommandPage() {
                             ? "-"
                             : `${delta > 0 ? "+" : ""}${delta.toFixed(0)}%`}
                         </div>
-                        <div className="text-right font-mono text-xs font-semibold text-gray-700">
-                          {fmtMoney(value)}
-                        </div>
+                        {seesCost && (
+                          <div className="text-right font-mono text-xs font-semibold text-gray-700">
+                            {fmtMoney(value)}
+                          </div>
+                        )}
                         <div>
                           <StatusChip item={item} />
                         </div>
@@ -1842,7 +1876,7 @@ export function InventoryCommandPage() {
                           className="sticky left-0"
                           style={{ width: "100cqw" }}
                         >
-                          <RowExpansion item={item} locations={locations} />
+                          <RowExpansion item={item} locations={locations} seesCost={seesCost} />
                         </div>
                       )}
                     </div>

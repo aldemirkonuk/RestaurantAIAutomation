@@ -61,6 +61,27 @@ function assertMaySettleDelivery(user: AuthedUser | undefined, act: DeliveryMone
   );
 }
 
+/** The money on a proposal: the unit price put forward and what is at stake. */
+const PROPOSAL_MONEY_KEYS = ["unit_price_proposed", "money_at_risk"] as const;
+
+/**
+ * The proposal thread as this role may read it (F-564). Staff see a dispute's
+ * reasons, quantities and status, never its money (ADR 0145). Keys are
+ * OMITTED for a reader who does not hold the house's money, never nulled: a
+ * null `money_at_risk` reads as "nothing at stake", a claim about the record.
+ */
+export function proposalsForRole(
+  proposals: Record<string, unknown>[],
+  role: string | null | undefined,
+): Record<string, unknown>[] {
+  if (holdsHouseMoney(role ?? null)) return proposals;
+  return proposals.map((p) => {
+    const out = { ...p };
+    for (const k of PROPOSAL_MONEY_KEYS) delete out[k];
+    return out;
+  });
+}
+
 /**
  * The delivery — the commercial event of ADR 0103 D1 / ADR 0104 D7.
  *
@@ -187,7 +208,7 @@ export class DeliveriesController {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.INTERNAL_SERVER_ERROR,
       );
-    return { proposals: res.value };
+    return { proposals: proposalsForRole(res.value, user.role) };
   }
 
   @Get(":id/differences")

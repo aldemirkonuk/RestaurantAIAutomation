@@ -246,6 +246,13 @@ export const COPY = {
       (bareAmount
         ? " The currency is not recorded on the order behind a claim, so its amount is printed with none."
         : ""),
+    /** Credits for a reader who does not hold the house's money: counts, no amounts. */
+    creditsCounted: (
+      pct: string | null,
+      sample: number,
+      hits: number,
+    ): string =>
+      `${pct ? `${pct} recovered — ` : ""}${hits} of ${plural(sample, "claim", "claims")} credited. Amounts are for the house's owners and managers.`,
   },
 
   listedNotCounted: (count: number, because: string): string =>
@@ -385,16 +392,24 @@ export const COPY = {
       `Answered in ${hours} in the same thread.`,
     unanswered: "No reply in this thread yet.",
 
-    credited: (allowed: string, asked: string): string =>
-      `Credited ${allowed} of ${asked} asked.`,
+    // An amount is null when the reader does not hold the house's money
+    // (staff): the claim's state is said, its money is not.
+    credited: (allowed: string | null, asked: string | null): string =>
+      allowed === null || asked === null
+        ? "Credited by the vendor."
+        : `Credited ${allowed} of ${asked} asked.`,
     promised: (days: number): string =>
       `Promised, ${plural(days, "day", "days")} ago, not recovered — promised is not recovered.`,
-    requested: (asked: string): string =>
-      `${asked} asked of the vendor; no answer recorded.`,
-    openClaim: (asked: string): string =>
-      `${asked} owed back; not yet asked of the vendor.`,
-    rejected: (asked: string): string => `The vendor refused ${asked}.`,
-    writtenOff: (asked: string): string => `${asked} written off by the house.`,
+    requested: (asked: string | null): string =>
+      `${asked ?? "A credit"} asked of the vendor; no answer recorded.`,
+    openClaim: (asked: string | null): string =>
+      asked === null
+        ? "A credit owed back; not yet asked of the vendor."
+        : `${asked} owed back; not yet asked of the vendor.`,
+    rejected: (asked: string | null): string =>
+      `The vendor refused ${asked ?? "the claim"}.`,
+    writtenOff: (asked: string | null): string =>
+      `${asked ?? "The claim was"} written off by the house.`,
     otherState: (state: string): string => `State ${state}.`,
   },
 
