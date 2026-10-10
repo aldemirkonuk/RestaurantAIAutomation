@@ -552,5 +552,23 @@
     "owner",
     "manager",
     "staff"
-  ]
+  ],
+  "GET /pos-hub/providers (PosHubController.getProviders)": "open",
+  "GET /pos-hub/status/:restaurantId (PosHubController.getStatus)": "open",
+  "POST /pos-hub/webhook/:provider/:restaurantId (PosHubController.webhook)": "open",
+  "POST /pos-hub/import/:restaurantId (PosHubController.importChecks)": "open",
+  "POST /pos-hub/connections/:restaurantId/:provider (PosHubController.setConnection)": [
+    "owner"
+  ],
+  "GET /pos-hub/mappings/:restaurantId (PosHubController.listMappings)": "open",
+  "POST /pos-hub/mappings/:restaurantId (PosHubController.upsertMapping)": "open",
+  "GET /pos-hub/mappings/:restaurantId/sale-unit-review (PosHubController.saleUnitReview)": "open",
+  "POST /pos-hub/mappings/:restaurantId/sale-unit (PosHubController.setSaleUnitBatch)": "open",
+  "POST /pos-hub/mappings/:restaurantId/:mappingId/sale-unit (PosHubController.setSaleUnit)": "open",
+  "POST /pos-hub/catalog-match/:restaurantId (PosHubController.catalogMatch)": "open",
+  "GET /pos-hub/catalog-match/:restaurantId/proposals (PosHubController.listProposals)": "open",
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/approve (PosHubController.approveProposals)": "open",
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/:proposalId/approve (PosHubController.approveProposal)": "open",
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/:proposalId/reject (PosHubController.rejectProposal)": "open",
+  "GET /pos-hub/unresolved/:restaurantId (PosHubController.listUnresolved)": "open"
 }
