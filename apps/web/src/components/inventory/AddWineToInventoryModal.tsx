@@ -282,7 +282,6 @@ export function AddWineToInventoryModal({
         ? readSessionDraft<AddWineDraft>(addWineKey(draftScope))
         : null,
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftScope]);
 
   // Written on every change, except in the commit where the house changed:

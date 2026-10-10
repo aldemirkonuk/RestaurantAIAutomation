@@ -105,6 +105,10 @@ ALLOWLIST: dict[str, str] = {
     # the currency the ORDER states, and "currency not recorded" when it states
     # none; asserting both needs one stated currency literal. 2026-09-25.
     "apps/web/src/components/orders/__tests__/SealedRejectDie.test.tsx": "asserts the refund box prints the order's own stated currency, and 'currency not recorded' for a null one",
+    # Test-only: the phone's houseMoney (F-885) must print a dollar house as
+    # before AND a null-currency house with no symbol; asserting the first needs
+    # one stated currency literal beside TRY/EUR/null (2026-10-10, F-890).
+    "apps/mobile/src/lib/__tests__/houseMoney.test.ts": "asserts the phone prints each house's own stated currency, and no symbol for a null one",
     # The symbol map is keyed BY currency and returns '' for an unknown one.
     "apps/web/src/components/documents/canonical-format.ts": "symbol lookup keyed by the document's own currency; unknown renders unsymboled",
 }

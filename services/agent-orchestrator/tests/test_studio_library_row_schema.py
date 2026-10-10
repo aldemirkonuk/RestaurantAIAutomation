@@ -560,7 +560,9 @@ class TestPromoteDedup:
                 "status": status,
                 "matched_master_id": "wine-first",
                 "payload": {},
-                "field_confidence": _fc(wine_name="Chianti Classico", producer="Fontodi"),
+                "field_confidence": _fc(
+                    wine_name="Chianti Classico", producer="Fontodi"
+                ),
             },
             lib,
         )

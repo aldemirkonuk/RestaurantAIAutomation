@@ -612,7 +612,9 @@ def _maybe_promote_submission(supabase, submission_id: str) -> str:
 
         insert_resp = supabase.table("master_wine_library").insert(promo_row).execute()
         inserted = getattr(insert_resp, "data", None)
-        new_id = inserted[0].get("id") if isinstance(inserted, list) and inserted else None
+        new_id = (
+            inserted[0].get("id") if isinstance(inserted, list) and inserted else None
+        )
 
         # matched_master_id lets Promote see this row later instead of inserting a
         # second one once more fields are saved (F-810).

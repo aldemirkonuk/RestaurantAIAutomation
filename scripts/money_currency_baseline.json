@@ -1,11 +1,7 @@
 {
   "_why": "Sites that render money with a pinned currency or a bare dollar sign. ADR 0117 Q25/Q30. This number only ever goes DOWN; raising a row is not an option, and a new file is a new failure.",
-  "_measured": "2026-09-05; lowered 2026-10-10 (F-859, fix/sim-guard-leftovers): the 21 rows the guard reported FIXED since the baseline were lowered to what the guard measures on the round-5 rehearsal tree (20 retired, apps/web/src/pages/orders/next/format.ts 2 -> 1)",
+  "_measured": "2026-09-05; lowered 2026-10-10 (F-859, fix/sim-guard-leftovers): the 21 rows the guard reported FIXED since the baseline were lowered to what the guard measures on the round-5 rehearsal tree (20 retired, apps/web/src/pages/orders/next/format.ts 2 -> 1); lowered 2026-10-10 (F-890, fix/sim-w64-lint-money): the 4 phone rows w61-phone-money retired (cellar/[id], insights, OrderRow, PulseStrip) removed",
   "files": {
-    "apps/mobile/app/(tabs)/cellar/[id].tsx": 1,
-    "apps/mobile/app/(tabs)/insights.tsx": 1,
-    "apps/mobile/src/components/supply/OrderRow.tsx": 1,
-    "apps/mobile/src/components/today/PulseStrip.tsx": 1,
     "apps/web/src/lib/exportHelpers.ts": 3,
     "apps/web/src/pages/DevSandbox.tsx": 4,
     "apps/web/src/pages/documents-reports/next/DocumentsReportsNext.test.tsx": 1,

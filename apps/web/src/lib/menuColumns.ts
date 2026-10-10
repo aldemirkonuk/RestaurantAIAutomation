@@ -77,6 +77,6 @@ export function normalizeMenuHeader(header: string): string {
 export function skippedMenuColumns(headers: readonly string[]): string[] {
   const known = new Set(MENU_COLUMN_NAMES)
   return headers
-    .map((h) => h.replace(/^﻿/, '').trim())
+    .map((h) => h.replace(/^\uFEFF/, '').trim())
     .filter((h) => h.length > 0 && !known.has(normalizeMenuHeader(h)))
 }
