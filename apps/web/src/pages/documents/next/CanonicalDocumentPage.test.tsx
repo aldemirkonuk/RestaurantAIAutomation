@@ -211,16 +211,23 @@ function response(over: Record<string, unknown> = {}) {
   }
 }
 
-function mount() {
+/**
+ * A manager unless a case says otherwise: correcting a field and ticking it
+ * are an owner's or a manager's (`document-money-gate.ts`), and the page hands
+ * anyone else no handle for either (F-317 residual, 2026-10-08).
+ */
+function mount(role: string = 'manager') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/documents/doc-syn']}>
-        <Routes>
-          <Route path="/documents/:id" element={<CanonicalDocumentPage />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <AuthContext.Provider value={{ activeRestaurantId: null, activeRole: role, user: null } as never}>
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/documents/doc-syn']}>
+          <Routes>
+            <Route path="/documents/:id" element={<CanonicalDocumentPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </AuthContext.Provider>,
   )
 }
 
@@ -488,6 +495,28 @@ describe('CanonicalDocumentPage', () => {
     // The popover still explains the provenance; it offers no handle to change
     // a field whose history this screen could not read.
     expect(screen.queryByTestId('correct-field')).toBeNull()
+  })
+
+  it('[REVERT-FAILS] hands staff no correction and no tick, and says whose they are', async () => {
+    documentMock.mockResolvedValue(response())
+    mount('staff')
+    const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
+    fireEvent.focus(cells[0])
+    // The popover still says where the figure came from; it offers no handle.
+    await waitFor(() => expect(screen.getByTestId('fields-held')).toBeTruthy())
+    expect(screen.queryByTestId('correct-field')).toBeNull()
+    expect(screen.queryByTestId('verify-field')).toBeNull()
+    expect(screen.getByTestId('fields-held').textContent).toMatch(/for a manager or\s+an owner/)
+  })
+
+  it('offers an owner both handles, with no held line', async () => {
+    documentMock.mockResolvedValue(response())
+    mount('owner')
+    const cells = await screen.findAllByLabelText(/Where Unit price, line 1 came from/)
+    fireEvent.focus(cells[0])
+    expect(await screen.findByTestId('correct-field')).toBeTruthy()
+    expect(screen.getByTestId('verify-field')).toBeTruthy()
+    expect(screen.queryByTestId('fields-held')).toBeNull()
   })
 
   it('opens the tick as its OWN hold, never the correction form', async () => {

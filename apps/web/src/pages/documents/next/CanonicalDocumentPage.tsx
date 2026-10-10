@@ -39,6 +39,9 @@
  * staff member still sees the controls, and the hold fails at the mint in the
  * control's own "could not be issued" words. Disabling them for staff is a
  * named follow-up in that branch's tech-debt fragment.]
+ * [Done 2026-10-08, fix/sim-staff-residual: staff are no longer handed
+ * "Correct this" or "I have checked this"; one line under the sheet says whose
+ * acts they are. The gateway still decides.]
  *
  * LIVE FOR EVERY HOUSE since ADR 0149 row 36 (2026-09-17). `/documents/:id`
  * still renders through PageGate on the `document` page name, but `document`
@@ -529,6 +532,18 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
           be “corrected” twice by two people who each believed they were the first.
         </p>
       )}
+      {/* Said, so the missing handle does not read as "this cannot be
+          corrected" (the same reason as the notice above). */}
+      {res.corrections !== null && !maySettleDelivery && (
+        <p
+          data-testid="fields-held"
+          className="cd-no-print"
+          style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--ink-4, #665D50)' }}
+        >
+          Correcting a figure on this paper, or marking it as checked, is for a manager or
+          an owner. You can still see where every figure came from.
+        </p>
+      )}
 
       {/* B on top — the verdict, before anything else. */}
       <VerdictBlock doc={doc} states={states} />
@@ -682,14 +697,26 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               selectedLine={selectedLine}
               onSelectLine={(i) => setSelectedLine(i)}
               corrections={res.corrections}
-              onCorrect={(path, label) => {
-                setWriteError(null)
-                setCorrecting({ path, label })
-              }}
-              onVerify={(path, label) => {
-                setWriteError(null)
-                setTicking({ path, label })
-              }}
+              // Correcting a field and ticking it as checked write the money the
+              // house pays its vendor from, and the gateway refuses both (and
+              // their seals) to anyone but an owner or a manager
+              // (`document-money-gate.ts`). Staff get the provenance, no handle.
+              onCorrect={
+                maySettleDelivery
+                  ? (path, label) => {
+                      setWriteError(null)
+                      setCorrecting({ path, label })
+                    }
+                  : undefined
+              }
+              onVerify={
+                maySettleDelivery
+                  ? (path, label) => {
+                      setWriteError(null)
+                      setTicking({ path, label })
+                    }
+                  : undefined
+              }
               onLinkItem={linkItem}
               itemName={itemName}
               itemVintage={itemVintage}

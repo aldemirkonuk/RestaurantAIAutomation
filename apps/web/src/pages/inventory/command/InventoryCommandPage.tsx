@@ -1618,7 +1618,10 @@ export function InventoryCommandPage() {
         onSelectSingle={() => setShowAddWine(true)}
         onSelectMenu={() => setShowMenuScanner(true)}
         onSelectReceipt={() => setShowManualReceipt(true)}
-        onSelectAuction={() => setShowAuctionLot(true)}
+        // An auction lot's hammer price becomes the wine's cost, which the
+        // gateway keeps for owners and managers (F-312, roles sweep): staff
+        // are not offered the start at all.
+        onSelectAuction={canEditPrice ? () => setShowAuctionLot(true) : undefined}
         title="Add Wine to Inventory"
         subtitle="One label, a whole menu, or a delivery with many lines"
       />
@@ -1653,7 +1656,7 @@ export function InventoryCommandPage() {
       {/* Mounted only while open: a closed sheet has nothing to show, and the
           page's other reads (and their tests, which restore every mock between
           cases, matchMedia included) must not depend on it. */}
-      {showAuctionLot && (
+      {showAuctionLot && canEditPrice && (
       <AuctionLotStart
         open={showAuctionLot}
         onClose={() => setShowAuctionLot(false)}

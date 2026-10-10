@@ -46,14 +46,17 @@ vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
 
+/** The role at the house; the auction-lot cases below set it per case. */
+const who = vi.hoisted(() => ({ role: 'owner' }));
+
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { userId: 'user-1', restaurantId: 'rest-A', name: 'Ada Konuk', email: 'ada@sim.test', role: 'owner' },
+    user: { userId: 'user-1', restaurantId: 'rest-A', name: 'Ada Konuk', email: 'ada@sim.test', role: who.role },
     loading: false,
     error: null,
     clearError: vi.fn(),
     activeRestaurantId: 'rest-A',
-    activeRole: 'owner',
+    activeRole: who.role,
     availableRestaurants: [{ id: 'rest-A', name: 'Test House', city: null, chain_id: null, chain_name: null }],
     setActiveRestaurantId: vi.fn().mockResolvedValue(undefined),
     login: vi.fn(),
@@ -181,6 +184,7 @@ function mount() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  who.role = 'owner';
 });
 
 afterEach(() => {
@@ -415,5 +419,30 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
       expect(second).toBe(first);
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * An auction lot's hammer price is written as the wine's cost, and the
+ * gateway refuses a cost from staff (F-312, roles sweep 2026-10-08), so the
+ * page offers the auction start to owners and managers only.
+ */
+describe('InventoryCommandPage — the auction-lot start is an owner\'s or a manager\'s', () => {
+  it.each(['owner', 'manager'])('offers it to a %s', async (role) => {
+    who.role = role;
+    routeGets();
+    mount();
+    (await screen.findByRole('button', { name: /Add wine/ })).click();
+    expect(await screen.findByText('An auction lot')).toBeInTheDocument();
+  });
+
+  it('does not offer it to staff', async () => {
+    who.role = 'staff';
+    routeGets();
+    mount();
+    (await screen.findByRole('button', { name: /Add wine/ })).click();
+    // The sheet opened (its other starts are there), without the auction one.
+    expect(await screen.findByText('Add Wine to Inventory')).toBeInTheDocument();
+    expect(screen.queryByText('An auction lot')).not.toBeInTheDocument();
   });
 });
