@@ -535,8 +535,16 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [scenarios, setScenarios] = useState<GoalScenarioBook | null | undefined>(undefined);
   const [pos, setPos] = useState<PosVM>(undefined);
   const [posProblem, setPosProblem] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [undo, setUndo] = useState<UndoVM | null>(null);
+  // The note line and its Undo belong to the house they were written in
+  // (F-524): a switch never keeps them, and an Undo offered in one house is
+  // never pressed in the next (rule keys carry no house, so it would reverse
+  // the new house's own disposition of the same rule). A write of the last
+  // house that answers after the switch is tagged with that house and so
+  // never shows here either.
+  const [noteOf, setNoteOf] = useState<{ rid: string | null; text: string } | null>(null);
+  const note = noteOf && noteOf.rid === rid ? noteOf.text : null;
+  const [undoOf, setUndoOf] = useState<{ rid: string | null; vm: UndoVM } | null>(null);
+  const undo = undoOf && undoOf.rid === rid ? undoOf.vm : null;
   const [sourcesUnread, setSourcesUnread] = useState<string[] | null>(null);
   const [goalBook, setGoalBook] = useState<GoalBookVM>(undefined);
   const seq = useRef(0);
@@ -564,6 +572,8 @@ export function useRecommendationsNextData(): RecommendationsData {
     setPersonalSnoozesReadable(true);
     setPersonalProblem(null);
     setSourcesUnread(null);
+    setNoteOf(null);
+    setUndoOf(null);
   }
 
   /**
@@ -686,9 +696,12 @@ export function useRecommendationsNextData(): RecommendationsData {
     };
   }, [rid]);
 
-  const say = useCallback((text: string) => {
-    setNote(text);
-  }, []);
+  const say = useCallback(
+    (text: string) => {
+      setNoteOf({ rid, text });
+    },
+    [rid],
+  );
 
   /**
    * `PUT /analytics/recommendations/:rid/digest` — the route the analytics
@@ -1089,11 +1102,11 @@ export function useRecommendationsNextData(): RecommendationsData {
       personal = false,
       inverse?: UndoVM['inverse'],
     ) => {
-    setUndo({ ruleKey, label, personal, inverse });
+    setUndoOf({ rid, vm: { ruleKey, label, personal, inverse } });
     if (undoTimer.current) clearTimeout(undoTimer.current);
-    undoTimer.current = setTimeout(() => setUndo(null), 8000);
+    undoTimer.current = setTimeout(() => setUndoOf(null), 8000);
     },
-    [],
+    [rid],
   );
   useEffect(
     () => () => {
@@ -1224,7 +1237,7 @@ export function useRecommendationsNextData(): RecommendationsData {
           ruleKey,
           status: 'active',
         });
-        setUndo(null);
+        setUndoOf(null);
         const miss = auditMissOf(data);
         say(
           miss
@@ -1249,7 +1262,7 @@ export function useRecommendationsNextData(): RecommendationsData {
           `${BASE}/${rid}/snoozed-for-me/wake`,
           { ruleKey },
         );
-        setUndo(null);
+        setUndoOf(null);
         say(
           data?.woke === false
             ? 'There was no snooze of yours on it — nothing changed.'
@@ -1338,7 +1351,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     requestPosBack,
     note,
     undo,
-    clearUndo: () => setUndo(null),
+    clearUndo: () => setUndoOf(null),
     refetch,
     setDisposition,
     dismiss,

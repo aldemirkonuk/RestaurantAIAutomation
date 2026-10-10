@@ -88,3 +88,38 @@ export function routeForNotificationData(
 
   return routeForActionUrl(d.actionUrl ?? d.action_url) ?? "/notifications";
 }
+
+/**
+ * Open a tapped notification in the house it belongs to (F-523).
+ *
+ * A person in two houses gets both houses' pushes on one phone, and the
+ * gateway names the house in the push data (`restaurantId`). A push of
+ * another house is not opened under this one, where its order cannot load:
+ * the session moves to that house first, and only then is the screen opened.
+ * When the move is refused, nothing is opened and the person is told why.
+ * A push that names no house opens as before.
+ */
+export async function openNotificationTap(
+  data: Record<string, any> | null | undefined,
+  deps: {
+    currentHouse: string | null | undefined;
+    chooseHouse: (houseId: string) => Promise<boolean>;
+    navigate: (route: string) => void;
+    refused: (message: string) => void;
+  },
+): Promise<void> {
+  const d = data ?? {};
+  const raw = d.restaurantId ?? d.restaurant_id;
+  const house = typeof raw === "string" && raw.length > 0 ? raw : null;
+  const route = routeForNotificationData(d);
+  if (house && deps.currentHouse && house !== deps.currentHouse) {
+    const moved = await deps.chooseHouse(house).catch(() => false);
+    if (!moved) {
+      deps.refused(
+        "This notice is from another of your restaurants, and that restaurant could not be opened just now. Nothing was opened. Try the notice again in a moment.",
+      );
+      return;
+    }
+  }
+  deps.navigate(route);
+}

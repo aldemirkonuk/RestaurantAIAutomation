@@ -698,7 +698,7 @@ export class WebsocketGateway
   ): Promise<number> {
     return this.emitToHouseRoles(restaurantId, roles, "notification:new", {
       event: "NewNotification",
-      data: this.withSafeActionUrl(data),
+      data: { ...this.withSafeActionUrl(data), restaurant_id: restaurantId },
       timestamp: new Date().toISOString(),
     });
   }
@@ -715,7 +715,8 @@ export class WebsocketGateway
     const room = `restaurant:${restaurantId}`;
     const payload = {
       event: "NewNotification",
-      data: this.withSafeActionUrl(data),
+      // The house it belongs to (F-522): a page in another house drops it.
+      data: { ...this.withSafeActionUrl(data), restaurant_id: restaurantId },
       timestamp: new Date().toISOString(),
     };
 
