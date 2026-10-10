@@ -46,3 +46,63 @@ describe("WineSubmissionsService.scheduledProcessPendingSubmissions", () => {
     expect(t.logger.error).toHaveBeenCalledWith(expect.stringContaining("connection reset"));
   });
 });
+
+describe("a submission that keeps failing stops blocking the queue (F-654)", () => {
+  function buildFailing(row: Record<string, unknown>) {
+    const updates: any[] = [];
+    const orders: string[] = [];
+    const read: any = {};
+    read.select = jest.fn(() => read);
+    read.eq = jest.fn(() => read);
+    read.order = jest.fn((col: string) => (orders.push(col), read));
+    read.limit = jest.fn(async () => ({ data: [row], error: null }));
+    const from = jest.fn(() => ({
+      ...read,
+      update: (patch: any) => ({
+        eq: async () => (updates.push(patch), { error: null }),
+      }),
+    }));
+    const rpc = jest.fn(async () => ({
+      data: null,
+      error: { message: "statement timeout" },
+    }));
+    const service = new WineSubmissionsService({
+      supabase: { from, rpc },
+    } as any);
+    (service as any).logger.error = jest.fn();
+    return { service, updates, orders };
+  }
+
+  const pending = (decision_reason: string | null) => ({
+    id: "sub-1",
+    status: "pending",
+    payload: { name: "Barolo", producer: "Vietti", vintage: 2019 },
+    decision_reason,
+  });
+
+  it("serves the least recently tried row first, not the oldest", async () => {
+    const t = buildFailing(pending(null));
+    await t.service.processPendingSubmissions();
+    expect(t.orders[0]).toBe("updated_at");
+  });
+
+  it("counts a failed attempt and keeps the row pending", async () => {
+    const t = buildFailing(pending("retry 2/5: match: statement timeout"));
+    const res = await t.service.processPendingSubmissions();
+    expect(res.results[0].status).toBe("pending");
+    expect(t.updates[0]).toMatchObject({
+      status: "pending",
+      decision_reason: "retry 3/5: match: statement timeout",
+    });
+  });
+
+  it("parks the row for review after the last attempt", async () => {
+    const t = buildFailing(pending("retry 4/5: match: statement timeout"));
+    const res = await t.service.processPendingSubmissions();
+    expect(res.results[0].status).toBe("pending_review");
+    expect(t.updates[0]).toMatchObject({
+      status: "pending_review",
+      decision_reason: "failed after 5 attempts: match: statement timeout",
+    });
+  });
+});

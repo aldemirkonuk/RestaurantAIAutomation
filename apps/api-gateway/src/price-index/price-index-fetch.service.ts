@@ -215,11 +215,18 @@ export class PriceIndexFetchService {
       external_ids: s.externalIds,
       raw: s.raw,
     }));
-    const { error } = await this.db.client
+    // Rows the database actually took, not rows sent: duplicates are ignored,
+    // so a re-read of an unchanged edition sends N and writes none. A count
+    // the database did not return is reported as 0, never as N.
+    const { error, count } = await this.db.client
       .from("price_index_postings")
-      .upsert(rows, { onConflict: "source_ref,content_hash", ignoreDuplicates: true });
+      .upsert(rows, {
+        onConflict: "source_ref,content_hash",
+        ignoreDuplicates: true,
+        count: "exact",
+      });
     if (error) throw error;
-    return rows.length;
+    return count ?? 0;
   }
 
   private record(sourceKey: string, outcome: FetchOutcome): void {

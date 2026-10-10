@@ -285,3 +285,52 @@ describe("the hourly sweep replaces superseded rows regardless of cadence", () =
     expect(generated).toEqual([]);
   });
 });
+
+describe("the hourly sweep stamps a run only when it saved, and only the run (F-651)", () => {
+  function sweepWith(persisted: boolean | null) {
+    const client = makeClient({
+      restaurants: [{ id: "r1" }],
+      analytics_insight_prefs: InsightSchedulerService.ALL_CATEGORIES.map(
+        (category) => ({
+          restaurant_id: "r1",
+          category,
+          cadence: "manual",
+          enabled: false,
+          hour_of_day: 9,
+          last_run_at: null,
+        }),
+      ),
+    });
+    const svc = new InsightSchedulerService(
+      { getClient: () => client } as any,
+      {
+        generate: async () => ({ insights: [], persisted }),
+        staleVersionCategories: async () => new Map([["r1", new Set(["sales"])]]),
+      } as any,
+    );
+    return { svc, client };
+  }
+
+  it("does not stamp last_run_at when the write was refused", async () => {
+    const { svc, client } = sweepWith(false);
+    await svc.runSweep(new Date("2026-09-03T13:00:00Z"));
+    expect(
+      client.writes.filter((w: any) => w.table === "analytics_insight_prefs"),
+    ).toEqual([]);
+  });
+
+  it("stamps the run without turning a disabled category back on", async () => {
+    const { svc, client } = sweepWith(true);
+    await svc.runSweep(new Date("2026-09-03T13:00:00Z"));
+    const stamps = client.writes.filter(
+      (w: any) => w.table === "analytics_insight_prefs",
+    );
+    expect(stamps).toHaveLength(1);
+    for (const r of stamps[0].rows) {
+      expect(r).not.toHaveProperty("enabled");
+      expect(r).not.toHaveProperty("cadence");
+      expect(r).not.toHaveProperty("hour_of_day");
+      expect(r.last_run_at).toBe("2026-09-03T13:00:00.000Z");
+    }
+  });
+});

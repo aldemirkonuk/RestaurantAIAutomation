@@ -47,21 +47,36 @@ const REJUDGE_SELECT =
   "raw_price, currency, pack_size, unit_volume_ml, yield_factor, is_outlier, outlier_basis";
 
 /**
- * How many rows one run will read.
+ * How many rows one page of the read holds.
  *
- * Matched to `belowTrailingAverage`'s own `.limit(2000)` so the pass cannot
- * judge over a set the reader would never see. When a run comes back holding
- * exactly this many rows the window is larger than the pass can see, and that
- * is SAID in the summary rather than left to be inferred from a round number.
+ * The window is read page by page until a short page, so every house's rows
+ * are judged. One read of 2000 across every house (oldest first) used to stop
+ * long before the newest rows once the 30-day pool grew past it.
  */
-const REJUDGE_ROW_LIMIT = 2000;
+const REJUDGE_PAGE_ROWS = 2000;
+
+/**
+ * The most rows one run will read. A run that reaches it judges what it read,
+ * says `truncated: true` in its summary, and logs a warning.
+ */
+const REJUDGE_MAX_ROWS = 100_000;
+
+/** The pure plan's summary, plus whether the read reached REJUDGE_MAX_ROWS. */
+export type RejudgeRunReport = RejudgeRunSummary & {
+  /** True when the window held more rows than one run reads; the newest went unjudged. */
+  truncated: boolean;
+};
 
 @Injectable()
 export class OutlierRejudgeService {
   private readonly logger = new Logger(OutlierRejudgeService.name);
 
   /** Null until a run happens in this process. A restart clears it. */
-  private lastRun: RejudgeRunSummary | null = null;
+  private lastRun: RejudgeRunReport | null = null;
+
+  /** Page size and ceiling of the window read; fields so a test can shrink them. */
+  protected pageRows = REJUDGE_PAGE_ROWS;
+  protected maxRows = REJUDGE_MAX_ROWS;
 
   constructor(
     private readonly databaseService: DatabaseService,
@@ -100,7 +115,7 @@ export class OutlierRejudgeService {
   async rejudge(opts: {
     windowDays?: number;
     dryRun?: boolean;
-  }): Promise<RejudgeRunSummary> {
+  }): Promise<RejudgeRunReport> {
     const startedAt = new Date().toISOString();
     const windowDays = opts.windowDays ?? REJUDGE_WINDOW_DAYS;
     const dryRun = opts.dryRun ?? false;
@@ -121,32 +136,49 @@ export class OutlierRejudgeService {
     // (`outlier-rejudge.ts:221`), so a house's row is only ever compared with
     // that house's rows, and each verdict is written back to the row it came
     // from. No row of one house is shown to, or scored against, another.
-    const { data, error } = await scopePriceRegisterRead(
-      this.databaseService.supabase
-        .from("vendor_price_observations")
-        .select(REJUDGE_SELECT),
-      VENDOR_PRICE_OBSERVATIONS,
-      {
-        kind: "everyHouse",
-        because:
-          "the nightly re-judge has no caller and no house; it writes is_outlier " +
-          "back onto every house's own rows, and planRejudge buckets by " +
-          "restaurant_id so no house is ever judged against another's prices",
-      },
-    )
-      .gte("observed_at", from)
-      .order("observed_at", { ascending: true })
-      .limit(REJUDGE_ROW_LIMIT);
+    const rows: RejudgeRow[] = [];
+    let truncated = false;
+    for (let offset = 0; ; offset += this.pageRows) {
+      if (offset >= this.maxRows) {
+        truncated = true;
+        break;
+      }
+      const { data, error } = await scopePriceRegisterRead(
+        this.databaseService.supabase
+          .from("vendor_price_observations")
+          .select(REJUDGE_SELECT),
+        VENDOR_PRICE_OBSERVATIONS,
+        {
+          kind: "everyHouse",
+          because:
+            "the nightly re-judge has no caller and no house; it writes is_outlier " +
+            "back onto every house's own rows, and planRejudge buckets by " +
+            "restaurant_id so no house is ever judged against another's prices",
+        },
+      )
+        .gte("observed_at", from)
+        .order("observed_at", { ascending: true })
+        // A tie-break so a page boundary inside one timestamp neither skips
+        // nor repeats a row.
+        .order("id", { ascending: true })
+        .range(offset, offset + this.pageRows - 1);
 
-    if (error) {
-      // A window we could not read is not a window with nothing wrong in it.
-      // Throwing leaves every stored verdict exactly as it was.
-      throw new Error(`Could not read the price register: ${error.message}`);
+      if (error) {
+        // A window we could not read is not a window with nothing wrong in it.
+        // Throwing leaves every stored verdict exactly as it was.
+        throw new Error(`Could not read the price register: ${error.message}`);
+      }
+
+      // `as unknown as` because the generated PostgREST types cannot narrow a
+      // string-built select list; the shape is asserted by REJUDGE_SELECT above.
+      const page = (data ?? []) as unknown as RejudgeRow[];
+      rows.push(...page);
+      if (page.length < this.pageRows) break;
     }
-
-    // `as unknown as` because the generated PostgREST types cannot narrow a
-    // string-built select list; the shape is asserted by REJUDGE_SELECT above.
-    const rows = (data ?? []) as unknown as RejudgeRow[];
+    if (truncated)
+      this.logger.warn(
+        `${REJUDGE_JOB_NAME}: the last ${windowDays} days hold more than ${this.maxRows} rows; only the oldest ${rows.length} were re-judged tonight.`,
+      );
     const plan = planRejudge(rows, now, { windowDays });
 
     const groupsSilent = emptySilenceCounts();
@@ -192,17 +224,18 @@ export class OutlierRejudgeService {
           message: err?.message ?? "unknown error",
         });
         this.logger.warn(
-          `${REJUDGE_JOB_NAME}: group ${group.key} was not written (${err?.message}). Every other group continues; those rows keep the verdict they already had.`,
+          `${REJUDGE_JOB_NAME}: group ${group.key} was not written (${err?.message}). Every other group continues; rows written before the failure keep their new verdict, the rest keep the one they already had.`,
         );
       }
     }
 
-    const summary: RejudgeRunSummary = {
+    const summary: RejudgeRunReport = {
       startedAt,
       finishedAt: new Date().toISOString(),
       windowDays,
       windowFrom: plan.windowFrom,
       rowsRead: rows.length,
+      truncated,
       groupsSeen: plan.groups.length,
       groupsJudged: plan.groups.filter((g) => g.judged).length,
       rowsJudged,
@@ -236,7 +269,7 @@ export class OutlierRejudgeService {
     cron: string;
     windowDays: number;
     rowLimit: number;
-    lastRun: RejudgeRunSummary | null;
+    lastRun: RejudgeRunReport | null;
     inMemoryOnly: true;
     sentence: string;
   } {
@@ -247,14 +280,14 @@ export class OutlierRejudgeService {
         ? `The nightly re-judge is on and has not run yet in this process (it runs on "${REJUDGE_CRON}", and a restart clears this record). Nothing is claimed about the register either way.`
         : this.lastRun.dryRun
           ? `The last pass was a DRY RUN at ${this.lastRun.finishedAt}: it planned ${this.lastRun.rowsJudged} verdicts and wrote none.`
-          : `Last pass finished ${this.lastRun.finishedAt}: ${this.lastRun.rowsJudged} rows re-judged over the last ${this.lastRun.windowDays} days, ${this.lastRun.flippedToOutlier} newly flagged, ${this.lastRun.flippedToClean} cleared, ${this.lastRun.groupsFailed} groups not written.`;
+          : `Last pass finished ${this.lastRun.finishedAt}: ${this.lastRun.rowsJudged} rows re-judged over the last ${this.lastRun.windowDays} days, ${this.lastRun.flippedToOutlier} newly flagged, ${this.lastRun.flippedToClean} cleared, ${this.lastRun.groupsFailed} groups not written.${this.lastRun.truncated ? ` The window held more rows than one pass reads, so the newest were not re-judged.` : ""}`;
 
     return {
       armed,
       flag: REJUDGE_ENABLED_FLAG,
       cron: REJUDGE_CRON,
       windowDays: REJUDGE_WINDOW_DAYS,
-      rowLimit: REJUDGE_ROW_LIMIT,
+      rowLimit: this.maxRows,
       lastRun: this.lastRun,
       inMemoryOnly: true,
       sentence,
