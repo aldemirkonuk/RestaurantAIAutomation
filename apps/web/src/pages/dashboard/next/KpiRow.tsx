@@ -99,6 +99,11 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   const counts = (s ?? {}) as { todayDeliveries?: number; monthBottlesIn?: number };
   const todayDeliveries = typeof counts.todayDeliveries === 'number' ? counts.todayDeliveries : null;
   const monthBottlesIn = typeof counts.monthBottlesIn === 'number' ? counts.monthBottlesIn : null;
+  // F-783: a house with no time zone gets null day figures and `zone_unset`
+  // (the same flag the calendar reads), so the four day tiles say why they are
+  // blank instead of standing empty beside the cellar count.
+  const zoneUnset = (s as { zone_unset?: boolean } | null)?.zone_unset === true;
+  const noZone = 'unknown until the time zone is set';
 
   // DASH-W37: "items", never "wines" — the house holds every drink (ADR 0115,
   // ADR 0186), and the founder chose the word that still holds when food lands.
@@ -136,7 +141,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Paid to vendors · today"
             value={todaySpend}
             format={(n) => formatMoney(n, 'compact')}
-            sub="delivered purchase orders"
+            sub={zoneUnset ? noZone : 'delivered purchase orders'}
             to="/orders?station=delivered"
             loading={loading}
           />
@@ -144,7 +149,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Paid to vendors · month"
             value={monthSpend}
             format={(n) => formatMoney(n, 'compact')}
-            sub="procurement, not sales"
+            sub={zoneUnset ? noZone : 'procurement, not sales'}
             to="/reports"
             loading={loading}
           />
@@ -155,7 +160,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Deliveries · today"
             value={todayDeliveries}
             format={(n) => formatNumber(Math.round(n))}
-            sub="orders received today"
+            sub={zoneUnset ? noZone : 'orders received today'}
             to="/orders?station=delivered"
             loading={loading}
           />
@@ -163,7 +168,7 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
             label="Bottles in · month"
             value={monthBottlesIn}
             format={(n) => formatNumber(Math.round(n))}
-            sub="received this month"
+            sub={zoneUnset ? noZone : 'received this month'}
             loading={loading}
           />
         </>

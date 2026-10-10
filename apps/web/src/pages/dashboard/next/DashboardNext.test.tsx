@@ -21,6 +21,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom';
+import { KpiRow } from './KpiRow';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const api = vi.hoisted(() => ({
@@ -1252,5 +1253,34 @@ describe('DashboardNext — the calendar fits the shell (ADR 0290 §9)', () => {
     expect(figureColumns(6)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 2rem) / 3 - 1px)), 1fr))');
     expect(figureColumns(4)).toBe('repeat(auto-fill, minmax(max(8rem, calc((100% - 1rem) / 2 - 1px)), 1fr))');
     expect(SECTION_COLUMNS).toBe('repeat(auto-fill, minmax(max(16rem, calc((100% - 1.25rem) / 2 - 1px)), 1fr))');
+  });
+});
+
+describe('DashboardNext — the KPI tiles say why a day figure is blank (F-783)', () => {
+  const noZone = {
+    totalWines: 4,
+    totalBottles: 30,
+    todayProcurementSpend: null,
+    monthProcurementSpend: null,
+    zone_unset: true,
+  } as never;
+
+  it('names the missing time zone on the spend tiles instead of leaving them empty', () => {
+    render(
+      <MemoryRouter>
+        <KpiRow stats={noZone} pendingCount={0} lowStockCount={0} />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText('unknown until the time zone is set')).toHaveLength(2);
+    expect(screen.queryByText('procurement, not sales')).toBeNull();
+  });
+
+  it('says the same on the count tiles a role without amounts reads', () => {
+    render(
+      <MemoryRouter>
+        <KpiRow stats={noZone} pendingCount={0} lowStockCount={0} seesAmounts={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText('unknown until the time zone is set')).toHaveLength(2);
   });
 });

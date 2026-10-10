@@ -24,6 +24,11 @@ const NOW = new Date("2026-10-01T12:00:00Z");
 
 function build(progress: any) {
   const db = new FakeDb();
+  db.tables.user_restaurant_access = [
+    { restaurant_id: TENANT, user_id: "user-1", role: "owner", is_active: true },
+    { restaurant_id: TENANT, user_id: "user-2", role: "manager", is_active: true },
+    { restaurant_id: TENANT, user_id: "user-3", role: "staff", is_active: true },
+  ];
   const database = fakeDatabase(db, MEMBERS);
   const notifications = fakeNotifications(MEMBERS);
   const ledger = new ProducerLedgerService(
@@ -90,6 +95,39 @@ describe("CeilingHeldProducer", () => {
     const call = notifications.persistForRestaurant.calls[0][1];
     expect(call.message).toContain("stayed under by €1,580.00");
     expect(call.message).not.toContain("$");
+  });
+
+  it("[REVERT-FAILS] sends the goal's figures only to owners and managers (F-782)", async () => {
+    const { db, notifications, producer } = build(HELD);
+    db.tables.analytics_goals.push(ceiling());
+    const audience = { ready: ["user-1", "user-3"], deferred: ["user-2"] };
+    const tally = await producer.sweepTenant(TENANT, ZONE, audience, NOW);
+    expect(tally.deferredQuietHours).toBe(1);
+    const opts = notifications.persistForRestaurant.calls[0][2];
+    expect(opts.onlyUserIds).toEqual(["user-1"]);
+  });
+
+  it("[REVERT-FAILS] says so when only staff were there to hear it, rather than writing to them", async () => {
+    const { db, notifications, producer } = build(HELD);
+    db.tables.analytics_goals.push(ceiling());
+    const tally = await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      { ready: ["user-3"], deferred: [] },
+      NOW,
+    );
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+    expect(tally.withheldReason).toMatch(/no owner or manager/);
+  });
+
+  it("throws when it cannot read who may hear the goal — never the whole house", async () => {
+    const { db, notifications, producer } = build(HELD);
+    db.tables.analytics_goals.push(ceiling());
+    db.failures.user_restaurant_access = "permission denied";
+    await expect(producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW)).rejects.toThrow(
+      /user_restaurant_access/,
+    );
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
   });
 
   it("reports a period that closed under the ceiling, with the headroom", async () => {

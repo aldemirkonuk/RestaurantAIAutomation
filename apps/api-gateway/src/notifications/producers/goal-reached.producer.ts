@@ -17,6 +17,7 @@ import {
   onShiftPhrase,
 } from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
+import { NO_GOAL_READER, goalReaders, noGoalReader } from "./goal-readers";
 
 /**
  * "The goal was reached" — the success the house owns.
@@ -126,6 +127,9 @@ export class GoalReachedProducer {
     const currency = await readHouseCurrency(client, restaurantId);
 
     let ceilingGoals = 0;
+    // The sentence carries the goal's figures, so only the people who may read
+    // goals hear it (F-782). Read once, and only when something is to be said.
+    let readers: ProducerAudience | null = null;
 
     for (const goal of goals) {
       if (goal.direction === "at_most") {
@@ -185,7 +189,13 @@ export class GoalReachedProducer {
       });
 
       await this.ledger.emit(
-        { restaurantId, producer: PRODUCER, audience, tally, now },
+        {
+          restaurantId,
+          producer: PRODUCER,
+          audience: (readers ??= await goalReaders(client, restaurantId, audience)),
+          tally,
+          now,
+        },
         {
           // The target is IN the key: raising a target after it was met makes a
           // new goal to reach, and the house should hear about that one too.
@@ -231,6 +241,9 @@ export class GoalReachedProducer {
       );
     }
 
+    if (tally.emitted === 0 && tally.withheldReason === null && noGoalReader(readers)) {
+      tally.withheldReason = NO_GOAL_READER;
+    }
     if (tally.emitted === 0 && tally.withheldReason === null) {
       tally.withheldReason =
         ceilingGoals > 0 && tally.considered === 0
