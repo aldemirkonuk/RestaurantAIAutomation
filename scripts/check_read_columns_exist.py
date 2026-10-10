@@ -364,6 +364,32 @@ def _json_path_base(col: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
+# `.order("requested_at", { referencedTable: "orders" })` sorts an EMBED, not the
+# root table: supabase-js sends it as `orders.order=requested_at`. Checking that
+# column against the root table reported a column the embed really has as
+# missing (F-858), and passed `created_at`/`id` only because the root happens to
+# have them too. The column is checked against the embed's own table instead.
+REFERENCED_TABLE_RE = re.compile(r"""\b(?:referencedTable|foreignTable)\s*:""")
+REFERENCED_TABLE_LITERAL_RE = re.compile(
+    r"""\b(?:referencedTable|foreignTable)\s*:\s*["']([a-z_][a-z0-9_]*)["']"""
+)
+
+
+def _embed_table(window: str, alias: str) -> str | None:
+    """The table an embed named `alias` in this statement reads, or None.
+
+    `orders:procurement_orders!fk(...)` -> procurement_orders; a bare
+    `providers(...)` or `providers!fk(...)` -> providers.
+    """
+    a = re.escape(alias)
+    m = re.search(rf"""(?<![A-Za-z0-9_.]){a}\s*:\s*([a-z][a-z0-9_]*)\s*[!(]""", window)
+    if m:
+        return m.group(1)
+    if re.search(rf"""(?<![A-Za-z0-9_.:]){a}\s*[!(]""", window):
+        return alias
+    return None
+
+
 def _call_arg(src: str, open_paren: int) -> str | None:
     """Text between the parens of the call whose `(` is at src[open_paren]."""
     depth, i, n = 0, open_paren, len(src)
@@ -502,11 +528,23 @@ def collect(root: Path, shared) -> tuple[list[str], set[str], int, int, int]:
                 table = m.group(1).lower()
                 if table not in cols:
                     continue
-                for f in FILTER_ARG_RE.finditer(m.group(2)):
+                window = m.group(2)
+                for f in FILTER_ARG_RE.finditer(window):
                     col = f.group(2).strip()
                     filter_args += 1
                     if "." in col:
                         continue  # embedded filter: providers.name
+                    # A `referencedTable` option points the column at an embed.
+                    # Resolved to that embed's table and checked there; an
+                    # option this cannot resolve is UNREADABLE, never skipped.
+                    target = table
+                    call = _call_arg(window, f.start() + len(f.group(1)) + 1)
+                    if call is not None and REFERENCED_TABLE_RE.search(call):
+                        ref = REFERENCED_TABLE_LITERAL_RE.search(call)
+                        target = _embed_table(window, ref.group(1)) if ref else None
+                        if target is None or target not in cols:
+                            unreadable += 1
+                            continue
                     # A JSON path is checked at its BASE column. The key inside
                     # the document is unknowable from a migration; the column is
                     # not, and it is the half that 42703s.
@@ -516,7 +554,7 @@ def collect(root: Path, shared) -> tuple[list[str], set[str], int, int, int]:
                     elif not IDENT_RE.match(col):
                         unreadable += 1
                         continue
-                    report(table, col, m.start() + f.start(), f".{f.group(1)}() filters on")
+                    report(target, col, m.start() + f.start(), f".{f.group(1)}() filters on")
 
     # The third shape: a `select("*")` row read by property name (ADR 0093).
     # Raises CannotCheck rather than passing when an entry has rotted.
@@ -653,7 +691,8 @@ def _fixture(tmp: Path) -> Path:
         "  created_at timestamptz,\n"
         "  meta jsonb\n"
         ");\n"
-        "create table public.debt_table (id uuid not null, restaurant_id uuid not null);\n",
+        "create table public.debt_table (id uuid not null, restaurant_id uuid not null);\n"
+        "create table public.order_lines (id uuid not null, requested_at timestamptz);\n",
         encoding="utf-8",
     )
 
@@ -682,6 +721,11 @@ def _fixture(tmp: Path) -> Path:
         "  }\n"
         "  async bare() {\n"
         '    await this.db.supabase.from("orders").insert(x).select();\n'
+        "  }\n"
+        "  async embedded() {\n"
+        '    await this.db.supabase.from("orders")\n'
+        '      .select("id, lines:order_lines!fk(id, requested_at)")\n'
+        '      .order("requested_at", { referencedTable: "lines", ascending: true });\n'
         "  }\n"
         + bulk
         + "}\n",
@@ -835,6 +879,45 @@ def self_test() -> int:
             expect("a JSON path filter on a phantom column", code, 1)
             if not any("filters on orders.nope" in f for f in findings):
                 failures.append(f"phantom json base not reported: {findings}")
+
+            # G. (F-858) `.order(col, { referencedTable })` sorts the EMBED. The
+            # clean tree orders on order_lines.requested_at, a column `orders`
+            # does not have, so it only passes if the embed is resolved. The
+            # ceiling is forced to 0: resolving it must not mean shelving it.
+            (root / SVC).write_text(svc, encoding="utf-8")
+            try:
+                globals()["UNREADABLE_READ_CEILING"] = 0
+                code, findings = run(root)
+                expect("an order on a real embed column", code, 0)
+                if findings:
+                    failures.append(f"referencedTable order reported: {findings}")
+            finally:
+                globals()["UNREADABLE_READ_CEILING"] = real_ceiling
+
+            # G2. and the column is genuinely CHECKED against the embed's table.
+            (root / SVC).write_text(
+                svc.replace('.order("requested_at", {', '.order("requested_atx", {'),
+                encoding="utf-8",
+            )
+            code, findings = run(root)
+            expect("an order on a phantom embed column", code, 1)
+            if not any("filters on order_lines.requested_atx" in f for f in findings):
+                failures.append(f"phantom embed order column not reported: {findings}")
+
+            # G3. an alias no embed in the statement declares is UNREADABLE,
+            # never skipped and never checked against the root table.
+            (root / SVC).write_text(
+                svc.replace('referencedTable: "lines"', 'referencedTable: "nope"'),
+                encoding="utf-8",
+            )
+            try:
+                globals()["UNREADABLE_READ_CEILING"] = 0
+                code, findings = run(root)
+                expect("an unresolvable referencedTable", code, 1)
+                if not any("cannot resolve statically" in f for f in findings):
+                    failures.append(f"unresolvable referencedTable not counted: {findings}")
+            finally:
+                globals()["UNREADABLE_READ_CEILING"] = real_ceiling
 
             # E2. the same runtime name bound to a same-file const IS resolved,
             # and its bad column found.
@@ -1050,6 +1133,8 @@ def self_test() -> int:
     print("   a runtime column list counts as UNREADABLE, never as zero columns")
     print('   .eq("meta->>arm", …) is checked at its base column, not shelved as unreadable')
     print('   .eq("nope->>arm", …) exits 1 — the base column is genuinely checked')
+    print("   .order(col, { referencedTable }) is checked against the embed's own table")
+    print("   a referencedTable no embed in the statement declares counts as UNREADABLE")
     print("   a const-bound, template-literal or concatenated select IS resolved")
     print("   an unrelated .from(A) and .select on another chain are NOT paired")
     print("   a debt entry nothing reads any more exits 1")
