@@ -34,6 +34,7 @@ import { TenantBypass } from "../tenant/tenant.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { GmailService } from "../../communications/gmail.service";
 import { canonicalOrigin } from "../../communications/email-templates/template-config";
+import { maskEmail } from "../log-mask";
 
 const ROLE_LABELS: Record<string, string> = {
   developer: "Developer",
@@ -118,7 +119,7 @@ export class StudioInviteController {
       // The row exists and is bound to this address. Surfacing the link is the only way
       // the admin can still deliver it; the alternative is a silently orphaned invite.
       this.logger.error(
-        `Studio invite minted but delivery failed to ${body.target_email}: ${result.error}`,
+        `Studio invite minted but delivery failed to ${maskEmail(body.target_email)}: ${result.error}`,
       );
       return {
         sent: false,
@@ -131,7 +132,7 @@ export class StudioInviteController {
     }
 
     this.logger.log(
-      `Studio invite sent to ${body.target_email} for role ${data.role}`,
+      `Studio invite sent to ${maskEmail(body.target_email)} for role ${data.role}`,
     );
     return {
       sent: true,

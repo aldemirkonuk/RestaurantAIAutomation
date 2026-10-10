@@ -43,6 +43,7 @@
 
 import { EM, countOf, figure, money, num, pct } from './rp-format';
 import { AMOUNTS_WITHHELD } from './rp-registers-house';
+import { unpricedNotes } from './rp-registers-trade';
 import { analysis, arr, obj, str } from './rp-spec';
 
 export interface BenchGoalRow {
@@ -62,6 +63,9 @@ export interface BenchRegister {
   paceDeltaPct: number | null;
   committed: number | null;
   openOrderCount: number | null;
+  /** Orders the buying and committed figures leave out for want of a price (F-701). */
+  spendUnpricedCount?: number;
+  committedUnpricedCount?: number;
   trendPerDayPct: number | null;
   bestDay: string | null;
   worstDay: string | null;
@@ -97,6 +101,8 @@ export const bench = analysis<BenchRegister>({
       paceDeltaPct: num(cf.paceDeltaPct),
       committed: num(cf.committedOpenOrders),
       openOrderCount: num(cf.openOrderCount),
+      spendUnpricedCount: num(cf.spendUnpricedCount) ?? undefined,
+      committedUnpricedCount: num(cf.committedUnpricedCount) ?? undefined,
       trendPerDayPct: num(se.trendPerDayPct),
       bestDay: se.bestDay == null ? null : str(se.bestDay),
       worstDay: se.worstDay == null ? null : str(se.worstDay),
@@ -245,6 +251,7 @@ export const bench = analysis<BenchRegister>({
       notes: [
         noPeers,
         withheld ? AMOUNTS_WITHHELD : null,
+        ...(withheld ? [] : unpricedNotes(b.spendUnpricedCount, b.committedUnpricedCount)),
         // Measured on the running gateway, 2026-09-03: this tenant returns
         // spendLast30d = spendPrev30d = 0. `getCashflow` sums a loader that
         // degrades a FAILED query to `[]` (`advanced-analytics.service.ts:125-146`,

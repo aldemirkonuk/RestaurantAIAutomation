@@ -212,6 +212,7 @@ import {
 // no module wiring — so the one rule that decides whether a key names a bottle
 // lives in exactly one place and this file cannot drift from it.
 import { IdentityKeyRow, joinByExactKey } from "../vendor-intel/identity-join";
+import { maskEmail } from "../common/log-mask";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -7972,7 +7973,7 @@ export class ProcurementService {
     }
     if (gmailThreadId) {
       this.logger.log(
-        `Provider email sent to ${providerEmail} for order ${orderId} — threadId: ${gmailThreadId}`,
+        `Provider email sent to ${maskEmail(providerEmail)} for order ${orderId} — threadId: ${gmailThreadId}`,
       );
     }
 
@@ -8665,7 +8666,7 @@ export class ProcurementService {
           .eq("id", row.id);
 
         this.logger.log(
-          `Auto-sent reply ${row.id} for order ${row.order_id} to ${providerEmail}`,
+          `Auto-sent reply ${row.id} for order ${row.order_id} to ${maskEmail(providerEmail)}`,
         );
         try {
           this.websocketGateway?.emitRestaurantNotification(row.restaurant_id, {

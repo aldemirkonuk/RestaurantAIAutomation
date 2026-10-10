@@ -13,6 +13,7 @@ import { Public } from "../../auth/decorators/public.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { InboundAddressService } from "./inbound-address.service";
 import { htmlToText } from "../../communications/gmail-mime";
+import { maskEmail } from "../log-mask";
 
 interface NormalizedInbound {
   from: string;
@@ -109,7 +110,7 @@ export class InboundEmailController {
       );
 
       this.logger.log(
-        `inbound-email: from=${norm.from} to=${norm.recipients[0] ?? "?"} restaurant=${restaurantId ?? "TRIAGE"}`,
+        `inbound-email: from=${maskEmail(norm.from)} to=${norm.recipients[0] ? maskEmail(norm.recipients[0]) : "?"} restaurant=${restaurantId ?? "TRIAGE"}`,
       );
       return { status: "ok", restaurant_id: restaurantId };
     } catch (e: any) {

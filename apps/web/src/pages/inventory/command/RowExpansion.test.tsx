@@ -163,3 +163,43 @@ describe('RowExpansion — moving bottles between locations', () => {
     expect(transferStock.mock.calls[0][1].fromLocationId).not.toBeNull()
   })
 })
+
+/**
+ * F-705: a failed or still-loading orders/activity read used to fall through
+ * `data = []` and print "No orders for this wine yet." and "No depletion
+ * recorded yet." — an empty history the house never had.
+ */
+describe('RowExpansion — a read that did not answer is not an empty history (F-705)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('says the orders and sales could not be read, and claims no empty history', async () => {
+    getOrders.mockRejectedValue(new Error('502'))
+    getItemActivity.mockRejectedValue(new Error('502'))
+    renderRow()
+    expect(await screen.findByText(/The orders for this wine could not be read just now/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/The sales for this wine could not be read just now/)).length).toBe(2)
+    expect(screen.queryByText('No orders for this wine yet.')).not.toBeInTheDocument()
+    expect(screen.queryByText('No depletion recorded yet.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Heatmap builds as POS sales come in/)).not.toBeInTheDocument()
+  })
+
+  it('says it is still reading while the reads are open', () => {
+    getOrders.mockReturnValue(new Promise(() => {}))
+    getItemActivity.mockReturnValue(new Promise(() => {}))
+    renderRow()
+    expect(screen.getByText('Reading orders…')).toBeInTheDocument()
+    expect(screen.getAllByText('Reading sales…').length).toBe(2)
+    expect(screen.queryByText('No orders for this wine yet.')).not.toBeInTheDocument()
+  })
+
+  it('still says there are no orders when the read answered with none', async () => {
+    getOrders.mockResolvedValue([])
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    renderRow()
+    expect(await screen.findByText('No orders for this wine yet.')).toBeInTheDocument()
+    expect(await screen.findByText('No depletion recorded yet.')).toBeInTheDocument()
+  })
+})

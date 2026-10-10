@@ -14,6 +14,7 @@ import {
   MultiChannelResultDto,
   CommunicationResultDto,
 } from "./dto/communication.dto";
+import { maskEmail, maskPhone } from "../common/log-mask";
 
 export interface LowStockAlertPayload {
   wineName: string;
@@ -69,7 +70,7 @@ export class CommunicationsService {
   ): Promise<MultiChannelResultDto> {
     this.logger.log(`Sending low stock alert for: ${payload.wineName}`);
     this.logger.log(
-      `Recipients - Emails: ${recipients.emails.join(", ")}, Phones: ${recipients.phones?.join(", ") || "none"}`,
+      `Recipients - Emails: ${recipients.emails.map(maskEmail).join(", ")}, Phones: ${recipients.phones?.map(maskPhone).join(", ") || "none"}`,
     );
 
     const results: MultiChannelResultDto = {
@@ -207,7 +208,7 @@ export class CommunicationsService {
     lowStockCount: number;
     pendingOrders: number;
   }): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending daily summary SMS to: ${data.recipientPhone}`);
+    this.logger.log(`Sending daily summary SMS to: ${maskPhone(data.recipientPhone)}`);
 
     const result = await this.smsService.sendDailySummary({
       to: data.recipientPhone,
@@ -249,7 +250,7 @@ export class CommunicationsService {
     };
   }): Promise<CommunicationResultDto> {
     this.logger.log(
-      `Sending weekly report to: ${data.recipientEmails.join(", ")}`,
+      `Sending weekly report to: ${data.recipientEmails.map(maskEmail).join(", ")}`,
     );
 
     const html = this.generateWeeklyReportHtml(data.reportData);

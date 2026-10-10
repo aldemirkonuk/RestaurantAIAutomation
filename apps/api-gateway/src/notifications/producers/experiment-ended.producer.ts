@@ -17,6 +17,7 @@ import {
 import { dayIn } from "./producer-copy";
 // founderWords is free text and the arms come from the database (ADR 0170).
 import { escapeHtml } from "../../common/html/escape-html";
+import { maskEmail } from "../../common/log-mask";
 
 /**
  * "The note experiment ended and no winner is recorded."
@@ -407,7 +408,7 @@ export class ExperimentEndedProducer {
       if (result.success) {
         this.logger.log(
           `EXPERIMENT_ENDED_MAIL_SENT experiment=${report.experimentKey} ` +
-            `to=${address.emails.join(",")} messageId=${result.messageId ?? "none"}`,
+            `to=${address.emails.map(maskEmail).join(",")} messageId=${result.messageId ?? "none"}`,
         );
         return {
           state: "sent",
@@ -478,7 +479,7 @@ export class ExperimentEndedProducer {
       const count = resolved.emails.length;
       this.logger.log(
         `EXPERIMENT_ENDED_RECIPIENT house=${founderHouseId} addresses=${count}` +
-          (count > 0 ? ` to=${resolved.emails.join(",")}` : "") +
+          (count > 0 ? ` to=${resolved.emails.map(maskEmail).join(",")}` : "") +
           " — resolved for the record only; this producer writes an inbox row and sends no mail.",
       );
       // A failed read comes back as an ANSWER now (`lookupFailed`), not a

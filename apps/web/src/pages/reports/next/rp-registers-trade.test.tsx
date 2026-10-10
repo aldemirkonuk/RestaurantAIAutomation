@@ -332,6 +332,39 @@ describe('a staff reader sees no house money on /reports (F-203)', () => {
     expect(said(v)).toContain(AMOUNTS_WITHHELD);
   });
 
+  // F-701: the cashflow lens leaves an unpriced order out of its sums and
+  // counts it; both cuttings of that lens say how many, in plain words.
+  it('says how many orders the buying and committed figures leave out for want of a price', () => {
+    const cf = { spendLast30d: 1200, spendPrev30d: 900, paceDeltaPct: 33, committedOpenOrders: 640, openOrderCount: 3 };
+    const v = pacing.view(pacing.select({ ...cf, spendUnpricedCount: 2, committedUnpricedCount: 1 }), ctx);
+    expect(said(v)).toContain(
+      '2 delivered orders carry no price in these 180 days, so the 30-day buying figures leave them out and may be short by what they cost.',
+    );
+    expect(said(v)).toContain(
+      '1 open order carries no price, so Committed, not yet delivered leaves it out.',
+    );
+    // All priced, or an older gateway with no count: no note.
+    expect(said(pacing.view(pacing.select({ ...cf, spendUnpricedCount: 0 }), ctx))).not.toMatch(/no price/);
+    expect(said(pacing.view(pacing.select(cf), ctx))).not.toMatch(/no price/);
+    // Two empty windows with an unpriced delivery: the price is missing, not the order.
+    const zero = pacing.view(pacing.select({ ...cf, spendLast30d: 0, spendPrev30d: 0, spendUnpricedCount: 1 }), ctx);
+    expect(String(zero.say)).toContain('No delivered purchase order with a price falls');
+    expect(said(zero)).toContain('1 delivered order carries no price');
+
+    const owner = bench.view(
+      bench.select({ cashflow: { ...cf, spendUnpricedCount: 3, committedUnpricedCount: 2 }, activeGoals: [] }),
+      ctx,
+    );
+    expect(said(owner)).toContain('3 delivered orders carry no price');
+    expect(said(owner)).toContain('2 open orders carry no price');
+    // Staff read no money, so no note about it either.
+    const staff = bench.view(
+      bench.select({ amountsWithheld: true, cashflow: { openOrderCount: 3, spendUnpricedCount: 3 }, activeGoals: [] }),
+      ctx,
+    );
+    expect(said(staff)).not.toMatch(/no price/);
+  });
+
   it('an owner still reads every figure', () => {
     const c = pacing.select({ spendLast30d: 1200, spendPrev30d: 900, paceDeltaPct: 33, committedOpenOrders: 640, openOrderCount: 3 });
     const v = pacing.view(c, ctx);

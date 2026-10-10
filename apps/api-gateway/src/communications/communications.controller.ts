@@ -42,6 +42,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { maskEmail, maskPhone } from "../common/log-mask";
 
 @ApiTags("Communications")
 /**
@@ -96,7 +97,7 @@ export class CommunicationsController {
       .map((e) => e.trim())
       .filter((e) => e);
     this.logger.log(
-      `Configured manager emails: ${this.managerEmails.join(", ")}`,
+      `Configured manager emails: ${this.managerEmails.map(maskEmail).join(", ")}`,
     );
   }
 
@@ -296,7 +297,7 @@ export class CommunicationsController {
   async sendDailySummary(
     @Body() dto: DailySummaryDto,
   ): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending daily summary to: ${dto.recipientPhone}`);
+    this.logger.log(`Sending daily summary to: ${maskPhone(dto.recipientPhone)}`);
 
     return this.communicationsService.sendDailySummary({
       recipientPhone: dto.recipientPhone,
@@ -330,7 +331,7 @@ export class CommunicationsController {
     this.logger.log("Wine: Chateau Margaux 2015");
     this.logger.log("Current Stock: 2 bottles");
     this.logger.log("Threshold: 12 bottles");
-    this.logger.log(`Recipients: ${this.managerEmails.join(", ")}`);
+    this.logger.log(`Recipients: ${this.managerEmails.map(maskEmail).join(", ")}`);
     this.logger.log("=".repeat(60));
 
     const testPayload: LowStockAlertDto = {
@@ -366,7 +367,7 @@ export class CommunicationsController {
 
     this.logger.log("=".repeat(60));
     this.logger.log(
-      `Test completed. Email sent to: ${this.managerEmails.join(", ")}`,
+      `Test completed. Email sent to: ${this.managerEmails.map(maskEmail).join(", ")}`,
     );
     if (result.email?.messageId) {
       this.logger.log(`Email Message ID: ${result.email.messageId}`);
@@ -387,7 +388,7 @@ export class CommunicationsController {
   })
   @ApiResponse({ status: 200, type: CommunicationResultDto })
   async testEmail(): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending test email to: ${this.managerEmails.join(", ")}`);
+    this.logger.log(`Sending test email to: ${this.managerEmails.map(maskEmail).join(", ")}`);
 
     const result = await this.gmailService.sendEmail({
       to: this.managerEmails,
@@ -435,7 +436,7 @@ export class CommunicationsController {
     @Body() dto: SendTemplateTestDto,
   ): Promise<CommunicationResultDto> {
     this.logger.log(
-      `Sending ${dto.template} template email to: ${dto.to.join(", ")}`,
+      `Sending ${dto.template} template email to: ${dto.to.map(maskEmail).join(", ")}`,
     );
 
     if (dto.template === "test") {
@@ -537,8 +538,8 @@ export class CommunicationsController {
 
     this.logger.log("=".repeat(60));
     this.logger.log("TEST SCENARIO: Full Messaging Flow");
-    this.logger.log(`Manager: ${managerEmail}`);
-    this.logger.log(`Vendor: ${vendorEmail}`);
+    this.logger.log(`Manager: ${maskEmail(managerEmail)}`);
+    this.logger.log(`Vendor: ${maskEmail(vendorEmail)}`);
     this.logger.log(`Wine: ${wineName} x${quantity} @ $${targetPrice}/bottle`);
     this.logger.log("=".repeat(60));
 
@@ -660,7 +661,7 @@ export class CommunicationsController {
         this.logger.log("Messaging scenario completed successfully");
       }
       this.logger.log(
-        `Next: Vendor (${vendorEmail}) should reply to the email.`,
+        `Next: Vendor (${maskEmail(vendorEmail)}) should reply to the email.`,
       );
       this.logger.log(
         "The EmailParsingAgent will process the reply, thread it, and generate a summary.",
@@ -1213,7 +1214,7 @@ export class CommunicationsController {
       const newHistoryId = decoded.historyId?.toString();
 
       this.logger.log(
-        `Gmail push: email=${emailAddress}, historyId=${newHistoryId}`,
+        `Gmail push: email=${maskEmail(emailAddress)}, historyId=${newHistoryId}`,
       );
 
       // Get the last known historyId
@@ -1262,7 +1263,7 @@ export class CommunicationsController {
         }
 
         this.logger.log(
-          `Inbound email: from=${from}, subject=${subject}, gmailId=${msg.id}`,
+          `Inbound email: from=${maskEmail(from)}, subject=${subject}, gmailId=${msg.id}`,
         );
 
         // Extract body (recursively — the text nests under multipart when an
@@ -1448,7 +1449,7 @@ export class CommunicationsController {
           );
           processed++;
           this.logger.log(
-            `Force-fetched inbound email: from=${from}, subject=${subject}, gmail_id=${fullMsg.id}`,
+            `Force-fetched inbound email: from=${maskEmail(from)}, subject=${subject}, gmail_id=${fullMsg.id}`,
           );
         } catch (pubErr) {
           this.logger.error(`Failed to publish force-fetched email: ${pubErr}`);

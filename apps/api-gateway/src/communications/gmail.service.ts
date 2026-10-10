@@ -220,11 +220,11 @@ export class GmailService implements OnModuleInit {
         const profile = await this.gmail.users.getProfile({ userId: "me" });
         if (profile.data.emailAddress) {
           this.senderEmail = profile.data.emailAddress;
-          this.logger.log(`Gmail sender resolved to: ${this.senderEmail}`);
+          this.logger.log(`Gmail sender resolved to: ${maskEmail(this.senderEmail)}`);
         }
       } catch {
         this.logger.warn(
-          `Could not resolve Gmail sender email — using configured value: ${this.senderEmail}`,
+          `Could not resolve Gmail sender email — using configured value: ${maskEmail(this.senderEmail)}`,
         );
       }
 

@@ -288,6 +288,28 @@ export interface PacingRegister {
   projectedNext4Weeks: number[] | null;
   committedOpenOrders: number | null;
   openOrderCount: number | null;
+  /** Delivered orders in the 180 days with no price, left out of the sums (F-701). */
+  spendUnpricedCount?: number;
+  /** Open orders with no price, left out of `committedOpenOrders` (F-701). */
+  committedUnpricedCount?: number;
+}
+
+/**
+ * F-701: an order with no price is left out of the spend sums, not counted as
+ * $0, and the cutting says how many — beside the figure it shortens. Shared by
+ * "Spend pacing" and "Against ourselves", which read the same cashflow lens.
+ */
+export function unpricedNotes(spend?: number, committed?: number): string[] {
+  const out: string[] = [];
+  if (spend && spend > 0)
+    out.push(
+      `${figure(spend)} delivered ${spend === 1 ? 'order carries' : 'orders carry'} no price in these 180 days, so the 30-day buying figures leave ${spend === 1 ? 'it' : 'them'} out and may be short by what ${spend === 1 ? 'it' : 'they'} cost.`,
+    );
+  if (committed && committed > 0)
+    out.push(
+      `${figure(committed)} open ${committed === 1 ? 'order carries' : 'orders carry'} no price, so Committed, not yet delivered leaves ${committed === 1 ? 'it' : 'them'} out.`,
+    );
+  return out;
 }
 
 const pacing = analysis<PacingRegister>({
@@ -312,6 +334,8 @@ const pacing = analysis<PacingRegister>({
         : null,
       committedOpenOrders: num(d.committedOpenOrders),
       openOrderCount: num(d.openOrderCount),
+      spendUnpricedCount: num(d.spendUnpricedCount) ?? undefined,
+      committedUnpricedCount: num(d.committedUnpricedCount) ?? undefined,
     };
   },
   view: (c) => {
@@ -335,6 +359,7 @@ const pacing = analysis<PacingRegister>({
           Too few weeks of purchasing to project — {EM} rather than a line drawn through two points.
         </>
       ),
+      ...unpricedNotes(c.spendUnpricedCount, c.committedUnpricedCount),
     ];
     const basis = [c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null];
     if (c.amountsWithheld)
@@ -348,7 +373,9 @@ const pacing = analysis<PacingRegister>({
     // sentence is the honest rendering — and it names WHICH windows.
     if ((c.spendLast30d ?? 0) === 0 && (c.spendPrev30d ?? 0) === 0)
       return {
-        say: 'No delivered purchase order falls in either 30-day window, so there is no pace to draw — two bars at zero would say the same thing less clearly.',
+        // An unpriced delivery may sit in a window (F-701): then it is the
+        // price that is missing, not the order.
+        say: `No delivered purchase order${c.spendUnpricedCount ? ' with a price' : ''} falls in either 30-day window, so there is no pace to draw — two bars at zero would say the same thing less clearly.`,
         figures,
         notes,
         basis,
