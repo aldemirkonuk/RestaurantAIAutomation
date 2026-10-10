@@ -65,7 +65,7 @@ import { createAuctionLotRecord } from '@/services/api/inventory';
 import { settingsApi } from '@/services/api/settings';
 import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
 import { lotBookedCost, readExchangeRate } from './auctionLotCost';
-import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 
 export interface AuctionLot {
@@ -113,6 +113,21 @@ export type LotCost =
   | { ok: false; why: string };
 
 /**
+ * How the lot's own figures are read (F-832). `screen` is the mark this screen
+ * groups thousands with; `foreignCurrency` is the lot's currency when it is not
+ * the house's, so the house's mark does not apply to the hammer or premium.
+ */
+export interface LotRead {
+  screen?: GroupMark | null;
+  foreignCurrency?: string | null;
+}
+
+/** The mark the hammer and premium are read with: the house's, unless the lot is in other money. */
+export function lotFigureGroup(group: GroupMark | null, read: LotRead = {}): GroupMark | null {
+  return read.foreignCurrency ? null : group;
+}
+
+/**
  * What the lot cost each bottle, and the sentence that shows the working.
  *
  * A premium that was not stated is NOT zero — an auction with no premium and an
@@ -121,9 +136,14 @@ export type LotCost =
  * result rather than a number: a fallback of 0 here would put a wrong unit cost
  * into the WAC rollup, silently, for the life of the lot.
  */
-export function lotCost(lot: AuctionLot, group: GroupMark | null = null): LotCost {
-  const hammer = num(lot.hammer, group);
-  const premium = num(lot.premium, group);
+export function lotCost(
+  lot: AuctionLot,
+  group: GroupMark | null = null,
+  read: LotRead = {},
+): LotCost {
+  const figures = lotFigureGroup(group, read);
+  const hammer = num(lot.hammer, figures);
+  const premium = num(lot.premium, figures);
   const bottles = num(lot.bottles, group);
 
   if (hammer === null) return { ok: false, why: 'The hammer price has not been stated.' };
@@ -134,6 +154,25 @@ export function lotCost(lot: AuctionLot, group: GroupMark | null = null): LotCos
       why: "The buyer's premium has not been stated. If there was none, type 0 — an unstated premium and a premium of nothing are different facts.",
     };
   if (premium < 0) return { ok: false, why: "A buyer's premium cannot be negative." };
+  // F-832: "1,250" that reads two ways is asked, never guessed. A lot in
+  // another currency is written the way ITS catalogue writes numbers, which
+  // this house's mark says nothing about — so a lone mark before three digits
+  // could be either, whatever this house or this screen does.
+  for (const [raw, name] of [
+    [lot.hammer, 'The hammer price'],
+    [lot.premium, "The buyer's premium"],
+  ] as const) {
+    const asked = read.foreignCurrency
+      ? twoReadingsProblem(
+          raw,
+          '.',
+          ',',
+          undefined,
+          `this lot is in ${read.foreignCurrency}, not this house's money, so how it writes thousands is not known here`,
+        )
+      : twoReadingsProblem(raw, group, read.screen ?? null);
+    if (asked) return { ok: false, why: `${name}: ${asked}` };
+  }
   if (bottles === null || !Number.isInteger(bottles) || bottles < 1)
     return { ok: false, why: 'Say how many bottles were in the lot, as a whole number.' };
 
@@ -260,7 +299,16 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
   }, [query, open]);
 
   const group = useHouseGroupMark();
-  const cost = useMemo(() => lotCost(lot, group), [lot, group]);
+  // F-832: the lot's figures are read with the house's mark only when the lot
+  // is in the house's own money; a currency not known to be the house's is not.
+  const lotRead: LotRead = useMemo(
+    () => ({
+      screen: displayGroupMark(),
+      foreignCurrency: lot.currency && lot.currency !== houseCurrency ? lot.currency : null,
+    }),
+    [lot.currency, houseCurrency],
+  );
+  const cost = useMemo(() => lotCost(lot, group, lotRead), [lot, group, lotRead]);
   // Currency is required to CARRY, not only to record: "an auction lot
   // records its hammer price and premium WITH a currency" (founder,
   // 2026-09-21) — never inferred, so an unchosen currency holds the button
@@ -287,8 +335,9 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
               exchangeRate: lot.exchangeRate,
               houseCost: lot.houseCost,
               group,
+              display: lotRead.screen,
             }),
-    [cost, lot.currency, lot.exchangeRate, lot.houseCost, houseCurrency, houseCurrencyUnread, group],
+    [cost, lot.currency, lot.exchangeRate, lot.houseCost, houseCurrency, houseCurrencyUnread, group, lotRead],
   );
   const canCarry = !!wine && !detailsMissing && cost.ok && !!lot.currency && !!booked?.ok && !busy;
 
@@ -328,8 +377,8 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
         auctionHouse: lot.house.trim(),
         lotNumber: lot.lotNumber.trim() || null,
         saleDate: lot.saleDate,
-        hammerPrice: num(lot.hammer, group) as number,
-        buyersPremium: num(lot.premium, group) as number,
+        hammerPrice: num(lot.hammer, lotFigureGroup(group, lotRead)) as number,
+        buyersPremium: num(lot.premium, lotFigureGroup(group, lotRead)) as number,
         currency: lot.currency,
         bottles: cost.bottles,
         // Both recorded as stated; the typed cost is what was booked when present.

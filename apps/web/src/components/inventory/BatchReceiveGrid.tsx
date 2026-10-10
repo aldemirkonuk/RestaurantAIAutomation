@@ -14,7 +14,7 @@ import { useStorageLocations } from '../../hooks/useStorageLocations'
 import { fmtMoney } from '../../pages/inventory/command/bits'
 import { cn } from '../../lib/utils'
 import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
-import { parseDecimal, type GroupMark } from '../../lib/parseDecimal'
+import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '../../lib/parseDecimal'
 import type { BulkInventoryLine, WineDraft } from '../../services/api/types'
 
 const GRID = '32px minmax(190px,1.7fr) 76px 104px 172px 96px 34px'
@@ -88,8 +88,16 @@ export function batchTotals(rows: BatchReceiveRow[], group: GroupMark | null = n
   )
 }
 
-/** Everything that would make the server reject a line, named per row rather than as one generic error. */
-export function validateBatchRows(rows: BatchReceiveRow[], group: GroupMark | null = null): BatchRowIssue[] {
+/**
+ * Everything that would make the server reject a line, named per row rather than as one generic error.
+ * `display` is the mark this screen groups thousands with: a cost the house and the screen read two
+ * ways ("1,250" in a "."-grouping house on an English screen) is asked, never guessed (F-832).
+ */
+export function validateBatchRows(
+  rows: BatchReceiveRow[],
+  group: GroupMark | null = null,
+  display: GroupMark | null = displayGroupMark(),
+): BatchRowIssue[] {
   const issues: BatchRowIssue[] = []
   for (const row of rows) {
     const label = row.name || 'Unnamed wine'
@@ -103,6 +111,9 @@ export function validateBatchRows(rows: BatchReceiveRow[], group: GroupMark | nu
       const cost = costOf(row, group)
       if (!Number.isFinite(cost) || cost < 0) {
         issues.push({ key: row.key, name: label, reason: `cost "${row.cost}" is not a number` })
+      } else {
+        const asked = twoReadingsProblem(row.cost, group, display)
+        if (asked) issues.push({ key: row.key, name: label, reason: `cost ${asked}` })
       }
     }
   }

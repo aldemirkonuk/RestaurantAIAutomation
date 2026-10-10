@@ -19,6 +19,13 @@ vi.mock('../../../services/api/pricing', () => ({
   acceptPriceAdvice: (...a: unknown[]) => acceptPriceAdvice(...a),
   confirmWinePour: (...a: unknown[]) => confirmWinePour(...a),
 }))
+// The house's thousands mark and the screen's, held per test (F-832).
+const marks = vi.hoisted(() => ({ house: null as '.' | ',' | null, screen: null as '.' | ',' | null }))
+vi.mock('../../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => marks.house }))
+vi.mock('../../../lib/parseDecimal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/parseDecimal')>()),
+  displayGroupMark: () => marks.screen,
+}))
 
 const raise: PriceAdvice = {
   kind: 'bottle',
@@ -61,6 +68,8 @@ function mount(over: Partial<Parameters<typeof HousePriceCell>[0]> = {}) {
 }
 
 beforeEach(() => {
+  marks.house = null
+  marks.screen = null
   updateInventoryItem.mockReset()
   acceptPriceAdvice.mockReset()
   confirmWinePour.mockReset()
@@ -98,6 +107,29 @@ describe('HousePriceCell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByText(/A price is a number of 0 or more/)).toBeInTheDocument()
     expect(updateInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('F-832: "1,250" that the house and the screen read two ways is asked, and nothing is sent', async () => {
+    // A Turkish house ("." groups) on an English screen ("," groups).
+    marks.house = '.'
+    marks.screen = ','
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    fireEvent.change(screen.getByLabelText(/bottle price for barolo/i), { target: { value: '1,250' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/“1,250” could be 1\.25 or 1,250\.00/)).toBeInTheDocument()
+    expect(updateInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('F-832: "1,250" where the house and the screen both group with "," saves 1250', async () => {
+    marks.house = ','
+    marks.screen = ','
+    updateInventoryItem.mockResolvedValue({ priceChange: { outcome: 'changed' } })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    fireEvent.change(screen.getByLabelText(/bottle price for barolo/i), { target: { value: '1,250' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(updateInventoryItem).toHaveBeenCalledWith('inv-1', { menuPriceBottle: 1250 }))
   })
 
   it('the gateway’s refusal is said in words (403)', async () => {

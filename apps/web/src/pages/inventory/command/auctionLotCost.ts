@@ -19,7 +19,7 @@ export type BookedCost =
   | { ok: true; booked: number; basis: 'typed_house_cost' | 'same_currency' | 'stated_rate'; lotPerBottle: number }
   | { ok: false; why: string };
 
-import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+import { parseDecimal, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 
@@ -52,6 +52,8 @@ export function lotBookedCost(input: {
   houseCost: string;
   /** The house's thousands mark, for a typed cost "1.250" (see `lib/parseDecimal`). Never applied to the rate. */
   group?: GroupMark | null;
+  /** The mark this screen groups thousands with: a typed cost that reads two ways is asked (F-832). */
+  display?: GroupMark | null;
 }): BookedCost {
   const rate = readExchangeRate(input.exchangeRate);
   const typed = numberOrNull(input.houseCost, input.group ?? null);
@@ -61,6 +63,8 @@ export function lotBookedCost(input: {
   if (typed !== null && (!Number.isFinite(typed) || typed < 0)) {
     return { ok: false, why: 'A per-bottle cost must be an amount of zero or more.' };
   }
+  const asked = twoReadingsProblem(input.houseCost, input.group ?? null, input.display ?? null);
+  if (asked) return { ok: false, why: `The per-bottle cost: ${asked}` };
   const house = (input.houseCurrency ?? '').trim().toUpperCase() || null;
   const lot = input.currency.trim().toUpperCase();
   if (!house) {
