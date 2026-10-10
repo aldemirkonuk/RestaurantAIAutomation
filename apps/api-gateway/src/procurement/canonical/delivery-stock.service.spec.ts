@@ -141,6 +141,27 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
     expect(res.value.notBooked[0].reason).toMatch(/names no item/);
   });
 
+  // F-730 — two lines of the same item in one count add up. Before, the
+  // second line's delta was taken against the FIRST line's quantity, so 6 + 6
+  // booked 6 and 6 + 4 booked 6 and then gave 2 back.
+  it.each([
+    [6, 6, 12],
+    [6, 4, 10],
+  ])("two lines of one item, %i and %i, book %i bottles", async (a, b, total) => {
+    db.answers.procurement_document_lines = {
+      data: [line({ line_no: 1, qty_bottles: a }), line({ line_no: 2, qty_bottles: b })],
+      error: null,
+    };
+    const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.bottlesMoved).toBe(total);
+    const moves = db.rpcCalls.filter((c) => c.fn === "apply_stock_movement");
+    expect(moves.map((c) => c.args.p_delta)).toEqual([total]);
+    expect(res.value.notBooked).toEqual([]);
+    expect(res.value.booked.map((l) => l.delta)).toEqual([total, 0]);
+  });
+
   it("a failed read of what is already booked books NOTHING (ADR 0067)", async () => {
     db.answers.inventory_transactions = {
       data: null,

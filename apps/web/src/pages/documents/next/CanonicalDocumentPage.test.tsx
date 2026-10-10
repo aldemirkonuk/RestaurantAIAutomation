@@ -43,6 +43,18 @@ vi.mock('../../../services/api/canonical', () => ({
   },
 }))
 
+const recordDoorCountMock = vi.fn()
+vi.mock('../../../services/api/deliveries', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../services/api/deliveries')>()
+  return {
+    ...real,
+    deliveriesApi: {
+      ...real.deliveriesApi,
+      recordDoorCount: (body: unknown) => recordDoorCountMock(body),
+    },
+  }
+})
+
 import { AuthContext } from '@/contexts/AuthContext'
 import { CanonicalDocumentPage } from './CanonicalDocumentPage'
 
@@ -548,5 +560,45 @@ describe('CanonicalDocumentPage', () => {
     hold(/Type a value this field can take/)
     expect(mintCorrectMock).not.toHaveBeenCalled()
     expect(correctMock).not.toHaveBeenCalled()
+  })
+
+  // F-729 — the door count's answer used to be thrown away, so a count that
+  // put nothing on the shelf looked exactly like one that did.
+  it('says in words what the door count put on the shelf, and what it did not', async () => {
+    documentMock.mockResolvedValue(response())
+    recordDoorCountMock.mockResolvedValue({
+      documentId: 'door-1',
+      delivery: null,
+      differsOnLines: null,
+      booking: {
+        booked: [],
+        notBooked: [
+          {
+            lineNo: 1,
+            label: 'SYNTHETIC Öküzgözü',
+            reason: 'this line names no item on the shelf.',
+          },
+        ],
+        bottlesMoved: 0,
+      },
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/documents/doc-syn?view=door']}>
+          <Routes>
+            <Route path="/documents/:id" element={<CanonicalDocumentPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('door-plus')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('door-plus'))
+    fireEvent.click(screen.getByTestId('door-submit'))
+    await waitFor(() => expect(screen.getByTestId('door-booking')).toBeTruthy())
+    expect(recordDoorCountMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('door-booking').textContent).toMatch(
+      /Line 1 \(SYNTHETIC Öküzgözü\) did not go onto the shelf: it is not linked to an item yet/,
+    )
   })
 })

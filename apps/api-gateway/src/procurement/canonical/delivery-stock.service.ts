@@ -50,7 +50,10 @@ export interface BookedLine {
   documentId: string;
   lineNo: number;
   inventoryId: string;
-  /** The delta actually applied, in bottles. 0 = already booked. */
+  /**
+   * The delta actually applied, in bottles. 0 = already booked, or booked on
+   * an earlier line of the same item in this count.
+   */
   delta: number;
   transactionId: string | null;
 }
@@ -227,6 +230,8 @@ export class DeliveryStockService {
     const already = await this.bookedSoFar(deliveryId);
     if (!already.ok) return already;
 
+    // Pass one: which lines can be booked, onto which item, for how many.
+    const countable: { lineNo: number; inventoryId: string; wanted: number }[] = [];
     for (const line of lines) {
       const label = line.description ?? line.vendor_sku ?? `line ${line.line_no}`;
       if (line.line_no == null) {
@@ -264,11 +269,28 @@ export class DeliveryStockService {
         continue;
       }
 
-      const delta = wanted - (already.value.get(inventoryId) ?? 0);
+      countable.push({ lineNo: line.line_no, inventoryId, wanted });
+    }
+
+    // Two lines of the SAME item in one count add up: 6 + 6 is 12 bottles on
+    // that shelf, not 6. So the count's total per item is what the delivery
+    // should hold, and ONE delta against what is already booked moves it —
+    // keyed on the item's first line. Its later lines report delta 0.
+    const wantedPerItem = new Map<string, number>();
+    for (const c of countable)
+      wantedPerItem.set(c.inventoryId, (wantedPerItem.get(c.inventoryId) ?? 0) + c.wanted);
+
+    // Pass two: book each item once.
+    const settled = new Set<string>();
+    for (const { lineNo, inventoryId } of countable) {
+      const delta = settled.has(inventoryId)
+        ? 0
+        : (wantedPerItem.get(inventoryId) ?? 0) - (already.value.get(inventoryId) ?? 0);
+      settled.add(inventoryId);
       if (delta === 0) {
         booked.push({
           documentId,
-          lineNo: line.line_no,
+          lineNo,
           inventoryId,
           delta: 0,
           transactionId: null,
@@ -284,18 +306,15 @@ export class DeliveryStockService {
         orderId: delivery.value.orderId,
         userId,
         transactionType: delta > 0 ? "purchase" : "adjustment",
-        reason: `door count for delivery ${deliveryId}, document ${documentId} line ${line.line_no}`,
-        idempotencyKey: `delivery-line:${deliveryId}:${documentId}:${line.line_no}`,
+        reason: `door count for delivery ${deliveryId}, document ${documentId} line ${lineNo}`,
+        idempotencyKey: `delivery-line:${deliveryId}:${documentId}:${lineNo}`,
       });
       if (!moved.ok) return moved;
 
-      // The running total moves with the booking, so two lines of the SAME item
-      // in one count add up instead of each claiming the whole delta.
-      already.value.set(inventoryId, wanted);
       bottlesMoved += delta;
       booked.push({
         documentId,
-        lineNo: line.line_no,
+        lineNo,
         inventoryId,
         delta,
         transactionId: moved.value,
