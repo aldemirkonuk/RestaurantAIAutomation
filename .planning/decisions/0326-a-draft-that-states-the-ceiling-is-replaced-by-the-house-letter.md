@@ -4,13 +4,13 @@
 - **Date:** 2026-10-10
 - **Decider:** the coordinator, under the delegation below. Built on `fix/withhold-price-ceiling-from-vendor-drafts` (PR #680).
 - **Keywords:** max_acceptable_price, price ceiling, house-only figure, vendor_safe_intent, withheld_figures_in, order_letter_without_ceiling, withheld_figure_dropped, draft_generated, decision log, Level 4, F-106, RESPONSE_SYSTEM_PROMPT, replace vs refuse
-- **Links:** [[0266-an-orders-vendor-letter-is-staged-once]] (the one-letter door the replacement is staged through); `services/agent-orchestrator/core/house_only_figures.py`; `services/agent-orchestrator/tests/test_house_only_figures.py`; `tech-debt.d/2026-10-08-fix-withhold-price-ceiling-from-vendor-drafts.md` (the fix, its tests and what it does not cover); the OPEN entry it closes, `tech-debt.d/2026-10-08-data-f106-reconcile-pending-drafts.md` on PR #679 (not on `main` yet); the gate reports on PR #680 (BLOCKs at f16882e, 600a1f3, 065868d, a1cd765, and the CI BLOCK at a0c2db3, PR comment 6087212540).
+- **Links:** [[0266-an-orders-vendor-letter-is-staged-once]] (the one-letter door the replacement is staged through); `services/agent-orchestrator/core/house_only_figures.py`; `services/agent-orchestrator/tests/test_house_only_figures.py`; `tech-debt.d/2026-10-08-fix-withhold-price-ceiling-from-vendor-drafts.md` (the fix, its tests and what it does not cover); the OPEN entry it closes, `tech-debt.d/2026-10-08-data-f106-reconcile-pending-drafts.md` on PR #679 (not on `main` yet); the review comments on PR #680 (at f16882e, 600a1f3, 065868d, a1cd765, and the CI review at a0c2db3, PR comment 6087212540).
 
 ## Context
 
 On 2026-10-08 the F-106 production dry run (#679) found a waiting vendor draft that told the vendor both the house's target and its maximum acceptable price. It was never sent. The cause: `ProviderConversationAgent._generate_response` filled `RESPONSE_SYSTEM_PROMPT`'s `{intent_description}` with the whole intent, `max_acceptable_price` included. #679 filed an OPEN entry asking for such a draft to be **refused at staging**.
 
-PR #680 settles three choices in code. Each needs a record (CLAUDE.md §0.2), and the CI gate at a0c2db3 blocked because they were written only in the defect register.
+PR #680 settles three choices in code. Each needs a record (CLAUDE.md §0.2), and the CI review at a0c2db3 asked for one because they were written only in the defect register.
 
 ### The delegation (verbatim)
 
@@ -29,7 +29,7 @@ Nothing here changes a feature the founder picked. The OPEN entry's "refuse at s
 
 1. **Refuse it at staging** (the OPEN entry on #679). Rejected:
    - The order is left with no letter, and nothing tells the manager why.
-   - The check is a figure match, not proof of a leak: a quantity or a date can equal the ceiling. The a1cd765 gate's adversary measured about 1-3% of ordinary drafts matching this way, and the cent forms raise it (for quantities, 0.92% to 1.37%). That table was not reproduced by the gate's other reviewers or by the fixer. Refusing would leave that share of orders letterless.
+   - The check is a figure match, not proof of a leak: a quantity or a date can equal the ceiling. The adversarial reviewer of PR #680 at a1cd765 measured about 1-3% of ordinary drafts matching this way, and the cent forms raise it (for quantities, 0.92% to 1.37%). That table was not reproduced by the gate's other reviewers or by the fixer. Refusing would leave that share of orders letterless.
 2. **Replace it with the house letter** (`order_letter_without_ceiling`): a fixed inquiry built from the wine, quantity and target fields, without the house-only keys. Chosen. The replacement is built without the house-only keys, and it is staged exactly as a model draft is: all three `_generate_response` callers stage the result for approval (`session.status = "paused_for_approval"`, row status `PENDING_APPROVAL`), so a person sees it before any vendor does. Only the drafting caller (`provider_conversation_agent.py:894`) passes an intent that can hold the ceiling.
 3. **Do nothing.** The prompt keeps carrying the ceiling, and the next model draft can state it.
 
@@ -59,6 +59,6 @@ The reasoning that carried it: the replacement keeps the order moving and still 
 | Date | Who | What |
 |---|---|---|
 | 2026-10-08 | PR #680 fixer | Strip and replace built; rationale written only in `tech-debt.d` |
-| 2026-10-09 | ADR 0090 gate at a1cd765 (PR comment 6086703354) | Measured the 1-3% replacement rate; noted `withheld_figure_dropped` is not shown; noted replace-vs-refuse has no ADR |
-| 2026-10-10 | CI PR Audit Gate at a0c2db3 (PR comment 6087212540) | BLOCK: both choices were recorded in the defect register, not here; the early return skipped the Level-4 entry with no decision cited |
+| 2026-10-09 | Review of PR #680 at a1cd765 (PR comment 6086703354) | Measured the 1-3% replacement rate; noted `withheld_figure_dropped` is not shown; noted replace-vs-refuse has no ADR |
+| 2026-10-10 | CI review of PR #680 at a0c2db3 (PR comment 6087212540) | Both choices were recorded in the defect register, not here; the early return skipped the Level-4 entry with no decision cited |
 | 2026-10-10 | The coordinator, under the delegation | Created as Proposed; fork 3 decided and built (the entry is now written for a replaced draft, key names only) |
