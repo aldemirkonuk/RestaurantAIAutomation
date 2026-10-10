@@ -137,12 +137,15 @@ export class MembersService {
     // `oauth_provider`, and avatars live on `team_members`). Naming them made
     // PostgREST answer 42703 and, with `error` unbound, every member came back
     // with `users: null` -- a roster of anonymous rows that looked like data.
-    const { data: users, error: usersError } = await this.databaseService.supabase
-      .from("users")
-      .select(
-        seesContact ? "user_id, name, email, oauth_provider" : "user_id, name",
-      )
-      .in("user_id", userIds);
+    // Two literal reads, not one with a computed column list, so
+    // check_read_columns_exist.py can check the columns each one names.
+    const db = this.databaseService.supabase;
+    const { data: users, error: usersError } = await (seesContact
+      ? db
+          .from("users")
+          .select("user_id, name, email, oauth_provider")
+          .in("user_id", userIds)
+      : db.from("users").select("user_id, name").in("user_id", userIds));
 
     if (usersError) {
       this.logger.error(
@@ -153,7 +156,9 @@ export class MembersService {
       );
     }
 
-    const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
+    const userMap = new Map(
+      ((users ?? []) as any[]).map((u: any) => [u.user_id, u]),
+    );
 
     return (rows ?? []).map((r: any) => ({
       ...r,

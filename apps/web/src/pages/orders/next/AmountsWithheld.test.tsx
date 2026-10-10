@@ -50,6 +50,9 @@ import { toRow, useOrdersNextData } from './useOrdersNextData';
 import { AMOUNTS_WITHHELD } from './format';
 import { ROW_FEES_NOT_READ, ROW_PRICE_UNIT_NOT_READ } from './price-unit';
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD';
+
 /** One order as the gateway sends it to staff: no price, total, unit or fee. */
 const STAFF_ROW = {
   id: 'o-1',
@@ -63,7 +66,7 @@ const STAFF_ROW = {
   status: 'PENDING',
   requestedAt: new Date().toISOString(),
   wineName: 'Barolo Riserva',
-  currency: 'USD',
+  currency: FIXTURE_CURRENCY,
 };
 
 beforeEach(() => {

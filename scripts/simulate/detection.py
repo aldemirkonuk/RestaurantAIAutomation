@@ -55,6 +55,16 @@ WINE_WORDS: tuple[str, ...] = (
     "burgundy",
     "rioja",
     "barolo",
+    # F-640: Turkish grapes, by their Turkish and their ASCII spellings.
+    "öküzgözü",
+    "okuzgozu",
+    "boğazkere",
+    "bogazkere",
+    "narince",
+    "kalecik",
+    "sultaniye",
+    "çalkarası",
+    "calkarasi",
 )
 
 

@@ -1706,7 +1706,9 @@ export class ScheduledTasksService implements OnModuleInit {
         await this.databaseService
           .getClient()
           .from("notification_preferences")
-          .select(col)
+          // Both modes as a literal, so check_read_columns_exist.py can see
+          // the columns this reads; `col` picks one below.
+          .select("orders_mode, reports_mode")
           // (2026-09-19, D5) per (restaurant_id, user_id) since row 39 -- scope
           // by house or a member's OTHER restaurant's mode leaks into this one.
           .eq("restaurant_id", restaurantId)

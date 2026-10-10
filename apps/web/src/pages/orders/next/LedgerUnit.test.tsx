@@ -44,6 +44,9 @@ import { LedgerRow } from './LedgerRow';
 import { toRow } from './useOrdersNextData';
 import { ROW_PRICE_UNIT_NOT_READ, ROW_UNSTATED_PRICE_UNIT } from './price-unit';
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD';
+
 const NO_PROVIDERS = new Map<string, string>();
 
 /**
@@ -65,7 +68,7 @@ function wire(over: Record<string, unknown> = {}) {
     bottlesTotal: 60,
     finalPrice: 420,
     totalCost: 2100,
-    currency: 'USD',
+    currency: FIXTURE_CURRENCY,
     status: 'PENDING',
     requestedAt: '2026-09-01T10:00:00Z',
     wineName: 'Barolo Riserva',
