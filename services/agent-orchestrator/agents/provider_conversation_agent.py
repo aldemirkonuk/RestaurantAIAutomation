@@ -617,8 +617,10 @@ class ProviderConversationAgent(BaseAgent):
             },
         )
 
-        # Active sessions (in-memory index, Redis is source of truth)
-        self._active_sessions: Dict[str, ConversationSession] = {}
+        # Active sessions (in-memory index, Redis is source of truth). Keyed on
+        # (restaurant_id, provider_id): a vendor that serves two houses has one
+        # session per house, never one shared across them (F-534).
+        self._active_sessions: Dict[Tuple[str, str], ConversationSession] = {}
         self._proactive_monitor_task: Optional[asyncio.Task] = None
         self._session_semaphore = asyncio.Semaphore(self.max_sessions)
 
@@ -976,9 +978,10 @@ class ProviderConversationAgent(BaseAgent):
 
             # Load provider context for response generation
             digital_twin = await self._load_digital_twin(provider_id, restaurant_id)
-            style_profile = await self._load_style_profile(provider_id)
+            style_profile = await self._load_style_profile(provider_id, restaurant_id)
             relevant_memories = await self._search_conversation_memory(
                 provider_id=provider_id,
+                restaurant_id=restaurant_id,
                 query=f"{intent_type} {payload.get('wine_name', '')}",
                 top_k=self.memory_top_k,
             )
@@ -1072,9 +1075,10 @@ class ProviderConversationAgent(BaseAgent):
             )
 
             digital_twin = await self._load_digital_twin(provider_id, restaurant_id)
-            style_profile = await self._load_style_profile(provider_id)
+            style_profile = await self._load_style_profile(provider_id, restaurant_id)
             memories = await self._search_conversation_memory(
                 provider_id=provider_id,
+                restaurant_id=restaurant_id,
                 query=topic,
                 top_k=5,
             )
@@ -1147,9 +1151,9 @@ class ProviderConversationAgent(BaseAgent):
         initiated_by: str,
         intent: Optional[Dict[str, Any]] = None,
     ) -> ConversationSession:
-        """Get existing active session for provider or create a new one."""
+        """Get existing active session for this house and provider, or create one."""
         # Check in-memory cache first
-        cache_key = f"session:{provider_id}"
+        cache_key = (restaurant_id, provider_id)
         if cache_key in self._active_sessions:
             session = self._active_sessions[cache_key]
             if session.status in ("active", "waiting_response"):
@@ -1165,6 +1169,7 @@ class ProviderConversationAgent(BaseAgent):
                 self.database.supabase.table("provider_conversation_sessions")
                 .select("*")
                 .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
                 .in_("status", ["active", "waiting_response", "paused_for_approval"])
                 .order("created_at", desc=True)
                 .limit(1)
@@ -1304,7 +1309,7 @@ class ProviderConversationAgent(BaseAgent):
             self.logger.error(f"Error completing session: {e}")
 
         # Remove from active cache
-        cache_key = f"session:{session.provider_id}"
+        cache_key = (session.restaurant_id, session.provider_id)
         self._active_sessions.pop(cache_key, None)
 
         # Publish session completed event
@@ -1596,10 +1601,11 @@ class ProviderConversationAgent(BaseAgent):
     async def _search_conversation_memory(
         self,
         provider_id: str,
+        restaurant_id: str,
         query: str,
         top_k: int = 10,
     ) -> List[Dict[str, Any]]:
-        """Semantic search across conversation history for a provider."""
+        """Semantic search across this house's conversation history with a provider."""
         try:
             query_embedding = await self._generate_embedding(query)
 
@@ -1609,6 +1615,9 @@ class ProviderConversationAgent(BaseAgent):
                 {
                     "query_embedding": query_embedding,
                     "match_provider_id": provider_id,
+                    # Required by the function's only signature; without it
+                    # every call failed and fell through to the fallback.
+                    "match_restaurant_id": restaurant_id,
                     "match_threshold": 0.5,
                     "match_count": top_k,
                 },
@@ -1619,17 +1628,26 @@ class ProviderConversationAgent(BaseAgent):
         except Exception as e:
             self.logger.warning(f"Conversation memory search failed: {e}")
             # Fallback: return recent messages
-            return await self._get_recent_messages(provider_id, limit=top_k)
+            return await self._get_recent_messages(
+                provider_id, restaurant_id, limit=top_k
+            )
 
     async def _get_recent_messages(
-        self, provider_id: str, limit: int = 10
+        self, provider_id: str, restaurant_id: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
-        """Fallback: get recent messages when vector search is unavailable."""
+        """Fallback: get recent messages when vector search is unavailable.
+
+        Holds the same line as match_conversation_embeddings: this house only,
+        signal rows only, never a row marked sensitive.
+        """
         try:
             result = (
                 self.database.supabase.table("conversation_embeddings")
                 .select("message_text, role, channel, importance_score, created_at")
                 .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
+                .eq("has_signal", True)
+                .eq("sensitive", False)
                 .order("created_at", desc=True)
                 .limit(limit)
                 .execute()
@@ -1864,6 +1882,7 @@ class ProviderConversationAgent(BaseAgent):
                 self.database.supabase.table("provider_knowledge")
                 .select("id, attributes, version, confidence")
                 .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
                 .eq("category", category)
                 .eq("subcategory", subcategory)
                 .eq("label", label)
@@ -2039,6 +2058,7 @@ class ProviderConversationAgent(BaseAgent):
                     "category, subcategory, label, attributes, confidence, verified"
                 )
                 .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
                 .eq("is_active", True)
                 .order("category")
                 .execute()
@@ -2062,13 +2082,16 @@ class ProviderConversationAgent(BaseAgent):
             self.logger.error(f"Error loading digital twin: {e}")
             return {}
 
-    async def _load_style_profile(self, provider_id: str) -> Dict[str, Any]:
-        """Load the communication style profile for a provider."""
+    async def _load_style_profile(
+        self, provider_id: str, restaurant_id: str
+    ) -> Dict[str, Any]:
+        """Load the communication style profile this house holds for a provider."""
         try:
             result = (
                 self.database.supabase.table("provider_knowledge")
                 .select("attributes")
                 .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
                 .eq("category", "relationship")
                 .eq("subcategory", "communication_style")
                 .eq("is_active", True)
@@ -2746,6 +2769,7 @@ class ProviderConversationAgent(BaseAgent):
                 self.database.supabase.table("provider_sentiment_history")
                 .select("sentiment_score")
                 .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
                 .order("created_at", desc=True)
                 .limit(10)
                 .execute()
@@ -3603,7 +3627,7 @@ class ProviderConversationAgent(BaseAgent):
                     {"status": "waiting_response"}
                 ).eq("id", session_id).execute()
 
-                cache_key = f"session:{provider_id}"
+                cache_key = (restaurant_id, provider_id)
                 if cache_key in self._active_sessions:
                     self._active_sessions[cache_key].status = "waiting_response"
         except Exception as e:
@@ -3696,20 +3720,23 @@ class ProviderConversationAgent(BaseAgent):
             self.logger.warning(f"No email for provider {provider_id} — cannot send")
             return {"success": False, "error": "no_email", "refused_before_send": True}
 
-        # Load conversation history for threading
+        # Load this house's conversation history for threading. Without a house
+        # there is no thread to join (and the composer refuses the send anyway).
         history = []
         try:
-            result = (
-                self.database.supabase.table("procurement_conversations")
-                .select(
-                    "message_id, email_headers, direction, message_text, sent_at, received_at, created_at"
+            if restaurant_id:
+                result = (
+                    self.database.supabase.table("procurement_conversations")
+                    .select(
+                        "message_id, email_headers, direction, message_text, sent_at, received_at, created_at"
+                    )
+                    .eq("provider_id", provider_id)
+                    .eq("restaurant_id", restaurant_id)
+                    .order("created_at", desc=True)
+                    .limit(10)
+                    .execute()
                 )
-                .eq("provider_id", provider_id)
-                .order("created_at", desc=True)
-                .limit(10)
-                .execute()
-            )
-            history = result.data or []
+                history = result.data or []
         except Exception as e:
             self.logger.debug(f"Could not load history for threading: {e}")
 
@@ -4281,14 +4308,17 @@ class ProviderConversationAgent(BaseAgent):
             )
 
             for provider in (result.data or [])[:20]:
-                sessions = (
+                sessions_q = (
                     self.database.supabase.table("provider_conversation_sessions")
                     .select("id")
                     .eq("provider_id", provider["id"])
-                    .gte("created_at", cutoff)
-                    .limit(1)
-                    .execute()
                 )
+                # Only the vendor's own house's sessions count as recent contact.
+                if provider.get("restaurant_id"):
+                    sessions_q = sessions_q.eq(
+                        "restaurant_id", provider["restaurant_id"]
+                    )
+                sessions = sessions_q.gte("created_at", cutoff).limit(1).execute()
 
                 if not sessions.data:
                     await self.publish(
