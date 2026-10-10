@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsIn, IsInt, IsOptional, Max, Min } from "class-validator";
+import { IsIn, IsInt, IsOptional, Matches, Max, Min } from "class-validator";
 import {
   EXPORTABLE_CUTTINGS,
   TILL_DAYS_MAX,
@@ -36,6 +36,21 @@ export class RequestReportExportDto {
   @Min(TILL_DAYS_MIN)
   @Max(TILL_DAYS_MAX)
   days?: number;
+
+  /**
+   * A calendar month of the till instead of a number of days, YYYY-MM on the
+   * house's own calendar (F-1013) — what `GET /analytics/pos-revenue?month=`
+   * reads. Only for `till`, and never together with `days`.
+   */
+  @ApiPropertyOptional({
+    pattern: "^\\d{4}-(0[1-9]|1[0-2])$",
+    example: "2026-07",
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
+    message: "A month is written as year and month, like 2026-07.",
+  })
+  month?: string;
 }
 
 export class ReportExportResponseDto {
@@ -53,6 +68,14 @@ export class ReportExportResponseDto {
 
   @ApiProperty({ type: Number, nullable: true })
   windowDays: number | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The till's calendar month, YYYY-MM on the house's calendar, when the export reads a month instead of days.",
+  })
+  windowMonth: string | null;
 
   @ApiProperty({ enum: REPORT_EXPORT_STATUSES })
   status: ReportExportStatus;

@@ -197,6 +197,31 @@ describe("ReportExportsController over HTTP (OD-81)", () => {
     expect((await call("GET", "/reports/exports/not-a-uuid")).status).toBe(400);
   });
 
+  it("takes a month of the till in the body, written as a year and a month (F-1013)", async () => {
+    const res = await call("POST", "/reports/exports", {
+      body: { cutting: "till", month: "2026-07" },
+    });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({
+      windowMonth: "2026-07",
+      windowDays: null,
+    });
+    expect(
+      (
+        await call("POST", "/reports/exports", {
+          body: { cutting: "till", month: "2026-13" },
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await call("POST", "/reports/exports", {
+          body: { cutting: "till", month: "2026-7" },
+        })
+      ).status,
+    ).toBe(400);
+  });
+
   it("passes a 409 through as itself: a failed export's download names why, and never 200s", async () => {
     const id = mem.seed("report_exports", {
       restaurant_id: HOUSE_A,
