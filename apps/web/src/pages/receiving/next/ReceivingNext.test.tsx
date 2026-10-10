@@ -13,6 +13,7 @@ import {
   useOwnerRecovery,
   useDoorOutbox,
 } from './useReceivingNextData'
+import { houseMidnight, houseToday } from '../../../lib/houseCalendar'
 
 /**
  * The honesty defects on the rebuilt /receiving, pinned.
@@ -1065,6 +1066,45 @@ describe('F-453 — recovered from vendors keeps each currency on its own line',
     expect(section).not.toHaveTextContent('12,400')
     expect(section).not.toHaveTextContent('$')
     expect(screen.getByText('Still owed').closest('div')).toHaveTextContent(/≥€50\.00 · ≥TRY\s?100\.00/)
+  })
+})
+
+/* ═════════════ F-1079 — this month is the house's month, not the device's ══ */
+
+describe('F-1079 — credits settled are counted in the house’s month', () => {
+  it('counts a credit settled just after midnight on the 1st at the house as this month', async () => {
+    // Kiritimati is UTC+14: one minute past its midnight on the 1st is still
+    // the previous month on any device clock west of it.
+    const zone = 'Pacific/Kiritimati'
+    const today = houseToday(zone)
+    const settledAt = houseMidnight(zone, today.getFullYear(), today.getMonth() + 1, 1) + 60_000
+    expect(new Date(settledAt).getMonth()).not.toBe(today.getMonth())
+    window.localStorage.setItem('activeRestaurantId', 'rest-F1079')
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/operating-hours')
+        ? { data: { timezone: zone } }
+        : url.endsWith('/stats')
+          ? {
+              data: statsIn('EUR', {
+                recovered: 400, outstanding: 0, promised: 0, rejected: 0,
+                openClaims: 0, oldestOpenDays: null, settlementRate: 1, selfEvidencedOpen: 0,
+              }),
+            }
+          : {
+              data: {
+                items: [
+                  {
+                    id: 'c1', state: 'credited', currency: 'EUR', credited_amount: 400,
+                    settled_at: new Date(settledAt).toISOString(),
+                  },
+                ],
+              },
+            },
+    )
+    harness(OwnerBody)
+
+    const section = await screen.findByRole('region', { name: 'Money recovered from vendors' })
+    await waitFor(() => expect(section).toHaveTextContent(/this month ≥€400 · last month ≥€0/))
   })
 })
 

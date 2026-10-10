@@ -42,6 +42,8 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 
 import { WeekGrid } from './WeekGrid';
+import { fmtDayShort, todayIso } from './tm-format';
+import { houseToday } from '@/lib/houseZone';
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -162,5 +164,44 @@ describe('F-399 — the name column holds still at phone width', () => {
     } finally {
       style.remove();
     }
+  });
+});
+
+describe('F-1073 — the grid marks the house’s today, not the device’s', () => {
+  it('lights the column of the day it is at the house', () => {
+    const device = todayIso(new Date());
+    const zone = ['Pacific/Kiritimati', 'Pacific/Pago_Pago'].find(
+      (z) => todayIso(houseToday(z)) !== device,
+    )!;
+    const house = todayIso(houseToday(zone));
+    const monday = (iso: string) => {
+      const d = new Date(`${iso}T00:00:00`);
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return todayIso(d);
+    };
+    const { container } = render(
+      <WeekGrid
+        weekStart={monday(house)}
+        shifts={[]}
+        members={[sam] as never}
+        membersFailed={false}
+        certs={[]}
+        coverage={[]}
+        weekFailed={false}
+        engineIdle
+        lens="coverage"
+        labourEnabled
+        moneyVisible={false}
+        money={null}
+        scheduleId="sch1"
+        onEditShift={vi.fn()}
+        onChanged={() => {}}
+        zone={zone}
+      />,
+      { wrapper },
+    );
+    const lit = container.querySelectorAll('.tm-dayhead[data-today="true"]');
+    expect(lit).toHaveLength(1);
+    expect(lit[0].querySelector('.tm-dayhead__n')?.textContent).toBe(fmtDayShort(house));
   });
 });

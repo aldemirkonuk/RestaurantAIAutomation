@@ -31,6 +31,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { Popover } from '@/components/mudavym';
+import { houseToday } from '@/lib/houseZone';
 import {
   createShift,
   deleteShift,
@@ -95,6 +96,8 @@ interface GridProps {
   scheduleId: string | null;
   onEditShift: (t: ShiftSheetTarget) => void;
   onChanged: () => void;
+  /** The house's time zone (`useHouseZone`): "today" is the house's day, not the device's (F-1073). */
+  zone?: string | null;
 }
 
 export function WeekGrid({
@@ -113,10 +116,11 @@ export function WeekGrid({
   scheduleId,
   onEditShift,
   onChanged,
+  zone,
 }: GridProps) {
   const fmtTime = useShiftTime();
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
-  const today = todayIso();
+  const today = todayIso(houseToday(zone));
   const [selected, setSelected] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<Shift | null>(null);
   const menuAnchor = useRef<HTMLElement | null>(null);
