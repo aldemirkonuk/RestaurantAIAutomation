@@ -39,6 +39,7 @@ import {
   ManualReplyDto,
 } from "./dto/approve-draft.dto";
 import { ProcurementService, type SendOrAsk } from "./procurement.service";
+import { assertHoldsHouseMoney } from "./documents/document-money-gate";
 
 /**
  * `?quantityReceivedInOrderUom=` -> a whole non-negative count, or a 400 that
@@ -264,6 +265,7 @@ export class ProcurementController {
         user.restaurantId,
         orderId,
         dto,
+        { actorUserId: user.userId },
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -673,8 +675,21 @@ export class ProcurementController {
   async verifyReceipt(
     @Param("id") orderId: string,
     @Body() body: VerifyReceiptDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<OrderResponseDto> {
+    // F-802 (rehit of F-466): the invoice price becomes the lots' landed cost
+    // and the price series, and the override reason accepts a price that
+    // differs from the agreed one — the same money the delivery verify keeps
+    // for owners and managers. The count, the rejection and the adjustments
+    // stay open to staff; only a payload carrying money is refused, before
+    // anything is written.
+    if (
+      body?.invoiceUnitPrice != null ||
+      (body?.priceOverrideReason ?? "").trim() !== "" ||
+      (body?.allocatedCharges ?? 0) > 0
+    ) {
+      assertHoldsHouseMoney(user, "receipt_price");
+    }
     try {
       return await this.procurementService.verifyReceipt(
         user.restaurantId,
