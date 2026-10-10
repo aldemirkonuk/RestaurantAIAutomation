@@ -119,6 +119,48 @@ export function VerifyEmail() {
       if (out) navigate(signInHref, { replace: true })
     })
 
+  // F-636: a person waiting on the mail had no way off this page. There is no
+  // way to change an address before it is verified, so a wrong one means
+  // signing out and signing up again with the right address; the same
+  // sign-out (it asks first about unsent changes) also lets them simply leave.
+  const signOutTo = (to: string) =>
+    void logout().then((out) => {
+      if (out) navigate(to, { replace: true })
+    })
+  const showWayOut = Boolean(user) && user?.emailVerified !== true
+  const wayOut = (house: boolean) =>
+    showWayOut ? (
+      <div
+        data-testid="verify-way-out"
+        className={house ? 'mdv-pub__stack' : 'mt-6 space-y-2 text-center'}
+      >
+        <p className={house ? 'mdv-note' : 'text-sm text-gray-600'}>
+          Wrong address? Sign out and create your account again with the right
+          one.
+        </p>
+        <button
+          type="button"
+          className={
+            house
+              ? 'mdv-btn'
+              : 'text-sm text-wine-600 hover:text-wine-700 font-semibold'
+          }
+          onClick={() => signOutTo('/register')}
+        >
+          Sign out and use another address
+        </button>
+        <button
+          type="button"
+          className={
+            house ? 'mdv-link' : 'block w-full text-sm text-gray-600 hover:text-gray-800'
+          }
+          onClick={() => signOutTo('/login')}
+        >
+          Sign out
+        </button>
+      </div>
+    ) : null
+
   /** What the page says for a link it cannot honour yet (fork 12). */
   const linkGate = mustSignIn ? (
     <div className="mdv-pub__stack" data-testid="verify-needs-sign-in">
@@ -270,6 +312,7 @@ export function VerifyEmail() {
                   )}
                 </>
               )}
+              {wayOut(true)}
             </>
           )}
         </div>
@@ -407,6 +450,8 @@ export function VerifyEmail() {
             )}
           </div>
         )}
+
+        {wayOut(false)}
 
         <div className="mt-6 pt-4 border-t border-gray-100 text-center">
           <Link
