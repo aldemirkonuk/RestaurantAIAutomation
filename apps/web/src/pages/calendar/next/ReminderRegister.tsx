@@ -110,7 +110,8 @@ export default function ReminderRegister({
       {alreadySent && (
         <p className="cn-quiet cn-tight cn-noteline">
           <BellRing {...ICON} aria-hidden="true" /> This entry&rsquo;s reminder has already been
-          sent. Changing the offset will not send it again.
+          sent. Changing the offset will not send it again; moving the entry to another day or
+          time will, for the new one.
         </p>
       )}
 

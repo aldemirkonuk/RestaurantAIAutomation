@@ -542,7 +542,8 @@ export class CalendarController {
   @ApiQuery({
     name: "fromDate",
     required: false,
-    description: "Delete from this date onwards (YYYY-MM-DD)",
+    description:
+      "End the series from this date (YYYY-MM-DD): the rule stops the day before and earlier dates stay",
   })
   @ApiResponse({ status: 200, description: "Series deleted" })
   async deleteRecurringSeries(
@@ -551,13 +552,22 @@ export class CalendarController {
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ success: boolean; deletedCount: number }> {
     try {
-      return await this.calendarService.deleteRecurringSeries(
-        user.restaurantId,
-        user.userId,
-        eventId,
-        fromDate,
-      );
+      // From a date, the rule itself is cut (F-607); deleting only the stored
+      // dates left every drawn date in place.
+      return fromDate
+        ? await this.calendarService.endSeriesFrom(
+            user.restaurantId,
+            user.userId,
+            eventId,
+            fromDate,
+          )
+        : await this.calendarService.deleteRecurringSeries(
+            user.restaurantId,
+            user.userId,
+            eventId,
+          );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Delete recurring series failed",
         eventId,

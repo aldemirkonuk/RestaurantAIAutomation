@@ -64,6 +64,7 @@ vi.mock('../../../services/api/calendar', async (importOriginal) => {
 });
 
 import CalendarNext from './CalendarNext';
+import { laneLayout } from './TimeGrid';
 import { SEAL_HEX } from './cal-format';
 import { formatMoney } from '@/lib/currency';
 import type { CalEvent } from './useCalendarNextData';
@@ -93,7 +94,7 @@ function event(over: Partial<CalEvent> & { id: string; title: string; date: stri
   };
 }
 
-const mutation = () => ({ mutate: vi.fn(), isPending: false, error: null });
+const mutation = () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null as unknown });
 
 /**
  * The reminder cron's status, as `GET /calendar/reminders/status` returns it.
@@ -279,7 +280,9 @@ function mkData(over: Record<string, unknown> = {}) {
     record: recordWindow(),
     create: mutation(),
     update: mutation(),
+    move: mutation(),
     remove: mutation(),
+    endSeries: mutation(),
     createType: mutation(),
     deleteType: mutation(),
     ...over,
@@ -346,7 +349,7 @@ describe('CalendarNext — the KEEP', () => {
     const target = screen.getByLabelText(/Friday, September 18/);
     fireEvent.dragOver(target);
     fireEvent.drop(target);
-    expect((data.update as { mutate: ReturnType<typeof vi.fn> }).mutate).toHaveBeenCalledWith({
+    expect((data.move as { mutate: ReturnType<typeof vi.fn> }).mutate).toHaveBeenCalledWith({
       id: 'e1',
       patch: { eventDate: '2026-09-18' },
     });
@@ -357,7 +360,8 @@ describe('CalendarNext — the KEEP', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Week' }));
     const slots = container.querySelectorAll('.cn-slot');
     expect(slots.length).toBeGreaterThan(0);
-    fireEvent.click(slots[7]);
+    // The ruler runs from 00:00 (F-197), so the fourteenth slot is 13:00.
+    fireEvent.click(slots[13]);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('Starts')).toHaveValue('13:00');
   });
@@ -544,16 +548,113 @@ describe('CalendarNext — honesty', () => {
   ])('says so when %s is refused', (key, message) => {
     const data = mkData({
       events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
-      [key]: { mutate: vi.fn(), isPending: false, error: new Error(message) },
+      [key]: { mutate: vi.fn(), reset: vi.fn(), isPending: false, error: new Error(message) },
     });
     state.current = data;
     draw();
     fireEvent.click(screen.getByText('Vega Sicilia crate'));
     const sheet = screen.getByRole('dialog');
+    // The banner speaks only for a write this sheet asked for (F-201).
+    if (key === 'createType') {
+      fireEvent.change(within(sheet).getByLabelText('New type name'), { target: { value: 'Stocktake' } });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Add' }));
+    } else {
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Delete the Cellar audit type' }));
+    }
     expect(within(sheet).getByText(new RegExp(`The gateway refused this write \\(${message}\\)`))).toBeInTheDocument();
   });
 });
 
+
+/* ── sim findings F-196, F-197, F-201 ────────────────────────────────────── */
+
+describe('CalendarNext — editing clears, the whole day, refusals in place', () => {
+  it('sends null for a note and an end time the owner emptied (F-196)', () => {
+    const data = mkData({
+      events: [
+        event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17', description: 'Side door', endTime: '10:00' }),
+      ],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Ends'), { target: { value: '' } });
+    const note = sheet.querySelector('textarea') as HTMLTextAreaElement;
+    fireEvent.change(note, { target: { value: '' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    const [{ patch }] = (data.update as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
+    expect(patch.description).toBeNull();
+    expect(patch.eventTimeEnd).toBeNull();
+    expect(patch.eventTime).toBe('09:00');
+  });
+
+  it('clears both clock times when an entry is made all day (F-196)', () => {
+    const data = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+    });
+    state.current = data;
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.click(within(sheet).getByLabelText('All day'));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    const [{ patch }] = (data.update as { mutate: ReturnType<typeof vi.fn> }).mutate.mock.calls[0];
+    expect(patch.allDay).toBe(true);
+    expect(patch.eventTime).toBeNull();
+    expect(patch.eventTimeEnd).toBeNull();
+  });
+
+  it('draws a 05:00 delivery inside the week grid, not above it (F-197)', () => {
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Bread drop', date: '2026-09-15', startTime: '05:00', endTime: '05:30' })],
+    });
+    const { container } = draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    const block = screen.getByText('Bread drop').closest('.cn-block') as HTMLElement;
+    expect(parseFloat(block.style.top)).toBe(5 * 44);
+    expect(container.querySelectorAll('.cn-hours .cn-hour')).toHaveLength(24);
+  });
+
+  it('draws a party that ends after midnight down to the end of the day (F-197)', () => {
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Late party', date: '2026-09-15', startTime: '22:00', endTime: '01:00' })],
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    const block = screen.getByText('Late party').closest('.cn-block') as HTMLElement;
+    expect(parseFloat(block.style.top)).toBe(22 * 44);
+    expect(parseFloat(block.style.height)).toBe(2 * 44);
+  });
+
+  it('says in the sheet when the end time is the next morning (F-197)', () => {
+    draw('/calendar?openModal=true&date=today');
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Starts'), { target: { value: '22:00' } });
+    fireEvent.change(within(sheet).getByLabelText('Ends'), { target: { value: '01:00' } });
+    expect(within(sheet).getByText('Ends after midnight, at 01:00 the next morning.')).toBeInTheDocument();
+  });
+
+  it('says a refused move on the page, and lets it be dismissed (F-201)', () => {
+    const data = mkData();
+    (data.move as { error: unknown }).error = new Error('Network Error');
+    state.current = data;
+    draw();
+    const line = screen.getByText(/That move was not saved \(Network Error\)/);
+    expect(line).toBeInTheDocument();
+    fireEvent.click(within(line.closest('.cn-notice') as HTMLElement).getByRole('button', { name: 'Dismiss' }));
+    expect((data.move as { reset: ReturnType<typeof vi.fn> }).reset).toHaveBeenCalled();
+  });
+
+  it('does not greet a new entry with an earlier refusal (F-201)', () => {
+    const data = mkData();
+    (data.update as { error: unknown }).error = new Error('earlier write refused');
+    state.current = data;
+    draw('/calendar?openModal=true&date=today');
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).queryByText(/refused this write/)).toBeNull();
+  });
+});
 
 /* ── the reminder job: server-side, and honest about itself (ADR 0109) ─────── */
 
@@ -1478,5 +1579,92 @@ describe('CalendarNext — saving a drawn occurrence never moves the series', ()
     fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
     expect(update.mutate).not.toHaveBeenCalled();
     expect(within(sheet).getByText(/cannot move one date of a repeating entry/i)).toBeInTheDocument();
+  });
+});
+
+/* ── same-time entries in the week, and ending a series (wave 19) ─────────── */
+
+describe('CalendarNext — entries at the same time are all visible (F-604)', () => {
+  it('lays overlapping entries side by side and frees a lane when one ends', () => {
+    const lanes = laneLayout([
+      event({ id: 'a', title: 'A', date: '2026-09-15', startTime: '10:00', endTime: '11:00' }),
+      event({ id: 'b', title: 'B', date: '2026-09-15', startTime: '10:30', endTime: '11:30' }),
+      event({ id: 'c', title: 'C', date: '2026-09-15', startTime: '11:00', endTime: '12:00' }),
+      event({ id: 'd', title: 'D', date: '2026-09-15', startTime: '14:00', endTime: '15:00' }),
+    ]);
+    expect(lanes.get('a')).toEqual({ lane: 0, lanes: 2 });
+    expect(lanes.get('b')).toEqual({ lane: 1, lanes: 2 });
+    expect(lanes.get('c')).toEqual({ lane: 0, lanes: 2 });
+    expect(lanes.get('d')).toEqual({ lane: 0, lanes: 1 });
+  });
+
+  it('draws two 10:00 deliveries in their own halves, and each one opens', () => {
+    state.current = mkData({
+      events: [
+        event({ id: 'e1', title: 'Bread', date: '2026-09-15', startTime: '10:00', endTime: '11:00' }),
+        event({ id: 'e2', title: 'Fish', date: '2026-09-15', startTime: '10:00', endTime: '11:00' }),
+      ],
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    const bread = screen.getByText('Bread').closest('.cn-block') as HTMLElement;
+    const fish = screen.getByText('Fish').closest('.cn-block') as HTMLElement;
+    expect(bread.style.width).toBe('calc(50% - 6px)');
+    expect(fish.style.width).toBe('calc(50% - 6px)');
+    expect(new Set([bread.style.left, fish.style.left])).toEqual(
+      new Set(['calc(0% + 2px)', 'calc(50% + 2px)']),
+    );
+    fireEvent.click(fish.querySelector('.cn-block-open') as HTMLElement);
+    expect(screen.getByRole('dialog', { name: 'Edit Fish' })).toBeInTheDocument();
+  });
+});
+
+describe('CalendarNext — a repeating entry can be ended from a date (F-607, F-605)', () => {
+  const occurrence = (date: string, over: Partial<CalEvent> = {}) =>
+    event({
+      id: `s1__occ_${date}`,
+      seriesId: 's1',
+      seriesStart: '2026-09-03',
+      isOccurrence: true,
+      isRecurring: true,
+      title: 'Weekly tasting',
+      date,
+      ...over,
+    });
+
+  it('ends the series from the date it was opened on, keeping the earlier ones', () => {
+    const endSeries = mutation();
+    state.current = mkData({ events: [occurrence('2026-09-17')], endSeries });
+    draw();
+    fireEvent.click(screen.getAllByText('Weekly tasting')[0]);
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText(/Every date before it stays/)).toBeInTheDocument();
+    const hold = within(sheet).getByRole('button', {
+      name: /Hold to end the series from Thursday, September 17/,
+    });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    fireEvent.keyDown(hold, { key: 'Enter' });
+    expect(endSeries.mutate).toHaveBeenCalledTimes(1);
+    expect(endSeries.mutate.mock.calls[0][0]).toEqual({ id: 's1', fromDate: '2026-09-17' });
+  });
+
+  it('does not offer to end a series on its first date, which would keep nothing', () => {
+    state.current = mkData({ events: [occurrence('2026-09-03')] });
+    draw();
+    fireEvent.click(screen.getAllByText('Weekly tasting')[0]);
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).queryByRole('button', { name: /end the series/ })).toBeNull();
+    expect(within(sheet).getByRole('button', { name: /Hold to delete the series/ })).toBeInTheDocument();
+  });
+
+  it('does not tell a later date of a series that its reminder was already sent', () => {
+    state.current = mkData({
+      events: [occurrence('2026-09-17', { reminderEnabled: true, reminderDaysBefore: 1, reminderSent: true })],
+    });
+    draw();
+    fireEvent.click(screen.getAllByText('Weekly tasting')[0]);
+    expect(
+      within(screen.getByRole('dialog')).queryByText(/reminder has already been sent/),
+    ).toBeNull();
   });
 });

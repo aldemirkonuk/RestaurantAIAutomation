@@ -31,6 +31,7 @@ vi.mock('../../../hooks/queries/useOrderQueries', () => ({
 }));
 
 import { useCalendarNextData } from './useCalendarNextData';
+import { expandSeries } from './expand-series';
 
 const base = {
   restaurantId: 'r-1',
@@ -136,5 +137,36 @@ describe('useCalendarNextData — repeating entries (sweep row 16)', () => {
     expect(result.current.unexpandedSeries).toEqual([
       { id: 'ev-orphan', title: 'Orphan', reason: 'its repeat rule was not returned' },
     ]);
+  });
+});
+
+// F-199: "Every month" from the 29th-31st used to skip the short months. Same
+// rule as the gateway's calendar-occurrences.ts.
+describe('expandSeries — month-end series', () => {
+  const monthly = (date: string, extra: Record<string, unknown> = {}) => ({
+    id: 'ev-end',
+    date,
+    endDate: null,
+    isRecurring: true,
+    recurrenceRule: { frequency: 'monthly', interval: 1, endType: 'never', ...extra },
+  });
+
+  it('falls on the last day of each shorter month', () => {
+    const out = expandSeries([monthly('2026-01-31')], '2026-01-01', '2026-05-31');
+    expect(out.events.map((e) => e.date)).toEqual(['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30', '2026-05-31']);
+  });
+
+  it('counts a clamped date as one of the times', () => {
+    const out = expandSeries([monthly('2027-12-30', { endType: 'after_count', endAfterCount: 3 })], '2027-12-01', '2028-06-30');
+    expect(out.events.map((e) => e.date)).toEqual(['2027-12-30', '2028-01-30', '2028-02-29']);
+  });
+
+  it('keeps a yearly Feb 29 for leap years', () => {
+    const out = expandSeries(
+      [{ ...monthly('2024-02-29'), recurrenceRule: { frequency: 'yearly', interval: 1, endType: 'never' } }],
+      '2024-01-01',
+      '2028-12-31',
+    );
+    expect(out.events.map((e) => e.date)).toEqual(['2024-02-29', '2028-02-29']);
   });
 });

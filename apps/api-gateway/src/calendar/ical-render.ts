@@ -57,6 +57,7 @@ export interface FeedRecurrenceRule {
   end_on_date?: string | null;
   end_after_count?: number | null;
   days_of_week?: number[] | null;
+  day_of_month?: number | null;
 }
 
 /** A shift, already worded for this reader. Labor cost never reaches here. */
@@ -124,6 +125,36 @@ function wallClock(date: string, time: string, zone: string | null): Date {
     : new Date(`${date}T${time}:00.000Z`);
 }
 
+/** A Date as an RFC 5545 UTC DATE-TIME: "20261014T205959Z". */
+function utcStamp(d: Date): string {
+  return d.toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+}
+
+/**
+ * The UNTIL for a series whose last kept day is `lastDay` (F-376, F-792).
+ *
+ * UNTIL is inclusive, so it has to land AFTER that day's occurrence: the end
+ * of the house's own day, as UTC. Midnight UTC at the start of the day came
+ * before that day's occurrence and dropped it. An all-day series
+ * ends on the date itself, and a floating one ends on a floating time — RFC
+ * 5545 §3.3.10 wants UNTIL in the same form as DTSTART.
+ */
+function untilFor(
+  lastDay: string,
+  allDay: boolean,
+  zone: string | null,
+): string {
+  const compact = lastDay.replace(/-/g, "");
+  if (allDay) return compact;
+  if (!zone) return `${compact}T235959`;
+  const nextMidnight = zonedWallClockToUtc(
+    addDaysIso(lastDay, 1),
+    "00:00",
+    zone,
+  );
+  return utcStamp(new Date(nextMidnight.getTime() - 1000));
+}
+
 export function renderFeed(input: FeedInput): string {
   const { zone } = input;
   const calendar = ical({
@@ -159,7 +190,18 @@ export function renderFeed(input: FeedInput): string {
       end.setUTCDate(end.getUTCDate() + 1);
     } else {
       start = wallClock(startDateStr, event.start_time || "00:00", zone);
-      end = wallClock(endDateStr, event.end_time || "23:59", zone);
+      // An entry with no end date that ends at or before it starts runs past
+      // midnight (F-790), the same as a shift does below.
+      const overnight =
+        !event.end_date &&
+        !!event.start_time &&
+        !!event.end_time &&
+        hhmm(event.end_time) <= hhmm(event.start_time);
+      end = wallClock(
+        overnight ? addDaysIso(startDateStr, 1) : endDateStr,
+        event.end_time || "23:59",
+        zone,
+      );
     }
 
     const calEvent = calendar.createEvent({
@@ -181,8 +223,22 @@ export function renderFeed(input: FeedInput): string {
       if (rule.interval_value && rule.interval_value > 1)
         rrule += `;INTERVAL=${rule.interval_value}`;
       if (rule.end_on_date)
-        rrule += `;UNTIL=${rule.end_on_date.replace(/-/g, "")}T000000Z`;
+        rrule += `;UNTIL=${untilFor(rule.end_on_date, !!event.all_day, zone)}`;
       if (rule.end_after_count) rrule += `;COUNT=${rule.end_after_count}`;
+      // A monthly entry on the 29th-31st falls on the last day of a shorter
+      // month, as the app shows it (F-199, F-791). A plain FREQ=MONTHLY skips
+      // those months instead, so name every day up to the chosen one and keep
+      // the last that the month has.
+      const monthDay = rule.day_of_month ?? Number(startDateStr.slice(8, 10));
+      if (
+        rule.frequency === "monthly" &&
+        monthDay > 28 &&
+        !rule.days_of_week?.length
+      ) {
+        const days: number[] = [];
+        for (let d = 28; d <= monthDay; d++) days.push(d);
+        rrule += `;BYMONTHDAY=${days.join(",")};BYSETPOS=-1`;
+      }
       if (rule.days_of_week && rule.days_of_week.length > 0) {
         const codes = rule.days_of_week
           .map((d) => DAY_CODES[d])

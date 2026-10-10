@@ -294,6 +294,11 @@ export interface CalEvent {
   seriesId: string;
   /** True when this row is a client-expanded occurrence of a recurring series. */
   isOccurrence: boolean;
+  /**
+   * The stored row's own first date. An occurrence keeps it, so the sheet can
+   * tell whether a series can be ended from this date and still keep a date.
+   */
+  seriesStart?: string;
   title: string;
   description: string | null;
   type: string;
@@ -347,6 +352,7 @@ function toCalEvent(raw: ApiEvent): CalEvent {
     id: raw.id,
     seriesId: raw.id,
     isOccurrence: false,
+    seriesStart: String(raw.eventDate).split('T')[0],
     title: raw.title,
     description: str(raw.description),
     type: raw.eventType,
@@ -386,14 +392,15 @@ export interface CalendarPayload {
   title: string;
   eventType: string;
   eventDate: string;
-  eventDateEnd?: string;
+  // null on an edit means "clear it" (F-196); undefined means "leave it".
+  eventDateEnd?: string | null;
   allDay?: boolean;
-  eventTime?: string;
-  eventTimeEnd?: string;
+  eventTime?: string | null;
+  eventTimeEnd?: string | null;
   providerId?: string;
   orderId?: string;
   status?: EventStatus;
-  description?: string;
+  description?: string | null;
   color?: string;
   reminderEnabled?: boolean;
   reminderDaysBefore?: number;
@@ -687,9 +694,29 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     onSuccess: invalidate,
   });
 
+  // A drag or resize on the grid writes through its own mutation, so a refused
+  // move is said on the page where it happened and its error never reaches a
+  // sheet opened later (F-201).
+  const move = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Partial<CalendarPayload> }) => {
+      const res = await apiClient.patch<ApiEvent>(`/calendar/events/${id}`, updatablePart(patch));
+      return toCalEvent(res.data);
+    },
+    onSuccess: invalidate,
+  });
+
   const remove = useMutation({
     mutationFn: async ({ id, scope }: { id: string; scope?: 'this' | 'all' }) => {
       await apiClient.delete(`/calendar/events/${id}${scope === 'all' ? '?scope=all' : ''}`);
+    },
+    onSuccess: invalidate,
+  });
+
+  // Ends a repeating entry from a date: the rule stops the day before, and
+  // every earlier date stays on the book (F-607).
+  const endSeries = useMutation({
+    mutationFn: async ({ id, fromDate }: { id: string; fromDate: string }) => {
+      await apiClient.delete(`/calendar/events/${id}/recurring?fromDate=${fromDate}`);
     },
     onSuccess: invalidate,
   });
@@ -798,7 +825,9 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
 
     create,
     update,
+    move,
     remove,
+    endSeries,
     createType,
     deleteType,
   };

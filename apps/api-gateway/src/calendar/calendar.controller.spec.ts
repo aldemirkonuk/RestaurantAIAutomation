@@ -1,5 +1,10 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { HttpException, HttpStatus, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+} from "@nestjs/common";
 import { CalendarController } from "./calendar.controller";
 import { CalendarService } from "./calendar.service";
 import { CalendarRemindersService } from "./calendar-reminders.service";
@@ -37,6 +42,7 @@ describe("CalendarController", () => {
     updateEventStatus: jest.fn(),
     getRecurringInstances: jest.fn(),
     deleteRecurringSeries: jest.fn(),
+    endSeriesFrom: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -416,14 +422,13 @@ describe("CalendarController", () => {
         mockUser.restaurantId,
         mockUser.userId,
         eventId,
-        undefined,
       );
     });
 
-    it("should delete from specific date", async () => {
+    it("ends the series from a date rather than deleting only stored dates (F-607)", async () => {
       const fromDate = "2024-03-01";
 
-      mockCalendarService.deleteRecurringSeries.mockResolvedValue({
+      mockCalendarService.endSeriesFrom.mockResolvedValue({
         success: true,
         deletedCount: 3,
       });
@@ -435,12 +440,23 @@ describe("CalendarController", () => {
       );
 
       expect(result).toEqual({ success: true, deletedCount: 3 });
-      expect(mockCalendarService.deleteRecurringSeries).toHaveBeenCalledWith(
+      expect(mockCalendarService.endSeriesFrom).toHaveBeenCalledWith(
         mockUser.restaurantId,
         mockUser.userId,
         eventId,
         fromDate,
       );
+      expect(mockCalendarService.deleteRecurringSeries).not.toHaveBeenCalled();
+    });
+
+    it("passes a refusal through as itself, not as a server error", async () => {
+      mockCalendarService.endSeriesFrom.mockRejectedValue(
+        new BadRequestException("Delete the series instead."),
+      );
+
+      await expect(
+        controller.deleteRecurringSeries(eventId, "2024-03-01", mockUser),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it("should throw INTERNAL_SERVER_ERROR on service failure", async () => {
