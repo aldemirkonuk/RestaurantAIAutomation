@@ -237,6 +237,13 @@ export default function CatalogueRegister({
   // costs one request, and opening a cell on that row costs none.
   const openedRow = (reg?.rows ?? []).find((r) => r.key === openKey) ?? null;
   const record = useRowRecord(series?.label ?? openedRow?.name ?? null);
+  // A series still open for another line would hand that line's record to
+  // the row just expanded, under the new row's name. Expanding a different
+  // row closes it.
+  useEffect(() => {
+    setSeries((s) => (s && openedRow && s.label !== openedRow.name ? null : s));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openKey]);
 
   const openSeriesFor = useCallback((label: string, column: CellarColumn) => {
     // A column with no series does not open one; the header menu says so

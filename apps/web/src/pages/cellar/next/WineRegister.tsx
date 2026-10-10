@@ -598,6 +598,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
               aria-label={`${open.name} record`}
             >
               <BottleLeaf
+                key={open.id}
                 bottle={open}
                 providers={data.providers}
                 vendorsError={data.vendorsError}

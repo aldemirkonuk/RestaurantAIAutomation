@@ -62,6 +62,7 @@ const mock = vi.hoisted(() => ({
   // The order-hold ceremony and gazetteer measures (ADR 0160 sec110 items 2, 6)
   // — read by both `Registers` and `BottleLeaf`. Unread-default shape, same
   // as `useCellarSettings`'s own fallback, so a test that never touches
+  rowRecordLabels: [] as (string | null)[],
   // settings sees exactly what an unconfigured house would.
   settings: {
     data: {
@@ -89,7 +90,10 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useCocktailRecipe: () => mock.recipe,
   useCocktailWrites: () => mock.writes,
   useMayPriceCocktails: () => mock.mayPrice,
-  useRowRecord: () => mock.rowRecord,
+  useRowRecord: (label: string | null) => {
+    mock.rowRecordLabels.push(label);
+    return mock.rowRecord;
+  },
   useWholeCellar: () => mock.whole,
   useZones: () => mock.zones,
   useConfirmZone: () => mock.confirmZone,
@@ -1381,6 +1385,40 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeEnabled();
   });
 
+  // sim wave 8 (F-410): blanking the price in Amend said "amended" but sent
+  // no price key at all, so the old price stayed.
+  it('clearing a cocktail price in Amend sends price: null, not nothing', async () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    const amend = vi.fn().mockResolvedValue({ id: 'c1' });
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: amend, isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: null,
+          method: null, glass: null, garnish: null, price: 18, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: null, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' });
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /^Amend$/ }));
+    fireEvent.change(screen.getByLabelText('Price'), { target: { value: '' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Record the amendment/ }));
+    });
+    expect(amend).toHaveBeenCalledWith({ id: 'c1', input: expect.objectContaining({ price: null }) });
+  });
+
   it('retiring a cocktail takes two presses and never carries the seal', async () => {
     mock.current = { ...base, registers: readout() };
     mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
@@ -1637,6 +1675,26 @@ describe('the gesture set — the header owns the column, the cell owns the reco
     expect(screen.getByTestId('series-graph')).toBeInTheDocument();
     // And the weaker match is labelled as weaker, on the line it found.
     expect(panel).toHaveTextContent(/matched loosely/);
+  });
+
+  // sim wave 8 (F-408): a series left open on one row handed its record to
+  // the next row expanded, under the new row's name.
+  it('expanding another row while a series is open reads that row, not the series row', () => {
+    mock.rowRecord = { data: rowRecordVM([bookRecord()]), loading: false, error: null };
+    mock.register = {
+      data: registerVM({
+        rows: [houseRow(), houseRow({ key: 'b2', name: 'Bomonti Filtresiz' })],
+        counts: { total: 2, houseRows: 2, matched: 2, matchedLoosely: 0, catalogueOnly: 0 },
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    const efes = screen.getByText('Efes Pilsen').closest('tr')!;
+    fireEvent.doubleClick(within(efes).getAllByText('$618.40')[0]);
+    expect(screen.getByTestId('series-panel')).toBeInTheDocument();
+    mock.rowRecordLabels.length = 0;
+    fireEvent.click(screen.getByText('Bomonti Filtresiz').closest('tr')!);
+    expect(mock.rowRecordLabels.at(-1)).toBe('Bomonti Filtresiz');
   });
 
   it('right-clicking the same cell opens the same panel — both gestures the founder named', () => {

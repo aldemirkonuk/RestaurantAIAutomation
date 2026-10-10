@@ -247,7 +247,12 @@ export default function CocktailRegister({
     if (!draft?.name?.trim()) return;
     try {
       if (editId) {
-        await amend.mutateAsync({ id: editId, input: draft });
+        // A blank price on an amend clears it; left undefined, JSON drops the
+        // key and the old price would stay while the page says "amended".
+        await amend.mutateAsync({
+          id: editId,
+          input: { ...draft, price: draft.price === undefined ? null : draft.price },
+        });
         setSaid(`“${draft.name.trim()}” was amended on this house’s list.`);
       } else {
         await create.mutateAsync(draft);
