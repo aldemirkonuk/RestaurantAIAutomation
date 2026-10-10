@@ -572,6 +572,15 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     () => new Set(data.entries.map((e) => actOf(e.ruleKey).act)).size,
     [data.entries],
   );
+  // The record reads that answered with no rows, when every source answered
+  // (F-298): "till checks, pour history and order history". Empty = none, or
+  // a feed that does not say. A house with nothing recorded is never "clear".
+  const emptyReads =
+    Array.isArray(data.sourcesUnread) && data.sourcesUnread.length === 0 ? data.sourcesEmpty ?? [] : [];
+  const emptyList =
+    emptyReads.length <= 1
+      ? emptyReads.join('')
+      : `${emptyReads.slice(0, -1).join(', ')} and ${emptyReads[emptyReads.length - 1]}`;
   let voice: string;
   if (data.phase === 'loading') {
     voice = 'Reading the rule engine…';
@@ -586,7 +595,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     const read = data.rulesEvaluated === null ? `An unknown number of rules (${EM})` : `${data.rulesEvaluated} rules`;
     // A read that could not be made is never "nothing to recommend" (ADR 0292,
     // the founder 2026-10-07: "Say it couldn't be read"). "Clear" is said only
-    // when the engine says every source answered; the quiet tier names the rest.
+    // when the engine says every source answered and something is recorded; a
+    // house with nothing recorded yet says so (F-298).
     const unread = data.sourcesUnread;
     voice =
       n === 0
@@ -594,9 +604,11 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           ? `${read} were read, and none of them stands, but the engine could not read ${
               unread.length === 1 ? 'one of its sources' : `${unread.length} of its sources`
             }, so the book is not proven clear.`
-          : Array.isArray(unread)
-            ? `${read} were read, and none of them stands. The book is clear.`
-            : `${read} were read, and none of them stands.`
+          : emptyReads.length > 0
+            ? `${read} were read, and none of them stands, but there is not enough recorded yet to judge: nothing is in the ${emptyList} so far.`
+            : Array.isArray(unread)
+              ? `${read} were read, and none of them stands. The book is clear.`
+              : `${read} were read, and none of them stands.`
         : `${read} were read. ${n} ${n === 1 ? 'entry stands' : 'entries stand'}, and ${
             kinds === 1 ? 'they are one kind of work' : `they are ${kinds} kinds of work`
           } — the rest did not fire, or you have already ruled them off.`;
@@ -669,7 +681,11 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               */}
               {data.phase === 'ready' && leaf === 'standing' && (
                 <p className="rc-said rc-quiet-tier" data-testid="rc-quiet-tier">
-                  {quietTierWords(data.sourcesUnread)}
+                  {emptyReads.length > 0
+                    ? `Every source the engine reads answered, but nothing is recorded yet in the ${emptyList}, so the rules that read ${
+                        emptyReads.length === 1 ? 'it' : 'them'
+                      } had nothing to judge.`
+                    : quietTierWords(data.sourcesUnread)}
                 </p>
               )}
             </div>
@@ -893,7 +909,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                       ? // "Tonight's numbers" only when the engine says every
                         // source answered. A source it could not read leaves its
                         // rules silent, so the empty book is only what it could
-                        // read; a feed that does not say proves neither.
+                        // read; a feed that does not say proves neither, and a
+                        // house with nothing recorded yet says so (F-298).
                         !Array.isArray(data.sourcesUnread)
                         ? stake === 'all'
                           ? 'Nothing stands against what the engine read.'
@@ -902,9 +919,13 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                           ? stake === 'all'
                             ? 'Nothing stands against what the engine could read.'
                             : `Nothing the engine could read would change ${STAKE_BLURB[stake as StakeId]}.`
-                          : stake === 'all'
-                            ? 'Nothing stands against tonight’s numbers.'
-                            : `Nothing on this leaf would change ${STAKE_BLURB[stake as StakeId]}.`
+                          : emptyReads.length > 0
+                            ? stake === 'all'
+                              ? 'There is not enough recorded yet to judge tonight’s numbers.'
+                              : `There is not enough recorded yet to say what would change ${STAKE_BLURB[stake as StakeId]}.`
+                            : stake === 'all'
+                              ? 'Nothing stands against tonight’s numbers.'
+                              : `Nothing on this leaf would change ${STAKE_BLURB[stake as StakeId]}.`
                       : `Nothing on ${REGISTER_NAME[leaf]}.`}
                 </p>
                 {day ? (

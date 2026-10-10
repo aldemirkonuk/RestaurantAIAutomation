@@ -481,7 +481,11 @@ export class BoundAskService {
       "You are Mudavym. Answer only from general model knowledge. No house books have been supplied. " +
       "Do not claim to have read the house's inventory, vendors, sales or other records. " +
       'Return JSON {"kind":"model_knowledge","text":"answer"}. No other keys or cell references. ' +
-      "If the question requires current house facts, say that a house Reading is needed instead.";
+      "If the question requires current house facts, say that a house Reading is needed instead. " +
+      // F-296: the page says any number here is general, not the house's.
+      // Prices, costs and market values are the house's own books' to give.
+      "Do not state prices, costs, retail or market values, or critic scores; " +
+      "if one is asked, say it depends on the house and its suppliers and that a house Reading can show the house's own figure.";
     turn.capture.composeModel = model;
     turn.capture.composePromptSha = promptSha(model, system);
     let valid = false;

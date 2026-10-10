@@ -377,6 +377,27 @@ export function fmtClock(iso: string | null | undefined): string {
   return t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
+/**
+ * When a folio was asked or read, with its day unless that day is today
+ * (F-297). A folio is a frozen snapshot, and one opened from a bookmark, a
+ * share or the bell on a phone (where the book's day headings sit below it)
+ * read last week's stock "as of 7:42 PM" with no day.
+ */
+export function fmtWhen(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return 'time not recorded';
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return 'time not recorded';
+  const clock = fmtClock(iso);
+  if (dayKey(t) === dayKey(now)) return clock;
+  const day = t.toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    ...(t.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
+  return `${day}, ${clock}`;
+}
+
 /* ───────────────────────────────────────────── a request that failed ──── */
 
 export type AskFailureKind = 'not_open' | 'too_fast' | 'timeout' | 'unreached' | 'refused' | 'rejected' | 'unavailable' | 'failed';

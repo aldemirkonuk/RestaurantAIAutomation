@@ -102,6 +102,8 @@ async function generateOver(rows: Rows, failing: string[] = []) {
       restaurant_tables: [],
       restaurant_venue_profiles: [],
       analytics_goals: [],
+      // The house's day (ADR 0296, F-295): with no zone no row gets a day.
+      restaurants: [{ timezone: "UTC", country: null, currency: "USD" }],
       ...rows,
     },
     failing,

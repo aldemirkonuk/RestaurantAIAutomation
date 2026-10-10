@@ -14,6 +14,14 @@ import { EXPORT_CUTTINGS } from "../reports/exports/report-export-cuttings";
 import { beverageCategoryOf } from "../common/beverage-category";
 
 /**
+ * The house's zone row, which the insight bundle reads before filing any day
+ * (ADR 0296, F-295). UTC here keeps this spec's dates on the calendar it
+ * builds them on; the house-day filing itself is asserted in
+ * `insight-unread-sources.spec.ts`.
+ */
+const HOUSE_ROW = [{ timezone: "UTC", country: null }];
+
+/**
  * A glass is not a bottle (AW02, ADR 0297).
  *
  * `wine_consumption_log.quantity` counts servings in the line's own mode
@@ -235,7 +243,9 @@ function project(cols: string, row: any) {
 function dbOver(rowsByTable: Rows) {
   const client = {
     from(table: string) {
-      const all = [...(rowsByTable[table] ?? [])].sort((a, b) =>
+      const all = [
+        ...(rowsByTable[table] ?? (table === "restaurants" ? HOUSE_ROW : [])),
+      ].sort((a, b) =>
         String(a.id ?? "").localeCompare(String(b.id ?? "")),
       );
       let cursor: string | null = null;

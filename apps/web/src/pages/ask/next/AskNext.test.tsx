@@ -283,6 +283,48 @@ describe('the book and old folios', () => {
     expect(api.submit.mock.calls[0][0].args.subjectText).toBeUndefined();
   });
 
+  it('an old folio shows its day beside the time, on the eyebrow and on "as of" (F-297)', async () => {
+    const id = '44444444-4444-4444-8444-444444444444';
+    const asked = new Date();
+    asked.setDate(asked.getDate() - 6);
+    asked.setHours(19, 42, 0, 0);
+    const old = folio({
+      id,
+      created_at: asked.toISOString(),
+      reading_id: 'inventory.position',
+      reading_version: 1,
+      reply_kind: 'reading',
+      answer: {
+        kind: 'reading',
+        focus: [{ cellId: 'c1' }],
+        finding: {
+          readingId: 'inventory.position',
+          readingVersion: 1,
+          outcome: 'read',
+          reason: null,
+          asOf: asked.toISOString(),
+          trace: [{ relation: 'restaurant_inventory', outcome: 'rows', rowsScanned: 1, matchedRows: 1, asOf: '' }],
+          rows: [{ key: 'r', cells: [{ id: 'c1', key: 'bottles', label: 'bottles', value: 12, unit: null, provenance: 'stated' }] }],
+        },
+      },
+    });
+    api.folio.mockResolvedValue(old);
+    api.folios.mockResolvedValue([old]);
+    renderAt(`/ask/f/${id}`);
+    const doc = await screen.findByRole('article', { name: 'The open folio' });
+    const day = asked.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    const clock = asked.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    expect(doc.querySelector('.ak-eyebrow')?.textContent).toContain(`${day}, ${clock}`);
+    expect(within(doc).getByText(`as of ${day}, ${clock}`)).toBeTruthy();
+  });
+
+  it('the general-knowledge card does not promise an answer with no figure (F-296)', async () => {
+    renderAt();
+    expect(await screen.findByText('Pairing, service, the wine itself')).toBeTruthy();
+    expect(screen.queryByText(/never carries a figure/)).toBeNull();
+    expect(screen.getByText(/Any number in it is general knowledge, not this house’s/)).toBeTruthy();
+  });
+
   it('"Keep asking" on an open folio opens the one Ask panel carrying that folio (ADR 0145, one panel, 2026-09-26)', async () => {
     const id = '44444444-4444-4444-8444-444444444444';
     const f = folio({ id, utterance: 'How much house red?' });

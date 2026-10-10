@@ -42,6 +42,7 @@ import {
   composerProblem,
   ensureFraunces,
   fmtClock,
+  fmtWhen,
   fmtValue,
   folioChip,
   folioView,
@@ -147,7 +148,7 @@ function FolioDocument({
   return (
     <article className={`ak-folio${v.tone === 'knowledge' ? ' is-knowledge' : ''}`} aria-label="The open folio" data-tone={v.tone}>
       <p className="ak-eyebrow">
-        {fmtClock(folio.created_at)}
+        {fmtWhen(folio.created_at)}
         {folio.reading_id ? ` · ${readingTitle ?? folio.reading_id}${folio.reading_version ? ` · v${folio.reading_version}` : ''}` : ''}
       </p>
       <p className="ak-q">{folio.utterance}</p>
@@ -210,7 +211,7 @@ function FolioDocument({
               {traceLine(t)}
             </p>
           ))}
-          <p className="ak-mono">as of {fmtClock(finding.asOf)}</p>
+          <p className="ak-mono">as of {fmtWhen(finding.asOf)}</p>
         </div>
       )}
       <p className="ak-mono" style={{ marginTop: 10 }}>
@@ -536,7 +537,7 @@ export default function AskNext({ ground }: AskNextProps) {
               <div className="ak-card is-other">
                 <p className="ak-card-title">Pairing, service, the wine itself</p>
                 <p className="ak-card-q">
-                  Type the question. The answer comes from the model’s own knowledge, is marked as not from the books, and never carries a figure.
+                  Type the question. The answer comes from the model’s own knowledge and is marked as not from the books. Any number in it is general knowledge, not this house’s, so check prices against your own books.
                 </p>
               </div>
             </div>

@@ -2364,6 +2364,27 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     expect(screen.queryByText('Nothing stands against tonight’s numbers.')).not.toBeInTheDocument();
   });
 
+  it('F-298: a house with nothing recorded yet says there is not enough to judge, never that the book is clear', () => {
+    mockData.current = {
+      ...base,
+      entries: [],
+      sourcesUnread: [],
+      sourcesEmpty: ['till checks', 'pour history', 'order history', 'inventory list'],
+    };
+    draw();
+    expect(
+      screen.getByText(
+        '17 rules were read, and none of them stands, but there is not enough recorded yet to judge: nothing is in the till checks, pour history, order history and inventory list so far.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/The book is clear/)).not.toBeInTheDocument();
+    expect(screen.getByText('There is not enough recorded yet to judge tonight’s numbers.')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing stands against tonight’s numbers.')).not.toBeInTheDocument();
+    expect(screen.getByTestId('rc-quiet-tier')).toHaveTextContent(
+      'Every source the engine reads answered, but nothing is recorded yet in the till checks, pour history, order history and inventory list, so the rules that read them had nothing to judge.',
+    );
+  });
+
   it('Q2 + Q7: a floor entry is briefed with one tap — recorded at once, undo-after, and it does not leave the page', () => {
     mockData.current = { ...base, entries: [weekdayEntry()] };
     draw();

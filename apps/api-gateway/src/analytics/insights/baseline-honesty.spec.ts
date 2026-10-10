@@ -5,6 +5,14 @@ import { verbalize } from "./insight-verbalizer";
 import { groupBaseline } from "../engine/comparisons";
 
 /**
+ * The house's zone row, which the insight bundle reads before filing any day
+ * (ADR 0296, F-295). UTC here keeps this spec's dates on the calendar it
+ * builds them on; the house-day filing itself is asserted in
+ * `insight-unread-sources.spec.ts`.
+ */
+const HOUSE_ROW = [{ timezone: "UTC", country: null }];
+
+/**
  * "Wednesday sales came in 100% lower than your average Wednesday."
  *
  * That sentence was not a hypothetical. On 2026-09-03 the local gateway
@@ -47,7 +55,8 @@ function makeClient(rowsByTable: Rows) {
   ];
   return {
     from: (table: string) => {
-      const rows = rowsByTable[table] ?? [];
+      const rows =
+        rowsByTable[table] ?? (table === "restaurants" ? HOUSE_ROW : []);
       const builder: any = {};
       for (const m of passthrough)
         builder[m] = (..._args: any[]) => builder;
@@ -110,7 +119,7 @@ function generatorFor(s: Scenario) {
     restaurant_tables: [],
     restaurant_venue_profiles: [],
     analytics_goals: [],
-    restaurants: [{ currency: s.currency === undefined ? "USD" : s.currency }],
+    restaurants: [{ timezone: "UTC", country: null, currency: s.currency === undefined ? "USD" : s.currency }],
   });
   return new InsightGeneratorService(
     { getClient: () => client, supabase: client } as any,
