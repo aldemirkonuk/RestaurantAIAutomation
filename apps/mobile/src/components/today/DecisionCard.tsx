@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
 import { useRouter } from "expo-router";
 import Animated, {
   Easing,
@@ -15,7 +15,7 @@ import { color, radius, space } from "@/design/tokens";
 import { GRACE_MS, spring } from "@/design/motion";
 import { haptic } from "@/design/haptics";
 import { feedKey, pulseKey } from "@/api/queries";
-import { useOutbox } from "@/state/outbox";
+import { NOT_SAVED_WORDS, useOutbox } from "@/state/outbox";
 import { useFeedLocal } from "@/state/feedLocal";
 import type { FeedItem } from "@/api/types";
 
@@ -93,6 +93,10 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
         invalidate: [[...feedKey], [...pulseKey], ["orders", "pending"]],
         feedItemId: item.id,
       });
+      if (!entryId) {
+        Alert.alert(NOT_SAVED_WORDS);
+        return;
+      }
       setHoldingId(entryId);
       fold.value = withSpring(0.1, spring.gentle);
       graceX.value = 1;
@@ -127,7 +131,7 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
       body?: unknown,
       method: "POST" | "PATCH" = "POST",
     ) => {
-      enqueue({
+      const entryId = enqueue({
         path,
         method,
         body,
@@ -136,6 +140,10 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
         invalidate: [[...feedKey], [...pulseKey]],
         feedItemId: item.id,
       });
+      if (!entryId) {
+        Alert.alert(NOT_SAVED_WORDS);
+        return;
+      }
       haptic.confirm();
       fold.value = withTiming(
         1,

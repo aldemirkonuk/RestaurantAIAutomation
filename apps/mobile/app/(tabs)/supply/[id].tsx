@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { ScrollView, View } from "react-native";
+import { Alert, ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText } from "@/components/ui/AppText";
@@ -7,7 +7,13 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { Card, Hairline, Screen } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/StateViews";
-import { STATUS_LABEL, orderAmount } from "@/components/supply/OrderRow";
+import { orderAmount } from "@/components/supply/OrderRow";
+import {
+  STATUS_LABEL,
+  TIMELINE,
+  receiveActionLabel,
+  timelineIndex,
+} from "@/lib/orderStatus";
 import { color, radius, space } from "@/design/tokens";
 import { haptic } from "@/design/haptics";
 import {
@@ -17,22 +23,7 @@ import {
   useOrderConversations,
 } from "@/api/queries";
 import { OrderApprovalSeal } from "@/components/supply/OrderApprovalSeal";
-import { useOutbox } from "@/state/outbox";
-
-const TIMELINE: string[] = [
-  "PENDING",
-  "APPROVED",
-  "CONFIRMED",
-  "DELIVERED",
-  "COMPLETED",
-];
-
-function timelineIndex(status: string): number {
-  if (status === "APPROVAL_NEEDED" || status === "NEGOTIATING") return 0;
-  if (status === "IN_TRANSIT") return 2;
-  const i = TIMELINE.indexOf(status);
-  return i === -1 ? 0 : i;
-}
+import { NOT_SAVED_WORDS, useOutbox } from "@/state/outbox";
 
 export default function OrderDetailScreen() {
   const router = useRouter();
@@ -46,7 +37,7 @@ export default function OrderDetailScreen() {
 
   const markDelivered = () => {
     if (!order) return;
-    useOutbox.getState().enqueue({
+    const saved = useOutbox.getState().enqueue({
       path: `/procurement/orders/${order.id}/deliver`,
       label: "Marked delivered",
       graceMs: 0,
@@ -57,6 +48,10 @@ export default function OrderDetailScreen() {
         ["orders", "item", order.id],
       ],
     });
+    if (!saved) {
+      Alert.alert(NOT_SAVED_WORDS);
+      return;
+    }
     haptic.confirm();
     setTimeout(() => refetch(), 600);
   };
@@ -76,7 +71,8 @@ export default function OrderDetailScreen() {
     order && ["PENDING", "APPROVAL_NEEDED"].includes(order.status);
   const canDeliver =
     order && ["APPROVED", "CONFIRMED", "IN_TRANSIT"].includes(order.status);
-  const canReceive = order && order.status === "DELIVERED";
+  // DELIVERED counts the truck; PARTIALLY_RECEIVED adds its invoice (F-589).
+  const receiveLabel = order ? receiveActionLabel(order.status) : null;
   const step = order ? timelineIndex(order.status) : 0;
   const amount = order ? orderAmount(order) : null;
 
@@ -184,7 +180,7 @@ export default function OrderDetailScreen() {
                     It arrived — mark delivered
                   </AppText>
                 </PressableScale>
-              ) : canReceive ? (
+              ) : receiveLabel ? (
                 <PressableScale
                   onPress={() =>
                     router.push({
@@ -200,7 +196,7 @@ export default function OrderDetailScreen() {
                   }}
                 >
                   <AppText variant="bodyMedium" tone="onWine">
-                    Count & verify receipt
+                    {receiveLabel}
                   </AppText>
                 </PressableScale>
               ) : null}

@@ -4,20 +4,7 @@ import { AppText } from "@/components/ui/AppText";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { color, space } from "@/design/tokens";
 import type { ProcurementOrder } from "@/api/types";
-
-export const STATUS_LABEL: Record<string, string> = {
-  PENDING: "Awaiting approval",
-  APPROVAL_NEEDED: "Awaiting approval",
-  NEGOTIATING: "Negotiating",
-  APPROVED: "Approved",
-  CONFIRMED: "Confirmed",
-  IN_TRANSIT: "On its way",
-  DELIVERED: "Delivered — verify",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-  REJECTED: "Rejected",
-  FAILED: "Failed",
-};
+import { STATUS_LABEL } from "@/lib/orderStatus";
 
 const STATUS_TONE: Record<string, string> = {
   PENDING: color.wine,
@@ -27,6 +14,7 @@ const STATUS_TONE: Record<string, string> = {
   CONFIRMED: color.success,
   IN_TRANSIT: color.warning,
   DELIVERED: color.warning,
+  PARTIALLY_RECEIVED: color.warning,
   COMPLETED: color.inkQuaternary,
   CANCELLED: color.inkQuaternary,
   REJECTED: color.danger,

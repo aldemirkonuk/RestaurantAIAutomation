@@ -10,16 +10,7 @@ import { color, space } from "@/design/tokens";
 import { useOrderHistory, usePendingOrders } from "@/api/queries";
 import type { ProcurementOrder } from "@/api/types";
 import { TipStrip } from "@/guidance/TipStrip";
-
-const OPEN_STATUSES = new Set([
-  "PENDING",
-  "APPROVAL_NEEDED",
-  "NEGOTIATING",
-  "APPROVED",
-  "CONFIRMED",
-  "IN_TRANSIT",
-  "DELIVERED",
-]);
+import { OPEN_STATUSES } from "@/lib/orderStatus";
 
 export default function SupplyScreen() {
   const router = useRouter();

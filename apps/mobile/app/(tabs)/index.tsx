@@ -18,6 +18,7 @@ import {
 import { PulseStrip } from "@/components/today/PulseStrip";
 import { DecisionCard } from "@/components/today/DecisionCard";
 import { FeedZero } from "@/components/today/FeedZero";
+import { WaitingStrip } from "@/components/today/WaitingStrip";
 import { color, space } from "@/design/tokens";
 import { useFeed, useUnreadCount } from "@/api/queries";
 import { useFeedLocal } from "@/state/feedLocal";
@@ -288,6 +289,9 @@ export default function TodayScreen() {
             ) : null}
             <TipStrip pageId="dashboard" />
             <PulseStrip />
+            <WaitingStrip
+              style={{ marginHorizontal: space.lg, marginBottom: space.md }}
+            />
             {failed.length > 0 ? (
               <View
                 style={{
@@ -331,8 +335,24 @@ export default function TodayScreen() {
                         </AppText>
                       ) : null}
                     </View>
+                    {/* Retry keeps the counted figures and sends them again
+                        (F-407); dismissing threw them away and the truck had
+                        to be recounted. An already-done entry would only get
+                        the same answer, so it is dismiss-only. */}
+                    {!f.alreadyDone ? (
+                      <PressableScale
+                        onPress={() => useOutbox.getState().retryFailed(f.id)}
+                        accessibilityLabel={`Try ${f.label} again`}
+                        style={{ paddingHorizontal: space.sm }}
+                      >
+                        <AppText variant="footnote" tone="danger">
+                          Try again
+                        </AppText>
+                      </PressableScale>
+                    ) : null}
                     <PressableScale
                       onPress={() => useOutbox.getState().dismissFailed(f.id)}
+                      accessibilityLabel={`Dismiss ${f.label}`}
                     >
                       <Ionicons
                         name="close"

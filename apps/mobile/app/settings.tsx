@@ -24,7 +24,7 @@ export default function SettingsScreen() {
   }, []);
 
   const handleSignOut = async () => {
-    await unregisterPush().catch(() => {});
+    // The push device is unregistered by signOut itself (src/lib/push.ts).
     clearPersistedQueries();
     await signOut();
   };
