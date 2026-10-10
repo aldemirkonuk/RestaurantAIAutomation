@@ -227,6 +227,16 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     expect(out.gmroi).toBeNull();
   });
 
+  // F-133: the page counted the uncosted rows but never named them.
+  it("names each on-hand row that has no recorded cost", async () => {
+    const out: any = await build([UNPRICED, RECORDED]).getFinancialSummary(
+      RESTAURANT,
+    );
+    expect(out.uncosted).toEqual([
+      { id: UNPRICED.id, name: UNPRICED.wine_name, qty: UNPRICED.stock_live },
+    ]);
+  });
+
   it("does not let the null become a zero anywhere in the payload", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,

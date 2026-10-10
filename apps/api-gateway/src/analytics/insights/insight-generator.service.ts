@@ -52,6 +52,52 @@ import {
   resolveItemState,
 } from "./item-state";
 
+/**
+ * Goal measures that are a LEVEL read at an instant or as a ratio over the
+ * window (an average, a share, days of stock), not a running total. Their
+ * pace is not `target × elapsed/total`: an average check of 25 against a
+ * target of 15 is already met, not "a quarter of the way there" (F-183).
+ */
+export const LEVEL_GOAL_METRICS: ReadonlySet<string> = new Set([
+  "avg_check",
+  "wine_attach_rate",
+  "days_of_inventory",
+]);
+
+/**
+ * Where a goal should stand by now, as a fraction `elapsed` (0–1) of its
+ * schedule. A running total ramps from nothing to the target. A level ramps
+ * from where the house stood when the goal was set (its baseline) to the
+ * target; with no baseline to ramp from, the target itself is the line.
+ */
+export function goalExpectedByNow(
+  metricKey: string,
+  target: number,
+  baseline: number | null,
+  elapsed: number,
+): number {
+  if (!LEVEL_GOAL_METRICS.has(metricKey)) return target * elapsed;
+  if (baseline === null || !Number.isFinite(baseline) || baseline <= 0)
+    return target;
+  return baseline + (target - baseline) * elapsed;
+}
+
+/**
+ * Whether a goal is keeping the pace `expected` asks of it by now: within 10%
+ * of the line, upward for a goal to reach, downward for one to keep under
+ * ("at_most"). One rule for the goals desk, the recommendation card and the
+ * insight card, so the three cannot disagree (F-383).
+ */
+export function goalPaceHolds(
+  direction: string | null | undefined,
+  current: number,
+  expected: number,
+): boolean {
+  return direction === "at_most"
+    ? current <= expected * 1.1
+    : current >= expected * 0.9;
+}
+
 /** How many items each hiding state withheld from one read (ADR 0191). */
 export interface WithheldCounts {
   dismissed: number;
@@ -270,8 +316,20 @@ export const BASKET_MIN_LIFT = 1.3;
  *       Re-checked at merge like 11. [integ rehearsal 2026-10-10: drafted
  *       as 12 on fix/sim-insights-copy; 12 (ADR 0303) and 13 (F-341) were
  *       taken first, so this is 14. Renumber again at landing if needed.]
+ *  15 — 2026-10-09 (F-381, F-132): the wine mover compares two weeks only
+ *       when the house filed records on enough days of each (the overall
+ *       comparison's rule), where a week with no records read "fell 100%"
+ *       and raised the weekly-demand-slide card; and a concentration
+ *       sentence says "worth watching" only above the usual 1,500 line, and
+ *       names "your top vendor" in the singular; and (F-383, F-183) the goal
+ *       card keeps the goals desk's pace, so a "keep at most" goal under its
+ *       line, a level ramped from its baseline and a goal with nothing
+ *       measured no longer read behind or "0% of the way". A row below 13
+ *       may hold any of these sentences, so it is recomputed, not served. [integ rehearsal 2026-10-10:
+ *       drafted as 13 on fix/sim-analytics-goals; 13 (F-341) and 14 (F-295)
+ *       were taken first, so this is 15. Renumber again at landing if needed.]
  */
-export const INSIGHT_GENERATOR_VERSION = 14;
+export const INSIGHT_GENERATOR_VERSION = 15;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -1235,7 +1293,25 @@ export class InsightGeneratorService {
       cmp: E.PeriodComparison;
     } | null = null;
     const namesUnread = readWasRefused(bundle, "restaurant_inventory");
-    for (const [wineId, wineRows] of namesUnread ? [] : byWine) {
+    // The two weeks are compared only when the HOUSE filed records on enough
+    // days of each, by the same rule as the overall comparison: a wine with
+    // no line on a trading day sold none, but a week with no records at all
+    // is an absence, not "fell 100%" (F-381). `observed` is the overall
+    // series' (it holds the manager's exclusions and the uncounted days), and
+    // its last 28 days are the per-wine series' 28.
+    const houseObserved = observed.slice(-28);
+    const obsIn = (from: number, to: number) =>
+      houseObserved.slice(from, to).filter(Boolean).length;
+    const curObs = obsIn(21, 28);
+    const prevObs = obsIn(14, 21);
+    const weeksComparable =
+      houseObserved.length === 28 &&
+      curObs >= MIN_PERIOD_OBSERVED &&
+      prevObs >= MIN_PERIOD_OBSERVED &&
+      Math.abs(curObs - prevObs) <= MAX_PERIOD_OBSERVED_GAP;
+    for (const [wineId, wineRows] of namesUnread || !weeksComparable
+      ? []
+      : byWine) {
       const daily = this.toDaily(wineRows, 28, bundle.zone);
       const s = daily.values;
       const cmp = E.periodOverPeriod(s, 7);
@@ -2020,7 +2096,16 @@ export class InsightGeneratorService {
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;
       if (target <= 0) continue;
-      const progress = current / target;
+      const baseline =
+        g.baseline_value === null || g.baseline_value === undefined
+          ? null
+          : Number(g.baseline_value);
+      const level = LEVEL_GOAL_METRICS.has(g.metric_key);
+      // An average check or attach rate with nothing measured yet is stored
+      // with no baseline and a 0 the column cannot leave empty. That 0 is
+      // "not measured", not "0% of the way" and not behind (F-183): no card.
+      if (level && baseline === null && current <= 0) continue;
+      const atMost = g.direction === "at_most";
       let daysLeft: number | null = null;
       let onTrack: boolean | null = null;
       if (g.deadline) {
@@ -2038,20 +2123,38 @@ export class InsightGeneratorService {
             1,
             Math.max(0, (total - daysLeft) / total),
           );
-          onTrack = progress >= elapsedFrac * 0.9; // within 10% of linear pace
+          // The goals desk's own line (`getGoalProgress`): a level ramps from
+          // its baseline, a total from nothing, and a "keep at most" goal is
+          // on pace while it stays under the line, not over it (F-383).
+          onTrack = goalPaceHolds(
+            g.direction,
+            current,
+            goalExpectedByNow(g.metric_key, target, baseline, elapsedFrac),
+          );
         }
       }
+      // "X% of the way" only means something for a running total chased
+      // upward; a level or a ceiling is said by its pace alone.
+      const share = current / target;
       const ev: InsightEvidence = {
         measureLabel: g.metric_key,
         unit: "ratio",
         goalName: g.name,
-        goalProgressPct: progress,
+        goalProgressPct: atMost || level ? undefined : share,
         goalDaysLeft: daysLeft ?? undefined,
         goalOnTrack: onTrack ?? undefined,
       };
+      if (ev.goalProgressPct === undefined && ev.goalOnTrack === undefined)
+        continue;
       push(
         this.record("overall.revenue.goal_pace", "goals", "goal", ev, {
-          effectPct: progress - 1,
+          // How far past (or short of) the line the goal stands, by its own
+          // direction: under a ceiling is ahead, over it is behind.
+          effectPct: atMost
+            ? current > 0
+              ? target / current - 1
+              : 0
+            : share - 1,
           n: 14,
           boost: onTrack === false ? 1.5 : 1,
           entityLabel: g.name,

@@ -154,6 +154,8 @@ const quadrants = analysis<QuadrantRegister>({
 export interface LedgerRegister {
   basis?: Record<string, string>;
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
+  /** The on-hand wines with no recorded cost, by name (F-133); capped by the gateway. */
+  uncosted?: Array<{ id: string; name: string }>;
   inventoryValue: number | null;
   cogs: number | null;
   revenue: number | null;
@@ -179,6 +181,7 @@ const ledger = analysis<LedgerRegister>({
     return {
       basis: d.basis as Record<string, string>,
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
+      uncosted: arr(d.uncosted).map((u) => ({ id: str(u.id), name: str(u.name) || str(u.id) })),
       inventoryValue: num(d.inventoryValue),
       cogs: num(d.cogs),
       revenue: num(d.revenue),
@@ -192,6 +195,7 @@ const ledger = analysis<LedgerRegister>({
   },
   view: (f) => {
     const cc = f.costCoverage;
+    const uncosted = f.uncosted ?? [];
     const figures = [
       {
         label: 'Cellar at cost',
@@ -237,6 +241,20 @@ const ledger = analysis<LedgerRegister>({
               cc.total === 0
                 ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
                 : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
+              // Which wines, and how to cost them (F-133): a wine's cost is
+              // what its invoice says, so the way back is to file it.
+              ...(uncosted.length > 0
+                ? [
+                    <>
+                      No cost recorded yet for {uncosted.map((u) => u.name).join(', ')}
+                      {cc.unpriced > uncosted.length
+                        ? ` and ${countOf(cc.unpriced - uncosted.length, 'other', 'others')}`
+                        : ''}
+                      . A wine is costed from its invoice — <Link to="/receipts">file the invoice on Receipts</Link>{' '}
+                      and these figures fill in.
+                    </>,
+                  ]
+                : []),
             ]
           : [],
       basis: [

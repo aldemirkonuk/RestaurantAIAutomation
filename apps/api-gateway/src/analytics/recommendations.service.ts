@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
-import { GoalsService } from "./goals.service";
+import { GoalsService, LEVEL_GOAL_METRICS } from "./goals.service";
 import { DatabaseService } from "../database/database.service";
 import { readHouseZone } from "../common/house-day";
 import {
@@ -796,30 +796,32 @@ export class RecommendationsService {
     }));
 
     // ---- Goal rules -------------------------------------------------------
-    for (const g of ctx.goals.slice(0, 3)) {
-      const target = Number(g.target_value) || 0;
-      const current = Number(g.current_value) || 0;
-      const behind =
-        g.deadline &&
-        target > 0 &&
-        current / target <
-          Math.max(
-            0,
-            1 -
-              Math.max(
-                0,
-                (new Date(g.deadline).getTime() - Date.now()) / 86400000,
-              ) /
-                Math.max(
-                  1,
-                  (new Date(g.deadline).getTime() -
-                    new Date(g.created_at).getTime()) /
-                    86400000,
-                ),
-          ) *
-            0.9;
+    // The pace is the goals desk's own (`getGoalProgress`), not a second
+    // arithmetic over the stored row: that one read `current_value / target`
+    // for every goal, so a met "keep at most" goal, a level such as the
+    // average check, and a goal with nothing measured yet (stored 0) all read
+    // behind (F-383). A goal whose progress cannot be read raises no card —
+    // "not measured" is not "behind".
+    const goalPaces = await Promise.all(
+      ctx.goals.slice(0, 3).map((g: any) =>
+        this.goalsService
+          .getGoalProgress(restaurantId, g.id)
+          .catch(() => null),
+      ),
+    );
+    for (const [i, g] of ctx.goals.slice(0, 3).entries()) {
+      const pace = goalPaces[i];
+      const behind = pace?.onTrack === false;
+      // "% done" only means something for a running total chased upward.
+      const done =
+        pace &&
+        pace.progressPct !== null &&
+        g.direction !== "at_most" &&
+        !LEVEL_GOAL_METRICS.has(g.metric_key)
+          ? ` (${Math.round(pace.progressPct * 100)}% done)`
+          : "";
       rule(`goal_behind_${g.id}`, !!behind, () => ({
-        observation: `Goal "${g.name}" is behind its linear pace (${Math.round((current / target) * 100)}% done).`,
+        observation: `Goal "${g.name}" is behind the pace it needs to make its deadline${done}.`,
         recommendation:
           "Pick the single biggest lever from the insight feed for this goal's category and commit to it for 7 days before adding anything else.",
         rationale:

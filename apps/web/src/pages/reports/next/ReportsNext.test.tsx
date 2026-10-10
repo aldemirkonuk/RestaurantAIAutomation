@@ -32,6 +32,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet, keepUnoffered, offeredFor } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS, HOUSE_LAYOUT_TITLE } from './rp-sheet';
+import { targetToStore, targetToType } from './rp-registers-goals';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
@@ -303,6 +304,7 @@ const GOALS = {
   supportedMetrics: [
     { key: 'wine_revenue', label: 'Wine revenue', unit: 'currency' },
     { key: 'purchase_spend', label: 'Purchasing spend', unit: 'currency' },
+    { key: 'wine_attach_rate', label: 'Wine attach rate', unit: 'percent' },
   ],
   basis: {
     current: 'each goal recomputed over the window that opens on its creation date',
@@ -882,6 +884,49 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     expect(within(ahead).getAllByText('—').length).toBeGreaterThanOrEqual(2);
   });
 
+  // F-134: 6,318.9 bottles in 14 days at a 100% backtest error was drawn.
+  it('withholds a projection that scored worse than half on its own history, and says why', () => {
+    hook.current = withRegister(
+      'ahead',
+      ok({
+        model: 'holt_winters',
+        modelFitted: true,
+        horizon: 14,
+        history: { dates: ['2026-08-30', '2026-08-31'], values: [2, 3] },
+        forecast: [{ date: '2026-09-01', value: 451.35 }],
+        totalForecastDemand: 6318.9,
+        accuracy: { mape: 100, scoredPoints: 60, basis: 'rolling one-step-ahead' },
+        basis: { model: 'holt_winters fitted on 120 days of history' },
+      }),
+    );
+    paint();
+    const ahead = screen.getByRole('region', { name: 'What’s coming' });
+    expect(within(ahead).getByText(/missed by 100% on average/)).toBeInTheDocument();
+    expect(within(ahead).queryByText(/6,318/)).not.toBeInTheDocument();
+  });
+
+  // F-130: approved and partly received orders sat in neither figure, unsaid.
+  it('names the orders the spend pacing counts in neither figure', () => {
+    hook.current = withRegister(
+      'pacing',
+      ok({
+        basis: { outflow: 'delivered orders', days: "each 30-day window ends today, on the house's own date (America/Los_Angeles)" },
+        spendLast30d: 700,
+        spendPrev30d: 400,
+        paceDeltaPct: 0.75,
+        projectedNext4Weeks: null,
+        committedOpenOrders: 0,
+        openOrderCount: 0,
+        notCounted: { approved: 1, partlyReceived: 6, other: 0, orderValue: 5500 },
+      }),
+    );
+    paint();
+    const pacingRegion = screen.getByRole('region', { name: 'Spend pacing' });
+    expect(
+      within(pacingRegion).getByText(/Not in either figure: 1 approved order and 6 partly received orders/),
+    ).toBeInTheDocument();
+  });
+
   it('withholds both weekdays when the server reports a tie, and says why', () => {
     hook.current = withRegister(
       'week',
@@ -995,6 +1040,30 @@ describe('ReportsNext — honesty', () => {
       within(pacingCut).getByRole('status', { name: 'Reading the register' }),
     ).toBeInTheDocument();
     expect(container.querySelectorAll('.rp-skel').length).toBeGreaterThan(0);
+  });
+
+  // F-133: "6 of 10 on-hand wines carry no cost" named none of them.
+  it('names the uncosted wines in Figures of record, and points to where a cost comes from', () => {
+    const b = base();
+    const ledgerRaw = (b.registers as Record<string, { data: Record<string, unknown> }>).ledger.data;
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        ...ledgerRaw,
+        uncosted: [
+          { id: 'i1', name: 'Barolo', qty: 6 },
+          { id: 'i2', name: 'Etna Rosso', qty: 3 },
+        ],
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(
+      within(ledger).getByText(/No cost recorded yet for Barolo, Etna Rosso and 4 others/),
+    ).toBeInTheDocument();
+    expect(
+      within(ledger).getByRole('link', { name: 'file the invoice on Receipts' }).getAttribute('href'),
+    ).toBe('/receipts');
   });
 
   it('keeps an uncosted wine off the quadrant plot instead of filing it as a dog', () => {
@@ -1312,6 +1381,34 @@ describe('ReportsNext — the goals desk', () => {
     expect(within(goals).getByText(/baseline was taken against it when it was set/)).toBeInTheDocument();
   });
 
+  // F-184: "35" under a "9000" placeholder was stored as 3,500%.
+  it('takes a percent target as 0–100, says so beside the field, and stores a share', () => {
+    deskStub.create.mockClear();
+    paint();
+    const goals = screen.getByRole('region', { name: 'Goals' });
+    fireEvent.click(within(goals).getByRole('button', { name: /Set a goal/ }));
+    fireEvent.change(within(goals).getByLabelText('What are we after'), {
+      target: { value: 'More tables with wine' },
+    });
+    fireEvent.change(within(goals).getByLabelText('Measure'), {
+      target: { value: 'wine_attach_rate' },
+    });
+    const field = within(goals).getByLabelText('Target, in percent') as HTMLInputElement;
+    expect(field.placeholder).toBe('35');
+    fireEvent.change(field, { target: { value: '35' } });
+    fireEvent.click(within(goals).getByRole('button', { name: 'Set the goal' }));
+    expect(deskStub.create).toHaveBeenCalledWith(
+      expect.objectContaining({ metricKey: 'wine_attach_rate', targetValue: 0.35 }),
+    );
+  });
+
+  it('shows a stored share back as the percent it was typed as', () => {
+    expect(targetToType(0.35, 'percent')).toBe('35');
+    expect(targetToType(9000, 'currency')).toBe('9000');
+    expect(targetToStore(35, 'percent')).toBeCloseTo(0.35, 10);
+    expect(targetToStore(9000, 'currency')).toBe(9000);
+  });
+
   it('is read-only for a role that cannot set goals, and says which role can', () => {
     deskStub.canWrite = false;
     deskStub.readOnlyReason = 'Goals are set by owners and managers.';
@@ -1391,7 +1488,7 @@ describe('ReportsNext — the book of scenarios', () => {
       'Hold purchasing spend',
     );
     // The one field the book has no business writing.
-    expect((within(goals).getByLabelText('Target') as HTMLInputElement).value).toBe('');
+    expect((within(goals).getByLabelText('Target, in money') as HTMLInputElement).value).toBe('');
     // And the form still refuses to submit without one.
     expect(
       within(goals).getByText(/needs a name and a target above zero/),

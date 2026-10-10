@@ -157,7 +157,24 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     }
     case "concentration": {
       if (e.topShare == null || e.topCount == null) return null;
-      return `Your top ${e.topCount} ${entity.toLowerCase()} hold ${fmtPct(e.topShare)} of ${e.measureLabel}${e.hhi != null ? ` (HHI ${(e.hhi * 10000).toFixed(0)})` : ""} — concentration worth watching.`;
+      // One is "your top vendor holds", not "your top 1 vendors hold" (F-132).
+      const plural = entity.toLowerCase();
+      const who =
+        e.topCount === 1
+          ? `Your top ${plural.replace(/s$/, "")} holds`
+          : `Your top ${e.topCount} ${plural} hold`;
+      // "Worth watching" only where the index says so: below 1,500 the usual
+      // reading is unconcentrated, and the sentence says that instead (F-132).
+      const hhi10k = e.hhi != null ? e.hhi * 10000 : null;
+      const reading =
+        hhi10k === null
+          ? ""
+          : hhi10k >= 2500
+            ? " — highly concentrated, worth watching"
+            : hhi10k >= 1500
+              ? " — moderately concentrated, worth watching"
+              : " — well spread, not concentrated";
+      return `${who} ${fmtPct(e.topShare)} of ${e.measureLabel}${hhi10k !== null ? ` (HHI ${hhi10k.toFixed(0)})` : ""}${reading}.`;
     }
     case "correlation": {
       if (e.r == null || !e.attribute) return null;
@@ -192,15 +209,23 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
       return `${prefix}${e.measureLabel} is running ${fmtPct(e.forecastGapPct)} ${dir} forecast${e.windowLabel ? ` over the last ${e.windowLabel}` : ""}.`;
     }
     case "goal": {
-      if (e.goalProgressPct == null || !e.goalName) return null;
+      if (!e.goalName) return null;
+      const days =
+        e.goalDaysLeft != null ? ` with ${e.goalDaysLeft} days left` : "";
+      // A level (average check, attach rate) or a "keep at most" goal has no
+      // "of the way": it is said by its pace alone (F-383).
+      if (e.goalProgressPct == null) {
+        if (e.goalOnTrack == null) return null;
+        return e.goalOnTrack
+          ? `On "${e.goalName}"${days}, the current pace gets you there.`
+          : `On "${e.goalName}"${days}, the current pace falls short — consider acting on the levers below.`;
+      }
       const pace =
         e.goalOnTrack == null
           ? ""
           : e.goalOnTrack
             ? " Current pace gets you there."
             : " Current pace falls short — consider acting on the levers below.";
-      const days =
-        e.goalDaysLeft != null ? ` with ${e.goalDaysLeft} days left` : "";
       return `You're ${fmtPct(e.goalProgressPct)} of the way to "${e.goalName}"${days}.${pace}`;
     }
     case "hot": {

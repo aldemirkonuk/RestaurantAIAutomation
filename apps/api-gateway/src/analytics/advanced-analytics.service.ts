@@ -18,6 +18,7 @@ import {
 } from "./consumption-units";
 import {
   ORDER_ARRIVED_STATUSES,
+  ORDER_CLOSED_STATUSES,
   ORDER_OPEN_WITH_VENDOR_STATUSES,
   ORDER_OUTSTANDING_STATUSES,
   ORDER_SPEND_STATUSES,
@@ -743,17 +744,33 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getCashflow(restaurantId: string) {
-    const orders = await this.loadOrders(restaurantId, 180);
+    const [orders, frame] = await Promise.all([
+      this.loadOrders(restaurantId, 180),
+      this.loadHouseFrame(restaurantId),
+    ]);
     // Money question: PARTIALLY_RECEIVED carries PO-value columns, not
     // received-value ones, so it is excluded here. See order-status.ts.
     const delivered = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_SPEND_STATUSES),
     );
-    const spendRows = delivered.map((o: any) => ({
-      date: (o.delivered_at || o.created_at || "").substring(0, 10),
-      value: o.total_cost || o.final_price || 0,
-    }));
-    const daily = this.toDaily(spendRows, 180);
+    // The windows end TODAY, on the house's own date (F-130). The shared
+    // `toDaily` stops at yesterday's UTC date, so every delivery taken in
+    // today — and, west of Greenwich, every one after the evening's UTC
+    // midnight — was in no window, and the panel read $0 beside a Figures of
+    // record that counted them. With no zone the days are UTC days, and the
+    // basis says so.
+    const zone = frame.zone;
+    const today = zone ? houseToday(zone) : new Date().toISOString().slice(0, 10);
+    const byDay = new Map<string, number>();
+    for (const o of delivered as any[]) {
+      const at = o.delivered_at || o.created_at || null;
+      const day = zone ? houseDayOf(at, zone) : (at || "").substring(0, 10);
+      if (!day) continue;
+      byDay.set(day, (byDay.get(day) || 0) + (o.total_cost || o.final_price || 0));
+    }
+    const daily: number[] = [];
+    for (let back = 179; back >= 0; back--)
+      daily.push(byDay.get(shiftHouseDay(today, -back)) || 0);
 
     const last30 = daily.slice(-30).reduce((a, b) => a + b, 0);
     const prev30 = daily.slice(-60, -30).reduce((a, b) => a + b, 0);
@@ -786,9 +803,40 @@ export class AdvancedAnalyticsService {
       0,
     );
 
+    // Orders in NEITHER figure: approved but not yet with the vendor's
+    // confirmation, or partly received and still open (F-130). Neither rule
+    // above is changed here — a partly received order's columns are its
+    // order value, not what arrived — but the panel names them, with their
+    // order value, instead of letting both figures read as the whole book.
+    const neither = orders.filter(
+      (o: any) =>
+        !hasStatus(o.status, ORDER_SPEND_STATUSES) &&
+        !hasStatus(o.status, ORDER_OUTSTANDING_STATUSES) &&
+        !hasStatus(o.status, ORDER_CLOSED_STATUSES),
+    );
+    const notCounted = {
+      approved: neither.filter((o: any) => o.status === "APPROVED").length,
+      partlyReceived: neither.filter(
+        (o: any) => o.status === "PARTIALLY_RECEIVED",
+      ).length,
+      other: neither.filter(
+        (o: any) =>
+          o.status !== "APPROVED" && o.status !== "PARTIALLY_RECEIVED",
+      ).length,
+      orderValue: neither.reduce(
+        (s: number, o: any) => s + (o.total_cost || o.final_price || 0),
+        0,
+      ),
+    };
+
     return {
       basis: {
         outflow: "delivered procurement_orders (revenue inflow needs POS feed)",
+        days: zone
+          ? `each 30-day window ends today, on the house's own date (${zone})`
+          : "each 30-day window ends today, on UTC dates, because the house has no time zone set",
+        notCounted:
+          "orders approved but not yet confirmed by the vendor, orders still being negotiated, and orders partly received and still open are in neither figure until they are confirmed or closed; they are counted here at their order value",
       },
       spendLast30d: last30,
       spendPrev30d: prev30,
@@ -796,6 +844,7 @@ export class AdvancedAnalyticsService {
       projectedNext4Weeks: holt?.forecast.map((v) => Math.max(0, v)) ?? null,
       committedOpenOrders: committed,
       openOrderCount: open.length,
+      notCounted,
       generatedAt: new Date().toISOString(),
     };
   }

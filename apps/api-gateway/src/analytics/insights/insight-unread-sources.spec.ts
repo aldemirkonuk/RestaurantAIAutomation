@@ -453,6 +453,41 @@ describe("an insight that takes a name from a read that could not be made does n
     expect(of(xs, MOVER).map((i) => i.entityLabel)).toEqual(["Wine M1"]);
   });
 
+  // F-381: a week in which the house filed nothing is an absence. The mover
+  // read it as "fell 100%" and the weekly-demand-slide card fired on it.
+  it("a week with no records at all is not a 100% fall: the mover does not fire", async () => {
+    const answers = mover();
+    const rows = (answers.wine_consumption_log as { rows: Row[] }).rows;
+    (answers.wine_consumption_log as { rows: Row[] }).rows = rows.filter(
+      (_r, i) => i >= 7,
+    );
+    const xs = await fire(answers);
+    expect(of(xs, MOVER)).toEqual([]);
+  });
+
+  it("a wine that sold nothing in a week the house traded did fall, and the mover says so", async () => {
+    const answers = mover();
+    const rows = (answers.wine_consumption_log as { rows: Row[] }).rows;
+    // M1 sells only last-but-one week; another wine sells every day, so the
+    // house filed records on all fourteen days.
+    const kept = rows.filter((_r, i) => i >= 7);
+    for (let d = 1; d <= 14; d++)
+      kept.push({
+        id: `o${String(d).padStart(3, "0")}`,
+        inventory_id: "inv-2",
+        consumption_type: "bottle",
+        quantity: 1,
+        volume_ml: null,
+        created_at: dayBack(d),
+        restaurant_inventory: { master_wine_id: "M2" },
+      });
+    (answers.wine_consumption_log as { rows: Row[] }).rows = kept;
+    const xs = await fire(answers);
+    const moved = of(xs, MOVER);
+    expect(moved.map((i) => i.entityLabel)).toEqual(["Wine M1"]);
+    expect(moved[0].evidence.deltaPct).toBe(-1);
+  });
+
   it.each([
     ["failing", { error: "canceling statement due to statement timeout" }],
     ["rejecting", { throws: "fetch failed" }],
@@ -475,6 +510,88 @@ describe("an insight that takes a name from a read that could not be made does n
       ).toEqual([]);
     },
   );
+});
+
+/**
+ * F-383 / F-183: the insight feed's goal card reads the goals desk's own pace
+ * (`goalExpectedByNow`, `goalPaceHolds`), not `current / target` against the
+ * calendar, so the desk, the recommendation card and this card agree.
+ */
+describe("the goal card keeps the goals desk's pace", () => {
+  const GOAL = "overall.revenue.goal_pace";
+  const goalsOnly = (goal: Row): Record<string, Answer> => ({
+    ...empty(),
+    analytics_goals: {
+      rows: [
+        {
+          id: "g1",
+          name: "The goal",
+          status: "active",
+          // 100 days long, 80 of them gone.
+          created_at: new Date(Date.now() - 80 * 86400000).toISOString(),
+          deadline: new Date(Date.now() + 20 * 86400000).toISOString(),
+          baseline_value: null,
+          direction: "at_least",
+          ...goal,
+        },
+      ],
+    },
+  });
+  const cards = async (goal: Row) =>
+    (
+      await generatorOver(goalsOnly(goal)).generate("r1", { persist: false })
+    ).insights.filter((i) => i.candidateKey === GOAL);
+
+  it("a 'keep at most' days-of-stock goal under its line is on pace, not behind", async () => {
+    const xs = await cards({
+      metric_key: "days_of_inventory",
+      direction: "at_most",
+      target_value: 10,
+      current_value: 6,
+      baseline_value: 14,
+    });
+    expect(xs).toHaveLength(1);
+    expect(xs[0].evidence.goalOnTrack).toBe(true);
+    expect(xs[0].evidence.goalProgressPct).toBeUndefined();
+    expect(xs[0].sentence).toContain("the current pace gets you there");
+    expect(xs[0].sentence).not.toMatch(/of the way/);
+  });
+
+  it("an average check with nothing measured yet raises no card: not 0%, not behind", async () => {
+    expect(
+      await cards({
+        metric_key: "avg_check",
+        target_value: 15,
+        current_value: 0,
+      }),
+    ).toEqual([]);
+  });
+
+  it("an average check ramps from where the house stood, not from nothing", async () => {
+    // Baseline 18 toward 20, 80% gone: the line is 19.6, and 15 is behind it
+    // (a ramp from 0 put the line at 16 and read 15 as on pace).
+    const xs = await cards({
+      metric_key: "avg_check",
+      target_value: 20,
+      current_value: 15,
+      baseline_value: 18,
+    });
+    expect(xs).toHaveLength(1);
+    expect(xs[0].evidence.goalOnTrack).toBe(false);
+    expect(xs[0].sentence).toContain("the current pace falls short");
+  });
+
+  it("a running total still says how far along it is", async () => {
+    const xs = await cards({
+      metric_key: "wine_revenue",
+      target_value: 1000,
+      current_value: 500,
+    });
+    expect(xs).toHaveLength(1);
+    expect(xs[0].evidence.goalProgressPct).toBe(0.5);
+    expect(xs[0].evidence.goalOnTrack).toBe(false);
+    expect(xs[0].sentence).toMatch(/of the way to "The goal"/);
+  });
 });
 
 describe("/recommendations says which insight read could not be made", () => {

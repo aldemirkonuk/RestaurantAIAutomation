@@ -3,7 +3,12 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { AnalyticsService } from "./analytics.service";
 import * as E from "./engine";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  InsightGeneratorService,
+  LEVEL_GOAL_METRICS,
+  goalExpectedByNow,
+  goalPaceHolds,
+} from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
@@ -60,6 +65,35 @@ import {
  * SUPPORTED_METRICS: it exists for `getPosRevenueWindow` (OD-85), and offering
  * it as a goal target is a separate product decision nobody has made.
  */
+/**
+ * A goal whose measure has nothing in its window to read: an average check or
+ * an attach rate with no check filed since the goal was set. It is "not
+ * measured", never 0 — a zero average check is not a cheap night, it is no
+ * night at all (F-183). `createGoal` stores no baseline for it, and
+ * `listGoalsWithProgress` prints the sentence where the bar would be.
+ */
+export class UnmeasuredGoalError extends Error {}
+
+// The pace rule lives beside the insight feed's goal family, which reads it
+// too: this file already imports the generator, so the rule sits there and
+// not here, where importing it back would make the two files a cycle (F-183,
+// F-383). Re-exported so the reports desk and recommendations keep one import.
+export { LEVEL_GOAL_METRICS, goalExpectedByNow, goalPaceHolds };
+
+/**
+ * A percent measure is stored as a share (0.35 is 35%). A target above 1 is
+ * a percentage typed as a whole number, which would be stored as 3,500% and
+ * read as behind forever (F-184), so it is refused in words.
+ */
+export function percentTargetRefusal(
+  metricKey: string,
+  target: number,
+): string | null {
+  const unit = GoalsService.SUPPORTED_METRICS[metricKey]?.unit;
+  if (unit !== "percent" || target <= 1) return null;
+  return `${GoalsService.SUPPORTED_METRICS[metricKey].label} is a share of checks, so its target cannot be above 100%. Send 35% as 0.35.`;
+}
+
 @Injectable()
 export class GoalsService {
   private readonly logger = new Logger(GoalsService.name);
@@ -245,6 +279,11 @@ export class GoalsService {
     }
     if (!(Number(input.targetValue) > 0))
       throw new Error("targetValue must be > 0");
+    const percentRefusal = percentTargetRefusal(
+      input.metricKey,
+      Number(input.targetValue),
+    );
+    if (percentRefusal) throw new Error(percentRefusal);
     const sourceRuleKey =
       input.sourceRuleKey === undefined || input.sourceRuleKey === null
         ? null
@@ -261,12 +300,20 @@ export class GoalsService {
     // zone, a windowed metric refuses with the zone sentence rather than
     // writing a baseline measured on UTC days.
     const house = await readHouseZone(this.dbService.getClient(), restaurantId);
-    const baseline = await this.computeMetric(
-      restaurantId,
-      input.metricKey,
-      house.zone ? this.periodStart(input.period, house.zone) : null,
-      house.zone,
-    );
+    // A measure with nothing to read yet (no check filed) has no baseline:
+    // the goal is set and stays "not measured" until a check lands (F-183).
+    let baseline: number | null;
+    try {
+      baseline = await this.computeMetric(
+        restaurantId,
+        input.metricKey,
+        house.zone ? this.periodStart(input.period, house.zone) : null,
+        house.zone,
+      );
+    } catch (err) {
+      if (!(err instanceof UnmeasuredGoalError)) throw err;
+      baseline = null;
+    }
     const { data, error } = await this.dbService
       .getClient()
       .from("analytics_goals")
@@ -276,7 +323,9 @@ export class GoalsService {
         metric_key: input.metricKey,
         target_value: input.targetValue,
         baseline_value: baseline,
-        current_value: baseline,
+        // NOT NULL in the table; an unmeasured goal keeps the column default,
+        // and no reader takes this stored figure for a measurement.
+        current_value: baseline ?? 0,
         direction: input.direction ?? "at_least",
         period: input.period ?? "custom",
         deadline: input.deadline ?? null,
@@ -339,6 +388,22 @@ export class GoalsService {
     if (input.targetValue !== undefined) {
       const target = Number(input.targetValue);
       if (!(target > 0)) throw new Error("targetValue must be > 0");
+      // Only a target above 1 can be a percentage typed whole, so only then
+      // is the goal's measure read (F-184).
+      if (target > 1) {
+        const { data: held, error: heldError } = await this.dbService
+          .getClient()
+          .from("analytics_goals")
+          .select("metric_key")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", goalId)
+          .maybeSingle();
+        if (heldError) throw new Error(heldError.message);
+        const refusal = held
+          ? percentTargetRefusal(String(held.metric_key), target)
+          : null;
+        if (refusal) throw new Error(refusal);
+      }
       patch.target_value = target;
     }
     if (input.deadline !== undefined) {
@@ -583,11 +648,19 @@ export class GoalsService {
         Math.max(0, (Date.now() - start) / 86400000),
       );
       daysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86400000));
-      expectedByNow = target * (elapsed / totalDays);
-      onTrack =
-        goal.direction === "at_most"
-          ? current <= expectedByNow * 1.1
-          : current >= expectedByNow * 0.9;
+      // A level (average check, attach rate, days of stock) ramps from its
+      // baseline, a running total from nothing (F-183).
+      const baseline =
+        goal.baseline_value === null || goal.baseline_value === undefined
+          ? null
+          : Number(goal.baseline_value);
+      expectedByNow = goalExpectedByNow(
+        goal.metric_key,
+        target,
+        baseline,
+        elapsed / totalDays,
+      );
+      onTrack = goalPaceHolds(goal.direction, current, expectedByNow);
 
       // Projection: Holt trend on the cumulative series → deadline.
       if (dailySeries.length >= 7) {
@@ -1150,8 +1223,12 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             (s: number, { row: c }) => s + (c.total || 0),
             0,
           );
+          if (!checks.length)
+            throw new UnmeasuredGoalError(
+              "No check has been filed since this goal was set, so there is no average check to measure yet.",
+            );
           return {
-            current: checks.length ? total / checks.length : 0,
+            current: total / checks.length,
             dailySeries: [],
             dailyDates: [],
             rowCount: checks.length,
@@ -1162,8 +1239,12 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
               (it: any) => it?.is_wine,
             ),
           ).length;
+          if (!checks.length)
+            throw new UnmeasuredGoalError(
+              "No check has been filed since this goal was set, so there is no attach rate to measure yet.",
+            );
           return {
-            current: checks.length ? withWine / checks.length : 0,
+            current: withWine / checks.length,
             dailySeries: [],
             dailyDates: [],
             rowCount: checks.length,
@@ -1191,6 +1272,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       if (err instanceof WholeReadError) throw err;
       // Same for a total that would rest on a line with no bottle figure.
       if (err instanceof UncountedConsumptionError) throw err;
+      // And a measure with nothing to read is "not measured", never 0.
+      if (err instanceof UnmeasuredGoalError) throw err;
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
     }
 

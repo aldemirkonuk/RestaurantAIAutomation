@@ -278,13 +278,38 @@ const till = analysis<TillWindow>({
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 
 export interface PacingRegister {
-  basis?: { outflow?: string };
+  basis?: { outflow?: string; days?: string; notCounted?: string };
   spendLast30d: number | null;
   spendPrev30d: number | null;
   paceDeltaPct: number | null;
   projectedNext4Weeks: number[] | null;
   committedOpenOrders: number | null;
   openOrderCount: number | null;
+  /**
+   * Orders in neither figure (approved, in negotiation, partly received), at
+   * their order value — null from a gateway that does not send it (F-130).
+   */
+  notCounted: { approved: number; partlyReceived: number; other: number; orderValue: number } | null;
+}
+
+/**
+ * The orders neither figure counts, said in words beside them, so "committed"
+ * and "paid out" are not read as the whole book (F-130). Null when there are
+ * none, or the gateway did not say.
+ */
+export function notCountedNote(n: PacingRegister['notCounted']): string | null {
+  if (!n) return null;
+  const parts = [
+    n.approved > 0 ? countOf(n.approved, 'approved order', 'approved orders') : null,
+    n.partlyReceived > 0
+      ? countOf(n.partlyReceived, 'partly received order', 'partly received orders')
+      : null,
+    n.other > 0 ? countOf(n.other, 'order still being negotiated', 'orders still being negotiated') : null,
+  ].filter((p): p is string => p !== null);
+  if (parts.length === 0) return null;
+  const list =
+    parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return `Not in either figure: ${list}, ${money(n.orderValue)} at order value. They count once the vendor confirms them or they close.`;
 }
 
 const pacing = analysis<PacingRegister>({
@@ -308,6 +333,16 @@ const pacing = analysis<PacingRegister>({
         : null,
       committedOpenOrders: num(d.committedOpenOrders),
       openOrderCount: num(d.openOrderCount),
+      notCounted: (() => {
+        const n = obj(d.notCounted);
+        const a = num(n.approved);
+        const p = num(n.partlyReceived);
+        const o = num(n.other);
+        const v = num(n.orderValue);
+        return a === null || p === null || o === null || v === null
+          ? null
+          : { approved: a, partlyReceived: p, other: o, orderValue: v };
+      })(),
     };
   },
   view: (c) => {
@@ -331,8 +366,12 @@ const pacing = analysis<PacingRegister>({
           Too few weeks of purchasing to project — {EM} rather than a line drawn through two points.
         </>
       ),
+      ...(notCountedNote(c.notCounted) ? [notCountedNote(c.notCounted)] : []),
     ];
-    const basis = [c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null];
+    const basis = [
+      c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null,
+      c.basis?.days ? `Days: ${c.basis.days}.` : null,
+    ];
     // Two invisible bars are not a chart. When both windows are empty the
     // sentence is the honest rendering — and it names WHICH windows.
     if ((c.spendLast30d ?? 0) === 0 && (c.spendPrev30d ?? 0) === 0)
@@ -516,6 +555,22 @@ export interface AheadRegister {
   basis?: { demand?: string; model?: string; total?: string };
 }
 
+/**
+ * The largest backtest error (MAPE, in percent) at which a projection is
+ * still drawn. Above 50% the usual reading is "inaccurate": the model misses
+ * by more than half of what was taken out (coordinator's call, F-134).
+ */
+export const MAX_SHOWN_MAPE = 50;
+
+/** Why a projection is withheld, in the owner's words; null when it is shown. */
+export function forecastWithheld(accuracy: AheadRegister['accuracy']): string | null {
+  if (!accuracy || accuracy.mape == null)
+    return 'Nothing is projected: the model could not be scored against this cellar’s own history, so there is no way to say how far to trust it.';
+  if (accuracy.mape > MAX_SHOWN_MAPE)
+    return `Nothing is projected: tried on this cellar’s own history, the model missed by ${ratioPct(accuracy.mape / 100, 0)} on average — more than half — so its figure would mislead more than help.`;
+  return null;
+}
+
 const ahead = analysis<AheadRegister>({
   title: 'What’s coming',
   register: 'forecast register',
@@ -559,6 +614,26 @@ const ahead = analysis<AheadRegister>({
         figures: [
           { label: `Next ${a.horizon} days`, value: EM, note: 'No model fitted this history' },
           { label: 'Model', value: EM, note: 'No model fitted this history' },
+        ],
+        notes: [],
+        basis,
+      };
+    // A projection is shown only beside a score that says it can be trusted
+    // (F-134). With no backtest error, or one above MAX_SHOWN_MAPE, the
+    // figure is withheld and the reason printed: 6,318.9 bottles at a 100%
+    // error is not an expectation, it is noise with a decimal point.
+    const withheld = forecastWithheld(a.accuracy);
+    if (withheld)
+      return {
+        say: withheld,
+        figures: [
+          { label: `Next ${a.horizon} days`, value: EM, note: 'Withheld: not accurate enough to show' },
+          {
+            label: 'Backtest error (MAPE)',
+            value: a.accuracy?.mape == null ? EM : ratioPct(a.accuracy.mape / 100, 1),
+            note: 'Not scoreable on this history',
+          },
+          { label: 'Model', value: a.model || EM, note: 'No model fitted this history' },
         ],
         notes: [],
         basis,

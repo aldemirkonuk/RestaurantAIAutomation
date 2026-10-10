@@ -47,3 +47,33 @@ describe("tableAttributeReading", () => {
     }
   });
 });
+
+/**
+ * F-132: a concentration sentence called every spread "worth watching" —
+ * an index of 262, well under the usual 1,500 line, included — and named
+ * "your top 1 vendors".
+ */
+describe("concentration sentences", () => {
+  const ev = (topCount: number, hhi: number, entity = "vendors") =>
+    verbalize("concentration", {
+      entity,
+      measureLabel: "purchasing spend",
+      unit: "currency",
+      topShare: 0.2,
+      topCount,
+      hhi,
+    });
+
+  it("says a spread-out book is not concentrated, and names one vendor in the singular", () => {
+    expect(ev(1, 0.0262)).toBe(
+      "Your top vendor holds 20% of purchasing spend (HHI 262) — well spread, not concentrated.",
+    );
+  });
+
+  it("says worth watching only from the 1,500 line up", () => {
+    expect(ev(3, 0.18, "wines")).toBe(
+      "Your top 3 wines hold 20% of purchasing spend (HHI 1800) — moderately concentrated, worth watching.",
+    );
+    expect(ev(1, 0.3)).toMatch(/highly concentrated, worth watching\.$/);
+  });
+});
