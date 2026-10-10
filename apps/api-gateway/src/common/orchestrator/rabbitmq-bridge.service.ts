@@ -765,21 +765,83 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // 2. Match order via gmail_thread_id on existing outbound conversation
+      // 2. Match order via the reply's gmail_thread_id, read from the thread's
+      //    EARLIEST stored row (its origin).
+      //
+      // `orderId` takes the origin's order, so the reply's text joins the
+      // order the thread is stored under; when that is none, 2b below guesses.
+      //
+      // `threadOrderId` is the order the thread NAMES, and only the attachment
+      // refs take it. A thread names an order only when its origin is an
+      // outbound row with no `email_headers.in_reply_to`: a row the house sent
+      // first, not a reply. Two kinds of row can be that:
+      // - a staged row (an order letter, or a staff letter held for release),
+      //   stored before it is sent and given its gmail_thread_id only at send
+      //   (procurement.service.ts approveDraft and the auto-send sweep);
+      // - a manual reply or deal confirmation sent when its order has no
+      //   inbound message to answer, stored after the send with the id
+      //   already set. Its order is the one the staff sent on. Nothing makes
+      //   the store land before a vendor reply into the new thread does; in
+      //   practice the round trip orders them.
+      // In a thread the vendor opened, the origin is the vendor's own inbound
+      // row, whose order may be the 2b guess. Every row that later copies that
+      // order into the thread (a responder draft, scheduled, approved or
+      // auto-sent; a staff reply; a deal confirmation) is stored after it and
+      // so cannot be the origin. A reply that opens a NEW Gmail thread is that
+      // thread's origin, and its in_reply_to refuses it. A reply row stored
+      // with no in_reply_to (a deal confirmation written before confirmDeal
+      // recorded it, or any reply, a deal confirmation included, to an inbound
+      // message that had no Message-ID) that opens a new thread still names
+      // its order there. Rows written in one transaction share created_at; a
+      // tie then breaks on id, a random UUID: arbitrary, but the same on every
+      // read. Direction is compared lower-cased (stage_order_letter takes any).
       let orderId: string | null = null;
+      let threadOrderId: string | null = null;
       let threadId: string | null = null;
       let restaurantId: string = provider.restaurant_id;
+      // A FAILED thread read is not "no thread" (ADR 0067). supabase-js
+      // resolves a failed read with { data: null, error }, and reading that as
+      // an empty thread would hand the reply to 2b, which guesses the vendor's
+      // newest open order: the reply, the notice and the responder (which can
+      // stage an AUTO_SEND_SCHEDULED reply on the order it is handed) would
+      // all follow the guess, even when the thread names another order. So 2b
+      // does not run, and the reply is stored with no order and marked
+      // `email_headers.order_match: "thread_read_failed"`, so the row says the
+      // match could not be read rather than that nothing matched. It is still
+      // stored: the consumer acks before this handler settles and the
+      // producers advance their cursors once the publish resolves, so a
+      // return here would lose the mail. The row still joins its thread in
+      // the house's view, which groups on thread_key ("gm:" + gmail_thread_id,
+      // set by the insert trigger), not on thread_id.
+      let threadReadFailed = false;
 
       if (gmailThreadId) {
-        const { data: outbound } = await this.databaseService.supabase
-          .from("procurement_conversations")
-          .select("id, order_id, thread_id, restaurant_id")
-          .eq("gmail_thread_id", gmailThreadId)
-          .limit(1);
-        if (outbound?.[0]) {
-          orderId = outbound[0].order_id;
-          threadId = outbound[0].thread_id;
-          restaurantId = outbound[0].restaurant_id || restaurantId;
+        const { data: thread, error: threadError } =
+          await this.databaseService.supabase
+            .from("procurement_conversations")
+            .select(
+              "id, order_id, thread_id, restaurant_id, direction, email_headers",
+            )
+            .eq("gmail_thread_id", gmailThreadId)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .limit(1);
+        if (threadError) {
+          threadReadFailed = true;
+          this.logger.error(
+            `handleInboundEmail: thread read failed for gmail_thread_id=${gmailThreadId} — ${threadError.message}; storing the reply with no order and not guessing one`,
+          );
+        }
+        const origin = thread?.[0];
+        if (origin) {
+          orderId = origin.order_id;
+          threadOrderId =
+            String(origin.direction).toLowerCase() === "outbound" &&
+            !origin.email_headers?.in_reply_to
+              ? origin.order_id
+              : null;
+          threadId = origin.thread_id;
+          restaurantId = origin.restaurant_id || restaurantId;
         }
       }
 
@@ -789,8 +851,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       // this, the reply's price update has no order to attach to, and the only
       // way forward looks like creating a brand-new order — producing a
       // duplicate for what is really the same negotiation. Fall back to the
-      // most recent still-open order for this vendor+restaurant.
-      if (!orderId) {
+      // most recent still-open order for this vendor+restaurant. Never after a
+      // failed thread read (above): a failed read must not become a guess.
+      if (!orderId && !threadReadFailed) {
         const TERMINAL_ORDER_STATUSES = [
           "CONFIRMED",
           "IN_TRANSIT",
@@ -863,6 +926,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             references,
             gmail_thread_id: gmailThreadId,
             transport: transportSignals,
+            ...(threadReadFailed ? { order_match: "thread_read_failed" } : {}),
           },
           confidence_score: orderId ? 1.0 : null,
           mirrored_by_grant_id: mirroredByGrantId,
@@ -882,9 +946,23 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       );
 
       // Persist attachment bytes to Storage + refs (D2) — best-effort, fire-and-forget.
+      //
+      // The attachment row takes `threadOrderId`, the order step 2 found this
+      // reply's Gmail thread names, and never `orderId`. `orderId` may be the
+      // 2b fallback's guess (this vendor's newest order whose status is not
+      // terminal), or that guess read back from the inbound row an earlier
+      // message in the same thread stored. `DocumentIntakeService
+      // .sweepUningestedAttachments` hands `conversation_attachments.order_id`
+      // to `ingest`, and `linkAndMatch` files a document that arrives with an
+      // order as link_method "manual", confidence 1, and skips the PO-number
+      // check, so a guess here would file an invoice against an order it may
+      // not bill. With no order on the row, intake runs `autoLink`, which
+      // links only when the PO number the document cites equals one of this
+      // house's order numbers. The reply's text still carries `orderId` (the
+      // row above, the notice and the responder below).
       void this.persistAttachments(
         inserted.id,
-        orderId,
+        threadOrderId,
         restaurantId,
         provider.id,
         attachments,
