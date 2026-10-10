@@ -287,13 +287,18 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                 <PageTipStrip />
                 <GuidanceLiveRegion />
                 <main className="mdv-shell__main">
-                  <ErrorBoundary key={pathname} fallback={(info) => <HouseErrorScreen {...info} />}>
+                  {/* Keyed on the house as well as the page: a switch mounts the
+                      page afresh, so nothing a page holds for itself (the
+                      dashboard's approvals and low stock, Ask's answer) is
+                      drawn under the next house's name (F-220, F-233). */}
+                  <ErrorBoundary key={`${houseId ?? ''}|${pathname}`} fallback={(info) => <HouseErrorScreen {...info} />}>
                     {children ?? <Outlet />}
                   </ErrorBoundary>
                 </main>
               </div>
               {!phone && ask.open && askDocks && (
                 <AskPanel
+                  key={houseId ?? ''}
                   placement="docked"
                   open
                   onClose={ask.close}
@@ -365,6 +370,7 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                 first row, the phone's Ask door and "Keep asking". */}
             {!askDocks && (
               <AskPanel
+                key={houseId ?? ''}
                 placement="overlay"
                 open={ask.open}
                 onClose={ask.close}

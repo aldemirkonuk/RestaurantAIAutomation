@@ -426,6 +426,28 @@ describe('OneTapPanel — the desk on the dashboard rail', () => {
     expect(personCard?.getAttribute('style')).not.toMatch(/dashed/);
   });
 
+  // F-218: the sheet accepts https:// links; the card prefixed "/" onto them.
+  it('opens a place outside Mudavym in a new tab, and an in-app place in the app', async () => {
+    serve([
+      { ...personRaised, id: 'out', title: 'Read the supplier note', actionUrl: 'https://example.com/note' },
+      { ...personRaised, id: 'in', title: 'Look at the cellar', actionUrl: '/inventory' },
+    ]);
+    draw();
+    const panel = screen.getByLabelText('One-tap actions');
+    await waitFor(() => expect(within(panel).getByText('Read the supplier note')).toBeInTheDocument());
+    const out = within(within(panel).getByText('Read the supplier note').closest('li')!).getByRole('link', {
+      name: /Go and do it/,
+    });
+    expect(out.getAttribute('href')).toBe('https://example.com/note');
+    expect(out.getAttribute('target')).toBe('_blank');
+    expect(out.getAttribute('rel')).toContain('noopener');
+    const inside = within(within(panel).getByText('Look at the cellar').closest('li')!).getByRole('link', {
+      name: /Go and do it/,
+    });
+    expect(inside.getAttribute('href')).toBe('/inventory');
+    expect(inside.getAttribute('target')).toBeNull();
+  });
+
   it('records a written action through the real endpoint, with no seal and no wax', async () => {
     // The rationing rule (dashboard.md §1b, §13.10): the wax goes where the
     // write is. A note commits none of the house's stock or money, so it gets
