@@ -436,9 +436,12 @@ describe("the PATCH route is held to the same table", () => {
   it("refuses a status this house does not allow from here", async () => {
     const h = await makeService({ status: ProcurementOrderStatus.DELIVERED });
     const err = await refusal(() =>
-      h.service.updateOrder(HOUSE, ORDER_ID, {
-        status: ProcurementOrderStatus.PENDING,
-      } as any),
+      h.service.updateOrder(
+        HOUSE,
+        ORDER_ID,
+        { status: ProcurementOrderStatus.PENDING } as any,
+        { actorUserId: MANAGER },
+      ),
     );
     expect(err.getStatus()).toBe(422);
     expect(String(err.message?.message ?? err.message)).toMatch(
@@ -448,9 +451,12 @@ describe("the PATCH route is held to the same table", () => {
 
   it("still allows a move the house makes today", async () => {
     const h = await makeService({ status: ProcurementOrderStatus.APPROVED });
-    await h.service.updateOrder(HOUSE, ORDER_ID, {
-      status: ProcurementOrderStatus.CONFIRMED,
-    } as any);
+    await h.service.updateOrder(
+      HOUSE,
+      ORDER_ID,
+      { status: ProcurementOrderStatus.CONFIRMED } as any,
+      { actorUserId: MANAGER },
+    );
     expect(h.order.status).toBe(ProcurementOrderStatus.CONFIRMED);
   });
 
@@ -468,6 +474,95 @@ describe("the PATCH route is held to the same table", () => {
       /cancelled through its own act/,
     );
     expect(h.order.status).toBe(ProcurementOrderStatus.CONFIRMED);
+  });
+
+  // F-300: approving and delivering have their own acts, as cancelling does.
+  it.each([
+    [ProcurementOrderStatus.PENDING, ProcurementOrderStatus.APPROVED, /holding to confirm/],
+    [ProcurementOrderStatus.APPROVED, ProcurementOrderStatus.DELIVERED, /booked in at the door/],
+  ])("refuses %s -> %s by PATCH, even from a manager, and writes nothing", async (from, to, words) => {
+    const h = await makeService({ status: from });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, { status: to } as any, {
+        actorUserId: MANAGER,
+      }),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(String(err.message?.message ?? err.message)).toMatch(words);
+    expect(h.order.status).toBe(from);
+    expect(h.updates.filter((u) => u.table === "procurement_orders")).toHaveLength(0);
+  });
+
+  it("refuses a status write from someone who is not a manager or an owner", async () => {
+    roleGate.allow = false;
+    const h = await makeService({ status: ProcurementOrderStatus.APPROVED });
+    const err = await refusal(() =>
+      h.service.updateOrder(
+        HOUSE,
+        ORDER_ID,
+        { status: ProcurementOrderStatus.CONFIRMED } as any,
+        { actorUserId: MANAGER },
+      ),
+    );
+    expect(err.getStatus()).toBe(403);
+    expect(roleGate.assert).toHaveBeenCalledWith(
+      MANAGER,
+      HOUSE,
+      "change where an order stands",
+    );
+    expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
+  });
+
+  it("refuses a status write that names nobody", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.APPROVED });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, {
+        status: ProcurementOrderStatus.CONFIRMED,
+      } as any),
+    );
+    expect(err.getStatus()).toBe(403);
+    expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
+  });
+
+  it("refuses a price change once the order is approved", async () => {
+    const h = await makeService({
+      status: ProcurementOrderStatus.APPROVED,
+      final_price: 40,
+      total_cost: "2000.00",
+    });
+    const err = await refusal(() =>
+      h.service.updateOrder(
+        HOUSE,
+        ORDER_ID,
+        { finalPrice: 4, totalCost: 200 } as any,
+        { actorUserId: MANAGER },
+      ),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(String(err.message?.message ?? err.message)).toMatch(/before it is approved/);
+    expect(h.order.final_price).toBe(40);
+    expect(h.order.total_cost).toBe("2000.00");
+  });
+
+  it("refuses a price change from someone who is not a manager or an owner", async () => {
+    roleGate.allow = false;
+    const h = await makeService({ status: ProcurementOrderStatus.PENDING, final_price: 40 });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, { finalPrice: 4 } as any, {
+        actorUserId: MANAGER,
+      }),
+    );
+    expect(err.getStatus()).toBe(403);
+    expect(roleGate.assert).toHaveBeenCalledWith(MANAGER, HOUSE, "change what an order costs");
+    expect(h.order.final_price).toBe(40);
+  });
+
+  it("lets a manager set the price while the order is still pending", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.PENDING, final_price: 40 });
+    await h.service.updateOrder(HOUSE, ORDER_ID, { finalPrice: 42 } as any, {
+      actorUserId: MANAGER,
+    });
+    expect(h.order.final_price).toBe(42);
   });
 
   it("leaves a PATCH that carries no status alone", async () => {
