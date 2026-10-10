@@ -371,28 +371,53 @@ function writePacing(payload: unknown): ExportDoc {
   const projection = Array.isArray(c.projectedNext4Weeks)
     ? (c.projectedNext4Weeks as unknown[])
     : null;
-  const bothZero = (last ?? 0) === 0 && (prev ?? 0) === 0;
+  // Two currencies have no one figure (F-1042): the gateway blanks the
+  // windows and says why, and the file says it too — never the "no delivered
+  // order" sentence, which those blanks would otherwise read as (F-1053).
+  const spendNote = str(c.spendNote) || null;
+  const committedNote = str(c.committedNote) || null;
+  const orderValueNote = str(obj(c.notCounted).orderValueNote) || null;
+  const bothZero = !spendNote && (last ?? 0) === 0 && (prev ?? 0) === 0;
   const notCounted = notCountedLine(c.notCounted);
   const basis = obj(c.basis);
+  const noFigure = "the cashflow register returned no figure";
 
   return doc({
-    say: bothZero
-      ? "No delivered purchase order falls in either 30-day window, so there is no pace to read."
-      : null,
+    say: spendNote
+      ? spendNote
+      : bothZero
+        ? "No delivered purchase order falls in either 30-day window, so there is no pace to read."
+        : null,
     figures: [
-      f("Paid out, the last 30 days", figure(last, "the cashflow register returned no figure"), "money"),
-      f("Paid out, the 30 days before", figure(prev, "the cashflow register returned no figure"), "money"),
-      f("Pace", figure(pctOf(c.paceDeltaPct), "Needs two comparable 30-day windows"), "percent"),
-      f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
+      f(
+        "Paid out, the last 30 days",
+        figure(last, spendNote ?? noFigure),
+        "money",
+      ),
+      f(
+        "Paid out, the 30 days before",
+        figure(prev, spendNote ?? noFigure),
+        "money",
+      ),
+      f(
+        "Pace",
+        figure(
+          pctOf(c.paceDeltaPct),
+          spendNote ?? "Needs two comparable 30-day windows",
+        ),
+        "percent",
+      ),
+      f(
+        "Committed, not yet delivered",
+        figure(c.committedOpenOrders, committedNote ?? noFigure),
+        "money",
+      ),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
       ...(notCounted
         ? [
             f(
               "Not in either figure, at order value",
-              figure(
-                obj(c.notCounted).orderValue,
-                "the cashflow register returned no figure",
-              ),
+              figure(obj(c.notCounted).orderValue, orderValueNote ?? noFigure),
               "money",
             ),
           ]
@@ -707,7 +732,16 @@ function writeLedger(payload: unknown): ExportDoc {
             ),
             "money",
           ),
-      f("Cost of goods (365d)", figure(d.cogs, "No delivered order came back for the window — which is either no buying or a read that failed"), "money"),
+      // F-1054: two currencies blank COGS for their own reason, said here.
+      f(
+        "Cost of goods (365d)",
+        figure(
+          d.cogs,
+          str(d.cogsNote) ||
+            "No delivered order came back for the window — which is either no buying or a read that failed",
+        ),
+        "money",
+      ),
       f(
         "Sell-price valuation",
         figure(
@@ -1005,15 +1039,24 @@ function writeBench(payload: unknown): ExportDoc {
   }));
   const last = num(cf.spendLast30d);
   const prev = num(cf.spendPrev30d);
+  // F-1053: two currencies blank the buying windows; say so, not "no figure".
+  const spendNote = cashflowMissing ? null : str(cf.spendNote) || null;
+  const committedNote = cashflowMissing ? null : str(cf.committedNote) || null;
+  const spendWhy = spendNote ?? cfWhy;
+  const paceWhy =
+    spendNote ??
+    (cashflowMissing
+      ? cfMissing
+      : "the server withholds a pace when the two windows are not comparable");
   const noPeers =
     "No other house is in this comparison. Mudavym holds only this restaurant's books, so there is no market median to stand beside these figures — every one of them is this house against its own past.";
 
   const rows: Cell[][] = [
     [
       "Buying, the last 30 days against the 30 before",
-      typed(last, "money", cfWhy),
-      typed(prev, "money", cfWhy),
-      typed(pctOf(cf.paceDeltaPct), "percent", cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"),
+      typed(last, "money", spendWhy),
+      typed(prev, "money", spendWhy),
+      typed(pctOf(cf.paceDeltaPct), "percent", paceWhy),
     ],
     [
       "The week's own extremes (busiest, quietest, trend per day)",
@@ -1043,10 +1086,18 @@ function writeBench(payload: unknown): ExportDoc {
           ? "Nothing in the overview register answered — neither the buying lens nor the weekday lens returned, and no goal is running."
           : null,
     figures: [
-      f("Bought, the last 30 days", figure(last, cfWhy), "money"),
-      f("Bought, the 30 before", figure(prev, cfWhy), "money"),
-      f("Pace against last month", figure(pctOf(cf.paceDeltaPct), cashflowMissing ? cfMissing : "the server withholds a pace when the two windows are not comparable"), "percent"),
-      f("Committed, not yet delivered", figure(cf.committedOpenOrders, cfWhy), "money"),
+      f("Bought, the last 30 days", figure(last, spendWhy), "money"),
+      f("Bought, the 30 before", figure(prev, spendWhy), "money"),
+      f(
+        "Pace against last month",
+        figure(pctOf(cf.paceDeltaPct), paceWhy),
+        "percent",
+      ),
+      f(
+        "Committed, not yet delivered",
+        figure(cf.committedOpenOrders, committedNote ?? cfWhy),
+        "money",
+      ),
       f("Trend per day, last 28 days", figure(pctOf(se.trendPerDayPct), seasonalityMissing ? seMissing : "the seasonality register returned no trend"), "percent"),
       f(
         "Goals running",
@@ -1071,6 +1122,8 @@ function writeBench(payload: unknown): ExportDoc {
       ...(cashflowMissing
         ? []
         : unpricedLines(cf.spendUnpricedCount, cf.committedUnpricedCount)),
+      spendNote ?? "",
+      committedNote ?? "",
       last === 0 && prev === 0
         ? 'Both buying windows came back at zero, and the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so zero means "no delivered order was returned", not necessarily "nothing was bought".'
         : "",

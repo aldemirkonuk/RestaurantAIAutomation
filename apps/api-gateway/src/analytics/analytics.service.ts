@@ -835,6 +835,12 @@ export class AnalyticsService {
       pricedInventoryValue,
       cogs,
       cogsUnpricedCount,
+      // Why `cogs` is blank when the orders were placed in two currencies
+      // (F-1054), so the page does not call it an empty window.
+      cogsNote:
+        orders.length > 0 && orderCurrencies.size > 1
+          ? `Ordered in ${Array.from(orderCurrencies).sort().join(" and ")}: with no exchange rate on record these cannot be added into one figure.`
+          : null,
       revenue,
       grossMarginDollars: marginDollars,
       grossMargin,
