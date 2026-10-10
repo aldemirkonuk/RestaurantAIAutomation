@@ -71,9 +71,12 @@ function pushRecent(id: string) {
 export function CommandPalette({
   open,
   onClose,
+  onShortcuts,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Swap the palette for the shortcut list — `?` on an empty search. */
+  onShortcuts?: () => void;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -285,6 +288,11 @@ export function CommandPalette({
     } else if (e.key === "Escape") {
       e.preventDefault();
       onClose();
+    } else if (e.key === "?" && query === "" && onShortcuts) {
+      // The footer's promise (F-727): the house-wide `?` stops at the search
+      // field, so the palette answers it itself while nothing has been typed.
+      e.preventDefault();
+      onShortcuts();
     } else if (e.key === "Tab") {
       // Keep focus inside the input (single focusable) — trap.
       e.preventDefault();
@@ -315,9 +323,12 @@ export function CommandPalette({
               <kbd className="mdv-kbd">↑</kbd> <kbd className="mdv-kbd">↓</kbd> to move,{" "}
               <kbd className="mdv-kbd">↵</kbd> to run
             </span>
-            <span>
-              <kbd className="mdv-kbd">?</kbd> for all shortcuts
-            </span>
+            {/* Once something is typed, `?` is just a letter of the search. */}
+            {onShortcuts && query === "" && (
+              <span>
+                <kbd className="mdv-kbd">?</kbd> for all shortcuts
+              </span>
+            )}
           </span>
         }
       >
@@ -533,9 +544,11 @@ export function CommandPalette({
             <kbd className="border border-gray-200 rounded px-1">↓</kbd>
             to navigate
           </span>
-          <span className="flex items-center gap-1.5">
-            Press <kbd className="border border-gray-200 rounded px-1">?</kbd> for all shortcuts
-          </span>
+          {onShortcuts && query === "" && (
+            <span className="flex items-center gap-1.5">
+              Press <kbd className="border border-gray-200 rounded px-1">?</kbd> for all shortcuts
+            </span>
+          )}
         </div>
       </div>
 

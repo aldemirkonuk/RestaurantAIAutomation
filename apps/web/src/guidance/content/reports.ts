@@ -22,7 +22,7 @@ export const reportsTour: TourDefinition = {
       element: '[data-tour="reports-ask"]',
       title: 'Ask the book',
       description:
-        'Search what the engine has already said from your own rows. It does not answer free-text questions. ⌘K opens it too.',
+        'Search what the engine has already said from your own rows. It does not answer free-text questions.',
     },
     {
       element: '[data-tour="reports-arrange"]',

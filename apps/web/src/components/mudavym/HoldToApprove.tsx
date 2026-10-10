@@ -14,13 +14,23 @@
  * Paths:
  * - Pointer: press and hold for `holdMs`.
  * - Keyboard: Enter arms it ("Enter again to approve"), Enter again within
- *   3s approves; Escape or the timeout disarms.
+ *   3s approves; Escape or the timeout disarms. The second press must come
+ *   at least `sealTiming.confirmGapMs` after the first, so a double-tap cannot
+ *   approve, and a held key's repeats never do.
  * - Reduced motion: the timed hold collapses to the same two-step confirm as
  *   the keyboard path — press once to arm, press again to approve, instantly.
  */
 
 import { CSSProperties, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { animate, ink, pour, stamp, tuck, useReducedMotion } from '../../lib/mudavym/motion';
+import {
+  animate,
+  ink,
+  pour,
+  sealTiming,
+  stamp,
+  tuck,
+  useReducedMotion,
+} from '../../lib/mudavym/motion';
 import { Seal } from './Seal';
 /* `.mdv-bound` lives in the overlay stylesheet with the rest of the house
    content vocabulary; the control is mounted inside a Sheet or a Panel most of
@@ -169,6 +179,9 @@ export function HoldToApprove({
   /** The in-flight mint, started when the gesture began. */
   const challengeRef = useRef<Promise<string | null> | null>(null);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When the two-step confirm armed — the second press must come later
+      than a double-tap (F-723). */
+  const armedAtRef = useRef(0);
   const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Which gesture a settling write belongs to — a late answer to an older
@@ -305,16 +318,18 @@ export function HoldToApprove({
     // reader is being told what the next key press does (judge probe J4).
     setReleaseNote(null);
     setPhase('armed');
+    armedAtRef.current = Date.now();
     if (armTimerRef.current) clearTimeout(armTimerRef.current);
     armTimerRef.current = setTimeout(() => {
       setPhase((p) => (p === 'armed' ? 'idle' : p));
     }, ARM_WINDOW_MS);
   };
 
-  /** Two-step confirm — keyboard path, and pointer path under reduced motion. */
+  /** Two-step confirm — keyboard path, and pointer path under reduced motion.
+      A second press inside the gap is ignored; the seal stays armed. */
   const stepConfirm = () => {
-    if (phase === 'armed') commit();
-    else arm();
+    if (phase !== 'armed') arm();
+    else if (Date.now() - armedAtRef.current >= sealTiming.confirmGapMs) commit();
   };
 
   const startHold = () => {
@@ -367,6 +382,10 @@ export function HoldToApprove({
       e.preventDefault(); // suppress the synthesized click
       if (!e.repeat) stepConfirm();
     } else if (e.key === 'Escape' && phase === 'armed') {
+      // Esc disarms the seal and nothing else: the Sheet around it listens on
+      // window, so the key must not travel on and close it too (F-726).
+      e.preventDefault();
+      e.nativeEvent.stopPropagation();
       if (armTimerRef.current) clearTimeout(armTimerRef.current);
       setPhase('idle');
     }

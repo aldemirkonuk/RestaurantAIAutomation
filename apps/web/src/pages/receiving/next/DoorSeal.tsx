@@ -24,7 +24,7 @@
 
 import { CSSProperties, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { Seal } from '@/components/mudavym';
-import { animate, pour, settle, stamp, tuck, useReducedMotion } from '@/lib/mudavym';
+import { animate, pour, sealTiming, settle, stamp, tuck, useReducedMotion } from '@/lib/mudavym';
 
 export interface DoorSealProps {
   /** Called exactly once when the seal lands. */
@@ -67,6 +67,8 @@ export function DoorSeal({
   const progressRef = useRef(0);
   const committedRef = useRef(false);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When the two-step confirm armed; a double-tap is not a second decision. */
+  const armedAtRef = useRef(0);
   const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setFill = (p: number) => {
@@ -112,16 +114,18 @@ export function DoorSeal({
 
   const arm = () => {
     setPhase('armed');
+    armedAtRef.current = Date.now();
     if (armTimerRef.current) clearTimeout(armTimerRef.current);
     armTimerRef.current = setTimeout(() => {
       setPhase((p) => (p === 'armed' ? 'idle' : p));
     }, ARM_WINDOW_MS);
   };
 
-  /** Two-step confirm — keyboard path, and pointer path under reduced motion. */
+  /** Two-step confirm — keyboard path, and pointer path under reduced motion.
+      A second press inside the confirm gap is ignored; the seal stays armed. */
   const stepConfirm = () => {
-    if (phase === 'armed') commit();
-    else arm();
+    if (phase !== 'armed') arm();
+    else if (Date.now() - armedAtRef.current >= sealTiming.confirmGapMs) commit();
   };
 
   const startHold = () => {
@@ -191,6 +195,9 @@ export function DoorSeal({
       }
       stepConfirm();
     } else if (e.key === 'Escape' && phase === 'armed') {
+      // Esc disarms only — it must not travel on and close a Sheet (F-726).
+      e.preventDefault();
+      e.nativeEvent.stopPropagation();
       if (armTimerRef.current) clearTimeout(armTimerRef.current);
       setPhase('idle');
     }

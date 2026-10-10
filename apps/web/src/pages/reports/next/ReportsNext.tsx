@@ -141,17 +141,10 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     }
   }, []);
 
-  /* ⌘K / Ctrl-K opens the palette. Escape is handled inside it. */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setAsking((v) => !v);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  /* No key of its own: ⌘K belongs to the house palette, which claims it in the
+     capture phase before any page listener runs, so a page binding here could
+     never fire and its "⌘K" label was a dead hint (F-724). The button opens
+     it; Escape is handled inside it. */
 
   const view = draft ?? data.sheet;
   // What this reader's role may lay on the sheet (F-203). The saved sheet
@@ -374,7 +367,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
                 Ruled off.
               </span>
             )}
-            <Action tour="reports-ask" onClick={() => setAsking(true)}>Ask the book ⌘K</Action>
+            <Action tour="reports-ask" onClick={() => setAsking(true)}>Ask the book</Action>
             {arranging ? (
               <>
                 <Action onClick={putBack}>Put it all back</Action>

@@ -765,10 +765,14 @@ describe('ReportsNext — the sheet codec', () => {
   });
 });
 
+/** The page's button (the closed panel also carries the words "Ask the book"). */
+const askButton = () =>
+  document.querySelector('[data-tour="reports-ask"]') as HTMLElement;
+
 describe('ReportsNext — the palette never fabricates', () => {
   it('lists engine sentences and says plainly that free-text answers do not exist', () => {
     paint();
-    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    fireEvent.click(askButton());
     const dialog = screen.getByRole('dialog', { name: 'Ask the book' });
     expect(within(dialog).getByText(READING[1].sentence)).toBeInTheDocument();
     expect(within(dialog).getByText(/does not answer\s+free-text questions/)).toBeInTheDocument();
@@ -776,7 +780,7 @@ describe('ReportsNext — the palette never fabricates', () => {
 
   it('answers a question it cannot match with a count, not with a sentence of its own', () => {
     paint();
-    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    fireEvent.click(askButton());
     const dialog = screen.getByRole('dialog', { name: 'Ask the book' });
     fireEvent.change(within(dialog).getByPlaceholderText(/Search what the engine/), {
       target: { value: 'why did prosecco margin jump' },
@@ -790,7 +794,7 @@ describe('ReportsNext — the palette never fabricates', () => {
     // its own Esc listener and its own animate(settle). The primitive owns all
     // of it now; the copy in the footer is unchanged.
     paint();
-    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    fireEvent.click(askButton());
     const root = document.querySelector('.mdv-ovl') as HTMLElement;
     expect(root).not.toBeNull();
     expect(root.parentElement).toBe(document.body);
@@ -804,10 +808,20 @@ describe('ReportsNext — the palette never fabricates', () => {
     expect(screen.queryByRole('dialog', { name: 'Ask the book' })).toBeNull();
   });
 
+  it('names no key it cannot honour: ⌘K is the house palette, not this button (F-724)', () => {
+    paint();
+    const button = askButton();
+    expect(button.textContent).not.toMatch(/⌘|ctrl/i);
+    // The house palette claims ⌘K in the capture phase, so a page binding could
+    // never run in the app; the page must not carry one that only runs here.
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Ask the book' })).toBeNull();
+  });
+
   it('says the insight register is unreadable rather than showing an empty palette', () => {
     hook.current = { ...base(), reading: broke(500, 'gateway down') };
     paint();
-    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    fireEvent.click(askButton());
     expect(
       within(screen.getByRole('dialog', { name: 'Ask the book' })).getByText(
         /insight register could not be read \(gateway down\)/,

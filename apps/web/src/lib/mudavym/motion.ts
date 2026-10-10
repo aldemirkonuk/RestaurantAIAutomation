@@ -122,6 +122,21 @@ export const pour: MotionToken = { easing: 'linear', ms: 620 };
 /** 083's canonical name for {@link pour}. */
 export const press: MotionToken = pour;
 
+/**
+ * The shortest gap the two-step confirm (keyboard, and pointer under reduced
+ * motion) accepts between the press that arms a seal and the press that
+ * commits it. A double-tap of Enter or a double-click is one reflex, not two
+ * decisions, so a second press sooner than this is ignored and the seal stays
+ * armed. Not a motion token — it lives here beside `pour` because every seal
+ * already reads its timing from this file.
+ *
+ * An object rather than a bare constant only so the test setup can lift the
+ * gap for the many seal tests that are about something else (the challenge,
+ * the copy, the write); the gap's own tests put it back. Nothing in the app
+ * writes it.
+ */
+export const sealTiming = { confirmGapMs: 400 };
+
 /** The seal landing. The only motion in the system allowed to overshoot. */
 export const stamp: MotionToken = { easing: stampSpring.easing, ms: 360 };
 

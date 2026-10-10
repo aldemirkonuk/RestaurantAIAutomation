@@ -84,6 +84,9 @@ import {
 } from './nt-format';
 import { POLL_MS, useNotificationsNextData } from './useNotificationsNextData';
 
+/** How long the house's `g` go-to chord waits for its second key (CommandProvider). */
+const G_CHORD_MS = 1200;
+
 /* ── figures arrive on the tally spring; an unknown never counts ────────── */
 
 function tallyAt(t: number): number {
@@ -328,8 +331,14 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
     [walk, cursor],
   );
 
+  /** When a bare `g` was last pressed: the key after it belongs to the house's
+      go-to chord (`g s` is Settings), not to the line under the cursor. */
+  const gAtRef = useRef(0);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Someone nearer the key already acted on it (a seal, a sheet, a menu).
+      if (e.defaultPrevented) return;
       const el = e.target as HTMLElement | null;
       const typing =
         !!el &&
@@ -347,6 +356,19 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
         if (e.key === 'Escape') (el as HTMLInputElement).blur();
         return;
       }
+      // Enter or Space on a focused button is that button's press, not a row key.
+      if (el && typeof el.closest === 'function' && el.closest('button, a[href], [role="button"]')) {
+        return;
+      }
+      if (e.key === 'g' || e.key === 'G') {
+        gAtRef.current = Date.now();
+        return;
+      }
+      if (gAtRef.current && Date.now() - gAtRef.current < G_CHORD_MS) {
+        gAtRef.current = 0;
+        return;
+      }
+      gAtRef.current = 0;
       const row = cursor ? walk.find((n) => n.id === cursor) : null;
       switch (e.key) {
         case 'j':

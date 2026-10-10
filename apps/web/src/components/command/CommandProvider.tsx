@@ -192,7 +192,11 @@ export function CommandProvider({ children }: { children: ReactNode }) {
   return (
     <CommandContext.Provider value={{ openPalette, openShortcuts }}>
       {children}
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onShortcuts={openShortcuts}
+      />
       <ShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <RecentlyViewed open={recentOpen} onClose={() => setRecentOpen(false)} />
     </CommandContext.Provider>

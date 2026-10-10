@@ -511,6 +511,44 @@ describe('NotificationsNext — what the inbox lens asked for', () => {
     expect(spies.archive).not.toHaveBeenCalled();
   });
 
+  it('leaves the house go-to chord alone: g s goes to Settings, it does not snooze (F-725)', () => {
+    mockData.current = base(two());
+    draw();
+    fireEvent.keyDown(window, { key: 'j' });
+
+    fireEvent.keyDown(window, { key: 'g' });
+    fireEvent.keyDown(window, { key: 's' });
+    fireEvent.keyDown(window, { key: 'g' });
+    fireEvent.keyDown(window, { key: 'e' });
+    expect(spies.snooze).not.toHaveBeenCalled();
+    expect(spies.markRead).not.toHaveBeenCalled();
+
+    // The chord spent, the row keys answer again.
+    fireEvent.keyDown(window, { key: 's' });
+    expect(spies.snooze).toHaveBeenCalledWith('n1', 60 * 60 * 1000);
+  });
+
+  it('does not answer a key someone nearer already took, or a key pressed on a button (F-725)', () => {
+    mockData.current = base(two());
+    draw();
+    fireEvent.keyDown(window, { key: 'j' });
+
+    const taken = new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true });
+    taken.preventDefault();
+    window.dispatchEvent(taken);
+    expect(spies.snooze).not.toHaveBeenCalled();
+
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    try {
+      fireEvent.keyDown(button, { key: 'e' });
+      fireEvent.keyDown(button, { key: 'Enter' });
+      expect(spies.markRead).not.toHaveBeenCalled();
+    } finally {
+      button.remove();
+    }
+  });
+
   it('does not fire a shortcut while the reader is typing in the search box', () => {
     mockData.current = base(two());
     draw();
