@@ -574,6 +574,40 @@ describe("ScheduleService — F-348: two staff claiming one open shift", () => {
     );
   });
 
+  // A read that fails after the lost claim must not pass for an answer.
+  async function loseRaceThenFail(table: "shifts" | "team_members") {
+    const db = withTwoStaff();
+    const svc = service(db);
+    const realFrom = db.supabase.from.bind(db.supabase);
+    let shiftCalls = 0;
+    (db.supabase as any).from = (t: string) => {
+      if (t === "shifts" && ++shiftCalls === 3) {
+        const row = db.tables.shifts.find((s) => s.id === "sh-open")!;
+        row.member_id = "m-bea";
+        row.state = "covered";
+        db.errors[`${table}:select`] = { message: "timeout" };
+      }
+      return realFrom(t);
+    };
+    return svc
+      .assignCover(ALI, RID, "sh-open", { memberId: "m-ali" } as any)
+      .catch((e) => e);
+  }
+
+  it("a lost claim whose holder cannot be read says the shift is gone, not who has it", async () => {
+    const err = await loseRaceThenFail("shifts");
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe(
+      "This shift is no longer open. Refresh to see who has it.",
+    );
+  });
+
+  it("a lost claim whose holder's name cannot be read still says someone else has it", async () => {
+    const err = await loseRaceThenFail("team_members");
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe("Someone else has already taken this shift.");
+  });
+
   it("a stale screen claiming a covered shift is told who took it, not forbidden", async () => {
     const db = withTwoStaff();
     const svc = service(db);

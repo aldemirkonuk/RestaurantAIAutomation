@@ -1089,12 +1089,21 @@ export class ScheduleService {
     if (!data) {
       if (role !== "staff")
         throw new InternalServerErrorException("Failed to assign cover");
-      const { data: now } = await this.sb
+      const { data: now, error: nowError } = await this.sb
         .from("shifts")
         .select("member_id")
         .eq("id", shiftId)
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
+      // The claim lost either way; a failed read only means we cannot say to whom.
+      if (nowError) {
+        this.logger.warn(
+          `claim ${shiftId}: could not read who holds it: ${nowError.message}`,
+        );
+        throw new ConflictException(
+          "This shift is no longer open. Refresh to see who has it.",
+        );
+      }
       throw await this.takenBy(restaurantId, now?.member_id ?? null, dto.memberId);
     }
     // Only the owner sees labor_cost — it is the wage times the hours, so it
@@ -1112,12 +1121,15 @@ export class ScheduleService {
       return new ConflictException("This shift is already yours.");
     let name: string | null = null;
     if (holderId) {
-      const { data: holder } = await this.sb
+      const { data: holder, error } = await this.sb
         .from("team_members")
         .select("display_name")
         .eq("id", holderId)
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
+      // Unread, the holder is still someone else — only the name is unknown.
+      if (error)
+        this.logger.warn(`could not read shift holder ${holderId}: ${error.message}`);
       name = holder?.display_name?.trim() || null;
     }
     return new ConflictException(

@@ -774,7 +774,10 @@ describe("InboundResponderService (deterministic core)", () => {
   // F-769: Ask AI's "draft a reply" and regenerate re-run the responder on the
   // same vendor mail. What the manager did with that mail since must stand.
   describe("a re-run on a mail already understood", () => {
-    const run = async (priorContext: Record<string, any> | null) => {
+    const run = async (
+      priorContext: Record<string, any> | null,
+      priorError: { message: string } | null = null,
+    ) => {
       const writes: Array<{ table: string; payload: any }> = [];
       const result = (table: string, ops: string[]) => {
         if (table === "procurement_orders")
@@ -792,8 +795,12 @@ describe("InboundResponderService (deterministic core)", () => {
           };
         if (ops.includes("maybeSingle"))
           return {
-            data: priorContext ? { conversation_context: priorContext } : null,
-            error: null,
+            data: priorError
+              ? null
+              : priorContext
+                ? { conversation_context: priorContext }
+                : null,
+            error: priorError,
           };
         if (ops.includes("in"))
           return { data: [{ id: "d1", status: "PENDING_APPROVAL" }], error: null };
@@ -845,7 +852,7 @@ describe("InboundResponderService (deterministic core)", () => {
       s.logDecision = async () => undefined;
       s.persistManagerNotification = jest.fn(async () => undefined);
       s.syncOrderState = jest.fn(async () => undefined);
-      await s.analyzeAndDraftReply({
+      const out = await s.analyzeAndDraftReply({
         inboundConversationId: "in1",
         orderId: "o1",
         restaurantId: "r1",
@@ -854,7 +861,7 @@ describe("InboundResponderService (deterministic core)", () => {
       const ctx = writes.find(
         (w) => w.table === "procurement_conversations" && w.payload?.conversation_context,
       )?.payload.conversation_context;
-      return { s, ws, ctx };
+      return { s, ws, ctx, out };
     };
 
     it("keeps a dismissed deal dismissed, and neither re-announces it nor re-applies the mail", async () => {
@@ -875,6 +882,18 @@ describe("InboundResponderService (deterministic core)", () => {
     it("does not re-apply a mail understood before the marker existed", async () => {
       const { s } = await run({ analyzed_at: "2026-10-01T10:00:00.000Z" });
       expect(s.syncOrderState).not.toHaveBeenCalled();
+    });
+
+    it("changes nothing when it cannot read what was done with the mail", async () => {
+      const { s, ws, ctx, out } = await run(null, { message: "timeout" });
+      expect(ctx).toBeUndefined();
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+      expect(ws.emitRestaurantNotification).not.toHaveBeenCalled();
+      expect(out).toEqual({
+        drafted: false,
+        reason:
+          "Couldn't check what was already done with this reply, so nothing was changed. Try again in a moment.",
+      });
     });
 
     it("still applies and announces a mail seen for the first time", async () => {

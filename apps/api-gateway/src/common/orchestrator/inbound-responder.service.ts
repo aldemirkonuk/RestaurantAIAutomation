@@ -339,11 +339,24 @@ export class InboundResponderService {
       // pass may already have understood (F-769). What the manager did with it
       // since stands: a dismissed or confirmed deal stays resolved, the deal is
       // not announced twice, and the old mail is not applied to the order again.
-      const { data: priorRow } = await this.databaseService.supabase
-        .from("procurement_conversations")
-        .select("conversation_context")
-        .eq("id", ctx.inboundConversationId)
-        .maybeSingle();
+      // A failed read is not "seen for the first time": the trace below would
+      // overwrite the manager's resolution and the mail would be applied again.
+      const { data: priorRow, error: priorError } =
+        await this.databaseService.supabase
+          .from("procurement_conversations")
+          .select("conversation_context")
+          .eq("id", ctx.inboundConversationId)
+          .maybeSingle();
+      if (priorError) {
+        this.logger.warn(
+          `Responder: could not read conversation ${ctx.inboundConversationId}: ${priorError.message}`,
+        );
+        return {
+          drafted: false,
+          reason:
+            "Couldn't check what was already done with this reply, so nothing was changed. Try again in a moment.",
+        };
+      }
       const prior = ((priorRow as any)?.conversation_context ?? {}) as Record<
         string,
         any

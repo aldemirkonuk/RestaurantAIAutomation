@@ -66,7 +66,7 @@ import {
   unprovenPasswordHasLapsed,
 } from "./unproven-address";
 import { normalizeEmail } from "../passkeys/sign-in-codes.service";
-import { escapeLikeWildcards } from "../distributor-discovery/distributor-query";
+import { escapeLikeWildcards } from "../common/like-pattern";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -2526,18 +2526,27 @@ export class AuthService {
    * escaped past PostgREST), and the exact comparison here decides.
    * `team_members.email` is stored as typed, so `.eq` on a lower-cased
    * address would miss rows written in mixed case.
+   *
+   * A failed read throws rather than answering "nobody": both callers would
+   * otherwise insert a second row for a person who already has one.
    */
   private async findTeamMemberByEmail(
     restaurantId: string,
     email: string,
-    columns: string,
-  ): Promise<any | null> {
+  ): Promise<{
+    id: string;
+    invite_id: string | null;
+    user_id: string | null;
+  } | null> {
     const wanted = email.trim().toLowerCase();
-    const { data } = await this.databaseService.supabase
+    const { data, error } = await this.databaseService.supabase
       .from("team_members")
-      .select(columns.includes("email") ? columns : `${columns}, email`)
+      .select("id, invite_id, user_id, email")
       .eq("restaurant_id", restaurantId)
       .ilike("email", escapeLikeWildcards(wanted).replace(/\*/g, "_"));
+    if (error) {
+      throw new Error(`could not read team members: ${error.message}`);
+    }
     return (
       (data ?? []).find(
         (row: any) =>
@@ -2568,7 +2577,6 @@ export class AuthService {
         const existing = await this.findTeamMemberByEmail(
           params.restaurantId,
           params.email,
-          "id, invite_id, user_id",
         );
         if (existing) {
           if (!existing.user_id) {
@@ -2635,7 +2643,6 @@ export class AuthService {
         const byEmail = await this.findTeamMemberByEmail(
           params.restaurantId,
           params.email,
-          "id",
         );
         if (byEmail) memberId = byEmail.id;
       }
