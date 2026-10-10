@@ -11,10 +11,11 @@
 // date-rendering assertion would be a no-op there (Opus review 2026-08-31).
 process.env.TZ = 'America/New_York';
 
-import { expect, afterEach, vi } from 'vitest';
+import { expect, afterEach, beforeEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import * as matchers from '@testing-library/jest-dom/matchers';
 import { sealTiming } from '../lib/mudavym/motion';
+import { setHouseCurrency } from '@/lib/houseCurrency';
 
 // Extend Vitest's expect with jest-dom matchers
 expect.extend(matchers);
@@ -29,6 +30,20 @@ afterEach(() => {
 // gap is lifted for them here, and HoldToApprove.test.tsx pins it at its real
 // value.
 sealTiming.confirmGapMs = 0;
+
+// Money helpers print the house's own currency (lib/houseCurrency.ts, sim
+// F-341). The page fixtures in this suite were written for a house that
+// reports in dollars, so the suite names that house's currency once here
+// instead of every page test faking a `GET /settings/currency`. This is a
+// fixture, not a product default: the product has none. Tests about the
+// currency itself set their own (lib/houseCurrency.test.ts).
+vi.mock('@/hooks/useHouseCurrency', async () => {
+  const { getHouseCurrency } = await import('@/lib/houseCurrency');
+  return { useHouseCurrency: () => getHouseCurrency() };
+});
+beforeEach(() => {
+  setHouseCurrency('USD');
+});
 
 // Guard all window-dependent setup so tests that run in the node environment
 // (e.g. files annotated with // @vitest-environment node) don't crash.

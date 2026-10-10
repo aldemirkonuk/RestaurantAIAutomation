@@ -78,6 +78,7 @@ import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import './reports-next.css';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
 
 export interface ReportsNextProps {
   /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
@@ -106,6 +107,8 @@ function Action({
 }
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
+  // Money on this page prints in the house's own currency (sim F-341).
+  useHouseCurrency();
   const [tillDays, setTillDays] = useState(30);
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);

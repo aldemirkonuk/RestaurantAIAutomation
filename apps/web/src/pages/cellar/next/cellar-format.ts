@@ -16,7 +16,7 @@
  *    asserts nothing.
  */
 
-import { formatMoney } from '../../../lib/currency';
+import { formatHouseMoney } from '../../../lib/houseCurrency';
 
 export const EM = '—';
 
@@ -46,26 +46,28 @@ export function text(v: unknown): string | null {
 }
 
 /**
+/**
  * The house's reporting currency, as `CellarNext` last read it from
  * `GET /settings/currency` (the read /menu makes). Held here rather than
  * threaded through every leaf and cell, because `money()` is called from
  * plain cell renderers and sentence builders that have no React scope. Null
- * — unread, unrecorded, or a failed read — prints "currency not recorded",
- * never a dollar sign: a TRY or GBP house must not see one bottle in two
- * currencies, one page apart.
+ * — unrecorded, or a failed read — prints "currency not recorded", never a
+ * dollar sign: a TRY or GBP house must not see one bottle in two currencies,
+ * one page apart. Undefined (CellarNext has not set it) falls through to the
+ * app-wide house currency (lib/houseCurrency.ts, sim F-341).
  */
-let houseCurrency: string | null = null;
+let houseCurrency: string | null | undefined = undefined;
 
 /** Called by `CellarNext` on every render, before its registers draw. */
-export function setCellarCurrency(code: string | null): void {
+export function setCellarCurrency(code: string | null | undefined): void {
   houseCurrency = code;
 }
 
-/** Money of record, in the house's currency, or the dash. */
-export function money(v: number | null | undefined, currency: string | null = houseCurrency): string {
+/** Money of record, in the given currency, else the cellar's, else the house's; or the dash. */
+export function money(v: number | null | undefined, currency?: string | null): string {
   const n = num(v);
   if (n === null) return EM;
-  return formatMoney(n, currency);
+  return formatHouseMoney(n, currency !== undefined ? currency : houseCurrency);
 }
 
 /**

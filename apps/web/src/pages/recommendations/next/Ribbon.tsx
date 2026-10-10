@@ -43,6 +43,8 @@ import { useEffect, useState } from 'react';
 import { CircleSlash, Info } from 'lucide-react';
 import { DayStrip, type DayStripDay } from '@/components/mudavym';
 import { EM } from './rec-format';
+import { formatHouseMoney } from '@/lib/houseCurrency';
+import { useHouseCurrency } from '@/hooks/useHouseCurrency';
 import {
   barHeight,
   fmtLongDay,
@@ -88,6 +90,8 @@ export interface RibbonProps {
 }
 
 export default function Ribbon(props: RibbonProps) {
+  // The till's takings print in the house's own currency (sim F-341).
+  useHouseCurrency();
   const { days, selected, onSelect } = props;
   const [askExclude, setAskExclude] = useState(false);
   const [reason, setReason] = useState<string | null>(null);
@@ -208,7 +212,7 @@ export default function Ribbon(props: RibbonProps) {
           <p className="rc-micro">
             {cell.fired.length} first fired · {cell.due.length} falls due ·{' '}
             {cell.records === 'yes' && cell.revenue !== null
-              ? `$${Math.round(cell.revenue).toLocaleString()} through the till`
+              ? `${formatHouseMoney(Math.round(cell.revenue), undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} through the till`
               : recordWords(cell)}
           </p>
           <p className="rc-why">

@@ -4,13 +4,18 @@
  */
 import { classifyStock } from '../../../lib/inventoryStatus'
 import { cn } from '../../../lib/utils'
+import { formatHouseMoney } from '../../../lib/houseCurrency'
 import type { InventoryItem } from '../useInventoryPage'
 
-export const fmtMoney = (n?: number | null) =>
-  n == null || !Number.isFinite(n) ? '-' : `$${Math.round(n).toLocaleString()}`
+// `currency` omitted means the house's own (lib/houseCurrency.ts). These were a
+// literal `$`, so every house read its stock value in dollars (sim F-341).
+export const fmtMoney = (n?: number | null, currency?: string | null) =>
+  n == null || !Number.isFinite(n)
+    ? '-'
+    : formatHouseMoney(Math.round(n), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 
-export const fmtMoneyExact = (n?: number | null) =>
-  n == null || !Number.isFinite(n) ? '-' : `$${n.toFixed(2)}`
+export const fmtMoneyExact = (n?: number | null, currency?: string | null) =>
+  n == null || !Number.isFinite(n) ? '-' : formatHouseMoney(n, currency)
 
 /** Effective runway in days (live stock / velocity). null = unknown/no velocity. */
 export function runwayDays(item: InventoryItem): number | null {

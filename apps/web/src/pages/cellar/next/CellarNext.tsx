@@ -64,6 +64,7 @@ import {
   type RegisterId,
 } from './cellar-format';
 import './cellar-next.css';
+import { useHouseCurrency as useAppHouseCurrency } from '@/hooks/useHouseCurrency';
 
 export interface CellarNextProps {
   /** Force the Warm Charcoal ground regardless of app theme (ADR 0042). */
@@ -83,6 +84,8 @@ export interface CellarNextProps {
 }
 
 export default function CellarNext({ ground, category }: CellarNextProps) {
+  // Money on this page prints in the house's own currency (sim F-341).
+  useAppHouseCurrency();
   const data = useCellarNextData();
   // Every price below prints in this house's currency (F-271). Set during
   // render, so the registers drawn under it read the current house's code.

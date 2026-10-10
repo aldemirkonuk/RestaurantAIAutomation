@@ -25,6 +25,8 @@ import {
   DetectedWine as ServiceDetectedWine,
 } from '../../services/wineDetection'
 import { SCAN_ACCEPT, isScannable, resetFileInput } from '../../lib/uploadAccept'
+import { formatHouseMoney } from '../../lib/houseCurrency'
+import { useHouseCurrency } from '../../hooks/useHouseCurrency'
 
 type DetectedWine = ServiceDetectedWine
 
@@ -52,7 +54,18 @@ function FieldSourceBadge({ source }: { source?: string }) {
   )
 }
 
+/**
+ * A price read off the menu, in the currency the menu printed when the scan
+ * named one, else the house's own. Any code other than EUR, GBP or TRY used to
+ * become `$` (sim F-341).
+ */
+function scannedPrice(price: number, currency?: string): string {
+  const code = currency?.trim().toUpperCase()
+  return formatHouseMoney(price, code && /^[A-Z]{3}$/.test(code) ? code : undefined, { minimumFractionDigits: 0 })
+}
+
 export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
+  useHouseCurrency()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingStep, setProcessingStep] = useState('')
@@ -411,8 +424,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
                             )}
                             {wine.price && (
                               <span className="text-[10px] font-medium text-gray-700">
-                                {wine.priceCurrency === 'EUR' ? '€' : wine.priceCurrency === 'GBP' ? '£' : wine.priceCurrency === 'TRY' ? '₺' : '$'}
-                                {wine.price}
+                                {scannedPrice(wine.price, wine.priceCurrency)}
                               </span>
                             )}
                             {wine.classification && (
@@ -486,7 +498,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
                           <FieldRow label="Appellation Class" value={wine.appellationClass} source={wine.fieldSources?.appellation_class} />
                           <FieldRow label="Grape" value={wine.grape} source={wine.fieldSources?.grape_variety} />
                           <FieldRow label="Blend" value={wine.isBlend != null ? (wine.isBlend ? 'Yes' : 'No') : undefined} source={wine.fieldSources?.is_blend} />
-                          <FieldRow label="Price" value={wine.price ? `${wine.priceCurrency || '$'}${wine.price}` : undefined} source={wine.fieldSources?.price} />
+                          <FieldRow label="Price" value={wine.price ? scannedPrice(wine.price, wine.priceCurrency) : undefined} source={wine.fieldSources?.price} />
                           <FieldRow label="Serving" value={wine.servingType} source={wine.fieldSources?.serving_type} />
                           <FieldRow label="Body" value={wine.body} source={wine.fieldSources?.body} />
                           <FieldRow label="Sweetness" value={wine.sweetness} source={wine.fieldSources?.sweetness} />

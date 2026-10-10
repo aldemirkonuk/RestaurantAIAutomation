@@ -59,6 +59,7 @@ import { classifyStock } from "../../../lib/inventoryStatus";
 import { formatVolume } from "../../../utils/volumeUtils";
 import { useRestaurantSettingsStore } from "../../../stores/restaurantSettingsStore";
 import { cn } from "../../../lib/utils";
+import { useHouseCurrency } from "../../../hooks/useHouseCurrency";
 import { RestaurantBranchSwitcher } from "../../../components/layout/RestaurantBranchSwitcher";
 import { useAuth } from "../../../contexts/AuthContext";
 import { getInventory } from "../../../services/api/inventory";
@@ -179,6 +180,8 @@ export function verifyLinkNotice(
 }
 
 export function InventoryCommandPage() {
+  // Money on this page prints in the house's own currency (sim F-341).
+  useHouseCurrency();
   const [searchParams, setSearchParams] = useSearchParams();
   const page = useInventoryPage({});
   const {
