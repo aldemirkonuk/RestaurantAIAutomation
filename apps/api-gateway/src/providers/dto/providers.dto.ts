@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -518,6 +520,24 @@ export class BulkImportProvidersDto {
   @ApiProperty({ type: [CreateProviderDto] })
   @IsArray()
   providers: CreateProviderDto[];
+}
+
+/**
+ * F-586: copy some of this house's vendors into another house the caller
+ * owns. The source is the session's house (the token); only the TARGET is
+ * named, in the body, and the server checks the caller owns both.
+ */
+export class CopyProvidersToHouseDto {
+  @ApiProperty({ description: "The house the vendors are copied into." })
+  @IsUUID()
+  targetRestaurantId: string;
+
+  @ApiProperty({ type: [String], description: "This house's vendor ids." })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID("all", { each: true })
+  providerIds: string[];
 }
 
 export class BulkImportResultDto {

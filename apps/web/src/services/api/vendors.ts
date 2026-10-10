@@ -160,3 +160,30 @@ export async function addCustomProvider(data: CustomProviderData): Promise<Provi
   })
   return response.data
 }
+
+/** One vendor's answer from a copy into another house (F-586). */
+export interface VendorCopyResult {
+  providerId: string
+  name: string | null
+  outcome: 'added' | 'skipped'
+  /** Why it was skipped, in plain words; null when added. */
+  reason: string | null
+  newProviderId: string | null
+}
+
+/**
+ * Copy some of this house's vendors into another house the owner holds. The
+ * house the session is in is the source; the target is checked on the server
+ * (owner of both, same organisation). Every vendor comes back added or
+ * skipped with the reason.
+ */
+export async function copyVendorsToHouse(
+  targetRestaurantId: string,
+  providerIds: string[],
+): Promise<{ targetRestaurantId: string; targetName: string; results: VendorCopyResult[] }> {
+  const response = await apiClient.post('/providers/copy-to-house', {
+    targetRestaurantId,
+    providerIds,
+  })
+  return response.data
+}

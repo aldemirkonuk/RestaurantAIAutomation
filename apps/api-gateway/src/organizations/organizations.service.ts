@@ -350,6 +350,78 @@ export class OrganizationsService {
   }
 
   /**
+   * F-586: the gate for an act that writes into a house other than the one
+   * the session is in (copying vendors to a new branch). The caller must be
+   * the OWNER of both houses (the strict house-role read
+   * `assertHouseOwnerForPlace` uses, so a failed read is a 503, never a 403
+   * that blames the person) and the two houses must sit in the same
+   * organisation. Returns the target house's name for the answer.
+   *
+   * Both houses come from the server's side: `fromHouse` is the token's house
+   * and `toHouse` is checked here. No client header ever names a tenant.
+   */
+  async assertOwnsBothHousesInOneOrganisation(
+    userId: string,
+    fromHouse: string,
+    toHouse: string,
+  ): Promise<{ toHouseName: string }> {
+    if (fromHouse === toHouse) {
+      throw new BadRequestException(
+        "That is the house you are in. Choose another house. Nothing was copied.",
+      );
+    }
+    for (const house of [fromHouse, toHouse]) {
+      let role: string | null;
+      try {
+        role = await this.readRestaurantRole(userId, house);
+      } catch (err) {
+        if (!(err instanceof RestaurantRoleUnreadableError)) throw err;
+        this.logger.error(
+          `copy between houses could not read ${userId}'s role at ${house}: ${err.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "We could not confirm you own both houses, so nothing was copied. Try again.",
+        );
+      }
+      if ((role ?? "").trim().toLowerCase() !== "owner") {
+        throw new ForbiddenException(
+          "Only an owner of both houses can copy vendors between them. Nothing was copied.",
+        );
+      }
+    }
+    const { data: houses, error } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("id, name, organization_id")
+      .in("id", [fromHouse, toHouse]);
+    if (error) {
+      this.logger.error(
+        `copy between houses could not read ${fromHouse}/${toHouse}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "We could not read the two houses, so nothing was copied. Try again.",
+      );
+    }
+    const rows = (houses ?? []) as {
+      id: string;
+      name: string | null;
+      organization_id: string | null;
+    }[];
+    const from = rows.find((r) => r.id === fromHouse);
+    const to = rows.find((r) => r.id === toHouse);
+    if (
+      !from ||
+      !to ||
+      !from.organization_id ||
+      from.organization_id !== to.organization_id
+    ) {
+      throw new ForbiddenException(
+        "Vendors can only be copied between houses of the same organisation. Nothing was copied.",
+      );
+    }
+    return { toHouseName: to.name ?? "the new house" };
+  }
+
+  /**
    * The restaurant record behind `/profile` and `/settings`.
    *
    * THE READ IS GATED, AND IT WAS NOT (2026-09-03)

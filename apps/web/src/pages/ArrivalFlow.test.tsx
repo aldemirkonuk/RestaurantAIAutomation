@@ -660,8 +660,24 @@ describe('approved arrival flow', () => {
     fireEvent.drop(screen.getByText(/Drop the last invoice here/), {
       dataTransfer: { files: [file] },
     })
-    expect(screen.getByText(/Last invoice · kept for later — suvla-sept.pdf/)).toBeInTheDocument()
+    // F-588: only the name is noted (sessionStorage), never the file, so the
+    // page must not say the invoice is kept.
+    expect(screen.getByText(/Last invoice · noted, not kept — suvla-sept.pdf/)).toBeInTheDocument()
+    expect(screen.getByText(/The file itself is not kept yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/kept for later/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Open later' }))
     expect(navigate).toHaveBeenCalledWith('/settings?tab=cellar')
+  })
+
+  it('says the supplier is on the book even when the progress mark fails (F-587)', async () => {
+    patch.mockRejectedValueOnce(new Error('Onboarding progress not found'))
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText('Supplier'), { target: { value: 'Suvla' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this supplier' }))
+    expect(await screen.findByText('Suvla is on the book.')).toBeInTheDocument()
+    await waitFor(() => expect(patch).toHaveBeenCalledWith('/onboarding/progress', { vendor_added: true }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add this supplier' })).toBeNull()
+    expect(addCustomProvider).toHaveBeenCalledTimes(1)
   })
 })

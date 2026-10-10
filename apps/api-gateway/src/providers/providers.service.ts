@@ -69,6 +69,16 @@ function normalizeToE164(phone: string | null | undefined): string | null {
   return phone;
 }
 
+/** One vendor's answer from `copyProvidersToHouse` (F-586). */
+export interface ProviderCopyResult {
+  providerId: string;
+  name: string | null;
+  outcome: "added" | "skipped";
+  /** Why it was skipped, in the owner's words; null when added. */
+  reason: string | null;
+  newProviderId: string | null;
+}
+
 /** One row from the match_restaurant_providers RPC. */
 export interface ProviderMatchCandidate {
   id: string;
@@ -112,6 +122,7 @@ interface ProviderRow {
   // the real column; kept nullable, no default, never assumed.
   primary_business_type: string | null;
   known_personnel: string[] | null;
+  catalogue_vendor_id?: string | null;
 }
 
 /**
@@ -337,6 +348,140 @@ export class ProvidersService {
     }
 
     return provider;
+  }
+
+  /**
+   * F-586: copy some of `fromHouse`'s vendors into `toHouse`. The caller's
+   * ownership of both houses is checked by the controller before this runs
+   * (`assertOwnsBothHousesInOneOrganisation`).
+   *
+   * Each vendor gets its own answer, added or skipped with the reason, so the
+   * owner is told what landed rather than a count. A vendor already in the
+   * target (same catalogue entry, same email, or same name) is skipped, never
+   * added twice. Only who the vendor is and how to reach them is copied;
+   * payment terms, minimum order, lead time, tier and notes are what one
+   * house agreed and are left for the new house to state. A read that fails
+   * before anything is written refuses the whole copy (503).
+   */
+  async copyProvidersToHouse(
+    fromHouse: string,
+    toHouse: string,
+    providerIds: string[],
+    userId?: string,
+  ): Promise<ProviderCopyResult[]> {
+    requireHouse(fromHouse);
+    requireHouse(toHouse);
+    const ids = [...new Set(providerIds)];
+    const db = this.databaseService.supabase;
+
+    const { data: sourceRows, error: sourceError } = await db
+      .from("providers")
+      .select("*")
+      .eq("restaurant_id", fromHouse)
+      .in("id", ids)
+      .is("deleted_at", null);
+    if (sourceError) {
+      throw new ServiceUnavailableException(
+        "We could not read this house's vendors, so nothing was copied. Try again.",
+      );
+    }
+    const { data: targetRows, error: targetError } = await db
+      .from("providers")
+      .select("id, name, contact_email, catalogue_vendor_id")
+      .eq("restaurant_id", toHouse)
+      .is("deleted_at", null);
+    if (targetError) {
+      throw new ServiceUnavailableException(
+        "We could not read the other house's vendors to avoid copying any twice, so nothing was copied. Try again.",
+      );
+    }
+
+    const key = (s: string | null | undefined) =>
+      (s ?? "").trim().toLowerCase();
+    const haveCatalogue = new Set<string>();
+    const haveEmail = new Set<string>();
+    const haveName = new Set<string>();
+    const remember = (row: {
+      name?: string | null;
+      contact_email?: string | null;
+      catalogue_vendor_id?: string | null;
+    }) => {
+      if (row.catalogue_vendor_id) haveCatalogue.add(row.catalogue_vendor_id);
+      if (key(row.contact_email)) haveEmail.add(key(row.contact_email));
+      if (key(row.name)) haveName.add(key(row.name));
+    };
+    for (const row of targetRows ?? []) remember(row);
+
+    const byId = new Map(
+      ((sourceRows ?? []) as ProviderRow[]).map((r) => [r.id, r]),
+    );
+    const results: ProviderCopyResult[] = [];
+    for (const id of ids) {
+      const row = byId.get(id);
+      const skip = (reason: string): void => {
+        results.push({
+          providerId: id,
+          name: row?.name ?? null,
+          outcome: "skipped",
+          reason,
+          newProviderId: null,
+        });
+      };
+      if (!row) {
+        skip("Not one of this house's vendors.");
+        continue;
+      }
+      if (row.catalogue_vendor_id && haveCatalogue.has(row.catalogue_vendor_id)) {
+        skip("Already on that house's list.");
+        continue;
+      }
+      if (key(row.contact_email) && haveEmail.has(key(row.contact_email))) {
+        skip("That house already has a vendor with this email.");
+        continue;
+      }
+      if (haveName.has(key(row.name))) {
+        skip("That house already has a vendor by this name.");
+        continue;
+      }
+      const dto: CreateProviderDto = row.catalogue_vendor_id
+        ? { catalogue_vendor_id: row.catalogue_vendor_id }
+        : {
+            name: row.name,
+            companyName: row.company_name ?? undefined,
+            phone: row.contact_phone ?? undefined,
+            email: row.contact_email ?? undefined,
+            contactFirstName: row.contact_first_name ?? undefined,
+            contactLastName: row.contact_last_name ?? undefined,
+            physicalAddress:
+              typeof row.address === "string" ? row.address : undefined,
+            primaryBusinessType: row.primary_business_type ?? undefined,
+          };
+      try {
+        const created = await this.createProvider(dto, toHouse, userId);
+        remember(row);
+        results.push({
+          providerId: id,
+          name: row.name,
+          outcome: "added",
+          reason: null,
+          newProviderId: created.id,
+        });
+      } catch (err) {
+        if (err instanceof ConflictException) {
+          skip("Already on that house's list.");
+        } else if ((err as { code?: string })?.code === "23505") {
+          skip("That house already has a vendor with this email.");
+        } else if (err instanceof NotFoundException) {
+          skip("It is no longer in the vendor catalogue.");
+        } else {
+          this.logger.warn(
+            `copy of provider ${id} to ${toHouse} failed: ${(err as Error)?.message}`,
+          );
+          skip("It could not be added this time. Try it again.");
+        }
+      }
+    }
+    return results;
   }
 
   async listProviders(restaurantId: string): Promise<ProviderResponseDto[]> {
