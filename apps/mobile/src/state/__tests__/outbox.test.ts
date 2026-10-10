@@ -277,3 +277,36 @@ describe("a receipt refused for its price keeps its count (F-806)", () => {
     });
   });
 });
+
+// F-337: "Session expired" parked the action as failed, and sign-in resumed
+// only pending entries, so the receiver had to find it and press retry.
+it("keeps an action that met 'sign in again' and sends it after sign-in", async () => {
+  const { ApiError } = jest.requireMock("@/api/client");
+  (api as jest.Mock).mockImplementationOnce(async () => {
+    useSession.setState({ status: "signedOut" });
+    throw Object.assign(new ApiError("Session expired. Sign in again."), {
+      status: 401,
+    });
+  });
+  useOutbox
+    .getState()
+    .enqueue({ path: "/orders/one/receive", label: "Receipt" });
+  await jest.advanceTimersByTimeAsync(1);
+  expect(api).toHaveBeenCalledTimes(1);
+  expect(useOutbox.getState().entries[0]).toMatchObject({ status: "pending" });
+
+  useSession.setState({ status: "signedIn" });
+  await jest.advanceTimersByTimeAsync(1);
+  expect(api).toHaveBeenCalledTimes(2);
+  expect(useOutbox.getState().entries).toHaveLength(0);
+});
+
+it("still parks a refusal the server meant (a 4xx other than 401 and 429)", async () => {
+  const { ApiError } = jest.requireMock("@/api/client");
+  (api as jest.Mock).mockRejectedValueOnce(
+    Object.assign(new ApiError("Not allowed"), { status: 403 }),
+  );
+  useOutbox.getState().enqueue({ path: "/x", label: "X" });
+  await jest.advanceTimersByTimeAsync(1);
+  expect(useOutbox.getState().entries[0]).toMatchObject({ status: "failed" });
+});

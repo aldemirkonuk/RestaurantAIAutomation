@@ -281,10 +281,14 @@ async function runDispatch() {
     }
     scheduleDispatch(0); // keep draining in order
   } catch (err) {
+    // A 401 is "sign in again", not "the server said no" (F-337): the entry
+    // waits, and the sign-in below resumes it. The web does the same
+    // (lib/queue-owner.ts isPermanentRefusal).
     const isPermanent =
       err instanceof ApiError &&
       err.status >= 400 &&
       err.status < 500 &&
+      err.status !== 401 &&
       err.status !== 429;
     // A RECEIPT REFUSED FOR ITS PRICE KEEPS ITS COUNT (F-806).
     //

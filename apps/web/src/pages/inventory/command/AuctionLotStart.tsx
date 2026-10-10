@@ -59,7 +59,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Sheet } from '@/components/mudavym';
-import { getErrorMessage, isUnconfirmedWrite } from '@/services/api/client';
+import { getErrorMessage, getErrorStatus, isUnconfirmedWrite } from '@/services/api/client';
 import { searchWines } from '@/services/api/wines';
 import { createAuctionLotRecord } from '@/services/api/inventory';
 import { settingsApi } from '@/services/api/settings';
@@ -304,12 +304,15 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       inventoryId = carried.inventoryId;
     } catch (e) {
       setBusy(false);
-      // "Nothing was written" only when the write was refused. A timeout, a
-      // dropped line or a server failure may have landed the stock (F-338).
+      // Only a definite refusal may say "nothing was written" (F-338). A
+      // timeout or a server fault can land after the bottles were booked, and
+      // a second carry then meets "already in the book".
       setFailure(
         isUnconfirmedWrite(e)
-          ? `No answer came back while carrying the bottles in (${getErrorMessage(e)}). They may already be in the book: check this wine's stock before carrying it in again. Your figures are still here.`
-          : `The bottles were not carried in (${getErrorMessage(e)}). Nothing was written to the book and your figures are still here.`,
+          ? 'No answer came back while carrying the bottles in. They may already be in the book: check this wine’s count in the list before carrying them again. Your figures are still here.'
+          : getErrorStatus(e) === 409
+            ? 'This wine is already in the book, perhaps from an earlier try that did go through. Nothing more was carried. Check its count in the list; the lot’s own details were not saved, so your figures are still here to write down.'
+            : `The bottles were not carried in (${getErrorMessage(e)}). Nothing was written to the book and your figures are still here.`,
       );
       return;
     }

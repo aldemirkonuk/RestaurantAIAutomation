@@ -33,6 +33,7 @@ vi.mock('@/services/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/services/api/client')>('@/services/api/client');
   return {
     getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
+    getErrorStatus: actual.getErrorStatus,
     isUnconfirmedWrite: actual.isUnconfirmedWrite,
   };
 });
@@ -221,8 +222,10 @@ describe('the sheet', () => {
     expect(said).toHaveTextContent(/They may already be in the book/);
     expect(said).not.toHaveTextContent(/Nothing was written/);
 
+    // The second try meets the 409: the first carry landed (F-338, the
+    // "already in the book" arm), so nothing more was carried.
     fireEvent.click(screen.getByTestId('auction-carry'));
-    await waitFor(() => expect(screen.getByTestId('auction-failure')).toHaveTextContent(/Nothing was written to the book/));
+    await waitFor(() => expect(screen.getByTestId('auction-failure')).toHaveTextContent(/already in the book.*Nothing more was carried/s));
   });
 
   it('the lot number is optional: a lot without one carries and is recorded as not stated (founder answer 11)', async () => {
@@ -312,6 +315,36 @@ describe('the sheet', () => {
     );
     expect(screen.getByTestId('auction-hammer')).toHaveValue('1200');
     // Refused before the stock write, so the lot record is never attempted.
+    expect(auctionApi.createAuctionLotRecord).not.toHaveBeenCalled();
+  });
+
+  // F-338: a timeout can land after the bottles were booked; the sheet must
+  // not say "nothing was written", and a second try that meets the 409 says so.
+  it('after a timeout, says the bottles may already be in the book, never "nothing was written"', async () => {
+    const onCarry = vi.fn().mockRejectedValue(
+      Object.assign(new Error('timeout of 30000ms exceeded'), { isAxiosError: true, request: {} }),
+    );
+    draw({ onCarry });
+    await fillALot('6');
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    const failure = await screen.findByTestId('auction-failure');
+    expect(failure).toHaveTextContent(/may already be in the book.*before carrying them again/s);
+    expect(failure).not.toHaveTextContent(/Nothing was written|30000ms/);
+    expect(screen.getByTestId('auction-hammer')).toHaveValue('1200');
+  });
+
+  it('a carry that meets "already in the book" says so, not "nothing was written"', async () => {
+    const onCarry = vi.fn().mockRejectedValue(
+      Object.assign(new Error('This wine already exists in inventory.'), {
+        response: { status: 409 },
+      }),
+    );
+    draw({ onCarry });
+    await fillALot('6');
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    const failure = await screen.findByTestId('auction-failure');
+    expect(failure).toHaveTextContent(/already in the book.*Nothing more was carried/s);
+    expect(failure).not.toHaveTextContent(/Nothing was written/);
     expect(auctionApi.createAuctionLotRecord).not.toHaveBeenCalled();
   });
 
