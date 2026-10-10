@@ -46,6 +46,20 @@ function VerificationBadge({ status }: { status?: 'pending' | 'verified' | 'reje
   return <Badge variant="destructive" size="sm" aria-label="Verification: rejected">✕</Badge>
 }
 
+/**
+ * What a POST /overrides response means for the cell (F-759). Only `auto_promoted` wrote
+ * the value to the wine; `pending` sits in the review queue; `logged_apply_failed` (or
+ * anything unrecognised) was recorded but never applied — showing the new value for
+ * either of those would tell the editor a change landed when it did not.
+ */
+export type OverrideOutcome = 'applied' | 'queued' | 'not_applied'
+
+export function overrideOutcome(status: string | undefined): OverrideOutcome {
+  if (status === 'auto_promoted') return 'applied'
+  if (status === 'pending') return 'queued'
+  return 'not_applied'
+}
+
 export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuccess }: FieldCellProps) {
   const [isEditing, setIsEditing] = useState(false)
   // Coerce to string — Claude can return numbers (vintage, price) and null
@@ -55,6 +69,7 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
   const [citationUrl, setCitationUrl] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [queuedValue, setQueuedValue] = useState<string | null>(null)
 
   // D-07: reason required when confidence >= 0.8
   const requiresReason = (entry?.confidence ?? 0) >= 0.8
@@ -81,12 +96,22 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
           citation_url: citationUrl.trim() || null,
         },
       )
-      setIsEditing(false)
-      onOverrideSuccess(field, newValue.trim())
-      if (data.status === 'pending') {
+      const outcome = overrideOutcome(data.status)
+      if (outcome === 'applied') {
+        setIsEditing(false)
+        setQueuedValue(null)
+        onOverrideSuccess(field, newValue.trim())
+        toast.success('Override saved', { description: `${field} updated` })
+      } else if (outcome === 'queued') {
+        // The wine keeps its current value until a reviewer approves the change.
+        setIsEditing(false)
+        setQueuedValue(newValue.trim())
         toast.info('Override queued for review', { description: 'A reviewer will approve your change.' })
       } else {
-        toast.success('Override saved', { description: `${field} updated` })
+        // Recorded but not applied: keep the editor open so the change can be retried.
+        const message = 'Your change was recorded but not applied. The wine still shows the old value — try saving again.'
+        setSaveError(message)
+        toast.warning('Change not applied', { description: message })
       }
     } catch (err: unknown) {
       const message = studioErrorMessage(err)
@@ -113,6 +138,9 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
           <ConfidenceBadge confidence={entry?.confidence ?? null} />
           <VerificationBadge status={entry?.verification_status} />
         </div>
+        {queuedValue != null && (
+          <div className="text-xs text-amber-700 mt-0.5">Queued for review: {queuedValue}</div>
+        )}
         {entry?.source && (
           <div className="text-xs text-slate-400 mt-0.5">
             via {entry.source === 'visible' ? 'Vision' : entry.source === 'knowledge' ? 'Haiku' : entry.source}

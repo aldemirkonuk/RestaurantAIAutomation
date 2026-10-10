@@ -22,6 +22,8 @@ Endpoints:
 Security:
   T-13-07: JWT verified in every endpoint (require_studio_role, or require_authenticated_user
            on /invite/redeem where the invite itself is the authorization — ADR 0021)
+  F-761:   Every write uses require_live_studio_role, which re-reads user_roles, so a revoked
+           contributor loses write access at once rather than when their token expires
   T-13-10: Invite token brute-force: token is UUID (128-bit) — 10^38 combinations
   T-13-11: Reason bypass: validated server-side via DB old_confidence check, not client input
   T-13-12: Session leakage: actor_id == user["sub"] OR role in (review_admin, developer)
@@ -39,6 +41,7 @@ from pydantic import BaseModel
 
 from services.override_service import (
     require_studio_role,
+    require_live_studio_role,
     require_authenticated_user,
     normalize_email,
     sanitize_for_log,
@@ -74,7 +77,7 @@ class PromoteRequest(BaseModel):
 def create_session(
     body: SessionCreateRequest,
     user: dict = Depends(
-        require_studio_role("developer", "certified_contributor", "review_admin")
+        require_live_studio_role("developer", "certified_contributor", "review_admin")
     ),
 ):
     """Start a new onboarding session — records actor, source type, and optional scan_session_id."""
@@ -172,7 +175,7 @@ def get_session_timeline(
 def submit_override(
     body: OverrideRequest,
     user: dict = Depends(
-        require_studio_role("developer", "certified_contributor", "review_admin")
+        require_live_studio_role("developer", "certified_contributor", "review_admin")
     ),
 ):
     """
@@ -429,7 +432,7 @@ def _hydrate_queue_rows(supabase, rows: list[dict]) -> list[dict]:
 def decide_override(
     override_id: str,
     body: ApprovalDecision,
-    user: dict = Depends(require_studio_role("review_admin")),
+    user: dict = Depends(require_live_studio_role("review_admin")),
 ):
     """PATCH /api/v1/studio/queue/{override_id} — approve or reject a pending override."""
     supabase = _get_supabase()
@@ -453,14 +456,28 @@ def decide_override(
         )
 
     approved = body.decision == "approved"
-    supabase.table("override_events").update(
-        {
-            "promotion_status": "approved" if approved else "rejected",
-            "approved_by": user["sub"],
-            "approval_note": body.note,
-            "decided_at": datetime.now(timezone.utc).isoformat(),
-        }
-    ).eq("id", override_id).execute()
+    # The pending check above is only a fast path for a clear 409. The promotion_status
+    # predicate on the write is what decides (F-758): two reviewers deciding the same row
+    # at once both pass the read, but only one UPDATE can still match 'pending'. No row
+    # back = someone else decided it first, so this request must not apply or count trust.
+    decided = (
+        supabase.table("override_events")
+        .update(
+            {
+                "promotion_status": "approved" if approved else "rejected",
+                "approved_by": user["sub"],
+                "approval_note": body.note,
+                "decided_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        .eq("id", override_id)
+        .eq("promotion_status", "pending")
+        .execute()
+    )
+    if not decided.data:
+        raise HTTPException(
+            status_code=409, detail="Someone already decided this change."
+        )
 
     if approved:
         try:
@@ -473,6 +490,29 @@ def decide_override(
             )
         except Exception as exc:
             logger.error("decide_override: apply failed: %s", exc)
+            # F-759: an approval whose value never reached the wine must not read as
+            # approved. Put the row back in the queue (so it can be approved again) and
+            # skip promotion and the trust counter, which would otherwise reward a change
+            # that did not land.
+            try:
+                supabase.table("override_events").update(
+                    {
+                        "promotion_status": "pending",
+                        "approved_by": None,
+                        "approval_note": None,
+                        "decided_at": None,
+                    }
+                ).eq("id", override_id).eq("promotion_status", "approved").execute()
+            except Exception as revert_exc:
+                logger.error(
+                    "decide_override: could not return %s to the queue: %s",
+                    sanitize_for_log(override_id),
+                    revert_exc,
+                )
+            raise HTTPException(
+                status_code=503,
+                detail="The change could not be applied to the wine, so it is back in the queue. Try approving it again.",
+            )
 
         # T-14-08: attempt library promotion — non-fatal if it fails
         try:
@@ -501,7 +541,7 @@ def decide_override(
 @studio_router.post("/invite")
 def create_invite(
     body: InviteRequest,
-    user: dict = Depends(require_studio_role("review_admin")),
+    user: dict = Depends(require_live_studio_role("review_admin")),
 ):
     """
     POST /api/v1/studio/invite — generate single-use invite token (review_admin only) (DEVUI-07, D-03).
@@ -587,16 +627,17 @@ def redeem_invite(
                 detail="This invite was issued to a different email address.",
             )
 
-        # Already holds the role — don't burn the token on a no-op.
+        # Already holds the role — don't burn the token on a no-op. Revoked rows are read
+        # too: user_roles is UNIQUE (user_id, role), so a re-invited contributor already
+        # has a row, and inserting a second one failed every re-invite (F-757).
         existing = (
             supabase.table("user_roles")
-            .select("role")
+            .select("role, revoked_at")
             .eq("user_id", user["sub"])
             .eq("role", tok["role"])
-            .is_("revoked_at", "null")
             .execute()
         )
-        if existing.data:
+        if any(not r.get("revoked_at") for r in (existing.data or [])):
             raise HTTPException(
                 status_code=409, detail=f"You already hold the '{tok['role']}' role"
             )
@@ -619,20 +660,40 @@ def redeem_invite(
         if not claim.data:
             raise HTTPException(status_code=409, detail="Invite token already used")
 
-        # Insert role — D-04: granted_by = token creator, not self
+        # Grant role — D-04: granted_by = token creator, not self. A revoked row is
+        # restored in place as a fresh grant: trust earned before the revocation does not
+        # carry over, so the contributor starts back on the review queue.
         try:
-            supabase.table("user_roles").insert(
-                {
-                    "user_id": user["sub"],
-                    "role": tok["role"],
-                    "granted_by": tok["created_by"],
-                }
-            ).execute()
-        except Exception:
+            if existing.data:
+                supabase.table("user_roles").update(
+                    {
+                        "revoked_at": None,
+                        "granted_by": tok["created_by"],
+                        "granted_at": datetime.now(timezone.utc).isoformat(),
+                        "consecutive_approved_overrides": 0,
+                        "promotion_policy": "queue",
+                        "auto_promote_earned_at": None,
+                    }
+                ).eq("user_id", user["sub"]).eq("role", tok["role"]).execute()
+            else:
+                supabase.table("user_roles").insert(
+                    {
+                        "user_id": user["sub"],
+                        "role": tok["role"],
+                        "granted_by": tok["created_by"],
+                    }
+                ).execute()
+        except Exception as grant_exc:
             # Release the claim so a failed grant does not silently consume the invite.
             supabase.table("invite_tokens").update(
                 {"used_at": None, "used_by": None}
             ).eq("id", tok["id"]).execute()
+            # 23505 = unique_violation: the row appeared between our read and the insert
+            # (a second redeem racing this one). The role is held, so say that, not 503.
+            if "23505" in str(getattr(grant_exc, "code", "") or grant_exc):
+                raise HTTPException(
+                    status_code=409, detail=f"You already hold the '{tok['role']}' role"
+                )
             raise
 
         # sub comes from the request's JWT, so it is escaped before it reaches the log —
@@ -842,8 +903,10 @@ def get_contributors(
     user: dict = Depends(require_studio_role("developer", "review_admin")),
 ):
     """
-    GET /api/v1/studio/contributors — list active certified_contributors (review_admin only).
-    Returns user_roles rows with role=certified_contributor and revoked_at IS NULL.
+    GET /api/v1/studio/contributors — list certified_contributors (review_admin only).
+    Returns every user_roles row with role=certified_contributor, revoked ones included
+    (revoked_at set): ContributorTable offers Enable on exactly those rows, and filtering
+    them out made a disabled contributor impossible to restore (F-757).
     Used by StudioCertify.tsx to populate ContributorTable.
     """
     supabase = _get_supabase()
@@ -857,7 +920,6 @@ def get_contributors(
                 "promotion_policy, auto_promote_earned_at, revoked_at"
             )
             .eq("role", "certified_contributor")
-            .is_("revoked_at", "null")
             .execute()
         )
         return {"contributors": resp.data or []}
@@ -870,7 +932,7 @@ def get_contributors(
 @studio_router.patch("/contributors/{user_id}/revoke")
 def revoke_contributor(
     user_id: str,
-    user: dict = Depends(require_studio_role("review_admin")),
+    user: dict = Depends(require_live_studio_role("review_admin")),
 ):
     """PATCH /api/v1/studio/contributors/{user_id}/revoke — revoke contributor access (review_admin only)."""
     supabase = _get_supabase()
@@ -898,7 +960,7 @@ def revoke_contributor(
 @studio_router.patch("/contributors/{user_id}/enable")
 def enable_contributor(
     user_id: str,
-    user: dict = Depends(require_studio_role("review_admin")),
+    user: dict = Depends(require_live_studio_role("review_admin")),
 ):
     """PATCH /api/v1/studio/contributors/{user_id}/enable — re-enable a revoked contributor (review_admin only)."""
     supabase = _get_supabase()
@@ -925,7 +987,7 @@ def enable_contributor(
 @studio_router.post("/promote")
 def promote_to_library(
     body: PromoteRequest,
-    user: dict = Depends(require_studio_role("developer", "review_admin")),
+    user: dict = Depends(require_live_studio_role("developer", "review_admin")),
 ):
     """
     POST /api/v1/studio/promote — promote a submission to master_wine_library (D-09, D-06).
@@ -1118,7 +1180,7 @@ def promote_to_library(
 @studio_router.patch("/contributors/{user_id}/disable")
 def disable_contributor(
     user_id: str,
-    user: dict = Depends(require_studio_role("review_admin")),
+    user: dict = Depends(require_live_studio_role("review_admin")),
 ):
     """
     PATCH /api/v1/studio/contributors/{user_id}/disable — disable contributor (alias for revoke).

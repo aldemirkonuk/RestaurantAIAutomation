@@ -5,6 +5,7 @@ Phase 13: Studio promotion logic, JWT role dependency, and trust management.
 
 Provides:
   - require_studio_role(*roles) — FastAPI dependency for JWT-based role enforcement (D-01)
+  - require_live_studio_role(*roles) — same, but re-reads user_roles; used by every write (F-761)
   - OverrideRequest, ApprovalDecision — Pydantic request models with server-side validation
   - _apply_override_to_submission() — writes approved override to field_confidence via merge_field_confidence (DEVUI-06)
   - check_and_update_trust() — increments/resets consecutive_approved_overrides via atomic RPC (D-12)
@@ -152,6 +153,66 @@ def require_studio_role(*required_roles: str):
     return _check
 
 
+def _fetch_active_studio_roles(user_id: Optional[str]) -> list:
+    """
+    Read the caller's unrevoked studio roles from user_roles. Raises 503 when the table
+    cannot be read — callers use this to decide a write, so "could not check" must never
+    read as "has no roles" (absent) or as "has the roles the token claims" (stale).
+    """
+    if not user_id:
+        return []
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(
+            status_code=503, detail="Could not confirm your studio access right now."
+        )
+    try:
+        resp = (
+            supabase.table("user_roles")
+            .select("role")
+            .eq("user_id", user_id)
+            .is_("revoked_at", "null")
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning(
+            "_fetch_active_studio_roles failed for %s: %s",
+            sanitize_for_log(user_id),
+            exc,
+        )
+        raise HTTPException(
+            status_code=503, detail="Could not confirm your studio access right now."
+        )
+    return [r["role"] for r in (resp.data or [])]
+
+
+def require_live_studio_role(*required_roles: str):
+    """
+    Like require_studio_role(), but for endpoints that change data: the role must be held
+    in user_roles right now. The JWT's app_metadata.roles is written when the token is
+    minted and lives as long as the access token (15 min, auth.service.ts), so a
+    contributor revoked mid-session would otherwise keep writing until it expired
+    (F-761). The DB roles replace the claimed ones on the returned payload, so
+    _get_primary_studio_role() downstream also sees the live set.
+    """
+
+    def _check(authorization: Optional[str] = Header(None)) -> dict:
+        payload = _decode_studio_jwt(authorization)
+        db_roles = _fetch_active_studio_roles(payload.get("sub"))
+        if not any(r in db_roles for r in required_roles):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Requires one of: {list(required_roles)}. Your roles: {db_roles}",
+            )
+        payload["app_metadata"] = {
+            **(payload.get("app_metadata") or {}),
+            "roles": db_roles,
+        }
+        return payload
+
+    return _check
+
+
 # =============================================================================
 # REQUEST / RESPONSE MODELS
 # =============================================================================
@@ -213,6 +274,7 @@ def normalize_email(value: Optional[str]) -> str:
 # not belong in the studio promotion module.
 __all__ = [
     "require_studio_role",
+    "require_live_studio_role",
     "require_authenticated_user",
     "normalize_email",
     "sanitize_for_log",
