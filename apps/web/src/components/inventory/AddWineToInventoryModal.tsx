@@ -89,7 +89,8 @@ interface AddWineToInventoryModalProps {
   onAddWine: (
     wine: WineType,
     quantity: number,
-    threshold: number,
+    /** Undefined for staff: a par is an owner's or a manager's (F-1064). */
+    threshold: number | undefined,
     storageLocationId?: string,
     volumeFields?: VolumeFields,
   ) => void | Promise<void>;
@@ -410,7 +411,9 @@ export function AddWineToInventoryModal({
         await onAddWine(
           selectedWine,
           quantity,
-          threshold,
+          // A par is held like the cost (F-1064): staff send none, and the
+          // wine takes the house's default.
+          canSetCost ? threshold : undefined,
           selectedStorageLocationId,
           volumeFields,
         );
@@ -812,7 +815,17 @@ export function AddWineToInventoryModal({
                     </div>
                     )}
 
-                    {/* Threshold */}
+                    {/* Threshold: an owner's or a manager's, like the cost (F-1064). */}
+                    {!canSetCost ? (
+                      <p
+                        data-testid="par-held"
+                        className="text-xs text-gray-500"
+                      >
+                        This wine starts at the house's low-stock number. A
+                        manager or an owner can change it later.
+                      </p>
+                    ) : (
+                    <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Minimum Threshold
@@ -869,6 +882,8 @@ export function AddWineToInventoryModal({
                         ))}
                       </div>
                     </div>
+                    </>
+                    )}
 
                     {/* Storage Location */}
                     <div>

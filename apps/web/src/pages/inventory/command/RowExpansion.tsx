@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adjustStock, getItemActivity, recordPour, reconcileItem, transferStock, fetchAuctionLotRecords } from '../../../services/api/inventory'
+import { adjustStock, getItemActivity, recordPour, reconcileItem, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
 import { getOrders } from '../../../services/api/orders'
 import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
@@ -73,12 +73,17 @@ export function RowExpansion({
   item,
   locations,
   seesCost = true,
+  // The page's seesCost IS its owner-or-manager signal (InventoryCommandPage:
+  // seesCost = canEditPrice), so the par control follows it unless told.
+  canSetPar = seesCost,
   startCounting = false,
 }: {
   item: InventoryItem
   locations: StorageLocation[]
   /** False for a reader the gateway sends no cost (staff, ADR 0145): no "You paid" line. */
   seesCost?: boolean
+  /** An owner or a manager: may change this wine's par here (F-1064). The gateway refuses anyone else. */
+  canSetPar?: boolean
   /** Open with the spot count up (`/inventory?count=<id>`, F-831). */
   startCounting?: boolean
 }) {
@@ -98,6 +103,8 @@ export function RowExpansion({
   const [reason, setReason] = useState('Count correction')
   const [showSpotCount, setShowSpotCount] = useState(startCounting)
   const [pouring, setPouring] = useState(false)
+  // The per-wine par, through the same PATCH the add path's thresholdMin uses (F-1064, F-075).
+  const [parDraft, setParDraft] = useState<string | null>(null)
 
   // F-705: a read that failed or has not answered is said as such — never
   // drawn as an empty history ("No orders for this wine yet").
@@ -153,6 +160,18 @@ export function RowExpansion({
     },
     onError: (e: any) => toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
   })
+
+  const setPar = useMutation({
+    mutationFn: (thresholdMin: number) => updateInventoryItem(inventoryId, { thresholdMin }),
+    onSuccess: () => {
+      invalidate()
+      toast.success('Par saved')
+      setParDraft(null)
+    },
+    onError: (e: any) => toast.error('Par not saved', e?.response?.data?.message || e?.message),
+  })
+  const parValue = parDraft == null ? null : Number(parDraft)
+  const parValid = parValue != null && parDraft !== '' && Number.isInteger(parValue) && parValue >= 0 && parValue <= 999
 
   // Manual adjust sends the change, not a new total (F-292). A total built from
   // the list's cached stock (refreshed once a minute) lost a second manager's
@@ -275,7 +294,56 @@ export function RowExpansion({
 
         {/* par & reorder */}
         <Card title="Par and reorder">
-          <KV k="Par" v={item.threshold != null ? `${item.threshold} btl` : 'not set'} />
+          {parDraft == null ? (
+            <div className="flex items-center py-1.5 text-xs">
+              <span className="flex-1 text-gray-500">Par</span>
+              <span className="font-mono font-semibold text-gray-700">
+                {item.threshold != null ? `${item.threshold} btl` : 'not set'}
+              </span>
+              {canSetPar && inventoryId && (
+                <button
+                  type="button"
+                  onClick={() => setParDraft(String(item.threshold ?? ''))}
+                  className="ml-2 text-[11px] font-semibold text-blue-600"
+                >
+                  {item.threshold != null ? 'Change' : 'Set'}
+                </button>
+              )}
+            </div>
+          ) : (
+            <form
+              className="flex items-center gap-2 py-1.5 text-xs"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (parValid && parValue != null) setPar.mutate(parValue)
+              }}
+            >
+              <label className="flex flex-1 items-center justify-between gap-2 text-gray-500">
+                Par
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  aria-label="Par for this wine"
+                  min={0}
+                  max={999}
+                  autoFocus
+                  value={parDraft}
+                  onChange={(e) => setParDraft(e.target.value)}
+                  className="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-right font-mono text-gray-700"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={!parValid || setPar.isPending}
+                className="font-semibold text-blue-600 disabled:opacity-40"
+              >
+                {setPar.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" onClick={() => setParDraft(null)} className="text-gray-500">
+                Cancel
+              </button>
+            </form>
+          )}
           <KV
             k="Selling"
             v={

@@ -148,9 +148,13 @@ function GetStartedSteps() {
   // (/house/menu's "Read a menu"): steps 01-02 would end in "This account
   // already has a house" (F-893, F-239). They start on the menu step.
   // The "Finish setup" nudge sends an open house that has not set its
-  // low-stock threshold here with ?step=threshold (F-985, F-239).
+  // low-stock threshold here with ?step=threshold (F-985, F-239). The number
+  // is the whole house's, so only an owner or a manager is asked it; anyone
+  // else starts on the menu step as before (F-1060).
   const [searchParams] = useSearchParams()
-  const askedThreshold = Boolean(user?.restaurantId) && searchParams.get('step') === 'threshold'
+  const setsHouseNumbers = user?.role === 'owner' || user?.role === 'manager'
+  const askedThreshold =
+    Boolean(user?.restaurantId) && setsHouseNumbers && searchParams.get('step') === 'threshold'
   const [step, setStep] = useState<Step>(() =>
     askedThreshold ? 'threshold' : user?.restaurantId ? 'menu' : 'you',
   )
@@ -676,5 +680,9 @@ function ThresholdArrival({ onMenu }: { onMenu: () => void }) {
     if (progress && !progress.menu_uploaded) onMenu()
     else navigate('/house', { replace: true })
   }
-  return <ThresholdStep onDone={() => void done()} />
+  return (
+    <ArrivalShell step="threshold">
+      <ThresholdStep onDone={() => void done()} />
+    </ArrivalShell>
+  )
 }

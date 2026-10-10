@@ -140,7 +140,7 @@ export class InventoryController {
   ) {
     if (!userId) {
       throw new HttpException(
-        "A price change names the person who made it, and this session names nobody. Nothing was changed.",
+        "This change names the person who made it, and this session names nobody. Nothing was changed.",
         HttpStatus.FORBIDDEN,
       );
     }
@@ -354,6 +354,15 @@ export class InventoryController {
     if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
       await this.assertMayPrice(user?.userId, restaurantId);
     }
+    // A wine's par is the house's low-stock line: an owner's or a manager's
+    // too (F-1064, F-1060), checked before anything is written.
+    if (dto.thresholdMin !== undefined || dto.thresholdMax !== undefined) {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "change a wine's par",
+      );
+    }
     // So is what the house paid for it (F-312). A wine added with no cost
     // stays open to everyone: its cost is recorded as unknown.
     if (namesACost(dto)) {
@@ -405,6 +414,20 @@ export class InventoryController {
       )
     ) {
       await this.assertMayPrice(user?.userId, restaurantId);
+    }
+    // And a line naming a par: on a wine already carried it overwrites that
+    // wine's low-stock line (F-1064, F-1060). A line with no par takes the
+    // house default on a new wine and leaves a carried one's alone.
+    if (
+      (dto.items ?? []).some(
+        (l) => l.thresholdMin !== undefined || l.thresholdMax !== undefined,
+      )
+    ) {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "change a wine's par",
+      );
     }
     if ((dto.items ?? []).some(namesACost)) {
       await this.assertMayPrice(
@@ -640,6 +663,15 @@ export class InventoryController {
     // price change does not half-apply the other fields beside it.
     if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
       await this.assertMayPrice(user?.userId, restaurantId);
+    }
+    // A wine's par is the house's low-stock line: an owner's or a manager's
+    // too (F-1064, F-1060), checked before anything is written.
+    if (dto.thresholdMin !== undefined || dto.thresholdMax !== undefined) {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "change a wine's par",
+      );
     }
     try {
       return inventoryItemForRole(

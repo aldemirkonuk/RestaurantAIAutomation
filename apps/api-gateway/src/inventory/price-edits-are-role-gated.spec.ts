@@ -50,11 +50,49 @@ describe("PATCH inventory item — who may change a price", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("a non-price edit by staff is unchanged by this gate", async () => {
+  it("an edit that is neither price nor par by staff is unchanged by this gate", async () => {
     const { c, update } = controller("staff");
-    await c.updateInventoryItem("rest-1", "inv-1", { thresholdMin: 4 } as any, { userId: "u-1" });
+    await c.updateInventoryItem("rest-1", "inv-1", { isActive: true } as any, {
+      userId: "u-1",
+    });
     expect(update).toHaveBeenCalledTimes(1);
   });
+});
+
+/**
+ * F-1064 / F-1060 (S160 call): a wine's par is the house's low-stock line, so
+ * changing it is an owner's or a manager's act, like the house default.
+ */
+describe("PATCH inventory item — who may change a par", () => {
+  it.each(["owner", "manager"])(
+    "a %s may change a wine's par",
+    async (role) => {
+      const { c, update } = controller(role);
+      await c.updateInventoryItem(
+        "rest-1",
+        "inv-1",
+        { thresholdMin: 4 } as any,
+        { userId: "u-1" },
+      );
+      expect(update).toHaveBeenCalledWith(
+        "rest-1",
+        "inv-1",
+        { thresholdMin: 4 },
+        "u-1",
+      );
+    },
+  );
+
+  it.each([{ thresholdMin: 4 }, { thresholdMax: 30 }])(
+    "staff is refused a par change %p, and nothing is written",
+    async (dto) => {
+      const { c, update } = controller("staff");
+      await expect(
+        c.updateInventoryItem("rest-1", "inv-1", dto as any, { userId: "u-1" }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
 });
 
 /**
@@ -107,4 +145,91 @@ describe("POST inventory items — a price on add is gated and names the person"
     expect(create).toHaveBeenCalledWith("rest-1", { wineId: "w" }, "u-2");
     expect(bulk).toHaveBeenCalledWith("rest-1", { items: [{ wineId: "w" }] }, "u-2");
   });
+});
+
+/**
+ * F-1064 / F-1060 on the add doors: a par on a wine added one at a time, or on
+ * any line of a batch (which overwrites a carried wine's par), is an owner's or
+ * a manager's. Staff add with no par and the house default applies.
+ */
+describe("POST inventory items — a par on add is gated", () => {
+  function addController(role: string | null) {
+    const organizations = new OrganizationsService({} as never);
+    jest.spyOn(organizations, "resolveRestaurantRole").mockResolvedValue(role);
+    const create = jest.fn(async () => ({ id: "inv-1" }));
+    const bulk = jest.fn(async () => ({ results: [] }));
+    const c = new InventoryController(
+      { createInventoryItem: create, bulkCreateInventoryItems: bulk } as any,
+      organizations,
+      {} as any,
+    );
+    return { c, create, bulk };
+  }
+
+  it("staff naming a par on one batch line is refused whole, before any line is received", async () => {
+    const { c, bulk } = addController("staff");
+    await expect(
+      c.bulkCreateInventoryItems(
+        "rest-1",
+        {
+          items: [
+            { wineId: "a", stockLive: 2 },
+            { wineId: "b", thresholdMin: 0 },
+          ],
+        } as any,
+        { userId: "u-2" },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      c.bulkCreateInventoryItems(
+        "rest-1",
+        { items: [{ wineId: "a", thresholdMax: 40 }] } as any,
+        { userId: "u-2" },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(bulk).not.toHaveBeenCalled();
+  });
+
+  it("staff adding with no par goes through on both doors", async () => {
+    const { c, create, bulk } = addController("staff");
+    await c.createInventoryItem(
+      "rest-1",
+      { wineId: "w", stockLive: 3 } as any,
+      { userId: "u-2" },
+    );
+    await c.bulkCreateInventoryItems(
+      "rest-1",
+      { items: [{ wineId: "w", stockLive: 3 }] } as any,
+      { userId: "u-2" },
+    );
+    expect(create).toHaveBeenCalledWith(
+      "rest-1",
+      { wineId: "w", stockLive: 3 },
+      "u-2",
+    );
+    expect(bulk).toHaveBeenCalledWith(
+      "rest-1",
+      { items: [{ wineId: "w", stockLive: 3 }] },
+      "u-2",
+    );
+  });
+
+  it.each(["owner", "manager"])(
+    "a %s may name a par on add, on both doors",
+    async (role) => {
+      const { c, create, bulk } = addController(role);
+      await c.createInventoryItem(
+        "rest-1",
+        { wineId: "w", thresholdMin: 4 } as any,
+        { userId: "u-1" },
+      );
+      await c.bulkCreateInventoryItems(
+        "rest-1",
+        { items: [{ wineId: "w", thresholdMin: 4 }] } as any,
+        { userId: "u-1" },
+      );
+      expect(create).toHaveBeenCalled();
+      expect(bulk).toHaveBeenCalled();
+    },
+  );
 });

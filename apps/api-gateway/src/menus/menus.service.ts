@@ -2696,15 +2696,18 @@ export class MenusService {
     // Restaurant-scoped self-heal: an invitee who joins after the owner
     // already uploaded a menu would otherwise see "Upload your wine menu" as
     // still pending. Auto-satisfy it from the house's actual state instead.
+    // The current menu is read every time: a draft read ticks menu_uploaded
+    // (markMenuUploaded on every import) but stocks nothing, so it is not the
+    // menu half of "activated" (F-1061, F-031).
+    const { data: activeMenu } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", data.restaurant_id)
+      .eq("status", "active")
+      .maybeSingle();
+    const menuCurrent = !!activeMenu;
     let menuUploaded = !!data.menu_uploaded;
     if (!menuUploaded) {
-      const { data: activeMenu } = await this.dbService.supabase
-        .from("restaurant_menus")
-        .select("id")
-        .eq("restaurant_id", data.restaurant_id)
-        .eq("status", "active")
-        .maybeSingle();
-
       if (activeMenu) {
         menuUploaded = true;
         const { error: healErr } = await this.dbService.supabase
@@ -2729,17 +2732,47 @@ export class MenusService {
     return {
       ...data,
       menu_uploaded: menuUploaded,
+      menu_current: menuCurrent,
       threshold_configured: thresholdConfigured,
-      // "Activated" = the two soft-gate essentials — the manager has a
-      // working inventory and a low-stock signal. Vendor/team are optional.
-      activated: menuUploaded && thresholdConfigured,
+      // "Activated" = the two soft-gate essentials — the house has a current
+      // menu (so a stocked inventory) and a low-stock signal. A draft read is
+      // not a current menu (F-1061). Vendor/team are optional.
+      activated: menuCurrent && thresholdConfigured,
     };
   }
 
+  /**
+   * How many items the house carries now. The house default reaches only rows
+   * created after it is saved, so the threshold step names this count and
+   * offers to set the number on them too (F-1059).
+   */
+  async countCarriedItems(restaurantId: string): Promise<number> {
+    const { count, error } = await this.dbService.supabase
+      .from("restaurant_inventory")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
+    if (error) {
+      throw new Error(`Failed to count the items carried: ${error.message}`);
+    }
+    return count ?? 0;
+  }
+
+  /**
+   * Saves the house default. It is copied onto a row only when the row is
+   * created, so items carried now keep their own par unless the person asked,
+   * in so many words, for the number on them too (`applyToCarried`, F-1059).
+   * Nothing is written to a carried row without that ask.
+   */
   async setDefaultThreshold(
     restaurantId: string,
     thresholdMin: number,
-  ): Promise<{ default_threshold_min: number; threshold_configured: true }> {
+    applyToCarried = false,
+  ): Promise<{
+    default_threshold_min: number;
+    threshold_configured: true;
+    applied_to_carried: number;
+  }> {
     const { error } = await this.dbService.supabase
       .from("restaurants")
       .update({
@@ -2752,7 +2785,27 @@ export class MenusService {
       throw new Error(`Failed to set default threshold: ${error.message}`);
     }
 
-    return { default_threshold_min: thresholdMin, threshold_configured: true };
+    let applied = 0;
+    if (applyToCarried) {
+      const { data: rows, error: applyErr } = await this.dbService.supabase
+        .from("restaurant_inventory")
+        .update({ threshold_min: thresholdMin })
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .select("id");
+      if (applyErr) {
+        throw new Error(
+          `The default was saved, but it could not be set on the items you carry: ${applyErr.message}`,
+        );
+      }
+      applied = (rows ?? []).length;
+    }
+
+    return {
+      default_threshold_min: thresholdMin,
+      threshold_configured: true,
+      applied_to_carried: applied,
+    };
   }
 
   async updateOnboardingProgress(

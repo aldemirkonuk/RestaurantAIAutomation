@@ -183,6 +183,39 @@ describe("AddWineToInventoryModal — the cost is a manager's (F-312)", () => {
   });
 });
 
+/**
+ * F-1064: a par is an owner's or a manager's, and the gateway refuses one from
+ * staff. The modal always held a par, so every staff add was refused whole;
+ * staff now send none and the wine takes the house's default.
+ */
+describe("AddWineToInventoryModal — the par is a manager's (F-1064)", () => {
+  it("does not offer staff the par, and sends none, so their add goes through", async () => {
+    mayAct.value = false;
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+
+    expect(screen.queryByText(/Minimum Threshold/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId("par-held")).toHaveTextContent(
+      "This wine starts at the house's low-stock number.",
+    );
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][2]).toBeUndefined();
+  });
+
+  it("offers a manager the par and sends it", async () => {
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    expect(screen.getByText(/Minimum Threshold/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("par-held")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(typeof onAddWine.mock.calls[0][2]).toBe("number");
+  });
+});
+
 // F-779: the same typed "1.250" means the same here as in the price cell and
 // the batch receive grid — ₺1,250 in a house that groups thousands with ".".
 describe("AddWineToInventoryModal — amounts read the way the house writes them", () => {

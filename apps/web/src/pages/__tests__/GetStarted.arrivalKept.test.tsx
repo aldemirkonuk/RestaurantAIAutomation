@@ -22,6 +22,7 @@ const auth = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({
   setDefaultThreshold: vi.fn(),
   getOnboardingProgress: vi.fn(),
+  getCarriedCount: vi.fn(),
 }))
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -35,8 +36,9 @@ vi.mock('../../services/api/menus', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/api/menus')>()),
   setDefaultThreshold: api.setDefaultThreshold,
   getOnboardingProgress: api.getOnboardingProgress,
+  getCarriedCount: api.getCarriedCount,
 }))
-vi.mock('../../lib/firstProof', () => ({ writeProof: vi.fn() }))
+vi.mock('../../lib/firstProof', () => ({ writeProof: vi.fn(), readProof: () => null }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => true }))
 vi.mock('../../components/brand/BrandMark', () => ({
   BrandMark: () => <span>Mudavym</span>,
@@ -53,6 +55,7 @@ vi.mock('../../components/ui/CountryCombobox', () => ({
 }))
 
 import GetStarted from '../GetStarted'
+import HouseContents from '../HouseContents'
 
 function mount(path = '/get-started') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -73,6 +76,7 @@ describe('GetStarted — what an arrival keeps', () => {
     auth.user = { userId: 'u-a', name: 'Selin Kaya', emailVerified: true }
     api.setDefaultThreshold.mockReset().mockResolvedValue({ default_threshold_min: 6, threshold_configured: true })
     api.getOnboardingProgress.mockReset()
+    api.getCarriedCount.mockReset().mockResolvedValue(0)
     sessionStorage.clear()
     localStorage.clear()
   })
@@ -106,20 +110,96 @@ describe('GetStarted — what an arrival keeps', () => {
   })
 
   it('the nudge target asks the low-stock threshold and saves it (F-985)', async () => {
-    auth.user = { userId: 'u-a', name: 'Selin Kaya', emailVerified: true, restaurantId: 'r-1' }
+    auth.user = { userId: 'u-a', name: 'Selin Kaya', emailVerified: true, restaurantId: 'r-1', role: 'owner' }
     api.getOnboardingProgress.mockResolvedValue({ menu_uploaded: true, threshold_configured: true, activated: true })
     mount('/get-started?step=threshold')
-    expect(screen.getByRole('heading', { name: 'Set your low-stock threshold' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'When should we say an item is running low?' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await waitFor(() => expect(api.setDefaultThreshold).toHaveBeenCalledWith(6))
+    await waitFor(() => expect(api.setDefaultThreshold).toHaveBeenCalledWith(6, false))
     expect(await screen.findByText('The house')).toBeTruthy()
   })
 
   it('a house with no menu yet goes on to the menu step after the threshold (F-985)', async () => {
-    auth.user = { userId: 'u-a', name: 'Selin Kaya', emailVerified: true, restaurantId: 'r-1' }
+    auth.user = { userId: 'u-a', name: 'Selin Kaya', emailVerified: true, restaurantId: 'r-1', role: 'manager' }
     api.getOnboardingProgress.mockResolvedValue({ menu_uploaded: false, threshold_configured: true, activated: false })
     mount('/get-started?step=threshold')
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(await screen.findByRole('heading', { name: 'Your menu' })).toBeTruthy()
+  })
+})
+
+/**
+ * The low-stock step (integ9 first week, S160): asked of an owner or a manager
+ * only (F-1060), drawn inside the arrival with no "step 3" (F-1062), honest
+ * that the number reaches items added from now on, and offering a counted,
+ * explicit tick for the items carried now (F-1059).
+ */
+describe('the low-stock step', () => {
+  beforeEach(() => {
+    api.setDefaultThreshold.mockReset().mockResolvedValue({ default_threshold_min: 6, threshold_configured: true })
+    api.getOnboardingProgress.mockReset().mockResolvedValue({ menu_uploaded: true })
+    api.getCarriedCount.mockReset().mockResolvedValue(133)
+    sessionStorage.clear()
+    localStorage.clear()
+  })
+
+  function openThreshold(role: string) {
+    auth.user = { userId: 'u-a', name: 'Selin Kaya', emailVerified: true, restaurantId: 'r-1', role }
+    mount('/get-started?step=threshold')
+  }
+
+  it('is drawn inside the arrival, and says the number reaches items added from now on', async () => {
+    openThreshold('owner')
+    expect(screen.getByText('Mudavym')).toBeTruthy()
+    expect(screen.getAllByText('Low stock').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Every item you add from now on starts with it/)).toBeTruthy()
+    expect(screen.queryByText(/any wine/)).toBeNull()
+    expect(screen.queryByText(/bottles per wine/)).toBeNull()
+    expect(await screen.findByText(/Also set it on the 133 items you carry now/)).toBeTruthy()
+  })
+
+  it('changes no carried item unless the counted tick is given', async () => {
+    openThreshold('manager')
+    await screen.findByText(/Also set it on the 133 items/)
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() => expect(api.setDefaultThreshold).toHaveBeenCalledWith(6, false))
+  })
+
+  it('sets the number on the items carried now only after the tick', async () => {
+    openThreshold('owner')
+    fireEvent.click(await screen.findByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await waitFor(() => expect(api.setDefaultThreshold).toHaveBeenCalledWith(6, true))
+  })
+
+  it('offers no count it could not read', async () => {
+    api.getCarriedCount.mockRejectedValue(new Error('403'))
+    openThreshold('owner')
+    await waitFor(() => expect(api.getCarriedCount).toHaveBeenCalled())
+    expect(screen.queryByRole('checkbox')).toBeNull()
+  })
+
+  it('is not asked of staff, who start on the menu step (F-1060)', () => {
+    openThreshold('staff')
+    expect(screen.queryByText(/Every item you add from now on/)).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Your menu' })).toBeTruthy()
+    expect(api.getCarriedCount).not.toHaveBeenCalled()
+  })
+})
+
+describe('the house page with no menu read (F-1063)', () => {
+  it('offers a way to read one', () => {
+    sessionStorage.clear()
+    render(
+      <MemoryRouter initialEntries={['/house']}>
+        <Routes>
+          <Route path="/house" element={<HouseContents />} />
+          <Route path="/get-started" element={<p>Get started</p>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('No menu read yet.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Read your menu' }))
+    expect(screen.getByText('Get started')).toBeTruthy()
   })
 })

@@ -13,13 +13,14 @@ const fetchAuctionLotRecords = vi.hoisted(() => vi.fn())
 const adjustStock = vi.hoisted(() => vi.fn())
 const reconcileItem = vi.hoisted(() => vi.fn())
 const recordSpotCount = vi.hoisted(() => vi.fn())
+const updateInventoryItem = vi.hoisted(() => vi.fn())
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 vi.mock('../../../services/api/inventory', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/inventory')>(
     '../../../services/api/inventory',
   )
-  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, recordSpotCount }
+  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, recordSpotCount, updateInventoryItem }
 })
 vi.mock('../../../services/api/orders', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/orders')>(
@@ -496,5 +497,52 @@ describe('RowExpansion — a read that did not answer is not an empty history (F
     renderRow()
     expect(await screen.findByText('No orders for this wine yet.')).toBeInTheDocument()
     expect(await screen.findByText('No depletion recorded yet.')).toBeInTheDocument()
+  })
+})
+
+/**
+ * F-1064 (re-hit of F-075): a wine's par can be changed where it is read, by
+ * an owner or a manager, through the item PATCH's thresholdMin.
+ */
+describe('RowExpansion — par editor', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+    updateInventoryItem.mockResolvedValue({})
+  })
+
+  function renderWith(canSetPar: boolean) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <RowExpansion item={item} locations={[]} canSetPar={canSetPar} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('lets an owner or a manager change the par, and sends only thresholdMin', async () => {
+    renderWith(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
+    const input = screen.getByLabelText('Par for this wine')
+    expect(input).toHaveValue(6)
+    fireEvent.change(input, { target: { value: '9' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await vi.waitFor(() => expect(updateInventoryItem).toHaveBeenCalledWith('inv-1', { thresholdMin: 9 }))
+  })
+
+  it('refuses a par that is not a whole number before sending anything', () => {
+    renderWith(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
+    fireEvent.change(screen.getByLabelText('Par for this wine'), { target: { value: '' } })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(updateInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('draws no par control for anyone else', () => {
+    renderWith(false)
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull()
+    expect(screen.getByText('6 btl')).toBeInTheDocument()
   })
 })

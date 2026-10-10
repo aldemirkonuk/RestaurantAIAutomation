@@ -2077,14 +2077,16 @@ export function InventoryCommandPage() {
         onAddWine={async (
           wine: any,
           quantity: number,
-          threshold: number,
+          threshold: number | undefined,
           storageLocationId?: string,
           volumeFields?: any,
         ) => {
           const added = await createInventoryItem.mutateAsync({
             wineId: wine.id,
             stockLive: quantity,
-            thresholdMin: threshold,
+            // Staff name no par (F-1064): the gateway gives the wine the
+            // house's default instead of refusing the whole add.
+            ...(threshold !== undefined && { thresholdMin: threshold }),
             storageLocationId,
             bottleSizeMl: volumeFields?.bottleSizeMl,
             saleType: volumeFields?.saleType,
