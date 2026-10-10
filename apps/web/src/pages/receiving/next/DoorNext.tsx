@@ -100,6 +100,8 @@ interface DoorDraft {
   counted: number;
   broken: number;
   touched: boolean;
+  /** The count still stands as the paper read it, untouched by a person (F-744). */
+  paperHeld?: boolean;
   outcomeChoice: DoorOutcome | null;
   reason: RefusalReason | null;
   initials: string;
@@ -201,6 +203,9 @@ export default function DoorNext() {
   const [counted, setCounted] = useState(kept?.counted ?? 1);
   const [broken, setBroken] = useState(kept?.broken ?? 0);
   const touchedRef = useRef(kept?.touched ?? false); // has a human moved the count?
+  // The count was put there by the paper and no person has stood by it yet.
+  // A machine reading is not a count, so the seal waits for a touch (F-744).
+  const [paperHeld, setPaperHeld] = useState(kept?.paperHeld ?? false);
 
   /* ── outcome · reason · signature (points 3 and 6) ────────────────────── */
   const [outcomeChoice, setOutcomeChoice] = useState<DoorOutcome | null>(kept?.outcomeChoice ?? null);
@@ -425,19 +430,43 @@ export default function DoorNext() {
         orderId,
         source: 'photo',
       });
+      // The paper names another order or another vendor (F-745): it is on
+      // file, but not with this delivery, and nothing on it is used here.
+      if (res.orderLink && !res.orderLink.linked) {
+        setDocumentId(null);
+        setReading(null);
+        setPaperLine(
+          `${res.orderLink.conflict ?? 'This paper was not filed to this order.'} Count the boxes yourself.`,
+        );
+        return;
+      }
       setDocumentId(res.documentId);
       const r = readPaper(res.document);
       setReading(r);
-      if (r?.boxes != null) {
+      // The same paper again (F-747): say it was already here, and where it is filed now.
+      const onFile = res.duplicate
+        ? `This paper is already on file, now filed to ${order?.orderNumber ?? 'this order'}. `
+        : '';
+      const boxesWord = (n: number) => `${n} ${n === 1 ? 'box' : 'boxes'}`;
+      if (r?.boxes != null && r.prefill) {
         if (!touchedRef.current) {
           setCounted(r.boxes);
-          setPaperLine(`The paper reads ${r.boxes} ${r.boxes === 1 ? 'box' : 'boxes'} — confirm or correct.`);
+          setPaperHeld(true);
+          setPaperLine(`${onFile}The paper reads ${boxesWord(r.boxes)}. Count them, then confirm or correct.`);
         } else {
           // A human number beats a machine number. State, don't overwrite.
-          setPaperLine(`The paper reads ${r.boxes} ${r.boxes === 1 ? 'box' : 'boxes'}.`);
+          setPaperLine(`${onFile}The paper reads ${boxesWord(r.boxes)}.`);
         }
+      } else if (r?.boxes != null) {
+        // A hint, never a count: a credit note, lines not in boxes, or a
+        // reading with doubts (F-744).
+        setPaperLine(`${onFile}The paper may read ${boxesWord(r.boxes)}, but ${r.doubt} — count them yourself.`);
       } else {
-        setPaperLine('Paper attached — nothing legible enough to pre-fill. Count by hand.');
+        setPaperLine(
+          onFile
+            ? `${onFile}Nothing on it was legible enough to pre-fill. Count by hand.`
+            : 'Paper attached — nothing legible enough to pre-fill. Count by hand.',
+        );
       }
     } catch {
       // Losing the photo is bad; blocking the delivery over it is worse.
@@ -469,12 +498,14 @@ export default function DoorNext() {
 
   const initialsOk = initials.trim().length >= 2;
   const reasonOk = outcome !== 'refused' || reason !== null;
-  const sealDisabled = submitting || !initialsOk || !reasonOk;
-  const sealHint = !initialsOk
-    ? 'Add your initials first — when a case goes missing, who signed is the question.'
-    : !reasonOk
-      ? 'Say why it was refused — the reason is what the credit stands on.'
-      : undefined;
+  const sealDisabled = submitting || !initialsOk || !reasonOk || paperHeld;
+  const sealHint = paperHeld
+    ? "Count the boxes yourself, then tap \u201cThat's my count\u201d or change the number. The paper's number is a reading, not a count."
+    : !initialsOk
+      ? 'Add your initials first — when a case goes missing, who signed is the question.'
+      : !reasonOk
+        ? 'Say why it was refused — the reason is what the credit stands on.'
+        : undefined;
 
   async function seal() {
     setSubmitting(true);
@@ -558,6 +589,7 @@ export default function DoorNext() {
       counted,
       broken,
       touched: touchedRef.current,
+      paperHeld,
       outcomeChoice,
       reason,
       initials,
@@ -567,7 +599,7 @@ export default function DoorNext() {
       paperLine,
       idem: idem.current,
     } satisfies DoorDraft);
-  }, [draftKey, step, orderState, counted, broken, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine]);
+  }, [draftKey, step, orderState, counted, broken, paperHeld, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine]);
 
   useUnsavedWorkGuard(
     orderState !== 'missing' && (step === 'count' || submitting),
@@ -776,11 +808,25 @@ export default function DoorNext() {
             value={counted}
             onChange={(v) => {
               touchedRef.current = true;
+              setPaperHeld(false);
               setCounted(v);
             }}
             label="Boxes delivered"
             uxKey="door:cases"
           />
+          {paperHeld && (
+            <button
+              type="button"
+              onClick={() => {
+                touchedRef.current = true;
+                setPaperHeld(false);
+              }}
+              data-ux-key="door:confirm-paper-count"
+              className={`${TAP} mt-4 w-full rounded-2xl border border-white/15 text-sm font-semibold text-inkm-1`}
+            >
+              That's my count — {counted} {counted === 1 ? 'box' : 'boxes'}
+            </button>
+          )}
 
           {/* the match, live, while the driver is still here (point 1) */}
           <DoorMatch match={match} orderUnreachable={orderState === 'unreachable'} />

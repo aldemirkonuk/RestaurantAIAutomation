@@ -538,6 +538,45 @@ describe('readPaper — the photograph doing work', () => {
       docNumber: 'INV-99',
       lineCount: 2,
       warnings: 0,
+      prefill: true,
+      doubt: null,
     });
+  });
+
+  /* F-744 — a reading stands in the count box only from a clean delivery paper. */
+  const clean = { docNumber: 'D-1', lines: [{ qty: 3, uom: 'case' }] };
+
+  it('[REVERT-FAILS] does not pre-fill from a credit note or our own order copy', () => {
+    for (const docType of ['credit_memo', 'purchase_order', 'statement', 'unknown']) {
+      const r = readPaper({ ...clean, docType });
+      expect(r?.boxes).toBe(3);
+      expect(r?.prefill).toBe(false);
+      expect(r?.doubt).toBe('this is not a delivery paper');
+    }
+    for (const docType of ['invoice', 'packing_slip', 'delivery_note', 'delivery_receipt'])
+      expect(readPaper({ ...clean, docType })?.prefill).toBe(true);
+  });
+
+  it('[REVERT-FAILS] does not pre-fill a sum that left lines out', () => {
+    const r = readPaper({
+      docType: 'invoice',
+      docNumber: 'INV-5',
+      lines: [
+        { qty: 3, uom: 'case', packSize: 12 },
+        { qty: 12, uom: 'bottle' }, // no pack printed
+        { qty: 1, uom: 'keg' },
+      ],
+    });
+    expect(r?.boxes).toBe(3);
+    expect(r?.prefill).toBe(false);
+    expect(r?.doubt).toBe('2 lines are not in boxes');
+  });
+
+  it('[REVERT-FAILS] does not pre-fill a reading with doubts, from either cut of the parse', () => {
+    expect(readPaper({ ...clean, docType: 'invoice', warnings: ['qty unclear'] })?.prefill).toBe(false);
+    const staff = readPaper({ ...clean, docType: 'invoice', warningCount: 2 });
+    expect(staff?.prefill).toBe(false);
+    expect(staff?.warnings).toBe(2);
+    expect(staff?.doubt).toBe('the reading is unsure');
   });
 });

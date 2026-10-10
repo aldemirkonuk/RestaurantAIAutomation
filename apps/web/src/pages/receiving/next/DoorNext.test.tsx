@@ -524,3 +524,90 @@ describe('DoorNext — the count survives a refresh', () => {
     expect(after.defaultPrevented).toBe(false)
   })
 })
+
+/* F-744, F-745, F-747 — what the photograph is allowed to do to the count. */
+describe('DoorNext — the paper is a reading, not a count', () => {
+  const order = { orderNumber: 'PO-0042', wineName: 'SYNTHETIC Yakut', quantity: 3, unitType: 'cases' }
+
+  const photograph = async () => {
+    renderPage()
+    await waitFor(() =>
+      expect((document.querySelector('[data-ux-key="door:photo"]') as HTMLButtonElement)?.disabled).toBe(false),
+    )
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [new File(['x'], 'paper.jpg', { type: 'image/jpeg' })] } })
+    })
+    await waitFor(() => expect(uploadDocument).toHaveBeenCalled())
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+  }
+  const sealOf = (name: RegExp) => screen.getByRole('button', { name })
+
+  beforeEach(() => {
+    getOrder.mockResolvedValue(order)
+  })
+
+  it('[REVERT-FAILS] pre-fills a clean delivery paper, then waits for a person to stand by it', async () => {
+    uploadDocument.mockResolvedValue({
+      documentId: 'doc-1',
+      duplicate: false,
+      document: { docType: 'invoice', docNumber: 'INV-7', lines: [{ qty: 3, uom: 'case' }], warningCount: 0 },
+    })
+    await photograph()
+    await waitFor(() => expect(screen.getByText(/The paper reads 3 boxes\. Count them/)).toBeTruthy())
+    expect(sealOf(/Hold to seal — 3 boxes in/).getAttribute('aria-disabled')).toBe('true')
+
+    fireEvent.click(document.querySelector('[data-ux-key="door:confirm-paper-count"]') as Element)
+    expect(document.querySelector('[data-ux-key="door:confirm-paper-count"]')).toBeNull()
+    expect(sealOf(/Hold to seal — 3 boxes in/).getAttribute('aria-disabled')).toBe('false')
+  })
+
+  it('[REVERT-FAILS] shows a credit note\'s number as a hint and leaves the count alone', async () => {
+    uploadDocument.mockResolvedValue({
+      documentId: 'doc-1',
+      duplicate: false,
+      document: { docType: 'credit_memo', docNumber: 'CM-2', lines: [{ qty: 8, uom: 'case' }] },
+    })
+    await photograph()
+    await waitFor(() =>
+      expect(screen.getByText(/may read 8 boxes, but this is not a delivery paper — count them yourself/)).toBeTruthy(),
+    )
+    // The count stays the porter's 1 (so the order reads short), and the seal is free.
+    expect(sealOf(/Hold to seal — short-shipped/).getAttribute('aria-disabled')).toBe('false')
+    expect(document.querySelector('[data-ux-key="door:confirm-paper-count"]')).toBeNull()
+  })
+
+  it('[REVERT-FAILS] says a paper for another order was not filed here, and claims no attachment', async () => {
+    uploadDocument.mockResolvedValue({
+      documentId: 'doc-9',
+      duplicate: false,
+      document: { docType: 'invoice', docNumber: 'INV-9', lines: [{ qty: 5, uom: 'case' }] },
+      orderLink: {
+        orderId: 'o1',
+        linked: false,
+        conflict: 'This paper prints order PO-0043, not PO-0042, so it was not filed to PO-0042. Check which delivery it came with.',
+      },
+    })
+    await photograph()
+    await waitFor(() => expect(screen.getByText(/prints order PO-0043, not PO-0042/)).toBeTruthy())
+    expect(screen.queryByText(/Paper attached/)).toBeNull()
+    // Nothing from it reaches the count.
+    expect(sealOf(/Hold to seal — short-shipped/).getAttribute('aria-disabled')).toBe('false')
+  })
+
+  it('[REVERT-FAILS] says a paper already on file is now filed to this order, and uses its first reading', async () => {
+    uploadDocument.mockResolvedValue({
+      documentId: 'doc-first',
+      duplicate: true,
+      document: { docType: 'invoice', docNumber: 'INV-7', lines: [{ qty: 3, uom: 'case' }] },
+      orderLink: { orderId: 'o1', linked: true, conflict: null },
+    })
+    await photograph()
+    await waitFor(() =>
+      expect(screen.getByText(/This paper is already on file, now filed to PO-0042\. The paper reads 3 boxes/)).toBeTruthy(),
+    )
+    expect(screen.queryByText(/nothing legible/)).toBeNull()
+  })
+})

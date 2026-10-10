@@ -85,7 +85,8 @@ export function assertHoldsHouseMoney(
  * sent back. AN ALLOWLIST, NOT A DENYLIST: a money field added to
  * `ParsedDocument` later stays withheld without anyone remembering to list it.
  * `warnings` is left out too, because a tie-out warning prints the figures it
- * compared.
+ * compared — but HOW MANY there were is sent as `warningCount`, because the
+ * door must not pre-fill a count from a reading that came with doubts (F-744).
  */
 export const DOOR_ECHO_DOCUMENT_KEYS = [
   "docType",
@@ -113,8 +114,7 @@ function pick(
 /**
  * The parse as the door may see it. Keys are OMITTED, never set to null: a
  * null price reads as "the paper printed none", which is a claim about the
- * paper, and this is a claim about the reader. `null` in, `null` out — a
- * duplicate upload has no parse, and the door already says so.
+ * paper, and this is a claim about the reader. `null` in, `null` out.
  */
 export function doorEchoOf(
   parsed: object | null | undefined,
@@ -127,5 +127,7 @@ export function doorEchoOf(
         ? pick(l as Record<string, unknown>, DOOR_ECHO_LINE_KEYS)
         : {},
     );
+  const warnings = (parsed as { warnings?: unknown }).warnings;
+  if (Array.isArray(warnings)) doc.warningCount = warnings.length;
   return doc;
 }

@@ -352,6 +352,15 @@ export class VendorResolutionService {
     this.logger.warn(
       `document ${documentId} resolved to provider ${r.providerId} but the document was not updated: ${error.message}`,
     );
+    // The `matched` row already in the log would otherwise be the last word on
+    // a document that stays unfiled (F-746). A later row says what stood.
+    await this.appendResolution(
+      { restaurantId, documentId, seller: {} },
+      unavailable(
+        r.identity,
+        `The vendor was found, but this document could not be filed under it: ${error.message}`,
+      ),
+    );
     return error.message;
   }
 

@@ -1137,8 +1137,8 @@ export class DocumentsController {
      * The catalogue half.
      *
      * Run on the BYTES, not on `result.parsed`, and run even when the door
-     * reports a duplicate: `ingest` returns `parsed: null` for a document it
-     * has already stored, and a house re-uploading the same catalogue after
+     * reports a duplicate: `ingest` answers a document it has already stored
+     * with the earlier reading, not a fresh one, and a house re-uploading the same catalogue after
      * finally stating what its codes mean is the ordinary case, not an error.
      * The database's own unique index on (source_ref, content_hash) decides
      * what is genuinely new, so re-admitting is idempotent and the report says
@@ -1172,6 +1172,9 @@ export class DocumentsController {
       // included. Omitting a refusal would leave the caller unable to tell
       // `unresolved` from "resolution never ran".
       ...(result.vendor ? { vendor: result.vendor } : {}),
+      // F-745 — whether the paper was filed to the order it was sent with,
+      // and the sentence that says why not when it was not.
+      ...(result.orderLink ? { orderLink: result.orderLink } : {}),
     };
   }
 
