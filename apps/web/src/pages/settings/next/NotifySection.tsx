@@ -60,9 +60,41 @@
  * Turning yours off does not silence the restaurant, and the page says so.
  */
 
+import { useEffect, useState } from 'react';
 import { Choice, Dead, Micro, Note, Register, Row, SaveFailure, Toggle, fieldStyle } from './SectionKit';
 import { MONO, PROVENANCE_UNKNOWN, SANS, fmtWhen } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
+
+/** "00:00" … "23:00" — the only times the low-stock digest can actually go out. */
+const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
+
+/** A stored "12:30" is sent at 12:00, so that is what the control shows. */
+function onTheHour(t: string): string {
+  const h = Number.parseInt(t.slice(0, 2), 10);
+  return Number.isInteger(h) && h >= 0 && h < 24 ? HOURS[h] : HOURS[12];
+}
+
+/**
+ * A time that saves once, when the owner leaves the field — not on every
+ * segment typed, which sent 07:00, 07:03 and 07:30 for one edit.
+ */
+function TimeField({ label, value, onSave }: { label: string; value: string; onSave: (t: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <input
+      type="time"
+      aria-label={label}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (/^\d{2}:\d{2}$/.test(draft) && draft !== value) onSave(draft);
+      }}
+      className="st-focus"
+      style={fieldStyle}
+    />
+  );
+}
 
 const MODE_OPTIONS = [
   { value: 'both' as const, label: 'Email and in-app' },
@@ -133,7 +165,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               consequence="The alerting engine runs for this restaurant when any member has this on."
               control={
                 <Toggle label="Low-stock alerts" checked={low.enabled} busy={writer.busy === 'low.enabled'}
-                  onChange={(v) => void saveNotif('low.enabled', { lowStock: { ...low, enabled: v } })} />
+                  onChange={(v) => void saveNotif('low.enabled', { lowStock: { enabled: v } })} />
               }
             />
             <Row
@@ -142,7 +174,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               consequence="The first crossing of the threshold arrives immediately; later ones wait for the digest."
               control={
                 <Toggle label="Instant first alert" checked={low.instantFirstAlert} busy={writer.busy === 'low.first'}
-                  onChange={(v) => void saveNotif('low.first', { lowStock: { ...low, instantFirstAlert: v } })} />
+                  onChange={(v) => void saveNotif('low.first', { lowStock: { instantFirstAlert: v } })} />
               }
             />
             <Row
@@ -151,7 +183,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               consequence="An item at or below zero is sent the moment it is seen, digest or not."
               control={
                 <Toggle label="Critical immediate" checked={low.criticalImmediate} busy={writer.busy === 'low.critical'}
-                  onChange={(v) => void saveNotif('low.critical', { lowStock: { ...low, criticalImmediate: v } })} />
+                  onChange={(v) => void saveNotif('low.critical', { lowStock: { criticalImmediate: v } })} />
               }
             />
             <Row
@@ -164,17 +196,20 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                     label="Digest frequency"
                     value={low.digestFrequency}
                     options={[{ value: 'daily' as const, label: 'Daily' }, { value: 'off' as const, label: 'Off' }]}
-                    onChange={(v) => void saveNotif('low.freq', { lowStock: { ...low, digestFrequency: v } })}
+                    onChange={(v) => void saveNotif('low.freq', { lowStock: { digestFrequency: v } })}
                   />
-                  <input
-                    type="time"
+                  {/* The digest goes out on the hour (low-stock-alerts.service.ts:607-611
+                      matches the hour only), so only an hour is offered. */}
+                  <select
                     aria-label="Digest time"
-                    value={low.digestTime}
+                    value={onTheHour(low.digestTime)}
                     disabled={low.digestFrequency !== 'daily'}
-                    onChange={(e) => void saveNotif('low.time', { lowStock: { ...low, digestTime: e.target.value } })}
+                    onChange={(e) => void saveNotif('low.time', { lowStock: { digestTime: e.target.value } })}
                     className="st-focus"
                     style={fieldStyle}
-                  />
+                  >
+                    {HOURS.map((h) => <option key={h} value={h}>{h}</option>)}
+                  </select>
                 </span>
               }
             />
@@ -225,7 +260,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                   label="Quiet hours"
                   checked={quiet.enabled}
                   busy={writer.busy === 'quiet.enabled'}
-                  onChange={(v) => void saveNotif('quiet.enabled', { quietHours: { ...quiet, enabled: v } })}
+                  onChange={(v) => void saveNotif('quiet.enabled', { quietHours: v ? { enabled: true, startTime: quiet.startTime, endTime: quiet.endTime } : { enabled: false } })}
                 />
               }
             />
@@ -236,22 +271,16 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                 consequence="From the first time to the second, read on the alerting agent's clock. A window that ends before it starts is read as running overnight."
                 control={
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                    <input
-                      type="time"
-                      aria-label="Quiet hours start"
+                    <TimeField
+                      label="Quiet hours start"
                       value={quiet.startTime}
-                      onChange={(e) => void saveNotif('quiet.start', { quietHours: { ...quiet, startTime: e.target.value } })}
-                      className="st-focus"
-                      style={fieldStyle}
+                      onSave={(t) => void saveNotif('quiet.start', { quietHours: { startTime: t } })}
                     />
                     <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>to</span>
-                    <input
-                      type="time"
-                      aria-label="Quiet hours end"
+                    <TimeField
+                      label="Quiet hours end"
                       value={quiet.endTime}
-                      onChange={(e) => void saveNotif('quiet.end', { quietHours: { ...quiet, endTime: e.target.value } })}
-                      className="st-focus"
-                      style={fieldStyle}
+                      onSave={(t) => void saveNotif('quiet.end', { quietHours: { endTime: t } })}
                     />
                   </span>
                 }

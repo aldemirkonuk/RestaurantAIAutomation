@@ -28,28 +28,17 @@
  *
  * WHAT IT CANNOT DO, SAID PLAINLY: it covers the registers whose writes go
  * through the modules this pass owns — Features, Vendor terms, Approval
- * thresholds — plus the two team-access actions that already filed. The other
- * eight registers write through services this pass was not cleared to edit, and
- * the footer names them rather than letting their silence read as "nothing
- * changed there".
+ * thresholds — plus the two team-access actions that already filed. Later
+ * registers joined it (see `RECORDS_WHO` in st-format.ts); the footer names the
+ * rest, derived from that set, rather than letting their silence read as
+ * "nothing changed there".
  */
 
 import { AlertTriangle } from 'lucide-react';
 import { Micro, Note, Register } from './SectionKit';
-import { EM, MONO, SANS, SERIF, fmtExact, fmtWhen } from './st-format';
+import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
+import { EM, MONO, SANS, SERIF, fmtExact, fmtWhen, recordSplit, word } from './st-format';
 import type { LedgerEntry, LedgerRegister, SettingsNextData } from './useSettingsNextData';
-
-/** Registers whose writes do NOT reach this log yet, and where they go instead. */
-const NOT_YET_FILED: Array<{ id: string; label: string; hint: string }> = [
-  { id: 'email', label: 'Email sign-off', hint: 'restaurant-templates.service.ts' },
-  { id: 'notifications', label: 'Notifications', hint: 'notifications.service.ts' },
-  { id: 'locations', label: 'Locations & chains', hint: 'organizations.service.ts' },
-  { id: 'map', label: 'Map', hint: 'user-preferences.service.ts' },
-  { id: 'services', label: 'Services & permissions', hint: 'user-preferences.service.ts' },
-  { id: 'pos', label: 'Point of sale', hint: 'user-preferences.service.ts' },
-  { id: 'calendar', label: 'Calendar links', hint: 'calendar-links.service.ts' },
-  { id: 'cellar', label: 'Cellar registers', hint: 'cellar-registers.service.ts' },
-];
 
 /** Actions whose consequence deserves the seal-tinted band. */
 const GRAVE = new Set(['team_member_removed']);
@@ -161,6 +150,9 @@ function Entry({ entry }: { entry: LedgerEntry }) {
 }
 
 export function LedgerSection({ data }: { data: SettingsNextData }) {
+  // Derived from the same register list the page opens with, so the two counts
+  // cannot drift apart again (F-180).
+  const notYet = recordSplit(useMudavymDesign('connections')).notYet;
   return (
     <Register<LedgerRegister> remote={data.ledger} name="the settings record">
       {(reg) => (
@@ -218,16 +210,14 @@ export function LedgerSection({ data }: { data: SettingsNextData }) {
           <div style={{ borderTop: '1px solid var(--paper-2)', marginTop: 18, paddingTop: 12 }}>
             <Micro>What this record does not yet cover</Micro>
             <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-2)', margin: '5px 0 0', maxWidth: 720 }}>
-              Eight registers write through services this pass did not touch, so
-              a change made in one of them files no row and its silence here means
-              nothing. Each needs the same two lines the three above got: read the
-              row before the write, then call the recorder.
+              {word(notYet.length).charAt(0).toUpperCase() + word(notYet.length).slice(1)} settings
+              do not keep this record yet. A change made in one of them leaves no
+              line here, so a quiet list says nothing about them.
             </p>
             <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
-              {NOT_YET_FILED.map((r) => (
+              {notYet.map((r) => (
                 <li key={r.id} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
-                  {r.label}{' '}
-                  <span style={{ fontFamily: MONO, fontSize: 10, opacity: 0.8 }}>{r.hint}</span>
+                  {r.title}
                 </li>
               ))}
             </ul>

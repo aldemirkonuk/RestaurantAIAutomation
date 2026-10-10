@@ -282,12 +282,14 @@ export function Row({
     <div
       data-cert={cert}
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: 16, padding: '13px 0',
+        // Wraps so a wide control drops under its label on a phone instead of
+        // pushing the page sideways (F-182: 758px wide at 390).
+        display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 16, padding: '13px 0',
         borderTop: '1px solid var(--paper-2)',
         background: tone === 'grave' ? 'var(--seal-tint)' : undefined,
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: '1 1 220px', minWidth: 0 }}>
         <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>
           {cert && <CertaintyTag value={cert} />} {label}
         </p>
@@ -297,7 +299,7 @@ export function Row({
         {provenance && <ProvenanceLine {...provenance} />}
         {children}
       </div>
-      {control && <div style={{ flexShrink: 0, paddingTop: 2 }}>{control}</div>}
+      {control && <div data-row-control style={{ flex: '0 1 auto', maxWidth: '100%', minWidth: 0, marginLeft: 'auto', paddingTop: 2 }}>{control}</div>}
     </div>
   );
 }

@@ -62,6 +62,7 @@ import {
   fetchNotificationPreferences,
   updateNotificationPreferences,
   type NotificationPreferences,
+  type NotificationPreferencesPatch,
 } from '@/services/api/notifications';
 import {
   restaurantsApi,
@@ -766,7 +767,7 @@ export function useSettingsNextData() {
   );
 
   const saveNotif = useCallback(
-    (key: string, partial: Partial<Omit<NotificationPreferences, 'userId'>>) =>
+    (key: string, partial: NotificationPreferencesPatch) =>
       writer.run(key, async () => {
         notif.set(await updateNotificationPreferences(uid as string, partial));
       }),

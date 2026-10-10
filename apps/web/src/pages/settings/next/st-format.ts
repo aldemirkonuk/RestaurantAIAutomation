@@ -358,6 +358,37 @@ export function sectionsFor(connectionsOn: boolean): SectionSpec[] {
     : SECTIONS;
 }
 
+/**
+ * Registers whose changes file a row in "What changed here", naming who made
+ * the change and what it was before. Checked against the gateway's recorder
+ * callers (`settings-audit.service.ts` SettingsRegister and READ_BACK_ACTIONS):
+ * features (settings.service.ts), vendor terms, approval thresholds, currency,
+ * carrying cost, time zone, mail reading (tone-scoring + data-terms), and the
+ * team's role changes and removals (team/access-audit.ts).
+ */
+export const RECORDS_WHO: ReadonlySet<SectionId> = new Set<SectionId>([
+  'team', 'features', 'vendor-terms', 'thresholds', 'currency',
+  'carrying-cost', 'time-zone', 'mail-reading',
+]);
+
+/**
+ * The page's registers split by whether a change to them is recorded with a
+ * name. "What changed here" is the record itself and sits in neither list, so
+ * recorded + notYet + 1 is always the count the page opens with.
+ */
+export function recordSplit(connectionsOn: boolean): { recorded: SectionSpec[]; notYet: SectionSpec[] } {
+  const settings = sectionsFor(connectionsOn).filter((s) => s.id !== 'ledger');
+  return {
+    recorded: settings.filter((s) => RECORDS_WHO.has(s.id)),
+    notYet: settings.filter((s) => !RECORDS_WHO.has(s.id)),
+  };
+}
+
+/** "A, B and C". */
+export function listed(items: string[]): string {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
 export function isSectionId(v: string | null): v is SectionId {
   return v !== null && (SECTION_IDS as readonly string[]).includes(v);
 }

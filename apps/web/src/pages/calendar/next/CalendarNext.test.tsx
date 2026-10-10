@@ -847,7 +847,7 @@ describe('CalendarNext — reminders are kept by the house, not by this browser'
     expect(within(sheet).getByText(/held for you alone until the window closes/)).toBeInTheDocument();
   });
 
-  it('says the job is built but not switched on, rather than implying it is sending', () => {
+  it('says reminders are not sent yet, in plain words, rather than implying they are', () => {
     state.current = mkData({
       reminderJob: {
         status: reminderStatus({ armed: false, nextRunAt: null }),
@@ -858,10 +858,14 @@ describe('CalendarNext — reminders are kept by the house, not by this browser'
       },
     });
     draw();
-    expect(screen.getByText(/The reminder job is built but not switched on\./)).toBeInTheDocument();
+    expect(screen.getByText(/Mudavym does not send reminders for these yet\./)).toBeInTheDocument();
+    expect(screen.queryByText(/job is built/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'New event' }));
     const sheet = screen.getByRole('dialog');
-    expect(within(sheet).getByText(/CALENDAR_REMINDERS_ENABLED/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/Mudavym does not send reminders/)).toBeInTheDocument();
+    // An owner is not told to set a server variable or wait on "the founder".
+    expect(within(sheet).queryByText(/CALENDAR_REMINDERS_ENABLED/)).not.toBeInTheDocument();
+    expect(within(sheet).queryByText(/founder/)).not.toBeInTheDocument();
     expect(within(sheet).queryByText(/Next run/)).not.toBeInTheDocument();
   });
 

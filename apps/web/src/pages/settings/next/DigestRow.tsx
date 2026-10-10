@@ -137,7 +137,7 @@ export function DigestRow({ data }: { data: SettingsNextData }) {
           ? `${reg.digestEnabled ? 'Yes' : 'Off'} · ${String(reg.digestHour).padStart(2, '0')}:00 · ${
               URGENCY_OPTIONS.find((o) => o.value === reg.digestMinUrgency)?.label ?? reg.digestMinUrgency
             } · to ${reg.recipientEmail ?? EM}`
-          : 'The sender exists as of this pass. Off until someone answers: the hour, the least urgency worth a mail, and to whom. A stored default is not an answer.'
+          : 'Off until someone answers: the hour, the least urgency worth a mail, and to whom. Nothing is sent on a guess.'
       }
       control={
         canManage ? (
