@@ -139,6 +139,15 @@ export interface SendOutcome {
   channel: TextChannel | null;
 }
 
+// A module const, not a static class field: scripts/check_read_columns_exist.py
+// resolves a same-file `const` bound to string literals, and a static field
+// left the readout's column list as a read nobody was checking (F-857).
+const SENDER_COLUMNS =
+  "id, restaurant_id, channel, path, state, state_detail, identity, identity_kind, " +
+  "display_name, display_name_state, market, provider, external_ref, declared_by, " +
+  "last_probe_at, last_probe_result, last_probe_detail, fee_stated, timeline_stated, " +
+  "submitted_at, connected_at, revoked_at, created_at";
+
 @Injectable()
 export class TextSenderService {
   private readonly logger = new Logger(TextSenderService.name);
@@ -152,12 +161,6 @@ export class TextSenderService {
   private get sb() {
     return this.db.client;
   }
-
-  private static readonly COLUMNS =
-    "id, restaurant_id, channel, path, state, state_detail, identity, identity_kind, " +
-    "display_name, display_name_state, market, provider, external_ref, declared_by, " +
-    "last_probe_at, last_probe_result, last_probe_detail, fee_stated, timeline_stated, " +
-    "submitted_at, connected_at, revoked_at, created_at";
 
   private shape(row: Record<string, any>): HouseSenderRow {
     return {
@@ -197,7 +200,7 @@ export class TextSenderService {
   async readout(restaurantId: string): Promise<SendersReadout> {
     const { data, error } = await this.sb
       .from("house_text_senders")
-      .select(TextSenderService.COLUMNS)
+      .select(SENDER_COLUMNS)
       .eq("restaurant_id", restaurantId)
       .neq("state", "revoked")
       .order("created_at", { ascending: false });
@@ -598,7 +601,7 @@ export class TextSenderService {
         revoked_by: null,
         revoked_reason: null,
       })
-      .select(TextSenderService.COLUMNS)
+      .select(SENDER_COLUMNS)
       .single();
 
     if (error || !data) {
@@ -683,7 +686,7 @@ export class TextSenderService {
         revoked_by: null,
         revoked_reason: null,
       })
-      .select(TextSenderService.COLUMNS)
+      .select(SENDER_COLUMNS)
       .single();
 
     if (error || !data) {

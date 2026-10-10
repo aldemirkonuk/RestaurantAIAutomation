@@ -779,11 +779,26 @@ export class WineSubmissionsService {
     // ignoreDuplicates returns no row when the insert was skipped, which means
     // a concurrent request already created it. Read that row rather than
     // failing an import over a race we expected.
-    const { data: existing } = await this.dbService.supabase
+    const { data: existing, error: readError } = await this.dbService.supabase
       .from("master_wine_library")
       .select("id, library_tier")
       .eq("signature_hash", signatureHash)
       .maybeSingle();
+
+    // A failed read is not "no such row". Without this the line failed with
+    // "no row carries signature …", which says the wine is missing when the
+    // truth is that the wine list could not be read (F-857).
+    if (readError) {
+      this.logger.error("Failed to read back shared library wine", {
+        error: readError.message,
+        name: item.name,
+      });
+      throw new Error(
+        `"${item.name}" was not added: the wine list could not be read just now, ` +
+          `so it is not known whether this wine is already on it. Nothing was ` +
+          `changed for this line; try it again. (${readError.message})`,
+      );
+    }
 
     if (existing?.id) {
       return {
