@@ -804,11 +804,16 @@ describe('a new owner is told what each step does, and a reload resumes it', () 
   })
 
   it('keeps the role chip chosen on step 01 across a reload (F-007)', async () => {
+    // The role is stored under the signed-in account's id (F-984), so this
+    // reload needs a real account behind it. The restaurant draft is dropped
+    // so the reload lands on step 01 and only the tab's kept role remains.
+    auth.user = { name: 'Selin Kaya', emailVerified: true, userId: 'user-1' }
     const first = render(<MemoryRouter><GetStarted /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: 'Owner' }))
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Your restaurant' })
     first.unmount()
+    localStorage.removeItem('mudavym:arrival-draft')
 
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
     expect(screen.getByRole('button', { name: 'Owner' }).className).toContain('bg-[#1a5e6b]')
