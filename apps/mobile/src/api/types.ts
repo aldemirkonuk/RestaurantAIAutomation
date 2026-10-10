@@ -46,8 +46,9 @@ export interface TodayPulse {
   checksToday: number | null;
   revenueLastWeek: number | null;
   deltaPct: number | null;
-  pendingDecisions: number;
-  criticalCount: number;
+  /** null when the decision feed could not be read — unknown, not zero. */
+  pendingDecisions: number | null;
+  criticalCount: number | null;
   windowStart: string;
   windowEnd: string;
   generatedAt: string;
