@@ -44,6 +44,20 @@ export class EventsController {
     @Body() dto: CreateEventDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<CreateEventResponseDto> {
+    // The dev sandbox (/dev-sandbox) stamps every event it sends with
+    // `sandbox: true`. Its wines and totals are made up, so in production
+    // they must never land in a house's real activity (F-287) — even from a
+    // dev build pointed at the live gateway or a stale cached bundle.
+    if (
+      process.env.NODE_ENV === "production" &&
+      dto.payload?.sandbox === true
+    ) {
+      throw new HttpException(
+        "Test actions are not saved on a live restaurant.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     try {
       return await this.eventsService.createEvent(
         user.restaurantId,

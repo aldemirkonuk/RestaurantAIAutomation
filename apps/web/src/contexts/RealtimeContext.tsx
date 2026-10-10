@@ -90,6 +90,8 @@ export interface InventoryUpdatePayload {
   source: 'wine_library' | 'order_delivery' | 'order_placed' | 'manual' | 'reconciliation'
   timestamp: string
   metadata?: Record<string, unknown>
+  /** Set only by the dev sandbox; production refuses these (F-287). */
+  sandbox?: true
 }
 
 export interface OrderUpdatePayload {
@@ -130,6 +132,8 @@ export interface CalendarEventPayload {
   color?: string
   source?: 'communications' | 'orders' | 'manual'
   timestamp: string
+  /** Set only by the dev sandbox; production refuses these (F-287). */
+  sandbox?: true
 }
 
 // Dashboard update payloads

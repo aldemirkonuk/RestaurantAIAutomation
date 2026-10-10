@@ -131,6 +131,49 @@ describe("EventsController", () => {
         ),
       );
     });
+
+    describe("dev sandbox events (F-287)", () => {
+      const sandboxDto = {
+        ...createEventDto,
+        payload: { wineId: "wine-1", quantity: -1, sandbox: true },
+      };
+      const originalEnv = process.env.NODE_ENV;
+      afterEach(() => {
+        process.env.NODE_ENV = originalEnv;
+      });
+
+      it("refuses a sandbox event in production without writing it", async () => {
+        process.env.NODE_ENV = "production";
+
+        await expect(
+          controller.createEvent(sandboxDto, mockUser),
+        ).rejects.toThrow(
+          new HttpException(
+            "Test actions are not saved on a live restaurant.",
+            HttpStatus.FORBIDDEN,
+          ),
+        );
+        expect(mockEventsService.createEvent).not.toHaveBeenCalled();
+      });
+
+      it("still saves an ordinary event in production", async () => {
+        process.env.NODE_ENV = "production";
+        mockEventsService.createEvent.mockResolvedValue({ id: "event-1" });
+
+        await controller.createEvent(createEventDto, mockUser);
+
+        expect(mockEventsService.createEvent).toHaveBeenCalledTimes(1);
+      });
+
+      it("saves a sandbox event outside production", async () => {
+        process.env.NODE_ENV = "development";
+        mockEventsService.createEvent.mockResolvedValue({ id: "event-2" });
+
+        await controller.createEvent(sandboxDto, mockUser);
+
+        expect(mockEventsService.createEvent).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 
   describe("listEvents", () => {

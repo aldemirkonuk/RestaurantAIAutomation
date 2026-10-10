@@ -6,7 +6,8 @@ import { ContributorTable, Contributor } from './certify/ContributorTable'
 import { InviteDialog } from './certify/InviteDialog'
 import { EmptyState } from '../../components/ui/empty-state'
 import { Skeleton } from '../../components/ui/loading-skeleton'
-import { studioRequest, studioJsonRequest, studioErrorMessage } from './studioApi'
+import { useAuth } from '../../contexts/AuthContext'
+import { studioRequest, studioJsonRequest, studioErrorMessage, canReviewStudio } from './studioApi'
 
 // Orchestrator, not the gateway — see studioApi.ts.
 function fetchContributors(): Promise<{ contributors: Contributor[] }> {
@@ -16,6 +17,9 @@ function fetchContributors(): Promise<{ contributors: Contributor[] }> {
 export default function StudioCertify() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const queryClient = useQueryClient()
+  // A developer can see the list but not invite, revoke or enable (F-289).
+  const { user } = useAuth()
+  const canManage = canReviewStudio(user?.studioRoles)
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['studio-contributors'],
     queryFn: fetchContributors,
@@ -52,6 +56,7 @@ export default function StudioCertify() {
               {isError ? 'Contributor list unavailable' : `${contributors.length} active contributors`}
             </p>
           </div>
+          {canManage && (
           <button
             onClick={() => setInviteOpen(true)}
             className="flex items-center gap-2 bg-wine-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-wine-700 transition-colors shadow-sm"
@@ -59,6 +64,7 @@ export default function StudioCertify() {
             <UserPlus className="w-4 h-4" />
             Invite Contributor
           </button>
+          )}
         </div>
 
         {isLoading ? (
@@ -81,8 +87,10 @@ export default function StudioCertify() {
               size="md"
               icon={<Users className="w-full h-full" />}
               title="No certified contributors"
-              description="Generate a single-use invite token with the button above. Redemption is not self-service yet — a developer or review admin still has to grant the role."
-              action={{ label: 'Invite Contributor', onClick: () => setInviteOpen(true) }}
+              description={canManage
+                ? 'Invite someone with the button above. They open the link, sign in, and become a contributor.'
+                : 'A review admin invites contributors. They open the link, sign in, and become a contributor.'}
+              action={canManage ? { label: 'Invite Contributor', onClick: () => setInviteOpen(true) } : undefined}
             />
           </div>
         ) : (
@@ -90,10 +98,11 @@ export default function StudioCertify() {
             contributors={contributors}
             onRevoke={handleRevoke}
             onToggleEnable={handleToggleEnable}
+            canManage={canManage}
           />
         )}
 
-        <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
+        {canManage && <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />}
       </div>
     </StudioLayout>
   )
