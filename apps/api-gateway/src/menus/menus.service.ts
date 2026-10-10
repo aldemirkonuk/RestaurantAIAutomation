@@ -10,7 +10,7 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { CsvParserService } from "./parsers/csv-parser.service";
+import { CsvParserService, type MenuRead, type MenuReadNotes } from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
@@ -476,6 +476,8 @@ export class MenusService {
     source: { kept: boolean; failure: string | null };
     /** A CSV or workbook's header cells that were not read, as written (F-070). */
     unreadColumns: string[];
+    /** A spreadsheet read: those columns again, the rows skipped and why, the cells unread. */
+    read: MenuReadNotes | null;
   }> {
     const { restaurantId } = dto;
     // Checked before the billed read: a date that is not on the calendar
@@ -487,25 +489,36 @@ export class MenusService {
     let items: WineExtractItem[];
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
-    let unreadColumns: string[] = [];
+    let read: MenuRead | null = null;
     if (dto.method === "scan") {
       items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
       sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        items = await this.csvParser.parseExcel(dto.data.fileBase64);
-        unreadColumns = await this.csvParser.unreadExcelColumns(dto.data.fileBase64);
+        read = await this.csvParser.readExcel(dto.data.fileBase64);
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
-        items = this.csvParser.parse(dto.data.csvContent!);
-        unreadColumns = this.csvParser.unreadColumns(dto.data.csvContent!);
+        read = this.csvParser.read(dto.data.csvContent!);
         sourceBytes = Buffer.from(dto.data.csvContent!, "utf8");
         sourceMime = { mime: "text/csv", ext: "csv" };
       }
+      items = read.items;
     } else {
       items = dto.data.items ?? [];
+    }
+
+    // A read that found no line is refused before anything is kept (F-680):
+    // it made an empty version and ticked "menu uploaded", and the owner was
+    // told only "Nothing was set". Now the reason is the answer.
+    if (items.length === 0) {
+      throw new BadRequestException(
+        read?.emptyCause ??
+          (dto.method === "scan"
+            ? "We could not find any drinks on this page, so nothing was kept. Try a clearer photo or a PDF of the drinks list."
+            : "There are no lines to keep, so nothing was kept."),
+      );
     }
 
     // 2. Keep the source, or say why it was not kept.
@@ -539,7 +552,8 @@ export class MenusService {
       submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
       items: reviewItems,
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
-      unreadColumns,
+      unreadColumns: read?.notes.ignoredColumns ?? [],
+      read: read?.notes ?? null,
     };
   }
 
@@ -550,15 +564,16 @@ export class MenusService {
     restaurantId: string,
     binary = false,
   ): Promise<WineExtractItem[]> {
-    const items =
+    const read =
       method === "scan"
-        ? await this.scanParser.parse(content, restaurantId, true)
+        ? null
         : binary
-          ? await this.csvParser.parseExcel(content)
-          : this.csvParser.parse(content);
+          ? await this.csvParser.readExcel(content)
+          : this.csvParser.read(content);
+    const items = read ? read.items : await this.scanParser.parse(content, restaurantId, true);
     if (!items.length)
       throw new BadRequestException(
-        "No supported beverage items were extracted. Nothing was imported.",
+        read?.emptyCause ?? "No supported beverage items were extracted. Nothing was imported.",
       );
     if (items.length > 500)
       throw new BadRequestException(
@@ -1791,6 +1806,13 @@ export class MenusService {
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
+    // A menu with no lines would empty the house's menu (F-681); the database
+    // refuses it too (make_menu_current), this says why before the plan.
+    if (lines.length === 0 && version.status !== "active") {
+      throw new BadRequestException(
+        "This menu has no lines, so making it current would empty the house's menu. Nothing was changed.",
+      );
+    }
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(

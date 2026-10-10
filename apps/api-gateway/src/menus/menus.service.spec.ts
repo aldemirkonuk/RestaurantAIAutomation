@@ -1057,6 +1057,47 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(version.menu_date).toBeNull();
   });
 
+  it("F-680: a file that reads as no line is refused with its cause: no version, no 'menu uploaded'", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    const run = () =>
+      service.importMenu(
+        { method: "csv", data: { csvContent: "Etiket;Bağ\nYakut;Kavaklıdere\n" }, restaurantId: "rest-1" } as any,
+        "user-1",
+      );
+    await expect(run()).rejects.toBeInstanceOf(BadRequestException);
+    await expect(run()).rejects.toThrow(/could not find a column for the drink's name.*Etiket, Bağ/);
+    expect(tables.restaurant_menus).toHaveLength(1);
+    expect(tables.user_onboarding_progress).toHaveLength(0);
+    expect(tables.__storage ?? []).toHaveLength(0);
+  });
+
+  it("F-680: a scan that found no drink is refused, and no version is kept", async () => {
+    const tables: Record<string, Row[]> = base();
+    const service = makeService(tables, { wineSubmissions, scanParser: { parse: async () => [] } });
+    await expect(
+      service.importMenu({ method: "scan", data: { imageBase64: "JVBERi0=" }, restaurantId: "rest-1" } as any, "user-1"),
+    ).rejects.toThrow(/could not find any drinks/);
+    expect(tables.restaurant_menus).toHaveLength(1);
+    expect(tables.user_onboarding_progress).toHaveLength(0);
+  });
+
+  it("F-017: the reply names the columns that were not read and the rows that were skipped", async () => {
+    const service = makeService(base(), { wineSubmissions, csvParser: new CsvParserService() });
+    const r = await service.importMenu(
+      { method: "csv", data: { csvContent: "Wine Name,Bottle,Price,Notes\nRED WINES,,,\nOpus One,62,62,lovely\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(r.itemsExtracted).toBe(1);
+    // A bare Price names no serve, so it is not read (menu-import-a decision 2).
+    expect(r.unreadColumns).toEqual(["Price", "Notes"]);
+    expect(r.read).toEqual({
+      ignoredColumns: ["Price", "Notes"],
+      dropped: [{ row: 2, reason: '"RED WINES" looks like a heading (no price)' }],
+      unreadable: [],
+    });
+  });
+
   it("a date that is not on the calendar is refused BEFORE the billed read", async () => {
     const parse = jest.fn();
     const service = makeService(base(), { wineSubmissions, scanParser: { parse } });
@@ -1185,6 +1226,18 @@ describe("MenusService — every menu read is kept as its own version", () => {
       const r = await choose(service, "menu-old");
       expect(r.outcome).toBe("already_current");
       expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
+    });
+
+    it("F-681: a menu with no lines is not made current; the house's menu stays", async () => {
+      const calls: RpcCall[] = [];
+      const tables: Record<string, Row[]> = base();
+      tables.restaurant_menus.push({ id: "menu-empty", restaurant_id: "rest-1", status: "draft" });
+      const service = makeService(tables, { rpcCalls: calls, rpc: makeCurrentRpc(tables) });
+      await expect(service.makeCurrent("rest-1", "menu-empty", "user-2", "any-fingerprint")).rejects.toThrow(
+        /no lines, so making it current would empty the house's menu/,
+      );
+      expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(0);
+      expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
     });
 
     it("another house's menu id is a 404", async () => {

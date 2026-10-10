@@ -327,3 +327,14 @@ describe('L2 on the plan: nothing to keep where the house has no price', () => {
     expect(screen.queryByRole('button', { name: 'Keep the bottle price of Vermentino' })).not.toBeInTheDocument();
   });
 });
+
+describe('a menu with no lines (F-681)', () => {
+  it('is not offered as the current menu: choosing it would empty the house menu', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [] }));
+    mount(true);
+    expect(await screen.findByTestId('plan-empty')).toHaveTextContent(
+      'This menu has no lines, so it cannot become the current menu.',
+    );
+    expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument();
+  });
+});

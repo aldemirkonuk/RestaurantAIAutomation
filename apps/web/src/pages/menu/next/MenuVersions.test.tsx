@@ -44,7 +44,23 @@ function plan(menuId: string, over: Partial<MenuPlan> = {}): MenuPlan {
     current: false,
     generatedAt: '2026-09-21T12:00:00Z',
     fingerprint: `fp-${menuId}`,
-    lines: [],
+    // One unchanged line: a plan of no lines offers no choice (F-681).
+    lines: [
+      {
+        menuItemId: 'n1',
+        name: 'Chianti',
+        producer: null,
+        vintage: null,
+        wineLibraryId: 'mw-2',
+        inventoryId: 'inv-2',
+        house: { wineName: 'Chianti', vintage: 2021, active: true },
+        bottle: { kind: 'bottle', menuPrice: 50, housePrice: 50, result: 'unchanged', lastSet: null, lock: null },
+        glass: { kind: 'glass', menuPrice: null, housePrice: null, result: 'blank_never_priced', lastSet: null, lock: null },
+        flag: null,
+        returned: false,
+        vintageMismatch: false,
+      },
+    ],
     counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, new_wine: 0 },
     dormantLocks: [],
     namesReadable: true,
@@ -300,6 +316,39 @@ describe('MenuVersions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
     await screen.findByTestId('menu-read-result');
     expect(screen.queryByTestId('menu-read-unread-columns')).toBeNull();
+  });
+
+  it('a spreadsheet read names the rows it skipped (F-684)', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({
+      menuId: 'm9',
+      itemsExtracted: 3,
+      submissionsCreated: 0,
+      items: [],
+      read: {
+        ignoredColumns: ['Notes', 'Cost'],
+        dropped: [{ row: 2, reason: '"RED WINES" looks like a heading (no price)' }],
+        unreadable: [],
+      },
+    });
+    mount(true);
+    const file = new File(['x'], 'menu.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByTestId('menu-read-dropped')).toHaveTextContent(
+      '1 row skipped: row 2 ("RED WINES" looks like a heading (no price)).',
+    );
+  });
+
+  it('a read of no lines offers no choice of current menu (F-681)', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', itemsExtracted: 0, submissionsCreated: 0, items: [] });
+    mount(true);
+    const file = new File(['x'], 'menu.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByTestId('menu-read-result')).toHaveTextContent('Read 0 lines');
+    expect(screen.queryByRole('button', { name: 'Make this the current menu' })).not.toBeInTheDocument();
   });
 
   it('an untagged read sends no cadence and no date -- never a default', async () => {

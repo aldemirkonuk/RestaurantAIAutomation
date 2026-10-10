@@ -78,7 +78,24 @@ export interface MenuImportResult {
   source?: { kept: boolean; failure: string | null }
   /** A CSV or workbook's column headings that were not read, as written (F-070). */
   unreadColumns?: string[]
+  /** A spreadsheet read: the columns not read (as in unreadColumns), the rows skipped and why, the cells unread. */
+  read?: MenuReadNotes | null
+  /**
+   * Client-only: when several files were sent at once, what each one gave (its
+   * lines, or why it was not read). The lines of every read file are in `items`.
+   */
+  files?: MenuFileResult[]
 }
+
+export interface MenuReadNotes {
+  ignoredColumns: string[]
+  dropped: Array<{ row: number; reason: string }>
+  unreadable: string[]
+}
+
+export type MenuFileResult =
+  | { name: string; itemsExtracted: number; read?: MenuReadNotes | null }
+  | { name: string; failure: string }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const
 export type MenuCadence = (typeof MENU_CADENCES)[number]

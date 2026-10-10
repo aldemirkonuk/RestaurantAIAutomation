@@ -12,35 +12,65 @@
 export const MENU_COLUMN_NAMES: readonly string[] = [
   'name',
   'wine_name',
+  'wine',
+  'drink',
   'item',
+  'ad',
+  'adi',
+  'isim',
+  'urun',
+  'urun_adi',
+  'sarap',
+  'sarap_adi',
   'producer',
   'winery',
   'vineyard',
   'chateau',
-  'château',
   'brand',
+  'uretici',
+  'marka',
   'vintage',
   'year',
+  'yil',
+  'rekolte',
   'region',
   'appellation',
+  'bolge',
   'grape',
   'variety',
   'grape_variety',
+  'uzum',
   'category',
   'type',
+  'kategori',
+  'tur',
   'by_glass',
   'by_the_glass',
   'glass',
   'pour',
   'glass_price',
   'by_glass_price',
+  'kadeh',
+  'kadeh_fiyati',
   'bottle',
   'bottle_price',
+  'sise',
+  'sise_fiyati',
 ]
 
-/** The gateway's header spelling: lowercase, trimmed, spaces/hyphens → `_`, no BOM. */
+/**
+ * The gateway's header spelling: no byte-order mark, accents folded ("Şişe" →
+ * sise, dotless ı → i), lowercase, trimmed, spaces/hyphens → `_`.
+ */
 export function normalizeMenuHeader(header: string): string {
-  return header.replace(/^﻿/, '').toLowerCase().trim().replace(/[\s-]+/g, '_')
+  return header
+    .replace(/^\uFEFF/, '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/ı/g, 'i')
+    .trim()
+    .replace(/[\s-]+/g, '_')
 }
 
 /** The headings in a file's header row that will not be read, as written. */
