@@ -432,6 +432,8 @@ interface ProcurementOrderRow {
   approved_at: string | null;
   delivered_at: string | null;
   completed_at: string | null;
+  /** Read by `select("*")` routes only; see `mapOrderRow`. */
+  match_verified_at?: string | null;
   is_emergency: boolean | null;
   priority_level: number | null;
   wine_name?: string | null;
@@ -3287,6 +3289,13 @@ export class ProcurementService {
       .eq("id", orderId)
       .single();
 
+    // No row in THIS house (another house's order, a removed one), or an id
+    // that is not an id at all (22P02, a mistyped link). Both are an answer —
+    // "not here" — and the door and the inventory deep link say it in words
+    // instead of treating it as a server that could not be reached (F-711).
+    if (error && (error.code === "PGRST116" || error.code === "22P02")) {
+      throw new NotFoundException("This order is not in this house.");
+    }
     if (error) {
       this.logger.error("Failed to fetch procurement order", {
         restaurantId,
@@ -7288,6 +7297,10 @@ export class ProcurementService {
       approvedAt: row.approved_at ?? undefined,
       deliveredAt: row.delivered_at ?? undefined,
       completedAt: row.completed_at ?? undefined,
+      // When the three-way match was checked (F-710). The key test: a route
+      // that does not read the column sends no key; `null` is "not checked".
+      matchVerifiedAt:
+        "match_verified_at" in row ? (row.match_verified_at ?? null) : undefined,
       // The key test again: `null` is "the row names no currency", absence is
       // "this route did not read the column". `currencyCode` reads membership,
       // so a stored value that names no currency reads as none, not as money.
