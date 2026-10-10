@@ -15,7 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Seal } from '@/components/mudavym';
-import { animate, pour, stamp, tuck, useReducedMotion } from '@/lib/mudavym/motion';
+import { animate, pour, sealTiming, stamp, tuck, useReducedMotion } from '@/lib/mudavym/motion';
 import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
 import { MONO, SANS, fmtMoney } from './format';
@@ -70,6 +70,8 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
   const startRef = useRef(0);
   const progressRef = useRef(0);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When the two-step confirm armed; a double-tap is not a second decision. */
+  const armedAtRef = useRef(0);
   const runningRef = useRef(false);
   /** Selection size expected after a finished run (the refused stay selected). */
   const expectedAfterDoneRef = useRef(0);
@@ -274,13 +276,15 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     setSealNote(null);
     void beginSeals();
     setPhase('armed');
+    armedAtRef.current = Date.now();
     if (armTimerRef.current) clearTimeout(armTimerRef.current);
     armTimerRef.current = setTimeout(() => setPhase((ph) => (ph === 'armed' ? 'idle' : ph)), ARM_WINDOW_MS);
   };
 
+  /** A second press inside the confirm gap is ignored; the bar stays armed. */
   const stepConfirm = () => {
-    if (phase === 'armed') void run();
-    else arm();
+    if (phase !== 'armed') arm();
+    else if (Date.now() - armedAtRef.current >= sealTiming.confirmGapMs) void run();
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -299,6 +303,9 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
       e.preventDefault();
       if (!e.repeat) stepConfirm();
     } else if (e.key === 'Escape' && phase === 'armed') {
+      // Esc disarms only — it must not travel on and close a Sheet (F-726).
+      e.preventDefault();
+      e.nativeEvent.stopPropagation();
       if (armTimerRef.current) clearTimeout(armTimerRef.current);
       setPhase('idle');
     }

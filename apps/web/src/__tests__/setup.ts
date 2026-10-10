@@ -14,6 +14,7 @@ process.env.TZ = 'America/New_York';
 import { expect, afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import * as matchers from '@testing-library/jest-dom/matchers';
+import { sealTiming } from '../lib/mudavym/motion';
 
 // Extend Vitest's expect with jest-dom matchers
 expect.extend(matchers);
@@ -22,6 +23,12 @@ expect.extend(matchers);
 afterEach(() => {
   cleanup();
 });
+
+// A seal's second press must come a beat after the first (F-723). Most seal
+// tests press twice back to back because they are about something else; the
+// gap is lifted for them here, and HoldToApprove.test.tsx pins it at its real
+// value.
+sealTiming.confirmGapMs = 0;
 
 // Guard all window-dependent setup so tests that run in the node environment
 // (e.g. files annotated with // @vitest-environment node) don't crash.
