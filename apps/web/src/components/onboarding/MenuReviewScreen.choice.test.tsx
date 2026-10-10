@@ -112,11 +112,11 @@ describe('MenuReviewScreen — the current-menu choice after a read', () => {
 
   it('a refused choice is said, and the review does not move on', async () => {
     role = 'owner'
-    mockMake.mockRejectedValue({ response: { data: { message: 'Only managers and owners can choose the current menu' } } })
+    mockMake.mockRejectedValue({ response: { status: 403, data: { message: 'Only managers and owners can choose the current menu' } } })
     const onConfirm = vi.fn()
     render(<MenuReviewScreen result={RESULT} onConfirm={onConfirm} onSkip={vi.fn()} />)
     await chooseThroughThePlan()
-    expect(await screen.findByRole('alert')).toHaveTextContent('It was not made current: Only managers and owners can choose the current menu. Nothing has changed.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('It was not made current: only an owner or a manager can do that. Nothing has changed.')
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
