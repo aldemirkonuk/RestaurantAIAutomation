@@ -25,6 +25,7 @@ import {
 import { useFeedLocal } from "@/state/feedLocal";
 import { receivingCountBasis } from "@/lib/receivingCountBasis";
 import {
+  agreedCurrency,
   computeMatch,
   differentMoney,
   money,
@@ -60,8 +61,9 @@ export default function ReceivingScreen() {
     rawAgreedPrice != null && order?.pricePackSize && order?.priceUom
       ? rawAgreedPrice / order.pricePackSize
       : null;
-  // The order's own money (F-341). Null when the route or row names none.
-  const poCurrency = order?.currency ?? null;
+  // The agreed money (F-341): the agreement line's, else the order's, as the
+  // gateway compares it (F-800). Null when neither names one.
+  const poCurrency = agreedCurrency(order);
   const stockedQty = countBasis.prefillBottles;
   const stockedNote = countBasis.note;
 

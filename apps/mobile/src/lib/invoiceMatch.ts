@@ -83,6 +83,17 @@ export const money = (n: number, currency: string | null | undefined) => {
 };
 
 /**
+ * The money the order was agreed in: the agreement line's, else the order's
+ * own (F-800). Mirrors the gateway's `poCurrency` in `verifyReceipt`, so the
+ * phone holds or compares a price exactly when the server will.
+ */
+export function agreedCurrency(
+  order?: { agreedCurrency?: string | null; currency?: string | null } | null,
+): string | null {
+  return order?.agreedCurrency ?? order?.currency ?? null;
+}
+
+/**
  * Both moneys stated and not the same: the price is not compared (F-341).
  * Mirrors the gateway's `differentMoney` in invoice-match.ts.
  */

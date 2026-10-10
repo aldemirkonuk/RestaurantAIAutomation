@@ -143,6 +143,13 @@ export interface ProcurementOrder {
    */
   currency?: string | null;
   /**
+   * The agreement LINE's money (`procurement_order_items.currency`), sent by
+   * `/procurement/orders/:id` only. The gateway compares a bill against this
+   * first and `currency` second (F-800); read it through `agreedCurrency()`.
+   * `null` = the line names none; absent = the route did not read the line.
+   */
+  agreedCurrency?: string | null;
+  /**
    * What this order RECEIVED — ADR 0192: the stock ledger's count for the
    * order's item, in the item's stock unit (bottles for wine), never rounded,
    * with `words` ("5 cases + 5 bottles"). The block with `readable: false` is

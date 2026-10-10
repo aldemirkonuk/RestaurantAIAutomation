@@ -1214,6 +1214,23 @@ export class OrderResponseDto {
   })
   currency?: string | null;
 
+  /**
+   * The currency the AGREEMENT LINE names — `procurement_order_items.currency`.
+   * Receiving compares a bill against this first and against `currency` only
+   * when the line names none (F-800), so a screen that holds or compares a
+   * price must read `agreedCurrency ?? currency`. Sent by `GET /orders/:id`
+   * only: `null` = the line was read and names none (or there is no line); key
+   * ABSENT = this route did not read the line, or the read failed.
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: "EUR",
+    description:
+      "ISO 4217 code the agreement line names. Compare a bill against this, falling back to currency. null = the line names none. Key ABSENT = this route does not read the line.",
+  })
+  agreedCurrency?: string | null;
+
   /*
    * ===========================================================================
    * THE RECURRENCE (ADR 0125's addendum, founder 2026-09-05)
