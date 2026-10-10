@@ -414,6 +414,53 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(reval!.args.p_unit_cost).toBeCloseTo(43);
   });
 
+  it("the restated lots take the invoice's currency when the order named none (F-343)", async () => {
+    // `revalue_lot` restates unit_cost only and the trigger fills a MISSING
+    // currency only. Two stated, different moneys never restate (F-341, above);
+    // an order that named none and an invoice that names EUR does, and the
+    // lots it restated take EUR. (Integration rehearsal: the branch's TRY-order
+    // case became F-341's no-restate case once both fixes met.)
+    const { db, calls } = makeDb();
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    const stamp = calls.updates.find(
+      (u) => u.table === "inventory_lots" && "unit_cost_currency" in u.values,
+    );
+    expect(stamp?.values).toEqual({ unit_cost_currency: "EUR" });
+    expect(stamp?.filters).toMatchObject({
+      restaurant_id: REST,
+      inventory_id: INVENTORY,
+      source_order_id: ORDER,
+      stock_state: "live",
+    });
+  });
+
+  it("a cost in another money neither restates nor relabels the lots (F-341 + F-343)", async () => {
+    const { db, calls } = makeDb({ currency: "TRY" });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(false);
+    expect(
+      calls.updates.some(
+        (u) => u.table === "inventory_lots" && "unit_cost_currency" in u.values,
+      ),
+    ).toBe(false);
+  });
+
   it("a receipt correction names a source the enum actually has", async () => {
     const valid = new Set(enumLabels("inventory_transaction_source"));
     const { db, calls } = makeDb();
@@ -467,7 +514,14 @@ const orderRow = {
  *   pre-delivery order rather than a fixture that agrees with it by accident.
  */
 function makeDb(orderOverrides: Record<string, any> = {}) {
-  const calls = { rpc: [] as { name: string; args: Record<string, any> }[] };
+  const calls = {
+    rpc: [] as { name: string; args: Record<string, any> }[],
+    updates: [] as {
+      table: string;
+      values: Record<string, any>;
+      filters: Record<string, any>;
+    }[],
+  };
 
   const supabase: any = {
     from(table: string) {
@@ -524,8 +578,9 @@ function makeDb(orderOverrides: Record<string, any> = {}) {
           op = "insert";
           return q;
         },
-        update: () => {
+        update: (values: Record<string, any>) => {
           op = "update";
+          calls.updates.push({ table, values, filters });
           return q;
         },
         delete: () => {
