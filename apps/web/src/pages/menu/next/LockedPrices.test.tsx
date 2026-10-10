@@ -21,6 +21,21 @@ import {
   type PriceLock,
 } from '../../../services/api/pricing';
 
+// The house's thousands mark and the screen's, held per test (F-878). Left
+// undefined, the real readers answer, as every earlier test here expects.
+const marks = vi.hoisted(() => ({
+  house: undefined as '.' | ',' | null | undefined,
+  screen: undefined as '.' | ',' | null | undefined,
+}));
+vi.mock('../../../hooks/useHouseGroupMark', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../hooks/useHouseGroupMark')>();
+  return { useHouseGroupMark: () => (marks.house === undefined ? real.useHouseGroupMark() : marks.house) };
+});
+vi.mock('../../../lib/parseDecimal', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../lib/parseDecimal')>();
+  return { ...real, displayGroupMark: (l?: string) => (marks.screen === undefined ? real.displayGroupMark(l) : marks.screen) };
+});
+
 vi.mock('../../../services/api/pricing', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/pricing')>('../../../services/api/pricing');
   return {
@@ -117,6 +132,8 @@ beforeEach(() => {
   mockRelease.mockReset();
   mockMove.mockReset();
   mockAdvice.mockReset();
+  marks.house = null;
+  marks.screen = null;
 });
 
 describe('Locked prices', () => {
@@ -198,6 +215,45 @@ describe('Locked prices', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Save, keep locked' }));
     await waitFor(() => expect(mockChange).toHaveBeenCalledWith('lock-a', 58));
     expect(await screen.findByTestId('locked-prices-said')).toHaveTextContent('The bottle price is now 58.00 (it was 50.00) and stays locked.');
+  });
+
+  it('F-878: a new locked price that reads two ways is asked, and nothing is sent', async () => {
+    // A house whose country is not recorded, on an English screen: "1,250"
+    // was locked at 1.25 with no question.
+    marks.house = null;
+    marks.screen = ',';
+    mockList.mockResolvedValue(readout());
+    mount(true);
+    const row = (await screen.findAllByTestId('locked-price-row'))[0];
+    fireEvent.click(within(row).getByRole('button', { name: 'Change and keep locked' }));
+    fireEvent.change(within(row).getByLabelText('New bottle price for Barolo'), { target: { value: '1,250' } });
+    fireEvent.click(within(row).getByRole('button', { name: 'Save, keep locked' }));
+    expect(await within(row).findByRole('alert')).toHaveTextContent(/“1,250” could be 1\.25 or 1,250\.00/);
+    expect(mockChange).not.toHaveBeenCalled();
+    fireEvent.change(within(row).getByLabelText('New bottle price for Barolo'), { target: { value: '1250' } });
+    fireEvent.click(within(row).getByRole('button', { name: 'Save, keep locked' }));
+    await waitFor(() => expect(mockChange).toHaveBeenCalledWith('lock-a', 1250));
+  });
+
+  it('F-878: a moved lock\'s price that reads two ways is asked, and nothing is sent', async () => {
+    marks.house = '.';
+    marks.screen = ',';
+    mockList.mockResolvedValue(readout());
+    mockAdvice.mockResolvedValue({
+      restaurantId: 'r1',
+      generatedAt: 'x',
+      target: { bottlePct: null, glassPct: null, bandPct: null, set: false, pourConfirmed: false, pourMl: null },
+      wines: [{ inventoryId: 'inv-d', wineName: 'Soave Classico', costBasis: 'unknown', costBasisLabel: '', bottleCost: null, bottle: null, glass: null }],
+      counts: { no_target: 0, pour_unconfirmed: 0, no_price: 0, no_cost: 0, on_target: 0, raise: 0, lower: 0 },
+    });
+    mount(true);
+    const rows = await screen.findAllByTestId('locked-price-row');
+    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Move to another wine' }));
+    fireEvent.change(await within(rows[1]).findByLabelText('Wine the lock moves to'), { target: { value: 'inv-d' } });
+    fireEvent.change(within(rows[1]).getByLabelText('Price the moved lock holds'), { target: { value: '1,250' } });
+    fireEvent.click(within(rows[1]).getByRole('button', { name: 'Move the lock' }));
+    expect(await within(rows[1]).findByRole('alert')).toHaveTextContent(/“1,250” could be/);
+    expect(mockMove).not.toHaveBeenCalled();
   });
 
   it('L24: release is one tap, and its sentence (the price stays) is shown', async () => {

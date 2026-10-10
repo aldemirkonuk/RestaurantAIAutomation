@@ -874,6 +874,119 @@ describe("InventoryService", () => {
       expect(Math.abs(Date.now() - SIX_HOURS - at)).toBeLessThan(5_000);
     });
 
+    // F-880. A parked cellar count was refused as "counted again" by a bar
+    // count or a bar sale of the same wine. Only a change to THAT shelf
+    // overtakes a shelf count; a change whose shelf is not on record still
+    // refuses, and says so.
+    describe("a queued count of one shelf", () => {
+      const cellarCount = () =>
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 6,
+          clientCountId: "cellar-1400",
+          countedAgoMs: SIX_HOURS,
+          locationId: "loc-cellar",
+        });
+      const refusalOf = async (p: Promise<unknown>) => {
+        try {
+          await p;
+        } catch (e) {
+          return { status: (e as HttpException).getStatus(), said: (e as HttpException).message };
+        }
+        return { status: 200, said: "" };
+      };
+      const barSale = {
+        id: "txn-bar-sale",
+        from_location_id: null,
+        to_location_id: null,
+        metadata: { lots_taken: [{ lot_id: "lot-bar", qty: 1, location_id: "loc-bar" }] },
+      };
+
+      it("is applied after a count and a sale on another shelf", async () => {
+        mockLimit
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({
+            data: [{ id: "count-bar", location_id: "loc-bar", transaction_id: "txn-bar-count" }],
+            error: null,
+          })
+          .mockResolvedValueOnce({
+            data: [
+              // The bar count's own correction, which records no shelf.
+              { id: "txn-bar-count", from_location_id: null, to_location_id: null, metadata: {} },
+              barSale,
+              { id: "txn-move", from_location_id: "loc-bar", to_location_id: "loc-terrace", metadata: {} },
+            ],
+            error: null,
+          });
+        expect((await refusalOf(cellarCount())).status).toBe(200);
+        expect(countRpcCalls()).toBe(1);
+      });
+
+      it("is refused by a newer count of the same shelf", async () => {
+        mockLimit
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({
+            data: [{ id: "count-cellar", location_id: "loc-cellar", transaction_id: null }],
+            error: null,
+          });
+        const r = await refusalOf(cellarCount());
+        expect(r.status).toBe(409);
+        expect(r.said).toMatch(/This shelf was counted again/);
+        expect(countRpcCalls()).toBe(0);
+      });
+
+      it("is refused by a newer count of every shelf", async () => {
+        mockLimit
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({
+            data: [{ id: "count-all", location_id: null, transaction_id: "txn-all" }],
+            error: null,
+          });
+        expect((await refusalOf(cellarCount())).status).toBe(409);
+        expect(countRpcCalls()).toBe(0);
+      });
+
+      it("is refused by a sale that took from this shelf", async () => {
+        mockLimit
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({
+            data: [barSale, { ...barSale, id: "txn-cellar-sale", metadata: { lots_taken: [{ location_id: "loc-cellar" }] } }],
+            error: null,
+          });
+        const r = await refusalOf(cellarCount());
+        expect(r.status).toBe(409);
+        expect(r.said).toMatch(/Bottles on this shelf were sold, received or moved/);
+        expect(countRpcCalls()).toBe(0);
+      });
+
+      it("is refused by a move onto this shelf", async () => {
+        mockLimit
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({
+            data: [{ id: "txn-in", from_location_id: "loc-bar", to_location_id: "loc-cellar", metadata: {} }],
+            error: null,
+          });
+        expect((await refusalOf(cellarCount())).status).toBe(409);
+        expect(countRpcCalls()).toBe(0);
+      });
+
+      it("a movement whose shelf is not on record refuses, and never says this shelf was counted again", async () => {
+        mockLimit
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({ data: [], error: null })
+          .mockResolvedValueOnce({
+            data: [{ id: "txn-delivery", from_location_id: null, to_location_id: null, metadata: {} }],
+            error: null,
+          });
+        const r = await refusalOf(cellarCount());
+        expect(r.status).toBe(409);
+        expect(r.said).toMatch(/does not say from which shelf/);
+        expect(r.said).not.toMatch(/counted again/);
+        expect(countRpcCalls()).toBe(0);
+      });
+    });
+
     it("sends no count time for a live count", async () => {
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 12,

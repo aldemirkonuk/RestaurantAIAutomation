@@ -60,6 +60,13 @@ function roundOz(ml: number): number {
 const QUEUED_COUNT_GRACE_MS = 2 * 60_000;
 
 /**
+ * How many counts and movements since a queued shelf count are read to decide
+ * which shelf they touched (F-880). A wine that moved more often than this in
+ * the window is refused as "not known which shelf", never let through.
+ */
+const OVERTAKEN_SCAN_LIMIT = 200;
+
+/**
  * Whether a Postgres error is the request's fault (F-250): a RAISE from the
  * function itself (P0001), bad data (class 22), a broken constraint (class
  * 23) or a refused foreign item (42501). Anything else — no code at all (the
@@ -585,6 +592,15 @@ export class InventoryService {
    * Only for a queued count (`countedAgoMs` past the grace below): a live
    * count is sent the moment it is taken. A count that already landed (its
    * key is on record) skips the check so its retry replays, not refuses.
+   *
+   * F-880. A count of one shelf (`locationId`, F-291) is a statement about
+   * that shelf only, so only a change to THAT shelf overtakes it: a newer
+   * count of the same shelf or of every shelf, or a movement that took from,
+   * landed on or moved bottles to or from it. A bar count or a bar sale says
+   * nothing about the cellar. A movement whose shelf the record does not say
+   * (a delivery, a sale written before lots_taken was kept) still refuses,
+   * and the refusal says it is not known which shelf moved -- never that
+   * this shelf was counted again.
    */
   private async refuseCountOvertakenByStock(
     client: ReturnType<DatabaseService["getClient"]>,
@@ -594,6 +610,7 @@ export class InventoryService {
     idempotencyKey: string,
     countedAgoMs: number | undefined,
     countedAt: string | null,
+    locationId: string | null = null,
   ): Promise<void> {
     if (
       countedAt == null ||
@@ -618,6 +635,18 @@ export class InventoryService {
       .limit(1);
     if (landed.error) throw transient("replay", landed.error);
     if ((landed.data ?? []).length > 0) return;
+
+    if (locationId) {
+      return this.refuseShelfCountOvertaken(
+        client,
+        restaurantId,
+        inventoryId,
+        stockState,
+        countedAt,
+        locationId,
+        transient,
+      );
+    }
 
     const newerCount = await client
       .from("stock_counts")
@@ -647,6 +676,83 @@ export class InventoryService {
     if ((moved.data ?? []).length > 0) {
       throw new HttpException(
         "Bottles of this item were sold, received or moved after this count was taken, so it was not applied. Count it again.",
+        HttpStatus.CONFLICT,
+      );
+    }
+  }
+
+  /** F-880: `refuseCountOvertakenByStock` for a count of one shelf. */
+  private async refuseShelfCountOvertaken(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    inventoryId: string,
+    stockState: "live" | "shadow",
+    countedAt: string,
+    locationId: string,
+    transient: (what: string, err: { message?: string }) => HttpException,
+  ): Promise<void> {
+    // Every count since, of any shelf: a count of THIS shelf or of every
+    // shelf (no location) overtakes; another shelf's count does not, and its
+    // own correcting movement is that shelf's, not this one's.
+    const counts = await client
+      .from("stock_counts")
+      .select("id, location_id, transaction_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .eq("stock_state", stockState)
+      .gt("counted_at", countedAt)
+      .limit(OVERTAKEN_SCAN_LIMIT);
+    if (counts.error) throw transient("newer-count", counts.error);
+    const countRows = (counts.data ?? []) as Array<{
+      location_id: string | null;
+      transaction_id: string | null;
+    }>;
+    if (countRows.some((c) => c.location_id == null || c.location_id === locationId)) {
+      throw new HttpException(
+        "This shelf was counted again after this count was taken, so this older count was not applied.",
+        HttpStatus.CONFLICT,
+      );
+    }
+    const otherShelfCounts = new Set(
+      countRows.map((c) => c.transaction_id).filter((t): t is string => !!t),
+    );
+
+    const moved = await client
+      .from("inventory_transactions")
+      .select("id, from_location_id, to_location_id, metadata")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .eq("stock_type", stockState)
+      .gt("transaction_date", countedAt)
+      .limit(OVERTAKEN_SCAN_LIMIT);
+    if (moved.error) throw transient("movement", moved.error);
+    const rows = (moved.data ?? []) as Array<{
+      id: string;
+      from_location_id: string | null;
+      to_location_id: string | null;
+      metadata: { lots_taken?: unknown } | null;
+    }>;
+    let shelfUnknown = rows.length >= OVERTAKEN_SCAN_LIMIT;
+    for (const r of rows) {
+      if (otherShelfCounts.has(r.id)) continue;
+      const taken = r.metadata?.lots_taken;
+      const transfer = r.from_location_id != null || r.to_location_id != null;
+      const touched =
+        r.from_location_id === locationId ||
+        r.to_location_id === locationId ||
+        (Array.isArray(taken) &&
+          taken.some((l) => (l as { location_id?: unknown })?.location_id === locationId));
+      if (touched) {
+        throw new HttpException(
+          "Bottles on this shelf were sold, received or moved after this count was taken, so it was not applied. Count it again.",
+          HttpStatus.CONFLICT,
+        );
+      }
+      if (!transfer && !(Array.isArray(taken) && taken.length > 0)) shelfUnknown = true;
+    }
+    if (shelfUnknown) {
+      throw new HttpException(
+        "Bottles of this item were sold, received or moved after this count was taken, and the record does not say from which shelf, so this shelf's count was not applied. Count it again.",
         HttpStatus.CONFLICT,
       );
     }
@@ -757,6 +863,7 @@ export class InventoryService {
       idempotencyKey,
       dto.countedAgoMs,
       countedAt,
+      dto.locationId ?? null,
     );
     const { data: countResult, error: rpcErr } = await client.rpc(
       "record_stock_count",
