@@ -7,7 +7,8 @@
  * `aria-modal="true"`, `tabIndex={-1}` and a label. While `open`:
  * - focus moves onto the panel, and goes back where it came from on close;
  * - Escape calls `onClose` (only when the key was pressed inside this panel,
- *   or on nothing at all, so a modal opened from inside it closes first);
+ *   or on nothing at all, so a modal opened from inside it closes first, and
+ *   not when a control inside it already handled the key);
  * - Tab and Shift+Tab wrap inside the panel.
  *
  * New overlays should use the Mudavym `Sheet`, which does all of this already.
@@ -37,6 +38,9 @@ export function useModalDialog<T extends HTMLElement = HTMLDivElement>(
       const target = e.target as Node | null;
       if (target && target !== document.body && !panel.contains(target)) return;
       if (e.key === 'Escape') {
+        // A control inside the panel that used this Escape for itself (an open
+        // dropdown closing) has already said so; the panel stays (F-1037).
+        if (e.defaultPrevented) return;
         e.preventDefault();
         e.stopPropagation();
         closeRef.current();

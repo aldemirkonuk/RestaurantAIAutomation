@@ -19,7 +19,7 @@
  * The server recomputes the verdict and derives the ledger correction — what we send is evidence,
  * not a decision. Rules mirrored from lib/invoiceMatch.ts (the backend is authoritative).
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, Check, AlertTriangle, Plus, Receipt, FileText, ShieldCheck } from 'lucide-react'
@@ -32,6 +32,7 @@ import {
 import { settingsApi } from '../../../services/api/settings'
 import { useNotificationStore } from '../../../stores'
 import { useMayActForTheHouse } from '../../../hooks/useMayActForTheHouse'
+import { useModalDialog } from '../../../hooks/useModalDialog'
 import { CURRENCY_CODES } from '../../../lib/currency'
 /*
  * THE FIRST PRODUCTION IMPORT FROM THE GATEWAY IN THIS APP (2026-09-11, audit of
@@ -302,6 +303,11 @@ function Stepper({
 
 export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: Props) {
   const queryClient = useQueryClient()
+  // F-1037: a real dialog, the way SpotCountPanel became one under F-321.
+  const dialogRef = useModalDialog(true, onClose)
+  const titleId = useId()
+  const overrideReasonId = useId()
+  const rejectedReasonId = useId()
   const toast = useNotificationStore()
   /*
    * F-805 (after F-802): the invoice price, the override reason and the freight
@@ -732,7 +738,12 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* header */}
@@ -742,7 +753,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               <Receipt className="w-4 h-4 text-wine-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900">
+              <h2 id={titleId} className="text-base font-bold text-gray-900">
                 {readOnly ? 'Receipt record' : 'Match invoice'}
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">
@@ -1078,10 +1089,14 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
           {/* price override — the only way past an exact-match failure */}
           {priceDiffers && !readOnly && (
             <div className="mt-1 mb-2 p-3 rounded-lg bg-rose-50/60 ring-1 ring-rose-100">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-rose-700 mb-1.5">
+              <label
+                htmlFor={overrideReasonId}
+                className="block text-[11px] font-bold uppercase tracking-wider text-rose-700 mb-1.5"
+              >
                 Why accept this price?
               </label>
               <input
+                id={overrideReasonId}
                 value={priceOverrideReason}
                 onChange={(e) => setPriceOverrideReason(e.target.value)}
                 placeholder="e.g. freight surcharge agreed with the rep by phone"
@@ -1096,10 +1111,14 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
           {/* rejected reason */}
           {rejectedQty > 0 && !readOnly && (
             <div className="mt-1 mb-2 p-3 rounded-lg bg-amber-50/60 ring-1 ring-amber-100">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-1.5">
+              <label
+                htmlFor={rejectedReasonId}
+                className="block text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-1.5"
+              >
                 Why were {rejectedQty} rejected?
               </label>
               <input
+                id={rejectedReasonId}
                 value={rejectedReason}
                 onChange={(e) => setRejectedReason(e.target.value)}
                 placeholder="e.g. 2 bottles broken in transit"
@@ -1211,6 +1230,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              aria-label="Note on this delivery"
               placeholder="Note (substitute vintage, driver waited, pallet damaged...)"
               className="w-full mt-3 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent"
             />

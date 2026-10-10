@@ -25,7 +25,7 @@
  *     that keeps its hold.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Panel } from '@/components/mudavym';
 import { apiClient, getErrorMessage } from '@/services/api/client';
@@ -227,6 +227,21 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
+  const resultRef = useRef<HTMLParagraphElement | null>(null);
+
+  /*
+   * F-1038: Pause, Resume and End each leave once the write lands (the status
+   * they offered is gone), and focus would fall to the page. Put it on the
+   * button that took their place, or on the result line when none did.
+   */
+  useEffect(() => {
+    if (!done && !error) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    const next = actionsRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])');
+    (next ?? resultRef.current)?.focus();
+  }, [done, error]);
 
   const existing = row?.recurrence ?? null;
   const alreadyRecurs = !!existing?.frequency;
@@ -335,7 +350,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
             }}
           >
             <p>{recurrenceLabel(existing) ?? 'This order repeats.'}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div ref={actionsRef} className="mt-2 flex flex-wrap gap-2">
               {existing.status === 'active' && (
                 <button
                   type="button"
@@ -510,14 +525,23 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
           </>
         )}
 
+        {/* Said aloud as well as shown (F-1038): the region is there before the words are. */}
+        <div role="status">
+          {done && !error && (
+            <p ref={resultRef} tabIndex={-1} data-testid="recurrence-done" style={{ color: 'var(--seal, #1A5E6B)' }}>
+              {done}
+            </p>
+          )}
+        </div>
         {error && (
-          <p data-testid="recurrence-error" style={{ color: 'var(--alarm, #8C3A2B)', lineHeight: 1.5 }}>
+          <p
+            ref={resultRef}
+            tabIndex={-1}
+            role="alert"
+            data-testid="recurrence-error"
+            style={{ color: 'var(--alarm, #8C3A2B)', lineHeight: 1.5 }}
+          >
             {error}
-          </p>
-        )}
-        {done && !error && (
-          <p data-testid="recurrence-done" style={{ color: 'var(--seal, #1A5E6B)' }}>
-            {done}
           </p>
         )}
       </div>

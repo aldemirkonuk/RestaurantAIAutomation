@@ -644,6 +644,32 @@ describe('MenuNext — edit a line in place (F-065)', () => {
   });
 });
 
+describe('MenuNext — focus follows the edit in and back out (F-1038)', () => {
+  it('Edit puts focus on the name field, and Cancel returns it to Edit', async () => {
+    auth.role = 'manager';
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    expect(screen.getByLabelText('Name of Turkish coffee')).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Edit Turkish coffee' })).toHaveFocus();
+  });
+
+  it('after a Save that went through, focus is back on that line\'s Edit', async () => {
+    auth.role = 'manager';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockResolvedValueOnce({ menuItemId: 'l1', fieldName: 'category', newValue: 'Coffee' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Section of Turkish coffee'), { target: { value: 'Coffee' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByTestId('menu-edit-said');
+    await waitFor(() => expect(screen.queryByTestId('menu-edit-row')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Edit Turkish coffee' })).toHaveFocus();
+  });
+});
+
 describe("MenuNext — a failed edit says what was changed, not more (F-1002)", () => {
   async function rename() {
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));

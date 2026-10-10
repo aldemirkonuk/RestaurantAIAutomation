@@ -18,7 +18,7 @@
  * publish destroys nothing, so it gets the die pressed dry: a plain confirm.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   ClipboardCopy,
@@ -695,11 +695,35 @@ export function TimeOffSheet({
     return m;
   }, [members]);
 
+  /*
+   * F-1038: a decision moves the row (pending to decided, or its paid/unpaid
+   * buttons go), so the button pressed is gone and focus would fall to the
+   * page. Say what was recorded, aloud, and put focus on that line.
+   */
+  const [said, setSaid] = useState<string | null>(null);
+  const saidRef = useRef<HTMLParagraphElement | null>(null);
   const review = useMutation({
-    mutationFn: (v: { id: string; status: 'approved' | 'denied'; leaveType?: LeaveType }) =>
-      reviewTimeOff(v.id, v.status, v.leaveType),
-    onSuccess: onChanged,
+    mutationFn: (v: {
+      id: string;
+      who: string;
+      status: 'approved' | 'denied';
+      leaveType?: LeaveType;
+    }) => reviewTimeOff(v.id, v.status, v.leaveType),
+    onSuccess: (_d, v) => {
+      setSaid(
+        v.status === 'denied'
+          ? `${v.who}: turned down.`
+          : `${v.who}: approved as ${v.leaveType === 'paid' ? 'paid' : 'unpaid'}.`,
+      );
+      onChanged();
+    },
   });
+  useEffect(() => {
+    if (!said) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    saidRef.current?.focus();
+  }, [said, requests]);
   const add = useMutation({
     mutationFn: () =>
       createTimeOff({
@@ -714,6 +738,7 @@ export function TimeOffSheet({
     },
   });
 
+  const whoOf = (r: TimeOffRow) => nameOf.get(r.member_id) ?? 'Someone no longer on the roster';
   const pending = (requests ?? []).filter((r) => r.status === 'pending');
   const settled = (requests ?? []).filter((r) => r.status !== 'pending');
 
@@ -742,6 +767,9 @@ export function TimeOffSheet({
             {serverMessage(add.error) ??
               "The request was not filed. Nothing is on the manager's desk."}
           </MutationError>
+          <p ref={saidRef} tabIndex={-1} role="status" className="tm-note">
+            {said}
+          </p>
           {failed ? (
             <p className="tm-alert" role="alert">
               The time-off file could not be read, so whether anyone has asked for this
@@ -761,7 +789,7 @@ export function TimeOffSheet({
         {pending.length > 0 && <span className="mdv-sect">Waiting on you</span>}
         {pending.map((r) => (
           <div key={r.id} className="tm-rrow" style={{ padding: '8px 16px' }}>
-            <div style={{ fontSize: 12.5, color: 'var(--ink-1)' }}>
+            <div id={`tm-off-${r.id}`} style={{ fontSize: 12.5, color: 'var(--ink-1)' }}>
               {nameOf.get(r.member_id) ?? 'Someone no longer on the roster'}
             </div>
             <div className="tm-rrow__line">
@@ -774,7 +802,8 @@ export function TimeOffSheet({
                 type="button"
                 className="tm-ctl tm-ctl--sm"
                 disabled={review.isPending}
-                onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid' })}
+                aria-describedby={`tm-off-${r.id}`}
+                onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'approved', leaveType: 'paid' })}
               >
                 Approve as paid
               </button>
@@ -782,7 +811,8 @@ export function TimeOffSheet({
                 type="button"
                 className="tm-ctl tm-ctl--sm"
                 disabled={review.isPending}
-                onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid' })}
+                aria-describedby={`tm-off-${r.id}`}
+                onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'approved', leaveType: 'unpaid' })}
               >
                 Approve as unpaid
               </button>
@@ -790,7 +820,8 @@ export function TimeOffSheet({
                 type="button"
                 className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                 disabled={review.isPending}
-                onClick={() => review.mutate({ id: r.id, status: 'denied' })}
+                aria-describedby={`tm-off-${r.id}`}
+                onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'denied' })}
               >
                 Deny
               </button>
@@ -801,7 +832,7 @@ export function TimeOffSheet({
         {settled.length > 0 && <span className="mdv-sect">Decided</span>}
         {settled.map((r) => (
           <div key={r.id} className="tm-rrow" style={{ padding: '8px 16px' }}>
-            <div style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>
+            <div id={`tm-off-${r.id}`} style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>
               {nameOf.get(r.member_id) ?? 'Someone no longer on the roster'} ·{' '}
               {r.status === 'denied'
                 ? 'turned down'
@@ -821,7 +852,8 @@ export function TimeOffSheet({
                       type="button"
                       className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                       disabled={review.isPending}
-                      onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid' })}
+                      aria-describedby={`tm-off-${r.id}`}
+                      onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'approved', leaveType: 'paid' })}
                     >
                       Mark paid
                     </button>
@@ -829,7 +861,8 @@ export function TimeOffSheet({
                       type="button"
                       className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                       disabled={review.isPending}
-                      onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid' })}
+                      aria-describedby={`tm-off-${r.id}`}
+                      onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'approved', leaveType: 'unpaid' })}
                     >
                       Mark unpaid
                     </button>
@@ -841,7 +874,8 @@ export function TimeOffSheet({
                   type="button"
                   className="tm-ctl tm-ctl--quiet tm-ctl--sm"
                   disabled={review.isPending}
-                  onClick={() => review.mutate({ id: r.id, status: 'denied' })}
+                  aria-describedby={`tm-off-${r.id}`}
+                  onClick={() => review.mutate({ id: r.id, who: whoOf(r), status: 'denied' })}
                 >
                   Turn it down
                 </button>
