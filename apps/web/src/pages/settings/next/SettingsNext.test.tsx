@@ -516,7 +516,10 @@ describe('SettingsNext — the editorial spine', () => {
     expect(screen.getByRole('heading', { name: 'When is it open?' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Questions and training' })).toBeInTheDocument();
     expect(screen.getByText('Should it mail a recommendations digest?')).toBeInTheDocument();
-    expect(screen.getByText(/fourteen kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
+    expect(screen.getByText(/fourteen kept for this restaurant, two on your account, one kept for you in this house, one in this browser only/i)).toBeInTheDocument();
+    // F-625: Notifications is stored per (house, person), so it says so and
+    // never claims to follow the reader to another house.
+    expect(screen.getByText(/Kept for you, in this house\. Another house you work at keeps its own/)).toBeInTheDocument();
     // The standing honesty statement, now that SIX registers DO record an
     // author: it names which six — Currency joined them 2026-09-05, Time zone
     // and Mail reading 2026-09-21 (ADR 0207) — and admits the other eight still do not.

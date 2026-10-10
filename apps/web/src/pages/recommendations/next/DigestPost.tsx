@@ -53,12 +53,14 @@ function HousePostSheet({
 }: {
   digest: DigestPref | null | undefined;
   onClose: () => void;
-  onSave: (patch: {
+  /** Absent for a reader who may not change the house's post (F-622). */
+  onSave?: (patch: {
     digestEnabled?: boolean;
     digestHour?: number;
     digestMinUrgency?: string;
   }) => Promise<DigestWrite>;
 }) {
+  const readOnly = !onSave;
   const known = digest ?? null;
   const isSet = known?.set === true;
   const [enabled, setEnabled] = useState(known?.digestEnabled ?? false);
@@ -95,6 +97,7 @@ function HousePostSheet({
           <input
             type="checkbox"
             checked={enabled}
+            disabled={readOnly}
             onChange={(ev) => setEnabled(ev.target.checked)}
           />
           <span className="rc-micro">Arm the house's post</span>
@@ -109,6 +112,7 @@ function HousePostSheet({
           <select
             value={hour}
             aria-label="Digest hour"
+            disabled={readOnly}
             onChange={(ev) => setHour(Number(ev.target.value))}
           >
             {HOURS.map((h) => (
@@ -123,7 +127,7 @@ function HousePostSheet({
       <div className="rc-sheet-block">
         <label className="rc-field">
           <span className="rc-micro">Floor — the lowest urgency it carries</span>
-          <select value={floor} aria-label="Digest floor" onChange={(ev) => setFloor(ev.target.value)}>
+          <select value={floor} aria-label="Digest floor" disabled={readOnly} onChange={(ev) => setFloor(ev.target.value)}>
             {(['now', 'this_week', 'this_month'] as const).map((u) => (
               <option key={u} value={u}>
                 {URGENCY_LABEL[u]}
@@ -143,30 +147,42 @@ function HousePostSheet({
         </p>
       )}
 
-      <div className="rc-row">
-        <button
-          type="button"
-          className="rc-act"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setRefusal(null);
-            const res = await onSave({
-              digestEnabled: enabled,
-              digestHour: hour,
-              digestMinUrgency: floor,
-            });
-            setBusy(false);
-            if (res.ok) onClose();
-            else setRefusal(res.message);
-          }}
-        >
-          {busy ? 'Storing…' : 'Store it'}
-        </button>
-        <button type="button" className="rc-quiet" onClick={onClose}>
-          Not now
-        </button>
-      </div>
+      {readOnly ? (
+        <div className="rc-row">
+          <p className="rc-said" role="status">
+            Only an owner or a manager can change the house's post.
+          </p>
+          <button type="button" className="rc-quiet" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      ) : (
+        <div className="rc-row">
+          <button
+            type="button"
+            className="rc-act"
+            disabled={busy}
+            onClick={async () => {
+              if (!onSave) return;
+              setBusy(true);
+              setRefusal(null);
+              const res = await onSave({
+                digestEnabled: enabled,
+                digestHour: hour,
+                digestMinUrgency: floor,
+              });
+              setBusy(false);
+              if (res.ok) onClose();
+              else setRefusal(res.message);
+            }}
+          >
+            {busy ? 'Storing…' : 'Store it'}
+          </button>
+          <button type="button" className="rc-quiet" onClick={onClose}>
+            Not now
+          </button>
+        </div>
+      )}
     </Sheet>
   );
 }
@@ -360,7 +376,11 @@ export default function DigestPost({
    * not read (or this gateway does not send it): nothing is said about it.
    */
   houseLastPost?: { periodKey: string; sent: number; atCap: boolean } | null;
-  onSaveHouse: (patch: {
+  /**
+   * Absent for staff (F-622): the sheet still shows the house's post, with
+   * no way to store it, the same rule Settings and the gateway keep.
+   */
+  onSaveHouse?: (patch: {
     digestEnabled?: boolean;
     digestHour?: number;
     digestMinUrgency?: string;

@@ -49,17 +49,25 @@ export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, mono
 
 /* ── Where a setting is kept ─────────────────────────────────────────────── */
 
-export type Kept = 'restaurant' | 'account' | 'browser';
+/**
+ * `person` is yours AND this house's: the gateway keys the row on (house,
+ * person), so it does not follow you to another house (F-625 — Notifications,
+ * `notifications.service.ts` upserts on `restaurant_id,user_id`).
+ */
+export type Kept = 'restaurant' | 'account' | 'person' | 'browser';
 
 export const KEPT_LABEL: Record<Kept, string> = {
   restaurant: 'this restaurant',
   account: 'your account',
+  person: 'you, in this house',
   browser: 'this browser',
 };
 
 export const KEPT_NOTE: Record<Kept, string> = {
   restaurant: 'Kept on the restaurant. Everyone who works here gets the same answer.',
   account: 'Kept on your account. It follows you to another browser and to the phone.',
+  person:
+    'Kept for you, in this house. Another house you work at keeps its own, and nobody else here sees it.',
   browser:
     'Kept in this browser only. Nobody else sees it, it does not reach the phone, and clearing site data forgets it.',
 };
@@ -160,7 +168,7 @@ export const SECTIONS: SectionSpec[] = [
     description: 'What the product is allowed to do with your data, and which apps you have connected.' },
   { id: 'email', label: 'Email', title: 'Email sign-off', kind: 'restaurant', group: 'house', order: 3,
     description: 'The name every vendor email is signed with.' },
-  { id: 'notifications', label: 'Notifications', title: 'Notifications', kind: 'account', group: 'autonomy', order: 2,
+  { id: 'notifications', label: 'Notifications', title: 'Notifications', kind: 'person', group: 'autonomy', order: 2,
     description: 'Which alerts leave the building, and through which door.' },
   { id: 'locations', label: 'Locations', title: 'Locations & chains', kind: 'restaurant', group: 'house', order: 2,
     description: 'The branches on this account and how they group.' },
@@ -259,7 +267,7 @@ const INTERVIEW_GROUP_TEXT: ReadonlyArray<Pick<InterviewGroupSpec, 'id' | 'title
   { id: 'who', title: 'Who is here',
     hint: 'Who can reach this house, and what each may change.' },
   { id: 'yours', title: 'Yours',
-    hint: 'Kept on your account or in this browser. Nobody else here sees these.' },
+    hint: 'Kept for you: on your account, in this house, or in this browser. Nobody else here sees these.' },
   { id: 'record', title: 'The record',
     hint: 'A log, not a question — not counted in the tally.' },
 ];
@@ -397,6 +405,7 @@ export function keptTally(connectionsOn = false): string {
   const parts: string[] = [];
   if (n('restaurant') > 0) parts.push(`${word(n('restaurant'))} kept for this restaurant`);
   if (n('account') > 0) parts.push(`${word(n('account'))} on your account`);
+  if (n('person') > 0) parts.push(`${word(n('person'))} kept for you in this house`);
   if (n('browser') > 0) parts.push(`${word(n('browser'))} in this browser only`);
   return parts.join(', ');
 }

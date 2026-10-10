@@ -126,7 +126,7 @@ import { IntegrationReturnNotice } from '../../authorize-integration/Integration
 
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { DoorOpen } from 'lucide-react';
+import { Bell, DoorOpen } from 'lucide-react';
 import { HoldToApprove, Wordmark } from '../../../components/mudavym';
 import { animate, settle } from '../../../lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, countWord, roleLabel } from './pf-format';
@@ -139,6 +139,7 @@ import { McpRegister } from './McpRegister';
 import { PaymentRegister } from './PaymentRegister';
 import { HouseRegister } from './HouseRegister';
 import { ConsentRegister } from './ConsentRegister';
+import { OwnNotifySection } from '../../settings/next/NotifySection';
 import { useProfileNextData, type ProfileNextData } from './useProfileNextData';
 
 export interface ProfileNextProps {
@@ -369,12 +370,23 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
           </>
         )}
 
-        {/* ── The exit, ruled off — Register VII, or V once three have left ─
+        {/* Your notifications, for every role (F-623): Settings sends staff
+            away, and this row is theirs to set. */}
+        <Register
+          eyebrow={connectionsOn ? 'Register V' : 'Register VII'}
+          icon={<Bell size={13} aria-hidden />}
+          title="What reaches you"
+          lead="Kept for you, in this house. Another house you work at keeps its own, and nobody else here sees these."
+        >
+          <OwnNotifySection userId={data.user?.userId ?? ''} restaurantId={data.activeRestaurantId ?? null} />
+        </Register>
+
+        {/* ── The exit, ruled off — Register VIII, or VI once three have left ─
             The number is the reader's place in a ledger, so it counts the
             registers actually on the page. A gap where three used to be would
             read as three that failed to render. */}
         <Register
-          eyebrow={connectionsOn ? 'Register V' : 'Register VII'}
+          eyebrow={connectionsOn ? 'Register VI' : 'Register VIII'}
           icon={<DoorOpen size={13} aria-hidden />}
           title="Ruled off"
           ruledOff

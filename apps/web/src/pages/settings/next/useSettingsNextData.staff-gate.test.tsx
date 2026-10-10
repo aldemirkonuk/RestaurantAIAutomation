@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -36,7 +36,10 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('@/services/api/client', () => ({ apiClient: api }));
+vi.mock('@/services/api/client', () => ({
+  apiClient: api,
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+}));
 vi.mock('@/services/api/integrations', () => ({
   integrationsApi: {
     getCatalog: vi.fn(async () => []),
@@ -213,5 +216,68 @@ describe('SettingsNext — staff gate is above the data hook', () => {
       );
     });
     expect(tenantish).toEqual([]);
+  });
+});
+
+describe('useSettingsNextData — a save that answers after a house switch (F-627)', () => {
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("drops house A's late answer instead of writing it into house B's register", async () => {
+    const put = deferred<{ data: unknown }>();
+    api.put.mockImplementation(() => put.promise);
+    const { result, rerender } = renderHook(() => useSettingsNextData());
+    await waitFor(() => expect(result.current.houseCurrency.status).toBe('ok'));
+
+    let saving!: Promise<boolean>;
+    act(() => {
+      saving = result.current.saveCurrency('EUR');
+    });
+    auth.rid = 'rest-house-2';
+    rerender();
+    await waitFor(() => expect(result.current.houseCurrency.status).toBe('ok'));
+
+    await act(async () => {
+      put.resolve({ data: { restaurantId: 'rest-house-1', code: 'EUR', country: null, readable: true, reason: null, statedAt: null, statedBy: null } });
+      await saving;
+    });
+    expect(result.current.restaurantId).toBe('rest-house-2');
+    expect(result.current.houseCurrency.data?.code).toBeNull();
+  });
+
+  it("does not show house A's failure under house B, and a switch clears a shown one", async () => {
+    const put = deferred<{ data: unknown }>();
+    api.put.mockImplementation(() => put.promise);
+    const { result, rerender } = renderHook(() => useSettingsNextData());
+    await waitFor(() => expect(result.current.houseCurrency.status).toBe('ok'));
+
+    let saving!: Promise<boolean>;
+    act(() => {
+      saving = result.current.saveCurrency('EUR');
+    });
+    auth.rid = 'rest-house-2';
+    rerender();
+    await act(async () => {
+      put.reject(new Error('the gateway refused'));
+      await saving;
+    });
+    expect(result.current.writer.failed).toBeNull();
+
+    // A failure in this house is shown, then cleared by the next switch.
+    api.put.mockRejectedValueOnce(new Error('the gateway refused'));
+    await act(async () => {
+      await result.current.saveCurrency('USD');
+    });
+    expect(result.current.writer.failed?.message).toBeTruthy();
+    auth.rid = 'rest-house-1';
+    rerender();
+    await waitFor(() => expect(result.current.writer.failed).toBeNull());
   });
 });

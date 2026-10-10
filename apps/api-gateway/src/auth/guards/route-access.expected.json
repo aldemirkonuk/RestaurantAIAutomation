@@ -62,7 +62,10 @@
     "manager"
   ],
   "GET /analytics/recommendations/:restaurantId/digest (AnalyticsController.getRecommendationDigest)": "open",
-  "PUT /analytics/recommendations/:restaurantId/digest (AnalyticsController.setRecommendationDigest)": "open",
+  "PUT /analytics/recommendations/:restaurantId/digest (AnalyticsController.setRecommendationDigest)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/health (AnalyticsController.healthCheck)": "open",
   "POST /ask-ai/propose (AskAiController.propose)": [
     "owner",

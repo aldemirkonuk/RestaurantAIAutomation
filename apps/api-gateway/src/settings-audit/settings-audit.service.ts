@@ -220,6 +220,13 @@ export const SETTINGS_AUDIT_ACTIONS = [
   "house_state_country_changed",
   /** The house's opening hours changed (F-503, 2026-10-09). */
   "operating_hours_changed",
+  /**
+   * The house's daily recommendation post (`recommendation_digest_prefs`) was
+   * armed, disarmed or moved (F-622, 2026-10-09): until then the PUT left no
+   * row and had no role gate. Filed under the "notifications" register, the
+   * alerts that leave the building, rather than a register of its own.
+   */
+  "recommendation_digest_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

@@ -12,6 +12,7 @@ import {
   HttpStatus,
   ServiceUnavailableException,
   UseGuards,
+  Optional,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -51,6 +52,10 @@ import {
 } from "./insights/insight-implementations";
 import { DataRequirement } from "./insights/insight-catalog";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
+import {
+  FieldChange,
+  SettingsAuditService,
+} from "../settings-audit/settings-audit.service";
 import { Persona } from "./metric-registry";
 
 /**
@@ -128,6 +133,11 @@ export class AnalyticsController {
     private readonly insightGenerator: InsightGeneratorService,
     private readonly scheduler: InsightSchedulerService,
     private readonly dayExclusions: DayExclusionsService,
+    // Files a change to the house digest in "What changed here" (F-622).
+    // Optional only so the specs that build this controller by hand keep
+    // compiling; AnalyticsModule imports SettingsAuditModule, so the app
+    // always has it.
+    @Optional() private readonly settingsAudit?: SettingsAuditService,
   ) {}
 
   @Get("metrics")
@@ -1522,11 +1532,15 @@ export class AnalyticsController {
     return this.recommendationActions.getDigestPref(restaurantId);
   }
 
+  // F-622: the digest is a setting for the whole house. Settings shows its
+  // switch to owners and managers only (DigestRow), so the route says the same.
   @Put("recommendations/:restaurantId/digest")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
-    summary: "Set daily recommendation digest preferences (NEW-303)",
+    summary: "Set daily recommendation digest preferences (NEW-303, owner/manager)",
     description:
-      "Body: { digestEnabled?, digestHour?, digestMinUrgency?, recipientEmail? }. Persists the house's toggle, hour and urgency floor. The sender (analytics/digest, ADR 0149 row 26; off unless DIGEST_SEND_ENABLED) mails only members who asked for it via /recommendations/digest/subscription; recipientEmail is stored and never mailed.",
+      "Body: { digestEnabled?, digestHour?, digestMinUrgency?, recipientEmail? }. Owner or manager of this house only; anyone else is 403. Persists the house's toggle, hour and urgency floor, and files the change to the settings log. The sender (analytics/digest, ADR 0149 row 26; off unless DIGEST_SEND_ENABLED) mails only members who asked for it via /recommendations/digest/subscription; recipientEmail is stored and never mailed.",
   })
   async setRecommendationDigest(
     @Param("restaurantId") restaurantId: string,
@@ -1537,12 +1551,46 @@ export class AnalyticsController {
       digestMinUrgency?: string;
       recipientEmail?: string | null;
     },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
-      return await this.recommendationActions.setDigestPref(
+      const before = await this.recommendationActions.getDigestPref(
+        restaurantId,
+      );
+      const after = await this.recommendationActions.setDigestPref(
         restaurantId,
         body || {},
       );
+      if (this.settingsAudit) {
+        const fields: Record<string, FieldChange> = {};
+        for (const k of [
+          "digestEnabled",
+          "digestHour",
+          "digestMinUrgency",
+          "recipientEmail",
+        ] as const) {
+          // A house with no row read as defaults: its first save is "from"
+          // nothing, not from the defaults it never chose.
+          const from = before.stated ? before[k] : undefined;
+          if (!before.stated || from !== after[k])
+            fields[k] = { from, to: after[k] };
+        }
+        const receipt = await this.settingsAudit.record({
+          restaurantId,
+          // Empty when the token carried no user: record() refuses and says so.
+          actorUserId: actorOf(user).userId ?? "",
+          action: "recommendation_digest_changed",
+          // What leaves the building: the post is a house alert, so it is
+          // filed with the notifications register rather than one of its own.
+          register: "notifications",
+          entityType: "recommendation_digest_prefs",
+          entityId: restaurantId,
+          subject: "the house's post",
+          fields,
+        });
+        return { ...after, audited: receipt.recorded, auditReason: receipt.reason };
+      }
+      return after;
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to set digest preferences",
