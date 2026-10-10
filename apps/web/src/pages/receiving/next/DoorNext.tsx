@@ -74,6 +74,7 @@ import {
   suggestOutcome,
   inWords,
   type PriorReading,
+  priorFromReceived,
   OUTCOME_LABEL,
   REFUSAL_REASONS,
   SERIF,
@@ -294,15 +295,8 @@ export default function DoorNext() {
     // received must still be countable — the count stands on its own.
     receivingApi
       .doorReceivedSoFar(orderId)
-      .then(
-        (r) =>
-          alive &&
-          setPrior(
-            typeof r.receivedQtyBottles === 'number' && Number.isFinite(r.receivedQtyBottles)
-              ? { bottles: r.receivedQtyBottles, packSize: r.packSize ?? null }
-              : 'unread',
-          ),
-      )
+      // Refusals on earlier trucks come off what is still owed (F-813).
+      .then((r) => alive && setPrior(priorFromReceived(r)))
       .catch(() => alive && setPrior('unread'));
     return () => {
       alive = false;

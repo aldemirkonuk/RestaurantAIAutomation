@@ -123,8 +123,45 @@ export interface PriorReceipt {
   bottles: number;
   /** Bottles per box, exact; null when the order states no pack. */
   packSize: number | null;
+  /**
+   * Bottles refused at the door or at verification on earlier trucks (F-813).
+   * They never reach the shelf and no truck is bringing them, so they are off
+   * what this order still expects — the same rule as the staff lane (F-774).
+   * Absent = none.
+   */
+  refusedBottles?: number;
 }
 export type PriorReading = PriorReceipt | 'unread' | null;
+
+/**
+ * The door's reading of `GET …/received`, refusals included (F-813). Taken off
+ * the order exactly as the staff lane takes them off the backorder
+ * (useReceivingNextData.ts `stillExpected`): door refusals, plus the desk's
+ * (none when never verified). A ledger that cannot be read leaves the door's
+ * refusals unknown — and unknown is `'unread'`, never zero, once any truck was
+ * counted. With no door count yet there is nothing that could have been refused.
+ */
+export function priorFromReceived(r: {
+  receivedQtyBottles?: unknown;
+  packSize?: number | null;
+  doorEventCount?: unknown;
+  received?: {
+    readable?: boolean;
+    rejectedAtDoorBottles?: number | null;
+    rejectedAtDeskBottles?: number | null;
+  } | null;
+} | null | undefined): PriorReading {
+  if (!r || typeof r.receivedQtyBottles !== 'number' || !Number.isFinite(r.receivedQtyBottles))
+    return 'unread';
+  const base = { bottles: r.receivedQtyBottles, packSize: r.packSize ?? null };
+  const fin = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.max(0, v) : null;
+  if (r.received?.readable !== true) return r.doorEventCount === 0 ? base : 'unread';
+  const atDoor = fin(r.received.rejectedAtDoorBottles);
+  const atDesk = r.received.rejectedAtDeskBottles == null ? 0 : fin(r.received.rejectedAtDeskBottles);
+  if (atDoor === null || atDesk === null) return 'unread';
+  return { ...base, refusedBottles: atDoor + atDesk };
+}
 
 /** "11 boxes + 7 bottles", "5 boxes", "7 bottles". Never rounded. */
 export function boxesAndBottles(bottles: number, packSize: number): string {
@@ -163,6 +200,8 @@ export function runningAgainstOrder(
   running: string;
   /** "8" when whole boxes, "5 boxes + 7 bottles" when not; null with no earlier truck. */
   earlier: string | null;
+  /** "1 bottle" refused on earlier trucks and no longer expected; null when none. */
+  refused: string | null;
   deltaBoxes: number | null;
   deltaBottles: number | null;
   deltaWords: string;
@@ -170,12 +209,14 @@ export function runningAgainstOrder(
   if (order.expectedBoxes === null) return null;
   const expected = order.expectedBoxes;
   const priorBottles = prior && prior.bottles > 0 ? prior.bottles : 0;
-  if (priorBottles === 0) {
+  const refusedBottles = prior?.refusedBottles && prior.refusedBottles > 0 ? prior.refusedBottles : 0;
+  if (priorBottles === 0 && refusedBottles === 0) {
     const delta = counted - expected;
     return {
       expected,
       running: String(counted),
       earlier: null,
+      refused: null,
       deltaBoxes: delta,
       deltaBottles: null,
       deltaWords: inWords(delta),
@@ -184,13 +225,23 @@ export function runningAgainstOrder(
   const pack = doorPack(order, prior);
   if (pack === null) return null;
   const runningBottles = counted * pack + priorBottles;
-  const deltaBottles = runningBottles - expected * pack;
+  // A refused bottle is off what is still owed (F-813), so it is not short.
+  const deltaBottles = runningBottles + refusedBottles - expected * pack;
   const whole = priorBottles % pack === 0;
   const deltaWhole = deltaBottles % pack === 0;
   return {
     expected,
     running: whole ? String(runningBottles / pack) : boxesAndBottles(runningBottles, pack),
-    earlier: whole ? String(priorBottles / pack) : boxesAndBottles(priorBottles, pack),
+    earlier:
+      priorBottles === 0
+        ? null
+        : whole
+          ? String(priorBottles / pack)
+          : boxesAndBottles(priorBottles, pack),
+    refused:
+      refusedBottles === 0
+        ? null
+        : `${refusedBottles} ${refusedBottles === 1 ? 'bottle' : 'bottles'}`,
     deltaBoxes: deltaWhole ? deltaBottles / pack : null,
     deltaBottles,
     deltaWords: deltaWhole
@@ -263,9 +314,11 @@ export function matchLine(
     }
     // Only name the earlier truck when there was one — the ordinary delivery's
     // line must not grow a clause about a second truck that does not exist.
-    const total = r.earlier
-      ? `${r.running} of ${r.expected} with the earlier ${r.earlier}`
-      : `${r.running} of ${r.expected}`;
+    const total =
+      (r.earlier
+        ? `${r.running} of ${r.expected} with the earlier ${r.earlier}`
+        : `${r.running} of ${r.expected}`) +
+      (r.refused ? `, ${r.refused} refused earlier` : '');
     const delta = r.deltaBottles ?? r.deltaBoxes ?? 0;
     const base = { deltaBoxes: r.deltaBoxes, deltaBottles: r.deltaBottles };
     if (delta === 0) {
@@ -480,9 +533,12 @@ export function creditDraft(input: CreditDraftInput): string | null {
         `brought could not be read at the door, so the shortfall is left to the invoice match`
       );
     if (!r) return `arrived ${counted} boxes — short of what was ordered`;
+    const refused = r.refused ? `, ${r.refused} refused earlier` : '';
     return r.earlier
-      ? `arrived ${counted} boxes, ${r.running} of ${r.expected} boxes — ${r.deltaWords} short at the door`
-      : `arrived ${counted} of ${r.expected} boxes — ${r.deltaWords} short at the door`;
+      ? `arrived ${counted} boxes, ${r.running} of ${r.expected} boxes${refused} — ${r.deltaWords} short at the door`
+      : r.refused
+        ? `arrived ${counted} of ${r.expected} boxes${refused} — ${r.deltaWords} short at the door`
+        : `arrived ${counted} of ${r.expected} boxes — ${r.deltaWords} short at the door`;
   })();
 
   const what =
@@ -593,7 +649,7 @@ export interface DoorFacts {
 
 /**
  * What THIS truck is expected to bring, in boxes: the order less what earlier
- * trucks brought (F-468). Sending the whole order announced the truck that
+ * trucks brought (F-468) and less what was refused on them (F-813). Sending the whole order announced the truck that
  * completes a split delivery as "arrived short" by the earlier trucks' bottles,
  * while this screen said it was complete. Exact, never rounded — a remainder
  * that is not whole boxes travels as the fraction it is. Null when the earlier
@@ -603,10 +659,11 @@ export interface DoorFacts {
 export function stillExpectedBoxes(order: DoorOrderVM, prior: PriorReading): number | null {
   if (order.expectedBoxes === null) return null;
   if (prior === 'unread') return null;
-  if (!prior || prior.bottles <= 0) return order.expectedBoxes;
+  const refused = prior?.refusedBottles && prior.refusedBottles > 0 ? prior.refusedBottles : 0;
+  if (!prior || (prior.bottles <= 0 && refused === 0)) return order.expectedBoxes;
   const pack = doorPack(order, prior);
   if (pack === null) return null;
-  return Math.max(0, order.expectedBoxes * pack - prior.bottles) / pack;
+  return Math.max(0, order.expectedBoxes * pack - Math.max(0, prior.bottles) - refused) / pack;
 }
 
 export function doorFacts(input: DoorNotesInput): DoorFacts {

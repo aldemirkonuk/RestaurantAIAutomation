@@ -611,3 +611,50 @@ describe('DoorNext — the paper is a reading, not a count', () => {
     expect(screen.queryByText(/nothing legible/)).toBeNull()
   })
 })
+
+/**
+ * F-813, on the door screen: the same split order the staff lane test holds
+ * (2 boxes of 12; truck one brought a box with one bottle broken and refused).
+ * The lane says 12 bottles still to come; the door must agree that the one box
+ * on this truck completes the order, and send one box as expected.
+ */
+describe('DoorNext — a bottle refused on an earlier truck is not still owed (F-813)', () => {
+  it('[REVERT-FAILS] calls the second truck all there and expects one box of it', async () => {
+    const { getOrder } = await import('@/services/api/orders')
+    const { receivingApi } = await import('@/services/api/receiving')
+    vi.mocked(getOrder).mockResolvedValueOnce({
+      id: 'o1',
+      orderNumber: 'ORD-1',
+      wineName: 'Barolo',
+      quantity: 2,
+      unitType: 'case',
+      bottlesTotal: 24,
+    } as never)
+    vi.mocked(receivingApi.doorReceivedSoFar).mockResolvedValueOnce({
+      receivedQtyBottles: 11,
+      packSize: 12,
+      receivedBoxes: 0,
+      receivedLooseBottles: 11,
+      doorEventCount: 1,
+      received: { readable: true, rejectedAtDoorBottles: 1, rejectedAtDeskBottles: null },
+    })
+    submitDoorReceipt.mockResolvedValue({ synced: true, stockBooked: true })
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-ux-key="door:match"]')?.textContent).toBe(
+        '1 box + 11 bottles of 2 with the earlier 11 bottles, 1 bottle refused earlier — all there.',
+      ),
+    )
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+    const seal = screen.getByRole('button', { name: 'Hold to seal — 1 box in' })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalled())
+    expect(submitDoorReceipt.mock.calls[0][0].body.expectedQtyInCountedUom).toBe(1)
+  })
+})

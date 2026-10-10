@@ -286,6 +286,16 @@ describe('F-467 — the rest of a split order is at the door', () => {
     expect(screen.queryByText(/bottles still to come/)).not.toBeInTheDocument()
   })
 
+  // F-813: the order DoorNext.test.tsx holds — 2 boxes of 12, truck one a box
+  // with one bottle refused. The ledger holds 11, so the backorder is 13; the
+  // lane and the door both say one box (12 bottles) is still to come.
+  it('counts the same refused bottle off the same split order as the door (F-813)', async () => {
+    get.mockImplementation(onlyForStatus('PARTIALLY_RECEIVED', [refused('split', 13, 1, null)]))
+    harness(StaffBody)
+
+    expect(await screen.findByText(/12 bottles still to come/)).toBeInTheDocument()
+  })
+
   it('does not call a confirmed order the rest of anything', async () => {
     get.mockImplementation(onlyForStatus('CONFIRMED', [rest('new', 120)]))
     harness(StaffBody)
