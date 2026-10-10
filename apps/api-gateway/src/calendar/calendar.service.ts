@@ -303,12 +303,18 @@ export class CalendarService {
     // recurring-order writer marks each dated entry `is_recurring` with no
     // rule; without the rule test every one of those since the start was
     // fetched on every view, oldest first, crowding the page.
+    //
+    // An entry that began before the window but runs into it (a three-day
+    // festival) overlaps it too: `end_date >= startDate` keeps it (F-198). A
+    // null end_date fails that test, so a one-day row still needs its start.
     if (query.startDate && query.includeEarlierSeries) {
       supabaseQuery = supabaseQuery.or(
-        `start_date.gte."${query.startDate}",and(is_recurring.eq.true,recurrence_rule_id.not.is.null)`,
+        `start_date.gte."${query.startDate}",end_date.gte."${query.startDate}",and(is_recurring.eq.true,recurrence_rule_id.not.is.null)`,
       );
     } else if (query.startDate) {
-      supabaseQuery = supabaseQuery.gte("start_date", query.startDate);
+      supabaseQuery = supabaseQuery.or(
+        `start_date.gte."${query.startDate}",end_date.gte."${query.startDate}"`,
+      );
     }
     if (query.endDate) {
       supabaseQuery = supabaseQuery.lte("start_date", query.endDate);

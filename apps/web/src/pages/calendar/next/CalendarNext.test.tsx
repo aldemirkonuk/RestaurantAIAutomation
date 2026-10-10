@@ -1749,3 +1749,28 @@ describe('CalendarNext — a repeating entry can be ended from a date (F-607, F-
     ).toBeNull();
   });
 });
+
+describe('CalendarNext — an all-day entry can span days (F-198)', () => {
+  it('sends the end date of an all-day entry instead of dropping it', () => {
+    const create = mutation();
+    state.current = mkData({ create });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByPlaceholderText('What is happening'), {
+      target: { value: 'Harvest festival' },
+    });
+    fireEvent.change(within(sheet).getByLabelText('Date'), { target: { value: '2026-09-11' } });
+    fireEvent.click(within(sheet).getByLabelText('All day'));
+    const ends = within(sheet).getByLabelText('Ends on (optional)');
+    expect(ends).not.toBeDisabled();
+    fireEvent.change(ends, { target: { value: '2026-09-13' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Write it in' }));
+    expect(create.mutate).toHaveBeenCalledTimes(1);
+    expect(create.mutate.mock.calls[0][0]).toMatchObject({
+      allDay: true,
+      eventDate: '2026-09-11',
+      eventDateEnd: '2026-09-13',
+    });
+  });
+});

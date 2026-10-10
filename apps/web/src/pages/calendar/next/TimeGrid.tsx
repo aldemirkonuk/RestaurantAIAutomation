@@ -4,6 +4,8 @@
  *
  * Three gestures on one pointer model:
  *  - drag a block            → move it (another hour, another day);
+ *    a finger must first hold still on it for HOLD_MS, so a swipe that only
+ *    meant to scroll the week never moves an entry (F-200);
  *  - drag its bottom handle  → resize it (a later end time);
  *  - click an empty slot     → open the sheet on that hour.
  *
@@ -49,6 +51,10 @@ const OPEN_AT_MIN = 6 * 60;
 const START_MIN = START_HOUR * 60;
 const END_MIN = END_HOUR * 60;
 const DEFAULT_MINUTES = 60;
+/** How long a finger holds on a block before it picks the block up. */
+export const HOLD_MS = 450;
+/** A finger that strays further than this before the hold ends is scrolling. */
+const HOLD_SLOP_PX = 8;
 
 type DragMode = 'move' | 'resize';
 interface Drag {
@@ -150,6 +156,8 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   dragRef.current = drag;
+  const holdRef = useRef<{ timer: ReturnType<typeof setTimeout>; stop: () => void } | null>(null);
+  useEffect(() => () => holdRef.current?.stop(), []);
 
   const columns =
     days === 7
@@ -239,13 +247,22 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
       setDrag(null);
       if (cur) commitRef.current(cur);
     };
+    // A cancelled gesture (the browser took it for a scroll) saves nothing.
+    const onCancel = () => {
+      originRef.current = null;
+      setDrag(null);
+    };
+    // Once a block is picked up by a finger, the page must not scroll under it.
+    const holdPage = (ev: TouchEvent) => ev.preventDefault();
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('touchmove', holdPage, { passive: false });
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('touchmove', holdPage);
     };
   }, [dragging]);
 
@@ -258,11 +275,50 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
     if (mode === 'resize') e.preventDefault();
     const rect = bodyRef.current?.getBoundingClientRect();
     const colWidth = rect ? (rect.width - 56) / columns.length : 1;
-    originRef.current = { x: e.clientX, y: e.clientY, colWidth: colWidth || 1 };
-    setDrag({ id: event.id, mode, dMin: 0, dDay: 0 });
+    const x = e.clientX;
+    const y = e.clientY;
+    const pickUp = () => {
+      originRef.current = { x, y, colWidth: colWidth || 1 };
+      setDrag({ id: event.id, mode, dMin: 0, dDay: 0 });
+    };
+    // A mouse, a pen, or a finger on the resize handle picks up at once. A
+    // finger on the block itself is most likely scrolling the week: it picks
+    // up only after holding still for HOLD_MS (F-200).
+    if (e.pointerType !== 'touch' || mode === 'resize') {
+      pickUp();
+      return;
+    }
+    holdRef.current?.stop();
+    const pointerId = e.pointerId;
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      if (Math.abs(ev.clientX - x) > HOLD_SLOP_PX || Math.abs(ev.clientY - y) > HOLD_SLOP_PX) stop();
+    };
+    const onEnd = (ev: PointerEvent) => {
+      if (ev.pointerId === pointerId) stop();
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      holdRef.current = null;
+    };
+    const timer = setTimeout(() => {
+      stop();
+      pickUp();
+    }, HOLD_MS);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+    holdRef.current = { timer, stop };
   };
 
-  const lanesByDay = new Map(keys.map((key) => [key, laneLayout(data.byDay.get(key) ?? [])]));
+  // Lanes are shared only by entries drawn on this day's ruler: a multi-day
+  // entry is on the ruler on its first day and a ribbon on the rest (F-198).
+  const lanesByDay = new Map(
+    keys.map((key) => [key, laneLayout((data.byDay.get(key) ?? []).filter((e) => e.date === key))]),
+  );
 
   return (
     <div className="cn-time">
@@ -284,21 +340,33 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
         {keys.map((key) => (
           <div key={key}>
             {(data.byDay.get(key) ?? [])
-              .filter((e) => !placed(e))
-              .map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  className="cn-ribbon cn-ink"
-                  data-spine={isDelivery(e)}
-                  data-ruled={data.isRuledOff(e)}
-                  onClick={() => onOpenEvent(e)}
-                  title={e.allDay ? e.title : `${e.title} — no time recorded`}
-                >
-                  {!e.allDay && <span className="cn-ribbon-time">{EM}</span>}
-                  {e.title}
-                </button>
-              ))}
+              // A timed entry that runs past midnight sits on the hour ruler
+              // only on its first day; on the days it carries on into, it is a
+              // ribbon up here.
+              .filter((e) => !placed(e) || e.date !== key)
+              .map((e) => {
+                const carried = e.date !== key;
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    className="cn-ribbon cn-ink"
+                    data-spine={isDelivery(e)}
+                    data-ruled={data.isRuledOff(e)}
+                    onClick={() => onOpenEvent(e)}
+                    title={
+                      carried
+                        ? `${e.title} — carries on from ${parseDayKey(e.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+                        : e.allDay
+                          ? e.title
+                          : `${e.title} — no time recorded`
+                    }
+                  >
+                    {!e.allDay && !carried && <span className="cn-ribbon-time">{EM}</span>}
+                    {e.title}
+                  </button>
+                );
+              })}
           </div>
         ))}
       </div>
@@ -326,7 +394,7 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
             ))}
             {(data.byDay.get(key) ?? []).map((e) => {
               const p = placed(e);
-              if (!p) return null;
+              if (!p || e.date !== key) return null;
               const slot = lanesByDay.get(key)?.get(e.id) ?? { lane: 0, lanes: 1 };
               const d = drag && drag.id === e.id ? drag : null;
               const resizing = d?.mode === 'resize';
