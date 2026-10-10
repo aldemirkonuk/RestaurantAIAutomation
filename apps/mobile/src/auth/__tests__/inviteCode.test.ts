@@ -84,6 +84,15 @@ describe("describeInviteRejection", () => {
     expect(describeInviteRejection(reason)).toMatch(pattern);
   });
 
+  it("says the sender can no longer invite for the issuer reason", () => {
+    // getInvitePreview answers reason "issuer" when the person who sent the
+    // invite was demoted or removed (F-1101); "Ask for a fresh one" alone
+    // would send the reader back to that same person.
+    const copy = describeInviteRejection("issuer");
+    expect(copy).toMatch(/can no longer invite someone in this role/);
+    expect(copy).toMatch(/restaurant owner/);
+  });
+
   it("has a sentence for a reason it has never seen", () => {
     // getInvitePreview returns { valid:false, reason } — a new reason string
     // must not render as "undefined".
