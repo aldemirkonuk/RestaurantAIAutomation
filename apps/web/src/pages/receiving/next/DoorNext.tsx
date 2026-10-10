@@ -205,6 +205,11 @@ export default function DoorNext() {
   /* ── the count (the loved thing) ──────────────────────────────────────── */
   const [counted, setCounted] = useState(kept?.counted ?? 1);
   const [broken, setBroken] = useState(kept?.broken ?? 0);
+  // F-1022: the broken boxes are some of the boxes delivered. Lowering the
+  // delivered count takes the broken count down with it, never past it.
+  useEffect(() => {
+    setBroken((b) => Math.min(b, counted));
+  }, [counted]);
   const touchedRef = useRef(kept?.touched ?? false); // has a human moved the count?
   // The count was put there by the paper and no person has stood by it yet.
   // A machine reading is not a count, so the seal waits for a touch (F-744).
@@ -876,7 +881,8 @@ export default function DoorNext() {
                 <DoorCount
                   value={broken}
                   onChange={setBroken}
-                  label="Anything visibly broken?"
+                  max={counted}
+                  label="Boxes visibly broken"
                   tone="warn"
                   uxKey="door:damaged"
                   compact
@@ -991,7 +997,9 @@ export default function DoorNext() {
             onSeal={() => void seal()}
             label={
               outcome === 'accepted'
-                ? `Hold to seal — ${counted} ${counted === 1 ? 'box' : 'boxes'} in`
+                ? broken > 0
+                  ? `Hold to seal — ${counted - broken} in, ${broken} broken`
+                  : `Hold to seal — ${counted} ${counted === 1 ? 'box' : 'boxes'} in`
                 : outcome === 'short'
                   ? 'Hold to seal — short-shipped'
                   : 'Hold to seal — refused'

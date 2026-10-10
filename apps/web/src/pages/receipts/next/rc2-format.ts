@@ -3,7 +3,8 @@
  * tri-state null (a check that could not run) is never rendered as a pass.
  */
 
-import { currencyLabel, formatMoney } from '@/lib/currency';
+import { currencyLabel, formatMoney, inHouseMarks } from '@/lib/currency';
+import { displayGroupMark, parseDecimal, type GroupMark } from '@/lib/parseDecimal';
 
 export const EM = '—';
 
@@ -180,10 +181,43 @@ export function isSignedUrlExpired(fetchedAt: number, now: number): boolean {
   return now - fetchedAt > SIGNED_URL_TTL_MS - SIGNED_URL_GRACE_MS;
 }
 
-/** Parse an edited money/number cell; empty clears to null, junk is rejected. */
-export function parseCell(raw: string): number | null | 'invalid' {
-  const t = raw.trim().replace(/^\$/, '');
+/**
+ * Parse an edited money/number cell; empty clears to null, junk is rejected.
+ *
+ * F-1021 (sim wave 37, 2026-10-10): this was a bare `Number()`, so a lira
+ * house correcting a unit price to "1.250" saved 1.25 and "1.250,00" was
+ * refused with no word why. It now reads by the house's own marks
+ * (`lib/parseDecimal.ts`); `group` is `useHouseGroupMark()`.
+ */
+export function parseCell(raw: string, group: GroupMark | null = null): number | null | 'invalid' {
+  const t = raw.trim();
   if (t === '' || t === EM) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : 'invalid';
+  return parseDecimal(t, group) ?? 'invalid';
+}
+
+/**
+ * A cell's figure as it sits in the box, with the house's decimal mark: a lira
+ * house sees "1,25", not "1.25" (F-1021). No thousands mark, so the box reads
+ * back exactly what it holds.
+ */
+export function cellText(value: number | null, group: GroupMark | null): string {
+  if (value == null) return '';
+  const s = String(value);
+  return group === '.' ? s.replace('.', ',') : s;
+}
+
+/**
+ * A line figure in the house's marks — money in the document's currency, a
+ * quantity bare — for the correction strip and the "extracted" note (F-1021):
+ * "1250 → 1.25" read as no change in a house that groups with ".".
+ */
+export function lineFigure(
+  n: number | null | undefined,
+  currency: string | null | undefined,
+  money: boolean,
+  group: GroupMark | null,
+): string {
+  if (n == null || !Number.isFinite(Number(n))) return EM;
+  const printed = money ? fmtMoney(n, currency) : Number(n).toLocaleString(undefined, { maximumFractionDigits: 6 });
+  return inHouseMarks(printed, displayGroupMark(), group);
 }

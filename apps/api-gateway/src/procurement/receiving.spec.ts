@@ -315,6 +315,54 @@ describe("recordDoorReceipt", () => {
       });
   });
 
+  it("refuses more broken than delivered, naming both numbers (F-1022)", async () => {
+    const { db, calls } = makeDb({
+      order: {
+        id: "o1",
+        order_number: "PO-1",
+        inventory_id: "inv1",
+        quantity: 2,
+        bottles_total: 24,
+        quantity_received: 0,
+      },
+    });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 2,
+        countedUom: "case",
+        rejectedQtyInCountedUom: 5,
+      }),
+    ).rejects.toMatchObject({
+      status: 422,
+      response: expect.objectContaining({
+        reason: "rejected_exceeds_counted",
+        message: expect.stringMatching(/counted 2 and marked 5 broken/),
+      }),
+    });
+    expect(calls.rpc).toHaveLength(0);
+  });
+
+  it("still takes broken equal to delivered", async () => {
+    const { db } = makeDb({
+      order: {
+        id: "o1",
+        order_number: "PO-1",
+        inventory_id: "inv1",
+        quantity: 2,
+        bottles_total: 24,
+        quantity_received: 0,
+      },
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2,
+      countedUom: "case",
+      rejectedQtyInCountedUom: 2,
+    });
+    expect(r.countedQtyBottles).toBe(24);
+  });
+
   it("never guesses a pack size of 12", async () => {
     // A guessed pack multiplies a delivery twelvefold in the ledger — far worse
     // than under-counting, and it surfaces as a phantom overage, not as a bug.

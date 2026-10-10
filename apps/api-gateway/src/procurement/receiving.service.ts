@@ -351,6 +351,19 @@ export class ReceivingService {
       0,
       input.rejectedQtyInCountedUom ?? input.rejectedQty ?? 0,
     );
+    // F-1022: the broken are some of the delivered, never more. This was
+    // accepted and clamped only the accepted side at 0, so "2 counted, 5
+    // broken" recorded 5 refused and the history said so.
+    const countedInCountedUom = Math.max(0, input.countedQty ?? 0);
+    if (rejectedInCountedUom > countedInCountedUom) {
+      throw new UnprocessableEntityException({
+        reason: "rejected_exceeds_counted",
+        message:
+          `The door counted ${countedInCountedUom} and marked ${rejectedInCountedUom} broken. ` +
+          `More can't be broken than came, so nothing was booked. ` +
+          `Lower the broken count to ${countedInCountedUom} or fewer and seal again.`,
+      });
+    }
     const rejectedBottles = toBottles(rejectedInCountedUom, uom, packSize);
     const expectedInCountedUom =
       input.expectedQtyInCountedUom == null

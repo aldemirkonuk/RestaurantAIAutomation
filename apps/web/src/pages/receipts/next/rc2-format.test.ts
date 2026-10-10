@@ -3,7 +3,7 @@
  * EVERY value below is SYNTHETIC.
  */
 import { describe, expect, it } from 'vitest';
-import { failureReason, fmtMoney, moneyName, sentence, serverMessage } from './rc2-format';
+import { cellText, failureReason, fmtMoney, lineFigure, moneyName, parseCell, sentence, serverMessage } from './rc2-format';
 
 describe('fmtMoney — the sign, where the money has one of its own (W25)', () => {
   it('prints ₺ for the lira instead of the bare code', () => {
@@ -75,5 +75,45 @@ describe('failureReason — why a read failed, as a clause (W26)', () => {
 
   it("never prints the client library's own words", () => {
     expect(failureReason(new Error('boom'))).toBe('the reason is not known');
+  });
+});
+
+describe('parseCell — a line correction reads by the house marks (F-1021)', () => {
+  it('reads "1.250" as 1250 in a house that groups with "."', () => {
+    expect(parseCell('1.250', '.')).toBe(1250);
+    expect(parseCell('1.250', ',')).toBe(1.25);
+  });
+
+  it('accepts "1.250,00" and "45,50", which a bare Number() refused', () => {
+    expect(parseCell('1.250,00', '.')).toBe(1250);
+    expect(parseCell('₺1.250,00', '.')).toBe(1250);
+    expect(parseCell('45,50', '.')).toBe(45.5);
+    expect(parseCell('$12.50', ',')).toBe(12.5);
+  });
+
+  it('keeps blank as null and junk as invalid', () => {
+    expect(parseCell('  ', '.')).toBeNull();
+    expect(parseCell('—', '.')).toBeNull();
+    expect(parseCell('twelve', '.')).toBe('invalid');
+    expect(parseCell('1.2.3', '.')).toBe('invalid');
+  });
+
+  it('shows the box in the house decimal mark, and it reads back the same', () => {
+    expect(cellText(1.25, '.')).toBe('1,25');
+    expect(cellText(1.25, ',')).toBe('1.25');
+    expect(cellText(null, '.')).toBe('');
+    expect(parseCell(cellText(1250.5, '.'), '.')).toBe(1250.5);
+  });
+
+  it('prints both sides of a correction in house marks, with the money', () => {
+    const shown = new Intl.NumberFormat().formatToParts(1234567).find((p) => p.type === 'group')?.value;
+    const house = shown === ',' ? '.' : ',';
+    const from = lineFigure(1250, 'TRY', true, house);
+    const to = lineFigure(1.25, 'TRY', true, house);
+    expect(from).toContain('₺');
+    expect(from).toContain(`1${house}250`);
+    expect(to).toContain(`1${house === '.' ? ',' : '.'}25`);
+    expect(from).not.toBe(to);
+    expect(lineFigure(null, 'TRY', true, house)).toBe('—');
   });
 });
