@@ -8,8 +8,35 @@ export async function readBookedOrderBottles(
   inventoryId: string,
   excludeDoorReceipts = false,
 ): Promise<number> {
+  return (
+    await readBookedOrderLedger(
+      db,
+      restaurantId,
+      orderId,
+      inventoryId,
+      excludeDoorReceipts,
+    )
+  ).bottles;
+}
+
+/**
+ * The same read, also saying how many movements it summed.
+ *
+ * `movements` only ever grows: the ledger is append-only, so every correction
+ * that lands adds a row. `verifyReceipt` keys its correction on it (F-464), so
+ * two requests that read the same ledger state share one key and the second is
+ * a no-op, while a later verification reads a longer ledger and gets its own.
+ */
+export async function readBookedOrderLedger(
+  db: any,
+  restaurantId: string,
+  orderId: string,
+  inventoryId: string,
+  excludeDoorReceipts = false,
+): Promise<{ bottles: number; movements: number }> {
   const pageSize = 500;
   let total = 0;
+  let movements = 0;
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await db
       .from("inventory_transactions")
@@ -38,6 +65,7 @@ export async function readBookedOrderBottles(
         );
       }
       total += quantity;
+      movements++;
     }
     if (data.length < pageSize) break;
   }
@@ -46,5 +74,5 @@ export async function readBookedOrderBottles(
       "This order's booked bottle total could not be reconciled. No receipt correction was made.",
     );
   }
-  return total;
+  return { bottles: total, movements };
 }

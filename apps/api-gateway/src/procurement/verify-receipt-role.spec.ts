@@ -30,7 +30,8 @@ describe("POST /procurement/orders/:id/verify-receipt — who may put money on a
     const { controller, verifyReceipt } = harness();
     const body = { acceptedQuantityInCountedUom: 12, rejectedQuantityInCountedUom: 0 } as any;
     await expect(controller.verifyReceipt(ORDER, body, as("staff"))).resolves.toEqual({ id: ORDER });
-    expect(verifyReceipt).toHaveBeenCalledWith("rest-1", ORDER, "u-1", body);
+    // The caller's role travels on to the service (F-466, fix/sim-verify-money).
+    expect(verifyReceipt).toHaveBeenCalledWith("rest-1", ORDER, "u-1", body, { role: "staff" });
   });
 
   it("lets staff send the legacy one-tap 'counts match'", async () => {
@@ -72,6 +73,6 @@ describe("POST /procurement/orders/:id/verify-receipt — who may put money on a
       allocatedCharges: 4,
     } as any;
     await expect(controller.verifyReceipt(ORDER, body, as(role))).resolves.toEqual({ id: ORDER });
-    expect(verifyReceipt).toHaveBeenCalledWith("rest-1", ORDER, "u-1", body);
+    expect(verifyReceipt).toHaveBeenCalledWith("rest-1", ORDER, "u-1", body, { role });
   });
 });
