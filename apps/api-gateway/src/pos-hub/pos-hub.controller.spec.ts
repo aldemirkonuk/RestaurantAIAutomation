@@ -47,6 +47,7 @@ describe("PosHubController — sale-unit review routes", () => {
     ingest: jest.fn(),
     assertConnected: jest.fn().mockResolvedValue(undefined),
     setConnection: jest.fn(),
+    listConnections: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -458,6 +459,34 @@ describe("PosHubController — sale-unit review routes", () => {
       await expect(
         controller.setSaleUnit("rest-1", "map-x", { sale_unit: "bottle" }),
       ).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe("GET connections/:restaurantId (F-914)", () => {
+    it("admits an owner and a manager, the same as the switch it shows", () => {
+      const roles = new Reflector().get(
+        ROLES_KEY,
+        PosHubController.prototype.listConnections,
+      );
+      expect(roles).toEqual(["owner", "manager"]);
+    });
+
+    it("returns each provider's switch for the house", async () => {
+      const body = {
+        connections: [
+          { provider: "toast", providerName: "Toast", enabled: false, changedAt: null },
+        ],
+      };
+      posHub.listConnections.mockResolvedValue(body);
+      await expect(controller.listConnections("rest-1")).resolves.toEqual(body);
+      expect(posHub.listConnections).toHaveBeenCalledWith("rest-1");
+    });
+
+    it("says a failed read is a failed read, never an empty list", async () => {
+      posHub.listConnections.mockRejectedValue(new Error("down"));
+      await expect(controller.listConnections("rest-1")).rejects.toMatchObject({
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+      });
     });
   });
 

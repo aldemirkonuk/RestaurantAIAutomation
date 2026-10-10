@@ -588,6 +588,10 @@
   "GET /pos-hub/status/:restaurantId (PosHubController.getStatus)": "open",
   "POST /pos-hub/webhook/:provider/:restaurantId (PosHubController.webhook)": "open",
   "POST /pos-hub/import/:restaurantId (PosHubController.importChecks)": "open",
+  "GET /pos-hub/connections/:restaurantId (PosHubController.listConnections)": [
+    "owner",
+    "manager"
+  ],
   "POST /pos-hub/connections/:restaurantId/:provider (PosHubController.setConnection)": [
     "owner",
     "manager"

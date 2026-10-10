@@ -202,6 +202,7 @@ function base(): Fixture {
     role: 'owner',
     isManager: true,
     pos: reg({ unavailable: false, totalChecks: 41208, sources: [], windowDays: 30 }),
+    posConnections: reg([]),
     provider: reg({
       connected: false,
       mode: null,
@@ -755,11 +756,11 @@ describe('the one row, four columns and no fifth', () => {
   it('gives a row with no live control a sentence saying who can stop it', () => {
     render(<ConnectionsNext />);
 
-    // The till: there is no disconnect endpoint anywhere on pos-hub.
-    const disconnect = screen.getByRole('button', { name: 'Disconnect' });
-    expect(disconnect).toBeDisabled();
+    // The till with no provider that ever sent a check: nothing to switch,
+    // and the row says so rather than drawing a dead Disconnect.
+    expect(screen.queryByRole('button', { name: /^Disconnect/ })).not.toBeInTheDocument();
     expect(
-      screen.getByText(/The till cannot be disconnected from this page yet/),
+      screen.getByText(/No till has sent a check here yet, so there is nothing to disconnect/),
     ).toBeInTheDocument();
   });
 
@@ -2443,5 +2444,73 @@ describe('a write that failed says so, and is never sealed', () => {
       ).toBeInTheDocument();
       unmount();
     }
+  });
+});
+
+/**
+ * F-914 (re-hit of F-643): the gateway takes or refuses each provider's feed,
+ * and the till row now shows that switch and offers it.
+ */
+describe('the till can be disconnected and reconnected', () => {
+  const sources = [{ source: 'toast', providerName: 'Toast', checks: 12 }];
+
+  it('offers Disconnect for a till that is taken, and sends the switch for it', async () => {
+    const setPosConnection = vi.fn(async () => undefined);
+    const d = base();
+    d.pos = reg({ unavailable: false, totalChecks: 12, sources, windowDays: 30 });
+    d.posConnections = reg([]);
+    d.setPosConnection = setPosConnection;
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const btn = screen.getByRole('button', { name: 'Disconnect Toast' });
+    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(setPosConnection).toHaveBeenCalledWith('toast', false));
+    expect(screen.queryByText(/cannot be disconnected from this page/)).not.toBeInTheDocument();
+  });
+
+  it('shows a refused till as disconnected and offers Reconnect', async () => {
+    const setPosConnection = vi.fn(async () => undefined);
+    const d = base();
+    d.posConnections = reg([
+      { provider: 'square', providerName: 'Square', enabled: false, changedAt: null },
+    ]);
+    d.setPosConnection = setPosConnection;
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText('Square disconnected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect Square' }));
+    await waitFor(() => expect(setPosConnection).toHaveBeenCalledWith('square', true));
+  });
+
+  it('says a refused switch did nothing, in the gateway’s words', async () => {
+    const d = base();
+    d.pos = reg({ unavailable: false, totalChecks: 12, sources, windowDays: 30 });
+    d.posConnections = reg([]);
+    d.setPosConnection = vi.fn(async () => {
+      throw new Error('Only an owner or a manager can do that.');
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect Toast' }));
+    expect(
+      await screen.findByText(/Nothing changed for Toast: Only an owner or a manager can do that/),
+    ).toBeInTheDocument();
+  });
+
+  it('draws no switch over a state it could not read', () => {
+    const d = base();
+    d.pos = reg({ unavailable: false, totalChecks: 12, sources, windowDays: 30 });
+    d.posConnections = reg(null, { error: 'The server did not answer.' });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.queryByRole('button', { name: /Disconnect Toast/ })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Could not read which tills this house takes checks from/),
+    ).toBeInTheDocument();
   });
 });

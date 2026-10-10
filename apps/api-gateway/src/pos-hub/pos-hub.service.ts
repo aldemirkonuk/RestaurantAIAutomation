@@ -1638,6 +1638,29 @@ export class PosHubService {
     return row;
   }
 
+  /**
+   * F-914: whether the house takes each provider's feed, so the page can
+   * offer Disconnect or Reconnect honestly. Only switched providers have a
+   * row; a provider with none is taken (see assertConnected). A read that
+   * fails throws: an unread switch must not be drawn as "taking checks".
+   */
+  async listConnections(restaurantId: string) {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("pos_connections")
+      .select("provider, enabled, changed_at")
+      .eq("restaurant_id", restaurantId);
+    if (error) throw new Error(error.message ?? "no message");
+    return {
+      connections: ((data as any[] | null) ?? []).map((r) => ({
+        provider: r.provider as string,
+        providerName: PROVIDER_BY_KEY[r.provider]?.name ?? r.provider,
+        enabled: r.enabled !== false,
+        changedAt: (r.changed_at as string | null) ?? null,
+      })),
+    };
+  }
+
   // =========================================================================
   // Item mappings (pos_item_mappings) + wine heuristic
   // =========================================================================

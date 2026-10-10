@@ -44,9 +44,11 @@ import { IntegrationReturnNotice } from '../../authorize-integration/Integration
  *     `vendor_catalogue_id` / `provider_id` (20260805155901_vendor_portal.sql:
  *     27-33) — it is a page a VENDOR publishes, not one this restaurant has.
  *     The row says that rather than drawing a page that does not exist.
- *   - The POS bridge has no disconnect endpoint of any kind
- *     (`pos-hub.controller.ts:55-305` has no delete route), so its control is
- *     disabled and names what actually stops the feed.
+ *   - The till's feed is switched per provider, not deleted (F-643/F-914):
+ *     `GET /pos-hub/connections/:restaurantId` says which providers the house
+ *     refuses, and `POST /pos-hub/connections/:restaurantId/:provider` takes
+ *     or refuses one. `TillRow` shows each provider's state and offers
+ *     Disconnect or Reconnect; the webhook then refuses a disconnected one.
  *
  * THE COLLAPSE, 2026-09-04 (founder: "Move the registers and collapse the four
  * tabs")
@@ -485,42 +487,10 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               refused={d.pos.refused}
             />
           ) : (
-            <AttachmentRow
-              icon={<Store {...ICON} />}
-              title="Point of sale"
-              owner="the house's"
-              chips={posChips(d.pos.data)}
-              why={
-                <>
-                  The till pushes closed checks here. It is the only attachment
-                  that <em>writes into the ledger without being asked</em>, and
-                  everything on /dashboard is downstream of it.
-                </>
-              }
-              permissions={[
-                { text: 'Send closed checks, voids and comps', can: true },
-                { text: 'Send the menu and its prices', can: true },
-                { text: 'May not read our inventory', can: false },
-                { text: 'May not place an order', can: false },
-              ]}
-              lastLabel="Last 30 days"
-              last={
-                d.pos.data?.unavailable
-                  ? null
-                  : `${count(d.pos.data?.totalChecks ?? null)} checks`
-              }
-              lastDetail={
-                d.pos.data?.unavailable ? (
-                  <>
-                    The check table could not be read, so this is silence rather
-                    than zero.
-                  </>
-                ) : (
-                  posSources(d.pos.data)
-                )
-              }
-              controls={[{ label: 'Disconnect', disabled: true }]}
-              stopNote="The till cannot be disconnected from this page yet. Ask Mudavym to stop the feed."
+            <TillRow
+              pos={d.pos.data}
+              connections={d.posConnections}
+              onSwitch={d.setPosConnection}
             />
           )}
 
@@ -1491,6 +1461,118 @@ const STATE_WORDS: Record<
   rejected: 'Rejected',
   revoked: 'Stopped',
 };
+
+/**
+ * The till (F-914). One row, as every attachment is; the switch is per
+ * provider because the gateway keeps it per provider. A provider is listed
+ * when it has sent a check in the window or has been switched. One with no
+ * switch row is taken, as the webhook takes it. When the switch could not be
+ * read there is no button: a Disconnect drawn over an unread state would be
+ * a guess.
+ */
+function TillRow({
+  pos,
+  connections,
+  onSwitch,
+}: {
+  pos: import('./useConnectionsNextData').PosStatusVM | null;
+  connections: import('./useConnectionsNextData').Register<
+    import('./useConnectionsNextData').PosConnectionVM[]
+  >;
+  onSwitch?: (provider: string, enabled: boolean) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<{ name: string; words: string } | null>(null);
+
+  const tills = useMemo(() => {
+    const byKey = new Map<string, { key: string; name: string; enabled: boolean }>();
+    for (const s of pos?.sources ?? []) {
+      byKey.set(s.source, { key: s.source, name: s.providerName ?? s.source, enabled: true });
+    }
+    for (const c of connections.data ?? []) {
+      byKey.set(c.provider, {
+        key: c.provider,
+        name: byKey.get(c.provider)?.name ?? c.providerName,
+        enabled: c.enabled,
+      });
+    }
+    return [...byKey.values()];
+  }, [pos, connections.data]);
+
+  const refused = tills.filter((t) => !t.enabled);
+  const canSwitch = !connections.loading && !connections.error && Boolean(onSwitch);
+
+  const flip = (t: { key: string; name: string; enabled: boolean }) => {
+    if (!onSwitch || busy) return;
+    setBusy(t.key);
+    setFailed(null);
+    onSwitch(t.key, !t.enabled)
+      .catch((e) => setFailed({ name: t.name, words: getErrorMessage(e) }))
+      .finally(() => setBusy(null));
+  };
+
+  let stopNote: string;
+  if (failed) {
+    stopNote = `Nothing changed for ${failed.name}: ${failed.words}`;
+  } else if (connections.loading) {
+    stopNote = 'Checking which tills this house takes checks from.';
+  } else if (connections.error) {
+    stopNote = `Could not read which tills this house takes checks from, so none can be switched here right now: ${connections.error}`;
+  } else if (!tills.length) {
+    stopNote = 'No till has sent a check here yet, so there is nothing to disconnect.';
+  } else {
+    stopNote =
+      'Disconnecting a till stops its checks being taken until you reconnect it. Checks it already sent stay.';
+  }
+
+  return (
+    <AttachmentRow
+      icon={<Store {...ICON} />}
+      title="Point of sale"
+      owner="the house's"
+      chips={[
+        ...posChips(pos),
+        ...refused.map((t): RowChip => ({ label: `${t.name} disconnected`, tone: 'off' })),
+      ]}
+      why={
+        <>
+          The till pushes closed checks here. It is the only attachment
+          that <em>writes into the ledger without being asked</em>, and
+          everything on /dashboard is downstream of it.
+        </>
+      }
+      permissions={[
+        { text: 'Send closed checks, voids and comps', can: true },
+        { text: 'Send the menu and its prices', can: true },
+        { text: 'May not read our inventory', can: false },
+        { text: 'May not place an order', can: false },
+      ]}
+      lastLabel="Last 30 days"
+      last={pos?.unavailable ? null : `${count(pos?.totalChecks ?? null)} checks`}
+      lastDetail={
+        pos?.unavailable ? (
+          <>
+            The check table could not be read, so this is silence rather
+            than zero.
+          </>
+        ) : (
+          posSources(pos)
+        )
+      }
+      controls={
+        canSwitch
+          ? tills.map((t) => ({
+              label: `${t.enabled ? 'Disconnect' : 'Reconnect'} ${t.name}`,
+              onClick: () => flip(t),
+              busy: busy === t.key,
+              disabled: Boolean(busy) && busy !== t.key,
+            }))
+          : []
+      }
+      stopNote={stopNote}
+    />
+  );
+}
 
 function TextSenderRow({
   channel,
