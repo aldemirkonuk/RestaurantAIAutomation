@@ -3,7 +3,7 @@
  * store rather than a chain of `() => chain` stubs.
  *
  * WHY A REAL STORE. The whole design rests on one thing a stub cannot model:
- * the UNIQUE `(calendar_event_id, user_id)` index on
+ * the UNIQUE `(calendar_event_id, user_id, due_at)` index on
  * `calendar_reminder_dispatches`. A mock that returns "inserted" for every
  * upsert would let a broken job pass the idempotency test — so the fake below
  * enforces the constraint, and the "never twice" case is proven by running the
@@ -23,6 +23,8 @@ class FakeDb {
     calendar_reminder_dispatches: [],
     calendar_reminder_runs: [],
     notification_preferences: [],
+    calendar_recurrence_rules: [],
+    calendar_recurrence_exceptions: [],
   };
   /** Tables the caller wants to fail, and with what message. */
   failures: Record<string, string> = {};
@@ -48,6 +50,7 @@ class FakeQuery {
   private orderKey: string | null = null;
   private orderAsc = true;
   private ignoreDuplicates = false;
+  private onConflict: string[] = [];
   private returning = false;
 
   constructor(
@@ -66,10 +69,11 @@ class FakeQuery {
     this.payload = Array.isArray(rows) ? rows : [rows];
     return this;
   }
-  upsert(rows: Row[], opts?: { ignoreDuplicates?: boolean }) {
+  upsert(rows: Row[], opts?: { ignoreDuplicates?: boolean; onConflict?: string }) {
     this.mode = "upsert";
     this.payload = rows;
     this.ignoreDuplicates = opts?.ignoreDuplicates === true;
+    this.onConflict = (opts?.onConflict ?? "").split(",").filter(Boolean);
     return this;
   }
   update(patch: Row) {
@@ -136,11 +140,15 @@ class FakeQuery {
           this.table === "calendar_reminder_dispatches" &&
           this.ignoreDuplicates
         ) {
-          // THE UNIQUE INDEX. Without it this whole file proves nothing.
+          // THE UNIQUE INDEX, (calendar_event_id, user_id, due_at). Without it
+          // this whole file proves nothing. The upsert must name exactly those
+          // columns, as PostgREST requires a matching unique index.
+          expect(this.onConflict).toEqual(["calendar_event_id", "user_id", "due_at"]);
           const clash = rows.some(
             (r) =>
               r.calendar_event_id === row.calendar_event_id &&
-              r.user_id === row.user_id,
+              r.user_id === row.user_id &&
+              r.due_at === row.due_at,
           );
           if (clash) continue;
         }
@@ -321,6 +329,91 @@ describe("CalendarRemindersService — it sends once, and only once", () => {
   it("does not remind about a cancelled entry", async () => {
     const { db, service, notifications } = build();
     db.tables.calendar_events.push(event({ status: "cancelled" }));
+
+    await service.sweepTenant(TENANT, DUE);
+
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+});
+
+describe("CalendarRemindersService — a moved entry and a repeating entry (F-606, F-605)", () => {
+  it("reminds a moved entry again for its new date, and stamps it for that date", async () => {
+    const { db, service, notifications } = build();
+    db.tables.calendar_events.push(event());
+    await service.sweepTenant(TENANT, DUE);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+
+    // Postponed from the 15th to the 22nd. The table's trigger re-arms
+    // reminder_sent on a move (migration a_calendar_entry_keeps_what_it_was_told).
+    Object.assign(db.tables.calendar_events[0], {
+      start_date: "2026-01-22",
+      event_date: "2026-01-22",
+      reminder_sent: false,
+    });
+    const before = await service.sweepTenant(TENANT, DUE);
+    expect(before.sent).toBe(0);
+    expect(db.tables.calendar_events[0].reminder_sent).toBe(false);
+
+    const second = await service.sweepTenant(TENANT, new Date("2026-01-21T15:00:00Z"));
+    expect(second.sent).toBe(2);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(2);
+    expect(db.tables.calendar_events[0].reminder_sent).toBe(true);
+  });
+
+  it("reminds every date of a weekly entry, once each, and never stamps the series sent", async () => {
+    const { db, service, notifications } = build();
+    // Thursdays from 1 January; the series row's own date is long past.
+    db.tables.calendar_events.push(
+      event({
+        id: "evt-s",
+        title: "Weekly tasting",
+        start_date: "2026-01-01",
+        event_date: "2026-01-01",
+        end_date: null,
+        is_recurring: true,
+        parent_event_id: null,
+        recurrence_rule_id: "rule-1",
+      }),
+    );
+    db.tables.calendar_recurrence_rules.push({
+      id: "rule-1",
+      restaurant_id: "rest-1",
+      calendar_event_id: "evt-s",
+      frequency: "weekly",
+      interval_value: 1,
+      days_of_week: null,
+      end_type: "never",
+    });
+
+    const first = await service.sweepTenant(TENANT, DUE);
+    expect(first.sent).toBe(2);
+    expect(notifications.persistForRestaurant.mock.calls[0][1].metadata.startsAt).toBe(
+      "2026-01-15T14:00:00.000Z",
+    );
+    const again = await service.sweepTenant(TENANT, DUE);
+    expect(again.sent).toBe(0);
+
+    const nextWeek = await service.sweepTenant(TENANT, new Date("2026-01-21T15:00:00Z"));
+    expect(nextWeek.sent).toBe(2);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(2);
+    expect(notifications.persistForRestaurant.mock.calls[1][1].metadata.startsAt).toBe(
+      "2026-01-22T14:00:00.000Z",
+    );
+    expect(db.tables.calendar_events[0].reminder_sent).toBe(false);
+  });
+
+  it("skips a date the series has an exception for", async () => {
+    const { db, service, notifications } = build();
+    db.tables.calendar_events.push(
+      event({ id: "evt-s", start_date: "2026-01-01", event_date: "2026-01-01", is_recurring: true, recurrence_rule_id: "rule-1" }),
+    );
+    db.tables.calendar_recurrence_rules.push({
+      id: "rule-1", restaurant_id: "rest-1", calendar_event_id: "evt-s",
+      frequency: "weekly", interval_value: 1, days_of_week: null, end_type: "never",
+    });
+    db.tables.calendar_recurrence_exceptions.push({
+      recurrence_rule_id: "rule-1", original_date: "2026-01-15", exception_type: "deleted",
+    });
 
     await service.sweepTenant(TENANT, DUE);
 

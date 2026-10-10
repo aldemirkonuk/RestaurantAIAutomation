@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { resolveCalendarOccurrences } from "./calendar-occurrences";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
@@ -1110,6 +1116,99 @@ export class CalendarService {
     return (data || []).map((row: CalendarEventRow) =>
       this.mapCalendarEvent(row),
     );
+  }
+
+  /**
+   * End a repeating entry from a date (F-607): the rule stops the day before,
+   * every earlier date stays on the book, and any stored date from then on is
+   * removed. A count-limited series keeps its count, cut to the dates before
+   * `fromDate`; an earlier end is never pushed later.
+   *
+   * Refused when no date of the series falls before `fromDate`: that would
+   * remove the whole series, which is what deleting it is for.
+   */
+  async endSeriesFrom(
+    restaurantId: string,
+    userId: string,
+    eventId: string,
+    fromDate: string,
+  ): Promise<{ success: boolean; deletedCount: number }> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
+      throw new BadRequestException(
+        "The date to end the series from is not a date.",
+      );
+    }
+    const existing = await this.getEvent(restaurantId, eventId);
+    const { data: rule, error: ruleError } = existing.recurrenceRule?.id
+      ? await this.databaseService.supabase
+          .from("calendar_recurrence_rules")
+          .select("*")
+          .eq("id", existing.recurrenceRule.id)
+          .eq("restaurant_id", restaurantId)
+          .single()
+      : { data: null, error: null };
+    if (ruleError) throw ruleError;
+    if (existing.parentEventId || !rule) {
+      throw new BadRequestException(
+        "This entry does not repeat, so there is no series to end.",
+      );
+    }
+
+    const lastKept = new Date(Date.parse(`${fromDate}T00:00:00Z`) - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const before =
+      lastKept < existing.eventDate
+        ? { state: "complete" as const, events: [] }
+        : resolveCalendarOccurrences({
+            restaurantId,
+            events: [
+              {
+                id: eventId,
+                restaurant_id: restaurantId,
+                start_date: existing.eventDate,
+                end_date: null,
+                is_recurring: true,
+                recurrence_rule_id: rule.id,
+              },
+            ],
+            rules: [rule],
+            exceptions: [],
+            from: existing.eventDate,
+            to: lastKept,
+          });
+    if (before.state !== "complete") {
+      throw new BadRequestException(
+        `This series cannot be ended from a date: ${before.detail}`,
+      );
+    }
+    const kept = before.events.length;
+    if (kept === 0) {
+      throw new BadRequestException(
+        "No date of this series falls before that day, so ending it there would remove all of it. Delete the series instead.",
+      );
+    }
+
+    let patch: Record<string, unknown> | null = null;
+    if (rule.end_type === "after_count") {
+      if (kept < rule.end_after_count) patch = { end_after_count: kept };
+    } else if (
+      rule.end_type !== "on_date" ||
+      !rule.end_on_date ||
+      rule.end_on_date > lastKept
+    ) {
+      patch = { end_type: "on_date", end_on_date: lastKept };
+    }
+    if (patch) {
+      const { error } = await this.databaseService.supabase
+        .from("calendar_recurrence_rules")
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq("id", rule.id)
+        .eq("restaurant_id", restaurantId);
+      if (error) throw error;
+    }
+
+    return this.deleteRecurringSeries(restaurantId, userId, eventId, fromDate);
   }
 
   async deleteRecurringSeries(
