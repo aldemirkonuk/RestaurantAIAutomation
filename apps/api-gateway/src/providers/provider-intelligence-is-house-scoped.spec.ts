@@ -623,9 +623,50 @@ describe("provider intelligence answers only for the caller's house", () => {
     const onboardAgain = await controller.triggerOnboarding(PROV_A, userA);
     expect(onboardAgain.alreadyOpen).toBe(true);
 
-    expect(
-      supabase.inserted.map((i) => i.row.session_type),
-    ).toEqual(["price_check", "promo_discovery", "onboarding"]);
+    expect(supabase.inserted.map((i) => i.row.session_type)).toEqual([
+      "price_check",
+      "promo_discovery",
+      "onboarding",
+    ]);
+  });
+
+  it("outreach: a tap that loses the race to a simultaneous one gets the session that won (F-568)", async () => {
+    const supabase = makeSupabase(seed());
+    const from = (table: string) => {
+      const q = supabase.from(table) as Record<string, unknown>;
+      if (table !== "provider_conversation_sessions") return q;
+      q.insert = () => {
+        // The other request's row lands between this one's read and its
+        // insert; the unique index refuses this one.
+        (supabase.tables[table] = supabase.tables[table] ?? []).push({
+          id: "won-the-race",
+          provider_id: PROV_A,
+          restaurant_id: HOUSE_A,
+          session_type: "price_check",
+          status: "active",
+        });
+        return {
+          select: () => ({
+            single: async () => ({
+              data: null,
+              error: {
+                code: "23505",
+                message:
+                  'duplicate key value violates unique constraint "uq_pcs_one_active_per_kind"',
+              },
+            }),
+          }),
+        };
+      };
+      return q;
+    };
+
+    const out = await controllerFor({ from }).triggerOutreach(
+      PROV_A,
+      { outreachType: "price_check" },
+      userA,
+    );
+    expect(out).toMatchObject({ sessionId: "won-the-race", alreadyOpen: true });
   });
 
   it("intelligence/leverage returns only this house's signals", async () => {
