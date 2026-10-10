@@ -46,6 +46,8 @@ export interface DoorFrameProps {
   busy?: boolean
   /** The gateway's own words when it refused. */
   error?: string | null
+  /** What the last count put on the shelf, one sentence each. */
+  booking?: string[] | null
 }
 
 export function DoorFrame({
@@ -55,8 +57,16 @@ export function DoorFrame({
   onSubmitCount,
   busy,
   error,
+  booking,
 }: DoorFrameProps) {
   const adjudicated = new Map(doc.layer3.lines.map((l) => [l.lineIndex, l]))
+  /** The item a person linked each line to. An item inherited from the order
+   *  line is a match, not a link, and is not sent (ADR 0103 A12). */
+  const linkedItem = new Map(
+    doc.layer2.lines
+      .filter((l) => l.inventoryIdSource === 'line' && l.inventoryId)
+      .map((l) => [l.lineIndex, l.inventoryId as string]),
+  )
   const anyCounted = doc.layer3.lines.some((l) => l.received !== 'not_counted')
   /**
    * Counts keyed by line index, and ABSENT means untouched.
@@ -83,6 +93,7 @@ export function DoorFrame({
         uom: line?.unit.value ?? 'bottle',
         ...(line?.vintage.value != null ? { vintage: line.vintage.value } : {}),
         ...(line?.formatMl.value != null ? { formatMl: line.formatMl.value } : {}),
+        ...(linkedItem.has(idx) ? { inventoryId: linkedItem.get(idx) } : {}),
       }
     })
     await onSubmitCount({
@@ -296,6 +307,11 @@ export function DoorFrame({
               style={doorField}
             />
           </label>
+          {booking?.map((sentence, i) => (
+            <p key={i} data-testid="door-booking" role="status" style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-1, #211C16)' }}>
+              {sentence}
+            </p>
+          ))}
           {error && (
             <p data-testid="door-error" role="alert" style={{ margin: 0, fontSize: 10.5, color: '#B0362C' }}>
               {error}
