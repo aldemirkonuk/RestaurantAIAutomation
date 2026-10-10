@@ -135,9 +135,9 @@ interface VendorSwitch {
  * needs told apart, and silence is the same for both.
  */
 export interface RecurrenceRunOutcome {
-  /** The day the run was made for, YYYY-MM-DD. */
+  /** The UTC day the run was made for, YYYY-MM-DD. Each house is held to its own. */
   runFor: string;
-  /** Active series whose next date is today or earlier. */
+  /** Active series whose next date is today or earlier, on each house's clock. */
   due: number;
   /** Children actually minted, each born PENDING. */
   created: number;
@@ -186,23 +186,26 @@ export class OrderRecurrenceService {
    * Today on the HOUSE's clock, for the writes one house makes (set, resume).
    * A house in Los Angeles is already on tomorrow's UTC date after 17:00, so
    * a UTC "today" would start or roll a series a day early. Falls back to the
-   * UTC day, and says so, when the house has no zone or the read fails — the
-   * same day the generator runs on.
+   * UTC day, and says so, when the house has no zone or the read fails. The
+   * generator reads each due series' house day through this too.
    */
-  private async todayInHouse(restaurantId: string): Promise<string> {
+  private async todayInHouse(
+    restaurantId: string,
+    now: Date = new Date(),
+  ): Promise<string> {
     try {
       const { zone } = await readHouseZone(
         this.databaseService.supabase,
         restaurantId,
       );
-      if (zone) return houseToday(zone);
+      if (zone) return houseToday(zone, now);
     } catch (err: any) {
       this.logger.warn(
         `The house's time zone could not be read (${err?.message}); today is ` +
           `taken on the UTC calendar for this recurrence change.`,
       );
     }
-    return this.today();
+    return this.today(now);
   }
 
   // =========================================================================
@@ -309,6 +312,7 @@ export class OrderRecurrenceService {
       plan.value.nextDueOn,
       plan.value.frequency,
       plan.value.anchorDay,
+      plan.value.anchoredOn,
       today,
       "Choose a start date nearer today.",
     );
@@ -455,6 +459,7 @@ export class OrderRecurrenceService {
         order.recurrence_next_due_on ?? today,
         frequency,
         order.recurrence_anchor_day,
+        order.recurrence_anchored_on,
         today,
         "End it and set a new recurrence on a current order.",
       );
@@ -504,13 +509,14 @@ export class OrderRecurrenceService {
     from: string,
     frequency: OrderRecurrenceFrequency,
     anchorDay: number | null,
+    anchoredOn: string | null,
     today: string,
     tooFarHint: string,
   ): string {
     let cursor = from;
     let guard = 0;
     while (isDueOn(cursor, today) && cursor !== today) {
-      const next = nextOccurrenceOn(cursor, frequency, anchorDay);
+      const next = nextOccurrenceOn(cursor, frequency, anchorDay, anchoredOn);
       if (!next.ok) {
         throw new BadRequestException({
           reason: next.reason,
@@ -624,7 +630,24 @@ export class OrderRecurrenceService {
       return out;
     }
 
-    const rows = (data ?? []) as unknown as RecurrenceRow[];
+    // The read is on the UTC date, and each series is then held to its OWN
+    // house's date. At 08:15 UTC no zone is on a later date than UTC (UTC+14
+    // reads 22:15 the same day), so the read is never short; a house west of
+    // UTC-8:15 is still on yesterday, and its series waits for tomorrow's run
+    // rather than raising tomorrow's order today (F-307).
+    const houseDays = new Map<string, string>();
+    const rows: RecurrenceRow[] = [];
+    for (const row of (data ?? []) as unknown as RecurrenceRow[]) {
+      let houseDay = houseDays.get(row.restaurant_id);
+      if (houseDay === undefined) {
+        houseDay = await this.todayInHouse(row.restaurant_id, now);
+        houseDays.set(row.restaurant_id, houseDay);
+      }
+      if (row.recurrence_next_due_on && !isDueOn(row.recurrence_next_due_on, houseDay)) {
+        continue;
+      }
+      rows.push(row);
+    }
     out.due = rows.length;
 
     // Every due series' vendor, in one read, so a series whose vendor the
@@ -754,6 +777,7 @@ export class OrderRecurrenceService {
       occurrenceOn,
       frequency,
       row.recurrence_anchor_day,
+      row.recurrence_anchored_on,
     );
     if (!advanced.ok) {
       this.logger.error(

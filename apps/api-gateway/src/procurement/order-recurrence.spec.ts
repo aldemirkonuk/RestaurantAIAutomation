@@ -194,6 +194,25 @@ describe("the next occurrence", () => {
     expect(on("2028-01-31", "monthly")).toBe("2028-02-29");
   });
 
+  it("monthly from the 31st goes back to the 31st after February, never keeps the 28th (F-307)", () => {
+    const step = (from: string, f: any, anchoredOn: string) => {
+      const r = nextOccurrenceOn(from, f, null, anchoredOn);
+      if (!r.ok) throw new Error(r.message);
+      return r.value;
+    };
+    expect(step("2026-02-28", "monthly", "2026-01-31")).toBe("2026-03-31");
+    expect(step("2026-03-31", "monthly", "2026-01-31")).toBe("2026-04-30");
+    expect(step("2026-04-30", "monthly", "2026-01-31")).toBe("2026-05-31");
+    // A series already stored on a carried 28th finds its way back.
+    expect(step("2026-03-28", "monthly", "2026-01-31")).toBe("2026-04-30");
+    expect(step("2027-02-28", "quarterly", "2026-11-30")).toBe("2027-05-30");
+  });
+
+  it("refuses a start date it cannot read rather than guessing the day", () => {
+    const r = nextOccurrenceOn("2026-02-28", "monthly", null, "31/01/2026");
+    expect(r.ok).toBe(false);
+  });
+
   it("monthly anchored to a day of the month goes to that day", () => {
     expect(on("2026-09-05", "monthly", 12)).toBe("2026-10-12");
   });
@@ -301,6 +320,20 @@ describe("projecting a series", () => {
         "2026-09-15",
         "2026-09-22",
         "2026-09-29",
+      ]);
+    }
+  });
+
+  it("walks a monthly series from the 31st as the last day of every month (F-307)", () => {
+    const r = occurrencesFrom("2026-01-31", "monthly", null, 5);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value).toEqual([
+        "2026-01-31",
+        "2026-02-28",
+        "2026-03-31",
+        "2026-04-30",
+        "2026-05-31",
       ]);
     }
   });

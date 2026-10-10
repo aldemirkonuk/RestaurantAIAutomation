@@ -683,6 +683,45 @@ describe("the generator", () => {
     expect(advance).toEqual({ recurrence_next_due_on: "2026-09-15" });
   });
 
+  it("holds a series to its own house's date, not the UTC one (F-307)", async () => {
+    // 08:15 UTC on 8 Sep is 22:15 on 7 Sep in Honolulu: the 8th's order is
+    // not raised yet. In Los Angeles it is 01:15 on the 8th, so it is.
+    const run = new Date("2026-09-08T08:15:00.000Z");
+    const hawaii = makeService({
+      dueRows: [DUE],
+      order: DUE,
+      house: { timezone: "Pacific/Honolulu", country: "US" },
+    });
+    const held = await hawaii.service.generateDueRecurrences(run);
+    expect(held.due).toBe(0);
+    expect(hawaii.calls.createOrderArgs).toHaveLength(0);
+    expect(hawaii.calls.orderUpdates).toHaveLength(0);
+
+    const la = makeService({
+      dueRows: [DUE],
+      order: DUE,
+      house: { timezone: "America/Los_Angeles", country: "US" },
+    });
+    const raised = await la.service.generateDueRecurrences(run);
+    expect(raised.created).toBe(1);
+  });
+
+  it("goes back to the 31st after a short month, never keeps the clamped day (F-307)", async () => {
+    const monthEnd = {
+      ...DUE,
+      recurrence_frequency: "monthly",
+      recurrence_anchor_day: null,
+      recurrence_anchored_on: "2026-01-31",
+      recurrence_next_due_on: "2026-02-28",
+    };
+    const { service, calls } = makeService({ dueRows: [monthEnd], order: monthEnd });
+    await service.generateDueRecurrences(at("2026-02-28"));
+    const advance = calls.orderUpdates.find(
+      (u) => "recurrence_next_due_on" in u && Object.keys(u).length === 1,
+    );
+    expect(advance).toEqual({ recurrence_next_due_on: "2026-03-31" });
+  });
+
   it("mints ONE child for a series weeks overdue, not one per missed occurrence", async () => {
     // A cron that did not run for a fortnight has a fortnight of missed
     // Tuesdays. Minting all of them would put fourteen orders in front of a
