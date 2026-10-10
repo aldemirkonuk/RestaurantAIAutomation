@@ -38,6 +38,11 @@ import {
   shiftHouseDay,
 } from "../common/house-day";
 import { beverageCategoryOf } from "../common/beverage-category";
+import {
+  confirmedPourFrom,
+  confirmedWinePourFrom,
+  readHouseTargetMargin,
+} from "../pricing/target-margin.service";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -79,7 +84,7 @@ export class AdvancedAnalyticsService {
         // unknown column 42703s the whole PostgREST query, and allSettled
         // swallows it into an empty inventory.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, stock_live, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
@@ -128,6 +133,12 @@ export class AdvancedAnalyticsService {
         unitCost,
         costBasis,
         unitPrice,
+        // Read for menu engineering (F-472): a wine sold only by the glass has
+        // no bottle price, and its glass price needs a confirmed pour.
+        glassPrice: Number(i.menu_price_glass) || 0,
+        bottleMl:
+          Number(i.bottle_size_ml) || Number(i.master_wine_library?.bottle_size_ml) || null,
+        winePourMl: confirmedWinePourFrom(i),
         // A margin computed against an unknown cost is unknown. Defaulting the
         // cost to 0 would report the entire menu price as margin.
         marginPerBottle: unitCost == null ? null : unitPrice - unitCost,
@@ -305,10 +316,13 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getMenuEngineering(restaurantId: string, sinceDays = 90) {
-    const [inventory, consumption] = await Promise.all([
+    const [inventory, consumption, house] = await Promise.all([
       this.loadInventoryWithCost(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
+      readHouseTargetMargin(this.dbService.getClient(), restaurantId),
     ]);
+    if (house.error) this.logQueryFailure("restaurants", house.error);
+    const housePourMl = confirmedPourFrom(house.row);
     const soldByWine = new Map<string, number>();
     const standInWines = new Set<string>();
     for (const c of consumption) {
@@ -320,7 +334,34 @@ export class AdvancedAnalyticsService {
     // summing the rest would report it slower than it sold (ADR 0297).
     const unmeasuredWines = this.uncountedWines(consumption);
     const unitsCoverage = summarizeUnits(consumption);
-    const priced = inventory.filter((i) => i.unitPrice > 0);
+    // The price a bottle earns: its bottle price, or, for a wine with none,
+    // its glass price times the glasses a bottle pours at the CONFIRMED pour
+    // (F-472). Velocity is bottles a day, so both axes stay per bottle. A wine
+    // with neither is left out BY NAME, never dropped without a word.
+    const leftOut: Array<{ id: string; name: string; reason: "no_price" | "glass_pour_unconfirmed" }> = [];
+    const priced: Array<(typeof inventory)[number] & { priceBasis: "bottle" | "glass" }> = [];
+    for (const i of inventory) {
+      if (i.unitPrice > 0) {
+        priced.push({ ...i, priceBasis: "bottle" });
+        continue;
+      }
+      if (!(i.glassPrice > 0)) {
+        leftOut.push({ id: i.id, name: i.name, reason: "no_price" });
+        continue;
+      }
+      const pourMl = i.winePourMl ?? housePourMl;
+      if (pourMl == null || i.bottleMl == null) {
+        leftOut.push({ id: i.id, name: i.name, reason: "glass_pour_unconfirmed" });
+        continue;
+      }
+      const unitPrice = (i.glassPrice * i.bottleMl) / pourMl;
+      priced.push({
+        ...i,
+        unitPrice,
+        priceBasis: "glass",
+        marginPerBottle: i.unitCost == null ? null : unitPrice - i.unitCost,
+      });
+    }
     const costCoverage = summarizeCostBasis(priced);
     const items = priced.map((i) => ({
       id: i.id,
@@ -330,6 +371,7 @@ export class AdvancedAnalyticsService {
         ? null
         : (soldByWine.get(i.masterWineId) || 0) / sinceDays,
       sizeStandIn: standInWines.has(i.masterWineId),
+      priceBasis: i.priceBasis,
       marginPerBottle: i.marginPerBottle,
       costBasis: i.costBasis,
       marginPct:
@@ -380,7 +422,11 @@ export class AdvancedAnalyticsService {
 
     // `unclassified` stays "no recorded cost"; a costed wine with no bottle
     // figure is `unmeasured`, so neither count claims the other's reason.
-    const counts: Record<string, number> = { unclassified: 0, unmeasured: 0 };
+    const counts: Record<string, number> = {
+      unclassified: 0,
+      unmeasured: 0,
+      unpriced: leftOut.length,
+    };
     for (const c of classified)
       if (c.marginPerBottle == null || medMargin == null)
         counts.unclassified += 1;
@@ -393,7 +439,9 @@ export class AdvancedAnalyticsService {
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.
-        margin: `menu_price_current − unit cost — ${costBasisSentence(costCoverage)}`,
+        margin: `menu_price_current − unit cost (a wine with no bottle price: menu_price_glass × bottle ml ÷ confirmed pour ml) — ${costBasisSentence(costCoverage)}`,
+        unpriced:
+          "a wine with no bottle price and no glass price, or a glass price with no confirmed pour or bottle size, is not in items[]; it is named in leftOut[] and counted under counts.unpriced",
         costDerived:
           "items[].marginPerBottle, items[].marginPct, items[].quadrant, items[].action and medians.marginPerBottle are null for rows with no recorded cost; those rows are counted under counts.unclassified (ADR 0051)",
         unitsDerived:
@@ -403,6 +451,7 @@ export class AdvancedAnalyticsService {
       unitsCoverage,
       medians: { velocityPerDay: medVel, marginPerBottle: medMargin },
       counts,
+      leftOut,
       // Unclassified rows sort after every classified one — ordering them by
       // `velocity × null` would be NaN, and ordering them by velocity alone
       // would interleave them as if they had a known margin of zero.

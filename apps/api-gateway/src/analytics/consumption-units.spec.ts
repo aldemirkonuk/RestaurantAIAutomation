@@ -1321,3 +1321,53 @@ describe("the exports carry the stand-in label the registers return", () => {
     );
   });
 });
+
+/* F-472: menu engineering read only menu_price_current and dropped every wine
+   without one, unnamed and uncounted, so a glass-only wine never reached
+   /reports. A wine with no bottle price now earns its glass price times the
+   glasses a bottle pours at the confirmed pour; one that cannot is named. */
+describe("menu engineering: a wine with no bottle price", () => {
+  const CONFIRMED_HOUSE = {
+    id: RESTAURANT,
+    default_pour_ml: 150,
+    pour_size_confirmed_by: "u-owner",
+    pour_size_confirmed_at: "2026-09-21T10:00:00Z",
+  };
+
+  it("is priced from its glass price at the confirmed pour", async () => {
+    const out: any = await advanced({
+      restaurants: [CONFIRMED_HOUSE],
+      restaurant_inventory: [
+        item(1),
+        item(2, { menu_price_current: null, menu_price_glass: 14 }),
+      ],
+      wine_consumption_log: [...lines(1, 4, BOTTLE), ...lines(2, 10, GLASS)],
+    }).getMenuEngineering(RESTAURANT, 90);
+    const glassOnly = out.items.find((i: any) => i.id === "inv-2");
+    expect(glassOnly).toBeDefined();
+    expect(glassOnly.priceBasis).toBe("glass");
+    // 14 × 750 / 150 = 70 a bottle, less the 20 it cost.
+    expect(glassOnly.marginPerBottle).toBeCloseTo(50, 9);
+    expect(out.counts.unpriced).toBe(0);
+    expect(out.leftOut).toEqual([]);
+  });
+
+  it("is named, not dropped, when it cannot be priced", async () => {
+    const out: any = await advanced({
+      // No confirmed pour: the database's 150 ml default is not a pour.
+      restaurants: [{ id: RESTAURANT, default_pour_ml: 150 }],
+      restaurant_inventory: [
+        item(1),
+        item(2, { menu_price_current: null, menu_price_glass: 14 }),
+        item(3, { menu_price_current: null }),
+      ],
+      wine_consumption_log: lines(1, 4, BOTTLE),
+    }).getMenuEngineering(RESTAURANT, 90);
+    expect(out.items.map((i: any) => i.id)).toEqual(["inv-1"]);
+    expect(out.counts.unpriced).toBe(2);
+    expect(out.leftOut).toEqual([
+      { id: "inv-2", name: "Item 2", reason: "glass_pour_unconfirmed" },
+      { id: "inv-3", name: "Item 3", reason: "no_price" },
+    ]);
+  });
+});

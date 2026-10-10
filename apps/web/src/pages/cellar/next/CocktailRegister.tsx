@@ -48,6 +48,32 @@ import {
   type RegisterVM,
 } from './useCellarNextData';
 
+/**
+ * The gateway's own sentence for a failed write. axios's "Request failed with
+ * status code 500" names neither the cause nor what was or was not changed.
+ */
+/**
+ * The gateway's own sentence, when it gave one. Nest's stock 500 text is not a
+ * sentence about this write, so it counts as no answer (F-338 integ).
+ */
+function gatewaySentence(e: unknown): string | null {
+  const m = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  const said = typeof m === 'string' ? m : Array.isArray(m) && typeof m[0] === 'string' ? m[0] : null;
+  if (!said || !said.trim() || said.trim() === 'Internal server error') return null;
+  return said;
+}
+
+function serverSaid(e: unknown): string {
+  const m = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  const said =
+    typeof m === 'string' && m.trim() ? m
+      : Array.isArray(m) && typeof m[0] === 'string' ? m[0]
+        : e instanceof Error && e.message ? e.message
+          : 'no reason was given';
+  // Callers end the sentence themselves.
+  return said.trim().replace(/\.$/, '');
+}
+
 interface Draft extends CocktailInput {
   name?: string;
 }
@@ -129,12 +155,17 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
         `${out.lines} ${out.lines === 1 ? 'line' : 'lines'} recorded. This is the first recipe data this house has ever had — cocktail_ingredients was created empty in August and no extraction pass ever filled it.`,
       );
     } catch (e) {
-      // Only a definite refusal may say nothing changed (F-338): a timeout or
-      // a server fault can land after the recipe was recorded.
+      // Only a definite answer may say what happened (F-338): a timeout or a
+      // server fault with no sentence of its own can land after the recipe was
+      // recorded. A gateway sentence says whether the old recipe still stands
+      // (F-473), so after a fault it is shown as given, with no blanket
+      // "Nothing was changed"; a definite refusal (4xx) still says so (F-338).
       setSaid(
-        isUnconfirmedWrite(e)
+        isUnconfirmedWrite(e) && !gatewaySentence(e)
           ? 'No answer came back, so the recipe may have been recorded. Close and reopen this cocktail to check before recording it again. Your lines are still here.'
-          : `The recipe was NOT recorded${e instanceof Error ? ` — ${e.message}` : ''}. Nothing was changed.`,
+          : isUnconfirmedWrite(e)
+            ? `The recipe was NOT recorded — ${serverSaid(e)}.`
+            : `The recipe was NOT recorded — ${serverSaid(e)}. Nothing was changed.`,
       );
     }
   };
@@ -264,9 +295,9 @@ export default function CocktailRegister({
       // Same rule (F-338): after a timeout the cocktail may already be on the
       // list, and a second press would put it there twice.
       setSaid(
-        isUnconfirmedWrite(e)
+        isUnconfirmedWrite(e) && !gatewaySentence(e)
           ? 'No answer came back, so this may already be on the list. Check the list before pressing again. Your words are still here.'
-          : `Nothing was written${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`,
+          : `Nothing was written — ${serverSaid(e)}. The list is unchanged.`,
       );
     }
   };
@@ -279,9 +310,9 @@ export default function CocktailRegister({
       );
     } catch (e) {
       setSaid(
-        isUnconfirmedWrite(e)
+        isUnconfirmedWrite(e) && !gatewaySentence(e)
           ? `No answer came back, so “${name}” may already be off the list. Check the list before taking it off again.`
-          : `“${name}” was NOT retired${e instanceof Error ? ` — ${e.message}` : ''}.`,
+          : `“${name}” was NOT retired — ${serverSaid(e)}.`,
       );
     } finally {
       setConfirmRetire(null);

@@ -383,7 +383,7 @@ describe("BeveragesService cocktail writes", () => {
       getClient: () => ({
         from: (table: string) => {
           const self: Record<string, unknown> = {};
-          for (const m of ["select", "eq", "is", "order", "delete"]) {
+          for (const m of ["select", "eq", "is", "order", "delete", "in"]) {
             self[m] = jest.fn(() => self);
           }
           self.insert = jest.fn((rows: unknown) => {
@@ -418,6 +418,109 @@ describe("BeveragesService cocktail writes", () => {
     const rows = inserted[0] as Record<string, unknown>[];
     expect(rows[0]).toMatchObject({ cocktail_id: COCKTAIL_ID, beverage_id: "b-1", sort_order: 0 });
     expect(rows[1]).toMatchObject({ free_text: "fresh lime juice", sort_order: 5 });
+  });
+
+  /* F-473: replace writes the new lines first and removes the old ones after,
+     so a failed insert leaves the old recipe standing. Each call to
+     cocktail_ingredients is logged as [verb, ...args] so order is visible. */
+  async function recipeService(opts: {
+    oldIds: string[];
+    insertError?: { message: string };
+    clearError?: { message: string };
+    undoError?: { message: string };
+  }) {
+    const log: unknown[][] = [];
+    let deletes = 0;
+    const db = {
+      getClient: () => ({
+        from: (table: string) => {
+          const self: Record<string, unknown> = {};
+          let verb = "select";
+          let result: { data: unknown; error: unknown } = { data: [], error: null };
+          for (const m of ["eq", "is", "order"]) self[m] = jest.fn(() => self);
+          self.select = jest.fn(() => {
+            if (verb === "select") {
+              result = { data: opts.oldIds.map((id) => ({ id })), error: null };
+            }
+            return self;
+          });
+          self.insert = jest.fn((rows: unknown[]) => {
+            verb = "insert";
+            log.push(["insert", rows.length]);
+            result = opts.insertError
+              ? { data: null, error: opts.insertError }
+              : { data: rows.map((_, i) => ({ id: `new-${i}` })), error: null };
+            return self;
+          });
+          self.delete = jest.fn(() => {
+            verb = "delete";
+            deletes += 1;
+            const err = deletes === 1 ? opts.clearError : opts.undoError;
+            result = { data: null, error: err ?? null };
+            return self;
+          });
+          self.in = jest.fn((_col: string, ids: string[]) => {
+            log.push([verb, ...ids]);
+            return self;
+          });
+          self.maybeSingle = jest.fn(() =>
+            Promise.resolve({ data: { id: COCKTAIL_ID }, error: null }),
+          );
+          self.then = (resolve: (v: unknown) => unknown) =>
+            Promise.resolve(table === "cocktail_ingredients" ? result : { data: [], error: null }).then(resolve);
+          return self;
+        },
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    return { service: moduleRef.get(BeveragesService), log };
+  }
+
+  it("writes the new recipe before removing the old one, and removes only the old lines", async () => {
+    const { service, log } = await recipeService({ oldIds: ["old-1", "old-2"] });
+    const out = await service.setCocktailIngredients(RID, COCKTAIL_ID, {
+      lines: [{ freeText: "30 ml gin" }],
+    });
+    expect(out.lines).toBe(1);
+    expect(log).toEqual([["insert", 1], ["delete", "old-1", "old-2"]]);
+  });
+
+  it("keeps the old recipe when the new lines cannot be written, and says so", async () => {
+    const { service, log } = await recipeService({
+      oldIds: ["old-1"],
+      insertError: { message: "value too long" },
+    });
+    await expect(
+      service.setCocktailIngredients(RID, COCKTAIL_ID, { lines: [{ freeText: "x" }] }),
+    ).rejects.toThrow(/Nothing was changed: the recipe you had is still there/);
+    // Nothing was deleted.
+    expect(log).toEqual([["insert", 1]]);
+  });
+
+  it("takes the new lines back out when the old ones cannot be cleared", async () => {
+    const { service, log } = await recipeService({
+      oldIds: ["old-1"],
+      clearError: { message: "timeout" },
+    });
+    await expect(
+      service.setCocktailIngredients(RID, COCKTAIL_ID, { lines: [{ freeText: "x" }] }),
+    ).rejects.toThrow(/new lines were taken back out\. Nothing was changed/);
+    expect(log).toEqual([["insert", 1], ["delete", "old-1"], ["delete", "new-0"]]);
+  });
+
+  it("never claims nothing changed when both the clear and the undo fail", async () => {
+    const { service } = await recipeService({
+      oldIds: ["old-1"],
+      clearError: { message: "timeout" },
+      undoError: { message: "timeout" },
+    });
+    const err = await service
+      .setCocktailIngredients(RID, COCKTAIL_ID, { lines: [{ freeText: "x" }] })
+      .catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/now shows both/);
+    expect((err as Error).message).not.toMatch(/Nothing was changed/);
   });
 });
 

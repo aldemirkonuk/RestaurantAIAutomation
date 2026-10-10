@@ -1508,6 +1508,59 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByLabelText('Price')).toHaveValue(18);
   });
 
+  it('a failed cocktail write shows the gateway sentence, never the transport one (F-150, F-473)', async () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    const refused = (said: string) =>
+      Object.assign(new Error('Request failed with status code 500'), {
+        response: { status: 500, data: { message: said } },
+      });
+    mock.writes = {
+      create: { mutateAsync: vi.fn().mockRejectedValue(refused('The name is already on this list.')), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: {
+        mutateAsync: vi.fn().mockRejectedValue(
+          refused('The new lines were written but the old ones could not be cleared, so this recipe now shows both. Open it and save it again.'),
+        ),
+        isPending: false,
+      },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: null,
+          method: null, glass: null, garnish: null, price: null, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: null, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' });
+
+    fireEvent.click(screen.getByRole('button', { name: /Add a cocktail/ }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ayva Highball' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Put it on the list/ }));
+    });
+    const said = screen.getByTestId('cocktail-said');
+    expect(said).toHaveTextContent('Nothing was written — The name is already on this list. The list is unchanged.');
+    expect(said).not.toHaveTextContent(/status code/);
+
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /Write the recipe/ }));
+    fireEvent.change(screen.getByLabelText('Recipe lines'), { target: { value: '30 ml gin' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Record the recipe/ }));
+    });
+    const recipeSaid = screen.getByText(/The recipe was NOT recorded/);
+    expect(recipeSaid).toHaveTextContent(/now shows both/);
+    // The page no longer adds its own "Nothing was changed" to a partial change.
+    expect(recipeSaid).not.toHaveTextContent(/Nothing was changed/);
+  });
+
   it('an unknown ?register value opens the overview rather than an invented register', () => {
     mock.current = { ...base, bottles: [bottle()], registers: readout() };
     draw({}, '/cellar?register=kombucha');
