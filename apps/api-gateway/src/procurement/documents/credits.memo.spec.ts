@@ -19,6 +19,9 @@ function harness(opts: {
   claim?: Row;
   memo?: Row | null;
   creditedOnMemo?: Row[];
+  house?: Row | null;
+  memoReadFails?: boolean;
+  creditedReadFails?: boolean;
 }) {
   const claim: Row = {
     id: "c1",
@@ -55,6 +58,10 @@ function harness(opts: {
       maybeSingle: async () => {
         if (table === "procurement_credits")
           return { data: claim, error: null };
+        if (table === "restaurants")
+          return { data: opts.house ?? null, error: null };
+        if (table === "procurement_documents" && opts.memoReadFails)
+          return { data: null, error: { message: "relation timeout 57014" } };
         if (table === "procurement_documents")
           return {
             data:
@@ -79,7 +86,9 @@ function harness(opts: {
                     : 0,
                 error: null,
               }
-            : { data: opts.creditedOnMemo ?? [], error: null },
+            : opts.creditedReadFails
+              ? { data: null, error: { message: "relation timeout 57014" } }
+              : { data: opts.creditedOnMemo ?? [], error: null },
         ).then(res),
     };
     return b;
@@ -162,6 +171,55 @@ describe("crediting a claim against a memo (F-672)", () => {
       /different vendor/,
     );
   });
+});
+
+describe("the memo refusal speaks the house's money (F-877)", () => {
+  it("says the cap in the memo's currency and the house's formats", async () => {
+    const { c, updates } = harness({
+      claim: { currency: "TRY" },
+      memo: memo({ total: "1250.00", currency: "TRY" }),
+      creditedOnMemo: [{ id: "c0", credited_amount: "850.00" }],
+      house: { timezone: "Europe/Istanbul", country: "TR" },
+    });
+    const msg = await refusalOf(c.transition("c1", credit(1250), user));
+    expect(msg).toContain("₺1.250,00");
+    expect(msg).toContain("₺400,00");
+    expect(msg).not.toMatch(/1250\.00|400\.00/);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("refuses a memo in another money than the claim, rather than comparing the numbers", async () => {
+    const { c, updates } = harness({
+      claim: { currency: "TRY" },
+      memo: memo({ total: "40.00", currency: "EUR" }),
+    });
+    const msg = await refusalOf(c.transition("c1", credit(10), user));
+    expect(msg).toMatch(/in EUR and this claim is in TRY/);
+    expect(updates).toHaveLength(0);
+  });
+
+  it.each([
+    ["the memo", { memoReadFails: true }],
+    ["what is already credited on it", { creditedReadFails: true }],
+  ])(
+    "answers a failed read of %s with a 503 sentence, not the database's words",
+    async (_w, o) => {
+      const { c, updates } = harness({ memo: memo(), ...o });
+      let status = 0;
+      let msg = "";
+      try {
+        await c.transition("c1", credit(10), user);
+      } catch (e) {
+        if (!(e instanceof HttpException)) throw e;
+        status = e.getStatus();
+        msg = String(e.getResponse());
+      }
+      expect(status).toBe(503);
+      expect(msg).toMatch(/the claim was not changed/);
+      expect(msg).not.toMatch(/57014/);
+      expect(updates).toHaveLength(0);
+    },
+  );
 });
 
 describe("memoRefusal", () => {

@@ -7974,9 +7974,46 @@ export class ProcurementService {
     // prices — so closing on the goods alone would mark the delivery finished
     // before anyone could check what was charged for it, and reconciling late
     // is exactly where the recoverable money lives.
+    //
+    // Refused bottles are not a backorder (F-875). `computeMatch` takes the
+    // ones refused at this check off; the ones refused at the DOOR never reach
+    // this form, so they come off here, from the door's own counts — the same
+    // rule close short reads (`decideCloseShort`, via `composeShelfReceived`).
+    // Without it an order with a refusal stayed open while close short said
+    // nothing was owed, and nothing could ever close it. Read only when
+    // something still looks owed; a read that fails refuses before anything
+    // is written, never guesses.
+    let stillOwed = match?.backorderQty ?? 0;
+    if (match && stillOwed > 0) {
+      const { data: doorRows, error: doorError } =
+        await this.databaseService.supabase
+          .from("procurement_receipt_events")
+          .select("stage, rejected_qty_bottles")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("stage", "case_count");
+      const refusedAtDoor = doorError
+        ? NaN
+        : ((doorRows ?? []) as any[])
+            .filter((e) => e.stage === "case_count")
+            .reduce(
+              (n, e) => n + Math.max(0, Number(e.rejected_qty_bottles ?? 0)),
+              0,
+            );
+      if (!Number.isFinite(refusedAtDoor)) {
+        this.logger.warn(
+          `verifyReceipt: order ${orderId} door refusals unreadable: ${doorError?.message ?? "a count is not a number"}`,
+        );
+        throw new ServiceUnavailableException(
+          "What was refused at the door for this order could not be read, so whether " +
+            "anything is still to come is not known. Nothing was changed. Try again.",
+        );
+      }
+      stillOwed = Math.max(0, stillOwed - refusedAtDoor);
+    }
     const awaitingInvoice = match?.verdict === "unmatched";
     const status =
-      match && (match.backorderQty > 0 || awaitingInvoice)
+      match && (stillOwed > 0 || awaitingInvoice)
         ? ProcurementOrderStatus.PARTIALLY_RECEIVED
         : ProcurementOrderStatus.COMPLETED;
 

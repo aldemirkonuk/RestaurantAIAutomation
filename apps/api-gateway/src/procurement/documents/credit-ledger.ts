@@ -1,4 +1,10 @@
-import { isClaimable, MatchResult, MatchVerdict } from "../invoice-match";
+import {
+  differentMoney,
+  isClaimable,
+  MatchResult,
+  MatchVerdict,
+} from "../invoice-match";
+import { makeFmt } from "../../providers/scorecard/vendor-scorecard.copy";
 
 /**
  * credit-ledger — the state machine behind a vendor credit claim, and the only
@@ -146,6 +152,8 @@ export interface CreditMemo {
   providerId: string | null;
   /** Stored positive (x12-credit.ts sign convention); null when never read. */
   total: number | null;
+  /** The money the memo is in; null when the paper never said. */
+  currency?: string | null;
 }
 
 /**
@@ -163,18 +171,35 @@ export function memoRefusal(
   claimProviderId: string | null,
   creditedAmount: number,
   alreadyCreditedOnMemo: number,
+  /**
+   * F-877: the claim's own money and the house's formats, so the figures are
+   * said as "₺1.250,00" in a lira house and never as a bare "1250.00".
+   */
+  said: { claimCurrency?: string | null; locale?: string | null } = {},
 ): string | null {
   if (memo.docType !== "credit_memo")
     return "That paper is not a credit memo. Pick the vendor's credit memo that settles this claim.";
   if (memo.providerId && claimProviderId && memo.providerId !== claimProviderId)
     return "That credit memo is from a different vendor than this claim.";
+  // Two stated, different moneys are never compared as numbers (F-341): the
+  // cap below would read 400 lira against a 40 euro memo as plenty left.
+  if (differentMoney(memo.currency, said.claimCurrency))
+    return (
+      `That credit memo is in ${String(memo.currency).trim().toUpperCase()} and this claim is in ` +
+      `${String(said.claimCurrency).trim().toUpperCase()}, and nothing here converts one into the ` +
+      "other. Pick a credit memo in the claim's money."
+    );
   if (memo.total == null) return null;
   const total = Math.abs(memo.total);
   const left = Math.round((total - alreadyCreditedOnMemo) * 100) / 100;
+  const fmt = makeFmt(said.locale ?? null);
+  const code =
+    (memo.currency ?? said.claimCurrency ?? "").trim().toUpperCase() || null;
+  const money = (n: number) => fmt.money(n, code);
   if (creditedAmount > left + 0.005)
     return left <= 0
-      ? `That credit memo is for ${total.toFixed(2)}, and all of it is already credited to other claims.`
-      : `That credit memo is for ${total.toFixed(2)}, and only ${left.toFixed(2)} of it is left after other claims. Credit at most ${left.toFixed(2)}.`;
+      ? `That credit memo is for ${money(total)}, and all of it is already credited to other claims.`
+      : `That credit memo is for ${money(total)}, and only ${money(left)} of it is left after other claims. Credit at most ${money(left)}.`;
   return null;
 }
 

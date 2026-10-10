@@ -289,7 +289,7 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
     expect(screen.getByText(/The price was not compared/)).toBeInTheDocument()
   })
 
-  it('reads a rejected bottle as damage, not a short ship, and holds the order open', async () => {
+  it('reads a rejected bottle as damage, not a short ship, and does not hold the order open for it', async () => {
     const user = userEvent.setup()
     renderWorkspace()
 
@@ -299,7 +299,8 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
 
     expect(screen.getByText('Units rejected')).toBeInTheDocument()
     expect(screen.getAllByText(/credit due/i).length).toBeGreaterThan(0)
-    expect(submit()).toHaveTextContent('Accept & keep open')
+    // The broken bottle was delivered: a claim, not a backorder (F-875).
+    expect(submit()).toHaveTextContent('Accept & complete')
 
     await user.click(submit())
     expect(verifyOrderReceipt).toHaveBeenCalledWith(
@@ -323,6 +324,52 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
 
     expect(screen.getByText('Receipt record')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('ReceivingWorkspace — refused bottles are never still owed (F-875, F-876)', () => {
+  // 24 ordered; 2 refused at the door, 22 on the shelf.
+  const doorRefusedOrder = {
+    ...order,
+    received: shelf({
+      quantityInStockUom: 22,
+      words: '22 bottles',
+      rejectedAtDoorBottles: 2,
+      backorderBottles: 2,
+    }),
+  }
+
+  it('closes the order when the only bottles missing were refused at the door', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({ order: doorRefusedOrder })
+
+    await enterInvoice(user, 22)
+    expect(submit()).toHaveTextContent('Accept & complete')
+    expect(screen.queryByTestId('receiving-backorder-footer')).not.toBeInTheDocument()
+  })
+
+  it('does not say refused bottles are still owed on the order', () => {
+    renderWorkspace({ order: doorRefusedOrder })
+    expect(screen.getByTestId('receiving-shelf-note')).toHaveTextContent('2 bottles were rejected at the door')
+    expect(screen.queryByTestId('receiving-shelf-backorder')).not.toBeInTheDocument()
+  })
+
+  it('still says the bottles that never came', () => {
+    renderWorkspace({
+      order: {
+        ...order,
+        received: shelf({
+          quantityInStockUom: 20,
+          words: '20 bottles',
+          rejectedAtDoorBottles: 1,
+          rejectedAtDeskBottles: 1,
+          backorderBottles: 4,
+        }),
+      },
+    })
+    expect(screen.getByTestId('receiving-shelf-backorder')).toHaveTextContent(
+      '2 bottles are still owed on this order.',
+    )
   })
 })
 

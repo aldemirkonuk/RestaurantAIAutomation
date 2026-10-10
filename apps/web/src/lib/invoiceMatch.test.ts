@@ -84,7 +84,10 @@ describe('invoiceMatch (web mirror)', () => {
 
     expect(damaged.verdict).toBe('rejected')
     expect(short.verdict).toBe('qty_short')
-    expect(damaged.backorderQty).toBe(short.backorderQty)
+    // The broken bottles were delivered: a claim, never a backorder (F-875). The two
+    // missing ones are still to come.
+    expect(damaged.backorderQty).toBe(0)
+    expect(short.backorderQty).toBe(2)
   })
 
   it('does not read an agreed free bottle as one lost in transit', () => {

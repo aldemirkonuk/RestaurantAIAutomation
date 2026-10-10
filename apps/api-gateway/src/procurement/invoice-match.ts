@@ -277,7 +277,7 @@ export interface MatchResult {
   verdict: MatchVerdict;
   checks: MatchCheck[];
   summary: string;
-  /** Ordered but not yet accepted — keeps the order open instead of stranding shadow stock. */
+  /** Ordered and neither accepted nor refused — keeps the order open instead of stranding shadow stock. */
   backorderQty: number;
   /** Signed correction to apply to the ledger: what we accepted minus what we already stocked. */
   ledgerDelta: number;
@@ -748,14 +748,20 @@ export function computeMatch(input: MatchInput): MatchResult {
 
   // --- fulfilment -------------------------------------------------------------------------
   const fullyFulfilled = acceptedQty >= orderedQty;
-  const backorderQty = Math.max(0, orderedQty - acceptedQty);
+  // Refused bottles were delivered: they are a claim against the vendor, never
+  // a backorder (F-875, the F-813 rule close short already keeps). Counting
+  // them as still to come held an order with refusals open for good, while
+  // close short said nothing was owed.
+  const backorderQty = Math.max(0, orderedQty - acceptedQty - rejectedQty);
   checks.push({
     id: "fulfilment",
     ok: fullyFulfilled,
     label: "Order fully fulfilled",
     detail: fullyFulfilled
       ? `${acceptedQty} of ${orderedQty} accepted`
-      : `${acceptedQty} of ${orderedQty} accepted, ${backorderQty} outstanding`,
+      : `${acceptedQty} of ${orderedQty} accepted` +
+        (rejectedQty > 0 ? `, ${rejectedQty} refused` : "") +
+        (backorderQty > 0 ? `, ${backorderQty} outstanding` : ""),
   });
 
   // --- verdict: one headline, ordered by evidentiary strength then severity ----------------
