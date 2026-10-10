@@ -11,10 +11,12 @@ import {
 import { readHouseMoney } from "../../common/house-money";
 import {
   clockIn,
+  count,
   dayIn,
   earliness,
   money,
   onShiftPhrase,
+  percentFigure,
 } from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
 import { NO_GOAL_READER, goalReaders, noGoalReader } from "./goal-readers";
@@ -407,10 +409,8 @@ export class GoalReachedProducer {
       unit === "currency"
         ? money(v, input.currency, input.locale)
         : unit === "percent"
-          ? `${(v * 100).toFixed(1)}%`
-          : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(
-              v,
-            );
+          ? percentFigure(v, input.locale)
+          : count(v, input.locale);
 
     const parts: string[] = [];
     parts.push(

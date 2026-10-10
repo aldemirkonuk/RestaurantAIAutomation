@@ -8,7 +8,15 @@ import {
   type ProducerTally,
 } from "./producer-ledger.service";
 import { readHouseMoney } from "../../common/house-money";
-import { clockIn, dayIn, money, onShiftPhrase, percent } from "./producer-copy";
+import {
+  clockIn,
+  count,
+  dayIn,
+  money,
+  onShiftPhrase,
+  percent,
+  percentFigure,
+} from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
 import { NO_GOAL_READER, goalReaders, noGoalReader } from "./goal-readers";
 import { localMidnight, shiftLocalDate } from "./service-day";
@@ -300,17 +308,15 @@ export class CeilingHeldProducer {
       input.unit === "currency"
         ? money(v, input.currency, input.locale)
         : input.unit === "percent"
-          ? `${(v * 100).toFixed(1)}%`
-          : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(
-              v,
-            );
+          ? percentFigure(v, input.locale)
+          : count(v, input.locale);
 
     const parts: string[] = [];
     parts.push(
       `The period closed ${dayIn(input.closedAt, input.timeZone)} at ${clockIn(input.closedAt, input.timeZone)} and the house stayed under by ${shown(input.headroom)}.`,
     );
     parts.push(
-      `${input.label} finished at ${shown(input.current)} against a ceiling of ${shown(input.target)} — ${percent(input.headroomFraction)} of it unused.`,
+      `${input.label} finished at ${shown(input.current)} against a ceiling of ${shown(input.target)} — ${percent(input.headroomFraction, input.locale)} of it unused.`,
     );
 
     const named = input.roster.filter((p) => p.name) as Array<{

@@ -807,20 +807,28 @@ export class TeamService {
     };
   }
 
-  /** The house currency the wage trigger records, for the owner's notice. */
-  private async houseCurrency(restaurantId: string): Promise<string | null> {
+  /**
+   * The house currency the wage trigger records, and the house's formats tag
+   * (ADR 0207), for the owner's notice: a lira house reads "₺1.234,50" (F-888).
+   */
+  private async houseMoneyFor(
+    restaurantId: string,
+  ): Promise<{ currency: string | null; locale: string | null }> {
     const { data, error } = await this.sb
       .from("restaurants")
-      .select("currency")
+      .select("currency, country, timezone")
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
       this.logger.warn(
         `own-wage notice: currency unreadable for ${restaurantId}: ${error.message}`,
       );
-      return null;
+      return { currency: null, locale: null };
     }
-    return data?.currency ?? null;
+    return {
+      currency: data?.currency ?? null,
+      locale: houseFrame(data ?? null).locale,
+    };
   }
 
   /**
@@ -1087,6 +1095,7 @@ export class TeamService {
     const after = dto.hourlyWage == null ? null : Number(dto.hourlyWage);
     let ownWage: OwnWageReceipt | undefined;
     if (ownWageTellsTheOwner(viewer, own.self) && own.before !== after) {
+      const house = await this.houseMoneyFor(restaurantId);
       ownWage = await recordOwnWageChange(this.sb, this.logger, {
         restaurantId,
         actorUserId: userId,
@@ -1094,7 +1103,8 @@ export class TeamService {
         displayName: own.name,
         before: own.before,
         after,
-        currency: await this.houseCurrency(restaurantId),
+        currency: house.currency,
+        locale: house.locale,
       });
     }
     const out = memberForViewer(data, viewer);

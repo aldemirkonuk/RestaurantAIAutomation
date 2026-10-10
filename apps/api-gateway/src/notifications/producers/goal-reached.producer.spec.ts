@@ -12,6 +12,7 @@ import {
   recorder,
 } from "./testing/fake-db";
 import { onShiftAt, shiftWindow } from "./shift-window";
+import { count, percent, percentFigure } from "./producer-copy";
 
 const TENANT = "rest-1";
 const OTHER = "rest-2";
@@ -130,6 +131,28 @@ describe("GoalReachedProducer", () => {
     expect(lira.notifications.persistForRestaurant.calls[0][1].message).toContain(
       "stands at ₺10.450,00 against a target of ₺10.000,00",
     );
+  });
+
+  it("[REVERT-FAILS] a lira house's count goal groups the house's way, not en-US (F-888)", async () => {
+    const lira = build({ ...REACHED, current: 1240.5, target: 1200, unit: "bottles" });
+    lira.db.tables.restaurants[0].currency = "TRY";
+    lira.db.tables.restaurants[0].country = "TR";
+    lira.db.tables.analytics_goals.push(goalRow({ target_value: 1200 }));
+    seedCrossing(lira.db);
+    await lira.producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(lira.notifications.persistForRestaurant.calls[0][1].message).toContain(
+      "stands at 1.240,5 against a target of 1.200.",
+    );
+  });
+
+  it("[REVERT-FAILS] counts and percents take the house's formats, en-US when unknown (F-888)", () => {
+    expect(count(1240.5, "tr-TR")).toBe("1.240,5");
+    expect(count(1240.5, null)).toBe("1,240.5");
+    expect(percentFigure(0.125, "tr-TR")).toBe("%12,5");
+    expect(percentFigure(0.125, null)).toBe("12.5%");
+    expect(percentFigure(-0.04, null)).toBe("-4.0%");
+    expect(percent(0.18, "tr-TR")).toBe("%18");
+    expect(percent(-0.1796875, undefined)).toBe("18%");
   });
 
   it("[REVERT-FAILS] sends the goal's figures only to owners and managers (F-782)", async () => {

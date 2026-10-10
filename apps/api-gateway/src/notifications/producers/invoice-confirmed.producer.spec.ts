@@ -160,6 +160,20 @@ describe("InvoiceConfirmedProducer", () => {
     expect(call.message).toContain("€1,240.50 from Terroir Selections.");
   });
 
+  it("[REVERT-FAILS] groups the figure the house's way (F-888)", async () => {
+    const { db, notifications, producer } = build();
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY", country: "TR" });
+    db.tables.procurement_documents.push(
+      doc({ currency: "TRY", ties_out: false, tie_out_delta: -1500 }),
+    );
+    vendor(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("₺1.240,50 from Terroir Selections.");
+    expect(call.message).toContain("The lines do not tie out: ₺1.500,00 apart");
+    expect(call.message).not.toContain("TRY 1,240.50");
+  });
+
   it("[REVERT-FAILS] a document with no extracted total is not a zero-dollar invoice", async () => {
     const { db, notifications, producer } = build();
     db.tables.procurement_documents.push(doc({ total: null }));

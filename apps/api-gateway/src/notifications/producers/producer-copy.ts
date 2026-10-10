@@ -86,9 +86,40 @@ export function money(
   return code ? `${code} ${figure}` : figure;
 }
 
-/** `18%` — rounded to whole percent, which is the precision a reader can act on. */
-export function percent(fraction: number): string {
-  return `${Math.round(Math.abs(fraction) * 100)}%`;
+/**
+ * `18%` — rounded to whole percent, which is the precision a reader can act on.
+ * In the house's formats when `locale` is given: a lira house reads `%18`
+ * (F-888). Unknown keeps en-US.
+ */
+export function percent(fraction: number, locale?: string | null): string {
+  const whole = Math.round(Math.abs(fraction) * 100);
+  return new Intl.NumberFormat(usableLocale(locale), {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(whole / 100);
+}
+
+/**
+ * `12.5%` — a percent goal's figure, to one place, signed, in the house's
+ * formats: a lira house reads `%12,5` (F-888).
+ */
+export function percentFigure(fraction: number, locale?: string | null): string {
+  const tenths = Number((fraction * 100).toFixed(1));
+  return new Intl.NumberFormat(usableLocale(locale), {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(tenths / 100);
+}
+
+/**
+ * `1,240.5` — a count, to two places at most, grouped the house's way: a lira
+ * house reads `1.240,5`, where en-US read 1.24 by its own mark (F-888).
+ */
+export function count(value: number, locale?: string | null): string {
+  return new Intl.NumberFormat(usableLocale(locale), {
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 /** `Tuesday, 2 September` on the house's own clock. */

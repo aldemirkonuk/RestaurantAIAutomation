@@ -10,6 +10,7 @@ import {
   type ProducerTally,
 } from "./producer-ledger.service";
 import { money, percent } from "./producer-copy";
+import { readHouseMoney } from "../../common/house-money";
 import {
   OWNER_AND_MANAGER,
   houseMembersInRoles,
@@ -192,6 +193,13 @@ export class MarketPriceProducer {
       if (first > -1 && last > first) saidProducts.add(key.slice(first + 1, last));
     }
 
+    // The house's number formats (F-888): a lira house reads "₺41,50", where
+    // en-US printed "TRY 41.50". Never throws; unknown keeps en-US.
+    const { locale } = await readHouseMoney(
+      this.databaseService.getClient(),
+      restaurantId,
+    );
+
     const day = now.toISOString().slice(0, 10);
     let notOurs = 0;
     let belowFloor = 0;
@@ -242,8 +250,8 @@ export class MarketPriceProducer {
             // The title is the record: the object and the measured fact, with no
             // verb of approval. The judgement lives in the message, qualified,
             // and in the action label, which is a control rather than a claim.
-            title: `${label} is ${percent(item.fractionBelow)} below its ${MARKET_WINDOW_DAYS}-day average`,
-            message: this.sentence(item, label),
+            title: `${label} is ${percent(item.fractionBelow, locale)} below its ${MARKET_WINDOW_DAYS}-day average`,
+            message: this.sentence(item, label, locale),
             // "low", so no phone push (fix/websocket-role-gate, 2026-09-28).
             // The sentence carries a vendor name and amounts, which ADR 0175
             // D3 keeps off a locked screen. The house's other vendor-naming
@@ -368,10 +376,14 @@ export class MarketPriceProducer {
   }
 
   /** The founder's sentence, with the arithmetic and one honest qualifier. */
-  private sentence(item: BelowAverageItem, label: string): string {
+  private sentence(
+    item: BelowAverageItem,
+    label: string,
+    locale: string | null,
+  ): string {
     const parts: string[] = [];
     parts.push(
-      `${item.latest.vendorName ?? "A vendor"} is quoting ${money(item.latest.unitPrice, item.currency)} for ${label}, against a ${MARKET_WINDOW_DAYS}-day average of ${money(item.average.unitPrice, item.currency)} across ${item.average.observations} earlier sighting${item.average.observations === 1 ? "" : "s"}.`,
+      `${item.latest.vendorName ?? "A vendor"} is quoting ${money(item.latest.unitPrice, item.currency, locale)} for ${label}, against a ${MARKET_WINDOW_DAYS}-day average of ${money(item.average.unitPrice, item.currency, locale)} across ${item.average.observations} earlier sighting${item.average.observations === 1 ? "" : "s"}.`,
     );
     // The qualifier is not decoration. This compares the newest sighting with a
     // mean of earlier ones, and the engine's own header warns that shape "would
