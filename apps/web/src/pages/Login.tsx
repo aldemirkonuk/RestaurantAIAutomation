@@ -90,6 +90,20 @@ function signInNote(refusal: Refusal, message: string): { pause: boolean; title:
 const SHOW_DECLARED_PROVIDERS = false
 
 /**
+ * Where a sign-in returns to. ProtectedRoute hands over the whole location, and
+ * the query is often the point: mailed links open `/inventory?wine=…` or
+ * `/orders?station=recurring`, so the search and hash come along with the path.
+ * Only a path on this site is followed (one leading `/`, never `//` or `/\`,
+ * which a browser reads as another host); anything else returns to `/`.
+ */
+export function returnPath(
+  from: string | { pathname: string; search?: string; hash?: string } | null | undefined,
+): string {
+  const path = typeof from === 'string' ? from : from ? `${from.pathname}${from.search ?? ''}${from.hash ?? ''}` : ''
+  return /^\/(?![/\\])/.test(path) ? path : '/'
+}
+
+/**
  * Identity-first sign-in (ADR 0024).
  *
  * Enter an email, and the page shows the methods that identity *actually*
@@ -119,7 +133,9 @@ export function Login() {
 
   const searchParams = new URLSearchParams(location.search)
   const redirectQuery = searchParams.get('redirect')
-  const from = redirectQuery || (location.state as { from?: { pathname: string } })?.from?.pathname || '/'
+  const from = returnPath(
+    redirectQuery || (location.state as { from?: { pathname: string; search?: string; hash?: string } })?.from,
+  )
   const prefilledEmail = searchParams.get('email') ?? ''
 
   const [email, setEmail] = useState(prefilledEmail)

@@ -437,9 +437,11 @@ function App() {
                       /providers API paths; only the address and the words moved. */}
                   <Route path="/vendors" element={<PageGate page="providers" next={<ProvidersNext />} />} />
                   {/* The old address, kept for good: stored notifications, bookmarks
-                      and mail carry it. The rest of the path, the query
-                      (`?vendor=<id>` opens that card) and the hash come along. */}
-                  <Route path="/providers/*" element={<RenamedRoute from="/providers" to="/vendors" />} />
+                      and mail carry it. The query (`?vendor=<id>` opens that
+                      card) and the hash come along, and `/providers/<id>`
+                      becomes `?vendor=<id>`, since /vendors has no per-vendor
+                      path. */}
+                  <Route path="/providers/*" element={<RenamedRoute from="/providers" to="/vendors" idParam="vendor" />} />
                   {/* Vendor price comparison — ADR 0160 §112, direction A,
                       behind a per-house flag like every other Mudavym page.
                       Memory founder-sketch-decisions-106-115.md, "19-lane

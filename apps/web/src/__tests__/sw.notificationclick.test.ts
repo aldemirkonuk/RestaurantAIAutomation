@@ -42,8 +42,37 @@ async function resolveClickedUrl(
   action: string,
   data: Record<string, unknown> | undefined,
 ): Promise<string> {
+  return (await click(action, data)).opened ?? ''
+}
+
+interface FakeTab {
+  url: string
+  focused?: boolean
+  navigatedTo?: string
+}
+
+/** The click itself, with `tabs` standing for the windows already open. */
+async function click(
+  action: string,
+  data: Record<string, unknown> | undefined,
+  tabs: FakeTab[] = [],
+): Promise<{ opened?: string }> {
   const listeners: Record<string, (event: unknown) => void> = {}
   let openedUrl: string | undefined
+  const windowClients = tabs.map((tab) => ({
+    get url() {
+      return tab.url
+    },
+    focus: async function (this: unknown) {
+      tab.focused = true
+      return this
+    },
+    navigate: async function (this: unknown, to: string) {
+      tab.navigatedTo = to
+      tab.url = to
+      return this
+    },
+  }))
 
   const sandbox: Record<string, unknown> = {
     console,
@@ -54,13 +83,14 @@ async function resolveClickedUrl(
       delete: async () => true,
     },
     clients: {
-      matchAll: async () => [],
+      matchAll: async () => windowClients,
       openWindow: async (url: string) => {
         openedUrl = url
         return null
       },
     },
     fetch: async () => ({ ok: true }),
+    URL,
   }
   sandbox.self = sandbox
   ;(sandbox.self as Record<string, unknown>).addEventListener = (
@@ -98,7 +128,7 @@ async function resolveClickedUrl(
   listeners.notificationclick(event)
   await capturedPromise
 
-  return openedUrl ?? ''
+  return { opened: openedUrl }
 }
 
 describe('sw.js notificationclick routing (both producers)', () => {
@@ -204,5 +234,33 @@ describe('sw.js notificationclick routing (both producers)', () => {
       const url = await resolveClickedUrl('view', undefined)
       expect(url).toBe('/')
     })
+  })
+})
+
+describe('sw.js notificationclick reuses an open app tab (F-222)', () => {
+  // A client reports an absolute url; the routing table returns a path. The
+  // old `client.url === url` never matched, so every click opened a window.
+  it('focuses the tab already on that page, opening nothing', async () => {
+    const tab: FakeTab = { url: 'https://mudavym.com/orders/ord-9' }
+    const r = await click('view', { orderId: 'ord-9' }, [tab])
+    expect(tab.focused).toBe(true)
+    expect(tab.navigatedTo).toBeUndefined()
+    expect(r.opened).toBeUndefined()
+  })
+
+  it('brings an app tab on another page to the order, opening nothing', async () => {
+    const tab: FakeTab = { url: 'https://mudavym.com/inventory' }
+    const r = await click('view', { orderId: 'ord-9' }, [tab])
+    expect(tab.focused).toBe(true)
+    expect(tab.navigatedTo).toBe('https://mudavym.com/orders/ord-9')
+    expect(r.opened).toBeUndefined()
+  })
+
+  it('never takes over a tab on another site', async () => {
+    const tab: FakeTab = { url: 'https://example.com/orders/ord-9' }
+    const r = await click('view', { orderId: 'ord-9' }, [tab])
+    expect(tab.focused).toBeUndefined()
+    expect(tab.navigatedTo).toBeUndefined()
+    expect(r.opened).toBe('/orders/ord-9')
   })
 })

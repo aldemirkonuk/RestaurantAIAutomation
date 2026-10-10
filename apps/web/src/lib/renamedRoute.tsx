@@ -28,17 +28,34 @@ export interface RenamedLocation {
  * `defaults` are query parameters the old address implied; each is added only
  * when the incoming query does not already name that key, so a link that says
  * more than the old default keeps what it said.
+ *
+ * `idParam` names the query key that carries an id the old address held in its
+ * path. The new page has no `/<id>` route, so `/providers/<id>` (the link the
+ * orchestrator's unrecorded-invoice notice stores) becomes `?vendor=<id>`,
+ * which opens that card, instead of a page that does not exist.
  */
 export function renamedTarget(
   loc: RenamedLocation,
   from: string,
   to: string,
   defaults: Record<string, string> = {},
+  idParam?: string,
 ): string {
   const { pathname } = loc;
   const inside = pathname === from || pathname.startsWith(`${from}/`);
-  const tail = inside ? pathname.slice(from.length) : '';
+  let tail = inside ? pathname.slice(from.length) : '';
   const params = new URLSearchParams(loc.search);
+  const id = idParam ? tail.split('/')[1] : undefined;
+  if (idParam && id) {
+    let value = id;
+    try {
+      value = decodeURIComponent(id);
+    } catch {
+      // A malformed escape stays as it was written.
+    }
+    if (!params.has(idParam)) params.set(idParam, value);
+    tail = '';
+  }
   for (const [key, value] of Object.entries(defaults)) {
     if (!params.has(key)) params.set(key, value);
   }
@@ -51,11 +68,13 @@ export function RenamedRoute({
   from,
   to,
   defaults,
+  idParam,
 }: {
   from: string;
   to: string;
   defaults?: Record<string, string>;
+  idParam?: string;
 }) {
   const location = useLocation();
-  return <Navigate to={renamedTarget(location, from, to, defaults)} state={location.state} replace />;
+  return <Navigate to={renamedTarget(location, from, to, defaults, idParam)} state={location.state} replace />;
 }
