@@ -1017,6 +1017,32 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     expect(tables.menu_items[0].status).toBe("approved");
     expect(tables.restaurant_inventory[0].wine_name).toBe("Opus One");
   });
+
+  it("a rename that fails on the menu line after the stock was renamed says so, in words the page shows (F-1002)", async () => {
+    const tables: Record<string, Row[]> = {
+      menu_items: [line()],
+      restaurant_menus: [CURRENT()],
+      restaurant_inventory: [
+        { id: "inv-1", restaurant_id: "rest-1", wine_name: "Opus One" },
+      ],
+    };
+    (tables as any).__updateFails = [{ menu_items: "timeout" }];
+    const service = makeService(tables, { rpc: changed });
+    const err = await service
+      .reviewMenuItem("mi-1", "user-1", "rest-1", {
+        fieldName: "name",
+        newValue: "Opus One 2019",
+      } as any)
+      .catch((e) => e);
+    // A plain Error reached the page as "Internal server error" alone.
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect((err as InternalServerErrorException).getResponse()).toMatchObject({
+      message:
+        "The wine was renamed in your stock, but the menu line was not: timeout",
+    });
+    expect(tables.restaurant_inventory[0].wine_name).toBe("Opus One 2019");
+    expect(tables.menu_items[0].name).toBe("Opus One");
+  });
 });
 
 /**

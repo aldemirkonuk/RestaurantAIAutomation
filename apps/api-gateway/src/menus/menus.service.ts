@@ -1135,11 +1135,14 @@ export class MenusService {
       .eq("id", menuItemId)
       .eq("restaurant_id", callerRestaurantId);
 
+    // An InternalServerErrorException, so the sentence reaches the page: a
+    // plain Error reached it as "Internal server error", and the page then
+    // said "Nothing was changed." beside a stock row already renamed (F-1002).
     if (updateErr) {
-      throw new Error(
+      throw new InternalServerErrorException(
         renamesStock
           ? `The wine was renamed in your stock, but the menu line was not: ${updateErr.message}`
-          : `Failed to update menu_item: ${updateErr.message}`,
+          : `The menu line was not saved: ${updateErr.message}`,
       );
     }
 

@@ -48,9 +48,10 @@ vi.mock('../../../lib/parseDecimal', async (importOriginal) => {
 });
 
 // The role is set per test: Edit is an owner's or a manager's (F-065).
-const auth = vi.hoisted(() => ({ role: null as string | null }));
+// The house too, so a test can switch it (F-1004).
+const auth = vi.hoisted(() => ({ role: null as string | null, house: 'r1' }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1', loading: false, activeRole: auth.role }),
+  useAuth: () => ({ activeRestaurantId: auth.house, loading: false, activeRole: auth.role }),
 }));
 
 vi.mock('../../../services/api/menus', async () => {
@@ -150,12 +151,21 @@ function currency(over: Partial<HouseCurrency> = {}): HouseCurrency {
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const page = () => (
     <QueryClientProvider client={qc}>
       <MenuNext />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const r = render(page());
+  return { ...r, rerenderPage: () => r.rerender(page()) };
 }
+
+// F-920/F-999: a refusal as the request library throws it -- its own message
+// is "Request failed with status code ...", the gateway's words are under it.
+const refused = (status: number, message?: unknown) =>
+  Object.assign(new Error(`Request failed with status code ${status}`), {
+    response: { status, data: message === undefined ? {} : { message } },
+  });
 
 beforeEach(() => {
   mockGetMenu.mockReset();
@@ -166,6 +176,7 @@ beforeEach(() => {
   mockRestore.mockReset();
   mockReview.mockReset();
   auth.role = null;
+  auth.house = 'r1';
   mockCurrency.mockReset();
   mockCurrency.mockResolvedValue(currency());
   marks.house = undefined;
@@ -552,12 +563,6 @@ describe('MenuNext — edit a line in place (F-065)', () => {
     expect(screen.getByTestId('menu-edit-row')).toBeInTheDocument();
   });
 
-  // F-920: a refused rename shows the gateway's reason, not the request's own
-  // "Request failed with status code ..." words.
-  const refused = (status: number, message?: unknown) =>
-    Object.assign(new Error(`Request failed with status code ${status}`), {
-      response: { status, data: message === undefined ? {} : { message } },
-    });
 
   it('F-920: a rename refused with a 403 shows the gateway\'s reason', async () => {
     auth.role = 'manager';
@@ -636,5 +641,118 @@ describe('MenuNext — edit a line in place (F-065)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Glass price cannot be cleared here.');
     expect(mockReview).not.toHaveBeenCalled();
+  });
+});
+
+describe("MenuNext — a failed edit says what was changed, not more (F-1002)", () => {
+  async function rename() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Name of Turkish coffee'), { target: { value: 'Türk kahvesi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    return screen.findByTestId('menu-edit-said');
+  }
+
+  it('a rename that renamed the stock but not the line never says "Nothing was changed"', async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockRejectedValueOnce(
+      refused(500, 'The wine was renamed in your stock, but the menu line was not: timeout'),
+    );
+    mount();
+    const said = await rename();
+    expect(said).toHaveTextContent(
+      'Name was not saved (The wine was renamed in your stock, but the menu line was not: timeout).',
+    );
+    expect(said).not.toHaveTextContent('Nothing was changed');
+  });
+
+  it('a 500 with no reason asks for a reload rather than claiming nothing changed', async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockRejectedValueOnce(refused(500));
+    mount();
+    const said = await rename();
+    expect(said).toHaveTextContent('Reload the page to see what was kept.');
+    expect(said).not.toHaveTextContent('Nothing was changed');
+  });
+});
+
+describe("MenuNext — Add, Discard and Put back show the gateway's reason (F-999)", () => {
+  beforeEach(() => {
+    auth.role = 'manager';
+  });
+
+  it('a refused add', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockRejectedValue(refused(403, 'Only an owner or a manager can add a line to the current menu.'));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Only an owner or a manager can add a line to the current menu.');
+    expect(alert).not.toHaveTextContent('status code');
+  });
+
+  it('a refused discard', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockRejectedValue(refused(404, 'No menu item of this restaurant'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That line was not discarded (No menu item of this restaurant).',
+    );
+  });
+
+  it('a refused put back', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mockDiscarded.mockResolvedValue({ items: [{ ...line({ id: 'd1', name: 'Raki' }), status: 'discarded', prior_status: 'approved' }] });
+    mockRestore.mockRejectedValue(refused(404, 'No menu item of this restaurant'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Put Raki back on the menu' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That line was not put back (No menu item of this restaurant).',
+    );
+  });
+
+  it('a failed read of the lines taken off, with no reason, is never a status code', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mockDiscarded.mockRejectedValue(refused(500));
+    mount();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The lines taken off the menu could not be read (the server gave no reason; try again).');
+    expect(alert).not.toHaveTextContent('status code');
+  });
+});
+
+describe('MenuNext — a house switch starts the page empty (F-1004)', () => {
+  it("drops the house just left's 'Put it back', so it is never sent to the next house", async () => {
+    auth.role = 'manager';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    const { rerenderPage } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    expect(await screen.findByTestId('menu-just-discarded')).toHaveTextContent('Raki is off the menu.');
+    auth.house = 'r2';
+    rerenderPage();
+    await waitFor(() => expect(mockGetMenu).toHaveBeenCalledWith('r2'));
+    // The next house's menu is read and shown before anything is asserted.
+    expect(await screen.findByRole('button', { name: 'Discard Raki' })).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-just-discarded')).not.toBeInTheDocument();
+  });
+
+  it('drops the Edit sentence of the house just left', async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockResolvedValueOnce({ menuItemId: 'l1', fieldName: 'name', newValue: 'Türk kahvesi' });
+    const { rerenderPage } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Name of Turkish coffee'), { target: { value: 'Türk kahvesi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByTestId('menu-edit-said')).toHaveTextContent('Saved: Name.');
+    auth.house = 'r2';
+    rerenderPage();
+    await waitFor(() => expect(mockGetMenu).toHaveBeenCalledWith('r2'));
+    expect(await screen.findByRole('button', { name: 'Edit Turkish coffee' })).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-edit-said')).not.toBeInTheDocument();
   });
 });
