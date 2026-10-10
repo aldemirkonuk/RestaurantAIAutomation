@@ -9,7 +9,7 @@
  * that minted are approved, the refused one stays selected with its reason.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 type ApproveInput = { orderId: string; challenge: string | null };
@@ -25,15 +25,19 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
   useApproveOrder: () => approveMock,
 }));
 // Reduced motion: the keyboard path (Enter arms, Enter commits) and no WAAPI.
-vi.mock('@/lib/mudavym/motion', () => ({
+// The confirm gap is the real one (F-723); `mount` presses the second time
+// after it, the way a person deciding twice would.
+vi.mock('@/lib/mudavym/motion', async (importOriginal) => ({
   animate: vi.fn(),
   pour: { ms: 1 },
+  sealTiming: (await importOriginal<typeof import('@/lib/mudavym/motion')>()).sealTiming,
   stamp: {},
   tuck: {},
   useReducedMotion: () => true,
 }));
 vi.mock('@/components/mudavym', () => ({ Seal: () => null }));
 
+import { sealTiming } from '@/lib/mudavym/motion';
 import { BulkApproveBar } from './BulkApproveBar';
 import type { OrderRowVM } from './useOrdersNextData';
 
@@ -59,14 +63,25 @@ function mount(ids: string[]) {
   );
   const die = () => screen.getByRole('button', { name: /hold to approve/i });
   fireEvent.keyDown(die(), { key: 'Enter' });
+  now += sealTiming.confirmGapMs;
   fireEvent.keyDown(die(), { key: 'Enter' });
   return { onApproved };
 }
 
+let now = 1_000_000;
+let clock: { mockRestore: () => void };
 beforeEach(() => {
+  sealTiming.confirmGapMs = 400; // the setup lifts it; these presses honour it
+  now = 1_000_000;
+  clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
   approveMock.mutateAsync.mockReset();
   approveMock.mutateAsync.mockResolvedValue({});
   mintMock.mockReset();
+});
+
+afterEach(() => {
+  clock.mockRestore();
+  sealTiming.confirmGapMs = 0;
 });
 
 describe('bulk approve — one refused seal approves nothing, and says which and why (ADR 0116, F-416)', () => {
