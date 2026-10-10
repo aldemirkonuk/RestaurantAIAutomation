@@ -255,6 +255,28 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
     expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument()
   })
 
+  it('F-341: holds a price billed in another money instead of asking for an override', async () => {
+    // Agreed 22 EUR, billed 770 TRY. Before, the screen printed a euro "over agreed" figure
+    // across the two moneys and refused to accept without a reason.
+    orderBlock = {
+      id: 'order-1',
+      currency: 'EUR',
+      currencySource: 'vendor_usual',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await enterInvoice(user, 24, 770, 'TRY')
+
+    expect(await screen.findByText(/Not compared — agreed in EUR, billed in TRY/)).toBeInTheDocument()
+    expect(screen.queryByText(/over agreed/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Why accept this price?')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Reason required/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/The price was not compared/)).toBeInTheDocument()
+  })
+
   it('reads a rejected bottle as damage, not a short ship, and holds the order open', async () => {
     const user = userEvent.setup()
     renderWorkspace()
