@@ -112,7 +112,7 @@ vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 
 import TeamNext from './TeamNext';
 import { resolveName, ROSTER_PLACEHOLDER } from './tm-format';
-import { readLabourTarget } from './useTeamNextData';
+import { hoursOf, readLabourTarget } from './useTeamNextData';
 
 const member = (over: Record<string, unknown> = {}) => ({
   id: 'm1',
@@ -349,6 +349,14 @@ describe('the crew note is a record, not a memory of this page', () => {
 });
 
 /* ── the record ──────────────────────────────────────────────────────────── */
+
+describe('a shift with equal start and end times', () => {
+  it('counts no hours toward the week, not a full day', () => {
+    expect(hoursOf({ start_time: '10:00', end_time: '10:00' })).toBe(0);
+    // The overnight rule is unchanged: an end before the start is next morning.
+    expect(hoursOf({ start_time: '22:00', end_time: '02:00' })).toBe(4);
+  });
+});
 
 describe('the labour target is read against its column default', () => {
   it('reads a stored 28 with no provenance as no target at all', () => {
