@@ -26,6 +26,7 @@ import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrder
 import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
 import * as ordersApi from '@/services/api/orders';
 import { approveConflict } from '@/services/api/approveConflict';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { AMOUNTS_WITHHELD, EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
   PRICE_UOM_LABEL,
@@ -156,6 +157,8 @@ export function LedgerRow({
   onOpenReceipt,
   approvalGateError,
 }: LedgerRowProps) {
+  // Figures grouped the house's way (F-942).
+  const group = useHouseGroupMark();
   const approve = useApproveOrder();
   const deliver = useMarkOrderDelivered();
   // Bumped after a refused approval so the die (HoldToApprove) remounts armed.
@@ -338,7 +341,7 @@ export function LedgerRow({
               textAlign: 'right',
             }}
           >
-            {withheld ? null : fmtMoney(row.total, row.currency)}
+            {withheld ? null : fmtMoney(row.total, row.currency, group)}
           </span>
           {clickOpensReceipt ? (
             <span className="sr-only"> — open the receipt</span>
@@ -446,7 +449,7 @@ export function LedgerRow({
                       <span data-testid="row-working">{row.agreement.working}</span>
                       <span style={{ color: 'var(--ink-4, #665D50)' }}> = </span>
                       <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
-                        {fmtMoney(row.agreement.total, row.currency)}
+                        {fmtMoney(row.agreement.total, row.currency, group)}
                       </span>
                     </>
                   ) : row.agreement && !row.agreement.ok ? (
@@ -470,7 +473,7 @@ export function LedgerRow({
                         ? 'no working can be shown, because this view never read the unit the price is in. The figure above is the ledger’s own.'
                         : row.priceUnit.stated === null
                           ? `no working can be shown, because nothing says what unit ${
-                              row.unitPrice === null ? 'the price' : fmtMoney(row.unitPrice, row.currency)
+                              row.unitPrice === null ? 'the price' : fmtMoney(row.unitPrice, row.currency, group)
                             } is in. The figure above is the ledger’s own.`
                           : 'the working needs the order’s pack size, which this row does not carry, so the figure above is the ledger’s own and not one worked out here.'}
                     </span>
@@ -537,7 +540,7 @@ export function LedgerRow({
                   )}
                 {disagreement && (
                   <div style={{ color: 'var(--seal-deep, #14515C)' }}>
-                    the ledger lists {fmtMoney(row.listedTotal, row.currency)} — the two disagree; the listed figure is
+                    the ledger lists {fmtMoney(row.listedTotal, row.currency, group)} — the two disagree; the listed figure is
                     what will be spent
                   </div>
                 )}
@@ -650,7 +653,7 @@ export function LedgerRow({
                     */}
                     <HoldToApprove
                       key={`die-${row.id}-${attempt}`}
-                      label={withheld ? 'Hold to approve' : `Hold to approve · ${fmtMoney(row.total, row.currency)}`}
+                      label={withheld ? 'Hold to approve' : `Hold to approve · ${fmtMoney(row.total, row.currency, group)}`}
                       approvedLabel="Approved"
                       disabled={bulkRunning || approve.isPending || heldForApproval}
                       onApprove={onApprove}

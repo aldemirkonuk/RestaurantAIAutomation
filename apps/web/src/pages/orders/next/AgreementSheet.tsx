@@ -729,7 +729,7 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
                 color: 'var(--ink-1, #211C16)',
               }}
             >
-              {total && total.ok ? fmtMoney(total.total, currencyToRecord) : EM}
+              {total && total.ok ? fmtMoney(total.total, currencyToRecord, group) : EM}
             </span>
           </div>
           {total && total.ok ? (

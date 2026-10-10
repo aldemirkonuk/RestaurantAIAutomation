@@ -6,6 +6,7 @@ import { RcStaffLane } from './RcStaffLane'
 import { RcManagerQueue } from './RcManagerQueue'
 import { RcOwnerLedger } from './RcOwnerLedger'
 import { RcOutboxRail } from './RcOutboxRail'
+import { RcCreditDrafts } from './RcCreditDrafts'
 import {
   useStaffDeliveries,
   useManagerQueue,
@@ -571,7 +572,7 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
 
   it('marks the lane counts and the at-risk total as floors when the queue window is full', async () => {
     const items = Array.from({ length: 100 }, (_, i) =>
-      queueItem({ orderId: `ord-${i}`, orderNumber: `PO-${i}` }),
+      queueItem({ orderId: `ord-${i}`, orderNumber: `PO-${i}`, currency: 'GBP' }),
     )
     get.mockResolvedValue(queuePayload({ items, totalAtRisk: 12000 }))
     harness(ManagerBody)
@@ -579,20 +580,20 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     // A full window is 100 rows, and the day line now mounts above them, so the
     // first paint of this case is the heaviest in the file. On a loaded CI runner
     // it crossed the 1000 ms default and the assertion read the pre-load em dash.
-    expect(await screen.findByText('≥$12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
+    expect(await screen.findByText('≥£12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Short/ })).toHaveTextContent('≥100')
   })
 
   it('does not mark a lane count as a floor when the window came back short', async () => {
-    get.mockResolvedValue(queuePayload({ items: [queueItem()], totalAtRisk: 120 }))
+    get.mockResolvedValue(queuePayload({ items: [queueItem({ currency: 'GBP' })], totalAtRisk: 120 }))
     harness(ManagerBody)
 
-    // The header total and this fixture's one row carry the same $120 —
+    // The header total and this fixture's one row carry the same £120 —
     // scoped to the header, since a bare query would also match the row.
     // RcTally sets its display via a post-commit effect, so the header can
     // lag the row's own render by a tick; waitFor settles once it catches up.
     await screen.findByText('PO-1')
-    await waitFor(() => expect(atRiskHeader().getByText('$120')).toBeInTheDocument())
+    await waitFor(() => expect(atRiskHeader().getByText('£120')).toBeInTheDocument())
     const short = screen.getByRole('tab', { name: /Short/ })
     expect(short).toHaveTextContent('1')
     expect(short).not.toHaveTextContent('≥1')
@@ -634,9 +635,12 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
 /* ═════════════════════════════ F6 — a measured zero is not an unknown ══ */
 
 describe('F6 — $0 measured and $— unknown are different facts', () => {
-  it('renders a measured zero as $0, not as an em dash', async () => {
+  it('renders a measured zero as £0, not as an em dash', async () => {
     get.mockResolvedValue(
-      queuePayload({ items: [queueItem({ dollarsAtRisk: 0, openClaims: 0 })], totalAtRisk: 0 }),
+      queuePayload({
+        items: [queueItem({ dollarsAtRisk: 0, openClaims: 0, currency: 'GBP' })],
+        totalAtRisk: 0,
+      }),
     )
     harness(ManagerBody)
 
@@ -646,7 +650,20 @@ describe('F6 — $0 measured and $— unknown are different facts', () => {
     // bare query would match both.
     await screen.findByText('PO-1')
     const row = screen.getByText('PO-1').closest('button') as HTMLElement
-    expect(within(row).getByText('$0')).toBeInTheDocument()
+    expect(within(row).getByText('£0')).toBeInTheDocument()
+  })
+
+  // F-941: an order with no recorded currency printed its figure under "$".
+  it('[REVERT-FAILS] says an order with no recorded money has none, never "$" (F-941)', async () => {
+    get.mockResolvedValue(
+      queuePayload({ items: [queueItem({ dollarsAtRisk: 120, currency: null })], totalAtRisk: 120 }),
+    )
+    harness(ManagerBody)
+
+    await screen.findByText('PO-1')
+    const row = screen.getByText('PO-1').closest('button') as HTMLElement
+    expect(within(row).getByText('120 (currency not recorded)')).toBeInTheDocument()
+    expect(row.textContent).not.toMatch(/\$/)
   })
 
   it('renders an absent figure as an em dash', async () => {
@@ -1125,5 +1142,58 @@ describe('F11 — a delivery hand-off opens its row in the decision queue', () =
     harness(ManagerBodyHighlighted)
 
     expect(screen.queryByTestId('highlight-order-missing')).not.toBeInTheDocument()
+  })
+})
+
+// F-940: the drafted credit request printed every claim in US dollars. A lira
+// claim in a Turkish house reads in lira, grouped the house's way.
+describe("drafted credit requests name the claim's own money (F-940)", () => {
+  afterEach(() => {
+    try {
+      localStorage.removeItem('activeRestaurantId')
+    } catch {
+      /* no storage, nothing to clear */
+    }
+  })
+
+  it('[REVERT-FAILS] prints a lira claim in lira, on the card and on its seal', async () => {
+    // A house of its own, so the group-mark read is not one an earlier case cached.
+    localStorage.setItem('activeRestaurantId', 'rest-credit-tr')
+    get.mockImplementation(async (url: string) =>
+      url === '/settings/currency'
+        ? { data: { readable: true, currency: 'TRY', country: 'Turkey' } }
+        : { data: [] },
+    )
+    const draft = {
+      id: 'cr-1',
+      order_id: 'ord-1',
+      provider_id: 'p-1',
+      state: 'open',
+      claimed_amount: 1250,
+      currency: 'TRY',
+      created_at: '2026-10-09T09:00:00.000Z',
+    }
+    harness(() => (
+      <RcCreditDrafts
+        data={{
+          drafts: [draft as any],
+          hasData: true,
+          isLoading: false,
+          isError: false,
+          failure: null,
+          refetch: () => {},
+        }}
+      />
+    ))
+
+    // The runtime decides whether lira prints as "₺" or "TRY"; the money and
+    // the house's marks ("1.250,00", not "1,250.00") are what is asserted.
+    const lira = /^(₺|TRY\s?)1\.250,00$/
+    expect((await screen.findAllByText(lira)).length).toBeGreaterThan(0)
+    expect(
+      screen.getByRole('button', { name: /^Hold to send the request — (₺|TRY\s?)1\.250,00$/ }),
+    ).toBeInTheDocument()
+    const section = screen.getByRole('region', { name: 'Drafted credit requests' })
+    expect(section.textContent).not.toMatch(/\$/)
   })
 })

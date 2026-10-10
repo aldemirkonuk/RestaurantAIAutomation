@@ -3754,10 +3754,27 @@ export class ProcurementService {
       });
     }
 
+    // F-943. Whether the price was right is the verdict the invoice check
+    // records (`verifyReceipt`), and the vendor scorecard's price accuracy
+    // reads it. Typed in here, a "yes" on an over-billed order counted as a
+    // hit for the vendor. Refused in words, as a received quantity is.
+    if (dto.priceVerified != null) {
+      throw new BadRequestException({
+        reason: "price_check_is_not_typed_in",
+        message:
+          "Whether an order's price was right is recorded when its delivery is checked against the invoice, not typed in here. Nothing was changed.",
+      });
+    }
+
     // F-300. Where an order stands and what it costs are owner/manager acts
     // (ADR 0253's money rule; ADR 0125 Q1 for the order's state). `cancelOrder`
     // has already asked the same helper before it calls in here.
-    const writesMoney = dto.finalPrice != null || dto.totalCost != null;
+    // F-943: the quoted and negotiated prices are what an order costs too, so
+    // they take the same gate (role, PENDING only, compared-and-set); only a
+    // new final price or total works the total out again.
+    const writesTotal = dto.finalPrice != null || dto.totalCost != null;
+    const writesMoney =
+      writesTotal || dto.quotedPrice != null || dto.negotiatedPrice != null;
     const writesStatus = dto.status !== undefined && !opts?.cancelReasonCode;
     if (writesMoney || writesStatus) {
       await this.assertMayChangeOrder(
@@ -3813,8 +3830,9 @@ export class ProcurementService {
     // the two cannot be repriced after the fact.
     let pricedFromStatus: string | null = null;
     let workedOutTotal: number | null = null;
+    let current: unknown = null;
     if (writesMoney) {
-      const { data: current, error: readError } =
+      const { data: read, error: readError } =
         await this.databaseService.supabase
           .from("procurement_orders")
           .select(
@@ -3828,6 +3846,7 @@ export class ProcurementService {
           `This order could not be read (${readError.message}), so its price was not changed.`,
         );
       }
+      current = read;
       if (!current) {
         throw new NotFoundException(
           "No order with that id belongs to this restaurant, so there was nothing to change.",
@@ -3842,7 +3861,8 @@ export class ProcurementService {
         });
       }
       pricedFromStatus = status;
-
+    }
+    if (writesTotal) {
       // F-743. The total is worked out here from the quantity and the price,
       // the same way `createOrder` does (F-732), never written from the body:
       // the ceiling and the seal both read `total_cost`, so a $1 total sent
@@ -3914,7 +3934,6 @@ export class ProcurementService {
       rejection_reason: dto.rejectionReason ?? undefined,
       delivery_notes: dto.deliveryNotes ?? undefined,
       tracking_number: dto.trackingNumber ?? undefined,
-      price_verified: dto.priceVerified ?? undefined,
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
       // Whose failure a cancellation was (ADR 0207 round 4). NOT on
@@ -3966,6 +3985,14 @@ export class ProcurementService {
         message:
           "This order was approved or changed while its price was being edited, so the new price was not written.",
       });
+    }
+    // F-944. No row came back and no compare-and-set was in play, so the
+    // order is not in this house. Said the way the price path says it, not as
+    // a server fault in PostgREST's words.
+    if (error && error.code === "PGRST116") {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so there was nothing to change.",
+      );
     }
     if (error) {
       this.logger.error("Failed to update procurement order", {

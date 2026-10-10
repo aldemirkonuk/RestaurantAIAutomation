@@ -64,6 +64,7 @@ import { useApproveOrder, useCancelOrder } from '@/hooks/queries/useOrderQueries
 import { useDealProposal, useOrderConversations } from '@/hooks/queries/useDraftEmailQueries';
 import * as ordersApi from '@/services/api/orders';
 import { approveConflict } from '@/services/api/approveConflict';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { AMOUNTS_WITHHELD, EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
   ROW_PRICE_UNIT_NOT_READ,
@@ -176,6 +177,8 @@ export function ResponsesSheet({
   approval,
   approvalGateError,
 }: ResponsesSheetProps) {
+  // Figures grouped the house's way (F-942).
+  const group = useHouseGroupMark();
   const orderId = open ? row.id : null;
   const convos = useOrderConversations(orderId);
   // The delivery estimate is not a per-message column; it is on the latest
@@ -410,7 +413,7 @@ export function ResponsesSheet({
                 <div style={{ marginTop: 4 }}>
                   <HoldToApprove
                     key={`confirm-${row.id}-${attempt}`}
-                    label={withheld ? 'Hold to confirm' : `Hold to confirm · ${fmtMoney(row.total, row.currency)}`}
+                    label={withheld ? 'Hold to confirm' : `Hold to confirm · ${fmtMoney(row.total, row.currency, group)}`}
                     approvedLabel="Confirmed"
                     disabled={approve.isPending || cancel.isPending || heldForApproval}
                     onApprove={onApprove}
@@ -561,7 +564,7 @@ export function ResponsesSheet({
             </span>
           </Field>
           <Field name="Order total">
-            <span style={{ fontFamily: MONO, fontSize: 12.5 }}>{fmtMoney(row.total, row.currency)}</span>
+            <span style={{ fontFamily: MONO, fontSize: 12.5 }}>{fmtMoney(row.total, row.currency, group)}</span>
           </Field>
             </>
           )}

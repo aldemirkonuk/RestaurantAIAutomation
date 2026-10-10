@@ -3,7 +3,8 @@
  * em dash, never as a zero. A zero is a claim; a dash is an admission.
  */
 
-import { CURRENCY_NOT_RECORDED, currencyMinorUnits } from '@/lib/currency';
+import { CURRENCY_NOT_RECORDED, currencyMinorUnits, inHouseMarks } from '@/lib/currency';
+import type { GroupMark } from '@/lib/parseDecimal';
 
 export const EM = '—';
 
@@ -28,11 +29,15 @@ export function num(v: unknown): number | null {
  * own `procurement_orders.currency`, else the house's (`OrderRowVM.currency`
  * resolves that). A code nobody recorded prints the number and says so, never
  * a guessed symbol (`lib/currency.ts`). Each currency keeps its own decimals.
+ *
+ * Printed en-US, then re-marked with the house's grouping when the caller
+ * passes it (`useHouseGroupMark`, F-942): a lira house reads "₺1.250,00", the
+ * way the order sheet reads what it types. The symbol stays where it was.
  */
 function inCurrency(
   n: number,
   currency: string | null | undefined,
-  opts: { whole?: boolean; grouping?: boolean } = {},
+  opts: { whole?: boolean; grouping?: boolean; group?: GroupMark | null } = {},
 ): string {
   const code = typeof currency === 'string' ? currency.trim().toUpperCase() : '';
   const digits = opts.whole ? 0 : currencyMinorUnits(code) ?? 2;
@@ -41,28 +46,36 @@ function inCurrency(
     maximumFractionDigits: digits,
     useGrouping: opts.grouping ?? true,
   };
+  let printed: string;
   if (/^[A-Z]{3}$/.test(code)) {
     try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: code, ...shape }).format(n);
+      printed = new Intl.NumberFormat('en-US', { style: 'currency', currency: code, ...shape }).format(n);
     } catch {
-      return `${new Intl.NumberFormat('en-US', shape).format(n)} ${code}`;
+      printed = `${new Intl.NumberFormat('en-US', shape).format(n)} ${code}`;
     }
+  } else {
+    printed = `${new Intl.NumberFormat('en-US', shape).format(n)} (${CURRENCY_NOT_RECORDED})`;
   }
-  return `${new Intl.NumberFormat('en-US', shape).format(n)} (${CURRENCY_NOT_RECORDED})`;
+  return inHouseMarks(printed, ',', opts.group ?? null);
 }
 
-export function fmtMoney(v: number | null | undefined, currency: string | null | undefined): string {
+export function fmtMoney(
+  v: number | null | undefined,
+  currency: string | null | undefined,
+  group: GroupMark | null = null,
+): string {
   const n = num(v);
-  return n === null ? EM : inCurrency(n, currency);
+  return n === null ? EM : inCurrency(n, currency, { group });
 }
 
 /** Whole units for the month figure (€12,480). Unknown stays a dash. */
 export function fmtMoneyWhole(
   v: number | null | undefined,
   currency: string | null | undefined,
+  group: GroupMark | null = null,
 ): string {
   const n = num(v);
-  return n === null ? EM : inCurrency(n, currency, { whole: true });
+  return n === null ? EM : inCurrency(n, currency, { whole: true, group });
 }
 
 /** The working's figure: no grouping, as the working always printed it ("× €420.00"). */
