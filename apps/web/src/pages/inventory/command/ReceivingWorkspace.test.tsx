@@ -237,6 +237,24 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
     )
   })
 
+  it('F-341: says a euro order and a euro invoice in euros, never under a dollar sign', async () => {
+    orderBlock = {
+      id: 'order-1',
+      currency: 'EUR',
+      currencySource: 'vendor_usual',
+      orderNumber: 'PO-1042',
+      failure: null,
+    }
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await enterInvoice(user, 24, 24, 'EUR')
+
+    expect(await screen.findByText('Billed €24.00 against an agreed €22.00.')).toBeInTheDocument()
+    expect(screen.getByText('€22.00')).toBeInTheDocument()
+    expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument()
+  })
+
   it('reads a rejected bottle as damage, not a short ship, and holds the order open', async () => {
     const user = userEvent.setup()
     renderWorkspace()

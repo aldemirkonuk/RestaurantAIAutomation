@@ -23,6 +23,10 @@
  * bottle-equivalents; the caller normalises cases before calling.
  */
 
+// The gateway's own formatter, so the two summaries stay word-for-word equal
+// (the parity test in invoiceMatch.test.ts reads both).
+import { moneyIn } from '../../../api-gateway/src/procurement/agreed-price'
+
 export type MatchVerdict =
   | 'matched'
   | 'overbilled_vs_ship'
@@ -37,10 +41,14 @@ export type MatchVerdict =
 export interface MatchInput {
   orderedQty: number
   poUnitPrice?: number | null
+  /** The money the agreed price is in (F-341). Absent says "currency not recorded", never USD. */
+  poCurrency?: string | null
   /** From the packing slip / ASN. Null = none in hand, which is common. */
   shippedQty?: number | null
   invoiceQty?: number | null
   invoiceUnitPrice?: number | null
+  /** The money the invoice bills in (F-341). */
+  invoiceCurrency?: string | null
   acceptedQty: number
   rejectedQty?: number
   /** Agreed free bottles; netted out so a deal stops reading as an overage. */
@@ -63,7 +71,11 @@ export interface MatchResult {
   effectiveUnitCost: number | null
 }
 
-export const money = (n: number) => `$${n.toFixed(2)}`
+/**
+ * A figure in the money it is in (F-341). This printed a bare "$" until
+ * 2026-10-09, so a euro or lira delivery was checked under a dollar sign.
+ */
+export const money = (n: number, currency: string | null | undefined) => moneyIn(n, currency)
 
 /** Compare as cents so 22.000000001 still equals 22. */
 const priceEquals = (a: number, b: number) => Math.round(a * 100) === Math.round(b * 100)
@@ -138,7 +150,10 @@ export function computeMatch(input: MatchInput): MatchResult {
       case 'overbilled_vs_ship':
         return `Their packing slip says ${shippedQty} but their invoice bills ${invoiceQty} — proven by their own paperwork.`
       case 'price_variance':
-        return `Billed ${money(invoiceUnitPrice as number)} against an agreed ${money(poUnitPrice as number)}.`
+        return `Billed ${money(invoiceUnitPrice as number, input.invoiceCurrency)} against an agreed ${money(
+          poUnitPrice as number,
+          input.poCurrency,
+        )}.`
       case 'qty_over':
         return `${billableReceived} arrived but only ${invoiceQty} were billed.`
       case 'qty_short':

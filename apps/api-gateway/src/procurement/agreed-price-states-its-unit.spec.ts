@@ -32,6 +32,8 @@
 import {
   PRICE_UOM_TYPES,
   agreedOrderTotal,
+  agreedPricePerBottleForDoor,
+  agreementLineTotal,
   describeAgreedPrice,
   embeddedOrderLines,
   foldOrderPriceUnit,
@@ -270,6 +272,7 @@ describe("perBottleFromAgreedPrice — one conversion, and it says so", () => {
     const r = perBottleFromAgreedPrice({
       price: 420,
       stated: { priceUom: "case", pricePackSize: 12 },
+      currency: "USD",
     });
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
@@ -401,6 +404,7 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
         bottlesPerUnit: 12,
         wineName: WINE,
         finalPrice: 35,
+        currency: "USD",
         statedPriceUnit: { priceUom: "bottle", pricePackSize: 1 },
       }),
     ).toBe(
@@ -416,6 +420,7 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
         bottlesPerUnit: 12,
         wineName: WINE,
         finalPrice: 420,
+        currency: "USD",
         statedPriceUnit: { priceUom: "case", pricePackSize: 12 },
       }),
     ).toBe(
@@ -430,6 +435,7 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
       bottlesPerUnit: 12,
       wineName: WINE,
       finalPrice: 120,
+      currency: "USD",
     };
     expect(describeConfirmedOrderTerms({ ...input, statedPriceUnit: null })).toBe(
       preFixSentence(input),
@@ -445,6 +451,7 @@ describe("describeConfirmedOrderTerms — the mail states the price's own unit",
         bottlesPerUnit: null,
         wineName: WINE,
         finalPrice: 420,
+        currency: "USD",
         statedPriceUnit: { priceUom: "case", pricePackSize: 12 },
       }),
     ).toBe(
@@ -460,6 +467,7 @@ describe("describeAgreedPrice — the phrase the page and the vendor both read",
       describeAgreedPrice({
         price: 420,
         stated: { priceUom: "case", pricePackSize: 12 },
+        currency: "USD",
       }),
     ).toBe("$420.00 per case (12 bottles)");
   });
@@ -469,12 +477,13 @@ describe("describeAgreedPrice — the phrase the page and the vendor both read",
       describeAgreedPrice({
         price: 35,
         stated: { priceUom: "bottle", pricePackSize: 1 },
+        currency: "USD",
       }),
     ).toBe("$35.00 per bottle");
   });
 
   it("shows a bare figure when no unit is stated, rather than inventing one", () => {
-    expect(describeAgreedPrice({ price: 35, stated: null })).toBe("$35.00");
+    expect(describeAgreedPrice({ price: 35, stated: null, currency: "USD" })).toBe("$35.00");
   });
 
   it("is null when there is no price at all", () => {
@@ -774,5 +783,75 @@ describe("the header's price unit is folded from the lines", () => {
       priceUom: "case",
       pricePackSize: 12,
     });
+  });
+});
+
+describe("every working is said in the price's own money (F-341)", () => {
+  const fiveCases = {
+    price: 420,
+    stated: { priceUom: "case" as const, pricePackSize: 12 },
+    bottlesTotal: 60,
+    quantity: 5,
+    unitType: "case" as const,
+    opaque: false,
+  };
+
+  it("works a euro agreement in euros, fees and all", () => {
+    const r = agreementLineTotal({
+      ...fiveCases,
+      fees: { allowance: 100, deposit: 30, freight: null },
+      currency: "EUR",
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.working).toContain("× €420.00");
+    expect(r.working).toContain("Goods €2100.00, less allowance €100.00, plus deposit €30.00");
+    expect(r.working).not.toContain("$");
+  });
+
+  it("says a lira price per bottle in lira", () => {
+    const r = agreedOrderTotal({
+      ...fiveCases,
+      stated: { priceUom: "bottle", pricePackSize: 1 },
+      price: 35,
+      currency: "TRY",
+    });
+    expect(r.ok && r.note).toBe("Totalled as 60 × TRY\u00a035.00 per bottle.");
+  });
+
+  it("says the currency was not recorded rather than guessing dollars", () => {
+    const r = agreedOrderTotal(fiveCases);
+    expect(r.ok && r.note).toContain("× 420.00 (currency not recorded)");
+    expect(r.ok && r.note).not.toContain("$");
+  });
+
+  it("compares a pound agreement at the door in pounds", () => {
+    const r = agreedPricePerBottleForDoor({
+      price: 420,
+      stated: fiveCases.stated,
+      currency: "GBP",
+    });
+    expect(r.ok && r.note).toBe(
+      "Agreed at £420.00 per case of 12; compared per bottle at £35.0000.",
+    );
+  });
+
+  it("states the letter's price in the agreement's money, bare when unknown", () => {
+    expect(
+      describeAgreedPrice({ price: 420, stated: fiveCases.stated, currency: "EUR" }),
+    ).toBe("€420.00 per case (12 bottles)");
+    expect(describeAgreedPrice({ price: 35, stated: null })).toBe("35.00");
+    expect(
+      describeConfirmedOrderTerms({
+        quantity: 5,
+        unitType: "case",
+        bottlesPerUnit: 12,
+        wineName: WINE,
+        finalPrice: 120,
+        currency: "TRY",
+      }),
+    ).toBe(
+      `We'd like to confirm our order: 5 cases (12 bottles each) of ${WINE} at TRY\u00a0120.00 per case.`,
+    );
   });
 });

@@ -74,7 +74,7 @@ describe('ReceiptDepth', () => {
       o1: [
         doc({}),
         doc({ id: 'd2', doc_type: 'delivery_receipt', doc_number: null, ties_out: true, status: 'verified' }),
-        doc({ id: 'd3', doc_type: 'credit_memo', doc_number: 'CM-3', ties_out: false, tie_out_delta: -12.4 }),
+        doc({ id: 'd3', doc_type: 'credit_memo', doc_number: 'CM-3', ties_out: false, tie_out_delta: -12.4, currency: 'USD' }),
         doc({ id: 'd4', status: 'superseded' }), // never shown
       ],
     }
@@ -87,6 +87,21 @@ describe('ReceiptDepth', () => {
     expect(screen.getByText('off by $12.40')).toBeInTheDocument()
     // superseded paperwork stays out of the book
     expect(screen.getAllByText('Invoice')).toHaveLength(1)
+  })
+
+  // F-341: every figure here printed a bare "$" until 2026-10-09.
+  it('says each document in its own money, and says so when none is recorded', async () => {
+    api.byOrder = {
+      o1: [
+        doc({ total: 412.5, currency: 'EUR', ties_out: false, tie_out_delta: 3 }),
+        doc({ id: 'd2', doc_type: 'delivery_receipt', total: 80, currency: null }),
+      ],
+    }
+    render(<ReceiptDepth orders={[{ id: 'o1', orderNumber: 'PO-14' }]} />, { wrapper })
+    expect(await screen.findByText('€412.50')).toBeInTheDocument()
+    expect(screen.getByText('off by €3.00')).toBeInTheDocument()
+    expect(screen.getByText('80.00 (currency not recorded)')).toBeInTheDocument()
+    expect(screen.queryByText(/\$/)).not.toBeInTheDocument()
   })
 
   it('admits an empty paper trail without claiming verification', async () => {

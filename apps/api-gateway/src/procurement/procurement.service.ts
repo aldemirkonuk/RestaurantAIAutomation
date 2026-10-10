@@ -101,6 +101,7 @@ import {
   agreedPricePerBottleForDoor,
   agreementLineTotal,
   describeAgreedPrice,
+  moneyIn,
   embeddedOrderLines,
   foldOrderPriceUnit,
   hasStatedFees,
@@ -380,6 +381,11 @@ export function describeConfirmedOrderTerms(input: {
   finalPrice: number | null;
   /** The line's stated price unit, when it has one. NULL keeps phase 0's sentence. */
   statedPriceUnit?: StatedPriceUnit | null;
+  /**
+   * The money the price is in (F-341): the agreement line's own, else the
+   * house's. With neither the figure goes out bare, never under a `$`.
+   */
+  currency?: string | null;
 }): string {
   const unit = (input.unitType ?? "").trim() || "unit";
   const isBottle = unit === "bottle";
@@ -396,13 +402,14 @@ export function describeConfirmedOrderTerms(input: {
     ? describeAgreedPrice({
         price: input.finalPrice,
         stated: input.statedPriceUnit,
+        currency: input.currency,
       })
     : null;
 
   const priceLine = statedPrice
     ? ` at ${statedPrice}`
     : input.finalPrice != null
-      ? ` at $${Number(input.finalPrice).toFixed(2)} per ${unit}`
+      ? ` at ${moneyIn(Number(input.finalPrice), input.currency, { unrecorded: "bare" })} per ${unit}`
       : "";
 
   // Nothing to ask about when the unit IS the bottle, or when the pack is known.
@@ -1091,6 +1098,7 @@ export class ProcurementService {
       unitType: units.unitType,
       opaque: units.opaque,
       fees,
+      currency: currencyCode(dto.currency),
     });
     if (!agreedTotal.ok) {
       this.logger.warn("Refused an order whose value cannot be worked out", {
@@ -1547,6 +1555,7 @@ export class ProcurementService {
           unitType: units.unitType,
           opaque: units.opaque === true,
           fees,
+          currency: currencyCode(dto.currency),
         })
       : null;
     const lineTotal =
@@ -3874,6 +3883,21 @@ export class ProcurementService {
    * house with no zone on record is not blocked from cancelling, only held to
    * the more conservative (later) instant.
    */
+  /**
+   * The house's currency, read for wording only (F-341) — or null when it
+   * cannot be read. Never a statement about what a vendor charges: callers use
+   * it only where the agreement line names no money of its own.
+   */
+  private async readHouseCurrency(restaurantId: string): Promise<string | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return currencyCode((data as any).currency);
+  }
+
   private async readHouseZoneForCancel(
     restaurantId: string,
   ): Promise<string | null> {
@@ -6337,6 +6361,7 @@ export class ProcurementService {
         ? (agreedLine.finalUnitPrice ?? headerPrice)
         : headerPrice,
       stated: agreedLine.stated,
+      currency: agreedLine.currency,
     });
     const poUnitPrice = doorPrice.ok ? doorPrice.perBottle : null;
     if (!doorPrice.ok && headerPrice != null) {
@@ -6374,6 +6399,9 @@ export class ProcurementService {
       orderedUom: orderUnits.unitType,
       orderedBottlesPerUnit: orderUnits.bottlesPerUnit,
       poUnitPrice,
+      // Words only (F-341): each price is said in its own money, never "$".
+      poCurrency:
+        agreedLine.currency ?? (orderRow as any).currency ?? null,
       shippedQtyInShippedUom: shippedQuantity ?? null,
       shippedUom: body.shippedUom ?? null,
       shippedBottlesPerUnit: body.shippedBottlesPerUnit ?? null,
@@ -6381,6 +6409,7 @@ export class ProcurementService {
       invoiceUom: body.invoiceUom ?? null,
       invoiceBottlesPerUnit: body.invoiceBottlesPerUnit ?? null,
       invoiceUnitPrice: body.invoiceUnitPrice ?? null,
+      invoiceCurrency: body.invoiceCurrency ?? null,
       acceptedQtyInCountedUom: acceptedQuantity ?? null,
       rejectedQtyInCountedUom: rejectedQuantity ?? 0,
       freeGoodsQtyInCountedUom: freeGoodsQuantity ?? 0,
@@ -6710,13 +6739,13 @@ export class ProcurementService {
           ? "The agreement also names money outside the price of the wine: " +
             [
               agreedFees.allowance !== null
-                ? `an allowance of $${agreedFees.allowance.toFixed(2)}`
+                ? `an allowance of ${moneyIn(agreedFees.allowance, agreedLine.currency)}`
                 : null,
               agreedFees.deposit !== null
-                ? `a deposit of $${agreedFees.deposit.toFixed(2)}`
+                ? `a deposit of ${moneyIn(agreedFees.deposit, agreedLine.currency)}`
                 : null,
               agreedFees.freight !== null
-                ? `freight of $${agreedFees.freight.toFixed(2)}`
+                ? `freight of ${moneyIn(agreedFees.freight, agreedLine.currency)}`
                 : null,
             ]
               .filter(Boolean)
@@ -9766,6 +9795,10 @@ export class ProcurementService {
           // assert a unit it has not read, and phase 0's version read the
           // quantity's unit because that was all there was.
           statedPriceUnit,
+          // The agreement's own money, else the house's (F-341) — the letter
+          // used to say `$` whatever the vendor agreed in.
+          currency:
+            agreedLine.currency ?? (await this.readHouseCurrency(restaurantId)),
         });
         const body =
           `Hi ${greetName},\n\n` +
