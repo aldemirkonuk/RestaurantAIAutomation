@@ -508,13 +508,31 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
 
   /* ── keyboard (NEW-294), kept from the legacy page ────────────────────── */
 
+  /** A dialog, or a card's own in-place sheet (dismiss, goal). */
+  const OPEN_SHEET = '[role="dialog"], .rc-sheet';
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const el = ev.target as HTMLElement | null;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
-      if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      if (ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      // F-611: a letter typed into a select's type-ahead, pressed on a
+      // button, or pressed anywhere while a sheet is open (a dialog, or a
+      // card's own dismiss/goal sheet) is that control's key, never a
+      // house-wide snooze on the card behind it.
+      if (
+        el &&
+        (el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          ((el.tagName === 'SELECT' || el.tagName === 'BUTTON') && ev.key !== 'Escape') ||
+          el.isContentEditable ||
+          (typeof el.closest === 'function' && el.closest(OPEN_SHEET)))
+      )
+        return;
+      if (bulkReasonOpen || document.querySelector(OPEN_SHEET)) return;
       if (shown.length === 0) return;
-      const e = shown[Math.max(0, Math.min(focusedIdx, shown.length - 1))];
+      // Nothing acts until a card has been reached (`j`, a link, a goal):
+      // a key pressed on arrival must not land on whichever card is first.
+      const e = focusedIdx >= 0 ? shown[Math.min(focusedIdx, shown.length - 1)] : undefined;
       switch (ev.key) {
         case 'j':
           ev.preventDefault();
@@ -561,7 +579,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, focusedIdx, leaf]);
+  }, [shown, focusedIdx, leaf, bulkReasonOpen]);
 
   /* ── the opening voice — it only says what it knows ───────────────────── */
 

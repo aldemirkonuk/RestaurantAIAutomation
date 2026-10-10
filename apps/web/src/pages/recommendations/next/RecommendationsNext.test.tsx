@@ -730,6 +730,40 @@ describe('RecommendationsNext — the standing book', () => {
     expect(screen.getByRole('button', { name: 'Hold to rule off' })).toBeInTheDocument();
   });
 
+  it('F-611: a letter acts on nothing until a card is reached, and never from a button, a select or an open sheet', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    // on arrival: no card reached yet, so `s` snoozes nobody
+    fireEvent.keyDown(window, { key: 's' });
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(setDisposition).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'j' });
+    // a letter pressed on a button, or typed into a select, is that control's
+    const button = screen.getAllByRole('button')[0];
+    fireEvent.keyDown(button, { key: 's' });
+    const select = document.createElement('select');
+    document.body.appendChild(select);
+    fireEvent.keyDown(select, { key: 's' });
+    select.remove();
+    // with a card's dismissal sheet open, `s` inside it or on the page is not a snooze
+    fireEvent.keyDown(window, { key: 'd' });
+    const sheet = screen.getByRole('group', { name: 'Dismiss this entry' });
+    fireEvent.keyDown(within(sheet).getAllByRole('button')[0], { key: 's' });
+    fireEvent.keyDown(window, { key: 's' });
+    expect(setDisposition).not.toHaveBeenCalled();
+  });
+
+  it('F-611: a modifier key never acts', () => {
+    mockData.current = { ...base, entries: [entry()] };
+    draw();
+    fireEvent.keyDown(window, { key: 'j' });
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+    fireEvent.keyDown(window, { key: 'p', ctrlKey: true });
+    expect(setDisposition).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(setDisposition).toHaveBeenCalledTimes(1);
+  });
+
   it('the d key opens the dismissal sheet — it never dismisses on its own', () => {
     mockData.current = { ...base, entries: [weekdayEntry()] };
     draw();

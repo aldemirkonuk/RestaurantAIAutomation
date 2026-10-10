@@ -723,3 +723,51 @@ describe('the invite mail secret reaches the join', () => {
     expect(sent).not.toHaveProperty('emailSecret')
   })
 })
+
+/*
+ * F-612: on "I'm opening a new house", a short or mistyped password dims
+ * "Create account". The page now says why in visible words, tied to the
+ * button and the field, so a screen reader hears the reason and not only
+ * "dimmed".
+ */
+describe('the create path says why "Create account" is dimmed', () => {
+  async function reachCreate() {
+    gateway({ emailAvailable: true })
+    renderAt(createElement(Register), '/register?type=new')
+    await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
+    type('Full Name *', 'Deniz Kaya')
+    type('Email *', 'deniz@house.test')
+    await screen.findByText('Email is available', undefined, WAIT)
+  }
+  const create = () => screen.getByRole('button', { name: /create account/i })
+  const reason = () => screen.getByRole('status')
+
+  it('a short password: dimmed, and the reason is said and tied to the button', async () => {
+    await reachCreate()
+    type('Password *', 'short')
+    expect(create()).toBeDisabled()
+    expect(reason()).toHaveTextContent('Your password needs at least 8 characters.')
+    expect(create()).toHaveAccessibleDescription('Your password needs at least 8 characters.')
+    expect(screen.getByLabelText('Password *')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Password *')).toHaveAccessibleDescription('Min. 8 characters')
+  })
+
+  it('a mismatched confirm: dimmed, and the reason is said under the confirm field', async () => {
+    await reachCreate()
+    type('Password *', 'long-enough-1')
+    type('Confirm Password *', 'long-enough-2')
+    expect(create()).toBeDisabled()
+    expect(create()).toHaveAccessibleDescription('The two passwords do not match yet.')
+    expect(screen.getByLabelText('Confirm Password *')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Confirm Password *')).toHaveAccessibleDescription('The two passwords do not match yet.')
+  })
+
+  it('a matching password clears the reason and enables the button', async () => {
+    await reachCreate()
+    type('Password *', 'long-enough-1')
+    type('Confirm Password *', 'long-enough-1')
+    expect(create()).toBeEnabled()
+    expect(reason()).toBeEmptyDOMElement()
+    expect(create()).not.toHaveAttribute('aria-describedby')
+  })
+})

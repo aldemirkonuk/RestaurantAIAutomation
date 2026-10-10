@@ -15,12 +15,11 @@ is not in this table.
 
 ## The one disclosed exception — framer-motion
 
-`WineRegister.tsx` lazily imports `components/wines/MenuScannerModal`, shipped
-legacy code that carries its own motion library: `MenuScannerModal.tsx:1` and
-`MenuScannerTab.tsx:2` both `import { motion } from 'framer-motion'`, and both
-live outside this page's owned paths. There is no lighter path inside this
-directory — rendering the tab in a Mudavym dialog would not drop the dependency,
-because the tab imports it too — so removing it means rebuilding the scanner
+`WineRegister.tsx` lazily imports `components/wines/MenuScannerModal`. Since
+F-613 (2026-10-09) the modal itself is the house `Panel`, but the tab inside it,
+`MenuScannerTab.tsx:2`, is shipped legacy code that still does
+`import { motion } from 'framer-motion'` and lives outside this page's owned
+paths — so removing the dependency means rebuilding the scanner
 (page note §13.8). It is code-split, so it reaches neither the first paint nor
 the bundle until an operator opens the scanner, and **none of its animations are
 in the table above**: the scanner's motion is the legacy component's own, is not

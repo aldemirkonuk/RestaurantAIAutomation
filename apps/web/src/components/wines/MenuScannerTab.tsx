@@ -296,7 +296,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
                       {sectionHeaders.length > 0 && ` · ${sectionHeaders.length} sections`}
                     </p>
                   </div>
-                  <button onClick={reset} className="p-2 hover:bg-white/50 rounded-lg transition-colors">
+                  <button onClick={reset} aria-label="Start over with another menu" className="p-2 hover:bg-white/50 rounded-lg transition-colors">
                     <X className="w-5 h-5 text-gray-500" />
                   </button>
                 </div>
@@ -355,6 +355,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
                     {/* Main row */}
                     <button
                       onClick={() => toggleWineSelection(wine.id)}
+                      aria-pressed={isSelected}
                       className="w-full p-4 text-left"
                     >
                       <div className="flex items-start gap-3">
