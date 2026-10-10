@@ -30,6 +30,56 @@ const roles: Role[] = ['Owner', 'General manager', 'Beverage lead', 'Chef']
  */
 const UNANSWERED_READ_WINDOW_MS = 5 * 60 * 1000
 
+/** The same cap the account route and PATCH /auth/me keep on a name (F-243). */
+const NAME_MAX = 100
+
+/**
+ * A half-finished arrival, kept in this browser so a reload or a return picks
+ * up where the person stopped (F-007). One record, owned by one account: it is
+ * read back only for the account that wrote it, and dropped once the house is
+ * open and its menu step is behind them.
+ */
+const ARRIVAL_DRAFT_KEY = 'mudavym:arrival-draft'
+type ArrivalDraft = {
+  userId: string
+  role: Role | null
+  restaurantName: string
+  address: string
+  city: string
+  country: string
+  stateProvince: string
+  postalCode: string
+  restaurantPhone: string
+  placePoint: { latitude: number; longitude: number; googlePlaceId?: string } | null
+}
+
+function readArrivalDraft(userId: string): ArrivalDraft | null {
+  try {
+    const raw = localStorage.getItem(ARRIVAL_DRAFT_KEY)
+    if (!raw) return null
+    const draft = JSON.parse(raw) as ArrivalDraft
+    return draft?.userId === userId ? draft : null
+  } catch {
+    return null
+  }
+}
+
+function writeArrivalDraft(draft: ArrivalDraft) {
+  try {
+    localStorage.setItem(ARRIVAL_DRAFT_KEY, JSON.stringify(draft))
+  } catch {
+    // A browser that keeps nothing still finishes the arrival; it just cannot resume it.
+  }
+}
+
+function dropArrivalDraft() {
+  try {
+    localStorage.removeItem(ARRIVAL_DRAFT_KEY)
+  } catch {
+    // Nothing kept, nothing to drop.
+  }
+}
+
 function ArrivalShell({
   step,
   children,
@@ -62,7 +112,14 @@ export default function GetStarted() {
   const [step, setStep] = useState<Step>('you')
   const [name, setName] = useState(user?.name ?? '')
   const [mobile, setMobile] = useState('')
-  const [role, setRole] = useState<Role | null>(null)
+  const [role, setRole] = useState<Role | null>(() => {
+    try {
+      const kept = sessionStorage.getItem('mudavym:arrival-role')
+      return roles.includes(kept as Role) ? (kept as Role) : null
+    } catch {
+      return null
+    }
+  })
   const [restaurantName, setRestaurantName] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
@@ -99,9 +156,51 @@ export default function GetStarted() {
   // omitted, the gateway stores NULL rather than inventing a clock.
   const timezone = useMemo(() => getBrowserTimezone(), [])
 
+  // F-007: resume a half-finished arrival once we know whose it is. Step 01's
+  // answers are already saved on the account; the restaurant's details and the
+  // step are what a reload used to lose. The step comes from the account, not
+  // the draft: the menu step when the account really has its house, else the
+  // restaurant step with what was typed — nothing claims a house that is not open.
+  const resumed = useRef(false)
+  const userId = user?.userId
+  const hasHouse = Boolean(user?.restaurantId)
+  useEffect(() => {
+    if (resumed.current || !userId) return
+    resumed.current = true
+    const draft = readArrivalDraft(userId)
+    if (!draft) return
+    setRole(draft.role)
+    setRestaurantName(draft.restaurantName)
+    setAddress(draft.address)
+    setCity(draft.city)
+    setCountry(draft.country)
+    setStateProvince(draft.stateProvince)
+    setPostalCode(draft.postalCode)
+    setRestaurantPhone(draft.restaurantPhone)
+    setPlacePoint(draft.placePoint)
+    setStep(hasHouse ? 'menu' : 'restaurant')
+  }, [hasHouse, userId])
+
+  useEffect(() => {
+    if (!userId || (step !== 'restaurant' && step !== 'menu')) return
+    writeArrivalDraft({
+      userId,
+      role,
+      restaurantName,
+      address,
+      city,
+      country,
+      stateProvince,
+      postalCode,
+      restaurantPhone,
+      placePoint,
+    })
+  }, [address, city, country, placePoint, postalCode, restaurantName, restaurantPhone, role, stateProvince, step, userId])
+
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
     const timer = window.setTimeout(() => {
+      dropArrivalDraft()
       // Kept with the house it was read for, so another house never shows it.
       writeProof(pendingResult, sourceImage, activeRestaurantId)
       navigate('/house/menu', { replace: true })
@@ -274,6 +373,7 @@ export default function GetStarted() {
             <span className="text-xs uppercase tracking-wider">Your name · required</span>
             <input
               aria-label="Your name"
+              maxLength={NAME_MAX}
               value={name}
               onChange={(event) => setName(event.target.value)}
               className="mt-2 block w-full bg-transparent font-serif text-2xl outline-none"
@@ -330,13 +430,13 @@ export default function GetStarted() {
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The house</p>
         <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
         <p className="mt-3 max-w-xl text-[#6d685f]">
-          Find the exact place. Its address sets the house&apos;s timezone and reporting currency.
+          Find the exact place. Its country sets the currency the house keeps its money in.
         </p>
-        {!isMapsConfigured() && (
-          <p role="status" className="mt-4 text-sm text-[#6d685f]">
-            Places search needs <code>VITE_GOOGLE_MAPS_API_KEY</code>. Type the address by hand until it is set.
-          </p>
-        )}
+        <p className="mt-2 max-w-xl text-sm text-[#6d685f]">
+          {isMapsConfigured()
+            ? 'New, or not on Google yet? Type the name and address in the boxes below — the search is only a shortcut.'
+            : 'Search is not available right now. Type the name and address in the boxes below.'}
+        </p>
         <div className="mt-9 space-y-5">
           <label htmlFor="arrival-place" className="block">
             <span className="text-xs uppercase tracking-wider">Find your restaurant</span>
@@ -382,6 +482,11 @@ export default function GetStarted() {
           <div className="border-y border-[#211f1b]/15 py-4 text-sm">
             <span className="mr-6">Timezone · {timezone ?? 'Not detected'}</span>
             <span>Currency · {currency ?? 'Not inferred yet'}</span>
+            <p className="mt-2 text-xs text-[#6d685f]">
+              {timezone
+                ? "The timezone is this device's clock, not the address's. If the restaurant keeps another, change it in Settings once the house is open."
+                : "This device did not give a timezone. Set the restaurant's in Settings once the house is open."}
+            </p>
           </div>
         </div>
         {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
@@ -460,7 +565,14 @@ export default function GetStarted() {
           <p>Your last invoice — read the same way, set beside the menu. Not a step now.</p>
         </div>
         <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
-          <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
+          <button
+            type="button"
+            onClick={() => {
+              dropArrivalDraft()
+              navigate('/house', { replace: true })
+            }}
+            className="text-sm text-[#6d685f] underline underline-offset-4"
+          >
             Skip for now — open the house
           </button>
         </div>

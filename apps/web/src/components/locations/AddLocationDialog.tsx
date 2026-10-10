@@ -43,6 +43,7 @@ import { useProviders } from '../../hooks/queries'
 import { BranchProviderTransferModal } from '../providers/BranchProviderTransferModal'
 import { apiClient } from '../../services/api/client'
 import { getBrowserTimezone } from '../../lib/browserTimezone'
+import { currencyForCountry } from '../../lib/currency'
 import { Sheet } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
 import './locations-mudavym.css'
@@ -98,6 +99,12 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
   const [phone, setPhone] = useState('')
   const [cuisineType, setCuisineType] = useState('')
   const [chainId, setChainId] = useState('')
+  // F-241: the picked place's map point, kept only while the address is the
+  // one that was picked — typing over it drops the point, as /get-started does.
+  const [placePoint, setPlacePoint] = useState<{ latitude: number; longitude: number } | null>(null)
+  // The currency follows the country, the same rule as the first house; it is
+  // stated on the form and changed in Settings, never silently left blank.
+  const currency = currencyForCountry(country)
   const [chains, setChains] = useState<Chain[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   /* The failure in words — see the note in EditLocationChainDialog. */
@@ -120,8 +127,18 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
       .catch(() => setChains([]))
   }, [open])
 
+  const typeAddress = (value: string) => {
+    setAddress(value)
+    setPlacePoint(null)
+  }
+
   const handlePlaceSelect = (place: PlaceResult) => {
     setAddress(place.streetAddress)
+    setPlacePoint(
+      place.latitude != null && place.longitude != null
+        ? { latitude: place.latitude, longitude: place.longitude }
+        : null,
+    )
     if (place.city) setCity(place.city)
     if (place.stateProvince) setStateProvince(place.stateProvince)
     if (place.postalCode) setPostalCode(place.postalCode)
@@ -155,6 +172,9 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         // gateway re-checks whatever arrives (resolveSignUpTimezone).
         timezone: getBrowserTimezone(),
         chainId: chainId || undefined,
+        currency: currency ?? undefined,
+        latitude: placePoint?.latitude,
+        longitude: placePoint?.longitude,
       })
       toast.success(`${name} added successfully!`)
       onLocationAdded?.(location)
@@ -178,7 +198,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
   const resetFormFields = () => {
     setName(''); setAddress(''); setCity(''); setCountry('')
     setStateProvince(''); setPostalCode(''); setPhone('')
-    setCuisineType(''); setChainId('')
+    setCuisineType(''); setChainId(''); setPlacePoint(null)
   }
 
   const handleClose = () => {
@@ -268,6 +288,13 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
           {!country && (
             <p className="mdv-hintline">Select a country to enable address search</p>
           )}
+          {country && (
+            <p className="mdv-hintline">
+              {currency
+                ? `Its money is kept in ${currency}, from the country. Change it in Settings once it is open.`
+                : 'No currency follows from this country. Set it in Settings once it is open.'}
+            </p>
+          )}
         </div>
 
         {country.trim().length >= 2 && (
@@ -280,7 +307,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
                 <PlacesAutocomplete
                   country={country}
                   value={address}
-                  onChange={setAddress}
+                  onChange={typeAddress}
                   onPlaceSelect={handlePlaceSelect}
                   placeholder="Start typing your street address…"
                 />
@@ -451,7 +478,7 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
                       <PlacesAutocomplete
                         country={country}
                         value={address}
-                        onChange={setAddress}
+                        onChange={typeAddress}
                         onPlaceSelect={handlePlaceSelect}
                         placeholder="Start typing your street address…"
                         className="py-2 border-gray-300 bg-white"

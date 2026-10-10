@@ -58,8 +58,37 @@ vi.mock('../ui/CountryCombobox', () => ({
   ),
 }));
 vi.mock('../ui/PlacesAutocomplete', () => ({
-  PlacesAutocomplete: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <input aria-label="Street Address" value={value} onChange={(e) => onChange(e.target.value)} />
+  PlacesAutocomplete: ({
+    value,
+    onChange,
+    onPlaceSelect,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    onPlaceSelect: (place: unknown) => void;
+  }) => (
+    <>
+      <input aria-label="Street Address" value={value} onChange={(e) => onChange(e.target.value)} />
+      <button
+        type="button"
+        onClick={() =>
+          onPlaceSelect({
+            placeName: '',
+            streetAddress: '843 Valencia Street',
+            city: 'San Francisco',
+            stateProvince: 'California',
+            postalCode: '94110',
+            country: 'United States',
+            neighborhood: '',
+            latitude: 37.7594,
+            longitude: -122.4211,
+            googlePlaceId: 'place-1',
+          })
+        }
+      >
+        Pick 843 Valencia Street
+      </button>
+    </>
   ),
 }));
 
@@ -270,5 +299,49 @@ describe('the browser zone never stops a location being added', () => {
     const body = post.mock.calls[0][1] as Record<string, unknown>;
     expect(body.name).toBe('Uptown');
     expect(body.timezone).toBeUndefined();
+  });
+});
+
+/*
+ * F-241: a second house recorded neither a currency nor a map point; the
+ * first house records both. The dialog now states the currency that follows
+ * from the country, sends it, and sends the picked place's point — but not a
+ * point for an address typed over after the pick.
+ */
+describe('a second house records its currency and its map point', () => {
+  function fill() {
+    fireEvent.change(screen.getByLabelText(/Location name/), { target: { value: 'Mission' } });
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'United States' } });
+  }
+
+  it('states the currency, and sends it with the picked point', async () => {
+    render(<AddLocationDialog open onClose={() => {}} />);
+    fill();
+    expect(
+      screen.getByText('Its money is kept in USD, from the country. Change it in Settings once it is open.'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Pick 843 Valencia Street' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0][1]).toMatchObject({
+      address: '843 Valencia Street',
+      city: 'San Francisco',
+      currency: 'USD',
+      latitude: 37.7594,
+      longitude: -122.4211,
+    });
+  });
+
+  it('drops the point when the address is typed over after the pick', async () => {
+    render(<AddLocationDialog open onClose={() => {}} />);
+    fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Pick 843 Valencia Street' }));
+    fireEvent.change(screen.getByLabelText('Street Address'), { target: { value: '845 Valencia Street' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const body = post.mock.calls[0][1] as Record<string, unknown>;
+    expect(body.currency).toBe('USD');
+    expect(body.latitude).toBeUndefined();
+    expect(body.longitude).toBeUndefined();
   });
 });

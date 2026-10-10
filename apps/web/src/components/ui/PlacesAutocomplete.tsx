@@ -249,7 +249,9 @@ export function PlacesAutocomplete({
       if (!place.addressComponents) return;
 
       const result = parseAddressComponents(place.addressComponents);
-      result.placeName = row.main;
+      // Only a business has a name. For a street address the main text is the
+      // street itself, which is not the restaurant's name (F-004).
+      result.placeName = isEstablishment(row.types) ? row.main : '';
       if (!result.streetAddress && place.formattedAddress) {
         result.streetAddress = place.formattedAddress.split(',')[0].trim();
       }
@@ -385,10 +387,11 @@ export function PlacesAutocomplete({
                   key={row.prediction.placeId}
                   role="option"
                   aria-selected={isActive}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    handleSelect(row);
-                  }}
+                  // Keep focus on mouse-down, choose on click: choosing on
+                  // mouse-down closed the list under the pointer, and the
+                  // release landed on whatever sat beneath it (F-009).
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleSelect(row)}
                   onMouseEnter={() => setActiveIndex(i)}
                   className={[
                     'flex items-center gap-3 px-3 mx-2 py-2.5 cursor-pointer select-none',
