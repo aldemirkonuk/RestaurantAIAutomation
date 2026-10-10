@@ -196,6 +196,9 @@ const base = {
   // A manager's page: striking a day and counting it again are theirs (OPS-04).
   // Staff are drawn explicitly in "ruling a day out is an owner's or a manager's".
   canRuleOutDays: true,
+  // A manager's page: goal figures and goal writes are theirs (F-299). Staff
+  // are drawn explicitly in "keeps goal figures and goal-setting from staff".
+  canSeeGoals: true,
   // `set: false` — most houses have never touched this preference (the
   // production-tenant shape is mostly single-tenant, minimal config). The
   // rail must say so honestly, never fabricate "Not armed, 07:00".
@@ -2286,6 +2289,29 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     mockData.current = { ...base, entries: [weekdayEntry()], goals: null };
     draw();
     expect(screen.queryByTestId('rc-mgoal-suggest')).not.toBeInTheDocument();
+  });
+
+  it('keeps goal figures and goal-setting from staff, as /ask keeps goal targets (F-299)', () => {
+    mockData.current = {
+      ...base,
+      canSeeGoals: false,
+      entries: [weekdayEntry()],
+      goals: [],
+      goalBook: { goals: [goalRow()], total: 1, truncated: false },
+    };
+    draw();
+    const mast = screen.getByTestId('rc-mast-goals');
+    expect(within(mast).getByTestId('rc-mast-goals-held')).toHaveTextContent(
+      'The house’s goals and their figures are kept for its owners and managers.',
+    );
+    expect(within(mast).queryByTestId('rc-mgoal')).not.toBeInTheDocument();
+    expect(within(mast).queryByText('6,180 of 9,500')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rc-mgoal-suggest')).not.toBeInTheDocument();
+    // The entry's own "Make this a goal" is drawn dark, saying whose act it is.
+    const dark = within(screen.getAllByTestId('rc-entry')[0]).getByTestId('rc-goal-dark');
+    expect(dark).toBeDisabled();
+    expect(dark).toHaveAttribute('title', 'Goals are set by an owner or a manager of this house.');
+    expect(screen.queryByRole('group', { name: 'Make this a goal' })).not.toBeInTheDocument();
   });
 
   it('Q4, the quiet tier as its substitute: names the sources that did not answer, and never reads an absent field as "all answered"', () => {

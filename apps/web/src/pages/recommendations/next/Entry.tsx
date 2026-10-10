@@ -67,6 +67,7 @@ import {
   goalOfferFor,
   landingWords,
   toStored,
+  type GoalOffer,
   type GoalPeriod,
   type GoalPlan,
   type MetricKey,
@@ -202,6 +203,12 @@ export interface EntryProps {
    * finding and this subject; the whole rule is not offered to them.
    */
   canActRuleWide: boolean;
+  /**
+   * Whether this person may make a goal of this entry — owners and managers
+   * (F-299, 2026-10-08): the gateway refuses anyone else's goal write. The page
+   * always passes it; left out, the sheet is offered and the gateway decides.
+   */
+  canSetGoals?: boolean;
   /**
    * Whether this person may snooze for EVERYONE — owners and managers (ADR
    * 0191 round 3). Anyone else's snooze hides the entry from them alone.
@@ -659,7 +666,13 @@ export default function Entry(props: EntryProps) {
 
   /* ── the two forward doors, resolved from the rule alone ──────────────── */
   const forward = { ruleKey: e.ruleKey, category: e.category, urgency: e.urgency, subject: e.subject };
-  const goalOffer = useMemo(() => goalOfferFor(forward), [e.ruleKey, e.urgency, e.subject]); // eslint-disable-line react-hooks/exhaustive-deps
+  const goalOffer = useMemo<GoalOffer>(
+    () =>
+      props.canSetGoals === false
+        ? { kind: 'refused', why: 'Goals are set by an owner or a manager of this house.' }
+        : goalOfferFor(forward),
+    [e.ruleKey, e.urgency, e.subject, props.canSetGoals], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const cutting = useMemo(() => cuttingFor(forward), [e.ruleKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Where the docket files this entry, and the sentence it was read from. */
