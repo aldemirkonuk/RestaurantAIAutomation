@@ -2292,8 +2292,9 @@ export class TeamService {
   ): Promise<any> {
     const { role } = await this.assertAccess(userId, restaurantId);
     // A last day before the first is not a request anyone can approve. The
-    // page refuses it, but nothing here did, and the table has no check, so
-    // any other caller stored it as sent (F-923). A past first day stays
+    // page refuses it, but nothing here did, so any other caller stored it as
+    // sent (F-923); the table now refuses it too (migration
+    // a_day_off_ends_on_or_after_it_starts). A past first day stays
     // allowed, staff filing for themselves included, with no manager step
     // before it is sent: sick leave is often filed after the day (coordinator
     // call 2026-10-10, tech-debt.d/2026-10-10-fix-sim-w66-timeoff-rule.md).
