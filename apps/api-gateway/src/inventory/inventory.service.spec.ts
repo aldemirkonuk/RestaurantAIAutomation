@@ -632,6 +632,166 @@ describe("InventoryService", () => {
     });
   });
 
+  // F-249 / F-250 (offline-sync wave 2). A count queued on a phone with no
+  // signal is sent with its age; one the stock has moved past since is
+  // refused, and a database that is only briefly unreachable is a 503 the
+  // phone retries, never a 400 it parks.
+  describe("recordSpotCount: a queued count and a flaky database", () => {
+    const SIX_HOURS = 6 * 60 * 60_000;
+    const mockLimit = jest.fn();
+    const chain = mockSupabaseChain as typeof mockSupabaseChain & {
+      gt: jest.Mock;
+      limit: jest.Mock;
+    };
+    const statusOf = async (p: Promise<unknown>) => {
+      try {
+        await p;
+      } catch (e) {
+        return (e as HttpException).getStatus();
+      }
+      return 200;
+    };
+    const countRpcCalls = () =>
+      mockRpc.mock.calls.filter((c) => c[0] === "record_stock_count").length;
+
+    beforeEach(() => {
+      mockLimit.mockReset();
+      mockLimit.mockResolvedValue({ data: [], error: null });
+      chain.gt = jest.fn().mockReturnThis();
+      chain.limit = mockLimit;
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
+    });
+
+    it("refuses, without moving stock, a six-hour-old count the stock has moved past", async () => {
+      // replay gate: not landed; newer count: none; movement since: one sale.
+      mockLimit
+        .mockResolvedValueOnce({ data: [], error: null })
+        .mockResolvedValueOnce({ data: [], error: null })
+        .mockResolvedValueOnce({ data: [{ id: "txn-sale" }], error: null });
+
+      const status = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 12,
+          clientCountId: "queued-1",
+          countedAgoMs: SIX_HOURS,
+        }),
+      );
+
+      expect(status).toBe(409);
+      expect(countRpcCalls()).toBe(0);
+      // The window starts when the count was taken, on the server's clock.
+      const since = Date.parse(chain.gt.mock.calls[1][1]);
+      expect(Math.abs(Date.now() - SIX_HOURS - since)).toBeLessThan(5_000);
+      expect(chain.gt.mock.calls[1][0]).toBe("transaction_date");
+    });
+
+    it("refuses an old count when the item was counted again since", async () => {
+      mockLimit
+        .mockResolvedValueOnce({ data: [], error: null })
+        .mockResolvedValueOnce({ data: [{ id: "count-newer" }], error: null });
+
+      const status = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 12,
+          clientCountId: "queued-2",
+          countedAgoMs: SIX_HOURS,
+        }),
+      );
+
+      expect(status).toBe(409);
+      expect(countRpcCalls()).toBe(0);
+    });
+
+    it("applies an old count when nothing moved since it was taken", async () => {
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 12,
+        clientCountId: "queued-3",
+        countedAgoMs: SIX_HOURS,
+      });
+      expect(countRpcCalls()).toBe(1);
+    });
+
+    it("lets a count that already landed replay instead of refusing it", async () => {
+      mockLimit.mockResolvedValueOnce({ data: [{ id: "count-landed" }], error: null });
+
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 12,
+        clientCountId: "queued-4",
+        countedAgoMs: SIX_HOURS,
+      });
+
+      expect(mockLimit).toHaveBeenCalledTimes(1);
+      expect(countRpcCalls()).toBe(1);
+    });
+
+    it("does not check a live count", async () => {
+      await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 12,
+        clientCountId: "live-1",
+      });
+      expect(chain.gt).not.toHaveBeenCalled();
+      expect(countRpcCalls()).toBe(1);
+    });
+
+    it("answers 503, not 400, when the check cannot read the stock", async () => {
+      mockLimit.mockResolvedValueOnce({ data: null, error: { message: "fetch failed" } });
+      const status = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 12,
+          clientCountId: "queued-5",
+          countedAgoMs: SIX_HOURS,
+        }),
+      );
+      expect(status).toBe(503);
+    });
+
+    it("answers 503 when the database drops the count's own call", async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: "TypeError: fetch failed", code: "" },
+      });
+      const status = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", { countedQty: 8, clientCountId: "t1" }),
+      );
+      expect(status).toBe(503);
+    });
+
+    it("answers 503 on a statement timeout", async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: "canceling statement due to statement timeout", code: "57014" },
+      });
+      const status = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", { countedQty: 8, clientCountId: "t2" }),
+      );
+      expect(status).toBe(503);
+    });
+
+    it("still answers 400 to the function's own refusal", async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: "inventory inv-1 not found", code: "P0001" },
+      });
+      const status = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", { countedQty: 8, clientCountId: "t3" }),
+      );
+      expect(status).toBe(400);
+    });
+
+    it("refuses a negative age before touching anything", async () => {
+      const status = await statusOf(
+        service.recordSpotCount("rest-1", "inv-1", {
+          countedQty: 8,
+          clientCountId: "t4",
+          countedAgoMs: -5,
+        }),
+      );
+      expect(status).toBe(400);
+      expect(countRpcCalls()).toBe(0);
+      mockMaybeSingle.mockReset();
+    });
+  });
+
   // ADR 0078 (attribution). `transfer_stock` and `record_glass_pour` have always
   // accepted p_performed_by (baseline:1838, :1132) and these call sites never
   // passed it, so `performed_by_type` resolved to 'system' on every manual move —

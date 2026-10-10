@@ -30,7 +30,8 @@ const MUTATION_TYPE = 'inventory.spotCount'
 // said to anyone. A count now leaves the queue only when the server takes it,
 // or when the person discards it from the "not sent" strip; a permanent
 // refusal parks it there, and a transient failure is tried again on the next
-// flush (triggered by 'online' and 'visibilitychange', never a timer).
+// flush (triggered by 'online', 'visibilitychange' and the app-wide sync
+// manager's start-up and periodic passes — F-246).
 
 export interface QueuedSpotCount {
   itemId: string
@@ -43,6 +44,13 @@ export interface QueuedSpotCount {
     reason?: string
     performedBy?: string | null
   }
+  /**
+   * When the count was taken (this phone's clock), stamped at the tap. A
+   * replay sends its AGE, not this time, so a phone clock that is off cannot
+   * move the count: the house then refuses a count older than the stock's
+   * last movement instead of pulling the shelf back to it (F-249).
+   */
+  countedAt?: string
 }
 
 /** A key that survives a reload, a retry and a browser restart. */
@@ -62,6 +70,7 @@ export function newClientCountId(): string {
 export async function submitSpotCount(
   entry: QueuedSpotCount,
 ): Promise<{ synced: boolean }> {
+  entry = { ...entry, countedAt: entry.countedAt ?? new Date().toISOString() }
   if (!navigator.onLine) {
     await queue(entry)
     return { synced: false }
@@ -133,7 +142,7 @@ export async function flushSpotCountOutbox(): Promise<{
     }
     const entry = m.data as QueuedSpotCount
     try {
-      await recordSpotCount(entry.itemId, entry.body, entry.restaurantId)
+      await recordSpotCount(entry.itemId, replayBody(entry), entry.restaurantId)
       await offlineStorage.removePendingMutation(m.id)
       sent++
     } catch (err) {
@@ -157,6 +166,20 @@ export async function flushSpotCountOutbox(): Promise<{
   }
 
   return { sent, failed, parked }
+}
+
+/**
+ * The body a queued count is sent with: the count, plus how long ago it was
+ * taken. Without the age the house applied an hours-old count against the
+ * stock as it is NOW, undoing every sale and delivery since (F-249). A count
+ * queued before this field existed is sent as it always was.
+ */
+function replayBody(entry: QueuedSpotCount): QueuedSpotCount['body'] & {
+  countedAgoMs?: number
+} {
+  const at = entry.countedAt ? Date.parse(entry.countedAt) : NaN
+  if (!Number.isFinite(at)) return entry.body
+  return { ...entry.body, countedAgoMs: Math.max(0, Date.now() - at) }
 }
 
 /**
