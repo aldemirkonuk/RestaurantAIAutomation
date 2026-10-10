@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { till, week, type TillWindow, type WeekRegister } from './rp-registers-trade';
+import { TILL_REFUNDS_NOT_TAKEN_OFF, till, week, type TillWindow, type WeekRegister } from './rp-registers-trade';
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import type { GoalsDesk } from './useGoalsDesk';
 import { paceOf, toProgressRow } from '@/pages/recommendations/next/rec-masthead';
@@ -113,6 +113,26 @@ describe('the till — a sale belongs to the house day (ADR 0296)', () => {
     expect(view.basis[0]).toBe('Non-voided pos_checks.total between 2026-08-03 and 2026-09-01.');
     expect(view.figures.map((f) => f.label)).toEqual(['Taken', 'Checks', 'Average check']);
     expect(view.table?.rows.map((r) => r.key)).toEqual(['2026-07-01', '2026-08-22']);
+  });
+});
+
+describe('the till says refunds are not taken off Taken (F-446)', () => {
+  it('prints the refund note beside a Taken figure, in the export file’s words', () => {
+    const view = till.view(read({ ...OLD_PAYLOAD, timezone: 'America/Los_Angeles', zoneUnset: false }), ctx);
+    expect(view.notes).toEqual([TILL_REFUNDS_NOT_TAKEN_OFF]);
+    expect(TILL_REFUNDS_NOT_TAKEN_OFF).toBe(
+      "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.",
+    );
+  });
+
+  it('says it on a window with a total and no daily rows, too', () => {
+    const view = till.view(read({ ...OLD_PAYLOAD, revenue: 0, dailySeries: [] }), ctx);
+    expect(view.notes).toEqual([TILL_REFUNDS_NOT_TAKEN_OFF]);
+  });
+
+  it('says nothing about refunds when there is no Taken figure to qualify', () => {
+    expect(till.view(read({ ...OLD_PAYLOAD, revenue: null, dailySeries: [] }), ctx).notes).toEqual([]);
+    expect(till.view(read({ ...OLD_PAYLOAD, posConnected: false, revenue: null }), ctx).notes).toEqual([]);
   });
 });
 

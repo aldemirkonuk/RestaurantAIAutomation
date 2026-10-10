@@ -35,7 +35,14 @@
  * 3. IF ANY MINT FAILS, NOTHING IS APPROVED. Approving the subset that
  *    happened to mint would make the count a lie about what was agreed to.
  *    `onChallenge` resolves null, `HoldToApprove` never calls `onApprove`, and
- *    the control says "The seal could not be issued — nothing sent."
+ *    the control says "The seal could not be issued — nothing sent." (ADR 0116,
+ *    answered 2026-09-04 — locked; changing it is the founder's call.)
+ *    When the gateway REFUSED a mint, it refused it for the rule that would
+ *    refuse the approval (`issueOrderSealChallenge` runs
+ *    `assertApprovalAllowed` first), so the 403 carries that rule's sentence.
+ *    Rule 4 applies to it as much as to an approval's 403: every mint is
+ *    waited for, and each refusal's sentence is printed under the die
+ *    (F-445, 2026-10-09). Still nothing is approved.
  * 4. A 403 IS PRINTED AS ITSELF. Since ADR 0116 the refusal body IS the
  *    explanation — which rule fired, what the number was, who may sign — and
  *    `services/api/orders.ts` promotes it onto the error's `message`. Wrapping
@@ -145,10 +152,22 @@ export function SealedApproveDie({
     conflicted: number;
     /** The distinct sentences the gateway gave, in the order first seen. */
     reasons: string[];
+    /** Set when the gateway refused the seal itself, so nothing was sent. */
+    refusedAtMint?: number;
   } | null>(null);
 
   /** The seals for THIS gesture, keyed by order id. */
   const sealsRef = useRef<Map<string, string> | null>(null);
+
+  /**
+   * The gateway's sentence for a mint it refused. Only a 403 is a decision
+   * (rule 4); anything else stays with the die's generic "could not be issued".
+   */
+  const mintRefusal = (err: unknown): string | null => {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    const msg = (err as { message?: string })?.message;
+    return status === 403 && msg ? msg : null;
+  };
 
   /**
    * Mint the proof, once per gesture, one per order.
@@ -157,19 +176,32 @@ export function SealedApproveDie({
    * approval, so a refused mint cannot become a silent approval on the way
    * through the UI. That is the one failure this whole mechanism exists to
    * prevent, and it must not arrive through the browser instead of the API.
+   *
+   * Every mint is waited for (allSettled, not all) so that each order the
+   * gateway refused is named with its own sentence — still all-or-nothing.
    */
   const onChallenge = async (): Promise<string | null> => {
     sealsRef.current = null;
     if (orderIds.length === 0) return null;
-    try {
-      const tokens = await Promise.all(orderIds.map((id) => ordersApi.mintOrderSeal(id)));
-      if (tokens.some((t) => !t)) return null;
+    const settled = await Promise.allSettled(orderIds.map((id) => ordersApi.mintOrderSeal(id)));
+    const tokens = settled.map((s) => (s.status === 'fulfilled' ? s.value : null));
+    if (tokens.every((t) => !!t)) {
       sealsRef.current = new Map(orderIds.map((id, i) => [id, tokens[i] as string]));
       return ALL_SEALED;
-    } catch {
-      sealsRef.current = null;
-      return null;
     }
+    const reasons: string[] = [];
+    let refusedAtMint = 0;
+    for (const s of settled) {
+      const sentence = s.status === 'rejected' ? mintRefusal(s.reason) : null;
+      if (!sentence) continue;
+      refusedAtMint += 1;
+      if (!reasons.includes(sentence)) reasons.push(sentence);
+    }
+    if (reasons.length > 0) {
+      setOutcome({ approved: 0, already: 0, refused: orderIds.length, conflicted: 0, reasons, refusedAtMint });
+      onRefused?.(reasons, orderIds.length);
+    }
+    return null;
   };
 
   const onApprove = async () => {
@@ -257,7 +289,11 @@ export function SealedApproveDie({
       {outcome && outcome.refused + outcome.conflicted > 0 && (
         <div role="alert" style={{ marginTop: 4 }}>
           <p style={{ fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-2, #4F473C)' }}>
-            {refusedLine(outcome)}
+            {outcome.refusedAtMint !== undefined
+              ? orderIds.length === 1
+                ? 'Nothing was approved — the house would not seal this order.'
+                : `Nothing was approved — the house would not seal ${outcome.refusedAtMint} of ${orderIds.length} orders, so none were sent.`
+              : refusedLine(outcome)}
           </p>
           {outcome.reasons.map((r) => (
             <p
