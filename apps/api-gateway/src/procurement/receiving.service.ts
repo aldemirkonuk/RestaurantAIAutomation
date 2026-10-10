@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -247,6 +248,22 @@ function turnedAwayWhole(e: {
   return accepted <= 0;
 }
 
+/**
+ * The door event's own idempotency index (`uq_pre_idempotency`, baseline
+ * migration). A 23505 from any other unique index is not a resend (F-1086).
+ */
+const DOOR_KEY_INDEX = "uq_pre_idempotency";
+function isDoorKeyCollision(err: {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+}): boolean {
+  return (
+    err.code === "23505" &&
+    `${err.message ?? ""} ${err.details ?? ""}`.includes(DOOR_KEY_INDEX)
+  );
+}
+
 /** Past this, an uncounted delivery stops being normal and starts being a risk. */
 const STALE_AFTER_HOURS = 12;
 const OVERDUE_AFTER_HOURS = 48;
@@ -391,18 +408,18 @@ export class ReceivingService {
     // the delivery left every queue. A 4xx, so the outbox parks it as refused
     // rather than re-sending it forever (422, as every refused order move is).
     //
-    // The one exception is a RETRY of a tap that already landed while the
-    // order was open (attempt one wrote the event, then the order was closed):
-    // its event exists, and the retry is the repair path below, not a new count.
+    // A RETRY of a tap that already landed while the order was open (attempt
+    // one wrote the event, then the order was closed) is answered with what
+    // landed, and nothing more is written (F-1086). It used to go on through
+    // the whole write path, so a closed order took a stock movement and a
+    // status write again; and a different count resent under a spent key was
+    // let through as the same tap.
     const door = decideDoorCount(order.status);
     if (!door.allowed) {
-      const { data: landed, error: landedErr } = await this.db
-        .getClient()
-        .from("procurement_receipt_events")
-        .select("id")
-        .eq("restaurant_id", input.restaurantId)
-        .eq("idempotency_key", idempotencyKey)
-        .maybeSingle();
+      const { data: landed, error: landedErr } = await this.readLandedDoorEvent(
+        input.restaurantId,
+        idempotencyKey,
+      );
       if (landedErr) throw new Error(landedErr.message);
       if (!landed) {
         this.logger.warn(
@@ -414,6 +431,41 @@ export class ReceivingService {
           message: door.sentence,
         });
       }
+      this.refuseUnlessSameReceipt(landed, {
+        orderId: input.orderId,
+        countedBottles,
+        rejectedBottles,
+        outcome: input.outcome ?? null,
+      });
+      const totals = await this.doorTotals(
+        input.restaurantId,
+        input.orderId,
+        landed.id,
+      );
+      const basis = (landed.occurred_at_basis ?? null) as FactTimeBasis | null;
+      return {
+        alreadyRecorded: true,
+        eventId: landed.id,
+        countedQtyBottles: countedBottles,
+        receivedQtyBottles: totals.receivedBottles ?? undefined,
+        // Nothing moved on THIS request, and whether the first attempt moved
+        // the shelf is not re-read here: null, never a number (ADR 0016).
+        stockDelta: null,
+        stockBooked: false,
+        stockIssue:
+          "This count was already recorded, and the order has been closed since, " +
+          "so nothing more was added. If the shelf looks short, correct it on the order.",
+        factTime: {
+          at: String(landed.occurred_at),
+          basis,
+          sentAt: landed.client_captured_at ?? null,
+          reason: explainStoredFactTime({
+            basis,
+            sentAt: landed.client_captured_at,
+            at: landed.occurred_at,
+          }),
+        },
+      };
     }
 
     const eventRow = {
@@ -471,7 +523,9 @@ export class ReceivingService {
     };
 
     if (evErr) {
-      if (evErr.code !== "23505") throw new Error(evErr.message);
+      // Only the idempotency key's OWN index means "this tap already landed"
+      // (F-1086). Any other unique violation is a failed write, said as one.
+      if (!isDoorKeyCollision(evErr)) throw new Error(evErr.message);
 
       // 23505 on the idempotency index = this tap already landed.
       //
@@ -494,13 +548,8 @@ export class ReceivingService {
       // The existing event's TIME is read back too, and reused. A retry never
       // decides the date again: one that arrives after the 72-hour line would
       // otherwise re-date a delivery the first attempt already dated (ADR 0286).
-      const { data: existing, error: existingError } = await this.db
-        .getClient()
-        .from("procurement_receipt_events")
-        .select("id, occurred_at, occurred_at_basis, client_captured_at")
-        .eq("restaurant_id", input.restaurantId)
-        .eq("idempotency_key", idempotencyKey)
-        .maybeSingle();
+      const { data: existing, error: existingError } =
+        await this.readLandedDoorEvent(input.restaurantId, idempotencyKey);
       if (existingError) {
         throw new Error(
           `door receipt for order ${input.orderId} collided on its idempotency ` +
@@ -519,6 +568,14 @@ export class ReceivingService {
             `but the existing event could not be read back — nothing was booked.`,
         );
       }
+      // The same key with a different count is not a retry: the repair path
+      // below would book the landed count and report this one as recorded.
+      this.refuseUnlessSameReceipt(existing, {
+        orderId: input.orderId,
+        countedBottles,
+        rejectedBottles,
+        outcome: input.outcome ?? null,
+      });
       const basis = (existing.occurred_at_basis ??
         null) as FactTimeBasis | null;
       factTime = {
@@ -843,6 +900,60 @@ export class ReceivingService {
       ...(research ? { research } : {}),
       ...(researchIssue ? { researchIssue } : {}),
     };
+  }
+
+  /**
+   * The door event already holding this idempotency key, with what it
+   * recorded, so a resend can be told from a different receipt (F-1086).
+   */
+  private readLandedDoorEvent(restaurantId: string, idempotencyKey: string) {
+    return this.db
+      .getClient()
+      .from("procurement_receipt_events")
+      .select(
+        "id, order_id, counted_qty_bottles, rejected_qty_bottles, outcome, occurred_at, occurred_at_basis, client_captured_at",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+  }
+
+  /**
+   * A resend carries the same order, the same bottles and the same outcome
+   * as the receipt that landed under its key. Anything else is a different
+   * receipt reusing a spent key: refused, never answered with the landed one
+   * (F-1086). A 4xx, so the outbox parks it for a person instead of resending.
+   */
+  private refuseUnlessSameReceipt(
+    landed: {
+      order_id?: string | null;
+      counted_qty_bottles?: number | string | null;
+      rejected_qty_bottles?: number | string | null;
+      outcome?: string | null;
+    },
+    sent: {
+      orderId: string;
+      countedBottles: number;
+      rejectedBottles: number;
+      outcome: string | null;
+    },
+  ): void {
+    const same =
+      landed.order_id === sent.orderId &&
+      Number(landed.counted_qty_bottles) === sent.countedBottles &&
+      Number(landed.rejected_qty_bottles ?? 0) === sent.rejectedBottles &&
+      (landed.outcome ?? null) === sent.outcome;
+    if (same) return;
+    this.logger.warn(
+      `door receipt for order ${sent.orderId} reused the key of a different ` +
+        `receipt (order ${landed.order_id ?? "unknown"}); refused, nothing written`,
+    );
+    throw new ConflictException({
+      reason: "receipt_key_reused",
+      message:
+        "This receipt was already sent with a different count, so nothing was " +
+        "added. Count the delivery again and seal it as a new receipt.",
+    });
   }
 
   /**

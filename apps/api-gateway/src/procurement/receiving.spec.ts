@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from "@nestjs/common";
@@ -173,7 +174,11 @@ function makeDb(opts: {
               )
                 return {
                   data: null,
-                  error: { code: "23505", message: "duplicate key" },
+                  error: {
+                    code: "23505",
+                    message:
+                      'duplicate key value violates unique constraint "uq_pre_idempotency"',
+                  },
                 };
               // `occurred_at` as the column does it: the sent value, or
               // DEFAULT now() when the service sends none (ADR 0286).
@@ -928,7 +933,11 @@ describe("recordDoorReceipt", () => {
         bottles_total: 24,
         quantity_received: 0,
       },
-      eventInsertError: { code: "23505", message: "duplicate key" },
+      eventInsertError: {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "uq_pre_idempotency"',
+      },
     });
 
     await expect(
@@ -942,6 +951,81 @@ describe("recordDoorReceipt", () => {
 
     expect(calls.rpc).toHaveLength(0);
     expect(calls.orderUpdates).toHaveLength(0);
+  });
+
+  // F-1086: a landed key answers a resend only when the resend IS that receipt.
+  const landedTap = {
+    id: "evt-existing",
+    restaurant_id: "r1",
+    order_id: "o1",
+    stage: "case_count",
+    idempotency_key: "tap-1",
+    counted_qty_bottles: 24,
+    rejected_qty_bottles: 0,
+    occurred_at: "2026-10-01T10:00:00.000Z",
+    occurred_at_basis: "server",
+  };
+  const openOrder = {
+    id: "o1",
+    inventory_id: "inv1",
+    quantity: 24,
+    bottles_total: 24,
+    quantity_received: 0,
+  };
+
+  it("[REVERT-FAILS] the same key with a different count is refused, not answered as the landed receipt (F-1086)", async () => {
+    const { db, calls } = makeDb({ order: openOrder, events: [landedTap] });
+    const attempt = new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 18,
+      countedUom: "bottle",
+      idempotencyKey: "tap-1",
+    });
+    await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+    await expect(attempt).rejects.toMatchObject({
+      response: { reason: "receipt_key_reused" },
+    });
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.orderWrites).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] the same key landed on another order is refused (F-1086)", async () => {
+    const { db, calls } = makeDb({
+      order: openOrder,
+      events: [{ ...landedTap, order_id: "o-other" }],
+    });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 24,
+        countedUom: "bottle",
+        idempotencyKey: "tap-1",
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.orderWrites).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] a duplicate on any other unique index is an error, never 'already recorded' (F-1086)", async () => {
+    const { db, calls } = makeDb({
+      order: openOrder,
+      events: [landedTap],
+      eventInsertError: {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "procurement_receipt_events_pkey"',
+      },
+    });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 24,
+        countedUom: "bottle",
+        idempotencyKey: "tap-1",
+      }),
+    ).rejects.toThrow(/procurement_receipt_events_pkey/);
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.orderWrites).toHaveLength(0);
   });
 
   // ==========================================================================
@@ -2137,7 +2221,7 @@ describe("recordDoorReceipt — a closed or unapproved order takes no count (F-6
     expect(calls.rpc).toHaveLength(1);
   });
 
-  it("a retry of a tap that landed while the order was open still goes through, so its stock can be repaired", async () => {
+  it("[REVERT-FAILS] a true retry of a tap that landed before the order closed gets the landed receipt and writes nothing (F-1086)", async () => {
     const { db, calls } = makeDb({
       order: { ...order, status: "COMPLETED" },
       events: [
@@ -2146,6 +2230,7 @@ describe("recordDoorReceipt — a closed or unapproved order takes no count (F-6
           idempotency_key: "k-landed",
           order_id: "o1",
           counted_qty_bottles: 12,
+          rejected_qty_bottles: 0,
           occurred_at: "2026-10-01T10:00:00.000Z",
           occurred_at_basis: "server",
         },
@@ -2159,6 +2244,40 @@ describe("recordDoorReceipt — a closed or unapproved order takes no count (F-6
     });
     expect(r.alreadyRecorded).toBe(true);
     expect(r.eventId).toBe("evt-landed");
-    expect(calls.eventInserts).toHaveLength(1);
+    expect(r.receivedQtyBottles).toBe(12);
+    expect(r.factTime.at).toBe("2026-10-01T10:00:00.000Z");
+    expect(r.stockDelta).toBeNull();
+    // A closed order is never written through again.
+    expect(calls.eventInserts).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.orderWrites).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] a different count under a landed key on a closed order is refused, nothing written (F-1086)", async () => {
+    const { db, calls } = makeDb({
+      order: { ...order, status: "COMPLETED" },
+      events: [
+        {
+          id: "evt-landed",
+          idempotency_key: "k-landed",
+          order_id: "o1",
+          counted_qty_bottles: 12,
+          rejected_qty_bottles: 0,
+          occurred_at: "2026-10-01T10:00:00.000Z",
+          occurred_at_basis: "server",
+        },
+      ],
+    });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 2,
+        countedUom: "case",
+        idempotencyKey: "k-landed",
+      }),
+    ).rejects.toMatchObject({ response: { reason: "receipt_key_reused" } });
+    expect(calls.eventInserts).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.orderWrites).toHaveLength(0);
   });
 });
