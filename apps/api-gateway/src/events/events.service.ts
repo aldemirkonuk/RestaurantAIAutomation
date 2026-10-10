@@ -8,6 +8,7 @@ import {
   EventResponseDto,
   GetEventsQueryDto,
 } from "./dto/event.dto";
+import { eventForRole, payloadWithoutMoney } from "./event-money-for-role";
 
 interface EventRow {
   id: string;
@@ -197,9 +198,16 @@ export class EventsService {
       durationMs: duration,
     });
 
+    // `restaurant:<id>` is every member's room, staff included, so the row
+    // goes out without its money (F-1065). Holders read the amounts through
+    // `GET /events`; no page reads money off `event:new`.
+    const { payload: sharedPayload, cut } = payloadWithoutMoney(data.payload);
     this.websocketGateway.server
       .to(`restaurant:${restaurantId}`)
-      .emit("event:new", data);
+      .emit(
+        "event:new",
+        cut ? { ...data, payload: sharedPayload, amountsWithheld: true } : data,
+      );
 
     return {
       ...this.mapEventRow(data),
@@ -210,6 +218,7 @@ export class EventsService {
   async listEvents(
     restaurantId: string,
     query: GetEventsQueryDto,
+    role?: string | null,
   ): Promise<EventListResponseDto> {
     const startTime = Date.now();
     const page = query.page ?? 1;
@@ -266,7 +275,11 @@ export class EventsService {
       throw error;
     }
 
-    const events = (data || []).map((row: EventRow) => this.mapEventRow(row));
+    // A reader who does not hold the house's money gets each payload without
+    // it (F-1065). An omitted role reads as staff.
+    const events = (data || []).map((row: EventRow) =>
+      eventForRole(this.mapEventRow(row), role ?? null),
+    );
     const total = count ?? events.length;
 
     // Structured log: List events query completed

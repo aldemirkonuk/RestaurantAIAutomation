@@ -469,6 +469,13 @@ export function LearnedSection({ providerId, providerName }: Props) {
         </ul>
       )}
 
+      {/* The gateway leaves a vendor's prices and money terms out for anyone
+          who does not hold the house's money (F-1078); the sheet says so
+          rather than letting their absence read as "none learned". */}
+      {!readsMail && (
+        <p style={{ ...BODY, margin: '6px 0 0' }}>Their prices and money terms are for owners and managers to see.</p>
+      )}
+
       {/* 2 — offers */}
       <h4 style={PART}>Offers they have sent</h4>
       {!readsMail ? (

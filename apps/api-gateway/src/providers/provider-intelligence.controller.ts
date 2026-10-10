@@ -21,8 +21,52 @@ import { DatabaseService } from "../database/database.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
 import { assertVendorWriter } from "./vendor-write-gate";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 
-type AuthUser = { userId?: string; restaurantId?: string | null };
+type AuthUser = {
+  userId?: string;
+  restaurantId?: string | null;
+  role?: string | null;
+};
+
+/**
+ * The kinds of fact a vendor's mail teaches that ARE the house's money: their
+ * prices (each price change, old and new), their money terms (payment terms,
+ * credit, minimums) and their offers. The agent files them under these
+ * categories (provider_conversation_agent.py `_update_digital_twin`).
+ */
+export const MONEY_FACT_KINDS: ReadonlySet<string> = new Set([
+  "pricing",
+  "financial",
+  "promotion",
+]);
+
+/**
+ * The facts a role may read (F-1078). Staff see no house money (ADR 0145, the
+ * F-957..F-959 call), so a reader who does not hold it gets the vendor's
+ * people, delivery, wines and the rest, and none of the money kinds: they are
+ * OMITTED from the reply, not emptied. The page says why (LearnedSection).
+ */
+export function knowledgeForRole<T>(
+  grouped: Record<string, T>,
+  role: string | null | undefined,
+): Record<string, T> {
+  if (holdsHouseMoney(role)) return grouped;
+  const kept: Record<string, T> = {};
+  for (const [kind, facts] of Object.entries(grouped)) {
+    if (!MONEY_FACT_KINDS.has(kind)) kept[kind] = facts;
+  }
+  return kept;
+}
+
+/** The changed facts a role may read: the same cut, row by row. */
+export function changesForRole<T extends { category?: string | null }>(
+  rows: T[],
+  role: string | null | undefined,
+): T[] {
+  if (holdsHouseMoney(role)) return rows;
+  return rows.filter((r) => !MONEY_FACT_KINDS.has(r?.category ?? ""));
+}
 
 /** How long a recorded vendor request counts as still asked (F-789). */
 export const OPEN_SESSION_DAYS = 7;
@@ -94,10 +138,13 @@ export class ProviderIntelligenceController {
     @CurrentUser() user: AuthUser,
   ) {
     try {
-      return await this.intelligenceService.getKnowledge(
-        providerId,
-        houseOf(user),
-        category,
+      return knowledgeForRole(
+        await this.intelligenceService.getKnowledge(
+          providerId,
+          houseOf(user),
+          category,
+        ),
+        user?.role ?? null,
       );
     } catch (error) {
       rethrow(error, "Failed to fetch provider knowledge");
@@ -113,9 +160,12 @@ export class ProviderIntelligenceController {
     @CurrentUser() user: AuthUser,
   ) {
     try {
-      return await this.intelligenceService.getContradictions(
-        providerId,
-        houseOf(user),
+      return changesForRole(
+        await this.intelligenceService.getContradictions(
+          providerId,
+          houseOf(user),
+        ),
+        user?.role ?? null,
       );
     } catch (error) {
       rethrow(error, "Failed to fetch contradictions");

@@ -144,6 +144,12 @@ export class EventResponseDto {
 
   @ApiPropertyOptional()
   deduped?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Set when money keys were left out of the payload because the reader does not hold the house's money (F-1065).",
+  })
+  amountsWithheld?: true;
 }
 
 export class EventListResponseDto {
