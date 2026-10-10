@@ -519,6 +519,28 @@ describe("ReportExportsService — a report export is written, or says why not (
       );
     });
 
+    it("a retry after the month closed no longer says ', so far' (F-1072)", async () => {
+      const { mem, service, goals } = zoned();
+      goals.getPosRevenueWindow.mockRejectedValueOnce(new Error("timeout"));
+      const first = await service.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "till",
+        month: "2026-07",
+      });
+      await first.settled;
+      // As it was filed when asked for while July still ran.
+      exportsOf(mem)[0].window_label =
+        "July 2026 of POS checks, so far, by the house’s days";
+      const again = await service.retryExport(HOUSE_A, first.export.id);
+      expect(again.export.windowLabel).toBe(
+        "July 2026 of POS checks, by the house’s days",
+      );
+      await again.settled;
+      expect(exportsOf(mem)[0]).toMatchObject({
+        status: "ready",
+        window_label: "July 2026 of POS checks, by the house’s days",
+      });
+    });
+
     it("refuses a month with days, a month on a cutting whose window is fixed, and a month that is not one", async () => {
       const { mem, service } = zoned();
       for (const input of [

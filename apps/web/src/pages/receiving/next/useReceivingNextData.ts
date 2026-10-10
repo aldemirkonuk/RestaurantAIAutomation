@@ -33,6 +33,7 @@ import {
 import { offlineStorage, type PendingMutation } from '@/lib/offline-storage';
 import { currentQueueOwner, isReplayable } from '@/lib/queue-owner';
 import { num } from './rc-format';
+import { houseToday, useHouseZone } from '@/lib/houseZone';
 
 /* ─────────────────────────────────────────── the shape of a failure ─────── */
 
@@ -739,6 +740,9 @@ export function useOwnerRecovery(): RecoveryData {
     queryKey: ['receiving-next-credited-list', rid],
     queryFn: () => creditsApi.list({ state: 'credited' }),
   });
+  // "This month" is the house's month: a credit settled late on the 31st at
+  // the house belongs to that month however the device's clock reads (F-1079).
+  const zone = useHouseZone();
 
   return useMemo(() => {
     const stats = statsQ.data ?? null;
@@ -773,11 +777,11 @@ export function useOwnerRecovery(): RecoveryData {
       }
     }
     if (Array.isArray(creditedQ.data)) {
-      const now = new Date();
+      const now = houseToday(zone);
       const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const inMonth = (iso: string | null, ref: Date) => {
         if (!iso) return false;
-        const d = new Date(iso);
+        const d = houseToday(zone, new Date(iso));
         return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
       };
       // Every line known so far gets a measured zero for a month nothing
@@ -821,6 +825,7 @@ export function useOwnerRecovery(): RecoveryData {
     statsQ.isError,
     statsQ.error,
     statsQ.refetch,
+    zone,
     creditedQ.data,
     creditedQ.isError,
     creditedQ.error,

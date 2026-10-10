@@ -42,6 +42,7 @@ import { CoverageRulesSheet } from './CoverageRulesSheet';
 import { SalesSheet } from './SalesSheet';
 import type { TeamMember } from '../../../services/api/team';
 import { todayIso } from './tm-format';
+import { houseToday } from '@/lib/houseZone';
 
 const person = (id: string, name: string, status = 'active') =>
   ({ id, display_name: name, status, position: null }) as unknown as TeamMember;
@@ -187,6 +188,22 @@ describe('SalesSheet — one service', () => {
     draw({ members: null, rosterFailed: true });
     expect(screen.getByRole('alert').textContent).toMatch(/roster could not be read/);
     expect((screen.getByRole('button', { name: 'Save the service' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('SalesSheet — the service day is the house’s (F-1073)', () => {
+  it('opens on, and caps the day at, the house’s today, not the device’s', () => {
+    // Kiritimati and Pago Pago are 25 hours apart: one of them is always on a
+    // different day from the device.
+    const device = todayIso(new Date());
+    const zone = ['Pacific/Kiritimati', 'Pacific/Pago_Pago'].find(
+      (z) => todayIso(houseToday(z)) !== device,
+    )!;
+    const house = todayIso(houseToday(zone));
+    wrap(<SalesSheet members={[ANA, BO]} restaurantId="rest-A" onClose={() => {}} zone={zone} />);
+    const day = screen.getByLabelText('Service day') as HTMLInputElement;
+    expect(day.value).toBe(house);
+    expect(day.max).toBe(house);
   });
 });
 

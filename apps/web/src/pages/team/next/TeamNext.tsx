@@ -774,6 +774,7 @@ function TeamNextManager({
           scheduleId={data.scheduleId}
           onEditShift={(target) => setOverlay({ kind: 'shift', target })}
           onChanged={refreshWeek}
+          zone={zone}
         />
 
         <hr className="tm-rule" />
@@ -924,6 +925,7 @@ function TeamNextManager({
           rosterFailed={data.membersFailed}
           restaurantId={rid ?? null}
           onClose={() => setOverlay(null)}
+          zone={zone}
         />
       )}
       {overlay?.kind === 'export' && (

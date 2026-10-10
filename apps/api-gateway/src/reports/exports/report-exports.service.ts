@@ -267,6 +267,12 @@ export class ReportExportsService {
     // is held to the same cap — otherwise three queued plus any number of
     // retried failures would all be rendering at once.
     await this.assertRoomInFlight(restaurantId);
+    // A month asked for while it ran said ", so far"; the retry re-reads the
+    // month as it stands now, so its line is re-said on today's house clock
+    // — a month that has since closed is written up as the whole month (F-1072).
+    const windowLabel = existing.window_month
+      ? await this.monthWindowLabel(restaurantId, existing.window_month)
+      : existing.window_label;
 
     const { data, error } = await this.db
       .from(REPORT_EXPORTS_TABLE)
@@ -274,6 +280,7 @@ export class ReportExportsService {
         status: "queued",
         failure_reason: null,
         finished_at: null,
+        window_label: windowLabel,
         attempts: existing.attempts + 1,
         started_at: new Date().toISOString(),
       })

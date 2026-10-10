@@ -33,6 +33,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getErrorMessage } from '@/services/api/client';
+import { houseToday } from '@/lib/houseZone';
 import {
   ingestSales,
   ingestSalesBatch,
@@ -73,6 +74,7 @@ export function SalesSheet({
   restaurantId,
   initialMemberId,
   onClose,
+  zone,
 }: {
   /** `null` until the roster answers — the sheet then cannot name anyone. */
   members: TeamMember[] | null;
@@ -81,9 +83,11 @@ export function SalesSheet({
   restaurantId: string | null;
   initialMemberId?: string;
   onClose: () => void;
+  /** The house's time zone: a future day is one ahead of the HOUSE's today (F-1073). */
+  zone?: string | null;
 }) {
   const qc = useQueryClient();
-  const today = todayIso();
+  const today = todayIso(houseToday(zone));
   const [mode, setMode] = useState<Mode>('one');
   const roster = useMemo(() => members ?? [], [members]);
   const memberIds = useMemo(() => new Set(roster.map((m) => m.id)), [roster]);
