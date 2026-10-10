@@ -163,7 +163,7 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
           const note = editPriceNote(c.field, r);
           if (note) out.notes.push(note);
         } catch (e) {
-          out.failed = { field: c.field, reason: refusalReason(e) };
+          out.failed = { field: c.field, reason: refusalReason(e), ...refusalShape(e) };
           break;
         }
       }
@@ -179,7 +179,7 @@ type EditChange = { field: EditableMenuItemField; value: string };
 type EditOutcome = {
   saved: EditableMenuItemField[]
   notes: { tone: 'alert' | 'said'; text: string }[]
-  failed: { field: EditableMenuItemField; reason: string } | null
+  failed: { field: EditableMenuItemField; reason: string; refused: boolean; spoke: boolean } | null
 };
 
 /**
@@ -188,14 +188,32 @@ type EditOutcome = {
  * with status code 500" and the gateway's reason (the stock row was not
  * renamed) never reached the page.
  */
-export function refusalReason(err: unknown): string {
+export function refusalReason(
+  err: unknown,
+  silent = 'the server could not save it and gave no reason; try again',
+): string {
   const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string };
   const m = e?.response?.data?.message;
   if (typeof m === 'string' && m) return m;
   if (Array.isArray(m) && m.length) return String(m[0]);
   if (e?.response?.status === 403) return 'only an owner or a manager can change this line';
-  if (e?.response) return 'the server could not save it and gave no reason; try again';
+  if (e?.response) return silent;
   return e?.message || 'no reason given';
+}
+
+/**
+ * Whether a failed field was REFUSED before anything was written (a 4xx), and
+ * whether the gateway said why (F-1002). A 5xx can come after part of the work
+ * was done (a rename renames the stock first), so the page never adds "Nothing
+ * was changed." to one.
+ */
+function refusalShape(err: unknown): { refused: boolean; spoke: boolean } {
+  const r = (err as { response?: { status?: number; data?: { message?: unknown } } })?.response;
+  const m = r?.data?.message;
+  return {
+    refused: typeof r?.status === 'number' && r.status >= 400 && r.status < 500,
+    spoke: (typeof m === 'string' && m !== '') || (Array.isArray(m) && m.length > 0),
+  };
 }
 
 /** A field of a line, in the words the page uses for it. */
@@ -246,7 +264,11 @@ function editSentence(o: EditOutcome): string {
   const words = (fs: EditableMenuItemField[]) => fs.map((f) => FIELD_WORDS[f] ?? f).join(', ');
   const saved = o.saved.length ? `Saved: ${words(o.saved)}.` : '';
   if (!o.failed) return saved || 'Nothing had changed, so nothing was saved.';
-  return `${FIELD_WORDS[o.failed.field] ?? o.failed.field} was not saved (${o.failed.reason}).${saved ? ` ${saved}` : ' Nothing was changed.'}`;
+  // Only a refusal (4xx) is known to have written nothing; a 5xx that names
+  // what happened speaks for itself, and one that does not is not guessed at.
+  const after = o.failed.refused ? 'Nothing was changed.' : o.failed.spoke ? '' : 'Reload the page to see what was kept.';
+  const tail = saved || after;
+  return `${FIELD_WORDS[o.failed.field] ?? o.failed.field} was not saved (${o.failed.reason}).${tail ? ` ${tail}` : ''}`;
 }
 
 /**
@@ -624,7 +646,18 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit }: 
   );
 }
 
+/**
+ * The page is keyed on the house (F-1004): a switch of house does not remount
+ * the route, so "X is off the menu. Put it back", the Edit sentence and the add
+ * note stayed up for the house just left -- and Put it back then sent that
+ * house's line to this one. A new key starts every one of them empty.
+ */
 export default function MenuNext() {
+  const { activeRestaurantId } = useAuth();
+  return <MenuPage key={activeRestaurantId ?? 'no-house'} />;
+}
+
+function MenuPage() {
   const { activeRestaurantId, loading: authLoading, activeRole, user } = useAuth();
   // Choosing the current menu is an owner's or a manager's (ADR 0193); the
   // gateway refuses anyone else regardless of what this page offers.
@@ -695,7 +728,7 @@ export default function MenuNext() {
               {canManage ? (
                 <AddItemForm
                   adding={add.isPending}
-                  error={add.isError ? (add.error instanceof Error ? add.error.message : 'no reason given') : null}
+                  error={add.isError ? refusalReason(add.error) : null}
                   onAdd={(fields, opts) => add.mutate(fields, opts)}
                 />
               ) : (
@@ -821,8 +854,7 @@ export default function MenuNext() {
             })()}
             {discard.isError ? (
               <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-                That line was not discarded (
-                {discard.error instanceof Error ? discard.error.message : 'no reason given'}).
+                That line was not discarded ({refusalReason(discard.error)}).
               </p>
             ) : null}
             {justDiscarded ? (
@@ -840,15 +872,14 @@ export default function MenuNext() {
             ) : null}
             {restore.isError ? (
               <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-                That line was not put back (
-                {restore.error instanceof Error ? restore.error.message : 'no reason given'}).
+                That line was not put back ({refusalReason(restore.error)}).
               </p>
             ) : null}
             {canManage ? (
               discarded.isError ? (
                 <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
                   The lines taken off the menu could not be read
-                  {discarded.error instanceof Error ? ` (${discarded.error.message})` : ''}.
+                  {` (${refusalReason(discarded.error, 'the server gave no reason; try again')})`}.
                 </p>
               ) : (
                 <DiscardedLines
