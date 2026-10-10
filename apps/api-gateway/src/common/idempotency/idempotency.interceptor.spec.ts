@@ -3,6 +3,7 @@ import { Observable, lastValueFrom, of, throwError } from "rxjs";
 import {
   IdempotencyInterceptor,
   STILL_RUNNING_MESSAGE,
+  STILL_RUNNING_REASON,
 } from "./idempotency.interceptor";
 
 /**
@@ -155,6 +156,12 @@ describe("IdempotencyInterceptor — a re-send while the first is still running 
     ).catch((e) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect(err.message).toBe(STILL_RUNNING_MESSAGE);
+    // F-950: typed, so a queue waits on it instead of parking it as a no.
+    expect(err.getResponse()).toMatchObject({
+      statusCode: 409,
+      reason: STILL_RUNNING_REASON,
+      message: STILL_RUNNING_MESSAGE,
+    });
     expect(second).not.toHaveBeenCalled();
 
     finishFirst({ id: "stock-once" });

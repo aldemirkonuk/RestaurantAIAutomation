@@ -30,7 +30,14 @@ jest.mock("@/state/session", () => {
 });
 import { api } from "@/api/client";
 import { useSession } from "../session";
-import { useOutbox, waitingWork, waitingWords } from "../outbox";
+import {
+  signOutWords,
+  unsentAtSignOut,
+  useOutbox,
+  waitingFeedItems,
+  waitingWork,
+  waitingWords,
+} from "../outbox";
 import { outboxStorage } from "@/lib/mmkv";
 
 beforeEach(() => {
@@ -325,4 +332,94 @@ it("still parks a refusal the server meant (a 4xx other than 401 and 429)", asyn
   useOutbox.getState().enqueue({ path: "/x", label: "X" });
   await jest.advanceTimersByTimeAsync(1);
   expect(useOutbox.getState().entries[0]).toMatchObject({ status: "failed" });
+});
+
+// F-950: the gateway's "still being saved from your last try" is not a no.
+it("waits, without parking, while the same key is still running on the server", async () => {
+  const { ApiError } = jest.requireMock("@/api/client");
+  const stillRunning = Object.assign(
+    new ApiError("This is still being saved from your last try."),
+    { status: 409, body: { reason: "still_running" } },
+  );
+  (api as jest.Mock)
+    .mockReset()
+    .mockRejectedValueOnce(stillRunning)
+    .mockRejectedValueOnce(stillRunning)
+    .mockResolvedValue({});
+  useOutbox.getState().enqueue({ path: "/procurement/orders/o1/verify-receipt", label: "Receipt" });
+  await jest.advanceTimersByTimeAsync(1);
+  expect(useOutbox.getState().entries[0].status).toBe("pending");
+  expect(useOutbox.getState().entries[0].serverAttempts ?? 0).toBe(0);
+  await jest.advanceTimersByTimeAsync(10_000);
+  expect(api).toHaveBeenCalledTimes(3);
+  expect(new Set((api as jest.Mock).mock.calls.map((c) => c[1].idempotencyKey)).size).toBe(1);
+  expect(useOutbox.getState().entries).toEqual([]);
+});
+
+describe("a manager's price the house refuses keeps the count and says why (F-949)", () => {
+  beforeEach(() => (api as jest.Mock).mockReset().mockResolvedValue({}));
+  const path = "/procurement/orders/o1/verify-receipt";
+  const pricedBody = {
+    countedUom: "bottle",
+    acceptedQuantityInCountedUom: 12,
+    invoiceUnitPrice: 1250,
+    invoiceCurrency: "TRY",
+  };
+  const refused = (status: number, message: string) =>
+    Object.assign(new (jest.requireMock("@/api/client").ApiError)(message), { status });
+
+  it.each([
+    [409, "The unit price was NOT accepted, because the money on invoice 7 is not filed under any currency."],
+    [400, "TRL is three letters but names no currency, so nothing was recorded."],
+  ])("a %i on the price sends the count alone once and keeps the sentence", async (status, message) => {
+    (api as jest.Mock).mockRejectedValueOnce(refused(status, message)).mockResolvedValueOnce({});
+    useOutbox.getState().enqueue({ path, body: pricedBody, label: "Receipt", feedItemId: "card-1" });
+    await jest.advanceTimersByTimeAsync(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(api).toHaveBeenCalledTimes(2);
+    expect((api as jest.Mock).mock.calls[1][1].body).toEqual({
+      countedUom: "bottle",
+      acceptedQuantityInCountedUom: 12,
+    });
+    // Done, dismiss-only (no Try again), with the house's reason kept.
+    expect(useOutbox.getState().entries).toEqual([
+      expect.objectContaining({
+        status: "failed",
+        alreadyDone: true,
+        priceRefused: message,
+        lastError: `The count was saved without the price. ${message}`,
+      }),
+    ]);
+    // Nothing more is sent on its own.
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(api).toHaveBeenCalledTimes(2);
+  });
+});
+
+it("keeps a card hidden while its action waits, also after a restart (F-951)", () => {
+  const entries = [
+    { id: "a", actorUserId: "alice", restaurantId: "r1", status: "pending", feedItemId: "card-1" },
+    { id: "b", actorUserId: "alice", restaurantId: "r1", status: "holding", feedItemId: "card-2" },
+    { id: "c", actorUserId: "alice", restaurantId: "r1", status: "failed", feedItemId: "card-3" },
+    { id: "d", actorUserId: "bob", restaurantId: "r1", status: "pending", feedItemId: "card-4" },
+    { id: "e", actorUserId: "alice", restaurantId: "r1", status: "pending" },
+  ] as any;
+  expect([...waitingFeedItems(entries, { id: "alice" })].sort()).toEqual(["card-1", "card-2"]);
+  expect(waitingFeedItems(entries, null).size).toBe(0);
+});
+
+it("counts what signing out leaves on this phone and says so (F-952)", () => {
+  const entries = [
+    { id: "a", actorUserId: "alice", status: "pending" },
+    { id: "b", actorUserId: "alice", status: "failed" },
+    { id: "c", actorUserId: "alice", status: "failed", alreadyDone: true },
+    { id: "d", actorUserId: "bob", status: "pending" },
+  ] as any;
+  expect(unsentAtSignOut(entries, "alice")).toBe(2);
+  expect(unsentAtSignOut(entries, null)).toBe(0);
+  expect(signOutWords(0)).toBeNull();
+  expect(signOutWords(1)).toBe(
+    "1 thing you did has not been sent yet. It stays on this phone and sends only when you sign in here again; nobody else who signs in will see it.",
+  );
+  expect(signOutWords(2)).toMatch(/^2 things you did have not been sent yet\. They stay/);
 });

@@ -36,6 +36,13 @@ const CLAIM_TTL_MS = 10 * 60_000;
 export const STILL_RUNNING_MESSAGE =
   "This is still being saved from your last try. Wait a moment, then try again; it will not be added twice.";
 
+/**
+ * The `reason` on that 409, so a queue can tell "wait" from "no" without
+ * parsing the sentence (F-950): the phone's outbox and the web's queues treat
+ * every other 4xx as a refusal and park it, and this one is not a refusal.
+ */
+export const STILL_RUNNING_REASON = "still_running";
+
 type StoredAnswer = { status_code: number; response: any };
 type Claim =
   | { kind: "claimed" }
@@ -56,7 +63,7 @@ type Claim =
  * In-flight claim (F-566): the first request inserts a pending row for its key
  * BEFORE the handler runs (the key is the table's primary key, so only one
  * insert lands). A duplicate that arrives while the first is still running
- * gets 409 with STILL_RUNNING_MESSAGE instead of running the handler a second
+ * gets 409 with STILL_RUNNING_MESSAGE (reason STILL_RUNNING_REASON) instead of running the handler a second
  * time. A 2xx answer completes the row; an error, a non-2xx answer or no
  * answer releases it so the client may retry with the same key. A claim older
  * than CLAIM_TTL_MS is taken over.
@@ -98,7 +105,15 @@ export class IdempotencyInterceptor implements NestInterceptor {
           return of(claim.stored.response);
         }
         if (claim.kind === "running") {
-          return throwError(() => new ConflictException(STILL_RUNNING_MESSAGE));
+          return throwError(
+            () =>
+              new ConflictException({
+                statusCode: 409,
+                error: "Conflict",
+                reason: STILL_RUNNING_REASON,
+                message: STILL_RUNNING_MESSAGE,
+              }),
+          );
         }
         const claimed = claim.kind === "claimed";
         let completed = false;

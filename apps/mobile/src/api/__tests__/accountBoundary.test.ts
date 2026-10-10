@@ -55,3 +55,49 @@ it("does not return private query data after a logout or account transition", as
   complete({ status: 200, ok: true, json: async () => ({ private: true }) });
   await expect(request).rejects.toThrow(/active account or branch changed/);
 });
+
+// F-956 (F-407 re-hit): a push tap that opens another house while a receipt is
+// in flight must not turn the server's yes into "the account or branch changed".
+it("keeps the server's answer to a write that landed while the house changed", async () => {
+  useSession.setState({
+    generation: 0,
+    status: "signedIn",
+    accessToken: "alice-token",
+    user: { id: "alice", email: "a@example.com", restaurantId: "r1" },
+  });
+  let complete!: (response: any) => void;
+  global.fetch = jest.fn().mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const request = api("/procurement/orders/o1/verify-receipt", {
+    method: "POST",
+    idempotencyKey: "k1",
+    scope: { userId: "alice", restaurantId: "r1" },
+  });
+  useSession.setState({
+    generation: useSession.getState().generation + 1,
+    user: { id: "alice", email: "a@example.com", restaurantId: "r2" },
+  });
+  complete({ status: 200, ok: true, json: async () => ({ ok: true }) });
+  await expect(request).resolves.toEqual({ ok: true });
+});
+
+it("still refuses to send a write once the house has changed", async () => {
+  useSession.setState({
+    generation: 5,
+    status: "signedIn",
+    accessToken: "alice-token",
+    user: { id: "alice", email: "a@example.com", restaurantId: "r2" },
+  });
+  global.fetch = jest.fn();
+  await expect(
+    api("/action", {
+      method: "POST",
+      scope: { userId: "alice", restaurantId: "r1" },
+    }),
+  ).rejects.toThrow(/active account or branch changed/);
+  expect(fetch).not.toHaveBeenCalled();
+});

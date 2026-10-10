@@ -134,9 +134,17 @@ export async function api<T = unknown>(
     );
   }
 
-  assertScope();
+  // A WRITE THE SERVER ANSWERED HAS HAPPENED (F-407, F-956).
+  //
+  // The scope is checked before every send (doFetch). After the answer it is
+  // checked for reads only, so one house's data never lands in another's
+  // screen. A write is different: the server already applied it, and calling
+  // it "the account or branch changed" parked a receipt that had gone through
+  // when a push tap opened another house mid-send.
+  const isRead = method === "GET";
+  if (isRead) assertScope();
   if (res.status === 204) return undefined as T;
   const result = (await res.json()) as T;
-  assertScope();
+  if (isRead) assertScope();
   return result;
 }

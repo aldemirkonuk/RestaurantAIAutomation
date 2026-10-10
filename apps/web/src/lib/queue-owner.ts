@@ -151,9 +151,24 @@ export function endsWithSessionOf(entry: QueueEntryShape, userId: string): boole
   return !legacyHouseOf(entry)
 }
 
-/** The HTTP status an axios-shaped error carries, if any. */
+/**
+ * The HTTP status an axios-shaped error carries, if any.
+ *
+ * A 409 with reason `still_running` reads as no status (F-950): the gateway
+ * is still saving this same key from the last try, so there is no answer yet.
+ * Read as a 409 it was parked as "not sent" for a change the server then
+ * completed; read as no answer it is tried again with backoff, and the same
+ * key brings back the stored answer.
+ */
 export function statusOf(err: unknown): number | undefined {
-  const status = (err as { response?: { status?: unknown } } | null)?.response?.status
+  const response = (err as { response?: { status?: unknown; data?: unknown } } | null)?.response
+  const status = response?.status
+  if (
+    status === 409 &&
+    (response?.data as { reason?: unknown } | null | undefined)?.reason === 'still_running'
+  ) {
+    return undefined
+  }
   return typeof status === 'number' ? status : undefined
 }
 
