@@ -8,6 +8,10 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { MembersService } from "./members.service";
 import {
+  SettingsAuditService,
+  type AuditReceipt,
+} from "../settings-audit/settings-audit.service";
+import {
   OperatingHours,
   OperatingHoursError,
   parseOperatingHours,
@@ -28,7 +32,32 @@ export interface OperatingHoursResponse {
    * collapse this endpoint exists to prevent, one level down.
    */
   storedHoursErrors?: string[];
+  /**
+   * Whether this write reached "What changed here" (F-503). Present on a
+   * PUT only; a failed audit row is said, never swallowed.
+   */
+  audited?: boolean;
+  auditReason?: string | null;
 }
+
+/**
+ * One spelling for a stored week: jsonb hands keys back in its own order, so
+ * a plain stringify would file a re-save of the same hours as a change.
+ */
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(v ?? null);
+}
+
+/** Filed under the "hours" register in `system_audit_log` (F-503). */
+export const OPERATING_HOURS_AUDIT_ACTION = "operating_hours_changed" as const;
 
 /**
  * Read and write `restaurants.operating_hours` (ADR 0093 D1).
@@ -52,6 +81,7 @@ export class OperatingHoursService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly membersService: MembersService,
+    private readonly audit: SettingsAuditService,
   ) {}
 
   async getOperatingHours(
@@ -131,6 +161,27 @@ export class OperatingHoursService {
       }
     }
 
+    // The value before, for "What changed here" (F-503). A failed read here
+    // refuses the write, the same rule the read path holds (ADR 0067): an
+    // audit row whose `from` is a guess is worse than none.
+    const prior = await this.databaseService.supabase
+      .from("restaurants")
+      .select("operating_hours")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (prior.error) {
+      this.logger.error(
+        `operating-hours read-before-write failed for restaurant ${restaurantId}: ` +
+          `${prior.error.code ?? "?"} ${prior.error.message ?? prior.error}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this restaurant's operating hours, so nothing was changed",
+      );
+    }
+    if (!prior.data) throw new NotFoundException("Restaurant not found");
+    const previous =
+      (prior.data as { operating_hours?: unknown }).operating_hours ?? null;
+
     const { data, error } = await this.databaseService.supabase
       .from("restaurants")
       .update({
@@ -154,7 +205,25 @@ export class OperatingHoursService {
     // "saved" over that would be the write-path form of the same lie.
     if (!data) throw new NotFoundException("Restaurant not found");
 
-    return this.toResponse(restaurantId, data);
+    const receipt: AuditReceipt =
+      canonical(previous) === canonical(toStore)
+        ? { recorded: false, reason: "nothing changed" }
+        : await this.audit.record({
+            restaurantId,
+            actorUserId,
+            action: OPERATING_HOURS_AUDIT_ACTION,
+            register: "hours",
+            entityType: "restaurant",
+            entityId: restaurantId,
+            subject: "opening hours",
+            fields: { operating_hours: { from: previous, to: toStore } },
+          });
+
+    return {
+      ...this.toResponse(restaurantId, data),
+      audited: receipt.recorded,
+      auditReason: receipt.reason,
+    };
   }
 
   /**

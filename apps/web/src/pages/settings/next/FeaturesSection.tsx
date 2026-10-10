@@ -115,7 +115,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 // function's docblock, not the read) — corrected 2026-09-19 against
                 // the actual `.select("enable_ai_autonomous_send")` call, which
                 // matches the registry's own `readBy` for this key.
-                // read by: common/orchestrator/inbound-responder.service.ts:1027
+                // read by (named by function, not line — F-504): common/orchestrator/inbound-responder.service.ts › isAutonomousSendEnabled
                 readBy: 'the vendor-reply drafter, before a reply leaves',
               }}
               consequence={
@@ -166,7 +166,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 // function's docblock, not the read) — corrected 2026-09-19 against
                 // the actual `.select("enable_ai_negotiation")` call, which matches
                 // the registry's own `readBy` for this key.
-                // read by: common/orchestrator/inbound-responder.service.ts:1003
+                // read by (named by function, not line — F-504): common/orchestrator/inbound-responder.service.ts › isNegotiationEnabled
                 readBy: 'the vendor-reply drafter, before it reads a reply',
               }}
               consequence={
@@ -192,7 +192,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 tone={values[HOUSE_INBOX] === true ? 'grave' : undefined}
                 provenance={{
                   kept: 'restaurant', when: null, whenUnknown: NO_DATE,
-                  // read by: communications/inbox/house-inbox.service.ts:339
+                  // read by: communications/inbox/house-inbox.service.ts › isEnabled (F-504)
                   readBy: 'the mailbox reader, before each run',
                 }}
                 consequence={

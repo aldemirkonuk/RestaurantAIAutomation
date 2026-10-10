@@ -6,7 +6,12 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { TenantGuard } from "../common/tenant/tenant.guard";
@@ -52,6 +57,7 @@ export const REGISTERS: SettingsRegister[] = [
   "ask-training",
   "state-and-country",
   "location",
+  "hours",
 ];
 
 /**
@@ -116,7 +122,9 @@ export class SettingsAuditController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
-        error instanceof Error ? error.message : "Failed to read the settings trail",
+        error instanceof Error
+          ? error.message
+          : "Failed to read the settings trail",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

@@ -1,56 +1,39 @@
 /**
- * Map — one setting, and it is real.
+ * Map — one setting, and nothing reads it any more (F-500, 2026-10-09).
  *
- * `mapDefaultScope` is read by `pages/distributors/command/DistributorMapPage.tsx:36`
- * and decides how wide vendor discovery frames the restaurant when it opens.
- * The date is the preference record's own, kept by
- * `user_preferences_updated_at BEFORE UPDATE` (baseline_from_production.sql:12342),
- * and it belongs to the whole record rather than to this one field — which the
- * row says, because a record-wide date presented as a field's date is a small
- * lie that compounds.
+ * `mapDefaultScope` was read by `pages/distributors/command/DistributorMapPage.tsx`,
+ * which was deleted in da04b6f85 (#494); `/distributors` now redirects to
+ * /vendors, and no surface in apps/web or apps/mobile reads the field. So the
+ * row is rendered as `Dead` — the stored value as text, no control — rather
+ * than as a choice that frames a map nobody can open (ADR 0020). Wiring it
+ * back needs a vendor map to frame first; nothing obvious exists to wire it to.
  */
 
-import { Choice, Register, Row, SaveFailure } from './SectionKit';
-import { PROVENANCE_UNKNOWN, SANS } from './st-format';
+import { Dead, Register } from './SectionKit';
 import type { SettingsNextData } from './useSettingsNextData';
 
-const SCOPES = [
-  { value: 'continent' as const, label: 'Continent' },
-  { value: 'country' as const, label: 'Country' },
-  { value: 'state' as const, label: 'State' },
-  { value: 'city' as const, label: 'City' },
-];
+const SCOPE_LABEL: Record<string, string> = {
+  continent: 'Continent',
+  country: 'Country',
+  state: 'State',
+  city: 'City',
+};
 
 export function MapSection({ data }: { data: SettingsNextData }) {
-  const { prefs, savePrefs, writer } = data;
+  const { prefs } = data;
   return (
     <Register remote={prefs} name="your account preferences">
-      {(reg) => (
-        <>
-          <Row
+      {(reg) => {
+        const stored = reg.preferences.mapDefaultScope;
+        return (
+          <Dead
             label="Default view"
-            provenance={{
-              kept: 'account', when: reg.updatedAt, whenUnknown: PROVENANCE_UNKNOWN.neverWritten,
-              // read by: pages/distributors/command/DistributorMapPage.tsx:36
-              readBy: 'the vendor map, when it opens',
-            }}
-            consequence="How wide vendor discovery frames your restaurant when it opens. Zooming on the map never changes this — it is the frame you come back to."
-            control={
-              <Choice
-                label="Default map view"
-                value={(reg.preferences.mapDefaultScope ?? 'continent') as (typeof SCOPES)[number]['value']}
-                options={SCOPES}
-                onChange={(v) => void savePrefs('map', { mapDefaultScope: v })}
-              />
-            }
+            stored={stored ? `stored: ${SCOPE_LABEL[stored] ?? stored}` : 'never set'}
+            consequence="This chose how wide the vendor map opened. That map has been retired, so changing this would change nothing you can see."
+            evidence="The vendor map that read it was removed when Distributors became Vendors; nothing else in the product reads this preference."
           />
-          <SaveFailure failed={writer.failed} what="The frame above is still the server’s." />
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '12px 0 0' }}>
-            That date belongs to your whole preference record, not to this one field — the gateway dates the row
-            (<code>user_preferences.updated_at</code>), and every setting kept on your account shares it.
-          </p>
-        </>
-      )}
+        );
+      }}
     </Register>
   );
 }

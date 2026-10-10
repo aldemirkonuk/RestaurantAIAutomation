@@ -62,6 +62,7 @@ const EVERY: Record<SettingsRegister, true> = {
   "ask-training": true,
   "state-and-country": true,
   location: true,
+  hours: true,
 };
 
 describe("the ?register= allow-list holds every register the type admits", () => {

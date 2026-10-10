@@ -133,7 +133,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <Row
               label="Email door"
               cert="manual"
-              // read by: team/broadcast-preferences.ts:69,104
+              // read by: team/broadcast-preferences.ts › channelAllowed (F-504)
               provenance={{ ...kept, readBy: 'team broadcasts and the scheduled digests' }}
               consequence="Team broadcasts and scheduled digests reach you by email."
               control={
@@ -144,7 +144,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <Row
               label="SMS door"
               cert="manual"
-              // read by: team/broadcast-preferences.ts:70,104
+              // read by: team/broadcast-preferences.ts › channelAllowed (F-504)
               provenance={{ ...kept, readBy: 'team broadcasts' }}
               consequence="Team broadcasts may also go to your phone number, where one is on file."
               control={
@@ -159,7 +159,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               // Checked 2026-09-03 across all four runtimes: `push_enabled` has three
               // writers and no reader — notifications.service.ts:189,1142,1193 write it;
               // the channel chooser reads urgency and `<type>_channels` instead
-              // (notification_agent.py:1435-1470); core/database.py:1967 copies a
+              // (notification_agent.py › _select_channels); core/database.py:1967 copies a
               // `restaurants.push_enabled` onto a manager object nothing then reads.
               // Device table missing per notification_agent.py:31-37; gateway path per
               // apps/api-gateway/src/communications/push-is-not-resolved-here.spec.ts.
@@ -170,7 +170,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <Row
               label="Low-stock alerts"
               cert="manual"
-              // read by: notifications/low-stock-alerts.service.ts:505,515
+              // read by: notifications/low-stock-alerts.service.ts › getEffectiveLowStockPrefs (F-504)
               provenance={{ ...kept, readBy: 'the low-stock alerts' }}
               consequence="The alerting engine runs for this restaurant when any member has this on."
               control={
@@ -227,7 +227,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Scheduled mail</Micro></div>
             <Row
               label="Order reminders"
-              // read by: communications/scheduled-tasks.service.ts:1528
+              // read by: communications/scheduled-tasks.service.ts › getEffectiveCategoryMode (F-504)
               provenance={{ ...kept, readBy: 'the order-reminder mail' }}
               consequence="Recurring orders coming due within two days. “In-app only” keeps the notification and drops the email."
               control={
@@ -237,7 +237,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             />
             <Row
               label="Weekly report"
-              // read by: communications/scheduled-tasks.service.ts:1528
+              // read by: communications/scheduled-tasks.service.ts › getEffectiveCategoryMode (F-504)
               provenance={{ ...kept, readBy: 'the Monday report mail' }}
               consequence="The Monday summary of the week's spend and movement."
               control={
@@ -252,7 +252,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               cert="manual"
               provenance={{
                 ...kept,
-                // read by: notification_agent.py:1448,1487-1494
+                // read by: notification_agent.py › _is_quiet_hours (F-504)
                 readBy: 'the alerts Mudavym sends you',
               }}
               consequence={
@@ -277,7 +277,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               <Row
                 label="The window"
                 provenance={kept}
-                consequence="From the first time to the second, read on the alerting agent's clock. A window that ends before it starts is read as running overnight."
+                consequence="From the first time to the second, on this restaurant's clock (Settings › Time zone). Until a time zone is set, the window is read in UTC. A window that ends before it starts is read as running overnight."
                 control={
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                     <TimeField
@@ -311,8 +311,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                 // Checked 2026-09-03: written at apps/api-gateway/src/notifications/
                 // notifications.service.ts:1144-1145 and read back only to render this
                 // row. No sender branches on it: the scheduled mail reads orders_mode /
-                // reports_mode (scheduled-tasks.service.ts:1528), the low-stock engine
-                // reads its own five columns (low-stock-alerts.service.ts:505), and the
+                // reports_mode (scheduled-tasks.service.ts › getEffectiveCategoryMode), the low-stock engine
+                // reads its own five columns (low-stock-alerts.service.ts › readLowStockPrefs), and the
                 // alerting agent reads urgency and quiet hours.
                 evidence="Your choice is kept, and shown here, so it is not lost."
               />

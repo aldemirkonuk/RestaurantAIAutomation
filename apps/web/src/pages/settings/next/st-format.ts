@@ -129,6 +129,11 @@ export const SECTION_IDS = [
   // F-174: the house's address and map point, a block under "The house" like
   // 'ask-training'. Appended, never inserted.
   'location',
+  // F-499 (2026-10-09): the house's target margin and pour size. /inventory's
+  // price cell and /recommendations' "Set your target" link here; until this
+  // id existed they opened the page at the top with no such control on it.
+  // A special-cased block in `SettingsNext.tsx`, like 'hours'.
+  'target-margin',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -163,9 +168,9 @@ export const SECTIONS: SectionSpec[] = [
   { id: 'locations', label: 'Locations', title: 'Locations & chains', kind: 'restaurant', group: 'house', order: 2,
     description: 'The branches on this account and how they group.' },
   { id: 'measurement', label: 'Measurement', title: 'Measurement & recipes', kind: 'browser', group: 'yours', order: 3,
-    description: 'Units, the default glass pour, and whether recipes are tracked.' },
+    description: 'How volumes are written out for you. The other three are stored here and change nothing.' },
   { id: 'map', label: 'Map', title: 'Map', kind: 'account', group: 'yours', order: 2,
-    description: 'How wide vendor discovery frames you when it opens.' },
+    description: 'How wide the vendor map used to open. That map is retired; the stored choice is shown, not offered.' },
   { id: 'features', label: 'Features', title: 'Features', kind: 'restaurant', group: 'autonomy', order: 1,
     description: 'The switches that change what the system does on its own.' },
   { id: 'pos', label: 'POS', title: 'Point of sale', kind: 'restaurant', group: 'buying', order: 3,
@@ -314,6 +319,7 @@ export const TAB_TO_ANCHOR: Record<SectionId, string> = {
   'time-zone': 'a-house',
   'mail-reading': 'a-own',
   location: 'a-house',
+  'target-margin': 'a-house',
 };
 
 /* ── THE COLLAPSE (founder, 2026-09-04) ──────────────────────────────────
