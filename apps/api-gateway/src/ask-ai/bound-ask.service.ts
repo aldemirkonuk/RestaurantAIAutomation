@@ -98,6 +98,8 @@ interface AskTurn {
   policy: RolePolicy;
   capture: FolioCapture;
   shareChecked: boolean;
+  /** True once a model call in this ask came back, so it was sent and paid for (F-234). */
+  paid?: boolean;
 }
 
 /**
@@ -282,7 +284,8 @@ export class BoundAskService {
     } catch (error) {
       if (error instanceof ModelPhaseFailure) {
         failureReason = error.reason;
-        answer = modelFailureReply(error.reason, finding);
+        // Only the ceiling's line claims "nothing was charged", so only it carries the flag (F-234).
+        answer = modelFailureReply(error.reason, finding, error.reason === "spend_ceiling" && turn.paid === true);
       } else {
         // Not the model: the runner itself threw outside its own refusals.
         failureReason = "reading_failed";
@@ -333,7 +336,9 @@ export class BoundAskService {
   private async callModel(turn: AskTurn, options: Omit<ModelCallOptions, "gateFirstAttempt" | "retry">): Promise<any> {
     await this.enforceRoleShare(turn);
     try {
-      return await this.modelClient.call({ ...options, gateFirstAttempt: true, retry: false });
+      const result = await this.modelClient.call({ ...options, gateFirstAttempt: true, retry: false });
+      turn.paid = true;
+      return result;
     } catch (error) {
       if (error instanceof ModelSpendCeilingError) throw new ModelPhaseFailure("spend_ceiling");
       throw new ModelPhaseFailure("model_unavailable");

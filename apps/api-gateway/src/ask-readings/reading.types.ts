@@ -95,6 +95,12 @@ export interface Finding {
   trace: Array<SourceTrace | WithheldSourceTrace>;
   rows: FindingRow[];
   choices?: Array<{ id: string; label: string }>;
+  /**
+   * The date a "today" Reading read as today, and the clock it was read on
+   * (F-236). `zone: null` means no zone is known for the house, so today was
+   * read in UTC, and the page says so instead of leaving it implied.
+   */
+  day?: { date: string; zone: string | null };
   /** Stable across reads when the measured cells and their provenance agree. */
   fingerprint: string;
 }

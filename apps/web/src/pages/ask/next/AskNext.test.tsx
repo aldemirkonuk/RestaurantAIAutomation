@@ -12,7 +12,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AskFolio, AskReading } from '@/services/api/ask';
@@ -307,3 +307,53 @@ describe('the book and old folios', () => {
     expect(await screen.findByText(/The Sommelier now opens here/)).toBeTruthy();
   });
 });
+
+// F-232: an answer can take up to 60 s; a person who moved on must not be
+// pulled back to the folio when it lands.
+describe('leaving while an answer is on its way', () => {
+  it('does not pull the person back to the folio once they have left /ask', async () => {
+    let land: (f: AskFolio) => void = () => {};
+    api.submit.mockReturnValue(new Promise<AskFolio>((resolve) => (land = resolve)));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/ask']}>
+          <Link to="/inventory">go to inventory</Link>
+          <Routes>
+            <Route path="/ask" element={<AskNext />} />
+            <Route path="/ask/f/:folioId" element={<AskNext />} />
+            <Route path="/inventory" element={<p>the inventory page</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await screen.findByText('The posted targets');
+    ask('how much barolo?');
+    await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('go to inventory'));
+    expect(screen.getByText('the inventory page')).toBeTruthy();
+    land(folio({ answer: { kind: 'model_knowledge', sourceLabel: "Not from the house's books", text: 'Some.' }, reply_kind: 'model_knowledge' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByText('the inventory page')).toBeTruthy();
+    expect(screen.queryByLabelText('The open folio')).toBeNull();
+  });
+});
+
+// F-235: an unanswered folio long past the wait offers to ask again, afresh.
+describe('an interrupted answer', () => {
+  it('says it will not arrive and asks the same question again under a new id', async () => {
+    const old = new Date(Date.now() - 10 * 60_000).toISOString();
+    const stuck = folio({ status: 'pending', answer: null, utterance: 'what arrives today?', created_at: old, completed_at: null });
+    api.folio.mockResolvedValue(stuck);
+    api.submit.mockResolvedValue(folio({ id: '22222222-2222-4222-8222-222222222222', utterance: 'what arrives today?', answer: { kind: 'no_reading_matched', reason: 'no_matching_question' }, reply_kind: 'no_reading_matched' }));
+    renderAt(`/ask/f/${stuck.id}`);
+    expect(await screen.findByText('This answer was interrupted')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again' }));
+    await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+    const req = api.submit.mock.calls[0][0];
+    expect(req.utterance).toBe('what arrives today?');
+    expect(req.requestId).not.toBe(stuck.id);
+  });
+});
+

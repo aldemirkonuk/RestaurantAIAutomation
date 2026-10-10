@@ -21,8 +21,11 @@ export type ModelKnowledgeText = string & { readonly [knowledgeText]: true };
  * that did not answer) or `not_in_your_books` (a register with no rows):
  *
  *   model_unavailable   the call failed or timed out; nothing came back
- *   spend_ceiling       the house's daily AI allowance refused the first call;
- *                       nothing was sent and nothing was charged
+ *   spend_ceiling       the house's daily AI allowance refused a call; that
+ *                       call was not sent. `earlierCallPaid` says an earlier
+ *                       call in the same ask (the pick) was sent and paid
+ *                       for, so the page never says "nothing was charged"
+ *                       when something was (F-234)
  *   invalid_model_reply the model answered, and the answer failed validation
  *                       (not JSON, truncated, an unknown class, an argument that
  *                       is not a span of the question, a cell not in the Finding)
@@ -80,7 +83,7 @@ export type BoundReply =
       sourceLabel: "Not from the house's books";
       text: ModelKnowledgeText;
     }
-  | { kind: "could_not_answer"; reason: ModelFailureReason; finding?: Finding }
+  | { kind: "could_not_answer"; reason: ModelFailureReason; finding?: Finding; earlierCallPaid?: true }
   | { kind: "not_permitted"; reason: "class_not_visible"; readingId: ReadingId; classes: DataClass[]; line: string }
   /** An unbuilt question class whose data class the role does not see (round 6r, "Classify now"). */
   | { kind: "not_permitted"; reason: "class_not_visible"; questionClass: ClassifiedUnbuiltQuestion; classes: DataClass[]; line: string }
@@ -215,9 +218,9 @@ export function couldNotReadReply(detail: FailureDetail, readingId?: ReadingId, 
     ...(finding ? { finding: withholdFailureDetail(finding, detail) } : {}) };
 }
 
-/** A model-side failure, carrying the Finding when the books were already read. */
-export function modelFailureReply(reason: ModelFailureReason, finding?: Finding): BoundReply {
-  return { kind: "could_not_answer", reason, ...(finding ? { finding } : {}) };
+/** A model-side failure, carrying the Finding when the books were already read, and whether an earlier call was paid. */
+export function modelFailureReply(reason: ModelFailureReason, finding?: Finding, earlierCallPaid = false): BoundReply {
+  return { kind: "could_not_answer", reason, ...(finding ? { finding } : {}), ...(earlierCallPaid ? { earlierCallPaid: true as const } : {}) };
 }
 
 const joinNames = (names: string[]) =>
@@ -291,7 +294,8 @@ export function isBoundReply(raw: unknown): raw is BoundReply {
     }
   }
   if (raw.kind === "could_not_answer") {
-    return MODEL_FAILURE_REASONS.includes(raw.reason as ModelFailureReason) && attachedFindingOk;
+    return MODEL_FAILURE_REASONS.includes(raw.reason as ModelFailureReason) && attachedFindingOk &&
+      (raw.earlierCallPaid === undefined || (raw.earlierCallPaid === true && raw.reason === "spend_ceiling"));
   }
   if (raw.kind === "not_permitted") {
     // Never carries a Finding -- the books were never queried for a refusal

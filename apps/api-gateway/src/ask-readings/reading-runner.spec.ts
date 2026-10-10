@@ -245,7 +245,8 @@ describe("proof, scope, absence and provenance regressions", () => {
     const finding = await run(books, "orders.late_deliveries", window);
     expect(finding.outcome).toBe("requirements_unsatisfied");
     expect(finding.reason).toBe("invalid_window");
-    expect(books.calls).toEqual([]);
+    // Only the house's clock is read (F-236); no order row is.
+    expect(books.calls.map(c => c.table)).toEqual(["restaurants"]);
     expect(JSON.stringify(finding)).not.toContain("order-2099");
   });
   // Founder, 2026-09-21, round 6: staff "can ask about ... today's
@@ -260,9 +261,10 @@ describe("proof, scope, absence and provenance regressions", () => {
     for (const other of ["order-today-received", "order-a", "order-c", "order-future", "foreign-today"]) expect(shown).not.toContain(`"${other}`);
     // Every cell names the view, never the whole order book.
     expect(cells(finding).every(c => c.sourceRelations.length === 1 && c.sourceRelations[0] === "procurement_orders@due_today")).toBe(true);
-    // The whole book was read (6 house rows); that count lives only in the trace.
-    expect(finding.trace.map(t => t.relation)).toEqual(["procurement_orders"]);
-    expect(finding.rowsScanned).toBe(6);
+    // The whole book was read (6 house rows); that count lives only in the
+    // trace, after the house's own row, read for its clock (F-236).
+    expect(finding.trace.map(t => t.relation)).toEqual(["restaurants", "procurement_orders"]);
+    expect(finding.rowsScanned).toBe(7);
   });
   test("today's deliveries: a book with no order today is a read zero; an empty book is not in your books", async () => {
     const books = fixture();
@@ -272,6 +274,28 @@ describe("proof, scope, absence and provenance regressions", () => {
     expect(value(none, "deliveries:count")).toBe(0);
     books.tables.procurement_orders = [];
     expect((await run(books, "orders.due_today")).outcome).toBe("not_in_your_books");
+  });
+  // F-236: at 18:30 in Los Angeles (01:30 UTC the next day) "today" is the
+  // house's date, not UTC's, and the Finding says which date and clock.
+  test("today's deliveries reads today on the house's clock, and says which", async () => {
+    const books = fixture();
+    books.tables.restaurants[0].timezone = "America/Los_Angeles";
+    const evening = () => new Date("2026-09-14T01:30:00Z");
+    const finding = await new ReadingRunner(books, evening).run(rid, "orders.due_today", args);
+    expect(finding.day).toEqual({ date: "2026-09-13", zone: "America/Los_Angeles" });
+    expect(value(finding, "order-today:order_number")).toBe("order-today");
+    // Late deliveries refuses a window that reaches the house's today.
+    const late = await new ReadingRunner(books, evening).run(rid, "orders.late_deliveries", { from: "2026-09-01", to: "2026-09-13" });
+    expect(late.reason).toBe("invalid_window");
+  });
+  test("a house with no time zone reads today in UTC and says so; a failed house read is not 'no zone'", async () => {
+    const finding = await run(fixture(), "orders.due_today");
+    expect(finding.day).toEqual({ date: "2026-09-13", zone: null });
+    const books = fixture();
+    books.fail.add("restaurants");
+    const failed = await run(books, "orders.due_today");
+    expect(failed.outcome).toBe("could_not_read");
+    expect(failed.reason).toBe("query_failed");
   });
   test("a view is a relabelled filter: it cannot nest, and its name is a plain word", async () => {
     const s = new RecordingSession(fixture(), () => new Date("2026-09-13T12:00:00Z"), new Set(["procurement_orders@due_today.*"]));
