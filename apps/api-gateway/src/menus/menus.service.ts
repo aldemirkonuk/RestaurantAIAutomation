@@ -818,12 +818,18 @@ export class MenusService {
     try {
       let menuName: string | null = null;
       if (row.menu_id) {
-        const { data: menu } = await this.dbService.supabase
+        const { data: menu, error: menuError } = await this.dbService.supabase
           .from("restaurant_menus")
           .select("name")
           .eq("id", row.menu_id)
           .eq("restaurant_id", restaurantId)
           .maybeSingle();
+        // The line is still recorded; only the menu's name is left out.
+        if (menuError) {
+          this.logger.warn(
+            `discard of menu line ${row.id}: menu ${row.menu_id} unread (${menuError.message}); recorded without its name`,
+          );
+        }
         menuName = menu?.name ?? null;
       }
       const { error } = await this.dbService.supabase

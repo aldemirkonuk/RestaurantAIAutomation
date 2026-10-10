@@ -93,11 +93,11 @@ export function CreateChainDialog({
       let chain = created
       if (!chain) {
         try {
-          const { data } = await apiClient.post<{ id: string; name: string }>(
+          const response = await apiClient.post<{ id: string; name: string }>(
             '/organizations/chains',
             { name: name.trim() },
           )
-          chain = { id: data.id, name: data.name }
+          chain = { id: response.data.id, name: response.data.name }
           setCreated(chain)
         } catch (e) {
           setFailure(`Could not create chain — ${getErrorMessage(e)}`)

@@ -1,6 +1,7 @@
 import { ProcurementService } from "./procurement.service";
 import { ProcurementOrderStatus } from "./dto/procurement.dto";
 import { RECURRENCE_ACTS } from "./order-recurrence";
+import { ORDER_ENDS_ITS_SERIES_STATUSES } from "./order-transitions";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
@@ -44,11 +45,18 @@ function makeDb(stored: Row) {
 }
 
 function service(db: DatabaseService) {
-  return new ProcurementService(
+  const svc = new ProcurementService(
     db,
     { emit: jest.fn() } as unknown as EventsService,
     {} as unknown as InventoryLedgerService,
   );
+  // A status write needs a manager or an owner (F-300); this file asks only
+  // what the close does to the series, so the role gate lets the actor by.
+  (svc as any).organizations = {
+    resolveRestaurantRole: async () => "manager",
+    assertCanManageRestaurant: async () => undefined,
+  };
+  return svc;
 }
 
 const PARENT: Row = {
@@ -102,14 +110,20 @@ describe("closing the order a series repeats ends the series (F-302)", () => {
   });
 
   it("a delivered parent keeps its rule — that is how most standing orders begin", async () => {
+    // Delivered is not a closing status, so it never ends a series. It is also
+    // no longer set by editing the status (booked in at the door instead), so
+    // the edit is refused and nothing at all is written.
+    expect(ORDER_ENDS_ITS_SERIES_STATUSES).not.toContain(ProcurementOrderStatus.DELIVERED);
     const { db, orderUpdates, auditInserts } = makeDb(PARENT);
-    await service(db).updateOrder(
-      "rest-1",
-      "ord-1",
-      { status: ProcurementOrderStatus.DELIVERED } as any,
-      { statusTransitionAlreadyChecked: true, actorUserId: USER },
-    );
-    expect(orderUpdates).toHaveLength(1);
+    await expect(
+      service(db).updateOrder(
+        "rest-1",
+        "ord-1",
+        { status: ProcurementOrderStatus.DELIVERED } as any,
+        { statusTransitionAlreadyChecked: true, actorUserId: USER },
+      ),
+    ).rejects.toMatchObject({ response: { reason: "status_through_its_own_act" } });
+    expect(orderUpdates).toHaveLength(0);
     expect(auditInserts).toHaveLength(0);
   });
 

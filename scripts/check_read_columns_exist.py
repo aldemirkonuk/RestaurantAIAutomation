@@ -193,13 +193,6 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
         "The table has `contact_first_name` and `contact_last_name` (also "
         "`primary_contact`). communications.service.ts:445."
     ),
-    "provider_promotions.savings_realized": (
-        "No such column. provider-intelligence.service.ts:205 selects it AND "
-        "filters `.gt` + `.order` on it, so all three fail together."
-    ),
-    "provider_promotions.times_used": (
-        "No such column. Same select as savings_realized."
-    ),
     "master_wine_library.wine_name": (
         "The table has `name`, `display_name`, `normalized_name`. "
         "storage-locations.service.ts:284."

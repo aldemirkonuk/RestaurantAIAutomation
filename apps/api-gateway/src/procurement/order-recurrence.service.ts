@@ -316,19 +316,20 @@ export class OrderRecurrenceService {
     // A paused series stays paused: a new rule is not a resume. Who paused it,
     // and when, stay as they were, because nobody moved it.
     const to: OrderRecurrenceStatus = current === "paused" ? "paused" : "active";
-    const now = new Date().toISOString();
+    const rule: Record<string, unknown> = {
+      recurrence_frequency: plan.value.frequency,
+      recurrence_anchor_day: plan.value.anchorDay,
+      recurrence_anchored_on: plan.value.anchoredOn,
+      recurrence_next_due_on: nextDueOn,
+      recurrence_status: to,
+    };
+    if (to === "active") {
+      rule.recurrence_status_by = asUuid(userId);
+      rule.recurrence_status_at = new Date().toISOString();
+    }
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .update({
-        recurrence_frequency: plan.value.frequency,
-        recurrence_anchor_day: plan.value.anchorDay,
-        recurrence_anchored_on: plan.value.anchoredOn,
-        recurrence_next_due_on: nextDueOn,
-        recurrence_status: to,
-        ...(to === "active"
-          ? { recurrence_status_by: asUuid(userId), recurrence_status_at: now }
-          : {}),
-      })
+      .update(rule)
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .select(RECURRENCE_SELECT)

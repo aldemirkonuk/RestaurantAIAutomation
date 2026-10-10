@@ -157,24 +157,12 @@ class TableSpec:
 # fails, and an entry nothing writes any more fails. The only way to touch it is
 # to make it shorter.
 # ---------------------------------------------------------------------------
-PROCUREMENT_ORDERS_KNOWN_BAD: dict[str, Debt] = {
-    "location_id": Debt(
-        files=("procurement/procurement.service.ts",),
-        reason=(
-        "procurement.service.ts updateOrder. Same defect class as `notes`, found "
-        "by this guard while it was being written for `notes`. `location_id` is "
-        "not a column of procurement_orders in supabase/migrations/ OR in "
-        "production (checked 2026-09-01, 56 columns). Same `?? undefined` shape, "
-        "so it only fires when a client actually sends `locationId` -- and no "
-        "client does today: UpdateOrderDto.locationId exists "
-        "(dto/procurement.dto.ts:191) and apps/web has an OrderLocationField "
-        "component, but nothing wires the field to the PATCH. DELIBERATELY NOT "
-        "FIXED HERE: the fix is either a migration adding the column or deleting "
-        "the feature, and that is a decision, not a default (CLAUDE.md 0.1). "
-        "Filed for the founder; delete this line when it is settled."
-        ),
-    ),
-}
+PROCUREMENT_ORDERS_KNOWN_BAD: dict[str, Debt] = {}
+# Emptied 2026-10-10. `location_id` went when F-557 (fix/sim-schema-truth)
+# made updateOrder refuse a `locationId` in words before any read or write and
+# dropped the key from the UPDATE: the column is not in any migration, so the
+# write could only ever fail. The open question the entry carried (add the
+# column or drop the feature) is now answered by the refusal until it is.
 
 CALENDAR_EVENTS_KNOWN_BAD: dict[str, Debt] = {}
 # Emptied 2026-09-02. Both entries said "DELETE BOTH ENTRIES the moment that

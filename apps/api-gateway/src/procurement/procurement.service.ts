@@ -3658,13 +3658,14 @@ export class ProcurementService {
     if (from !== "active" && from !== "paused") return;
     const actor = asUuid(actorUserId);
     try {
+      const ended: Record<string, unknown> = {
+        recurrence_status: "ended",
+        recurrence_status_at: new Date().toISOString(),
+      };
+      if (actor) ended.recurrence_status_by = actor;
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
-        .update({
-          recurrence_status: "ended",
-          recurrence_status_at: new Date().toISOString(),
-          ...(actor ? { recurrence_status_by: actor } : {}),
-        })
+        .update(ended)
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
         // Compare-and-set: a series somebody else moved is left as they left it.
@@ -6987,9 +6988,32 @@ export class ProcurementService {
     // still holds. Returns whether it was put back.
     let stockMoved = false;
     const putBack = async (): Promise<boolean> => {
-      const prior: Record<string, any> = {};
-      for (const key of Object.keys(update))
-        prior[key] = (orderRow as any)[key] ?? null;
+      // Each column the claim wrote, back to its value as read. Spelled out so
+      // scripts/check_orders_column_writes.py can read every key; a key the
+      // claim did not write stays `undefined` and is dropped from the body.
+      const was = (key: string) =>
+        key in update ? ((orderRow as any)[key] ?? null) : undefined;
+      const prior = {
+        status: was("status"),
+        delivery_notes: was("delivery_notes"),
+        rejected_reason: was("rejected_reason"),
+        invoice_unit_price: was("invoice_unit_price"),
+        match_status: was("match_status"),
+        price_verified: was("price_verified"),
+        price_override_reason: was("price_override_reason"),
+        discrepancy_notes: was("discrepancy_notes"),
+        match_verified_at: was("match_verified_at"),
+        match_verified_by: was("match_verified_by"),
+      };
+      // A column added to the claim and not to this list would stay written:
+      // say so and leave the order as it is rather than half put it back.
+      const missed = Object.keys(update).filter((k) => !(k in prior));
+      if (missed.length > 0) {
+        this.logger.error(
+          `verifyReceipt cannot put order ${orderId} back: no prior value kept for ${missed.join(", ")}`,
+        );
+        return false;
+      }
       const { error: undoError } = await this.databaseService.supabase
         .from("procurement_orders")
         .update(prior)

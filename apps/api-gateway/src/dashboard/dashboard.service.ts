@@ -1498,7 +1498,7 @@ export class DashboardService {
       }
 
       const overdue = rowsOrThrow(overdueResult, "procurement_orders");
-      if (zoneResult.status === "rejected") throw zoneResult.reason;
+      const zone = valueOrThrow(zoneResult);
       // `expected_delivery_date` is a `date`: a day on the house's calendar,
       // with no clock. It is overdue once the HOUSE's day has passed it.
       // `new Date("2026-10-05")` is UTC midnight, which turned an order due
@@ -1507,7 +1507,7 @@ export class DashboardService {
       // passed everywhere: the last zone to leave a day is UTC-12.
       const houseToday = localDateIn(
         new Date(),
-        zoneResult.value ?? "Etc/GMT+12",
+        zone ?? "Etc/GMT+12",
       );
       for (const order of overdue) {
         if (
