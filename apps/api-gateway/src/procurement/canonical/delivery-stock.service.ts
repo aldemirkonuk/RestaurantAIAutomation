@@ -186,7 +186,15 @@ export class DeliveryStockService {
     if (!delivery.ok) return delivery;
 
     // A settled delivery does not book more stock. REJECTED and CANCELLED are
-    // reversals' business; VERIFIED already had its cost posted.
+    // reversals' business; VERIFIED already had its cost posted, and a re-verify
+    // posts none (sim F-671), so a lot booked now would stay uncosted for good.
+    if (delivery.value.state === "VERIFIED")
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "This delivery is already confirmed and its cost is posted, so a later count adds no stock to it. If bottles are missing or extra, raise a credit with the vendor or correct the count on the shelf.",
+      };
     if (["CANCELLED", "REJECTED", "LAPSED"].includes(delivery.value.state))
       return {
         ok: false,

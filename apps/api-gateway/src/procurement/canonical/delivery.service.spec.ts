@@ -270,6 +270,56 @@ describe("DeliveryService", () => {
       expect(res.ok).toBe(true);
       if (res.ok) expect(res.value.alreadyLinked).toBe(true);
     });
+
+    // sim F-668: an invoice that arrives nine days after its goods. Counted
+    // from the delivery its window had closed before it was attached.
+    it("counts the TR objection window from the INVOICE's issue date, not the delivery's", async () => {
+      db.answers.deliveries = { data: deliveryRow(), error: null };
+      db.answers.procurement_documents = {
+        data: [
+          {
+            id: "doc-1",
+            provider_id: "prov-1",
+            doc_type: "invoice",
+            direction: "issued_by_vendor",
+            extracted: {},
+            doc_date: "2026-08-23",
+          },
+        ],
+        error: null,
+      };
+      db.answers.vendor_terms = {
+        data: [
+          {
+            id: "vt",
+            restaurant_id: null,
+            provider_id: null,
+            days: 8,
+            basis: "document_issue_date",
+            signed_ticket_is_final: false,
+          },
+        ],
+        error: null,
+      };
+      db.insertAnswers.document_deliveries = { data: null, error: null };
+      db.insertAnswers.delivery_timers = {
+        data: { state: "open", due_at: null },
+        error: null,
+      };
+      const res = await service.linkDocument(REST, DEL, "doc-1", "invoice");
+      expect(res.ok).toBe(true);
+      const timer = db.writes.find(
+        (w) =>
+          w.table === "delivery_timers" &&
+          (w.payload as { clock: string }).clock === "objection_window",
+      );
+      expect(timer?.payload).toMatchObject({
+        basis: "document_issue_date",
+        basis_at: "2026-08-23T00:00:00Z",
+        due_at: "2026-08-31T00:00:00.000Z",
+        state: "open",
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -396,6 +446,40 @@ describe("DeliveryService", () => {
       expect(db.writes).toEqual([]);
     });
 
+    // sim F-666: the house accepting its own SHORT_SHIP answered the
+    // difference and let rule A agree with the vendor silent.
+    it("refuses the house accepting its OWN position, and writes nothing", async () => {
+      db.answers.delivery_proposals = {
+        data: { id: "prop-1", delivery_id: DEL, status: "open", side: "restaurant" },
+        error: null,
+      };
+      db.answers.deliveries = { data: deliveryRow(), error: null };
+      const res = await service.accept(REST, "prop-1", "u1");
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(409);
+        expect(res.error).toMatch(/only the vendor can accept it/);
+      }
+      expect(db.writes).toEqual([]);
+    });
+
+    it("accepts the vendor's position for the house", async () => {
+      db.answers.delivery_proposals = {
+        data: { id: "prop-1", delivery_id: DEL, status: "open", side: "vendor" },
+        error: null,
+      };
+      db.updateAnswers.delivery_proposals = {
+        data: { status: "accepted" },
+        error: null,
+      };
+      db.answers.deliveries = { data: deliveryRow(), error: null };
+      const res = await service.accept(REST, "prop-1", "u1");
+      expect(res.ok).toBe(true);
+      expect(
+        db.writes.find((w) => w.table === "delivery_proposals")?.payload,
+      ).toMatchObject({ status: "accepted", responded_by: "u1" });
+    });
+
     it("is idempotent: accepting twice does not move the timestamp", async () => {
       db.answers.delivery_proposals = {
         data: {
@@ -412,6 +496,32 @@ describe("DeliveryService", () => {
       expect(db.writes.filter((w) => w.table === "delivery_proposals")).toEqual(
         [],
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // sim F-667: countering an accepted position used to mark it `countered`,
+  // undoing an agreement after AGREED.
+  describe("counter — an accepted position is settled", () => {
+    it("refuses to answer an accepted position, and writes nothing", async () => {
+      db.answers.delivery_proposals = {
+        data: { id: "prop-1", delivery_id: DEL, status: "accepted", side: "vendor" },
+        error: null,
+      };
+      db.answers.deliveries = {
+        data: deliveryRow({ state: "AGREED", agreed_at: "2026-08-15T09:00:00Z" }),
+        error: null,
+      };
+      const res = await service.counter(REST, "prop-1", "u1", {
+        side: "restaurant",
+        reason: "DAMAGED",
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(409);
+        expect(res.error).toMatch(/already accepted/);
+      }
+      expect(db.writes).toEqual([]);
     });
   });
 
@@ -644,6 +754,42 @@ describe("DeliveryService", () => {
       assertNoStockWrites();
       if (res.ok)
         expect(res.value.costNote).toMatch(/booked no stock at the door/);
+    });
+
+    // sim F-667: two broken bottles found while unpacking, filed after Agree.
+    it("refuses while a position filed after Agree is still open, and posts no cost", async () => {
+      db.answers.deliveries = {
+        data: deliveryRow({ state: "AGREED", agreed_at: "2026-08-15T09:00:00Z" }),
+        error: null,
+      };
+      db.answers.delivery_proposals = {
+        data: [{ status: "accepted" }, { status: "open" }],
+        error: null,
+      };
+      const res = await service.verify(REST, DEL, "u1");
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(409);
+        expect(res.error).toMatch(/1 position\(s\) .* still open/);
+      }
+      expect(
+        db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
+      ).toEqual([]);
+      expect(db.rpcCalls).toEqual([]);
+    });
+
+    it("refuses rather than verifying when the positions could not be read", async () => {
+      db.answers.deliveries = {
+        data: deliveryRow({ state: "AGREED", agreed_at: "2026-08-15T09:00:00Z" }),
+        error: null,
+      };
+      db.answers.delivery_proposals = {
+        data: null,
+        error: { message: "timeout" },
+      };
+      const res = await service.verify(REST, DEL, "u1");
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.status).toBe(500);
     });
 
     it("is idempotent — a second verify returns the first stamp and writes nothing", async () => {
@@ -921,14 +1067,42 @@ describe("DeliveryService", () => {
       if (!res.ok) {
         expect(res.status).toBe(409);
         expect(res.error).toMatch(/recorded difference/i);
-        expect(res.error).toMatch(/line 1 of document doc-inv/);
-        expect(res.error).toMatch(/accept/i);
+        // Named by what the line says; never by a document id (sim F-670).
+        expect(res.error).toMatch(/SYNTHETIC Okuzgozu 2021 \(line 1/);
+        expect(res.error).not.toMatch(/doc-inv/);
+        expect(res.error).toMatch(/keep it as billed/i);
       }
       // And nothing moved. A refusal that still wrote AGREED would be worse
       // than no gate at all.
       expect(
         db.writes.filter((w) => w.table === "deliveries" && w.verb === "update"),
       ).toEqual([]);
+    });
+
+    // sim F-670: the screen offers "keep it as billed" on exactly these lines,
+    // so it needs the key the gate refuses on.
+    it("lists the unanswered lines with the key accept-as-billed takes", async () => {
+      shortShip();
+      const res = await service.openDifferences(REST, DEL);
+      expect(res.ok).toBe(true);
+      if (res.ok)
+        expect(res.value).toEqual([
+          expect.objectContaining({
+            documentId: "doc-inv",
+            lineNo: 1,
+            label: "SYNTHETIC Okuzgozu 2021",
+          }),
+        ]);
+    });
+
+    it("lists nothing once the line is answered", async () => {
+      shortShip();
+      db.answers.delivery_line_acceptances = {
+        data: [{ document_id: "doc-inv", line_no: 1 }],
+        error: null,
+      };
+      const res = await service.openDifferences(REST, DEL);
+      expect(res).toEqual({ ok: true, value: [] });
     });
 
     it("agrees once the line is ACCEPTED AS BILLED, and still says which rule fired", async () => {

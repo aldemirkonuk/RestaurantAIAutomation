@@ -33,10 +33,12 @@ type AuthedUser = { userId: string; restaurantId: string };
  *   POST /procurement/deliveries              create the event
  *   GET  /procurement/deliveries/:id          the delivery and its documents
  *   GET  /procurement/deliveries/:id/proposals   the thread, oldest first
+ *   GET  /procurement/deliveries/:id/differences what agree still waits on
  *   POST /procurement/deliveries/:id/documents   attach a document with its role
  *   POST /procurement/deliveries/:id/proposals   put a position on the record
  *   POST /procurement/deliveries/proposals/:pid/counter   answer one
- *   POST /procurement/deliveries/proposals/:pid/accept    accept one (human)
+ *   POST /procurement/deliveries/proposals/:pid/accept    accept one (human,
+ *                                              the other side's only)
  *   POST /procurement/deliveries/:id/accept-as-billed  A11 — answer a difference
  *   POST /procurement/deliveries/:id/agree     D3 — and it says which rule fired
  *   POST /procurement/deliveries/:id/verify    D6 — a human, and idempotent
@@ -146,6 +148,24 @@ export class DeliveriesController {
           : HttpStatus.INTERNAL_SERVER_ERROR,
       );
     return { proposals: res.value };
+  }
+
+  @Get(":id/differences")
+  @ApiOperation({
+    summary: "The recorded differences that still have no answer (A11)",
+    description:
+      "Exactly the lines `agree` refuses on, each with the (documentId, lineNo) that `accept-as-billed` takes, so a screen can offer it on those lines and nowhere else. Empty once the delivery is agreed or closed. A comparison that could not run throws; it never comes back as nothing to answer.",
+  })
+  async differences(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    const res = await this.deliveries.openDifferences(user.restaurantId, id);
+    if (!res.ok)
+      throw new HttpException(
+        res.error,
+        res.error === "Delivery not found"
+          ? HttpStatus.NOT_FOUND
+          : HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    return { differences: res.value };
   }
 
   @Post(":id/documents")

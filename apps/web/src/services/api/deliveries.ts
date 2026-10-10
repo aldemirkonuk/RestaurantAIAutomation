@@ -145,6 +145,18 @@ export type OrderReceipt =
   | { state: "found"; document: SpineDocumentRef }
   | { state: "none" };
 
+/**
+ * One recorded difference that still has no answer (ADR 0103 A11). The
+ * (documentId, lineNo) pair is the key `acceptAsBilled` takes; `label` and
+ * `why` are what a person reads.
+ */
+export interface OpenDifference {
+  documentId: string;
+  lineNo: number;
+  label: string;
+  why?: string;
+}
+
 export const deliveriesApi = {
   /**
    * The receipt for one purchase order: the deliveries that fulfil it, then the
@@ -209,6 +221,26 @@ export const deliveriesApi = {
     const { data } = await apiClient.post(
       `/procurement/deliveries/proposals/${proposalId}/accept`,
       {},
+    );
+    return data;
+  },
+
+  /** The lines `agree` is still waiting on. A failed read throws. */
+  async differences(id: string): Promise<OpenDifference[]> {
+    const { data } = await apiClient.get(
+      `/procurement/deliveries/${id}/differences`,
+    );
+    return (data?.differences ?? []) as OpenDifference[];
+  },
+
+  /** A11 — keep one difference as billed: a named person, with a reason. */
+  async acceptAsBilled(
+    id: string,
+    body: { documentId: string; lineNo: number; reason: string },
+  ): Promise<{ acceptanceId: string; alreadyAccepted: boolean }> {
+    const { data } = await apiClient.post(
+      `/procurement/deliveries/${id}/accept-as-billed`,
+      body,
     );
     return data;
   },
