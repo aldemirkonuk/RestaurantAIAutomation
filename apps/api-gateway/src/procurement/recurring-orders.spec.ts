@@ -33,6 +33,8 @@ interface Calls {
   scheduleUpdates: Row[];
   orderInserts: Row[];
   calendarInserts: Row[];
+  /** Each calendar_events delete, as the filters it was narrowed by. */
+  calendarDeletes: Array<Array<[string, string, unknown]>>;
 }
 
 function makeDb(opts: {
@@ -41,30 +43,44 @@ function makeDb(opts: {
   insertedSchedule?: Row;
   insertedOrder?: Row;
   inventory?: Row | null;
+  /** What the cron's compare-and-set date advance returns. */
+  claim?: { data: Row[] | null; error: { message: string } | null };
+  /** What a calendar_events delete returns. */
+  calendarDeleteError?: { message: string } | null;
+  /** Make the order insert fail. */
+  orderInsertError?: { message: string } | null;
 }) {
   const calls: Calls = {
     scheduleInserts: [],
     scheduleUpdates: [],
     orderInserts: [],
     calendarInserts: [],
+    calendarDeletes: [],
   };
 
   const supabase: any = {
     from(table: string) {
       let op: "select" | "insert" | "update" | "delete" = "select";
+      const filters: Array<[string, string, unknown]> = [];
 
       const settle = (shape: "one" | "many") => {
         if (table === "providers") return { data: null, count: 1, error: null };
         if (table === "restaurant_inventory")
           return { data: opts.inventory ?? null, error: null };
         if (table === "procurement_orders")
-          return {
-            data: op === "insert" ? (opts.insertedOrder ?? null) : null,
-            error: null,
-          };
+          return op === "insert" && opts.orderInsertError
+            ? { data: null, error: opts.orderInsertError }
+            : {
+                data: op === "insert" ? (opts.insertedOrder ?? null) : null,
+                error: null,
+              };
+        if (table === "calendar_events" && op === "delete")
+          return { data: null, error: opts.calendarDeleteError ?? null };
         if (table === "recurring_orders") {
           if (op === "insert")
             return { data: opts.insertedSchedule ?? null, error: null };
+          if (op === "update" && shape === "many" && opts.claim)
+            return opts.claim;
           if (shape === "one")
             return { data: opts.storedSchedule ?? null, error: null };
           return { data: opts.dueSchedules ?? [], error: null };
@@ -74,11 +90,17 @@ function makeDb(opts: {
 
       const q: any = {
         select: () => q,
-        eq: () => q,
+        eq: (col: string, val: unknown) => {
+          filters.push(["eq", col, val]);
+          return q;
+        },
         neq: () => q,
         not: () => q,
         in: () => q,
-        is: () => q,
+        is: (col: string, val: unknown) => {
+          filters.push(["is", col, val]);
+          return q;
+        },
         gt: () => q,
         lte: () => q,
         like: () => q,
@@ -102,6 +124,7 @@ function makeDb(opts: {
         },
         delete() {
           op = "delete";
+          if (table === "calendar_events") calls.calendarDeletes.push(filters);
           return q;
         },
         single: async () => settle("one"),
@@ -505,5 +528,142 @@ describe("updateRecurringOrder — an allow-list, not a spread", () => {
         unit_type: "case",
       } as any),
     ).rejects.toThrow(/needs bottlesPerUnit/);
+  });
+});
+
+describe("the cron claims an occurrence before it orders it (F-765)", () => {
+  it("advances the date as a compare-and-set, before the order is placed", async () => {
+    const { db, calls } = makeDb({
+      dueSchedules: [scheduleRow()],
+      insertedOrder,
+      inventory: inventoryRow,
+    });
+    await service(db).executeDueRecurringOrders();
+    expect(calls.scheduleUpdates[0].next_order_date).toBe("2026-09-08");
+    expect(calls.orderInserts).toHaveLength(1);
+  });
+
+  it("orders nothing when the date cannot be moved on", async () => {
+    // Pre-fix the advance ran last and its error was never read, so a failed
+    // write left the schedule due and the next morning ordered it again.
+    const { db, calls } = makeDb({
+      dueSchedules: [scheduleRow()],
+      insertedOrder,
+      inventory: inventoryRow,
+      claim: { data: null, error: { message: "connection reset" } },
+    });
+    await service(db).executeDueRecurringOrders();
+    expect(calls.orderInserts).toHaveLength(0);
+  });
+
+  it("orders nothing when another run already moved the date", async () => {
+    const { db, calls } = makeDb({
+      dueSchedules: [scheduleRow()],
+      insertedOrder,
+      inventory: inventoryRow,
+      claim: { data: [], error: null },
+    });
+    await service(db).executeDueRecurringOrders();
+    expect(calls.orderInserts).toHaveLength(0);
+  });
+
+  it("puts the date back when the order could not be placed, so it is tried again", async () => {
+    const { db, calls } = makeDb({
+      dueSchedules: [scheduleRow()],
+      insertedOrder,
+      inventory: inventoryRow,
+      orderInsertError: { message: "insert refused" },
+    });
+    await service(db).executeDueRecurringOrders();
+    expect(calls.scheduleUpdates).toHaveLength(2);
+    expect(calls.scheduleUpdates[0].next_order_date).toBe("2026-09-08");
+    expect(calls.scheduleUpdates[1].next_order_date).toBe("2026-09-01");
+    expect(calls.scheduleUpdates[1].execution_count).toBe(3);
+  });
+});
+
+describe("the calendar follows the schedule (F-764)", () => {
+  const UNPLACED: Array<[string, string, unknown]> = [
+    ["eq", "restaurant_id", "rest-1"],
+    ["eq", "recurring_order_id", SCHEDULE],
+    ["eq", "event_type", "order"],
+    ["eq", "status", "pending"],
+    ["is", "order_id", null],
+  ];
+
+  it("clears the upcoming entries of a deleted schedule", async () => {
+    const { db, calls } = makeDb({ inventory: inventoryRow });
+    await service(db).deleteRecurringOrder("rest-1", SCHEDULE);
+    expect(calls.calendarDeletes).toHaveLength(1);
+    expect(calls.calendarDeletes[0]).toEqual(UNPLACED);
+  });
+
+  it("clears and does not redraw a paused schedule", async () => {
+    const { db, calls } = makeDb({
+      storedSchedule: scheduleRow({ active: false }),
+      insertedSchedule: scheduleRow(),
+      inventory: inventoryRow,
+    });
+    await service(db).updateRecurringOrder("rest-1", SCHEDULE, {
+      active: false,
+    });
+    expect(calls.calendarDeletes[0]).toEqual(UNPLACED);
+    expect(calls.calendarInserts).toHaveLength(0);
+  });
+
+  it("redraws an edited schedule from its new date and frequency", async () => {
+    const { db, calls } = makeDb({
+      storedSchedule: scheduleRow({
+        frequency: "monthly",
+        next_order_date: "2026-10-05",
+      }),
+      inventory: inventoryRow,
+    });
+    await service(db).updateRecurringOrder("rest-1", SCHEDULE, {
+      frequency: "monthly",
+      next_order_date: "2026-10-05",
+    });
+    expect(calls.calendarDeletes).toHaveLength(1);
+    expect(calls.calendarInserts.length).toBeGreaterThan(0);
+    expect(calls.calendarInserts[0].event_date).toBe("2026-10-05");
+    expect(calls.calendarInserts[1].event_date).toBe("2026-11-05");
+  });
+
+  it("does not lay a second set over the old one when the clear failed", async () => {
+    const { db, calls } = makeDb({
+      storedSchedule: scheduleRow(),
+      inventory: inventoryRow,
+      calendarDeleteError: { message: "timeout" },
+    });
+    await service(db).updateRecurringOrder("rest-1", SCHEDULE, {
+      quantity: 6,
+    });
+    expect(calls.calendarInserts).toHaveLength(0);
+  });
+
+  it("leaves the calendar alone for an edit that does not change it", async () => {
+    const { db, calls } = makeDb({
+      storedSchedule: scheduleRow(),
+      inventory: inventoryRow,
+    });
+    await service(db).updateRecurringOrder("rest-1", SCHEDULE, {
+      notes: "ring before noon",
+    } as any);
+    expect(calls.calendarDeletes).toHaveLength(0);
+  });
+});
+
+describe("one flag arms one reminder job (F-766)", () => {
+  it("does not schedule the 06:00 sweep beside the 08:00 bell job", () => {
+    const keys = (fn: any) =>
+      Reflect.getMetadataKeys(fn).map((k) => String(k).toLowerCase());
+    const proto = RecurringOrdersService.prototype as any;
+    // The order cron is still scheduled — the probe can see a cron.
+    expect(
+      keys(proto.executeDueRecurringOrders).some((k) => k.includes("cron")),
+    ).toBe(true);
+    expect(
+      keys(proto.sendRecurringOrderReminders).some((k) => k.includes("cron")),
+    ).toBe(false);
   });
 });

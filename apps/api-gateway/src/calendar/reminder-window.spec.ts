@@ -135,6 +135,30 @@ describe("reminderDueAt", () => {
     expect(when?.dueAt.toISOString()).toBe("2026-01-13T23:30:00.000Z");
   });
 
+  it("keeps the wall time when the clocks change in between (calendar days, not 24h)", () => {
+    // US spring-forward is Sunday 2026-03-08. "1 day before" a 19:00 Sunday
+    // entry is 19:00 Saturday — 23 hours earlier, not 24. Subtracting 24h
+    // landed at 18:00 Saturday.
+    const spring = reminderDueAt(
+      { start_date: "2026-03-08", start_time: "19:00", reminder_days_before: 1 },
+      "America/New_York",
+    );
+    expect(spring?.startAt.toISOString()).toBe("2026-03-08T23:00:00.000Z");
+    expect(spring?.dueAt.toISOString()).toBe("2026-03-08T00:00:00.000Z");
+    // Fall-back is Sunday 2026-11-01: 19:00 Saturday EDT, 25 hours earlier.
+    const fall = reminderDueAt(
+      { start_date: "2026-11-01", start_time: "19:00", reminder_days_before: 1 },
+      "America/New_York",
+    );
+    expect(fall?.dueAt.toISOString()).toBe("2026-10-31T23:00:00.000Z");
+    // Across a month boundary, too.
+    const monthStart = reminderDueAt(
+      { start_date: "2026-03-01", start_time: "09:00", reminder_days_before: 2 },
+      "Europe/Istanbul",
+    );
+    expect(monthStart?.dueAt.toISOString()).toBe("2026-02-27T06:00:00.000Z");
+  });
+
   it("treats 0 as due at the start", () => {
     const when = reminderDueAt(
       {

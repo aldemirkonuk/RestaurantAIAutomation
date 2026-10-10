@@ -181,14 +181,14 @@ Seams:
 
 ## §9 Capacity and coverage — measured 2026-09-19
 
-**Capacity.** `order-recurrence.service.ts` + `recurring-orders.service.ts` register 3 daily cron entries against a table that has never held a row.
+**Capacity.** `order-recurrence.service.ts` + `recurring-orders.service.ts` register 2 daily cron entries (3 until F-766, 2026-10-10) against a table that has never held a row.
 
 **Coverage.** Module-level 79.0%/66.2% (same procurement module as [[orders]]).
 
-**Runs in production.** Three crons are registered in source: `recurring-orders.service.ts:640` (`0 8 * * *`), `:712` (`0 6 * * *`) and `order-recurrence.service.ts:491` (`15 8 * * *`). This pass has **no evidence that any of them fires in production**. They are in-process `@Cron` handlers with no run log, and a row count cannot show that a job ran. What was measured is that the feature has never been used: `recurring_orders`=0 rows (re-queried 2026-09-26).
+**Runs in production.** Two crons are registered in source: `recurring-orders.service.ts` `executeDueRecurringOrders` (`0 8 * * *`) and `order-recurrence.service.ts` (`15 8 * * *`). A third, the `0 6 * * *` reminder sweep `sendRecurringOrderReminders`, was unscheduled by F-766 (2026-10-10): it read the same `recurring_orders` rows under the same flag as `ScheduledTasksService`'s 08:00 `recurring-order-reminder` bell job, so arming the flag rang twice; the bell job is now the one reminder, and it remembers each (schedule, date) it rang. CLAIMS `SOFTWARES-2026-09-26-RECURRING-ORDERS-CRONS` checks the count. This pass has **no evidence that any of them fires in production**. They are in-process `@Cron` handlers with no run log, and a row count cannot show that a job ran. What was measured is that the feature has never been used: `recurring_orders`=0 rows (re-queried 2026-09-26).
 
 **Promised vs. built.** Backend-only status holds structurally, but the feature is functionally dormant.
 
 **Gaps.** The crons have nothing to act on (`recurring_orders`=0). Whether they fire at all is unmeasured, because no table or log records a cron run.
 
-*Evidence:* Supabase `recurring_orders`=0; the three `@Cron` lines above (at `origin/main` `72690130d`).
+*Evidence:* Supabase `recurring_orders`=0; the `@Cron` lines above (three at `origin/main` `72690130d`, two after F-766).

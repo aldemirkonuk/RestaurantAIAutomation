@@ -126,10 +126,14 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
     const ev = db.calls.calendar_events;
     // Nothing may be cut purely for starting before the window…
     expect(ev).not.toContainEqual({ method: "gte", args: ["start_date", "2026-09-01"] });
-    // …except rows that do not repeat.
+    // …except rows that do not repeat. A row marked repeating with no rule
+    // (the legacy recurring-order entries) cannot reach into the window, so
+    // only a row with a rule is fetched from before it.
     expect(ev).toContainEqual({
       method: "or",
-      args: ['start_date.gte."2026-09-01",is_recurring.eq.true'],
+      args: [
+        'start_date.gte."2026-09-01",and(is_recurring.eq.true,recurrence_rule_id.not.is.null)',
+      ],
     });
     expect(ev).toContainEqual({ method: "lte", args: ["start_date", "2026-09-30"] });
   });

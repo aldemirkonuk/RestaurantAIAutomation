@@ -128,12 +128,31 @@ export function eventStartInstant(
   row: ReminderEventShape,
   timeZone: string,
 ): Date | null {
+  const wall = eventWall(row);
+  if (!wall) return null;
+  return wallToInstant(wall.date, wall.minutes, timeZone);
+}
+
+/** The entry's own date and wall-clock minutes, before any zone is applied. */
+function eventWall(
+  row: ReminderEventShape,
+): {
+  date: { year: number; month: number; day: number };
+  minutes: number;
+} | null {
   const date = parseDateOnly(row.start_date ?? row.event_date ?? null);
   if (!date) return null;
   const timed = row.all_day
     ? null
     : parseWallTime(row.start_time ?? row.event_time ?? null);
-  const minutes = timed ?? ALL_DAY_HOUR * 60;
+  return { date, minutes: timed ?? ALL_DAY_HOUR * 60 };
+}
+
+function wallToInstant(
+  date: { year: number; month: number; day: number },
+  minutes: number,
+  timeZone: string,
+): Date {
   return zonedWallTimeToInstant(
     date.year,
     date.month,
@@ -156,14 +175,24 @@ export function reminderDueAt(
   row: ReminderEventShape,
   timeZone: string,
 ): { dueAt: Date; startAt: Date } | null {
-  const startAt = eventStartInstant(row, timeZone);
-  if (!startAt) return null;
+  const wall = eventWall(row);
+  if (!wall) return null;
+  const startAt = wallToInstant(wall.date, wall.minutes, timeZone);
   const raw = row.reminder_days_before;
   const days = typeof raw === "number" && raw >= 0 ? Math.floor(raw) : 1;
-  return {
-    startAt,
-    dueAt: new Date(startAt.getTime() - days * 24 * 60 * 60 * 1000),
+  // Calendar days on the house's wall, not multiples of 24 hours. "1 day
+  // before" a 19:00 Sunday entry is 19:00 Saturday even when the clocks change
+  // overnight; `days * 24h` would land at 18:00 or 20:00 on a DST weekend.
+  // Date.UTC carries the day across months and years; only Y/M/D is read back.
+  const back = new Date(
+    Date.UTC(wall.date.year, wall.date.month - 1, wall.date.day - days),
+  );
+  const dueDate = {
+    year: back.getUTCFullYear(),
+    month: back.getUTCMonth() + 1,
+    day: back.getUTCDate(),
   };
+  return { startAt, dueAt: wallToInstant(dueDate, wall.minutes, timeZone) };
 }
 
 export interface QuietHours {

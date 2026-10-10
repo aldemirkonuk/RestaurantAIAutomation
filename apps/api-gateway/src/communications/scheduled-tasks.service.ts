@@ -536,6 +536,29 @@ export class ScheduledTasksService implements OnModuleInit {
         const schedules = read.rows;
         if (schedules.length === 0) return;
 
+        // Remember what was already rung (F-766). The read is `lte(today+2)`,
+        // so a schedule that is overdue or stuck stays in it every morning;
+        // the bell used to be keyed on the day (`recurring_order:<date>`) and
+        // so rang again daily for the same order. Each schedule's occurrence
+        // now rings once: its bell's group key names the schedule and its
+        // date, and a key already in the inbox is not rung again. A moved date
+        // is a new occurrence and rings once more.
+        const keyOf = (row: any) =>
+          `recurring_order:${row.id}:${row.next_order_date}`;
+        const rung = this.readRows<{ group_key: string | null }>(
+          "recurring-order-reminder",
+          "notifications",
+          await client
+            .from("notifications")
+            .select("group_key")
+            .eq("restaurant_id", tenant.id)
+            .in("group_key", schedules.map(keyOf)),
+        );
+        if (!rung.ok) return;
+        const already = new Set(rung.rows.map((r) => r.group_key));
+        const fresh = schedules.filter((row) => !already.has(keyOf(row)));
+        if (fresh.length === 0) return;
+
         const recipients = await this.recipientsFor(tenant, {
           send: "recurring-order-reminder",
           roles: ["manager"],
@@ -543,8 +566,7 @@ export class ScheduledTasksService implements OnModuleInit {
           deferLookupFailure: true,
         });
 
-        const labels: string[] = [];
-        for (const row of schedules) {
+        for (const row of fresh) {
           const described = describeRecurringOrder(row);
           if (!described.sendable) {
             // Fail closed and say so. A row we cannot name or price is not
@@ -554,42 +576,37 @@ export class ScheduledTasksService implements OnModuleInit {
               `recurring-order-reminder: schedule ${row.id ?? "?"} not describable ` +
                 `(missing ${described.missing.join(", ")}); no email sent for it.`,
             );
-            if (described.label) labels.push(described.label);
-            continue;
+          } else if (ordersMode.email && recipients.emails.length > 0) {
+            await this.gmailService.sendRecurringOrderReminder({
+              to: recipients.emails,
+              restaurantName: tenant.name,
+              orderName: described.label,
+              providerName: described.providerName,
+              scheduledDate: described.scheduledDate,
+              items: [
+                {
+                  name: described.label,
+                  quantity: described.quantity,
+                  unitPrice: described.unitPrice,
+                },
+              ],
+              totalAmount: described.totalAmount,
+              frequency: described.frequency,
+            });
           }
-          labels.push(described.label);
 
-          if (!ordersMode.email || recipients.emails.length === 0) continue;
-          await this.gmailService.sendRecurringOrderReminder({
-            to: recipients.emails,
-            restaurantName: tenant.name,
-            orderName: described.label,
-            providerName: described.providerName,
-            scheduledDate: described.scheduledDate,
-            items: [
-              {
-                name: described.label,
-                quantity: described.quantity,
-                unitPrice: described.unitPrice,
-              },
-            ],
-            totalAmount: described.totalAmount,
-            frequency: described.frequency,
+          await this.persistRestaurantNotification(tenant.id, {
+            type: "order_pending",
+            title: described.label
+              ? `Recurring order due soon: ${described.label}`
+              : "Recurring order due soon",
+            message: `Due ${dueDayLabel(row.next_order_date)}`,
+            actionUrl: "/orders?tab=recurring",
+            actionLabel: "Review Orders",
+            groupKey: keyOf(row),
+            metadata: { recurringOrderId: row.id, dueOn: row.next_order_date },
           });
         }
-
-        await this.persistRestaurantNotification(tenant.id, {
-          type: "order_pending",
-          title: `${schedules.length} recurring order${schedules.length === 1 ? "" : "s"} due soon`,
-          message:
-            labels.length > 0
-              ? labels.slice(0, 5).join(", ")
-              : `Due by ${twoDaysStr}`,
-          actionUrl: "/orders?tab=recurring",
-          actionLabel: "Review Orders",
-          groupKey: `recurring_order:${twoDaysStr}`,
-          metadata: { count: schedules.length },
-        });
 
         this.failIfLookupFailed("recurring-order-reminder", tenant, recipients, [
           "email",
@@ -1697,4 +1714,16 @@ export class ScheduledTasksService implements OnModuleInit {
       return { enabled: true, email: true };
     }
   }
+}
+
+/** "Sat, Oct 11" for a `YYYY-MM-DD` date; the raw value when it is not one. */
+function dueDayLabel(value: unknown): string {
+  const raw = String(value ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return new Date(`${raw}T00:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }

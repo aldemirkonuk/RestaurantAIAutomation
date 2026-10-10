@@ -124,7 +124,7 @@ let nextId = 1;
 const client = {
   from(table: string) {
     const filters: Array<(row: Row) => boolean> = [];
-    let op: "select" | "insert" | "update" = "select";
+    let op: "select" | "insert" | "update" | "delete" = "select";
     let payload: Row | Row[] | null = null;
     let columns = "*";
     let head = false;
@@ -163,6 +163,14 @@ const client = {
         writes.push(`update:${table}`);
         for (const r of matched) Object.assign(r, payload);
       }
+      if (op === "delete") {
+        // An edit that moves the schedule clears its upcoming calendar rows
+        // before laying them out again (F-764).
+        writes.push(`delete:${table}`);
+        tables[table] = (tables[table] ?? []).filter(
+          (r) => !matched.includes(r),
+        );
+      }
       return {
         data: head ? null : matched.map((r) => withEmbeds(r, columns)),
         count: matched.length,
@@ -186,8 +194,16 @@ const client = {
         payload = p;
         return builder;
       },
+      delete: () => {
+        op = "delete";
+        return builder;
+      },
       eq: (c: string, v: unknown) => {
         filters.push((r) => r[c] === v);
+        return builder;
+      },
+      is: (c: string, v: unknown) => {
+        filters.push((r) => (r[c] ?? null) === v);
         return builder;
       },
       lte: () => builder,

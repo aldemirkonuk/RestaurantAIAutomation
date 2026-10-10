@@ -286,6 +286,7 @@ export function describeScheduleSubject(row: {
  * schedules due within two days and both tell the same person the same thing.
  * Gating one and not the other is not a smaller change, it is a worse one: it
  * leaves the UNREVIEWED path live and the reviewed, fail-closed path dark.
+ * (Since F-766 only the 08:00 job is scheduled; the 06:00 one is not.)
  *
  * Allow-list, not deny-list, and checked before any query: `"true"` and `"1"`
  * arm it, everything else — `"yes"`, `"on"`, `""`, a typo, unset — reads as
@@ -636,7 +637,72 @@ export class RecurringOrdersService {
       throw error;
     }
 
-    return projectRow(data);
+    const row = projectRow(data);
+
+    // The calendar follows the schedule (F-764). Create laid out up to 60
+    // "Recurring Order" entries from the old date, frequency, item and amount;
+    // a pause or an edit to any of those left them showing orders that would
+    // never be placed. They are cleared and, while the schedule is on, laid
+    // out again from the row as it now stands. Like create, a calendar failure
+    // does not fail an edit that is already saved — it is logged loudly.
+    if (RecurringOrdersService.CALENDAR_SHAPING.some((k) => k in patch)) {
+      const cleared = await this.clearUnplacedCalendar(restaurantId, id);
+      if (cleared && row.active) {
+        const calendar = await this.preCreateCalendarEvents(row);
+        if (calendar.error || calendar.written < calendar.requested) {
+          this.logger.error(
+            `Recurring order ${id} was updated but its calendar was not: ` +
+              `${calendar.written}/${calendar.requested} events written` +
+              (calendar.error ? ` — ${calendar.error}` : ""),
+          );
+        }
+      }
+    }
+
+    return row;
+  }
+
+  /** The fields a pre-created calendar entry is drawn from. */
+  private static readonly CALENDAR_SHAPING = [
+    "inventory_id",
+    "provider_id",
+    "quantity",
+    "unit_type",
+    "frequency",
+    "frequency_day",
+    "next_order_date",
+    "active",
+  ] as const;
+
+  /**
+   * Remove this schedule's calendar entries for occurrences not yet ordered.
+   *
+   * Only the rows `preCreateCalendarEvents` writes: event_type "order", still
+   * pending, with no order attached. A completed occurrence (it has an
+   * `order_id`) and a "Recurring Delivery" row (a real order's delivery) are
+   * history and stay. Returns false when the delete failed, so the caller does
+   * not lay a second set on top of the first.
+   */
+  private async clearUnplacedCalendar(
+    restaurantId: string,
+    id: string,
+  ): Promise<boolean> {
+    const { error } = await this.databaseService.supabase
+      .from("calendar_events")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .eq("recurring_order_id", id)
+      .eq("event_type", "order")
+      .eq("status", CALENDAR_STATUS.PENDING)
+      .is("order_id", null);
+    if (error) {
+      this.logger.error(
+        `Recurring order ${id}: its upcoming calendar entries could not be ` +
+          `removed (${error.message}). The calendar still shows the old dates.`,
+      );
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -695,6 +761,10 @@ export class RecurringOrdersService {
       throw error;
     }
 
+    // A stopped schedule places nothing more, so its calendar shows nothing
+    // more (F-764). Not fatal: the schedule is already off.
+    await this.clearUnplacedCalendar(restaurantId, id);
+
     return { success: true };
   }
 
@@ -751,7 +821,15 @@ export class RecurringOrdersService {
   }
 
   /**
-   * Daily at 6:00 AM — remind about schedules due in 2 days.
+   * Remind about schedules due in 2 days, through RabbitMQ (push + email).
+   *
+   * NOT SCHEDULED (F-766). This was a 06:00 cron, and
+   * `ScheduledTasksService.sendRecurringOrderReminders` (08:00 New York, a
+   * bell per schedule and date) reads the same rows under the same flag, so
+   * arming the flag told the same person the same thing twice. One flag now
+   * arms one job: the bell job, which also remembers what it already rang.
+   * This sweep is kept callable and tested; scheduling it again needs that
+   * job retired first.
    *
    * WHAT THIS USED TO SEND
    *
@@ -777,7 +855,6 @@ export class RecurringOrdersService {
    * four ways this method could previously do nothing, was answerable for zero
    * of them.
    */
-  @Cron("0 6 * * *")
   async sendRecurringOrderReminders(): Promise<ReminderSweepOutcome> {
     const out: ReminderSweepOutcome = {
       armed: false,
@@ -925,31 +1002,59 @@ export class RecurringOrdersService {
       .filter(Boolean)
       .join(" — ");
 
-    // 1. Create procurement order
-    const order = await this.procurementService.createOrder(
-      recurringOrder.restaurant_id,
-      userId,
-      {
-        // Before `20260901180000_recurring_orders_shape.sql` these two columns
-        // did not exist, so both arrived as `undefined` and every
-        // materialisation handed `createOrder` an undefined for a `uuid NOT
-        // NULL`. The cron has never produced an order.
-        inventoryId: recurringOrder.inventory_id,
-        providerId: recurringOrder.provider_id,
-        quantity: recurringOrder.quantity,
-        // `recurring_orders.unit_type` was never carried across, so a schedule
-        // for five CASES every Monday materialised as five BOTTLES — the same
-        // unit wound as `createOrder`'s old `bottles_total = quantity`, one
-        // layer up.
-        unitType: recurringOrder.unit_type ?? undefined,
-        bottlesPerUnit: recurringOrder.bottles_per_unit ?? undefined,
-        quotedPrice: recurringOrder.target_price || undefined,
-        finalPrice: recurringOrder.target_price || undefined,
-        isEmergency: false,
-        managerNotes,
-      },
-      { source: "recurring", recurringOrderId: recurringOrder.id },
+    // 0. Claim this occurrence before anything is placed (F-765).
+    //
+    // The date advance used to run LAST and its result was never read: a
+    // failed write left the schedule due, and tomorrow's 08:00 run placed the
+    // same order again. Now the advance runs FIRST, as a compare-and-set on
+    // the date this run read — the same shape as `advanceParent` in
+    // order-recurrence.service.ts. A write that fails, or finds the date
+    // already moved by another run, places nothing. The occurrence is keyed
+    // on (schedule, next_order_date): one claim, at most one order.
+    //
+    // `calculateNextOrderDate` throws on an unknown frequency, so it runs
+    // before the claim and such a schedule is neither claimed nor ordered.
+    const nextDate = this.calculateNextOrderDate(
+      recurringOrder.next_order_date,
+      recurringOrder.frequency,
+      recurringOrder.frequency_day ?? undefined,
     );
+    const claimed = await this.claimOccurrence(recurringOrder, nextDate);
+    if (!claimed) return;
+
+    // 1. Create procurement order. If it cannot be placed, the claim is handed
+    // back so tomorrow's run tries this occurrence again — a refused order is
+    // not a placed one.
+    let order: Awaited<ReturnType<ProcurementService["createOrder"]>>;
+    try {
+      order = await this.procurementService.createOrder(
+        recurringOrder.restaurant_id,
+        userId,
+        {
+          // Before `20260901180000_recurring_orders_shape.sql` these two columns
+          // did not exist, so both arrived as `undefined` and every
+          // materialisation handed `createOrder` an undefined for a `uuid NOT
+          // NULL`. The cron has never produced an order.
+          inventoryId: recurringOrder.inventory_id,
+          providerId: recurringOrder.provider_id,
+          quantity: recurringOrder.quantity,
+          // `recurring_orders.unit_type` was never carried across, so a schedule
+          // for five CASES every Monday materialised as five BOTTLES — the same
+          // unit wound as `createOrder`'s old `bottles_total = quantity`, one
+          // layer up.
+          unitType: recurringOrder.unit_type ?? undefined,
+          bottlesPerUnit: recurringOrder.bottles_per_unit ?? undefined,
+          quotedPrice: recurringOrder.target_price || undefined,
+          finalPrice: recurringOrder.target_price || undefined,
+          isEmergency: false,
+          managerNotes,
+        },
+        { source: "recurring", recurringOrderId: recurringOrder.id },
+      );
+    } catch (err) {
+      await this.releaseOccurrence(recurringOrder, nextDate);
+      throw err;
+    }
 
     // 2. Auto-approve if configured, otherwise notify for approval
     if (recurringOrder.auto_approve) {
@@ -994,11 +1099,11 @@ export class RecurringOrdersService {
     //
     // WHY THIS BLOCK STILL DOES NOT THROW, AND WHAT CHANGED INSTEAD
     //
-    // An order has been created above, and possibly auto-approved. Step 5 —
-    // advancing `next_order_date` — has not run yet. Throwing here would leave
-    // the order placed and the schedule still due, so tomorrow's 08:00 cron
-    // would place the SAME ORDER AGAIN. A missing diary entry is recoverable; a
-    // duplicate purchase order is not. So the calendar stays non-fatal.
+    // An order has been created above, and possibly auto-approved, and the
+    // occurrence was claimed in step 0. Throwing here would skip the
+    // "executed" event below for an order that exists. A missing diary entry
+    // is recoverable; a placed order nobody hears about is not. So the
+    // calendar stays non-fatal.
     //
     // What it no longer does is read as success. Every one of the four ways
     // this block could fail was previously invisible: the lookup's `error` was
@@ -1101,31 +1206,7 @@ export class RecurringOrdersService {
       );
     }
 
-    // 4. Calculate next order date (respecting frequency_day)
-    const nextDate = this.calculateNextOrderDate(
-      recurringOrder.next_order_date,
-      recurringOrder.frequency,
-      recurringOrder.frequency_day ?? undefined,
-    );
-
-    // 5. Update recurring order with next date and execution count.
-    //
-    // `last_order_date`, not `last_executed_at`. The latter was never a column;
-    // the former already was, is the same fact, and is the one
-    // `RecurringOrders.tsx` renders. It is a DATE, so the time is dropped
-    // deliberately — nothing reads a time and a second column for it would be
-    // the same duplication this change is removing.
-    await this.databaseService.supabase
-      .from("recurring_orders")
-      .update({
-        next_order_date: nextDate,
-        last_order_date: new Date().toISOString().split("T")[0],
-        execution_count: (recurringOrder.execution_count || 0) + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", recurringOrder.id);
-
-    // 6. Publish events to RabbitMQ
+    // 4. Publish events to RabbitMQ
     try {
       await this.orchestratorService.publishEvent(
         "recurring.events",
@@ -1158,6 +1239,83 @@ export class RecurringOrdersService {
       `Recurring order ${recurringOrder.id} executed successfully. ` +
         `New order: ${order.id}, next due: ${nextDate}`,
     );
+  }
+
+  /**
+   * Move the schedule past the occurrence this run read, only if no one else
+   * has (F-765). True means this run owns the occurrence and may place it.
+   *
+   * The `.eq("next_order_date", …)` is the compare-and-set: a second run (a
+   * restart, a second instance) that read the same date finds nothing to
+   * update and places nothing. A write error is read, not discarded — the old
+   * code awaited this update and never looked at it, so a failed advance meant
+   * the same order again the next morning.
+   */
+  private async claimOccurrence(
+    recurringOrder: RecurringOrderRow,
+    nextDate: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.databaseService.supabase
+      .from("recurring_orders")
+      .update({
+        next_order_date: nextDate,
+        // A DATE, so the time is dropped deliberately — `last_order_date` is
+        // the column `RecurringOrders.tsx` renders; `last_executed_at` never
+        // existed.
+        last_order_date: new Date().toISOString().split("T")[0],
+        execution_count: (recurringOrder.execution_count || 0) + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", recurringOrder.id)
+      .eq("next_order_date", recurringOrder.next_order_date)
+      .select("id");
+
+    if (error) {
+      this.logger.error(
+        `Recurring order ${recurringOrder.id} was not run for ` +
+          `${recurringOrder.next_order_date}: its date could not be moved on ` +
+          `(${error.message}). Nothing was ordered; the next run tries again.`,
+      );
+      return false;
+    }
+    if (!data || data.length === 0) {
+      this.logger.warn(
+        `Recurring order ${recurringOrder.id} for ` +
+          `${recurringOrder.next_order_date} was already taken by another run; ` +
+          `not ordering it twice.`,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Hand a claimed occurrence back when its order could not be placed, so the
+   * next run tries it again. Compare-and-set on the date the claim wrote: an
+   * edit made in between is not overwritten.
+   */
+  private async releaseOccurrence(
+    recurringOrder: RecurringOrderRow,
+    nextDate: string,
+  ): Promise<void> {
+    const { error } = await this.databaseService.supabase
+      .from("recurring_orders")
+      .update({
+        next_order_date: recurringOrder.next_order_date,
+        last_order_date: recurringOrder.last_order_date ?? null,
+        execution_count: recurringOrder.execution_count || 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", recurringOrder.id)
+      .eq("next_order_date", nextDate);
+    if (error) {
+      this.logger.error(
+        `Recurring order ${recurringOrder.id}: the order for ` +
+          `${recurringOrder.next_order_date} was not placed, and the schedule ` +
+          `could not be put back (${error.message}). It now reads ${nextDate}; ` +
+          `that occurrence will not be retried on its own.`,
+      );
+    }
   }
 
   /**
