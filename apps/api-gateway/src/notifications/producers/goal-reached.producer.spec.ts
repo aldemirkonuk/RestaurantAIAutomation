@@ -131,6 +131,16 @@ describe("GoalReachedProducer", () => {
     expect(opts.onlyUserIds).toEqual(["user-1"]);
   });
 
+  it("[REVERT-FAILS] an owner whose membership has ended does not hear the goal's figures", async () => {
+    const { db, notifications, producer } = build(REACHED);
+    db.tables.user_restaurant_access[0].valid_until = "2026-01-01T00:00:00Z";
+    db.tables.analytics_goals.push(goalRow());
+    seedCrossing(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const opts = notifications.persistForRestaurant.calls[0][2];
+    expect(opts.onlyUserIds).toEqual(["user-2"]);
+  });
+
   it("[REVERT-FAILS] says so when only staff were there to hear it, rather than writing to them", async () => {
     const { db, notifications, producer } = build(REACHED);
     db.tables.analytics_goals.push(goalRow());
