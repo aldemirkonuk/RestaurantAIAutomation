@@ -29,7 +29,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Wordmark } from '@/components/mudavym';
 import { DayLine } from '@/components/mudavym/DayLine';
 import { animate, settle } from '@/lib/mudavym';
-import { houseZoneOf, useDashboardSpine } from './useDashboardNextData';
+import { houseZoneOf, totalsUnread, useDashboardSpine } from './useDashboardNextData';
 import { hourIn } from './format';
 import { SERIF } from './fonts';
 import KpiRow from './KpiRow';
@@ -130,6 +130,10 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
     if (pendingCount === null) unread.push('the approvals');
     if (lowStockCount === null) unread.push('stock levels');
     if (spine.stats === null) unread.push('the totals');
+    // F-751: the stats came back without their money and delivery figures,
+    // so the two tiles that carry them are named, not left as bare dashes.
+    else if (totalsUnread(spine.stats))
+      unread.push(seesAmounts ? 'what was paid to vendors' : 'deliveries and bottles in');
     // "Nothing is waiting on you" is only true when both halves answered.
     standing =
       parts.length > 0
@@ -144,7 +148,8 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
       standing += ` ${list.charAt(0).toUpperCase()}${list.slice(1)} couldn’t be reached just now.`;
     }
   }
-  const canRetry = pendingCount === null || lowStockCount === null || spine.stats === null;
+  const canRetry =
+    pendingCount === null || lowStockCount === null || spine.stats === null || totalsUnread(spine.stats);
 
   let dateLine: string;
   try {
@@ -228,7 +233,7 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
             <OneTapPanel restaurantId={activeRestaurantId} />
             <WeekAhead restaurantId={activeRestaurantId} zone={zone} />
             <LowStockPanel items={spine.lowStock} onRetry={spine.refetch} />
-            <ActivityPanel items={spine.activity} />
+            <ActivityPanel items={spine.activity} onRetry={spine.refetch} />
           </div>
         </div>
 

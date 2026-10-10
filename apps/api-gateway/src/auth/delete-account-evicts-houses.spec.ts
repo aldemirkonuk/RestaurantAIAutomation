@@ -39,6 +39,7 @@ function invite(overrides: Record<string, any> = {}) {
 
 function makeService(seed: {
   access?: Record<string, any>[];
+  orgMembers?: Record<string, any>[];
   invites?: Record<string, any>[];
   users?: Record<string, any>[];
   errors?: Record<string, { message: string }>;
@@ -46,6 +47,7 @@ function makeService(seed: {
   const db = makeStubDb(
     {
       user_restaurant_access: seed.access ?? [],
+      organization_members: seed.orgMembers ?? [],
       organization_invites: seed.invites ?? [],
       users: seed.users ?? [{ user_id: USER, email: "leaving@example.com" }],
       user_oauth_accounts: [],
@@ -170,5 +172,61 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
       BadRequestException,
     );
     expect(gateway.evictFromHouse).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F-750 (sim wave 27): the house-owner guard above never read
+ * `organization_members`, so the last owner of an organisation could delete
+ * their account. The users delete cascades their organisation row away, and
+ * then nobody can ever open a new location there (ADR 0164).
+ */
+describe("deleteAccount — the last owner of an organisation is refused", () => {
+  const ORG = "org-1";
+  const coOwnedHouse = [
+    { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
+    { user_id: "other-owner", restaurant_id: HOUSE_A, role: "owner", is_active: true },
+  ];
+
+  it("refuses in plain words and deletes nothing when no one else owns the organisation", async () => {
+    const { svc, db, gateway } = makeService({
+      access: coOwnedHouse,
+      orgMembers: [
+        { organization_id: ORG, user_id: USER, role: "owner" },
+        { organization_id: ORG, user_id: "other-owner", role: "manager" },
+      ],
+    });
+
+    await expect(svc.deleteAccount(USER)).rejects.toThrow(
+      /only owner of your organisation.*Nothing was deleted/,
+    );
+    expect(gateway.evictFromHouse).not.toHaveBeenCalled();
+    expect(db.opsOn("user_restaurant_access", "delete")).toHaveLength(0);
+    expect(db.opsOn("users", "delete")).toHaveLength(0);
+  });
+
+  it("lets the account go when another owner of the organisation stays", async () => {
+    const { svc, db } = makeService({
+      access: coOwnedHouse,
+      orgMembers: [
+        { organization_id: ORG, user_id: USER, role: "owner" },
+        { organization_id: ORG, user_id: "other-owner", role: "owner" },
+      ],
+    });
+
+    await expect(svc.deleteAccount(USER)).resolves.toBeUndefined();
+    expect(db.opsOn("users", "delete")).toHaveLength(1);
+  });
+
+  it("refuses with 503 when the organisation read fails, and deletes nothing", async () => {
+    const { svc, db } = makeService({
+      access: coOwnedHouse,
+      errors: { "organization_members:select": { message: "connection reset" } },
+    });
+
+    await expect(svc.deleteAccount(USER)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(db.opsOn("users", "delete")).toHaveLength(0);
   });
 });

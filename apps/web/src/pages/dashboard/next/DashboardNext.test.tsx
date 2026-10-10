@@ -1284,3 +1284,57 @@ describe('DashboardNext — the KPI tiles say why a day figure is blank (F-783)'
     expect(screen.getAllByText('unknown until the time zone is set')).toHaveLength(2);
   });
 });
+
+/** Every GET as `routeGets` answers it, except the URLs that contain one of `failing`. */
+function failGets(failing: string[], overrides: Record<string, unknown> = {}) {
+  routeGets(overrides);
+  const base = api.get.getMockImplementation()!;
+  api.get.mockImplementation((url: string, ...rest: unknown[]) =>
+    failing.some((f) => url.includes(f))
+      ? Promise.reject(Object.assign(new Error('Network Error'), { response: undefined }))
+      : base(url, ...rest),
+  );
+}
+
+describe('DashboardNext — a read that failed is never a quiet house (F-751, F-752)', () => {
+  it('names the vendor money when the totals fell back to the cellar counts', async () => {
+    auth.role = 'owner';
+    failGets(['/dashboard/stats/'], { '/operating-hours': { timezone: 'Europe/Istanbul' } });
+
+    mount();
+
+    expect(
+      await screen.findByText(/Nothing is waiting on you\. What was paid to vendors couldn’t be reached just now\./),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Try again' }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('says the recent activity could not be read, not that the house is quiet', async () => {
+    failGets(['/dashboard/activity/']);
+
+    mount();
+
+    expect(await screen.findByText(/Recent activity couldn’t be read just now\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Quiet\. Activity lands here/)).not.toBeInTheDocument();
+  });
+
+  it('says a day’s alerts and activity could not be read, not that there were none', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+    try {
+      failGets(['/dashboard/alerts/', '/dashboard/activity/'], {
+        '/dashboard/calendar-revenue/': { ...monthLedger(), timezone: 'UTC', today: '2026-09-15' },
+      });
+
+      mount();
+
+      await waitFor(() => expect(dayCell('2026-09-14')).not.toBeDisabled());
+      fireEvent.click(dayCell('2026-09-14'));
+      expect(await screen.findByText('Alerts couldn’t be read just now.')).toBeInTheDocument();
+      expect(screen.getByText('Activity couldn’t be read just now.')).toBeInTheDocument();
+      expect(screen.queryByText('No alerts carry this date.')).not.toBeInTheDocument();
+      expect(screen.queryByText('No recorded activity for this day.')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
