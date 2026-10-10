@@ -65,6 +65,7 @@ function readable(value: unknown): string {
 function headline(entry: LedgerEntry): string {
   if (entry.action === 'member_role_changed') return 'A person’s role';
   if (entry.action === 'team_member_removed') return 'A person’s access, withdrawn';
+  if (entry.action === 'team_labour_settings_changed') return 'The team’s labour settings';
   if (entry.action === 'vendor_terms_changed') {
     return entry.subject ? `${entry.subject} — terms` : 'Vendor terms';
   }

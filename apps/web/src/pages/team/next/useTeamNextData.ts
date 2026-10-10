@@ -125,11 +125,10 @@ export interface TeamTrail {
 }
 
 /**
- * The actions on that trail that are about people, not about settings: the two
- * access changes, a manager's pay switch (ADR 0215 round 4 item 19) and their
+ * The actions on that trail that are about this team: the two access changes, a manager's pay switch (ADR 0215 round 4 item 19) and their
  * own wage set (round 5 item 32), and (ADR 0218) areas, lead marks and Away
- * set or ended on someone's behalf. A person's own Away dates are never on
- * this trail.
+ * set or ended on someone's behalf, and the labour settings. A person's own
+ * Away dates are never on this trail.
  */
 export const TEAM_TRAIL_ACTIONS = [
   'member_role_changed',
@@ -145,6 +144,9 @@ export const TEAM_TRAIL_ACTIONS = [
   'area_lead_removed',
   'away_set_for_member',
   'away_ended_for_member',
+  // A labour setting moved: who, each field from → to (F-375). Written by
+  // `TeamService.recordSettingsChange`; read back since the gateway lists it.
+  'team_labour_settings_changed',
 ] as const;
 
 /**
@@ -152,10 +154,9 @@ export const TEAM_TRAIL_ACTIONS = [
  *
  * `team_settings` carries `updated_at` and NO author column (baseline
  * `:5653-5658`). `TeamService.updateSettings` files a
- * `team_labour_settings_changed` row into `system_audit_log`, but nothing this
- * page reads hands it back — so a labour setting shows a date and never a name.
- * The register prints the date and says the author is not shown, rather than
- * leaving the line off and letting the value look self-evident.
+ * `team_labour_settings_changed` row into `system_audit_log`, which the trail
+ * sheet reads back (F-375) — so a labour setting's line shows a date and points
+ * at the trail for the name, rather than letting the value look self-evident.
  */
 export interface TeamProvenance {
   /** ISO instant of the last write, or null when nothing records one. */

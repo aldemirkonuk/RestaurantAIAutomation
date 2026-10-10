@@ -267,6 +267,15 @@ export const READ_BACK_ACTIONS = [
    * nobody can find.
    */
   "zone_setup_access_changed",
+  /**
+   * A labour setting on /team moved (tracking, target, double booking).
+   * Filed by `TeamService.recordSettingsChange` with each field from → to at
+   * the top level of `changes`. Until F-375 it was written and never read
+   * back, so /team's trail said "Nothing recorded" right after a target
+   * change. Names no colleague, and `GET /team/:rid/settings` already hands
+   * every member the values, so staff are not withheld it.
+   */
+  "team_labour_settings_changed",
 ] as const;
 
 /**

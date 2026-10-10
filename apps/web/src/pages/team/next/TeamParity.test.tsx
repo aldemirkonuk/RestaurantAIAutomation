@@ -40,6 +40,8 @@ const api = vi.hoisted(() => ({
     oldestAt: null as string | null,
     recordingSince: '2026-09-03',
   },
+  /** `GET /settings/time-zone`'s `zone`; null is a house that stated none. */
+  zone: null as string | null,
   broadcast: vi.fn(() => Promise.resolve({ audience: 'selected', recipients: { targeted: 1, notified: 1 }, notified: 1, inbox: true })),
   createShift: vi.fn(() => Promise.resolve({})),
 }));
@@ -97,7 +99,12 @@ vi.mock('../../../services/api/team', () => ({
 }));
 
 vi.mock('../../../services/api/client', () => ({
-  apiClient: { get: () => Promise.resolve({ data: api.trail }) },
+  apiClient: {
+    get: (url: string) =>
+      Promise.resolve({
+        data: url === '/settings/time-zone' ? { zone: api.zone } : api.trail,
+      }),
+  },
 }));
 
 vi.mock('../../../contexts/AuthContext', () => ({
@@ -160,6 +167,7 @@ beforeEach(() => {
   api.templates = [];
   api.timeOff = [];
   api.trail = { entries: [], readable: true, reason: null, oldestAt: null, recordingSince: '2026-09-03' };
+  api.zone = null;
   api.broadcast.mockClear();
 });
 
@@ -499,7 +507,7 @@ describe('the labour target is read against its column default', () => {
 
   it('says a labour setting change is recorded, not that nothing records it', async () => {
     // `recordSettingsChange` files `team_labour_settings_changed` on every
-    // labour save that moves a value; the page only lacks the read-back.
+    // labour save that moves a value, and the trail sheet reads it back.
     render(<TeamNext />, { wrapper });
     const section = await screen.findByRole('region', { name: 'How this desk is configured' });
     expect(
@@ -515,6 +523,40 @@ describe('the labour target is read against its column default', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'What changed here' }));
     const sheet = await screen.findByRole('dialog', { name: 'What changed here' });
     expect(within(sheet).getByText(/Recording began on/)).toBeInTheDocument();
+  });
+
+  it('reads back a labour target change: who, from what to what, when on the house clock (F-375)', async () => {
+    // The row `TeamService.recordSettingsChange` files, as `GET /settings-audit`
+    // hands it back: the actor's role is not a {from, to}, so it is no field.
+    api.zone = 'America/Los_Angeles';
+    api.trail = {
+      entries: [
+        {
+          id: 'l1',
+          occurredAt: '2026-10-08T01:30:00Z',
+          action: 'team_labour_settings_changed',
+          entityType: 'team_settings',
+          entityId: 'r1',
+          subject: null,
+          actor: { userId: 'u-owner', name: 'Ayla Tuzlu', email: null },
+          fields: { labor_target_pct: { from: '28.00', to: 31 } },
+        },
+      ],
+      readable: true,
+      reason: null,
+      oldestAt: '2026-10-08T01:30:00Z',
+      recordingSince: '2026-09-03',
+    };
+    render(<TeamNext />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: 'What changed here' }));
+    const sheet = await screen.findByRole('dialog', { name: 'What changed here' });
+    expect(await within(sheet).findByText(/Ayla Tuzlu changed the labour settings/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/labour target 28% → 31%/)).toBeInTheDocument();
+    // 01:30 UTC on the 8th is 6:30 PM on the 7th in the house's zone.
+    expect(await within(sheet).findByText(/Wed, Oct 7, 6:30\sPM PDT/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Nothing about this team has been recorded/)).not.toBeInTheDocument();
+    expect(within(sheet).queryByText(/labor_target_pct/)).not.toBeInTheDocument();
+    expect(within(sheet).queryByText(/not shown in this list yet/)).not.toBeInTheDocument();
   });
 
   it('says the trail could not be read rather than showing it empty', async () => {
