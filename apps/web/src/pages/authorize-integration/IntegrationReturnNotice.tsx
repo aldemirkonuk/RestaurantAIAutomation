@@ -6,10 +6,10 @@ import { integrationsApi } from '../../services/api/integrations'
 const REASONS: Record<string, string> = {
   denied: 'The provider returned a declined permission.',
   provider_error: 'The provider could not finish the permission.',
-  missing_state: 'The return did not contain a permission reference.',
-  invalid_state: 'The permission expired, was already used, or could not be verified.',
-  invalid_callback: 'The provider return did not match this permission.',
-  invalid_browser_origin: 'The original app address is no longer configured.',
+  missing_state: 'Nothing was connected: the sign-in came back without saying which request it belonged to. Start it again from here.',
+  invalid_state: 'Nothing was connected: the sign-in took longer than ten minutes, was already finished once, or could not be matched to this request. Start it again from here.',
+  invalid_callback: 'Nothing was connected: the sign-in that came back did not match the one that was started. Start it again from here.',
+  invalid_browser_origin: 'Nothing was connected: the address this request was started from is no longer one Mudavym opens. Start it again from here.',
   exchange_failed: 'The connection outcome could not be established. Check the connection below before starting again.',
   // F-279: these two are this house's answer, not the provider's.
   membership_refused: 'Nothing was connected: by the time the provider answered, your account was no longer a confirmed member of this house. Ask an owner to check your place here, then start again.',

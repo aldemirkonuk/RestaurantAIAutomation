@@ -23,6 +23,7 @@ import { TokenCryptoService } from "../common/crypto/token-crypto.service";
 // directly adds no module edge. `IntegrationsModule` imports `RetentionModule`
 // so the injector has something to supply.
 import { RawMailRetentionService } from "../communications/retention/raw-mail-retention.service";
+import { GMAIL_READ_INTEGRATION_ID } from "../communications/inbox/house-inbox-flag";
 import {
   INTEGRATION_DEFINITIONS,
   IntegrationDefinition,
@@ -495,7 +496,11 @@ export class IntegrationsOauthService {
     state?: string;
     error?: string;
   }): Promise<string> {
-    const fallback = `${this.webAppUrl()}/settings`;
+    // With no state row to say where the flow began, the refusal lands on
+    // /connections, which reads `integration_status` and says the outcome in
+    // words. /settings showed nothing at all, so a ten-minute timeout left the
+    // owner on a page that looked as if nothing had happened (F-763).
+    const fallback = `${this.webAppUrl()}/connections`;
     if (!params.state) return this.resultUrl(fallback, "error", "missing_state");
     if (!STATE_PATTERN.test(params.state)) {
       return this.resultUrl(fallback, "error", "invalid_state");
@@ -513,15 +518,21 @@ export class IntegrationsOauthService {
     if (error || !stateRow?.consent_receipt_id || !stateRow.browser_proof_hash) {
       return this.resultUrl(fallback, "error", "invalid_state");
     }
+    // From here the state row is known, so a refusal goes back to the page
+    // that started the flow (on the canonical app origin: the row's own origin
+    // is the thing that may be refused below), where the notice reads it.
+    const startedAt = `${this.webAppUrl()}${this.safeReturnPath(stateRow.return_path)}`;
+    const refused = (reason: string) =>
+      this.resultUrl(startedAt, "error", reason, stateRow.integration_id);
     if (params.provider !== stateRow.provider || (!params.code && !params.error)) {
-      return this.resultUrl(fallback, "error", "invalid_callback");
+      return refused("invalid_callback");
     }
 
     let frontendOrigin: string;
     try {
       frontendOrigin = this.consentFrontendOrigin(stateRow.frontend_origin);
     } catch {
-      return this.resultUrl(fallback, "error", "invalid_browser_origin");
+      return refused("invalid_browser_origin");
     }
 
     // Provider prose is untrusted and may contain tokens. Keep only the code
@@ -555,7 +566,7 @@ export class IntegrationsOauthService {
       .is("callback_received_at", null)
       .gt("expires_at", new Date().toISOString())
       .select("state");
-    if (parkError) return this.resultUrl(fallback, "error", "invalid_state");
+    if (parkError) return refused("invalid_state");
 
     if (!parked?.length) {
       // A SECOND provider callback for a state that was live a moment ago: the
@@ -567,7 +578,7 @@ export class IntegrationsOauthService {
       // J1). A state that was consumed or expired in the meantime matches
       // nothing here, which is also correct.
       await this.poisonState(params.state);
-      return this.resultUrl(fallback, "error", "invalid_state");
+      return refused("invalid_state");
     }
 
     const destination = new URL("/authorize/complete", frontendOrigin);
@@ -990,6 +1001,10 @@ export class IntegrationsOauthService {
       params.account,
     );
 
+    if (definition.id === GMAIL_READ_INTEGRATION_ID) {
+      await this.restartReadingAtConsent(params.userId, params.account);
+    }
+
     const { error } = await this.db.client
       .from("integration_oauth_connections")
       .upsert(
@@ -1014,6 +1029,50 @@ export class IntegrationsOauthService {
 
     if (error) {
       throw new Error(`Failed to store connection: ${error.message}`);
+    }
+  }
+
+  /**
+   * The reading consent promises "it starts from the moment you consent and
+   * never looks backwards" (integrations-oauth.constants.ts, gmail_read). The
+   * reader keys its cursor on the connection row's id, and the upsert above
+   * keeps that id across a disconnect and a reconnect, so without this the old
+   * cursor survived and the first run after reconnecting read every vendor
+   * message from the day it was switched off — mail that arrived while there
+   * was no consent at all (F-762).
+   *
+   * So a new consent drops the cursor, and the reader seeds a fresh one at the
+   * moment of its next run. The one case that keeps it is a re-consent while
+   * the grant is still live on the same mailbox: consent never lapsed there,
+   * and dropping the cursor would lose the few minutes since the last run.
+   * A different mailbox on the same row is a new consent, not a continuation.
+   *
+   * It runs BEFORE the grant is switched back on, and a failure stops the
+   * connection: a live grant with a stale cursor is exactly the breach.
+   */
+  private async restartReadingAtConsent(
+    userId: string,
+    account: string | null,
+  ): Promise<void> {
+    const { data: prior, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("id, account_email, revoked_at")
+      .eq("user_id", userId)
+      .eq("integration_id", GMAIL_READ_INTEGRATION_ID)
+      .maybeSingle();
+    if (error) throw new Error(`The earlier reading grant could not be read: ${error.message}`);
+    if (!prior) return;
+    const sameMailbox =
+      !!account &&
+      String(prior.account_email ?? "").toLowerCase() === account.toLowerCase();
+    if (!prior.revoked_at && sameMailbox) return;
+
+    const { error: dropError } = await this.db.client
+      .from("house_inbox_cursors")
+      .delete()
+      .eq("connection_id", String(prior.id));
+    if (dropError) {
+      throw new Error(`The earlier reading point could not be cleared: ${dropError.message}`);
     }
   }
 

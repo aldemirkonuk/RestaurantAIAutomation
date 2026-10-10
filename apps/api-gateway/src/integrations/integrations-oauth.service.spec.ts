@@ -85,7 +85,12 @@ describe("integration OAuth tables are backed by an applied migration", () => {
     //     and (F-458) refusing a token whose owner no longer works here.
     // One more on 2026-10-09 (F-459): restaurants — naming the house that
     // would lose a grant if it were connected again somewhere else.
+    //
+    // house_inbox_cursors joined on 2026-10-09 (F-762): a new Gmail reading
+    // consent drops the reader's old cursor, so reconnecting never reads
+    // backwards. It is the reader's table; this module only deletes from it.
     expect(queriedTables).toEqual([
+      "house_inbox_cursors",
       "integration_consent_receipts",
       "integration_oauth_connections",
       "integration_oauth_states",
@@ -356,6 +361,9 @@ describe("handleCallback", () => {
     const url = new URL(destination);
 
     expect(url.origin).toBe("https://app.example.test");
+    // /connections reads integration_status and says it; /settings did not
+    // (F-763).
+    expect(url.pathname).toBe("/connections");
     expect(url.searchParams.get("integration_status")).toBe("error");
     expect(url.searchParams.get("integration_reason")).toBe("missing_state");
   });
@@ -371,6 +379,7 @@ describe("handleCallback", () => {
       }),
     );
     expect(url.searchParams.get("integration_reason")).toBe("invalid_state");
+    expect(url.pathname).toBe("/connections");
   });
 
   it("parks a denied consent for the sealing browser before reporting its outcome", async () => {
@@ -424,5 +433,8 @@ describe("handleCallback", () => {
       }),
     );
     expect(url.searchParams.get("integration_reason")).toBe("invalid_callback");
+    // The row says where the flow began, so the refusal goes back there.
+    expect(url.origin + url.pathname).toBe("https://app.example.test/settings");
+    expect(url.searchParams.get("integration")).toBe("google_drive");
   });
 });
