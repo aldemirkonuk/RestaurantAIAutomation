@@ -1193,6 +1193,7 @@ export class ProcurementController {
       return await this.procurementService.discardDraft(
         user.restaurantId,
         orderId,
+        user.userId,
       );
     } catch (error: any) {
       if (error instanceof ForbiddenException) throw error;
