@@ -77,6 +77,29 @@ const ORDER_SYNC_HOLD_REASONS = [
   "currency_ambiguous",
 ];
 
+/**
+ * Who `approved_by` names when the vendor-reply agent approves an order
+ * (ADR 0325). A fixed id that is no person's, so a row approved by the AI can
+ * never be read as approved by somebody in the house.
+ */
+export const INBOUND_RESPONDER_AGENT_ID = "00000000-0000-4000-8000-0000000a6e17";
+
+/** What the agent's approval did, and in words why not when it did not. */
+export type AgentApprovalOutcome =
+  | { approved: true }
+  | { approved: false; why: string };
+
+/**
+ * The approval door the agent goes through (ADR 0325, F-492):
+ * `ProcurementService.approveAcceptedOrderAsAgent`, handed over at boot.
+ */
+export interface AgentOrderApprover {
+  approveAcceptedOrderAsAgent(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<AgentApprovalOutcome>;
+}
+
 interface InboundContext {
   inboundConversationId: string;
   orderId: string;
@@ -214,6 +237,13 @@ export class InboundResponderService {
     private readonly nfVerdicts: NfVerdictService,
     @Optional() private readonly senderReputation?: SenderReputationService,
   ) {}
+
+  /** ADR 0325. Unset, an accepted deal is never approved by the agent. */
+  private orderApprover: AgentOrderApprover | null = null;
+
+  useOrderApprover(approver: AgentOrderApprover): void {
+    this.orderApprover = approver;
+  }
 
   /**
    * Entry point — fire-and-forget from the RabbitMQ bridge after an inbound
@@ -1347,6 +1377,8 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
 
       /** The agreed price this sync commits to, if any. Written to the LINE below. */
       let agreedPriceToWrite: number | null = null;
+      /** A vendor accepted under full autonomy: ask the approval door (ADR 0325). */
+      let agentMayApprove = false;
 
       // Receipt verification: the vendor is acknowledging OUR order (e.g. "confirmed,
       // shipping Monday"). If it doesn't contradict what we approved (any stated
@@ -1431,10 +1463,12 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         }
         // Otherwise stay APPROVED — a mismatched/unclear receipt needs manager review.
       } else if (accepted && autonomyFull && vendorPrice != null) {
-        // Vendor accepted our terms and full autonomy is on: we agree the deal, but
-        // this is APPROVED (not yet placed) until a matching receipt arrives.
-        update.status = "APPROVED";
+        // Vendor accepted our terms and full autonomy is on: we agree the price.
+        // Whether the order is APPROVED is not this branch's to write (ADR 0325,
+        // F-492): it goes through the house's approval rules below, after the
+        // price is on the order, and a rule that fires keeps it for a person.
         agreedPriceToWrite = vendorPrice;
+        agentMayApprove = true;
       } else if (
         currentStatus === "PENDING" ||
         currentStatus === "APPROVAL_NEEDED"
@@ -1500,11 +1534,41 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         .from("procurement_orders")
         .update(update)
         .eq("id", order.id);
+
+      if (agentMayApprove) {
+        await this.approveAsAgent(order, currentStatus);
+      }
     } catch (e: any) {
       this.logger.warn(
         `syncOrderState failed for order ${order.id}: ${e?.message}`,
       );
     }
+  }
+
+  /**
+   * ADR 0325 (F-492). The vendor said yes; the house's own rules decide whether
+   * the order is approved. When they keep it for a person, the owner is told
+   * in plain words, since nothing else on this path reaches anyone.
+   */
+  private async approveAsAgent(order: any, fromStatus: string): Promise<void> {
+    const restaurantId = String(order.restaurant_id ?? "");
+    const outcome: AgentApprovalOutcome = this.orderApprover
+      ? await this.orderApprover.approveAcceptedOrderAsAgent(restaurantId, order.id)
+      : { approved: false, why: "the house's approval rules could not be checked" };
+    if (outcome.approved) return;
+    this.logger.log(
+      `Order ${order.id}: the vendor accepted, but the agent did not approve it — ${outcome.why}.`,
+    );
+    void this.persistManagerNotification(restaurantId, {
+      type: "vendor_reply",
+      title: "Vendor agreed — waiting for your approval",
+      message:
+        `The vendor agreed to this order, but it was not approved for you: ${outcome.why}. ` +
+        "Approve it yourself when you are ready.",
+      priority: "high",
+      actionUrl: `/orders?order=${order.id}`,
+      metadata: { order_id: order.id, from_status: fromStatus, held_because: outcome.why },
+    });
   }
 
   /** Best-effort audit trail of the AI's decision (decision_log). Never blocks. */

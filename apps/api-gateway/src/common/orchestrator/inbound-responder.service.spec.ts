@@ -429,7 +429,19 @@ describe("InboundResponderService (deterministic core)", () => {
       ) => {
         notes.push({ restaurantId, n });
       };
-      return { s: s as any, captured, updates, notes };
+      // ADR 0325: an accepted deal is approved only through the approval door.
+      // A stand-in that says yes, recording what it was asked; a case that
+      // needs it to hold replaces `approver.outcome`.
+      const approver = {
+        calls: [] as Array<[string, string]>,
+        outcome: { approved: true } as any,
+        async approveAcceptedOrderAsAgent(restaurantId: string, orderId: string) {
+          approver.calls.push([restaurantId, orderId]);
+          return approver.outcome;
+        },
+      };
+      s.useOrderApprover(approver);
+      return { s: s as any, captured, updates, notes, approver };
     };
 
     const acceptanceAnalysis = (overrides: Record<string, any> = {}) =>
@@ -448,10 +460,11 @@ describe("InboundResponderService (deterministic core)", () => {
         ...overrides,
       });
 
-    it("vendor accepts under full autonomy → APPROVED, never straight to ORDERED (CONFIRMED)", async () => {
-      const { s, updates } = withCapturingDb();
+    it("vendor accepts under full autonomy → asks the approval door, never writes APPROVED itself", async () => {
+      const { s, updates, approver, notes } = withCapturingDb();
       const order = {
         id: "o1",
+        restaurant_id: "r1",
         status: "NEGOTIATING",
         quantity: 6,
         final_price: null,
@@ -464,7 +477,12 @@ describe("InboundResponderService (deterministic core)", () => {
         6,
         /* autonomyFull */ true,
       );
-      expect(updates.procurement_orders?.status).toBe("APPROVED");
+      // F-492: the status is the house's rules' to decide (ADR 0325). Under
+      // the threshold the door approves (and reserves) once, and nobody is
+      // asked to.
+      expect(updates.procurement_orders).not.toHaveProperty("status");
+      expect(approver.calls).toEqual([["r1", "o1"]]);
+      expect(notes).toHaveLength(0);
       // The accepted price goes on the LINE, and the header is left alone: it is
       // a trigger-maintained echo, and a direct write here that disagreed with
       // the line comes back as a 23514 that would take the status update down
@@ -473,7 +491,7 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(updates.procurement_orders).not.toHaveProperty("final_price");
     });
 
-    it("a line that cannot be READ advances the status and writes no price at all", async () => {
+    it("a line that cannot be READ writes no price at all", async () => {
       // A failed read is not an empty one. Without knowing whether a line
       // exists, writing the header could hit the echo trigger and take the whole
       // status update down, so the price is left unwritten and said out loud.
@@ -489,9 +507,48 @@ describe("InboundResponderService (deterministic core)", () => {
         negotiated_price: null,
       };
       await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, true);
-      expect(updates.procurement_orders?.status).toBe("APPROVED");
+      expect(updates.procurement_orders).not.toHaveProperty("status");
       expect(updates.procurement_orders).not.toHaveProperty("final_price");
       expect(updates.procurement_order_items).toBeUndefined();
+    });
+
+    it("F-492: an order held for the owner stays held when the vendor accepts, and the owner is told", async () => {
+      const { s, updates, approver, notes } = withCapturingDb();
+      approver.outcome = {
+        approved: false,
+        why: "it was already waiting for an owner or a manager to approve it",
+      };
+      const order = {
+        id: "o9",
+        restaurant_id: "r1",
+        status: "APPROVAL_NEEDED",
+        quantity: 6,
+        final_price: null,
+        negotiated_price: null,
+      };
+      await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, true);
+      expect(updates.procurement_orders?.status).toBeUndefined();
+      expect(approver.calls).toEqual([["r1", "o9"]]);
+      expect(notes).toHaveLength(1);
+      expect(notes[0].n.title).toBe("Vendor agreed — waiting for your approval");
+      expect(notes[0].n.message).toContain("waiting for an owner or a manager");
+    });
+
+    it("F-492: with no approval door wired, an accepted deal is never approved", async () => {
+      const { s, updates, notes } = withCapturingDb();
+      s.orderApprover = null;
+      const order = {
+        id: "o10",
+        restaurant_id: "r1",
+        status: "PENDING",
+        quantity: 6,
+        final_price: null,
+        negotiated_price: null,
+      };
+      await s.syncOrderState(order, acceptanceAnalysis(), 1090, 6, true);
+      expect(updates.procurement_orders?.status).toBeUndefined();
+      expect(notes).toHaveLength(1);
+      expect(notes[0].n.message).toContain("could not be checked");
     });
 
     it("APPROVED order + matching verification receipt → ORDERED (CONFIRMED)", async () => {
