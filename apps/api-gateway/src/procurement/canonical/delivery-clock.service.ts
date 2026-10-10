@@ -565,11 +565,17 @@ export class DeliveryClockService {
         lapse_deemed: deemed,
         updated_at: at,
       })
-      .eq("id", timer.delivery_id);
+      .eq("id", timer.delivery_id)
+      // Only from the state read above. A manager who agreed or verified in
+      // between must not be overwritten by a lapse; the timer stays open and
+      // the next pass reads the new state (and cancels on a settled one).
+      .eq("state", delivery.state)
+      .select("id");
     if (upd.error)
       throw new Error(
         `could not lapse delivery ${timer.delivery_id}: ${upd.error.message}`,
       );
+    if (!upd.data?.length) return false;
 
     await this.db
       .getClient()

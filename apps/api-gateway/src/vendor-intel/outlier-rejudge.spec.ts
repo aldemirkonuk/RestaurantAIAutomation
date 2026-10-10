@@ -259,17 +259,30 @@ describe("isRejudgeArmed", () => {
 /** A thenable PostgREST-shaped mock. */
 function makeService(
   rows: any[],
-  opts: { flag?: string; readError?: any; failIds?: string[] } = {},
+  opts: {
+    flag?: string;
+    readError?: any;
+    failIds?: string[];
+    pageRows?: number;
+    maxRows?: number;
+  } = {},
 ) {
   const updates: Array<{ id: string; patch: any }> = [];
 
   const ors: string[] = [];
+  const reads: Array<[number, number]> = [];
   const builder = (): any => {
+    let page = rows;
     const b: any = {
       select: () => b,
       gte: () => b,
       order: () => b,
       limit: () => b,
+      range: (lo: number, hi: number) => {
+        reads.push([lo, hi]);
+        page = rows.slice(lo, hi + 1);
+        return b;
+      },
       // The sweep reads through `scopePriceRegisterRead` (ADR 0117 addendum),
       // which applies the third state's exclusion even on the `everyHouse`
       // scope. Recorded so a test can assert it rather than assume it.
@@ -286,14 +299,17 @@ function makeService(
         },
       }),
       then: (resolve: any) =>
-        resolve({ data: rows, error: opts.readError ?? null }),
+        resolve({ data: page, error: opts.readError ?? null }),
     };
     return b;
   };
 
   const databaseService = { supabase: { from: () => builder() } } as any;
   const config = { get: () => opts.flag } as any;
-  return { svc: new OutlierRejudgeService(databaseService, config), updates, ors };
+  const svc = new OutlierRejudgeService(databaseService, config);
+  if (opts.pageRows) (svc as any).pageRows = opts.pageRows;
+  if (opts.maxRows) (svc as any).maxRows = opts.maxRows;
+  return { svc, updates, ors, reads };
 }
 
 describe("OutlierRejudgeService", () => {
@@ -382,6 +398,34 @@ describe("OutlierRejudgeService", () => {
     // The second product was still judged and written in full.
     expect(updates.filter((u) => other.some((o) => o.id === u.id))).toHaveLength(5);
     expect(summary.rowsJudged).toBe(5);
+  });
+
+  it("reads the whole window page by page, not just the oldest page (F-652)", async () => {
+    const { svc, updates, reads } = makeService(cluster, {
+      flag: "true",
+      pageRows: 2,
+    });
+    const summary = await svc.rejudge({});
+    expect(reads).toEqual([
+      [0, 1],
+      [2, 3],
+      [4, 5],
+    ]);
+    expect(summary.rowsRead).toBe(5);
+    expect(summary.truncated).toBe(false);
+    expect(updates).toHaveLength(5);
+  });
+
+  it("says so when the window is larger than one run reads (F-652)", async () => {
+    const { svc } = makeService(cluster, {
+      flag: "true",
+      pageRows: 2,
+      maxRows: 4,
+    });
+    const summary = await svc.rejudge({});
+    expect(summary.rowsRead).toBe(4);
+    expect(summary.truncated).toBe(true);
+    expect(svc.status().sentence).toMatch(/newest were not re-judged/);
   });
 
   it("throws on an unreadable window rather than clearing every flag", async () => {

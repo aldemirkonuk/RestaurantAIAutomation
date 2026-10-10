@@ -726,6 +726,9 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     // as harmless. Say "unknown" and leave it alone instead.
     const measurable = before > 0 || after > 0;
     const liftPct = before === 0 ? null : ((after - before) / before) * 100;
+    // A rise has to be bigger than week-to-week noise before it can pull a
+    // change. 1 -> 2 rage clicks is +100% and means nothing; without this the
+    // nightly sweep reverted long-lived overrides on a single extra click.
     const outcome = !measurable
       ? "no_data"
       : liftPct == null
@@ -733,7 +736,9 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
         : liftPct < -10
           ? "improved"
           : liftPct > 10
-            ? "regressed"
+            ? riseIsBeyondNoise(before, after)
+              ? "regressed"
+              : "too_few_events"
             : "neutral";
     // Only revert on a measured regression. New friction is flagged for a human
     // rather than auto-reverted: at this sample size one noisy day would
@@ -750,6 +755,13 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
         ov.restaurant_id,
         `Auto-revert: ${metric} +${(liftPct ?? 0).toFixed(0)}%`,
       );
+    // The sweep runs nightly; a ledger row every night saying the same thing
+    // buries the rows that matter. Write one only when the verdict moved.
+    if (
+      verdict !== "revert" &&
+      (await this.sameAsLastLearning(ov, metric, outcome, verdict))
+    )
+      return { outcome, liftPct, verdict };
     await this.appendLearning({
       restaurantId: ov.restaurant_id,
       page: ov.page,
@@ -795,6 +807,35 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     }
   }
 
+  /**
+   * True when the newest learning for this override already says this outcome
+   * and verdict. A failed read answers false: a duplicate row is the lesser
+   * harm next to a verdict change nobody wrote down.
+   */
+  private async sameAsLastLearning(
+    ov: { restaurant_id: string | null; page: string; target_key: string },
+    metric: string,
+    outcome: string,
+    verdict: string,
+  ): Promise<boolean> {
+    let q = this.dbService
+      .getClient()
+      .from("ux_learnings")
+      .select("outcome, verdict")
+      .eq("page", ov.page)
+      .eq("target_key", ov.target_key)
+      .eq("metric", metric);
+    q =
+      ov.restaurant_id == null
+        ? q.is("restaurant_id", null)
+        : q.eq("restaurant_id", ov.restaurant_id);
+    const { data, error } = await q
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (error || !data?.length) return false;
+    return data[0].outcome === outcome && data[0].verdict === verdict;
+  }
+
   private async countEvents(
     restaurantId: string,
     page: string,
@@ -803,7 +844,9 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
     fromIso: string,
     toIso: string,
   ): Promise<number> {
-    const { count } = await this.dbService
+    // A failed count is not zero friction: read as 0 it scored an outage as
+    // "improved". Throw, and the sweep skips this override tonight.
+    const { count, error } = await this.dbService
       .getClient()
       .from("ux_signals")
       .select("*", { count: "exact", head: true })
@@ -813,6 +856,7 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
       .eq("event", event)
       .gte("created_at", fromIso)
       .lt("created_at", toIso);
+    if (error) throw new Error(`could not count ${event}: ${error.message}`);
     return count ?? 0;
   }
 
@@ -1784,6 +1828,17 @@ export interface ExperimentWinnerResult {
   /** True when this arm was already the recorded winner — a retry, not an error. */
   alreadyNamed: boolean;
   endsAt: string | null;
+}
+
+/**
+ * Is a rise from `before` to `after` events more than week-to-week noise?
+ * Compares the two weekly counts as Poisson rates: the rise must clear about
+ * two standard deviations (z >= 1.96, roughly 95%). 1 -> 2 gives z = 0.58 and
+ * is noise; 20 -> 35 gives z = 2.0 and is not.
+ */
+export function riseIsBeyondNoise(before: number, after: number): boolean {
+  if (after <= before) return false;
+  return (after - before) / Math.sqrt(after + before) >= 1.96;
 }
 
 function summarizeWindowBounds() {

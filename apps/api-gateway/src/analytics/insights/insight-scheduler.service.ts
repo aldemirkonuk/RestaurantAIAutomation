@@ -158,22 +158,40 @@ export class InsightSchedulerService {
       }
       if (!due.length) continue;
       try {
-        await this.generator.generate(r.id, {
+        const out = await this.generator.generate(r.id, {
           categories: due,
           persist: true,
         });
-        await client.from("analytics_insight_prefs").upsert(
-          due.map((category) => ({
-            restaurant_id: r.id,
-            category,
-            cadence: prefs.get(`${r.id}:${category}`)?.cadence ?? "daily",
-            hour_of_day: prefs.get(`${r.id}:${category}`)?.hour_of_day ?? 6,
-            enabled: true,
-            last_run_at: now.toISOString(),
-            updated_at: now.toISOString(),
-          })),
-          { onConflict: "restaurant_id,category" },
-        );
+        // A refused write is not a refresh. Leave last_run_at alone so the
+        // category stays due and the next sweep tries again.
+        if (out?.persisted === false) {
+          this.logger.error(
+            `Insight refresh failed for ${r.id}: the new findings could not ` +
+              `be saved [${due.join(", ")}]`,
+          );
+          continue;
+        }
+        // Stamp the run and nothing else. Writing cadence/hour/enabled here
+        // turned a category refreshed only because it was stale back ON, and
+        // after a failed prefs read wrote the default schedule over the
+        // house's own. Columns left out keep their value; a new row takes the
+        // table defaults.
+        const { error: stampError } = await client
+          .from("analytics_insight_prefs")
+          .upsert(
+            due.map((category) => ({
+              restaurant_id: r.id,
+              category,
+              last_run_at: now.toISOString(),
+              updated_at: now.toISOString(),
+            })),
+            { onConflict: "restaurant_id,category" },
+          );
+        if (stampError)
+          this.logger.warn(
+            `Insights refreshed for ${r.id} but the run time was not saved, ` +
+              `so they may refresh again this hour: ${stampError.message}`,
+          );
         this.logger.log(`Insights refreshed for ${r.id}: [${due.join(", ")}]`);
       } catch (err: any) {
         this.logger.warn(`Insight refresh failed for ${r.id}: ${err?.message}`);
