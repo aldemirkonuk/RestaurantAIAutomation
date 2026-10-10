@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **128 as of 2026-10-10, on `fix/sim-w65-staff-day` (F-922)** (`check_read_errors_not_swallowed.py` on that tree: 1789 files scanned, 128 sites, 128 baselined, 0 allowlisted, PASS). `getMyWeek` in `schedule.service.ts` now binds the error on its roster-row, schedule, shifts and read-receipt reads and refuses, so four rows are retired (1 -> 0 each). The note it supersedes:
+>
 > **132 as of 2026-10-10, on `fix/sim-guard-leftovers` (F-857 leftover)** (`check_read_errors_not_swallowed.py` on that tree: 1787 files scanned, 132 sites, 132 baselined, 0 allowlisted, PASS). `resolveOrCreateLibraryWine`'s read-back in `wine-submissions.service.ts` now binds its error, so its row is retired (1 -> 0). The note it supersedes:
 >
 > **133 as of 2026-10-10, on `fix/sim-guard-reads` (the integration rehearsal tip `e5a638327`, F-857)** (`check_read_errors_not_swallowed.py` on that tree: 1787 files scanned, 133 sites, 133 baselined, 0 allowlisted, PASS). Nine rows were lowered because other lanes had already fixed the reads: fix/sim-autonomous-honesty (`promotion-extractor.service.ts`, 3), fix/sim-inventory-counts (`inventory.service.ts` location_breakdown and lot_rollup), fix/sim-org-chains (`organizations.service.ts`, 3) and fix/sim-auth-edges (`auth.service.ts` existingAccess, 2 -> 1). fix/sim-wine-library's new worker read-back in `wine-submissions.service.ts` now binds its error, records the reason and counts an attempt, so it stays out of the baseline. Re-measure before citing.

@@ -2291,6 +2291,15 @@ export class TeamService {
     dto: CreateTimeOffDto,
   ): Promise<any> {
     const { role } = await this.assertAccess(userId, restaurantId);
+    // A last day before the first is not a request anyone can approve. The
+    // page refuses it, but nothing here did, and the table has no check, so
+    // any other caller stored it as sent (F-923). A past first day stays
+    // allowed: sick leave is often filed after the day.
+    if (dto.endDate.slice(0, 10) < dto.startDate.slice(0, 10)) {
+      throw new BadRequestException(
+        "The last day off comes before the first. Nothing was sent.",
+      );
+    }
     await this.assertMemberInRestaurant(restaurantId, dto.memberId);
 
     if (role === "staff") {

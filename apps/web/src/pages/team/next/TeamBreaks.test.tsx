@@ -21,7 +21,7 @@
  * `TeamPay.test.tsx`'s paid-leave case.)
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, within, configure } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
@@ -33,6 +33,7 @@ const api = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
   myWeek: {} as Record<string, unknown>,
   timeOff: (() => Promise.resolve([])) as () => Promise<unknown[]>,
+  notes: [] as unknown[],
   createShift: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   updateShift: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   createTimeOff: vi.fn((..._args: unknown[]) => Promise.resolve({})),
@@ -41,7 +42,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../../services/api/team', () => ({
   getTeamNotes: () =>
-    Promise.resolve({ weekStart: '2026-08-31', notes: [], readable: true, reason: null }),
+    Promise.resolve({ weekStart: '2026-08-31', notes: api.notes, readable: true, reason: null }),
   createTeamNote: vi.fn(() => Promise.resolve({})),
   openTeamNote: vi.fn(() => Promise.resolve({ recorded: true, alreadyOpen: false })),
   getTextSenders: () =>
@@ -111,6 +112,7 @@ import TeamNext from './TeamNext';
 import { ShiftSheet } from './ShiftSheet';
 import { WeekGrid } from './WeekGrid';
 import { MyShiftsNext } from './MyShiftsNext';
+import { todayIso } from './tm-format';
 import { TeamLaborSettings } from '../../../components/team/TeamLaborSettings';
 import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog';
 import { apiClient } from '../../../services/api/client';
@@ -461,16 +463,16 @@ describe('L3 — a person may say whether their own leave is paid', () => {
 
   it('files the request as not yet said when left to the manager', async () => {
     render(<MyShiftsNext />, { wrapper });
-    fireEvent.click(await screen.findByRole('button', { name: 'Ask for these days off' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask for this day off' }));
     await vi.waitFor(() => expect(api.createTimeOff).toHaveBeenCalled());
     expect('leaveType' in (api.createTimeOff.mock.calls[0][0] as object)).toBe(false);
   });
 
   it('files the type the person picked', async () => {
     render(<MyShiftsNext />, { wrapper });
-    await screen.findByRole('button', { name: 'Ask for these days off' });
+    await screen.findByRole('button', { name: 'Ask for this day off' });
     fireEvent.change(screen.getByLabelText('Paid or unpaid?'), { target: { value: 'paid' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask for these days off' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask for this day off' }));
     await vi.waitFor(() => expect(api.createTimeOff).toHaveBeenCalled());
     expect(api.createTimeOff.mock.calls[0][0]).toMatchObject({ memberId: 'm1', leaveType: 'paid' });
   });
@@ -638,7 +640,7 @@ describe('F-191 — staff ask for any days off and see the answer', () => {
 
   it('files the days the person picked, one day included, and will not file them twice', async () => {
     render(<MyShiftsNext />, { wrapper });
-    await screen.findByRole('button', { name: 'Ask for these days off' });
+    await screen.findByRole('button', { name: 'Ask for this day off' });
     fireEvent.change(screen.getByLabelText('First day off'), { target: { value: '2026-11-03' } });
     fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-11-03' } });
     fireEvent.click(screen.getByRole('button', { name: 'Ask for this day off' }));
@@ -651,9 +653,19 @@ describe('F-191 — staff ask for any days off and see the answer', () => {
     expect(await screen.findByRole('button', { name: 'Asked' })).toBeDisabled();
   });
 
+  // F-923: the form opened on Monday–Sunday of the week on screen, so one tap
+  // on a Friday asked for four days already worked.
+  it('opens on today, one day, not the whole week on screen', async () => {
+    render(<MyShiftsNext />, { wrapper });
+    await screen.findByRole('button', { name: 'Ask for this day off' });
+    const today = todayIso();
+    expect(screen.getByLabelText('First day off')).toHaveValue(today);
+    expect(screen.getByLabelText('Last day off')).toHaveValue(today);
+  });
+
   it('refuses a last day before the first, in words', async () => {
     render(<MyShiftsNext />, { wrapper });
-    await screen.findByRole('button', { name: 'Ask for these days off' });
+    await screen.findByRole('button', { name: 'Ask for this day off' });
     fireEvent.change(screen.getByLabelText('First day off'), { target: { value: '2026-11-10' } });
     fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-11-03' } });
     expect(screen.getByRole('button', { name: 'Ask for these days off' })).toBeDisabled();
@@ -679,5 +691,54 @@ describe('F-191 — staff ask for any days off and see the answer', () => {
     api.timeOff = () => Promise.reject(new Error('boom'));
     render(<MyShiftsNext />, { wrapper });
     expect(await screen.findByText(/Your time-off requests could not be read/)).toBeInTheDocument();
+  });
+});
+
+// ── F-921: a colleague's open is not mine ───────────────────────────────────
+
+describe("F-921 — a note reads as read only on the person's own row", () => {
+  beforeEach(() => {
+    api.myWeek = {
+      member: { id: 'm1', display_name: 'Sam' },
+      schedule: null,
+      mine: [],
+      open: [],
+      acknowledged: false,
+    };
+  });
+  afterEach(() => {
+    api.notes = [];
+  });
+
+  const note = (recipients: unknown[]) => ({
+    id: 'n1',
+    weekStart: '2026-08-31',
+    scheduleId: null,
+    body: 'Saturday moves to seven.',
+    channels: [],
+    createdAt: '2026-08-31T09:00:00Z',
+    authorUserId: 'u-moe',
+    recipients,
+    openedCount: 1,
+    addressedCount: 2,
+    deliveries: [],
+  });
+
+  it('keeps "Mark as read" when only a colleague has opened it', async () => {
+    api.notes = [
+      note([
+        { memberId: 'm1', name: 'Sam', openedAt: null },
+        { memberId: 'm2', name: 'Ray', openedAt: '2026-08-31T10:00:00Z' },
+      ]),
+    ];
+    render(<MyShiftsNext />, { wrapper });
+    expect(await screen.findByRole('button', { name: 'Mark as read' })).toBeInTheDocument();
+    expect(screen.queryByText('You have read this.')).toBeNull();
+  });
+
+  it('says it is read once the person opened it', async () => {
+    api.notes = [note([{ memberId: 'm1', name: 'Sam', openedAt: '2026-08-31T10:00:00Z' }])];
+    render(<MyShiftsNext />, { wrapper });
+    expect(await screen.findByText('You have read this.')).toBeInTheDocument();
   });
 });
