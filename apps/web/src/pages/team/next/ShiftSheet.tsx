@@ -35,7 +35,7 @@ import {
   shiftHours,
   todayIso,
 } from './tm-format';
-import { MutationError } from './tm-bits';
+import { MutationError, useHouseRegion } from './tm-bits';
 import { serverMessage } from './TeamOverlays';
 
 /** The gateway's `shift_type` vocabulary (`dto/team.dto.ts`), said as service. */
@@ -107,10 +107,15 @@ export function ShiftSheet({
     recorded_break_min: breakValid ? breakTyped : null,
   };
   const counted = breakCounted(preview);
+  // F-1020: Labour Law 4857 is Turkey's. A house elsewhere, or one whose
+  // country is not known, is told what is counted, never another country's law.
+  const turkish = useHouseRegion() === 'TR';
   const breakHint = !breakValid
     ? `A break is a whole number of minutes, less than the shift's ${spanMin}.`
     : counted.assumed
-      ? `Nothing recorded, so this shift is counted with a ${counted.minutes}-minute break: the legal minimum for it (Labour Law 4857 Art. 68), shown as assumed. Type the real break to replace it.`
+      ? turkish
+        ? `Nothing recorded, so this shift is counted with a ${counted.minutes}-minute break: the legal minimum for it (Labour Law 4857 Art. 68), shown as assumed. Type the real break to replace it.`
+        : `Nothing recorded, so this shift is counted with a ${counted.minutes}-minute break, shown as assumed. Type the real break to replace it.`
       : breakTyped === 0
         ? 'Recorded as no break taken: the whole shift counts as worked.'
         : breakTyped !== null
@@ -281,7 +286,9 @@ export function ShiftSheet({
                 8-hour shift complies with 30, but a 20-minute break leaves 7h40m
                 of work, which is owed 60 (Art. 68 counts working time). */}
             {underMinimum && breakTyped !== null
-              ? ` That is under the legal minimum of ${art68BreakForWork(spanMin - breakTyped)} minutes for the ${fmtHours((spanMin - breakTyped) / 60)} of work it leaves (Art. 68).`
+              ? turkish
+                ? ` That is under the legal minimum of ${art68BreakForWork(spanMin - breakTyped)} minutes for the ${fmtHours((spanMin - breakTyped) / 60)} of work it leaves (Art. 68).`
+                : ` That is under the ${art68BreakForWork(spanMin - breakTyped)}-minute break counted for the ${fmtHours((spanMin - breakTyped) / 60)} of work it leaves.`
               : ''}
           </p>
         </label>

@@ -54,6 +54,14 @@ export class FakeDb {
   /** Tables the caller wants to fail, and with what message. */
   failures: Record<string, string> = {};
 
+  /**
+   * PostgREST's `max_rows` (`supabase/config.toml:18`), when a spec opts in:
+   * every read answers at most this many rows, and `count: "exact"` is the
+   * whole match, as PostgREST reports it. `null` keeps the uncapped fake every
+   * older spec was written against.
+   */
+  maxRows: number | null = null;
+
   private seq = 0;
 
   id(prefix: string): string {
@@ -334,12 +342,13 @@ export class FakeQuery {
     if (this.limitN !== null) {
       hit = hit.slice(this.offsetN, this.offsetN + this.limitN);
     }
+    if (this.db.maxRows !== null) hit = hit.slice(0, this.db.maxRows);
     return {
       data: single ? (hit[0] ?? null) : hit,
       error: null,
       // PostgREST's `count: exact` on a range is the whole match, not the
       // page. Without a range this keeps the count it always returned.
-      count: this.ranged ? total : hit.length,
+      count: this.ranged || this.db.maxRows !== null ? total : hit.length,
     };
   }
 }

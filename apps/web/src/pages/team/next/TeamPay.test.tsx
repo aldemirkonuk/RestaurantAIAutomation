@@ -390,6 +390,9 @@ describe('paid leave is not a free week', () => {
     fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-09-07' } });
     expect(screen.getByRole('alert')).toHaveTextContent(/comes before the first/);
     expect(screen.getByRole('button', { name: 'File it' })).toBeDisabled();
+    // F-1019: a cleared date is not a reversed range.
+    fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('Pick both days.');
     fireEvent.change(screen.getByLabelText('Last day off'), { target: { value: '2026-09-08' } });
     fireEvent.click(screen.getByRole('button', { name: 'File it' }));
     await vi.waitFor(() =>

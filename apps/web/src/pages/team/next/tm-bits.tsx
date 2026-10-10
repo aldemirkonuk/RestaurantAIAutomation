@@ -32,6 +32,21 @@ export function useShiftTime(): (t: string) => string {
   return (t) => fmtTime(t, locale);
 }
 
+/**
+ * The house's country code ("TR"), read off the same locale (F-1020), so a
+ * sheet can name a country's law only in a house that is in that country.
+ * `undefined` when the country is not known.
+ */
+export function useHouseRegion(): string | undefined {
+  const locale = useContext(ShiftClock);
+  if (!locale) return undefined;
+  try {
+    return new Intl.Locale(locale).region;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Initials, or an em dash when there is no name to shorten. */
 export function Mark({
   name,

@@ -31,7 +31,9 @@ const api = vi.hoisted(() => ({
   members: [] as unknown[],
   certs: [] as unknown[],
   templates: [{ id: 't1', role: 'line', day_of_week: null, shift_period: 'pm', min_staff: 1 }] as unknown[],
-  createShift: vi.fn(() => Promise.resolve({})),
+  createShift: vi.fn(() => Promise.resolve({})) as ReturnType<typeof vi.fn>,
+  /** `/house/away` (ADR 0218); `null` keeps the old shape-failed read. */
+  away: null as Record<string, unknown> | null,
 }));
 
 vi.mock('../../../services/api/team', () => ({
@@ -93,8 +95,10 @@ vi.mock('../../../services/api/team', () => ({
 vi.mock('../../../services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
   apiClient: {
-    get: () =>
-      Promise.resolve({
+    get: (url: string) =>
+      url === '/house/away' && api.away
+        ? Promise.resolve({ data: api.away })
+        : Promise.resolve({
         data: {
           entries: [],
           readable: true,
@@ -186,6 +190,8 @@ beforeEach(() => {
   api.week = weekPayload();
   api.members = [];
   api.certs = [];
+  api.timeOff = [];
+  api.away = null;
 });
 
 describe('mondayOf', () => {
@@ -277,6 +283,36 @@ describe('useTeamNextData derivations', () => {
     });
   });
 
+  // F-1017: the gateway refuses a shift on approved leave with a 409, so the
+  // one-tap row must not keep offering that person; Away dates count the same.
+  it('never suggests a member on approved time off or Away that day', async () => {
+    api.members = [
+      member('m1', 'OnLeave', 'line'),
+      member('m2', 'Away', 'line', { user_id: 'u-away' }),
+      member('m3', 'Free', 'line'),
+    ];
+    api.week = weekPayload({
+      shifts: [shift('m3', '2026-09-01'), shift('m9', '2026-09-02')], // Free has 6h, the others 0h
+      coverage: {
+        totalGaps: 1,
+        days: [
+          { date: '2026-09-05', staffed: 0, openShifts: 1, status: 'gap', gaps: [{ role: 'line', period: 'pm', staffed: 0, required: 1 }] },
+        ],
+      },
+    });
+    api.timeOff = [
+      { id: 't1', member_id: 'm1', start_date: '2026-09-04', end_date: '2026-09-06', reason: null, status: 'approved', reviewed_by: 'u1', created_at: '2026-08-20' },
+      // pending leave does not take anyone out
+      { id: 't2', member_id: 'm3', start_date: '2026-09-05', end_date: '2026-09-05', reason: null, status: 'pending', reviewed_by: null, created_at: '2026-08-20' },
+    ];
+    api.away = {
+      today: '2026-09-02',
+      windows: [{ userId: 'u-away', from: '2026-09-05', until: '2026-09-07', activeNow: false }],
+    };
+    const result = await settled(() => useTeamNextData(new Date('2026-09-02T12:00:00')));
+    await vi.waitFor(() => expect(result.current.gaps[0]?.suggested?.name).toBe('Free'));
+  });
+
   it('counts the week a lapsed member is scheduled for — the exposure, not a link', async () => {
     api.members = [member('m1', 'Ayşe', 'Sommelier')];
     api.week = weekPayload({ shifts: [shift('m1', '2026-09-01'), shift('m1', '2026-09-03')] });
@@ -348,6 +384,31 @@ describe('TeamNext rendering', () => {
       role: 'line',
       memberId: 'm2',
     });
+  });
+
+  it('shows why the gateway refused the one-tap assignment (F-1017)', async () => {
+    api.createShift.mockImplementationOnce(() =>
+      Promise.reject({
+        response: {
+          status: 409,
+          data: { message: 'This person has approved time off on Saturday 5 September. Change their time off first, or give the shift to someone else.' },
+        },
+      }),
+    );
+    api.members = [member('m2', 'Light', 'line')];
+    api.week = weekPayload({
+      shifts: [shift('m9', '2026-09-01', '16:00', '22:00')],
+      coverage: {
+        totalGaps: 1,
+        days: [
+          { date: '2026-09-05', staffed: 0, openShifts: 1, status: 'gap', gaps: [{ role: 'line', period: 'pm', staffed: 0, required: 1 }] },
+        ],
+      },
+    });
+    render(<TeamNext />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: 'Assign' }));
+    expect(await screen.findByText(/has approved time off on Saturday 5 September/)).toBeInTheDocument();
+    expect(screen.queryByText(/The assignment did not go through/)).toBeNull();
   });
 
   it('names the exposure before publishing without inventing a credential-to-shift link', async () => {

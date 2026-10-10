@@ -113,6 +113,7 @@ import { ShiftSheet } from './ShiftSheet';
 import { WeekGrid } from './WeekGrid';
 import { MyShiftsNext } from './MyShiftsNext';
 import { todayIso } from './tm-format';
+import { ShiftClockProvider } from './tm-bits';
 import { TeamLaborSettings } from '../../../components/team/TeamLaborSettings';
 import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog';
 import { apiClient } from '../../../services/api/client';
@@ -127,6 +128,16 @@ import {
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
+
+/** A Turkish house: the sheet may name Labour Law 4857 there (F-1020). */
+function trWrapper({ children }: { children: ReactNode }) {
+  return wrapper({ children: <ShiftClockProvider locale="tr-Latn-TR">{children}</ShiftClockProvider> });
+}
+
+/** A US house: no Turkish law is named. */
+function usWrapper({ children }: { children: ReactNode }) {
+  return wrapper({ children: <ShiftClockProvider locale="en-Latn-US">{children}</ShiftClockProvider> });
 }
 
 const baseShift = {
@@ -303,7 +314,7 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
   it('shows the assumed minimum live in the shift editor, and records nothing when left empty', async () => {
     render(
       <ShiftSheet target={{ date: '2026-09-07' }} members={[]} scheduleId="sch1" onClose={() => {}} onChanged={() => {}} />,
-      { wrapper },
+      { wrapper: trWrapper },
     );
     // Default new shift is 17:00-22:00: 5 hours, so 30 minutes assumed.
     expect(screen.getByText(/counted with a 30-minute break: the legal minimum/)).toBeInTheDocument();
@@ -315,7 +326,7 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
   it('records the break an editor types, and warns when it is under the minimum', async () => {
     render(
       <ShiftSheet target={{ shift: baseShift as never }} members={[]} scheduleId="sch1" onClose={() => {}} onChanged={() => {}} />,
-      { wrapper },
+      { wrapper: trWrapper },
     );
     const field = screen.getByLabelText('Break, in minutes');
     fireEvent.change(field, { target: { value: '30' } });
@@ -337,7 +348,7 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
         onClose={() => {}}
         onChanged={() => {}}
       />,
-      { wrapper },
+      { wrapper: trWrapper },
     );
     expect(screen.getByText(/counted with a 30-minute break: the legal minimum/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Break, in minutes'), { target: { value: '20' } });
@@ -345,6 +356,25 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
       screen.getByText(/under the legal minimum of 60 minutes for the 7\.7h of work it leaves \(Art\. 68\)/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/minutes for this shift/)).not.toBeInTheDocument();
+  });
+
+  it('names no Turkish law in a US house (F-1020)', () => {
+    render(
+      <ShiftSheet
+        target={{ shift: { ...baseShift, start_time: '09:00', end_time: '17:00' } as never }}
+        members={[]}
+        scheduleId="sch1"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper: usWrapper },
+    );
+    expect(screen.getByText(/counted with a 30-minute break, shown as assumed/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Break, in minutes'), { target: { value: '20' } });
+    expect(
+      screen.getByText(/under the 60-minute break counted for the 7\.7h of work it leaves\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/4857|Art\. 68|legal minimum/)).not.toBeInTheDocument();
   });
 
   it('clears a recorded break when the editor empties it', async () => {
