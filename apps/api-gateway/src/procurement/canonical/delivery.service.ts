@@ -1149,13 +1149,23 @@ export class DeliveryService {
         updated_at: now,
       })
       .eq("id", deliveryId)
+      // Only from the state read above. The hourly lapse clock writes this
+      // row too; without the check one write silently replaced the other.
+      .eq("state", delivery.state)
       .select(DELIVERY_COLUMNS)
-      .single();
+      .maybeSingle();
     if (upd.error)
       return {
         ok: false,
         status: 500,
         error: `deliveries agree failed for ${deliveryId}: ${upd.error.message}`,
+      };
+    if (!upd.data)
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "This delivery changed while you were agreeing it. Open it again to see where it stands.",
       };
 
     await this.clocks.cancelFor(deliveryId);
@@ -1274,13 +1284,21 @@ export class DeliveryService {
         updated_at: now,
       })
       .eq("id", deliveryId)
+      .eq("state", delivery.state)
       .select(DELIVERY_COLUMNS)
-      .single();
+      .maybeSingle();
     if (upd.error)
       return {
         ok: false,
         status: 500,
         error: `deliveries verify failed for ${deliveryId}: ${upd.error.message}`,
+      };
+    if (!upd.data)
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "This delivery changed while you were verifying it. Open it again to see where it stands.",
       };
 
     await this.clocks.cancelFor(deliveryId);

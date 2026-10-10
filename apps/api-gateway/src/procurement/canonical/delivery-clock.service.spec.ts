@@ -1,6 +1,8 @@
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { DeliveryClockService, lapseDeeming } from "./delivery-clock.service";
+import { DeliveryService } from "./delivery.service";
+import { DeliveryStockService } from "./delivery-stock.service";
 import { makeMockDb, makeMockNotifications, MockDb } from "./delivery-mock";
 
 /**
@@ -479,6 +481,7 @@ describe("DeliveryClockService", () => {
         },
         error: null,
       };
+      db.updateAnswers.deliveries = { data: [{ id: DEL }], error: null };
       const res = await service.runDue(new Date("2026-08-22T00:00:00Z"));
       expect(res.ok).toBe(true);
       if (res.ok) expect(res.value.lapsed).toBe(1);
@@ -508,6 +511,31 @@ describe("DeliveryClockService", () => {
       expect((note?.payload as { message: string }).message).toMatch(
         /Nothing was posted to inventory or cost/,
       );
+    });
+
+    it("does not overwrite a delivery agreed between its read and its write (F-653)", async () => {
+      db.answers.delivery_timers = { data: [timer()], error: null };
+      db.answers.deliveries = {
+        data: { id: DEL, state: "RECONCILING", jurisdiction: "TR" },
+        error: null,
+      };
+      // A manager agreed it a moment ago: the write filtered on RECONCILING
+      // matches no row.
+      db.updateAnswers.deliveries = { data: [], error: null };
+      const res = await service.runDue(new Date("2026-08-22T00:00:00Z"));
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.value.lapsed).toBe(0);
+      // The timer stays open for the next pass, and nobody is told it lapsed.
+      expect(
+        db.writes.filter(
+          (w) => w.table === "delivery_timers" && w.verb === "update",
+        ),
+      ).toEqual([]);
+      expect(
+        notifications.sent.filter(
+          (n) => (n.payload as { type: string }).type === "delivery_lapsed",
+        ),
+      ).toEqual([]);
     });
 
     it("CANCELS rather than fires a timer on a delivery that already reached an end", async () => {
@@ -603,5 +631,46 @@ describe("DeliveryClockService", () => {
   it("uses whole days, so a 7-day window is exactly seven", () => {
     const start = new Date("2026-08-14T00:00:00Z").getTime();
     expect(new Date("2026-08-21T00:00:00Z").getTime() - start).toBe(7 * DAY);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The other side of the race (F-653): a person's verify is written only from
+// the state it read, so a lapse that landed in between is never overwritten.
+describe("a human verify does not overwrite a lapse", () => {
+  it("refuses when the delivery changed since it was read", async () => {
+    const db = makeMockDb();
+    db.reset();
+    const notifications = makeMockNotifications();
+    const service = new DeliveryService(
+      db.client as unknown as DatabaseService,
+      new DeliveryClockService(
+        db.client as unknown as DatabaseService,
+        notifications as unknown as NotificationsService,
+      ),
+      notifications as unknown as NotificationsService,
+      new DeliveryStockService(db.client as unknown as DatabaseService),
+    );
+    db.answers.deliveries = {
+      data: {
+        id: DEL,
+        restaurant_id: REST,
+        state: "AGREED",
+        jurisdiction: "TR",
+        verified_at: null,
+      },
+      error: null,
+    };
+    // The write is filtered on AGREED; the clock lapsed it in between, so no
+    // row comes back.
+    db.updateAnswers.deliveries = { data: null, error: null };
+    const res = await service.verify(REST, DEL, "u1");
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.status).toBe(409);
+      expect(res.error).toMatch(/changed while you were verifying/);
+    }
+    // Read by id + house (2), written by id + the state it read (2).
+    expect(db.verbs.filter((v) => v === "deliveries.eq")).toHaveLength(4);
   });
 });

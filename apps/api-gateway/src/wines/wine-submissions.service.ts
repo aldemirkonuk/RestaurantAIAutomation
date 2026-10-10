@@ -20,6 +20,7 @@ type SubmissionRow = {
   signature_hash?: string | null;
   status: string;
   matched_master_id?: string | null;
+  decision_reason?: string | null;
 };
 
 /**
@@ -227,8 +228,14 @@ export class WineSubmissionsService {
   async scheduledProcessPendingSubmissions(): Promise<void> {
     try {
       const result = await this.processPendingSubmissions();
-      if (result.processed > 0) {
-        this.logger.log(`wine-submissions-process-pending: settled ${result.processed} submission(s).`);
+      // A row that failed and stays pending was not settled; say so apart.
+      const retrying = result.results.filter((r) => r.status === "pending").length;
+      const settled = result.processed - retrying;
+      if (settled > 0 || retrying > 0) {
+        this.logger.log(
+          `wine-submissions-process-pending: settled ${settled} submission(s)` +
+            (retrying ? `, ${retrying} failed and will be tried again.` : "."),
+        );
       }
     } catch (err: any) {
       this.logger.error(`wine-submissions-process-pending failed: ${err?.message ?? String(err)}`);
@@ -240,6 +247,11 @@ export class WineSubmissionsService {
       .from("master_wine_library_submissions")
       .select("*")
       .eq("status", "pending")
+      // Least recently TOUCHED first, not oldest first. A failed attempt
+      // rewrites the row (the table's trigger bumps updated_at), so it goes to
+      // the back of the line; ordering by created_at let 50 rows that kept
+      // failing take every run, and nothing newer was ever looked at.
+      .order("updated_at", { ascending: true })
       .order("created_at", { ascending: true })
       .limit(limit);
 
@@ -336,7 +348,9 @@ export class WineSubmissionsService {
           id: submission.id,
           error: matchError.message,
         });
-        results.push({ id: submission.id, status: "pending" });
+        results.push(
+          await this.retryOrPark(submission, `match: ${matchError.message}`),
+        );
         continue;
       }
 
@@ -429,15 +443,13 @@ export class WineSubmissionsService {
         this.logger.error("Failed to upsert master wine", {
           error: upsertError.message,
         });
-        await this.dbService.supabase
-          .from("master_wine_library_submissions")
-          .update({
-            status: "pending",
-            decision_reason: upsertError.message,
-            signature_hash: signatureHash,
-          })
-          .eq("id", submission.id);
-        results.push({ id: submission.id, status: "pending" });
+        results.push(
+          await this.retryOrPark(
+            submission,
+            `library write: ${upsertError.message}`,
+            signatureHash,
+          ),
+        );
         continue;
       }
 
@@ -502,6 +514,44 @@ export class WineSubmissionsService {
    * genuinely ambiguous and belongs in review rather than auto-linked.
    */
   private static readonly AUTO_LINK_CONFIDENCE = 85;
+
+  /** Failed attempts before a submission is parked for a person to look at. */
+  static readonly MAX_ATTEMPTS = 5;
+
+  /**
+   * A failed attempt leaves the row pending with `retry N/MAX: <why>` in
+   * decision_reason — the table has no attempts column, and this lane adds no
+   * migration, so the count lives in the reason text. At MAX it is parked as
+   * `pending_review` (an existing status the research trigger ignores) with
+   * `failed after N attempts: <why>`, so it leaves the queue and a person
+   * sees it in review.
+   */
+  private async retryOrPark(
+    submission: SubmissionRow,
+    why: string,
+    signatureHash?: string,
+  ): Promise<{ id: string; status: string }> {
+    const prior = /^retry (\d+)\//.exec(submission.decision_reason ?? "");
+    const attempts = (prior ? parseInt(prior[1], 10) : 0) + 1;
+    const parked = attempts >= WineSubmissionsService.MAX_ATTEMPTS;
+    const status = parked ? "pending_review" : "pending";
+    const { error } = await this.dbService.supabase
+      .from("master_wine_library_submissions")
+      .update({
+        status,
+        decision_reason: parked
+          ? `failed after ${attempts} attempts: ${why}`
+          : `retry ${attempts}/${WineSubmissionsService.MAX_ATTEMPTS}: ${why}`,
+        ...(signatureHash ? { signature_hash: signatureHash } : {}),
+      })
+      .eq("id", submission.id);
+    if (error)
+      this.logger.error("Could not record a failed attempt", {
+        id: submission.id,
+        error: error.message,
+      });
+    return { id: submission.id, status };
+  }
 
   /**
    * Synchronous match-or-create against master_wine_library, used by the menu
