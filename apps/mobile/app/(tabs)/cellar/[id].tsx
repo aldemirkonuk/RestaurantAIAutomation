@@ -15,7 +15,7 @@ import {
   useInventoryItem,
   useItemActivity,
 } from "@/api/queries";
-import { houseMoney, type HouseMoneyFrame } from "@/lib/houseMoney";
+import { houseDecimal, houseMoney, type HouseMoneyFrame } from "@/lib/houseMoney";
 
 function money(
   value: number | null | undefined,
@@ -126,7 +126,7 @@ export default function WineDetailScreen() {
                   label="Velocity"
                   value={
                     item?.velocityPerDay != null
-                      ? `${Number(item.velocityPerDay).toFixed(1)}/day`
+                      ? `${houseDecimal(Number(item.velocityPerDay), house.locale)}/day`
                       : "–"
                   }
                 />

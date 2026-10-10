@@ -46,6 +46,7 @@ import {
 } from "./vendor-wine-search";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 import { assertVendorWriter } from "./vendor-write-gate";
 import {
   readVendorCurrency,
@@ -54,7 +55,56 @@ import {
 } from "./vendor-currency";
 import { INVOICES_TO_WRITE } from "./usual-currency-from-invoices";
 
-type AuthUser = { userId?: string; restaurantId?: string | null };
+type AuthUser = {
+  userId?: string;
+  restaurantId?: string | null;
+  /** The token's role in its house (ADR 0162); decides who reads money. */
+  role?: string | null;
+};
+
+/**
+ * An order row as `GET /providers/:id/orders` may send it to this role. The
+ * route returns raw `procurement_orders` rows (`select("*")`), the sibling
+ * F-441 left out (F-959): it sent staff every order's quoted, negotiated and
+ * final price and its total. A non-holder of the house's money (ADR 0145) gets
+ * only the columns below, each row marked `amountsWithheld: true`, as
+ * `orderForRole` does for `GET /procurement/orders`. An allowlist: a column
+ * added to the table later stays on the server until someone decides it is
+ * not money.
+ */
+const ORDER_COLUMNS_FOR_EVERY_ROLE = [
+  "id",
+  "order_number",
+  "restaurant_id",
+  "inventory_id",
+  "provider_id",
+  "quantity",
+  "unit_type",
+  "bottles_total",
+  "status",
+  "requested_at",
+  "approved_at",
+  "delivered_at",
+  "completed_at",
+  "created_at",
+  "is_emergency",
+  "priority_level",
+  "currency",
+] as const;
+
+export function orderRowsForRole(
+  rows: ReadonlyArray<Record<string, unknown>>,
+  role: string | null | undefined,
+): Array<Record<string, unknown>> {
+  if (holdsHouseMoney(role)) return [...rows];
+  return rows.map((row) => {
+    const kept: Record<string, unknown> = {};
+    for (const key of ORDER_COLUMNS_FOR_EVERY_ROLE) {
+      if (key in row) kept[key] = row[key];
+    }
+    return { ...kept, amountsWithheld: true };
+  });
+}
 
 /**
  * The caller's house, from the verified token and nowhere else. A session that
@@ -648,10 +698,12 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ) {
     try {
-      return await this.providersService.getProviderOrders(
+      const rows = await this.providersService.getProviderOrders(
         providerId,
         houseOf(user),
       );
+      // Staff get no prices or totals (F-959), as GET /procurement/orders.
+      return orderRowsForRole(rows, user?.role);
     } catch (error) {
       rethrow(error, "Failed to fetch provider orders");
     }

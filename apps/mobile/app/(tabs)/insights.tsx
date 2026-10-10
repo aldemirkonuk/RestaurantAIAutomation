@@ -21,7 +21,7 @@ import {
   readState,
   resolvePulseStripView,
 } from "@/components/today/pulseStripView";
-import { houseMoney } from "@/lib/houseMoney";
+import { houseDecimal, houseMoney } from "@/lib/houseMoney";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
@@ -325,7 +325,7 @@ export default function InsightsScreen() {
                     {itemName(i)}
                   </AppText>
                   <AppText variant="footnote" tone="secondary" style={{ fontVariant: ["tabular-nums"] }}>
-                    {Number(i.velocityPerDay).toFixed(1)}/day
+                    {houseDecimal(Number(i.velocityPerDay), pulse.data?.locale)}/day
                   </AppText>
                 </View>
                 <View style={{ height: 4, backgroundColor: color.fill, borderRadius: 2 }}>

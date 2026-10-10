@@ -147,12 +147,49 @@ describe("provider sub-resources belong to the caller's house", () => {
     const supabase = makeSupabase(seed());
     const controller = controllerFor(supabase);
 
-    const rows = await controller.getProviderOrders(PROV_A, userA);
+    const rows = await controller.getProviderOrders(PROV_A, {
+      ...userA,
+      role: "owner",
+    });
     expect(rows).toEqual([
       { id: "ord-a", provider_id: PROV_A, restaurant_id: HOUSE_A, total: 12 },
     ]);
     expect(supabase.queried).toContain("procurement_orders");
   });
+
+  // F-959: the sibling F-441 left out. Staff hold no house money (ADR 0145),
+  // so the route sends them the order without its prices or its total.
+  it.each(["staff", null, undefined])(
+    "GET orders sends %p no prices and no total",
+    async (role) => {
+      const world = seed();
+      world.procurement_orders[0] = {
+        ...world.procurement_orders[0],
+        status: "DELIVERED",
+        quoted_price: 1250,
+        negotiated_price: 1180,
+        final_price: 1180,
+        total_cost: 14160,
+        invoice_unit_price: 1180,
+        final_confirmed_cost: 14160,
+      } as (typeof world.procurement_orders)[0];
+      const controller = controllerFor(makeSupabase(world));
+
+      const rows = await controller.getProviderOrders(PROV_A, {
+        ...userA,
+        role,
+      });
+      expect(rows).toEqual([
+        {
+          id: "ord-a",
+          provider_id: PROV_A,
+          restaurant_id: HOUSE_A,
+          status: "DELIVERED",
+          amountsWithheld: true,
+        },
+      ]);
+    },
+  );
 
   it("GET performance for another house's provider is 404 and does not read metrics", async () => {
     const supabase = makeSupabase(seed());

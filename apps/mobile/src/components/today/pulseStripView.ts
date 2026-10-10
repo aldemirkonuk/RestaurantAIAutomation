@@ -1,4 +1,5 @@
 import type { TodayPulse } from "@/api/types";
+import { houseClock, usableLocale } from "@/lib/houseMoney";
 
 /**
  * Pure view model for `PulseStrip`. Split out so the honesty rule below can
@@ -23,6 +24,8 @@ export const REVENUE_UNAVAILABLE_MESSAGES = {
   zone_unset: "Set your restaurant's time zone on the web to see tonight's sales.",
   unread: "Couldn't read tonight's sales just now.",
   no_amounts: "Tonight's checks came in without amounts.",
+  // F-957: staff are not sent the house's takings (ADR 0145, DASH-W22).
+  withheld: "Tonight's sales are kept for the owner and managers.",
 } as const;
 
 /** Kept for callers that name the old constant: the failed-read wording. */
@@ -81,6 +84,7 @@ function revenueMessage(data: TodayPulse): string {
   if (data.salesState === "no_register") return REVENUE_UNAVAILABLE_MESSAGES.no_register;
   if (data.salesState === "zone_unset") return REVENUE_UNAVAILABLE_MESSAGES.zone_unset;
   if (data.salesState === "known") return REVENUE_UNAVAILABLE_MESSAGES.no_amounts;
+  if (data.salesState === "withheld") return REVENUE_UNAVAILABLE_MESSAGES.withheld;
   return REVENUE_UNAVAILABLE_MESSAGES.unread;
 }
 
@@ -89,11 +93,12 @@ export function resolvePulseStripView(
   fetch: PulseFetchState = {},
 ): PulseStripView {
   const now = fetch.now ?? Date.now();
-  const formatTime =
-    fetch.formatTime ??
-    ((at: Date) => at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
+  // The house's clock and weekday names (F-953): "as of 19:30" in a Turkish
+  // house. No locale on the pulse keeps the old en-US wording.
+  const formatTime = fetch.formatTime ?? ((at: Date) => houseClock(at, data.locale));
   const formatWeekday =
-    fetch.formatWeekday ?? ((at: Date) => at.toLocaleDateString("en-US", { weekday: "long" }));
+    fetch.formatWeekday ??
+    ((at: Date) => at.toLocaleDateString(usableLocale(data.locale), { weekday: "long" }));
 
   // F-676: saved figures come back at boot. A night that opened a day or more
   // ago is not tonight, whatever the last refresh did; it is named by its day.

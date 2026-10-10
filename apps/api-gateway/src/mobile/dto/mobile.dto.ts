@@ -68,9 +68,15 @@ export interface FeedResponse {
 /**
  * Why tonight's sales are or are not known (F-674): `known` (read from the
  * house's register), `no_register` (it has never sent a check), `zone_unset`
- * (the house has no time zone, so no "tonight"), `unread` (the read failed).
+ * (the house has no time zone, so no "tonight"), `unread` (the read failed),
+ * `withheld` (the caller does not hold the house's money: staff, F-957).
  */
-export type PulseSalesState = "known" | "no_register" | "zone_unset" | "unread";
+export type PulseSalesState =
+  | "known"
+  | "no_register"
+  | "zone_unset"
+  | "unread"
+  | "withheld";
 
 export interface TodayPulseResponse {
   salesState: PulseSalesState;
