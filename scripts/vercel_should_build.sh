@@ -48,6 +48,12 @@ PATHS=(
   # skip the preview and leave it saying yesterday's words.
   "apps/api-gateway/src/procurement/price-currency.ts"
   "apps/api-gateway/src/common/iso-4217.ts"
+  # And three more since the invoice match: apps/web/src/lib/invoiceMatch.ts
+  # imports agreed-price.ts and invoice-match.ts, which imports
+  # documents/document-types.ts.
+  "apps/api-gateway/src/procurement/agreed-price.ts"
+  "apps/api-gateway/src/procurement/invoice-match.ts"
+  "apps/api-gateway/src/procurement/documents/document-types.ts"
 )
 
 # No parent commit (first build of a branch, shallow clone) means we cannot

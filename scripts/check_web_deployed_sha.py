@@ -99,12 +99,15 @@ The default `--paths` (DEFAULT_PATHS below, the one list deploy.yml uses for
 both FLOOR and the check) are what the web build reads: apps/web itself; its
 one workspace dependency (`@wineops/ui`, packages/ui); the lockfile,
 workspace manifest and root package.json the install resolves; turbo.json
-(the buildCommand is `turbo run build --filter=@wineops/web`); and the two
-gateway files the web bundle imports directly
+(the buildCommand is `turbo run build --filter=@wineops/web`); and the five
+gateway files the web bundle reads
 (apps/web/src/pages/inventory/command/ReceivingWorkspace.tsx imports
 apps/api-gateway/src/procurement/price-currency.ts, which imports
-apps/api-gateway/src/common/iso-4217.ts; turbo.json lists the same two as
-globalDependencies). A path missing from this list lets a stale build pass,
+apps/api-gateway/src/common/iso-4217.ts; apps/web/src/lib/invoiceMatch.ts
+imports apps/api-gateway/src/procurement/agreed-price.ts and
+apps/api-gateway/src/procurement/invoice-match.ts, which imports
+apps/api-gateway/src/procurement/documents/document-types.ts; turbo.json lists
+the same five as globalDependencies). A path missing from this list lets a stale build pass,
 so `--check-paths` exits 1 when a non-test source file under apps/web or
 packages/ui reaches, by relative import (followed transitively), a file this
 list does not cover, or when a listed path no longer exists. A CLAIMS row
@@ -163,6 +166,9 @@ DEFAULT_PATHS = [
     "turbo.json",
     "apps/api-gateway/src/procurement/price-currency.ts",
     "apps/api-gateway/src/common/iso-4217.ts",
+    "apps/api-gateway/src/procurement/agreed-price.ts",
+    "apps/api-gateway/src/procurement/invoice-match.ts",
+    "apps/api-gateway/src/procurement/documents/document-types.ts",
 ]
 
 # Where a web-bundle import graph starts: every non-test source file here.
