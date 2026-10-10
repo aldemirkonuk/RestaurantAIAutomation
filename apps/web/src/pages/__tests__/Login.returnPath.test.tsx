@@ -37,7 +37,8 @@ vi.mock('../../components/auth/GoogleSignInButton', () => ({
   GoogleSignInButton: () => createElement('span', null, 'google host'),
 }))
 
-import { Login, returnPath } from '../Login'
+import { Login } from '../Login'
+import { returnPathAfterSignIn } from '../../lib/returnPath'
 import { PUBLIC_OVERRIDE_KEY } from '../../lib/mudavym/publicDesign'
 
 function Where() {
@@ -93,19 +94,26 @@ describe('signing in returns to the whole link', () => {
   })
 })
 
-describe('returnPath', () => {
+// The page computes the return with returnPathAfterSignIn (F-869: these
+// cases used to pin a copy of the rule Login.tsx exported and never called).
+describe('returnPathAfterSignIn, as the page calls it', () => {
+  const fromState = (from: unknown) => returnPathAfterSignIn('', { from })
+
   it('builds path + query + hash from a location', () => {
-    expect(returnPath({ pathname: '/orders', search: '?station=recurring', hash: '' })).toBe(
+    expect(fromState({ pathname: '/orders', search: '?station=recurring', hash: '' })).toBe(
       '/orders?station=recurring',
     )
-    expect(returnPath('/orders?station=recurring')).toBe('/orders?station=recurring')
+    expect(returnPathAfterSignIn('?redirect=%2Forders%3Fstation%3Drecurring', null)).toBe(
+      '/orders?station=recurring',
+    )
   })
 
   it('follows only a path on this site', () => {
-    for (const bad of ['https://evil.test/x', '//evil.test/x', '/\\evil.test', 'javascript:alert(1)', 'orders', '']) {
-      expect(returnPath(bad)).toBe('/')
+    for (const bad of ['https://evil.test/x', '//evil.test/x', '/\\evil.test', 'javascript:alert(1)', 'orders']) {
+      expect(returnPathAfterSignIn(`?redirect=${encodeURIComponent(bad)}`, null)).toBe('/')
     }
-    expect(returnPath({ pathname: '//evil.test', search: '', hash: '' })).toBe('/')
-    expect(returnPath(undefined)).toBe('/')
+    expect(fromState({ pathname: '//evil.test', search: '', hash: '' })).toBe('/')
+    expect(fromState({ pathname: '/\\evil.test', search: '', hash: '' })).toBe('/')
+    expect(returnPathAfterSignIn('', undefined)).toBe('/')
   })
 })

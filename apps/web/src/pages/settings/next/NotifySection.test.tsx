@@ -96,3 +96,14 @@ describe('F-182 — a settings row wraps on a phone', () => {
     expect(control.style.flexShrink).not.toBe('0');
   });
 });
+
+describe('F-868 — the quiet-hours clock says the rule the phone push keeps', () => {
+  it('with no time zone set, names the country clock first and UTC only after it', () => {
+    mount();
+    // The push rule reads the house zone, else the country's only zone, else
+    // UTC; the old sentence said UTC alone, which a one-zone country never is.
+    expect(
+      screen.getByText(/Until a time zone is set, the window is read on your country's clock when it has just one, otherwise in UTC\./),
+    ).toBeTruthy();
+  });
+});
