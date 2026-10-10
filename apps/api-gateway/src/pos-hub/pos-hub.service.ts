@@ -1043,6 +1043,22 @@ export class PosHubService {
           }
           continue;
         }
+        // sim F-397: a voided flag that reads as neither yes nor no is not
+        // guessed at — either guess moves stock the wrong way.
+        if (check.voidedUnread !== undefined) {
+          errors.push(
+            `${check.externalCheckId}: not imported, voided not readable — write true or false (voided was ${quoteClosedAt(check.voidedUnread)})`,
+          );
+          continue;
+        }
+        // sim F-396: "1.250,00" or "1.350" from a Turkish till is not read as
+        // nothing or as a thousandth of itself; the check is refused instead.
+        if (check.moneyUnread !== undefined) {
+          errors.push(
+            `${check.externalCheckId}: not imported, ${check.moneyUnread.field} not readable as an amount — write it as 1250.00 (it was ${quoteClosedAt(check.moneyUnread.value)})`,
+          );
+          continue;
+        }
         const items = check.items.map((it) => {
           const mapped = this.resolveWine(it.name, it.externalItemId, mappings);
           const is_wine =

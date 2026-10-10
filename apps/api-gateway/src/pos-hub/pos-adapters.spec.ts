@@ -4,6 +4,8 @@ import {
   squareAdapter,
   cloverAdapter,
   toastAdapter,
+  readVoided,
+  readMoney,
 } from "./pos-adapters";
 import { POS_PROVIDERS, registrySummary } from "./pos-provider.registry";
 import { CHECK_CHANNELS, checkChannelOf } from "./pos-types";
@@ -287,5 +289,65 @@ describe("a check carries its channel (ADR 0302)", () => {
   it("the registry says Clover sends no table", () => {
     const clover = POS_PROVIDERS.find((p) => p.key === "clover");
     expect(clover?.capabilities.tables).toBe(false);
+  });
+});
+
+describe("generic adapter reads voided strictly (sim F-397)", () => {
+  const one = (voided: unknown) =>
+    genericAdapter.normalize([{ externalCheckId: "c1", voided, items: [] }])[0];
+
+  it("reads the word false as not voided", () => {
+    expect(one("false").voided).toBe(false);
+    expect(one("false").voidedUnread).toBeUndefined();
+  });
+
+  it.each([[true], ["true"], ["1"], [1], ["YES"]])("reads %p as voided", (v) => {
+    expect(one(v).voided).toBe(true);
+  });
+
+  it.each([[false], ["0"], [0], ["no"], [null], [undefined], [""]])("reads %p as not voided", (v) => {
+    expect(one(v).voided).toBe(false);
+    expect(one(v).voidedUnread).toBeUndefined();
+  });
+
+  it("hands back a value it cannot read instead of guessing", () => {
+    expect(one("maybe")).toMatchObject({ voided: false, voidedUnread: "maybe" });
+    expect(readVoided(2)).toEqual({ voided: false, unread: 2 });
+  });
+});
+
+describe("money from a till is read in either locale, never guessed (sim F-396)", () => {
+  it.each([
+    ["1.250,00", 1250],
+    ["1,250.00", 1250],
+    ["1.350,50", 1350.5],
+    ["100,00", 100],
+    ["12,5", 12.5],
+    ["12.50", 12.5],
+    ["1250", 1250],
+    ["₺1.250,00", 1250],
+    ["1 250,00 TL", 1250],
+    ["1.250.000", 1250000],
+    [18, 18],
+  ])("reads %p as %p", (raw, want) => {
+    expect(readMoney(raw)).toEqual({ value: want });
+  });
+
+  it.each([["1.250"], ["1,250"], ["12,50,1"], ["abc"], ["1,25.50"], ["1.2,5"], ["1.250,00,5"]])("does not guess %p", (raw) => {
+    expect(readMoney(raw)).toEqual({ value: null, unread: raw });
+  });
+
+  it("reads absent as absent, not as zero", () => {
+    expect(readMoney(null)).toEqual({ value: null });
+    expect(readMoney("")).toEqual({ value: null });
+  });
+
+  it("names the first money field it could not read", () => {
+    const [c] = genericAdapter.normalize([
+      { externalCheckId: "c1", total: "1.350,50", tip: "1.350", items: [{ name: "x", price: "1.250,00" }] },
+    ]);
+    expect(c.total).toBe(1350.5);
+    expect(c.items[0].price).toBe(1250);
+    expect(c.moneyUnread).toEqual({ field: "tip", value: "1.350" });
   });
 });
