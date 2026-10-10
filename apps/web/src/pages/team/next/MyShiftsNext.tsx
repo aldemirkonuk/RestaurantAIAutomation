@@ -34,6 +34,7 @@ import {
 } from '../../../services/api/team';
 import { useActiveRestaurantId } from './useTeamNextData';
 import { useAuth } from '../../../contexts/AuthContext';
+import { houseToday, useHouseZone, useSettleOnHouseDay } from '@/lib/houseZone';
 import { AwayCard, HouseAwayCard } from './AwayCard';
 import { useHouseAreas } from './useHouseAreas';
 import {
@@ -53,7 +54,10 @@ import './team-next.css';
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rid = useActiveRestaurantId();
   const qc = useQueryClient();
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  // F-571: "this week" is the house's week, not the device's (lib/houseZone.ts).
+  const zone = useHouseZone();
+  const [weekStart, setWeekStart] = useState(() => mondayOf(houseToday(zone)));
+  useSettleOnHouseDay(zone, mondayOf, setWeekStart);
   const days = weekDays(weekStart);
   const { user } = useAuth();
   const house = useHouseAreas();
@@ -138,7 +142,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             <button
               type="button"
               className="tm-ctl tm-ctl--quiet"
-              onClick={() => setWeekStart(mondayOf(new Date()))}
+              onClick={() => setWeekStart(mondayOf(houseToday(zone)))}
             >
               This week
             </button>

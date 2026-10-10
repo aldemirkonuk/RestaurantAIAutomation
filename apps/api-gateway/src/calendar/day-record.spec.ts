@@ -778,7 +778,13 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
    */
   function pagedDb(
     checks: Array<Record<string, unknown>>,
-    opts: { ignoreCursor?: boolean; probeError?: boolean } = {},
+    opts: {
+      ignoreCursor?: boolean;
+      probeError?: boolean;
+      /** `restaurants.timezone`; absent means the house states none. */
+      zone?: string;
+      zoneReadError?: boolean;
+    } = {},
   ) {
     const CAP = 1000;
     const reads: Array<{
@@ -788,6 +794,8 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
       order?: string;
       gt?: string;
       limit?: number;
+      gte?: string;
+      lt?: string;
     }> = [];
     const from = (table: string) => {
       const req: (typeof reads)[number] = { table, columns: "" };
@@ -799,9 +807,25 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
           return c;
         },
         eq: () => c,
-        gte: () => c,
-        lt: () => c,
+        gte: (_col: string, val: string) => {
+          req.gte = val;
+          return c;
+        },
+        lt: (_col: string, val: string) => {
+          req.lt = val;
+          return c;
+        },
         lte: () => c,
+        // The house's zone, read by key (`readHouseZone`).
+        maybeSingle: () =>
+          Promise.resolve(
+            opts.zoneReadError
+              ? { data: null, error: { message: "connection reset" } }
+              : {
+                  data: { timezone: opts.zone ?? null, country: null },
+                  error: null,
+                },
+          ),
         order: (col: string) => {
           req.order = col;
           return c;
@@ -1037,6 +1061,93 @@ describe("RecordedDaysService — reads the net column, whole (ADR 0287 on ADR 0
     expect(out.pairsWritten).toBe(1);
     expect(inserted[0][0].actual_value.netSales).toBe(3400);
   });
+
+  describe("files each check on the house's day (F-086, ADR 0296)", () => {
+    // Tuzlu Rüzgar, Los Angeles. Its opening dinner closed after 17:00 there,
+    // which is already the next date in UTC.
+    const check = (id: string, closedAt: string, subtotal = "100.00") => ({
+      id,
+      opened_at: closedAt,
+      closed_at: closedAt,
+      subtotal,
+      total: "112.63",
+      covers: 2,
+    });
+
+    it("checkBusinessDate reads the house's clock when it has a zone, UTC only without one", () => {
+      const row = {
+        opened_at: null,
+        closed_at: "2026-07-02T03:30:00Z",
+        subtotal: null,
+        covers: null,
+      };
+      expect(checkBusinessDate(row, "America/Los_Angeles")).toBe("2026-07-01");
+      expect(checkBusinessDate(row)).toBe("2026-07-02");
+    });
+
+    it("puts a Los Angeles dinner on the day it was served, and leaves the next day's out", async () => {
+      const { db, reads } = pagedDb(
+        [
+          check("chk-1", "2026-07-01T19:00:00Z"), // 12:00 Jul 1 in LA
+          check("chk-2", "2026-07-02T03:30:00Z"), // 20:30 Jul 1 in LA
+          check("chk-3", "2026-07-01T05:00:00Z"), // 22:00 Jun 30 in LA
+          check("chk-4", "2026-07-02T08:00:00Z"), // 01:00 Jul 2 in LA
+        ],
+        { zone: "America/Los_Angeles" },
+      );
+      const out = await new RecordedDaysService(db).windowFor(
+        "r1",
+        "2026-07-01",
+        "2026-07-01",
+      );
+
+      expect(out.refusal).toBeNull();
+      expect(out.days).toHaveLength(1);
+      expect(out.days[0]).toMatchObject({
+        businessDate: "2026-07-01",
+        checkCount: 2,
+        netSales: 200,
+      });
+      // The read runs from 24 h before the house's midnight to the midnight that
+      // ends the day, on the house's clock (PDT is UTC-7).
+      const checkRead = reads.find(
+        (r) => r.table === "pos_checks" && r.columns !== "id",
+      )!;
+      expect(checkRead.gte).toBe("2026-06-30T07:00:00.000Z");
+      expect(checkRead.lt).toBe("2026-07-02T07:00:00.000Z");
+    });
+
+    it("keeps UTC days for a house with no zone", async () => {
+      const { db, reads } = pagedDb([check("chk-2", "2026-07-02T03:30:00Z")]);
+      const out = await new RecordedDaysService(db).windowFor(
+        "r1",
+        "2026-07-02",
+        "2026-07-02",
+      );
+      expect(out.days.map((d) => d.businessDate)).toEqual(["2026-07-02"]);
+      const checkRead = reads.find(
+        (r) => r.table === "pos_checks" && r.columns !== "id",
+      )!;
+      expect(checkRead.gte).toBe("2026-07-02T00:00:00Z");
+      expect(checkRead.lt).toBe("2026-07-03T00:00:00.000Z");
+    });
+
+    it("refuses, rather than drawing UTC days, when the house's zone cannot be read", async () => {
+      const { db } = pagedDb([check("chk-2", "2026-07-02T03:30:00Z")], {
+        zoneReadError: true,
+      });
+      const out = await new RecordedDaysService(db).windowFor(
+        "r1",
+        "2026-07-01",
+        "2026-07-01",
+      );
+      expect(out.days).toEqual([]);
+      expect(out.posConnected).toBeNull();
+      expect(out.refusal).toBe(
+        "The house's time zone could not be read, so no day's sales are drawn.",
+      );
+    });
+  });
 });
 
 describe("DayRecordService — net takings and the house currency", () => {
@@ -1084,12 +1195,22 @@ describe("DayRecordService — net takings and the house currency", () => {
   });
 
   it("keeps an unreadable currency apart from one never recorded", async () => {
+    // An unreadable house record holds back any day not yet over on the
+    // earliest clock (UTC-12), and between 00:00 and 12:00 UTC that is still
+    // YESTERDAY, so this reads a day that is over everywhere.
+    const DAY = new Date(Date.now() - 3 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
     const { service } = makeService({
-      recorded: LEDGER(),
+      recorded: LEDGER({
+        from: DAY,
+        to: DAY,
+        days: [{ ...LEDGER().days[0], businessDate: DAY }],
+      }),
       weather: WEATHER(),
       currencyReadError: { message: "connection reset" },
     });
-    const out = await service.windowFor("r1", YESTERDAY, YESTERDAY, OWNER);
+    const out = await service.windowFor("r1", DAY, DAY, OWNER);
     expect(out.currency).toEqual({ code: null, readable: false });
     // The day itself still comes back: a currency read is not the ledger.
     expect(out.days[0].recorded?.netSales).toBe(3400);

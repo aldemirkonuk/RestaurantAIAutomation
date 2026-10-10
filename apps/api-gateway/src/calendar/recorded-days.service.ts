@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
+import { houseDayBounds, houseDayOf, readHouseZone } from "../common/house-day";
 
 /**
  * What the ledger actually recorded, day by day — slice 3 of ADR 0111.
@@ -120,14 +121,22 @@ function num(value: string | number | null | undefined): number | null {
 /**
  * The business date of a check.
  *
- * `closed_at` where present, else `opened_at` — the same rule
- * `goals.service.ts:752` applies, quoted here so the calendar and goal progress
- * can never disagree about which day a check belongs to. The date is taken off
- * the timestamp's leading ten characters, which is UTC; the restaurant's own
- * midnight would need its zone, and that refinement is filed rather than
- * guessed (calendar.md §13).
+ * With the house's zone it is the house's day, by `houseDayOf` — when the
+ * check closed, else when it opened, on the house's clock (ADR 0296) — the
+ * one rule the till (`goals.service.ts` `computeMetricWithSeries`) and the
+ * dashboard file by, so the calendar and the till cannot disagree about which
+ * day a check belongs to (F-086: a Los Angeles dinner after 17:00 was filed on
+ * the next day).
+ *
+ * With no zone the date is the timestamp's leading ten characters, which is
+ * UTC — kept so a house with no zone still sees its days, and so it agrees
+ * with `DayRecordService.houseToday`, which falls back the same way.
  */
-export function checkBusinessDate(row: CheckRow): string | null {
+export function checkBusinessDate(
+  row: CheckRow,
+  zone: string | null = null,
+): string | null {
+  if (zone) return houseDayOf(row, zone);
   const stamp = row.closed_at || row.opened_at;
   return typeof stamp === "string" && stamp.length >= 10
     ? stamp.slice(0, 10)
@@ -140,12 +149,20 @@ export function checkBusinessDate(row: CheckRow): string | null {
  * Exported for its own spec: this is the only arithmetic in the file, so it is
  * the only place a fabrication could hide.
  */
-export function foldChecksToDays(rows: CheckRow[]): Map<string, RecordedDay> {
+export function foldChecksToDays(
+  rows: CheckRow[],
+  zone: string | null = null,
+  window?: { from: string; to: string },
+): Map<string, RecordedDay> {
   const days = new Map<string, RecordedDay>();
 
   for (const row of rows) {
-    const date = checkBusinessDate(row);
+    const date = checkBusinessDate(row, zone);
     if (!date) continue;
+    // The read reaches past the window's edges (a check opened the night
+    // before and closed after midnight); a day outside it is not this
+    // window's, so one day's figure is the same in every window (A-027).
+    if (window && (date < window.from || date > window.to)) continue;
 
     const day = days.get(date) ?? {
       businessDate: date,
@@ -193,11 +210,42 @@ export class RecordedDaysService {
   ): Promise<RecordedWindow> {
     const client = this.databaseService.supabase;
 
-    // The window is inclusive of both ends; `lt` on the day after `to` is what
-    // makes a check closing at 23:30 on the last day count.
-    const until = new Date(`${to}T00:00:00Z`);
-    until.setUTCDate(until.getUTCDate() + 1);
-    const untilIso = until.toISOString();
+    // The house's zone files each check on the house's day (ADR 0296, F-086).
+    // A failed read of the house record is refused like an unreadable
+    // register — never taken as "no zone", which would quietly draw UTC days.
+    let zone: string | null;
+    try {
+      ({ zone } = await readHouseZone(client, restaurantId));
+    } catch (err: any) {
+      this.logger.warn(
+        `house zone unreadable for r=${restaurantId}: ${err?.message ?? err}`,
+      );
+      return {
+        from,
+        to,
+        posConnected: null,
+        days: [],
+        refusal:
+          "The house's time zone could not be read, so no day's sales are drawn.",
+      };
+    }
+
+    // The window is inclusive of both ends. With a zone it runs from 24 h
+    // before the house's first midnight (a check opened the night before and
+    // closed after it belongs to `from`) to the midnight that ends `to`, and
+    // the fold drops what falls outside. With none it is the UTC days, and
+    // `lt` on the day after `to` makes a check closing at 23:30 count.
+    let sinceIso = `${from}T00:00:00Z`;
+    let untilIso: string;
+    if (zone) {
+      const bounds = houseDayBounds(from, to, zone);
+      sinceIso = bounds.readFromIso;
+      untilIso = bounds.endIso;
+    } else {
+      const until = new Date(`${to}T00:00:00Z`);
+      until.setUTCDate(until.getUTCDate() + 1);
+      untilIso = until.toISOString();
+    }
 
     // Read whole or refused (ADR 0292). Unranged, this stopped at PostgREST's
     // 1,000 rows: a month window holds about 2,000 checks, so half the month's
@@ -217,7 +265,7 @@ export class RecordedDaysService {
             // Voided checks are not trading. The same filter goal progress
             // applies (goals.service.ts:740), so the two readers cannot drift.
             .eq("voided", false)
-            .gte("opened_at", `${from}T00:00:00Z`)
+            .gte("opened_at", sinceIso)
             .lt("opened_at", untilIso),
       );
     } catch (err: any) {
@@ -243,7 +291,7 @@ export class RecordedDaysService {
             : "The sales register could not be read whole, so no day is drawn from part of it.",
       };
     }
-    const days = foldChecksToDays(rows);
+    const days = foldChecksToDays(rows, zone, zone ? { from, to } : undefined);
 
     // Whether this house has EVER had a check land. A window with no rows in a
     // house that trades is a quiet fortnight; the same window in a house with
