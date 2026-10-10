@@ -36,6 +36,14 @@ const ROW = {
   conversation_context: { last_price: 1180 },
   constraint_flags: { reasons: ["price_above_target"], target_price: 1100 },
   email_headers: { subject: "Re: Barolo at 1180" },
+  inserted_insights: [{ text: "Wednesday came in 38% under its own average" }],
+  important_dates_detected: [{ date: "2026-10-14", note: "Delivery Tuesday" }],
+  discard_reason: "Too dear at 1180, wait for the autumn list.",
+  send_refusal_reason: "The vendor's address bounced the 1180 offer.",
+  relay_refusal_reason: "Gmail refused the reply about 1180.",
+  raw_deleted_reason: "Kept 30 days.",
+  send_requested_cc: ["sommelier@example.com"],
+  a_column_added_later: "Margin 61% on this bottle.",
   created_at: "2026-10-10T10:00:00.000Z",
   procurement_orders: {
     id: "o-1",
@@ -141,6 +149,29 @@ describe("the /conversations reads by role (F-986)", () => {
         expect(row.procurement_orders.order_number).toBe("PO-1");
         expect(row.wordsWithheld).toBe(true);
         expect(row.amountsWithheld).toBe(true);
+      }
+    },
+  );
+
+  it.each(["staff", null])(
+    "give %p without send authority only the row's who, when and state",
+    async (role) => {
+      const rows = await listDoors(conversations(false), role);
+      for (const [door, row] of Object.entries(rows)) {
+        // The rows are select('*'): the letter's figures, its dates, the
+        // free-text reasons and any column added later stay out too.
+        expect([door, Object.keys(row).sort()]).toEqual([
+          door,
+          [
+            "amountsWithheld",
+            "created_at",
+            "direction",
+            "id",
+            "order_id",
+            "procurement_orders",
+            "wordsWithheld",
+          ],
+        ]);
       }
     },
   );

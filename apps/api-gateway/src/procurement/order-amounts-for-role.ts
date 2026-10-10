@@ -154,10 +154,14 @@ export function conversationsForRole<T extends Record<string, unknown>>(
  * `procurement_conversations` rows, in the table's own snake_case, with the
  * order embedded as `procurement_orders`. The cut is the one above, by the
  * column names: a non-holder never gets the order's figures, and keeps the
- * letter's words only as a D10 grantee (`readsLetters`). The words here are
- * the vendor's text or the house's draft (`message_text`, `content`), the
- * engine's summaries and context, the review flags and the headers, which
- * carry the subject line.
+ * letter's words only as a D10 grantee (`readsLetters`). Without D10 the row
+ * is rebuilt from the allowlist below, not cut by a list of word columns:
+ * the rows come from `select('*')`, and beside the text and the draft
+ * (`message_text`, `content`) the table holds the engine's summaries and
+ * context, the figures written into the letter (`inserted_insights`), the
+ * dates read out of it, the free-text reasons a letter was discarded or
+ * refused, and the headers with the subject line. A column added later stays
+ * out until it is named here.
  */
 const RAW_ORDER_MONEY_KEYS = [
   "quoted_price",
@@ -165,15 +169,36 @@ const RAW_ORDER_MONEY_KEYS = [
   "final_price",
 ] as const;
 
-export const RAW_LETTER_PROSE_KEYS = [
-  "message_text",
-  "content",
-  "conversation_summary",
-  "rolling_summary",
-  "conversation_context",
-  "constraint_flags",
-  "subject",
-  "email_headers",
+/** What a letter row keeps for a non-holder without D10: who, when, which
+ * way, its state and its order, never a sentence or a figure. */
+export const LETTER_ROW_KEYS_WITHOUT_WORDS = [
+  "id",
+  "restaurant_id",
+  "provider_id",
+  "order_id",
+  "direction",
+  "channel",
+  "status",
+  "delivery_status",
+  "detected_intent",
+  "detected_sentiment",
+  "outbound_email_type",
+  "ai_generated",
+  "llm_model",
+  "confidence_score",
+  "round_count",
+  "thread_id",
+  "thread_key",
+  "gmail_thread_id",
+  "parent_message_id",
+  "order_number_snapshot",
+  "created_at",
+  "sent_at",
+  "received_at",
+  "scheduled_send_at",
+  "summary_updated_at",
+  "providers",
+  "procurement_orders",
 ] as const;
 
 /** An embedded order without its figures; anything else as it came. */
@@ -206,9 +231,11 @@ export function conversationRowsForRole<T extends Record<string, unknown>>(
         kept.constraint_flags = flagsWithoutFigures(kept.constraint_flags);
       return { ...(kept as Partial<T>), amountsWithheld: true as const };
     }
-    for (const key of RAW_LETTER_PROSE_KEYS) delete kept[key];
+    const bare: Record<string, unknown> = {};
+    for (const key of LETTER_ROW_KEYS_WITHOUT_WORDS)
+      if (key in kept) bare[key] = kept[key];
     return {
-      ...(kept as Partial<T>),
+      ...(bare as Partial<T>),
       amountsWithheld: true as const,
       wordsWithheld: true as const,
     };
