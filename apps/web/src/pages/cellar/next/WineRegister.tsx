@@ -32,6 +32,7 @@ import BottleLeaf from './BottleLeaf';
 import PhotographLabel from './PhotographLabel';
 import {
   BOOK_READ_LIMIT,
+  useDebounced,
   useInkOnChange,
   type BottleVM,
   type CellarData,
@@ -226,6 +227,21 @@ export default function WineRegister({ data }: { data: CellarData }) {
 
   const queryClient = useQueryClient();
   const bottles = data.bottles;
+
+  // F-592: while the book is not whole, the typed text is also asked of the
+  // whole library, and what it finds joins the rows read so far.
+  const settledQuery = useDebounced(query.trim());
+  const searchBook = data.searchBook;
+  useEffect(() => {
+    searchBook(settledQuery);
+  }, [searchBook, settledQuery]);
+  const search = data.bookSearch;
+  const pool = useMemo(() => {
+    const hits = search?.hits;
+    if (!bottles || !hits?.length) return bottles;
+    const have = new Set(bottles.map((b) => b.id));
+    return [...bottles, ...hits.filter((b) => !have.has(b.id))];
+  }, [bottles, search?.hits]);
   const leafRef = useRef<HTMLDivElement | null>(null);
 
   // "The page turns" — the leaf's own contents when a different bottle is
@@ -279,9 +295,9 @@ export default function WineRegister({ data }: { data: CellarData }) {
   }, [bottles, country]);
 
   const shown = useMemo(() => {
-    if (!bottles) return null;
+    if (!pool) return null;
     const q = query.trim().toLowerCase();
-    const rows = bottles.filter((b) => {
+    const rows = pool.filter((b) => {
       if (q) {
         const hay = [b.name, b.producer, b.grape, b.region, b.country, b.appellation, b.style]
           .filter(Boolean)
@@ -312,7 +328,25 @@ export default function WineRegister({ data }: { data: CellarData }) {
         typeof av === 'number' && typeof zv === 'number' ? av - zv : String(av).localeCompare(String(zv));
       return asc ? c : -c;
     });
-  }, [bottles, query, style, country, region, vintage, format, cellarFilter, sortKey, asc]);
+  }, [pool, query, style, country, region, vintage, format, cellarFilter, sortKey, asc]);
+
+  // "No match" is said only when the library itself said so (F-592). While the
+  // book is not whole, a miss among the rows read so far is not a miss.
+  const emptyLine = (): string => {
+    const read = (bottles?.length ?? 0).toLocaleString('en-US');
+    const typed = query.trim();
+    if ((bottles?.length ?? 0) === 0) return 'The book is open and empty — the library holds no titles.';
+    if (!data.bookTruncated) return 'No title in the book matches this reading. Widen the filters.';
+    if (!typed) {
+      return `No title among the ${read} read so far matches these filters. Load ${BOOK_READ_LIMIT} more to look further.`;
+    }
+    if (settledQuery !== typed || !search || search.loading) return 'Looking through the whole library…';
+    if (search.error) {
+      return `The library search did not answer, so only the ${read} titles read so far were searched. Load ${BOOK_READ_LIMIT} more to look further.`;
+    }
+    if (search.hits && search.hits.length > 0) return 'No title in the book matches this reading. Widen the filters.';
+    return `Nothing in the library has “${search.term}” in its name or producer, and none of the ${read} titles read so far match it. Widen the filters.`;
+  };
 
   const open = shown?.find((b) => b.id === openId) ?? null;
   const choose = (id: string) => setOpenId((cur) => (cur === id ? null : id));
@@ -611,10 +645,8 @@ export default function WineRegister({ data }: { data: CellarData }) {
           {shown === null ? (
             <p className="cl-said cl-dim">{data.bookError ? 'The register is unread.' : 'Opening the book…'}</p>
           ) : shown.length === 0 ? (
-            <p className="cl-said cl-dim">
-              {(bottles?.length ?? 0) === 0
-                ? 'The book is open and empty — the library holds no titles.'
-                : 'No title in the book matches this reading. Widen the filters.'}
+            <p className="cl-said cl-dim" data-testid="wine-register-empty">
+              {emptyLine()}
             </p>
           ) : shelf ? (
             <div className="cl-shelf">

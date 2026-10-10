@@ -111,9 +111,16 @@ export interface WineQuery {
 
 const YEAR = /^(19|20)\d{2}$/;
 
-/** Lower-case, accents stripped, punctuation to spaces. */
+/**
+ * Lower-case, accents stripped, punctuation to spaces. The Turkish dotless "ı"
+ * has no accent to strip, so it is mapped to "i" first (F-593): without that,
+ * "kavaklidere" never met "Kavaklıdere", and "Kavaklıdere" never met a caps
+ * price list's "KAVAKLIDERE". "İ" goes the same way rather than lowercasing to
+ * an i with a combining dot.
+ */
 export function fold(s: string): string {
   return s
+    .replace(/[ıİ]/g, "i")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
@@ -413,7 +420,8 @@ export interface CatalogueWineSearch {
  * a diacritic becomes `_` (any one character). The pattern only NARROWS; the
  * full rule (`matchesWine`) runs on every row it lets through. A folded word
  * holds only letters and digits, so no `%`, `_` or `\\` of the person's own
- * can reach the pattern.
+ * can reach the pattern. `fold` has already turned a typed "ı" into "i", and
+ * "i" becomes `_` here, so the pattern meets a row spelled with ı, İ, i or I.
  */
 export function accentBlindLike(word: string): string {
   return `%${word.replace(/[aeiouycnszg]/g, "_")}%`;

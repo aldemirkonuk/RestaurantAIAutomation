@@ -268,6 +268,17 @@ describe("the query", () => {
     ).toBe(true);
     expect(accentBlindLike("opus")).toBe("%_p__%");
   });
+
+  it("folds the Turkish dotless i, in the match and in the narrowing (F-593)", () => {
+    const typedAscii = parseWineQuery("kavaklidere")!;
+    const typedTurkish = parseWineQuery("Kavaklıdere")!;
+    expect(matchesWine(typedAscii, "Kavaklıdere Yakut", null)).toBe(true);
+    expect(matchesWine(typedTurkish, "KAVAKLIDERE YAKUT", null)).toBe(true);
+    expect(matchesWine(parseWineQuery("izmir")!, "İZMİR Beyaz", null)).toBe(true);
+    const narrowing = likeToRegex(accentBlindLike(typedTurkish.words[0]));
+    expect(narrowing.test("KAVAKLIDERE YAKUT")).toBe(true);
+    expect(narrowing.test("Kavaklıdere Yakut")).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

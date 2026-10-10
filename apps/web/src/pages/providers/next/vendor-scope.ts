@@ -135,9 +135,10 @@ export function supplierTag(s: MenuSupplier): string {
 // rules for when to ask and how to say the answer.
 // ---------------------------------------------------------------------------
 
-/** Lower-case, accents stripped, punctuation to spaces — the gateway's fold. */
+/** Lower-case, accents stripped, ı/İ to i, punctuation to spaces — the gateway's fold. */
 export function fold(s: string): string {
   return s
+    .replace(/[ıİ]/g, 'i')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
