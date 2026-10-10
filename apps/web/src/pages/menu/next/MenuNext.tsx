@@ -62,7 +62,7 @@ import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
-import { readOptionalAmount } from '@/lib/parseDecimal';
+import { displayGroupMark, readOptionalAmount, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { Wordmark } from '@/components/mudavym';
 import '../../cellar/next/cellar-next.css';
@@ -252,6 +252,8 @@ function flagReason(note: string | null | undefined): { hand: boolean; text: str
 function editChanges(
   line: MenuLine,
   typed: { name: string; category: string; glass: string; bottle: string },
+  group: GroupMark | null = null,
+  display: GroupMark | null = null,
 ): { changes: EditChange[]; error: string | null } {
   const changes: EditChange[] = [];
   const name = typed.name.trim();
@@ -270,8 +272,13 @@ function editChanges(
       if (was !== null) return { changes: [], error: `${FIELD_WORDS[field]} cannot be cleared here. Discard the line to take it off.` };
       continue;
     }
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < 0) return { changes: [], error: `${FIELD_WORDS[field]} must be a number, 0 or more.` };
+    // Read the way the house writes it, as the add form does (F-878): a bare
+    // Number() refused "45,50" and a number input showed it as blank.
+    const read = readOptionalAmount(raw, group);
+    if (!read.ok || read.value === null) return { changes: [], error: `${FIELD_WORDS[field]} must be a number, 0 or more.` };
+    const asked = twoReadingsProblem(raw, group, display);
+    if (asked) return { changes: [], error: asked };
+    const n = read.value;
     if (n !== was) changes.push({ field, value: String(n) });
   }
   return { changes, error: null };
@@ -351,10 +358,15 @@ function AddItemForm({ onAdd, adding, error }: {
   const glassRead = readOptionalAmount(byGlass, group);
   const bottleRead = readOptionalAmount(bottle, group);
   const unreadable = !glassRead.ok ? byGlass : !bottleRead.ok ? bottle : null;
+  // F-878: a figure that reads two ways ("1,250" when the house and the screen
+  // group thousands differently) is asked about, never saved as a guess.
+  const shown = displayGroupMark();
+  const twoWays =
+    unreadable === null ? twoReadingsProblem(byGlass, group, shown) ?? twoReadingsProblem(bottle, group, shown) : null;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !glassRead.ok || !bottleRead.ok) return;
+    if (!name.trim() || !glassRead.ok || !bottleRead.ok || twoWays) return;
     onAdd(
       {
         name: name.trim(),
@@ -421,12 +433,17 @@ function AddItemForm({ onAdd, adding, error }: {
         onChange={(e) => setBottle(e.target.value)}
         style={{ width: 80 }}
       />
-      <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim() || unreadable !== null}>
+      <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim() || unreadable !== null || twoWays !== null}>
         {adding ? 'Adding…' : 'Add to menu'}
       </button>
       {unreadable !== null ? (
         <span role="alert" className="cl-said" style={{ fontSize: 12 }}>
           “{unreadable}” is not a price. Write it like 12,50 or 12.50.
+        </span>
+      ) : null}
+      {twoWays !== null ? (
+        <span role="alert" className="cl-said" style={{ fontSize: 12 }}>
+          {twoWays}
         </span>
       ) : null}
       {error ? (
@@ -451,12 +468,13 @@ function EditRow({ line, saving, onSave, onCancel }: {
     bottle: line.bottle_price === null ? '' : String(line.bottle_price),
   });
   const [error, setError] = useState<string | null>(null);
+  const group = useHouseGroupMark();
   const set = (k: keyof typeof typed) => (e: { target: { value: string } }) => {
     setTyped((t) => ({ ...t, [k]: e.target.value }));
     setError(null);
   };
   const save = () => {
-    const r = editChanges(line, typed);
+    const r = editChanges(line, typed, group, displayGroupMark());
     if (r.error) return setError(r.error);
     onSave(r.changes);
   };
@@ -470,10 +488,10 @@ function EditRow({ line, saving, onSave, onCancel }: {
       </td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
       <td>
-        <input className="cl-field cl-focus cl-num" type="number" min={0} step="0.01" aria-label={`Glass price of ${line.name}`} value={typed.glass} onChange={set('glass')} style={{ width: 80 }} />
+        <input className="cl-field cl-focus cl-num" type="text" inputMode="decimal" aria-label={`Glass price of ${line.name}`} value={typed.glass} onChange={set('glass')} style={{ width: 80 }} />
       </td>
       <td>
-        <input className="cl-field cl-focus cl-num" type="number" min={0} step="0.01" aria-label={`Bottle price of ${line.name}`} value={typed.bottle} onChange={set('bottle')} style={{ width: 80 }} />
+        <input className="cl-field cl-focus cl-num" type="text" inputMode="decimal" aria-label={`Bottle price of ${line.name}`} value={typed.bottle} onChange={set('bottle')} style={{ width: 80 }} />
       </td>
       <td>
         {error ? (

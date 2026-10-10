@@ -15,6 +15,15 @@ const mock = vi.hoisted(() => ({
   amend: vi.fn(),
   retire: vi.fn(),
   setRecipe: vi.fn(),
+  price: null as number | null,
+}));
+
+// The house's thousands mark and the screen's (F-879), held per test.
+const marks = vi.hoisted(() => ({ house: null as '.' | ',' | null, screen: null as '.' | ',' | null }));
+vi.mock('@/hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => marks.house }));
+vi.mock('@/lib/parseDecimal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/parseDecimal')>()),
+  displayGroupMark: () => marks.screen,
 }));
 
 vi.mock('./useCellarNextData', async (orig) => ({
@@ -27,7 +36,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
     data: {
       rows: [{
         id: 'c1', name: 'Negroni', display_name: null, menu_section: null,
-        method: null, glass: null, garnish: null, price: null, description: null,
+        method: null, glass: null, garnish: null, price: mock.price, description: null,
       }],
       count: 1, truncated: false, referenceRows: null, recipesAvailable: false,
       scopeNote: 'Only cocktails this restaurant owns.',
@@ -67,7 +76,13 @@ async function addOne() {
 }
 
 beforeEach(() => {
-  for (const f of Object.values(mock)) f.mockReset();
+  mock.create.mockReset();
+  mock.amend.mockReset();
+  mock.retire.mockReset();
+  mock.setRecipe.mockReset();
+  mock.price = null;
+  marks.house = null;
+  marks.screen = null;
 });
 
 describe('adding a cocktail', () => {
@@ -89,6 +104,51 @@ describe('adding a cocktail', () => {
     draw();
     await addOne();
     expect(screen.getByTestId('cocktail-said')).toHaveTextContent(/Nothing was written — name taken/);
+  });
+});
+
+// F-879: the price was a number input. "12,50" in a browser whose number input
+// does not take a comma came back as '', which an amend sends as null -- the
+// stored price was erased while the page said "amended".
+describe('the price on an amend', () => {
+  async function amendWith(price: string) {
+    mock.price = 18;
+    mock.amend.mockResolvedValue({ id: 'c1' });
+    draw();
+    fireEvent.click(screen.getByText('Negroni'));
+    fireEvent.click(screen.getByRole('button', { name: /^Amend$/ }));
+    const field = screen.getByLabelText('Price');
+    expect(field).toHaveAttribute('type', 'text');
+    expect(field).toHaveValue('18');
+    fireEvent.change(field, { target: { value: price } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Record the amendment/ }));
+    });
+  }
+
+  it('text that is not a price is refused, and the stored price is not touched', async () => {
+    await amendWith('12,5,0');
+    expect(mock.amend).not.toHaveBeenCalled();
+    expect(screen.getByTestId('cocktail-said')).toHaveTextContent(/Nothing was written — “12,5,0” is not a price/);
+    expect(screen.getByLabelText('Price')).toHaveValue('12,5,0');
+  });
+
+  it('"12,50" is read the way the house writes it', async () => {
+    await amendWith('12,50');
+    expect(mock.amend).toHaveBeenCalledWith({ id: 'c1', input: expect.objectContaining({ price: 12.5 }) });
+  });
+
+  it('a figure that reads two ways is asked, and nothing is sent', async () => {
+    marks.house = '.';
+    marks.screen = ',';
+    await amendWith('1,250');
+    expect(mock.amend).not.toHaveBeenCalled();
+    expect(screen.getByTestId('cocktail-said')).toHaveTextContent(/“1,250” could be 1\.25 or 1,250\.00/);
+  });
+
+  it('only a truly empty field clears the price', async () => {
+    await amendWith('');
+    expect(mock.amend).toHaveBeenCalledWith({ id: 'c1', input: expect.objectContaining({ price: null }) });
   });
 });
 

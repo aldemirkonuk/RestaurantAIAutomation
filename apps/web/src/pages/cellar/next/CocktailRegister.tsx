@@ -30,6 +30,8 @@
 import { useState } from 'react';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { isUnconfirmedWrite } from '@/services/api/client';
+import { displayGroupMark, readOptionalAmount, twoReadingsProblem } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import {
   BOOK_LABEL,
   BOOK_ORDER,
@@ -79,7 +81,7 @@ interface Draft extends CocktailInput {
 }
 
 function Field({
-  id, label, value, onChange, placeholder, type = 'text',
+  id, label, value, onChange, placeholder, type = 'text', inputMode,
 }: {
   id: string;
   label: string;
@@ -87,6 +89,7 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  inputMode?: 'decimal';
 }) {
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -97,6 +100,7 @@ function Field({
         id={id}
         className="cl-field cl-focus"
         type={type}
+        inputMode={inputMode}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
@@ -261,6 +265,11 @@ export default function CocktailRegister({
   const { create, amend, retire } = useCocktailWrites();
   const mayPrice = useMayPriceCocktails();
   const [draft, setDraft] = useState<Draft | null>(null);
+  // The price as typed, read only at submit (F-879). A number input hands back
+  // '' for "12,50" in a browser that does not take a comma, and on an amend ''
+  // clears the price -- so a typo erased it while the page said "amended".
+  const [priceText, setPriceText] = useState('');
+  const group = useHouseGroupMark();
   const [editId, setEditId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
@@ -276,17 +285,33 @@ export default function CocktailRegister({
 
   const submit = async () => {
     if (!draft?.name?.trim()) return;
+    let price = draft.price;
+    if (mayPrice) {
+      // Only a truly empty field is "unpriced"; text that is not a price, or
+      // reads two ways (F-832), is refused and nothing is sent.
+      const read = readOptionalAmount(priceText, group);
+      if (!read.ok) {
+        setSaid(`Nothing was written — “${priceText.trim()}” is not a price. Write it like 12,50 or 12.50, or leave it blank if it is unpriced.`);
+        return;
+      }
+      const asked = twoReadingsProblem(priceText, group, displayGroupMark());
+      if (asked) {
+        setSaid(`Nothing was written — ${asked}`);
+        return;
+      }
+      price = read.value ?? undefined;
+    }
     try {
       if (editId) {
         // A blank price on an amend clears it; left undefined, JSON drops the
         // key and the old price would stay while the page says "amended".
         await amend.mutateAsync({
           id: editId,
-          input: { ...draft, price: draft.price === undefined ? null : draft.price },
+          input: { ...draft, price: price === undefined ? null : price },
         });
         setSaid(`“${draft.name.trim()}” was amended on this house’s list.`);
       } else {
-        await create.mutateAsync(draft);
+        await create.mutateAsync({ ...draft, price });
         setSaid(`“${draft.name.trim()}” is on this house’s list.`);
       }
       setDraft(null);
@@ -338,6 +363,7 @@ export default function CocktailRegister({
           data-on={draft !== null && editId === null}
           onClick={() => {
             setDraft(draft && editId === null ? null : {});
+            setPriceText('');
             setEditId(null);
           }}
           style={{ marginLeft: 'auto' }}
@@ -367,9 +393,9 @@ export default function CocktailRegister({
             <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => setDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
             {mayPrice ? (
               <Field
-                id="ck-price" label="Price" type="number"
-                value={draft.price === undefined ? '' : String(draft.price)}
-                onChange={(v) => setDraft({ ...draft, price: v === '' ? undefined : Number(v) })}
+                id="ck-price" label="Price" inputMode="decimal"
+                value={priceText}
+                onChange={setPriceText}
                 placeholder="leave blank if unpriced"
               />
             ) : null}
@@ -508,6 +534,7 @@ export default function CocktailRegister({
                                   garnish: c.garnish ?? undefined,
                                   price: c.price ?? undefined,
                                 });
+                                setPriceText(c.price == null ? '' : String(c.price));
                               }}
                             >
                               <Pencil size={13} aria-hidden />

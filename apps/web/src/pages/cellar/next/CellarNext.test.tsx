@@ -1555,7 +1555,7 @@ describe('CellarNext — the registers that are not wines', () => {
     fireEvent.click(screen.getByText('Negroni'));
     expect(screen.getByRole('button', { name: /Take it off the list/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Amend/ }));
-    expect(screen.getByLabelText('Price')).toHaveValue(18);
+    expect(screen.getByLabelText('Price')).toHaveValue('18');
   });
 
   it('a failed cocktail write shows the gateway sentence, never the transport one (F-150, F-473)', async () => {

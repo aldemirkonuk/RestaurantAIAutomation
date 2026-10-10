@@ -31,6 +31,22 @@ import {
 } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
+
+// The house's thousands mark and the screen's, held per test (F-878). Left
+// undefined, the real readers answer, as every earlier test here expects.
+const marks = vi.hoisted(() => ({
+  house: undefined as '.' | ',' | null | undefined,
+  screen: undefined as '.' | ',' | null | undefined,
+}));
+vi.mock('../../../hooks/useHouseGroupMark', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../hooks/useHouseGroupMark')>();
+  return { useHouseGroupMark: () => (marks.house === undefined ? real.useHouseGroupMark() : marks.house) };
+});
+vi.mock('../../../lib/parseDecimal', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../lib/parseDecimal')>();
+  return { ...real, displayGroupMark: (l?: string) => (marks.screen === undefined ? real.displayGroupMark(l) : marks.screen) };
+});
+
 // The role is set per test: Edit is an owner's or a manager's (F-065).
 const auth = vi.hoisted(() => ({ role: null as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
@@ -152,6 +168,8 @@ beforeEach(() => {
   auth.role = null;
   mockCurrency.mockReset();
   mockCurrency.mockResolvedValue(currency());
+  marks.house = undefined;
+  marks.screen = undefined;
 });
 
 describe('MenuNext — reading', () => {
@@ -329,6 +347,20 @@ describe('MenuNext — a typed price is read the way the house writes it', () =>
     expect(mockAdd.mock.calls[0][1]).toEqual(
       expect.objectContaining({ name: 'Barolo', by_glass_price: 12.5, bottle_price: 1250 }),
     );
+  });
+
+  it('F-878: "1,250" that the house and the screen read two ways is asked, and nothing is added', async () => {
+    // A house whose country is not recorded, on an English screen.
+    marks.house = null;
+    marks.screen = ',';
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Barolo' } });
+    fireEvent.change(screen.getByLabelText('Bottle'), { target: { value: '1,250' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/“1,250” could be 1\.25 or 1,250\.00/);
+    expect(screen.getByRole('button', { name: /Add to menu/ })).toBeDisabled();
+    fireEvent.submit(screen.getByTestId('menu-add-form'));
+    expect(mockAdd).not.toHaveBeenCalled();
   });
 
   it('holds the add and says so when a price is not a number', async () => {
@@ -518,6 +550,35 @@ describe('MenuNext — edit a line in place (F-065)', () => {
     const said = await screen.findByTestId('menu-edit-said');
     expect(said).toHaveTextContent('Bottle price was not saved (the gateway refused). Saved: Section.');
     expect(screen.getByTestId('menu-edit-row')).toBeInTheDocument();
+  });
+
+  it('F-878: the line edit reads "45,50" the way the house writes it, from a text field', async () => {
+    auth.role = 'manager';
+    marks.house = '.';
+    marks.screen = '.';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockResolvedValueOnce({ menuItemId: 'l1', fieldName: 'by_glass_price', newValue: '45.5', priceSync: 'changed' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    const glass = screen.getByLabelText('Glass price of Turkish coffee');
+    expect(glass).toHaveAttribute('type', 'text');
+    expect(glass).toHaveAttribute('inputmode', 'decimal');
+    fireEvent.change(glass, { target: { value: '45,50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockReview).toHaveBeenCalledWith('l1', 'by_glass_price', '45.5'));
+  });
+
+  it('F-878: a line price that reads two ways is asked, and nothing is sent', async () => {
+    auth.role = 'manager';
+    marks.house = null;
+    marks.screen = ',';
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Bottle price of Turkish coffee'), { target: { value: '1,250' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/“1,250” could be 1\.25 or 1,250\.00/);
+    expect(mockReview).not.toHaveBeenCalled();
   });
 
   it('a price cannot be cleared from here, and nothing is sent', async () => {

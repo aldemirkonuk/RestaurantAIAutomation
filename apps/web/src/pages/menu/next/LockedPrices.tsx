@@ -29,7 +29,7 @@ import {
   type PriceLock,
 } from '../../../services/api/pricing';
 import { useAuthStore } from '../../../stores';
-import { parseDecimal, type GroupMark } from '../../../lib/parseDecimal';
+import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '../../../lib/parseDecimal';
 import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark';
 
 const EM = '—';
@@ -102,6 +102,10 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
     e.preventDefault();
     const p = readPrice(price, group);
     if (p === null) return setFormError('Say the new price: a number of 0 or more.');
+    // F-878: "1,250" could be 1.25 or 1250 when the house and the screen
+    // write thousands differently. Ask, never guess (F-799/F-832).
+    const asked = twoReadingsProblem(price, group, displayGroupMark());
+    if (asked) return setFormError(asked);
     change.mutate(p);
   };
   const submitMove = (e: FormEvent) => {
@@ -109,6 +113,8 @@ function LockRow({ l, canManage, onSaid }: { l: PriceLock; canManage: boolean; o
     const p = readPrice(price, group);
     if (!target) return setFormError('Choose the wine this lock moves to.');
     if (p === null) return setFormError('Say the price it is locked at: a move never guesses one.');
+    const asked = twoReadingsProblem(price, group, displayGroupMark());
+    if (asked) return setFormError(asked);
     move.mutate({ target, price: p });
   };
 
