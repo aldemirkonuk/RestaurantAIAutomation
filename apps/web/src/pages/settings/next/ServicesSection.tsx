@@ -26,6 +26,7 @@
  */
 
 import { useNavigate, Link } from 'react-router-dom';
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice';
 import { Action, ConfirmAction, Micro, Note, Register, Row } from './SectionKit';
 import { PROVENANCE_UNKNOWN, SANS } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
@@ -36,6 +37,9 @@ export function ServicesSection({ data }: { data: SettingsNextData }) {
 
   return (
     <>
+      {/* The Connect button below returns here, so the outcome of that flow —
+          connected or refused — is said here too, not dropped (F-763). */}
+      <IntegrationReturnNotice />
       <Note>
         No analytics consent is collected yet. The panel that once asked for one — four switches for email access, web
         access, product analytics and partner sharing — is deleted (2026-09-17, ADR 0149 row 14): nothing in the
