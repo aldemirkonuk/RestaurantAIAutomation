@@ -43,6 +43,54 @@ vi.mock('../../../services/api/canonical', () => ({
   },
 }))
 
+// The delivery this document sits on, for the gates and the thread (F-317).
+vi.mock('../../../services/api/deliveries', () => ({
+  deliveriesApi: {
+    event: vi.fn(async (id: string) => ({
+      id,
+      providerId: null,
+      orderId: null,
+      state: 'DELIVERED',
+      provenance: 'ORDERED',
+      jurisdiction: null,
+      deliveredAt: '2026-08-14T09:00:00Z',
+      agreedAt: null,
+      agreedRule: null,
+      verifiedAt: null,
+      verifiedBy: null,
+      lapsedAt: null,
+      lapseDeemed: null,
+      amendedAt: null,
+    })),
+    proposals: vi.fn(async () => [
+      {
+        id: 'p1',
+        delivery_id: 'del-1',
+        document_id: 'doc-syn',
+        line_no: 1,
+        side: 'vendor',
+        reason: 'SHORT_SHIP',
+        qty_proposed: 10,
+        unit_price_proposed: null,
+        money_at_risk: null,
+        evidence: [],
+        note: null,
+        status: 'open',
+        counters_proposal_id: null,
+        proposed_by: null,
+        proposed_at: '2026-08-14T10:00:00Z',
+        responded_at: null,
+        responded_by: null,
+      },
+    ]),
+    agree: vi.fn(),
+    verify: vi.fn(),
+    propose: vi.fn(),
+    counter: vi.fn(),
+    accept: vi.fn(),
+  },
+}))
+
 import { AuthContext } from '@/contexts/AuthContext'
 import { CanonicalDocumentPage } from './CanonicalDocumentPage'
 
@@ -548,5 +596,69 @@ describe('CanonicalDocumentPage', () => {
     hold(/Type a value this field can take/)
     expect(mintCorrectMock).not.toHaveBeenCalled()
     expect(correctMock).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * F-317 (2026-10-08): agreeing, verifying and the positions on a delivery
+ * settle what the house pays its vendor, and the gateway refuses them to
+ * anyone but an owner or a manager. Staff see the gates and the thread with no
+ * control on them; a manager keeps every one.
+ */
+describe('CanonicalDocumentPage — who settles a delivery (F-317)', () => {
+  const onOneDelivery = () =>
+    response({
+      deliveries: [
+        {
+          deliveryId: 'del-1',
+          state: 'DELIVERED',
+          provenance: 'ORDERED',
+          deliveredAt: '2026-08-14T09:00:00Z',
+          agreedAt: null,
+          verifiedAt: null,
+          jurisdiction: null,
+          providerId: null,
+          selectedRole: 'invoice',
+          documents: [],
+        },
+      ],
+    })
+
+  const mountAs = (role: string) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(
+      <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: role, user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>,
+    )
+  }
+
+  it('[REVERT-FAILS] draws staff the gates and the thread with no control on them', async () => {
+    documentMock.mockResolvedValue(onOneDelivery())
+    mountAs('staff')
+    await waitFor(() => expect(screen.getByTestId('delivery-gates')).toBeTruthy())
+    // The vendor's open position is drawn: the thread is read, not empty.
+    await waitFor(() => expect(screen.getByTestId('proposal-row')).toBeTruthy())
+    expect(screen.queryByTestId('agree-button')).toBeNull()
+    expect(screen.queryByTestId('accept-proposal')).toBeNull()
+    expect(screen.queryByTestId('counter-proposal')).toBeNull()
+    expect(screen.queryByTestId('open-proposal-form')).toBeNull()
+    expect(screen.getByTestId('delivery-settle-held').textContent).toMatch(
+      /are for a manager or an owner/,
+    )
+  })
+
+  it('offers a manager the gate and the thread’s acts', async () => {
+    documentMock.mockResolvedValue(onOneDelivery())
+    mountAs('manager')
+    await waitFor(() => expect(screen.getByTestId('agree-button')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('accept-proposal')).toBeTruthy())
+    expect(screen.getByTestId('counter-proposal')).toBeTruthy()
+    expect(screen.getByTestId('open-proposal-form')).toBeTruthy()
+    expect(screen.queryByTestId('delivery-settle-held')).toBeNull()
   })
 })

@@ -21,6 +21,7 @@ import { mapApiWinesToUiWines } from "../../lib/wine-library";
 import { MenuScannerFlow } from "../scanner/MenuScannerFlow";
 import { summarizeMenuScanPersist } from "../../lib/menuScannerPersistence";
 import { useStorageLocations } from "../../hooks/useStorageLocations";
+import { useMayActForTheHouse } from "../../hooks/useMayActForTheHouse";
 import {
   COMMON_BOTTLE_SIZES,
   COMMON_POUR_SIZES,
@@ -69,6 +70,10 @@ export function AddWineToInventoryModal({
   onAddWine,
 }: AddWineToInventoryModalProps) {
   const { measurementUnit } = useRestaurantSettingsStore();
+  // What the house paid for a wine is an owner's or a manager's to set
+  // (F-312): the gateway refuses a cost, or a free sample, from anyone else.
+  // Staff add the wine with its cost left unknown.
+  const canSetCost = useMayActForTheHouse();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabType>("search");
   const [searchQuery, setSearchQuery] = useState("");
@@ -209,7 +214,9 @@ export function AddWineToInventoryModal({
         //                    provenance. Sending 0 here is what produced
         //                    `0.0 / 'manual'` — an invented price wearing a
         //                    provenance that says a human supplied it.
-        ...(isSample
+        ...(!canSetCost
+          ? {}
+          : isSample
           ? { isSample: true, costPerBottle: 0 }
           : costPerBottle === null
             ? {}
@@ -513,6 +520,15 @@ export function AddWineToInventoryModal({
                     </div>
 
                     {/* Cost per bottle / sample toggle */}
+                    {!canSetCost ? (
+                      <p
+                        data-testid="cost-held"
+                        className="text-xs text-gray-500"
+                      >
+                        What the house paid for this wine is entered by a
+                        manager or an owner. It is recorded as unknown for now.
+                      </p>
+                    ) : (
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-medium text-gray-700">
@@ -598,6 +614,7 @@ export function AddWineToInventoryModal({
                         </>
                       )}
                     </div>
+                    )}
 
                     {/* Threshold */}
                     <div>
