@@ -278,7 +278,7 @@ describe("payment terms are not inferable, and the bundle says so", () => {
       { zone: "UTC", isColumnDefault: false },
     );
     expect(bundle.paymentTerms.known).toBe(false);
-    expect(bundle.paymentTerms.reason).toMatch(/no table records when a vendor invoice/);
+    expect(bundle.paymentTerms.reason).toMatch(/no invoice here records when it was paid/);
     expect(bundle.ordersRead).toBe(1);
     expect(bundle.zone.zone).toBe("UTC");
   });

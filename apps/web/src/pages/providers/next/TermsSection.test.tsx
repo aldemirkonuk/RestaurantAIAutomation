@@ -32,8 +32,11 @@ vi.mock('../../../services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : 'unknown error'),
 }));
 
+// VEN-W30: a manager by default, so the write controls are offered; the
+// staff case sets `auth.role = 'staff'` and is reset in beforeEach.
+const auth = vi.hoisted(() => ({ role: 'manager' as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1' }),
+  useAuth: () => ({ activeRestaurantId: 'r1', activeRole: auth.role, user: { role: auth.role } }),
 }));
 
 import { TermsSection } from './TermsSection';
@@ -83,6 +86,7 @@ function mount() {
 beforeEach(() => {
   api.get.mockReset();
   api.put.mockReset();
+  auth.role = 'manager';
 });
 
 describe('TermsSection', () => {
@@ -111,7 +115,7 @@ expect(screen.getByText(fmtMoney(250, 'USD'))).toBeInTheDocument();
     mount();
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('could not be read');
-    expect(alert).toHaveTextContent('gateway timed out');
+    expect(alert).not.toHaveTextContent('gateway timed out');
     expect(alert).toHaveTextContent('not the same as this vendor having no terms');
     expect(screen.queryByText('Record what they said')).not.toBeInTheDocument();
   });
@@ -216,5 +220,22 @@ expect(screen.getByText(fmtMoney(250, 'USD'))).toBeInTheDocument();
     api.get.mockResolvedValue({ data: register({ vendors: [] }) });
     mount();
     expect(await screen.findByText(/holds no row for Bodega Álvaro/)).toBeInTheDocument();
+  });
+});
+
+describe('TermsSection for staff (VEN-W30, "Staff read only")', () => {
+  it('shows the terms and their sources, and offers no way to record them', async () => {
+    auth.role = 'staff';
+    api.get.mockResolvedValue({ data: register() });
+    mount();
+    expect(await screen.findByText('14:00, the day before')).toBeInTheDocument();
+    expect(screen.getAllByText('stated by the house')).toHaveLength(5);
+    expect(screen.queryByRole('button', { name: 'Record what they said' })).toBeNull();
+  });
+
+  it('a manager is offered the same button', async () => {
+    api.get.mockResolvedValue({ data: register() });
+    mount();
+    expect(await screen.findByRole('button', { name: 'Record what they said' })).toBeInTheDocument();
   });
 });

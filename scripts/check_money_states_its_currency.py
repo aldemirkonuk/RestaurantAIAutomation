@@ -87,6 +87,11 @@ ALLOWLIST: dict[str, str] = {
     # assumed (2026-09-18).
     "apps/web/src/pages/promotions/next/promotions-format.test.ts": "fixtures state each line's own currency (USD/EUR) so the null-currency and mismatched-currency assertions have a premise; the formatter itself takes currency from data, never a literal",
     "apps/web/src/pages/promotions/next/PromotionsNext.test.tsx": "same fixtures one layer up, for the page-level render assertions (the −4.6% figure, the code chip) that need a real currency to format against",
+    # Test-only: the vendor's usual-currency chooser (VEN-W13, ADR 0319). The
+    # literal is the PATCH body a person's "Keep USD" tap must send, asserted
+    # against invoices whose own pages printed USD; nothing here renders money
+    # (2026-10-08, fix/review-vendors).
+    "apps/web/src/pages/providers/next/UsualCurrencySection.test.tsx": "asserts the request body a person's tap sends for the code their vendor's invoices printed; renders no money figure",
     # The table itself: naming USD is what it is for.
     "apps/web/src/lib/currency.ts": "the ISO 4217 table and the formatter that refuses to assume one",
     "apps/web/src/lib/countries.ts": "the one country table: `currency: 'USD'` there is Ecuador, El Salvador and the United States, which is the fact the table exists to hold",

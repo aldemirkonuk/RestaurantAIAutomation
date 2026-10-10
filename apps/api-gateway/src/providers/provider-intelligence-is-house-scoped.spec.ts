@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  HttpException,
+  NotFoundException,
+} from "@nestjs/common";
 import { ProviderIntelligenceController } from "./provider-intelligence.controller";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 
@@ -359,10 +363,25 @@ const seed = () => ({
   ],
 });
 
-function controllerFor(supabase: { from: (t: string) => unknown }) {
+/**
+ * The role read the confirm gate asks (VEN-W14b). These tenancy tests sign in
+ * as a manager unless they say otherwise, so the role gate never stands in for
+ * the house fence they are about.
+ */
+function organizationsAs(role: string | null) {
+  return {
+    resolveRestaurantRole: jest.fn().mockResolvedValue(role),
+  };
+}
+
+function controllerFor(
+  supabase: { from: (t: string) => unknown },
+  organizations = organizationsAs("manager"),
+) {
   return new ProviderIntelligenceController(
     new ProviderIntelligenceService({ supabase } as never),
     { supabase } as never,
+    organizations as never,
   );
 }
 
@@ -672,5 +691,94 @@ describe("a session that names no house is refused on every route", () => {
       controller.getAllActivePromotions({ userId: "u", restaurantId: "" }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(supabase.queried).toEqual([]);
+  });
+});
+
+/**
+ * VEN-W14b (founder, 2026-10-01): confirming a fact learned from a vendor's
+ * mail is an owner's or a manager's act. The gateway refuses every other role
+ * with 403 BEFORE the fact is written; the page hides the button, which is a
+ * courtesy and not the fence.
+ */
+describe("confirming a learned fact is owners and managers only", () => {
+  function setupAs(role: string | null) {
+    const supabase = makeSupabase(seed());
+    const organizations = organizationsAs(role);
+    const service = new ProviderIntelligenceService({ supabase } as never);
+    const verify = jest.spyOn(service, "verifyKnowledge");
+    const controller = new ProviderIntelligenceController(
+      service,
+      { supabase } as never,
+      organizations as never,
+    );
+    return { supabase, controller, organizations, verify };
+  }
+
+  it.each(["owner", "manager"])("%s confirms, recorded against them", async (role) => {
+    const { controller, supabase, organizations, verify } = setupAs(role);
+
+    await expect(controller.verifyKnowledge(FACT_A, userA)).resolves.toBeTruthy();
+
+    expect(organizations.resolveRestaurantRole).toHaveBeenCalledWith("user-a", HOUSE_A);
+    expect(verify).toHaveBeenCalledWith(FACT_A, "user-a", HOUSE_A);
+    const row = supabase.tables.provider_knowledge.find((r) => r.id === FACT_A);
+    expect(row?.verified).toBe(true);
+    expect(row?.verified_by).toBe("user-a");
+  });
+
+  it.each([["staff"], ["viewer"], [null]])(
+    "role %s is refused with 403 and the fact is not changed",
+    async (role) => {
+      const { controller, supabase, verify } = setupAs(role);
+
+      const call = controller.verifyKnowledge(FACT_A, userA);
+      await expect(call).rejects.toBeInstanceOf(HttpException);
+      await expect(controller.verifyKnowledge(FACT_A, userA)).rejects.toMatchObject({
+        status: 403,
+      });
+
+      expect(verify).not.toHaveBeenCalled();
+      expect(supabase.queried).not.toContain("provider_knowledge");
+      const row = supabase.tables.provider_knowledge.find((r) => r.id === FACT_A);
+      expect(row?.verified).toBe(false);
+      expect(row?.verified_by).toBeUndefined();
+    },
+  );
+
+  it("the confirmed fact then reads back with the confirmer's name and date", async () => {
+    const supabase = makeSupabase({
+      ...seed(),
+      users: [{ user_id: "user-a", name: "Aslı Kaya" }],
+    });
+    const controller = controllerFor(supabase, organizationsAs("owner"));
+
+    await controller.verifyKnowledge(FACT_A, userA);
+    const graph = await controller.getKnowledge(PROV_A, undefined, userA);
+
+    expect(graph.pricing[0]).toMatchObject({
+      verified: true,
+      verifiedByName: "Aslı Kaya",
+      verifiedAt: expect.any(String),
+    });
+  });
+
+  it("a confirmer whose name cannot be found leaves the name off, never the fact", async () => {
+    const supabase = makeSupabase(seed());
+    const controller = controllerFor(supabase, organizationsAs("owner"));
+
+    await controller.verifyKnowledge(FACT_A, userA);
+    const graph = await controller.getKnowledge(PROV_A, undefined, userA);
+
+    expect(graph.pricing[0]).toMatchObject({ verified: true, verifiedByName: null });
+  });
+
+  it("a session that names no person is refused before the role is asked", async () => {
+    const { controller, organizations, verify } = setupAs("owner");
+
+    await expect(
+      controller.verifyKnowledge(FACT_A, { restaurantId: HOUSE_A }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(organizations.resolveRestaurantRole).not.toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
   });
 });

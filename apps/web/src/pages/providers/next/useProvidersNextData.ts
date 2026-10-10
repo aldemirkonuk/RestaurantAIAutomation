@@ -9,7 +9,7 @@
  *   last contact   — lastContactDate, said plainly when absent.
  *
  * Nothing here invents a "behavioural" figure the backend does not hold —
- * the digital twin lives in the sheet via ProviderIntelligencePanel, which
+ * what their mail has told us lives in the sheet via LearnedSection, which
  * fetches its own evidence.
  */
 

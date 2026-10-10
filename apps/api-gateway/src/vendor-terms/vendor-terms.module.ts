@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
+import { OrganizationsModule } from "../organizations/organizations.module";
 import { VendorTermsController } from "./vendor-terms.controller";
 import { VendorTermsService } from "./vendor-terms.service";
 
@@ -18,7 +19,8 @@ import { VendorTermsService } from "./vendor-terms.service";
  * without the auditor would allow an unaudited path to exist by accident.
  */
 @Module({
-  imports: [DatabaseModule, AuthModule, SettingsAuditModule],
+  // OrganizationsModule: the role half of VEN-W30's write gate.
+  imports: [DatabaseModule, AuthModule, SettingsAuditModule, OrganizationsModule],
   controllers: [VendorTermsController],
   providers: [VendorTermsService],
   exports: [VendorTermsService],

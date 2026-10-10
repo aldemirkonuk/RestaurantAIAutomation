@@ -18,8 +18,9 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useAuthStore } from '../../../stores';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 
@@ -71,6 +72,84 @@ describe('the usual-currency coverage panel', () => {
     expect(opened).toEqual(['b']);
   });
 
+  it('counts again when a vendor joins the book, so "of your 3" does not outlive a fourth', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { stated: 1, total: 3, unstated: [], sentence: '1 of your 3 vendors has one.' } })
+      .mockResolvedValueOnce({ data: { stated: 1, total: 4, unstated: [], sentence: '1 of your 4 vendors has one.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (ids: string[]) => (
+      <QueryClientProvider client={client}>
+        <UsualCurrencyCoveragePanel knownIds={new Set(ids)} onOpenVendor={() => {}} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(panel(['a', 'b', 'c']));
+    expect(await screen.findByText('1 of your 3 vendors has one.')).toBeInTheDocument();
+    rerender(panel(['a', 'b', 'c', 'd']));
+    expect(await screen.findByText('1 of your 4 vendors has one.')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  // VEN-W38: one read per page load. Before the book answered, the size was 0
+  // and the panel asked anyway, then asked again when the cards arrived.
+  it('waits for the book before counting, so a page load reads it once', async () => {
+    api.get.mockResolvedValue({ data: { stated: 1, total: 3, unstated: [], sentence: '1 of your 3 vendors has one.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (ids: string[], bookSettled: boolean) => (
+      <QueryClientProvider client={client}>
+        <UsualCurrencyCoveragePanel knownIds={new Set(ids)} onOpenVendor={() => {}} bookSettled={bookSettled} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(panel([], false));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.get).not.toHaveBeenCalled();
+    rerender(panel(['a', 'b', 'c'], true));
+    expect(await screen.findByText('1 of your 3 vendors has one.')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  // VEN-W38: two houses with the same number of vendors must not share a count.
+  it('counts again on a house switch even when the book is the same size', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { stated: 1, total: 2, unstated: [], sentence: 'House one: 1 of 2.' } })
+      .mockResolvedValueOnce({ data: { stated: 2, total: 2, unstated: [], sentence: 'House two: 2 of 2.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (
+      <QueryClientProvider client={client}>
+        <UsualCurrencyCoveragePanel knownIds={new Set(['a', 'b'])} onOpenVendor={() => {}} />
+      </QueryClientProvider>
+    );
+    act(() => useAuthStore.setState({ activeRestaurantId: 'h1' }));
+    render(panel);
+    expect(await screen.findByText('House one: 1 of 2.')).toBeInTheDocument();
+    act(() => useAuthStore.setState({ activeRestaurantId: 'h2' }));
+    expect(await screen.findByText('House two: 2 of 2.')).toBeInTheDocument();
+    expect(screen.queryByText('House one: 1 of 2.')).not.toBeInTheDocument();
+  });
+
+  // VEN-W38: a house switch whose book is a different size reads the new
+  // house once — the size watch asks again only inside the same house.
+  it('reads a new house once even when its book is a different size', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { stated: 1, total: 2, unstated: [], sentence: 'House one: 1 of 2.' } })
+      .mockResolvedValue({ data: { stated: 2, total: 3, unstated: [], sentence: 'House two: 2 of 3.' } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (ids: string[], bookSettled: boolean) => (
+      <QueryClientProvider client={client}>
+        <UsualCurrencyCoveragePanel knownIds={new Set(ids)} onOpenVendor={() => {}} bookSettled={bookSettled} />
+      </QueryClientProvider>
+    );
+    act(() => useAuthStore.setState({ activeRestaurantId: 'h1' }));
+    const { rerender } = render(panel(['a', 'b'], true));
+    expect(await screen.findByText('House one: 1 of 2.')).toBeInTheDocument();
+    // The switch: the new house's book is loading, then answers with three.
+    act(() => useAuthStore.setState({ activeRestaurantId: 'h2' }));
+    rerender(panel([], false));
+    rerender(panel(['x', 'y', 'z'], true));
+    expect(await screen.findByText('House two: 2 of 3.')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
   it('says NONE of them in words rather than rendering an empty panel', async () => {
     // A panel that draws nothing when the answer is "none of them" cannot be
     // told apart from one that failed to load.
@@ -101,6 +180,10 @@ describe('the usual-currency coverage panel', () => {
     expect(alert).toHaveTextContent('not a house whose vendors have stated none');
     expect(screen.queryByTestId('usual-currency-unstated')).not.toBeInTheDocument();
     expect(screen.queryByTestId('usual-currency-coverage-sentence')).not.toBeInTheDocument();
+    // VEN-W29: a failed read offers a retry, and the retry reads again.
+    const before = api.get.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(before));
   });
 
   it('names a vendor holding a value that is not a currency', async () => {
@@ -132,7 +215,7 @@ describe('the usual-currency coverage panel', () => {
       },
     });
     renderIt(['b']);
-    expect(await screen.findByText(/Retired Imports \(not in the list below\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Retired Imports — not among the vendors shown here, so it cannot be opened from this note/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Retired Imports/ })).not.toBeInTheDocument();
   });
 
@@ -142,6 +225,6 @@ describe('the usual-currency coverage panel', () => {
     await waitFor(() =>
       expect(screen.getByText(/Counting how many vendors/)).toBeInTheDocument(),
     );
-    expect(screen.getByText('Usual currencies stated')).toBeInTheDocument();
+    expect(screen.getByText('Usual currency')).toBeInTheDocument();
   });
 });

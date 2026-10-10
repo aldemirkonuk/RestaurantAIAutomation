@@ -15,6 +15,8 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { TenantGuard } from "../common/tenant/tenant.guard";
 import { SetVendorTermsDto } from "./dto/vendor-terms.dto";
 import { VendorTermsService, type VendorTermsReadout } from "./vendor-terms.service";
+import { OrganizationsService } from "../organizations/organizations.service";
+import { assertVendorWriter } from "../providers/vendor-write-gate";
 
 /**
  * The terms register.
@@ -27,19 +29,22 @@ import { VendorTermsService, type VendorTermsReadout } from "./vendor-terms.serv
  * inside the row filter (`VendorTermsService.requireProvider`), because a guard
  * that scopes the RESTAURANT does not by itself scope the PROVIDER.
  *
- * ROLE. Deliberately not owner-only. A cutoff is operational knowledge that the
- * person who phones the vendor should be able to write down the moment they are
- * told it; gating it behind ownership is how a settings page ends up describing
- * a world nobody kept up to date. Every write carries its author into
- * `system_audit_log`, which is the control — record it, do not restrict it, the
- * same call ADR 0088 made for access changes.
+ * ROLE. Not owner-only, and not open to every member either. This header used
+ * to say "record it, do not restrict it" so the person who phones the vendor
+ * could write a cutoff down the moment they were told it. VEN-W30 (founder,
+ * 2026-10-08, "Staff read only") replaced that: staff read the vendor book and
+ * every write to it — terms included — is a manager's or an owner's act, asked
+ * through `assertVendorWriter`. The author still goes into `system_audit_log`.
  */
 @ApiTags("settings")
 @ApiBearerAuth("JWT-auth")
 @Controller("vendor-terms")
 @UseGuards(JwtAuthGuard, TenantGuard)
 export class VendorTermsController {
-  constructor(private readonly terms: VendorTermsService) {}
+  constructor(
+    private readonly terms: VendorTermsService,
+    private readonly organizations: OrganizationsService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -87,6 +92,20 @@ export class VendorTermsController {
         HttpStatus.BAD_REQUEST,
       );
     }
+    const author = req.user?.userId;
+    if (!author) {
+      throw new HttpException(
+        "This session names no person, so nothing was recorded.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(
+      this.organizations,
+      author,
+      restaurantId,
+      "Recording a vendor's terms",
+    );
     try {
       // The author comes from the JWT and nowhere else. `public.users.user_id`,
       // never `auth.users` — the two are disjoint and no FK would catch it.
@@ -94,7 +113,7 @@ export class VendorTermsController {
         restaurantId,
         providerId,
         dto,
-        req.user?.userId ?? null,
+        author,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;

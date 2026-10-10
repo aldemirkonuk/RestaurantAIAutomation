@@ -6,6 +6,7 @@
  * reads as zero and never a blank that reads as clean.
  */
 
+import { houseDayInYear, houseSpan, houseYear } from '../house-day';
 import { SC } from './sc-copy';
 import type { HouseClock, MeasureKey, MeasureResult, Money, WindowTally } from './scorecard-types';
 
@@ -17,10 +18,16 @@ import type { HouseClock, MeasureKey, MeasureResult, Money, WindowTally } from '
 export interface Formats {
   locale: string | undefined;
   zone: string | undefined;
+  /**
+   * The house's year of the window's end, when known — a row in that year
+   * prints "Aug 16", any other "Aug 16, 2025" (VEN-W23).
+   */
+  year?: number | null;
 }
 
-export function formatsOf(house: HouseClock | null | undefined): Formats {
-  return { locale: house?.locale ?? undefined, zone: house?.zone ?? undefined };
+export function formatsOf(house: HouseClock | null | undefined, windowTo?: string | null): Formats {
+  const zone = house?.zone ?? undefined;
+  return { locale: house?.locale ?? undefined, zone, year: windowTo ? houseYear(windowTo, zone) : null };
 }
 
 const READER: Formats = { locale: undefined, zone: undefined };
@@ -106,18 +113,19 @@ export function rowsLabel(m: Pick<MeasureResult, 'key' | 'rows'>): string {
   return `${m.rows} ${m.rows === 1 ? one : many}`;
 }
 
-function dayMonth(iso: string, f: Formats): string {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return iso;
-  return new Intl.DateTimeFormat(f.locale, { day: '2-digit', month: '2-digit', timeZone: f.zone }).format(d);
-}
+/*
+ * DATES ARE WORDS (VEN-W23, founder 2026-10-01): the house's own calendar day
+ * in English — "Jul 3 – Oct 1, 2026", "Aug 16" — whatever the house's locale,
+ * so "07/03" can never be read as March 7th. Money and numbers above keep the
+ * house's locale. With no house zone the day is UTC and the window says so.
+ */
 
-/** The window's two ends, all numerals, in the house's order and on its clock. */
+/** The window's two ends, in words, on the house's clock; the year printed at least once. */
 export function windowLabel(fromIso: string, toIso: string, f: Formats = READER): string {
-  return `${dayMonth(fromIso, f)} – ${dayMonth(toIso, f)}`;
+  return houseSpan(fromIso, toIso, f.zone) ?? `${fromIso} – ${toIso}`;
 }
 
-/** An entry's day, all numerals, in the house's order and on its clock. */
+/** An entry's day, in words, on the house's clock; the year added when it is not the window's. */
 export function dayLabel(iso: string, f: Formats = READER): string {
-  return dayMonth(iso, f);
+  return houseDayInYear(iso, f.zone, f.year) ?? iso;
 }

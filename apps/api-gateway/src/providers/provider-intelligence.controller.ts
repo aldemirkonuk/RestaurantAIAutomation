@@ -16,6 +16,9 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 import { DatabaseService } from "../database/database.service";
+import { OrganizationsService } from "../organizations/organizations.service";
+import { roleSatisfies } from "../procurement/order-approval-gate";
+import { assertVendorWriter } from "./vendor-write-gate";
 
 type AuthUser = { userId?: string; restaurantId?: string | null };
 
@@ -29,6 +32,18 @@ function houseOf(user: AuthUser | undefined): string {
     throw new ForbiddenException("This session names no restaurant.");
   }
   return user.restaurantId;
+}
+
+/**
+ * The caller's person, for the acts that are recorded against somebody. A
+ * verified token always carries `userId`; one that does not is refused
+ * rather than recorded as `undefined`. (Same helper as providers.controller.ts.)
+ */
+function actorOf(user: AuthUser | undefined): string {
+  if (!user?.userId) {
+    throw new ForbiddenException("This session names no person.");
+  }
+  return user.userId;
 }
 
 /** A status the service chose deliberately survives; anything else is a 500. */
@@ -55,6 +70,10 @@ export class ProviderIntelligenceController {
   constructor(
     private readonly intelligenceService: ProviderIntelligenceService,
     private readonly databaseService: DatabaseService,
+    // The role half of the confirm gate (VEN-W14b, founder 2026-10-01): the
+    // same `resolveRestaurantRole` + `roleSatisfies` pair the usual-currency
+    // write in providers.controller.ts asks, never a second implementation.
+    private readonly organizations: OrganizationsService,
   ) {}
 
   // =========================================================================
@@ -99,12 +118,32 @@ export class ProviderIntelligenceController {
   }
 
   @Put(":id/knowledge/:knowledgeId/verify")
-  @ApiOperation({ summary: "Verify an extracted knowledge fact" })
+  @ApiOperation({
+    summary: "Confirm a fact learned from a vendor's mail",
+    description:
+      "Owners and managers only (VEN-W14b); any other role is refused with 403 and the fact is not changed.",
+  })
   async verifyKnowledge(
     @Param("knowledgeId") knowledgeId: string,
     @CurrentUser() user: AuthUser,
   ) {
     try {
+      const restaurantId = houseOf(user);
+      const actor = actorOf(user);
+      // VEN-W14b (founder, 2026-10-01): confirming what a vendor's mail told
+      // this house is an owner's or a manager's act. `null` means "not proven
+      // to hold any role" — a failed read and a person with no row look the
+      // same here, and neither may pass. The fact is not touched when refused.
+      const role = await this.organizations.resolveRestaurantRole(
+        actor,
+        restaurantId,
+      );
+      if (!roleSatisfies(role, "manager"))
+        throw new HttpException(
+          `Confirming what a vendor's mail told this house is a manager's or an owner's decision. ` +
+            `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was confirmed. Ask a manager or an owner to confirm it.`,
+          HttpStatus.FORBIDDEN,
+        );
       // `userId`, not `id`. `JwtStrategy.validate` returns `userId` and never
       // `id` (auth/strategies/jwt.strategy.ts), so reading `id` off the user,
       // as this line used to, wrote `verified_by: undefined` on every verification — ADR 0147's
@@ -112,8 +151,8 @@ export class ProviderIntelligenceController {
       // an actor.
       return await this.intelligenceService.verifyKnowledge(
         knowledgeId,
-        user.userId as string,
-        houseOf(user),
+        actor,
+        restaurantId,
       );
     } catch (error) {
       rethrow(error, "Failed to verify knowledge");
@@ -325,6 +364,8 @@ export class ProviderIntelligenceController {
     @Body() body: { outreachType?: string; topic?: string },
     @CurrentUser() user: AuthUser,
   ) {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Starting a conversation with a vendor");
     try {
       const restaurantId = houseOf(user);
       // The vendor must be this house's (ADR 0147). Without this, a house
@@ -360,6 +401,8 @@ export class ProviderIntelligenceController {
     @Param("id") providerId: string,
     @CurrentUser() user: AuthUser,
   ) {
+    // VEN-W30: staff read the vendor book; changing it is a manager's or an owner's act.
+    await assertVendorWriter(this.organizations, actorOf(user), houseOf(user), "Starting a vendor's onboarding conversation");
     try {
       const restaurantId = houseOf(user);
       // Same fence as outreach: another house's vendor is a 404 (ADR 0147).

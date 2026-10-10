@@ -17,13 +17,15 @@
  * unreachable ≠ zero open orders); a vendor never contacted says so.
  */
 
+import { useCanChangeVendors } from './useCanChangeVendors';
+import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Wordmark } from "@/components/mudavym";
+import { Stub, Wordmark } from "@/components/mudavym";
 import type { Provider } from "../../../services/api/providers";
 import { ink } from "../../../lib/mudavym/motion";
 import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from "./pv-format";
 import { TwinSheet } from "./TwinSheet";
-import { NewVendorSheet } from "./NewVendorSheet";
+import { NewVendorSheet, type VendorDraft } from "./NewVendorSheet";
 import { businessTypeLabel } from "./VendorRecordEdit";
 import { UsualCurrencyCoveragePanel } from "./UsualCurrencyCoveragePanel";
 import {
@@ -79,9 +81,34 @@ function writeViewToUrl(view: ProvidersView) {
  * Read from the URL once, at mount, rather than held in router state: the two
  * callers are this page's own prompt panel (which opens the sheet directly) and
  * the order sheet's empty currency field on another route, which arrives as a
- * navigation. Nothing here writes the URL back, so a person who closes the sheet
- * is not fighting a param to keep it closed.
+ * navigation. Since VEN-W36 the page writes it while a sheet is open and removes it
+ * on close (`writeVendorToUrl`), so a person who closes the sheet is still
+ * not fighting a param to keep it closed.
  */
+/**
+ * VEN-W36: the open sheet is in the address while it is open (ADR 0160 §6) —
+ * written on open, removed on close, so a reload reopens it and closing is
+ * never a fight with a param. `history.state.vendorAt` says whether it was
+ * opened FOR the currency control; a reload of a sheet opened from a card
+ * reopens it at the top, not scrolled to currency.
+ */
+function writeVendorToUrl(id: string | null, at: 'currency' | 'sheet') {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("vendor", id);
+    else url.searchParams.delete("vendor");
+    const state = { ...(window.history.state ?? {}), vendorAt: id ? at : undefined };
+    window.history.replaceState(state, "", url.toString());
+  } catch {
+    /* an address the page cannot rewrite keeps the sheet in state only */
+  }
+}
+function openedAtFromHistory(): boolean {
+  if (typeof window === "undefined") return true;
+  return (window.history.state as { vendorAt?: string } | null)?.vendorAt !== "sheet";
+}
+
 function vendorFromUrl(): string | null {
   if (typeof window === "undefined") return null;
   const asked = new URLSearchParams(window.location.search).get("vendor");
@@ -135,7 +162,7 @@ function BucketCard({
           }}
         >
           {/* "Not stated" when nobody stated one (founder answer 12, 2026-09-21) — never blank, never a guessed type. */}
-          {businessTypeLabel(p.primaryBusinessType)}
+          {(p.primaryBusinessType ?? '').trim() === '' ? 'Type not stated' : businessTypeLabel(p.primaryBusinessType)}
         </span>
         <span
           style={{
@@ -185,7 +212,7 @@ function BucketCard({
           <dd style={{ margin: 0 }}>{fmtDays(vm.leadTimeDays)}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: "var(--ink-4, #665D50)" }}>Contact</dt>
+          <dt style={{ color: "var(--ink-4, #665D50)" }}>Last contact</dt>
           <dd style={{ margin: 0 }}>{fmtLastContact(vm.lastContact)}</dd>
         </div>
         <div className="flex justify-between gap-3" data-testid="pv-card-did">
@@ -222,6 +249,19 @@ export default function ProvidersNext() {
   );
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
   const [adding, setAdding] = useState(false);
+  /**
+   * VEN-W35: a half-written vendor the person walked away from (Esc or a click
+   * outside). The sheet tore; the words wait here, on a stub under the header,
+   * until they are resumed or discarded (ADR 0112, sketch 103 · 1b). `n` keys
+   * the stub, so a second tear is a fresh stub, not a "gone" one.
+   */
+  const { activeRestaurantId, user: me } = useAuth();
+  const house = activeRestaurantId || me?.restaurantId || '';
+  const [heldAt, setHeld] = useState<{ n: number; house: string; draft: VendorDraft; discarded: boolean } | null>(null);
+  // A house switch never shows the previous house's half-written vendor.
+  const held = heldAt && heldAt.house === house ? heldAt : null;
+  const [resumeWith, setResumeWith] = useState<VendorDraft | undefined>(undefined);
+  const canChange = useCanChangeVendors();
   const [view, setView] = useState<ProvidersView>(viewFromUrl);
   const chooseView = (next: ProvidersView) => {
     setView(next);
@@ -268,9 +308,15 @@ export default function ProvidersNext() {
     const found = data.cards.find((vm) => vm.provider.id === asked.current);
     if (!found) return;
     asked.current = null;
-    setOpenedForCurrency(true);
+    setOpenedForCurrency(openedAtFromHistory());
     setOpenProvider(found.provider);
   }, [data.cards]);
+  // Not while a deep link is still waiting for the cards: clearing it then
+  // would lose it to a reload during the read.
+  useEffect(() => {
+    if (asked.current) return;
+    writeVendorToUrl(openProvider?.id ?? null, openedForCurrency ? "currency" : "sheet");
+  }, [openProvider, openedForCurrency]);
 
   return (
     <div
@@ -339,9 +385,12 @@ export default function ProvidersNext() {
             </span>
             <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
               {data.hasData
-                ? `${data.cards.length} vendors — the learned detail lives inside each card`
-                : 'Reaching the gateway…'}
+                ? `${data.cards.length} ${data.cards.length === 1 ? 'vendor' : 'vendors'}`
+                : data.isError
+                  ? 'Vendors not known'
+                  : 'Reading your vendors…'}
             </span>
+            {canChange ? (
             <button
               type="button"
               onClick={() => setAdding(true)}
@@ -359,8 +408,34 @@ export default function ProvidersNext() {
             >
               Add a vendor
             </button>
+            ) : (
+              // VEN-W30: staff read the book; the server refuses their writes,
+              // so they are told who changes it instead of offered a button.
+              <span data-testid="vendors-read-only" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
+                A manager or an owner changes this book.
+              </span>
+            )}
           </div>
         </header>
+
+        {held && !adding && canChange && (
+          <div data-testid="vendor-draft-held" className="mb-4" style={{ maxWidth: 520 }}>
+            <Stub
+              key={held.n}
+              words={`A new vendor${held.draft.name.trim() ? `: ${held.draft.name.trim()}` : ''} — not in the book yet`}
+              resumeLabel="Go on writing it"
+              discardLabel="Throw it away"
+              onResume={() => {
+                setResumeWith(held.draft);
+                setHeld(null);
+                setAdding(true);
+              }}
+              onDiscard={() => setHeld((h) => (h ? { ...h, discarded: true } : h))}
+              onRestore={() => setHeld((h) => (h ? { ...h, discarded: false } : h))}
+              footer="Nothing was written. It is held on this screen only — leaving the page lets it go."
+            />
+          </div>
+        )}
 
         {data.isError && (
           <div
@@ -374,8 +449,8 @@ export default function ProvidersNext() {
           >
             <span style={{ fontSize: 12.5, color: "var(--ink-2, #4F473C)" }}>
               {data.hasData
-                ? `The vendor book could not be refreshed (${data.errorMessage}) — the cards show the last answer, not the present.`
-                : `The gateway could not be reached (${data.errorMessage}). The vendor book is unknown — nothing below is claimed.`}
+                ? 'Your vendors could not be refreshed just now. The cards show the last answer, not the present.'
+                : 'Your vendors could not be read just now, so nothing below is claimed about them.'}
             </span>
             <button
               type="button"
@@ -403,13 +478,6 @@ export default function ProvidersNext() {
           <RollCall />
         ) : (
         <>
-        {/* The prompt that keeps the order-currency chain alive (founder,
-            2026-09-06 batch 66). It counts and links; it pre-fills nothing. */}
-        <UsualCurrencyCoveragePanel
-          knownIds={knownIds}
-          onOpenVendor={openById}
-        />
-
         <VendorScopeBar scopes={scopes} />
         <ScopeNotice scopes={scopes} />
         {scopes.scope === "find" && (
@@ -489,6 +557,15 @@ export default function ProvidersNext() {
             />
           ))}
         </div>
+        <div style={{ marginTop: 24 }}>
+        {/* The prompt that keeps the order-currency chain alive (founder,
+            2026-09-06 batch 66). It counts and links; it pre-fills nothing. */}
+        <UsualCurrencyCoveragePanel
+          knownIds={knownIds}
+          onOpenVendor={openById}
+          bookSettled={data.hasData || data.isError}
+        />
+        </div>
         </>
         )}
       </div>
@@ -496,7 +573,12 @@ export default function ProvidersNext() {
       {adding && (
         <NewVendorSheet
           open
-          onClose={() => setAdding(false)}
+          initialDraft={resumeWith}
+          onTear={(draft) => setHeld((h) => ({ n: (h?.n ?? 0) + 1, house, draft, discarded: false }))}
+          onClose={() => {
+            setAdding(false);
+            setResumeWith(undefined);
+          }}
           onAdded={data.refetch}
         />
       )}

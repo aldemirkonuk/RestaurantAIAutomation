@@ -2694,6 +2694,8 @@ export class ProcurementService {
     let vendorPaperCurrency: string | null = null;
     let vendorName: string | null = null;
     let vendorUsualCurrency: string | null = null;
+    let vendorUsualSource: "person" | "invoices" | null = null;
+    let vendorUsualInvoiceCount: number | null = null;
     let vendorReadFailed: string | null = null;
 
     if (providerId) {
@@ -2720,16 +2722,37 @@ export class ProcurementService {
         vendorPaperCurrency = (data as any).currency ?? null;
       }
 
-      const { data: provider, error: providerError } =
-        await this.databaseService.supabase
-          .from("providers")
-          // B1 (founder, 2026-09-06 batch 65). `usual_currency` is what a person
-          // stated on the vendor's profile, and it is the ONLY rung the ORDER's
-          // own field is pre-filled from.
-          .select("name, usual_currency")
-          .eq("id", providerId)
-          .eq("restaurant_id", restaurantId)
-          .maybeSingle();
+      // B1 (founder, 2026-09-06 batch 65). `usual_currency` is the vendor's
+      // usual currency — stated by a person, or since VEN-W13 (2026-10-01)
+      // written from at least three of their invoices — and it is the ONLY
+      // rung the ORDER's own field is pre-filled from. The source decides
+      // whose word the sheet's sentence credits.
+      // Two literal selects so the read-columns guard (ADR 0074) sees both.
+      const readProvider = (withSource: boolean) =>
+        withSource
+          ? this.databaseService.supabase
+              .from("providers")
+              .select(
+                "name, usual_currency, usual_currency_source, usual_currency_invoice_count",
+              )
+              .eq("id", providerId)
+              .eq("restaurant_id", restaurantId)
+              .maybeSingle()
+          : this.databaseService.supabase
+              .from("providers")
+              .select("name, usual_currency")
+              .eq("id", providerId)
+              .eq("restaurant_id", restaurantId)
+              .maybeSingle();
+      let { data: provider, error: providerError } = await readProvider(true);
+      // Before the VEN-W13 migration is applied the two columns are absent
+      // (42703); every code then was a person's.
+      if (
+        providerError &&
+        (providerError as { code?: string }).code === "42703"
+      )
+        ({ data: provider, error: providerError } =
+          await readProvider(false));
       if (providerError) {
         // A failed read is not an empty one: the default sentence must not
         // print "the vendor" as if no vendor were known, and it must not print
@@ -2746,6 +2769,14 @@ export class ProcurementService {
       } else {
         vendorName = (provider as any)?.name ?? null;
         vendorUsualCurrency = (provider as any)?.usual_currency ?? null;
+        vendorUsualSource =
+          (provider as any)?.usual_currency_source === "invoices"
+            ? "invoices"
+            : vendorUsualCurrency
+              ? "person"
+              : null;
+        vendorUsualInvoiceCount =
+          (provider as any)?.usual_currency_invoice_count ?? null;
       }
     }
 
@@ -2773,6 +2804,8 @@ export class ProcurementService {
      */
     const offer = orderCurrencyOffer({
       vendorUsualCurrency,
+      vendorUsualSource,
+      vendorUsualInvoiceCount,
       vendorPaperCurrency,
       vendorName,
       houseCurrency,

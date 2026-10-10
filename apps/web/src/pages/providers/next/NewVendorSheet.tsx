@@ -102,6 +102,24 @@ export const WINE_SPECIALTIES = [
   'Value Wines',
 ];
 
+/**
+ * Everything else a house buys from a vendor (VEN-W33, founder 2026-10-01:
+ * "it won't just handle wines, it will handle all beverages and then foods").
+ * The wine list above stays as it was; a beer distributor or a produce
+ * supplier could not be added before, because one chip was required and every
+ * chip was a wine. Stored in the same text field as the wine chips.
+ */
+export const OTHER_DRINKS = [
+  'Beer',
+  'Cider',
+  'Spirits',
+  'Whiskey',
+  'Sake',
+  'Non-alcoholic drinks',
+  'Coffee & tea',
+];
+export const FOOD = ['Food', 'Produce', 'Meat & fish', 'Dairy & cheese', 'Dry goods'];
+
 /** The legacy form's list, unchanged (`AddProviderModal.tsx:131-140`). */
 export const PAYMENT_TERMS = [
   'Net 15',
@@ -216,9 +234,23 @@ export interface NewVendorSheetProps {
   onClose: () => void;
   /** Called once a vendor really is in the book, so the page refetches. */
   onAdded: () => void;
+  /**
+   * VEN-W35: a draft held by a stub, put back in when the person resumes it.
+   * Read once, when the sheet mounts.
+   */
+  initialDraft?: VendorDraft;
+  /**
+   * VEN-W35: Esc or a click outside on a half-written vendor tears the sheet
+   * (ADR 0112, sketch 103 · 1b) — the page holds the words on a stub instead of
+   * the sheet throwing them away.
+   */
+  onTear?: (draft: VendorDraft) => void;
 }
 
-export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) {
+/** Anything typed or picked — what a tear has to hold. */
+export const isDraftDirty = (d: VendorDraft) => JSON.stringify(d) !== JSON.stringify(EMPTY_VENDOR);
+
+export function NewVendorSheet({ open, onClose, onAdded, initialDraft, onTear }: NewVendorSheetProps) {
   const { activeRestaurantId, user } = useAuth();
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
   const createProvider = useCreateProvider();
@@ -227,7 +259,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
   const [query, setQuery] = useState('');
   const [catalogue, setCatalogue] = useState<CatalogueRegister>({ state: 'idle' });
   const [addingId, setAddingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<VendorDraft>(EMPTY_VENDOR);
+  const [draft, setDraft] = useState<VendorDraft>(initialDraft ?? EMPTY_VENDOR);
   const [saving, setSaving] = useState(false);
   const [touched, setTouched] = useState(false);
   /** What did not happen, in words. Cleared on the next attempt. */
@@ -243,14 +275,18 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
   });
 
   // A house switch must never leave the previous house's half-typed vendor.
+  // Not on mount: a resumed draft arrives as `initialDraft` (VEN-W35).
+  const [mountedFor, setMountedFor] = useState(restaurantId);
   useEffect(() => {
+    if (restaurantId === mountedFor) return;
+    setMountedFor(restaurantId);
     setDraft(EMPTY_VENDOR);
     setQuery('');
     setCatalogue({ state: 'idle' });
     setFailure(null);
     setAsides([]);
     resetMatches();
-  }, [restaurantId, resetMatches]);
+  }, [restaurantId, mountedFor, resetMatches]);
 
   /* ── the catalogue, read with its four states ─────────────────────────── */
   useEffect(() => {
@@ -464,6 +500,8 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
       <Sheet
         open={open}
         onClose={onClose}
+        dirty={isDraftDirty(draft) && !saving}
+        onTear={() => onTear?.(draft)}
         /* The contract, as the accessible name (sketch 103, 1e). */
         label="Add a vendor to this house's book, from the shared catalogue or by writing one of your own. Saving writes a vendor; leaving writes nothing."
         eyebrow="The book of vendors"
@@ -496,7 +534,10 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
           </div>
         }
       >
-        <div style={{ fontFamily: SANS, fontSize: 12.5 }}>
+        {/* VEN-W37: `.mdv-ovl__body` carries no padding by design; every page
+            insets its own sheet (TwinSheet does with px-4). This one never did,
+            so every field touched both edges of the sheet. */}
+        <div className="px-4 py-3" style={{ fontFamily: SANS, fontSize: 12.5 }}>
           {/* ── door one: the catalogue ──────────────────────────────── */}
           <label style={legend} htmlFor="nv-catalogue">
             Search the catalogue
@@ -734,19 +775,42 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
 
           <fieldset className="mt-3 border-0 p-0">
             <legend style={legend}>What they sell</legend>
-            <div className="flex flex-wrap gap-1.5">
-              {WINE_SPECIALTIES.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={draft.specialties.includes(s)}
-                  onClick={() => toggle('specialties', s)}
-                  style={chip(draft.specialties.includes(s))}
+            {(
+              [
+                ['Wine', WINE_SPECIALTIES],
+                ['Other drinks', OTHER_DRINKS],
+                ['Food', FOOD],
+              ] as const
+            ).map(([group, list]) => (
+              <div key={group} role="group" aria-label={group} className="mb-1.5">
+                <span
+                  style={{
+                    display: 'block',
+                    fontFamily: MONO,
+                    fontSize: 9,
+                    letterSpacing: '0.11em',
+                    textTransform: 'uppercase',
+                    color: 'var(--ink-4, #665D50)',
+                    margin: '4px 0 3px',
+                  }}
                 >
-                  {s}
-                </button>
-              ))}
-            </div>
+                  {group}
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {list.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      aria-pressed={draft.specialties.includes(s)}
+                      onClick={() => toggle('specialties', s)}
+                      style={chip(draft.specialties.includes(s))}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
             {problem('specialties')}
           </fieldset>
 

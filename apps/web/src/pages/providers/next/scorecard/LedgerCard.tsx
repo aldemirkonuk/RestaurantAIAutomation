@@ -202,24 +202,14 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
           >
             {rowsLabel(m)} ›
           </button>
-        ) : (
-          <span
-            style={{
-              fontFamily: MONO,
-              fontSize: 10,
-              color: 'var(--ink-4, #665D50)',
-            }}
-          >
-            {SC.ledger.noRows}
-          </span>
-        )}
+        ) : null}
       </div>
     </div>
   );
 }
 
 function Body({ card, onRows }: { card: VendorScorecard; onRows: (k: MeasureKey) => void }) {
-  const f = formatsOf(card.house);
+  const f = formatsOf(card.house, card.window.to);
   if (card.quiet) {
     return (
       <p
