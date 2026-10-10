@@ -397,6 +397,13 @@ describe('lineRefusal, on its own', () => {
     expect(lineRefusal({ ...base, unitType: 'case', bottlesPerUnit: '12' })).toBeNull();
     expect(lineRefusal({ ...base, price: '0' })).toMatch(/above zero/);
   });
+
+  it('takes a decimal-comma price as a price (F-358)', () => {
+    const priced = { ...base, priceUom: 'bottle' as const, pricePackSize: '1', currency: 'TRY' };
+    expect(lineRefusal({ ...priced, price: '12,50' })).toBeNull();
+    expect(lineRefusal({ ...priced, price: '1.250,00' })).toBeNull();
+    expect(lineRefusal({ ...priced, price: '1.250' }, '.')).toBeNull();
+  });
 });
 
 describe('the search folds Turkish letters', () => {

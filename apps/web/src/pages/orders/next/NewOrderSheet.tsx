@@ -53,6 +53,8 @@ import { useInventory } from '@/hooks/queries/useInventoryQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
 import { queryKeys } from '@/lib/query-keys';
+import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { EM, MONO, SANS, SERIF } from './format';
 import { PRICE_UOMS, PRICE_UOM_LABEL, isMultiplying, type PriceUom } from './price-unit';
 import { foldText } from '@/lib/textFold';
@@ -111,23 +113,21 @@ function newLine(inventoryId: string, wineName: string): OrderLine {
   };
 }
 
-function num(v: string): number | null {
-  const t = v.trim();
-  if (t === '') return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
+/** Typed text as a number, the way the house writes it ("12,50"); null when blank or not one. */
+function num(v: string, group: GroupMark | null = null): number | null {
+  return parseDecimal(v, group);
 }
 
 /** What stops ONE line being placed, in words, or null when nothing does. */
-export function lineRefusal(line: OrderLine): string | null {
+export function lineRefusal(line: OrderLine, group: GroupMark | null = null): string | null {
   if (line.outcome && !line.outcome.ok && line.outcome.uncertain) return 'Check the order book before replacing this line; its earlier placement was not confirmed.';
   if (!line.providerId) return 'Name the vendor this line goes to.';
-  const q = num(line.quantity);
+  const q = num(line.quantity, group);
   if (q == null || q < 1 || !Number.isInteger(q)) {
     return 'State how many, as a whole number of ' + PRICE_UOM_LABEL[line.unitType] + '.';
   }
   if (isMultiplying(line.unitType)) {
-    const pack = num(line.bottlesPerUnit);
+    const pack = num(line.bottlesPerUnit, group);
     if (pack == null || pack < 1 || !Number.isInteger(pack)) {
       // The gateway's own refusal, said before the round trip rather than after
       // it (`CreateOrderDto.bottlesPerUnit`): guessing 12 books twelve times the
@@ -135,13 +135,13 @@ export function lineRefusal(line: OrderLine): string | null {
       return `An order in ${PRICE_UOM_LABEL[line.unitType]} needs a pack size — how many bottles are in one.`;
     }
   }
-  const p = num(line.price);
+  const p = num(line.price, group);
   if (line.price.trim() !== '' && (p == null || p <= 0)) {
     return 'A price has to be a number above zero, or be left for the vendor to answer.';
   }
   if (p !== null && p > 0) {
     if (!line.priceUom) return 'State the unit this price is for.';
-    const pack = num(line.pricePackSize);
+    const pack = num(line.pricePackSize, group);
     if (pack == null || pack < 1 || !Number.isInteger(pack) || (!isMultiplying(line.priceUom) && pack !== 1)) return 'State a whole bottle count for the price unit.';
     if (!(CURRENCY_CODES as readonly string[]).includes(line.currency)) return 'State the currency this price is in.';
   }
@@ -191,6 +191,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
   const placementGeneration = useRef(0);
   const agreementRequests = useRef(new Map<string, number>());
   const queryClient = useQueryClient();
+  const group = useHouseGroupMark();
 
   const inventory = useInventory();
   const providers = useProviders(restaurantId);
@@ -286,8 +287,8 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
     : null;
 
   const refusals = useMemo(
-    () => new Map(lines.map((l) => [l.key, lineRefusal(l)])),
-    [lines],
+    () => new Map(lines.map((l) => [l.key, lineRefusal(l, group)])),
+    [lines, group],
   );
   const canPlace =
     !placing && lines.some((l) => !l.outcome?.ok) && lines.every((l) => l.outcome?.ok || refusals.get(l.key) === null);
@@ -323,17 +324,17 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
           {
             inventoryId: line.inventoryId,
             providerId: line.providerId,
-            quantity: num(line.quantity),
+            quantity: num(line.quantity, group),
             unitType: line.unitType,
             bottlesPerUnit: isMultiplying(line.unitType)
-              ? (num(line.bottlesPerUnit) ?? undefined)
+              ? (num(line.bottlesPerUnit, group) ?? undefined)
               : undefined,
             // Left off entirely when the desk stated none. Sending 0 would
             // record that this vendor charges nothing, which nobody said.
-            quotedPrice: num(line.price) ?? undefined,
-            priceUom: num(line.price) !== null ? line.priceUom : undefined,
-            pricePackSize: num(line.price) !== null ? num(line.pricePackSize) : undefined,
-            currency: num(line.price) !== null ? line.currency : undefined,
+            quotedPrice: num(line.price, group) ?? undefined,
+            priceUom: num(line.price, group) !== null ? line.priceUom : undefined,
+            pricePackSize: num(line.price, group) !== null ? num(line.pricePackSize, group) : undefined,
+            currency: num(line.price, group) !== null ? line.currency : undefined,
             managerNotes: line.notes.trim() || undefined,
           },
         );

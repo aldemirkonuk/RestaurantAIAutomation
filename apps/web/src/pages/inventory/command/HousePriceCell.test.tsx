@@ -186,6 +186,12 @@ describe('parsePriceInput', () => {
     expect(parsePriceInput('-1')).toEqual({ ok: false })
     expect(parsePriceInput('ten')).toEqual({ ok: false })
   })
+  it('reads the house\'s own way of writing a price (F-358)', () => {
+    expect(parsePriceInput('12,50')).toEqual({ ok: true, value: 12.5 })
+    expect(parsePriceInput('₺1.250', '.')).toEqual({ ok: true, value: 1250 })
+    expect(parsePriceInput('1.250,00')).toEqual({ ok: true, value: 1250 })
+    expect(parsePriceInput('1,250.00')).toEqual({ ok: true, value: 1250 })
+  })
 })
 
 /**
