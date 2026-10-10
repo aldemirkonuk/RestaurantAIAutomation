@@ -69,6 +69,22 @@ export interface Register<T> {
 /** Exported so a write elsewhere (`useGoalsDesk`) can invalidate this read. */
 export const ROOT = 'reports-next';
 
+/* ──────────────────────────────────────────────── who may read what ───── */
+
+/**
+ * The room and Who served it put revenue, average check and tip % on a named
+ * server or a single table. They are for owners and managers (F-203): the
+ * gateway refuses every other role, and the page does not offer them to that
+ * role at all, rather than laying a refusal line on the sheet. A role not yet
+ * known is treated as not allowed — the cuttings appear once it is.
+ */
+const OWNERS_AND_MANAGERS_ONLY: readonly AnalysisId[] = ['seats', 'service'];
+
+export function offeredFor(role: string | null | undefined): AnalysisId[] {
+  if (role === 'owner' || role === 'manager') return [...ANALYSIS_IDS];
+  return ANALYSIS_IDS.filter((id) => !OWNERS_AND_MANAGERS_ONLY.includes(id));
+}
+
 /* ────────────────────────────────────────────────── the sheet itself ───── */
 
 /**
@@ -219,6 +235,8 @@ export interface ReportsNextData {
   saveSheet: (next: SheetState) => void;
   /** False while the preferences API has not answered — the sheet is not yet the reader's. */
   sheetKnown: boolean;
+  /** The analyses this reader's role may put on the sheet (`offeredFor`). */
+  offered: AnalysisId[];
   refetchAll: () => void;
 }
 
@@ -236,21 +254,25 @@ export function useReportsNextData(
   /** Puts a cutting the goals desk proposed onto the page's draft sheet. */
   placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
 ): ReportsNextData {
-  const { activeRestaurantId } = useAuth();
+  const { activeRestaurantId, activeRole } = useAuth();
   const rid = activeRestaurantId;
   const qc = useQueryClient();
   const { preferences, updatePreferences, isLoading: prefsLoading } = useUserPreferences();
+  const offered = useMemo(() => offeredFor(activeRole), [activeRole]);
 
-  const sheet = useMemo(() => decodeSheet(preferences?.[SHEET_PREF_KEY]), [preferences]);
+  const sheet = useMemo(() => {
+    const decoded = decodeSheet(preferences?.[SHEET_PREF_KEY]);
+    return { cuttings: decoded.cuttings.filter((c) => offered.includes(c.id)) };
+  }, [preferences, offered]);
 
   /** What is actually fetched: the sheet's readable cuttings, plus the feed
    *  the palette needs. The writing desk has no path and is never fetched. */
   const active = useMemo<AnalysisId[]>(() => {
     const ids = (showing ?? sheet.cuttings.map((c) => c.id)).filter(
-      (id) => CATALOGUE[id].path !== null,
+      (id) => CATALOGUE[id].path !== null && offered.includes(id),
     );
     return ids.includes('reading') ? ids : ['reading', ...ids];
-  }, [sheet, showing]);
+  }, [sheet, showing, offered]);
 
   const results = useQueries({
     queries: active.map((id) => {
@@ -317,6 +339,7 @@ export function useReportsNextData(
     sheet,
     saveSheet,
     sheetKnown: !prefsLoading,
+    offered,
     refetchAll,
   };
 }
