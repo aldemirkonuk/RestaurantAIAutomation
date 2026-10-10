@@ -84,6 +84,15 @@ describe('the invite code check (F-894)', () => {
     open()
     expect(await screen.findByText('Code not found, expired, or already used', undefined, WAIT)).toBeInTheDocument()
   })
+
+  it('says a code its sender can no longer give is not theirs to give, before Join (F-1087)', async () => {
+    h.get.mockResolvedValueOnce({ data: { valid: false, reason: 'issuer' } })
+    open()
+    expect(
+      await screen.findByText(/The person who sent this code can no longer invite someone in this role/, undefined, WAIT),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Code not found, expired, or already used')).not.toBeInTheDocument()
+  })
 })
 
 describe('what is left of the invite (F-895)', () => {

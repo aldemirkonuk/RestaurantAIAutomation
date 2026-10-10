@@ -58,6 +58,7 @@ import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
 import { grantRefusal } from "./role-grant";
+import { retireInvitePlaceholders } from "../team/invite-placeholders";
 import {
   INVITE_EMAILS_PER_ADDRESS,
   INVITE_EMAILS_PER_HOUSE,
@@ -2268,7 +2269,7 @@ export class AuthService {
       .from("organization_invites")
       .select(
         `
-        id, role, expires_at, used_at, target_email,
+        id, role, expires_at, used_at, target_email, invited_by, restaurant_id,
         organizations ( name ),
         restaurants ( name, city ),
         users!invited_by ( name )
@@ -2292,6 +2293,28 @@ export class AuthService {
     if (invite.used_at) return { valid: false, reason: "used" };
     if (new Date(invite.expires_at) < new Date())
       return { valid: false, reason: "expired" };
+
+    // The same issuer rule acceptance applies (`acceptInviteAsExistingUser`,
+    // `joinViaInvite`), asked before anyone tries: an invite its issuer can no
+    // longer give is not shown as live only to be refused at Join (F-1087).
+    const { data: issuerAccess, error: issuerErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", invite.invited_by)
+        .eq("restaurant_id", invite.restaurant_id)
+        .eq("is_active", true)
+        .maybeSingle();
+    if (issuerErr) {
+      this.logger.error(
+        `Invite preview issuer read failed: ${issuerErr.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read this invite right now. Please try again.",
+      );
+    }
+    if (grantRefusal(roleInHouse(issuerAccess), invite.role, "invite"))
+      return { valid: false, reason: "issuer" };
 
     const preview = {
       valid: true,
@@ -2894,6 +2917,7 @@ export class AuthService {
       "invite",
     );
     if (issuerRefusal) {
+      await this.retireRefusedInviteStandIn(invite);
       throw new BadRequestException(
         "This invite's issuer can no longer grant that role in this house. Ask them for a new invite.",
       );
@@ -3019,6 +3043,38 @@ export class AuthService {
   }
 
   /**
+   * An invite refused at acceptance because its issuer can no longer give it
+   * will never bring anyone in, so the /team stand-in it made goes with it
+   * (F-1087). The invite stays used (ADR 0164, left consumed), and the /team
+   * read only retires the stand-ins of unused invites, so nothing else would
+   * ever take that row away. Its date is read here, not by the two doors,
+   * whose invite reads are pinned (CLAIMS ADR-0229-FORK-7). A failure is
+   * logged, never thrown: the refusal is the answer either way.
+   */
+  private async retireRefusedInviteStandIn(invite: {
+    id: string;
+    restaurant_id: string;
+  }): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
+      .from("organization_invites")
+      .select("created_at")
+      .eq("id", invite.id)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `Could not read refused invite ${invite.id}, so its stand-in is left: ${error.message}`,
+      );
+      return;
+    }
+    await retireInvitePlaceholders(
+      this.databaseService.supabase,
+      this.logger,
+      invite.restaurant_id,
+      [{ id: invite.id, created_at: data?.created_at ?? null }],
+    );
+  }
+
+  /**
    * Path A: Join via invite code — atomically consumes invite and creates user.
    *
    * A NEW account is verified only when the address typed here is the address
@@ -3091,6 +3147,7 @@ export class AuthService {
       // Left consumed, not given back — same as `acceptInviteAsExistingUser`
       // (auth.service.ts, above): retrying would only meet the same refusal
       // again, since the issuer's standing does not change by refusing.
+      await this.retireRefusedInviteStandIn(invite);
       throw new BadRequestException(
         "This invite's issuer can no longer grant that role in this house. Ask them for a new invite.",
       );

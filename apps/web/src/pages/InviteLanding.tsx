@@ -11,13 +11,14 @@ import { toast } from 'sonner'
 import axios from 'axios'
 import { apiClient, getErrorMessage } from '../services/api/client'
 
-/** Gateway shape (0149 row 49): `getInvitePreview` names which of three
- * reasons made the invite unusable — `used` (already accepted), `expired`
- * (past `expires_at`) or `not_found` (no row for this code). A read that
+/** Gateway shape (0149 row 49): `getInvitePreview` names which reason made
+ * the invite unusable — `used` (already accepted), `expired` (past
+ * `expires_at`), `not_found` (no row for this code) or `issuer` (whoever sent
+ * it can no longer invite someone in that role, F-1087). A read that
  * FAILED (network, 503) never reaches here as `reason`: `loadPreview`'s
  * catch sets `previewError` instead, so `reason` only ever describes an
  * invite the gateway actually read. */
-type InvitePreviewReason = 'used' | 'expired' | 'not_found'
+type InvitePreviewReason = 'used' | 'expired' | 'not_found' | 'issuer'
 
 type Preview =
   | { valid: false; reason?: InvitePreviewReason | string }
@@ -56,6 +57,11 @@ function unavailableCopy(reason: string | undefined): {
       return {
         title: 'This invitation was not found',
         body: 'Check the link, or ask the restaurant owner to send a new one.',
+      }
+    case 'issuer':
+      return {
+        title: 'This invitation can no longer be used',
+        body: 'The person who sent it can no longer invite someone in this role. Ask the restaurant owner for a new invitation.',
       }
     default:
       return {

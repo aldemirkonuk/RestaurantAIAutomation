@@ -57,7 +57,7 @@ interface InvitePreview {
   role?: string
   /** When the code stops working (F-895). */
   expiresAt?: string
-  reason?: 'not_found' | 'expired' | 'used'
+  reason?: 'not_found' | 'expired' | 'used' | 'issuer'
 }
 
 /**
@@ -533,7 +533,9 @@ export function Register() {
                 ? 'This invite code has expired. Contact the restaurant owner for a new one.'
                 : invitePreview.reason === 'used'
                   ? 'This invite code has already been used.'
-                  : 'Code not found, expired, or already used'}
+                  : invitePreview.reason === 'issuer'
+                    ? 'The person who sent this code can no longer invite someone in this role. Ask the restaurant owner for a new one.'
+                    : 'Code not found, expired, or already used'}
             </span>
           </motion.div>
         )}
