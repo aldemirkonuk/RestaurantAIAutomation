@@ -323,12 +323,13 @@ const CURRENCY_WORD_RE = word([
  *     right after a scheme's colon when no "/" follows it
  *     ("javascript:\nalert"; see `schemeView`). A run of tab, line feed,
  *     carriage return, U+2028 or U+2029 between a scheme word and its colon,
- *     between the colon and "//", or between the two slashes ("http\t://x",
+ *     between the colon and "//", or between the two slashes ("http\t:\t//x",
  *     "javascript\n:alert", "https:\t//x", "http:/\t/x") is caught by the
  *     scheme view, and so is a backslash in place of either slash after the
  *     colon of http, https, ftp, ws, wss or file with no letter right before
- *     the scheme word once format and control characters are stripped
- *     ("http:\\\\x", "http:/\\x", "http:\t\\//x");
+ *     the scheme word once format and control characters are stripped (a
+ *     tab or line break there is not a letter: "x\thttp:\\\\x" is caught)
+ *     ("http:\\\\x", "http:/\\x", "http:\t\\//x"; see `schemeView`);
  *   - a link made with a fact block: the test reads the prose with each
  *     "{{token}}" replaced by a space, so "see {{signer}}.com" is clean here
  *     and renders as "see Acme.com". The shipped templates hold each token on
@@ -453,9 +454,24 @@ const SCHEME_VIEW_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
 const SCHEME_VIEW_JOIN_RE = /(?<=[\p{L}\p{N}])[\t\n\r\u2028\u2029]+(?=[\p{L}\p{N}])/gu;
 const SCHEME_VIEW_COLON_JOIN_RE =
   /(?<=[\p{L}\p{N}+.-])[\t\n\r\u2028\u2029]+(?=:)/gu;
-/** A special scheme's colon and the slashes, backslashes and runs after it. */
-const SCHEME_VIEW_BACKSLASH_RE =
-  /(?<!\p{L})(?:https?|ftp|wss?|file):[\\/\t\n\r\u2028\u2029]+/giu;
+/** A run the scheme view may remove inside a special scheme word. */
+const SCHEME_RUN = "[\\t\\n\\r\\u2028\\u2029]*";
+/** A special scheme word, any case, with such runs allowed between its letters. */
+const SPECIAL_SCHEME = [
+  `[Hh]${SCHEME_RUN}[Tt]${SCHEME_RUN}[Tt]${SCHEME_RUN}[Pp](?:${SCHEME_RUN}[Ss])?`,
+  `[Ff]${SCHEME_RUN}[Tt]${SCHEME_RUN}[Pp]`,
+  `[Ww]${SCHEME_RUN}[Ss](?:${SCHEME_RUN}[Ss])?`,
+  `[Ff]${SCHEME_RUN}[Ii]${SCHEME_RUN}[Ll]${SCHEME_RUN}[Ee]`,
+].join("|");
+/**
+ * A special scheme word with no letter right before it, its colon, and the
+ * slashes, backslashes and runs after it. No `i` flag: under `iu`, `\p{L}`
+ * also matches U+0345 (it case-folds to U+03B9).
+ */
+const SCHEME_VIEW_BACKSLASH_RE = new RegExp(
+  `(?<!\\p{L})(?:${SPECIAL_SCHEME}):[\\\\/\\t\\n\\r\\u2028\\u2029]+`,
+  "gu",
+);
 const SCHEME_VIEW_SLASH_JOIN_RE =
   /(?<=:[\t\n\r\u2028\u2029]*\/)[\t\n\r\u2028\u2029]+(?=\/)|(?<=:)[\t\n\r\u2028\u2029]+(?=\/[\t\n\r\u2028\u2029]*\/)/gu;
 /**
@@ -517,28 +533,34 @@ function linkViews(text: string): string[] {
  * and a "/" that has another "/" after it (with only such runs between
  * them); and between those two slashes. So "https:\t//x", "http:/\t/x" and
  * "http:\t/\n/x" read "https://x" / "http://x".
- * After the join before the colon and before the two slash joins, every
- * backslash is turned into "/" in the run of slashes, backslashes and such
- * runs right after the colon of a WHATWG
- * special scheme (http, https, ftp, ws, wss, file; any case) that has no
- * letter right before it, because a URL parser reads "\\" as "/" there:
- * "http:\\\\x", "http:/\\x" and "https:\\/x" read "http://x" /
- * "https://x". A drive or a word that is not one of those schemes keeps its
- * backslashes ("C:\\\\server", "D:\\path", "Not:\\ foo",
- * "News:\\\\ see"). The lookbehind is letters only so that a word ending in
- * a scheme name keeps its backslashes ("Profile:\\\\ ok", "News:\\\\ see");
- * a digit or "_" before the scheme word does not stop the fold
- * ("1http:\\\\x" is refused). The cost, kept on purpose: a letter right
- * before the scheme word, once format and control characters are stripped,
- * turns the fold off, so "xhttp:\\\\x", a non-ASCII letter ("\u4E2Dhttp:\\\\x",
- * "\u0647http:\\\\x"), the Hangul filler U+3164 (a letter) and
- * "x\u200Bhttp:\\\\y" or "x\u00ADhttp:\\\\y" (format characters, stripped)
- * all pass, although a URL parser reading from "http" gives "http://x/".
- * Specs pin "Profile:\\\\ ok", "1http:\\\\x" and "xhttp:\\\\x"; the
- * non-ASCII, U+3164 and format-character cases were measured, not pinned
- * (ADR 0313:37). With one slash or
- * backslash after the colon there is no "//" ("http:\\x" reads "http:/x"),
- * so the scheme view does not refuse it (see `URL_RE`).
+ * The steps run in this order: strip, the join before the colon, the
+ * backslash fold below, the join between letters or digits, the two slash
+ * joins. The fold turns every backslash into "/" in the run of slashes,
+ * backslashes and such runs right after the colon of a WHATWG special
+ * scheme word (http, https, ftp, ws, wss, file; any case, spelled out with
+ * no `i` flag), because a URL parser reads "\\" as "/" there: "http:\\\\x",
+ * "http:/\\x" and "https:\\/intranet" read "http://x" /
+ * "https://intranet". The scheme word may hold such runs between its
+ * letters ("ht\ntp:\\\\x"), as a URL parser removes tab, line feed and
+ * carriage return. The fold is off only
+ * when the character right before the scheme word, once format and control
+ * characters are stripped, is a letter: a tab or line break is not one, so
+ * "Thanks\nhttp:\\\\intranet" and "x\thttp:\\\\x" are refused (the fold runs
+ * before the letter join, which would read "Thankshttp"), and so is
+ * "\u0345http:\\\\x" (under an `i` flag `\p{L}` would match U+0345). A digit
+ * or "_" is not a letter either ("1http:\\\\x" is refused). A drive or a word
+ * that is not one of those schemes keeps its backslashes ("C:\\\\server",
+ * "D:\\path", "Not:\\ foo"). The lookbehind is letters only so that a word
+ * ending in a scheme name keeps them too ("Profile:\\\\ ok",
+ * "News:\\\\ see"). The cost, kept on purpose: "xhttp:\\\\x", a non-ASCII
+ * letter ("\u4E2Dhttp:\\\\x", "\u0647http:\\\\x"), the Hangul filler U+3164
+ * (a letter) and "x\u200Bhttp:\\\\y" or "x\u00ADhttp:\\\\y" (format
+ * characters, stripped) all pass, although a URL parser reading from "http"
+ * gives "http://x/". Each example in this paragraph is pinned by a spec
+ * (ADR 0313:37). With one slash or backslash after the colon the scheme view
+ * holds no "//" ("http:\\x" stays "http:\\x", "http:/x" stays "http:/x"), so
+ * it does not refuse them, although a URL parser reads both as "http://x/"
+ * (see `URL_RE`).
  * Refused although they hold no link (fail closed, pinned by a spec): a
  * scheme's shape (an ASCII letter and up to 31 more ASCII letters, digits,
  * "+", "." or "-"), then a colon, then "/" and "/", where only such runs (at
@@ -558,9 +580,9 @@ function linkViews(text: string): string[] {
 function schemeView(text: string): string {
   return text
     .replace(SCHEME_VIEW_STRIP_RE, "")
-    .replace(SCHEME_VIEW_JOIN_RE, "")
     .replace(SCHEME_VIEW_COLON_JOIN_RE, "")
     .replace(SCHEME_VIEW_BACKSLASH_RE, (m) => m.replace(/\\/g, "/"))
+    .replace(SCHEME_VIEW_JOIN_RE, "")
     .replace(SCHEME_VIEW_SLASH_JOIN_RE, "");
 }
 function holdsLink(text: string): boolean {

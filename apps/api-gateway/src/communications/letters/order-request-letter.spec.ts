@@ -594,6 +594,54 @@ describe("the prose predicate", () => {
     expect(courtesyLineOrNull(`Open ${link} now.`)).toBeNull();
   });
 
+  // Round-9 adversary at 64cd6bd7e: the fold ran after the letter join, so a
+  // letter, a line break and the scheme word read as one word and the fold
+  // switched off; and under the `i` flag U+0345 matched `\p{L}`. The fold now
+  // runs before the letter join, allows runs inside the scheme word, and
+  // spells its cases out (ADR 0313:37).
+  it.each([
+    ["a sentence, a line feed and a link", "Thanks\nhttp:\\\\intranet\\a"],
+    ["a letter, CR LF and a link", "Open x\r\nhttp:\\\\x now."],
+    ["a letter, a tab and a link", "Open x\thttp:\\\\x now."],
+    ["a sentence, a line feed and wss", "Thanks\nwss:\\\\h"],
+    ["a letter, U+2028 and https", "Open x\u2028https:\\\\x now."],
+    ["U+0345 before the scheme word", "Open \u0345http:\\\\x now."],
+    ["U+037A before the scheme word", "Open \u037Ahttp:\\\\x now."],
+    ["a line feed inside the scheme word", "Open ht\ntp:\\\\x now."],
+    ["U+2028 inside the scheme word", "Open ht\u2028tp:\\\\x now."],
+    ["a letter, LF and a split scheme word", "Open x\nht\ntp:\\\\x now."],
+    ["a word and a blank line", "see\n\nhttp:\\\\x"],
+    ["a word and CR LF", "Cheers\r\nhttps:\\\\evil"],
+  ])("refuses a backslash link after %s", (_label, text) => {
+    expect(rules(T(text))).toContain("link");
+    expect(courtesyLineOrNull(text)).toBeNull();
+  });
+
+  // Kept on purpose (ADR 0313:37): a letter right before the scheme word,
+  // once format and control characters are stripped, turns the fold off, so
+  // that "Profile:\\" and "News:\\" keep their backslashes.
+  it.each([
+    ["a CJK letter", "Open \u4E2Dhttp:\\\\x now."],
+    ["an Arabic letter", "Open \u0647http:\\\\x now."],
+    ["U+3164, a letter", "Open x\u3164http:\\\\y now."],
+    ["U+200B, stripped", "Open x\u200Bhttp:\\\\y now."],
+    ["U+00AD, stripped", "Open x\u00ADhttp:\\\\y now."],
+  ])("does not catch a backslash link after %s (named)", (_label, text) => {
+    expect(rules(T(text))).not.toContain("link");
+  });
+
+  // Not caught, named in ADR 0313:37: fewer than two slashes after a special
+  // scheme's colon, a "://" whose nearest ASCII letter is more than 31
+  // characters back, and a bracket not in OPEN_BRACKETS / CLOSE_BRACKETS.
+  it.each([
+    ["no slash", "Open http:x now."],
+    ["one slash", "Open http:/x now."],
+    ["a letter 33 characters back", `See a${"-".repeat(32)}://x now.`],
+    ["a bracket not on the lists", "See evil\u2985.\u2986com for details."],
+  ])("does not catch %s (named)", (_label, text) => {
+    expect(rules(T(text))).not.toContain("link");
+  });
+
   // Only a special scheme word's backslashes are folded: a drive letter, a
   // word that is not one of those schemes, or a scheme word with a letter
   // before it keeps them.
