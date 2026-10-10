@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AuthorizeShell } from './AuthorizeShell'
 import { integrationsApi } from '../../services/api/integrations'
-import { forgetConsentBrowser, readConsentBrowser } from './consent-browser'
+import { forgetConsentBrowser, readConsentBrowser, returnLanding } from './consent-browser'
 
 export default function CompleteIntegrationConsent() {
   const [error, setError] = useState<string | null>(null)
@@ -28,7 +28,9 @@ export default function CompleteIntegrationConsent() {
       const url = new URL(destination, window.location.origin)
       if (url.origin !== window.location.origin) throw new Error('The return address could not be verified.')
       forgetConsentBrowser(request)
-      window.location.replace(url.toString())
+      // F-279: back to the page the flow started from, and only to a page on
+      // the return list — the server's word is not followed anywhere else.
+      window.location.replace(new URL(returnLanding(url), window.location.origin).toString())
     }).catch(e => {
       if (!alive) return
       forgetConsentBrowser(request)
