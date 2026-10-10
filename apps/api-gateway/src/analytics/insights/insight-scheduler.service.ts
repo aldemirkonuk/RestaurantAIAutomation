@@ -1,12 +1,14 @@
 import {
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { DatabaseService } from "../../database/database.service";
 import { InsightGeneratorService } from "./insight-generator.service";
 import { InsightCategory } from "./insight-catalog";
+import { GoalsService } from "../goals.service";
 
 /**
  * InsightSchedulerService — manager-preference-driven refresh.
@@ -28,6 +30,9 @@ export class InsightSchedulerService {
   constructor(
     private readonly dbService: DatabaseService,
     private readonly generator: InsightGeneratorService,
+    // Optional only so the existing specs can construct this without it;
+    // Nest always injects it (both live in AnalyticsModule).
+    @Optional() private readonly goals?: GoalsService,
   ) {}
 
   static readonly ALL_CATEGORIES: InsightCategory[] = [
@@ -119,6 +124,24 @@ export class InsightSchedulerService {
     const todayStr = now.toISOString().substring(0, 10);
 
     for (const r of restaurants) {
+      // The stored goal values are refreshed every sweep, whatever the goals
+      // category's cadence: progress reads no longer write them (F-264), and
+      // the goals family, the recommendation goal rules and the goal lists
+      // all read the stored column. Before the generator, so a goals insight
+      // made this hour reads this hour's value.
+      if (this.goals) {
+        try {
+          const { failed } = await this.goals.refreshStoredCurrentValues(r.id);
+          if (failed)
+            this.logger.warn(
+              `${failed} stored goal value(s) not refreshed for ${r.id}`,
+            );
+        } catch (err: any) {
+          this.logger.warn(
+            `Stored goal values not refreshed for ${r.id}: ${err?.message}`,
+          );
+        }
+      }
       const stale = staleByRestaurant?.get(r.id);
       const due: InsightCategory[] = [];
       for (const category of InsightSchedulerService.ALL_CATEGORIES) {

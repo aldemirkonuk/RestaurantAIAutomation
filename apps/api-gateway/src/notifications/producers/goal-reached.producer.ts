@@ -53,10 +53,9 @@ import { ROSTER_SOURCE, rosterAt } from "./roster";
  *   the goal's lifecycle. Filed in the page note §13 rather than taken.
  * - **It does not re-implement the metric.** Progress comes from
  *   `GoalsService.getGoalProgress`, the same call `/reports` renders, so the
- *   number in the notification and the number on the page cannot disagree. Note
- *   that call refreshes `analytics_goals.current_value` as a documented side
- *   effect (goals.service.ts:170-175); running it on a cron means that column is
- *   kept warm, which is a consequence worth knowing rather than a surprise.
+ *   number in the notification and the number on the page cannot disagree. That
+ *   call writes nothing (F-264); the stored `analytics_goals.current_value` is
+ *   refreshed by the hourly insight sweep, not by this producer.
  */
 
 const PRODUCER = "goal_reached";

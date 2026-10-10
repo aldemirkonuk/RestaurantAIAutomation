@@ -874,7 +874,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Progress for every goal of one status, in one call",
     description:
-      "listGoals alone cannot drive a progress bar: `current_value` is a stored column refreshed only when one goal's progress is opened, so a bar drawn off the list reads 0% for a goal that is half done. This recomputes each one. Capped at 6 goals and it reports the cap rather than applying it silently.",
+      "listGoals alone cannot drive a progress bar: `current_value` is a stored column refreshed only by the hourly insight sweep, so a bar drawn off the list reads 0% for a goal that is half done. This recomputes each one. Capped at 6 goals and it reports the cap rather than applying it silently.",
   })
   @ApiQuery({ name: "status", required: false })
   async listGoalsWithProgress(
