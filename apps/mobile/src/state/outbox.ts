@@ -290,6 +290,14 @@ async function runDispatch() {
       err.status < 500 &&
       err.status !== 401 &&
       err.status !== 429;
+    // A 5xx the server sent. The client's own 503 for a sign-in refresh that
+    // got no answer is "offline", not the house failing, so it never counts
+    // toward parking (F-882; api/client.ts marks it).
+    const serverError =
+      err instanceof ApiError &&
+      err.status >= 500 &&
+      (err.body as { reason?: unknown } | undefined)?.reason !==
+        "refresh_not_reached";
     // A RECEIPT REFUSED FOR ITS PRICE KEEPS ITS COUNT (F-806).
     //
     // Since F-802 the gateway answers 403 to a staff receipt that carries an
@@ -337,8 +345,7 @@ async function runDispatch() {
       });
       scheduleDispatch(0);
     } else if (
-      err instanceof ApiError &&
-      err.status >= 500 &&
+      serverError &&
       (next.serverAttempts ?? 0) + 1 >= MAX_SERVER_ATTEMPTS
     ) {
       // F-590: the house keeps answering with a server error. Retrying it
@@ -355,9 +362,7 @@ async function runDispatch() {
     } else {
       const attempts = next.attempts + 1;
       // Only a 5xx counts toward parking (F-798); offline misses still back off.
-      const serverAttempts =
-        (next.serverAttempts ?? 0) +
-        (err instanceof ApiError && err.status >= 500 ? 1 : 0);
+      const serverAttempts = (next.serverAttempts ?? 0) + (serverError ? 1 : 0);
       mark(next.id, { status: "pending", attempts, serverAttempts });
       // Offline or server down: back off, cap at 30s between rounds.
       scheduleDispatch(Math.min(30_000, 2 ** attempts * 1000));

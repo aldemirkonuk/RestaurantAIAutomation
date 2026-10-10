@@ -46,7 +46,3 @@ export function withoutReceiptMoney(
   for (const key of MONEY_FIELDS) delete out[key];
   return out;
 }
-
-/** What the queue says when a count went through without the price. */
-export const COUNT_WITHOUT_PRICE_WORDS =
-  "The count was recorded without the invoice price. A manager or an owner checks the price.";

@@ -213,6 +213,22 @@ it("keeps waiting, without parking, while the phone gets no answer at all", asyn
   (api as jest.Mock).mockResolvedValue({});
 });
 
+// F-882: the client answers 503 when the sign-in refresh got no answer. That
+// is the phone being offline, not the house failing: it must not park.
+it("keeps waiting, without parking, while the sign-in refresh gets no answer", async () => {
+  const { ApiError } = jest.requireMock("@/api/client");
+  const noAnswer = Object.assign(new ApiError("Could not reach Mudavym."), {
+    status: 503,
+    body: { reason: "refresh_not_reached" },
+  });
+  (api as jest.Mock).mockRejectedValue(noAnswer);
+  useOutbox.getState().enqueue({ path: "/orders/one/receive", label: "Receipt" });
+  await jest.advanceTimersByTimeAsync(300_000);
+  expect((api as jest.Mock).mock.calls.length).toBeGreaterThan(5);
+  expect(useOutbox.getState().entries[0]).toMatchObject({ status: "pending", serverAttempts: 0 });
+  (api as jest.Mock).mockResolvedValue({});
+});
+
 describe("a receipt refused for its price keeps its count (F-806)", () => {
   // clearAllMocks keeps unconsumed once-values; start each case clean.
   beforeEach(() => (api as jest.Mock).mockReset().mockResolvedValue({}));

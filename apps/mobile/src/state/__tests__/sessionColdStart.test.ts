@@ -68,3 +68,29 @@ it("forgets the last known user on sign-out", async () => {
   await useSession.getState().signOut();
   expect(store.has("wineops_session_user")).toBe(false);
 });
+
+// F-881: a lapsed token whose refresh gets no answer (a 503, a 429, no
+// signal) keeps the session behind the gate with the last known user; only a
+// refused refresh is a sign-out, and that is the API client's call.
+it.each([
+  ["a 503", async () => res(503)],
+  ["a 429", async () => res(429)],
+  ["no signal", async () => {
+    throw new TypeError("Network request failed");
+  }],
+])("keeps the session when the refresh at launch gets %s", async (_label, refreshAnswer) => {
+  store.set("wineops_access_token", "stale");
+  store.set("wineops_refresh_token", "refresh-1");
+  store.set("wineops_session_user", JSON.stringify(ME));
+  global.fetch = jest.fn(async (url: string) => {
+    if (url.endsWith("/auth/me")) return res(401);
+    if (url.endsWith("/auth/refresh")) return refreshAnswer();
+    throw new Error(`unexpected ${url}`);
+  }) as unknown as typeof fetch;
+  await useSession.getState().hydrate();
+  expect(useSession.getState()).toMatchObject({
+    status: "locked",
+    user: { id: "alice", restaurantId: "r1" },
+  });
+  expect(store.get("wineops_refresh_token")).toBe("refresh-1");
+});
