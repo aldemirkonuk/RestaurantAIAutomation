@@ -62,7 +62,14 @@ import {
   toBottleOperands,
 } from "./invoice-match";
 import { readAliasedQuantity } from "./quantity-aliases";
-import { readBookedOrderBottles } from "./booked-order-quantity";
+import {
+  assertMayRecordReceiptMoney,
+  receiptMoneyFields,
+} from "./receipt-money-gate";
+import {
+  readBookedOrderBottles,
+  readBookedOrderLedger,
+} from "./booked-order-quantity";
 import {
   COUNTS_CONFIRMED_OUTCOME,
   readOneShelfReceived,
@@ -5720,23 +5727,108 @@ export class ProcurementService {
   ): Promise<void> {
     try {
       const claim = draftClaimFromMatch(match);
+
+      // ONE LIVE CLAIM PER ORDER AND REASON; THE LATEST CHECK IS THE READING
+      // (F-465). This insert used to rely on 23505 for "already open", but the
+      // only unique index was on the document line, which a verification claim
+      // never has — so every re-verify, outbox replay or second-truck check
+      // opened another claim, and truck one's "4 short" stayed open after truck
+      // two brought the 4. Now the order's live verification claims are read
+      // first (a claim tied to a document, and the never-arrived refund, are
+      // not this writer's):
+      //   * an OPEN one for the same reason is restated to this check's amount;
+      //   * one already asked of the vendor (requested/promised) is left alone
+      //     and no second one opens beside it;
+      //   * an OPEN one this check no longer supports is written off with a
+      //     note saying a later check closed it. It was never sent, so nobody
+      //     outside the house saw it; written_off is the existing state that
+      //     stops it counting as money owed. Only a check that read an invoice
+      //     can say that: one with no invoice (`unmatched`) closes nothing.
+      // `uq_pc_order_reason_open` (20270101700000) is the database's half.
+      const { data: live, error: liveError } =
+        await this.databaseService.supabase
+          .from("procurement_credits")
+          .select("id, reason, state, notes")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .is("document_id", null)
+          .is("document_line_id", null)
+          .neq("reason", "never_arrived")
+          .in("state", ["open", "requested", "promised"]);
+      if (liveError) {
+        this.logger.warn(
+          `openCreditClaim could not read the claims already open for order ${orderId}, so none was opened or changed: ${liveError.message}`,
+        );
+        return;
+      }
+      const rows = (live ?? []) as {
+        id: string;
+        reason: string;
+        state: string;
+        notes: string | null;
+      }[];
+
+      const now = new Date().toISOString();
+      for (const row of rows) {
+        if (match.verdict === "unmatched") break;
+        if (row.state !== "open" || row.reason === claim?.reason) continue;
+        const note =
+          `Closed on ${now.slice(0, 10)} by a later check of this delivery, which no longer shows this money owed. ` +
+          "The vendor had not been asked for it.";
+        const { error: closeError } = await this.databaseService.supabase
+          .from("procurement_credits")
+          .update({
+            state: "written_off",
+            notes: row.notes ? `${row.notes}\n${note}` : note,
+            settled_at: now,
+            settled_by: userId,
+          })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", row.id)
+          .eq("state", "open");
+        if (closeError)
+          this.logger.warn(
+            `openCreditClaim could not close claim ${row.id} on order ${orderId}: ${closeError.message}`,
+          );
+      }
+
       if (!claim) return;
+
+      const restated = {
+        summary: claim.summary,
+        claimed_amount: claim.claimedAmount,
+        // True only when the vendor's own packing slip proves the overbill.
+        // Worth knowing which claims are winnable before spending a call.
+        self_evidenced: claim.selfEvidenced,
+        // Snapshot: the order can be corrected later, and the claim must still
+        // be able to say what it was based on when it was raised.
+        evidence: match as unknown as Record<string, unknown>,
+      };
+
+      const same = rows.find((r) => r.reason === claim.reason);
+      if (same) {
+        if (same.state !== "open") return;
+        const { error: restateError } = await this.databaseService.supabase
+          .from("procurement_credits")
+          .update({ ...restated, updated_at: now })
+          .eq("restaurant_id", restaurantId)
+          .eq("id", same.id)
+          .eq("state", "open");
+        if (restateError)
+          this.logger.warn(
+            `openCreditClaim could not restate claim ${same.id} on order ${orderId}: ${restateError.message}`,
+          );
+        return;
+      }
 
       const insertRow: Record<string, unknown> = {
         restaurant_id: restaurantId,
         order_id: orderId,
         provider_id: order?.provider_id ?? null,
         reason: claim.reason,
-        summary: claim.summary,
-        claimed_amount: claim.claimedAmount,
-        // True only when the vendor's own packing slip proves the overbill.
-        // Worth knowing which claims are winnable before spending a call.
-        self_evidenced: claim.selfEvidenced,
+        ...restated,
         state: "open",
         opened_by: userId,
-        // Snapshot: the order can be corrected later, and the claim must still
-        // be able to say what it was based on when it was raised.
-        evidence: match as unknown as Record<string, unknown>,
       };
       if (order?.currency) insertRow.currency = order.currency;
 
@@ -5744,9 +5836,10 @@ export class ProcurementService {
         .from("procurement_credits")
         .insert(insertRow);
 
-      // 23505 = a claim for this line and reason is already open. Re-running the
-      // match must not manufacture a second claim for money already being
-      // chased — that would double-count recovery and embarrass the restaurant.
+      // 23505 = a racing check opened this order's claim for this reason
+      // between the read above and this insert. Re-running the match must not
+      // manufacture a second claim for money already being chased — that
+      // would double-count recovery and embarrass the restaurant.
       if (error && error.code !== "23505")
         this.logger.warn(
           `openCreditClaim failed for order ${orderId}: ${error.message}`,
@@ -5956,6 +6049,7 @@ export class ProcurementService {
     reason: string,
     unitCost?: number | null,
     userId?: string | null,
+    ledgerState?: string | null,
   ): Promise<void> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
     // row it is pointed at, not from the caller — so an id this method does not
@@ -6019,7 +6113,18 @@ export class ProcurementService {
           p_unit_cost: delta > 0 ? (unitCost ?? null) : null,
           p_cost_provenance: delta > 0 && unitCost != null ? "invoice" : null,
           p_order_id: orderId,
-          p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
+          // ONE KEY PER VERIFICATION, NOT PER ORDER (F-464). The key used to be
+          // `receipt-verify:{order}:{item}` alone, and `apply_stock_movement`
+          // answers a key it has seen with the old movement — so only the first
+          // correction on an order ever moved stock, and truck two's +6 or a
+          // re-check's -1 reported success and changed nothing. The matched
+          // line now names the ledger state its delta was measured against
+          // (movements read, bottles held, delta): a retry racing the same
+          // check reads the same ledger and shares the key, a retry after it
+          // finds the bottles booked and has no delta, and a later check reads
+          // a longer ledger and gets its own. Free-form adjustments carry no
+          // ledger reading and keep the old key (one per item per order).
+          p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}${ledgerState ? `:${ledgerState}` : ""}`,
           // ADR 0141. The ownership check above already refused a foreign id;
           // this says the same thing to the primitive, which is where the
           // guarantee has to live for the callers that do not exist yet.
@@ -6152,7 +6257,21 @@ export class ProcurementService {
     orderId: string,
     userId: string,
     body: VerifyReceiptDto,
+    /**
+     * Who is verifying, as the controller read it from the token (F-466).
+     * Present on every HTTP call; absent only for a caller inside this
+     * process, of which there is none today.
+     */
+    caller?: { role?: string | null },
   ): Promise<OrderResponseDto> {
+    // THE COUNT IS ANYONE'S, THE MONEY IS NOT (F-466; ADR 0167 and the
+    // document money gate). Refused before anything is read or written.
+    if (caller)
+      assertMayRecordReceiptMoney(
+        caller.role,
+        receiptMoneyFields(body as unknown as Record<string, unknown>),
+      );
+
     const adjustments = (body.adjustments || []).filter(
       (a) => a.inventoryId && Number.isFinite(a.delta) && a.delta !== 0,
     );
@@ -6292,15 +6411,16 @@ export class ProcurementService {
     // The immutable ledger states bottles and retains receipts after stock is
     // consumed. It is also what "received" MEANS (ADR 0192), so the correction
     // below is measured against the same number every screen shows.
-    const stockedQtyInBottles =
+    const stockedLedger =
       hasMatchFields && orderRow.inventory_id
-        ? await readBookedOrderBottles(
+        ? await readBookedOrderLedger(
             this.databaseService.supabase,
             restaurantId,
             orderId,
             orderRow.inventory_id,
           )
-        : 0;
+        : { bottles: 0, movements: 0 };
+    const stockedQtyInBottles = stockedLedger.bottles;
     const orderedQty = (orderRow as any).quantity ?? 0;
 
     // The order's own unit, which every comparison below is anchored to. It was
@@ -6469,6 +6589,13 @@ export class ProcurementService {
       );
     }
 
+    // A verification that would open a vendor claim is money too (F-466,
+    // ADR 0167). Today only invoice figures can make one, and those were
+    // refused above; this holds if that ever stops being true. Still before
+    // the first write.
+    if (caller && match && draftClaimFromMatch(match))
+      assertMayRecordReceiptMoney(caller.role, ["a claim to the vendor"]);
+
     // THE VERIFICATION IS AN EVENT ROW (ADR 0192 amendment, founder answer 8,
     // 2026-09-21). What the desk accepted, rejected and was invoiced for used
     // to be written onto four `procurement_orders` columns — accepted and
@@ -6634,6 +6761,8 @@ export class ProcurementService {
         // really cost rather than what we expected it to.
         match.effectiveUnitCost,
         userId,
+        // The ledger this delta was measured against (F-464).
+        `${stockedLedger.movements}:${stockedQtyInBottles}${match.ledgerDelta >= 0 ? "+" : ""}${match.ledgerDelta}`,
       );
     }
 
