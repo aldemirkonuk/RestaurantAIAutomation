@@ -58,8 +58,12 @@ function controller(role: "owner" | "manager" | "staff" | null) {
   const organizations = new OrganizationsService({} as never);
   jest.spyOn(organizations, "resolveRestaurantRole").mockResolvedValue(role);
 
+  const calendar = {
+    deleteEventType: jest.fn().mockResolvedValue({ success: true }),
+  };
+
   const c = new CalendarController(
-    {} as unknown as CalendarService,
+    calendar as unknown as CalendarService,
     { statusFor: jest.fn() } as unknown as CalendarRemindersService,
     { windowFor: jest.fn() } as unknown as WeatherService,
     { windowFor: jest.fn() } as unknown as DayRecordService,
@@ -67,7 +71,7 @@ function controller(role: "owner" | "manager" | "staff" | null) {
     links as unknown as CalendarLinksService,
     organizations,
   );
-  return { controller: c, links };
+  return { controller: c, links, calendar };
 }
 
 describe("your own link is every member's — staff included", () => {
@@ -134,4 +138,23 @@ describe("DELETE /calendar/ical-links/:userId — stopping someone's link is own
       /stop someone else's calendar link/,
     );
   });
+});
+
+describe("DELETE /calendar/event-types/:id — deleting a house's type is owner/manager only (F-694)", () => {
+  it.each(["owner", "manager"] as const)("%s may delete it", async (role) => {
+    const { controller: c, calendar } = controller(role);
+    await expect(c.deleteEventType("t-1", USER)).resolves.toEqual({ success: true });
+    expect(calendar.deleteEventType).toHaveBeenCalledWith("t-1", "r-1");
+  });
+
+  it.each(["staff", null] as const)(
+    "%s is refused, and nothing is deleted",
+    async (role) => {
+      const { controller: c, calendar } = controller(role);
+      await expect(c.deleteEventType("t-1", USER)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(calendar.deleteEventType).not.toHaveBeenCalled();
+    },
+  );
 });

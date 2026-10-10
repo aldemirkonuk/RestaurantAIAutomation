@@ -53,9 +53,14 @@ describe("PromotionsController", () => {
     expect(service.dismiss).toHaveBeenCalledWith(user.restaurantId, user.userId, offerId);
   });
 
-  it("restore is scoped to the caller's house", async () => {
+  it("restore is scoped to the caller's house and names the caller from the token", async () => {
     await controller.restore(user, offerId);
-    expect(service.restore).toHaveBeenCalledWith(user.restaurantId, offerId);
+    expect(service.restore).toHaveBeenCalledWith(user.restaurantId, user.userId, offerId);
+  });
+
+  it("refuses a restore whose token names no person (F-695)", async () => {
+    await expect(controller.restore({ restaurantId: user.restaurantId }, offerId)).rejects.toMatchObject({ status: 403 });
+    expect(service.restore).not.toHaveBeenCalled();
   });
 
   it("preserves a 404 from the service rather than flattening it to a 500", async () => {
@@ -81,5 +86,87 @@ describe("PromotionsController", () => {
     (service.readForHouse as jest.Mock).mockRejectedValue(new Error("the offers register could not be read"));
     await expect(controller.read(user, undefined)).rejects.toBeInstanceOf(HttpException);
     await expect(controller.read(user, undefined)).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+/**
+ * F-695 — restoring a put-away offer keeps the trail: the house log gets a row
+ * naming who restored it and the dismissal it took back, before the row's
+ * dismissal is cleared. A failed record restores nothing.
+ */
+
+type Row = Record<string, any>;
+
+function fake(rows: Record<string, Row[]>, failInsert = false) {
+  const writes: Array<{ table: string; op: string; values: unknown }> = [];
+  const from = (table: string) => {
+    const preds: Array<(r: Row) => boolean> = [];
+    let op = "select";
+    let values: any = null;
+    const q: any = {
+      select: () => q,
+      eq: (c: string, v: unknown) => (preds.push((r) => r[c] === v), q),
+      update: (v: unknown) => ((op = "update"), (values = v), q),
+      insert: async (v: unknown) => {
+        if (failInsert) return { error: { message: "denied" } };
+        writes.push({ table, op: "insert", values: v });
+        (rows[table] ??= []).push(v as Row);
+        return { error: null };
+      },
+      maybeSingle: async () => {
+        const hit = (rows[table] ?? []).filter((r) => preds.every((p) => p(r)));
+        if (op === "update") {
+          writes.push({ table, op, values });
+          hit.forEach((r) => Object.assign(r, values));
+        }
+        return { data: hit[0] ?? null, error: null };
+      },
+    };
+    return q;
+  };
+  return { db: { supabase: { from } } as any, writes };
+}
+
+const HOUSE = "house-1";
+const seed = () => ({
+  provider_promotions: [
+    { id: "o1", restaurant_id: HOUSE, dismissed_at: "2026-10-01T10:00:00.000Z", dismissed_by: "u-ada" },
+  ],
+  system_audit_log: [] as Row[],
+});
+
+describe("PromotionsService.restore — who restored it, and the dismissal it took back (F-695)", () => {
+  it("logs the restorer and the earlier dismissal, then clears the row's", async () => {
+    const rows = seed();
+    const { db } = fake(rows);
+    const svc = new PromotionsService(db, {} as any);
+    await expect(svc.restore(HOUSE, "u-moe", "o1")).resolves.toEqual({ restored: true });
+    expect(rows.system_audit_log).toEqual([
+      expect.objectContaining({
+        actor_id: "u-moe",
+        action: "offer_restored",
+        entity_id: "o1",
+        restaurant_id: HOUSE,
+        changes: { dismissed_at: "2026-10-01T10:00:00.000Z", dismissed_by: "u-ada" },
+      }),
+    ]);
+    expect(rows.provider_promotions[0]).toMatchObject({ dismissed_at: null, dismissed_by: null });
+  });
+
+  it("no record, no restore", async () => {
+    const rows = seed();
+    const { db, writes } = fake(rows, true);
+    const svc = new PromotionsService(db, {} as any);
+    await expect(svc.restore(HOUSE, "u-moe", "o1")).rejects.toThrow(/could not be restored/);
+    expect(writes).toEqual([]);
+    expect(rows.provider_promotions[0].dismissed_by).toBe("u-ada");
+  });
+
+  it("another house's offer is not found, and nothing is logged", async () => {
+    const rows = seed();
+    const { db, writes } = fake(rows);
+    const svc = new PromotionsService(db, {} as any);
+    await expect(svc.restore("house-2", "u-moe", "o1")).rejects.toBeInstanceOf(NotFoundException);
+    expect(writes).toEqual([]);
   });
 });

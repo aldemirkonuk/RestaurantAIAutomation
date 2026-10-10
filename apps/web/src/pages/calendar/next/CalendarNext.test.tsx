@@ -401,6 +401,16 @@ describe('CalendarNext — the KEEP', () => {
     expect(
       within(sheet).getByRole('button', { name: 'Delete the Cellar audit type' }),
     ).toBeInTheDocument();
+    // One tap on × only asks (F-694); Keep writes nothing, Delete does.
+    const deleteType = (data.deleteType as { mutate: ReturnType<typeof vi.fn> }).mutate;
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete the Cellar audit type' }));
+    expect(deleteType).not.toHaveBeenCalled();
+    expect(within(sheet).getByText(/Delete “Cellar audit” for the whole house\?/)).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Keep' }));
+    expect(deleteType).not.toHaveBeenCalled();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete the Cellar audit type' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Delete' }));
+    expect(deleteType).toHaveBeenCalledWith('ct-1');
     fireEvent.change(within(sheet).getByLabelText('New type name'), { target: { value: 'Stocktake' } });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Add' }));
     expect((data.createType as { mutate: ReturnType<typeof vi.fn> }).mutate).toHaveBeenCalledWith(

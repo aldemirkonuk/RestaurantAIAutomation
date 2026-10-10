@@ -647,9 +647,50 @@ export class PromotionsService {
     return { dismissed: true, dismissed_at: (data as { dismissed_at: string }).dismissed_at ?? stamp };
   }
 
-  /** Bring a put-away offer back to the table. */
-  async restore(restaurantId: string, id: string): Promise<{ restored: true }> {
-    const { data, error } = await this.databaseService.supabase
+  /**
+   * Bring a put-away offer back to the table.
+   *
+   * F-695: the row holds only the latest dismissal, and a restore clears it.
+   * So before it does, the house log gets a row naming who restored the offer
+   * and the dismissal it took back (who and when). No record, no restore.
+   */
+  async restore(
+    restaurantId: string,
+    userId: string,
+    id: string,
+  ): Promise<{ restored: true }> {
+    const sb = this.databaseService.supabase;
+    const { data: cur, error: curErr } = await sb
+      .from("provider_promotions")
+      .select("id, dismissed_at, dismissed_by")
+      .eq("id", id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (curErr) {
+      throw new Error(`The offer could not be restored (provider_promotions): ${curErr.message}`);
+    }
+    if (!cur) {
+      throw new NotFoundException("No such offer on this house's table.");
+    }
+    const { error: auditErr } = await sb.from("system_audit_log").insert({
+      actor_type: "user",
+      actor_id: userId,
+      action: "offer_restored",
+      entity_type: "provider_promotion",
+      entity_id: id,
+      changes: {
+        dismissed_at: (cur as { dismissed_at: string | null }).dismissed_at ?? null,
+        dismissed_by: (cur as { dismissed_by: string | null }).dismissed_by ?? null,
+      },
+      restaurant_id: restaurantId,
+      reason: null,
+    });
+    if (auditErr) {
+      throw new Error(
+        `The offer could not be restored: who put it away could not be kept (${auditErr.message})`,
+      );
+    }
+    const { data, error } = await sb
       .from("provider_promotions")
       .update({ dismissed_at: null, dismissed_by: null })
       .eq("id", id)

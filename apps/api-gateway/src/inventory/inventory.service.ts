@@ -898,15 +898,31 @@ export class InventoryService {
 
     if (existing) {
       if (!existing.is_active) {
-        // Soft-deleted item: re-activate it so the order can proceed
+        // Soft-deleted item: re-activate it so the order can proceed. What the
+        // add form says is applied, as on the insert path below; what it leaves
+        // blank keeps the wine's own value — a re-add without a vendor no
+        // longer clears the vendor it had (F-693).
+        const reactivation: Record<string, any> = {
+          is_active: true,
+          stock_live: 0, // applied as a lot via apply_stock_movement below
+          ...(masterWineName ? { wine_name: masterWineName } : {}),
+        };
+        if (dto.providerId) reactivation.provider_id = dto.providerId;
+        if (dto.thresholdMin) reactivation.threshold_min = dto.thresholdMin;
+        if (dto.thresholdMax) reactivation.threshold_max = dto.thresholdMax;
+        if (dto.saleType !== undefined) reactivation.sale_type = dto.saleType;
+        if (dto.pourSizeMl !== undefined)
+          reactivation.pour_size_ml = dto.pourSizeMl;
+        if (dto.bottleSizeMl !== undefined)
+          reactivation.bottle_size_ml = dto.bottleSizeMl;
+        if (dto.glassesPerBottleOverride !== undefined)
+          reactivation.glasses_per_bottle_override =
+            dto.glassesPerBottleOverride;
+        if (dto.storageLocationId !== undefined)
+          reactivation.storage_location_id = dto.storageLocationId;
         const { data: reactivated, error: reactivateError } = await client
           .from("restaurant_inventory")
-          .update({
-            is_active: true,
-            stock_live: 0, // applied as a lot via apply_stock_movement below
-            provider_id: dto.providerId || null,
-            ...(masterWineName ? { wine_name: masterWineName } : {}),
-          })
+          .update(reactivation)
           .eq("id", existing.id)
           .select(
             `*, master_wine_library (name, bottle_size_ml), restaurants (default_pour_ml, measurement_unit)`,
@@ -925,7 +941,7 @@ export class InventoryService {
 
         if (dto.stockLive && dto.stockLive > 0) {
           const { unitCost, provenance } = this.resolveLotCost(dto);
-          await client.rpc("apply_stock_movement", {
+          const { error: rpcErr } = await client.rpc("apply_stock_movement", {
             p_inventory_id: existing.id,
             p_stock_state: "live",
             p_delta: dto.stockLive,
@@ -941,6 +957,18 @@ export class InventoryService {
             // on each caller having remembered.
             p_restaurant_id: restaurantId,
           });
+          // "Added with 12 bottles" must not come back as 0 in silence (F-693).
+          if (rpcErr) {
+            this.logger.error(
+              `reactivation apply_stock_movement failed for ${existing.id}: ${rpcErr.message}`,
+            );
+            throw new HttpException(
+              `The wine is back on your list, but its ${dto.stockLive} ` +
+                `${dto.stockLive === 1 ? "bottle was" : "bottles were"} not ` +
+                `recorded. Add them with a stock count.`,
+              HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+          }
         }
 
         this.logger.log({

@@ -417,7 +417,11 @@ export interface RecommendationsData {
     undoWith?: Record<string, unknown>,
   ) => Promise<boolean>;
   dismiss: (entry: EntryVM, choice: DismissChoice) => Promise<void>;
-  restore: (ruleKey: string) => Promise<void>;
+  /**
+   * `includeDate`: the day the undone dismissal also ruled out (F-692).
+   * Omitted, it is read off the Undo on screen for the same key.
+   */
+  restore: (ruleKey: string, includeDate?: string) => Promise<void>;
   /** End this person's own snooze on one key — the entry is back for them. */
   wake: (ruleKey: string) => Promise<void>;
   bulk: (
@@ -477,6 +481,8 @@ export interface UndoVM {
   label: string;
   personal?: boolean;
   inverse?: { entry: EntryVM; patch: Record<string, unknown> };
+  /** The day the same dismissal ruled out; Undo counts it again (F-692). */
+  includeDate?: string;
 }
 
 export function useRecommendationsNextData(): RecommendationsData {
@@ -532,6 +538,9 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [goalBook, setGoalBook] = useState<GoalBookVM>(undefined);
   const seq = useRef(0);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The offer on screen, for `restore` to read the day it should count again.
+  const undoRef = useRef<UndoVM | null>(null);
+  undoRef.current = undo;
 
   // The figures the Standing read sets (the tab counts, rules evaluated,
   // the house's and your own hidden counts and whether each was readable,
@@ -1060,8 +1069,9 @@ export function useRecommendationsNextData(): RecommendationsData {
       label: string,
       personal = false,
       inverse?: UndoVM['inverse'],
+      includeDate?: string,
     ) => {
-    setUndo({ ruleKey, label, personal, inverse });
+    setUndo({ ruleKey, label, personal, inverse, includeDate });
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setUndo(null), 8000);
     },
@@ -1175,21 +1185,33 @@ export function useRecommendationsNextData(): RecommendationsData {
       }
 
       let tail = '';
+      let excluded: string | undefined;
       if (choice.excludeDate) {
         const landed = await excludeDay(choice.excludeDate, choice.reason);
+        if (landed) excluded = choice.excludeDate;
         tail = landed
           ? ` ${choice.excludeDate} is also out of the analysis — its numbers stop counting toward every average.`
           : ` The entry is dismissed, but ${choice.excludeDate} could NOT be excluded from the analysis — the averages still count it.`;
       }
       const paper = miss ? ` It holds, but it was ${miss}.` : '';
-      say(`${choice.said}${tail}${paper} Undo here, or on the History leaf.`);
-      offerUndo(choice.key, choice.said);
+      // Undo here takes back both writes (F-692); the History leaf brings
+      // back the entry only, and the day is counted again from the ribbon.
+      const back = excluded
+        ? ' Undo here brings back both; the History leaf brings back the entry only.'
+        : ' Undo here, or on the History leaf.';
+      say(`${choice.said}${tail}${paper}${back}`);
+      offerUndo(choice.key, choice.said, false, undefined, excluded);
     },
     [rid, say, offerUndo, excludeDay],
   );
 
   const restore = useCallback(
-    async (ruleKey: string) => {
+    async (
+      ruleKey: string,
+      includeDate: string | undefined = undoRef.current?.ruleKey === ruleKey
+        ? undoRef.current.includeDate
+        : undefined,
+    ) => {
       if (!rid) return;
       try {
         const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
@@ -1198,10 +1220,29 @@ export function useRecommendationsNextData(): RecommendationsData {
         });
         setUndo(null);
         const miss = auditMissOf(data);
+        // The dismissal being undone also ruled a day out: count it again,
+        // and say whether that landed (F-692).
+        let day = '';
+        if (includeDate) {
+          try {
+            await apiClient.delete(`/analytics/exclusions/${rid}/${includeDate}`);
+            setExclusions((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    items: prev.items.filter((e) => e.businessDate !== includeDate),
+                  }
+                : prev,
+            );
+            day = ` ${includeDate} counts again in every average.`;
+          } catch (err) {
+            day = ` But ${includeDate} is still excluded (${failureOf(err).message}) — include it again from the ribbon.`;
+          }
+        }
         say(
-          miss
+          (miss
             ? `Restored to the standing book — but ${miss}.`
-            : 'Restored to the standing book.',
+            : 'Restored to the standing book.') + day,
         );
         void load(leaf);
       } catch (err) {

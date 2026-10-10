@@ -428,13 +428,23 @@ export class CalendarController {
   }
 
   @Delete("event-types/:id")
-  @ApiOperation({ summary: "Delete a custom event type" })
+  @ApiOperation({
+    summary: "Delete a custom event type. Owner/manager only.",
+  })
   @ApiParam({ name: "id", description: "Event type ID" })
   @ApiResponse({ status: 200, description: "Event type deleted" })
+  @ApiResponse({ status: 403, description: "Not an owner or manager here." })
   async deleteEventType(
     @Param("id") id: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ success: boolean }> {
+    // A type is the whole house's (F-694): one person's tap removed it for
+    // everyone. Outside the try, so the refusal stays a 403.
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "delete a calendar type",
+    );
     try {
       return await this.calendarService.deleteEventType(id, user.restaurantId);
     } catch (error) {

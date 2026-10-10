@@ -20,6 +20,7 @@ const auth = vi.hoisted(() => ({ rid: 'r1' as string | null }));
 const api = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
+  delete: vi.fn(),
 }));
 
 const role = vi.hoisted(() => ({ current: null as string | null }));
@@ -160,6 +161,49 @@ describe('useRecommendationsNextData transport', () => {
       expect.objectContaining({ businessDate: '2026-09-02' }),
     );
     expect(result.current.entries).toHaveLength(0);
+  });
+
+  it('Undo after dismiss + exclude-day brings back the entry AND the day (F-692)', async () => {
+    api.post.mockResolvedValue({ data: {} });
+    api.delete.mockReset();
+    api.delete.mockResolvedValue({ data: {} });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    await act(async () => {
+      await result.current.dismiss(result.current.entries[0], {
+        reason: 'not_relevant',
+        scope: 'insight',
+        key: 'stockout_imminent#chablis-2021#d:2026-09-02',
+        excludeDate: '2026-09-02',
+        said: 'Dismissed.',
+      });
+    });
+    const u = result.current.undo!;
+    expect(u.includeDate).toBe('2026-09-02');
+
+    // The page's Undo button passes only the key; the day comes off the Undo.
+    await act(async () => {
+      await result.current.restore(u.ruleKey);
+    });
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ ruleKey: 'stockout_imminent#chablis-2021#d:2026-09-02', status: 'active' }),
+    );
+    expect(api.delete).toHaveBeenCalledWith('/analytics/exclusions/r1/2026-09-02');
+    expect(result.current.note).toMatch(/2026-09-02 counts again in every average/);
+  });
+
+  it('says so when Undo restored the entry but the day stayed excluded', async () => {
+    api.post.mockResolvedValue({ data: {} });
+    api.delete.mockReset();
+    api.delete.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      await result.current.restore('stockout_imminent', '2026-09-02');
+    });
+    expect(result.current.note).toMatch(/2026-09-02 is still excluded/);
   });
 
   it('says so when the entry was dismissed but the day could not be excluded', async () => {
