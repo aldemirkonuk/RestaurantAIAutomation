@@ -1,3 +1,7 @@
+import {
+  houseMembersInRoles,
+  OWNER_AND_MANAGER,
+} from "../../common/tenant/live-membership";
 import type { ProducerAudience } from "./producer-ledger.service";
 
 /**
@@ -10,9 +14,11 @@ import type { ProducerAudience } from "./producer-ledger.service";
  * (F-782). Same shape as `AddedToolProducer.decidingAudience`: intersected with
  * the audience the sweep was handed, so the quiet-hours split still decides
  * delivery, and a failed role read THROWS — writing to everyone instead would
- * leak the figures, and writing to nobody would be a silent producer.
+ * leak the figures, and writing to nobody would be a silent producer. Read
+ * through `houseMembersInRoles`, so a membership that has ended or not yet
+ * begun hears nothing either (SEC-2026-09-28-WEBSOCKET-ROLE-GATE).
  */
-export const GOAL_READING_ROLES = ["owner", "manager"];
+export const GOAL_READING_ROLES = OWNER_AND_MANAGER;
 
 /** The run row's reason when something was to be said and nobody may hear it. */
 export const NO_GOAL_READER =
@@ -27,19 +33,8 @@ export async function goalReaders(
   restaurantId: string,
   audience: ProducerAudience,
 ): Promise<ProducerAudience> {
-  const { data, error } = await client
-    .from("user_restaurant_access")
-    .select("user_id, role")
-    .eq("restaurant_id", restaurantId)
-    .eq("is_active", true)
-    .in("role", GOAL_READING_ROLES);
-  if (error) {
-    throw new Error(`could not read user_restaurant_access: ${error.message}`);
-  }
   const readers = new Set(
-    (data ?? [])
-      .map((r: any) => String(r?.user_id ?? ""))
-      .filter((id: string) => id.length > 0),
+    await houseMembersInRoles(client, restaurantId, GOAL_READING_ROLES),
   );
   return {
     ready: audience.ready.filter((u) => readers.has(u)),
