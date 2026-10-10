@@ -685,6 +685,8 @@ export function doorFacts(input: DoorNotesInput): DoorFacts {
       : null,
     // A refusal takes nothing in; otherwise only the visibly broken. Both in
     // BOXES, the unit the door counts in, which is what the field name says.
-    rejectedQtyInCountedUom: input.outcome === 'refused' ? input.counted : input.broken,
+    // Never more broken than delivered (F-1022): the door caps it, and a
+    // kept draft from before the cap must not send more than came.
+    rejectedQtyInCountedUom: input.outcome === 'refused' ? input.counted : Math.min(input.broken, input.counted),
   };
 }

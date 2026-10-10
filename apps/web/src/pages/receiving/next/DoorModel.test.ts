@@ -309,6 +309,22 @@ describe('doorFacts — the structured half, in columns', () => {
     expect(facts.driverName).toBe('Miguel');
   });
 
+  it('never sends more broken than delivered, even from an old draft (F-1022)', () => {
+    const order = caseOrder(16);
+    const facts = doorFacts({
+      outcome: 'short',
+      reason: null,
+      counted: 2,
+      broken: 5,
+      order,
+      match: matchLine(2, order),
+      hasPhoto: false,
+      driverName: '',
+      initials: 'AK',
+    });
+    expect(facts.rejectedQtyInCountedUom).toBe(2);
+  });
+
   it('rejects only the visibly broken when the delivery was taken in', () => {
     const order = caseOrder(16);
     const facts = doorFacts({

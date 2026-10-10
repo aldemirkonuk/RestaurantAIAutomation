@@ -38,6 +38,9 @@ import type { SpotCountRecord } from '../../../services/api/inventory'
 import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { SCAN_ACCEPT, resolveMimeType } from '../../../lib/uploadAccept'
 import { useModalDialog } from '../../../hooks/useModalDialog'
+import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
+import { getHouseLocale } from '../../../lib/houseCurrency'
+import { parseDecimal, type GroupMark } from '../../../lib/parseDecimal'
 
 interface SpotCountPanelProps {
   item: InventoryItem
@@ -62,32 +65,66 @@ const WORD_NUMBERS: Record<string, number> = {
   seventy: 70, eighty: 80, ninety: 90,
 }
 
-function parseSpokenNumber(transcript: string): number | null {
-  const digitMatch = transcript.match(/\d+/)
-  if (digitMatch) return parseInt(digitMatch[0], 10)
+/**
+ * The one number in what was heard, `'two'` when more than one was heard, or
+ * null when none was.
+ *
+ * F-1024 (re-hit of wave6sim locale-text #10): this took the FIRST run of
+ * digits, so "1.5" was 1 and "twelve or thirteen" summed to 25. Digits are now
+ * read by the house's marks (`parseDecimal`), the English words only where the
+ * house speaks English, and a second number anywhere is refused rather than
+ * picked — the counter says it again or types it.
+ */
+export function parseSpokenNumber(
+  transcript: string,
+  group: GroupMark | null = null,
+  locale = 'en-US',
+): number | null | 'two' {
+  const runs = transcript.match(/\d[\d.,]*\d|\d/g) ?? []
+  const words = locale.toLowerCase().startsWith('en') ? spokenWords(transcript) : null
+  if (runs.length > 1 || words === 'two' || (runs.length === 1 && words !== null)) return 'two'
+  if (runs.length === 1) return parseDecimal(runs[0], group)
+  return words
+}
 
+/** English number words as one number, `'two'` for more than one, null for none. */
+function spokenWords(transcript: string): number | null | 'two' {
   const words = transcript.toLowerCase().replace(/[^a-z\s-]/g, ' ').split(/[\s-]+/).filter(Boolean)
-  let total: number | null = null
-  let pendingTens = 0
+  let total = 0
+  let tens = 0
+  let last: 'unit' | 'teen' | 'tens' | 'hundred' | null = null
+  let gap = false
   for (const w of words) {
+    if (w === 'and' && last !== null) continue
     if (w === 'hundred') {
-      total = (total ?? 0) === 0 && pendingTens === 0 ? 100 : ((total ?? 0) + pendingTens) * 100
-      pendingTens = 0
+      total = (total + tens || 1) * 100
+      tens = 0
+      last = 'hundred'
       continue
     }
     const n = WORD_NUMBERS[w]
-    if (n === undefined) continue
-    if (n < 10 && pendingTens > 0) {
-      total = (total ?? 0) + pendingTens + n
-      pendingTens = 0
-    } else if (n >= 20 && n % 10 === 0) {
-      pendingTens = n
+    if (n === undefined) {
+      if (last !== null) gap = true
+      continue
+    }
+    // "twelve or thirteen", "three four": a second number, not a bigger one.
+    if (gap) return 'two'
+    const fresh = last === null || last === 'hundred'
+    if (n >= 20 && n % 10 === 0) {
+      if (!fresh) return 'two'
+      tens = n
+      last = 'tens'
+    } else if (n < 10 && last === 'tens') {
+      total += tens + n
+      tens = 0
+      last = 'unit'
     } else {
-      total = (total ?? 0) + n
+      if (!fresh) return 'two'
+      total += n
+      last = n < 10 ? 'unit' : 'teen'
     }
   }
-  if (pendingTens > 0) total = (total ?? 0) + pendingTens
-  return total
+  return last === null ? null : total + tens
 }
 
 type SpeechRecognitionLike = {
@@ -136,6 +173,7 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
 
   const [qty, setQty] = useState<string>('')
+  const group = useHouseGroupMark()
   const [listening, setListening] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoNote, setPhotoNote] = useState<string | null>(null)
@@ -179,13 +217,19 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
       return
     }
     const recognition = new SpeechRecognitionCtor()
-    recognition.lang = 'en-US'
+    // The house's own language (F-1024): a Turkish cellar says "on iki".
+    const locale = getHouseLocale()
+    recognition.lang = locale
     recognition.continuous = false
     recognition.interimResults = false
     recognition.onresult = (event: any) => {
       const transcript = event.results?.[0]?.[0]?.transcript ?? ''
-      const parsed = parseSpokenNumber(transcript)
-      if (parsed != null) {
+      const parsed = parseSpokenNumber(transcript, group, locale)
+      if (parsed === 'two') {
+        toast.error('Heard more than one number', `Heard: "${transcript}". Say just the count, or type it.`)
+      } else if (parsed != null && (!Number.isInteger(parsed) || parsed < 0)) {
+        toast.error('A count is whole bottles', `Heard: "${transcript}". Say the whole number, or type it.`)
+      } else if (parsed != null) {
         // Never commits — only fills the field (decision E45).
         setQty(String(parsed))
         toast.info('Heard a number', `"${transcript}" → ${parsed}. Review before submitting.`)

@@ -20,7 +20,12 @@ vi.mock('../../../services/api/inventory', () => ({ estimateCountFromPhoto: vi.f
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock('../../../stores', () => ({ useNotificationStore: () => toast }))
 
-import { SpotCountPanel, varianceSentence } from './SpotCountPanel'
+vi.mock('../../../services/api/settings', () => ({
+  settingsApi: { houseCurrency: vi.fn().mockResolvedValue({ readable: true, country: 'Turkiye' }) },
+}))
+
+import { SpotCountPanel, parseSpokenNumber, varianceSentence } from './SpotCountPanel'
+import { setHouseLocale } from '../../../lib/houseCurrency'
 
 const item = { inventoryId: 'inv-1', name: 'Yakut', liveStock: 12 } as any
 
@@ -94,3 +99,63 @@ describe('SpotCountPanel as a dialog', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+/*
+ * F-1024 (re-hit of wave6sim locale-text #10): voice listened in en-US in every
+ * house and took the first run of digits, so "1.5" was 1 and "twelve or
+ * thirteen" summed to 25.
+ */
+describe('SpotCountPanel — voice hears one number, in the house language', () => {
+  it('[REVERT-FAILS] reads digits by the house marks and refuses a second number', () => {
+    expect(parseSpokenNumber('1.250', '.', 'tr-TR')).toBe(1250)
+    expect(parseSpokenNumber('1.5', ',', 'en-US')).toBe(1.5)
+    expect(parseSpokenNumber('12 ya da 13', '.', 'tr-TR')).toBe('two')
+    expect(parseSpokenNumber('twelve or thirteen')).toBe('two')
+    expect(parseSpokenNumber('three four')).toBe('two')
+    expect(parseSpokenNumber('12 or thirteen')).toBe('two')
+  })
+
+  it('still reads one spoken English number', () => {
+    expect(parseSpokenNumber('about twelve bottles')).toBe(12)
+    expect(parseSpokenNumber('forty-two')).toBe(42)
+    expect(parseSpokenNumber('one hundred and twenty three')).toBe(123)
+    expect(parseSpokenNumber('zero')).toBe(0)
+    expect(parseSpokenNumber('none here')).toBeNull()
+    // English words are not read in a house that does not speak English.
+    expect(parseSpokenNumber('on iki', '.', 'tr-TR')).toBeNull()
+  })
+
+  it('[REVERT-FAILS] listens in the house language and never fills a guess', async () => {
+    const heard: { lang: string; onresult: ((e: any) => void) | null }[] = []
+    class FakeRecognition {
+      lang = ''
+      continuous = false
+      interimResults = false
+      onresult: ((e: any) => void) | null = null
+      onerror = null
+      onend = null
+      constructor() {
+        heard.push(this)
+      }
+      start() {}
+      stop() {}
+    }
+    Object.assign(window, { SpeechRecognition: FakeRecognition })
+    setHouseLocale('tr-TR')
+    try {
+      render(<SpotCountPanel item={item} onClose={vi.fn()} onCommitted={vi.fn()} />)
+      fireEvent.click(screen.getByTitle('Say a number'))
+      expect(heard[0].lang).toBe('tr-TR')
+      const say = (t: string) => heard[0].onresult?.({ results: [[{ transcript: t }]] })
+
+      say('12 ya da 13')
+      expect(toast.error).toHaveBeenCalledWith('Heard more than one number', expect.any(String))
+      say('1,5')
+      expect(toast.error).toHaveBeenCalledWith('A count is whole bottles', expect.any(String))
+      expect((screen.getByPlaceholderText('Total') as HTMLInputElement).value).toBe('')
+    } finally {
+      delete (window as any).SpeechRecognition
+      setHouseLocale(null)
+    }
+  })
+})

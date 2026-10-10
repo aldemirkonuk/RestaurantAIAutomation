@@ -51,6 +51,8 @@ import {
   CURRENCY_NOT_RECORDED,
   currencyLabel,
 } from '@/lib/currency';
+import { displayGroupMark, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import { vendorClause } from '../../../lib/mudavym/vendor';
 import {
@@ -62,7 +64,9 @@ import {
   fmtConfidence,
   fmtDate,
   fmtMoney,
+  cellText,
   isSignedUrlExpired,
+  lineFigure,
   moneyName,
   parseCell,
   sentence,
@@ -450,17 +454,24 @@ function EditCell({
   ariaLabel,
   locked,
   nullable = true,
+  group,
+  format,
   onCommit,
 }: {
   value: number | null;
   ariaLabel: string;
   locked: boolean;
   nullable?: boolean;
+  /** The house's thousands mark (F-1021): "1.250" is 1250 in a lira house. */
+  group: GroupMark | null;
+  /** How a reading is printed when the figure could be read two ways. */
+  format: (n: number) => string;
   onCommit: (next: number | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [bad, setBad] = useState(false);
-  const shown = draft ?? (value == null ? '' : String(value));
+  const [why, setWhy] = useState<string | null>(null);
+  const shown = draft ?? cellText(value, group);
   // The draft holds until the server round-trip moves `value` — clearing it
   // at commit time flashed the stale figure mid-flight (receipts-audit.md).
   useEffect(() => {
@@ -468,25 +479,38 @@ function EditCell({
   }, [value]);
   const commit = () => {
     if (draft === null) return;
-    const parsed = parseCell(draft);
+    const parsed = parseCell(draft, group);
     if (parsed === 'invalid' || (parsed === null && !nullable)) {
       setBad(true);
+      setWhy(parsed === null ? 'This line needs a quantity.' : `“${draft.trim()}” is not a number.`);
+      return;
+    }
+    // F-799 / F-1021: a lone mark the house and this screen read differently
+    // ("1,250" in a lira house on an English browser) is asked, never guessed.
+    const asked = parsed === null ? null : twoReadingsProblem(draft, group, displayGroupMark(), format);
+    if (asked) {
+      setBad(true);
+      setWhy(asked);
       return;
     }
     setBad(false);
+    setWhy(null);
     if (parsed !== value) onCommit(parsed);
     else setDraft(null);
   };
   return (
+    <>
     <input
       aria-label={ariaLabel}
       aria-invalid={bad || undefined}
+      inputMode="decimal"
       value={shown}
       placeholder={EM}
       readOnly={locked}
       aria-readonly={locked || undefined}
       onChange={(e) => {
         setBad(false);
+        setWhy(null);
         setDraft(e.target.value);
       }}
       onBlur={commit}
@@ -495,6 +519,7 @@ function EditCell({
         if (e.key === 'Escape') {
           setDraft(null);
           setBad(false);
+          setWhy(null);
         }
       }}
       style={{
@@ -520,6 +545,12 @@ function EditCell({
         color: 'var(--ink-1, #211C16)',
       }}
     />
+    {why && (
+      <span role="alert" style={{ display: 'block', maxWidth: 220, marginLeft: 'auto', textAlign: 'left', fontSize: 10.5, color: 'var(--ink-1, #211C16)', marginTop: 2 }}>
+        {why}
+      </span>
+    )}
+    </>
   );
 }
 
@@ -940,6 +971,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
   const detailDoc = detailQ.data?.document;
   const lines = detailQ.data?.lines;
   const shownDoc: ProcurementDocument = detailDoc ? { ...doc, ...detailDoc } : doc;
+  const group = useHouseGroupMark();
 
   const editable = doc.status === 'needs_review' || doc.status === 'received';
   // The canonical page's own gate, read here so the affordance and the route
@@ -1398,6 +1430,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                               ariaLabel={`${f.label}, line ${l.line_no}`}
                               locked={!editable}
                               nullable={f.nullable}
+                              group={group}
+                              format={(n) => lineFigure(n, shownDoc.currency, f.key !== 'qty', group)}
                               onCommit={(v) => {
                                 if (v === null && !f.nullable) return;
                                 commitEdit(l, f.key, f.patch, v);
@@ -1406,7 +1440,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                             {changed && (
                               <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', marginTop: 2 }}>
                                 <span>
-                                  extracted {was == null ? EM : f.key === 'qty' ? was : fmtMoney(was, shownDoc.currency)}
+                                  extracted {lineFigure(was, shownDoc.currency, f.key !== 'qty', group)}
                                 </span>{' '}
                                 <button
                                   type="button"
@@ -1504,11 +1538,11 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
               <p style={{ fontSize: 12, color: 'var(--ink-1, #211C16)', margin: 0 }}>
                 Line {pending.lineNo} · {pending.label}:{' '}
                 <span style={{ fontFamily: MONO }}>
-                  {pending.from == null ? EM : pending.from}
+                  {lineFigure(pending.from, shownDoc.currency, pending.field !== 'qty', group)}
                 </span>{' '}
                 &rarr;{' '}
                 <span style={{ fontFamily: MONO, fontWeight: 600 }}>
-                  {pending.to == null ? EM : pending.to}
+                  {lineFigure(pending.to, shownDoc.currency, pending.field !== 'qty', group)}
                 </span>
               </p>
               <p style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)', margin: '2px 0 8px' }}>

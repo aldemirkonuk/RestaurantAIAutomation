@@ -729,3 +729,34 @@ describe('queuedDoorReceiptFor — reads the queue entry for one order', () => {
     spy.mockRestore()
   })
 })
+
+describe('F-1022 — the broken boxes are some of the boxes delivered', () => {
+  const tap = (name: string, times = 1) => {
+    for (let i = 0; i < times; i++) fireEvent.click(screen.getByRole('button', { name }))
+  }
+  const brokenShown = () =>
+    document.querySelector('[data-ux-key="door:damaged"] [aria-live]')?.textContent
+
+  it('[REVERT-FAILS] says boxes, stops at the count, follows a lowered count, and seals "N in, M broken"', async () => {
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+
+    // One box delivered: the second tap on broken does nothing.
+    tap('Increase Boxes visibly broken', 2)
+    expect(brokenShown()).toBe('1')
+
+    tap('Increase Boxes delivered', 2)
+    tap('Increase Boxes visibly broken')
+    expect(brokenShown()).toBe('2')
+    expect(screen.getByRole('button', { name: 'Hold to seal — 1 in, 2 broken' })).toBeTruthy()
+
+    // Lowering the delivered count takes the broken count down with it.
+    tap('Decrease Boxes delivered', 2)
+    await waitFor(() => expect(brokenShown()).toBe('1'))
+    expect(screen.getByRole('button', { name: 'Hold to seal — 0 in, 1 broken' })).toBeTruthy()
+  })
+})

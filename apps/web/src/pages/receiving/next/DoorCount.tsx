@@ -71,9 +71,15 @@ export interface DoorCountProps {
   uxKey?: string;
   /** Compact variant for the secondary (visibly-broken) count. */
   compact?: boolean;
+  /**
+   * The most this count can be (F-1022): the broken boxes are some of the
+   * boxes delivered, never more of them. No ceiling when left out.
+   */
+  max?: number;
 }
 
-export function DoorCount({ value, onChange, label, tone = 'default', uxKey, compact }: DoorCountProps) {
+export function DoorCount({ value, onChange, label, tone = 'default', uxKey, compact, max }: DoorCountProps) {
+  const atMax = max !== undefined && value >= max;
   const btn =
     'min-h-[56px] min-w-[56px] flex-1 rounded-2xl bg-white/10 active:bg-white/20 ' +
     'flex items-center justify-center text-inkm-1 ' +
@@ -106,8 +112,9 @@ export function DoorCount({ value, onChange, label, tone = 'default', uxKey, com
         <button
           type="button"
           aria-label={`Increase ${label}`}
-          onClick={() => onChange((v) => v + 1)}
-          className={btn}
+          onClick={() => onChange((v) => (max === undefined ? v + 1 : Math.min(max, v + 1)))}
+          disabled={atMax}
+          className={`${btn} disabled:opacity-40`}
         >
           <Plus className={compact ? 'h-6 w-6' : 'h-8 w-8'} />
         </button>

@@ -33,6 +33,8 @@ import { settingsApi } from '../../../services/api/settings'
 import { useNotificationStore } from '../../../stores'
 import { useMayActForTheHouse } from '../../../hooks/useMayActForTheHouse'
 import { CURRENCY_CODES } from '../../../lib/currency'
+import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '../../../lib/parseDecimal'
+import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
 /*
  * THE FIRST PRODUCTION IMPORT FROM THE GATEWAY IN THIS APP (2026-09-11, audit of
  * b6d2e4b4). The receiving refusal's shared sentence is imported, not restated,
@@ -244,6 +246,66 @@ function DocumentStrip({
   )
 }
 
+/**
+ * A typed quantity or price, read by the house's marks (F-1023, a re-hit of
+ * F-358). These were `type="number"` with a bare `Number()`: on an English
+ * browser "45,50" is not a number, the box handed back '', and the price
+ * silently became "no price". Now the text is read with `parseDecimal`, a
+ * figure it cannot read — or one the house and this screen would read two ways
+ * — is said out loud and holds the button, and blank alone means "none".
+ */
+function DecimalField({
+  value,
+  onValue,
+  onProblem,
+  group,
+  className,
+  ...rest
+}: {
+  value: number | null
+  onValue: (n: number | null) => void
+  onProblem: (problem: string | null) => void
+  group: GroupMark | null
+  className: string
+  disabled?: boolean
+  placeholder?: string
+  title?: string
+  'aria-label': string
+}) {
+  const [raw, setRaw] = useState<string | null>(null)
+  const [bad, setBad] = useState(false)
+  // The figure as it stands, with the house's decimal mark and no thousands mark.
+  const shown =
+    raw ?? (value == null ? '' : group === '.' ? String(value).replace('.', ',') : String(value))
+  return (
+    <input
+      {...rest}
+      type="text"
+      inputMode="decimal"
+      aria-invalid={bad || undefined}
+      value={shown}
+      onChange={(e) => {
+        const t = e.target.value
+        setRaw(t)
+        const n = t.trim() === '' ? null : parseDecimal(t, group)
+        const problem =
+          t.trim() === ''
+            ? null
+            : n === null || n < 0
+              ? `“${t.trim()}” is not a number this can save. Type it like 45,50 or 1250.`
+              : twoReadingsProblem(t, group, displayGroupMark())
+        setBad(problem !== null)
+        onProblem(problem)
+        if (problem === null) onValue(n)
+      }}
+      onBlur={() => {
+        if (!bad) setRaw(null)
+      }}
+      className={cn(className, bad && 'border-rose-400 bg-rose-50')}
+    />
+  )
+}
+
 /** Small stepper used for every count on this screen. */
 function Stepper({
   value,
@@ -361,6 +423,13 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const [rejectedReason, setRejectedReason] = useState('')
   const [priceOverrideReason, setPriceOverrideReason] = useState('')
   const [note, setNote] = useState('')
+  const group = useHouseGroupMark()
+  // F-1023: a typed figure this screen could not read, per field. It holds the
+  // button rather than going out as "no price" or "no quantity".
+  const [unread, setUnread] = useState<Record<string, string | null>>({})
+  const unreadSay = Object.values(unread).find((v) => v) ?? null
+  const problemFor = (field: string) => (p: string | null) =>
+    setUnread((cur) => (cur[field] === p ? cur : { ...cur, [field]: p }))
   /** True once a value came from a document, so re-fetches never clobber typing. */
   const [prefilled, setPrefilled] = useState(false)
 
@@ -715,8 +784,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   // The gateway refuses a price with no code before it writes anything, so the
   // button refuses it too rather than sending a request that 400s. Both refusals
   // exist: this one is courtesy, the server's is the rule.
-  const blocked = match.requiresOverride || priceNeedsCurrency
-  const primaryLabel = priceNeedsCurrency
+  const blocked = match.requiresOverride || priceNeedsCurrency || unreadSay !== null
+  const primaryLabel = unreadSay
+    ? 'Check the figures'
+    : priceNeedsCurrency
     ? 'Currency required'
     : blocked
     ? 'Reason required'
@@ -821,19 +892,15 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
             </div>
             <div className="text-center font-mono text-sm text-gray-500">{orderedQty}</div>
             <div className="flex justify-center">
-              <input
-                type="number"
-                min={0}
+              <DecimalField
                 disabled={readOnly}
                 placeholder="—"
                 aria-label="Quantity shipped per the packing slip"
                 title="What their packing slip says shipped. Disagreeing with the invoice proves an overbill from their own paperwork."
-                value={shippedQty ?? ''}
-                onChange={(e) =>
-                  setShippedQty(
-                    e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
-                  )
-                }
+                value={shippedQty}
+                onValue={setShippedQty}
+                onProblem={problemFor('shipped')}
+                group={group}
                 className={cn(
                   'w-[64px] h-8 text-center font-mono text-sm border rounded-lg outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent disabled:bg-gray-50',
                   match.selfEvidenced ? 'border-rose-400 bg-rose-50' : 'border-gray-200',
@@ -841,20 +908,16 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               />
             </div>
             <div className="flex justify-center">
-              <input
-                type="number"
-                min={0}
+              <DecimalField
                 disabled={readOnly}
                 // Empty means "no invoice yet", which is a real and common state —
                 // many houses bill weekly in arrears. It must not read as zero.
                 placeholder="—"
                 aria-label="Quantity invoiced"
-                value={invoiceQty ?? ''}
-                onChange={(e) =>
-                  setInvoiceQty(
-                    e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
-                  )
-                }
+                value={invoiceQty}
+                onValue={setInvoiceQty}
+                onProblem={problemFor('invoiced')}
+                group={group}
                 className="w-[64px] h-8 text-center font-mono text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent disabled:bg-gray-50"
               />
             </div>
@@ -873,6 +936,12 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               {stillOwed === 0 ? <Check className="w-4 h-4 inline" /> : stillOwed}
             </div>
           </div>
+
+          {unreadSay && (
+            <p role="alert" data-testid="receiving-unread" className="pb-2 text-xs text-rose-700">
+              {unreadSay}
+            </p>
+          )}
 
           {/* prices — exact match, no tolerance band. Staff get one line instead
               (F-805): the price is a manager's or an owner's to confirm. */}
@@ -918,20 +987,15 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 {poUnitPrice != null ? money(poUnitPrice, orderCurrency?.currency) : '—'}
               </div>
               <div className="flex justify-center">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                <DecimalField
                   disabled={readOnly || !!moneyHold}
                   aria-label="Invoice unit price"
                   title={moneyHold ?? undefined}
                   placeholder="—"
-                  value={moneyHold ? '' : (invoiceUnitPrice ?? '')}
-                  onChange={(e) =>
-                    setInvoiceUnitPrice(
-                      e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
-                    )
-                  }
+                  value={moneyHold ? null : invoiceUnitPrice}
+                  onValue={setInvoiceUnitPrice}
+                  onProblem={problemFor('price')}
+                  group={group}
                   className={cn(
                     'w-[70px] h-8 text-center font-mono text-sm border rounded-lg outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent disabled:bg-gray-50',
                     priceDiffers ? 'border-rose-300 bg-rose-50/40' : 'border-gray-200',
@@ -1254,7 +1318,9 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 data-ux-key="receiving:verify"
                 disabled={verify.isPending || blocked}
                 title={
-                  priceNeedsCurrency
+                  unreadSay
+                    ? unreadSay
+                    : priceNeedsCurrency
                     ? 'Say what the price is in, or clear it — the count still records either way'
                     : blocked
                       ? 'Give a reason for the price difference first'

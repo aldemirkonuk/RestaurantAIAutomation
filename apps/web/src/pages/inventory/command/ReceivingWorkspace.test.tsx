@@ -191,7 +191,7 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
     renderWorkspace()
 
     expect(screen.getByText('No invoice yet')).toBeInTheDocument()
-    expect(invoiceQtyInput()).toHaveValue(null)
+    expect(invoiceQtyInput()).toHaveValue('')
     expect(screen.getByText(/No paperwork attached/)).toBeInTheDocument()
   })
 
@@ -382,7 +382,7 @@ describe('reading the vendor’s own paperwork', () => {
     renderWorkspace()
 
     expect(await screen.findByText(/Read from their paperwork/)).toBeInTheDocument()
-    expect(await screen.findByLabelText('Quantity invoiced')).toHaveValue(24)
+    expect(await screen.findByLabelText('Quantity invoiced')).toHaveValue('24')
     expect(screen.getByText(/Invoice INVOICE-99/)).toBeInTheDocument()
   })
 
@@ -559,7 +559,7 @@ describe('ReceivingWorkspace — a held invoice refuses the price', () => {
     forOrder.mockResolvedValue([heldInvoice()])
     renderWorkspace()
     await screen.findByTestId('receiving-money-hold')
-    expect(invoicePriceInput()).toHaveValue(null)
+    expect(invoicePriceInput()).toHaveValue('')
   })
 
   it('leaves the quantity alone — only the price is refused', async () => {
@@ -567,7 +567,7 @@ describe('ReceivingWorkspace — a held invoice refuses the price', () => {
     renderWorkspace()
     await screen.findByTestId('receiving-money-hold')
     // The count came off the same document and is untouched by a money question.
-    expect(invoiceQtyInput()).toHaveValue(24)
+    expect(invoiceQtyInput()).toHaveValue('24')
     expect(invoiceQtyInput()).not.toBeDisabled()
   })
 
@@ -1118,7 +1118,7 @@ describe('ReceivingWorkspace — the price is a manager\'s (F-805)', () => {
       'checked by a manager or an owner',
     )
     // The count stays theirs, and is not held for a reason they cannot give.
-    expect(invoiceQtyInput()).toHaveValue(24)
+    expect(invoiceQtyInput()).toHaveValue('24')
     expect(submit()).not.toBeDisabled()
 
     const user = userEvent.setup()
@@ -1141,7 +1141,7 @@ describe('ReceivingWorkspace — the price is a manager\'s (F-805)', () => {
     await screen.findByText(/Read from their paperwork/)
 
     expect(screen.queryByTestId('receiving-price-held')).not.toBeInTheDocument()
-    expect(invoicePriceInput()).toHaveValue(24)
+    expect(invoicePriceInput()).toHaveValue('24')
     expect(submit()).toHaveTextContent('Reason required')
 
     const user = userEvent.setup()
@@ -1153,5 +1153,44 @@ describe('ReceivingWorkspace — the price is a manager\'s (F-805)', () => {
     expect(body.priceOverrideReason).toBe('new vintage price')
     expect(body.allocatedCharges).toBe(6)
     expect(body.invoiceCurrency).toBe('USD')
+  })
+})
+
+/*
+ * F-1023 (re-hit of F-358): the desk quantities and the unit price were
+ * `type="number"` with a bare Number(). "45,50" came back '' on an English
+ * browser and the price went out as no price at all.
+ */
+describe('ReceivingWorkspace — typed figures read by the house marks (F-1023)', () => {
+  const billed = () =>
+    forOrder.mockResolvedValue([
+      doc('invoice', [{ qtyBottles: 24, unitPrice: 24 }], { freight: 6, currency: FIXTURE_CURRENCY }),
+    ])
+
+  it('[REVERT-FAILS] sends "45,50" as 45.5 in a lira house, not as no price', async () => {
+    billed()
+    renderWorkspace()
+    await screen.findByText(/Read from their paperwork/)
+    const user = userEvent.setup()
+    await user.clear(invoicePriceInput())
+    await user.type(invoicePriceInput(), '45,50')
+    await user.type(screen.getByPlaceholderText(/freight surcharge/), 'new vintage price')
+    await user.click(submit())
+
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.invoiceUnitPrice).toBe(45.5)
+  })
+
+  it('[REVERT-FAILS] says a figure it cannot read and holds the button', async () => {
+    billed()
+    renderWorkspace()
+    await screen.findByText(/Read from their paperwork/)
+    const user = userEvent.setup()
+    await user.clear(invoiceQtyInput())
+    await user.type(invoiceQtyInput(), 'twelve')
+
+    expect(screen.getByTestId('receiving-unread')).toHaveTextContent('“twelve” is not a number')
+    expect(screen.getByRole('button', { name: 'Check the figures' })).toBeDisabled()
+    expect(verifyOrderReceipt).not.toHaveBeenCalled()
   })
 })
