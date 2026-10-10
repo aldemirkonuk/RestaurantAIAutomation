@@ -16,6 +16,7 @@ import { DeliverySpineService } from "./canonical/delivery-spine.service";
 import { DeliveryService } from "./canonical/delivery.service";
 import { DeliveryClockService } from "./canonical/delivery-clock.service";
 import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
+import { holdsHouseMoney } from "./documents/document-money-gate";
 import {
   AcceptAsBilledDto,
   CreateDeliveryDto,
@@ -24,7 +25,41 @@ import {
   RunClocksDto,
 } from "./dto/deliveries.dto";
 
-type AuthedUser = { userId: string; restaurantId: string };
+type AuthedUser = { userId: string; restaurantId: string; role?: string | null };
+
+/** The delivery acts that settle what the house owes, by the name the refusal speaks. */
+type DeliveryMoneyAct = "propose" | "counter" | "accept" | "accept_as_billed" | "agree" | "verify";
+
+const DELIVERY_ACT_WORDS: Readonly<Record<DeliveryMoneyAct, string>> = {
+  propose: "Putting the house's position on a delivery on the record",
+  counter: "Answering a vendor's position on a delivery",
+  accept: "Accepting a vendor's position on a delivery",
+  accept_as_billed: "Accepting a delivery difference as billed",
+  agree: "Agreeing a delivery with the vendor",
+  verify: "Verifying a delivery",
+};
+
+/**
+ * WHO SETTLES A DELIVERY (F-317, 2026-10-08). The proposals, the
+ * accept-as-billed, the agreement and the verify decide what the house pays
+ * its vendor, and the verify posts the agreed price onto the lots' cost
+ * (`finaliseAtVerified`). They are desk acts on the books, so they follow the
+ * vendor-document rule (`document-money-gate.ts`, ADR 0145's `money` row, the
+ * token's role): owners and managers. The door stays open: creating the
+ * delivery, attaching its paper and the door count are not gated here.
+ */
+function assertMaySettleDelivery(user: AuthedUser | undefined, act: DeliveryMoneyAct): void {
+  const role = user?.role ? String(user.role).trim() : "";
+  if (holdsHouseMoney(role || null)) return;
+  throw new HttpException(
+    `${DELIVERY_ACT_WORDS[act]} settles what the house pays its vendor, so it is an owner's or a manager's act. ` +
+      `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed. ` +
+      (role
+        ? "The door count and the paper's photograph still go through for you; ask a manager or an owner to do this one."
+        : "Ask a manager or an owner of this house to do this one."),
+    HttpStatus.FORBIDDEN,
+  );
+}
 
 /**
  * The delivery — the commercial event of ADR 0103 D1 / ADR 0104 D7.
@@ -48,9 +83,14 @@ type AuthedUser = { userId: string; restaurantId: string };
  * The one exception is `clocks/run`, which works EVERY house's due clocks and
  * is therefore a platform act, not a house one; see its own comment.
  *
+ * The proposals, accept-as-billed, agree and verify are owners' and managers'
+ * acts (`assertMaySettleDelivery`, F-317).
+ *
  * NO ROUTE HERE WRITES STOCK OR COST. See `DeliveryService`'s header: the
  * columns ADR 0103 A1 will use have no writer on this build, and `verify` is
- * deliberately not the first one.
+ * deliberately not the first one. [CORRECTED 2026-10-08, F-317: `verify` now
+ * settles the lots' cost through `finaliseAtVerified`
+ * (`delivery.service.ts:965`); no route here writes stock.]
  */
 @ApiTags("procurement-deliveries")
 @ApiBearerAuth()
@@ -180,6 +220,7 @@ export class DeliveriesController {
     @Body() body: ProposeDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertMaySettleDelivery(user, "propose");
     const res = await this.deliveries.propose(
       user.restaurantId,
       id,
@@ -201,6 +242,7 @@ export class DeliveriesController {
     @Body() body: ProposeDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertMaySettleDelivery(user, "counter");
     const res = await this.deliveries.counter(
       user.restaurantId,
       pid,
@@ -218,6 +260,7 @@ export class DeliveriesController {
       "Accepting a substitution, a vintage change or a price move above threshold is never automated. Idempotent: accepting twice returns the first acceptance rather than moving its timestamp.",
   })
   async accept(@Param("pid") pid: string, @CurrentUser() user: AuthedUser) {
+    assertMaySettleDelivery(user, "accept");
     const res = await this.deliveries.accept(
       user.restaurantId,
       pid,
@@ -250,6 +293,7 @@ export class DeliveriesController {
     @Body() body: AcceptAsBilledDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertMaySettleDelivery(user, "accept_as_billed");
     const res = await this.deliveries.acceptAsBilled(
       user.restaurantId,
       id,
@@ -267,6 +311,7 @@ export class DeliveriesController {
       "Refuses unless the restaurant's position AND the vendor's position are both recorded with nothing left open, OR this vendor's `signed_ticket_is_final` is true and a signed door document is attached. **And, before either rule (ADR 0103 A11), every recorded difference — door count against paperwork, or invoice against PO — must be answered by an accepted proposal or an explicit accept-as-billed;** a refusal names the unanswered lines. The response names WHICH rule fired. Vendor silence never becomes agreement here, whatever the law deems.",
   })
   async agree(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    assertMaySettleDelivery(user, "agree");
     const res = await this.deliveries.agree(user.restaurantId, id, user.userId);
     if (!res.ok) throw new HttpException(res.error, res.status);
     return res.value;
@@ -276,9 +321,10 @@ export class DeliveriesController {
   @ApiOperation({
     summary: "VERIFIED — a person asserts they received the goods (D6)",
     description:
-      "Only from AGREED: agreement is about the document, verification is about the goods and the books, and ADR 0103 D1 never collapses them. Idempotent — a second verify returns the first one's stamp. Writes NO stock and NO cost on this build, and the response says so in words.",
+      "Only from AGREED: agreement is about the document, verification is about the goods and the books, and ADR 0103 D1 never collapses them. Idempotent — a second verify returns the first one's stamp. Settles the lots' cost at the agreed invoice price (`finaliseAtVerified`); writes no stock. Owners and managers only (F-317).",
   })
   async verify(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    assertMaySettleDelivery(user, "verify");
     const res = await this.deliveries.verify(
       user.restaurantId,
       id,
