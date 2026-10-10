@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck, CheckChannel } from "./pos-types";
@@ -1964,15 +1965,24 @@ export class PosHubService {
   async getStatus(restaurantId: string) {
     const client = this.dbService.getClient();
     const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-    const { data, error } = await client
-      .from("pos_checks")
-      .select("source, opened_at, closed_at")
-      .eq("restaurant_id", restaurantId)
-      .gte("opened_at", since30);
-    if (error) {
+    // Read whole or refused (ADR 0292, F-330). Unranged, this stopped at
+    // PostgREST's 1,000 rows: a house with ~1,900 checks a month read "1000
+    // checks", and "last check" came from whichever thousand came back.
+    let rows: any[];
+    try {
+      rows = await readWholeWindow<any>(
+        "The till checks of the last 30 days",
+        () =>
+          client
+            .from("pos_checks")
+            .select("id, source, opened_at, closed_at", { count: "exact" })
+            .eq("restaurant_id", restaurantId)
+            .gte("opened_at", since30),
+      );
+    } catch (err: any) {
       this.logger.error(
         `pos_checks status read failed for r=${restaurantId} — reporting ` +
-          `UNAVAILABLE rather than "0 checks": ${error.code ?? "?"} ${error.message}`,
+          `UNAVAILABLE rather than "0 checks": ${err?.message ?? String(err)}`,
       );
       return {
         windowDays: 30,
@@ -1982,7 +1992,6 @@ export class PosHubService {
         generatedAt: new Date().toISOString(),
       };
     }
-    const rows = data || [];
     const bySource = new Map<
       string,
       { checks: number; open: number; latest: string | null }

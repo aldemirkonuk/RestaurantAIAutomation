@@ -949,6 +949,11 @@ export interface BookRecordVM {
   quantity: SeriesPointVM[];
   ledger: LedgerEntryVM[];
   source: string;
+  /**
+   * True when the gateway read this book only to its cap (F-333): the ledger
+   * is the newest lines, and an empty one does not mean "never".
+   */
+  truncated?: boolean;
 }
 
 export interface RowRecordVM {

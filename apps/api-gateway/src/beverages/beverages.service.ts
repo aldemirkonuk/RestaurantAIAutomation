@@ -17,6 +17,8 @@ import {
   composeBook,
   composeRowRecord,
   matchLine,
+  nameRuns,
+  nameRunsPattern,
   num as seriesNum,
   str as seriesStr,
   unreadableBook,
@@ -176,8 +178,22 @@ export const TILL_PAGE_ROWS = 1000;
 /**
  * How many lines the invoice, order and quote books of one row's record read.
  * The menu book and the till book are read whole.
+ *
+ * F-333: these three reads took 400 house lines in no order and matched by
+ * name afterwards, so past 400 lines a drink bought every week could read as
+ * never ordered. Each now narrows to lines that could name the row in SQL
+ * (`nameRuns`, wider than `matchLine`), reads the newest first, and asks for
+ * one line more than it keeps, so a read that stopped at the cap says so and
+ * never says "never".
  */
 export const ROW_RECORD_LINE_LIMIT = 400;
+
+/** The sentence a book read to its cap carries, empty or not. */
+function cappedBookReason(lines: string, never: string, found: boolean): string {
+  return found
+    ? `Only the newest ${ROW_RECORD_LINE_LIMIT} ${lines} that could name this were read, so older ones are not listed here.`
+    : `The newest ${ROW_RECORD_LINE_LIMIT} ${lines} that could name this were read and none does. Older ones were not read, so this does not say it was ${never}.`;
+}
 
 /** The register read's own cap on each side. The response says if it was hit. */
 export const REGISTER_CATALOGUE_LIMIT = 400;
@@ -916,17 +932,23 @@ export class BeveragesService {
     label: string,
   ): Promise<BookRecord> {
     const source = "procurement_document_lines";
-    const { data, error } = await this.dbService
+    let q = this.dbService
       .getClient()
       .from("procurement_document_lines")
       .select(INVOICE_LINE_COLUMNS)
       .eq("restaurant_id", restaurantId)
-      .eq("procurement_documents.doc_type", "invoice")
-      .limit(ROW_RECORD_LINE_LIMIT);
+      .eq("procurement_documents.doc_type", "invoice");
+    const pattern = nameRunsPattern(label);
+    if (pattern !== null) q = q.ilike("description", pattern);
+    const { data, error } = await q
+      .order("created_at", { ascending: false })
+      .limit(ROW_RECORD_LINE_LIMIT + 1);
     if (error) return this.failed("invoice", source, error);
+    const read = (data ?? []) as Record<string, unknown>[];
+    const truncated = read.length > ROW_RECORD_LINE_LIMIT;
 
     const ledger: LedgerEntry[] = [];
-    for (const r of (data ?? []) as Record<string, unknown>[]) {
+    for (const r of read.slice(0, ROW_RECORD_LINE_LIMIT)) {
       const line = seriesStr(r.description) ?? "";
       const how = matchLine(label, line);
       if (how === null) continue;
@@ -957,6 +979,9 @@ export class BeveragesService {
       ledger,
       emptyReason:
         "No invoice line in this house's books names this. Nothing has been charged for it that we have a document of — which is not the same as nothing having been paid.",
+      truncatedReason: truncated
+        ? cappedBookReason("invoice lines", "never invoiced", ledger.length > 0)
+        : null,
     });
   }
 
@@ -965,16 +990,27 @@ export class BeveragesService {
     label: string,
   ): Promise<BookRecord> {
     const source = "procurement_order_items";
-    const { data, error } = await this.dbService
+    let q = this.dbService
       .getClient()
       .from("procurement_order_items")
       .select(ORDER_LINE_COLUMNS)
-      .eq("procurement_orders.restaurant_id", restaurantId)
-      .limit(ROW_RECORD_LINE_LIMIT);
+      .eq("procurement_orders.restaurant_id", restaurantId);
+    // The line is producer and name together, so the label can straddle the
+    // two columns. Its longest run cannot (a run holds no space), so the
+    // filter asks for that run in either column.
+    const longest = nameRuns(label).sort((a, z) => z.length - a.length)[0];
+    if (longest !== undefined) {
+      q = q.or(`producer.ilike.%${longest}%,wine_name.ilike.%${longest}%`);
+    }
+    const { data, error } = await q
+      .order("created_at", { ascending: false })
+      .limit(ROW_RECORD_LINE_LIMIT + 1);
     if (error) return this.failed("order", source, error);
+    const read = (data ?? []) as Record<string, unknown>[];
+    const truncated = read.length > ROW_RECORD_LINE_LIMIT;
 
     const ledger: LedgerEntry[] = [];
-    for (const r of (data ?? []) as Record<string, unknown>[]) {
+    for (const r of read.slice(0, ROW_RECORD_LINE_LIMIT)) {
       const line = [seriesStr(r.producer), seriesStr(r.wine_name)]
         .filter(Boolean)
         .join(" ");
@@ -1011,6 +1047,9 @@ export class BeveragesService {
       ledger,
       emptyReason:
         "This house has never put this on a purchase order. An order is what we asked for; it is a different claim from what we were charged.",
+      truncatedReason: truncated
+        ? cappedBookReason("order lines", "never ordered", ledger.length > 0)
+        : null,
     });
   }
 
@@ -1023,18 +1062,25 @@ export class BeveragesService {
     // record of what it was quoted. A scraped public list price is not a quote
     // this house was given, and folding the open market into this book would
     // put a number nobody said to them in their own ledger.
-    const { data, error } = await scopePriceRegisterRead(
+    let q = scopePriceRegisterRead(
       this.dbService
         .getClient()
         .from("vendor_price_observations")
         .select(QUOTE_COLUMNS),
       VENDOR_PRICE_OBSERVATIONS,
       { kind: "houseOwnRowsOnly", restaurantId },
-    ).limit(ROW_RECORD_LINE_LIMIT);
+    );
+    const pattern = nameRunsPattern(label);
+    if (pattern !== null) q = q.ilike("product_name_raw", pattern);
+    const { data, error } = await q
+      .order("observed_at", { ascending: false })
+      .limit(ROW_RECORD_LINE_LIMIT + 1);
     if (error) return this.failed("quote", source, error);
+    const read = (data ?? []) as Record<string, unknown>[];
+    const truncated = read.length > ROW_RECORD_LINE_LIMIT;
 
     const ledger: LedgerEntry[] = [];
-    for (const r of (data ?? []) as Record<string, unknown>[]) {
+    for (const r of read.slice(0, ROW_RECORD_LINE_LIMIT)) {
       const line = seriesStr(r.product_name_raw) ?? "";
       const how = matchLine(label, line);
       if (how === null) continue;
@@ -1058,6 +1104,9 @@ export class BeveragesService {
       ledger,
       emptyReason:
         "No vendor has quoted this to this house. vendor_price_observations is scoped to the tenant here on purpose — a scraped public list price belongs to everyone and is not this house's quote.",
+      truncatedReason: truncated
+        ? cappedBookReason("quotes", "never quoted", ledger.length > 0)
+        : null,
     });
   }
 

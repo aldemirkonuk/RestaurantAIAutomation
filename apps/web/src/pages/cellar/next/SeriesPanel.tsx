@@ -192,6 +192,11 @@ function BookBlock({
         </p>
       ) : (
         <>
+          {book.truncated && book.reason ? (
+            <p className="cl-said cl-dim" data-testid={`series-capped-${book.book}`}>
+              {book.reason}
+            </p>
+          ) : null}
           <Spark points={points} unit={axis === 'price' ? 'money' : 'count'} />
           <div style={{ overflowX: 'auto', marginTop: 10 }}>
             <table className="cl-table">

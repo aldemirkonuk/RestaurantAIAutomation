@@ -190,19 +190,28 @@ export class AnalyticsService {
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data, error } = await client
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .in("status", ORDER_SPEND_STATUSES)
-      .gte("delivered_at", since);
     // Every spend, COGS-ratio and vendor-concentration figure is built on this
     // list. Discarding the error made a failed read report a restaurant that
     // bought nothing all year — the exact shape ADR 0053 named for cost.
-    if (error) this.logQueryFailure("procurement_orders", error);
-    return (data || []).map((o: any) => ({
+    //
+    // Read whole or refused (ADR 0292, F-332): unranged, a year of orders
+    // stopped at PostgREST's 1,000 rows and COGS-365 summed a slice of the
+    // year. A refusal or a failed page now PROPAGATES, as `loadConsumption`
+    // does, so the lens says it could not be read instead of a short total.
+    const data = await readWholeWindow<any>(
+      "The delivered orders in this window",
+      () =>
+        client
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("status", ORDER_SPEND_STATUSES)
+          .gte("delivered_at", since),
+    );
+    return data.map((o: any) => ({
       providerId: o.provider_id || "unknown",
       cost: o.total_cost || o.final_price || 0,
       bottles: o.bottles_total || o.quantity || 0,

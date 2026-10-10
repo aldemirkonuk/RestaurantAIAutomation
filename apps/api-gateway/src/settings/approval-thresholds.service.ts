@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
   SettingsAuditService,
   type FieldChange,
@@ -66,8 +67,6 @@ export const RETROSPECTIVE_WINDOW_DAYS = 365;
 export const ENFORCED_AT =
   "apps/api-gateway/src/procurement/procurement.service.ts approveOrder → assertApprovalAllowed";
 
-const ORDER_ROW_CAP = 4000;
-
 export interface ThresholdsReadout {
   restaurantId: string;
   thresholds: ThresholdRow[];
@@ -121,6 +120,7 @@ interface ThresholdDbRow {
 }
 
 interface OrderRow {
+  id: string;
   provider_id: string | null;
   inventory_id: string | null;
   requested_at: string | null;
@@ -304,25 +304,40 @@ export class ApprovalThresholdsService {
     ).toISOString();
     let rows: OrderRow[] = [];
     try {
-      const { data, error } = await this.databaseService.client
-        .from("procurement_orders")
-        .select("provider_id, inventory_id, requested_at, total_cost, final_price")
-        .eq("restaurant_id", restaurantId)
-        .gte("requested_at", since)
-        .order("requested_at", { ascending: true })
-        .limit(ORDER_ROW_CAP);
-      if (error) {
-        const code = (error as { code?: string }).code ?? "";
+      // Read whole or refused (ADR 0292, F-331). This was ascending with a
+      // 4,000-row cap that PostgREST's 1,000 overrode, so the walk saw the
+      // OLDEST 1,000 orders of the year and `ordersRead` printed 1000.
+      rows = await readWholeWindow<OrderRow>(
+        "This year's orders",
+        () =>
+          this.databaseService.client
+            .from("procurement_orders")
+            .select(
+              "id, provider_id, inventory_id, requested_at, total_cost, final_price",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .gte("requested_at", since),
+      );
+      // The whole read comes back in id order; the walk needs time order.
+      const key = (r: OrderRow) => `${r.requested_at ?? ""}\u0000${r.id}`;
+      rows.sort((a, z) => (key(a) < key(z) ? -1 : key(a) > key(z) ? 1 : 0));
+    } catch (err) {
+      // A refused page keeps the database's own words, as before this read
+      // was made whole: `page N: <code> <message>`.
+      const failed =
+        err instanceof WholeReadError && err.reason === "read_failed"
+          ? /^page \d+: (\S+) ([\s\S]*)$/.exec(err.detail)
+          : null;
+      if (failed) {
         return {
           tests: [],
           readable: false,
-          reason: MISSING_RELATION_CODES.has(code)
+          reason: MISSING_RELATION_CODES.has(failed[1])
             ? "the order ledger is not present on this database"
-            : error.message,
+            : failed[2],
         };
       }
-      rows = (data ?? []) as unknown as OrderRow[];
-    } catch (err) {
       return {
         tests: [],
         readable: false,
