@@ -41,6 +41,7 @@ import {
  *   GET  /pos-hub/status/:restaurantId           ingestion stats by source
  *   POST /pos-hub/webhook/:provider/:restaurantId   push path (webhooks/middleware)
  *   POST /pos-hub/import/:restaurantId           batch import (canonical JSON)
+ *   POST /pos-hub/connections/:restaurantId/:provider   owner: take or refuse a provider's feed
  *   GET/POST /pos-hub/mappings/:restaurantId     pos_item_mappings CRUD
  *   GET  /pos-hub/mappings/:restaurantId/sale-unit-review   rows missing a unit, with evidence
  *   POST /pos-hub/mappings/:restaurantId/sale-unit          batch: the human's answers
@@ -89,13 +90,19 @@ export class PosHubController {
   @ApiOperation({
     summary: "Ingest a POS webhook payload",
     description:
-      "Normalizes the provider payload into canonical checks, upserts pos_checks (idempotent on external check id), and — for closed checks — depletes stock via apply_stock_movement/record_glass_pour. Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today. Requires a hex HMAC-SHA256 signature in X-Pos-Hub-Signature, keyed per (provider, restaurant): POS_WEBHOOK_SECRET_<PROVIDER>__<RESTAURANT_ID> then POS_WEBHOOK_SECRET_<PROVIDER> — both signing '<provider>:<restaurantId>.' + rawBody — falling back to the legacy process-wide POS_HUB_WEBHOOK_SECRET over the raw body alone. Fails closed when no secret is configured.",
+      "Normalizes the provider payload into canonical checks, upserts pos_checks (idempotent on external check id), and — for closed checks — depletes stock via apply_stock_movement/record_glass_pour. Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today. Requires a hex HMAC-SHA256 signature in X-Pos-Hub-Signature, keyed per (provider, restaurant): POS_WEBHOOK_SECRET_<PROVIDER>__<RESTAURANT_ID> then POS_WEBHOOK_SECRET_<PROVIDER> — both signing '<timestamp>.<provider>:<restaurantId>.' + rawBody, with the timestamp in X-Pos-Hub-Timestamp and within five minutes of now — falling back to the legacy process-wide POS_HUB_WEBHOOK_SECRET over the raw body alone. Fails closed when no secret is configured.",
   })
   @ApiHeader({
     name: "X-Pos-Hub-Signature",
     description:
-      "Hex HMAC-SHA256. With a scoped secret (POS_WEBHOOK_SECRET_<PROVIDER>[__<RESTAURANT_ID>]) the signed message is `<provider>:<restaurantId>.` + rawBody; on the legacy POS_HUB_WEBHOOK_SECRET fallback it is rawBody alone.",
+      "Hex HMAC-SHA256. With a scoped secret (POS_WEBHOOK_SECRET_<PROVIDER>[__<RESTAURANT_ID>]) the signed message is `<timestamp>.<provider>:<restaurantId>.` + rawBody; on the legacy POS_HUB_WEBHOOK_SECRET fallback it is rawBody alone.",
     required: true,
+  })
+  @ApiHeader({
+    name: "X-Pos-Hub-Timestamp",
+    description:
+      "When the body was signed: epoch seconds or milliseconds, or ISO-8601. Required with a scoped secret, signed over, and refused when more than five minutes from now (F-639).",
+    required: false,
   })
   async webhook(
     @Param("provider") provider: string,
@@ -103,22 +110,28 @@ export class PosHubController {
     @Body() payload: unknown,
     @Headers("x-pos-hub-signature") signature: string | undefined,
     @Req() request: RawBodyRequest<Request>,
+    @Headers("x-pos-hub-timestamp") timestamp?: string,
   ) {
     // B17/B28: HMAC guard, fail closed (see PosHubService.verifyWebhookSignature).
     // The provider and restaurant from the path are passed as the identity the
     // key is resolved for AND (on a scoped secret) signed over, so a signature
     // minted for one tenant cannot authenticate another's payload.
     if (
-      !this.posHub.verifyWebhookSignature(request.rawBody, signature, {
-        provider,
-        restaurantId,
-      })
+      !this.posHub.verifyWebhookSignature(
+        request.rawBody,
+        signature,
+        { provider, restaurantId },
+        timestamp,
+      )
     ) {
       throw new HttpException(
         "Webhook signature verification failed",
         HttpStatus.UNAUTHORIZED,
       );
     }
+    // F-643: after the signature, so an unsigned caller learns nothing about
+    // the house. A provider the owner switched off is refused with 409.
+    await this.posHub.assertConnected(restaurantId, provider);
     try {
       const result = await this.posHub.ingest(restaurantId, provider, payload);
       // ADR 0281 (amended 2026-10-05): the till is told whether its refusals
@@ -167,6 +180,52 @@ export class PosHubController {
     } catch (error) {
       throw new HttpException(
         error.message || "Import failed",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * F-643: the owner takes or refuses a provider's feed for the house. Before
+   * this, a house that stopped using a till had no way to stop its feed; an
+   * operator had to remove an environment secret. Owner only (ADR 0164:
+   * @Roles is exact), and the actor is the token's, never the body's.
+   */
+  @Post("connections/:restaurantId/:provider")
+  @UseGuards(RolesGuard)
+  @Roles("owner")
+  @ApiOperation({
+    summary: "Take or refuse a POS provider's checks for this restaurant (owner)",
+    description:
+      "Body: { enabled: boolean }. enabled=false makes the webhook refuse this provider's checks for this restaurant with 409 until it is set back to true.",
+  })
+  async setConnection(
+    @Param("restaurantId") restaurantId: string,
+    @Param("provider") provider: string,
+    @Body() body: { enabled?: unknown },
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    const actor = typeof user?.userId === "string" ? user.userId : "";
+    if (!actor)
+      throw new HttpException(
+        "A signed-in owner is required to connect or disconnect a till",
+        HttpStatus.UNAUTHORIZED,
+      );
+    if (typeof body?.enabled !== "boolean")
+      throw new HttpException(
+        "Say enabled: true to take this till's checks, or false to stop them",
+        HttpStatus.BAD_REQUEST,
+      );
+    try {
+      return await this.posHub.setConnection(
+        restaurantId,
+        provider,
+        body.enabled,
+        actor,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Could not change the till connection",
         HttpStatus.BAD_REQUEST,
       );
     }

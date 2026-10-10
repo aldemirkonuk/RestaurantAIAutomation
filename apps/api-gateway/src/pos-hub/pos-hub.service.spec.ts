@@ -264,13 +264,21 @@ describe("PosHubService.ingest — stock effects", () => {
     expect(calls.unresolvedInserts[0].external_item_id).toBe("item-9");
   });
 
+  // F-640: food is known by its POS category; a line with no category and
+  // no mapping is queued instead (pos-hub.check-truth.spec.ts).
   it("never queues or depletes a non-wine item", async () => {
     const { service, calls } = makeService({ mappings: [] });
 
     await service.ingest("r1", "generic_webhook", [
       closedCheckPayload({
         items: [
-          { name: "Cheeseburger", externalItemId: "food-1", qty: 1, price: 12 },
+          {
+            name: "Cheeseburger",
+            externalItemId: "food-1",
+            category: "Mains",
+            qty: 1,
+            price: 12,
+          },
         ],
       }),
     ]);
@@ -294,16 +302,22 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
     `POS_WEBHOOK_SECRET_GENERIC_WEBHOOK__${R_B.toUpperCase().replace(/-/g, "_")}`,
   ];
 
+  /** F-639: when the scoped signer signed, sent as X-Pos-Hub-Timestamp. */
+  const TS = String(Date.now());
+
   const hmac = (secret: string, message: Buffer | string) =>
     crypto.createHmac("sha256", secret).update(message).digest("hex");
 
-  /** What a scoped signer produces: the identity is inside the signed bytes. */
+  /** What a scoped signer produces: the time and the identity are inside
+   *  the signed bytes. */
   const scopedSig = (
     secret: string,
     provider: string,
     restaurantId: string,
     raw: Buffer,
-  ) => hmac(secret, `${provider}:${restaurantId}.${raw.toString("utf8")}`);
+    ts: string = TS,
+  ) =>
+    hmac(secret, `${ts}.${provider}:${restaurantId}.${raw.toString("utf8")}`);
 
   beforeEach(() => {
     for (const v of SECRET_VARS) delete process.env[v];
@@ -322,7 +336,7 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, "anything", {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(false);
 
     // Logged once, and it says the door is advertised — generic_webhook is
@@ -337,7 +351,7 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, "anything", {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(false);
     expect(errors).toHaveBeenCalledTimes(1);
   });
@@ -368,7 +382,7 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, hmac("legacy-secret", body), {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(true);
 
     expect(warn).toHaveBeenCalledTimes(1);
@@ -392,14 +406,14 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, sigForGeneric, {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(true);
     // Same tenant, same bytes, provider A's key — must not open provider B.
     expect(
       service.verifyWebhookSignature(body, sigForGeneric, {
         provider: "toast",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(false);
   });
 
@@ -414,13 +428,13 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, sigForA, {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(true);
     expect(
       service.verifyWebhookSignature(body, sigForA, {
         provider: "generic_webhook",
         restaurantId: R_B,
-      }),
+      }, TS),
     ).toBe(false);
   });
 
@@ -438,13 +452,13 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, sigA, {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(true);
     expect(
       service.verifyWebhookSignature(body, sigA, {
         provider: "generic_webhook",
         restaurantId: R_B,
-      }),
+      }, TS),
     ).toBe(false);
 
     // A scoped secret is the cutover switch: the legacy key no longer opens
@@ -453,13 +467,14 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, hmac("legacy-secret", body), {
         provider: "generic_webhook",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(false);
     expect(
       service.verifyWebhookSignature(
         body,
         scopedSig("secret-provider", "generic_webhook", R_A, body),
         { provider: "generic_webhook", restaurantId: R_A },
+        TS,
       ),
     ).toBe(false);
   });
@@ -473,16 +488,71 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
       service.verifyWebhookSignature(body, good, {
         provider: "not_a_real_pos",
         restaurantId: R_A,
-      }),
+      }, TS),
     ).toBe(false);
     expect(
       service.verifyWebhookSignature(body, good, {
         provider: "generic_webhook",
         restaurantId: "  ",
-      }),
+      }, TS),
     ).toBe(false);
     expect(
-      service.verifyWebhookSignature(body, good, undefined as any),
+      service.verifyWebhookSignature(body, good, undefined as any, TS),
+    ).toBe(false);
+  });
+
+  it("F-639: refuses a scoped signature with no time, an old time, or a time it does not cover", () => {
+    process.env.POS_WEBHOOK_SECRET_GENERIC_WEBHOOK = "secret-generic";
+    const { service } = makeService();
+    jest
+      .spyOn((service as any).logger, "error")
+      .mockImplementation(() => undefined);
+    const ctx = { provider: "generic_webhook", restaurantId: R_A };
+    const old = String(Date.now() - 6 * 60 * 1000);
+
+    // Fresh and covered: accepted.
+    expect(
+      service.verifyWebhookSignature(
+        body,
+        scopedSig("secret-generic", "generic_webhook", R_A, body),
+        ctx,
+        TS,
+      ),
+    ).toBe(true);
+    // No timestamp: a captured body would replay forever.
+    expect(
+      service.verifyWebhookSignature(
+        body,
+        scopedSig("secret-generic", "generic_webhook", R_A, body),
+        ctx,
+      ),
+    ).toBe(false);
+    // Signed six minutes ago: outside the window, though the HMAC is right.
+    expect(
+      service.verifyWebhookSignature(
+        body,
+        scopedSig("secret-generic", "generic_webhook", R_A, body, old),
+        ctx,
+        old,
+      ),
+    ).toBe(false);
+    // An old signature re-sent with a fresh header: the time is signed over.
+    expect(
+      service.verifyWebhookSignature(
+        body,
+        scopedSig("secret-generic", "generic_webhook", R_A, body, old),
+        ctx,
+        TS,
+      ),
+    ).toBe(false);
+    // Not a time at all.
+    expect(
+      service.verifyWebhookSignature(
+        body,
+        scopedSig("secret-generic", "generic_webhook", R_A, body, "soon"),
+        ctx,
+        "soon",
+      ),
     ).toBe(false);
   });
 });

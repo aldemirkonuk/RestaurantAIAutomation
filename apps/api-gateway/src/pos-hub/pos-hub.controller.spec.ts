@@ -1,5 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { HttpException, ValidationPipe } from "@nestjs/common";
+import { HttpException, HttpStatus, ValidationPipe } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { ROLES_KEY } from "../auth/decorators/roles.decorator";
 import { PosHubController } from "./pos-hub.controller";
 import { PosHubService } from "./pos-hub.service";
 import { CatalogMatcherService } from "./catalog-matcher.service";
@@ -43,6 +45,8 @@ describe("PosHubController — sale-unit review routes", () => {
   const posHub = {
     verifyWebhookSignature: jest.fn(),
     ingest: jest.fn(),
+    assertConnected: jest.fn().mockResolvedValue(undefined),
+    setConnection: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -99,7 +103,53 @@ describe("PosHubController — sale-unit review routes", () => {
         req.rawBody,
         "sig",
         { provider: "generic_webhook", restaurantId: "rest-1" },
+        undefined,
       );
+    });
+
+    it("F-639: hands the X-Pos-Hub-Timestamp header to verification", async () => {
+      posHub.verifyWebhookSignature.mockReturnValue(true);
+      posHub.ingest.mockResolvedValue({ received: 0 });
+
+      await controller.webhook(
+        "generic_webhook",
+        "rest-1",
+        [],
+        "sig",
+        req,
+        "1760000000",
+      );
+
+      expect(posHub.verifyWebhookSignature).toHaveBeenLastCalledWith(
+        req.rawBody,
+        "sig",
+        { provider: "generic_webhook", restaurantId: "rest-1" },
+        "1760000000",
+      );
+    });
+
+    it("F-643: a provider the owner disconnected is refused with 409 and never ingested", async () => {
+      posHub.verifyWebhookSignature.mockReturnValue(true);
+      posHub.ingest.mockClear();
+      posHub.assertConnected.mockRejectedValueOnce(
+        new HttpException("disconnected", HttpStatus.CONFLICT),
+      );
+
+      await expect(
+        controller.webhook("toast", "rest-1", [], "sig", req),
+      ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+      expect(posHub.assertConnected).toHaveBeenCalledWith("rest-1", "toast");
+      expect(posHub.ingest).not.toHaveBeenCalled();
+    });
+
+    it("F-643: an unsigned caller is refused before the connection is read", async () => {
+      posHub.verifyWebhookSignature.mockReturnValue(false);
+      posHub.assertConnected.mockClear();
+
+      await expect(
+        controller.webhook("toast", "rest-1", [], "sig", req),
+      ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+      expect(posHub.assertConnected).not.toHaveBeenCalled();
     });
 
     it("rejects with 401 and never ingests when verification fails", async () => {
@@ -408,6 +458,50 @@ describe("PosHubController — sale-unit review routes", () => {
       await expect(
         controller.setSaleUnit("rest-1", "map-x", { sale_unit: "bottle" }),
       ).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe("POST connections/:restaurantId/:provider (F-643)", () => {
+    it("is the owner's alone", () => {
+      const roles = new Reflector().get(
+        ROLES_KEY,
+        PosHubController.prototype.setConnection,
+      );
+      expect(roles).toEqual(["owner"]);
+    });
+
+    it("writes the switch with the signed-in owner as the actor", async () => {
+      posHub.setConnection.mockResolvedValue({ enabled: false });
+
+      await controller.setConnection(
+        "rest-1",
+        "toast",
+        { enabled: false },
+        { userId: "owner-1" },
+      );
+
+      expect(posHub.setConnection).toHaveBeenCalledWith(
+        "rest-1",
+        "toast",
+        false,
+        "owner-1",
+      );
+    });
+
+    it("refuses a body that does not say true or false, and a call with no user", async () => {
+      posHub.setConnection.mockClear();
+      await expect(
+        controller.setConnection(
+          "rest-1",
+          "toast",
+          { enabled: "no" },
+          { userId: "owner-1" },
+        ),
+      ).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+      await expect(
+        controller.setConnection("rest-1", "toast", { enabled: false }),
+      ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+      expect(posHub.setConnection).not.toHaveBeenCalled();
     });
   });
 });

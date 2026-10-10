@@ -1,4 +1,7 @@
+import * as crypto from "crypto";
+import { HttpException, HttpStatus } from "@nestjs/common";
 import { ToastService } from "./toast.service";
+import { toastAdapter } from "../pos-hub/pos-adapters";
 import { DatabaseService } from "../database/database.service";
 import {
   ToastWebhookDto,
@@ -115,12 +118,29 @@ function makeService(opts: Opts) {
     set: async () => undefined,
   };
   const databaseService = { supabase: client } as unknown as DatabaseService;
+  // F-642: the hub the order is handed to.
+  const posHub = {
+    assertConnected: jest.fn().mockResolvedValue(undefined),
+    ingest: jest.fn().mockResolvedValue({ errors: [] }),
+  };
   const service = new ToastService(
     configService,
     cacheService,
     databaseService,
+    posHub as any,
   );
-  return { service, calls };
+  return { service, calls, posHub };
+}
+
+/** The one check a Toast order webhook handed to PosHubService.ingest. */
+function handedCheck(posHub: { ingest: jest.Mock }) {
+  expect(posHub.ingest).toHaveBeenCalledTimes(1);
+  const [restaurantId, provider, payload] = posHub.ingest.mock.calls[0];
+  expect(restaurantId).toBe("r1");
+  expect(provider).toBe("toast");
+  const checks = toastAdapter.normalize(payload);
+  expect(checks).toHaveLength(1);
+  return checks[0];
 }
 
 function webhookDto(
@@ -147,70 +167,45 @@ function webhookDto(
   } as ToastWebhookDto;
 }
 
-describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
-  it("resolves via pos_item_mappings (not toast_item_mappings) and depletes a bottle sale", async () => {
-    const { service, calls } = makeService({
-      // ADR 0141, second correction: a mapped item pours only when a read
-      // scoped to this restaurant returns it -- the fixture's item is the house's own.
-      inventory: { id: "inv-1" },
-      mapping: {
-        inventory_id: "inv-1",
-        sale_unit: "bottle",
-        item_name: "Caymus Cabernet",
-      },
-    });
+describe("F-642: a Toast order webhook is a check the POS hub ingests", () => {
+  it("a closed order is handed over as a closed Toast check, and this service moves no stock itself", async () => {
+    const { service, calls, posHub } = makeService({});
+    const dto = webhookDto(ToastWebhookEventType.ORDER_CLOSED);
 
-    await service.processWebhook(
-      webhookDto(ToastWebhookEventType.ORDER_CLOSED),
-      "{}",
-      null,
-      null,
-    );
+    await service.processWebhook(dto, "{}", null, null);
 
-    expect(calls.mappingQueries[0]).toContain("inventory_id");
-    expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].name).toBe("apply_stock_movement");
-    expect(calls.rpc[0].args.p_delta).toBe(-2);
-  });
-
-  it("never infers glass from the item name — only the mapping's sale_unit (B36)", async () => {
-    const { service, calls } = makeService({
-      // ADR 0141, second correction: a mapped item pours only when a read
-      // scoped to this restaurant returns it -- the fixture's item is the house's own.
-      inventory: { id: "inv-1" },
-      mapping: {
-        inventory_id: "inv-1",
-        sale_unit: "bottle",
-        item_name: "Caymus Cabernet glass",
-      },
-    });
-
-    await service.processWebhook(
-      webhookDto(ToastWebhookEventType.ORDER_CLOSED, {
-        name: "Caymus Cabernet by the glass",
+    const check = handedCheck(posHub);
+    expect(check.externalCheckId).toBe("order-1");
+    expect(check.closedAt).toBe(dto.timestamp);
+    expect(check.voided).toBe(false);
+    expect(check.sourceModifiedAt).toBe(new Date(dto.timestamp).toISOString());
+    expect(check.items).toEqual([
+      expect.objectContaining({
+        name: "Caymus Cabernet",
+        externalItemId: "item-1",
+        qty: 2,
+        price: 2400,
       }),
-      "{}",
-      null,
-      null,
-    );
-
-    // sale_unit on the mapping says bottle, so despite "glass" in the name,
-    // it must deplete as a bottle via apply_stock_movement.
-    expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].name).toBe("apply_stock_movement");
+    ]);
+    expect(posHub.assertConnected).toHaveBeenCalledWith("r1", "toast");
+    // Before: an own apply_stock_movement per (order, menu item), and no
+    // pos_checks row, so the sale never reached takings.
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.unresolvedInserts).toHaveLength(0);
   });
 
-  it("reverses a glass void via apply_stock_movement instead of skipping it (B19)", async () => {
-    const { service, calls } = makeService({
-      // ADR 0141, second correction: a mapped item pours only when a read
-      // scoped to this restaurant returns it -- the fixture's item is the house's own.
-      inventory: { id: "inv-1" },
-      mapping: {
-        inventory_id: "inv-1",
-        sale_unit: "glass",
-        item_name: "Caymus Cabernet",
-      },
-    });
+  it("a second line of the same wine stays a second line (it was swallowed as a replay)", async () => {
+    const { service, posHub } = makeService({});
+    const dto = webhookDto(ToastWebhookEventType.ORDER_CLOSED);
+    dto.order!.items = [dto.order!.items![0], { ...dto.order!.items![0] }];
+
+    await service.processWebhook(dto, "{}", null, null);
+
+    expect(handedCheck(posHub).items).toHaveLength(2);
+  });
+
+  it("a voided order is handed over voided and closed, so the hub returns only what a sale took", async () => {
+    const { service, calls, posHub } = makeService({});
 
     await service.processWebhook(
       webhookDto(ToastWebhookEventType.ORDER_VOIDED),
@@ -219,26 +214,90 @@ describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
       null,
     );
 
-    expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].name).toBe("apply_stock_movement");
-    expect(calls.rpc[0].args.p_delta).toBe(2);
-    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+    const check = handedCheck(posHub);
+    expect(check.voided).toBe(true);
+    expect(check.closedAt).toBeTruthy();
+    expect(calls.rpc).toHaveLength(0);
   });
 
-  it("queues an unmapped line in pos_unresolved_lines instead of dropping it (B20)", async () => {
-    const { service, calls } = makeService({ mapping: null, inventory: null });
+  it("an order updated after it closed is a correction, and one still open stays open", async () => {
+    const closed = makeService({});
+    const edited = webhookDto(ToastWebhookEventType.ORDER_UPDATED);
+    edited.order!.closedAt = "2026-10-09T20:00:00.000Z";
+    await closed.service.processWebhook(edited, "{}", null, null);
+    expect(handedCheck(closed.posHub).closedAt).toBe(
+      "2026-10-09T20:00:00.000Z",
+    );
 
-    await service.processWebhook(
-      webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+    const open = makeService({});
+    await open.service.processWebhook(
+      webhookDto(ToastWebhookEventType.ORDER_CREATED),
       "{}",
       null,
       null,
     );
+    expect(handedCheck(open.posHub).closedAt).toBeNull();
+  });
 
-    expect(calls.rpc).toHaveLength(0);
-    expect(calls.unresolvedInserts).toHaveLength(1);
-    expect(calls.unresolvedInserts[0].source).toBe("toast");
-    expect(calls.unresolvedInserts[0].external_item_id).toBe("item-1");
+  it("F-643: a house that disconnected Toast is refused with 409, and nothing is ingested", async () => {
+    const { service, posHub } = makeService({});
+    posHub.assertConnected.mockRejectedValueOnce(
+      new HttpException("disconnected", HttpStatus.CONFLICT),
+    );
+
+    await expect(
+      service.processWebhook(
+        webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+        "{}",
+        null,
+        null,
+      ),
+    ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+    expect(posHub.ingest).not.toHaveBeenCalled();
+  });
+});
+
+describe("F-639: a Toast signature is good only near its own time", () => {
+  function signed(secret: string, ts: string, body: string) {
+    return `v1=${crypto.createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex")}`;
+  }
+  function serviceWithSecret() {
+    const configService: any = {
+      get: (key: string, fallback?: any) => {
+        if (key === "TOAST_MOCK_MODE") return false;
+        if (key === "TOAST_WEBHOOK_SECRET") return "toast-secret";
+        return fallback;
+      },
+    };
+    return new ToastService(configService, {} as any, {
+      supabase: {},
+    } as unknown as DatabaseService);
+  }
+
+  it("accepts a fresh signature and refuses the same body signed six minutes ago", () => {
+    const service = serviceWithSecret();
+    jest
+      .spyOn((service as any).logger, "error")
+      .mockImplementation(() => undefined);
+    const body = '{"eventId":"e1"}';
+    const now = String(Date.now());
+    const old = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+
+    expect(
+      service.verifyWebhookSignature(body, signed("toast-secret", now, body), now),
+    ).toBe(true);
+    // Before: the timestamp was signed over but never aged, so a captured
+    // webhook replayed forever.
+    expect(
+      service.verifyWebhookSignature(body, signed("toast-secret", old, body), old),
+    ).toBe(false);
+    expect(
+      service.verifyWebhookSignature(
+        body,
+        signed("toast-secret", "later", body),
+        "later",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -329,7 +388,7 @@ describe("F-554: Toast webhooks log events the enums accept, and a failed log ne
   });
 
   it("still takes the sale off stock when the event log insert fails", async () => {
-    const { service, calls } = makeService({
+    const { service, calls, posHub } = makeService({
       inventory: { id: "inv-1" },
       mapping: { inventory_id: "inv-1", sale_unit: "bottle", item_name: "Caymus" },
       eventsError: { code: "22P02", message: "invalid input value for enum" },
@@ -340,9 +399,9 @@ describe("F-554: Toast webhooks log events the enums accept, and a failed log ne
       null,
       null,
     );
-    expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].name).toBe("apply_stock_movement");
-    expect(calls.rpc[0].args.p_delta).toBe(-2);
+    expect(calls.eventInserts).toHaveLength(1);
+    // F-642: the sale reaches the hub, which takes it off stock.
+    expect(handedCheck(posHub).closedAt).toBeTruthy();
   });
 });
 
@@ -702,7 +761,7 @@ describe("Defect A — no silently-swallowed forward to the orchestrator", () =>
   }
 
   it("processes an order webhook without POSTing to the non-existent /api/v1/toast/webhooks route", async () => {
-    const { service, calls } = makeService({
+    const { service, posHub } = makeService({
       // ADR 0141, second correction: a mapped item pours only when a read
       // scoped to this restaurant returns it -- the fixture's item is the house's own.
       inventory: { id: "inv-1" },
@@ -721,9 +780,9 @@ describe("Defect A — no silently-swallowed forward to the orchestrator", () =>
       null,
     );
 
-    // The real work still happens…
+    // The real work still happens (F-642: through the POS hub)…
     expect(res.status).toBe("processed");
-    expect(calls.rpc).toHaveLength(1);
+    expect(posHub.ingest).toHaveBeenCalledTimes(1);
     // …and nothing is fired at a route that does not exist.
     expect(post).not.toHaveBeenCalled();
   });

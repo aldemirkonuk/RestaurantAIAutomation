@@ -1,4 +1,6 @@
 import {
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   Logger,
@@ -323,6 +325,14 @@ type StockFailureKind = "stock" | "queue" | "consumption" | "neverTaken";
  * constructor (as several specs build it) still has it.
  */
 const STOCK_REPORTS = new WeakMap<object, StockReport>();
+/**
+ * F-639. NEWER_THAN_VOID: checks the till says are newer than the stored
+ * void. AFTER_VOID: checks applyStockEffects did not move because this hub
+ * already returned their stock for a void and nothing says the copy is newer
+ * (a till's late retry of the "closed" event).
+ */
+const NEWER_THAN_VOID = new WeakSet<object>();
+const AFTER_VOID = new WeakSet<object>();
 
 /** Lines that reached an outcome; the rest of a check's lines are notStock. */
 function decidedLines(t: StockTally): number {
@@ -387,6 +397,8 @@ interface CheckLedger {
    * consumption row belongs under that key and a replay may write it.
    */
   byKey: Map<string, number>;
+  /** F-639: a void of this check has returned stock (a `:void` key). */
+  voidBooked: boolean;
 }
 
 /** Every stock key of a check begins with this (B15). */
@@ -650,9 +662,163 @@ function scopedSignedPayload(
   providerKey: string,
   restaurantId: string,
   rawBody: Buffer | string,
+  timestamp: string,
 ): string {
   const body = Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : rawBody;
-  return `${providerKey}:${restaurantId}.${body}`;
+  return `${timestamp}.${providerKey}:${restaurantId}.${body}`;
+}
+
+/**
+ * F-639: how far a signed webhook's timestamp may sit from now, either way.
+ * A signature with no time in it authenticated a captured body forever, so a
+ * replayed old copy of a check could be re-sent at will.
+ */
+export const WEBHOOK_FRESHNESS_MS = 5 * 60 * 1000;
+
+/**
+ * A webhook timestamp read strictly: epoch seconds or milliseconds (digits
+ * only), or ISO text. Anything else is null, and the webhook is refused.
+ */
+export function readWebhookTimestamp(raw: unknown): number | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const s = raw.trim();
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    // Ten digits is seconds until the year 2286; more is milliseconds.
+    return s.length <= 10 ? n * 1000 : n;
+  }
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : null;
+}
+
+export function webhookTimestampIsFresh(
+  raw: unknown,
+  nowMs: number = Date.now(),
+): boolean {
+  const t = readWebhookTimestamp(raw);
+  return t !== null && Math.abs(nowMs - t) <= WEBHOOK_FRESHNESS_MS;
+}
+
+/** What the hub holds for a check, read before a new copy is stored. */
+export interface StoredCheckCopy {
+  voided: boolean | null;
+  closed_at: string | null;
+  source_version: number | string | null;
+  source_modified_at: string | null;
+}
+
+/**
+ * F-639: whether an incoming copy of a check must not replace the stored
+ * one. It is older (by the till's version when both carry one, else by its
+ * modified-at when both carry one), or it is not known to be newer and would
+ * un-void the check or re-open it. The same rule as the pos_checks trigger
+ * pos_checks_keep_newest (migration a_check_keeps_its_newest_version).
+ */
+export function copyIsStale(
+  stored: StoredCheckCopy | null,
+  incoming: {
+    voided: boolean;
+    closedAt: string | null;
+    sourceVersion?: number | null;
+    sourceModifiedAt?: string | null;
+  },
+): "older" | "would_undo" | null {
+  if (!stored) return null;
+  let newer: boolean | null = null;
+  const storedVersion =
+    stored.source_version == null ? null : Number(stored.source_version);
+  const storedModified =
+    stored.source_modified_at == null
+      ? null
+      : Date.parse(stored.source_modified_at);
+  const incomingModified =
+    incoming.sourceModifiedAt == null
+      ? null
+      : Date.parse(incoming.sourceModifiedAt);
+  if (
+    incoming.sourceVersion != null &&
+    storedVersion != null &&
+    Number.isFinite(storedVersion)
+  ) {
+    if (incoming.sourceVersion < storedVersion) return "older";
+    newer = incoming.sourceVersion > storedVersion;
+  } else if (
+    incomingModified != null &&
+    Number.isFinite(incomingModified) &&
+    storedModified != null &&
+    Number.isFinite(storedModified)
+  ) {
+    if (incomingModified < storedModified) return "older";
+    newer = incomingModified > storedModified;
+  }
+  if (newer !== true) {
+    if (stored.voided === true && !incoming.voided) return "would_undo";
+    if (stored.closed_at != null && incoming.closedAt == null)
+      return "would_undo";
+  }
+  return null;
+}
+
+/**
+ * F-640: POS category words that say a line is food. An unmapped line is
+ * queued for review unless its category says food: a drink the hub has no
+ * word for is asked about, never dropped. Matched as whole words.
+ */
+const FOOD_CATEGORY_WORDS = new Set([
+  "food",
+  "foods",
+  "kitchen",
+  "starter",
+  "starters",
+  "appetizer",
+  "appetizers",
+  "appetiser",
+  "appetisers",
+  "meze",
+  "mezze",
+  "main",
+  "mains",
+  "entree",
+  "entrees",
+  "entrée",
+  "entrées",
+  "dessert",
+  "desserts",
+  "salad",
+  "salads",
+  "soup",
+  "soups",
+  "side",
+  "sides",
+  "grill",
+  "pizza",
+  "pasta",
+  "burger",
+  "burgers",
+  "sandwich",
+  "sandwiches",
+  "breakfast",
+  "brunch",
+  "yemek",
+  "yemekler",
+  "tatlı",
+  "tatlılar",
+  "salata",
+  "çorba",
+  "kahvaltı",
+  "başlangıç",
+  "başlangıçlar",
+  "ızgara",
+]);
+
+export function categoryIsFood(category: string | null | undefined): boolean {
+  if (!category) return false;
+  // Both lower-casings: "KITCHEN" is "kitchen", and "TATLI" is "tatlı" only
+  // the Turkish way.
+  return [category.toLowerCase(), category.toLocaleLowerCase("tr")].some(
+    (lower) =>
+      lower.split(/[^\p{L}]+/u).some((w) => FOOD_CATEGORY_WORDS.has(w)),
+  );
 }
 
 /** Identity the webhook route claims, and which this must bind the key to. */
@@ -819,7 +985,55 @@ export class PosHubService {
     "burgundy",
     "rioja",
     "barolo",
+    // F-640: Turkish grapes, by their Turkish and their ASCII spellings.
+    "öküzgözü",
+    "okuzgozu",
+    "boğazkere",
+    "bogazkere",
+    "narince",
+    "kalecik",
+    "sultaniye",
+    "çalkarası",
+    "calkarasi",
   ];
+
+  // F-640: beer, rakı and spirits. Matched as whole words, unlike the wine
+  // words above: "ale" is in "kale" and "rum" in "crumble".
+  private static readonly DRINK_WORDS = new Set([
+    "beer",
+    "bira",
+    "efes",
+    "draft",
+    "draught",
+    "lager",
+    "ale",
+    "ipa",
+    "pilsner",
+    "stout",
+    "rakı",
+    "raki",
+    "whisky",
+    "whiskey",
+    "viski",
+    "bourbon",
+    "vodka",
+    "votka",
+    "gin",
+    "rum",
+    "tequila",
+    "mezcal",
+    "cognac",
+    "konyak",
+    "brandy",
+    "liqueur",
+    "likör",
+    "vermouth",
+    "aperol",
+    "campari",
+    "ouzo",
+    "sake",
+    "cider",
+  ]);
 
   constructor(
     private readonly dbService: DatabaseService,
@@ -925,7 +1139,8 @@ export class PosHubService {
    * secret all reject. There is no arm that returns true without a key.
    *
    * The signature is bound to the identity the URL claims. A scoped key signs
-   * `"<provider>:<restaurantId>." + rawBody`, so a signature minted for one
+   * `"<timestamp>.<provider>:<restaurantId>." + rawBody` (the timestamp
+   * since F-639, sent in X-Pos-Hub-Timestamp), so a signature minted for one
    * tenant does not authenticate another's payload even when both sit behind
    * the same provider-wide secret. Before this, one process-wide key covered
    * all 27 providers and every restaurant while the route read `restaurantId`
@@ -943,6 +1158,8 @@ export class PosHubService {
     rawBody: Buffer | string | undefined,
     signature: string | null | undefined,
     context: WebhookContext,
+    /** X-Pos-Hub-Timestamp: required, and signed over, on a scoped secret. */
+    timestamp?: string | null,
   ): boolean {
     const providerKey = context?.provider?.trim();
     const restaurantId = context?.restaurantId?.trim();
@@ -986,11 +1203,33 @@ export class PosHubService {
 
     if (!signature || !rawBody) return false;
 
+    // F-639: a scoped signature covers the time it was made, and a time more
+    // than WEBHOOK_FRESHNESS_MS from now is refused, so a captured body
+    // cannot be re-sent later to roll a check back. The legacy global rung
+    // keeps its untimed scheme for today's signers (SimPOS, bridge.py); it
+    // is already logged as the open door it is.
+    if (
+      resolved.source !== "legacy_global" &&
+      !webhookTimestampIsFresh(timestamp)
+    ) {
+      this.logSecretResolutionOnce(`stale:${providerKey}:${restaurantId}`, () =>
+        this.logger.error(
+          `POS webhook [${providerKey}] r=${restaurantId} rejected: X-Pos-Hub-Timestamp is missing, unreadable, or more than ${WEBHOOK_FRESHNESS_MS / 60000} minutes from now`,
+        ),
+      );
+      return false;
+    }
+
     try {
       const signedPayload =
         resolved.source === "legacy_global"
           ? rawBody
-          : scopedSignedPayload(providerKey, restaurantId, rawBody);
+          : scopedSignedPayload(
+              providerKey,
+              restaurantId,
+              rawBody,
+              String(timestamp).trim(),
+            );
 
       const expected = crypto
         .createHmac("sha256", resolved.secret)
@@ -1030,6 +1269,12 @@ export class PosHubService {
      * check received is upserted or named in errors[] as not stored.
      */
     refusedUnreadableDate: number;
+    /**
+     * F-639: copies of a check not imported because the hub already keeps a
+     * newer one, or because they would un-void or re-open it without being
+     * newer (a till's late retry). Nothing was written or moved for them.
+     */
+    olderCopies: number;
     errors: string[];
     /**
      * What the import did to stock (ADR 0281). Before this, a refused or
@@ -1063,6 +1308,7 @@ export class PosHubService {
         channels: tallyChannels([], providerKey).tally,
         wineItemsDetected: 0,
         refusedUnreadableDate: 0,
+        olderCopies: 0,
         errors: ["No recognizable checks in payload"],
         stock: stock.tally,
         bellNote: null,
@@ -1087,6 +1333,7 @@ export class PosHubService {
     if (channels.said) errors.push(channels.said);
 
     let upserted = 0;
+    let olderCopies = 0;
     let wineItems = 0;
     let refusedUnreadableDate = 0;
     const refusedChecks: RefusedCheck[] = [];
@@ -1133,15 +1380,58 @@ export class PosHubService {
           );
           continue;
         }
+        // F-639: a copy older than the one stored, or one that would un-void
+        // or re-open it without being newer, is not imported and moves no
+        // stock. The trigger pos_checks_keep_newest holds the same rule at
+        // the row, for every copy and for two copies racing each other. The
+        // stored copy is read here only when this one says which version it
+        // is; without that, nothing here can call it newer, and a copy that
+        // would take back stock a void returned is stopped at the stock
+        // ledger instead (applyStockEffects, AFTER_VOID).
+        if (check.sourceVersion != null || check.sourceModifiedAt) {
+          const stored = await this.readStoredCheck(
+            restaurantId,
+            providerKey,
+            check.externalCheckId,
+          );
+          if (!stored.ok) {
+            errors.push(
+              `${check.externalCheckId}: not imported, the copy already kept could not be read to tell which is newer: ${stored.message}`,
+            );
+            continue;
+          }
+          const stale = copyIsStale(stored.row, {
+            voided: check.voided === true,
+            closedAt: check.closedAt ? String(check.closedAt) : null,
+            sourceVersion: check.sourceVersion,
+            sourceModifiedAt: check.sourceModifiedAt,
+          });
+          if (stale) {
+            olderCopies++;
+            continue;
+          }
+          if (stored.row?.voided === true && check.voided !== true) {
+            // Newer than the stored void, by the till's own word: the till
+            // un-voided it, and the stock ledger may take the sale again.
+            NEWER_THAN_VOID.add(check);
+          }
+        }
         const items = check.items.map((it) => {
-          const mapped = this.resolveWine(it.name, it.externalItemId, mappings);
+          const modifierIds = it.modifierIds ?? [];
+          const mapped = this.resolveWine(
+            it.name,
+            it.externalItemId,
+            mappings,
+            modifierIds,
+          );
           const is_wine =
             typeof it.is_wine === "boolean" ? it.is_wine : mapped.isWine;
           if (is_wine) wineItems++;
+          const category = it.category ?? mapped.category ?? null;
           return {
             name: it.name,
             external_item_id: it.externalItemId ?? null,
-            category: it.category ?? mapped.category ?? null,
+            category,
             qty: it.qty,
             price: it.price,
             is_wine,
@@ -1149,6 +1439,15 @@ export class PosHubService {
             inventory_id: mapped.inventoryId,
             sale_unit: mapped.saleUnit,
             sale_volume_ml: mapped.saleVolumeMl,
+            // F-641: kept on the stored line so the size it was sold in is
+            // on the record; written only when the till sent one.
+            ...(modifierIds.length > 0 ? { modifier_ids: modifierIds } : {}),
+            // Read by applyStockEffects only; never stored (see row.items).
+            unmapped_drink:
+              mapped.unmapped &&
+              typeof it.is_wine !== "boolean" &&
+              !categoryIsFood(category),
+            size_unnamed: mapped.sizeUnnamed,
           };
         });
 
@@ -1175,8 +1474,18 @@ export class PosHubService {
           // therefore returned its stock correctly and stayed revenue forever,
           // because every reader sums `total` with nothing to filter on.
           voided: check.voided === true,
-          items,
+          items: items.map(
+            ({ unmapped_drink: _u, size_unnamed: _s, ...line }) => line,
+          ),
           raw: check.raw ?? null,
+          // F-639: written only when the till said, so a copy that names
+          // neither leaves the stored ones alone.
+          ...(check.sourceVersion != null
+            ? { source_version: check.sourceVersion }
+            : {}),
+          ...(check.sourceModifiedAt
+            ? { source_modified_at: check.sourceModifiedAt }
+            : {}),
         };
         const { error } = await client.from("pos_checks").upsert(row, {
           onConflict: "restaurant_id,source,external_check_id",
@@ -1197,6 +1506,7 @@ export class PosHubService {
               stock,
               when,
             );
+            if (AFTER_VOID.has(check)) olderCopies++;
           }
         }
       } catch (err: any) {
@@ -1214,7 +1524,7 @@ export class PosHubService {
     errors.push(...stock.errorLines());
     const t = stock.tally;
     this.logger.log(
-      `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${refusedUnreadableDate} refused for an unreadable closed_at, ${wineItems} wine items; ` +
+      `POS ingest [${providerKey}] r=${restaurantId}: ${upserted}/${checks.length} checks, ${refusedUnreadableDate} refused for an unreadable closed_at, ${olderCopies} older copies skipped, ${wineItems} wine items; ` +
         `stock booked ${t.booked}, already ${t.alreadyBooked}, queued ${t.queued.unmapped + t.queued.no_sale_volume}, failed ${t.failed}`,
     );
     // ADR 0281 (amended 2026-10-05): one bell note per import that refused a
@@ -1238,10 +1548,94 @@ export class PosHubService {
       channels: channels.tally,
       wineItemsDetected: wineItems,
       refusedUnreadableDate,
+      olderCopies,
       errors,
       stock: t,
       bellNote,
     };
+  }
+
+  /**
+   * F-639: the copy of this check the hub keeps, if any, for copyIsStale. A
+   * read that fails is not "no copy": the caller refuses the check rather
+   * than risk un-voiding it.
+   */
+  private async readStoredCheck(
+    restaurantId: string,
+    source: string,
+    externalCheckId: string,
+  ): Promise<
+    { ok: true; row: StoredCheckCopy | null } | { ok: false; message: string }
+  > {
+    try {
+      const { data, error } = await this.dbService
+        .getClient()
+        .from("pos_checks")
+        .select("voided, closed_at, source_version, source_modified_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("source", source)
+        .eq("external_check_id", externalCheckId)
+        .maybeSingle();
+      if (error) return { ok: false, message: error.message ?? "no message" };
+      return { ok: true, row: (data as StoredCheckCopy | null) ?? null };
+    } catch (err: any) {
+      return { ok: false, message: err?.message ?? String(err) };
+    }
+  }
+
+  /**
+   * F-643: refuse a feed the house switched off. No pos_connections row is a
+   * feed that was never switched, and is taken as before. A read that fails
+   * refuses too: a house that unplugged its till must not have it written to
+   * because a read failed.
+   */
+  async assertConnected(restaurantId: string, providerKey: string) {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("pos_connections")
+      .select("enabled")
+      .eq("restaurant_id", restaurantId)
+      .eq("provider", providerKey)
+      .maybeSingle();
+    if (error) {
+      throw new HttpException(
+        `Could not check whether this restaurant still takes ${providerKey} checks, so none were taken. Send them again shortly.`,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    if (data && data.enabled === false) {
+      throw new HttpException(
+        `This restaurant has disconnected ${providerKey}, so its checks are not taken. The owner can connect it again in Settings.`,
+        HttpStatus.CONFLICT,
+      );
+    }
+  }
+
+  /**
+   * F-643: the owner switches a provider's feed off or on for the house.
+   * Kept as one row per (house, provider), with who changed it and when.
+   */
+  async setConnection(
+    restaurantId: string,
+    providerKey: string,
+    enabled: boolean,
+    actorUserId: string,
+  ) {
+    if (!PROVIDER_BY_KEY[providerKey])
+      throw new Error(`Unknown POS provider '${providerKey}'`);
+    const row = {
+      restaurant_id: restaurantId,
+      provider: providerKey,
+      enabled,
+      changed_at: new Date().toISOString(),
+      changed_by: actorUserId,
+    };
+    const { error } = await this.dbService
+      .getClient()
+      .from("pos_connections")
+      .upsert(row, { onConflict: "restaurant_id,provider" });
+    if (error) throw new Error(error.message ?? "no message");
+    return row;
   }
 
   // =========================================================================
@@ -1341,7 +1735,13 @@ export class PosHubService {
     name: string,
     externalItemId: string | null | undefined,
     mappings: any[],
+    modifierIds: string[] = [],
   ): {
+    /** No mapping row names this line (F-640: queued unless food). */
+    unmapped: boolean;
+    /** F-641: the modifiers on this line when none of them is named by a
+     *  mapping and the line resolved by its item alone; null otherwise. */
+    sizeUnnamed: string[] | null;
     isWine: boolean;
     masterWineId: string | null;
     category: string | null;
@@ -1350,11 +1750,26 @@ export class PosHubService {
     saleVolumeMl: number | null;
   } {
     const lower = (name || "").toLowerCase();
-    const byId = externalItemId
-      ? mappings.find(
-          (m) => m.external_item_id && m.external_item_id === externalItemId,
-        )
+    // F-641: a mapping keyed `<item id>:<modifier id>` names one size of the
+    // item (a glass, a bottle) and wins over the item's own mapping.
+    const byModifier = externalItemId
+      ? (modifierIds
+          .map((mod) =>
+            mappings.find(
+              (m) =>
+                m.external_item_id &&
+                m.external_item_id === `${externalItemId}:${mod}`,
+            ),
+          )
+          .find(Boolean) ?? null)
       : null;
+    const byId =
+      byModifier ??
+      (externalItemId
+        ? mappings.find(
+            (m) => m.external_item_id && m.external_item_id === externalItemId,
+          )
+        : null);
     const byName =
       byId ??
       mappings.find(
@@ -1362,6 +1777,8 @@ export class PosHubService {
       );
     if (byName) {
       return {
+        unmapped: false,
+        sizeUnnamed: !byModifier && modifierIds.length > 0 ? modifierIds : null,
         isWine: byName.is_wine === true,
         masterWineId: byName.master_wine_id ?? null,
         category: byName.category ?? null,
@@ -1371,8 +1788,14 @@ export class PosHubService {
           byName.sale_volume_ml == null ? null : Number(byName.sale_volume_ml),
       };
     }
-    const isWine = PosHubService.WINE_WORDS.some((w) => lower.includes(w));
+    const isWine =
+      PosHubService.WINE_WORDS.some((w) => lower.includes(w)) ||
+      [lower, (name || "").toLocaleLowerCase("tr")].some((l) =>
+        l.split(/[^\p{L}]+/u).some((w) => PosHubService.DRINK_WORDS.has(w)),
+      );
     return {
+      unmapped: true,
+      sizeUnnamed: null,
       isWine,
       masterWineId: null,
       category: null,
@@ -1399,6 +1822,10 @@ export class PosHubService {
       inventory_id: string | null;
       sale_unit: string | null;
       sale_volume_ml: number | null;
+      /** F-640: no mapping, no wine word, and no food category. */
+      unmapped_drink?: boolean;
+      /** F-641: modifiers no mapping names, on a line mapped by item. */
+      size_unnamed?: string[] | null;
     }>,
     report: StockReport = new StockReport(),
     // ADR 0281: ingest() reads closed_at once, before it stores the check,
@@ -1462,7 +1889,22 @@ export class PosHubService {
       // with no is_wine filter. Do not read this line as "food is discarded" —
       // it isn't; only stock depletion (which food has no inventory row for)
       // is skipped here. See .planning/BEVERAGE_CATALOGUE_PLAN.md register A11.
-      if (!it.is_wine) continue;
+      if (!it.is_wine) {
+        // F-640: a line no mapping names, whose name has no drink word and
+        // whose category does not say food, may be a drink the word lists do
+        // not know ("Kavaklıdere Yakut 2022"). It is queued so someone says
+        // what it is, never dropped. A line the till itself called not wine
+        // (canonical is_wine: false) is taken at its word.
+        if (it.unmapped_drink && Number(it.qty) > 0) {
+          await this.queueUnresolvedLine(restaurantId, source, check, it, {
+            reason: "unmapped",
+            mappedInventoryId: null,
+            detail:
+              "no pos_item_mappings row says what this line is, and its name and category do not say it is food",
+          });
+        }
+        continue;
+      }
 
       // F-394: no rounding. A till that splits one bottle across two checks
       // sends 0.5 on each, and Math.round took a whole bottle for each half
@@ -1497,6 +1939,20 @@ export class PosHubService {
             detail: inventoryRead.error
               ? `could not confirm that inventory item ${it.inventory_id} belongs to this restaurant, so no stock was moved: ${inventoryRead.error}`
               : `the mapping names inventory item ${it.inventory_id}, which does not belong to this restaurant, so no stock was moved`,
+          });
+          continue;
+        }
+
+        // F-641: the till rang this line with a modifier (a "Glass" or
+        // "Bottle" size) that no mapping names, and the item's one mapping
+        // holds one volume. Depleting at it would take a bottle for a glass
+        // or a glass for a bottle, so the line is queued until a mapping
+        // names the size (`<item id>:<modifier id>`).
+        if (it.size_unnamed && it.size_unnamed.length > 0) {
+          await this.queueUnresolvedLine(restaurantId, source, check, it, {
+            reason: "no_sale_volume",
+            mappedInventoryId: it.inventory_id,
+            detail: `the till sold this with an option (${it.size_unnamed.join(", ")}) that no mapping names, so whether it was a glass or a bottle is not known`,
           });
           continue;
         }
@@ -1714,6 +2170,19 @@ export class PosHubService {
           1,
         );
       }
+    } else if (
+      ledger &&
+      ledger.voidBooked &&
+      !isVoid &&
+      !NEWER_THAN_VOID.has(check)
+    ) {
+      // F-639: this hub already returned this check's stock for a void, and
+      // this copy says it is not voided without saying it is newer: a till's
+      // late retry of the "closed" event. Taking the sale again would empty
+      // the shelf of bottles the void put back, so nothing moves; ingest
+      // counts the copy in olderCopies.
+      AFTER_VOID.add(check);
+      for (let i = 0; i < planned.length; i++) tally.alreadyBooked++;
     } else if (ledger && ledger.empty && isVoid) {
       // F-393: the check's first arrival is already voided (a nightly export
       // holding a check voided during service). Nothing was taken for it, so
@@ -1963,6 +2432,9 @@ export class PosHubService {
         ),
         glassVoided: new Set(),
         byKey: new Map(),
+        voidBooked: (tx.data as any[]).some((r: any) =>
+          /:void(:\d+)?$/.test(String(r.idempotency_key)),
+        ),
       };
       const add = (m: Map<string, number>, id: string, n: number) =>
         m.set(id, (m.get(id) ?? 0) + n);

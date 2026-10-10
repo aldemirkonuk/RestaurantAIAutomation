@@ -544,7 +544,14 @@ describe("ingest says what it did to stock (A-029)", () => {
         line(BOTTLE),
         line(NO_VOLUME),
         { name: "SYNTHETIC house wine carafe", externalItemId: "x-9", qty: 1 },
-        { name: "SYNTHETIC espresso", externalItemId: "x-10", qty: 1 },
+        // F-640: not stock because its category says food; an unmapped
+        // line with no category is queued, never dropped.
+        {
+          name: "SYNTHETIC bread basket",
+          externalItemId: "x-10",
+          category: "Food",
+          qty: 1,
+        },
       ]),
     ]);
 

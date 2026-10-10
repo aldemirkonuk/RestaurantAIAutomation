@@ -137,6 +137,28 @@ const cents = (v: unknown): number | null => {
   const n = num(v);
   return n === null ? null : n / 100;
 };
+/**
+ * F-639: which copy of a check this is, as the till says it. A version is a
+ * whole number; a modified-at is an instant (ISO text, or epoch ms from
+ * Clover). Anything else is no answer, and the hub then judges the copy only
+ * by whether it would un-void or re-open a stored check.
+ */
+const versionOf = (v: unknown): number | null => {
+  const n = num(v);
+  return n !== null && Number.isInteger(n) ? n : null;
+};
+const instantOf = (v: unknown): string | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const t = typeof v === "number" ? v : Date.parse(String(v));
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+};
+/** F-641: the POS ids of a line's modifiers, kept in the order rung. */
+const modifierIdsOf = (mods: unknown, idOf: (m: any) => unknown): string[] =>
+  (Array.isArray(mods) ? mods : [])
+    .map((m) => idOf(m))
+    .filter((id): id is string | number => typeof id === "string" || typeof id === "number")
+    .map(String)
+    .filter((id) => id !== "");
 
 // ---------------------------------------------------------------------------
 // Generic — the canonical shape itself (webhook + import path)
@@ -156,6 +178,15 @@ export const genericAdapter: PosAdapter = {
         ...voidedOf(r.voided ?? r.is_voided),
         externalCheckId: String(r.externalCheckId ?? r.external_check_id),
         openedAt: String(r.openedAt ?? r.opened_at ?? new Date().toISOString()),
+        sourceVersion: versionOf(r.sourceVersion ?? r.source_version ?? r.version),
+        sourceModifiedAt: instantOf(
+          r.sourceModifiedAt ??
+            r.source_modified_at ??
+            r.modifiedAt ??
+            r.modified_at ??
+            r.updatedAt ??
+            r.updated_at,
+        ),
         closedAt: r.closedAt ?? r.closed_at ?? null,
         tableRef: r.tableRef ?? r.table_ref ?? r.table ?? null,
         // ADR 0302: read exactly, never guessed from the table ref.
@@ -173,6 +204,10 @@ export const genericAdapter: PosAdapter = {
             price: readMoney(it.price).value ?? 0,
             is_wine: typeof it.is_wine === "boolean" ? it.is_wine : undefined,
             master_wine_id: it.master_wine_id ?? null,
+            modifierIds: modifierIdsOf(
+              it.modifierIds ?? it.modifier_ids,
+              (m) => m,
+            ),
           }),
         ),
         raw: r,
@@ -224,6 +259,8 @@ export const squareAdapter: PosAdapter = {
       .map((o) => ({
         externalCheckId: String(o.id),
         openedAt: o.created_at ?? new Date().toISOString(),
+        sourceVersion: versionOf(o.version),
+        sourceModifiedAt: instantOf(o.updated_at),
         closedAt:
           o.state === "COMPLETED"
             ? (o.closed_at ?? o.updated_at ?? null)
@@ -247,6 +284,7 @@ export const squareAdapter: PosAdapter = {
             category: null,
             qty: num(li.quantity) ?? 1,
             price: cents(li.base_price_money?.amount) ?? 0,
+            modifierIds: modifierIdsOf(li.modifiers, (m) => m?.catalog_object_id),
           }),
         ),
         raw: o,
@@ -270,6 +308,7 @@ export const cloverAdapter: PosAdapter = {
       .filter((o) => o?.id)
       .map((o) => ({
         externalCheckId: String(o.id),
+        sourceModifiedAt: instantOf(o.modifiedTime),
         openedAt: o.createdTime
           ? new Date(o.createdTime).toISOString()
           : new Date().toISOString(),
@@ -326,8 +365,11 @@ export const toastAdapter: PosAdapter = {
     return checks
       .filter((c) => c?.guid)
       .map((c) => ({
+        // F-572: a check Toast voided whole is read as voided, strictly.
+        ...voidedOf(c.voided),
         externalCheckId: String(c.guid),
         openedAt: c.openedDate ?? new Date().toISOString(),
+        sourceModifiedAt: instantOf(c.modifiedDate),
         closedAt: c.closedDate ?? null,
         // Toast keeps a voided or deleted check on the order with a flag
         // rather than dropping it, so both are read: a check the till took
@@ -357,6 +399,12 @@ export const toastAdapter: PosAdapter = {
               category: s.salesCategory?.name ?? null,
               qty: num(s.quantity) ?? 1,
               price: num(s.price) ?? 0,
+              // F-641: the menu option a modifier names (a size), not the
+              // per-check selection guid, so a mapping can name it.
+              modifierIds: modifierIdsOf(
+                s.modifiers,
+                (m) => m?.item?.guid ?? m?.guid,
+              ),
             }),
           ),
         raw: c,
