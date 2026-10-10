@@ -4571,31 +4571,12 @@ export class AuthService {
         "Could not delete your account. Nothing was changed; try again.",
       );
     }
-    // Soft-guard: block if sole owner of any restaurant
-    const { data: ownerRows } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("restaurant_id, role")
-      .eq("user_id", userId)
-      .eq("role", "owner")
-      .eq("is_active", true);
-
-    for (const row of ownerRows ?? []) {
-      const { count } = await this.databaseService.supabase
-        .from("user_restaurant_access")
-        .select("*", { count: "exact", head: true })
-        .eq("restaurant_id", row.restaurant_id)
-        .eq("role", "owner")
-        .eq("is_active", true);
-      if ((count ?? 0) <= 1) {
-        throw new BadRequestException(
-          "Transfer ownership of all restaurants before deleting your account.",
-        );
-      }
-    }
-
-    // F-750: the same guard one level up. Only an organisation owner may open
-    // a new location (ADR 0164, organizations/org-role.ts), and deleting the
-    // users row cascades the organization_members row away and nulls
+    // F-750: the house-owner guard below, one level up, and checked FIRST
+    // (F-836): nothing the person can do clears this one, so it must be the
+    // first answer, not a "hand the house over" that then leads here. Only an
+    // organisation owner may open a new location (ADR 0164,
+    // organizations/org-role.ts), and deleting the users row cascades the
+    // organization_members row away and nulls
     // organizations.owner_id, so the last owner going would leave nobody who
     // ever could. There is no route that makes someone else an organisation
     // owner yet, so this refuses rather than inventing a hand-over. A read
@@ -4634,6 +4615,31 @@ export class AuthService {
           "You are the only owner of your organisation. If your account goes, " +
             "nobody could open a new location in it, so it can't be deleted yet. " +
             "Nothing was deleted.",
+        );
+      }
+    }
+
+    // Soft-guard: block if sole owner of any restaurant. Unlike the guard
+    // above, this one can be cleared: an owner can make another member an
+    // owner of the house (MembersService.updateMemberRole).
+    const { data: ownerRows } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("restaurant_id, role")
+      .eq("user_id", userId)
+      .eq("role", "owner")
+      .eq("is_active", true);
+
+    for (const row of ownerRows ?? []) {
+      const { count } = await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("*", { count: "exact", head: true })
+        .eq("restaurant_id", row.restaurant_id)
+        .eq("role", "owner")
+        .eq("is_active", true);
+      if ((count ?? 0) <= 1) {
+        throw new BadRequestException(
+          "You are the only owner of a restaurant. Make another member an owner " +
+            "of it first, then try again. Nothing was deleted.",
         );
       }
     }

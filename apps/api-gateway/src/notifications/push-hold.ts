@@ -10,8 +10,9 @@ export type PushHoldReason = "push_off" | "quiet_hours";
  * hours, read on the house's own clock with the same half-open window the
  * calendar reminders and the producer ledger use (`isWithinQuietHours`).
  *
- * The same rule as the restaurant funnel's push leg (F-528,
- * fix/sim-bell-truth). Priority is not read: whether quiet hours should let a
+ * The one rule for every push: the restaurant funnel's push leg (F-528,
+ * `persistForRestaurant`) and `sendToUser` both call this (F-835). Priority
+ * is not read: whether quiet hours should let a
  * critical push through is an open founder question (F-540), and this keeps
  * whatever the funnel does.
  *

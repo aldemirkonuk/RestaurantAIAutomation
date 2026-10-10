@@ -773,6 +773,8 @@ describe('SettingsNext — provenance and unknowns', () => {
     mount('/settings?tab=notifications');
     fireEvent.click(screen.getByRole('switch', { name: /^Push notifications$/i }));
     expect(saveNotif).toHaveBeenCalledWith('push', { push: false });
+    // F-835: the row names the phone app's own switch, which this one cannot overrule.
+    expect(screen.getByText(/The phone app has its own Push switch/i)).toBeInTheDocument();
   });
 
   it('keeps a real switch on quiet hours, because the alerting agent reads it', () => {

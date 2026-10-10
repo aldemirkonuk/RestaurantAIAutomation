@@ -205,6 +205,40 @@ describe("deleteAccount — the last owner of an organisation is refused", () =>
     expect(db.opsOn("users", "delete")).toHaveLength(0);
   });
 
+  // F-836: a sole house owner who is also the sole organisation owner used to
+  // be told to hand the house over, and after doing that was refused by this
+  // guard anyway. The answer nothing can clear comes first.
+  it("answers with the organisation refusal first when the account is also a sole house owner", async () => {
+    const { svc, db } = makeService({
+      access: [
+        { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
+      ],
+      orgMembers: [{ organization_id: ORG, user_id: USER, role: "owner" }],
+    });
+
+    await expect(svc.deleteAccount(USER)).rejects.toThrow(
+      /only owner of your organisation/,
+    );
+    expect(db.opsOn("users", "delete")).toHaveLength(0);
+  });
+
+  it("tells a sole house owner who is not the last organisation owner to make another member an owner", async () => {
+    const { svc, db } = makeService({
+      access: [
+        { user_id: USER, restaurant_id: HOUSE_A, role: "owner", is_active: true },
+      ],
+      orgMembers: [
+        { organization_id: ORG, user_id: USER, role: "owner" },
+        { organization_id: ORG, user_id: "other-owner", role: "owner" },
+      ],
+    });
+
+    await expect(svc.deleteAccount(USER)).rejects.toThrow(
+      /only owner of a restaurant\. Make another member an owner of it first.*Nothing was deleted/,
+    );
+    expect(db.opsOn("users", "delete")).toHaveLength(0);
+  });
+
   it("lets the account go when another owner of the organisation stays", async () => {
     const { svc, db } = makeService({
       access: coOwnedHouse,

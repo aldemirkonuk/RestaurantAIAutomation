@@ -19,8 +19,6 @@ import { AreaRoutingService } from "../areas/area-routing.service";
 import { type AreaLabel, readAreaLabel } from "../areas/area-label";
 import type { RouteStep } from "../areas/area-routing";
 import type { DeliveryMode, DigestFrequency } from "./dto/notifications.dto";
-import { isWithinQuietHours } from "../calendar/reminder-window";
-import { houseFrame } from "../common/house-frame";
 
 /**
  * How a broadcast was routed (ADR 0218), returned so a caller and a spec can
@@ -867,8 +865,16 @@ export class NotificationsService {
       ) {
         // F-528: each person's own Push switch and quiet hours, on the house's
         // clock. Someone inside their window, or with Push off, still has the
-        // line on the bell; only the phone stays quiet.
-        const pushTo = await this.pushableNow(restaurantId, alertIds ?? userIds);
+        // line on the bell; only the phone stays quiet. The rule is
+        // `pushHolds`, the one sendToUser reads too (F-539, F-835).
+        const addressed = alertIds ?? userIds;
+        const held = await pushHolds(
+          this.databaseService.supabase,
+          restaurantId,
+          addressed,
+          (line) => this.logger.warn(line),
+        );
+        const pushTo = addressed.filter((id) => !held.has(id));
         if (pushTo.length > 0) {
           await this.expoPushService.sendToUsers(pushTo, {
             title: payload.title,
@@ -890,65 +896,6 @@ export class NotificationsService {
       );
       return { inserted: 0, ids: [] };
     }
-  }
-
-  /**
-   * Who among `ids` may get a phone push right now (F-528): not someone whose
-   * Push switch is off (`push_enabled`), and not someone inside their quiet
-   * hours, read on the house's own clock. The window is the same half-open
-   * rule the calendar reminders and the producer ledger use
-   * (`isWithinQuietHours`).
-   *
-   * A person with no preferences row is pushed (Push defaults on, quiet hours
-   * off). When the preferences cannot be read, everyone is pushed, as before
-   * this was read, and the log says so; when the house has no readable time
-   * zone, quiet hours are not judged but the Push switch still is.
-   */
-  private async pushableNow(
-    restaurantId: string,
-    ids: string[],
-    now: Date = new Date(),
-  ): Promise<string[]> {
-    if (ids.length === 0) return ids;
-    let prefs: any[];
-    try {
-      const { data, error } = await this.databaseService.supabase
-        .from("notification_preferences")
-        .select("user_id, push_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end")
-        .eq("restaurant_id", restaurantId)
-        .in("user_id", ids);
-      if (error) throw new Error(error.message);
-      prefs = Array.isArray(data) ? data : [];
-    } catch (e: any) {
-      this.logger.warn(
-        `PUSH_PREFERENCES_UNREAD restaurant=${restaurantId} — ${e?.message}. Everyone addressed is pushed, as before quiet hours were read.`,
-      );
-      return ids;
-    }
-    let zone: string | null = null;
-    try {
-      const { data, error } = await this.databaseService.supabase
-        .from("restaurants")
-        .select("timezone, country")
-        .eq("id", restaurantId)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      zone = houseFrame(data ?? null).zone ?? null;
-    } catch (e: any) {
-      this.logger.warn(`PUSH_HOUSE_ZONE_UNREAD restaurant=${restaurantId} — ${e?.message}. Quiet hours are not judged on this push.`);
-    }
-    const byUser = new Map(prefs.map((r) => [r.user_id, r]));
-    return ids.filter((id) => {
-      const row = byUser.get(id);
-      if (!row) return true;
-      if (row.push_enabled === false) return false;
-      if (!zone) return true;
-      return !isWithinQuietHours(now, zone, {
-        enabled: row.quiet_hours_enabled === true,
-        start: row.quiet_hours_start || "22:00",
-        end: row.quiet_hours_end || "08:00",
-      });
-    });
   }
 
   /**

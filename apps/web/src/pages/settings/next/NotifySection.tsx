@@ -30,8 +30,9 @@
  *                 SMS goes out inside the quiet window. The rendered copy never
  *                 claimed otherwise; this comment did, by counting :637 as a
  *                 fourth handler (second-pass audit DEFECT 1).
- *   push        → `push_enabled` is read by the gateway's bell funnel
- *                 (notifications.service.ts `pushableNow`, F-528): every bell
+ *   push        → `push_enabled` is read by the gateway's one push rule
+ *                 (notifications/push-hold.ts `pushHolds`, F-528/F-539/F-835),
+ *                 which both the bell funnel and `sendToUser` call: every bell
  *                 line that is not low priority goes to the phones on file,
  *                 except for a person with this off or inside their quiet
  *                 window on the house clock. The orchestrator's own push code
@@ -119,8 +120,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <Row
               label="Phone push"
               cert="manual"
-              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>notifications/notifications.service.ts pushableNow</code> }}
-              consequence="When something lands on your bell that is not low priority, your phone gets a push too. Off means the bell still shows it, but your phone stays silent."
+              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>notifications/push-hold.ts pushHolds</code> }}
+              consequence="When something lands on your bell that is not low priority, your phone gets a push too. Off means the bell still shows it, but your phone stays silent. This switch is for this restaurant only. The phone app has its own Push switch; while that one is off, the phone stays silent whatever this says."
               control={
                 <Toggle label="Push notifications" checked={p.push} busy={writer.busy === 'push'}
                   onChange={(v) => void saveNotif('push', { push: v })} />

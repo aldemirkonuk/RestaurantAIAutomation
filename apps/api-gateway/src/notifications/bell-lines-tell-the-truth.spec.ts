@@ -2,6 +2,7 @@ import { makeStubDb, type StubDb } from "../team/testing/supabase-stub";
 import { NotificationsService } from "./notifications.service";
 import { LowStockAlertsService } from "./low-stock-alerts.service";
 import { closeDeliveryItemToNameBookedElsewhere } from "../procurement/delivery-item-to-name";
+import * as pushHold from "./push-hold";
 
 /**
  * The bell tells the truth (wave15sim notifications-bell-truth.md).
@@ -121,6 +122,25 @@ describe("F-528 — the phone push honours quiet hours and the Push switch", () 
     await svc.persistForRestaurant(HOUSE, LINE);
 
     expect(pushes.map((p) => p.ids)).toEqual([[OWNER, COOK]]);
+  });
+
+  // F-835: the funnel and sendToUser (F-539) used to carry two copies of this
+  // rule. The funnel now asks `pushHolds`, so one implementation decides.
+  it("[REVERT-FAILS] the funnel asks pushHolds, and holds whoever it names", async () => {
+    const spy = jest
+      .spyOn(pushHold, "pushHolds")
+      .mockResolvedValue(new Map([[OWNER, "push_off"]]));
+    try {
+      const db = seed();
+      const { svc, pushes } = funnel(db);
+
+      await svc.persistForRestaurant(HOUSE, LINE);
+
+      expect(spy).toHaveBeenCalledWith(db.supabase, HOUSE, [OWNER, COOK], expect.any(Function));
+      expect(pushes.map((p) => p.ids)).toEqual([[COOK]]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

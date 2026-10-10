@@ -396,7 +396,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
 
           <Card
             title="Delete account"
-            lead="Permanently deletes your Mudavym account. It cannot be undone. The server refuses while you are the sole owner of any restaurant — that check runs before anything is destroyed, so hand ownership over first if it stops you."
+            lead="Permanently deletes your Mudavym account. It cannot be undone. If you opened a restaurant here, your account cannot be deleted yet: nobody else can take over your organisation so far. If you are the only owner of a restaurant someone else opened, make another member an owner of it first. Both are checked before anything is deleted."
           >
             <label
               htmlFor="pf-confirm-delete"
