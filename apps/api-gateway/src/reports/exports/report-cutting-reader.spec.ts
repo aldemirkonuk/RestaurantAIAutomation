@@ -1,8 +1,11 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { AnalyticsController } from "../../analytics/analytics.controller";
+import { ROLES_KEY } from "../../auth/decorators/roles.decorator";
+import { holdsHouseMoney } from "../../procurement/documents/document-money-gate";
 import { RecommendationActionsService } from "../../analytics/recommendation-actions.service";
 import { ReportCuttingReader } from "./report-cutting-reader.service";
+import { ReportExportsController } from "./report-exports.controller";
 import { EXPORTABLE_CUTTINGS, type ExportableCutting } from "./report-export-cuttings";
 
 /**
@@ -15,9 +18,15 @@ import { EXPORTABLE_CUTTINGS, type ExportableCutting } from "./report-export-cut
  * and asserts the two answer identically for every cutting, using the query
  * string the page's catalogue sends. A horizon, window, limit or status that
  * drifts on either side changes an argument, and so the answer, and fails here.
+ *
+ * Only the owner and the manager may export (`ReportExportsController`), and
+ * both hold the house's money, so the page is asked as an OWNER: someone
+ * without the house's money gets the money lenses with amounts withheld (F-203),
+ * and that reader can never reach the export.
  */
 
 const RID = "11111111-1111-4111-8111-111111111111";
+const OWNER = { role: "owner" };
 
 /** Each service method answers with its own name and arguments. */
 function echo(name: string) {
@@ -107,12 +116,12 @@ const PAGE: Record<
   reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
   till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined) },
-  bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID) },
-  pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID) },
+  bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID, OWNER) },
+  pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID, OWNER) },
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
   ahead: { path: "`/analytics/forecast/${rid}?horizon=14`", call: (c) => c.getForecast(RID, undefined, "14") },
-  quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID) },
-  ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined) },
+  quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID, OWNER) },
+  ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined, OWNER) },
   seats: { path: "`/analytics/table-performance/${rid}?sinceDays=90`", call: (c) => c.getTablePerformance(RID, "90") },
   service: { path: "`/analytics/waiters/${rid}?sinceDays=90`", call: (c) => c.getWaiters(RID, "90") },
   restock: { path: "`/analytics/inventory-science/${rid}`", call: (c) => c.getInventoryScience(RID, undefined, undefined) },
@@ -131,6 +140,24 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       .join("\n");
     for (const [id, p] of Object.entries(PAGE))
       expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
+  });
+
+  it("is exported only by someone who holds the house's money, so the export's full figures reach no one the page withholds them from", async () => {
+    const roles = Reflect.getMetadata(ROLES_KEY, ReportExportsController) as string[];
+    expect([...roles].sort()).toEqual(["manager", "owner"]);
+    for (const role of roles) expect([role, holdsHouseMoney(role)]).toEqual([role, true]);
+    // And the page itself still withholds from a reader without the money.
+    const { controller } = build();
+    const staff = { role: "staff" };
+    const asStaff = {
+      bench: await controller.getOverview(RID, staff),
+      pacing: await controller.getCashflow(RID, staff),
+      quadrants: await controller.getMenuEngineering(RID, staff),
+      ledger: await controller.getFinancial(RID, undefined, staff),
+    };
+    for (const [id, answer] of Object.entries(asStaff)) {
+      expect([id, (answer as { amountsWithheld?: boolean }).amountsWithheld]).toEqual([id, true]);
+    }
   });
 
   for (const id of EXPORTABLE_CUTTINGS) {
