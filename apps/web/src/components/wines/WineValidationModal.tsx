@@ -14,6 +14,7 @@ import {
   Tag,
   AlertTriangle,
 } from 'lucide-react'
+import { formatStatedMoney } from '../../lib/currency'
 
 interface WineDetails {
   name: string
@@ -24,6 +25,8 @@ interface WineDetails {
   country: string
   grape?: string
   price?: number
+  /** The currency the scan read beside the price, when it read one. */
+  priceCurrency?: string
   alcohol?: number
 }
 
@@ -429,7 +432,7 @@ export function WineValidationModal({
                       step={0.01}
                     />
                   ) : (
-                    <p className="text-lg font-semibold text-gray-900">{wineData.price ? `$${wineData.price}` : 'N/A'}</p>
+                    <p className="text-lg font-semibold text-gray-900">{wineData.price ? formatStatedMoney(wineData.price, wineData.priceCurrency) : 'N/A'}</p>
                   )}
                 </div>
               </div>

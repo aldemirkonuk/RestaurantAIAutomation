@@ -380,3 +380,27 @@ export function formatMoney(
     })} ${currency}`
   }
 }
+
+/**
+ * A figure in the money its OWN record names — a vendor's minimum order, an
+ * order's total, a price read off a label — or the bare figure when the record
+ * names none (ADR 0117 Q25, sim F-341).
+ *
+ * Unlike `formatHouseMoney` this never borrows the house's currency: a vendor in
+ * Bordeaux bills in its own money whatever the house keeps its books in, so
+ * printing the house's sign would be a claim about the vendor nobody made. And
+ * unlike `formatMoney` it adds no caveat — these figures sit on cards with no
+ * room for one, and a plain number claims nothing.
+ */
+export function formatStatedMoney(
+  amount: number,
+  currency: string | null | undefined,
+): string {
+  const code = typeof currency === 'string' ? currency.trim().toUpperCase() : ''
+  if (/^[A-Z]{3}$/.test(code)) return formatMoney(amount, code)
+  const digits = Number.isInteger(amount) ? 0 : 2
+  return amount.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+}

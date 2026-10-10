@@ -511,6 +511,26 @@ describe('the delivery card comes from the orders routes, and names the vendor',
     expect(screen.queryByText(/Not named by this route/i)).not.toBeInTheDocument()
   })
 
+  it.each([
+    // The order's own money; a Turkish wholesaler's total is lira on any house.
+    ['TRY', /TRY\s?300\.00|₺300\.00/],
+    // No currency on the order: the bare figure, never a dollar sign (sim F-341).
+    [null, /^300$/],
+  ])('prints the invoice price in the order\'s own currency (%s)', async (currency, expected) => {
+    vi.mocked(getOrders).mockImplementation(async (params: any) =>
+      params?.status === 'ordered' ? ([wireOrder({ currency })] as any) : ([] as any),
+    )
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    await waitFor(() =>
+      expect(screen.getByText(/Barolo Riserva Delivery/i)).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByText(/Barolo Riserva Delivery/i))
+    await waitFor(() => expect(screen.getByText(expected)).toBeInTheDocument())
+    expect(screen.queryByText(/\$300/)).not.toBeInTheDocument()
+  })
+
   it('confirms the delivery against the real endpoint, end to end from the wire', async () => {
     // The whole point of widening the fetch: a card the API raised reaching
     // `POST /procurement/orders/:id/deliver`. The gateway's double-delivery

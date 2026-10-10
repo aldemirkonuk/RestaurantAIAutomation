@@ -4,6 +4,7 @@ import {
   fetchLeverageSignals,
   type ProviderComparison,
 } from '../../services/api/provider-intelligence'
+import { formatStatedMoney } from '../../lib/currency'
 
 export function ProviderComparisonView() {
   const { data: providers, isLoading } = useQuery({
@@ -114,8 +115,9 @@ export function ProviderComparisonView() {
                       : 'N/A'}
                   </td>
                   <td className="py-3 px-4 text-center text-gray-700">
+                    {/* This read names no currency: the bare figure, never a guessed sign. */}
                     {provider.minimum_order != null
-                      ? `$${provider.minimum_order}`
+                      ? formatStatedMoney(provider.minimum_order, null)
                       : 'N/A'}
                   </td>
                   <td className="py-3 px-4 text-center">

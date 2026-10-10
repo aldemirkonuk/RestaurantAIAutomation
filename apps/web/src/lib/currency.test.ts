@@ -17,6 +17,7 @@ import {
   currencyLabel,
   currencyMinorUnits,
   formatMoney,
+  formatStatedMoney,
 } from './currency'
 
 describe('currencyForCountry — the three rows that were wrong', () => {
@@ -168,5 +169,20 @@ describe('formatMoney — never a symbol nobody earned', () => {
     expect(formatMoney(1200, 'JPY', { maximumFractionDigits: 2 })).toMatch(
       /1[.,]200[.,]00/,
     )
+  })
+})
+
+describe('formatStatedMoney — the record\'s own money, else no sign at all', () => {
+  it('prints the money the record names', () => {
+    expect(formatStatedMoney(500, 'EUR')).toBe('€500.00')
+    expect(formatStatedMoney(1200, 'TRY')).toMatch(/^TRY\s?1,200\.00$|^₺1,200\.00$/)
+    expect(formatStatedMoney(45.5, 'gbp')).toBe('£45.50')
+  })
+
+  it('prints the bare figure, never dollars and never the house, when the record names none', () => {
+    expect(formatStatedMoney(500, undefined)).toBe('500')
+    expect(formatStatedMoney(45.99, null)).toBe('45.99')
+    expect(formatStatedMoney(12.5, '€')).toBe('12.50')
+    expect(formatStatedMoney(500, undefined)).not.toContain('$')
   })
 })

@@ -40,6 +40,7 @@
  */
 
 import { EM, ownRow } from './rec-format';
+import { CURRENCY_NOT_RECORDED } from '../../../lib/currency';
 
 /* ── Door one: the goal ──────────────────────────────────────────────────── */
 
@@ -77,13 +78,37 @@ export const METRICS: Record<MetricKey, MetricSpec> = {
   days_of_inventory: { label: 'Days of stock', unit: 'days' },
 };
 
+/**
+ * What a target is typed in. `currency` is a placeholder word only: a money
+ * target is the house's own revenue or spend, so `unitSuffix` names the
+ * house's currency. It used to be a literal `$` on every house (sim F-341).
+ */
 export const UNIT_SUFFIX: Record<MetricUnit, string> = {
-  currency: '$',
+  currency: 'amount',
   units: 'bottles',
   count: 'checks',
   percent: '%',
   days: 'days',
 };
+
+/**
+ * The suffix for a target, with money in the house's currency: its sign when it
+ * has one (`$`, `€`, `£`), else its code. A house that has not named its money
+ * says so; an answer not yet read prints the plain word, never a guessed sign.
+ */
+export function unitSuffix(unit: MetricUnit, houseCurrency: string | null | undefined): string {
+  if (unit !== 'currency') return UNIT_SUFFIX[unit];
+  if (houseCurrency === null) return CURRENCY_NOT_RECORDED;
+  if (typeof houseCurrency !== 'string' || !/^[A-Z]{3}$/.test(houseCurrency)) return UNIT_SUFFIX.currency;
+  try {
+    const part = new Intl.NumberFormat('en-US', { style: 'currency', currency: houseCurrency })
+      .formatToParts(0)
+      .find((p) => p.type === 'currency');
+    return part?.value ?? houseCurrency;
+  } catch {
+    return houseCurrency;
+  }
+}
 
 /**
  * A ratio metric is stored as a fraction, so "60" typed under a `%` suffix is

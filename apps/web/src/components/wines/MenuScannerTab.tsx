@@ -553,6 +553,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
             country: validationWine.country || 'Unknown',
             grape: validationWine.grape,
             price: validationWine.price,
+            priceCurrency: validationWine.priceCurrency,
             confidence: {
               name: validationWine.confidence,
               producer: validationWine.confidence * 0.9,
