@@ -525,8 +525,18 @@ function linkViews(text: string): string[] {
  * "http:\\\\x", "http:/\\x" and "https:\\/x" read "http://x" /
  * "https://x". A drive or a word that is not one of those schemes keeps its
  * backslashes ("C:\\\\server", "D:\\path", "Not:\\ foo",
- * "News:\\\\ see"), and so does a scheme word with a letter before it
- * ("xhttp:\\\\x", which no URL parser reads as http). With one slash or
+ * "News:\\\\ see"). The lookbehind is letters only so that a word ending in
+ * a scheme name keeps its backslashes ("Profile:\\\\ ok", "News:\\\\ see");
+ * a digit or "_" before the scheme word does not stop the fold
+ * ("1http:\\\\x" is refused). The cost, kept on purpose: a letter right
+ * before the scheme word, once format and control characters are stripped,
+ * turns the fold off, so "xhttp:\\\\x", a non-ASCII letter ("\u4E2Dhttp:\\\\x",
+ * "\u0647http:\\\\x"), the Hangul filler U+3164 (a letter) and
+ * "x\u200Bhttp:\\\\y" or "x\u00ADhttp:\\\\y" (format characters, stripped)
+ * all pass, although a URL parser reading from "http" gives "http://x/".
+ * Specs pin "Profile:\\\\ ok", "1http:\\\\x" and "xhttp:\\\\x"; the
+ * non-ASCII, U+3164 and format-character cases were measured, not pinned
+ * (ADR 0313:37). With one slash or
  * backslash after the colon there is no "//" ("http:\\x" reads "http:/x"),
  * so the scheme view does not refuse it (see `URL_RE`).
  * Refused although they hold no link (fail closed, pinned by a spec): a
