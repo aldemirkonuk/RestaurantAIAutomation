@@ -16,8 +16,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 const get = vi.hoisted(() => vi.fn());
+const post = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/api/client', () => ({
-  apiClient: { get, post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+  apiClient: { get, post, patch: vi.fn(), delete: vi.fn() },
 }));
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'r-1' }),
@@ -205,5 +206,42 @@ describe('useCalendarNextData — entries that span days (F-198)', () => {
     const { result } = renderHook(() => useCalendarNextData('month', cursor), { wrapper });
     await waitFor(() => expect(result.current.events.length).toBe(1));
     expect([...result.current.byDay.keys()].sort()).toEqual(['2026-08-31', '2026-09-01']);
+  });
+});
+
+// F-1083: a create that lost its answer may have landed. The sheet's draft key
+// goes out as the Idempotency-Key header and never in the body (the gateway's
+// `forbidNonWhitelisted` refuses a field it does not know), and the book is
+// read again so the person can check it.
+describe('useCalendarNextData — a create whose answer was lost (F-1083)', () => {
+  const payload = {
+    restaurantId: 'r-1',
+    title: 'Tasting',
+    eventType: 'meeting',
+    eventDate: '2026-09-17',
+    allDay: true,
+  } as never;
+
+  it('sends the draft key as a header, not a field', async () => {
+    post.mockReset().mockResolvedValue({ data: { ...base, id: 'ev-1', title: 'Tasting', eventDate: '2026-09-17' } });
+    const { result } = renderHook(() => useCalendarNextData('month', cursor), { wrapper });
+    await result.current.create.mutateAsync({ ...(payload as object), writeKey: 'calendar-event:k1' } as never);
+    expect(post).toHaveBeenCalledWith('/calendar/events', payload, {
+      headers: { 'Idempotency-Key': 'calendar-event:k1' },
+    });
+    expect('writeKey' in (post.mock.calls[0][1] as object)).toBe(false);
+  });
+
+  it('reads the book again after a 5xx', async () => {
+    post.mockReset().mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 502'), { response: { status: 502 } }),
+    );
+    const { result } = renderHook(() => useCalendarNextData('month', cursor), { wrapper });
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    const reads = () => get.mock.calls.filter((c) => String(c[0]).startsWith('/calendar/events')).length;
+    await waitFor(() => expect(reads()).toBeGreaterThan(0));
+    const before = reads();
+    await expect(result.current.create.mutateAsync(payload)).rejects.toThrow();
+    await waitFor(() => expect(reads()).toBeGreaterThan(before));
   });
 });

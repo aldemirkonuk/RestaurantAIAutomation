@@ -42,6 +42,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Panel } from '@/components/mudavym';
 import { getErrorMessage } from '@/services/api/client';
 import { createDayNote } from '@/services/api/calendar';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import { useDayNotes } from '@/hooks/queries';
 import type { CalEvent, CalendarData } from './useCalendarNextData';
 
@@ -222,6 +223,7 @@ export function MeetingNotePanel({ open, event, data, onClose, onSaved }: Meetin
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
+  const writeKey = useDraftWriteKey('day-note');
 
   /**
    * Where the note is filed, READ from the book rather than chosen.
@@ -243,7 +245,9 @@ export function MeetingNotePanel({ open, event, data, onClose, onSaved }: Meetin
   // What this day already holds, read back rather than assumed from
   // `event.description` (2026-09-21 — notes no longer live there; see the
   // file header). Only fetched while the panel is actually open.
-  const { data: existingNotes } = useDayNotes(open ? (event?.date ?? null) : null);
+  const { data: existingNotes, refetch: rereadNotes } = useDayNotes(
+    open ? (event?.date ?? null) : null,
+  );
 
   if (!event) return null;
 
@@ -255,16 +259,27 @@ export function MeetingNotePanel({ open, event, data, onClose, onSaved }: Meetin
       // Its own table (2026-09-21) — never calendar_events.description. See
       // the file header. `event.date` is this occurrence's own day, real for
       // both a plain entry and a date of a repeating series.
-      await createDayNote({
+      const draft = {
         businessDate: event.date,
         docType: kind,
         eventTitle: event.title,
         body: note,
-      });
+      };
+      await createDayNote({ ...draft }, { idempotencyKey: writeKey.keyFor(draft) });
+      writeKey.renew();
       setNote('');
       onSaved?.();
       onClose();
     } catch (e) {
+      // A timeout or a 5xx can land after the note did (F-1083): say what MAY
+      // have happened, and read the day again so the notes above are true.
+      if (writeOutcomeUnknown(e)) {
+        void rereadNotes();
+        setFailure(
+          'No answer came back, so the note may already be saved. Check this day\'s notes before saving again; the same words saved again will not be added twice.',
+        );
+        return;
+      }
       setFailure(
         `The note was not saved (${getErrorMessage(e)}). Nothing was written and your words are still here.`,
       );

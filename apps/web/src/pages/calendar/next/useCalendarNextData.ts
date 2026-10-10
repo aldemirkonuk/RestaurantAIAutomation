@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useCalendarEventsSubscription } from '../../../contexts/RealtimeContext';
 import { apiClient } from '../../../services/api/client';
+import { writeOutcomeUnknown } from '../../../lib/draftWriteKey';
 import { fetchProviders, type Provider } from '../../../services/api/providers';
 import { useOrders } from '../../../hooks/queries/useOrderQueries';
 import { canonicalStatus } from '../../../lib/mudavym/status';
@@ -691,13 +692,28 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
   const invalidate = useCallback(() => {
     void qc.invalidateQueries({ queryKey: ['mudavym', 'calendar'] });
   }, [qc]);
+  // A write whose answer never came back may have landed (F-1083): read the
+  // book again so what the sheet asks the person to check is the truth.
+  const rereadIfUnknown = useCallback(
+    (err: Error) => {
+      if (writeOutcomeUnknown(err)) invalidate();
+    },
+    [invalidate],
+  );
 
   const create = useMutation({
-    mutationFn: async (payload: CalendarPayload) => {
-      const res = await apiClient.post<ApiEvent>('/calendar/events', payload);
+    // `writeKey` is the sheet's draft key (lib/draftWriteKey.ts): a re-send
+    // after a lost answer gets the entry already written, not a second one.
+    mutationFn: async ({ writeKey, ...payload }: CalendarPayload & { writeKey?: string }) => {
+      const res = await apiClient.post<ApiEvent>(
+        '/calendar/events',
+        payload,
+        writeKey ? { headers: { 'Idempotency-Key': writeKey } } : undefined,
+      );
       return toCalEvent(res.data);
     },
     onSuccess: invalidate,
+    onError: rereadIfUnknown,
   });
 
   const update = useMutation({
@@ -706,6 +722,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       return toCalEvent(res.data);
     },
     onSuccess: invalidate,
+    onError: rereadIfUnknown,
   });
 
   // A drag or resize on the grid writes through its own mutation, so a refused
@@ -717,6 +734,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       return toCalEvent(res.data);
     },
     onSuccess: invalidate,
+    onError: rereadIfUnknown,
   });
 
   const remove = useMutation({
@@ -724,6 +742,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       await apiClient.delete(`/calendar/events/${id}${scope === 'all' ? '?scope=all' : ''}`);
     },
     onSuccess: invalidate,
+    onError: rereadIfUnknown,
   });
 
   // Ends a repeating entry from a date: the rule stops the day before, and
@@ -733,6 +752,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       await apiClient.delete(`/calendar/events/${id}/recurring?fromDate=${fromDate}`);
     },
     onSuccess: invalidate,
+    onError: rereadIfUnknown,
   });
 
   const createType = useMutation({
@@ -746,6 +766,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       return res.data;
     },
     onSuccess: invalidate,
+    onError: rereadIfUnknown,
   });
 
   const deleteType = useMutation({
@@ -753,6 +774,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       await apiClient.delete(`/calendar/event-types/${id}`);
     },
     onSuccess: invalidate,
+    onError: rereadIfUnknown,
   });
 
   /* ── What the page is allowed to claim ─────────────────────────────────── */

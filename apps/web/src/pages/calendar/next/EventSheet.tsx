@@ -40,6 +40,7 @@ import { Sheet } from '../../../components/mudavym/Sheet';
 // survives here, so saving an entry clears any copy the legacy page queued for
 // it in this browser. Nothing in `pages/calendar/next/**` enqueues any more.
 import { cancelRemindersForEvent } from '../../../lib/reminder-scheduler';
+import { useDraftWriteKey, writeOutcomeUnknown } from '../../../lib/draftWriteKey';
 import { EM, SEAL_HEX, clock, longDay } from './cal-format';
 import ReminderRegister from './ReminderRegister';
 import type { CalEvent, CalendarData, CalendarPayload, EventStatus } from './useCalendarNextData';
@@ -179,6 +180,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
     return wanted !== '' && data.eventTypes.some((t) => t.name.trim().toLocaleLowerCase() === wanted);
   }, [newTypeName, data.eventTypes]);
   const saving = data.create.isPending || data.update.isPending;
+  const writeKey = useDraftWriteKey('calendar-event');
   // Adding or deleting a custom type is a write too; its refusal must reach
   // the same banner (sweep 2026-09-28 row 19 — it used to vanish silently).
   // Only writes THIS sheet asked for: a mutation keeps its last error until it
@@ -274,22 +276,24 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
 
     if (reversed) return;
     ask('create');
+    const entry = {
+      ...base,
+      providerId: providerId || undefined,
+      recurrence:
+        freq === 'none'
+          ? undefined
+          : {
+              frequency: freq,
+              interval: Math.max(1, every),
+              endType: repeatCount > 0 ? 'after_count' : 'never',
+              endAfterCount: repeatCount > 0 ? repeatCount : undefined,
+            },
+    };
     data.create.mutate(
-      {
-        ...base,
-        providerId: providerId || undefined,
-        recurrence:
-          freq === 'none'
-            ? undefined
-            : {
-                frequency: freq,
-                interval: Math.max(1, every),
-                endType: repeatCount > 0 ? 'after_count' : 'never',
-                endAfterCount: repeatCount > 0 ? repeatCount : undefined,
-              },
-      },
+      { ...entry, writeKey: writeKey.keyFor(entry) },
       {
         onSuccess: (created) => {
+          writeKey.renew();
           clearBrowserQueue(created.id);
           onClose();
         },
@@ -677,8 +681,19 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
 
         {failure && (
           <p role="status" className="cn-notice" style={{ marginTop: 10 }}>
-            The gateway refused this write ({refusalWords(failure)}).
-            Nothing was saved.
+            {writeOutcomeUnknown(failure) ? (
+              // A timeout or a 5xx can land after the write did (F-1083), so
+              // this one says what MAY have happened; the book is read again.
+              <>
+                No answer came back, so this may already be on the calendar. Check the calendar
+                before trying again.
+              </>
+            ) : (
+              <>
+                The gateway refused this write ({refusalWords(failure)}).
+                Nothing was saved.
+              </>
+            )}
           </p>
         )}
 

@@ -309,8 +309,17 @@ export async function getTeamMembers(rid?: string): Promise<TeamMember[]> {
   const { data } = await apiClient.get<TeamMember[]>(`${base(rid)}/members`)
   return data
 }
-export async function createTeamMember(body: Partial<TeamMember> & { displayName: string }, rid?: string) {
-  const { data } = await apiClient.post(`${base(rid)}/members`, body)
+/** With `idempotencyKey`, a re-send after a lost answer cannot add the person twice (F-1083). */
+export async function createTeamMember(
+  body: Partial<TeamMember> & { displayName: string },
+  rid?: string,
+  idempotencyKey?: string,
+) {
+  const { data } = await apiClient.post(
+    `${base(rid)}/members`,
+    body,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined,
+  )
   return data
 }
 export async function updateTeamMember(memberId: string, body: Record<string, any>, rid?: string) {
@@ -483,8 +492,17 @@ export async function acknowledgeSchedule(scheduleId: string, rid?: string) {
 }
 
 // ── Shifts ────────────────────────────────────────────────────────────────
-export async function createShift(body: Record<string, any>, rid?: string): Promise<Shift> {
-  const { data } = await apiClient.post<Shift>(`${base(rid)}/shifts`, body)
+/** With `idempotencyKey`, a re-send after a lost answer cannot add the shift twice (F-1083). */
+export async function createShift(
+  body: Record<string, any>,
+  rid?: string,
+  idempotencyKey?: string,
+): Promise<Shift> {
+  const { data } = await apiClient.post<Shift>(
+    `${base(rid)}/shifts`,
+    body,
+    idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined,
+  )
   return data
 }
 export async function updateShift(shiftId: string, body: Record<string, any>, rid?: string): Promise<Shift> {

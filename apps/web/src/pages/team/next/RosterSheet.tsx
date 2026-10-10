@@ -101,6 +101,7 @@ import { mayChangeAway } from '../../../services/api/areas';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 
 const EMPLOYMENT: ReadonlyArray<[string, string]> = [
   ['full_time', 'full time'],
@@ -585,6 +586,7 @@ export function MemberSheet({
   const [stamp, setStamp] = useState(member?.updated_at ?? null);
   /** A save whose reply was lost may have landed: read the person back (F-1084). */
   const triedUnconfirmed = useRef(false);
+  const writeKey = useDraftWriteKey('team-member');
   const save = useMutation({
     mutationFn: () => {
       // On an edit a box the user emptied is sent as `null`, which the
@@ -629,7 +631,7 @@ export function MemberSheet({
         }
         if (stamp) payload.expectUpdatedAt = stamp;
       }
-      if (!editing) return createTeamMember(payload as never);
+      if (!editing) return createTeamMember(payload as never, undefined, writeKey.keyFor(payload));
       return saveOrConfirm(
         () => updateTeamMember(member!.id, payload),
         async () => holdsWhatWasSent(
@@ -638,6 +640,10 @@ export function MemberSheet({
         ),
         triedUnconfirmed,
       );
+    },
+    // A lost answer may be a saved person (F-1083): read the roster again.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) onChanged();
     },
     onSuccess: (saved: { updated_at?: string; ownWage?: { audited: boolean; ownersNotified: number; ownersFound: number | null } } | null | undefined) => {
       onChanged();
@@ -720,6 +726,8 @@ export function MemberSheet({
         <MutationError when={save.isError}>
           {save.error instanceof NotConfirmedError ? (
             'This save could not be confirmed, and the person could not be read back to check. Close this and open them again to see what is on file now.'
+          ) : !editing && writeOutcomeUnknown(save.error) ? (
+            'No answer came back, so this person may already be on the roster. Check the roster before adding them again.'
           ) : (
             <>
               Nothing was saved, so the roster is unchanged. Your values are still here.

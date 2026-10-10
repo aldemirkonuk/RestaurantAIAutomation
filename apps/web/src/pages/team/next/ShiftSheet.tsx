@@ -40,6 +40,7 @@ import {
 import { MutationError, useHouseRegion } from './tm-bits';
 import { serverMessage } from './TeamOverlays';
 import { NotConfirmedError, saveOrConfirm } from './confirmSave';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 
 /** The gateway's `shift_type` vocabulary (`dto/team.dto.ts`), said as service. */
 const SHIFT_TYPES: ReadonlyArray<[string, string]> = [
@@ -176,9 +177,13 @@ export function ShiftSheet({
       (!('breakMinutes' in sent) || (row.recorded_break_min ?? null) === sent.breakMinutes)
     );
   };
+  const writeKey = useDraftWriteKey('shift');
   const save = useMutation({
     mutationFn: () => {
-      if (!editing) return createShift({ scheduleId: scheduleId ?? undefined, ...body() });
+      if (!editing) {
+        const draft = { scheduleId: scheduleId ?? undefined, ...body() };
+        return createShift(draft, undefined, writeKey.keyFor(draft));
+      }
       const sent = body();
       return saveOrConfirm(
         () => updateShift(target.shift!.id, { ...sent, ...asOpened() }),
@@ -189,6 +194,10 @@ export function ShiftSheet({
     onSuccess: () => {
       onChanged();
       onClose();
+    },
+    // A lost answer may be a saved shift (F-1083): read the week again.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) onChanged();
     },
   });
   const remove = useMutation({
@@ -220,6 +229,8 @@ export function ShiftSheet({
           {/* A 409 says why — time off, inactive, a clash — and what to do. */}
           {save.error instanceof NotConfirmedError
             ? 'This save could not be confirmed, and the shift could not be read back to check. Close this and open the shift again to see what is on the schedule now.'
+            : !editing && writeOutcomeUnknown(save.error)
+              ? 'No answer came back, so this shift may already be on the schedule. Check the schedule before adding it again.'
             : (serverMessage(save.error) ??
               'The shift was not saved, so the schedule is unchanged. Your values are still here — try again.')}
         </MutationError>
