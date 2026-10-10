@@ -1,9 +1,11 @@
 /**
  * F-429: "Mark inactive" took a wine off /inventory and out of the stock value
  * here and on /reports, with no question asked and no way back on this page.
- * It now asks first, in plain words, and says how many bottles leave the
- * stock value; and "Inactive wines" lists what was marked inactive so one can
- * be made active again (the same PATCH, so its bottles come back untouched).
+ * It now asks first, in plain words, and says how many bottles are still on
+ * hand; and "Inactive wines" lists what was marked inactive so one can be made
+ * active again (the same PATCH, so its bottles come back untouched).
+ * F-442: those bottles are still stock, so /reports keeps valuing them; only
+ * this list (and the valuation exported from it) leaves them out.
  */
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -27,8 +29,9 @@ export function inactiveWarning(item: InventoryItem): string {
   if (onHand <= 0) return `It comes off this list. ${back}`;
   return (
     `${bottles(onHand)} still on hand. Marking it inactive takes it off this ` +
-    `list and out of the stock value here and on Reports, while the bottles ` +
-    `stay in the cellar. ${back}`
+    `list and off the valuation you export from here. The bottles stay in ` +
+    `the cellar, so Reports still counts them in what your stock is worth. ` +
+    back
   );
 }
 
