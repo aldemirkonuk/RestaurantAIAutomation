@@ -837,3 +837,88 @@ describe("MembersService.updateMemberRole — a role changes in this house only"
     expect(db.tables.system_audit_log).toEqual([]);
   });
 });
+
+/**
+ * F-579 — the pay switch is a manager's (ADR 0215). A demotion wrote only
+ * `role`, so the switch stayed on underneath, and promoting the person back to
+ * manager quietly gave pay back with no `team_pay_access_changed` row.
+ */
+describe("MembersService.updateMemberRole — leaving manager clears the pay switch", () => {
+  const MANAGER = "user-manager";
+
+  function seedPay(): StubDb {
+    return makeStubDb({
+      user_restaurant_access: [
+        { id: "a1", user_id: OWNER, restaurant_id: RID, role: "owner", is_active: true },
+        {
+          id: "a4",
+          user_id: MANAGER,
+          restaurant_id: RID,
+          role: "manager",
+          is_active: true,
+          team_pay_access: true,
+        },
+      ],
+      users: [
+        { user_id: OWNER, restaurant_id: RID, role: "owner", email: "ada@example.test" },
+        { user_id: MANAGER, restaurant_id: RID, role: "manager", email: "mo@example.test" },
+      ],
+      notifications: [],
+      system_audit_log: [],
+    });
+  }
+  const accessOf = (db: StubDb) =>
+    db.tables.user_restaurant_access.find((r) => r.user_id === MANAGER)!;
+
+  it("switches pay off on a demotion, and records that it did", async () => {
+    const db = seedPay();
+    await service(db).updateMemberRole(OWNER, RID, MANAGER, "staff");
+
+    expect(accessOf(db).team_pay_access).toBe(false);
+    expect(db.tables.system_audit_log[0].changes?.team_pay_access).toEqual({
+      from: true,
+      to: false,
+    });
+  });
+
+  it("does not hand pay back when the person is made manager again", async () => {
+    const db = seedPay();
+    await service(db).updateMemberRole(OWNER, RID, MANAGER, "staff");
+    await service(db).updateMemberRole(OWNER, RID, MANAGER, "manager");
+
+    expect(accessOf(db).role).toBe("manager");
+    expect(accessOf(db).team_pay_access).toBe(false);
+  });
+});
+
+/**
+ * F-581 — the roster path files `team_member_removed` and tells the person;
+ * removing someone from Settings who has no roster row (everyone `addMember`
+ * added) filed nothing and told nobody.
+ */
+describe("MembersService.removeMember — a removal without a roster row is recorded too", () => {
+  it("files the removal and tells the person", async () => {
+    const db = seed();
+    await service(db).removeMember(OWNER, RID, SAM);
+
+    expect(db.tables.system_audit_log).toHaveLength(1);
+    const row = db.tables.system_audit_log[0];
+    expect(row.action).toBe("team_member_removed");
+    expect(row.actor_id).toBe(OWNER);
+    expect(row.entity_id).toBe(SAM);
+    expect(row.changes?.access_role).toEqual({ from: "staff", to: null });
+    expect(row.changes?.self_leave).toBe(false);
+    expect(db.tables.notifications).toHaveLength(1);
+    expect(db.tables.notifications[0].user_id).toBe(SAM);
+    expect(String(db.tables.notifications[0].message)).toMatch(/An owner removed you/);
+  });
+
+  it("files a leave as a leave, with no 'you were removed' notice", async () => {
+    const db = seed();
+    await service(db).removeMember(SAM, RID, SAM);
+
+    expect(db.tables.system_audit_log).toHaveLength(1);
+    expect(db.tables.system_audit_log[0].changes?.self_leave).toBe(true);
+    expect(db.tables.notifications).toEqual([]);
+  });
+});

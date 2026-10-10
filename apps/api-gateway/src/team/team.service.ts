@@ -49,6 +49,7 @@ import { houseFrame } from "../common/house-frame";
 import { resolveSignUpTimezone } from "../auth/sign-up-timezone";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import { stopGrantsOnLeaving } from "../integrations/stop-grants-on-leaving";
+import { retireLapsedInvitePlaceholders } from "./invite-placeholders";
 import {
   ChannelPreferences,
   loadChannelOptOuts,
@@ -540,6 +541,16 @@ export class TeamService {
 
     await this.autoLinkByEmail(restaurantId, members ?? []);
 
+    // A person whose invitation expired unused will never arrive: their
+    // stand-in row leaves the roster rather than being counted (F-580).
+    const retired = await retireLapsedInvitePlaceholders(
+      this.sb,
+      this.logger,
+      restaurantId,
+      members ?? [],
+    );
+    const roster = (members ?? []).filter((m: any) => !retired.has(m.id));
+
     /*
      * `team_settings.wage_visible` used to decide this, and it did not hold: it
      * blanked the roster's wage and nothing else, so the week's `labor_cost`
@@ -568,7 +579,7 @@ export class TeamService {
      * not be read is not a list of people with no role.
      */
     const userIds = [
-      ...new Set((members ?? []).map((m: any) => m.user_id).filter(Boolean)),
+      ...new Set(roster.map((m: any) => m.user_id).filter(Boolean)),
     ];
     const [{ data: access, error: accessError }, { data: users, error: usersError }] =
       await Promise.all([
@@ -598,7 +609,7 @@ export class TeamService {
     // owner's roster carries it; `null` on a row = the switch could not be read.
     const switches = role === "owner" ? await this.payAccessByUser(restaurantId) : null;
 
-    return (members ?? []).map((m: any) => {
+    return roster.map((m: any) => {
       const memberRole = m.user_id ? (roleMap.get(m.user_id) ?? null) : null;
       return memberForViewer(
         {

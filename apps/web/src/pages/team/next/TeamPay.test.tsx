@@ -535,3 +535,16 @@ describe("an owner's pay is not shown or offered to a manager who sees pay", () 
     expect(screen.getByText(/the owner's — an owner's pay is seen by an owner only/)).toBeInTheDocument();
   });
 });
+
+// ── F-583: Inactive is a label, not a suspension, and the sheet says so ──────
+
+describe('the Status control says what Inactive does', () => {
+  it('says Inactive does not stop sign-in, and that removal ends access', () => {
+    render(
+      <MemberSheet member={member({ status: 'inactive' }) as never} moneyVisible={false} ownerCount={1} onClose={() => {}} onChanged={() => {}} />,
+      { wrapper },
+    );
+    expect(screen.getByText(/does not\s+stop them signing in/)).toBeInTheDocument();
+    expect(screen.getByText(/to end their access,\s+remove them/)).toBeInTheDocument();
+  });
+});
