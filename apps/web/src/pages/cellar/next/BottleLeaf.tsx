@@ -31,12 +31,14 @@ import { apiClient } from '../../../services/api/client';
 import { useCreateInventoryItem } from '../../../hooks/queries/useInventoryQueries';
 import { useRecommendedProviders } from '../../../hooks/queries/useProviderQueries';
 import { queryKeys } from '../../../lib/query-keys';
+import { useHouseZone } from '../../../lib/houseZone';
 import type { Provider } from '../../../services/api/providers';
 import {
   EM,
   acidityTicks,
   bodyTicks,
   composedTastingSentence,
+  countedDay,
   handlingSentence,
   knowledgeLabel,
   knowledgeNote,
@@ -248,6 +250,7 @@ export default function BottleLeaf({
   const [said, setSaid] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+  const houseZone = useHouseZone();
   const bringIn = useCreateInventoryItem();
   const recs = useRecommendedProviders(restaurantId ?? '', bottle.id);
   const settings = useCellarSettings();
@@ -532,11 +535,7 @@ export default function BottleLeaf({
                 <Fact label="Vendor">{cellar.providerName ?? EM}</Fact>
                 <Fact label="Last counted">
                   {cellar.lastCountedAt
-                    ? new Date(cellar.lastCountedAt).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })
+                    ? countedDay(cellar.lastCountedAt, houseZone)
                     : 'never counted'}
                 </Fact>
               </dl>

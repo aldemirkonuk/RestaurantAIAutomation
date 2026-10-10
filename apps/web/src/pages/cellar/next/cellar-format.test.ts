@@ -16,6 +16,7 @@ import {
   bodyTicks,
   composedTastingSentence,
   count,
+  countedDay,
   handlingSentence,
   matchNote,
   quoteSource,
@@ -222,11 +223,33 @@ describe('counts group thousands with the house mark (F-1085, F-908 family)', ()
     expect(count(null)).toBe(EM);
   });
 
-  it('no cellar page groups a shown number with a hard-coded en-US', () => {
+  it('no cellar page groups a shown number or writes a date with a hard-coded en-US', () => {
     const dir = resolve(process.cwd(), 'src/pages/cellar/next');
     const offenders = readdirSync(dir)
       .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
-      .filter((f) => /\.toLocaleString\(\s*['"]en-US['"]/.test(readFileSync(resolve(dir, f), 'utf8')));
+      .filter((f) =>
+        /\.toLocale(Date)?String\(\s*['"]en-US['"]/.test(readFileSync(resolve(dir, f), 'utf8')),
+      );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('the last-counted day is the house\'s day, in the house\'s words (F-1100)', () => {
+  // 01:30 on 3 March in Istanbul is still the afternoon of 2 March in Los Angeles.
+  const late = '2026-03-02T22:30:00Z';
+
+  it('writes the day the house counted, in the house\'s own date style', () => {
+    setHouseLocale('tr-TR');
+    try {
+      expect(countedDay(late, 'Europe/Istanbul')).toBe('3 Mar 2026');
+    } finally {
+      setHouseLocale('en-US');
+    }
+    expect(countedDay(late, 'Europe/Istanbul')).toBe('Mar 3, 2026');
+    expect(countedDay(late, 'America/Los_Angeles')).toBe('Mar 2, 2026');
+  });
+
+  it('an unreadable time shows a dash, not "Invalid Date"', () => {
+    expect(countedDay('not a time', 'Europe/Istanbul')).toBe(EM);
   });
 });

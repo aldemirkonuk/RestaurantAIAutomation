@@ -443,3 +443,17 @@ describe('BottleLeaf — the bottle counts keep what is typed (F-1070, rehit of 
     }
   });
 });
+
+describe('BottleLeaf — the last-counted day reads the house way (F-1100)', () => {
+  it('a lira house reads the day it counted in its own date style, not a US one', () => {
+    setHouseLocale('tr-TR');
+    try {
+      mount(bottle({ cellar: cellarRow({ lastCountedAt: '2026-03-02T12:00:00Z' }) }));
+      const dd = screen.getByText('Last counted').nextElementSibling!;
+      expect(dd).toHaveTextContent('2 Mar 2026');
+      expect(dd).not.toHaveTextContent('Mar 2, 2026');
+    } finally {
+      setHouseLocale('en-US');
+    }
+  });
+});
