@@ -15,8 +15,14 @@ import { color, radius, space } from "@/design/tokens";
 import { GRACE_MS, spring } from "@/design/motion";
 import { haptic } from "@/design/haptics";
 import { feedKey, pulseKey } from "@/api/queries";
-import { NOT_SAVED_WORDS, useOutbox } from "@/state/outbox";
+import {
+  NOT_SAVED_WORDS,
+  RECEIPT_WAITING_WORDS,
+  receiptWaitingFor,
+  useOutbox,
+} from "@/state/outbox";
 import { useFeedLocal } from "@/state/feedLocal";
+import { useSession } from "@/state/session";
 import type { FeedItem } from "@/api/types";
 import { countsMatchRequest } from "./countsMatchRequest";
 
@@ -52,6 +58,12 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
   const enqueue = useOutbox((s) => s.enqueue);
   const undoEntry = useOutbox((s) => s.undo);
   const markCleared = useFeedLocal((s) => s.markCleared);
+  // This order's count already waiting on this phone (F-980): the card says so
+  // and "Counts match" takes no second one, so the bottles are not booked twice.
+  const user = useSession((s) => s.user);
+  const receiptWaiting = useOutbox((s) =>
+    receiptWaitingFor(item, s.entries, user),
+  );
 
   const [holdingId, setHoldingId] = useState<string | null>(null);
 
@@ -201,6 +213,8 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
     label: string;
     run: () => void;
     secondaryLabel?: string;
+    disabled?: boolean;
+    note?: string;
   } => {
     switch (item.kind) {
       case "order_approval":
@@ -221,10 +235,22 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
                 "PATCH",
               ),
           };
+        if (receiptWaiting)
+          return {
+            label: "Saved on this phone",
+            run: () => {},
+            disabled: true,
+            note: RECEIPT_WAITING_WORDS,
+          };
         return {
           label: "Counts match",
-          run: () =>
-            instantAction(countsMatch.path, "Receipt verified", countsMatch.body),
+          run: () => {
+            if (receiptWaitingFor(item, useOutbox.getState().entries, user)) {
+              Alert.alert(RECEIPT_WAITING_WORDS);
+              return;
+            }
+            instantAction(countsMatch.path, "Receipt verified", countsMatch.body);
+          },
           secondaryLabel: "Count it",
         };
       }
@@ -330,12 +356,14 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
               <>
                 <PressableScale
                   onPress={action.run}
+                  disabled={action.disabled}
                   style={{
                     backgroundColor:
                       item.kind === "alert" ? color.fill : color.wine,
                     borderRadius: radius.control,
                     paddingVertical: 10,
                     paddingHorizontal: space.xl,
+                    opacity: action.disabled ? 0.6 : 1,
                   }}
                 >
                   <AppText
@@ -380,6 +408,11 @@ export function DecisionCard({ item, onHidden }: DecisionCardProps) {
               </PressableScale>
             )}
           </View>
+          {action.note && !holding ? (
+            <AppText variant="caption" tone="tertiary">
+              {action.note}
+            </AppText>
+          ) : null}
         </View>
 
         {/* Grace line: drains left-to-right while the send holds */}
