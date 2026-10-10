@@ -33,6 +33,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
+import { useHouseZone } from '@/lib/houseZone';
+import { snoozeWake } from '@/lib/recommendationState';
 import { Wordmark } from '@/components/mudavym';
 import {
   DISMISS_CHOICES,
@@ -118,6 +120,8 @@ export default function CatalogView({ ground }: CatalogViewProps) {
   }, []);
 
   const { activeRestaurantId, user, activeRole } = useAuth();
+  /** F-927: a snooze ends on a day of the house's calendar, not 24 h blocks. */
+  const zone = useHouseZone();
   const rid = activeRestaurantId ?? null;
   const role = activeRole ?? user?.role ?? null;
   // Owner/manager only — a house policy, not a note on one card (ADR 0191).
@@ -829,9 +833,7 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                                           actLive(c, item, {
                                                             status: 'snoozed',
                                                             snoozeFor: forWhom,
-                                                            snoozeUntil: new Date(
-                                                              Date.now() + o.value * 86_400_000,
-                                                            ).toISOString(),
+                                                            snoozeUntil: snoozeWake(o.id, zone),
                                                           })
                                                         }
                                                       >
@@ -864,7 +866,7 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                                     type="button"
                                                     className="rc-quiet"
                                                     title={r.note}
-                                                    onClick={() => actLive(c, item, patchForChoice(r.id))}
+                                                    onClick={() => actLive(c, item, patchForChoice(r.id, Date.now(), zone))}
                                                   >
                                                     {r.label}
                                                   </button>

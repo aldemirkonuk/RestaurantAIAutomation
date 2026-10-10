@@ -19,6 +19,7 @@
  */
 
 import { getErrorMessage } from '@/services/api/client';
+import { houseClockTime, houseDaysBetween } from '@/lib/houseCalendar';
 
 /**
  * The half of this file that /providers also speaks now lives in
@@ -490,15 +491,30 @@ export function errText(e: unknown): string {
 
 /* ── Dates ───────────────────────────────────────────────────────────────── */
 
-/** "expires in 5 days" / "expired" — an invite's own clock. */
-export function fmtExpiry(iso: string | null | undefined): string {
+/**
+ * "Expires in 5 days" / "Expired" — an invite's own clock, a sentence of its
+ * own. F-929: days are the HOUSE's calendar days, so "today" and "tomorrow"
+ * name dates, not 24-hour blocks (an invite ending at 23:00 tonight read
+ * "tomorrow"); and under 48 hours the exact time on the house clock is said,
+ * because "tomorrow" alone does not tell a manager whether to re-send now.
+ */
+export function fmtExpiry(
+  iso: string | null | undefined,
+  zone?: string | null,
+  now: number = Date.now(),
+): string {
   if (!iso) return EM;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return EM;
-  const days = Math.ceil((t - Date.now()) / 86_400_000);
-  if (days < 0) return 'expired';
-  if (days === 0) return 'expires today';
-  return days === 1 ? 'expires tomorrow' : `expires in ${days} days`;
+  if (t <= now) return 'Expired';
+  const days = houseDaysBetween(zone, now, t);
+  if (t - now < 48 * 3_600_000) {
+    const at = houseClockTime(zone, t);
+    if (days <= 0) return `Expires today at ${at}`;
+    if (days === 1) return `Expires tomorrow at ${at}`;
+    return `Expires in ${days} days, at ${at}`;
+  }
+  return `Expires in ${days} days`;
 }
 
 /* ── Flag names ──────────────────────────────────────────────────────────── */

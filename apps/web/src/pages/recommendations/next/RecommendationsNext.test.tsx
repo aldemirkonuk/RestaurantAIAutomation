@@ -2027,8 +2027,9 @@ describe('rule-wide acts are owner/manager only; snooze and done are the item', 
     fireEvent.click(within(row).getByText('Until tomorrow'));
     expect(setDisposition).toHaveBeenCalledWith(
       expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' }),
-      // Round 3: a staff snooze is theirs alone ("Only them").
-      { status: 'snoozed', snoozeFor: 'me', snoozeUntil: expect.any(String) },
+      // Round 3: a staff snooze is theirs alone ("Only them"). F-927: it
+      // wakes at the next midnight, not 24 h from the click.
+      { status: 'snoozed', snoozeFor: 'me', snoozeUntil: '2026-09-18T04:00:00.000Z' },
       expect.stringContaining('for you alone'),
       true,
       'sales_below_weekday_baseline#wednesday#d:2026-09-02',
@@ -2107,9 +2108,9 @@ describe('round 3: the dismiss list, the snooze audience and the firing', () => 
     fireEvent.click(within(row).getByRole('button', { name: 'Hide it from me' }));
     const call = setDisposition.mock.calls.at(-1) as unknown as unknown[];
     expect(call[1]).toEqual({ status: 'snoozed', snoozeFor: 'me', snoozeUntil: expect.any(String) });
-    const until = Date.parse((call[1] as { snoozeUntil: string }).snoozeUntil);
-    expect(until - Date.now()).toBeGreaterThan(23 * 3_600_000);
-    expect(until - Date.now()).toBeLessThanOrEqual(24 * 3_600_000);
+    // F-927: until the next midnight (this suite's clock is New York's; no
+    // house is picked, so the device's clock stands in) — not 24 h on.
+    expect((call[1] as { snoozeUntil: string }).snoozeUntil).toBe('2026-09-18T04:00:00.000Z');
     expect(dismissFn).not.toHaveBeenCalled();
   });
 

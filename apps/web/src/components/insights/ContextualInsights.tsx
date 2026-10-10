@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { apiClient, getErrorMessage } from "../../services/api/client";
+import { useHouseZone } from "../../lib/houseZone";
 import {
   DISMISS_CHOICES,
   choiceSaid,
@@ -116,6 +117,8 @@ export function ContextualInsights({
   const { user } = useAuth();
   const restaurantId = user?.restaurantId;
   const cfg = HOST_CONFIG[host];
+  // "Not right now" lasts until the house's next midnight (F-927).
+  const zone = useHouseZone();
 
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
@@ -260,7 +263,7 @@ export function ContextualInsights({
     setReasonFor(null);
     setActError(null);
     setInsights((prev) => prev.filter((i) => i.ruleKey !== ins.ruleKey));
-    const landed = await action(ins, patchForChoice(choice));
+    const landed = await action(ins, patchForChoice(choice, Date.now(), zone));
     if (landed) setUndo({ key: ins.actKey, choice });
     else load();
   };
