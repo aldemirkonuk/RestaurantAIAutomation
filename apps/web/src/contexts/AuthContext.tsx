@@ -331,6 +331,20 @@ api.interceptors.response.use(
   },
 );
 
+/** The person (`sub`) an access token was minted for, or null. */
+function tokenSubject(accessToken: string | null): string | null {
+  try {
+    const sub = accessToken
+      ? JSON.parse(
+          atob(accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
+        )?.sub
+      : null;
+    return typeof sub === "string" && sub ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
 /** `/auth/me`'s person, with the session's house taken from its token. */
 function userFrom(
   me: Record<string, unknown>,
@@ -481,6 +495,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     loadUser();
   }, []);
+
+  // F-212: another tab of this browser signed out, or someone else signed in
+  // there. Tabs share localStorage but not memory, so without this a tab left
+  // open on a shared tablet kept showing the last person's house and name.
+  // A `storage` event never fires in the tab that made the change.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      // `key === null` is a full localStorage.clear().
+      if (e.key !== null && e.key !== "accessToken") return;
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        // endSession's local half: nothing of the session stays on screen,
+        // and with no user ProtectedRoute sends this tab to sign in.
+        forgetHouseReads(queryClient);
+        queryClient?.getMutationCache().clear();
+        delete api.defaults.headers.common["Authorization"];
+        delete api.defaults.headers.common["X-Restaurant-Id"];
+        setUser(null);
+        setActiveRole(null);
+        return;
+      }
+      // A refresh or a house switch keeps the person; a different person
+      // means everything this tab holds was someone else's. Start over.
+      const before = tokenSubject(e.oldValue);
+      if (before && before !== tokenSubject(token)) window.location.reload();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [queryClient]);
 
   // Centralized branch fetch — reused by initial load and refreshBranches()
   // IMPORTANT: preserves activeRestaurantId via the validSaved check below.

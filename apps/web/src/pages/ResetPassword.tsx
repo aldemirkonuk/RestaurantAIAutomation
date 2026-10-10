@@ -13,6 +13,59 @@ const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const fieldClass =
   'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
 
+/**
+ * Only the gateway's refusal of the link itself (400/401 naming the link or
+ * token: invalid, expired, already used) means the link is spent. A dropped
+ * connection, a 429, a 5xx or a refused password says nothing about the link,
+ * so it keeps the form and does not offer "Request a new link" (F-214).
+ * The backend's wording is safe to show: unlike the request step, a token in
+ * the URL already proves the caller received the email, so there is no
+ * enumeration risk in saying why it didn't work.
+ */
+function describeResetFailure(err: any): {
+  message: string
+  linkRefused: boolean
+} {
+  const status: number | undefined = err?.response?.status
+  const raw = err?.response?.data?.message
+  const serverMessage = Array.isArray(raw)
+    ? raw.filter((m) => typeof m === 'string').join(' ')
+    : typeof raw === 'string'
+      ? raw
+      : ''
+  if (!err?.response) {
+    return {
+      message:
+        'Could not reach Mudavym. Check your connection and try again.',
+      linkRefused: false,
+    }
+  }
+  if (status === 400 || status === 401) {
+    if (/link|token/i.test(serverMessage) || (status === 401 && !serverMessage)) {
+      return {
+        message:
+          serverMessage ||
+          'This reset link is invalid or has expired. Request a new one below.',
+        linkRefused: true,
+      }
+    }
+    return {
+      message: serverMessage || 'That password was not accepted. Try another.',
+      linkRefused: false,
+    }
+  }
+  if (status === 429) {
+    return {
+      message: 'Too many tries. Wait a minute, then try again.',
+      linkRefused: false,
+    }
+  }
+  return {
+    message: 'Mudavym could not save your new password just now. Try again in a moment.',
+    linkRefused: false,
+  }
+}
+
 export function ResetPassword() {
   const publicDesign = usePublicDesign()
   const navigate = useNavigate()
@@ -58,15 +111,9 @@ export function ResetPassword() {
       setSuccess(true)
       setTimeout(() => navigate('/login', { replace: true }), 2500)
     } catch (err: any) {
-      // The backend distinguishes invalid/expired/already-used; surfacing its
-      // message is safe here — unlike the request step, a reset token in the
-      // URL already proves the caller received the email, so there is no
-      // enumeration risk in saying why it didn't work.
-      setError(
-        err?.response?.data?.message ||
-          'This reset link is invalid or has expired. Request a new one below.',
-      )
-      setTokenError(true)
+      const { message, linkRefused } = describeResetFailure(err)
+      setError(message)
+      setTokenError(linkRefused)
     } finally {
       setLoading(false)
     }
