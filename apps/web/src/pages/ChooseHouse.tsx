@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthShell, AuthCard } from "../components/brand/AuthShell";
 import "../components/brand/auth-house.css";
 import { useAuth } from "../contexts/AuthContext";
+import { pendingJoin } from "../lib/joinResume";
 import { usePublicDesign } from "../lib/mudavym/publicDesign";
 import { ink } from "../lib/mudavym/motion";
 import apiClient from "../services/api/client";
@@ -145,6 +146,8 @@ export function ChooseHouse() {
   // cannot: it saw that access ended, not who ended it, and an owner whose
   // own house was deleted is refused the same way a removed person is.
   // A membership waiting to be accepted keeps the person here (fork 13).
+  // An invite this account was on its way to join goes before /get-started
+  // (F-274, F-288): asking them to open a restaurant would lose it.
   if (
     load.state === "ready" &&
     load.houses.length === 0 &&
@@ -152,7 +155,10 @@ export function ChooseHouse() {
   )
     return (
       <Navigate
-        to={load.accessEnded ? "/no-access" : "/get-started"}
+        to={
+          pendingJoin(user?.userId) ??
+          (load.accessEnded ? "/no-access" : "/get-started")
+        }
         replace
       />
     );

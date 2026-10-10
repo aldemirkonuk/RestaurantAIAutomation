@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
+import { pendingJoin } from '../lib/joinResume'
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -73,8 +74,14 @@ export function VerifyEmail() {
       // account-only signup (ADR 0213) with nothing waiting on to
       // /get-started. Only a session in a house asks whether the menu is
       // already uploaded (re-verification flows).
-      const progress = house ? await getOnboardingProgress().catch(() => null) : null
-      const destination = !house
+      // An invite this account opened before verifying comes first: it is
+      // what they were doing when they were sent here (F-274, F-288).
+      const join = pendingJoin(user?.userId)
+      const progress =
+        house && !join ? await getOnboardingProgress().catch(() => null) : null
+      const destination = join
+        ? join
+        : !house
         ? '/choose-house'
         : progress?.menu_uploaded
           ? '/'
