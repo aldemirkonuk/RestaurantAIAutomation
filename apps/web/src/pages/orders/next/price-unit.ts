@@ -268,8 +268,21 @@ export function agreementTotal(input: {
     Math.round(price * unitsBought * 100) / 100,
     stated.pricePackSize === 1
       ? `${bottlesTotal} × $${price.toFixed(2)} per ${stated.priceUom}.`
-      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × $${price.toFixed(2)}.`,
+      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsSaid(unitsBought)} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × $${price.toFixed(2)}.`,
   );
+}
+
+/**
+ * How many price units the bottles make, as a person reads it: a whole count
+ * as is, anything else rounded to two places and marked "about". 10 bottles
+ * priced per case of 6 printed "1.6666666666666667 cases" (F-344); the total
+ * itself is still worked from the exact figure. Mirrors the gateway's twin in
+ * `agreed-price.ts`.
+ */
+function unitsSaid(units: number): string {
+  if (Number.isInteger(units)) return String(units);
+  const rounded = Math.round(units * 100) / 100;
+  return rounded === units ? String(units) : `about ${rounded}`;
 }
 
 /**

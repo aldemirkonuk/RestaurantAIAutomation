@@ -207,6 +207,22 @@ describe("agreedOrderTotal — the total is drawn from the price's own unit", ()
     expect(r.note).toContain("÷ 12");
   });
 
+  it("prints a part case rounded, never a raw fraction (F-344)", () => {
+    const r = agreedOrderTotal({
+      price: 60,
+      stated: { priceUom: "case", pricePackSize: 6 },
+      bottlesTotal: 10,
+      quantity: 10,
+      unitType: "bottle",
+      opaque: false,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.total).toBe(100);
+    expect(r.note).toContain("÷ 6 = about 1.67 case(s)");
+    expect(r.note).not.toContain("1.666");
+  });
+
   it("leaves an order with NO stated unit on the historical per-bottle arithmetic, byte for byte", () => {
     const r = agreedOrderTotal({
       price: 35,

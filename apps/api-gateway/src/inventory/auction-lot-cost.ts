@@ -58,7 +58,13 @@ export function lotBookedCost(input: {
   if (!Number.isInteger(bottles) || bottles < 1) {
     return { ok: false, why: "Say how many bottles were in the lot, as a whole number." };
   }
-  const lotPerBottle = cents((hammer + premium) / bottles);
+  // Whole cents, added once, and the per-bottle figure rounded once. A stated
+  // rate scales the EXACT per-bottle figure, so the cents rounding is not
+  // multiplied by the rate (F-342: 33.333 at 35 is 1166.67, not 33.33 × 35 =
+  // 1166.55). The web sheet's `auctionLotCost.ts` works it the same way.
+  const exactPerBottle =
+    (Math.round(hammer * 100) + Math.round(premium * 100)) / 100 / bottles;
+  const lotPerBottle = cents(exactPerBottle);
   const rate = input.exchangeRate ?? null;
   const typed = input.houseUnitCost ?? null;
   if (rate !== null && (!Number.isFinite(rate) || rate <= 0)) {
@@ -83,7 +89,7 @@ export function lotBookedCost(input: {
     }
     return { ok: true, booked: lotPerBottle, basis: "same_currency", lotPerBottle };
   }
-  if (rate !== null) return { ok: true, booked: cents(lotPerBottle * rate), basis: "stated_rate", lotPerBottle };
+  if (rate !== null) return { ok: true, booked: cents(exactPerBottle * rate), basis: "stated_rate", lotPerBottle };
   return {
     ok: false,
     why: `The lot is in ${lot} and this house keeps its books in ${house}: state the exchange rate you used, or type what each bottle cost in ${house}. Nothing is inferred.`,

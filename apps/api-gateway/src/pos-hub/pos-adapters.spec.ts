@@ -59,6 +59,25 @@ describe("adapters normalize to the canonical check", () => {
     expect(genericAdapter.normalize({ nonsense: true })).toHaveLength(0);
   });
 
+  it("square net sales leave out tax, tips and service charge (F-340)", () => {
+    const [check] = squareAdapter.normalize({
+      id: "sq-net",
+      total_money: { amount: 13200 },
+      net_amounts: {
+        total_money: { amount: 13200 },
+        tax_money: { amount: 1000 },
+        tip_money: { amount: 1500 },
+        service_charge_money: { amount: 700 },
+        discount_money: { amount: 0 },
+      },
+    });
+    expect(check.subtotal).toBeCloseTo(100);
+    expect(check.total).toBeCloseTo(132);
+    // No net_amounts at all is still "not recorded", never 0.
+    const [bare] = squareAdapter.normalize({ id: "sq-bare" });
+    expect(bare.subtotal).toBeNull();
+  });
+
   it("square converts cents and reads the webhook envelope", () => {
     const [check] = squareAdapter.normalize({
       data: {

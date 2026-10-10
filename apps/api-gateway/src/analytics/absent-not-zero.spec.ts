@@ -151,6 +151,27 @@ describe("financial never reports an empty result set as $0", () => {
     expect(out.basis.revenue).toContain("1 inventory row valued");
   });
 
+  it("never adds orders placed in two currencies into one COGS (F-339)", async () => {
+    const out: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [
+        { ...DELIVERED, currency: "TRY", total_cost: 12000 },
+        { ...DELIVERED, id: "po-2", currency: "EUR", total_cost: 400 },
+      ],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBeNull();
+    expect(out.basis.cogs).toContain("placed in EUR, TRY");
+    // One named currency (plus an order that names none) still sums.
+    const one: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [
+        { ...DELIVERED, currency: "TRY", total_cost: 12000 },
+        { ...DELIVERED, id: "po-2", total_cost: 400 },
+      ],
+    }).getFinancialSummary(RESTAURANT);
+    expect(one.cogs).toBe(12400);
+  });
+
   it("withholds every ratio that would divide by an absent COGS or revenue", async () => {
     // Inventory is fully priced here, so the cost-coverage gate is OPEN — the
     // only thing left to withhold these is the missing COGS/revenue itself.

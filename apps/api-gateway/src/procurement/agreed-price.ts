@@ -423,7 +423,7 @@ export function agreedOrderTotal(input: {
     note:
       pricePackSize === 1
         ? `Totalled as ${input.bottlesTotal} × ${moneyIn(safePrice, input.currency)} per ${priceUom}.`
-        : `Totalled as ${input.bottlesTotal} bottles ÷ ${pricePackSize} = ${priceUnitsBought} ${priceUom}(s) × ${moneyIn(safePrice, input.currency)}.`,
+        : `Totalled as ${input.bottlesTotal} bottles ÷ ${pricePackSize} = ${unitsSaid(priceUnitsBought)} ${priceUom}(s) × ${moneyIn(safePrice, input.currency)}.`,
   };
 }
 
@@ -570,6 +570,18 @@ export const NO_AGREEMENT_FEES: AgreementFees = {
   deposit: null,
   freight: null,
 };
+
+/**
+ * How many price units the bottles make, as a person reads it: a whole count
+ * as is, anything else rounded to two places and marked "about". 10 bottles
+ * priced per case of 6 printed "1.6666666666666667 case(s)" (F-344); the total
+ * is still worked from the exact figure. The web twin is `price-unit.ts`.
+ */
+function unitsSaid(units: number): string {
+  if (Number.isInteger(units)) return String(units);
+  const rounded = Math.round(units * 100) / 100;
+  return rounded === units ? String(units) : `about ${rounded}`;
+}
 
 function feeAmount(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;

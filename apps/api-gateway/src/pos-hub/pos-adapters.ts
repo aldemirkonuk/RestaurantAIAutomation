@@ -184,6 +184,29 @@ export const genericAdapter: PosAdapter = {
 // Square — Orders API (order object or webhook envelope)
 // ---------------------------------------------------------------------------
 
+/**
+ * Square's net sales: what the check took, less tax, tips and service charge.
+ *
+ * `net_amounts.total_money` is the order total net of returns — tax, tip and
+ * service charge are still inside it — so reading it as the subtotal inflated
+ * a Square house's net sales by its tax rate plus its tips (F-340; ADR 0287
+ * and ADR 0290 named the caveat). `net_amounts` carries each of those parts
+ * beside the total, so they come off here. A part Square left out took no
+ * money; a missing total is still unknown, never 0.
+ */
+const squareNetSales = (net: any): number | null => {
+  const total = num(net?.total_money?.amount);
+  if (total === null) return null;
+  const part = (m: any) => num(m?.amount) ?? 0;
+  return (
+    (total -
+      part(net.tax_money) -
+      part(net.tip_money) -
+      part(net.service_charge_money)) /
+    100
+  );
+};
+
 export const squareAdapter: PosAdapter = {
   key: "square",
   normalize(payload: any): CanonicalCheck[] {
@@ -209,7 +232,7 @@ export const squareAdapter: PosAdapter = {
         serverExternalId: o.employee_id ?? null,
         serverName: null,
         covers: null,
-        subtotal: cents(o.net_amounts?.total_money?.amount),
+        subtotal: squareNetSales(o.net_amounts),
         total: cents(o.total_money?.amount),
         tip: cents(o.total_tip_money?.amount),
         items: (o.line_items ?? []).map(

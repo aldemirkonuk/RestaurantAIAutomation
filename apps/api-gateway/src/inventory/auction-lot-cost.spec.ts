@@ -27,6 +27,15 @@ describe("lotBookedCost", () => {
     });
   });
 
+  it("a stated rate scales the exact per-bottle cost, so cents are rounded once (F-342)", () => {
+    expect(
+      lotBookedCost({ hammer: 90, premium: 10, bottles: 3, currency: "GBP", houseCurrency: "TRY", exchangeRate: 35 }),
+    ).toMatchObject({ ok: true, booked: 1166.67, lotPerBottle: 33.33 });
+    expect(
+      lotBookedCost({ hammer: 100.1, premium: 20.02, bottles: 1, currency: "GBP", houseCurrency: "GBP" }),
+    ).toMatchObject({ ok: true, booked: 120.12, lotPerBottle: 120.12 });
+  });
+
   it("a typed house cost wins over a stated rate — people round", () => {
     expect(lotBookedCost({ ...LOT, houseCurrency: "EUR", exchangeRate: 1.17, houseUnitCost: 245 })).toMatchObject({
       ok: true,
