@@ -16,12 +16,13 @@
  * a recorded break clears the record rather than keeping it.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import {
   createShift,
   deleteShift,
+  getWeek,
   updateShift,
   type Shift,
   type TeamMember,
@@ -31,12 +32,14 @@ import {
   breakCounted,
   breakUnderMinimum,
   fmtHours,
+  mondayOf,
   resolveName,
   shiftHours,
   todayIso,
 } from './tm-format';
 import { MutationError, useHouseRegion } from './tm-bits';
 import { serverMessage } from './TeamOverlays';
+import { NotConfirmedError, saveOrConfirm } from './confirmSave';
 
 /** The gateway's `shift_type` vocabulary (`dto/team.dto.ts`), said as service. */
 const SHIFT_TYPES: ReadonlyArray<[string, string]> = [
@@ -152,11 +155,37 @@ export function ShiftSheet({
     ...(target.shift!.updated_at ? { expectUpdatedAt: target.shift!.updated_at } : {}),
   });
 
+  /**
+   * An edit whose reply was lost may have landed (F-1084): the shift is read
+   * back, and one that holds what was sent is saved — not refused on retry as
+   * "someone else changed" it, when the change was this sheet's own.
+   */
+  const triedUnconfirmed = useRef(false);
+  const landedAsSent = async (sent: ReturnType<typeof body>): Promise<boolean | null> => {
+    const week = await getWeek(mondayOf(new Date(`${sent.shiftDate}T00:00:00`)));
+    const row = week.shifts?.find((s) => s.id === target.shift!.id);
+    if (!row) return false;
+    return (
+      (row.member_id ?? null) === (sent.memberId ?? null) &&
+      row.shift_date === sent.shiftDate &&
+      row.start_time?.slice(0, 5) === sent.startTime &&
+      row.end_time?.slice(0, 5) === sent.endTime &&
+      (row.role ?? null) === (sent.role ?? null) &&
+      row.shift_type === sent.shiftType &&
+      (row.note ?? null) === (sent.note ?? null) &&
+      (!('breakMinutes' in sent) || (row.recorded_break_min ?? null) === sent.breakMinutes)
+    );
+  };
   const save = useMutation({
-    mutationFn: () =>
-      editing
-        ? updateShift(target.shift!.id, { ...body(), ...asOpened() })
-        : createShift({ scheduleId: scheduleId ?? undefined, ...body() }),
+    mutationFn: () => {
+      if (!editing) return createShift({ scheduleId: scheduleId ?? undefined, ...body() });
+      const sent = body();
+      return saveOrConfirm(
+        () => updateShift(target.shift!.id, { ...sent, ...asOpened() }),
+        () => landedAsSent(sent),
+        triedUnconfirmed,
+      );
+    },
     onSuccess: () => {
       onChanged();
       onClose();
@@ -189,8 +218,10 @@ export function ShiftSheet({
       <div className="tm-in tm-form">
         <MutationError when={save.isError}>
           {/* A 409 says why — time off, inactive, a clash — and what to do. */}
-          {serverMessage(save.error) ??
-            'The shift was not saved, so the schedule is unchanged. Your values are still here — try again.'}
+          {save.error instanceof NotConfirmedError
+            ? 'This save could not be confirmed, and the shift could not be read back to check. Close this and open the shift again to see what is on the schedule now.'
+            : (serverMessage(save.error) ??
+              'The shift was not saved, so the schedule is unchanged. Your values are still here — try again.')}
         </MutationError>
         <MutationError when={remove.isError}>
           The shift was not removed. It is still on the schedule.

@@ -20,7 +20,7 @@
  * account's name so one save repairs the row for good.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Sheet } from '@/components/mudavym';
@@ -28,6 +28,7 @@ import {
   createTeamMember,
   deleteTeamMember,
   getHandoverPreview,
+  getTeamMembers,
   setMemberPayAccess,
   updateTeamMember,
   type Certification,
@@ -91,6 +92,7 @@ function ZoneSetupSwitch({ userId }: { userId: string }) {
   );
 }
 import { PerformanceCard } from './PerformanceCard';
+import { NotConfirmedError, saveOrConfirm } from './confirmSave';
 import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
 import { AwayCard } from './AwayCard';
@@ -574,6 +576,15 @@ export function MemberSheet({
   });
   const payOn = paySwitch.isSuccess ? paySwitch.data.payAccess : (member?.payAccess ?? null);
 
+  /**
+   * The row's stamp as this sheet last knew it: the one it opened with, then
+   * the one its own save returned. A sheet kept open after a save (the
+   * own-wage notice below) compared a second save against the opening stamp,
+   * and was refused as "someone else changed this person" (F-1084).
+   */
+  const [stamp, setStamp] = useState(member?.updated_at ?? null);
+  /** A save whose reply was lost may have landed: read the person back (F-1084). */
+  const triedUnconfirmed = useRef(false);
   const save = useMutation({
     mutationFn: () => {
       // On an edit a box the user emptied is sent as `null`, which the
@@ -616,14 +627,21 @@ export function MemberSheet({
         for (const key of Object.keys(opening) as (keyof typeof opening)[]) {
           if (form[key] === opening[key]) delete payload[key];
         }
-        if (member?.updated_at) payload.expectUpdatedAt = member.updated_at;
+        if (stamp) payload.expectUpdatedAt = stamp;
       }
-      return editing
-        ? updateTeamMember(member!.id, payload)
-        : createTeamMember(payload as never);
+      if (!editing) return createTeamMember(payload as never);
+      return saveOrConfirm(
+        () => updateTeamMember(member!.id, payload),
+        async () => holdsWhatWasSent(
+          (await getTeamMembers()).find((m) => m.id === member!.id),
+          payload,
+        ),
+        triedUnconfirmed,
+      );
     },
-    onSuccess: (saved: { ownWage?: { audited: boolean; ownersNotified: number; ownersFound: number | null } } | undefined) => {
+    onSuccess: (saved: { updated_at?: string; ownWage?: { audited: boolean; ownersNotified: number; ownersFound: number | null } } | null | undefined) => {
       onChanged();
+      if (saved?.updated_at) setStamp(saved.updated_at);
       // The wage is saved either way. A notice that did not reach the owner is
       // said here instead of closing on it (ADR 0215 item 21).
       const own = saved?.ownWage;
@@ -700,8 +718,14 @@ export function MemberSheet({
     >
       <div className="tm-in tm-form">
         <MutationError when={save.isError}>
-          Nothing was saved, so the roster is unchanged. Your values are still here.
-          {memberSaveRefusal(save.error) ? ` ${memberSaveRefusal(save.error)}` : ''}
+          {save.error instanceof NotConfirmedError ? (
+            'This save could not be confirmed, and the person could not be read back to check. Close this and open them again to see what is on file now.'
+          ) : (
+            <>
+              Nothing was saved, so the roster is unchanged. Your values are still here.
+              {memberSaveRefusal(save.error) ? ` ${memberSaveRefusal(save.error)}` : ''}
+            </>
+          )}
         </MutationError>
         <MutationError when={ownWageUntold !== null}>{ownWageUntold}</MutationError>
         <MutationError when={remove.isError}>
@@ -1174,6 +1198,47 @@ export function memberFormRefusal(
 }
 
 /** The gateway's field refusals on a roster save, in the owner's words (F-714). */
+/** The sent field and the column it lands in (`team.service.ts` updateMember). */
+const SENT_COLUMN: Record<string, keyof TeamMember> = {
+  displayName: 'display_name',
+  email: 'email',
+  phone: 'phone',
+  position: 'position',
+  employmentType: 'employment_type',
+  homeLocation: 'home_location',
+  hourlyWage: 'hourly_wage',
+  skills: 'skills',
+  status: 'status',
+  notes: 'notes',
+};
+
+/**
+ * Whether the person on file holds every field a save sent (F-1084): `true`
+ * landed, `false` did not, `null` cannot tell (a field this viewer is not
+ * shown, or a field this check does not know).
+ */
+export function holdsWhatWasSent(
+  row: TeamMember | undefined,
+  sent: Record<string, unknown>,
+): boolean | null {
+  if (!row) return false;
+  for (const [key, value] of Object.entries(sent)) {
+    if (value === undefined || key === 'expectUpdatedAt') continue;
+    const column = SENT_COLUMN[key];
+    if (!column) return null;
+    const onFile = row[column];
+    if (onFile === undefined) return null;
+    if (key === 'skills') {
+      if (JSON.stringify(onFile ?? []) !== JSON.stringify(value)) return false;
+    } else if (key === 'hourlyWage') {
+      if ((onFile == null ? null : Number(onFile)) !== value) return false;
+    } else if ((onFile ?? null) !== value) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function memberSaveRefusal(err: unknown): string | null {
   const raw = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
   const lines = (Array.isArray(raw) ? raw : [raw]).filter((m): m is string => typeof m === 'string');

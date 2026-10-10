@@ -43,6 +43,7 @@ import {
   type TeamNotesReadout,
   type TextSendersReadout,
 } from '../../../services/api/team';
+import { isUnconfirmedWrite } from '../../../services/api/client';
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport';
 import {
   EM,
@@ -98,6 +99,13 @@ export function PublishPanel({
       onDone();
       onClose();
     },
+    // F-1082: a reply lost after the gateway published leaves the week live
+    // and the crew told. The week is read again so the page shows what is
+    // true; pressing again is safe, since an unchanged live week is not
+    // announced twice.
+    onError: (e) => {
+      if (isUnconfirmedWrite(e)) onDone();
+    },
   });
 
   return (
@@ -111,7 +119,9 @@ export function PublishPanel({
       <div className="tm-in" style={{ padding: '12px 16px 16px' }}>
         <MutationError when={publish.isError}>
           {serverMessage(publish.error) ??
-            'The week was not published. Nothing changed and nobody was notified.'}
+            (publish.isError && isUnconfirmedWrite(publish.error)
+              ? 'We could not confirm the publish. The week may already be live and the crew told. Check the week before you publish again.'
+              : 'The week was not published. Nothing changed and nobody was notified.')}
         </MutationError>
         {republish ? (
           <p className="tm-note">

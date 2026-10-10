@@ -652,7 +652,9 @@ export class ScheduleService {
 
     const { data: current } = await this.sb
       .from("schedules")
-      .select("id, status")
+      .select(
+        "id, restaurant_id, week_start, status, published_at, published_by",
+      )
       .eq("id", scheduleId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -688,6 +690,20 @@ export class ScheduleService {
           "so nobody will be recorded as having seen it. Re-send with " +
           "resetReceipts: true to publish the new version.",
       );
+    }
+
+    // F-1082: a publish whose reply was lost (a timeout on slow Wi-Fi) has
+    // already landed, and pressing it again must not tell the whole crew a
+    // second time. A week that is already live, with no receipts to clear and
+    // no shift added, edited or deleted since it went live, is answered as it
+    // stands: nothing is written and nobody is notified again.
+    if (
+      current.status === "published" &&
+      receiptsAtRisk === 0 &&
+      current.published_at &&
+      (await this.unchangedSincePublished(restaurantId, current))
+    ) {
+      return { schedule: current, receiptsCleared: 0, republished: false };
     }
 
     const { data: schedule, error } = await this.sb
@@ -736,6 +752,51 @@ export class ScheduleService {
       receiptsCleared,
       republished: current.status === "published",
     };
+  }
+
+  /**
+   * True only when nothing on this week moved after it went live: no shift
+   * of the schedule was written later, and no shift on one of its days was
+   * deleted later. A read that fails answers false, so the crew hears about
+   * the week again rather than missing a change (F-1082).
+   */
+  private async unchangedSincePublished(
+    restaurantId: string,
+    week: { id: string; week_start: string; published_at: string },
+  ): Promise<boolean> {
+    const { data: edited, error: editedErr } = await this.sb
+      .from("shifts")
+      .select("id")
+      .eq("schedule_id", week.id)
+      .eq("restaurant_id", restaurantId)
+      .gt("updated_at", week.published_at)
+      .limit(1);
+    if (editedErr) {
+      this.logger.warn(
+        `publish: could not check week ${week.id} for edits: ${editedErr.message}`,
+      );
+      return false;
+    }
+    if ((edited ?? []).length > 0) return false;
+    const { data: deleted, error: deletedErr } = await this.sb
+      .from("system_audit_log")
+      .select("changes")
+      .eq("restaurant_id", restaurantId)
+      .eq("action", "shift_deleted")
+      .gt("created_at", week.published_at);
+    if (deletedErr) {
+      this.logger.warn(
+        `publish: could not check week ${week.id} for deleted shifts: ${deletedErr.message}`,
+      );
+      return false;
+    }
+    const last = addDays(week.week_start, 6);
+    return !(deleted ?? []).some(
+      (row: { changes?: { shift_date?: unknown } }) => {
+        const day = row.changes?.shift_date;
+        return typeof day === "string" && day >= week.week_start && day <= last;
+      },
+    );
   }
 
   /** Staff opening a published schedule records a read receipt. */
