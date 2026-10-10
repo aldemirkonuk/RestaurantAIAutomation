@@ -154,9 +154,14 @@ export async function fetchPromoComparison(): Promise<Record<string, Promotion[]
   return data
 }
 
-export async function fetchPromoSavings(): Promise<PromoSavings> {
+/**
+ * Null when nothing measures what a promotion saved — which today is always:
+ * the gateway answers `null` (no column records realised savings), and Nest
+ * sends a `null` handler result as an empty body, which arrives here as `''`.
+ */
+export async function fetchPromoSavings(): Promise<PromoSavings | null> {
   const { data } = await apiClient.get('/providers/promotions/savings')
-  return data
+  return data && typeof data === 'object' ? data : null
 }
 
 // ============================================================================

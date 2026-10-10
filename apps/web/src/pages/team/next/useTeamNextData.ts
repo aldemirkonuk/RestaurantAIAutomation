@@ -151,9 +151,10 @@ export const TEAM_TRAIL_ACTIONS = [
  * What `/team` can and cannot say about where a value came from.
  *
  * `team_settings` carries `updated_at` and NO author column (baseline
- * `:5653-5658`), and `TeamService.updateSettings` files nothing into
- * `system_audit_log` today — so a labour setting has a date and never a name.
- * The register prints the date and says the author is unrecorded, rather than
+ * `:5653-5658`). `TeamService.updateSettings` files a
+ * `team_labour_settings_changed` row into `system_audit_log`, but nothing this
+ * page reads hands it back — so a labour setting shows a date and never a name.
+ * The register prints the date and says the author is not shown, rather than
  * leaving the line off and letting the value look self-evident.
  */
 export interface TeamProvenance {
