@@ -14,6 +14,8 @@
  * and the gateway sends it with every row.
  */
 
+import { houseMidnight, houseToday } from './houseCalendar';
+
 /**
  * The dismissal labels — the gateway's closed set, in its order
  * (`apps/api-gateway/src/analytics/insights/item-state.ts` DISMISS_REASONS).
@@ -78,10 +80,35 @@ export const DISMISS_CHOICES: ReadonlyArray<{
 
 /**
  * How long "Not right now" hides a card from you: until tomorrow, the
- * shortest snooze the product offers. The gateway uses the same day when a
- * client sends no instant (`NOT_NOW_DEFAULT_MS`).
+ * shortest snooze the product offers. The gateway uses a day when a client
+ * sends no instant (`NOT_NOW_DEFAULT_MS`); this client always sends one.
  */
 export const NOT_NOW_DAYS = 1;
+
+/** The snooze spans the product offers, each named by the day it ends on. */
+export type SnoozeSpan = 'tomorrow' | 'week' | 'month';
+
+/**
+ * F-927: when a snooze wakes, on the HOUSE's calendar. "Until tomorrow" is the
+ * house's next midnight, "until next week" its next Monday, "until next month"
+ * the 1st of its next month — each at 00:00 on the house clock. It was 24 h,
+ * 7 × 24 h and 30 × 24 h from the click, so "until tomorrow" set at 10:00 woke
+ * at 10:00 the day after, and "next month" on 2 February woke on 4 March.
+ */
+export function snoozeWake(
+  span: SnoozeSpan,
+  zone: string | null | undefined,
+  now: number = Date.now(),
+): string {
+  const today = houseToday(zone, new Date(now));
+  const y = today.getFullYear();
+  const m = today.getMonth() + 1;
+  const d = today.getDate();
+  if (span === 'month') return new Date(houseMidnight(zone, y, m + 1, 1)).toISOString();
+  // Monday is day 1; on a Monday "next week" is the Monday after.
+  const ahead = span === 'week' ? (8 - today.getDay()) % 7 || 7 : NOT_NOW_DAYS;
+  return new Date(houseMidnight(zone, y, m, d + ahead)).toISOString();
+}
 
 /** What a surface says after a dismiss-list choice landed. */
 export function choiceSaid(id: DismissChoiceId): string {
@@ -116,13 +143,14 @@ export function undoOf(
 export function patchForChoice(
   id: DismissChoiceId,
   now: number = Date.now(),
+  zone?: string | null,
 ): Record<string, unknown> {
   if (id === 'already_handled') return { status: 'done' };
   if (id === 'not_now')
     return {
       status: 'snoozed',
       snoozeFor: 'me',
-      snoozeUntil: new Date(now + NOT_NOW_DAYS * 86_400_000).toISOString(),
+      snoozeUntil: snoozeWake('tomorrow', zone, now),
     };
   return { status: 'dismissed', reason: id };
 }

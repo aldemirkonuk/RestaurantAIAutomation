@@ -28,6 +28,7 @@ import { useRef, useState } from 'react';
 import { InviteTeamDialog } from '@/components/team/InviteTeamDialog';
 import { TeamLaborSettings } from '@/components/team/TeamLaborSettings';
 import { Action, ConfirmAction, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
+import { useHouseZone } from '@/lib/houseZone';
 import { EM, SANS, fmtExpiry } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
@@ -93,6 +94,8 @@ function RoleChange({ name, current, isSelf, onlyOwner, busy, onConfirm }: {
 export function TeamSection({ data }: { data: SettingsNextData }) {
   const { team, role, canManage, restaurantId, writer, setMemberRole, removeMember, revokeInvite, userId } = data;
   const [inviting, setInviting] = useState(false);
+  /** F-929: an invite's expiry is worded in the house's calendar days. */
+  const zone = useHouseZone();
   const [labourOpen, setLabourOpen] = useState(false);
   const inviteAnchor = useRef<HTMLButtonElement>(null);
 
@@ -198,7 +201,7 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
               <Row
                 key={inv.id}
                 label={inv.code}
-                consequence={`Joins as ${inv.role}. ${fmtExpiry(inv.expires_at)}.`}
+                consequence={`Joins as ${inv.role}. ${fmtExpiry(inv.expires_at, zone)}.`}
                 provenance={{
                   kept: 'restaurant',
                   verb: 'issued',

@@ -15,6 +15,7 @@
  */
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { restaurantsApi } from '@/services/api/restaurants';
+import { houseToday } from './houseCalendar';
 
 const reads = new Map<string, Promise<string | null>>();
 
@@ -68,32 +69,8 @@ export function useHouseZone(): string | null | undefined {
   return said && said.rid === rid ? said.zone : undefined;
 }
 
-/**
- * The house's calendar day at `now`, as a LOCAL-midnight Date — so the pages'
- * existing local-getter helpers (`dayKey`, `mondayOf`, `getDate`) read the
- * house's day off it unchanged. No zone (or one this browser cannot read)
- * gives the device's day.
- */
-export function houseToday(zone: string | null | undefined, now: Date = new Date()): Date {
-  if (zone) {
-    try {
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: zone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).formatToParts(now);
-      const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-      const y = get('year');
-      const m = get('month');
-      const d = get('day');
-      if (y && m && d) return new Date(y, m - 1, d);
-    } catch {
-      /* a zone name this browser cannot read: the device's day stands in */
-    }
-  }
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-}
+/** The house's calendar day at `now` — kept with the rest of the house calendar. */
+export { houseToday };
 
 /**
  * A page opens on the device's day while the zone is read. Once it is known,

@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  fmtWakes,
   handOf,
   heldBy,
   receiptFor,
@@ -362,5 +363,31 @@ describe('a key named on Object.prototype is an unknown rule, never an inherited
     expect(leverWords(slip, null)).toBe(
       `This goal is held on ${key}, which is not one of the ${Object.keys(METRIC_CATEGORIES).length} metrics the gateway maps to insight categories, so the rule’s “this goal’s category” has no answer here.`,
     );
+  });
+});
+
+/** F-927: a wake is worded in the house's calendar days, not 24-hour blocks. */
+describe('fmtWakes', () => {
+  const LA = 'America/Los_Angeles';
+  const SAT_10AM = Date.parse('2026-10-10T17:00:00.000Z');
+
+  it('a wake this evening is later today, not tomorrow', () => {
+    // 22:00 the same Saturday in Los Angeles — 12 hours away.
+    expect(fmtWakes('2026-10-11T05:00:00.000Z', LA, SAT_10AM)).toBe('wakes later today');
+  });
+
+  it("the house's next midnight is tomorrow, whatever the hour now", () => {
+    expect(fmtWakes('2026-10-11T07:00:00.000Z', LA, SAT_10AM)).toBe('wakes tomorrow');
+    expect(fmtWakes('2026-10-11T07:00:00.000Z', LA, Date.parse('2026-10-11T06:59:00.000Z'))).toBe('wakes tomorrow');
+  });
+
+  it("counts the house's days, and says when one is due back", () => {
+    expect(fmtWakes('2026-11-01T07:00:00.000Z', LA, SAT_10AM)).toBe('wakes in 22 days');
+    expect(fmtWakes('2026-10-10T16:00:00.000Z', LA, SAT_10AM)).toBe('due back');
+  });
+
+  it('the receipt under a snoozed entry reads the same house day', () => {
+    const e = entry({ status: 'snoozed', snoozeUntil: '2026-10-11T05:00:00.000Z' });
+    expect(fmtWakes(e.snoozeUntil, LA, SAT_10AM)).toBe('wakes later today');
   });
 });

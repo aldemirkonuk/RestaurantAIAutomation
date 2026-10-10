@@ -11,6 +11,7 @@ import {
   notYourActOf,
   paperMissOf,
   patchForChoice,
+  snoozeWake,
 } from './recommendationState';
 
 /**
@@ -82,11 +83,16 @@ describe('DISMISS_CHOICES and what each posts', () => {
     expect(patchForChoice('already_handled', NOW)).toEqual({ status: 'done' });
   });
 
-  it("'Not right now' posts a snooze for me, until tomorrow", () => {
+  it("'Not right now' posts a snooze for me, until the house's next midnight", () => {
+    // No zone: the device's clock (America/New_York in this suite) stands in.
     expect(patchForChoice('not_now', NOW)).toEqual({
       status: 'snoozed',
       snoozeFor: 'me',
-      snoozeUntil: '2026-09-22T12:00:00.000Z',
+      snoozeUntil: '2026-09-22T04:00:00.000Z',
+    });
+    // 12:00 UTC is 15:00 in Istanbul; its tomorrow starts at 21:00 UTC.
+    expect(patchForChoice('not_now', NOW, 'Europe/Istanbul')).toMatchObject({
+      snoozeUntil: '2026-09-21T21:00:00.000Z',
     });
   });
 
@@ -172,5 +178,43 @@ describe('noteRefusalOf', () => {
   it('falls back to the note sentence, never a whole-house dismiss one', () => {
     expect(noteRefusalOf({ response: { status: 403 } })).toBe(NOT_YOUR_NOTE_SAID);
     expect(noteRefusalOf(null)).toBe(NOT_YOUR_NOTE_SAID);
+  });
+});
+
+/**
+ * F-927: a snooze label names a day on the HOUSE's calendar, and it wakes at
+ * 00:00 on the house clock — never 24 h, 7 × 24 h or 30 × 24 h from the click.
+ */
+describe('snoozeWake', () => {
+  // Saturday 2026-10-10, 10:00 in Los Angeles.
+  const SAT_LA = Date.parse('2026-10-10T17:00:00.000Z');
+  const LA = 'America/Los_Angeles';
+
+  it("'until tomorrow' is the house's next midnight, not 24 hours on", () => {
+    expect(snoozeWake('tomorrow', LA, SAT_LA)).toBe('2026-10-11T07:00:00.000Z');
+  });
+
+  it("'until next week' is the house's next Monday; on a Monday, the Monday after", () => {
+    expect(snoozeWake('week', LA, SAT_LA)).toBe('2026-10-12T07:00:00.000Z');
+    expect(snoozeWake('week', LA, Date.parse('2026-10-12T17:00:00.000Z'))).toBe('2026-10-19T07:00:00.000Z');
+  });
+
+  it("'until next month' is the 1st of the house's next month", () => {
+    expect(snoozeWake('month', LA, SAT_LA)).toBe('2026-11-01T07:00:00.000Z');
+    // 31 January: the 1st of February, not 2 March.
+    expect(snoozeWake('month', LA, Date.parse('2027-01-31T20:00:00.000Z'))).toBe('2027-02-01T08:00:00.000Z');
+  });
+
+  it("counts the house's day, not the device's or UTC's", () => {
+    // 22:30 UTC Saturday is already 01:30 Sunday in Istanbul.
+    const late = Date.parse('2026-10-10T22:30:00.000Z');
+    expect(snoozeWake('tomorrow', 'Europe/Istanbul', late)).toBe('2026-10-11T21:00:00.000Z');
+    expect(snoozeWake('week', 'Europe/Istanbul', late)).toBe('2026-10-11T21:00:00.000Z');
+    expect(snoozeWake('month', 'Europe/Istanbul', late)).toBe('2026-10-31T21:00:00.000Z');
+  });
+
+  it('lands on midnight across a clock change', () => {
+    // 1 November 2026, 10:00 PST — the clocks went back at 02:00 that day.
+    expect(snoozeWake('tomorrow', LA, Date.parse('2026-11-01T18:00:00.000Z'))).toBe('2026-11-02T08:00:00.000Z');
   });
 });

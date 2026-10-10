@@ -473,7 +473,12 @@ describe('CatalogView — absence is not health (ADR 0191, last-call fixes)', ()
     const until = Date.parse(
       (api.post.mock.calls.at(-1)?.[1] as { snoozeUntil: string }).snoozeUntil,
     );
-    expect(until).toBeGreaterThan(Date.now() + 6 * 86_400_000);
+    // F-927: next week is the next Monday's midnight (no house picked: the
+    // device's clock), not seven times 24 hours from the click.
+    const wakes = new Date(until);
+    expect(until).toBeGreaterThan(Date.now());
+    expect(until - Date.now()).toBeLessThanOrEqual(7 * 86_400_000);
+    expect([wakes.getDay(), wakes.getHours(), wakes.getMinutes(), wakes.getSeconds()]).toEqual([1, 0, 0, 0]);
     expect(screen.queryByText(LIVE.sentence)).not.toBeInTheDocument();
   });
 

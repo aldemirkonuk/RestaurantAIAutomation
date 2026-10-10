@@ -93,6 +93,8 @@ import {
 import { Wordmark, monthOf } from '@/components/mudavym';
 import { animate, tuck } from '@/lib/mudavym/motion';
 import { localDayKey } from '@/lib/localDay';
+import { useHouseZone } from '@/lib/houseZone';
+import { snoozeWake, type SnoozeSpan } from '@/lib/recommendationState';
 import Entry from './Entry';
 import Ribbon from './Ribbon';
 import DigestPost from './DigestPost';
@@ -192,6 +194,8 @@ export interface RecommendationsNextProps {
 
 export default function RecommendationsNext({ ground }: RecommendationsNextProps) {
   const data = useRecommendationsNextData();
+  /** F-927: a snooze ends on a day of the house's calendar, not 24 h blocks. */
+  const zone = useHouseZone();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const linked = searchParams.get('insight');
@@ -461,13 +465,13 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
    * it from this person alone — anyone may; `house` from everyone — owners
    * and managers. The gateway refuses a staff `house` snooze with a 403.
    */
-  const snooze = (e: EntryVM, days: number, label: string, forWhom: 'me' | 'house') =>
+  const snooze = (e: EntryVM, span: SnoozeSpan, label: string, forWhom: 'me' | 'house') =>
     void data.setDisposition(
       e,
       {
         status: 'snoozed',
         snoozeFor: forWhom,
-        snoozeUntil: new Date(Date.now() + days * 86_400_000).toISOString(),
+        snoozeUntil: snoozeWake(span, zone),
       },
       forWhom === 'me'
         ? `Snoozed ${label}, for you alone — everyone else still sees it.`
@@ -568,7 +572,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           // Round 3: the key keeps each role's own default — for everyone
           // from an owner or manager, for you alone from anyone else.
           if (e && leaf === 'standing')
-            snooze(e, 1, 'until tomorrow', data.canSnoozeForEveryone ? 'house' : 'me');
+            snooze(e, 'tomorrow', 'until tomorrow', data.canSnoozeForEveryone ? 'house' : 'me');
           break;
         case 'p':
           if (e && leaf === 'standing') pin(e);
@@ -581,7 +585,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, focusedIdx, leaf, bulkReasonOpen]);
+  }, [shown, focusedIdx, leaf, bulkReasonOpen, zone]);
 
   /* ── the opening voice — it only says what it knows ───────────────────── */
 
@@ -1036,7 +1040,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         openGoal={goalFor === e.ruleKey}
                         onGoalOpened={clearGoalFor}
                         onDismiss={(choice) => dismiss(e, choice)}
-                        onSnooze={(inDays, label, forWhom) => snooze(e, inDays, label, forWhom)}
+                        onSnooze={(span, label, forWhom) => snooze(e, span, label, forWhom)}
+                        zone={zone}
                         onWake={() => void data.wake(e.ruleKey)}
                         onPin={() => pin(e)}
                         onRate={(v) => rate(e, v)}

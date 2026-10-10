@@ -41,7 +41,6 @@ import {
   STANDING_BASIS,
   dateOfGrain,
   dismissalSentence,
-  NOT_NOW_DAYS,
   NOT_YOUR_ACT_SAID,
   entryNo,
   firingOf,
@@ -57,6 +56,7 @@ import {
   standingOf,
   urgencyLabel,
   type DismissChoiceId,
+  type SnoozeSpan,
   type SuppressionScope,
 } from './rec-format';
 import {
@@ -145,11 +145,13 @@ export interface EntryProps {
   onGoalOpened?: () => void;
   onDismiss: (choice: DismissChoice) => void;
   /**
-   * Snooze for `days`. `forWhom: 'me'` hides it from this person alone;
+   * Snooze until the house day `span` names. `forWhom: 'me'` hides it from this person alone;
    * `'house'` from everyone — owners and managers only (founder, round 3:
    * a staff snooze is "Only them").
    */
-  onSnooze: (days: number, label: string, forWhom: 'me' | 'house') => void;
+  onSnooze: (span: SnoozeSpan, label: string, forWhom: 'me' | 'house') => void;
+  /** The house's zone, so a wake date is worded on the house's calendar. */
+  zone?: string | null;
   /** End this person's own snooze on the entry (Snoozed leaf, personal rows). */
   onWake?: () => void;
   onPin: () => void;
@@ -707,8 +709,8 @@ export default function Entry(props: EntryProps) {
   );
 
   const receipt = useMemo(
-    () => receiptFor(e, watching.length > 0, filing.act === 'floor'),
-    [e, watching.length, filing.act],
+    () => receiptFor(e, watching.length > 0, filing.act === 'floor', props.zone),
+    [e, watching.length, filing.act, props.zone],
   );
 
   /* ── the dismissal sheet's own state ──────────────────────────────────── */
@@ -793,7 +795,7 @@ export default function Entry(props: EntryProps) {
   }, [menu]);
 
   const stood = standingOf(e);
-  const standing = leaf === 'snoozed' ? fmtWakes(e.snoozeUntil) : stood.text;
+  const standing = leaf === 'snoozed' ? fmtWakes(e.snoozeUntil, props.zone) : stood.text;
   const live = leaf === 'standing';
   /** On the dismissed/history leaves the row's own key IS the stored silence. */
   const silenced = leaf === 'dismissed' || leaf === 'history';
@@ -1308,7 +1310,7 @@ export default function Entry(props: EntryProps) {
                   className="rc-act"
                   onClick={() => {
                     setMenu(null);
-                    props.onSnooze(NOT_NOW_DAYS, 'until tomorrow', 'me');
+                    props.onSnooze('tomorrow', 'until tomorrow', 'me');
                   }}
                 >
                   Hide it from me
@@ -1359,7 +1361,7 @@ export default function Entry(props: EntryProps) {
                   key={s.id}
                   onClick={() => {
                     setMenu(null);
-                    props.onSnooze(s.value, s.label.toLowerCase(), 'me');
+                    props.onSnooze(s.id, s.label.toLowerCase(), 'me');
                   }}
                 >
                   {s.label}
@@ -1374,7 +1376,7 @@ export default function Entry(props: EntryProps) {
                     key={s.id}
                     onClick={() => {
                       setMenu(null);
-                      props.onSnooze(s.value, s.label.toLowerCase(), 'house');
+                      props.onSnooze(s.id, s.label.toLowerCase(), 'house');
                     }}
                   >
                     {s.label}

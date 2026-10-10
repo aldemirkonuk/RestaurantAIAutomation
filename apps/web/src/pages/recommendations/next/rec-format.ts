@@ -19,6 +19,8 @@
  */
 
 import { roleAllows, roomFor, type ShellRole } from '@/lib/mudavym/rooms';
+import { houseDaysBetween } from '@/lib/houseCalendar';
+import type { SnoozeSpan } from '@/lib/recommendationState';
 
 export const EM = '—';
 
@@ -515,10 +517,12 @@ export function receiptFor(
   watching: boolean,
   /** A *Brief the floor* entry — its "acted" is the briefing (sketch 122 Q7). */
   briefing = false,
+  /** The house's zone, so "wakes tomorrow" is the house's tomorrow. */
+  zone?: string | null,
 ): string[] {
   const lines: string[] = [];
   if (e.status === 'snoozed') {
-    lines.push(`Snoozed — ${fmtWakes(e.snoozeUntil)}. Marked on the ribbon's strip.`);
+    lines.push(`Snoozed — ${fmtWakes(e.snoozeUntil, zone)}. Marked on the ribbon's strip.`);
   } else if (e.status === 'done') {
     lines.push('Sealed as ruled off. No outcome is measured yet — 094c’s roadmap.');
   } else if (e.acted) {
@@ -602,18 +606,21 @@ export function fmtStanding(iso: string | null | undefined): string {
 
 /**
  * When a snoozed entry comes back. Real: it is the stored `snoozeUntil`.
- * Rounded UP, unlike `fmtStanding`: "snooze until next week" stores exactly
- * seven days from now, and flooring the remainder would greet the operator
- * with "wakes in 6 days" one millisecond after they set it.
+ * Worded in the HOUSE's calendar days (F-927), not 24-hour blocks: a snooze
+ * that wakes at the house's next midnight reads "wakes tomorrow" whatever the
+ * hour it was set, and one that wakes this evening reads "later today".
  */
-export function fmtWakes(iso: string | null | undefined): string {
+export function fmtWakes(
+  iso: string | null | undefined,
+  zone?: string | null,
+  now: number = Date.now(),
+): string {
   if (!iso) return EM;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return EM;
-  const now = Date.now();
   if (t <= now) return 'due back';
-  const d = Math.ceil((t - now) / 86_400_000);
-  if (d <= 0) return 'wakes today';
+  const d = houseDaysBetween(zone, now, t);
+  if (d <= 0) return 'wakes later today';
   if (d === 1) return 'wakes tomorrow';
   return `wakes in ${d} days`;
 }
@@ -661,7 +668,9 @@ export {
   notYourActOf,
   paperMissOf,
   patchForChoice,
+  snoozeWake,
   type DismissChoiceId,
+  type SnoozeSpan,
 } from '@/lib/recommendationState';
 
 /**
@@ -679,15 +688,16 @@ export function itemKeyOf(e: {
 }
 
 /**
- * The snooze vocabulary — `value` is the number of days the label already
- * says out loud, and nothing here describes the tenant (descriptor keys,
- * per `scripts/check_no_seeded_defaults.py` S1). Shared by the feed's entry
- * and the catalogue's live items, so a snooze means one thing on both.
+ * The snooze vocabulary — each label names the house day it ends on, and
+ * `snoozeWake` finds that day on the house's clock; nothing here describes
+ * the tenant (descriptor keys, per `scripts/check_no_seeded_defaults.py` S1).
+ * Shared by the feed's entry and the catalogue's live items, so a snooze
+ * means one thing on both.
  */
-export const SNOOZE_CHOICES: ReadonlyArray<{ id: string; label: string; value: number }> = [
-  { id: 'tomorrow', label: 'Until tomorrow', value: 1 },
-  { id: 'week', label: 'Until next week', value: 7 },
-  { id: 'month', label: 'Until next month', value: 30 },
+export const SNOOZE_CHOICES: ReadonlyArray<{ id: SnoozeSpan; label: string }> = [
+  { id: 'tomorrow', label: 'Until tomorrow' },
+  { id: 'week', label: 'Until next week' },
+  { id: 'month', label: 'Until next month' },
 ];
 
 export function failureOf(err: unknown): FailureVM {

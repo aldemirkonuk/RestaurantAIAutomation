@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { listed, recordSplit, sectionsFor } from './st-format';
+import { fmtExpiry, listed, recordSplit, sectionsFor } from './st-format';
 
 describe('recordSplit', () => {
   it.each([false, true])('recorded + in part + not yet + "What changed here" is every register (connections %s)', (on) => {
@@ -38,5 +38,27 @@ describe('listed', () => {
     expect(listed(['A'])).toBe('A');
     expect(listed(['A', 'B'])).toBe('A and B');
     expect(listed(['A', 'B', 'C'])).toBe('A, B and C');
+  });
+});
+
+/**
+ * F-929: an invite's expiry names the house's calendar day, gives the exact
+ * house time under 48 hours, and starts its own sentence with a capital.
+ */
+describe('fmtExpiry', () => {
+  const LA = 'America/Los_Angeles';
+  const SAT_10AM = Date.parse('2026-10-10T17:00:00.000Z');
+
+  it('an invite ending tonight expires today, at its time', () => {
+    expect(fmtExpiry('2026-10-11T06:00:00.000Z', LA, SAT_10AM)).toMatch(/^Expires today at 11:00\sPM$/);
+  });
+
+  it('one ending on the next house day expires tomorrow, at its time', () => {
+    expect(fmtExpiry('2026-10-11T20:00:00.000Z', LA, SAT_10AM)).toMatch(/^Expires tomorrow at 1:00\sPM$/);
+  });
+
+  it('further out, it counts house days; past, it is expired', () => {
+    expect(fmtExpiry('2026-10-15T17:00:00.000Z', LA, SAT_10AM)).toBe('Expires in 5 days');
+    expect(fmtExpiry('2026-10-10T16:00:00.000Z', LA, SAT_10AM)).toBe('Expired');
   });
 });
