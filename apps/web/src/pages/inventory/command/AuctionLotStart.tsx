@@ -65,6 +65,8 @@ import { createAuctionLotRecord } from '@/services/api/inventory';
 import { settingsApi } from '@/services/api/settings';
 import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
 import { lotBookedCost } from './auctionLotCost';
+import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 
 export interface AuctionLot {
   house: string;
@@ -101,11 +103,9 @@ export interface RegisterWine {
   vintage?: number | null;
 }
 
-function num(v: string): number | null {
-  const t = v.trim();
-  if (t === '') return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
+/** Typed text as a number, the way the house writes it ("12,50"); null when blank or not one. */
+function num(v: string, group: GroupMark | null = null): number | null {
+  return parseDecimal(v, group);
 }
 
 export type LotCost =
@@ -121,10 +121,10 @@ export type LotCost =
  * result rather than a number: a fallback of 0 here would put a wrong unit cost
  * into the WAC rollup, silently, for the life of the lot.
  */
-export function lotCost(lot: AuctionLot): LotCost {
-  const hammer = num(lot.hammer);
-  const premium = num(lot.premium);
-  const bottles = num(lot.bottles);
+export function lotCost(lot: AuctionLot, group: GroupMark | null = null): LotCost {
+  const hammer = num(lot.hammer, group);
+  const premium = num(lot.premium, group);
+  const bottles = num(lot.bottles, group);
 
   if (hammer === null) return { ok: false, why: 'The hammer price has not been stated.' };
   if (hammer < 0) return { ok: false, why: 'A hammer price cannot be negative.' };
@@ -259,7 +259,8 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
     };
   }, [query, open]);
 
-  const cost = useMemo(() => lotCost(lot), [lot]);
+  const group = useHouseGroupMark();
+  const cost = useMemo(() => lotCost(lot, group), [lot, group]);
   // Currency is required to CARRY, not only to record: "an auction lot
   // records its hammer price and premium WITH a currency" (founder,
   // 2026-09-21) — never inferred, so an unchosen currency holds the button
@@ -285,8 +286,9 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
               houseCurrency,
               exchangeRate: lot.exchangeRate,
               houseCost: lot.houseCost,
+              group,
             }),
-    [cost, lot.currency, lot.exchangeRate, lot.houseCost, houseCurrency, houseCurrencyUnread],
+    [cost, lot.currency, lot.exchangeRate, lot.houseCost, houseCurrency, houseCurrencyUnread, group],
   );
   const canCarry = !!wine && !detailsMissing && cost.ok && !!lot.currency && !!booked?.ok && !busy;
 
@@ -319,15 +321,15 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       // `cost.ok` already proved both parse, so this cannot fail here — it
       // just avoids widening `LotCost`'s shape for two fields only this
       // caller needs.
-      const rate = num(lot.exchangeRate);
-      const typed = num(lot.houseCost);
+      const rate = num(lot.exchangeRate, group);
+      const typed = num(lot.houseCost, group);
       await createAuctionLotRecord({
         inventoryId,
         auctionHouse: lot.house.trim(),
         lotNumber: lot.lotNumber.trim() || null,
         saleDate: lot.saleDate,
-        hammerPrice: num(lot.hammer) as number,
-        buyersPremium: num(lot.premium) as number,
+        hammerPrice: num(lot.hammer, group) as number,
+        buyersPremium: num(lot.premium, group) as number,
         currency: lot.currency,
         bottles: cost.bottles,
         // Both recorded as stated; the typed cost is what was booked when present.
