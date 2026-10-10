@@ -113,6 +113,8 @@ interface DoorDraft {
   reading: PaperReading | null;
   paperLine: string | null;
   idem: string;
+  /** `idem` was taken from a receipt already on this phone, not made here (F-1076). */
+  idemBorrowed?: boolean;
 }
 
 /** Thumb-sized. 56px is the smallest a cold, gloved hand hits reliably. */
@@ -226,6 +228,7 @@ export default function DoorNext() {
   const [queued, setQueued] = useState(false);
   const [stockIssue, setStockIssue] = useState<string | null>(null);
   const [dated, setDated] = useState<string | null>(null);
+  const [alreadyRecorded, setAlreadyRecorded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sealAttempt, setSealAttempt] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
@@ -267,6 +270,16 @@ export default function DoorNext() {
   // book the stock twice (doorOutbox's whole design).
   const idem = useRef(kept?.idem ?? newIdempotencyKey(orderId));
   /**
+   * The key taken from a receipt already on this phone, while it is the one in
+   * `idem` (F-1076). Once that receipt leaves the phone its key is spent: the
+   * server answers a spent key with "already recorded" and books nothing, so
+   * the next truck for this order sealed with it would vanish. A new one is
+   * made the moment the receipt is gone. A key this screen made itself is
+   * never replaced here — a seal that failed must retry with the same one.
+   */
+  const borrowed = useRef<string | null>(kept?.idemBorrowed ? kept.idem : null);
+  const [keyTurn, setKeyTurn] = useState(0);
+  /**
    * A receipt for THIS order already on this phone, unsent (F-247). A fresh
    * mount makes a fresh key, and the server books a new key as a new delivery;
    * so while one waits here the door reuses its key and does not seal a
@@ -276,7 +289,14 @@ export default function DoorNext() {
   const readOnPhone = useCallback(() => {
     void queuedDoorReceiptFor(orderId)
       .then((ref) => {
-        if (ref?.idempotencyKey) idem.current = ref.idempotencyKey;
+        if (ref?.idempotencyKey) {
+          idem.current = ref.idempotencyKey;
+          borrowed.current = ref.idempotencyKey;
+        } else if (!ref && borrowed.current !== null && idem.current === borrowed.current) {
+          idem.current = newIdempotencyKey(orderId);
+          borrowed.current = null;
+          setKeyTurn((n) => n + 1);
+        }
         setOnPhone(ref);
       })
       .catch(() => setOnPhone(null));
@@ -574,6 +594,7 @@ export default function DoorNext() {
         },
       });
       setQueued(!res.synced);
+      setAlreadyRecorded(res.synced && res.alreadyRecorded === true);
       // The delivery can be recorded while the shelf count is not — an order
       // with no inventory link books nothing. Say so rather than showing the
       // ordinary "someone will count the bottles" ending.
@@ -622,8 +643,9 @@ export default function DoorNext() {
       reading,
       paperLine,
       idem: idem.current,
+      idemBorrowed: borrowed.current !== null && borrowed.current === idem.current,
     } satisfies DoorDraft);
-  }, [draftKey, step, orderState, counted, broken, paperHeld, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine]);
+  }, [draftKey, step, orderState, counted, broken, paperHeld, outcomeChoice, reason, initials, driverName, documentId, reading, paperLine, onPhone, keyTurn]);
 
   useUnsavedWorkGuard(
     orderState !== 'missing' && (step === 'count' || submitting),
@@ -1044,6 +1066,13 @@ export default function DoorNext() {
             {/* Recorded is not the same as booked. The server says which, in
                 words, and the receiver reads the words rather than a seal that
                 means two different things. */}
+            {/* The server had this exact receipt already (a resend of one that
+                landed), so it booked nothing new. Said, not hidden (F-1076). */}
+            {alreadyRecorded && (
+              <p data-ux-key="door:already-recorded" className="max-w-xs text-center text-sm text-inkm-3">
+                This count had already reached the office, so nothing was added twice.
+              </p>
+            )}
             {stockIssue !== null && (
               <p
                 role="alert"

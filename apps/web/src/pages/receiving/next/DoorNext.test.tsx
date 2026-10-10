@@ -28,6 +28,7 @@ const readDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const clearDroppedDoorReceipts = vi.hoisted(() => vi.fn())
 const submitDoorReceipt = vi.hoisted(() => vi.fn())
 const queuedDoorReceiptFor = vi.hoisted(() => vi.fn())
+const newIdempotencyKey = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/doorOutbox', () => ({
   queuedDoorReceiptFor,
   flushDoorOutbox,
@@ -36,7 +37,7 @@ vi.mock('@/lib/doorOutbox', () => ({
   readDroppedDoorReceipts,
   clearDroppedDoorReceipts,
   submitDoorReceipt,
-  newIdempotencyKey: () => 'door:o1:test',
+  newIdempotencyKey,
 }))
 
 /** The page scopes the drop record by the active house. */
@@ -122,6 +123,7 @@ beforeEach(() => {
   })
   flushDoorOutbox.mockResolvedValue(pass({ sent: 0, failed: 0, parked: 0 }))
   queuedDoorReceiptFor.mockResolvedValue(null)
+  newIdempotencyKey.mockReturnValue('door:o1:test')
 })
 
 const renderPage = () =>
@@ -758,5 +760,95 @@ describe('F-1022 — the broken boxes are some of the boxes delivered', () => {
     tap('Decrease Boxes delivered', 2)
     await waitFor(() => expect(brokenShown()).toBe('1'))
     expect(screen.getByRole('button', { name: 'Hold to seal — 0 in, 1 broken' })).toBeTruthy()
+  })
+})
+
+/**
+ * F-1076. The door took the key of a receipt already on the phone; once that
+ * receipt sent, the key was spent. The next truck sealed with it reached the
+ * server as a resend of the first, came back "already recorded", and booked
+ * nothing — while the porter saw "done".
+ */
+describe('F-1076 — the next truck gets its own key once the last one has sent', () => {
+  const sealNow = async () => {
+    fireEvent.change(document.querySelector('[data-ux-key="door:initials"]') as Element, {
+      target: { value: 'AK' },
+    })
+    const seal = screen.getByRole('button', { name: /Hold to seal/ })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+  }
+  const onPhoneNote = () => document.querySelector('[data-ux-key="door:already-on-phone"]')
+
+  it('[REVERT-FAILS] seals the second truck with a new key, not the first one\'s', async () => {
+    queuedDoorReceiptFor.mockResolvedValue({ id: 'm1', idempotencyKey: 'door:o1:first', parked: false })
+    submitDoorReceipt.mockResolvedValue({ synced: true, stockBooked: true })
+    renderPage()
+    await waitFor(() => expect(onPhoneNote()).not.toBeNull())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+
+    // Truck one sends; the phone is empty again. Truck two is at the door.
+    newIdempotencyKey.mockReturnValue('door:o1:second')
+    queuedDoorReceiptFor.mockResolvedValue(null)
+    await flushAgain({ sent: 1, failed: 0, parked: 0 })
+    await waitFor(() => expect(onPhoneNote()).toBeNull())
+    await sealNow()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalledTimes(1))
+    expect(submitDoorReceipt.mock.calls[0][0].body.idempotencyKey).toBe('door:o1:second')
+    const kept = sessionStorage.getItem('mdv:door-draft:rest-A:o1')
+    // Recorded, so the draft is gone; no spent key is left behind for a reload.
+    expect(kept).toBeNull()
+  })
+
+  it('[REVERT-FAILS] does not bring a spent key back from the kept count after a reload', async () => {
+    queuedDoorReceiptFor.mockResolvedValue({ id: 'm1', idempotencyKey: 'door:o1:first', parked: false })
+    const first = renderPage()
+    await waitFor(() => expect(onPhoneNote()).not.toBeNull())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    await waitFor(() =>
+      expect(JSON.parse(sessionStorage.getItem('mdv:door-draft:rest-A:o1') as string).idem).toBe(
+        'door:o1:first',
+      ),
+    )
+    first.unmount()
+
+    // The first truck sent while the page was closed.
+    newIdempotencyKey.mockReturnValue('door:o1:second')
+    queuedDoorReceiptFor.mockResolvedValue(null)
+    submitDoorReceipt.mockResolvedValue({ synced: true, stockBooked: true })
+    renderPage()
+    await waitFor(() =>
+      expect(JSON.parse(sessionStorage.getItem('mdv:door-draft:rest-A:o1') as string).idem).toBe(
+        'door:o1:second',
+      ),
+    )
+    await sealNow()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalledTimes(1))
+    expect(submitDoorReceipt.mock.calls[0][0].body.idempotencyKey).toBe('door:o1:second')
+  })
+
+  it('keeps the same key for a true retry of the same delivery', async () => {
+    submitDoorReceipt
+      .mockRejectedValueOnce(new Error('Could not reach the office.'))
+      .mockResolvedValueOnce({ synced: true, stockBooked: true, alreadyRecorded: true })
+    renderPage()
+    await waitFor(() => expect(flushDoorOutbox).toHaveBeenCalled())
+    fireEvent.click(document.querySelector('[data-ux-key="door:skip-photo"]') as Element)
+    newIdempotencyKey.mockReturnValue('door:o1:other')
+    await sealNow()
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalledTimes(1))
+    await flushAgain({ sent: 0, failed: 0, parked: 0 })
+    const seal = await screen.findByRole('button', { name: /Hold to seal/ })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    fireEvent.keyDown(seal, { key: 'Enter' })
+    await waitFor(() => expect(submitDoorReceipt).toHaveBeenCalledTimes(2))
+    expect(submitDoorReceipt.mock.calls[1][0].body.idempotencyKey).toBe(
+      submitDoorReceipt.mock.calls[0][0].body.idempotencyKey,
+    )
+    expect(submitDoorReceipt.mock.calls[0][0].body.idempotencyKey).toBe('door:o1:test')
+    // The server had it already: the porter is told nothing was added twice.
+    await waitFor(() =>
+      expect(document.querySelector('[data-ux-key="door:already-recorded"]')).not.toBeNull(),
+    )
   })
 })
