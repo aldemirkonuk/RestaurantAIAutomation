@@ -413,7 +413,9 @@ describe("item 71 end to end — ownerMemberIds decides whose pay a pay-access m
 
     const created = await svc.createShift(MANAGER, RID, {
       memberId: "m-owner",
-      shiftDate: WEEK,
+      // Tuesday: the same 09:00 for the same person would be a double
+      // booking (F-377).
+      shiftDate: "2026-09-08",
       startTime: "09:00",
       endTime: "17:00",
     } as any);
@@ -669,11 +671,14 @@ describe("item 71 + item 20 — a removed owner's kept shift is not reachable by
     } as any);
     expect(reply.labor_cost).toBe(150);
     db.tables.shifts.push(
+      // Tuesday: the same 09:00 for the same person would be a double
+      // booking (F-377).
       shift({
         id: "sh-open",
         member_id: null,
         state: "open",
         labor_cost: null,
+        shift_date: "2026-09-08",
       }),
     );
     const assigned = await svc.assignCover(MANAGER, RID, "sh-open", {

@@ -2303,7 +2303,9 @@ export class AuthService {
           : null;
     }
 
-    const grantedRole = dto.role || "manager";
+    // No role named is the least one (F-190): an invite that forgot to say
+    // used to grant manager.
+    const grantedRole = dto.role || "staff";
     const refusal = grantRefusal(inviterRole, grantedRole, "invite");
     if (refusal) {
       throw new ForbiddenException(refusal);

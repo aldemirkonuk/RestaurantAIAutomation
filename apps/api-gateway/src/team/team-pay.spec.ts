@@ -316,7 +316,8 @@ describe("W1 — a manager's week carries hours, never money", () => {
 
   it("strips labor_cost from the shift writers' replies to a manager", async () => {
     const db = seed();
-    db.tables.shifts.push(shift({ id: "sh-open", member_id: null, state: "open", labor_cost: null }));
+    // Tuesday: the same 09:00 for the same person would be a double booking (F-377).
+    db.tables.shifts.push(shift({ id: "sh-open", member_id: null, state: "open", labor_cost: null, shift_date: "2026-09-08" }));
     const svc = scheduleOf(db);
 
     const created = await svc.createShift(MANAGER, RID, {

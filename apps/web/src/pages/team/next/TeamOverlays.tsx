@@ -59,7 +59,7 @@ import { dayWords } from '@/components/mudavym/awayWords';
 import type { AwayView } from '../../../services/api/areas';
 
 /** The gateway's own words when it has them — a 409 says exactly what is missing. */
-function serverMessage(e: unknown): string | null {
+export function serverMessage(e: unknown): string | null {
   const m = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
   if (typeof m === 'string' && m.trim()) return m;
   if (Array.isArray(m) && typeof m[0] === 'string') return m[0];
@@ -195,6 +195,10 @@ export function CopyWeekPanel({
             : `all ${shiftsOnTarget} shift${shiftsOnTarget === 1 ? '' : 's'} already on it`}{' '}
           is deleted before last week&apos;s arrive — including anything added by hand.
           This cannot be undone.
+        </p>
+        <p className="tm-note">
+          A shift whose person is set to inactive, has approved time off that day, or
+          already works then arrives as an open shift for the crew to claim.
         </p>
         <div className="tm-actions" style={{ marginTop: 14 }}>
           <button type="button" className="tm-ctl tm-ctl--quiet" onClick={onClose}>

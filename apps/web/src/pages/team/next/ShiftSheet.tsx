@@ -36,6 +36,7 @@ import {
   todayIso,
 } from './tm-format';
 import { MutationError } from './tm-bits';
+import { serverMessage } from './TeamOverlays';
 
 /** The gateway's `shift_type` vocabulary (`dto/team.dto.ts`), said as service. */
 const SHIFT_TYPES: ReadonlyArray<[string, string]> = [
@@ -164,8 +165,9 @@ export function ShiftSheet({
     >
       <div className="tm-in tm-form">
         <MutationError when={save.isError}>
-          The shift was not saved, so the schedule is unchanged. Your values are still
-          here — try again.
+          {/* A 409 says why — time off, inactive, a clash — and what to do. */}
+          {serverMessage(save.error) ??
+            'The shift was not saved, so the schedule is unchanged. Your values are still here — try again.'}
         </MutationError>
         <MutationError when={remove.isError}>
           The shift was not removed. It is still on the schedule.
@@ -179,15 +181,19 @@ export function ShiftSheet({
             onChange={(e) => setForm({ ...form, memberId: e.target.value })}
           >
             <option value="">Open shift — nobody assigned</option>
-            {(members ?? []).map((m) => {
-              const n = resolveName(m);
-              return (
-                <option key={m.id} value={m.id}>
-                  {n.text}
-                  {m.position ? ` · ${m.position}` : ''}
-                </option>
-              );
-            })}
+            {(members ?? [])
+              // An inactive person is not offered a shift (F-171) — unless
+              // this shift is already theirs, so its row still reads true.
+              .filter((m) => m.status !== 'inactive' || m.id === target.shift?.member_id)
+              .map((m) => {
+                const n = resolveName(m);
+                return (
+                  <option key={m.id} value={m.id}>
+                    {n.text}
+                    {m.position ? ` · ${m.position}` : ''}
+                  </option>
+                );
+              })}
           </select>
           {members === null && (
             <p className="tm-hint">

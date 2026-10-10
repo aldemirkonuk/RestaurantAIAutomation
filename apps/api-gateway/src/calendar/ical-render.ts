@@ -1,5 +1,9 @@
-import ical from "ical-generator";
-import { calendarDateToUtcMidnight, zonedWallClockToUtc } from "./zoned-time";
+import ical, { type ICalDayJsStub } from "ical-generator";
+import {
+  calendarDateToUtcMidnight,
+  zoneOffsetMs,
+  zonedWallClockToUtc,
+} from "./zoned-time";
 
 /**
  * The iCal text a calendar link answers with. Pure: the rows go in, the
@@ -56,6 +60,8 @@ export interface FeedRecurrenceRule {
   interval_value?: number | null;
   end_on_date?: string | null;
   end_after_count?: number | null;
+  /** 'never' | 'on_date' | 'after_count' — which of the two limits holds. */
+  end_type?: string | null;
   days_of_week?: number[] | null;
   day_of_month?: number | null;
 }
@@ -113,16 +119,141 @@ function hhmm(time: string): string {
 }
 
 /**
- * A stored wall clock as the Date ical-generator should print.
+ * A stored wall clock, ready for ical-generator.
  *
- * With a zone: the true instant. Without one: a carrier whose UTC fields ARE
- * the wall clock, printed floating (RFC 5545 §3.3.5 form one) — "09:00
- * wherever you are", which is the honest reading of a time with no zone.
+ * With a zone: the wall clock itself, printed `DTSTART;TZID=<zone>:…` with a
+ * VTIMEZONE beside it (F-376). It used to be the UTC instant, and RFC 5545
+ * repeats a UTC DTSTART in UTC: a weekly 18:30 tasting fell to 17:30 for
+ * every subscriber the day the clocks went back, and its BYDAY was read on the
+ * UTC weekday. This is ical-generator's day.js-shaped input (`ICalDayJsStub`):
+ * with a TZID it prints `format()` as-is, so the server's own zone never
+ * enters. `toDate()` is the true instant, used only to order start and end.
+ *
+ * In UTC itself: the instant, printed with a Z. Without a zone: a carrier
+ * whose UTC fields ARE the wall clock, printed floating (RFC 5545 §3.3.5
+ * form one) — "09:00 wherever you are", which is the honest reading of a
+ * time with no zone.
  */
-function wallClock(date: string, time: string, zone: string | null): Date {
-  return zone
-    ? zonedWallClockToUtc(date, time, zone)
-    : new Date(`${date}T${time}:00.000Z`);
+function wallClock(
+  date: string,
+  time: string,
+  zone: string | null,
+): Date | ICalDayJsStub {
+  if (!zone) return new Date(`${date}T${time}:00.000Z`);
+  // ical-generator drops a "UTC" TZID; UTC has no DST, so the instant is exact.
+  if (zone === "UTC") return zonedWallClockToUtc(date, time, zone);
+  const day = date.replace(/-/g, "");
+  const clock = `${time.replace(":", "")}00`;
+  const stub: ICalDayJsStub = {
+    format: (f?: string) =>
+      f === "YYYYMMDD" ? day : f === "HHmmss" ? clock : `${day}T${clock}`,
+    isValid: () => true,
+    toDate: () => zonedWallClockToUtc(date, time, zone),
+    toJSON: () => zonedWallClockToUtc(date, time, zone).toISOString(),
+    tz: () => stub,
+  };
+  return stub;
+}
+
+/** `Date` → `YYYYMMDDTHHMMSS` from its UTC fields. */
+function basicUtc(d: Date): string {
+  return d.toISOString().slice(0, 19).replace(/[-:]/g, "");
+}
+
+function offsetText(ms: number): string {
+  const sign = ms < 0 ? "-" : "+";
+  const minutes = Math.abs(ms) / 60_000;
+  const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const mm = String(minutes % 60).padStart(2, "0");
+  return `${sign}${hh}${mm}`;
+}
+
+/**
+ * The VTIMEZONE a `TZID=<zone>` refers to, for the years `fromYear` …
+ * `toYear`. Every offset change in that window is found from the platform's
+ * own zone data (`zoneOffsetMs`) and written as its own observance, so no
+ * rule is guessed. Google, Apple and Outlook read the IANA name itself; this
+ * block is what a strict client falls back on.
+ */
+export function vtimezone(
+  zone: string,
+  fromYear: number,
+  toYear: number,
+): string {
+  // A day early, so the first observance precedes 1 January in every zone.
+  const start = Date.UTC(fromYear, 0, 1) - 86_400_000;
+  const stop = Date.UTC(toYear + 1, 0, 1);
+  const offsetAt = (ms: number) => zoneOffsetMs(new Date(ms), zone);
+  const lowest = Math.min(offsetAt(start), offsetAt(Date.UTC(fromYear, 6, 1)));
+  const observance = (at: number, from: number, to: number) => {
+    const kind =
+      to > from || (to === from && to > lowest) ? "DAYLIGHT" : "STANDARD";
+    return [
+      `BEGIN:${kind}`,
+      `DTSTART:${basicUtc(new Date(at + from))}`,
+      `TZOFFSETFROM:${offsetText(from)}`,
+      `TZOFFSETTO:${offsetText(to)}`,
+      `END:${kind}`,
+    ];
+  };
+
+  let current = offsetAt(start);
+  const lines = [
+    "BEGIN:VTIMEZONE",
+    `TZID:${zone}`,
+    ...observance(start, current, current),
+  ];
+  const WEEK = 7 * 86_400_000;
+  for (let t = start; t < stop; t += WEEK) {
+    const next = Math.min(t + WEEK, stop);
+    const after = offsetAt(next);
+    if (after === current) continue;
+    // Narrow the change down to the minute it happens.
+    let lo = t;
+    let hi = next;
+    while (hi - lo > 60_000) {
+      const mid = lo + Math.max(1, Math.floor((hi - lo) / 120_000)) * 60_000;
+      if (offsetAt(mid) === current) lo = mid;
+      else hi = mid;
+    }
+    lines.push(...observance(hi, current, after));
+    current = after;
+  }
+  lines.push("END:VTIMEZONE");
+  return lines.join("\r\n");
+}
+
+/**
+ * The RRULE's end. RFC 5545 §3.3.10: UNTIL and COUNT never both, and with a
+ * TZID start UNTIL is a UTC instant. The stored `end_on_date` is a house date
+ * the app counts as included (calendar-occurrences.ts), so the limit is the
+ * last second of that day in the house's zone — `T000000Z` cut an evening
+ * series' last night off.
+ */
+function rruleEnd(
+  rule: FeedRecurrenceRule,
+  allDay: boolean,
+  zone: string | null,
+): string {
+  const endType =
+    rule.end_type ??
+    (rule.end_on_date
+      ? "on_date"
+      : rule.end_after_count
+        ? "after_count"
+        : "never");
+  if (endType === "after_count" && rule.end_after_count)
+    return `;COUNT=${rule.end_after_count}`;
+  if (endType !== "on_date" || !rule.end_on_date) return "";
+  const date = rule.end_on_date.replace(/-/g, "");
+  if (allDay) return `;UNTIL=${date}`;
+  if (!zone) return `;UNTIL=${date}T235959`;
+  const nextMidnight = zonedWallClockToUtc(
+    addDaysIso(rule.end_on_date, 1),
+    "00:00",
+    zone,
+  );
+  return `;UNTIL=${basicUtc(new Date(nextMidnight.getTime() - 1000))}Z`;
 }
 
 /** A Date as an RFC 5545 UTC DATE-TIME: "20261014T205959Z". */
@@ -157,11 +288,30 @@ function untilFor(
 
 export function renderFeed(input: FeedInput): string {
   const { zone } = input;
+  // The years the feed touches, so the VTIMEZONE covers every date in it
+  // (plus the next, for series that keep going).
+  const years = [
+    ...input.events.flatMap((e) => [e.start_date, e.end_date]),
+    ...input.rules.map((r) => r.end_on_date),
+    ...input.shifts.map((s) => s.shift_date),
+  ]
+    .filter((d): d is string => !!d)
+    .map((d) => Number(d.slice(0, 4)))
+    .filter((y) => Number.isFinite(y));
+  const fromYear = years.length ? Math.min(...years) : 0;
+  const toYear = years.length ? Math.max(...years) + 1 : 0;
   const calendar = ical({
     name: input.calendarName,
     prodId: PROD_ID,
     // REFRESH-INTERVAL + X-PUBLISHED-TTL. See ICAL_TTL_SECONDS.
     ttl: ICAL_TTL_SECONDS,
+    // `name` stays null: a calendar-wide zone would print DTSTAMP in local
+    // time. Each timed event carries the zone itself (see `wallClock`).
+    timezone: {
+      name: null,
+      generator: (tz) =>
+        years.length ? vtimezone(tz, fromYear, toYear) : null,
+    },
   });
 
   const rulesByEvent = new Map<string, FeedRecurrenceRule>();
@@ -179,15 +329,14 @@ export function renderFeed(input: FeedInput): string {
     const startDateStr = event.start_date;
     const endDateStr = event.end_date || event.start_date;
 
-    let start: Date;
-    let end: Date;
+    let start: Date | ICalDayJsStub;
+    let end: Date | ICalDayJsStub;
     if (event.all_day) {
       // A calendar date has no zone. ical-generator renders VALUE=DATE from
       // the Date's UTC fields, so UTC midnight is the only carrier that
       // round-trips the stored date unchanged on any server.
       start = calendarDateToUtcMidnight(startDateStr);
-      end = calendarDateToUtcMidnight(endDateStr);
-      end.setUTCDate(end.getUTCDate() + 1);
+      end = calendarDateToUtcMidnight(addDaysIso(endDateStr, 1));
     } else {
       start = wallClock(startDateStr, event.start_time || "00:00", zone);
       // An entry that ends before it starts, with no end date or one equal to
@@ -216,6 +365,7 @@ export function renderFeed(input: FeedInput): string {
       // Floating only where the zone is genuinely unknown; an all-day event
       // is already zone-free and must not be marked floating as well.
       floating: !event.all_day && !zone,
+      timezone: !event.all_day && zone ? zone : null,
       status: status as any,
     });
 
@@ -224,9 +374,7 @@ export function renderFeed(input: FeedInput): string {
       let rrule = `FREQ=${FREQ[rule.frequency]}`;
       if (rule.interval_value && rule.interval_value > 1)
         rrule += `;INTERVAL=${rule.interval_value}`;
-      if (rule.end_on_date)
-        rrule += `;UNTIL=${untilFor(rule.end_on_date, !!event.all_day, zone)}`;
-      if (rule.end_after_count) rrule += `;COUNT=${rule.end_after_count}`;
+      rrule += rruleEnd(rule, !!event.all_day, zone);
       // A monthly entry on the 29th-31st falls on the last day of a shorter
       // month, as the app shows it (F-199, F-791). A plain FREQ=MONTHLY skips
       // those months instead, so name every day up to the chosen one and keep
@@ -268,6 +416,7 @@ export function renderFeed(input: FeedInput): string {
         ? "The schedule for this week is not published yet, so this shift may still change."
         : undefined,
       floating: !zone,
+      timezone: zone,
       status: (shift.calledOut
         ? "CANCELLED"
         : shift.draft
