@@ -143,6 +143,31 @@ class TestBuildLibraryRow:
         assert row["primary_type"] == "unknown"
         assert "price_reference" not in row
 
+    # F-918: the bottle price's currency is written only when the submission
+    # names it, and never assumed.
+    def test_price_currency_the_submission_names_is_written(self):
+        fc = {**FULL_FC, "price_currency": {"value": "try", "confidence": 0.9}}
+        row = build_library_row(lambda n: _fc_value(fc, n), source="x")
+        _assert_insertable(row)
+        assert row["price_reference"] == 120.5
+        assert row["price_reference_currency"] == "TRY"
+
+    def test_no_currency_named_means_none_written_not_usd(self):
+        row = build_library_row(lambda n: _fc_value(FULL_FC, n), source="x")
+        assert row["price_reference"] == 120.5
+        assert "price_reference_currency" not in row
+
+    def test_a_symbol_is_not_a_currency(self):
+        fc = {**FULL_FC, "currency": {"value": "$", "confidence": 0.9}}
+        row = build_library_row(lambda n: _fc_value(fc, n), source="x")
+        assert "price_reference_currency" not in row
+
+    def test_no_price_means_no_currency(self):
+        fields = {"wine_name": "House Red", "price_currency": "EUR"}
+        row = build_library_row(fields.get, source="x")
+        assert "price_reference" not in row
+        assert "price_reference_currency" not in row
+
 
 # Write endpoints re-read user_roles (require_live_studio_role, F-761). Each caller
 # holds in the DB exactly the roles its JWT claims, as in test_studio_routes.py.

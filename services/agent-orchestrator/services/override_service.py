@@ -416,6 +416,26 @@ def _merge_jsonb(base, extra: dict):
     return merged or None
 
 
+_ISO_4217 = re.compile(r"^[A-Z]{3}$")
+
+
+def _price_currency(get_field):
+    """The ISO 4217 code a studio submission gives for its bottle price, or None.
+
+    The first spelling present decides; a symbol such as "$" (several
+    currencies) or anything else unreadable is not recorded (F-918).
+    """
+    for name in ("price_currency", "currency"):
+        value = get_field(name)
+        if value is None or value == "":
+            continue
+        if not isinstance(value, str):
+            return None
+        code = value.strip().upper()
+        return code if _ISO_4217.match(code) else None
+    return None
+
+
 def build_library_row(get_field, *, source: str, submission=None, audit=None) -> dict:
     """
     One master_wine_library row from a studio submission (F-754).
@@ -455,6 +475,13 @@ def build_library_row(get_field, *, source: str, submission=None, audit=None) ->
         "producer": text("producer"),
         "vintage": number("vintage", int),
         "price_reference": number("price_bottle", float),
+        # F-918: the currency the submission named for that price, or nothing
+        # (the column stays NULL = not recorded). Never assumed.
+        "price_reference_currency": (
+            _price_currency(get_field)
+            if number("price_bottle", float) is not None
+            else None
+        ),
         # 'unknown' is the vocabulary's "unclassified", as the gateway writes it.
         "primary_type": text("primary_type") or text("color") or "unknown",
         "grape_variety": text("grape_variety"),

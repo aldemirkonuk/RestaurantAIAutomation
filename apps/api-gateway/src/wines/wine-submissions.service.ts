@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
 import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
+import { priceReferenceCurrencyFromPayload } from "./price-reference-currency";
 import {
   buildWineSignature,
   hashProvisionalWineSignature,
@@ -453,6 +454,11 @@ export class WineSubmissionsService {
         producer: identity.producer,
         vintage: identity.vintage ?? null,
         price_reference: payload.priceReference ?? null,
+        // F-918: only the currency the submission itself named; NULL otherwise.
+        price_reference_currency: priceReferenceCurrencyFromPayload(
+          payload as unknown as Record<string, unknown>,
+          payload.priceReference,
+        ),
         primary_type: identity.primaryType ?? "unknown",
         grape_variety: identity.grapeVariety ?? null,
         // Null, not "Unknown". The submission path accounts for the other 251

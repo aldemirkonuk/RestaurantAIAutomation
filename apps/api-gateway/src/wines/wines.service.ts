@@ -11,6 +11,7 @@ import {
   wineSignatureHashOrNull,
   wineSignatureInputFromPayload,
 } from "./wine-signature";
+import { priceReferenceCurrencyFromPayload } from "./price-reference-currency";
 import {
   GetWinesQueryDto,
   WineMetaQueryDto,
@@ -455,6 +456,11 @@ export class WinesService {
         producer: payload?.producer,
         vintage: payload?.vintage ?? null,
         price_reference: payload?.price_reference ?? payload?.price ?? null,
+        // F-918: only the currency the submission itself named; NULL otherwise.
+        price_reference_currency: priceReferenceCurrencyFromPayload(
+          payload,
+          payload?.price_reference ?? payload?.price,
+        ),
         primary_type:
           payload?.primary_type ||
           payload?.classification?.primary_type ||

@@ -9,6 +9,7 @@ Only inserts these columns (others NULL):
   - producer
   - vintage
   - price_reference
+  - price_reference_currency (only when the row names one; F-918)
   - primary_type
   - grape_variety
   - country
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -44,6 +46,29 @@ except ImportError as exc:
 
 ROOT = Path(__file__).resolve().parents[2]
 JSONL_PATH = ROOT / "library" / "wineops_basic_v1.jsonl"
+
+
+# F-918: master_wine_library.price_reference_currency (ISO 4217, or NULL = not
+# recorded). Written only from a code the source record itself carries, and
+# only beside a price. Never assumed: not USD, not a symbol such as "$" (which
+# names several currencies), not the house's (ADR 0117 Q25).
+_ISO_4217 = re.compile(r"^[A-Z]{3}$")
+_CURRENCY_KEYS = ("price_reference_currency", "price_currency", "currency")
+
+
+def price_reference_currency(record, price):
+    if price is None or price == "" or not isinstance(record, dict):
+        return None
+    for key in _CURRENCY_KEYS:
+        value = record.get(key)
+        if value is None or value == "":
+            continue
+        # The first spelling present decides; an unreadable one is not recorded.
+        if not isinstance(value, str):
+            return None
+        code = value.strip().upper()
+        return code if _ISO_4217.match(code) else None
+    return None
 
 
 def _get_db_url() -> str:
@@ -109,6 +134,7 @@ def _map_row(raw: Dict[str, Any]) -> Tuple[Any, ...]:
         _truncate(raw.get("producer"), varchar_limits["producer"], "producer"),
         raw.get("vintage"),
         raw.get("price"),
+        price_reference_currency(raw, raw.get("price")),
         _truncate(classification.get("primary_type"), varchar_limits["primary_type"], "primary_type"),
         _truncate(classification.get("grape_variety"), 65535, "grape_variety"),
         _truncate(classification.get("country"), varchar_limits["country"], "country"),
@@ -147,6 +173,7 @@ def main() -> None:
                     producer,
                     vintage,
                     price_reference,
+                    price_reference_currency,
                     primary_type,
                     grape_variety,
                     country,
@@ -166,6 +193,7 @@ def main() -> None:
                     producer = EXCLUDED.producer,
                     vintage = EXCLUDED.vintage,
                     price_reference = EXCLUDED.price_reference,
+                    price_reference_currency = EXCLUDED.price_reference_currency,
                     primary_type = EXCLUDED.primary_type,
                     grape_variety = EXCLUDED.grape_variety,
                     country = EXCLUDED.country,
