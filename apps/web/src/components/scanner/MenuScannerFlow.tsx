@@ -321,6 +321,7 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
                   <BatchReceiveGrid
                     rows={stockRows}
                     onChange={setStockRows}
+                    group={group}
                     disabled={isSaving}
                     className="flex-1 min-h-0"
                     emptyState={

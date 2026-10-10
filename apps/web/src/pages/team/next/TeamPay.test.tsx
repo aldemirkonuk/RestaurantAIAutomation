@@ -85,7 +85,11 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 
+const house = vi.hoisted(() => ({ group: null as '.' | ',' | null }));
+vi.mock('../../../hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => house.group }));
+
 import TeamNext from './TeamNext';
+import { updateTeamMember } from '../../../services/api/team';
 import { MemberSheet, RosterSheet } from './RosterSheet';
 import { WeekGrid } from './WeekGrid';
 import { ExportPopover, TimeOffSheet } from './TeamOverlays';
@@ -224,7 +228,7 @@ describe('a manager is shown hours and told the money is the owner’s', () => {
       <MemberSheet member={member() as never} moneyVisible={false} ownerCount={1} onClose={() => {}} onChanged={() => {}} />,
       { wrapper },
     );
-    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Hourly wage/)).not.toBeInTheDocument();
     expect(screen.getByText(/the owner.s to see and to set/)).toBeInTheDocument();
   });
 
@@ -233,8 +237,36 @@ describe('a manager is shown hours and told the money is the owner’s', () => {
       <MemberSheet member={member({ hourly_wage: 150 }) as never} moneyVisible ownerCount={1} onClose={() => {}} onChanged={() => {}} />,
       { wrapper },
     );
-    expect(screen.getByRole('spinbutton')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Hourly wage/)).toBeInTheDocument();
     expect(screen.getByText(/Each change is kept/)).toBeInTheDocument();
+  });
+
+  // F-358: a bare Number() made "12,50" NaN, which JSON sends as null — the
+  // recorded wage was cleared. Now it is read the way the house writes it.
+  it('reads a typed wage the way the house writes it', async () => {
+    house.group = '.';
+    render(
+      <MemberSheet member={member({ hourly_wage: 150 }) as never} moneyVisible ownerCount={1} onClose={() => {}} onChanged={() => {}} />,
+      { wrapper },
+    );
+    const wage = screen.getByLabelText(/^Hourly wage/);
+    expect(wage).toHaveAttribute('inputmode', 'decimal');
+    fireEvent.change(wage, { target: { value: '1.250,50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() =>
+      expect(updateTeamMember).toHaveBeenCalledWith('m1', expect.objectContaining({ hourlyWage: 1250.5 })),
+    );
+    house.group = null;
+  });
+
+  it('holds Save on a wage that is not an amount, and says so', () => {
+    render(
+      <MemberSheet member={member({ hourly_wage: 150 }) as never} moneyVisible ownerCount={1} onClose={() => {}} onChanged={() => {}} />,
+      { wrapper },
+    );
+    fireEvent.change(screen.getByLabelText(/^Hourly wage/), { target: { value: '12,5,0' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('is not an amount');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
   it('exports no cost column for a manager, and a currency-named one for the owner', async () => {
@@ -385,7 +417,7 @@ describe("an owner's pay is not shown or offered to a manager who sees pay", () 
       <MemberSheet member={ownerRow as never} moneyVisible viewerUserId="u-mgr" ownerCount={1} onClose={() => {}} onChanged={() => {}} />,
       { wrapper },
     );
-    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Hourly wage/)).not.toBeInTheDocument();
     expect(screen.getByTestId('owner-pay-note')).toHaveTextContent(/Only an owner sees or sets it/);
   });
 

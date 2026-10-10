@@ -91,12 +91,9 @@ export function AddWineToInventoryModal({
   // receive grid. Blank, or text that does not read as an amount of 0 or
   // more, is null.
   const group = useHouseGroupMark();
-  const amountOf = (text: string): number | null => {
-    const read = readOptionalAmount(text, group);
-    return read.ok ? read.value : null;
-  };
   const [costText, setCostText] = useState("");
-  const costPerBottle = amountOf(costText);
+  const costRead = readOptionalAmount(costText, group);
+  const costPerBottle = costRead.ok ? costRead.value : null;
   const [isSample, setIsSample] = useState(false);
   const [showScannerFlow, setShowScannerFlow] = useState(false);
   const [selectedStorageLocationId, setSelectedStorageLocationId] = useState<
@@ -117,7 +114,8 @@ export function AddWineToInventoryModal({
   // is an owner's or a manager's (ADR 0193, founder 2026-09-21) -- a refusal
   // of the whole add for a staff member who never typed one.
   const [menuPriceGlassText, setMenuPriceGlassText] = useState("");
-  const menuPriceGlass = amountOf(menuPriceGlassText);
+  const glassRead = readOptionalAmount(menuPriceGlassText, group);
+  const menuPriceGlass = glassRead.ok ? glassRead.value : null;
   /**
    * `null` means "nobody typed a bottle price" — kept distinct from an
    * explicitly typed 0, the same distinction costPerBottle above makes and
@@ -126,7 +124,8 @@ export function AddWineToInventoryModal({
    * has the same shape (2026-09-21, ADR 0193).
    */
   const [menuPriceBottleText, setMenuPriceBottleText] = useState("");
-  const menuPriceBottle = amountOf(menuPriceBottleText);
+  const bottleRead = readOptionalAmount(menuPriceBottleText, group);
+  const menuPriceBottle = bottleRead.ok ? bottleRead.value : null;
 
   const customBottleParsed = customBottleSizeInput
     ? parseVolumeInput(customBottleSizeInput)
@@ -139,6 +138,17 @@ export function AddWineToInventoryModal({
   // when this wine is actually sold by the bottle (ADR 0193: stored in
   // menu_price_current; founder: "we're going to add a per house bottle price").
   const showBottleFields = saleType === "bottle" || saleType === "both";
+  /** A price field holding text that is not an amount: the add is held until it is fixed or cleared. */
+  const unreadablePrice =
+    !isSample && !costRead.ok
+      ? costText
+      : showBottleFields && !bottleRead.ok
+        ? menuPriceBottleText
+        : showGlassFields && !glassRead.ok
+          ? menuPriceGlassText
+          : null;
+  /** A recorded number written back as text the house's own reader takes back unchanged. */
+  const decimalText = (n: number) => (group === "." ? String(n).replace(".", ",") : String(n));
   const glassesPerBottle = showGlassFields
     ? getGlassesPerBottle(bottleSizeMl, pourSizeMl)
     : 0;
@@ -200,7 +210,7 @@ export function AddWineToInventoryModal({
   };
 
   const handleAddToInventory = () => {
-    if (selectedWine) {
+    if (selectedWine && unreadablePrice === null) {
       const volumeFields: VolumeFields = {
         bottleSizeMl,
         saleType,
@@ -564,7 +574,12 @@ export function AddWineToInventoryModal({
                               className="w-full pl-7 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-wine-500"
                             />
                           </div>
-                          {costPerBottle === null ? (
+                          {!costRead.ok ? (
+                            <p className="text-xs text-red-600 mt-1.5" role="alert">
+                              “{costText}” is not an amount. Write it like 12,50
+                              or 12.50, or clear the field if you don't know.
+                            </p>
+                          ) : costPerBottle === null ? (
                             <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                               <p className="text-xs text-gray-500">
                                 Cost unknown — recorded as unknown, not as $0.
@@ -577,7 +592,7 @@ export function AddWineToInventoryModal({
                                     type="button"
                                     onClick={() =>
                                       setCostText(
-                                        (selectedWine.price as number).toFixed(2),
+                                        decimalText(selectedWine.price as number),
                                       )
                                     }
                                     className="text-xs font-semibold text-wine-700 hover:text-wine-800 underline decoration-dotted"
@@ -897,9 +912,15 @@ export function AddWineToInventoryModal({
 
                   {/* Footer */}
                   <div className="p-4 border-t border-gray-200 bg-white">
+                    {unreadablePrice !== null && (
+                      <p className="text-xs text-red-600 mb-2" role="status">
+                        “{unreadablePrice}” is not an amount — fix or clear it to add this wine.
+                      </p>
+                    )}
                     <button
                       onClick={handleAddToInventory}
-                      className="w-full px-4 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center justify-center gap-2"
+                      disabled={unreadablePrice !== null}
+                      className="w-full px-4 py-3 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 shadow-lg shadow-wine-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-40"
                     >
                       <Save className="w-5 h-5" />
                       Add to Inventory

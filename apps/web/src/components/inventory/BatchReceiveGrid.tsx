@@ -11,9 +11,9 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { AlertTriangle, Check, Trash2, Wine } from 'lucide-react'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
-import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 import { fmtMoney } from '../../pages/inventory/command/bits'
 import { cn } from '../../lib/utils'
+import { useHouseGroupMark } from '../../hooks/useHouseGroupMark'
 import { parseDecimal, type GroupMark } from '../../lib/parseDecimal'
 import type { BulkInventoryLine, WineDraft } from '../../services/api/types'
 
@@ -148,6 +148,11 @@ interface BatchReceiveGridProps {
   /** Rendered in place of the table when there are no rows yet. */
   emptyState?: React.ReactNode
   className?: string
+  /**
+   * The house's thousands mark (useHouseGroupMark). The host must pass the same
+   * mark to the helpers it saves with, so the total shown here is the total sent.
+   */
+  group?: GroupMark | null
 }
 
 export function BatchReceiveGrid({
@@ -157,6 +162,7 @@ export function BatchReceiveGrid({
   disabled = false,
   emptyState,
   className,
+  group: groupFromHost,
 }: BatchReceiveGridProps) {
   const { locations } = useStorageLocations()
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -169,7 +175,10 @@ export function BatchReceiveGrid({
   // The house's group mark (F-779): "1.250" is ₺1,250 here as in every other
   // money field. Both hosts read the same mark, so the grid agrees with what
   // they validate and send.
-  const group = useHouseGroupMark()
+  // A host that already read the mark passes it (F-358); either way it is the
+  // same house's mark.
+  const houseGroup = useHouseGroupMark()
+  const group = groupFromHost !== undefined ? groupFromHost : houseGroup
   const totals = useMemo(() => batchTotals(rows, group), [rows, group])
   const issues = useMemo(() => validateBatchRows(rows, group), [rows, group])
   const selectedCount = rows.filter((r) => r.selected).length

@@ -21,6 +21,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getTeamSettings, updateTeamSettings, type TeamSettings } from '../../services/api/team'
 import { useAuth } from '../../contexts/AuthContext'
+import { parseDecimal } from '../../lib/parseDecimal'
 
 function Toggle({
   on,
@@ -114,7 +115,8 @@ export function TeamLaborSettings() {
 
   const commitTarget = () => {
     if (!may.target) return
-    const n = Number(targetPct)
+    // "27,5" is a percent too (F-358); a percent has no thousands, so no house group mark.
+    const n = parseDecimal(targetPct) ?? NaN
     if (!Number.isFinite(n) || n < 1 || n > 100) {
       toast.error('Labor target must be between 1 and 100')
       setTargetPct(String(data.labor_target_pct))
@@ -164,10 +166,8 @@ export function TeamLaborSettings() {
             </div>
           </div>
           <input
-            type="number"
-            min={1}
-            max={100}
-            step={0.5}
+            type="text"
+            inputMode="decimal"
             value={targetPct}
             disabled={save.isPending || !may.target}
             onChange={(e) => setTargetPct(e.target.value)}

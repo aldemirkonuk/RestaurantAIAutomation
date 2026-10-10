@@ -46,6 +46,8 @@ import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
+import { readOptionalAmount } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { Wordmark } from '@/components/mudavym';
 import '../../cellar/next/cellar-next.css';
 
@@ -133,16 +135,23 @@ function AddItemForm({ onAdd, adding, error }: {
   const [category, setCategory] = useState('');
   const [byGlass, setByGlass] = useState('');
   const [bottle, setBottle] = useState('');
+  // "12,50" — and "1.250" in a "."-grouping house — read the way the house writes
+  // it (F-358). A bare Number() made "12,50" NaN, sent as null: the line was
+  // added with no price and nothing said so.
+  const group = useHouseGroupMark();
+  const glassRead = readOptionalAmount(byGlass, group);
+  const bottleRead = readOptionalAmount(bottle, group);
+  const unreadable = !glassRead.ok ? byGlass : !bottleRead.ok ? bottle : null;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !glassRead.ok || !bottleRead.ok) return;
     onAdd(
       {
         name: name.trim(),
         category: category.trim() || undefined,
-        by_glass_price: byGlass ? Number(byGlass) : undefined,
-        bottle_price: bottle ? Number(bottle) : undefined,
+        by_glass_price: glassRead.value ?? undefined,
+        bottle_price: bottleRead.value ?? undefined,
       },
       {
         onSuccess: () => {
@@ -185,9 +194,8 @@ function AddItemForm({ onAdd, adding, error }: {
       <input
         id="menu-add-glass"
         className="cl-field cl-focus cl-num"
-        type="number"
-        min={0}
-        step="0.01"
+        type="text"
+        inputMode="decimal"
         value={byGlass}
         onChange={(e) => setByGlass(e.target.value)}
         style={{ width: 80 }}
@@ -198,16 +206,20 @@ function AddItemForm({ onAdd, adding, error }: {
       <input
         id="menu-add-bottle"
         className="cl-field cl-focus cl-num"
-        type="number"
-        min={0}
-        step="0.01"
+        type="text"
+        inputMode="decimal"
         value={bottle}
         onChange={(e) => setBottle(e.target.value)}
         style={{ width: 80 }}
       />
-      <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim()}>
+      <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim() || unreadable !== null}>
         {adding ? 'Adding…' : 'Add to menu'}
       </button>
+      {unreadable !== null ? (
+        <span role="alert" className="cl-said" style={{ fontSize: 12 }}>
+          “{unreadable}” is not a price. Write it like 12,50 or 12.50.
+        </span>
+      ) : null}
       {error ? (
         <span role="alert" className="cl-said" style={{ fontSize: 12 }}>
           {error}
