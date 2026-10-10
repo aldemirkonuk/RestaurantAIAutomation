@@ -259,10 +259,16 @@ export class HouseCounterService {
       identities: {
         act: "not_yours",
         load: async () => {
-          const all = await this.identity.pending(house, IDENTITY_PAGE);
+          // The queue also carries candidates on the public registers (no
+          // house), which every house sees and none of them owns. The counter
+          // counts only this house's own (F-204): a shared row is not work
+          // waiting on THIS house. The page is still the read's, so a full
+          // page keeps the count a floor.
+          const page = await this.identity.pending(house, IDENTITY_PAGE);
+          const all = page.filter((r: any) => r.restaurant_id === house);
           return {
             count: all.length,
-            complete: all.length < IDENTITY_PAGE,
+            complete: page.length < IDENTITY_PAGE,
             rows: all.slice(0, COUNTER_ROWS).map((r: any) => ({
               id: String(r.id),
               subject: r.subject_table ?? null,

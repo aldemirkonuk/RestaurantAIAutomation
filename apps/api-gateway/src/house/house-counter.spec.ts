@@ -248,8 +248,27 @@ describe("the counter answers per register (answered)", () => {
     expect(ids).toMatchObject({ state: "answered", count: 0, rows: [] });
   });
 
+  it("counts only this house's own identity candidates, not the shared house-less ones (F-204)", async () => {
+    const { svc } = build(
+      sources({
+        pending: jest.fn(async () => [
+          { id: "c-own", restaurant_id: HOUSE },
+          { id: "c-shared", restaurant_id: null },
+          { id: "c-shared-2", restaurant_id: null },
+        ]),
+      }),
+    );
+    const ids = reg(await svc.read(HOUSE, USER, "owner"), "identities");
+    if (ids.state !== "answered") throw new Error("not answered");
+    expect(ids).toMatchObject({ count: 1, complete: true });
+    expect(ids.rows.map((r: any) => r.id)).toEqual(["c-own"]);
+  });
+
   it("a full page is a floor, not a total", async () => {
-    const fifty = Array.from({ length: 50 }, (_, i) => ({ id: `c-${i}` }));
+    const fifty = Array.from({ length: 50 }, (_, i) => ({
+      id: `c-${i}`,
+      restaurant_id: HOUSE,
+    }));
     const { svc } = build(sources({ pending: jest.fn(async () => fifty) }));
     const ids = reg(await svc.read(HOUSE, USER, "owner"), "identities");
     expect(ids).toMatchObject({

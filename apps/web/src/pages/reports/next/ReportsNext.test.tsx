@@ -29,9 +29,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
+import { decodeSheet, defaultSheet, encodeSheet, offeredFor } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
-import { DEFAULT_SLOTS } from './rp-sheet';
+import { DEFAULT_SLOTS, HOUSE_LAYOUT_TITLE } from './rp-sheet';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
@@ -435,6 +435,7 @@ function base() {
     sheet: defaultSheet(),
     saveSheet,
     sheetKnown: true,
+    offered: offeredFor('owner'),
     refetchAll: vi.fn(),
   };
 }
@@ -1181,6 +1182,43 @@ describe('ReportsNext — a house layout to start from', () => {
     expect(screen.queryByRole('region', { name: 'The writing desk' })).toBeNull();
     // Nothing is saved until the sheet is ruled off — it is a starting point.
     expect(saveSheet).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReportsNext — what a staff member is offered (F-203)', () => {
+  it('gives owners and managers every register, and staff all but the two that name a server or a table', () => {
+    expect(offeredFor('owner')).toContain('service');
+    expect(offeredFor('manager')).toContain('seats');
+    for (const role of ['staff', 'chef', null, undefined]) {
+      const ids = offeredFor(role);
+      expect(ids).not.toContain('seats');
+      expect(ids).not.toContain('service');
+      expect(ids).toContain('till');
+    }
+  });
+
+  it('never offers The room or Who served it to staff — not to add, swap or lay out', () => {
+    hook.current = { ...base(), offered: offeredFor('staff') };
+    paint();
+    arrange();
+    const add = screen.getByText('Add a cutting').parentElement as HTMLElement;
+    expect(within(add).queryByRole('button', { name: 'The room' })).toBeNull();
+    expect(within(add).queryByRole('button', { name: 'Who served it' })).toBeNull();
+    const quad = screen.getByRole('region', { name: 'Margin against movement' });
+    const swap = within(quad).getByLabelText(
+      'Show instead of Margin against movement',
+    ) as HTMLSelectElement;
+    const values = Array.from(swap.options).map((o) => o.value);
+    expect(values).not.toContain('seats');
+    expect(values).not.toContain('service');
+    expect(values).toContain('till');
+    // The service layout carries both; for staff it lays out the rest of it.
+    fireEvent.click(screen.getByText(HOUSE_LAYOUT_TITLE.service));
+    expect(screen.queryByRole('region', { name: 'The room' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Who served it' })).toBeNull();
+    expect(screen.queryByText(/Your role cannot read/)).toBeNull();
+    expect(asked.showing).not.toContain('seats');
+    expect(asked.showing).not.toContain('service');
   });
 });
 
