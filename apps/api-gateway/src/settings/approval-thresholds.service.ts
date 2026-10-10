@@ -7,12 +7,19 @@ import {
 } from "../settings-audit/settings-audit.service";
 import {
   APPROVAL_RULES,
+  firstOrderToVendorById,
+  pricePremium,
   retrospective,
   type ApprovalRule,
   type OrderUnderTest,
+  type PricedOrder,
   type RetrospectiveCount,
   type ThresholdRow,
 } from "./approval-thresholds";
+import {
+  embeddedOrderLines,
+  foldOrderPriceUnit,
+} from "../procurement/agreed-price";
 import type { SetApprovalThresholdDto } from "../vendor-terms/dto/vendor-terms.dto";
 
 /**
@@ -121,11 +128,15 @@ interface ThresholdDbRow {
 
 interface OrderRow {
   id: string;
+  status: string | null;
+  created_at?: string | null;
   provider_id: string | null;
   inventory_id: string | null;
   requested_at: string | null;
   total_cost: string | number | null;
   final_price: string | number | null;
+  currency?: string | null;
+  procurement_order_items?: unknown;
 }
 
 function num(v: string | number | null | undefined): number | null {
@@ -294,6 +305,21 @@ export class ApprovalThresholdsService {
    * WINDOW and nowhere else — the caveat travels with the number in the payload
    * rather than being left for the UI to remember.
    */
+  /** `restaurants.currency`, the ceiling's currency; null when unset or unread. */
+  private async readCeilingCurrency(restaurantId: string): Promise<string | null> {
+    try {
+      const { data, error } = await this.databaseService.client
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (error) return null;
+      return (data as { currency?: string | null } | null)?.currency ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   private async readOrdersUnderTest(restaurantId: string): Promise<{
     tests: OrderUnderTest[];
     readable: boolean;
@@ -313,7 +339,7 @@ export class ApprovalThresholdsService {
           this.databaseService.client
             .from("procurement_orders")
             .select(
-              "id, provider_id, inventory_id, requested_at, total_cost, final_price",
+              "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -345,31 +371,40 @@ export class ApprovalThresholdsService {
       };
     }
 
-    const seenVendors = new Set<string>();
-    const lastPriceByItem = new Map<string, number>();
+    // The approve gate's own first-order test (F-731): the count beside the
+    // rule is the number of orders the gate would have held.
+    const firstById = firstOrderToVendorById(rows);
+    const lastPriceByItem = new Map<string, PricedOrder>();
     const tests: OrderUnderTest[] = [];
+    const ceilingCurrency = await this.readCeilingCurrency(restaurantId);
 
     // Ascending, so "first" and "last price" mean what they say as the walk
     // moves forward through the year.
     for (const r of rows) {
-      const vendor = r.provider_id;
-      const isFirst = vendor ? !seenVendors.has(vendor) : null;
-      if (vendor) seenVendors.add(vendor);
+      const isFirst = firstById.get(r.id) ?? null;
 
-      const unit = num(r.final_price);
-      let premium: number | null = null;
-      if (r.inventory_id && unit !== null && unit > 0) {
-        const prior = lastPriceByItem.get(r.inventory_id);
-        if (prior !== undefined && prior > 0) {
-          premium = ((unit - prior) / prior) * 100;
-        }
-        lastPriceByItem.set(r.inventory_id, unit);
+      // Per bottle and in one currency, as the gate compares (F-648).
+      const priced: PricedOrder = {
+        price: num(r.final_price),
+        currency: r.currency ?? null,
+        priceUnit: foldOrderPriceUnit(embeddedOrderLines(r.procurement_order_items)),
+      };
+      let premium: { pct: number | null; uncomparable: string | null } = {
+        pct: null,
+        uncomparable: null,
+      };
+      if (r.inventory_id && priced.price !== null && priced.price > 0) {
+        premium = pricePremium(priced, lastPriceByItem.get(r.inventory_id) ?? null);
+        lastPriceByItem.set(r.inventory_id, priced);
       }
 
       tests.push({
         total: num(r.total_cost),
         isFirstOrderToVendor: isFirst,
-        pricePremiumPct: premium,
+        pricePremiumPct: premium.pct,
+        currency: r.currency ?? null,
+        ceilingCurrency,
+        priceUncomparable: premium.uncomparable,
       });
     }
 

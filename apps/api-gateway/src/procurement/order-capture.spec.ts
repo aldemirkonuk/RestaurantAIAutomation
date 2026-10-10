@@ -3,6 +3,9 @@ import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { A_MANAGER, A_SEAL, GATES_AFTER_LEDGER } from "./testing/passing-vendor-gates";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
+import { CreateOrderDto } from "./dto/procurement.dto";
 
 /**
  * What an order actually writes down.
@@ -332,6 +335,43 @@ describe("createOrder — unit arithmetic", () => {
     expect(h.bottles_total).toBe(6);
     expect(h.total_cost).toBe(150);
     expect(h.unit_type).toBe("bottle");
+  });
+});
+
+describe("createOrder — the total is worked out, never taken on the caller's word (F-732)", () => {
+  const big = { inventoryId: "inv-1", providerId: "prov-1", quantity: 600, quotedPrice: 50 } as any;
+
+  it("[REVERT-FAILS] refuses a $1 total on 600 at $50, in words, and writes nothing", async () => {
+    // The owner's $2,500 ceiling reads total_cost; a $1 total slipped a
+    // $30,000 order past it.
+    const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
+    await expect(
+      service(db).createOrder("rest-1", USER, { ...big, totalCost: 1 }),
+    ).rejects.toThrow(/\$1\.00\) is not what the quantity at the agreed price comes to \(\$30000\.00\)/);
+    expect(calls.orderInserts).toHaveLength(0);
+  });
+
+  it("stores 600 × $50 as $30,000 when no total is sent, so the ceiling sees the real figure", async () => {
+    const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
+    await service(db).createOrder("rest-1", USER, big);
+    expect(calls.orderInserts[0].total_cost).toBe(30000);
+  });
+
+  it("accepts a sent total that agrees to the cent", async () => {
+    const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow });
+    await service(db).createOrder("rest-1", USER, { ...big, totalCost: 30000 });
+    expect(calls.orderInserts[0].total_cost).toBe(30000);
+  });
+
+  it("[REVERT-FAILS] the body refuses a negative total before the service sees it", async () => {
+    const dto = plainToInstance(CreateOrderDto, {
+      inventoryId: "11111111-1111-4111-8111-111111111111",
+      providerId: "22222222-2222-4222-8222-222222222222",
+      quantity: 6,
+      totalCost: -5,
+    });
+    const errors = await validate(dto);
+    expect(errors.some((e) => e.property === "totalCost")).toBe(true);
   });
 });
 

@@ -1,6 +1,9 @@
 import { Logger } from "@nestjs/common";
 import {
   decideApproval,
+  firstOrderToVendorById,
+  isFirstOrderToVendorAmong,
+  pricePremium,
   retrospective,
   type OrderUnderTest,
   type ThresholdRow,
@@ -102,6 +105,77 @@ describe("decideApproval", () => {
     const d = decideApproval(policy, order({ pricePremiumPct: 18.4 }));
     expect(d.firedBy).toEqual(["price_jump"]);
     expect(d.reasons[0]).toContain("18.4%");
+  });
+});
+
+describe("decideApproval — across currencies and price units (F-648)", () => {
+  const ceil = [row({ rule: "manager_ceiling", amountLimit: 2500 })];
+
+  it("[REVERT-FAILS] fires the ceiling for an order in another currency than the ceiling", () => {
+    const d = decideApproval(
+      ceil,
+      order({ total: 2400, currency: "GBP", ceilingCurrency: "USD" }),
+    );
+    expect(d.requiredRole).toBe("owner");
+    expect(d.reasons[0]).toMatch(/in GBP, while the 2500 ceiling/);
+  });
+
+  it("keeps the old reading when either currency is unknown", () => {
+    expect(
+      decideApproval(ceil, order({ total: 2400, currency: null, ceilingCurrency: "USD" }))
+        .requiredRole,
+    ).toBeNull();
+    expect(
+      decideApproval(ceil, order({ total: 2400, currency: "USD", ceilingCurrency: "USD" }))
+        .requiredRole,
+    ).toBeNull();
+  });
+
+  it("reports price_jump untestable when the prices cannot be compared", () => {
+    const d = decideApproval(
+      [row({ rule: "price_jump", percentLimit: 5 })],
+      order({ priceUncomparable: "the last price was in GBP and this one is in USD" }),
+    );
+    expect(d.requiredRole).toBeNull();
+    expect(d.untestable).toEqual(["price_jump"]);
+  });
+});
+
+describe("pricePremium", () => {
+  const perCase = { priceUom: "case" as const, pricePackSize: 12 };
+
+  it("[REVERT-FAILS] compares a bottle price with a case price per bottle", () => {
+    const r = pricePremium(
+      { price: 38, currency: "USD", priceUnit: null },
+      { price: 420, currency: "USD", priceUnit: perCase },
+    );
+    expect(r.uncomparable).toBeNull();
+    expect(r.pct).toBeCloseTo(8.571, 2);
+  });
+
+  it("refuses to compare across currencies", () => {
+    const r = pricePremium(
+      { price: 38, currency: "USD", priceUnit: null },
+      { price: 30, currency: "GBP", priceUnit: null },
+    );
+    expect(r.pct).toBeNull();
+    expect(r.uncomparable).toMatch(/GBP.*USD/);
+  });
+
+  it("refuses to compare a keg price with a bottle price", () => {
+    const r = pricePremium(
+      { price: 38, currency: "USD", priceUnit: null },
+      { price: 200, currency: "USD", priceUnit: { priceUom: "keg", pricePackSize: 1 } },
+    );
+    expect(r.pct).toBeNull();
+    expect(r.uncomparable).toMatch(/keg/);
+  });
+
+  it("has no premium without an earlier price", () => {
+    expect(pricePremium({ price: 38, currency: "USD", priceUnit: null }, null)).toEqual({
+      pct: null,
+      uncomparable: null,
+    });
   });
 });
 
@@ -260,6 +334,42 @@ describe("ApprovalThresholdsService", () => {
       wouldHaveFired: 1,
     });
     expect(out.retrospective.caveat).toContain("reads as new here");
+  });
+
+  it("[REVERT-FAILS] counts first orders by the gate's own test: a cancelled order and a cart's second line are not first (F-731)", async () => {
+    const { databaseService } = makeDb({
+      restaurant_approval_thresholds: [
+        {
+          rule: "new_vendor",
+          enabled: true,
+          amount_limit: null,
+          percent_limit: null,
+          required_role: "owner",
+          set_by: null,
+          updated_at: null,
+        },
+      ],
+      procurement_orders: [
+        // p1: a cancelled draft, then a two-line first cart — one first order.
+        { id: "x", status: "CANCELLED", provider_id: "p1", inventory_id: null, requested_at: "2026-09-01T08:00:00Z", created_at: "2026-09-01T08:00:00Z", total_cost: "10", final_price: null },
+        { id: "a", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z", total_cost: "10", final_price: null },
+        { id: "b", status: "PENDING", provider_id: "p1", inventory_id: null, requested_at: "2026-09-02T08:00:00Z", created_at: "2026-09-02T08:00:00Z", total_cost: "10", final_price: null },
+      ],
+      users: [],
+    });
+    const out = await new ApprovalThresholdsService(
+      databaseService,
+      makeAudit().service,
+    ).read("rest-1");
+
+    // Pre-fix the cancelled draft was "first" and both cart lines were not.
+    // Now the cancelled draft is still asked (it was first when written) and
+    // only the earliest live line after it is first: x and a, never b.
+    expect(out.retrospective.counts).toContainEqual({
+      rule: "new_vendor",
+      tested: 3,
+      wouldHaveFired: 2,
+    });
   });
 
   it("derives a price premium from the PREVIOUS price of the same item, in order", async () => {
@@ -436,5 +546,58 @@ describe("ApprovalThresholdsService — a failed name lookup is not an unsigned 
       userId: "u-9",
       name: "Deniz Aksoy",
     });
+  });
+});
+
+describe("the first order to a vendor — one test for the gate, the walk and the count (F-731)", () => {
+  const T = "2026-10-01T10:00:00Z";
+  const row = (id: string, status: string, requested_at: string | null, created_at = requested_at) => ({
+    id,
+    status,
+    provider_id: "p1",
+    requested_at,
+    created_at,
+  });
+
+  it("holds only the earliest line of a first cart, tie broken by created_at then id", () => {
+    const flags = firstOrderToVendorById([
+      row("c", "PENDING", T, "2026-10-01T10:00:02Z"),
+      row("b", "PENDING", T),
+      row("a", "PENDING", T),
+    ]);
+    expect(flags.get("a")).toBe(true);
+    expect(flags.get("b")).toBe(false);
+    expect(flags.get("c")).toBe(false);
+  });
+
+  it("a cancelled or turned-down earlier order does not make the vendor known", () => {
+    const flags = firstOrderToVendorById([
+      row("x", "CANCELLED", "2026-09-01T00:00:00Z"),
+      row("y", "rejected", "2026-09-02T00:00:00Z"),
+      row("z", "PENDING", T),
+    ]);
+    expect(flags.get("z")).toBe(true);
+    // A cancelled order is still asked the question; it just never answers it for others.
+    expect(flags.get("x")).toBe(true);
+  });
+
+  it("an order with no vendor is unknown, never 'not first'", () => {
+    const flags = firstOrderToVendorById([{ ...row("n", "PENDING", T), provider_id: null }]);
+    expect(flags.get("n")).toBeNull();
+  });
+
+  it("the gate's single-order form agrees with the ledger form", () => {
+    const rows = [row("a", "PENDING", T), row("b", "PENDING", T), row("x", "CANCELLED", "2026-01-01T00:00:00Z")];
+    const flags = firstOrderToVendorById(rows);
+    for (const r of rows) {
+      expect(isFirstOrderToVendorAmong(r, rows)).toBe(flags.get(r.id));
+    }
+  });
+
+  it("a page cut short says 'unknown' unless it reached this order", () => {
+    const self = row("s", "PENDING", T);
+    expect(isFirstOrderToVendorAmong(self, [row("x", "CANCELLED", "2026-01-01T00:00:00Z")], false)).toBeNull();
+    expect(isFirstOrderToVendorAmong(self, [row("x", "CANCELLED", "2026-01-01T00:00:00Z"), self], false)).toBe(true);
+    expect(isFirstOrderToVendorAmong(self, [row("p", "DELIVERED", "2026-01-01T00:00:00Z")], false)).toBe(false);
   });
 });

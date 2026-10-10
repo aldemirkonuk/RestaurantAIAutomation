@@ -1,4 +1,7 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import {
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import { ReceivingService } from "./receiving.service";
 import { ReceivingController } from "./receiving.controller";
 import { DatabaseService } from "../database/database.service";
@@ -136,8 +139,13 @@ function makeDb(opts: {
           error: null,
         }),
         maybeSingle: async () => {
+          // An order the door may count against unless the case says
+          // otherwise: the door now refuses a closed or unapproved one (F-647).
           if (tableName === "procurement_orders")
-            return { data: opts.order ?? null, error: null };
+            return {
+              data: opts.order ? { status: "CONFIRMED", ...opts.order } : null,
+              error: null,
+            };
           if (tableName === "restaurant_inventory")
             return { data: opts.item ?? null, error: null };
           if (tableName === "procurement_receipt_events") {
@@ -1598,7 +1606,7 @@ describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 028
     quantity: 16,
     bottles_total: 192,
     unit_type: "case",
-    status: "SENT",
+    status: "CONFIRMED",
     quantity_received: 0,
   };
 
@@ -1789,14 +1797,15 @@ describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 028
     });
   });
 
-  it("an order whose own rules refuse the status (23514) keeps the receipt, the stock, and its old time", async () => {
+  it("an order closed between the check and the status write (23514) keeps the receipt, the stock, and its old time", async () => {
     // A permanent refusal: a 503 would make the outbox re-send it forever.
+    // The order read as open; the trigger refused because it closed since.
     const {
       db,
       calls,
       order: row,
     } = makeDb({
-      order: { ...order, status: "CANCELLED", delivered_at: null },
+      order: { ...order, status: "CONFIRMED", delivered_at: null },
       orderUpdateError: (p) =>
         "status" in p
           ? {
@@ -1848,5 +1857,94 @@ describe("ReceivingController.door — the role comes from the token (ADR 0286)"
       restaurantId: "r1",
     });
     expect(service.recordDoorReceipt.mock.calls[0][0].role).toBeNull();
+  });
+});
+
+describe("recordDoorReceipt — a closed or unapproved order takes no count (F-647)", () => {
+  const base = { restaurantId: "r1", orderId: "o1", userId: "u1" };
+  const order = {
+    id: "o1",
+    order_number: "PO-1",
+    inventory_id: "inv1",
+    quantity: 2,
+    bottles_total: 24,
+    unit_type: "case",
+  };
+
+  it.each([
+    ["CANCELLED", /already cancelled/],
+    ["COMPLETED", /already completed/],
+    ["REJECTED", /already rejected/],
+    ["PENDING", /has not been approved yet/],
+    ["APPROVAL_NEEDED", /has not been approved yet/],
+  ])(
+    "[REVERT-FAILS] a %s order is refused before anything is booked",
+    async (status, words) => {
+      const { db, calls } = makeDb({ order: { ...order, status } });
+      const attempt = new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 1,
+        countedUom: "case",
+        idempotencyKey: `k-${status}`,
+      });
+      await expect(attempt).rejects.toBeInstanceOf(UnprocessableEntityException);
+      await expect(attempt).rejects.toMatchObject({
+        response: { reason: "order_not_receivable", status, message: expect.stringMatching(words) },
+      });
+      expect(calls.eventInserts).toHaveLength(0);
+      expect(calls.rpc).toHaveLength(0);
+      expect(calls.orderWrites).toHaveLength(0);
+    },
+  );
+
+  it("an unreadable order state is refused, never read as open", async () => {
+    const { db, calls } = makeDb({ order: { ...order, status: null } });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 1,
+        countedUom: "case",
+      }),
+    ).rejects.toMatchObject({ response: { reason: "order_not_receivable" } });
+    expect(calls.rpc).toHaveLength(0);
+  });
+
+  it.each(["APPROVED", "CONFIRMED", "IN_TRANSIT", "DELIVERED", "PARTIALLY_RECEIVED"])(
+    "a %s order still takes the count",
+    async (status) => {
+      const { db, calls } = makeDb({ order: { ...order, status } });
+      const r = await new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 1,
+        countedUom: "case",
+      });
+      expect(r.stockBooked).toBe(true);
+      expect(calls.rpc).toHaveLength(1);
+    },
+  );
+
+  it("a retry of a tap that landed while the order was open still goes through, so its stock can be repaired", async () => {
+    const { db, calls } = makeDb({
+      order: { ...order, status: "COMPLETED" },
+      events: [
+        {
+          id: "evt-landed",
+          idempotency_key: "k-landed",
+          order_id: "o1",
+          counted_qty_bottles: 12,
+          occurred_at: "2026-10-01T10:00:00.000Z",
+          occurred_at_basis: "server",
+        },
+      ],
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 1,
+      countedUom: "case",
+      idempotencyKey: "k-landed",
+    });
+    expect(r.alreadyRecorded).toBe(true);
+    expect(r.eventId).toBe("evt-landed");
+    expect(calls.eventInserts).toHaveLength(1);
   });
 });

@@ -23,6 +23,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const auth = vi.hoisted(() => ({ activeRestaurantId: 'rest-A', user: { userId: 'actor-A', restaurantId: 'rest-A' } }));
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 const shelf = vi.hoisted(() => ({ value: { data: [] as unknown[], isLoading: false, isError: false, error: null as unknown } }));
+const terms = vi.hoisted(() => ({ list: vi.fn() }));
 const vendorList = vi.hoisted(() => ({ value: { data: [] as unknown[], isLoading: false, isError: false, error: null as unknown } }));
 
 vi.mock('@/services/api/client', () => ({
@@ -31,6 +32,10 @@ vi.mock('@/services/api/client', () => ({
     post: (...args: unknown[]) => api.post(...args),
   },
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
+}));
+
+vi.mock('@/services/api/vendorTerms', () => ({
+  listVendorTerms: () => terms.list(),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -82,6 +87,8 @@ beforeEach(() => {
   localStorage.clear();
   api.get.mockReset();
   api.post.mockReset();
+  terms.list.mockReset();
+  terms.list.mockResolvedValue({ vendors: [], currency: { code: 'TRY', isColumnDefault: false } });
   api.get.mockResolvedValue({ data: { state: 'none', sentence: 'No agreed price with Kavaklıdere is on file for this item.' } });
   api.post.mockResolvedValue({ data: { id: 'ord-1', orderNumber: 'PO-118' } });
   shelf.value = { data: [ITEM, ITEM2], isLoading: false, isError: false, error: null };
@@ -452,5 +459,67 @@ describe('a seeded line — the wine and the bottles chosen on /inventory', () =
       </QueryClientProvider>,
     );
     expect(screen.queryAllByTestId('new-order-line')).toHaveLength(0);
+  });
+});
+
+/**
+ * F-649 — the composer shows a vendor's stated minimum order and warns when the
+ * draft is below it, without blocking. REVERT-FAILS: before this the sheet never
+ * read the vendor's terms, so a draft under the minimum placed in silence.
+ */
+describe("the vendor's minimum order", () => {
+  function minimum(value: number, source = 'stated') {
+    terms.list.mockResolvedValue({
+      vendors: [{ providerId: VENDOR.id, minimumOrder: { value, source } }],
+      currency: { code: 'TRY', isColumnDefault: false },
+    });
+  }
+  function price(line: ReturnType<typeof within>, amount: string) {
+    fireEvent.change(line.getByTestId('new-order-price'), { target: { value: amount } });
+    fireEvent.change(line.getByTestId('new-order-price-unit'), { target: { value: 'bottle' } });
+    fireEvent.change(line.getByTestId('new-order-currency'), { target: { value: 'TRY' } });
+  }
+
+  it('warns when the draft is below it, and still lets it be placed', async () => {
+    minimum(5000);
+    draw();
+    const line = await addLine(ITEM, '5');
+    price(line, '400');
+    const note = await screen.findByTestId('new-order-minimum');
+    expect(note).toHaveTextContent(/Kavaklıdere's minimum order is/);
+    expect(note).toHaveTextContent(/short of it/);
+    expect(note).toHaveTextContent(/You can still place it/);
+    expect(screen.getByTestId('new-order-place')).toBeEnabled();
+  });
+
+  it('says the draft meets it once it does', async () => {
+    minimum(1000);
+    draw();
+    const line = await addLine(ITEM, '5');
+    price(line, '400');
+    expect(await screen.findByTestId('new-order-minimum')).toHaveTextContent(/which meets it/);
+  });
+
+  it('says it cannot tell while a line has no price, rather than counting zero', async () => {
+    minimum(1000);
+    draw();
+    await addLine(ITEM, '5');
+    expect(await screen.findByTestId('new-order-minimum')).toHaveTextContent(/One line has no price in TRY yet/);
+  });
+
+  it('ignores a minimum that was only inferred from past orders', async () => {
+    minimum(5000, 'inferred');
+    draw();
+    const line = await addLine(ITEM, '5');
+    price(line, '400');
+    await waitFor(() => expect(terms.list).toHaveBeenCalled());
+    expect(screen.queryByTestId('new-order-minimum')).toBeNull();
+  });
+
+  it('says a failed read failed, never that there is no minimum', async () => {
+    terms.list.mockRejectedValue(new Error('503'));
+    draw();
+    await addLine(ITEM, '5');
+    expect(await screen.findByTestId('new-order-minimum')).toHaveTextContent(/could not be read/);
   });
 });

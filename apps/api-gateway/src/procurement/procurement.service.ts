@@ -143,9 +143,14 @@ import {
 import { ApprovalThresholdsService } from "../settings/approval-thresholds.service";
 import {
   decideApproval,
+  firstOrderToVendorById,
+  isFirstOrderToVendorAmong,
+  pricePremium,
   type ApprovalDecision,
   type OrderUnderTest,
+  type PricedOrder,
   type ThresholdRow,
+  type VendorOrderStamp,
 } from "../settings/approval-thresholds";
 import { OrganizationsService } from "../organizations/organizations.service";
 import {
@@ -187,9 +192,11 @@ import {
 import {
   ORDER_GOODS_ARRIVED_STATUSES,
   ORDER_TERMINAL_STATUSES,
+  decideReceiptCheck,
   decideTransition,
   readOrderStatus,
   refuseUnreadableStatus,
+  statusInWords,
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
 import {
@@ -271,6 +278,10 @@ const PENDING_APPROVAL_STATUSES = new Set<string>([
 ]);
 
 /**
+/** How many earlier orders to one vendor the first-order test reads (F-731). */
+const FIRST_ORDER_PAGE = 50;
+
+/**
  * The facts handed to `decideApproval` when the house has no rule switched on:
  * nothing is tested, so nothing is read. Every field is "unknown", and with no
  * enabled rule `decideApproval` neither fires nor reports anything untestable.
@@ -280,6 +291,22 @@ const NO_RULE_FACTS: OrderUnderTest = {
   isFirstOrderToVendor: null,
   pricePremiumPct: null,
 };
+
+/**
+ * An order row's agreed price as the `price_jump` rule reads it: the header
+ * price, the order's currency, and the line's stated price unit (F-648).
+ */
+function pricedOrder(row: {
+  final_price?: string | number | null;
+  currency?: string | null;
+  procurement_order_items?: unknown;
+}): PricedOrder {
+  return {
+    price: toFiniteNumber(row.final_price ?? null),
+    currency: row.currency ?? null,
+    priceUnit: foldOrderPriceUnit(embeddedOrderLines(row.procurement_order_items)),
+  };
+}
 
 /**
  * `numeric` comes back from PostgREST as a string. A value that is not a finite
@@ -1130,7 +1157,23 @@ export class ProcurementService {
         message: agreedTotal.message,
       });
     }
-    const totalCost = dto.totalCost ?? agreedTotal.total;
+    // The total is worked out here, never taken on the caller's word (F-732):
+    // the owner's ceiling and the seal both read `total_cost`, so a $1 total on
+    // 600 × $50 slipped a $30,000 order under a $2,500 ceiling. A caller total
+    // that agrees to the cent is accepted; one that does not is refused.
+    if (
+      dto.totalCost !== undefined &&
+      dto.totalCost !== null &&
+      Math.abs(dto.totalCost - agreedTotal.total) >= 0.005
+    ) {
+      throw new BadRequestException({
+        reason: "total_disagrees_with_price",
+        message:
+          `The total sent with this order ($${Number(dto.totalCost).toFixed(2)}) is not what the quantity at the agreed price comes to ($${agreedTotal.total.toFixed(2)}). ` +
+          "Nothing was ordered. Send it again without a total and it is worked out from the price.",
+      });
+    }
+    const totalCost = agreedTotal.total;
 
     // Dedup guard: a price/quantity change for the same wine+vendor should
     // update the existing open order, not spawn a second one. Match on
@@ -3514,11 +3557,14 @@ export class ProcurementService {
     // here and compared-and-set on the write, so an approval landing between
     // the two cannot be repriced after the fact.
     let pricedFromStatus: string | null = null;
+    let workedOutTotal: number | null = null;
     if (writesMoney) {
       const { data: current, error: readError } =
         await this.databaseService.supabase
           .from("procurement_orders")
-          .select("status")
+          .select(
+            "status, quantity, unit_type, bottles_total, final_price, procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
+          )
           .eq("restaurant_id", restaurantId)
           .eq("id", orderId)
           .maybeSingle();
@@ -3541,6 +3587,58 @@ export class ProcurementService {
         });
       }
       pricedFromStatus = status;
+
+      // F-743. The total is worked out here from the quantity and the price,
+      // the same way `createOrder` does (F-732), never written from the body:
+      // the ceiling and the seal both read `total_cost`, so a $1 total sent
+      // here slipped a pending $30,000 order under a $2,500 ceiling. A new
+      // price moves the total with it, and the approval that follows tests
+      // the total it will actually seal.
+      const row = current as Record<string, any>;
+      const quantity = Number(row.quantity);
+      const bottlesTotal = Number(row.bottles_total);
+      const units = resolveOrderUnits({
+        quantity,
+        unitType: row.unit_type,
+        bottlesPerUnit:
+          row.bottles_total != null && quantity > 0
+            ? bottlesTotal / quantity
+            : null,
+      });
+      const lines = embeddedOrderLines(row.procurement_order_items);
+      const agreedTotal = units.ok
+        ? agreementLineTotal({
+            price: dto.finalPrice ?? Number(row.final_price ?? 0),
+            stated: foldOrderPriceUnit(lines),
+            bottlesTotal: units.bottlesTotal,
+            quantity,
+            unitType: units.unitType,
+            opaque: units.opaque,
+            fees:
+              lines.length === 1
+                ? readAgreementFees(lines[0])
+                : NO_AGREEMENT_FEES,
+          })
+        : null;
+      if (!agreedTotal || !agreedTotal.ok) {
+        throw new BadRequestException({
+          reason: "order_total_not_worked_out",
+          message:
+            "This order's total could not be worked out from its quantity and price, so the price was not changed.",
+        });
+      }
+      if (
+        dto.totalCost != null &&
+        Math.abs(dto.totalCost - agreedTotal.total) >= 0.005
+      ) {
+        throw new BadRequestException({
+          reason: "total_disagrees_with_price",
+          message:
+            `The total sent with this change ($${Number(dto.totalCost).toFixed(2)}) is not what the quantity at the agreed price comes to ($${agreedTotal.total.toFixed(2)}). ` +
+            "Nothing was changed. Send it again without a total and it is worked out from the price.",
+        });
+      }
+      workedOutTotal = agreedTotal.total;
     }
 
     // D-06: Block location assignment while order is in a pending state.
@@ -3575,7 +3673,7 @@ export class ProcurementService {
       quoted_price: dto.quotedPrice ?? undefined,
       negotiated_price: dto.negotiatedPrice ?? undefined,
       final_price: dto.finalPrice ?? undefined,
-      total_cost: dto.totalCost ?? undefined,
+      total_cost: workedOutTotal ?? undefined,
       manager_notes: dto.managerNotes ?? undefined,
       rejection_reason: dto.rejectionReason ?? undefined,
       delivery_notes: dto.deliveryNotes ?? undefined,
@@ -4002,6 +4100,105 @@ export class ProcurementService {
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, "cancelled");
 
+    return order;
+  }
+
+  static readonly CLOSE_SHORT_NEEDS_A_REASON =
+    "Closing an order short has to say why. The reason is kept with the order " +
+    "and is the only account of why the rest never came. Nothing was changed.";
+
+  /**
+   * Close a short delivery for good (F-104): the bottles that came stay
+   * counted, the rest is no longer expected, and the order is COMPLETED.
+   *
+   * Before this there was no owner act that reached PARTIALLY_RECEIVED ->
+   * COMPLETED, although the transition table allows it — so a keg order or a
+   * short-shipped case sat open forever, and the next order for the same wine
+   * from the same vendor merged into it.
+   *
+   * A manager's or an owner's act, like a cancel, and with a reason like one.
+   * No seal: closing moves no money and books no stock — it stops waiting for
+   * goods, as the never-arrived credit claim opens a record without one. Only a
+   * PARTIALLY_RECEIVED order may be closed short; any other is refused in words.
+   */
+  async closeOrderShort(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    reason?: string,
+  ): Promise<OrderResponseDto> {
+    const spokenReason = (reason ?? "").trim();
+    if (spokenReason === "") {
+      throw new BadRequestException(ProcurementService.CLOSE_SHORT_NEEDS_A_REASON);
+    }
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may close an order could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was closed. This is a gateway fault, not a " +
+          "decision about this order.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "close an order short",
+    );
+
+    const { from } = await this.assertStatusTransition(
+      restaurantId,
+      orderId,
+      ProcurementOrderStatus.COMPLETED,
+    );
+    if (from !== ProcurementOrderStatus.PARTIALLY_RECEIVED) {
+      throw new UnprocessableEntityException({
+        reason: "close_short_needs_a_short_order",
+        message:
+          `Only an order that is partly received can be closed short. This one is ` +
+          `${statusInWords(from)}. Nothing was changed.`,
+      });
+    }
+
+    const order = await this.updateOrder(
+      restaurantId,
+      orderId,
+      { status: ProcurementOrderStatus.COMPLETED },
+      // The person was checked above; `updateOrder` asks again by name (F-300).
+      { statusTransitionAlreadyChecked: true, actorUserId: userId },
+    );
+
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("system_audit_log")
+        .insert({
+          actor_type: "user",
+          actor_id: userId,
+          action: "order_closed_short",
+          entity_type: "procurement_order",
+          entity_id: orderId,
+          changes: {
+            register: "orders",
+            subject: orderId,
+            from,
+            to: ProcurementOrderStatus.COMPLETED,
+            reason: spokenReason,
+          },
+          restaurant_id: restaurantId,
+          reason: spokenReason,
+        });
+      if (error) {
+        this.logger.error(
+          `order_closed_short happened but the audit row failed to write: ${error.message}. ` +
+            `Order ${orderId} IS closed and the log does not say why.`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `order_closed_short happened but the audit row threw: ${err?.message}. ` +
+          `Order ${orderId} IS closed and the log does not say why.`,
+      );
+    }
+
+    await this.emitOrderChangeEvent(restaurantId, userId, order, "updated");
     return order;
   }
 
@@ -4557,7 +4754,7 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, total_cost, provider_id, inventory_id, final_price, status",
+          "id, total_cost, provider_id, inventory_id, final_price, status, requested_at, created_at, currency, procurement_order_items(price_uom, price_pack_size)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -4589,6 +4786,10 @@ export class ProcurementService {
       inventory_id: string | null;
       final_price: string | number | null;
       status: string | null;
+      requested_at?: string | null;
+      created_at?: string | null;
+      currency?: string | null;
+      procurement_order_items?: unknown;
     };
 
     // The same facts "Waiting on you" flags from (ADR 0256): one builder, so
@@ -4597,6 +4798,7 @@ export class ProcurementService {
       restaurantId,
       orderId,
       row,
+      await this.readCeilingCurrency(restaurantId),
     );
 
     const decision = decideApproval(readout.thresholds, order);
@@ -4716,6 +4918,10 @@ export class ProcurementService {
       inventory_id: string | null;
       total_cost: string | number | null;
       final_price: string | number | null;
+      requested_at: string | null;
+      created_at: string | null;
+      currency: string | null;
+      procurement_order_items?: unknown;
     }>;
     try {
       pending = await readWholeWindow(
@@ -4724,7 +4930,7 @@ export class ProcurementService {
           this.databaseService.supabase
             .from("procurement_orders")
             .select(
-              "id, status, provider_id, inventory_id, total_cost, final_price",
+              "id, status, provider_id, inventory_id, requested_at, created_at, total_cost, final_price, currency, procurement_order_items(price_uom, price_pack_size)",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -4749,13 +4955,18 @@ export class ProcurementService {
     // With no rule switched on there is nothing for the facts to decide, so
     // the per-order reads are skipped, as "Waiting on you" skips them.
     const anyRuleOn = readout.thresholds.some((t) => t.enabled);
+    // One read of the house's currency for every order's ceiling test (F-648).
+    const ceilingCurrency = anyRuleOn
+      ? await this.readCeilingCurrency(restaurantId)
+      : null;
     const orders: typeof base.orders = [];
     for (const r of pending) {
       if (!PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase())) {
         continue;
       }
       const test = anyRuleOn
-        ? (await this.orderUnderTest(restaurantId, r.id, r)).test
+        ? (await this.orderUnderTest(restaurantId, r.id, r, ceilingCurrency))
+            .test
         : NO_RULE_FACTS;
       const decision: ApprovalDecision = decideApproval(
         readout.thresholds,
@@ -4832,6 +5043,11 @@ export class ProcurementService {
   /**
    * Has this house ordered from this vendor before THIS order?
    *
+   * Answered by `isFirstOrderToVendorAmong`, the test the /orders walk and the
+   * /settings retrospective use too (F-731): any other order to the vendor
+   * used to count, so a cancelled order, or the second line of the first cart,
+   * made the vendor "known" and the rule never fired.
+   *
    * `null` when it cannot be told — no vendor on the row, or a read that failed.
    * Never `false`: `decideApproval` treats `null` as untestable and refuses to
    * fire `new_vendor` on it, which is the difference between a rule and a rule
@@ -4840,18 +5056,40 @@ export class ProcurementService {
   private async isFirstOrderToVendor(
     restaurantId: string,
     orderId: string,
-    providerId: string | null,
+    row: {
+      provider_id: string | null;
+      status?: string | null;
+      requested_at?: string | null;
+      created_at?: string | null;
+    },
   ): Promise<boolean | null> {
-    if (!providerId) return null;
+    if (!row.provider_id) return null;
+    const self = {
+      id: orderId,
+      status: row.status ?? null,
+      requested_at: row.requested_at ?? null,
+      created_at: row.created_at ?? null,
+    };
     try {
-      const { count, error } = await this.databaseService.supabase
+      // Oldest first, in the helper's own order, so whatever came before this
+      // order is read before the page runs out.
+      let q = this.databaseService.supabase
         .from("procurement_orders")
-        .select("id", { count: "exact", head: true })
+        .select("id, status, requested_at, created_at")
         .eq("restaurant_id", restaurantId)
-        .eq("provider_id", providerId)
-        .neq("id", orderId);
-      if (error || count === null || count === undefined) return null;
-      return count === 0;
+        .eq("provider_id", row.provider_id);
+      if (self.requested_at) q = q.lte("requested_at", self.requested_at);
+      const { data, error } = await q
+        .order("requested_at", { ascending: true })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(FIRST_ORDER_PAGE);
+      if (error || !Array.isArray(data)) return null;
+      return isFirstOrderToVendorAmong(
+        self,
+        data as VendorOrderStamp[],
+        data.length < FIRST_ORDER_PAGE,
+      );
     } catch {
       return null;
     }
@@ -4875,27 +5113,63 @@ export class ProcurementService {
       provider_id: string | null;
       inventory_id: string | null;
       final_price: string | number | null;
+      status?: string | null;
+      requested_at?: string | null;
+      created_at?: string | null;
+      currency?: string | null;
+      procurement_order_items?: unknown;
     },
+    ceilingCurrency: string | null,
   ): Promise<{ test: OrderUnderTest; priceUnread: boolean }> {
     const isFirstOrderToVendor = await this.isFirstOrderToVendor(
       restaurantId,
       orderId,
-      row.provider_id,
+      row,
     );
     const premium = await this.readPricePremium(
       restaurantId,
       orderId,
       row.inventory_id,
-      toFiniteNumber(row.final_price),
+      pricedOrder(row),
     );
     return {
       test: {
         total: toFiniteNumber(row.total_cost),
         isFirstOrderToVendor,
         pricePremiumPct: premium.pct,
+        currency: row.currency ?? null,
+        ceilingCurrency,
+        priceUncomparable: premium.uncomparable,
       },
       priceUnread: premium.unread,
     };
+  }
+
+  /**
+   * The currency the house's ceiling is in: `restaurants.currency`, since
+   * `amount_limit` carries none of its own (F-648). `null` when unset or
+   * unreadable — the ceiling is then tested as before, and the failure logged.
+   */
+  private async readCeilingCurrency(
+    restaurantId: string,
+  ): Promise<string | null> {
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (error) {
+        this.logger.warn(
+          `The house's currency could not be read for the approval gate: ${error.message}. ` +
+            `The ceiling is tested without a currency.`,
+        );
+        return null;
+      }
+      return (data as { currency?: string | null } | null)?.currency ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -4911,29 +5185,34 @@ export class ProcurementService {
     restaurantId: string,
     orderId: string,
     inventoryId: string | null,
-    unitPrice: number | null,
-  ): Promise<{ pct: number | null; unread: boolean }> {
-    if (!inventoryId || unitPrice === null || unitPrice <= 0) {
-      return { pct: null, unread: false };
+    current: PricedOrder,
+  ): Promise<{ pct: number | null; unread: boolean; uncomparable: string | null }> {
+    if (!inventoryId || current.price === null || current.price <= 0) {
+      return { pct: null, unread: false, uncomparable: null };
     }
     try {
+      // `final_price` alone was compared raw, across price units and
+      // currencies (F-648): the prior order's own currency and line unit come
+      // with it, and `pricePremium` sets both per bottle before dividing.
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
-        .select("final_price, requested_at")
+        .select(
+          "final_price, requested_at, currency, procurement_order_items(price_uom, price_pack_size)",
+        )
         .eq("restaurant_id", restaurantId)
         .eq("inventory_id", inventoryId)
         .neq("id", orderId)
         .order("requested_at", { ascending: false })
         .limit(1);
-      if (error) return { pct: null, unread: true };
-      const prior = toFiniteNumber(
-        (data as Array<{ final_price: string | number | null }> | null)?.[0]
-          ?.final_price ?? null,
+      if (error) return { pct: null, unread: true, uncomparable: null };
+      const priorRow = (data as Array<Record<string, any>> | null)?.[0];
+      const premium = pricePremium(
+        current,
+        priorRow ? pricedOrder(priorRow) : null,
       );
-      if (prior === null || prior <= 0) return { pct: null, unread: false };
-      return { pct: ((unitPrice - prior) / prior) * 100, unread: false };
+      return { ...premium, unread: false };
     } catch {
-      return { pct: null, unread: true };
+      return { pct: null, unread: true, uncomparable: null };
     }
   }
 
@@ -6364,6 +6643,19 @@ export class ProcurementService {
       throw new NotFoundException(`Order ${orderId} not found`);
     }
 
+    // Only a delivery that arrived on a still-open order is checked (F-349,
+    // F-647). Before any write: on a closed order the stock corrections below
+    // ran a second time, and on one never delivered they ran before the
+    // status write was refused.
+    const check = decideReceiptCheck((orderRow as { status?: unknown }).status);
+    if (!check.allowed) {
+      throw new UnprocessableEntityException({
+        reason: "order_not_checkable",
+        status: check.from ?? null,
+        message: check.sentence,
+      });
+    }
+
     /*
      * ITEM A — STOCK PROCEEDS; THE PRICE IS REFUSED (founder, 2026-09-06 batch
      * 64: *"stock proceeds refuse the price at receving, and let them approve if
@@ -7306,9 +7598,12 @@ export class ProcurementService {
     // With no rule switched on there is nothing for the facts to decide, so
     // the per-order reads are skipped; `decideApproval` fires nothing either way.
     const anyRuleOn = Boolean(policy?.some((p) => p.enabled));
+    const ceilingCurrency = anyRuleOn
+      ? await this.readCeilingCurrency(restaurantId)
+      : null;
     for (const row of rows) {
       const facts = anyRuleOn
-        ? await this.orderUnderTest(restaurantId, row.id, row)
+        ? await this.orderUnderTest(restaurantId, row.id, row, ceilingCurrency)
         : { test: NO_RULE_FACTS, priceUnread: false };
       const inventory = Array.isArray(row.inventory)
         ? row.inventory[0]
@@ -7372,7 +7667,7 @@ export class ProcurementService {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "*, inventory:inventory_id(wine_name, stock_live, threshold_min), provider:provider_id(name)",
+        "*, inventory:inventory_id(wine_name, stock_live, threshold_min), provider:provider_id(name), procurement_order_items(price_uom, price_pack_size)",
       )
       .eq("restaurant_id", restaurantId)
       .in("status", [

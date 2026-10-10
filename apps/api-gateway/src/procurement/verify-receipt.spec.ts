@@ -463,6 +463,41 @@ describe("verifyReceipt — writes only columns that exist", () => {
 // ---------------------------------------------------------------------------
 // D2
 // ---------------------------------------------------------------------------
+describe("verifyReceipt — only an arrived, still-open order is checked (F-349, F-647)", () => {
+  it.each([
+    ["COMPLETED", /already completed/],
+    ["CANCELLED", /already cancelled/],
+    ["CONFIRMED", /Count the delivery at the door first/],
+    ["PENDING", /Count the delivery at the door first/],
+  ])(
+    "[REVERT-FAILS] a %s order is refused before any stock correction",
+    async (status, words) => {
+      const { db, calls } = makeDb({ orderRow: { ...deliveredOrder, status } });
+      const attempt = service(db).verifyReceipt(REST, ORDER, USER, {
+        adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "extras" }],
+      } as any);
+      await expect(attempt).rejects.toMatchObject({
+        response: { reason: "order_not_checkable", status, message: expect.stringMatching(words) },
+      });
+      expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+      expect(calls.orderUpdates).toHaveLength(0);
+    },
+  );
+
+  it("a PARTIALLY_RECEIVED order is still checked", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, status: "PARTIALLY_RECEIVED" },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+    } as any);
+    expect(calls.orderUpdates).toHaveLength(1);
+  });
+});
+
 describe("verifyReceipt — adjustments cannot reach another tenant", () => {
   it("refuses an adjustment naming another restaurant's inventory, and issues no RPC", async () => {
     const { db, calls } = makeDb({

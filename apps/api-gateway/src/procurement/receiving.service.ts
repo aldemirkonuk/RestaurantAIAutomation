@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
@@ -14,6 +15,7 @@ import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
 import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
+import { decideDoorCount } from "./order-transitions";
 import {
   explainStoredFactTime,
   resolveFactTime,
@@ -350,6 +352,38 @@ export class ReceivingService {
         input.clientCapturedAt ?? new Date().toISOString()
       }`;
 
+    // THE ORDER MUST BE ONE A DELIVERY CAN BE COUNTED AGAINST (F-647), checked
+    // BEFORE anything is written. A cancelled, completed or never-approved
+    // order used to take the bottles into live stock and only then refuse the
+    // status write, which was logged and swallowed — the door said "done" and
+    // the delivery left every queue. A 4xx, so the outbox parks it as refused
+    // rather than re-sending it forever (422, as every refused order move is).
+    //
+    // The one exception is a RETRY of a tap that already landed while the
+    // order was open (attempt one wrote the event, then the order was closed):
+    // its event exists, and the retry is the repair path below, not a new count.
+    const door = decideDoorCount(order.status);
+    if (!door.allowed) {
+      const { data: landed, error: landedErr } = await this.db
+        .getClient()
+        .from("procurement_receipt_events")
+        .select("id")
+        .eq("restaurant_id", input.restaurantId)
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+      if (landedErr) throw new Error(landedErr.message);
+      if (!landed) {
+        this.logger.warn(
+          `door receipt refused for order ${input.orderId}: the order is ${order.status ?? "unreadable"}`,
+        );
+        throw new UnprocessableEntityException({
+          reason: "order_not_receivable",
+          status: door.from ?? null,
+          message: door.sentence,
+        });
+      }
+    }
+
     const eventRow = {
       restaurant_id: input.restaurantId,
       order_id: input.orderId,
@@ -653,7 +687,8 @@ export class ReceivingService {
     // verified receipt, and closing on it would strand the bottle count that
     // catches the short case. This write's error used to be ignored. A refusal
     // from the order's own transition rules (SQLSTATE class 23 — the 23514 the
-    // status trigger raises on, say, a CANCELLED order) is permanent: a 503
+    // status trigger raises on an order closed between the check above and
+    // this write) is permanent: a 503
     // would only make the outbox re-send it forever, and the stock is already
     // booked. So it is logged loudly and the order is left as it was, which is
     // exactly what happened before, minus the silence. Anything else is a
