@@ -465,6 +465,45 @@ describe('paid leave is not a free week', () => {
       expect(api.reviewTimeOff).toHaveBeenCalledWith('t-ok', 'denied', undefined, undefined, 'approved'),
     );
   });
+
+  // F-1038: the decision moves the row, so the pressed button is gone.
+  it('says the decision aloud and keeps focus in the sheet when the row moves', async () => {
+    const pendingRow = {
+      id: 't1', member_id: 'm1', start_date: '2026-09-07', end_date: '2026-09-08', reason: null,
+      status: 'pending' as const, leave_type: 'unknown' as const, reviewed_by: null, created_at: '2026-09-01',
+    };
+    const sheet = (requests: (typeof pendingRow | Record<string, unknown>)[], onChanged = () => {}) => (
+      <TimeOffSheet
+        requests={requests as never}
+        failed={false}
+        members={[member()] as never}
+        weekStart="2026-09-07"
+        onClose={() => {}}
+        onChanged={onChanged}
+      />
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>{sheet([pendingRow])}</QueryClientProvider>,
+    );
+
+    const approve = screen.getByRole('button', { name: 'Approve as paid' });
+    expect(approve).toHaveAccessibleDescription('Ayşe Yılmaz');
+    approve.focus();
+    fireEvent.click(approve);
+    await vi.waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Ayşe Yılmaz: approved as paid.'),
+    );
+
+    // The page re-reads the file: the request is decided now.
+    rerender(
+      <QueryClientProvider client={qc}>
+        {sheet([{ ...pendingRow, status: 'approved', leave_type: 'paid' }])}
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Approve as paid' })).not.toBeInTheDocument();
+    await vi.waitFor(() => expect(screen.getByRole('status')).toHaveFocus());
+  });
 });
 
 // ── (item 71) an owner's pay is the owners', even from a manager who sees pay ──

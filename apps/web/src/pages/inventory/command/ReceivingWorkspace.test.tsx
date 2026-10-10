@@ -1194,3 +1194,41 @@ describe('ReceivingWorkspace — typed figures read by the house marks (F-1023)'
     expect(verifyOrderReceipt).not.toHaveBeenCalled()
   })
 })
+
+describe('ReceivingWorkspace — a keyboard and a screen reader can use it (F-1037)', () => {
+  it('opens as a named dialog with focus inside, and Escape closes it', async () => {
+    const user = userEvent.setup()
+    const { onClose } = renderWorkspace()
+
+    const dialog = screen.getByRole('dialog', { name: 'Match invoice' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps Tab inside the dialog', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+    const dialog = screen.getByRole('dialog', { name: 'Match invoice' })
+
+    await user.tab({ shift: true })
+    expect(dialog).toContainElement(document.activeElement as HTMLElement)
+    await user.tab()
+    expect(dialog).toContainElement(document.activeElement as HTMLElement)
+  })
+
+  it('names the price reason, the rejected reason and the note by their labels', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await enterInvoice(user, 24, 24)
+    await user.click(minusButtons()[0])
+    await user.click(plusButtons()[1])
+
+    expect(screen.getByRole('textbox', { name: 'Why accept this price?' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Why were 1 rejected?' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Note on this delivery' })).toBeInTheDocument()
+  })
+})

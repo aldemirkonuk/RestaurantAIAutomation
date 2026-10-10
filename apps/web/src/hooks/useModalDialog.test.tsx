@@ -93,4 +93,25 @@ describe('useModalDialog', () => {
     expect(outer).not.toHaveBeenCalled();
     portal.remove();
   });
+
+  it('an Escape a control inside already handled does not close the dialog (F-1037)', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <Modal onClose={onClose}>
+        <button
+          type="button"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') e.preventDefault();
+          }}
+        >
+          Open list
+        </button>
+      </Modal>,
+    );
+
+    screen.getByRole('button', { name: 'Open list' }).focus();
+    await user.keyboard('{Escape}');
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

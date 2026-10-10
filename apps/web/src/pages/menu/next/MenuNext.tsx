@@ -43,7 +43,7 @@
  * shown an empty add form that would 404 on submit.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -519,7 +519,8 @@ function EditRow({ line, saving, onSave, onCancel }: {
   return (
     <tr data-testid="menu-edit-row">
       <td>
-        <input className="cl-field cl-focus" aria-label={`Name of ${line.name}`} value={typed.name} onChange={set('name')} />
+        {/* Edit swaps the row out from under its button; focus follows into the form (F-1038). */}
+        <input className="cl-field cl-focus" aria-label={`Name of ${line.name}`} value={typed.name} onChange={set('name')} autoFocus />
       </td>
       <td>
         <input className="cl-field cl-focus" aria-label={`Section of ${line.name}`} value={typed.category} onChange={set('category')} style={{ width: 110 }} />
@@ -587,7 +588,7 @@ function PriceCell({ linePrice, housePrice, currency, kind }: {
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit }: {
+function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, focusEdit = false }: {
   line: MenuLine
   currency: string | null
   onDiscard: () => void
@@ -597,8 +598,14 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit }: 
   canDiscard: boolean
   // Edit in place (F-065): owners and managers only; null hides it.
   onEdit: (() => void) | null
+  // Back from Save or Cancel, the row's own Edit takes focus again (F-1038).
+  focusEdit?: boolean
 }) {
   const reason = line.status === 'flagged' ? flagReason(line.review_notes) : null;
+  const editRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (focusEdit) editRef.current?.focus();
+  }, [focusEdit]);
   return (
     <tr data-testid="menu-row">
       <td>{line.name}</td>
@@ -624,7 +631,7 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit }: 
       <td style={{ whiteSpace: 'nowrap' }}>
         {onEdit ? (
           <>
-            <button type="button" className="cl-btn cl-focus" onClick={onEdit} aria-label={`Edit ${line.name}`}>
+            <button ref={editRef} type="button" className="cl-btn cl-focus" onClick={onEdit} aria-label={`Edit ${line.name}`}>
               Edit
             </button>{' '}
           </>
@@ -678,6 +685,11 @@ function MenuPage() {
     });
   };
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [leftEditId, setLeftEditId] = useState<string | null>(null);
+  const leaveEdit = (id: string) => {
+    setLeftEditId(id);
+    setEditingId(null);
+  };
   const [edited, setEdited] = useState<{ name: string; outcome: EditOutcome } | null>(null);
 
   return (
@@ -778,14 +790,14 @@ function MenuPage() {
                           key={line.id}
                           line={line}
                           saving={edit.isPending}
-                          onCancel={() => setEditingId(null)}
+                          onCancel={() => leaveEdit(line.id)}
                           onSave={(changes) =>
                             edit.mutate(
                               { itemId: line.id, changes },
                               {
                                 onSuccess: (outcome) => {
                                   setEdited({ name: line.name, outcome });
-                                  if (!outcome.failed) setEditingId(null);
+                                  if (!outcome.failed) leaveEdit(line.id);
                                 },
                               },
                             )
@@ -797,10 +809,12 @@ function MenuPage() {
                         line={line}
                         currency={currency}
                         canDiscard={canManage}
+                        focusEdit={leftEditId === line.id}
                         onEdit={
                           canManage
                             ? () => {
                                 setEdited(null);
+                                setLeftEditId(null);
                                 setEditingId(line.id);
                               }
                             : null
