@@ -33,6 +33,8 @@ interface Props {
  * What one Actions tap did, in a line (F-568). The gateway only records the
  * request; nothing contacts the vendor yet (F-789), so no line says "started".
  * "Already asked" holds for 7 days (OPEN_SESSION_DAYS in the gateway).
+ * The buttons say "Record …" for the same reason: none of them reaches the
+ * vendor (F-804).
  */
 const NOT_YET = 'Mudavym does not contact the vendor about it yet.'
 
@@ -107,21 +109,21 @@ export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
                 disabled={actionPending}
                 className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                General Check-in
+                Record a check-in request
               </button>
               <button
                 onClick={() => outreachMutation.mutate({ type: 'promo_discovery', topic: 'current promotions', label: 'Promotions' })}
                 disabled={actionPending}
                 className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                Ask About Promos
+                Record a promotions request
               </button>
               <button
                 onClick={() => outreachMutation.mutate({ type: 'price_check', topic: 'updated pricing', label: 'Pricing' })}
                 disabled={actionPending}
                 className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                Request Updated Pricing
+                Record a pricing request
               </button>
               <hr className="border-gray-100" />
               <button
@@ -129,7 +131,7 @@ export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
                 disabled={actionPending}
                 className="w-full text-left px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
               >
-                Start Onboarding Flow
+                Record an onboarding request
               </button>
             </div>
           )}

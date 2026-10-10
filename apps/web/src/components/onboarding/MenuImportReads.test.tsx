@@ -109,4 +109,43 @@ describe('MenuCsvUpload', () => {
     expect(await screen.findByRole('button', { name: 'Import 3 lines' })).toBeInTheDocument()
     expect(screen.queryByText(/wines/i)).toBeNull()
   })
+
+  const pickScan = async (names: string[]) => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, {
+      target: { files: names.map((n) => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], n, { type: 'image/png' })) },
+    })
+    return screen.findByRole('button', { name: names.length > 1 ? `Import ${names.length} files` : 'Import the menu' })
+  }
+
+  it('lets a scan go after a read with no answer, so Import cannot send it twice (F-803)', async () => {
+    importMenu.mockRejectedValueOnce(Object.assign(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'), { request: {} }))
+    render(<MenuCsvUpload onSuccess={vi.fn()} />)
+    fireEvent.click(await pickScan(['page-1.png']))
+    expect(
+      await screen.findByText(
+        'No answer came back from the menu read. It may still be reading and keeping this menu: give it a few minutes and look for it under Menus kept before reading it again.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Import the menu' })).toBeNull()
+    expect(screen.getByText('Click to upload file')).toBeInTheDocument()
+    expect(screen.queryByText(/timeout|30000/)).toBeNull()
+    expect(importMenu).toHaveBeenCalledTimes(1)
+  })
+
+  it('names the files queued behind an unanswered scan as not read (F-803)', async () => {
+    importMenu.mockRejectedValueOnce({ response: { status: 502, data: {} } })
+    render(<MenuCsvUpload onSuccess={vi.fn()} />)
+    fireEvent.click(await pickScan(['page-1.png', 'page-2.png', 'page-3.png']))
+    expect(await screen.findByText(/The other 2 files were not read: choose them again\.$/)).toBeInTheDocument()
+    expect(importMenu).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the file when the server said why it did not read it (F-803)', async () => {
+    importMenu.mockRejectedValueOnce({ response: { status: 503, data: { message: 'Menu scan service temporarily unavailable' } } })
+    render(<MenuCsvUpload onSuccess={vi.fn()} />)
+    fireEvent.click(await pickScan(['page-1.png']))
+    expect(await screen.findByText('Menu scan service temporarily unavailable')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import the menu' })).toBeInTheDocument()
+  })
 })

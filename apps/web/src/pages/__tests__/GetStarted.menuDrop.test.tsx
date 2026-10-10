@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { AxiosError } from 'axios'
 
 const importMenu = vi.fn()
 
@@ -18,7 +19,8 @@ vi.mock('../../contexts/AuthContext', () => ({
     createFirstHouse: vi.fn().mockResolvedValue({ detailsLoaded: true }),
   }),
 }))
-vi.mock('../../services/api/client', () => ({
+vi.mock('../../services/api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/api/client')>()),
   apiClient: { patch: vi.fn().mockResolvedValue({}) },
 }))
 vi.mock('../../services/api/menus', () => ({
@@ -116,5 +118,43 @@ describe('GetStarted — the menu drop zone', () => {
     expect(click).toHaveBeenCalledTimes(1)
     expect(screen.queryByTestId('camera-panel')).toBeNull()
     expect(screen.getByRole('button', { name: /Use the camera/ })).toBeInTheDocument()
+  })
+
+  const unanswered = 'No answer came back from the menu read. It may still be reading and keeping this menu: give it a few minutes and look for it under Menus kept before reading it again.'
+  const timeout = () => Object.assign(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'), { request: {} })
+
+  it('the same page dropped again after a read with no answer is not read a second time (F-803)', async () => {
+    importMenu.mockRejectedValueOnce(timeout())
+    await toMenuStep()
+    const page = png('page-1.png')
+    drop([page])
+    expect(await screen.findByRole('alert')).toHaveTextContent(unanswered)
+    expect(screen.queryByText(/timeout|30000/)).toBeNull()
+    drop([page])
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(unanswered))
+    expect(importMenu).toHaveBeenCalledTimes(1)
+  })
+
+  it('a different page after a read with no answer is read (F-803)', async () => {
+    importMenu.mockRejectedValueOnce(timeout())
+    await toMenuStep()
+    drop([png('page-1.png')])
+    expect(await screen.findByRole('alert')).toHaveTextContent(unanswered)
+    drop([png('page-2.png')])
+    await waitFor(() => expect(importMenu).toHaveBeenCalledTimes(2))
+  })
+
+  it('the same page may be read again once the window has passed (F-803)', async () => {
+    importMenu.mockRejectedValueOnce(timeout())
+    await toMenuStep()
+    const page = png('page-1.png')
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+    drop([page])
+    expect(await screen.findByRole('alert')).toHaveTextContent(unanswered)
+    clock.mockReturnValue(now + 5 * 60 * 1000 + 1)
+    drop([page])
+    await waitFor(() => expect(importMenu).toHaveBeenCalledTimes(2))
+    clock.mockRestore()
   })
 })

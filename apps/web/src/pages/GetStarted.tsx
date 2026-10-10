@@ -15,6 +15,7 @@ import { getBrowserTimezone } from '../lib/browserTimezone'
 import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
+import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../lib/menuReadWithoutAnswer'
 import { SCAN_ACCEPT, isImageFile, isScannable, isTabular, resetFileInput } from '../lib/uploadAccept'
 
 type Step = 'you' | 'restaurant' | 'menu' | 'reading'
@@ -22,6 +23,12 @@ type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
 type MenuMethod = 'photo' | 'file' | 'typed' | null
 
 const roles: Role[] = ['Owner', 'General manager', 'Beverage lead', 'Chef']
+
+/**
+ * How long a read with no answer may still be running on the gateway: the
+ * model read alone may take 180 s, so five minutes covers it with room (F-803).
+ */
+const UNANSWERED_READ_WINDOW_MS = 5 * 60 * 1000
 
 function ArrivalShell({
   step,
@@ -81,6 +88,10 @@ export default function GetStarted() {
   const [saving, setSaving] = useState(false)
   const [dropping, setDropping] = useState(false)
   const menuPickerRef = useRef<HTMLInputElement>(null)
+  // The file whose read went out with no answer back, and when. The gateway
+  // may still be reading and keeping it, so the same file dropped again inside
+  // that window is not sent a second time (F-803).
+  const unansweredRead = useRef<{ key: string; at: number } | null>(null)
 
   const currency = useMemo(() => currencyForCountry(country), [country])
   // The browser's own zone, or undefined if it will not say (item 62,
@@ -219,6 +230,12 @@ export default function GetStarted() {
       }
       return
     }
+    const key = `${file.name}|${file.size}|${file.lastModified}`
+    const pending = unansweredRead.current
+    if (pending && pending.key === key && Date.now() - pending.at < UNANSWERED_READ_WINDOW_MS) {
+      setError(READ_WITHOUT_ANSWER)
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -234,6 +251,11 @@ export default function GetStarted() {
       const result = await importMenu('scan', { imageBase64: base64 })
       menuRead(result, { image: isImageFile(file) ? dataUrl : null })
     } catch (cause: any) {
+      if (readWithoutAnswer(cause)) {
+        unansweredRead.current = { key, at: Date.now() }
+        setError(READ_WITHOUT_ANSWER)
+        return
+      }
       setError(cause?.response?.data?.message || cause?.message || 'We could not read that menu.')
     } finally {
       setSaving(false)
