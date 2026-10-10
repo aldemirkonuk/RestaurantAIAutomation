@@ -34,6 +34,7 @@ import {
   type MenuImportResult,
   type MenuVersion,
 } from '../../../services/api/menus';
+import { isUnconfirmedWrite } from '../../../services/api/client';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
 
@@ -47,6 +48,16 @@ export function reasonOf(err: unknown): string {
   if (typeof m === 'string' && m) return m;
   if (Array.isArray(m) && m.length) return String(m[0]);
   return e?.message || 'no reason was given';
+}
+
+/**
+ * True when a menu read went out and no answer came back (a timeout, a dropped
+ * line, or a server failure with no words of its own). The gateway keeps the
+ * read whatever happened to the page, so this is never "not read" (F-567).
+ */
+export function readWithoutAnswer(err: unknown): boolean {
+  const m = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  return isUnconfirmedWrite(err) && !(typeof m === 'string' && m);
 }
 
 function day(iso: string | null): string {
@@ -164,6 +175,11 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
       setPlanning(false);
       onRead();
     },
+    // No answer may still mean the menu was read and kept: fetch the list
+    // again so it shows up there instead of being uploaded a second time.
+    onError: (err) => {
+      if (readWithoutAnswer(err)) onRead();
+    },
   });
 
   const submit = (e: FormEvent) => {
@@ -210,7 +226,9 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
       ) : null}
       {read.isError ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-error">
-          The menu was not read: {reasonOf(read.error)}.
+          {readWithoutAnswer(read.error)
+            ? 'No answer came back from the menu read. It may still be reading and keeping this menu: give it a few minutes and look for it under Menus kept before reading it again.'
+            : `The menu was not read: ${reasonOf(read.error)}.`}
         </p>
       ) : null}
       {result ? (

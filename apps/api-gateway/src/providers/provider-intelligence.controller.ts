@@ -19,6 +19,9 @@ import { DatabaseService } from "../database/database.service";
 
 type AuthUser = { userId?: string; restaurantId?: string | null };
 
+/** How long a recorded vendor request counts as still asked (F-789). */
+export const OPEN_SESSION_DAYS = 7;
+
 /**
  * The caller's house, from the verified token and nowhere else. A session that
  * names no house has no provider intelligence of its own to read, so it is
@@ -334,21 +337,26 @@ export class ProviderIntelligenceController {
         providerId,
         restaurantId,
       );
-      // This publishes an event that the ProviderConversationAgent picks up
-      const { error } = await this.databaseService.supabase
-        .from("provider_conversation_sessions")
-        .insert({
-          provider_id: providerId,
-          restaurant_id: restaurantId,
-          session_type: body.outreachType || "relationship_building",
-          status: "active",
-          initiated_by: "manual_outreach",
-          intent: { outreach_type: body.outreachType, topic: body.topic },
-        });
+      // This only records the request as a session row. Nothing on this path
+      // publishes provider.outreach_scheduled, the ProviderConversationAgent's
+      // only outreach trigger, so no vendor is contacted yet (F-789).
+      const { sessionId, alreadyOpen } = await this.openSessionOnce({
+        provider_id: providerId,
+        restaurant_id: restaurantId,
+        session_type: body.outreachType || "relationship_building",
+        status: "active",
+        initiated_by: "manual_outreach",
+        intent: { outreach_type: body.outreachType, topic: body.topic },
+      });
 
-      if (error) throw error;
-
-      return { success: true, message: "Outreach scheduled" };
+      return {
+        success: true,
+        sessionId,
+        alreadyOpen,
+        message: alreadyOpen
+          ? "You already asked for this in the last 7 days. Nothing new was recorded."
+          : "Request recorded. Mudavym does not contact the vendor about it yet.",
+      };
     } catch (error) {
       rethrow(error, "Failed to trigger outreach");
     }
@@ -367,23 +375,71 @@ export class ProviderIntelligenceController {
         providerId,
         restaurantId,
       );
-      const { error } = await this.databaseService.supabase
-        .from("provider_conversation_sessions")
-        .insert({
-          provider_id: providerId,
-          restaurant_id: restaurantId,
-          session_type: "onboarding",
-          status: "active",
-          initiated_by: "onboarding",
-          intent: { intent_type: "onboarding" },
-        });
+      const { sessionId, alreadyOpen } = await this.openSessionOnce({
+        provider_id: providerId,
+        restaurant_id: restaurantId,
+        session_type: "onboarding",
+        status: "active",
+        initiated_by: "onboarding",
+        intent: { intent_type: "onboarding" },
+      });
 
-      if (error) throw error;
-
-      return { success: true, message: "Onboarding conversation initiated" };
+      return {
+        success: true,
+        sessionId,
+        alreadyOpen,
+        message: alreadyOpen
+          ? "You already asked for onboarding in the last 7 days. Nothing new was recorded."
+          : "Onboarding request recorded. Mudavym does not contact the vendor about it yet.",
+      };
     } catch (error) {
       rethrow(error, "Failed to trigger onboarding");
     }
+  }
+
+  /**
+   * One active session per vendor and kind (F-568). A second tap, or a retry
+   * whose first answer was lost, gets the session already open instead of a
+   * new one: the agent reads only the newest active session, so every extra
+   * row was an orphan. Two requests at the same instant can still both
+   * insert; nothing in the table forbids it.
+   *
+   * Only a session opened in the last OPEN_SESSION_DAYS counts (F-789):
+   * nothing closes these rows, so without the bound one tap would answer
+   * "already asked" for this vendor and kind forever. An older active row is
+   * treated as closed and a fresh one is recorded.
+   */
+  private async openSessionOnce(row: {
+    provider_id: string;
+    restaurant_id: string;
+    session_type: string;
+    status: "active";
+    initiated_by: string;
+    intent: Record<string, unknown>;
+  }): Promise<{ sessionId: string; alreadyOpen: boolean }> {
+    const sessions = () =>
+      this.databaseService.supabase.from("provider_conversation_sessions");
+    const { data: open, error: readError } = await sessions()
+      .select("id")
+      .eq("provider_id", row.provider_id)
+      .eq("restaurant_id", row.restaurant_id)
+      .eq("session_type", row.session_type)
+      .eq("status", "active")
+      .gte(
+        "created_at",
+        new Date(Date.now() - OPEN_SESSION_DAYS * 86_400_000).toISOString(),
+      )
+      .limit(1)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (open) return { sessionId: open.id, alreadyOpen: true };
+
+    const { data: created, error } = await sessions()
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) throw error;
+    return { sessionId: created.id, alreadyOpen: false };
   }
 
   // =========================================================================

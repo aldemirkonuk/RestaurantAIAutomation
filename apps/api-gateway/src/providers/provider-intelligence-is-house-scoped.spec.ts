@@ -1,5 +1,8 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
-import { ProviderIntelligenceController } from "./provider-intelligence.controller";
+import {
+  OPEN_SESSION_DAYS,
+  ProviderIntelligenceController,
+} from "./provider-intelligence.controller";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 
 /**
@@ -80,6 +83,10 @@ function makeSupabase(seed: Record<string, Row[]>) {
       rows = rows.filter((r) => Number(r[col]) > val);
       return q;
     };
+    q.gte = (col: string, val: string) => {
+      rows = rows.filter((r) => String(r[col]) >= String(val));
+      return q;
+    };
     q.lte = (col: string, val: string) => {
       rows = rows.filter((r) => String(r[col]) <= String(val));
       return q;
@@ -98,7 +105,12 @@ function makeSupabase(seed: Record<string, Row[]>) {
       return q;
     };
     q.insert = (payload: Row) => {
-      const row = { id: `new-${table}`, ...payload };
+      // created_at stands in for the column's DEFAULT now().
+      const row = {
+        id: `new-${table}`,
+        created_at: new Date().toISOString(),
+        ...payload,
+      };
       (tables[table] = tables[table] ?? []).push(row);
       inserted.push({ table, row });
       rows = [row];
@@ -591,6 +603,99 @@ describe("provider intelligence answers only for the caller's house", () => {
     ).toEqual([
       ["provider_conversation_sessions", PROV_A, HOUSE_A],
       ["provider_conversation_sessions", PROV_A, HOUSE_A],
+    ]);
+  });
+
+  it("outreach and onboarding: a second tap returns the session already open instead of opening another (F-568)", async () => {
+    const { controller, supabase } = setup();
+
+    const first = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "price_check", topic: "updated pricing" },
+      userA,
+    );
+    const again = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "price_check", topic: "updated pricing" },
+      userA,
+    );
+    expect(first.alreadyOpen).toBe(false);
+    expect(again.alreadyOpen).toBe(true);
+    expect(again.sessionId).toBe(first.sessionId);
+
+    // A different kind for the same vendor is its own session.
+    const promos = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "promo_discovery" },
+      userA,
+    );
+    expect(promos.alreadyOpen).toBe(false);
+
+    await controller.triggerOnboarding(PROV_A, userA);
+    const onboardAgain = await controller.triggerOnboarding(PROV_A, userA);
+    expect(onboardAgain.alreadyOpen).toBe(true);
+
+    expect(
+      supabase.inserted.map((i) => i.row.session_type),
+    ).toEqual(["price_check", "promo_discovery", "onboarding"]);
+  });
+
+  it("outreach and onboarding: say the request was recorded and that no vendor is contacted yet (F-789)", async () => {
+    const { controller } = setup();
+
+    const outreach = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "price_check" },
+      userA,
+    );
+    const onboard = await controller.triggerOnboarding(PROV_A, userA);
+    for (const r of [outreach, onboard]) {
+      expect(r.message).toMatch(/recorded/);
+      expect(r.message).toMatch(/does not contact the vendor/);
+      expect(r.message).not.toMatch(/scheduled|initiated|under way/i);
+    }
+  });
+
+  it("outreach: a request older than the bound no longer counts as already asked (F-789)", async () => {
+    const { controller, supabase } = setup();
+    const daysAgo = (d: number) =>
+      new Date(Date.now() - d * 86_400_000).toISOString();
+    supabase.tables.provider_conversation_sessions.push(
+      {
+        id: "stale-price",
+        provider_id: PROV_A,
+        restaurant_id: HOUSE_A,
+        session_type: "price_check",
+        status: "active",
+        created_at: daysAgo(OPEN_SESSION_DAYS + 1),
+      },
+      {
+        id: "fresh-promo",
+        provider_id: PROV_A,
+        restaurant_id: HOUSE_A,
+        session_type: "promo_discovery",
+        status: "active",
+        created_at: daysAgo(OPEN_SESSION_DAYS - 1),
+      },
+    );
+
+    const price = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "price_check" },
+      userA,
+    );
+    expect(price.alreadyOpen).toBe(false);
+    expect(price.sessionId).not.toBe("stale-price");
+
+    const promo = await controller.triggerOutreach(
+      PROV_A,
+      { outreachType: "promo_discovery" },
+      userA,
+    );
+    expect(promo.alreadyOpen).toBe(true);
+    expect(promo.sessionId).toBe("fresh-promo");
+    expect(supabase.inserted.map((i) => i.row.session_type)).toEqual([
+      "price_check",
     ]);
   });
 
