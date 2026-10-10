@@ -10,11 +10,19 @@ import { ErrorState } from "@/components/ui/StateViews";
 import { SparklineBlock } from "@/components/cellar/Sparkline";
 import { ProvenanceStitch } from "@/components/cellar/ProvenanceStitch";
 import { color, space } from "@/design/tokens";
-import { useInventoryItem, useItemActivity } from "@/api/queries";
+import {
+  useHouseMoneyFrame,
+  useInventoryItem,
+  useItemActivity,
+} from "@/api/queries";
+import { houseMoney, type HouseMoneyFrame } from "@/lib/houseMoney";
 
-function money(value: number | null | undefined): string | null {
+function money(
+  value: number | null | undefined,
+  house: HouseMoneyFrame,
+): string | null {
   if (value == null || !Number.isFinite(Number(value))) return null;
-  return `$${Number(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  return houseMoney(Number(value), house, { maxFractionDigits: 2 });
 }
 
 export default function WineDetailScreen() {
@@ -23,6 +31,7 @@ export default function WineDetailScreen() {
   const { width } = useWindowDimensions();
   const { data: item, isLoading, isError, refetch } = useInventoryItem(id);
   const { data: activity } = useItemActivity(id);
+  const house = useHouseMoneyFrame();
 
   const contentWidth = width - space.lg * 2 - space.lg * 2;
 
@@ -46,7 +55,7 @@ export default function WineDetailScreen() {
   if (item?.vintage) facts.push({ label: "Vintage", value: String(item.vintage) });
   if (item?.region) facts.push({ label: "Region", value: String(item.region) });
   if (item?.varietal) facts.push({ label: "Varietal", value: String(item.varietal) });
-  const wac = money(item?.wac);
+  const wac = money(item?.wac, house);
   if (wac) {
     facts.push({
       label: item?.costProvenance === "invoice" ? "Cost (invoice)" : "Cost (est.)",

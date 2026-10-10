@@ -259,12 +259,14 @@ export class MobileService {
     restaurantId: string,
     now: Date = new Date(),
   ): Promise<TodayPulseResponse> {
-    const [sales, feed] = await Promise.all([
+    const [sales, feed, house] = await Promise.all([
       this.readTonightSales(restaurantId, now).catch((e) => {
         this.logger.warn(`pulse sales read failed: ${e?.message}`);
         return null;
       }),
       this.getFeed(userId, restaurantId).catch(() => null),
+      // The phone prints every money figure in these (F-885); never throws.
+      readHouseMoney(this.databaseService.supabase, restaurantId),
     ]);
 
     const salesState: PulseSalesState = sales?.state ?? "unread";
@@ -289,6 +291,8 @@ export class MobileService {
       windowStart: sales?.windowStart ?? null,
       windowEnd: now.toISOString(),
       generatedAt: new Date().toISOString(),
+      currency: house.currency,
+      locale: house.locale,
     };
   }
 

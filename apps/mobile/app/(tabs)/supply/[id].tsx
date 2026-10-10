@@ -19,6 +19,7 @@ import { haptic } from "@/design/haptics";
 import {
   feedKey,
   pulseKey,
+  useHouseMoneyFrame,
   useOrder,
   useOrderConversations,
 } from "@/api/queries";
@@ -30,6 +31,7 @@ export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: order, isLoading, isError, refetch } = useOrder(id);
   const { data: conversations } = useOrderConversations(id);
+  const house = useHouseMoneyFrame();
 
   const approved = useCallback(() => {
     void refetch();
@@ -74,7 +76,7 @@ export default function OrderDetailScreen() {
   // DELIVERED counts the truck; PARTIALLY_RECEIVED adds its invoice (F-589).
   const receiveLabel = order ? receiveActionLabel(order.status) : null;
   const step = order ? timelineIndex(order.status) : 0;
-  const amount = order ? orderAmount(order) : null;
+  const amount = order ? orderAmount(order, house) : null;
 
   return (
     <Screen>

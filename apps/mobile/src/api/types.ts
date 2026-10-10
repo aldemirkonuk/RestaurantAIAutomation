@@ -62,6 +62,13 @@ export interface TodayPulse {
   windowStart: string | null;
   windowEnd: string;
   generatedAt: string;
+  /**
+   * The house's money (`restaurants.currency`) and its formats tag, for every
+   * money figure on the phone (F-885). null = not recorded: the figure prints
+   * with no symbol, never as dollars. Absent from an older gateway.
+   */
+  currency?: string | null;
+  locale?: string | null;
 }
 
 export interface InventoryItem {

@@ -21,12 +21,10 @@ import {
   readState,
   resolvePulseStripView,
 } from "@/components/today/pulseStripView";
+import { houseMoney } from "@/lib/houseMoney";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
-function money(value: number): string {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
 
 function itemName(i: InventoryItem): string {
   return String(i.wineName ?? i.wine_name ?? "Unnamed");
@@ -48,6 +46,8 @@ const CATEGORY_LABEL: Record<string, string> = {
 export default function InsightsScreen() {
   const router = useRouter();
   const pulse = useTodayPulse();
+  // F-885: the house's money and grouping, never a defaulted dollar.
+  const money = (value: number) => houseMoney(value, pulse.data);
   const inventory = useInventory();
   const summary = useInventorySummary();
   const insights = useInsightFeed();
