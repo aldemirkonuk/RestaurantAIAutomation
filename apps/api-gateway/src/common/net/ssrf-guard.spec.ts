@@ -1,9 +1,13 @@
+import { lookup } from "node:dns/promises";
 import {
   SsrfBlockedError,
   assertPublicHttpTarget,
   isBlockedAddress,
   safeFetch,
 } from "./ssrf-guard";
+
+jest.mock("node:dns/promises", () => ({ lookup: jest.fn() }));
+const lookupMock = lookup as unknown as jest.Mock;
 
 /**
  * OD-54 — `vendor-page-extractor.service.ts` fetched a user-supplied URL with
@@ -28,6 +32,12 @@ describe("isBlockedAddress", () => {
     ["fe80::1", "IPv6 link-local"],
     ["::ffff:127.0.0.1", "a private v4 wearing a v6 costume"],
     ["::ffff:169.254.169.254", "metadata via v4-mapped v6"],
+    ["::ffff:7f00:1", "v4-mapped loopback in the hex form new URL() writes"],
+    ["::ffff:a9fe:a9fe", "v4-mapped metadata, hex form"],
+    ["::127.0.0.1", "IPv4-compatible loopback"],
+    ["::a9fe:a9fe", "IPv4-compatible metadata, hex form"],
+    ["64:ff9b::a9fe:a9fe", "NAT64 to the metadata address"],
+    ["2002:7f00:1::", "6to4 relay on loopback"],
     ["not-an-ip", "refuse what cannot be parsed"],
   ])("blocks %s (%s)", (ip) => {
     expect(isBlockedAddress(ip)).toBe(true);
@@ -58,6 +68,32 @@ describe("assertPublicHttpTarget", () => {
     await expect(
       assertPublicHttpTarget(new URL("http://[::1]:8080/")),
     ).rejects.toThrow(/non-public/);
+  });
+
+  // F-474: every literal spelling of a private v4 inside v6 brackets, read
+  // through new URL() the way a caller hands it over, not as a bare string.
+  it.each([
+    "http://[::ffff:127.0.0.1]/",
+    "http://[::ffff:7f00:1]/",
+    "http://[::ffff:169.254.169.254]/latest/meta-data/",
+    "http://[::ffff:a9fe:a9fe]/latest/meta-data/",
+    "http://[::127.0.0.1]/",
+    "http://[64:ff9b::a9fe:a9fe]/",
+    "http://[0:0:0:0:0:ffff:7f00:0001]/",
+  ])("refuses the v4-in-v6 literal %s", async (u) => {
+    await expect(assertPublicHttpTarget(new URL(u))).rejects.toThrow(
+      /non-public/,
+    );
+  });
+
+  it("refuses a hostname whose resolved address is v4-mapped loopback", async () => {
+    lookupMock.mockResolvedValueOnce([
+      { address: "93.184.216.34", family: 4 },
+      { address: "::ffff:7f00:1", family: 6 },
+    ]);
+    await expect(
+      assertPublicHttpTarget(new URL("https://vendor.example/")),
+    ).rejects.toThrow(/resolves to the non-public address ::ffff:7f00:1/);
   });
 
   it.each(["file:///etc/passwd", "gopher://x/", "ftp://x/"])(
@@ -123,6 +159,34 @@ describe("safeFetch — the redirect hole", () => {
     await expect(safeFetch("https://8.8.8.8/a")).rejects.toThrow(
       /non-public address/,
     );
+  });
+
+  it("blocks a redirect to a v4-mapped metadata literal (F-474)", async () => {
+    stubFetch({
+      "https://8.8.8.8/start": {
+        status: 302,
+        location: "http://[::ffff:169.254.169.254]/latest/meta-data/",
+      },
+    });
+    await expect(safeFetch("https://8.8.8.8/start")).rejects.toThrow(
+      /non-public address/,
+    );
+  });
+
+  it("blocks a redirect to a hostname that RESOLVES to a private address", async () => {
+    lookupMock.mockResolvedValueOnce([{ address: "10.0.0.5", family: 4 }]);
+    stubFetch({
+      "https://8.8.8.8/start": {
+        status: 302,
+        location: "https://internal.vendor.example/admin",
+      },
+    });
+    await expect(safeFetch("https://8.8.8.8/start")).rejects.toThrow(
+      /resolves to the non-public address 10\.0\.0\.5/,
+    );
+    expect(lookupMock).toHaveBeenCalledWith("internal.vendor.example", {
+      all: true,
+    });
   });
 
   it("resolves a RELATIVE Location against the current hop", async () => {
