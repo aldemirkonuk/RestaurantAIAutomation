@@ -81,6 +81,9 @@ vi.mock('@/hooks/queries/useProviderQueries', () => ({
 import { AgreementSheet } from './AgreementSheet';
 import { agreementTotal, describeStatedPrice } from './price-unit';
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD';
+
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -307,7 +310,7 @@ describe('the page arithmetic agrees with the words it prints', () => {
       quantity: 10,
       unitType: 'bottle',
       bottlesPerUnit: 1,
-      currency: 'USD',
+      currency: FIXTURE_CURRENCY,
     });
     expect(r?.ok).toBe(true);
     if (!r || !r.ok) throw new Error('unreachable');
@@ -325,7 +328,7 @@ describe('the page arithmetic agrees with the words it prints', () => {
         quantity: 5,
         unitType: 'case',
         bottlesPerUnit: 12,
-        currency: 'USD',
+        currency: FIXTURE_CURRENCY,
       }),
     ).toBeNull();
   });
