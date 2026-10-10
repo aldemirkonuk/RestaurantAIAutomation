@@ -541,7 +541,7 @@ export class IntegrationsOauthService {
     // that started the flow (on the canonical app origin: the row's own origin
     // is the thing that may be refused below), where the notice reads it.
     const startedAt = `${this.webAppUrl()}${this.safeReturnPath(stateRow.return_path)}`;
-    const refused = (reason: string) =>
+    const refused = (reason: IntegrationReturnReason) =>
       this.resultUrl(startedAt, "error", reason, stateRow.integration_id);
     if (params.provider !== stateRow.provider || (!params.code && !params.error)) {
       return refused("invalid_callback");
