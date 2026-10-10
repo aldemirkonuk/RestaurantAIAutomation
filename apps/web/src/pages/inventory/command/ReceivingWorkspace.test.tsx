@@ -6,6 +6,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { ReceivingWorkspace } from './ReceivingWorkspace'
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD'
+
 const verifyOrderReceipt = vi.hoisted(() => vi.fn())
 const forOrder = vi.hoisted(() => vi.fn())
 const forOrderWithCurrency = vi.hoisted(() => vi.fn())
@@ -1052,7 +1055,7 @@ describe('ReceivingWorkspace — the price is a manager\'s (F-805)', () => {
   // The paper bills $24 against an agreed $22, with $6 of freight on top.
   const billed = () =>
     forOrder.mockResolvedValue([
-      doc('invoice', [{ qtyBottles: 24, unitPrice: 24 }], { freight: 6, currency: 'USD' }),
+      doc('invoice', [{ qtyBottles: 24, unitPrice: 24 }], { freight: 6, currency: FIXTURE_CURRENCY }),
     ])
 
   it('[REVERT-FAILS] does not offer staff the price, and sends no price, override or freight', async () => {

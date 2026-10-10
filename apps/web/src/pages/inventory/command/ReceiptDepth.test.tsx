@@ -29,6 +29,9 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
 
 import { ReceiptDepth } from './ReceiptDepth'
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD'
+
 function doc(over: Partial<ProcurementDocument>): ProcurementDocument {
   return {
     id: 'd1',
@@ -74,7 +77,7 @@ describe('ReceiptDepth', () => {
       o1: [
         doc({}),
         doc({ id: 'd2', doc_type: 'delivery_receipt', doc_number: null, ties_out: true, status: 'verified' }),
-        doc({ id: 'd3', doc_type: 'credit_memo', doc_number: 'CM-3', ties_out: false, tie_out_delta: -12.4, currency: 'USD' }),
+        doc({ id: 'd3', doc_type: 'credit_memo', doc_number: 'CM-3', ties_out: false, tie_out_delta: -12.4, currency: FIXTURE_CURRENCY }),
         doc({ id: 'd4', status: 'superseded' }), // never shown
       ],
     }

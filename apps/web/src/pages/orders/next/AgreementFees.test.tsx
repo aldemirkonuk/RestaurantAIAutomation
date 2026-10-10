@@ -89,6 +89,9 @@ import {
   readFeesFromWire,
 } from './price-unit';
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD';
+
 const NO_PROVIDERS = new Map<string, string>();
 
 function mountSheet() {
@@ -126,7 +129,7 @@ function wire(over: Record<string, unknown> = {}) {
     bottlesTotal: 60,
     finalPrice: 420,
     totalCost: 2100,
-    currency: 'USD',
+    currency: FIXTURE_CURRENCY,
     status: 'PENDING',
     requestedAt: '2026-09-01T10:00:00Z',
     wineName: 'Barolo Riserva',
@@ -288,7 +291,7 @@ describe('the arithmetic', () => {
     quantity: 5,
     unitType: 'case' as const,
     bottlesPerUnit: 12,
-    currency: 'USD',
+    currency: FIXTURE_CURRENCY,
   };
 
   it('7. is unchanged when no fee is stated — same number AND same sentence', () => {

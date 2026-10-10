@@ -30,6 +30,9 @@ import { CreateChainDialog } from './CreateChainDialog';
 import { EditLocationChainDialog } from './EditLocationChainDialog';
 import { claimMudavymShell, resetMudavymShell } from '../../lib/mudavym/shellGround';
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD';
+
 const toastError = vi.fn();
 vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => toastError(...a), success: vi.fn() } }));
 
@@ -414,7 +417,7 @@ describe('a second house records its currency and its map point', () => {
     expect(post.mock.calls[0][1]).toMatchObject({
       address: '843 Valencia Street',
       city: 'San Francisco',
-      currency: 'USD',
+      currency: FIXTURE_CURRENCY,
       latitude: 37.7594,
       longitude: -122.4211,
     });

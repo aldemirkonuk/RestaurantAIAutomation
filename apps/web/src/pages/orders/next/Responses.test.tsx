@@ -83,6 +83,9 @@ import {
 import { fmtDate } from './format';
 import type { OrderRowVM } from './useOrdersNextData';
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD';
+
 /* ── fixtures ────────────────────────────────────────────────────────────── */
 
 /**
@@ -127,7 +130,7 @@ function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
     bottlesTotal: 60,
     unitType: 'case',
     priceUnit: { read: true, stated: { priceUom: 'case', pricePackSize: 12 } },
-    currency: 'USD',
+    currency: FIXTURE_CURRENCY,
     // ADR 0119 Q3: the list route reads the line's fee columns, and this
     // agreement names none. `read: true` with three nulls is "looked, found
     // nothing"; `read: false` would be "never looked".

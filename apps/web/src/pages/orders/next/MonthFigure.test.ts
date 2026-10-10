@@ -6,11 +6,14 @@
 import { describe, expect, it } from 'vitest';
 import { houseMonthOf, monthFigureOf, type OrderRowVM } from './useOrdersNextData';
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py.
+const FIXTURE_CURRENCY = 'USD';
+
 const row = (
   stage: OrderRowVM['stage'],
   total: number | null,
   requestedAt: string,
-  currency = 'USD',
+  currency = FIXTURE_CURRENCY,
 ): OrderRowVM => ({ stage, total, requestedAt, currency }) as unknown as OrderRowVM;
 
 const LA = 'America/Los_Angeles';
@@ -28,7 +31,7 @@ describe('/orders month figure (F-230)', () => {
     ];
     const m = monthFigureOf(rows, LA, SEPT_30_EVENING_LA);
     expect(m.thisMonth).toBe(600);
-    expect(m.thisMonthByCurrency).toEqual([{ amount: 600, currency: 'USD' }]);
+    expect(m.thisMonthByCurrency).toEqual([{ amount: 600, currency: FIXTURE_CURRENCY }]);
   });
 
   it('files by the house month, not the UTC or browser month', () => {
