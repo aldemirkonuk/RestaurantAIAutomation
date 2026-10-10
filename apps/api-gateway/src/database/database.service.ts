@@ -43,7 +43,10 @@ export class DatabaseService implements OnModuleInit {
   // Read whole (ADR 0292, F-293): an unranged select stopped at PostgREST's
   // 1,000 rows with a 200, so a house past 1,000 active items lost wines from
   // /inventory with no notice.
-  async getRestaurantInventory(restaurantId: string) {
+  // `active = false` reads the wines a house marked inactive, so /inventory
+  // can list them and make one active again (F-429). Every other caller reads
+  // the active cellar, as before.
+  async getRestaurantInventory(restaurantId: string, active = true) {
     return readWholeWindow("The inventory list", () =>
       this.supabase
         .from("restaurant_inventory")
@@ -52,7 +55,7 @@ export class DatabaseService implements OnModuleInit {
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
+        .eq("is_active", active),
     );
   }
 

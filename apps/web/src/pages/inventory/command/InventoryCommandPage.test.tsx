@@ -610,3 +610,58 @@ describe('InventoryCommandPage — Match invoice lists the deliveries waiting (F
     expect(within(list).getAllByText('Barbaresco').length).toBeGreaterThan(0);
   });
 });
+
+describe('InventoryCommandPage — marking a wine inactive (F-429)', () => {
+  const ROW = { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', stockLive: 6, shadowStock: 0, thresholdMin: 2, isActive: true };
+  const ASLEEP = { id: 'row-9', wineId: 'wine-9', wineName: 'Sancerre Les Monts', stockLive: 3, shadowStock: 0, thresholdMin: 2, isActive: false };
+
+  /** The list route answers the inactive wines when asked with `active=false`. */
+  function routeWithInactive() {
+    routeGets({ 'inventory-list': [ROW] });
+    const active = api.get.getMockImplementation()!;
+    api.get.mockImplementation((url: string, config?: { params?: { active?: string } }) =>
+      config?.params?.active === 'false' ? Promise.resolve({ data: [ASLEEP] }) : active(url, config),
+    );
+    api.patch.mockResolvedValue({ data: {} });
+  }
+
+  it('asks first, says how many bottles leave the stock value, and changes nothing until confirmed', async () => {
+    routeWithInactive();
+    mount();
+
+    const name = await screen.findByText('Produttori Barbaresco');
+    fireEvent.contextMenu(name.closest('[data-inv-row]')!.firstElementChild!);
+    fireEvent.click(await screen.findByText('Mark inactive'));
+
+    const dialog = await screen.findByRole('dialog', { name: /Mark Produttori Barbaresco inactive\?/ });
+    expect(dialog).toHaveTextContent('6 bottles still on hand');
+    expect(dialog).toHaveTextContent('out of the stock value here and on Reports');
+    expect(api.patch).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep active' }));
+    expect(api.patch).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(screen.getByText('Produttori Barbaresco').closest('[data-inv-row]')!.firstElementChild!);
+    fireEvent.click(await screen.findByText('Mark inactive'));
+    const again = await screen.findByRole('dialog');
+    fireEvent.click(within(again).getByRole('button', { name: 'Mark inactive' }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith('/inventory/rest-A/item/row-1', { isActive: false }),
+    );
+  });
+
+  it('lists the inactive wines and makes one active again', async () => {
+    routeWithInactive();
+    mount();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Inactive wines/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Inactive wines' });
+    expect(await within(panel).findByText('Sancerre Les Monts')).toBeInTheDocument();
+    expect(within(panel).getByText('3 bottles on hand')).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole('button', { name: /Make active/ }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith('/inventory/rest-A/item/row-9', { isActive: true }),
+    );
+  });
+});

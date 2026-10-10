@@ -11,6 +11,7 @@ import { useCalendarEvents } from '@/hooks/queries/useCalendarQueries';
 import type { CalendarEvent } from '@/services/api/calendar';
 import type { InventoryItem } from '@/services/api/types';
 import { formatNumber } from '@/lib/utils';
+import { classifyStock } from '@/lib/inventoryStatus';
 import type { ActivityItem } from './useDashboardNextData';
 import { DASH, dateIn, eventKindWords, localDateStr, parseDateStr, timeAgo } from './format';
 import { TryAgain } from './TryAgain';
@@ -218,7 +219,13 @@ export function LowStockPanel({
                 className="shrink-0 text-[12px]"
                 style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
               >
-                <span className={it.stock === 0 ? 'text-seal font-semibold' : 'text-inkm-1'}>
+                {/* Red is "critical" as the bell and /inventory say it: at or under
+                    half the minimum, not only an empty shelf (F-432, ADR 0129). */}
+                <span
+                  className={
+                    classifyStock(it.stock, it.min).key === 'critical' ? 'text-seal font-semibold' : 'text-inkm-1'
+                  }
+                >
                   {it.stock == null ? DASH : formatNumber(it.stock)}
                 </span>
                 <span className="text-inkm-4"> / min {it.min == null ? DASH : formatNumber(it.min)}</span>
