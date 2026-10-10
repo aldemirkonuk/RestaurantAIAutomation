@@ -6,9 +6,14 @@ import { AddWineToInventoryModal } from "./AddWineToInventoryModal";
 
 const useWines = vi.hoisted(() => vi.fn());
 const useStorageLocations = vi.hoisted(() => vi.fn());
+// The person's house role: a manager unless a test says otherwise (F-833).
+const mayAct = vi.hoisted(() => ({ value: true }));
 
 vi.mock("../../hooks/queries", () => ({ useWines }));
 vi.mock("../../hooks/useStorageLocations", () => ({ useStorageLocations }));
+vi.mock("../../hooks/useMayActForTheHouse", () => ({
+  useMayActForTheHouse: () => mayAct.value,
+}));
 vi.mock("../../stores/restaurantSettingsStore", () => ({
   useRestaurantSettingsStore: () => ({ measurementUnit: "ml" }),
 }));
@@ -27,15 +32,22 @@ const wine = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mayAct.value = true;
+  window.sessionStorage.clear();
   useWines.mockReturnValue({ data: [wine] });
   useStorageLocations.mockReturnValue({ locations: [] });
 });
 
-function renderModal(onAddWine = vi.fn()) {
+function renderModal(onAddWine = vi.fn(), draftScope?: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <AddWineToInventoryModal isOpen onClose={() => {}} onAddWine={onAddWine} />
+      <AddWineToInventoryModal
+        isOpen
+        onClose={() => {}}
+        onAddWine={onAddWine}
+        draftScope={draftScope}
+      />
     </QueryClientProvider>,
   );
   return onAddWine;
@@ -184,5 +196,61 @@ describe("AddWineToInventoryModal — this house's own bottle price", () => {
     await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
     await waitFor(() => expect(onAddWine).toHaveBeenCalled());
     expect(onAddWine.mock.calls[0][4].menuPriceGlass).toBe(14);
+  });
+
+  // F-833: a menu price set on add is an owner's or a manager's (ADR 0193);
+  // the gateway refuses the whole add when staff name one. The fields were
+  // still offered to staff, so typing a price only earned that refusal.
+  it("does not offer staff the menu price fields, and says who sets them", async () => {
+    mayAct.value = false;
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.click(screen.getByRole("button", { name: "Both" }));
+
+    expect(screen.queryByText("Bottle Menu Price")).not.toBeInTheDocument();
+    expect(screen.queryByText("Glass Menu Price")).not.toBeInTheDocument();
+    expect(screen.getByTestId("menu-price-held")).toHaveTextContent(
+      "The menu price is set by a manager or an owner.",
+    );
+    // The pour size is not a price: staff still say how big a glass is.
+    expect(screen.getByText("Pour Size")).toBeInTheDocument();
+  });
+
+  it("never sends a staff member's kept menu prices, so the add is not refused", async () => {
+    mayAct.value = false;
+    // A draft kept on this tab from when the field was still offered.
+    window.sessionStorage.setItem(
+      "mdv:add-wine:u1:h1",
+      JSON.stringify({
+        activeTab: "search",
+        searchQuery: "",
+        selectedWine: wine,
+        quantity: 3,
+        threshold: 6,
+        costPerBottle: null,
+        isSample: false,
+        bottleSizeMl: 750,
+        customBottleSizeInput: "",
+        isCustomBottleSize: false,
+        saleType: "both",
+        pourSizeMl: 150,
+        customPourSizeInput: "",
+        isCustomPourSize: false,
+        menuPriceGlass: 14,
+        menuPriceBottle: 60,
+      }),
+    );
+    const user = userEvent.setup();
+    const onAddWine = renderModal(vi.fn(), "u1:h1");
+    await user.click(
+      await screen.findByRole("button", { name: /Add to Inventory/i }),
+    );
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    const volumeFields = onAddWine.mock.calls[0][4];
+    expect("menuPriceBottle" in volumeFields).toBe(false);
+    expect("menuPriceGlass" in volumeFields).toBe(false);
+    expect(volumeFields.pourSizeMl).toBe(150);
   });
 });
