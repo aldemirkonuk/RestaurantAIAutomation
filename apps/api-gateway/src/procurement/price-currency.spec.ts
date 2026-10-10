@@ -231,7 +231,12 @@ describe("the price register refuses a sighting with no currency", () => {
 // ---------------------------------------------------------------------------
 // The series records the gap instead of hiding it.
 // ---------------------------------------------------------------------------
-function makeDb(opts: { orderRow?: Row | null; orderLineRow?: Row | null }) {
+function makeDb(opts: {
+  orderRow?: Row | null;
+  orderLineRow?: Row | null;
+  /** `restaurants.currency`; absent reads as no row. */
+  houseCurrency?: string | null;
+}) {
   const calls = { sightingInserts: [] as Row[], priceHistoryInserts: [] as Row[] };
 
   const supabase: any = {
@@ -247,6 +252,8 @@ function makeDb(opts: { orderRow?: Row | null; orderLineRow?: Row | null }) {
         }
         if (table === "procurement_order_items")
           return { data: opts.orderLineRow ?? null, error: null };
+        if (table === "restaurants" && opts.houseCurrency !== undefined)
+          return { data: { currency: opts.houseCurrency }, error: null };
         if (table === "restaurant_inventory") {
           if (selectedColumns.trim() === "id")
             return { data: { id: filters.id }, error: null };
@@ -519,6 +526,58 @@ describe("the agreement's own currency reaches both registers", () => {
 
     expect(calls.priceHistoryInserts[0].currency).not.toBe("USD");
     expect(calls.priceHistoryInserts[0].currency).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-341 — the vendor letter's price line is said in the agreement's money.
+// The send itself is stubbed: nothing here reaches a mailbox.
+// ---------------------------------------------------------------------------
+describe("the confirmation letter names the price in the agreement's money (F-341)", () => {
+  const withVendorEmail = {
+    ...turkishHouseOrder,
+    providers: { name: "Kavaklidere", contact_email: "orders@vendor.test" },
+  };
+
+  async function letterBody(opts: Parameters<typeof makeDb>[0]): Promise<string> {
+    const { db } = makeDb(opts);
+    const svc = new ProcurementService(db, events, ledger, ...GATES_AFTER_LEDGER);
+    const send = jest
+      .spyOn(svc as any, "sendProviderEmail")
+      .mockResolvedValue({ messageId: null, threadId: null });
+    jest.spyOn(svc as any, "resolveSenderName").mockResolvedValue("");
+    await svc.confirmDeal(REST, ORDER, A_MANAGER, { finalPrice: 36 }, A_SEAL);
+    expect(send).toHaveBeenCalledTimes(1);
+    return String((send.mock.calls[0][0] as any).html);
+  }
+
+  it("says the line's own currency", async () => {
+    const html = await letterBody({
+      orderRow: withVendorEmail,
+      orderLineRow: statedLineInLira,
+      houseCurrency: "EUR",
+    });
+    expect(html).toContain("at TRY\u00a036.00 per bottle");
+    expect(html).not.toContain("$");
+  });
+
+  it("falls back to the house's currency when the line names none", async () => {
+    const html = await letterBody({
+      orderRow: withVendorEmail,
+      orderLineRow: statedLine,
+      houseCurrency: "EUR",
+    });
+    expect(html).toContain("at €36.00 per bottle");
+    expect(html).not.toContain("$");
+  });
+
+  it("prints the bare figure, never a dollar sign, when neither is known", async () => {
+    const html = await letterBody({
+      orderRow: withVendorEmail,
+      orderLineRow: statedLine,
+    });
+    expect(html).toContain("at 36.00 per bottle");
+    expect(html).not.toContain("$");
   });
 });
 

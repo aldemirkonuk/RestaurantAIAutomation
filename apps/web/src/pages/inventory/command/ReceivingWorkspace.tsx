@@ -44,7 +44,7 @@ import { CURRENCY_CODES } from '../../../lib/currency'
  */
 import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
-import { computeMatch, verdictStyle, money } from '../../../lib/invoiceMatch'
+import { computeMatch, verdictStyle, money, differentMoney } from '../../../lib/invoiceMatch'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import type { ShelfReceived } from '../../../services/api/types'
@@ -459,9 +459,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
       computeMatch({
         orderedQty,
         poUnitPrice,
+        poCurrency: orderCurrency?.currency ?? null,
         shippedQty,
         invoiceQty,
         invoiceUnitPrice,
+        invoiceCurrency: invoiceCurrency || null,
         acceptedQty,
         rejectedQty,
         freeGoodsQty,
@@ -471,9 +473,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
     [
       orderedQty,
       poUnitPrice,
+      orderCurrency,
       shippedQty,
       invoiceQty,
       invoiceUnitPrice,
+      invoiceCurrency,
       acceptedQty,
       rejectedQty,
       freeGoodsQty,
@@ -581,9 +585,16 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const priceNeedsCurrency = invoiceUnitPrice != null && invoiceCurrency === ''
 
   const style = verdictStyle(match.verdict)
+  // Two stated, different moneys are not compared as numbers (F-341): no
+  // "over/under agreed" figure and no override box, the price is held for the owner.
+  const currencyDiffers =
+    poUnitPrice != null &&
+    invoiceUnitPrice != null &&
+    differentMoney(orderCurrency?.currency, invoiceCurrency || null)
   const priceDiffers =
     poUnitPrice != null &&
     invoiceUnitPrice != null &&
+    !currencyDiffers &&
     Math.round(poUnitPrice * 100) !== Math.round(invoiceUnitPrice * 100)
   const receivedQty = acceptedQty + rejectedQty
 
@@ -848,7 +859,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               </select>
             </div>
             <div className="text-center font-mono text-sm text-gray-500">
-              {poUnitPrice != null ? money(poUnitPrice) : '—'}
+              {poUnitPrice != null ? money(poUnitPrice, orderCurrency?.currency) : '—'}
             </div>
             <div className="flex justify-center">
               <input
@@ -878,10 +889,15 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 </span>
               ) : poUnitPrice == null ? (
                 <span className="text-[11px] text-gray-400">No agreed price on this order</span>
+              ) : currencyDiffers ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                  <AlertTriangle className="w-3 h-3" /> Not compared — agreed in{' '}
+                  {orderCurrency?.currency}, billed in {invoiceCurrency}. You decide.
+                </span>
               ) : priceDiffers ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
                   <AlertTriangle className="w-3 h-3" />
-                  {money(Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice))}/btl{' '}
+                  {money(Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice), orderCurrency?.currency)}/btl{' '}
                   {(invoiceUnitPrice ?? 0) > poUnitPrice ? 'over' : 'under'} agreed
                 </span>
               ) : (
@@ -1106,7 +1122,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                   <div className="text-[10.5px] text-gray-500">
                     Real cost{' '}
                     <span className="font-mono font-bold text-gray-700">
-                      {money(match.effectiveUnitCost)}
+                      {money(match.effectiveUnitCost, invoiceCurrency || null)}
                     </span>
                     /btl
                   </div>

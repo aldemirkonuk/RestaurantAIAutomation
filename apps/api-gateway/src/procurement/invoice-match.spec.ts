@@ -100,6 +100,107 @@ describe("computeMatch", () => {
     });
   });
 
+  // F-341: every price was printed under a bare "$" until 2026-10-09, so a
+  // euro or lira delivery was checked — and its variance written to the
+  // receipt — in dollars nobody paid.
+  describe("each price is said in its own money (F-341)", () => {
+    it("says a euro variance in euros, in the check and the summary", () => {
+      const r = computeMatch({
+        ...base,
+        poCurrency: "EUR",
+        invoiceCurrency: "EUR",
+        invoiceUnitPrice: 24,
+      });
+
+      expect(check(r, "price").detail).toBe("Agreed €22.00 vs billed €24.00");
+      expect(r.summary).toBe("Billed €24.00 against an agreed €22.00.");
+      expect(r.summary).not.toContain("$");
+    });
+
+    it("says a matched lira price in lira", () => {
+      const r = computeMatch({
+        ...base,
+        poCurrency: "TRY",
+        invoiceCurrency: "TRY",
+      });
+
+      expect(check(r, "price").detail).toBe("Both TRY\u00a022.00");
+    });
+
+    it("never guesses dollars when nobody recorded the money", () => {
+      const r = computeMatch({ ...base, invoiceUnitPrice: 24 });
+
+      expect(check(r, "price").detail).toBe(
+        "Agreed 22.00 (currency not recorded) vs billed 24.00 (currency not recorded)",
+      );
+      expect(r.summary).not.toContain("$");
+    });
+
+    it("says each side in its own money when they differ", () => {
+      const r = computeMatch({
+        ...base,
+        poCurrency: "USD",
+        invoiceCurrency: "EUR",
+        invoiceUnitPrice: 24,
+      });
+
+      expect(check(r, "price").detail).toMatch(/^Agreed \$22\.00, billed €24\.00\. /);
+    });
+  });
+
+  // F-341 (compare half): two different moneys were compared as numbers, so
+  // 22 USD against 22 EUR read "at the agreed price" and 22 USD against
+  // 24 EUR asked for an override reason on a difference nobody measured.
+  describe("never compares two different moneys as numbers (F-341)", () => {
+    const notCompared =
+      "The price was not compared: the agreement is in USD and the invoice is in EUR, " +
+      "and nothing here converts one into the other. You decide whether this price is right.";
+
+    it("does not call the same figure in another money a match", () => {
+      const r = computeMatch({ ...base, poCurrency: "USD", invoiceCurrency: "EUR" });
+
+      expect(r.verdict).toBe("currency_differs");
+      expect(r.priceVerified).toBe(false);
+      expect(check(r, "price").ok).toBeNull();
+      expect(r.summary).toBe(`All 24 accepted. Agreed $22.00, billed €22.00. ${notCompared}`);
+      expect(r.summary).not.toContain("at the agreed price");
+      expect(isDiscrepancy(r.verdict)).toBe(true);
+      expect(isClaimable(r.verdict)).toBe(false);
+    });
+
+    it("does not ask for an override on a difference across two moneys", () => {
+      const r = computeMatch({
+        ...base,
+        poCurrency: "usd",
+        invoiceCurrency: "EUR",
+        invoiceUnitPrice: 24,
+      });
+
+      expect(r.requiresOverride).toBe(false);
+      expect(r.verdict).toBe("currency_differs");
+      expect(check(r, "price").detail).toBe(`Agreed $22.00, billed €24.00. ${notCompared}`);
+    });
+
+    it("still says the price was held when a quantity problem headlines", () => {
+      const r = computeMatch({
+        ...base,
+        poCurrency: "USD",
+        invoiceCurrency: "EUR",
+        acceptedQty: 22,
+      });
+
+      expect(r.verdict).toBe("qty_short");
+      expect(r.summary).toBe(`Billed for 24 but only 22 arrived — 2 short. ${notCompared}`);
+    });
+
+    it("compares as before when either money is not recorded", () => {
+      const r = computeMatch({ ...base, poCurrency: "USD", invoiceUnitPrice: 24 });
+
+      expect(r.verdict).toBe("price_variance");
+      expect(r.requiresOverride).toBe(true);
+    });
+  });
+
   describe("short ship", () => {
     it("reports qty_short when fewer bottles arrive than were billed", () => {
       const r = computeMatch({ ...base, acceptedQty: 22 });

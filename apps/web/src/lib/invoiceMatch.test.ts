@@ -26,6 +26,36 @@ describe('invoiceMatch (web mirror)', () => {
     expect(r.effectiveUnitCost).toBe(22)
   })
 
+  // F-341: until 2026-10-09 both prices printed under a bare "$".
+  it('says each price in its own money, never a guessed dollar', () => {
+    const euro = computeMatch({ ...base, poCurrency: 'EUR', invoiceCurrency: 'EUR', invoiceUnitPrice: 24 })
+    expect(euro.summary).toBe('Billed €24.00 against an agreed €22.00.')
+
+    const unrecorded = computeMatch({ ...base, invoiceUnitPrice: 24 })
+    expect(unrecorded.summary).toBe(
+      'Billed 24.00 (currency not recorded) against an agreed 22.00 (currency not recorded).',
+    )
+
+    // Word-for-word the gateway's sentence, money included.
+    const lira = { ...base, poCurrency: 'TRY', invoiceCurrency: 'TRY', invoiceUnitPrice: 2400 }
+    expect(computeMatch(lira).summary).toBe(computeMatchApi(lira).summary)
+  })
+
+  // F-341: two different moneys were compared as numbers — 22 EUR against 770 TRY asked for an
+  // override reason, and 22 EUR against 22 TRY read "at the agreed price".
+  it('holds a price billed in another money for the owner instead of comparing it', () => {
+    const lira = computeMatch({ ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', invoiceUnitPrice: 770 })
+    expect(lira.verdict).toBe('currency_differs')
+    expect(lira.requiresOverride).toBe(false)
+    expect(lira.priceVerified).toBe(false)
+    expect(lira.summary).toContain('The price was not compared: the agreement is in EUR and the invoice is in TRY')
+    expect(verdictStyle('currency_differs').label).toBe('Different money')
+
+    const sameFigure = computeMatch({ ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY' })
+    expect(sameFigure.verdict).toBe('currency_differs')
+    expect(sameFigure.summary).not.toContain('at the agreed price')
+  })
+
   it('blocks on any price deviation until a reason is given', () => {
     const flagged = computeMatch({ ...base, invoiceUnitPrice: 22.01 })
     expect(flagged.verdict).toBe('price_variance')
@@ -130,6 +160,11 @@ describe('invoiceMatch parity with the API engine', () => {
     ['free goods, slip counts only the billable', { orderedQty: 10, poUnitPrice: 22, shippedQty: 10, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 11, freeGoodsQty: 1 }],
     ['free goods, real transit loss', { orderedQty: 10, poUnitPrice: 22, shippedQty: 11, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 10, freeGoodsQty: 1 }],
     ['free goods and damage under a slip', { orderedQty: 10, poUnitPrice: 22, shippedQty: 11, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 10, rejectedQty: 1, freeGoodsQty: 1 }],
+    // F-341: two different moneys are held, never compared as numbers.
+    ['another money, same figure', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY' }],
+    ['another money, different figure', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', invoiceUnitPrice: 770 }],
+    ['another money and a short ship', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', acceptedQty: 22 }],
+    ['one money not recorded', { ...base, poCurrency: 'EUR', invoiceUnitPrice: 24 }],
     ['free goods and a real short ship', { orderedQty: 24, poUnitPrice: 22, shippedQty: 24, invoiceQty: 21, invoiceUnitPrice: 22, acceptedQty: 22, freeGoodsQty: 1 }],
   ]
 

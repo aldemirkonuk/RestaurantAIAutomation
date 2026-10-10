@@ -786,6 +786,47 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
     expect(calls.orderUpdates[0].discrepancy_notes).toBeNull();
   });
 
+  it("F-341: says a euro price difference in euros, never under a dollar sign", async () => {
+    // The order was placed in euros; until 2026-10-09 the refusal read
+    // "Billed $24.00 against an agreed $22.00".
+    const { db } = makeDb({ orderRow: { ...caseOrder, currency: "EUR" } });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 24,
+        invoiceUom: "bottle",
+        invoiceUnitPrice: 24,
+        invoiceCurrency: "EUR",
+        acceptedQuantity: 2,
+        countedUom: "case",
+      } as any),
+    ).rejects.toThrow("Billed €24.00 against an agreed €22.00.");
+  });
+
+  it("F-341: an invoice in another money is held for the owner, not refused and not verified", async () => {
+    // Agreed 22 EUR, billed 770 TRY. Before, this 422'd on "Billed TRY 770.00
+    // against an agreed €22.00" — a difference across two moneys that means
+    // nothing — and the same figure in TRY wrote price_verified = true.
+    const { db, calls } = makeDb({ orderRow: { ...caseOrder, currency: "EUR" } });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 770,
+      invoiceCurrency: "TRY",
+      acceptedQuantity: 2,
+      countedUom: "case",
+    } as any);
+
+    const update = calls.orderUpdates[0];
+    expect(update.match_status).toBe("currency_differs");
+    // NULL = nobody checked the price; the vendor scorecard skips it.
+    expect(update.price_verified).toBeNull();
+    expect(update.discrepancy_notes).toContain(
+      "The price was not compared: the agreement is in EUR and the invoice is in TRY",
+    );
+  });
+
   it("raises no credit claim on a correct cases-vs-bottles delivery", async () => {
     // The verdict is not the only casualty: `qty_short` opens a claim, which
     // puts a restaurant in front of its distributor asking for money back over

@@ -23,6 +23,12 @@
  * bottle-equivalents; the caller normalises cases before calling.
  */
 
+// The gateway's own formatter, so the two summaries stay word-for-word equal
+// (the parity test in invoiceMatch.test.ts reads both).
+import { moneyIn } from '../../../api-gateway/src/procurement/agreed-price'
+// Same words and same rule for two different moneys (F-341).
+import { differentMoney, notComparedWords } from '../../../api-gateway/src/procurement/invoice-match'
+
 export type MatchVerdict =
   | 'matched'
   | 'overbilled_vs_ship'
@@ -33,14 +39,20 @@ export type MatchVerdict =
   | 'rejected'
   | 'partial'
   | 'unmatched'
+  /** Agreed and billed in two different moneys: the price was not compared (F-341). */
+  | 'currency_differs'
 
 export interface MatchInput {
   orderedQty: number
   poUnitPrice?: number | null
+  /** The money the agreed price is in (F-341). Absent says "currency not recorded", never USD. */
+  poCurrency?: string | null
   /** From the packing slip / ASN. Null = none in hand, which is common. */
   shippedQty?: number | null
   invoiceQty?: number | null
   invoiceUnitPrice?: number | null
+  /** The money the invoice bills in (F-341). */
+  invoiceCurrency?: string | null
   acceptedQty: number
   rejectedQty?: number
   /** Agreed free bottles; netted out so a deal stops reading as an overage. */
@@ -63,7 +75,14 @@ export interface MatchResult {
   effectiveUnitCost: number | null
 }
 
-export const money = (n: number) => `$${n.toFixed(2)}`
+/**
+ * A figure in the money it is in (F-341). This printed a bare "$" until
+ * 2026-10-09, so a euro or lira delivery was checked under a dollar sign.
+ */
+export const money = (n: number, currency: string | null | undefined) => moneyIn(n, currency)
+
+/** Both moneys stated and not the same: the price is not compared (F-341). */
+export { differentMoney }
 
 /** Compare as cents so 22.000000001 still equals 22. */
 const priceEquals = (a: number, b: number) => Math.round(a * 100) === Math.round(b * 100)
@@ -88,8 +107,11 @@ export function computeMatch(input: MatchInput): MatchResult {
   const overrideReason = (input.priceOverrideReason ?? '').trim()
 
   const bothPriced = poUnitPrice != null && invoiceUnitPrice != null
-  const priceVerified = bothPriced && priceEquals(poUnitPrice, invoiceUnitPrice)
-  const priceMismatch = bothPriced && !priceVerified
+  // Two stated, different moneys are never compared as numbers (F-341); the price is held
+  // for the owner instead of passing or asking for an override.
+  const currencyDiffers = bothPriced && differentMoney(input.poCurrency, input.invoiceCurrency)
+  const priceVerified = bothPriced && !currencyDiffers && priceEquals(poUnitPrice, invoiceUnitPrice)
+  const priceMismatch = bothPriced && !currencyDiffers && !priceVerified
   const requiresOverride = priceMismatch && overrideReason.length === 0
 
   const backorderQty = Math.max(0, orderedQty - acceptedQty)
@@ -109,6 +131,7 @@ export function computeMatch(input: MatchInput): MatchResult {
   else if (billableReceived < (invoiceQty as number)) verdict = 'qty_short'
   else if (shortShipped) verdict = 'short_shipped'
   else if (rejectedQty > 0) verdict = 'rejected'
+  else if (currencyDiffers) verdict = 'currency_differs'
   else if (!fullyFulfilled) verdict = 'partial'
   else verdict = 'matched'
 
@@ -128,7 +151,7 @@ export function computeMatch(input: MatchInput): MatchResult {
       ? ((invoiceQty as number) * invoiceUnitPrice + allocatedCharges) / acceptedQty
       : null
 
-  const summary = (() => {
+  const headline = (() => {
     switch (verdict) {
       case 'matched':
         return (
@@ -138,7 +161,10 @@ export function computeMatch(input: MatchInput): MatchResult {
       case 'overbilled_vs_ship':
         return `Their packing slip says ${shippedQty} but their invoice bills ${invoiceQty} — proven by their own paperwork.`
       case 'price_variance':
-        return `Billed ${money(invoiceUnitPrice as number)} against an agreed ${money(poUnitPrice as number)}.`
+        return `Billed ${money(invoiceUnitPrice as number, input.invoiceCurrency)} against an agreed ${money(
+          poUnitPrice as number,
+          input.poCurrency,
+        )}.`
       case 'qty_over':
         return `${billableReceived} arrived but only ${invoiceQty} were billed.`
       case 'qty_short':
@@ -155,8 +181,18 @@ export function computeMatch(input: MatchInput): MatchResult {
         return `${acceptedQty} of ${orderedQty} accepted, ${backorderQty} still outstanding.`
       case 'unmatched':
         return `${acceptedQty} accepted with no invoice on file yet.`
+      case 'currency_differs':
+        return (
+          `All ${acceptedQty} accepted. Agreed ${money(poUnitPrice as number, input.poCurrency)}, billed ${money(
+            invoiceUnitPrice as number,
+            input.invoiceCurrency,
+          )}.` + (freeGoodsQty > 0 ? ` Includes ${freeGoodsQty} free.` : '')
+        )
     }
   })()
+  const summary = currencyDiffers
+    ? `${headline} ${notComparedWords(input.poCurrency, input.invoiceCurrency)}`
+    : headline
 
   return {
     verdict,
@@ -190,6 +226,7 @@ const VERDICT_STYLES: Record<MatchVerdict, VerdictStyle> = {
   rejected: { label: 'Units rejected', bg: 'bg-amber-50', text: 'text-amber-700', ring: 'ring-amber-200' },
   partial: { label: 'Partial delivery', bg: 'bg-amber-50', text: 'text-amber-700', ring: 'ring-amber-200' },
   unmatched: { label: 'No invoice yet', bg: 'bg-gray-100', text: 'text-gray-600', ring: 'ring-gray-200' },
+  currency_differs: { label: 'Different money', bg: 'bg-amber-50', text: 'text-amber-700', ring: 'ring-amber-200' },
 }
 
 export const verdictStyle = (v: MatchVerdict): VerdictStyle => VERDICT_STYLES[v]

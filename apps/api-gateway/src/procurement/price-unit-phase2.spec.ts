@@ -193,6 +193,7 @@ describe("Q3 — allowance, deposit and freight are named on the agreement", () 
     quantity: 5,
     unitType: "case" as const,
     opaque: false,
+    currency: "USD",
   };
 
   it("totals goods only when no fee is stated — byte for byte the pre-fix figure", () => {
