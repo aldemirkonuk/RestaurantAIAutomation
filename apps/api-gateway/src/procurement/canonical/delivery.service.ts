@@ -627,6 +627,17 @@ export class DeliveryService {
     const original = await this.proposalById(restaurantId, proposalId);
     if (!original.ok) return original;
 
+    // AN ACCEPTED POSITION IS SETTLED (sim F-667). Countering it used to mark
+    // it `countered`, which quietly undid an agreement the other side had
+    // already given — after AGREED, too. A new disagreement is a new position.
+    if (original.value.status === "accepted")
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "This position was already accepted, so it cannot be answered now — answering it would undo that agreement. If something new is wrong, put a new position on the record.",
+      };
+
     const created = await this.propose(
       restaurantId,
       original.value.delivery_id,
@@ -657,11 +668,17 @@ export class DeliveryService {
    * vendor's threshold is a HUMAN GATE in D6. Every accept here carries the
    * acting user, and a call with no user is refused rather than attributed to
    * the system.
+   *
+   * ONLY THE OTHER SIDE ACCEPTS (sim F-666). A position is one side asking the
+   * other; the house accepting its own SHORT_SHIP would answer the difference
+   * and let rule A agree the delivery with the vendor never having said yes.
+   * `by` is the accepter's side — the house, for every caller on this build.
    */
   async accept(
     restaurantId: string,
     proposalId: string,
     userId: string | null,
+    by: "restaurant" | "vendor" = "restaurant",
   ): Promise<WriteResult<{ proposalId: string; status: string }>> {
     if (!userId)
       return {
@@ -672,6 +689,16 @@ export class DeliveryService {
       };
     const original = await this.proposalById(restaurantId, proposalId);
     if (!original.ok) return original;
+
+    if (original.value.side === by)
+      return {
+        ok: false,
+        status: 409,
+        error:
+          by === "restaurant"
+            ? "This is your own position, so only the vendor can accept it. When they reply, record what they said as the vendor's position and accept that."
+            : "This is the vendor's own position, so only the restaurant can accept it.",
+      };
 
     if (original.value.status === "accepted")
       // Idempotent: saying "already accepted" is the truth, and a second write
@@ -777,10 +804,13 @@ export class DeliveryService {
         error: `This delivery cannot be agreed. ${answered.error}`,
       };
     if (answered.value.length) {
+      // Named by what the line says, never by a document id (sim F-670): the
+      // person reading this is a manager, and the key the act needs travels
+      // in `openDifferences`, which is what the screen's button sends back.
       const named = answered.value
         .map(
           (l) =>
-            `line ${l.lineNo} of document ${l.documentId} (${l.label}${l.why ? `: ${l.why}` : ""})`,
+            `${l.label} (line ${l.lineNo}${l.why ? `: ${l.why}` : ""})`,
         )
         .join("; ");
       return {
@@ -788,7 +818,7 @@ export class DeliveryService {
         status: 409,
         error:
           `This delivery cannot be agreed yet: ${answered.value.length} recorded difference(s) have no answer — ${named}. ` +
-          "Answer each one by accepting a proposal that covers it, or by accepting it as billed with a reason (ADR 0103 A11).",
+          "Answer each one by accepting the vendor's position on it, or keep it as billed with a reason.",
       };
     }
 
@@ -928,6 +958,33 @@ export class DeliveryService {
           delivery.state === "RECONCILING"
             ? "This delivery is still being reconciled. AGREED and VERIFIED are never collapsed (ADR 0103 D1): agree the document with the vendor first, then verify the goods."
             : `This delivery is ${delivery.state}. Only an AGREED delivery can be verified — agreement is about the document, verification is about the goods and the books.`,
+      };
+
+    // A POSITION FILED AFTER AGREE HOLDS VERIFY (sim F-667). `propose` takes
+    // positions on an AGREED delivery — unpacking finds the broken bottles —
+    // and verifying past one would post cost at the agreed price while the
+    // dispute is open. The state is not moved back: `agree` stands on its
+    // `agreed_at` stamp, so a delivery walked back to RECONCILING could never
+    // be agreed again. A failed read refuses rather than reading as "none".
+    const open = await this.db
+      .getClient()
+      .from("delivery_proposals")
+      .select("status")
+      .eq("delivery_id", deliveryId);
+    if (open.error)
+      return {
+        ok: false,
+        status: 500,
+        error: `The positions on this delivery could not be read (${open.error.message}), so it was not verified. A failed read is not "nothing disputed".`,
+      };
+    const stillOpen = ((open.data ?? []) as { status: string }[]).filter(
+      (p) => p.status === "open",
+    ).length;
+    if (stillOpen > 0)
+      return {
+        ok: false,
+        status: 409,
+        error: `${stillOpen} position(s) put on the record after this delivery was agreed are still open. Accept or answer them first — confirming the goods now would post the cost at the agreed price while the dispute is unsettled.`,
       };
 
     const now = new Date().toISOString();
@@ -1217,6 +1274,25 @@ export class DeliveryService {
   }
 
   /**
+   * The differences on one delivery that still have no answer (sim F-670) —
+   * the same list `agree` refuses on, with the (document, line) key that
+   * `acceptAsBilled` needs, so the screen can offer "keep it as billed" on
+   * exactly the lines the gate names. A read that failed fails; it never comes
+   * back as "nothing to answer".
+   */
+  async openDifferences(
+    restaurantId: string,
+    deliveryId: string,
+  ): Promise<ReadResult<DifferenceLine[]>> {
+    const found = await this.byId(restaurantId, deliveryId);
+    if (!found.ok) return found;
+    if (!found.value) return { ok: false, error: "Delivery not found" };
+    if (found.value.agreed_at || SETTLED.includes(found.value.state))
+      return { ok: true, value: [] };
+    return this.unansweredDifferences(found.value);
+  }
+
+  /**
    * Every difference a comparison RECORDED on this delivery, answered or not.
    *
    * The one list two callers need: `agree` asks which of them are unanswered,
@@ -1501,7 +1577,7 @@ export class DeliveryService {
     const basis = {
       dispatch: delivery.delivered_at,
       delivery: delivery.delivered_at,
-      issue: delivery.delivered_at,
+      issue: null as string | null,
     };
 
     if (delivery.delivered_at) {
@@ -1525,6 +1601,12 @@ export class DeliveryService {
             ? "response_window"
             : null;
       if (!clock) continue;
+      // THE ISSUE DATE IS THE DOCUMENT'S OWN (sim F-668). The TR objection
+      // rule counts from `document_issue_date` (migration 20260903160000:
+      // 380-381); counting from the delivery made an invoice that arrived nine
+      // days after its goods lapse within the hour, with TTK 21/2 cited for an
+      // objection window nobody ever had.
+      const issue = await this.issueDateOf(delivery.restaurant_id, d.documentId);
       const r = await this.clocks.schedule({
         restaurantId: delivery.restaurant_id,
         deliveryId: delivery.id,
@@ -1533,7 +1615,7 @@ export class DeliveryService {
         documentType: d.role === "invoice" ? "invoice" : "delivery_note",
         providerId: delivery.provider_id,
         jurisdiction: delivery.jurisdiction,
-        basisAt: basis,
+        basisAt: { ...basis, ...issue },
       });
       if (!r.ok) this.logger.warn(r.error);
 
@@ -1547,11 +1629,48 @@ export class DeliveryService {
           providerId: delivery.provider_id,
           jurisdiction: delivery.jurisdiction,
           beverageClass: "alcohol",
-          basisAt: basis,
+          basisAt: { ...basis, ...issue },
         });
         if (!p.ok) this.logger.warn(p.error);
       }
     }
+  }
+
+  /**
+   * The date a document says it was issued — `doc_date`, a strict YYYY-MM-DD.
+   *
+   * ABSENT IS NOT FAILED (ADR 0067). A document that states no issue date
+   * hands the clock the delivery date as a FALLBACK, and the clock records
+   * that it counted from the delivery and says so when it lapses. A read that
+   * FAILED hands it neither, so the timer blocks and asks rather than counting
+   * from a date nobody read. Not read here: a later `issueDate` correction
+   * (ADR 0104 D5) — the clock is scheduled once, when the document is attached.
+   */
+  private async issueDateOf(
+    restaurantId: string,
+    documentId: string,
+  ): Promise<{ issue: string | null; issueMissing: boolean }> {
+    const read = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("doc_date")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", documentId)
+      .maybeSingle();
+    if (read.error) {
+      this.logger.warn(
+        `document ${documentId}: its issue date could not be read (${read.error.message}); a clock that counts from it is left blocked.`,
+      );
+      return { issue: null, issueMissing: false };
+    }
+    const raw = (read.data as { doc_date?: unknown } | null)?.doc_date;
+    const day =
+      typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw)
+        ? raw.slice(0, 10)
+        : null;
+    return day
+      ? { issue: `${day}T00:00:00Z`, issueMissing: false }
+      : { issue: null, issueMissing: true };
   }
 
   /**

@@ -162,6 +162,23 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
     if (res.ok) return;
     expect(res.error).toMatch(/not counted/);
   });
+
+  // sim F-671: a re-verify posts no cost, so a lot booked after VERIFIED
+  // would stay provisional for good.
+  it("refuses a later count on a VERIFIED delivery and books nothing", async () => {
+    db.answers.deliveries = {
+      data: { id: DEL, state: "VERIFIED", order_id: null },
+      error: null,
+    };
+    const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.status).toBe(409);
+    expect(res.error).toMatch(/already confirmed/);
+    expect(db.rpcCalls.filter((c) => c.fn === "apply_stock_movement")).toEqual(
+      [],
+    );
+  });
 });
 
 // Founder, 2026-09-22, verbatim pick: "Yes, same rule (Recommended)" — the

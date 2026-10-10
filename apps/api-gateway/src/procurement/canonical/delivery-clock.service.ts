@@ -87,6 +87,7 @@ interface TimerRow {
 export function lapseDeeming(
   clock: string,
   jurisdiction: string | null,
+  basis?: string | null,
 ): string {
   if (clock === "response_window" && jurisdiction === "TR")
     return (
@@ -98,7 +99,12 @@ export function lapseDeeming(
   if (clock === "objection_window" && jurisdiction === "TR")
     return (
       "TTK 21/2 deems this invoice accepted: eight days passed with no objection " +
-      "raised. That is what the law now presumes, not what anyone here decided."
+      "raised. That is what the law now presumes, not what anyone here decided." +
+      // sim F-668: the rule counts from the invoice's date. When the invoice
+      // stated none, the clock counted from the delivery, and that is said.
+      (basis === "delivery_date"
+        ? " The invoice showed no date of its own, so the eight days were counted from the delivery date instead."
+        : "")
     );
   if (clock === "payment")
     return (
@@ -209,6 +215,13 @@ export class DeliveryClockService {
       dispatch?: string | null;
       delivery?: string | null;
       issue?: string | null;
+      /**
+       * The document states no issue date (as opposed to: it could not be
+       * read). Only then does a `document_issue_date` rule count from the
+       * delivery instead — and the timer records `delivery_date` as its basis,
+       * so the lapse sentence can say which date it counted from.
+       */
+      issueMissing?: boolean;
     };
   }): Promise<ReadResult<{ state: string; dueAt: string | null }>> {
     const terms = await this.termsFor({
@@ -222,7 +235,17 @@ export class DeliveryClockService {
     if (!terms.ok) return terms;
 
     const rule = terms.value;
-    const basis = rule?.basis ?? "unknown";
+    const ruleBasis = rule?.basis ?? "unknown";
+    const issueFallsBack =
+      ruleBasis === "document_issue_date" &&
+      !input.basisAt.issue &&
+      input.basisAt.issueMissing === true &&
+      !!input.basisAt.delivery;
+    if (issueFallsBack)
+      this.logger.warn(
+        `delivery ${input.deliveryId}: document ${input.documentId ?? "?"} states no issue date, so its ${input.clock} counts from the delivery date.`,
+      );
+    const basis = issueFallsBack ? "delivery_date" : ruleBasis;
     const basisAt =
       basis === "dispatch_date"
         ? (input.basisAt.dispatch ?? null)
@@ -555,7 +578,7 @@ export class DeliveryClockService {
       return false;
     }
 
-    const deemed = lapseDeeming(timer.clock, delivery.jurisdiction);
+    const deemed = lapseDeeming(timer.clock, delivery.jurisdiction, timer.basis);
     const upd = await this.db
       .getClient()
       .from("deliveries")
