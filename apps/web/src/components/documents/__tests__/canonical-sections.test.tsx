@@ -797,6 +797,61 @@ describe('DoorFrame — the count is a write, and an untouched line is not a zer
     expect(container.textContent).not.toMatch(/₺|142|170/)
   })
 
+  // F-729 — a count that names no item books no bottles, so the item a person
+  // linked on the sheet must travel with the line. An item merely inherited
+  // from the order line is a match, not a link, and is not sent.
+  it('sends the item a person linked each line to, and no other', async () => {
+    const submitted: { lines: { lineNo: number; inventoryId?: string }[] }[] = []
+    const resolved = (lineIndex: number, inventoryId: string | null, source: 'line' | 'order' | null) => ({
+      lineIndex,
+      lineId: null,
+      inventoryId,
+      inventoryIdSource: source,
+      proposedInventoryId: null,
+      proposedSentence: null,
+      proposalUnavailable: false,
+      proposalUnavailableReason: null,
+    })
+    render(
+      <DoorFrame
+        doc={doc({
+          layer1: { ...doc().layer1, lines: [line(), line(), line()] },
+          layer2: {
+            providerId: null,
+            vendorResolution: null,
+            lines: [
+              resolved(0, 'item-linked', 'line'),
+              resolved(1, 'item-from-order', 'order'),
+              resolved(2, null, null),
+            ] as CanonicalDocument['layer2']['lines'],
+          },
+          layer3: {
+            ...doc().layer3,
+            lines: [adjudicated(), adjudicated({ lineIndex: 1 }), adjudicated({ lineIndex: 2 })],
+          },
+        })}
+        onSubmitCount={async (input) => {
+          submitted.push(input)
+        }}
+      />,
+    )
+    for (const plus of screen.getAllByTestId('door-plus')) await userEvent.click(plus)
+    await userEvent.click(screen.getByTestId('door-submit'))
+    const sent = submitted[0].lines
+    expect(sent.map((l) => l.inventoryId)).toEqual(['item-linked', undefined, undefined])
+  })
+
+  it('shows what the last count put on the shelf', () => {
+    render(
+      <DoorFrame
+        doc={doc()}
+        onSubmitCount={async () => {}}
+        booking={['12 bottles went onto the shelf.']}
+      />,
+    )
+    expect(screen.getByTestId('door-booking').textContent).toBe('12 bottles went onto the shelf.')
+  })
+
   it('stays read-only with no submit handler, and says a count is never edited', () => {
     render(<DoorFrame doc={doc()} />)
     expect(screen.queryByTestId('door-submit')).toBeNull()

@@ -19,6 +19,7 @@ describe("bulk receive keeps the venue's own label", () => {
   let service: InventoryService;
   let inserted: Record<string, any>;
   let libraryNameWasRead: boolean;
+  let resolvedDrafts: Record<string, any>[];
 
   const LIBRARY_ID = "mw-1";
   const RESTAURANT = "22222222-2222-2222-2222-222222222222";
@@ -57,6 +58,7 @@ describe("bulk receive keeps the venue's own label", () => {
   beforeEach(async () => {
     inserted = {};
     libraryNameWasRead = false;
+    resolvedDrafts = [];
     const moduleRef = await Test.createTestingModule({
       providers: [
         InventoryService,
@@ -68,13 +70,16 @@ describe("bulk receive keeps the venue's own label", () => {
         {
           provide: WineSubmissionsService,
           useValue: {
-            resolveOrCreateLibraryWine: async () => ({
+            resolveOrCreateLibraryWine: async (item: Record<string, any>) => {
+              resolvedDrafts.push(item);
+              return {
               masterWineId: LIBRARY_ID,
               matched: false,
               provisional: true,
               libraryTier: 3,
               confidence: null,
-            }),
+              };
+            },
           },
         },
       ],
@@ -112,5 +117,16 @@ describe("bulk receive keeps the venue's own label", () => {
     expect(summary.failed).toBe(0);
     expect(inserted.wine_name).toBe("HOUSE WHITE");
     expect(libraryNameWasRead).toBe(true);
+  });
+
+  // F-740 — a drink received at the door through a draft was never
+  // classified: the draft carried no kind, so the library row it created had
+  // nothing for the classifier to read and a beer stayed 'unknown'.
+  it("hands the draft's kind to the library as its menu category", async () => {
+    await service.bulkCreateInventoryItems(RESTAURANT, {
+      items: [{ wineDraft: { name: "Efes Pilsen", category: "beer" }, stockLive: 24 }],
+    } as any);
+
+    expect(resolvedDrafts[0].menuCategory).toBe("beer");
   });
 });

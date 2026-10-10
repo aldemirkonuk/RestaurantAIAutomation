@@ -606,6 +606,12 @@ export class WineSubmissionsService {
       // standing in for an answer.
       producer: item.producer ?? null,
       primary_type: "unknown",
+      // The trigger's only other input (F-740): without it a beer received
+      // at the door through a draft stayed `beverage_kind = 'unknown'`. See
+      // `resolveLibraryWinesBatch` for the full account; null when not given.
+      data_enrichment: item.menuCategory
+        ? { menu_category: item.menuCategory }
+        : null,
       country: item.country ?? null,
       region: item.region ?? null,
       grape_variety: item.grapeVariety ?? null,
@@ -730,6 +736,10 @@ export class WineSubmissionsService {
       // again, and every rescan would add another house wine to the cellar.
       producer: item.producer ?? null,
       primary_type: "unknown",
+      // What the classifier reads (F-740), as on the shared path above.
+      data_enrichment: item.menuCategory
+        ? { menu_category: item.menuCategory }
+        : null,
       country: item.country ?? null,
       region: item.region ?? null,
       grape_variety: item.grapeVariety ?? null,

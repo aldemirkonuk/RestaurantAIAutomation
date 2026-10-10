@@ -45,58 +45,66 @@ vi.mock('../../../services/api/canonical', () => ({
   },
 }))
 
-// The delivery this document sits on, for the gates and the thread (F-317).
-vi.mock('../../../services/api/deliveries', () => ({
-  deliveriesApi: {
-    event: vi.fn(async (id: string) => ({
-      id,
-      providerId: null,
-      orderId: null,
-      state: 'DELIVERED',
-      provenance: 'ORDERED',
-      jurisdiction: null,
-      deliveredAt: '2026-08-14T09:00:00Z',
-      agreedAt: null,
-      agreedRule: null,
-      verifiedAt: null,
-      verifiedBy: null,
-      lapsedAt: null,
-      lapseDeemed: null,
-      amendedAt: null,
-    })),
-    proposals: vi.fn(async () => [
-      {
-        id: 'p1',
-        delivery_id: 'del-1',
-        document_id: 'doc-syn',
-        line_no: 1,
-        side: 'vendor',
-        reason: 'SHORT_SHIP',
-        qty_proposed: 10,
-        unit_price_proposed: null,
-        money_at_risk: null,
-        evidence: [],
-        note: null,
-        status: 'open',
-        counters_proposal_id: null,
-        proposed_by: null,
-        proposed_at: '2026-08-14T10:00:00Z',
-        responded_at: null,
-        responded_by: null,
-      },
-    ]),
-    agree: vi.fn(),
-    verify: vi.fn(),
-    propose: vi.fn(),
-    counter: vi.fn(),
-    accept: vi.fn(),
-    // One line Agree still waits on, so the differences list is drawn (F-788).
-    differences: vi.fn(async () => [
-      { documentId: 'doc-syn', lineNo: 1, label: 'Line 1 — Tomatoes', why: 'short by 2' },
-    ]),
-    acceptAsBilled: vi.fn(),
-  },
-}))
+// The delivery this document sits on, for the gates and the thread (F-317),
+// over the real module so `doorBookingSentences` stays real (F-729).
+const recordDoorCountMock = vi.fn()
+vi.mock('../../../services/api/deliveries', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../services/api/deliveries')>()
+  return {
+    ...real,
+    deliveriesApi: {
+      ...real.deliveriesApi,
+      event: vi.fn(async (id: string) => ({
+        id,
+        providerId: null,
+        orderId: null,
+        state: 'DELIVERED',
+        provenance: 'ORDERED',
+        jurisdiction: null,
+        deliveredAt: '2026-08-14T09:00:00Z',
+        agreedAt: null,
+        agreedRule: null,
+        verifiedAt: null,
+        verifiedBy: null,
+        lapsedAt: null,
+        lapseDeemed: null,
+        amendedAt: null,
+      })),
+      proposals: vi.fn(async () => [
+        {
+          id: 'p1',
+          delivery_id: 'del-1',
+          document_id: 'doc-syn',
+          line_no: 1,
+          side: 'vendor',
+          reason: 'SHORT_SHIP',
+          qty_proposed: 10,
+          unit_price_proposed: null,
+          money_at_risk: null,
+          evidence: [],
+          note: null,
+          status: 'open',
+          counters_proposal_id: null,
+          proposed_by: null,
+          proposed_at: '2026-08-14T10:00:00Z',
+          responded_at: null,
+          responded_by: null,
+        },
+      ]),
+      agree: vi.fn(),
+      verify: vi.fn(),
+      propose: vi.fn(),
+      counter: vi.fn(),
+      accept: vi.fn(),
+      // One line Agree still waits on, so the differences list is drawn (F-788).
+      differences: vi.fn(async () => [
+        { documentId: 'doc-syn', lineNo: 1, label: 'Line 1 — Tomatoes', why: 'short by 2' },
+      ]),
+      acceptAsBilled: vi.fn(),
+      recordDoorCount: (body: unknown) => recordDoorCountMock(body),
+    },
+  }
+})
 
 import { AuthContext } from '@/contexts/AuthContext'
 import { CanonicalDocumentPage } from './CanonicalDocumentPage'
@@ -660,6 +668,47 @@ describe('CanonicalDocumentPage', () => {
     hold(/Type a value this field can take/)
     expect(mintCorrectMock).not.toHaveBeenCalled()
     expect(correctMock).not.toHaveBeenCalled()
+  })
+
+  // F-729 — the door count's answer used to be thrown away, so a count that
+  // put nothing on the shelf looked exactly like one that did.
+  it('says in words what the door count put on the shelf, and what it did not', async () => {
+    documentMock.mockResolvedValue(response())
+    recordDoorCountMock.mockResolvedValue({
+      documentId: 'door-1',
+      delivery: null,
+      differsOnLines: null,
+      booking: {
+        booked: [],
+        notBooked: [
+          {
+            lineNo: 1,
+            label: 'SYNTHETIC Öküzgözü',
+            code: 'no_item',
+            reason: 'this line names no item on the shelf.',
+          },
+        ],
+        bottlesMoved: 0,
+      },
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/documents/doc-syn?view=door']}>
+          <Routes>
+            <Route path="/documents/:id" element={<CanonicalDocumentPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('door-plus')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('door-plus'))
+    fireEvent.click(screen.getByTestId('door-submit'))
+    await waitFor(() => expect(screen.getByTestId('door-booking')).toBeTruthy())
+    expect(recordDoorCountMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('door-booking').textContent).toMatch(
+      /Line 1 \(SYNTHETIC Öküzgözü\) did not go onto the shelf: it is not linked to an item yet/,
+    )
   })
 })
 

@@ -42,6 +42,7 @@ import { useMayActForTheHouse } from '../../hooks/useMayActForTheHouse'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import {
   BatchReceiveGrid,
+  DRAFT_KIND_OPTIONS,
   batchRowsToBulkLines,
   batchTotals,
   nextBatchRowKey,
@@ -56,7 +57,7 @@ interface ManualReceiptWorkspaceProps {
   onSaved?: (result: MenuScannerPersistResult) => void
 }
 
-const EMPTY_DRAFT = { name: '', producer: '', vintage: '', country: '', region: '', grapeVariety: '' }
+const EMPTY_DRAFT = { name: '', producer: '', vintage: '', country: '', region: '', grapeVariety: '', category: '' }
 
 export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualReceiptWorkspaceProps) {
   const { user, activeRestaurantId } = useAuth()
@@ -143,6 +144,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
           country: draft.country.trim() || undefined,
           region: draft.region.trim() || undefined,
           grapeVariety: draft.grapeVariety.trim() || undefined,
+          category: draft.category || undefined,
         },
         name,
         producer: draft.producer.trim() || undefined,
@@ -432,6 +434,19 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
                     placeholder="Country"
                     className={`${draftInput} max-w-[160px]`}
                   />
+                  <select
+                    aria-label="Kind of drink"
+                    value={draft.category}
+                    onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+                    className={`${draftInput} max-w-[160px]`}
+                  >
+                    <option value="">Kind (optional)</option>
+                    {DRAFT_KIND_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                   <div className="flex-1" />
                   <button
                     type="button"

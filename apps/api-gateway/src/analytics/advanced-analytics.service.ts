@@ -36,6 +36,7 @@ import {
   readHouseZone,
   shiftHouseDay,
 } from "../common/house-day";
+import { beverageCategoryOf } from "../common/beverage-category";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -664,13 +665,16 @@ export class AdvancedAnalyticsService {
     const { data: inv, error: invError } = await client
       .from("restaurant_inventory")
       // Varietal/type lives on master_wine_library, not restaurant_inventory.
-      .select("master_wine_id, master_wine_library(primary_type)")
+      .select(
+        "master_wine_id, kind, master_wine_library(primary_type, beverage_kind)",
+      )
       .eq("restaurant_id", restaurantId);
     if (invError) this.logQueryFailure("restaurant_inventory", invError);
     const typeByWine = new Map(
       (inv || []).map((i: any) => [
         i.master_wine_id,
-        i.master_wine_library?.primary_type || "unknown",
+        // F-742: by kind of drink, wines by colour.
+        beverageCategoryOf(i.master_wine_library, i.kind),
       ]),
     );
     const inWindow = new Set(dates);

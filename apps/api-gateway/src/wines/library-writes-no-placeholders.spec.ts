@@ -146,4 +146,31 @@ describe("master_wine_library writes carry no fabricated provenance", () => {
 
     expect(inserted[0].primary_type).toBe("unknown");
   });
+
+  // F-740 — the beverage_kind trigger reads only primary_type ('unknown' here)
+  // and data_enrichment.menu_category. Both single-row inserts dropped the
+  // category, so a door-draft beer was created unclassified.
+  it("writes the line's category where the classifier reads it, on both paths", async () => {
+    const venue = makeService();
+    await (venue.service as any).resolveOrCreateLibraryWine(
+      { name: "Efes Pilsen", menuCategory: "beer" },
+      RESTAURANT_ID,
+    );
+    expect(venue.inserted[0].source).toBe("venue_provisional");
+    expect(venue.inserted[0].data_enrichment).toEqual({ menu_category: "beer" });
+
+    const shared = makeService();
+    await (shared.service as any).resolveOrCreateLibraryWine(
+      { name: "Akakies", producer: "Kir-Yianni", country: "Greece", menuCategory: "red" },
+      RESTAURANT_ID,
+    );
+    expect(shared.inserted[0].source).toBe("menu_import");
+    expect(shared.inserted[0].data_enrichment).toEqual({ menu_category: "red" });
+  });
+
+  it("writes no category at all when the line gives none", async () => {
+    const { service, inserted } = makeService();
+    await (service as any).resolveOrCreateLibraryWine({ name: "Efe Black" }, RESTAURANT_ID);
+    expect(inserted[0].data_enrichment).toBeNull();
+  });
 });

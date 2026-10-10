@@ -84,7 +84,11 @@ import { AuthContext } from '@/contexts/AuthContext'
 import { useMayActForTheHouse } from '@/hooks/useMayActForTheHouse'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
-import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
+import {
+  deliveriesApi,
+  doorBookingSentences,
+  type ProposalBody,
+} from '../../../services/api/deliveries'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -135,6 +139,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   /** The gateway's words when a GATE or a proposal refused, kept apart from a
    *  correction's error so one does not overwrite the other on screen. */
   const [deliveryError, setDeliveryError] = useState<string | null>(null)
+  /** What the last door count put on the shelf, in words. */
+  const [doorBooking, setDoorBooking] = useState<string[] | null>(null)
 
   /**
    * Every key below names the house (ADR 0051). The gateway scopes these reads
@@ -795,22 +801,28 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               doc={doc}
               busy={writing}
               error={deliveryError}
+              booking={doorBooking}
               /* The count is a WRITE — unless this document IS a door count, in
                  which case the frame shows what was counted and correcting it
                  means recording another count, never editing this one. */
               onSubmitCount={
                 doc.docType === 'receiving_advice'
                   ? undefined
-                  : (input) =>
-                      deliveryWrite(() =>
-                        deliveriesApi.recordDoorCount({
+                  : (input) => {
+                      setDoorBooking(null)
+                      return deliveryWrite(async () => {
+                        const res = await deliveriesApi.recordDoorCount({
                           ...input,
                           ...(soleDelivery
                             ? { deliveryId: soleDelivery.deliveryId }
                             : { createDelivery: true }),
                           ...(doc.jurisdiction ? { jurisdiction: doc.jurisdiction } : {}),
-                        }),
-                      ).then(() => undefined)
+                        })
+                        // Say what went onto the shelf — and what did not —
+                        // rather than leaving the receiver to assume all of it.
+                        setDoorBooking(doorBookingSentences(res.booking ?? null))
+                      }).then(() => undefined)
+                    }
               }
             />
           )}

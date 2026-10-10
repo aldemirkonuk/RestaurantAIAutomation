@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { mapApiWineToUiWine } from "./wine-library";
+import {
+  inventoryKindOf,
+  mapApiWineToUiWine,
+  wineTypeForKind,
+} from "./wine-library";
 
 /**
  * Intelligence-lens defect 4. `mapApiWineToUiWine` hard-coded
@@ -46,5 +50,69 @@ describe("mapApiWineToUiWine — a library row has no stock and no par", () => {
     );
     expect(wine.name).toBe("Akakies");
     expect(wine.producer).toBe("Kir-Yianni");
+  });
+});
+
+/**
+ * F-728. The coercer ended `return "red"`, and it was fed `category`, which is
+ * the library's `primary_type`: every beer, spirit and coffee, and every
+ * menu-imported wine (`primary_type: "unknown"`), came out a red wine. The
+ * kind the gateway already sends (`beverageKind`) was dropped at the type
+ * boundary.
+ */
+describe("mapApiWineToUiWine — a beer is not a red wine", () => {
+  it("keeps the library's kind and gives a beer no wine colour", () => {
+    const beer = mapApiWineToUiWine(
+      apiWine({ name: "Bomonti", category: "unknown", beverageKind: "beer" }),
+    );
+    expect(beer.kind).toBe("beer");
+    expect(beer.type).toBe("unknown");
+  });
+
+  it("does not call an unclassified wine red", () => {
+    const w = mapApiWineToUiWine(
+      apiWine({ category: "unknown", beverageKind: "unknown" }),
+    );
+    expect(w.type).toBe("unknown");
+  });
+
+  it("still reads a wine's colour", () => {
+    const w = mapApiWineToUiWine(
+      apiWine({ category: "white", beverageKind: "wine" }),
+    );
+    expect(w.kind).toBe("wine");
+    expect(w.type).toBe("white");
+  });
+
+  it("only coerces a colour for a wine", () => {
+    expect(wineTypeForKind("spirit", "red")).toBe("unknown");
+    expect(wineTypeForKind("wine", "red")).toBe("red");
+    expect(wineTypeForKind(undefined, "rosé")).toBe("rose");
+  });
+});
+
+/**
+ * F-739. The /inventory row now carries the house item's `kind` and the
+ * library's `beverageKind`; a declared keg with no library row is a beer.
+ */
+describe("inventoryKindOf", () => {
+  it("reads a declared keg as beer with no library row", () => {
+    expect(inventoryKindOf({ kind: "beer", beverageKind: null })).toBe("beer");
+  });
+
+  it("lets the library's verdict replace a kind stored as wine before it was classified", () => {
+    expect(inventoryKindOf({ kind: "wine", beverageKind: "spirit" })).toBe(
+      "spirit",
+    );
+  });
+
+  it("stays wine when the library does not know", () => {
+    expect(inventoryKindOf({ kind: "wine", beverageKind: "unknown" })).toBe(
+      "wine",
+    );
+  });
+
+  it("is undefined when nobody said", () => {
+    expect(inventoryKindOf({})).toBeUndefined();
   });
 });

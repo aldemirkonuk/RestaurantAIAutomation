@@ -105,6 +105,50 @@ export interface DoorCountLine {
   packSize?: number;
   vintage?: number;
   formatMl?: number;
+  /**
+   * The item a person linked this line to. Without it the count is recorded
+   * but books no bottles — the gateway never guesses an item from a
+   * description (ADR 0103 A1).
+   */
+  inventoryId?: string;
+}
+
+/** What the door count put on the shelf, as `POST /procurement/documents/door-count` answers it. */
+export interface DoorBooking {
+  /** The booking itself failed; the count was still recorded. */
+  failed?: boolean;
+  booked: { lineNo: number; inventoryId: string; delta: number }[];
+  /** `code` is what a sentence keys on; `reason` is the gateway's log prose. */
+  notBooked: { lineNo: number; label: string; code: "no_line_number" | "no_item" | "bad_quantity"; reason: string }[];
+  bottlesMoved: number;
+}
+
+const bottles = (n: number) => `${n} bottle${n === 1 ? "" : "s"}`;
+
+/**
+ * The booking in a restaurant owner's words. `null` booking = the count is
+ * not attached to a delivery, so nothing could go on the shelf.
+ */
+export function doorBookingSentences(booking: DoorBooking | null): string[] {
+  if (!booking)
+    return ["The count is saved. No bottles went onto the shelf, because it is not attached to a delivery yet."];
+  if (booking.failed)
+    return ["The count is saved, but no bottles went onto the shelf this time. Count again to try once more."];
+  const out: string[] = [];
+  const n = booking.bottlesMoved;
+  if (n > 0) out.push(`${bottles(n)} went onto the shelf.`);
+  else if (n < 0) out.push(`${bottles(-n)} came off the shelf to match this count.`);
+  else if (booking.booked.length)
+    out.push("The shelf already matched this count, so nothing changed.");
+  for (const l of booking.notBooked) {
+    const which = l.lineNo > 0 ? `Line ${l.lineNo} (${l.label})` : l.label;
+    out.push(
+      l.code === "no_item"
+        ? `${which} did not go onto the shelf: it is not linked to an item yet. Link it on the sheet, then count it again.`
+        : `${which} did not go onto the shelf: its count could not be read.`,
+    );
+  }
+  return out;
 }
 
 /** The body both `propose` and `counter` take — declared once, so a counter
@@ -311,6 +355,8 @@ export const deliveriesApi = {
     delivery: Record<string, unknown> | null;
     /** NULL = no comparison was possible. 0 = compared, nothing differed. */
     differsOnLines: number | null;
+    /** NULL = no delivery, so nothing could be booked. */
+    booking: DoorBooking | null;
     storageError?: string;
   }> {
     const { data } = await apiClient.post(

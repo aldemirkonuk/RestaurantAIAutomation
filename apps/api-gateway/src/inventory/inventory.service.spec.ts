@@ -1076,4 +1076,31 @@ describe("InventoryService", () => {
       expect(mockRpc).not.toHaveBeenCalled();
     });
   });
+
+  // F-739: the /inventory read model dropped both the house item's kind and
+  // the library's beverage_kind, so a declared keg read "Unknown" and a
+  // library beer had nothing to say it was one.
+  describe("getRestaurantInventory — what the drink is", () => {
+    it("carries the house item's kind and the library's beverage kind", async () => {
+      mockDatabaseService.getRestaurantInventory.mockResolvedValueOnce([
+        {
+          id: "inv-beer",
+          kind: "beer",
+          master_wine_id: "w-beer",
+          master_wine_library: { name: "Bomonti", beverage_kind: "beer" },
+        },
+        {
+          id: "inv-keg",
+          kind: "beer",
+          master_wine_id: null,
+          master_wine_library: null,
+        },
+      ]);
+
+      const rows = await service.getRestaurantInventory("rest-1");
+
+      expect(rows[0]).toMatchObject({ kind: "beer", beverageKind: "beer" });
+      expect(rows[1]).toMatchObject({ kind: "beer", beverageKind: null });
+    });
+  });
 });

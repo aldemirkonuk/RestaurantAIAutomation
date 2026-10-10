@@ -2,7 +2,11 @@ import { useState, useMemo, useCallback } from "react";
 import { Wine } from "../../data/wineData";
 import { useInventoryData } from "../../hooks/useInventoryData";
 import { useWinesByIds } from "../../hooks/queries";
-import { mapApiWinesToUiWines } from "../../lib/wine-library";
+import {
+  inventoryKindOf,
+  mapApiWinesToUiWines,
+  wineTypeForKind,
+} from "../../lib/wine-library";
 import { classifyStock } from "../../lib/inventoryStatus";
 import { foldText } from "../../lib/textFold";
 
@@ -194,8 +198,15 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         isActive: true,
       };
 
+      // F-739: the house item's own kind travels, so a declared keg with no
+      // library row is a beer and not "Unknown", and a beer never wears a
+      // wine colour.
+      const kind = inventoryKindOf(item, wine?.kind);
+
       return {
         ...fallback,
+        kind,
+        type: wineTypeForKind(kind, fallback.type),
         inventoryId: item.id,
         id: item.wineId,
         storageLocation: (item as any).storageLocation,
