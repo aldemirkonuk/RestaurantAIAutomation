@@ -1,3 +1,23 @@
+/**
+ * F-678: an approval is sealed with a one-time challenge the server issues at
+ * the hold, so it cannot wait in the outbox and send later. Offline, the hold
+ * used to show the raw "Network request failed". It now says, in plain
+ * words, that nothing was approved — or, when the connection dropped after
+ * the approval was sent, that the answer is unknown.
+ */
+export const OFFLINE_REFUSAL =
+  "No connection, so this order was not approved. Approving needs a connection and is never saved for later. Hold again once you're back online.";
+export const UNCERTAIN_APPROVAL =
+  "The connection dropped before we heard back. Reload the order to see whether it was approved before you hold again.";
+
+/** fetch rejects with a TypeError offline, and the client aborts on timeout. */
+function isConnectionFailure(error: unknown): boolean {
+  return (
+    error instanceof TypeError ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
 /** A seal is issued when review begins; cancelling never submits it. */
 export function heldApproval(
   deps: {
@@ -38,9 +58,13 @@ export function heldApproval(
         proof = null;
         deps.state(
           "idle",
-          error instanceof Error
-            ? error.message
-            : "Approval could not be confirmed. Reload the order before trying again.",
+          isConnectionFailure(error)
+            ? sending
+              ? UNCERTAIN_APPROVAL
+              : OFFLINE_REFUSAL
+            : error instanceof Error
+              ? error.message
+              : "Approval could not be confirmed. Reload the order before trying again.",
         );
       }
     } finally {

@@ -20,7 +20,9 @@ import { DecisionCard } from "@/components/today/DecisionCard";
 import { FeedZero } from "@/components/today/FeedZero";
 import { WaitingStrip } from "@/components/today/WaitingStrip";
 import { color, space } from "@/design/tokens";
-import { useFeed, useUnreadCount } from "@/api/queries";
+import { useFeed, useHouses, useUnreadCount } from "@/api/queries";
+import { openHouse } from "@/auth/houseChoice";
+import { todayHeader } from "@/lib/todayHeader";
 import { useFeedLocal } from "@/state/feedLocal";
 import { useOutbox } from "@/state/outbox";
 import { useSession } from "@/state/session";
@@ -39,6 +41,7 @@ export default function TodayScreen() {
   const router = useRouter();
   const user = useSession((s) => s.user);
   const status = useSession((s) => s.status);
+  const houses = useHouses();
   const guidance = useGuidanceOptional();
 
   /**
@@ -120,13 +123,12 @@ export default function TodayScreen() {
     prevCount.current = items.length;
   }, [items.length]);
 
-  const greeting = (() => {
-    const h = new Date().getHours();
-    const name = user?.name ? `, ${user.name.split(" ")[0]}` : "";
-    if (h < 11) return `Morning${name}`;
-    if (h < 17) return `Afternoon${name}`;
-    return `Evening${name}`;
-  })();
+  // F-675: the header names the open house as well as greeting the person.
+  const header = todayHeader({
+    hour: new Date().getHours(),
+    userName: user?.name,
+    houseName: openHouse(houses.data, user?.restaurantId).name,
+  });
 
   return (
     <Screen>
@@ -142,7 +144,12 @@ export default function TodayScreen() {
         }}
       >
         <View>
-          <AppText variant="title">{greeting}</AppText>
+          {header.house ? (
+            <AppText variant="caption" tone="tertiary" numberOfLines={1}>
+              {header.house}
+            </AppText>
+          ) : null}
+          <AppText variant="title">{header.greeting}</AppText>
           <FreshnessLabel updatedAt={dataUpdatedAt || null} />
         </View>
         <View
@@ -397,7 +404,8 @@ export default function TodayScreen() {
           ) : isError ? (
             <ErrorState
               title="Couldn't reach the cellar"
-              message="Check your connection. Anything you approve meanwhile is queued safely."
+              // F-678: approvals are sealed online and never queued.
+              message="Check your connection. Approving an order needs one, so nothing is approved while you're offline."
               onAction={() => refetch()}
             />
           ) : (
