@@ -173,10 +173,20 @@ describe("validation constants match the server's", () => {
   it("keeps the password minimum in step with every auth DTO", () => {
     // If the server tightens to 12 and the client keeps saying 8, the client
     // is promising a submit it knows will be rejected.
+    // Only the @MinLength that decorates a password field counts: the join
+    // DTO also floors the joiner's name at 2 (F-897), which is not a
+    // password rule. Each match is paired with the next field declared after
+    // it, and kept only when that field's name says password.
     for (const file of [JOIN_DTO, RESET_DTO, RESTAURANT_DTO]) {
-      const mins = [...read(file).matchAll(/@MinLength\((\d+)/g)].map((x) =>
-        Number(x[1]),
-      );
+      const src = read(file);
+      const mins = [...src.matchAll(/@MinLength\((\d+)/g)]
+        .filter((x) => {
+          const field = /\b(\w+)[?!]?\s*:\s*\w/.exec(
+            src.slice(x.index! + x[0].length).replace(/@\w+\([^)]*\)/g, ""),
+          );
+          return field !== null && /password/i.test(field[1]);
+        })
+        .map((x) => Number(x[1]));
       expect(mins.length).toBeGreaterThan(0);
       for (const min of mins) expect(min).toBe(MIN_PASSWORD_LENGTH);
     }
