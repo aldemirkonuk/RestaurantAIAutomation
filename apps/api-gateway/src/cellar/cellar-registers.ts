@@ -162,9 +162,26 @@ export function beverageTypesForRegister(id: RegisterId): string[] {
     .map(([type]) => type);
 }
 
-/** Lowercase, strip punctuation to single spaces, pad so \b-style tests are easy. */
+/**
+ * Lowercase, fold accents and Turkish letters to plain ASCII, strip
+ * punctuation to single spaces, pad so \b-style tests are easy.
+ *
+ * Folding comes BEFORE the strip: without it "Rakı" read as "rak", "Çay" as
+ * "ay" and "Rosé" as "ros", so a Turkish or French menu section landed on no
+ * register at all. NFD splits é/ç/ş/ğ/ö/ü into a base letter plus a mark; the
+ * dotless ı (and ø, æ, œ, ß) have no decomposition and are mapped by hand.
+ */
 export function normalizeLabel(text: string): string {
-  return ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+  const folded = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/ø/g, "o")
+    .replace(/æ/g, "ae")
+    .replace(/œ/g, "oe")
+    .replace(/ß/g, "ss");
+  return ` ${folded.replace(/[^a-z0-9]+/g, " ").trim()} `;
 }
 
 /**
@@ -172,21 +189,23 @@ export function normalizeLabel(text: string): string {
  * normalised label — never as substrings — because the short ones are exactly
  * the dangerous ones: "na" inside "banana", "pop" inside "popcorn", "ale"
  * inside "alentejo" (a Portuguese wine region that would otherwise mark a
- * cellar as carrying beer).
+ * cellar as carrying beer). Every word is written already folded to ASCII
+ * ("rose", "sarap", "biere"), because the label it is matched against is.
  */
 const REGISTER_WORDS: Record<RegisterId, readonly string[]> = {
   wines: [
-    "wine", "wines", "red", "reds", "white", "whites", "rose", "rosé",
+    "wine", "wines", "red", "reds", "white", "whites", "rose", "roses",
     "sparkling", "champagne", "prosecco", "cava", "cremant", "orange",
     "fortified", "port", "sherry", "madeira", "riesling", "chardonnay",
     "sauvignon", "pinot", "cabernet", "merlot", "syrah", "shiraz",
     "tempranillo", "sangiovese", "nebbiolo", "malbec", "grenache", "zinfandel",
-    "bottles", "glass", "btg", "vin", "vino",
+    "bottles", "glass", "btg", "vin", "vins", "vino", "vini", "sarap",
   ],
   beer: [
     "beer", "beers", "ale", "ales", "lager", "lagers", "ipa", "ipas", "stout",
     "stouts", "pilsner", "porter", "saison", "hefeweizen", "witbier", "draft",
     "draught", "tap", "taps", "brew", "brews", "brewery", "cerveza", "bira",
+    "biere", "bieres", "bier",
   ],
   whiskey: [
     "whiskey", "whiskeys", "whisky", "whiskies", "bourbon", "bourbons", "rye",

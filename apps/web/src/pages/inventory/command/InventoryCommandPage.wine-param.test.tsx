@@ -160,7 +160,7 @@ describe('?wine= deep link', () => {
     page.searchQuery = 'Barolo';
     harness('/inventory?wine=Barolo');
 
-    const input = screen.getByPlaceholderText(/Search wines, producers, grapes/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/Search drinks, producers, grapes/i) as HTMLInputElement;
     expect(input.value).toBe('Barolo');
   });
 });

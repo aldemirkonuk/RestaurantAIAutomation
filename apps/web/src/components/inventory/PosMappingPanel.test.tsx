@@ -129,9 +129,60 @@ describe("PosMappingPanel", () => {
 
     expect(
       screen.getByText(
-        /will be confirmed as the right wine, but their sales will keep queueing/i,
+        /will be confirmed as the right\s+item, but their sales will keep queueing/i,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("lets a bar state a shot or pint size, asked rather than guessed (F-720)", async () => {
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    await screen.findByText("ext-1");
+    await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
+    await user.click(screen.getByRole("button", { name: "Other size" }));
+    // No size is pre-filled, so the form cannot be used until one is typed.
+    const use = screen.getByRole("button", { name: "Use this size" });
+    expect(use).toBeDisabled();
+    await user.selectOptions(
+      screen.getByLabelText("Serve for Alvear Solera 1927"),
+      "shot",
+    );
+    await user.type(
+      screen.getByLabelText("Millilitres for Alvear Solera 1927"),
+      "50",
+    );
+    await user.click(use);
+    expect(screen.getByRole("button", { name: /shot 50ml/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
+
+    await waitFor(() => expect(approveProposals).toHaveBeenCalled());
+    expect(approveProposals.mock.calls[0][0]).toEqual([
+      { proposal_id: "prop-1", sale_unit: "shot", sale_volume_ml: 50 },
+    ]);
+  });
+
+  it("does not call an unmatched drink safe to ignore — only food (F-719)", async () => {
+    getUnresolvedLines.mockResolvedValue(
+      queue({
+        items: [
+          {
+            source: "simpos",
+            external_item_id: "ext-9",
+            item_name: "Efes Draft",
+            reason: "unmapped",
+            occurrences: 3,
+            qty_total: 3,
+          },
+        ],
+      }),
+    );
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    const note = await screen.findByText(/matched nothing in inventory/i);
+    expect(note.textContent).not.toMatch(/drinks that are not wine/i);
+    expect(note.textContent).toMatch(/Food belongs\s+here and is safe to ignore/);
+    expect(note.textContent).toMatch(/beer/);
   });
 
   it("says the queue could not be read rather than showing it as empty (ADR 0067)", async () => {

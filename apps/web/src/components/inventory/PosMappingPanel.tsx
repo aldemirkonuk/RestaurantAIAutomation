@@ -14,7 +14,7 @@
  * Two questions stand between a POS button and a depleted bottle, and the old
  * approve endpoint only ever recorded the first:
  *
- *   1. "Which wine is this button?"  → pos_item_mappings.inventory_id
+ *   1. "Which stock item is this button?" → pos_item_mappings.inventory_id
  *   2. "How much does one sale remove?" → sale_volume_ml (ADR 0011)
  *
  * Approving (1) without (2) produced a mapping that queued its very next sale
@@ -87,6 +87,26 @@ interface UnitAnswer {
   ml: number | null;
 }
 
+/**
+ * Serve names beyond bottle and glass, for a bar's beer, spirits and soft
+ * drinks. The approve route takes an open label and the millilitres one sale
+ * removes, so these need no schema. No size is pre-filled: a pint is 568ml in
+ * one country and 473ml in another, and a guessed size is the B36 failure.
+ */
+const OTHER_SERVES = [
+  "shot",
+  "double",
+  "pint",
+  "half pint",
+  "can",
+  "keg pour",
+  "carafe",
+] as const;
+
+/** Same plausibility band the gateway enforces on sale_volume_ml. */
+const MIN_SALE_ML = 10;
+const MAX_SALE_ML = 30000;
+
 function errText(e: unknown): string {
   const anyE = e as {
     response?: { data?: { message?: string } };
@@ -112,6 +132,11 @@ export function PosMappingPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [matching, setMatching] = useState(false);
+  // The one row whose "Other size" form is open, and what has been typed.
+  const [otherFor, setOtherFor] = useState<string | null>(null);
+  const [otherDraft, setOtherDraft] = useState<{ label: string; ml: string }>(
+    { label: OTHER_SERVES[0], ml: "" },
+  );
 
   const invById = useMemo(() => {
     const m = new Map<
@@ -304,8 +329,8 @@ export function PosMappingPanel({
               POS buttons → stock
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Confirm which wine each POS button is, and how much one sale
-              removes. Both are needed before a sale can move a bottle.
+              Confirm which stock item each POS button is, and how much one
+              sale removes. Both are needed before a sale can move any stock.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -452,7 +477,7 @@ export function PosMappingPanel({
                         </>
                       ) : (
                         <span className="text-amber-700 font-semibold">
-                          no inventory row matched — add the wine first
+                          nothing in inventory matched — add the drink first
                         </span>
                       )}
                     </div>
@@ -480,6 +505,24 @@ export function PosMappingPanel({
                       >
                         Glass {pourMl ?? 150}ml
                       </button>
+                      {a && a.label !== "bottle" && a.label !== "glass" ? (
+                        <button
+                          onClick={() => setOtherFor(p.id)}
+                          className="h-7 px-2.5 rounded-md text-[11px] font-bold border border-wine-600 bg-wine-600 text-white"
+                        >
+                          {a.label} {a.ml}ml
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setOtherDraft({ label: OTHER_SERVES[0], ml: "" });
+                            setOtherFor(otherFor === p.id ? null : p.id);
+                          }}
+                          className="h-7 px-2.5 rounded-md text-[11px] font-bold border border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                        >
+                          Other size
+                        </button>
+                      )}
                       <button
                         onClick={() => reject(p.id)}
                         disabled={busy}
@@ -488,6 +531,18 @@ export function PosMappingPanel({
                         Not this
                       </button>
                     </div>
+                    {otherFor === p.id && (
+                      <OtherServeForm
+                        itemName={p.item_name}
+                        draft={otherDraft}
+                        onDraft={setOtherDraft}
+                        onSet={(label, ml) => {
+                          setAnswer(p.id, label, ml);
+                          setOtherFor(null);
+                        }}
+                        onCancel={() => setOtherFor(null)}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -496,7 +551,7 @@ export function PosMappingPanel({
               <p className="text-[11px] text-amber-700 font-semibold mt-2">
                 {[...selected].filter((id) => !answers[id]).length} selected
                 button(s) have no sale size. They will be confirmed as the right
-                wine, but their sales will keep queueing and move no stock until
+                item, but their sales will keep queueing and move no stock until
                 a size is set.
               </p>
             )}
@@ -563,10 +618,10 @@ export function PosMappingPanel({
                 Not recognised — {stillUnmapped.length} button(s)
               </h3>
               <p className="text-[11px] text-gray-500 mb-2">
-                These rang up and matched nothing in inventory. Food and drinks
-                that are not wine belong here and are safe to ignore; a wine
-                here needs adding to inventory first, then "Re-read POS
-                catalog".
+                These rang up and matched nothing in inventory. Food belongs
+                here and is safe to ignore. Any drink here (wine, beer,
+                spirits, soft drinks) moves no stock until you add it to
+                inventory, then "Re-read POS catalog".
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {stillUnmapped.map((g) => (
@@ -584,6 +639,77 @@ export function PosMappingPanel({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The serve-size form for a drink sold by something other than the bottle or
+ * glass. Both the name and the millilitres are asked for; neither is guessed.
+ */
+function OtherServeForm({
+  itemName,
+  draft,
+  onDraft,
+  onSet,
+  onCancel,
+}: {
+  itemName: string;
+  draft: { label: string; ml: string };
+  onDraft: (d: { label: string; ml: string }) => void;
+  onSet: (label: string, ml: number) => void;
+  onCancel: () => void;
+}) {
+  const ml = Number(draft.ml);
+  const valid =
+    draft.ml.trim() !== "" &&
+    Number.isFinite(ml) &&
+    ml >= MIN_SALE_ML &&
+    ml <= MAX_SALE_ML;
+  return (
+    <div className="basis-full flex items-center gap-2 flex-wrap pl-7 text-[11px]">
+      <label className="flex items-center gap-1 text-gray-600">
+        One sale is a
+        <select
+          aria-label={`Serve for ${itemName}`}
+          value={draft.label}
+          onChange={(e) => onDraft({ ...draft, label: e.target.value })}
+          className="h-7 rounded-md border border-gray-200 bg-white px-1.5"
+        >
+          {OTHER_SERVES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-1 text-gray-600">
+        of
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_SALE_ML}
+          max={MAX_SALE_ML}
+          aria-label={`Millilitres for ${itemName}`}
+          value={draft.ml}
+          onChange={(e) => onDraft({ ...draft, ml: e.target.value })}
+          className="h-7 w-20 rounded-md border border-gray-200 px-1.5"
+        />
+        ml
+      </label>
+      <button
+        onClick={() => valid && onSet(draft.label, ml)}
+        disabled={!valid}
+        className="h-7 px-2.5 rounded-md font-bold border border-wine-600 bg-wine-600 text-white disabled:opacity-50"
+      >
+        Use this size
+      </button>
+      <button
+        onClick={onCancel}
+        className="h-7 px-2 rounded-md font-semibold text-gray-400 hover:text-gray-700"
+      >
+        Cancel
+      </button>
     </div>
   );
 }
