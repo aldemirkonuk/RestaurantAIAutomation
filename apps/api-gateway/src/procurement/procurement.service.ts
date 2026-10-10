@@ -3321,7 +3321,17 @@ export class ProcurementService {
       restaurantId,
       row,
     );
-    return this.mapOrderRow(orderRow, undefined, received);
+    // The agreement line's own money (F-800). Receiving compares the bill
+    // against the LINE's currency first and the header's only when the line
+    // names none (`verifyReceipt`'s `poCurrency`), so the phone has to be told
+    // the same one or it holds a price the server compares, and the reverse.
+    // Three states: a code, `null` (read, and the line names none or there is
+    // no line), or ABSENT when the line could not be read.
+    const agreedLine = await this.readAgreedLine(restaurantId, orderId);
+    return {
+      ...this.mapOrderRow(orderRow, undefined, received),
+      agreedCurrency: agreedLine.read ? agreedLine.currency : undefined,
+    };
   }
 
   /**
