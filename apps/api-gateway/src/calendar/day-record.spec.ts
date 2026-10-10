@@ -1194,7 +1194,7 @@ describe("DayRecordService — net takings and the house currency", () => {
     expect(out.currency).toEqual({ code: null, readable: true });
   });
 
-  it("keeps an unreadable currency apart from one never recorded", async () => {
+  async function expectUnreadableCurrencyKeptApart() {
     // An unreadable house record holds back any day not yet over on the
     // earliest clock (UTC-12), and between 00:00 and 12:00 UTC that is still
     // YESTERDAY, so this reads a day that is over everywhere.
@@ -1214,7 +1214,28 @@ describe("DayRecordService — net takings and the house currency", () => {
     expect(out.currency).toEqual({ code: null, readable: false });
     // The day itself still comes back: a currency read is not the ledger.
     expect(out.days[0].recorded?.netSales).toBe(3400);
+  }
+
+  it("keeps an unreadable currency apart from one never recorded", async () => {
+    await expectUnreadableCurrencyKeptApart();
   });
+
+  // F-840: this case failed whenever the suite ran before 12:00 UTC. Pin
+  // every hour of the day so a clock-dependent date cannot come back.
+  it.each(Array.from({ length: 24 }, (_, hour) => hour))(
+    "keeps an unreadable currency apart when run at %i:30 UTC (F-840)",
+    async (hour) => {
+      jest.useFakeTimers({
+        now: new Date(Date.UTC(2026, 9, 10, hour, 30)),
+        doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+      });
+      try {
+        await expectUnreadableCurrencyKeptApart();
+      } finally {
+        jest.useRealTimers();
+      }
+    },
+  );
 
   it("keeps the pair's takings under a key that names their basis", async () => {
     const { service, inserted } = makeService({

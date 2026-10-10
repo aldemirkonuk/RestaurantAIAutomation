@@ -2047,13 +2047,15 @@ export class PosHubService {
     // supabase-js resolves RPC failures as { error } rather than throwing, so
     // — as in the receiving-door bug this plan's spine repair fixed — the
     // error field must be checked explicitly or a failed depletion reports
-    // success silently. A throw is folded into the same shape.
+    // success silently. A throw is folded into the same shape. The RPC is
+    // named at each call below, with its arguments inline, so
+    // scripts/check_stock_wrappers_check_ownership.py can read the house it
+    // passes.
     const call = async (
-      name: "apply_stock_movement" | "record_glass_pour",
-      args: Record<string, unknown>,
+      rpc: () => PromiseLike<{ error: { message?: string } | null }>,
     ): Promise<string | null> => {
       try {
-        const { error } = await db.rpc(name, args);
+        const { error } = await rpc();
         return error ? (error.message ?? "no message") : null;
       } catch (err: any) {
         return err?.message ?? String(err);
@@ -2065,7 +2067,7 @@ export class PosHubService {
       reason: string,
       key: string,
     ) =>
-      call("apply_stock_movement", {
+      call(() => db.rpc("apply_stock_movement", {
         p_inventory_id: inventoryId,
         p_stock_state: "live",
         p_delta: delta,
@@ -2084,7 +2086,7 @@ export class PosHubService {
         // the till re-sends the sale's closed_at on it; a till that
         // stamps the void with its own time dates the return then.
         p_occurred_at: when.at,
-      });
+      }));
     const pour = (
       inventoryId: string,
       pours: number,
@@ -2092,7 +2094,7 @@ export class PosHubService {
       reason: string,
       key: string,
     ) =>
-      call("record_glass_pour", {
+      call(() => db.rpc("record_glass_pour", {
         p_inventory_id: inventoryId,
         p_pours: pours,
         p_pour_ml: pourMl,
@@ -2102,7 +2104,7 @@ export class PosHubService {
         p_idempotency_key: key,
         // ADR 0281: dated by the check, not by its arrival.
         p_occurred_at: when.at,
-      });
+      }));
     const fail = (name: string, message: string, lines: number) => {
       this.logger.warn(
         `Stock effect failed for ${name} on check ${check.externalCheckId}: ${message}`,

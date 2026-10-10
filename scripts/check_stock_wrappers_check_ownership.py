@@ -88,9 +88,9 @@ ALLOWLIST = {
     ("pos-hub/pos-hub.service.ts", "applyStockEffects", "record_glass_pour"): (
         "scoped", "pours only an id the house-scoped loadInventoryVolumes returned; anything else is queued "
                   "(mapping-inventory-ids-belong-to-the-house.spec.ts)"),
-    ("toast/toast.service.ts", "applyOrderSaleEffects", "record_glass_pour"): (
-        "scoped", "a read scoped to the house must return the mapping's item or the line is queued "
-                  "(mapping-inventory-ids-belong-to-the-house.spec.ts)"),
+    # toast/toast.service.ts applyOrderSaleEffects was retired 2026-10-10 (F-844):
+    # fix/sim-pos-check-truth routes a Toast check through pos-hub's
+    # applyStockEffects above, so Toast no longer moves stock itself.
     # apply_stock_movement sites need only p_restaurant_id (check 2); this one
     # also carries a gateway assert, which is checked because it is listed.
     ("inventory-ledger/inventory-ledger.service.ts", "createTransaction", "apply_stock_movement"): (

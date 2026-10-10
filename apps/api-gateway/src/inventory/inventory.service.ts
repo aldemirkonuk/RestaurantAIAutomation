@@ -1159,15 +1159,22 @@ export class InventoryService {
   /**
    * The house's default par (`restaurants.default_threshold_min`), for a new
    * row the person gave no par for. The column's own default (3) stands in
-   * when the house row cannot be read, as it does for a menu import.
+   * when the house row cannot be read, as it does for a menu import; the
+   * failed read is logged so the stand-in is never silent.
    */
   private async houseDefaultParMin(restaurantId: string): Promise<number> {
-    const { data } = await this.dbService
+    const { data, error } = await this.dbService
       .getClient()
       .from("restaurants")
       .select("default_threshold_min")
       .eq("id", restaurantId)
       .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `house ${restaurantId}: default par unread (${error.message}); using ${HOUSE_PAR_MIN_FALLBACK}`,
+      );
+      return HOUSE_PAR_MIN_FALLBACK;
+    }
     const value = (data as { default_threshold_min?: unknown } | null)
       ?.default_threshold_min;
     return typeof value === "number" ? value : HOUSE_PAR_MIN_FALLBACK;

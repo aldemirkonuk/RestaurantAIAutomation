@@ -37,7 +37,7 @@
       "source": "apps/web/src/pages/dashboard/next",
       "empty": [
         "Nothing on the calendar",
-        "No alerts carry this date",
+        "Nothing needs attention right now",
         "No recorded activity",
         "Nothing was on the calendar"
       ],
