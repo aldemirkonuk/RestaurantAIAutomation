@@ -72,6 +72,7 @@ import {
   type VendorSendRequestView,
 } from "../../organizations/vendor-send-requests.service";
 import { assertNamedActor } from "./house-letters.actor";
+import { holdsHouseMoney } from "../../procurement/documents/document-money-gate";
 import { composerGuardrails, type GuardrailHit } from "./composer-guardrails";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import type { IntegrationId } from "../../integrations/integrations-oauth.constants";
@@ -1040,8 +1041,19 @@ export class HouseLettersService {
     return ((data as Record<string, unknown> | null)?.name as string | null) ?? null;
   }
 
-  /** What is still inside its undo window for this house, newest first. */
-  async queued(restaurantId: string) {
+  /**
+   * What is still inside its undo window for this house, newest first.
+   *
+   * The subject line is the letter's own words and may quote a price (F-986):
+   * a viewer who does not hold the house's money keeps it only under ADR 0175
+   * D10 send authority, as on `/procurement/orders/:id/conversations`. A
+   * standing that cannot be read keeps nothing. With no viewer named, the
+   * rows come whole (an internal read, never a route).
+   */
+  async queued(
+    restaurantId: string,
+    viewer?: { userId: string; role?: string | null },
+  ) {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
       .select("id, provider_id, scheduled_send_at, email_headers, created_at")
@@ -1054,7 +1066,7 @@ export class HouseLettersService {
         `What is queued could not be read (${error.message}).`,
       );
     }
-    return (data ?? []).map((r) => {
+    const rows = (data ?? []).map((r) => {
       const row = r as unknown as Record<string, unknown>;
       const headers = (row.email_headers ?? {}) as Record<string, unknown>;
       return {
@@ -1065,6 +1077,33 @@ export class HouseLettersService {
         dispatchAt: (row.scheduled_send_at as string | null) ?? null,
       };
     });
+    if (
+      !viewer ||
+      holdsHouseMoney(viewer.role) ||
+      (await this.maySendFor(viewer.userId, restaurantId))
+    ) {
+      return rows;
+    }
+    return rows.map(({ subject: _subject, ...kept }) => ({
+      ...kept,
+      wordsWithheld: true as const,
+    }));
+  }
+
+  /** The viewer's D10 standing; one that cannot be read is "may not". */
+  private async maySendFor(
+    userId: string,
+    restaurantId: string,
+  ): Promise<boolean> {
+    if (!this.authority) return false;
+    try {
+      const standing = await this.authority.readout(userId, restaurantId, {
+        canAsk: true,
+      });
+      return standing.maySend === true;
+    } catch {
+      return false;
+    }
   }
 
   // ==========================================================================

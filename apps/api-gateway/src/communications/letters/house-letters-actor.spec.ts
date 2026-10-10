@@ -275,7 +275,7 @@ describe("a session that names no person or no house is refused, never recorded"
   }> = [
     { name: "senderIdentity", call: (c, u) => c.senderIdentity(u as never) },
     { name: "book", call: (c, u) => c.book(u as never) },
-    { name: "queued", call: (c, u) => c.queued(u as never) },
+    { name: "queued", call: (c, u) => c.queued(u as never, null) },
     { name: "templates", call: (c, u) => c.templates(u as never) },
     {
       name: "upsertTemplate",

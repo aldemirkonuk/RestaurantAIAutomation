@@ -257,9 +257,16 @@ export class ProviderIntelligenceController {
 
   // =========================================================================
   // CONVERSATION MEMORY
+  //
+  // Owner/manager only (F-986), as "how their mail reads" is (ADR 0207; the
+  // founder, 2026-09-21: staff never see it): these are the vendor's own
+  // lines and what was read out of them, prices included, and the letters'
+  // words stay with the owner and managers on every other door.
   // =========================================================================
 
   @Get(":id/conversation-memory")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Get recent conversation memory with extracted intelligence",
   })
@@ -281,6 +288,8 @@ export class ProviderIntelligenceController {
   }
 
   @Post(":id/conversation-memory/search")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Semantic search across provider conversations" })
   async searchConversationMemory(
     @Param("id") providerId: string,

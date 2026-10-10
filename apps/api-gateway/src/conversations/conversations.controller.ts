@@ -25,6 +25,11 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
+import {
+  conversationRowsForRole,
+  orderEmbedForRole,
+} from "../procurement/order-amounts-for-role";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 
 type AuthUser = { userId: string; restaurantId: string };
 
@@ -87,6 +92,31 @@ export class ConversationsController {
 
   constructor(private readonly conversationsService: ConversationsService) {}
 
+  /**
+   * A page of letters as this caller may read it (F-986, the S145 cut on the
+   * routes it missed): a non-holder never gets the order's figures, and keeps
+   * the letters' words only under ADR 0175 D10 send authority. The approve
+   * and reject doors below are not reads and keep their own gates.
+   */
+  private async pageForRole<P extends { conversations: any[] }>(
+    page: P,
+    user: AuthUser,
+    role: string | null,
+  ): Promise<P> {
+    if (holdsHouseMoney(role)) return page;
+    const readsLetters = await this.conversationsService.readsLettersFor(
+      user.userId,
+      houseOf(user),
+      role,
+    );
+    return {
+      ...page,
+      conversations: conversationRowsForRole(page.conversations, role, {
+        readsLetters,
+      }),
+    };
+  }
+
   // ── New: Listing & Filtering Endpoints ────────────────────────────
 
   /**
@@ -137,7 +167,7 @@ export class ConversationsController {
   ) {
     const restaurantId = houseOf(user);
     try {
-      return await this.conversationsService.listConversations({
+      const listed = await this.conversationsService.listConversations({
         // Always the caller's own tenant. Previously this came from a query param, so
         // omitting it returned every restaurant's conversations in one response.
         restaurantId,
@@ -165,6 +195,7 @@ export class ConversationsController {
         sortBy: sortBy || "created_at",
         sortOrder: (sortOrder as "asc" | "desc") || "desc",
       });
+      return await this.pageForRole(listed, user, role);
     } catch (error) {
       this.logger.error(
         `Failed to list conversations: ${error.message}`,
@@ -222,7 +253,7 @@ export class ConversationsController {
   ) {
     const restaurantId = houseOf(user);
     try {
-      return await this.conversationsService.listConversationThreads({
+      const listed = await this.conversationsService.listConversationThreads({
         restaurantId,
         providerId,
         orderNumber,
@@ -246,6 +277,7 @@ export class ConversationsController {
         sortBy: "created_at",
         sortOrder: "desc",
       });
+      return await this.pageForRole(listed, user, role);
     } catch (error) {
       this.logger.error(
         `Failed to list conversation threads: ${error.message}`,
@@ -272,11 +304,28 @@ export class ConversationsController {
     try {
       // ADR 0167/0230: the role in this house decides whether a credit-claim
       // letter's message is in the thread (PR #476 audit, 9d04c0fb6).
-      return await this.conversationsService.getThread(
+      const thread = await this.conversationsService.getThread(
         threadId,
         restaurantId,
         role,
       );
+      // F-986: the order's figures and, without D10 send authority, the
+      // messages' words stay with the owner and managers.
+      if (holdsHouseMoney(role)) return thread;
+      const readsLetters = await this.conversationsService.readsLettersFor(
+        user.userId,
+        restaurantId,
+        role,
+      );
+      return {
+        ...thread,
+        order: orderEmbedForRole(thread.order, role),
+        messages: conversationRowsForRole(thread.messages, role, {
+          readsLetters,
+        }),
+        amountsWithheld: true as const,
+        ...(readsLetters ? {} : { wordsWithheld: true as const }),
+      };
     } catch (error) {
       this.logger.error(`Failed to get thread: ${error.message}`, error.stack);
       throw new HttpException(
@@ -306,7 +355,7 @@ export class ConversationsController {
         providerId,
         restaurantId,
       );
-      return await this.conversationsService.listConversations({
+      const listed = await this.conversationsService.listConversations({
         restaurantId,
         providerId,
         page: page ? parseInt(page, 10) : 1,
@@ -315,6 +364,7 @@ export class ConversationsController {
         sortOrder: "desc",
         callerRole: role,
       });
+      return await this.pageForRole(listed, user, role);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error(
@@ -342,7 +392,7 @@ export class ConversationsController {
       // Another house's order is a 404, the same answer as a missing one, and
       // the list below is this house's messages only (ADR 0147; ADR 0171).
       await this.conversationsService.assertOrderInHouse(orderId, restaurantId);
-      return await this.conversationsService.listConversations({
+      const listed = await this.conversationsService.listConversations({
         restaurantId,
         orderId,
         page: 1,
@@ -351,6 +401,7 @@ export class ConversationsController {
         sortOrder: "asc",
         callerRole: role,
       });
+      return await this.pageForRole(listed, user, role);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error(`Failed to get order conversations: ${error.message}`);
@@ -412,13 +463,21 @@ export class ConversationsController {
    * Get all pending conversations
    */
   @Get("pending/list")
-  async getPendingConversations(@CurrentUser() user: AuthUser) {
+  async getPendingConversations(
+    @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
+  ) {
     const restaurantId = houseOf(user);
     this.logger.log("Fetching pending conversations");
     try {
       const conversations =
         await this.conversationsService.getPendingConversations(restaurantId);
-      return { conversations, count: conversations.length };
+      // F-986: this read took no role at all; it is cut as the lists are.
+      return await this.pageForRole(
+        { conversations, count: conversations.length },
+        user,
+        role,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to fetch pending conversations: ${error.message}`,
@@ -456,7 +515,7 @@ export class ConversationsController {
         throw new HttpException("Conversation not found", HttpStatus.NOT_FOUND);
       }
 
-      return {
+      const answer = {
         conversation_id: conversation.id,
         order_id: conversation.order_id,
         provider: conversation.provider,
@@ -467,6 +526,24 @@ export class ConversationsController {
         ai_message: conversation.message_text,
         conversation_context: conversation.conversation_context,
       };
+      // F-986: without D10 send authority a non-holder gets the letter
+      // without its words, as on every other read of it.
+      if (
+        holdsHouseMoney(role) ||
+        (await this.conversationsService.readsLettersFor(
+          user.userId,
+          restaurantId,
+          role,
+        ))
+      )
+        return answer;
+      const {
+        messages: _messages,
+        ai_message: _words,
+        conversation_context: _context,
+        ...kept
+      } = answer;
+      return { ...kept, wordsWithheld: true as const };
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error(

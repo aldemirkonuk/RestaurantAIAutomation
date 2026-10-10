@@ -66,6 +66,12 @@ export interface LastAgreementLine {
 export interface LastAgreement extends Partial<LastAgreementLine> {
   state: LastAgreementState;
   /**
+   * The figure was left out for this caller (F-988): staff see that a price
+   * was agreed, and when, never the amount, as `orderForRole` cuts it from
+   * the orders it was struck on.
+   */
+  amountsWithheld?: true;
+  /**
    * What the sheet prints under the line. Present in ALL THREE states — an
    * answer with no sentence is what lets a failure render as an empty field.
    */
@@ -119,6 +125,8 @@ export function lastAgreementAnswer(
   ambiguous = false,
   /** The house's zone, so the agreed day is the house's. */
   zone: string | null = null,
+  /** The caller does not hold the house's money (F-988). */
+  withholdAmounts = false,
 ): LastAgreement {
   const vendor = vendorName?.trim() ? vendorName.trim() : "this vendor";
 
@@ -148,6 +156,22 @@ export function lastAgreementAnswer(
       sentence:
         `No agreed price with ${vendor} is on file for this item. The order ` +
         `goes out asking for one; nothing is assumed.`,
+    };
+  }
+
+  if (withholdAmounts) {
+    return {
+      state: "found",
+      unitType: line.unitType,
+      bottlesPerUnit: line.bottlesPerUnit,
+      agreedOn: line.agreedOn,
+      orderNumber: line.orderNumber,
+      amountsWithheld: true,
+      sentence:
+        `A price was last agreed with ${vendor} ${dayWords(line.agreedOn, zone)}` +
+        (line.orderNumber ? ` (order ${line.orderNumber})` : "") +
+        `. Only the owner and managers see the figure. Leave the price ` +
+        `empty and the order asks the vendor for one.`,
     };
   }
 
