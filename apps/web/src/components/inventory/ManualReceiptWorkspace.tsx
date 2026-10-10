@@ -38,6 +38,7 @@ import {
   type BatchSaveKey,
   type MenuScannerPersistResult,
 } from '../../lib/menuScannerPersistence'
+import { useMayActForTheHouse } from '../../hooks/useMayActForTheHouse'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import {
   BatchReceiveGrid,
@@ -61,6 +62,8 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   const { user, activeRestaurantId } = useAuth()
   const queryClient = useQueryClient()
   const { locations } = useStorageLocations()
+  // F-780: staff do not see the cost cells (F-312), so the copy does not ask them for a cost.
+  const canSetCost = useMayActForTheHouse()
   const restaurantId = activeRestaurantId || user?.restaurantId || ''
   const { data: providers = [] } = useProviders(restaurantId)
 
@@ -469,7 +472,8 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
                   <p className="text-sm text-gray-500 font-medium">Nothing on this receipt yet</p>
                   <p className="text-xs text-gray-400 mt-1">
                     Search the library above to add a line, or add a wine the library doesn't have yet. Set the
-                    quantity, cost and location per row — or fill them all at once.
+                    {canSetCost ? ' quantity, cost and location' : ' quantity and location'} per row — or fill them all
+                    at once.
                   </p>
                 </div>
               }
