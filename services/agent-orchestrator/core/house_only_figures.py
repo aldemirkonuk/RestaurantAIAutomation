@@ -320,7 +320,10 @@ def order_letter_without_ceiling(intent: Mapping[str, Any] | None) -> str:
     """
     intent = intent or {}
     wine = str(intent.get("wine_name") or "").strip()
-    quantity = str(intent.get("quantity") or "").strip()
+    quantity = intent.get("quantity")
+    if isinstance(quantity, float) and quantity.is_integer():
+        quantity = int(quantity)  # 6.0 is written as 6
+    quantity = str(quantity or "").strip()
     target = _price(intent.get("target_price"))
     what = " of ".join(x for x in (quantity, wine) if x) or "our next order"
     target_line = f" Our target is {target} per bottle." if target is not None else ""

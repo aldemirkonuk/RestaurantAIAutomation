@@ -581,8 +581,61 @@ async def test_a_kept_draft_is_logged_as_before(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_the_spend_ledger_is_written_before_the_draft_is_checked():
-    agent = _agent("Target $1,090, with a maximum acceptable price of $1,199.")
-    await _draft(agent)
-    agent._log_gemini_spend.assert_called_once()
+async def test_the_spend_ledger_is_written_before_the_draft_is_checked(monkeypatch):
+    # One recorder for every step, so the test sees their order: the spend
+    # ledger, then the house-only guard, then the commitment check, then the
+    # Level-4 entry.
+    order = []
+    agent = _level4_agent(
+        "Target $1,090, with a maximum acceptable price of $1,199.", monkeypatch
+    )
+    agent._log_gemini_spend.side_effect = lambda *a, **k: order.append("spend")
+    guard = pca.withheld_figures_in
+
+    def recorded_guard(*a, **k):
+        order.append("guard")
+        return guard(*a, **k)
+
+    monkeypatch.setattr(pca, "withheld_figures_in", recorded_guard)
+    commitment = agent._check_commitment_language
+
+    def recorded_commitment(*a, **k):
+        order.append("commitment")
+        return commitment(*a, **k)
+
+    agent._check_commitment_language = recorded_commitment
+    agent.log_decision.side_effect = lambda *a, **k: order.append("level4")
+    text, audit = await _draft(agent)
+    assert audit.withheld_figure_dropped is True
+    assert order == ["spend", "guard", "commitment", "level4"]
     assert agent._log_gemini_spend.call_args.args[1] == "draft_response"
+
+
+@pytest.mark.asyncio
+async def test_a_letter_that_itself_holds_the_figure_is_staged_once(monkeypatch):
+    # A quantity equal to the ceiling: the model's draft states it, so the
+    # draft is replaced, and the letter states it too (as the quantity). The
+    # letter is not checked again, so there is no loop: one model call, one
+    # letter, one Level-4 entry.
+    intent = dict(INTENT, quantity=11, target_price=10, max_acceptable_price=11)
+    agent = _level4_agent("We would like 11 bottles at $10.", monkeypatch)
+    text, audit = await agent._generate_response(
+        provider_id="p-1",
+        digital_twin={},
+        style_profile={},
+        recent_messages=[],
+        memories=[],
+        intent=intent,
+        active_promos=[],
+        restaurant_id="r-1",
+    )
+    assert audit.withheld_figure_dropped is True
+    assert text == order_letter_without_ceiling(intent)
+    assert withheld_figures_in(text, intent) == ["max_acceptable_price"]
+    agent.llm_client.generate_content.assert_called_once()
+    agent.log_decision.assert_awaited_once()
+
+
+def test_a_whole_float_quantity_is_written_as_a_whole_number():
+    letter = order_letter_without_ceiling({"wine_name": "Barolo", "quantity": 6.0})
+    assert "quote us for 6 of Barolo?" in letter
