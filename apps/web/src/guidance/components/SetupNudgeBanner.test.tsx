@@ -39,6 +39,7 @@ function mount() {
       <Routes>
         <Route path="/house" element={<SetupNudgeBanner />} />
         <Route path="/get-started" element={<Where />} />
+        <Route path="/house/menu" element={<Where />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -59,5 +60,22 @@ describe('SetupNudgeBanner — where "Finish setup" goes', () => {
   it('goes to the menu once the threshold is set', () => {
     state.progress = { menu_uploaded: false, threshold_configured: true, activated: false }
     expect(mount()).toBe('/get-started')
+  })
+
+  it('goes to make the read menu current when only a draft was read (F-1061)', () => {
+    state.progress = { menu_uploaded: true, menu_current: false, threshold_configured: true, activated: false }
+    expect(mount()).toBe('/house/menu')
+  })
+
+  it('says nothing is locked behind setup, in words for every drink (F-1061)', () => {
+    state.progress = { menu_uploaded: false, threshold_configured: false, activated: false }
+    render(
+      <MemoryRouter initialEntries={['/house']}>
+        <SetupNudgeBanner />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByText(/unlock/i)).toBeNull()
+    expect(screen.queryByText(/wine list/i)).toBeNull()
+    expect(screen.getByText(/so we can flag what is running low/)).toBeTruthy()
   })
 })

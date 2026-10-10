@@ -326,6 +326,8 @@ export class OnboardingController {
   constructor(
     private readonly menusService: MenusService,
     private readonly inboundAddress: InboundAddressService,
+    // The house-wide low-stock number is an owner's or a manager's (F-1060).
+    private readonly organizations: OrganizationsService,
   ) {}
 
   @Get("progress")
@@ -352,15 +354,51 @@ export class OnboardingController {
     );
   }
 
+  @Get("threshold")
+  @ApiOperation({
+    summary:
+      "How many items the house carries now — owner or manager only (the low-stock step names it)",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
+  async getThreshold(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+  ) {
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "set the low-stock number",
+    );
+    return { carried: await this.menusService.countCarriedItems(restaurantId) };
+  }
+
   @Patch("threshold")
   @ApiOperation({
     summary:
-      "Set the restaurant's default low-stock threshold (get-started step 3)",
+      "Set the restaurant's default low-stock threshold — owner or manager only",
+    description:
+      "The default reaches items added from now on. Items carried now keep their own par unless applyToCarried is true, which sets the number on every item the house carries and says how many.",
   })
-  async setThreshold(@Body() dto: SetThresholdDto) {
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
+  async setThreshold(
+    @CurrentUser("userId") userId: string,
+    @Body() dto: SetThresholdDto,
+  ) {
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      dto.restaurantId,
+      "set the low-stock number",
+    );
     return this.menusService.setDefaultThreshold(
       dto.restaurantId,
       dto.thresholdMin,
+      dto.applyToCarried === true,
     );
   }
 

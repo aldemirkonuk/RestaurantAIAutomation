@@ -49,12 +49,22 @@ export function SetupNudgeBanner() {
       data-guidance="setup-nudge-banner"
       ariaLabel="Finish setup"
       title="Finish setting up Mudavym."
-      body="Upload your wine list and set a low-stock threshold to unlock inventory and ordering."
+      // Nothing waits on these two answers; they are what lets low stock be
+      // flagged (F-1061). Said for every kind of drink, not wine alone.
+      body="Make your menu current and set a low-stock number, so we can flag what is running low. Everything else works without them."
       primaryLabel="Finish setup"
       // The threshold is asked on its own step; the menu on /get-started's
       // menu step. The nudge goes to whichever half is still missing (F-985).
+      // A menu already read but not yet current is made current on
+      // /house/menu, not read again (F-1061).
       onPrimary={() =>
-        navigate(progress?.threshold_configured ? '/get-started' : '/get-started?step=threshold')
+        navigate(
+          !progress?.threshold_configured
+            ? '/get-started?step=threshold'
+            : progress?.menu_uploaded
+              ? '/house/menu'
+              : '/get-started',
+        )
       }
       onLater={() => guidance?.snoozeSetupNudge()}
       onDismissForever={() => guidance?.dismissSetupNudgeForever()}

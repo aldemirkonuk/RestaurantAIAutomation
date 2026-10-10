@@ -140,7 +140,7 @@ export class InventoryController {
   ) {
     if (!userId) {
       throw new HttpException(
-        "A price change names the person who made it, and this session names nobody. Nothing was changed.",
+        "This change names the person who made it, and this session names nobody. Nothing was changed.",
         HttpStatus.FORBIDDEN,
       );
     }
@@ -353,6 +353,15 @@ export class InventoryController {
     // Checked before anything is written.
     if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
       await this.assertMayPrice(user?.userId, restaurantId);
+    }
+    // A wine's par is the house's low-stock line: an owner's or a manager's
+    // too (F-1064, F-1060), checked before anything is written.
+    if (dto.thresholdMin !== undefined || dto.thresholdMax !== undefined) {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "change a wine's par",
+      );
     }
     // So is what the house paid for it (F-312). A wine added with no cost
     // stays open to everyone: its cost is recorded as unknown.
@@ -640,6 +649,15 @@ export class InventoryController {
     // price change does not half-apply the other fields beside it.
     if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
       await this.assertMayPrice(user?.userId, restaurantId);
+    }
+    // A wine's par is the house's low-stock line: an owner's or a manager's
+    // too (F-1064, F-1060), checked before anything is written.
+    if (dto.thresholdMin !== undefined || dto.thresholdMax !== undefined) {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "change a wine's par",
+      );
     }
     try {
       return inventoryItemForRole(

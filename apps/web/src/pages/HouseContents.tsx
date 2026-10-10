@@ -90,7 +90,18 @@ export default function HouseContents() {
                 {pencilled === 0 ? 'The first proof is set.' : `${pencilled} pencilled`}
               </button>
             ) : (
-              <p className="mt-2 font-serif text-2xl text-[#6d685f]">No menu read yet.</p>
+              // A way to read one, not a dead end: /get-started opens on its
+              // menu step for a person whose house is already open (F-1063).
+              <>
+                <p className="mt-2 font-serif text-2xl text-[#6d685f]">No menu read yet.</p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/get-started')}
+                  className="mt-2 text-sm text-[#1a5e6b] underline underline-offset-4"
+                >
+                  Read your menu
+                </button>
+              </>
             )}
             {proof && standing === 'draft' && (
               <p className="mt-2 text-sm text-[#6d685f]">

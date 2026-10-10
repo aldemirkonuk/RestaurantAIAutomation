@@ -50,11 +50,49 @@ describe("PATCH inventory item — who may change a price", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("a non-price edit by staff is unchanged by this gate", async () => {
+  it("an edit that is neither price nor par by staff is unchanged by this gate", async () => {
     const { c, update } = controller("staff");
-    await c.updateInventoryItem("rest-1", "inv-1", { thresholdMin: 4 } as any, { userId: "u-1" });
+    await c.updateInventoryItem("rest-1", "inv-1", { isActive: true } as any, {
+      userId: "u-1",
+    });
     expect(update).toHaveBeenCalledTimes(1);
   });
+});
+
+/**
+ * F-1064 / F-1060 (S160 call): a wine's par is the house's low-stock line, so
+ * changing it is an owner's or a manager's act, like the house default.
+ */
+describe("PATCH inventory item — who may change a par", () => {
+  it.each(["owner", "manager"])(
+    "a %s may change a wine's par",
+    async (role) => {
+      const { c, update } = controller(role);
+      await c.updateInventoryItem(
+        "rest-1",
+        "inv-1",
+        { thresholdMin: 4 } as any,
+        { userId: "u-1" },
+      );
+      expect(update).toHaveBeenCalledWith(
+        "rest-1",
+        "inv-1",
+        { thresholdMin: 4 },
+        "u-1",
+      );
+    },
+  );
+
+  it.each([{ thresholdMin: 4 }, { thresholdMax: 30 }])(
+    "staff is refused a par change %p, and nothing is written",
+    async (dto) => {
+      const { c, update } = controller("staff");
+      await expect(
+        c.updateInventoryItem("rest-1", "inv-1", dto as any, { userId: "u-1" }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
 });
 
 /**

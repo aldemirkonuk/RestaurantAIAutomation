@@ -134,7 +134,9 @@ export interface OnboardingProgress {
   completed_at: string | null
   /** Whether restaurants.default_threshold_min has been explicitly confirmed. */
   threshold_configured: boolean
-  /** menu_uploaded AND threshold_configured — the soft-gate "done enough" signal. */
+  /** The house has a current menu (a draft read is not one, F-1061). */
+  menu_current?: boolean
+  /** menu_current AND threshold_configured — the soft-gate "done enough" signal. */
   activated: boolean
 }
 
@@ -319,11 +321,26 @@ export async function getVendorEmail(): Promise<{ address: string | null }> {
   return response.data
 }
 
+/** How many items the house carries now — owner or manager only (F-1059). */
+export async function getCarriedCount(): Promise<number> {
+  const response = await apiClient.get<{ carried: number }>('/onboarding/threshold')
+  return Number(response.data?.carried ?? 0)
+}
+
+/**
+ * Saves the house's low-stock number. It reaches items added from now on;
+ * `applyToCarried` also sets it on every item carried now (F-1059).
+ */
 export async function setDefaultThreshold(
-  thresholdMin: number
-): Promise<{ default_threshold_min: number; threshold_configured: true }> {
+  thresholdMin: number,
+  applyToCarried = false,
+): Promise<{ default_threshold_min: number; threshold_configured: true; applied_to_carried?: number }> {
   const restaurantId = getActiveRestaurantId()
-  const response = await apiClient.patch('/onboarding/threshold', { restaurantId, thresholdMin })
+  const response = await apiClient.patch('/onboarding/threshold', {
+    restaurantId,
+    thresholdMin,
+    ...(applyToCarried ? { applyToCarried: true } : {}),
+  })
   return response.data
 }
 
