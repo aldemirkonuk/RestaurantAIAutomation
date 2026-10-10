@@ -5,6 +5,7 @@ Phase 13: Dev Onboarding UI with Manual Override Access.
 
 Endpoints:
   POST   /api/v1/studio/sessions                          — Start new ingestion session
+  POST   /api/v1/studio/submissions                       — Create a hand-entered record's submission
   GET    /api/v1/studio/sessions/{id}                     — Get session timeline (DEVUI-08)
   POST   /api/v1/studio/overrides                         — Submit field override (DEVUI-05, D-12/D-13)
   GET    /api/v1/studio/queue                             — Pending approval queue (review_admin only)
@@ -32,7 +33,6 @@ Security:
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -50,7 +50,9 @@ from services.override_service import (
     _get_primary_studio_role,
     _get_user_studio_roles,
     _apply_override_to_submission,
+    _fc_value,
     _maybe_promote_submission,
+    build_library_row,
     check_and_update_trust,
 )
 
@@ -59,14 +61,24 @@ logger = logging.getLogger(__name__)
 studio_router = APIRouter(prefix="/api/v1/studio", tags=["studio"])
 
 
+# 'image_upload' is a photo of a list (F-755): the bar has always accepted one and sent
+# this value, and the allow-list here and the DB CHECK (20270104000000) did not.
+SESSION_SOURCE_TYPES = ("pdf_upload", "image_upload", "url_crawl", "manual_seed")
+
+
 class SessionCreateRequest(BaseModel):
-    source_type: str  # 'pdf_upload' | 'url_crawl' | 'manual_seed'
+    source_type: str  # one of SESSION_SOURCE_TYPES
     source_ref: Optional[str] = None
     scan_session_id: Optional[str] = None
 
 
 class PromoteRequest(BaseModel):
     submission_id: str
+
+
+class ManualSubmissionRequest(BaseModel):
+    session_id: Optional[str] = None
+    wine_name: Optional[str] = None
 
 
 # --- POST /sessions ---
@@ -78,10 +90,10 @@ def create_session(
     ),
 ):
     """Start a new onboarding session — records actor, source type, and optional scan_session_id."""
-    if body.source_type not in ("pdf_upload", "url_crawl", "manual_seed"):
+    if body.source_type not in SESSION_SOURCE_TYPES:
         raise HTTPException(
             status_code=422,
-            detail="source_type must be pdf_upload, url_crawl, or manual_seed",
+            detail="source_type must be pdf_upload, image_upload, url_crawl, or manual_seed",
         )
     supabase = _get_supabase()
     if not supabase:
@@ -104,6 +116,70 @@ def create_session(
     except Exception as exc:
         logger.error("create_session failed: %s", exc)
         raise HTTPException(status_code=503, detail="Failed to create session")
+
+
+# --- POST /submissions ---
+@studio_router.post("/submissions")
+def create_manual_submission(
+    body: ManualSubmissionRequest,
+    user: dict = Depends(
+        require_studio_role("developer", "certified_contributor", "review_admin")
+    ),
+):
+    """
+    Create the submission row behind a hand-entered "Empty record" (F-756).
+
+    The bar used to give that record a random client UUID with no row behind it,
+    so every cell save and Promote 404'd on "Submission not found". The record now
+    uses this row's id. A typed wine name is a person's entry, so it is stored the
+    way a cell save stores one (confidence 1.0, human_override).
+    """
+    supabase = _get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    wine_name = (body.wine_name or "").strip() or None
+    payload: dict = {"extraction_source": "manual_seed", "session_id": body.session_id}
+    field_confidence: dict = {}
+    if wine_name:
+        payload["wine_name"] = wine_name
+        field_confidence["wine_name"] = {
+            "value": wine_name,
+            "confidence": 1.0,
+            "source": "human_override",
+        }
+    try:
+        # Tenant from the caller's own user row, never the body — the same lookup
+        # onboarding extraction uses (onboarding_routes._resolve_cap_key).
+        user_resp = (
+            supabase.table("users")
+            .select("restaurant_id")
+            .eq("user_id", user["sub"])
+            .limit(1)
+            .execute()
+        )
+        user_rows = user_resp.data or []
+        restaurant_id = user_rows[0].get("restaurant_id") if user_rows else None
+        resp = (
+            supabase.table("master_wine_library_submissions")
+            .insert(
+                {
+                    "restaurant_id": restaurant_id,
+                    "submitted_by": "studio_manual",
+                    "payload": payload,
+                    "field_confidence": field_confidence,
+                    "status": "pending_review",
+                }
+            )
+            .execute()
+        )
+    except Exception as exc:
+        logger.error("create_manual_submission failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Failed to create submission")
+    row = resp.data[0] if resp.data else None
+    if not row or not row.get("id"):
+        raise HTTPException(status_code=503, detail="Failed to create submission")
+    return {"submission": {"id": row["id"]}}
 
 
 # --- GET /sessions/{id} ---
@@ -289,11 +365,14 @@ def submit_override(
                 "detail": "Override recorded, but promotion failed. See server logs.",
             }
 
-        # T-14-08: attempt library promotion — non-fatal if it fails
-        try:
-            _maybe_promote_submission(supabase, body.submission_id)
-        except Exception as exc:
-            logger.error("submit_override: _maybe_promote_submission failed: %s", exc)
+        # T-14-08: attempt library promotion — non-fatal, but the outcome is returned
+        # so a failed library write is not reported as a plain success (F-754).
+        library = _maybe_promote_submission(supabase, body.submission_id)
+        return {
+            "status": promotion_status,
+            "override_id": override_id,
+            "library": library,
+        }
 
     return {"status": promotion_status, "override_id": override_id}
 
@@ -337,6 +416,25 @@ def get_approval_queue(
         raise HTTPException(status_code=503, detail="Database query failed")
 
 
+def _queue_identity(sub: dict) -> dict:
+    """Wine name and vintage for a queue row (F-760). Gateway submissions keep the
+    name under payload 'name' (wine-submissions.service.ts:153); studio extraction
+    keeps it under 'wine_name' (onboarding_routes.py:353), or only in
+    field_confidence when it fell below the accept threshold."""
+    payload = sub.get("payload") or {}
+    fc = sub.get("field_confidence") or {}
+
+    def pick(*values):
+        return next((v for v in values if v not in (None, "")), None)
+
+    return {
+        "wine_name": pick(
+            payload.get("name"), payload.get("wine_name"), _fc_value(fc, "wine_name")
+        ),
+        "vintage": pick(payload.get("vintage"), _fc_value(fc, "vintage")),
+    }
+
+
 def _hydrate_queue_rows(supabase, rows: list[dict]) -> list[dict]:
     """Fills in wine_name/vintage (from the submission payload), actor_email,
     actor_role, and trust_count for each pending override row.
@@ -352,17 +450,17 @@ def _hydrate_queue_rows(supabase, rows: list[dict]) -> list[dict]:
     submission_ids = list({r["submission_id"] for r in rows if r.get("submission_id")})
     actor_ids = list({r["actor_id"] for r in rows if r.get("actor_id")})
 
-    payload_by_submission: dict[str, dict] = {}
+    identity_by_submission: dict[str, dict] = {}
     if submission_ids:
         try:
             sub_resp = (
                 supabase.table("master_wine_library_submissions")
-                .select("id, payload")
+                .select("id, payload, field_confidence")
                 .in_("id", submission_ids)
                 .execute()
             )
             for sub in sub_resp.data or []:
-                payload_by_submission[sub["id"]] = sub.get("payload") or {}
+                identity_by_submission[sub["id"]] = _queue_identity(sub)
         except Exception as exc:
             logger.warning("_hydrate_queue_rows: submission lookup failed: %s", exc)
 
@@ -408,13 +506,13 @@ def _hydrate_queue_rows(supabase, rows: list[dict]) -> list[dict]:
 
     hydrated = []
     for row in rows:
-        payload = payload_by_submission.get(row.get("submission_id"), {})
+        identity = identity_by_submission.get(row.get("submission_id"), {})
         actor_id = row.get("actor_id")
-        vintage = payload.get("vintage")
+        vintage = identity.get("vintage")
         hydrated.append(
             {
                 **row,
-                "wine_name": payload.get("name"),
+                "wine_name": identity.get("wine_name"),
                 "vintage": str(vintage) if vintage is not None else None,
                 "actor_email": email_by_actor.get(actor_id),
                 "actor_role": role_by_actor.get(actor_id),
@@ -453,6 +551,7 @@ def decide_override(
         )
 
     approved = body.decision == "approved"
+    library = None
     supabase.table("override_events").update(
         {
             "promotion_status": "approved" if approved else "rejected",
@@ -474,11 +573,9 @@ def decide_override(
         except Exception as exc:
             logger.error("decide_override: apply failed: %s", exc)
 
-        # T-14-08: attempt library promotion — non-fatal if it fails
-        try:
-            _maybe_promote_submission(supabase, ov["submission_id"])
-        except Exception as exc:
-            logger.error("decide_override: _maybe_promote_submission failed: %s", exc)
+        # T-14-08: attempt library promotion — non-fatal, but the outcome is returned
+        # so the approver is told when the wine did not reach the library (F-754).
+        library = _maybe_promote_submission(supabase, ov["submission_id"])
 
     # D-12: update trust counter for certified_contributors
     from config.settings import get_settings
@@ -494,7 +591,10 @@ def decide_override(
         except Exception as exc:
             logger.warning("decide_override: trust update failed (non-fatal): %s", exc)
 
-    return {"decision": body.decision, "override_id": override_id}
+    result = {"decision": body.decision, "override_id": override_id}
+    if library is not None:
+        result["library"] = library
+    return result
 
 
 # --- POST /invite ---
@@ -931,7 +1031,8 @@ def promote_to_library(
     POST /api/v1/studio/promote — promote a submission to master_wine_library (D-09, D-06).
     T-15-03: only developer/review_admin can promote.
     T-15-04: data read from server-side submission, client only sends submission_id.
-    T-15-05: promoted_by + promoted_at provide audit trail.
+    T-15-05: promoted_by + promoted_at provide audit trail (data_enrichment.studio_promotion;
+             the library has no columns of those names).
     """
     supabase = _get_supabase()
     if not supabase:
@@ -962,43 +1063,29 @@ def promote_to_library(
         entry = fc.get(field_name)
         if entry and isinstance(entry, dict) and entry.get("value") is not None:
             return entry["value"]
-        return submission.get(field_name)
+        # The submission has no per-field columns; its flat values live in payload.
+        return (submission.get("payload") or {}).get(field_name)
 
-    wine_name = _get_field("wine_name")
-    producer = _get_field("producer")
-    vintage_raw = _get_field("vintage")
-    price_bottle_raw = _get_field("price_bottle")
-    price_glass_raw = _get_field("price_glass")
-    region = _get_field("region")
-    country = _get_field("country")
-    grape_variety = _get_field("grape_variety")
-    primary_type = _get_field("primary_type")
-    color = _get_field("color")
-    sweetness_level = _get_field("sweetness_level")
-    tasting_notes = _get_field("tasting_notes")
-    description = _get_field("description")
+    promoted_by = user.get("sub")
+    insert_payload = build_library_row(
+        _get_field,
+        source="studio_promotion",
+        submission=submission,
+        audit={
+            "submission_id": body.submission_id,
+            "promoted_by": promoted_by,
+            "promoted_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    wine_name = insert_payload.get("name")
+    vintage = insert_payload.get("vintage")
+    producer = insert_payload.get("producer")
 
     # Validate minimum required data
-    if not wine_name or not str(wine_name).strip():
+    if not wine_name:
         raise HTTPException(
             status_code=422, detail="Submission has no wine_name — cannot promote"
         )
-
-    # Parse numeric fields
-    try:
-        vintage = int(vintage_raw) if vintage_raw else None
-    except (ValueError, TypeError):
-        vintage = None
-
-    try:
-        price = float(price_bottle_raw) if price_bottle_raw else 0.0
-    except (ValueError, TypeError):
-        price = 0.0
-
-    try:
-        price_glass = float(price_glass_raw) if price_glass_raw else None
-    except (ValueError, TypeError):
-        price_glass = None
 
     # Step 3: dedup check — name + vintage + producer (case-insensitive)
     name_lower = str(wine_name).strip().lower()
@@ -1027,80 +1114,32 @@ def promote_to_library(
         logger.error("promote_to_library: dedup check failed: %s", exc)
         raise HTTPException(status_code=503, detail="Dedup check failed")
 
-    # Step 4: build insert payload
-    insert_payload: dict = {
-        "id": str(uuid.uuid4()),
-        "name": str(wine_name).strip(),
-        "producer": producer,
-        "vintage": vintage,
-        "price": price,
-        "price_glass": price_glass,
-        "region": region,
-        "country": country,
-        "grape_variety": grape_variety,
-        "primary_type": primary_type or color,
-        "color": color,
-        "sweetness_level": sweetness_level,
-        "tasting_notes": tasting_notes,
-        "description": description,
-        "bottle_size_ml": 750,
-        "source": "studio_promotion",
-        "submission_id": body.submission_id,
-    }
-
-    # Add audit fields — gracefully skip if columns don't exist
-    promoted_by = user.get("sub")
-    promoted_at = datetime.now(timezone.utc).isoformat()
-    insert_payload["promoted_by"] = promoted_by
-    insert_payload["promoted_at"] = promoted_at
-
-    # Step 5: insert into master_wine_library
+    # Step 4: insert into master_wine_library. The row carries only real library
+    # columns (build_library_row, F-754); the old payload guessed column names and
+    # retried without three of them, so both attempts failed every time.
     try:
         insert_resp = (
             supabase.table("master_wine_library").insert(insert_payload).execute()
         )
-        new_id = insert_resp.data[0]["id"] if insert_resp.data else insert_payload["id"]
+        new_id = insert_resp.data[0]["id"] if insert_resp.data else None
     except Exception as exc:
-        err_str = str(exc)
-        # If insert fails due to unknown columns (promoted_by/promoted_at/submission_id), retry without them
-        if any(
-            col in err_str for col in ("promoted_by", "promoted_at", "submission_id")
-        ):
-            logger.warning(
-                "promote_to_library: retrying insert without audit columns: %s", exc
-            )
-            for col in ("promoted_by", "promoted_at", "submission_id"):
-                insert_payload.pop(col, None)
-            try:
-                insert_resp = (
-                    supabase.table("master_wine_library")
-                    .insert(insert_payload)
-                    .execute()
-                )
-                new_id = (
-                    insert_resp.data[0]["id"]
-                    if insert_resp.data
-                    else insert_payload["id"]
-                )
-            except Exception as exc2:
-                logger.error("promote_to_library: insert failed on retry: %s", exc2)
-                raise HTTPException(
-                    status_code=503, detail="Failed to insert into master_wine_library"
-                )
-        else:
-            logger.error("promote_to_library: insert failed: %s", exc)
-            raise HTTPException(
-                status_code=503, detail="Failed to insert into master_wine_library"
-            )
+        logger.error("promote_to_library: insert failed: %s", exc)
+        raise HTTPException(
+            status_code=503, detail="Failed to insert into master_wine_library"
+        )
 
-    # Step 6: mark submission as promoted (non-fatal if column missing)
+    # Step 5: mark the submission decided and linked to its library row (non-fatal).
+    # It used to set `promoted_to_library`, a column that does not exist.
+    update: dict = {"status": "approved"}
+    if new_id:
+        update["matched_master_id"] = new_id
     try:
-        supabase.table("master_wine_library_submissions").update(
-            {"promoted_to_library": True}
-        ).eq("id", body.submission_id).execute()
+        supabase.table("master_wine_library_submissions").update(update).eq(
+            "id", body.submission_id
+        ).execute()
     except Exception as exc:
         logger.warning(
-            "promote_to_library: could not update promoted_to_library flag (non-fatal): %s",
+            "promote_to_library: could not mark submission approved (non-fatal): %s",
             exc,
         )
 
@@ -1111,7 +1150,7 @@ def promote_to_library(
         new_id,
         sanitize_for_log(promoted_by),
     )
-    return {"status": "promoted", "wine_id": new_id, "name": str(wine_name).strip()}
+    return {"status": "promoted", "wine_id": new_id, "name": wine_name}
 
 
 # --- PATCH /contributors/{user_id}/disable ---
