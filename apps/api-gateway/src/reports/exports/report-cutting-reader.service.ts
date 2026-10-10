@@ -35,6 +35,7 @@ export class ReportCuttingReader {
     restaurantId: string,
     cutting: ExportableCutting,
     days: number | null,
+    month: string | null = null,
   ): Promise<unknown> {
     switch (cutting) {
       // GET /analytics/insights/:rid?limit=40 — AnalyticsController.getInsights
@@ -64,11 +65,13 @@ export class ReportCuttingReader {
           persist: true,
         });
       }
-      // GET /analytics/pos-revenue/:rid?days= — AnalyticsController.getPosRevenue.
-      // The handler also attaches a per-wine consumption breakdown; the till
-      // cutting reads none of it, so neither does its export.
+      // GET /analytics/pos-revenue/:rid?days= (or ?month=) —
+      // AnalyticsController.getPosRevenue. The handler also attaches a
+      // per-wine consumption breakdown; the till cutting reads none of it, so
+      // neither does its export. A month (F-1013) is read on the house's days,
+      // first to last, or to the house's today while it runs.
       case "till":
-        return this.goals.getPosRevenueWindow(restaurantId, days ?? 30);
+        return this.goals.getPosRevenueWindow(restaurantId, days ?? 30, month);
       // GET /analytics/goals/:rid/progress — the handler's default status.
       case "goals":
         return this.goals.listGoalsWithProgress(restaurantId, "active");

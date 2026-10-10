@@ -53,9 +53,10 @@ function build(stored: unknown[] | null = null) {
   };
   const goals = {
     listGoalsWithProgress: echo("listGoalsWithProgress"),
-    getPosRevenueWindow: jest.fn(async (rid: string, days: number) => ({
+    getPosRevenueWindow: jest.fn(
+      async (rid: string, days: number, month: string | null = null) => ({
       served: "getPosRevenueWindow",
-      args: [rid, days],
+        args: month ? [rid, days, month] : [rid, days],
       posConnected: true,
       from: "2026-09-10",
       to: "2026-09-17",
@@ -102,7 +103,7 @@ function build(stored: unknown[] | null = null) {
     tables as never,
     insights as never,
   );
-  return { controller, reader, insights };
+  return { controller, reader, insights, goals };
 }
 
 /**
@@ -227,6 +228,23 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       }
     });
   }
+
+  it("till: a month (F-1013) answers exactly what the page's month read answers", async () => {
+    const { controller, reader, goals } = build();
+    const { consumption, ...fromPage } = (await controller.getPosRevenue(
+      RID,
+      undefined,
+      "2026-07",
+    )) as Record<string, unknown>;
+    expect(consumption).toBeDefined();
+    const fromExport = await reader.read(RID, "till", null, "2026-07");
+    expect(fromExport).toEqual(fromPage);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+      RID,
+      30,
+      "2026-07",
+    );
+  });
 
   it("reading: on a cold start both compute once, live, and persist — the same call", async () => {
     const page = build([]);

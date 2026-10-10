@@ -73,6 +73,8 @@ export interface ExportNameInput {
   cutting: string;
   /** The till's day window; null for every cutting whose window the server fixes. */
   windowDays: number | null;
+  /** The till's calendar month, YYYY-MM on the house's calendar, when it reads one instead of days (F-1013). */
+  windowMonth?: string | null;
   /** When the file was written; null while it is still queued. */
   finishedAt: string | null;
   houseName: string | null;
@@ -85,6 +87,9 @@ export interface ExportNameInput {
  *
  * - till: `mudavym-<house>-till-<first day>-to-<last day>` — the window in
  *   house days, the same span `getPosRevenueWindow` reads (today included).
+ * - a month of the till (F-1013): `mudavym-<house>-till-<YYYY-MM>` once the
+ *   month has ended on the house's clock; while it still runs, the span read
+ *   so far, `mudavym-<house>-till-<YYYY-MM>-01-to-<house day>`.
  * - every other cutting: `mudavym-<house>-<cutting>-as-of-<house day>` — its
  *   window is fixed and ends the day it was written.
  * - a house with no zone: the span asked for and the UTC day, marked `-utc`.
@@ -100,6 +105,15 @@ export function exportFileStem(input: ExportNameInput): string | null {
     ? houseDayOf(input.finishedAt, input.zone)
     : houseDayOf(input.finishedAt, "UTC");
   if (!day) return null;
+  const month =
+    input.cutting === "till" && input.windowMonth ? input.windowMonth : null;
+  if (month) {
+    if (!input.zone) return `mudavym-${house}-till-${month}-as-of-${day}-utc`;
+    // A month still running on the house's day was read to that day only.
+    return day.slice(0, 7) === month
+      ? `mudavym-${house}-till-${month}-01-to-${day}`
+      : `mudavym-${house}-till-${month}`;
+  }
   const till =
     input.cutting === "till" &&
     input.windowDays != null &&

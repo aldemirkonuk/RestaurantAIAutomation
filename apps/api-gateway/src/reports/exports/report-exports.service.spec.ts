@@ -10,6 +10,7 @@ import {
   ReportExportsService,
   STALE_QUEUED_MS,
 } from "./report-exports.service";
+import { houseToday, shiftHouseDay } from "../../common/house-day";
 import { MemorySupabase } from "./__fixtures__/memory-supabase";
 import { HOUSE_A, HOUSE_B, MANAGER_A, PAYLOADS } from "./__fixtures__/cutting-payloads";
 
@@ -412,12 +413,127 @@ describe("ReportExportsService — a report export is written, or says why not (
     const seven = await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "till", days: 7 });
     await seven.settled;
     expect(seven.export).toMatchObject({ windowDays: 7, windowLabel: "the last 7 days of POS checks" });
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(HOUSE_A, 7);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+      HOUSE_A,
+      7,
+      null,
+    );
 
     const dflt = await service.requestExport(HOUSE_A, MANAGER_A, { cutting: "till" });
     await dflt.settled;
     expect(dflt.export.windowDays).toBe(30);
-    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(HOUSE_A, 30);
+    expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+      HOUSE_A,
+      30,
+      null,
+    );
+  });
+
+  describe("a month of the till (F-1013)", () => {
+    const LA = "America/Los_Angeles";
+    const zoned = () => {
+      const b = build();
+      b.mem.rows("restaurants").find((r) => r.id === HOUSE_A)!.timezone = LA;
+      return b;
+    };
+
+    it("writes up a month the till has finished: kept on the row, read as that month, named for it", async () => {
+      const { mem, service, goals } = zoned();
+      const july = await service.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "till",
+        month: "2026-07",
+      });
+      expect(july.export).toMatchObject({
+        windowDays: null,
+        windowMonth: "2026-07",
+        windowLabel: "July 2026 of POS checks, by the house’s days",
+        status: "queued",
+      });
+      await july.settled;
+      expect(exportsOf(mem)[0]).toMatchObject({
+        status: "ready",
+        window_days: null,
+        window_month: "2026-07",
+      });
+      expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+        HOUSE_A,
+        30,
+        "2026-07",
+      );
+      expect(mem.rows("system_audit_log")[0]).toMatchObject({
+        changes: {
+          cutting: "till",
+          window_days: null,
+          window_month: "2026-07",
+        },
+      });
+      for (const r of exportsOf(mem))
+        r.finished_at = "2026-10-10T01:00:00.000Z";
+      expect(
+        (await service.downloadExport(HOUSE_A, july.export.id, "csv")).filename,
+      ).toBe("mudavym-meyhouse-till-2026-07.csv");
+      expect(
+        (await service.getExport(HOUSE_A, july.export.id)).windowMonth,
+      ).toBe("2026-07");
+    });
+
+    it("a month still running says so, and a month not begun on the house's clock is refused before anything is queued", async () => {
+      const { mem, service } = zoned();
+      const now = houseToday(LA).slice(0, 7);
+      const running = await service.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "till",
+        month: now,
+      });
+      expect(running.export.windowLabel).toMatch(
+        / of POS checks, so far, by the house’s days$/,
+      );
+      await running.settled;
+
+      const next = shiftHouseDay(`${now}-28`, 7).slice(0, 7);
+      expect(
+        await statusOf(
+          service.requestExport(HOUSE_A, MANAGER_A, {
+            cutting: "till",
+            month: next,
+          }),
+        ),
+      ).toBe(400);
+      expect(exportsOf(mem)).toHaveLength(1);
+    });
+
+    it("a retry re-reads the same month, not a number of days", async () => {
+      const { service, goals } = zoned();
+      goals.getPosRevenueWindow.mockRejectedValueOnce(new Error("timeout"));
+      const first = await service.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "till",
+        month: "2026-07",
+      });
+      await first.settled;
+      await (
+        await service.retryExport(HOUSE_A, first.export.id)
+      ).settled;
+      expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith(
+        HOUSE_A,
+        30,
+        "2026-07",
+      );
+    });
+
+    it("refuses a month with days, a month on a cutting whose window is fixed, and a month that is not one", async () => {
+      const { mem, service } = zoned();
+      for (const input of [
+        { cutting: "till", days: 30, month: "2026-07" },
+        { cutting: "ledger", month: "2026-07" },
+        { cutting: "till", month: "2026-13" },
+        { cutting: "till", month: "July" },
+        { cutting: "till", month: 202607 },
+      ])
+        expect([
+          input,
+          await statusOf(service.requestExport(HOUSE_A, MANAGER_A, input)),
+        ]).toEqual([input, 400]);
+      expect(exportsOf(mem)).toHaveLength(0);
+    });
   });
 
   it("lists, opens and downloads a written export under a neutral UTC name when the house row cannot be read (F-784)", async () => {
@@ -689,7 +805,7 @@ describe("ReportExportsService — a report export is written, or says why not (
         entity_type: "report_export",
         entity_id: started.export.id,
         restaurant_id: HOUSE_A,
-        changes: { cutting: "till", window_days: 90 },
+        changes: { cutting: "till", window_days: 90, window_month: null },
       }),
     ]);
   });

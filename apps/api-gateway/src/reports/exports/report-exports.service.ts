@@ -27,6 +27,7 @@ import {
 import { renderCsv, renderHtml } from "./report-export-render";
 import { exportFileStem } from "./report-export-naming";
 import { houseFrame } from "../../common/house-frame";
+import { houseToday } from "../../common/house-day";
 
 /** A queued attempt older than this is failed, with that reason, on the next read. */
 export const STALE_QUEUED_MS = 10 * 60_000;
@@ -67,7 +68,7 @@ const REPORT_EXPORTS_TABLE = "report_exports";
 
 /** Everything but the two bodies — a list never downloads the files. */
 const ROW_COLUMNS =
-  "id, restaurant_id, cutting, window_days, title, window_label, status, failure_reason, " +
+  "id, restaurant_id, cutting, window_days, window_month, title, window_label, status, failure_reason, " +
   "withheld_count, csv_bytes, html_bytes, attempts, requested_at, started_at, finished_at";
 
 interface ExportRow {
@@ -75,6 +76,8 @@ interface ExportRow {
   restaurant_id: string;
   cutting: string;
   window_days: number | null;
+  /** The till's calendar month, YYYY-MM on the house's calendar (F-1013); never set with window_days. */
+  window_month: string | null;
   title: string;
   window_label: string;
   status: ReportExportStatus;
@@ -109,6 +112,16 @@ export interface ExportStarted {
 
 function byteLength(s: string): number {
   return Buffer.byteLength(s, "utf8");
+}
+
+/** "July 2026" for 2026-07 — the month as the sheet's month picker names it. */
+function monthName(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(y, m - 1, 1)));
 }
 
 function messageOf(err: unknown): string {
@@ -172,7 +185,7 @@ export class ReportExportsService {
   async requestExport(
     restaurantId: string,
     actorId: string | null,
-    input: { cutting: unknown; days?: unknown },
+    input: { cutting: unknown; days?: unknown; month?: unknown },
   ): Promise<ExportStarted> {
     if (!isExportableCutting(input.cutting))
       throw new BadRequestException(
@@ -180,7 +193,10 @@ export class ReportExportsService {
       );
     const cutting: ExportableCutting = input.cutting;
     const spec = EXPORT_CUTTINGS[cutting];
-    const days = this.windowFor(cutting, input.days);
+    const { days, month } = this.windowFor(cutting, input.days, input.month);
+    const windowLabel = month
+      ? await this.monthWindowLabel(restaurantId, month)
+      : spec.window(days);
 
     await this.failStaleQueued(restaurantId);
     await this.assertRoomInFlight(restaurantId);
@@ -192,8 +208,9 @@ export class ReportExportsService {
         requested_by: actorId,
         cutting,
         window_days: days,
+        window_month: month,
         title: spec.title,
-        window_label: spec.window(days),
+        window_label: windowLabel,
         status: "queued",
       })
       .select(ROW_COLUMNS)
@@ -214,7 +231,7 @@ export class ReportExportsService {
       action: "report_export_requested",
       entity_type: "report_export",
       entity_id: row.id,
-      changes: { cutting, window_days: days },
+        changes: { cutting, window_days: days, window_month: month },
       restaurant_id: restaurantId,
     });
     if (auditError)
@@ -339,7 +356,7 @@ export class ReportExportsService {
     const { data, error } = await this.db
       .from(REPORT_EXPORTS_TABLE)
       .select(
-        `id, cutting, window_days, status, failure_reason, finished_at, ${format}`,
+        `id, cutting, window_days, window_month, status, failure_reason, finished_at, ${format}`,
       )
       .eq("id", exportId)
       .eq("restaurant_id", restaurantId)
@@ -372,6 +389,8 @@ export class ReportExportsService {
           cutting: String(row.cutting),
           window_days:
             typeof row.window_days === "number" ? row.window_days : null,
+          window_month:
+            typeof row.window_month === "string" ? row.window_month : null,
           finished_at:
             typeof row.finished_at === "string" ? row.finished_at : null,
         },
@@ -387,16 +406,39 @@ export class ReportExportsService {
 
   /* ────────────────────────────────────────────────────────── internals ── */
 
-  private windowFor(cutting: ExportableCutting, raw: unknown): number | null {
+  /**
+   * The window the row keeps: a number of days, or a calendar month of the
+   * till (F-1013) — never both, so the export cannot be read two ways later.
+   */
+  private windowFor(
+    cutting: ExportableCutting,
+    raw: unknown,
+    rawMonth: unknown = undefined,
+  ): { days: number | null; month: string | null } {
     const spec = EXPORT_CUTTINGS[cutting];
+    const hasMonth = rawMonth !== undefined && rawMonth !== null;
     if (!spec.takesWindow) {
-      if (raw !== undefined && raw !== null)
+      if ((raw !== undefined && raw !== null) || hasMonth)
         throw new BadRequestException(
           `${spec.title} takes no window: the server fixes it (${spec.window(null)}).`,
         );
-      return null;
+      return { days: null, month: null };
     }
-    if (raw === undefined || raw === null) return 30;
+    if (hasMonth) {
+      if (raw !== undefined && raw !== null)
+        throw new BadRequestException(
+          "Ask for a number of days or a month of the till, not both.",
+        );
+      if (
+        typeof rawMonth !== "string" ||
+        !/^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth)
+      )
+        throw new BadRequestException(
+          "A month is written as year and month, like 2026-07.",
+        );
+      return { days: null, month: rawMonth };
+    }
+    if (raw === undefined || raw === null) return { days: 30, month: null };
     if (
       typeof raw !== "number" ||
       !Number.isInteger(raw) ||
@@ -406,7 +448,26 @@ export class ReportExportsService {
       throw new BadRequestException(
         `The till window must be a whole number of days from ${TILL_DAYS_MIN} to ${TILL_DAYS_MAX}.`,
       );
-    return raw;
+    return { days: raw, month: null };
+  }
+
+  /**
+   * The line a month export prints under its title — the sheet's own words
+   * (`rp-registers-trade.tsx` till window), ", so far" while the month still
+   * runs on the house's clock. A month that has not begun there is refused
+   * now, rather than queued to fail.
+   */
+  private async monthWindowLabel(
+    restaurantId: string,
+    month: string,
+  ): Promise<string> {
+    const { zone } = await this.readHouseNaming(restaurantId);
+    const thisMonth = zone ? houseToday(zone).slice(0, 7) : null;
+    if (thisMonth && month > thisMonth)
+      throw new BadRequestException(
+        `${monthName(month)} has not begun on this house's clock, so there is nothing to write up yet.`,
+      );
+    return `${monthName(month)} of POS checks${month === thisMonth ? ", so far" : ""}, by the house’s days`;
   }
 
   /** Refuse to put another export in flight for a house already at MAX_IN_FLIGHT (a soft cap — see there). */
@@ -595,7 +656,7 @@ export class ReportExportsService {
     let withheldCount: number;
     try {
       const payload = await this.reader
-        .read(row.restaurant_id, cutting, row.window_days)
+        .read(row.restaurant_id, cutting, row.window_days, row.window_month)
         .catch((err) => {
           throw new Error(`the ${spec.title} register could not be read: ${messageOf(err)}`);
         });
@@ -732,13 +793,17 @@ export class ReportExportsService {
   }
 
   private fileStem(
-    row: Pick<ExportRow, "cutting" | "window_days" | "finished_at">,
+    row: Pick<
+      ExportRow,
+      "cutting" | "window_days" | "window_month" | "finished_at"
+    >,
     house: HouseNaming | null,
   ): string | null {
     if (!house) return null;
     return exportFileStem({
       cutting: row.cutting,
       windowDays: row.window_days,
+      windowMonth: row.window_month,
       finishedAt: row.finished_at,
       houseName: house.name,
       zone: house.zone,
@@ -755,6 +820,7 @@ export class ReportExportsService {
       title: row.title,
       windowLabel: row.window_label,
       windowDays: row.window_days,
+      windowMonth: row.window_month ?? null,
       status: row.status,
       failureReason: row.failure_reason,
       withheldCount: row.withheld_count,

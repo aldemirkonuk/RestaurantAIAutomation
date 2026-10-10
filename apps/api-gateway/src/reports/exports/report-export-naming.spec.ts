@@ -41,6 +41,37 @@ describe("export naming (F-413)", () => {
     ).toBe("mudavym-tuzlu-ruzgar-till-7-days-as-of-2026-10-10-utc");
   });
 
+  describe("a month of the till (F-1013)", () => {
+    const month = { ...base, windowDays: null, windowMonth: "2026-09" };
+
+    it("is named for the month once it has ended on the house's clock, not the UTC day", () => {
+      // 01:30 UTC on 1 October is still 30 September in Los Angeles: the
+      // month is running there, so the name says how far it was read.
+      expect(
+        exportFileStem({ ...month, finishedAt: "2026-10-01T01:30:00.000Z" }),
+      ).toBe("mudavym-tuzlu-ruzgar-till-2026-09-01-to-2026-09-30");
+      expect(
+        exportFileStem({ ...month, finishedAt: "2026-10-02T18:00:00.000Z" }),
+      ).toBe("mudavym-tuzlu-ruzgar-till-2026-09");
+    });
+
+    it("a month still running is named for the days read so far", () => {
+      expect(
+        exportFileStem({ ...month, finishedAt: "2026-09-15T18:00:00.000Z" }),
+      ).toBe("mudavym-tuzlu-ruzgar-till-2026-09-01-to-2026-09-15");
+    });
+
+    it("a house with no zone names the month and the UTC day, marked as UTC", () => {
+      expect(
+        exportFileStem({
+          ...month,
+          zone: null,
+          finishedAt: "2026-10-02T18:00:00.000Z",
+        }),
+      ).toBe("mudavym-tuzlu-ruzgar-till-2026-09-as-of-2026-10-02-utc");
+    });
+  });
+
   it("names nothing until the file is written", () => {
     expect(exportFileStem({ ...base, finishedAt: null })).toBeNull();
   });
