@@ -18,6 +18,7 @@ import {
 } from "./producer-copy";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
 import { NO_GOAL_READER, goalReaders, noGoalReader } from "./goal-readers";
+import { houseToday } from "../../common/house-day";
 
 /**
  * "The goal was reached" — the success the house owns.
@@ -34,10 +35,20 @@ import { NO_GOAL_READER, goalReaders, noGoalReader } from "./goal-readers";
  * reader inside quiet hours is served hours later still. Reporting either as
  * "when the goal was reached" would be a false timestamp on a permanent row. So
  * `crossedAt` is read from the SOURCE: the most recent row that contributed to
- * the metric. Because every supported metric is a cumulative sum over time, the
- * last contributing row is the one that carried the total across the target.
- * When that read comes back empty or fails, `crossedAt` is `null` and the
- * sentence says "detected at" instead of inventing a moment.
+ * the metric. For a running total (wine revenue, bottles sold, purchasing
+ * spend, checks), the last contributing row is the one that carried the total
+ * across the target. When that read comes back empty or fails, `crossedAt` is
+ * `null` and the sentence says "detected at" instead of inventing a moment.
+ *
+ * **Not every metric is a running total (F-629).** Average check and wine
+ * attach rate are levels over the goal's window: one $120 check on night one
+ * makes the average 120, and it falls back the next night. So they are judged
+ * only once the window is whole — the deadline's house day has ended, and the
+ * figure (counted to the deadline, `getGoalProgress`) can no longer move. A
+ * level goal with no deadline has no whole window and is not reported. Days of
+ * stock is a level read at an instant, not over a window: it is judged on the
+ * shelf as it is now, up to the deadline. No single row carries a level across
+ * its target, so neither gets a crossing time: the sentence says "detected at".
  *
  * **"How early" needs a deadline, and a goal may not have one.**
  * `analytics_goals.deadline` is nullable and `GoalsService.createGoal` writes
@@ -67,6 +78,11 @@ import { NO_GOAL_READER, goalReaders, noGoalReader } from "./goal-readers";
  */
 
 const PRODUCER = "goal_reached";
+
+/** Averages over the goal's window: judged when the window is whole. */
+const WINDOW_LEVELS = new Set(["avg_check", "wine_attach_rate"]);
+/** A level read on the shelf now, with no window behind it. */
+const INSTANT_LEVELS = new Set(["days_of_inventory"]);
 
 @Injectable()
 export class GoalReachedProducer {
@@ -130,10 +146,35 @@ export class GoalReachedProducer {
     // The sentence carries the goal's figures, so only the people who may read
     // goals hear it (F-782). Read once, and only when something is to be said.
     let readers: ProducerAudience | null = null;
+    let openLevels = 0;
+    const today = houseToday(timeZone, now);
 
     for (const goal of goals) {
       if (goal.direction === "at_most") {
         ceilingGoals += 1;
+        continue;
+      }
+      const metricKey = String(goal.metric_key);
+      const deadlineDay = goal.deadline
+        ? String(goal.deadline).slice(0, 10)
+        : null;
+      const level =
+        WINDOW_LEVELS.has(metricKey) || INSTANT_LEVELS.has(metricKey);
+      // An average is not reached while its window is still open; a stock
+      // level read after the deadline says nothing about the deadline.
+      if (
+        WINDOW_LEVELS.has(metricKey) &&
+        (deadlineDay === null || !(deadlineDay < today))
+      ) {
+        openLevels += 1;
+        continue;
+      }
+      if (
+        INSTANT_LEVELS.has(metricKey) &&
+        deadlineDay !== null &&
+        deadlineDay < today
+      ) {
+        openLevels += 1;
         continue;
       }
 
@@ -153,10 +194,9 @@ export class GoalReachedProducer {
       const current = Number(progress?.current ?? 0);
       if (!(target > 0) || !(current >= target)) continue;
 
-      const crossedAt = await this.crossingInstant(
-        restaurantId,
-        String(goal.metric_key),
-      );
+      const crossedAt = level
+        ? null
+        : await this.crossingInstant(restaurantId, metricKey);
       const eventAt = crossedAt ?? now;
 
       const deadline = goal.deadline ? new Date(goal.deadline) : null;
@@ -183,6 +223,7 @@ export class GoalReachedProducer {
         target,
         eventAt,
         crossedAt,
+        level,
         timeZone,
         early,
         roster,
@@ -228,7 +269,9 @@ export class GoalReachedProducer {
               crossedAt: crossedAt ? crossedAt.toISOString() : null,
               crossedAtSource: crossedAt
                 ? "latest contributing source row"
-                : "unknown — the source row carrying the crossing could not be read",
+                : level
+                  ? "none — a level has no single row that carried it across the target"
+                  : "unknown — the source row carrying the crossing could not be read",
               detectedAt: now.toISOString(),
               earlyByDays: early ? early.days : null,
               earlinessPhrase: early ? early.phrase : null,
@@ -249,6 +292,8 @@ export class GoalReachedProducer {
         ceilingGoals > 0 && tally.considered === 0
           ? `${goals.length} active goal(s), of which ${ceilingGoals} are 'at most' ceilings this producer does not report on — crossing a ceiling is not a success. No 'at least' goal has reached its target.`
           : "No active goal has reached its target.";
+      if (openLevels > 0)
+        tally.withheldReason += ` ${openLevels} goal(s) on an average or a stock level are judged only over a whole window (an average once its deadline has passed, a stock level up to its deadline), and were not judged on this tick.`;
     }
 
     return tally;
@@ -293,8 +338,8 @@ export class GoalReachedProducer {
         return this.firstInstant(data, ["created_at"]);
       }
 
-      // Every check-based metric — wine_revenue, checks, avg_check,
-      // wine_attach_rate — is summed off `pos_checks` with `voided = false`
+      // Every check-based running total — wine_revenue, checks — is summed
+      // off `pos_checks` with `voided = false`
       // (goals.service.ts:350-358). The bucket column is `closed_at || opened_at`
       // there, and the same preference is applied here.
       const { data, error } = await client
@@ -337,6 +382,7 @@ export class GoalReachedProducer {
     target: number;
     eventAt: Date;
     crossedAt: Date | null;
+    level: boolean;
     timeZone: string;
     early: { days: number; phrase: string } | null;
     roster: Array<{ name: string | null; role: string | null }>;
@@ -348,6 +394,7 @@ export class GoalReachedProducer {
       target,
       eventAt,
       crossedAt,
+      level,
       timeZone,
       early,
       roster,
@@ -371,7 +418,9 @@ export class GoalReachedProducer {
         ? `Crossed ${dayIn(crossedAt, timeZone)} at ${clockIn(crossedAt, timeZone)}${
             early ? `, ${early.phrase}` : ""
           }.`
-        : `Detected ${dayIn(eventAt, timeZone)} at ${clockIn(eventAt, timeZone)}; the exact moment of the crossing could not be read from the source.`,
+        : level
+          ? `Read ${dayIn(eventAt, timeZone)} at ${clockIn(eventAt, timeZone)}; an average or a stock level has no single moment it crossed.`
+          : `Detected ${dayIn(eventAt, timeZone)} at ${clockIn(eventAt, timeZone)}; the exact moment of the crossing could not be read from the source.`,
     );
 
     const named = roster.filter((p) => p.name) as Array<{

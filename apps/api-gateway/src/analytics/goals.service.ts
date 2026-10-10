@@ -300,6 +300,7 @@ export class GoalsService {
     // zone, a windowed metric refuses with the zone sentence rather than
     // writing a baseline measured on UTC days.
     const house = await readHouseZone(this.dbService.getClient(), restaurantId);
+    const opens = house.zone ? this.periodStart(input.period, house.zone) : null;
     // A measure with nothing to read yet (no check filed) has no baseline:
     // the goal is set and stays "not measured" until a check lands (F-183).
     let baseline: number | null;
@@ -307,13 +308,20 @@ export class GoalsService {
       baseline = await this.computeMetric(
         restaurantId,
         input.metricKey,
-        house.zone ? this.periodStart(input.period, house.zone) : null,
+        opens,
         house.zone,
       );
     } catch (err) {
       if (!(err instanceof UnmeasuredGoalError)) throw err;
       baseline = null;
     }
+    // A goal counted over a day, week, month or quarter, sent with no
+    // deadline, is due on that period's last house day: "this month" ends on
+    // the house's month end, not 30 days on (F-632). It can be moved later
+    // (`updateGoal`).
+    const periodEnd = opens ? this.periodEndAfter(input.period, opens) : null;
+    const deadline =
+      input.deadline ?? (periodEnd ? shiftHouseDay(periodEnd, -1) : null);
     const { data, error } = await this.dbService
       .getClient()
       .from("analytics_goals")
@@ -328,7 +336,7 @@ export class GoalsService {
         current_value: baseline ?? 0,
         direction: input.direction ?? "at_least",
         period: input.period ?? "custom",
-        deadline: input.deadline ?? null,
+        deadline,
         created_by: input.createdBy ?? null,
         source_rule_key: sourceRuleKey,
       })
@@ -513,7 +521,7 @@ export class GoalsService {
       ),
       basis: {
         current:
-          "each goal's current value is recomputed from the same query the analytics engine reads, over the window that opens on the goal's creation date",
+          "each goal's current value is recomputed from the same query the analytics engine reads, over the goal's current day, week, month or quarter when it is counted over one, else from the goal's creation date, and never past its deadline",
         peers:
           "no other restaurant's books are in this comparison: every figure here is this house against its own baseline, schedule and projection",
         units:
@@ -529,19 +537,42 @@ export class GoalsService {
    * 22:00 in Los Angeles was set that day.
    */
   private async measureGoal(restaurantId: string, goal: any, house: HouseZone) {
+    // The goal's window, on the house's days (ADR 0296). A goal "counted over"
+    // a day, week, month or quarter counts the current one, and starts again
+    // when the next opens (F-628) — the same window its baseline was read
+    // over at creation. A custom goal opens on the house date it was created:
+    // a goal set at 22:00 in Los Angeles was set that day. Either way the
+    // count stops on the deadline's house day: a quarter goal that missed on
+    // 30 Sep does not go on adding October's sales.
     const zone = house.zone;
-    const periodStart = zone
-      ? (houseDayOf(goal.created_at, zone) ??
-        this.periodStart(goal.period, zone))
-      : null;
+    const deadlineDay = goal.deadline
+      ? String(goal.deadline).slice(0, 10)
+      : undefined;
+    const today = zone ? houseToday(zone) : null;
+    const anchor =
+      today && deadlineDay && deadlineDay < today ? deadlineDay : today;
+    const periodic = ["day", "week", "month", "quarter"].includes(goal.period);
+    const periodStart =
+      zone && anchor
+        ? periodic
+          ? this.periodStart(goal.period, zone, anchor)
+          : (houseDayOf(goal.created_at, zone) ??
+            this.periodStart(goal.period, zone))
+        : null;
+    // The period's own end, when it closes before the deadline: the pace of a
+    // weekly goal is judged against this week, not the months to its deadline.
+    const periodEnd =
+      periodic && periodStart
+        ? this.periodEndAfter(goal.period, periodStart)
+        : null;
     const measured = await this.computeMetricWithSeries(
       restaurantId,
       goal.metric_key,
       periodStart,
-      undefined,
+      deadlineDay,
       zone,
     );
-    return { zone, periodStart, ...measured };
+    return { zone, periodStart, periodEnd, deadlineDay, ...measured };
   }
 
   /**
@@ -614,8 +645,8 @@ export class GoalsService {
     // A read writes nothing (F-264): this ran an UPDATE of `current_value` and
     // `updated_at` on every GET, so opening a goal moved its "last edited"
     // time. The stored column is refreshed by `refreshStoredCurrentValues`,
-    // which the hourly insight sweep runs.
-    const { zone, periodStart, current, dailySeries, units } =
+    // which the hourly insight sweep runs. The window (F-628) is measureGoal's.
+    const { zone, periodStart, periodEnd, deadlineDay, current, dailySeries, units } =
       await this.measureGoal(restaurantId, goal, house);
 
     const target = Number(goal.target_value) || 0;
@@ -638,16 +669,17 @@ export class GoalsService {
     if (goal.deadline && !zone) paceUnread = HOUSE_ZONE_UNSET_PACE;
     if (goal.deadline && zone && periodStart) {
       const start = localMidnight(periodStart, zone).getTime();
-      const end = localMidnight(
-        String(goal.deadline).slice(0, 10),
-        zone,
-      ).getTime();
+      const deadlineAt = localMidnight(deadlineDay!, zone).getTime();
+      const end =
+        periodEnd && periodEnd < deadlineDay!
+          ? localMidnight(periodEnd, zone).getTime()
+          : deadlineAt;
       const totalDays = Math.max(1, (end - start) / 86400000);
       const elapsed = Math.min(
         totalDays,
         Math.max(0, (Date.now() - start) / 86400000),
       );
-      daysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86400000));
+      daysLeft = Math.max(0, Math.ceil((deadlineAt - Date.now()) / 86400000));
       // A level (average check, attach rate, days of stock) ramps from its
       // baseline, a running total from nothing (F-183).
       const baseline =
@@ -670,7 +702,10 @@ export class GoalsService {
           acc += v;
           cumulative.push(acc);
         }
-        const holt = E.holtLinear(cumulative, 0.4, 0.2, Math.max(1, daysLeft));
+        // Projected to the window's end: the deadline, or a counted-over
+        // period's own end when that comes first.
+        const toEnd = Math.ceil((end - Date.now()) / 86400000);
+        const holt = E.holtLinear(cumulative, 0.4, 0.2, Math.max(1, toEnd));
         projected = holt ? holt.forecast[holt.forecast.length - 1] : null;
       }
     }
@@ -962,8 +997,12 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
    * goal looks back 30 days — the same periods as before, now counted on the
    * house's calendar instead of the server's.
    */
-  private periodStart(period: string | undefined, zone: string): string {
-    const today = houseToday(zone);
+  private periodStart(
+    period: string | undefined,
+    zone: string,
+    on: string = houseToday(zone),
+  ): string {
+    const today = on;
     const [y, m, d] = today.split("-").map(Number);
     const two = (n: number) => String(n).padStart(2, "0");
     switch (period) {
@@ -980,6 +1019,32 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         return `${y}-${two(m)}-01`;
       default:
         return shiftHouseDay(today, -30); // custom default: trailing 30d
+    }
+  }
+
+  /**
+   * The first house date AFTER the period that opened on `start`: the day
+   * after a day, a week on, the next month's or quarter's 1st. Null for a
+   * custom goal, which has no period to end.
+   */
+  private periodEndAfter(period: string | undefined, start: string): string | null {
+    const [y, m] = start.split("-").map(Number);
+    const two = (n: number) => String(n).padStart(2, "0");
+    const monthOn = (months: number) => {
+      const n = y * 12 + (m - 1) + months;
+      return `${Math.floor(n / 12)}-${two((n % 12) + 1)}-01`;
+    };
+    switch (period) {
+      case "day":
+        return shiftHouseDay(start, 1);
+      case "week":
+        return shiftHouseDay(start, 7);
+      case "month":
+        return monthOn(1);
+      case "quarter":
+        return monthOn(3);
+      default:
+        return null;
     }
   }
 
@@ -1002,9 +1067,10 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   /**
    * @param sinceDate the window's first HOUSE date (YYYY-MM-DD); null only
    *   when `zone` is null.
-   * @param untilDate optional inclusive last house date. Goal progress leaves
-   *   it off — a goal runs to "now" — but the POS revenue endpoint needs a
-   *   closed range so a chart's x-axis matches its total.
+   * @param untilDate optional inclusive last house date. Goal progress passes
+   *   the deadline's house day (a goal with none runs to "now"), and the POS
+   *   revenue endpoint needs a closed range so a chart's x-axis matches its
+   *   total.
    * @param zone the house's zone (`readHouseZone`). Every series below is
    *   filed on the house's day (ADR 0296); with no zone a windowed metric
    *   throws `HOUSE_ZONE_UNSET`.
@@ -1071,9 +1137,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     // Every series is read from 24 h before the window's first house midnight
     // (a check opened the night before and closed after midnight is filed on
     // the first day) up to the last instant of its last house day. `untilDate`
-    // is the house's today in every caller, so that end is still to come —
-    // except on the eve of a clock change at midnight, when it is an hour
-    // early (ADR 0296 §1, `localMidnight`).
+    // is the house's today or a goal's deadline, so that end is still to come
+    // or already whole — except on the eve of a clock change at midnight, when
+    // it is an hour early (ADR 0296 §1, `localMidnight`).
     const bounds = houseDayBounds(sinceDate, untilDate ?? sinceDate, zone);
     const sinceIso = bounds.readFromIso;
     const untilIso = untilDate

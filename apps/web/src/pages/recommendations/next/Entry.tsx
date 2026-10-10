@@ -62,9 +62,9 @@ import {
 import {
   CUTTING_BASIS_WORDS,
   METRICS,
+  PERIOD_DUE,
   PERIOD_LABEL,
   cuttingFor,
-  deadlineFor,
   goalOfferFor,
   landingWords,
   toStored,
@@ -173,7 +173,7 @@ export interface EntryProps {
     targetValue: number;
     direction: 'at_least' | 'at_most';
     period: string;
-    deadline: string;
+    deadline?: string;
     sourceRuleKey?: string;
   }) => Promise<GoalWrite>;
   onSeeInReports: (href: string) => void;
@@ -286,8 +286,8 @@ function scopesFor(e: EntryVM): SuppressionScope[] {
  *
  * A goal is a standing target a house is later judged against, so, like the
  * dismissal sheet, it states everything it is about to write BEFORE it writes
- * it: the metric and why that metric, the direction, the period, the deadline,
- * and the fact that the deadline can never be changed afterwards. The one
+ * it: the metric and why that metric, the direction, the period, and when it
+ * falls due (the gateway dates it on the house's calendar). The one
  * field it will not fill is the target — the rule states a gap, not a number a
  * house should be held to, and inventing one would be exactly the fabricated
  * figure this page exists to refuse.
@@ -324,7 +324,7 @@ function GoalSheet({
     targetValue: number;
     direction: 'at_least' | 'at_most';
     period: string;
-    deadline: string;
+    deadline?: string;
     sourceRuleKey?: string;
   }) => Promise<GoalWrite>;
 }) {
@@ -387,7 +387,6 @@ function GoalSheet({
    */
   const keepsProvenance = effective.metricKey === plan.metricKey;
 
-  const deadline = useMemo(() => deadlineFor(period), [period]);
   const group = useHouseGroupMark();
   const target = readGoalTarget(typed, group);
   const usable = target !== null;
@@ -404,7 +403,7 @@ function GoalSheet({
     }
     setName(s.name);
     // The book offers quarters; this sheet offers a week or a month, because
-    // `deadlineFor` only mints those two. A quarter scenario keeps the period
+    // `PERIOD_DUE` only words those two. A quarter scenario keeps the period
     // the manager already has, and the reading below says so.
     if (s.period === 'week' || s.period === 'month') setPeriod(s.period);
   };
@@ -580,9 +579,8 @@ function GoalSheet({
           ))}
         </div>
         <p className="rc-why">
-          Due <span className="rc-num">{fmtDay(deadline)}</span>. A deadline cannot be
-          changed afterwards {EM} the gateway’s only goal write after creation moves its
-          status, nothing else. The period the entry suggested came from its urgency;
+          {PERIOD_DUE[period]} You can move the deadline later, in Reports under Goals.
+          The period the entry suggested came from its urgency;
           “tonight” is a window for acting, not one a figure can be read over.
         </p>
       </div>
@@ -640,7 +638,6 @@ function GoalSheet({
               targetValue: toStored(effective.unit, value),
               direction: effective.direction,
               period,
-              deadline,
               // The provenance the goal keeps. It is the entry's own rule key,
               // never a suppression key — the gateway refuses anything that is
               // not a rule it evaluates, which is what makes the watched state

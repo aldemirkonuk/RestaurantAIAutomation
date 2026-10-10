@@ -124,6 +124,25 @@ export const ORDER_OUTSTANDING_STATUSES: readonly ProcurementOrderStatus[] = [
   ProcurementOrderStatus.IN_TRANSIT,
 ] as const;
 
+/**
+ * Ordered and not yet in the cellar: from the first draft awaiting approval to
+ * the truck on its way. What a reorder suggestion must count before it says
+ * "order today" (F-630).
+ *
+ * EXCLUDES `PARTIALLY_RECEIVED`: its quantity columns still describe the whole
+ * purchase order, part of which is already on the shelf, so counting it here
+ * would count those bottles twice.
+ */
+export const ORDER_NOT_YET_ARRIVED_STATUSES: readonly ProcurementOrderStatus[] =
+  [
+    ProcurementOrderStatus.PENDING,
+    ProcurementOrderStatus.APPROVAL_NEEDED,
+    ProcurementOrderStatus.NEGOTIATING,
+    ProcurementOrderStatus.APPROVED,
+    ProcurementOrderStatus.CONFIRMED,
+    ProcurementOrderStatus.IN_TRANSIT,
+  ] as const;
+
 /** Membership test that survives `status` being typed as `string | null`. */
 export function hasStatus(
   status: string | null | undefined,

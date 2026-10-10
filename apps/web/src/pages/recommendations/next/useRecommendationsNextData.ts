@@ -375,7 +375,8 @@ export interface RecommendationsData {
     targetValue: number;
     direction: 'at_least' | 'at_most';
     period: string;
-    deadline: string;
+    /** Left off by the goal sheet: the gateway dates it on the house's calendar. */
+    deadline?: string;
     /** The rule this goal came from — `analytics_goals.source_rule_key`. */
     sourceRuleKey?: string;
   }) => Promise<GoalWrite>;
@@ -396,6 +397,8 @@ export interface RecommendationsData {
    * `inverse`: a one-tap act that stays on the leaf (a pin, a briefing —
    * sketch 122 Q2, ADR 0112 F10 amended 2026-09-25): undo posts this patch
    * against this entry.
+   * `excludedDate`: the dismissal also struck this day from the analysis, so
+   * undo puts the day back too (F-631).
    */
   undo: UndoVM | null;
   clearUndo: () => void;
@@ -417,7 +420,8 @@ export interface RecommendationsData {
     undoWith?: Record<string, unknown>,
   ) => Promise<boolean>;
   dismiss: (entry: EntryVM, choice: DismissChoice) => Promise<void>;
-  restore: (ruleKey: string) => Promise<void>;
+  /** `excludedDate`: a day the dismissal struck out, counted again with it. */
+  restore: (ruleKey: string, excludedDate?: string) => Promise<void>;
   /** End this person's own snooze on one key — the entry is back for them. */
   wake: (ruleKey: string) => Promise<void>;
   bulk: (
@@ -492,6 +496,7 @@ export interface UndoVM {
   label: string;
   personal?: boolean;
   inverse?: { entry: EntryVM; patch: Record<string, unknown> };
+  excludedDate?: string;
 }
 
 export function useRecommendationsNextData(): RecommendationsData {
@@ -1078,7 +1083,7 @@ export function useRecommendationsNextData(): RecommendationsData {
       targetValue: number;
       direction: 'at_least' | 'at_most';
       period: string;
-      deadline: string;
+      deadline?: string;
       sourceRuleKey?: string;
     }): Promise<GoalWrite> => {
       if (!rid)
@@ -1113,8 +1118,9 @@ export function useRecommendationsNextData(): RecommendationsData {
       label: string,
       personal = false,
       inverse?: UndoVM['inverse'],
+      excludedDate?: string,
     ) => {
-    setUndoOf({ rid, vm: { ruleKey, label, personal, inverse } });
+    setUndoOf({ rid, vm: { ruleKey, label, personal, inverse, excludedDate } });
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setUndoOf(null), 8000);
     },
@@ -1228,21 +1234,28 @@ export function useRecommendationsNextData(): RecommendationsData {
       }
 
       let tail = '';
+      // A day that was already out before this dismissal is not this
+      // dismissal's to put back on Undo.
+      let struck: string | undefined;
       if (choice.excludeDate) {
+        const wasOut = (exclusions?.items ?? []).some(
+          (e) => e.businessDate === choice.excludeDate,
+        );
         const landed = await excludeDay(choice.excludeDate, choice.reason);
+        if (landed && !wasOut) struck = choice.excludeDate;
         tail = landed
           ? ` ${choice.excludeDate} is also out of the analysis — its numbers stop counting toward every average.`
           : ` The entry is dismissed, but ${choice.excludeDate} could NOT be excluded from the analysis — the averages still count it.`;
       }
       const paper = miss ? ` It holds, but it was ${miss}.` : '';
       say(`${choice.said}${tail}${paper} Undo here, or on the History leaf.`);
-      offerUndo(choice.key, choice.said);
+      offerUndo(choice.key, choice.said, false, undefined, struck);
     },
-    [rid, say, offerUndo, excludeDay],
+    [rid, say, offerUndo, excludeDay, exclusions],
   );
 
   const restore = useCallback(
-    async (ruleKey: string) => {
+    async (ruleKey: string, excludedDate?: string) => {
       if (!rid) return;
       try {
         const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
@@ -1251,10 +1264,30 @@ export function useRecommendationsNextData(): RecommendationsData {
         });
         setUndoOf(null);
         const miss = auditMissOf(data);
+        // Undo of "dismiss and leave this day out" puts the day back too: a
+        // restored card over a day still missing from every average is half
+        // an undo, and nothing on the page would say so (F-631).
+        let day = '';
+        if (excludedDate) {
+          try {
+            await apiClient.delete(`/analytics/exclusions/${rid}/${excludedDate}`);
+            setExclusions((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    items: prev.items.filter((e) => e.businessDate !== excludedDate),
+                  }
+                : prev,
+            );
+            day = ` ${excludedDate} counts again in every average.`;
+          } catch (err) {
+            day = ` ${excludedDate} is still out of the analysis (${failureOf(err).message}) — every average still leaves it out.`;
+          }
+        }
         say(
           miss
-            ? `Restored to the standing book — but ${miss}.`
-            : 'Restored to the standing book.',
+            ? `Restored to the standing book — but ${miss}.${day}`
+            : `Restored to the standing book.${day}`,
         );
         void load(leaf, false);
       } catch (err) {

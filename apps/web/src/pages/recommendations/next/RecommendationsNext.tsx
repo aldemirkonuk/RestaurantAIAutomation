@@ -1112,7 +1112,9 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                   void data.setDisposition(u.inverse.entry, u.inverse.patch, 'Undone.', false);
                   return;
                 }
-                void (u.personal ? data.wake(u.ruleKey) : data.restore(u.ruleKey));
+                void (u.personal
+                  ? data.wake(u.ruleKey)
+                  : data.restore(u.ruleKey, u.excludedDate));
               }}
             >
               Undo

@@ -544,8 +544,19 @@ export class RecommendationsService {
       "stockout_imminent",
       (reorderTop?.stockoutProbability ?? 0) > 0.4,
       () => ({
-        observation: `${reorderTop.name} has a ${pct(reorderTop.stockoutProbability)} chance of stocking out before a 7-day replenishment (on hand: ${reorderTop.onHand}).`,
-        recommendation: `Place the order today — reorder point is ${Math.ceil(reorderTop.reorderPoint ?? 0)} bottles. If the vendor is slow, split the order across two vendors.`,
+        // The risk already counts bottles on order (F-630), so a wine still
+        // listed with an order open needs more than that order brings.
+        observation: `${reorderTop.name} has a ${pct(reorderTop.stockoutProbability)} chance of stocking out before a 7-day replenishment (on hand: ${reorderTop.onHand}${
+          reorderTop.onOrder > 0
+            ? `; already on order: ${reorderTop.onOrder}${reorderTop.nextArrival ? `, arriving ${reorderTop.nextArrival}` : ""}`
+            : ""
+        }).`,
+        recommendation:
+          reorderTop.onOrder === null
+            ? `Check Orders before you order more: what is already on order for this wine could not be counted, so only the shelf was. Reorder point is ${Math.ceil(reorderTop.reorderPoint ?? 0)} bottles.`
+            : reorderTop.onOrder > 0
+              ? `Order more today — even with the ${reorderTop.onOrder} bottles already on order, it stays under its reorder point of ${Math.ceil(reorderTop.reorderPoint ?? 0)} bottles. If the vendor is slow, split the order across two vendors.`
+              : `Place the order today — reorder point is ${Math.ceil(reorderTop.reorderPoint ?? 0)} bottles. If the vendor is slow, split the order across two vendors.`,
         rationale:
           "Stockout probability is computed from this wine's own demand variance; above 40%, waiting for the weekly order cycle usually means an empty slot on the list.",
         category: "inventory",
