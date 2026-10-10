@@ -133,6 +133,7 @@ export function PosMappingPanel({
   const [busy, setBusy] = useState(false);
   const [matching, setMatching] = useState(false);
   // The one row whose "Other size" form is open, and what has been typed.
+  // A queued mapping row is keyed `q:<mapping id>`, a proposal by its id.
   const [otherFor, setOtherFor] = useState<string | null>(null);
   const [otherDraft, setOtherDraft] = useState<{ label: string; ml: string }>(
     { label: OTHER_SERVES[0], ml: "" },
@@ -278,20 +279,29 @@ export function PosMappingPanel({
 
   const answerQueuedUnit = async (
     mappingId: string,
-    unit: "glass" | "bottle",
+    unit: string,
+    ml?: number,
   ) => {
     setBusy(true);
     try {
       const res = await setSaleUnits(
-        [{ mapping_id: mappingId, sale_unit: unit }],
+        [
+          ml == null
+            ? { mapping_id: mappingId, sale_unit: unit }
+            : { mapping_id: mappingId, sale_unit: unit, sale_volume_ml: ml },
+        ],
         restaurantId,
       );
       const bad = res.results.find((r) => !r.ok);
       if (bad) toast.error(`Could not record the unit: ${bad.error}`);
-      else
+      else {
         toast.success(
-          `Recorded — sales of this button now remove one ${unit}.`,
+          ml == null
+            ? `Recorded — sales of this button now remove one ${unit}.`
+            : `Recorded — each sale of this button now removes ${ml}ml (one ${unit}).`,
         );
+        setOtherFor(null);
+      }
       await load();
       onChanged?.();
     } catch (e) {
@@ -596,6 +606,18 @@ export function PosMappingPanel({
                           >
                             One glass
                           </button>
+                          <button
+                            onClick={() => {
+                              setOtherDraft({ label: OTHER_SERVES[0], ml: "" });
+                              setOtherFor(
+                                otherFor === `q:${m.id}` ? null : `q:${m.id}`,
+                              );
+                            }}
+                            disabled={busy}
+                            className="h-7 px-2.5 rounded-md text-[11px] font-bold border border-gray-200 bg-white text-gray-600 hover:border-gray-300 disabled:opacity-50"
+                          >
+                            Other size
+                          </button>
                         </div>
                       ) : (
                         <span className="text-[11px] font-semibold text-amber-700">
@@ -603,6 +625,17 @@ export function PosMappingPanel({
                             ? "mappings could not be read — cannot offer an answer here"
                             : "no mapping row found for this button"}
                         </span>
+                      )}
+                      {m && otherFor === `q:${m.id}` && (
+                        <OtherServeForm
+                          itemName={g.item_name}
+                          draft={otherDraft}
+                          onDraft={setOtherDraft}
+                          onSet={(label, ml) =>
+                            void answerQueuedUnit(m.id, label, ml)
+                          }
+                          onCancel={() => setOtherFor(null)}
+                        />
                       )}
                     </div>
                   );

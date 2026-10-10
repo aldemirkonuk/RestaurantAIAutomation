@@ -162,6 +162,65 @@ describe("PosMappingPanel", () => {
     ]);
   });
 
+  it("lets a queued button with no sale size be answered as a pint, with its ml (F-720)", async () => {
+    getMatchProposals.mockResolvedValue([]);
+    getUnresolvedLines.mockResolvedValue(
+      queue({
+        items: [
+          {
+            source: "simpos",
+            external_item_id: "ext-9",
+            item_name: "Efes Draft",
+            reason: "no_sale_volume",
+            mapped_inventory_id: "inv-1",
+            occurrences: 6,
+            qty_total: 6,
+            revenue_total: 48,
+            first_seen: null,
+            last_seen: null,
+            line_ids: [],
+          },
+        ],
+      }),
+    );
+    getItemMappings.mockResolvedValue([
+      {
+        id: "map-9",
+        source: "simpos",
+        external_item_id: "ext-9",
+        item_name: "Efes Draft",
+        is_wine: true,
+        inventory_id: "inv-1",
+        master_wine_id: null,
+        sale_unit: null,
+        sale_volume_ml: null,
+        updated_at: null,
+      },
+    ]);
+    setSaleUnits.mockResolvedValue({
+      results: [{ mapping_id: "map-9", ok: true }],
+    });
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);
+
+    await screen.findByText("Efes Draft");
+    await user.click(screen.getByRole("button", { name: "Other size" }));
+    const use = screen.getByRole("button", { name: "Use this size" });
+    expect(use).toBeDisabled();
+    await user.selectOptions(
+      screen.getByLabelText("Serve for Efes Draft"),
+      "pint",
+    );
+    await user.type(screen.getByLabelText("Millilitres for Efes Draft"), "568");
+    await user.click(use);
+
+    await waitFor(() => expect(setSaleUnits).toHaveBeenCalled());
+    expect(setSaleUnits).toHaveBeenCalledWith(
+      [{ mapping_id: "map-9", sale_unit: "pint", sale_volume_ml: 568 }],
+      undefined,
+    );
+  });
+
   it("does not call an unmatched drink safe to ignore — only food (F-719)", async () => {
     getUnresolvedLines.mockResolvedValue(
       queue({

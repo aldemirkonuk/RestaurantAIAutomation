@@ -5,20 +5,25 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
-  IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
+  IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
+  MinLength,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 
 /**
  * DTOs for the sale-unit review surface (see PosMappingReviewService).
  *
- * The review write path deliberately accepts only "glass" or "bottle" — NOT
- * null — even though `pos_item_mappings.sale_unit` is nullable and
+ * The review write path accepts "glass" or "bottle" on their own, any other
+ * serve name (shot, pint, can, …) only WITH the millilitres one sale removes,
+ * and never null — even though `pos_item_mappings.sale_unit` is nullable and
  * `PosHubService.upsertItemMapping` accepts null. A null unit on a row with no
  * `sale_volume_ml` is the state this surface exists to clear: since ADR 0011
  * removed the `?? "bottle"` default, `applyStockEffects` moves no stock for it
@@ -28,7 +33,26 @@ import {
  * null for callers that genuinely need to.
  */
 export const SALE_UNITS = ["glass", "bottle"] as const;
-export type SaleUnit = (typeof SALE_UNITS)[number];
+/**
+ * An open serve label (ADR 0011). Only the two SALE_UNITS carry a derivation
+ * from the inventory row; any other label is a reporting word, so the import
+ * can deplete it only from `sale_volume_ml` (F-720).
+ */
+export type SaleUnit = string;
+
+/** Same plausibility band as PosHubService.upsertItemMapping enforces. */
+const MIN_SALE_ML = 10;
+const MAX_SALE_ML = 30000;
+
+/**
+ * "shot" with no millilitres would be written, read as answered, and still
+ * queue every sale as `no_sale_volume` — a label nothing can turn into a
+ * volume. So the volume is required unless the label is exactly one of the
+ * two the inventory row can resolve, and validated whenever it is sent.
+ */
+const needsVolume = (o: { sale_unit?: unknown; sale_volume_ml?: unknown }) =>
+  o.sale_volume_ml !== undefined ||
+  !(SALE_UNITS as readonly unknown[]).includes(o.sale_unit);
 
 /**
  * `@Type(() => Boolean)` is wrong for a query string: `Boolean("false")` is
@@ -68,22 +92,32 @@ export class ListSaleUnitReviewQueryDto {
 
 export class SetSaleUnitDto {
   @ApiProperty({
-    enum: SALE_UNITS,
     description:
-      "The human's answer. Rejected unless it is exactly 'glass' or 'bottle' — never inferred from the item name (decision B36).",
+      "The human's answer: 'glass', 'bottle', or another serve name such as 'shot', 'pint' or 'can' — never inferred from the item name (decision B36). Any name other than exactly 'glass' or 'bottle' must come with sale_volume_ml.",
   })
-  @IsIn(SALE_UNITS)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
   sale_unit: SaleUnit;
+
+  @ApiPropertyOptional({
+    description:
+      "Millilitres one sale removes — the number depletion reads first (ADR 0011). Required for any serve other than 'glass' or 'bottle'; optional for those two, which the inventory row resolves.",
+    minimum: MIN_SALE_ML,
+    maximum: MAX_SALE_ML,
+  })
+  @ValidateIf(needsVolume)
+  @IsNumber()
+  @Min(MIN_SALE_ML)
+  @Max(MAX_SALE_ML)
+  @Type(() => Number)
+  sale_volume_ml?: number;
 }
 
-export class SaleUnitAnswerDto {
+export class SaleUnitAnswerDto extends SetSaleUnitDto {
   @ApiProperty({ description: "pos_item_mappings.id" })
   @IsUUID()
   mapping_id: string;
-
-  @ApiProperty({ enum: SALE_UNITS })
-  @IsIn(SALE_UNITS)
-  sale_unit: SaleUnit;
 }
 
 export class SetSaleUnitBatchDto {

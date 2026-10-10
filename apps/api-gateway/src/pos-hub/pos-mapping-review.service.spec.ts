@@ -1,5 +1,5 @@
 import { PosMappingReviewService } from "./pos-mapping-review.service";
-import { PosHubService } from "./pos-hub.service";
+import { PosHubService, resolveSaleVolume } from "./pos-hub.service";
 import { DatabaseService } from "../database/database.service";
 
 /**
@@ -646,6 +646,42 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
     await service.setSaleUnit(RESTAURANT, "map-1", "glass");
 
     expect(calls.upserts[0].sale_volume_ml).toBe(150);
+  });
+
+  // F-720: a shot or a pint depletes by the millilitres the owner stated.
+  it("writes a stated serve size, and the import then depletes exactly that", async () => {
+    const { service, calls } = makeService({
+      inventory: HOUSE_ITEMS,
+      mappings: [mapping({ item_name: "RAKI SHOT", sale_volume_ml: null })],
+    });
+
+    const result = await service.setSaleUnit(RESTAURANT, "map-1", "shot", 40);
+
+    expect(result).toMatchObject({ ok: true, sale_unit: "shot" });
+    const written = calls.upserts[0];
+    expect(written.sale_unit).toBe("shot");
+    expect(written.sale_volume_ml).toBe(40);
+    expect(written.inventory_id).toBe("inv-1");
+    // The same resolver applyStockEffects runs on the next sale.
+    expect(
+      resolveSaleVolume(written.sale_volume_ml, written.sale_unit, {
+        bottleMl: 700,
+        pourMl: null,
+        menuPrice: null,
+      }),
+    ).toEqual({ mode: "volume", ml: 40 });
+  });
+
+  it("a stated size replaces the old one; no size keeps it", async () => {
+    const { service, calls } = makeService({
+      inventory: HOUSE_ITEMS,
+      mappings: [mapping({ sale_unit: "glass", sale_volume_ml: 150 })],
+    });
+
+    await service.setSaleUnit(RESTAURANT, "map-1", "pint", 568);
+    await service.setSaleUnit(RESTAURANT, "map-1", "glass");
+
+    expect(calls.upserts.map((u) => u.sale_volume_ml)).toEqual([568, 150]);
   });
 
   it("reports the previous unit when an answer is corrected", async () => {

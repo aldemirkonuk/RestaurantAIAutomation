@@ -240,9 +240,16 @@ export async function rejectProposal(
   return data;
 }
 
-/** Answer the sale unit for a mapping that already exists (the `no_sale_volume` queue). */
+/**
+ * Answer the sale unit for a mapping that already exists (the `no_sale_volume`
+ * queue). Any serve other than glass or bottle needs `sale_volume_ml`.
+ */
 export async function setSaleUnits(
-  items: Array<{ mapping_id: string; sale_unit: "glass" | "bottle" }>,
+  items: Array<{
+    mapping_id: string;
+    sale_unit: string;
+    sale_volume_ml?: number;
+  }>,
   restaurantId?: string,
 ): Promise<{
   results: Array<{ mapping_id: string; ok: boolean; error?: string }>;

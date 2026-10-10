@@ -222,7 +222,7 @@ export class PosHubController {
   @ApiOperation({
     summary: "Record sale units for many mappings in one pass",
     description:
-      "Body: { items: [{ mapping_id, sale_unit }] }. Each entry is applied independently — one bad id does not discard the rest — and the response reports per-entry ok/error. Only 'glass' and 'bottle' are accepted; the value written is the one sent, never derived.",
+      "Body: { items: [{ mapping_id, sale_unit }] }. Each entry is applied independently — one bad id does not discard the rest — and the response reports per-entry ok/error. Each entry may carry sale_volume_ml; any serve other than 'glass' or 'bottle' (shot, pint, can…) must. The value written is the one sent, never derived.",
   })
   async setSaleUnitBatch(
     @Param("restaurantId") restaurantId: string,
@@ -245,7 +245,7 @@ export class PosHubController {
   @ApiOperation({
     summary: "Record the sale unit for one mapping",
     description:
-      "Body: { sale_unit: 'glass' | 'bottle' }. Loads the existing row and changes only sale_unit, so the inventory link, is_wine and category survive the write.",
+      "Body: { sale_unit, sale_volume_ml? }. 'glass' or 'bottle' alone, or any other serve name (shot, pint, can…) with the millilitres one sale removes. Loads the existing row and changes only sale_unit and, when sent, sale_volume_ml, so the inventory link, is_wine and category survive the write.",
   })
   @ApiParam({ name: "mappingId", description: "pos_item_mappings.id" })
   async setSaleUnit(
@@ -258,6 +258,7 @@ export class PosHubController {
         restaurantId,
         mappingId,
         body.sale_unit,
+        body.sale_volume_ml,
       );
     } catch (error) {
       throw new HttpException(

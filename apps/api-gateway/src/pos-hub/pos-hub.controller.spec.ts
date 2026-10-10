@@ -268,6 +268,55 @@ describe("PosHubController — sale-unit review routes", () => {
       }
     });
 
+    // F-720: a bar sells shots, pints and cans. Any serve name is accepted
+    // with the millilitres one sale removes; without them the label would
+    // look answered while every sale kept queueing.
+    it("accepts another serve name with its millilitres", async () => {
+      for (const [sale_unit, sale_volume_ml] of [
+        ["shot", 40],
+        ["pint", 568],
+        ["can", 330],
+        ["glass", 125],
+      ] as const) {
+        const parsed = await pipe.transform(
+          { sale_unit, sale_volume_ml },
+          meta(SetSaleUnitDto),
+        );
+        expect(parsed).toEqual({ sale_unit, sale_volume_ml });
+      }
+    });
+
+    it("rejects another serve name without millilitres, or with a size outside the band", async () => {
+      for (const body of [
+        { sale_unit: "shot" },
+        { sale_unit: "pint", sale_volume_ml: null },
+        { sale_unit: "shot", sale_volume_ml: 5 },
+        { sale_unit: "can", sale_volume_ml: 40000 },
+        { sale_unit: "glass", sale_volume_ml: "a lot" },
+        { sale_unit: "x".repeat(33), sale_volume_ml: 40 },
+      ]) {
+        await expect(
+          pipe.transform(body, meta(SetSaleUnitDto)),
+        ).rejects.toThrow();
+      }
+    });
+
+    it("requires the millilitres on each batch entry that names another serve", async () => {
+      const mapping_id = "3f4b2f4e-6d1a-4d3c-9c1e-2b7a6c5d4e3f";
+      await expect(
+        pipe.transform(
+          { items: [{ mapping_id, sale_unit: "shot", sale_volume_ml: 40 }] },
+          meta(SetSaleUnitBatchDto),
+        ),
+      ).resolves.toBeTruthy();
+      await expect(
+        pipe.transform(
+          { items: [{ mapping_id, sale_unit: "shot" }] },
+          meta(SetSaleUnitBatchDto),
+        ),
+      ).rejects.toThrow();
+    });
+
     it("rejects null — this surface exists to clear null, not to write it", async () => {
       // pos_item_mappings.sale_unit is nullable and upsertItemMapping accepts
       // null, but null is the state that makes applyStockEffects fall through
@@ -319,6 +368,23 @@ describe("PosHubController — sale-unit review routes", () => {
         "rest-1",
         "map-1",
         "glass",
+        undefined,
+      );
+    });
+
+    it("passes a stated serve size through to the review service", async () => {
+      mappingReview.setSaleUnit.mockResolvedValue({ ok: true });
+
+      await controller.setSaleUnit("rest-1", "map-1", {
+        sale_unit: "shot",
+        sale_volume_ml: 40,
+      });
+
+      expect(mappingReview.setSaleUnit).toHaveBeenCalledWith(
+        "rest-1",
+        "map-1",
+        "shot",
+        40,
       );
     });
 
