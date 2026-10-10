@@ -279,6 +279,27 @@ export class AnalyticsService {
     return rows.filter((r) => r.isActive !== false);
   }
 
+  /**
+   * The house's stated money (`restaurants.currency`), upper-cased; null when
+   * none is on record or the read failed — the same degrade `loadInventory`
+   * makes for it, logged (F-1052).
+   */
+  private async loadHouseCurrency(
+    restaurantId: string,
+  ): Promise<string | null> {
+    const [res] = await Promise.allSettled([
+      this.dbService
+        .getClient()
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle(),
+    ]);
+    this.reportSlice("restaurants", res);
+    const c = res.status === "fulfilled" ? res.value?.data?.currency : null;
+    return typeof c === "string" && c.trim() ? c.trim().toUpperCase() : null;
+  }
+
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
@@ -606,10 +627,11 @@ export class AnalyticsService {
 
   async getFinancialSummary(restaurantId: string, labor = 0) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
-    const [inventory, orders, consumption] = await Promise.all([
+    const [inventory, orders, consumption, houseCurrency] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
+      this.loadHouseCurrency(restaurantId),
     ]);
 
     // A row holding no bottles contributes 0 to the valuation whatever it
@@ -654,13 +676,16 @@ export class AnalyticsService {
     // says which. A restaurant that genuinely placed orders still gets its
     // real total, including a real 0 if every order carried no cost.
     //
-    // Orders placed in two named currencies have no single COGS: there is no
+    // Orders placed in two currencies have no single COGS: there is no
     // rate to add a €400 order to a ₺12,000 one by (F-339). An order naming
-    // no currency is added in, as every order was before the column existed.
+    // no currency is in the house's money (F-1052), as every order was before
+    // the column existed; with no house currency on record it is added in.
     // A delivered order with no price is left out and counted (F-701), so
     // the page can say what the figure is missing, as costCoverage does.
     const orderCurrencies = new Set(
-      orders.map((o) => o.currency).filter((c): c is string => c !== null),
+      orders
+        .map((o) => o.currency ?? houseCurrency)
+        .filter((c): c is string => c !== null),
     );
     const pricedCosts = orders
       .map((o) => o.cost)
@@ -670,6 +695,17 @@ export class AnalyticsService {
       orders.length === 0 || orderCurrencies.size > 1
         ? null
         : E.stats.sum(pricedCosts);
+    // The code COGS is in (F-1052): one currency that is not the house's is
+    // given WITH its code, never as house money. Null is the house's money
+    // when none is on record.
+    const cogsCurrency =
+      cogs == null ? null : (Array.from(orderCurrencies)[0] ?? houseCurrency);
+    // A euro COGS is not set against a lira cellar: turns and days of stock
+    // divide one by the other, and nothing converts between them.
+    const cogsInHouseMoney =
+      cogsCurrency == null ||
+      houseCurrency == null ||
+      cogsCurrency === houseCurrency;
 
     // Revenue basis: sell-price valuation of purchased bottles (proxy until a
     // POS revenue feed lands). Menu price is recorded, so this survives an
@@ -706,11 +742,11 @@ export class AnalyticsService {
     // ratios take revenue as their denominator. A null on either side makes
     // them unknown, not zero and not infinite.
     const turnover =
-      inventoryValue == null || cogs == null
+      inventoryValue == null || cogs == null || !cogsInHouseMoney
         ? null
         : E.inventory.inventoryTurnover(cogs, inventoryValue);
     const dio =
-      inventoryValue == null || cogs == null
+      inventoryValue == null || cogs == null || !cogsInHouseMoney
         ? null
         : E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
     const gmroi =
@@ -804,7 +840,10 @@ export class AnalyticsService {
               : `delivered procurement_orders (trailing 365d) — ${pricedCosts.length} order${pricedCosts.length === 1 ? "" : "s"} summed` +
                 (cogsUnpricedCount > 0
                   ? `; ${cogsUnpricedCount} delivered order${cogsUnpricedCount === 1 ? "" : "s"} with no price left out`
-                  : ""),
+                  : "") +
+                (cogsInHouseMoney
+                  ? ""
+                  : `; paid in ${cogsCurrency}, not the house's ${houseCurrency}, so it is given in ${cogsCurrency} and inventory turns and days of stock are not taken from it`),
         revenue:
           inventory.length === 0
             ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
@@ -819,7 +858,7 @@ export class AnalyticsService {
           "on-hand qty × unit cost over the on-hand rows that carry a recorded cost only; the rows it leaves out are costCoverage.unpriced; null when no on-hand row carries a cost",
         deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
         costDerived:
-          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio; grossMarginDollars, grossMargin, cogsRatio, primeCostRatio and gmroi are taken over the on-hand wines that carry a bottle price only, so a wine with no price adds neither sales nor cost to them (priceCoverage counts it)",
+          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null or in a currency other than the house's, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio; grossMarginDollars, grossMargin, cogsRatio, primeCostRatio and gmroi are taken over the on-hand wines that carry a bottle price only, so a wine with no price adds neither sales nor cost to them (priceCoverage counts it)",
       },
       costCoverage,
       // Which on-hand rows carry no recorded cost, by name (F-133): the
@@ -834,6 +873,9 @@ export class AnalyticsService {
       inventoryValue,
       pricedInventoryValue,
       cogs,
+      cogsCurrency,
+      /** The house's stated money; null when none is on record (F-1052). */
+      houseCurrency,
       cogsUnpricedCount,
       revenue,
       grossMarginDollars: marginDollars,

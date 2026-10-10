@@ -30,6 +30,7 @@ import type {
   InventoryItem,
   Order,
 } from "@/services/api/types";
+import { formatMoney } from "@/lib/utils";
 
 /* ── Gateway DTO shapes (dashboard.service.ts) ──────────────────────────── */
 
@@ -76,6 +77,10 @@ export interface RawDayEvent {
 export interface DayLedger {
   date: string; // YYYY-MM-DD, the HOUSE's date
   procurement_spend: number | null;
+  /** The code `procurement_spend` is in; null = the house's (F-1052). */
+  procurement_spend_currency: string | null;
+  /** Each currency's part; what a two-currency day shows (F-1055). */
+  procurement_spend_parts: SpendPart[];
   bottles_sold: number | null; // bottles DELIVERED by vendors (frozen misnomer)
   events: RawDayEvent[];
   order_count: number | null;
@@ -101,6 +106,10 @@ export interface MonthLedger {
   month: number;
   daily: DayLedger[];
   monthlySpend: number | null;
+  /** The code `monthlySpend` is in; null = the house's (F-1052). */
+  monthlySpendCurrency: string | null;
+  /** Each currency's part of the month's spend (F-1055). */
+  monthlySpendParts: SpendPart[];
   monthlyBottles: number | null;
   /** The begun days the register counted, summed (founder 2026-10-05: "Sum, say N of M days"). */
   monthlyNetSales: number | null;
@@ -124,6 +133,95 @@ export interface MonthLedger {
 
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/* ── Vendor spend in its own currency (F-1052, F-1055) ─────────────────── */
+
+/** One currency's part of a vendor-spend figure; a null code is the house's. */
+export interface SpendPart {
+  currency: string | null;
+  amount: number;
+}
+
+/** A currency code as sent, or null (the house's money). */
+const codeOf = (v: unknown): string | null =>
+  typeof v === "string" && /^[A-Za-z]{3}$/.test(v.trim())
+    ? v.trim().toUpperCase()
+    : null;
+
+/** The parts the gateway sent, read safely; [] when none came. */
+export function spendPartsFrom(v: unknown): SpendPart[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter(
+      (p): p is { currency?: unknown; amount: number } =>
+        !!p && typeof p === "object" && num((p as { amount?: unknown }).amount) !== null,
+    )
+    .map((p) => ({ currency: codeOf(p.currency), amount: p.amount }));
+}
+
+/**
+ * Spend in the currency it was paid in: a single figure from a euro importer
+ * in a lira house reads €1.200, never ₺1.200 (F-1052). No code is the house's
+ * own money. The em dash for unknown, as every figure on this page.
+ */
+export function spendMoney(
+  v: number | null | undefined,
+  currency: string | null | undefined,
+  mode: "compact" | "full" = "full",
+): string {
+  if (v == null || Number.isNaN(v)) return "—";
+  return formatMoney(v, mode, currency ?? undefined);
+}
+
+/**
+ * A spend paid in two currencies, said as its parts — "₺12.000 and €1.200" —
+ * where the total would be a bare dash (F-1055). Null when there are not two
+ * parts to say.
+ */
+export function spendPartsSaid(
+  parts: SpendPart[] | null | undefined,
+  mode: "compact" | "full" = "full",
+): string | null {
+  if (!parts || parts.length < 2) return null;
+  return parts
+    .map((p) => formatMoney(p.amount, mode, p.currency ?? undefined))
+    .join(" and ");
+}
+
+/** Why the parts above are not one figure, in the owner's words. */
+export const SPEND_KEPT_APART = "kept apart, no exchange rate on record";
+
+/** One window of the stat cards' spend, as `getStats` sends it (F-1055). */
+export interface StatsSpendParts {
+  currency: string | null;
+  parts: SpendPart[];
+  note: string | null;
+}
+
+/**
+ * The stat cards' code, parts and reason for one window. Read here, as
+ * `houseZoneOf` reads the zone, rather than added to the shared
+ * `DashboardStats` type. An older gateway sends none: the house's money, no
+ * parts.
+ */
+export function statsSpendOf(
+  stats: DashboardStats | null | undefined,
+  window: "today" | "week" | "month",
+): StatsSpendParts {
+  const all = (stats as { procurementSpendParts?: unknown } | null | undefined)
+    ?.procurementSpendParts;
+  const w =
+    all && typeof all === "object"
+      ? ((all as Record<string, unknown>)[window] as
+          | { currency?: unknown; byCurrency?: unknown; note?: unknown }
+          | undefined)
+      : undefined;
+  return {
+    currency: codeOf(w?.currency),
+    parts: spendPartsFrom(w?.byCurrency),
+    note: typeof w?.note === "string" && w.note ? w.note : null,
+  };
+}
 
 /** What a net figure reads when checks came and not one carried a subtotal. */
 export const NOT_RECORDED = "not recorded";
@@ -354,13 +452,19 @@ export function useMonthLedger(
         // stays null: it is "not known" (no zone, no register, withheld), and
         // `?? 0` here once turned every one of those into a drawn zero.
         const daily: DayLedger[] = res.daily.map((d) => {
-          const raw = d as typeof d & { revenue?: number };
+          const raw = d as typeof d & {
+            revenue?: number;
+            procurement_spend_currency?: unknown;
+            procurement_spend_by_currency?: unknown;
+          };
           return {
             date: raw.date,
             procurement_spend:
               raw.procurement_spend !== undefined
                 ? num(raw.procurement_spend)
                 : num(raw.revenue),
+            procurement_spend_currency: codeOf(raw.procurement_spend_currency),
+            procurement_spend_parts: spendPartsFrom(raw.procurement_spend_by_currency),
             bottles_sold: num(raw.bottles_sold),
             events: raw.events ?? [],
             order_count: num(raw.order_count),
@@ -369,7 +473,12 @@ export function useMonthLedger(
             net_checks: num(raw.net_checks),
           };
         });
-        const legacyTotals = res as unknown as { monthly_total?: number; amounts?: string };
+        const legacyTotals = res as unknown as {
+          monthly_total?: number;
+          amounts?: string;
+          monthly_procurement_spend_currency?: unknown;
+          monthly_procurement_spend_by_currency?: unknown;
+        };
         const summedSpend = daily.every((d) => d.procurement_spend !== null)
           ? daily.reduce((sum, d) => sum + (d.procurement_spend ?? 0), 0)
           : null;
@@ -383,6 +492,8 @@ export function useMonthLedger(
               : legacyTotals.monthly_total !== undefined
                 ? num(legacyTotals.monthly_total)
                 : summedSpend,
+          monthlySpendCurrency: codeOf(legacyTotals.monthly_procurement_spend_currency),
+          monthlySpendParts: spendPartsFrom(legacyTotals.monthly_procurement_spend_by_currency),
           monthlyBottles: num(res.monthly_bottles),
           monthlyNetSales: num(res.monthly_net_sales),
           monthlyChecks: num(res.monthly_checks),

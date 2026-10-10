@@ -1485,3 +1485,75 @@ describe('KpiRow — spend left out for want of a price', () => {
     expect(screen.queryByText(/with no price/)).not.toBeInTheDocument();
   });
 });
+
+/* ── Vendor spend in the currency it was paid in (F-1052, F-1055) ────────── */
+
+describe('DashboardNext — vendor spend says its own currency (F-1052, F-1055)', () => {
+  const MIXED = [
+    { currency: 'TRY', amount: 12000 },
+    { currency: 'EUR', amount: 400 },
+  ];
+
+  it('prints one other currency in that currency, and a two-currency month as its parts', async () => {
+    const s = {
+      totalWines: 3,
+      totalBottles: 40,
+      totalVolumeMl: 30000,
+      totalVolumeOz: 1014,
+      lowStockItems: 0,
+      pendingOrders: 0,
+      todayProcurementSpend: 1200,
+      weekProcurementSpend: null,
+      monthProcurementSpend: null,
+      procurementSpendParts: {
+        today: { currency: 'EUR', byCurrency: [{ currency: 'EUR', amount: 1200 }], note: null },
+        week: { currency: null, byCurrency: MIXED, note: 'Paid in EUR and TRY' },
+        month: { currency: null, byCurrency: MIXED, note: 'Paid in EUR and TRY' },
+      },
+    } as unknown as DashboardStats;
+    render(
+      <MemoryRouter>
+        <KpiRow stats={s} pendingCount={0} lowStockCount={0} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText(/€1[.,]2K/)).toBeInTheDocument());
+    expect(screen.getByText(/12[.,]0K and €400, kept apart, no exchange rate on record/)).toBeInTheDocument();
+  });
+
+  it('draws a euro day in euros and a two-currency day as its parts, in the cell and the day panel', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        pos_connected: false,
+        days: {
+          '2026-10-01': { procurement_spend: null, procurement_spend_by_currency: MIXED, order_count: 2 } as Partial<Day>,
+          '2026-10-02': { procurement_spend: 1200, procurement_spend_currency: 'EUR', order_count: 1 } as Partial<Day>,
+        },
+        monthly_procurement_spend: null,
+        monthly_procurement_spend_by_currency: [
+          { currency: 'TRY', amount: 12000 },
+          { currency: 'EUR', amount: 1600 },
+        ],
+      }),
+    );
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toMatch(/^€1[.,]2K$/));
+    expect(cellFig('2026-10-01')).toMatch(/12[.,]0K and €400/);
+    expect(dayCell('2026-10-01').getAttribute('aria-label')).toMatch(
+      /12,000 and €400 paid to vendors, kept apart, no exchange rate on record/,
+    );
+    expect(screen.getByText(/12,000 and €1,600, kept apart, no exchange rate on record/)).toBeInTheDocument();
+
+    fireEvent.click(dayCell('2026-10-01'));
+    const paid = await screen.findByText('Paid to vendors');
+    expect(paid.previousElementSibling?.textContent).toMatch(/12[.,]0K and €400/);
+    expect(paid.nextElementSibling?.textContent).toBe('kept apart, no exchange rate on record');
+
+    fireEvent.click(dayCell('2026-10-02'));
+    await waitFor(() =>
+      expect(screen.getByText('Paid to vendors').previousElementSibling?.textContent).toBe('€1,200'),
+    );
+  });
+});

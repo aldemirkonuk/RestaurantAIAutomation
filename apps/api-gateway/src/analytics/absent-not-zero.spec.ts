@@ -4,6 +4,7 @@ import { separableExtremes, type WeekdayProfile } from "./engine/comparisons";
 import { GoalsService } from "./goals.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import {
+  ForeignCurrencySpendError,
   MixedCurrencySpendError,
   UnpricedSpendError,
 } from "../procurement/order-spend";
@@ -785,5 +786,92 @@ describe("the cashflow and vendor lenses add no lira to euros", () => {
     }).getVendorScorecard(RESTAURANT);
     expect(out.concentration.hhi).toBeCloseTo(0.5);
     expect(out.concentration.note).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-1052: an order naming no currency is the house's; one other currency is
+// never read as the house's money
+// ---------------------------------------------------------------------------
+
+describe("COGS and the purchase spend goal read the house's currency (F-1052)", () => {
+  const LIRA_HOUSE = { currency: "try" };
+  const EUR = { ...DELIVERED, id: "po-eur", currency: "EUR", total_cost: 400 };
+  // A legacy order from before orders named their currency: the house's lira.
+  const LEGACY = { ...DELIVERED, id: "po-old", total_cost: 12000 };
+
+  it("does not add old lira orders to a euro one into one COGS", async () => {
+    const out: any = await analytics({
+      restaurants: [LIRA_HOUSE],
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [LEGACY, EUR],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBeNull();
+    expect(out.basis.cogs).toContain("placed in EUR, TRY");
+  });
+
+  it("gives a COGS paid wholly in euros WITH its code, and takes no turns from it", async () => {
+    const out: any = await analytics({
+      restaurants: [LIRA_HOUSE],
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [EUR],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBe(400);
+    expect(out.cogsCurrency).toBe("EUR");
+    expect(out.houseCurrency).toBe("TRY");
+    expect(out.inventoryTurnover).toBeNull();
+    expect(out.daysInventoryOutstanding).toBeNull();
+    expect(out.basis.cogs).toContain("paid in EUR, not the house's TRY");
+  });
+
+  it("keeps old lira orders in a lira house as a lira COGS", async () => {
+    const out: any = await analytics({
+      restaurants: [LIRA_HOUSE],
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [LEGACY],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.cogs).toBe(12000);
+    expect(out.cogsCurrency).toBe("TRY");
+  });
+
+  const goals = (rows: Rows) =>
+    new GoalsService(
+      { getClient: () => makeClient(rows) } as any,
+      { getStored: async () => [] } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { getFinancialSummary: async () => ({}) } as any,
+    );
+  const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const spendOf = (rows: Rows) =>
+    (goals(rows) as any)
+      .computeMetricWithSeries(
+        RESTAURANT,
+        "purchase_spend",
+        since,
+        undefined,
+        "UTC",
+      )
+      .catch((e: unknown) => e);
+
+  it("the purchase spend goal refuses old lira orders beside a euro one", async () => {
+    const err = await spendOf({
+      restaurants: [LIRA_HOUSE],
+      procurement_orders: [LEGACY, EUR],
+    });
+    expect(err).toBeInstanceOf(MixedCurrencySpendError);
+    expect((err as Error).message).toContain("paid in EUR and TRY");
+  });
+
+  it("the purchase spend goal refuses a window paid wholly in euros in a lira house", async () => {
+    const err = await spendOf({
+      restaurants: [LIRA_HOUSE],
+      procurement_orders: [EUR],
+    });
+    expect(err).toBeInstanceOf(ForeignCurrencySpendError);
+    expect((err as Error).message).toContain(
+      "paid in EUR, not the house's TRY",
+    );
   });
 });

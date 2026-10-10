@@ -42,7 +42,7 @@ const HOUSE = "house-1";
 const LA = "America/Los_Angeles";
 
 const COLUMNS: Record<string, string[]> = {
-  restaurants: ["id", "timezone", "country"],
+  restaurants: ["id", "timezone", "country", "currency"],
   procurement_orders: [
     "id",
     "restaurant_id",
@@ -328,6 +328,7 @@ describe("F-339 — vendor spend never adds two currencies", () => {
       ]),
     ).toEqual({
       total: 12250,
+      currency: "TRY",
       byCurrency: [
         { currency: "TRY", amount: 12000 },
         { currency: null, amount: 250 },

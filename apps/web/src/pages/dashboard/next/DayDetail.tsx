@@ -18,7 +18,10 @@ import { formatNumber } from '@/lib/utils';
 import { vendorLine } from '@/lib/mudavym/vendor';
 import {
   NOT_RECORDED,
+  SPEND_KEPT_APART,
   fromChecks,
+  spendMoney,
+  spendPartsSaid,
   DAY_ACTIVITY_LIMIT,
   type AlertItem,
   type DayActivityState,
@@ -314,7 +317,21 @@ export function DayDetail({
           <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
         )}
         {salesShown && <MiniFig label="Checks" value={figure(day.checks)} />}
-        {seesAmounts && <MiniFig label="Paid to vendors" value={money(day.procurement_spend)} />}
+        {/* F-1052: in the currency it was paid in. F-1055: a day paid in two
+            currencies shows each part and why, not a bare dash. */}
+        {seesAmounts &&
+          (day.procurement_spend == null && spendPartsSaid(day.procurement_spend_parts) ? (
+            <MiniFig
+              label="Paid to vendors"
+              value={spendPartsSaid(day.procurement_spend_parts, 'compact') as string}
+              note={SPEND_KEPT_APART}
+            />
+          ) : (
+            <MiniFig
+              label="Paid to vendors"
+              value={spendMoney(day.procurement_spend, day.procurement_spend_currency)}
+            />
+          ))}
         <MiniFig label="Deliveries" value={figure(day.order_count)} />
         <MiniFig label="Bottles in" value={figure(day.bottles_sold)} />
         <MiniFig label="On the calendar" value={formatNumber(day.events.length)} />

@@ -11,8 +11,9 @@
 
 import { Link } from 'react-router-dom';
 import type { DashboardStats } from '@/services/api/types';
-import { formatMoney, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import CountUp from './CountUp';
+import { SPEND_KEPT_APART, spendMoney, spendPartsSaid, statsSpendOf } from './useDashboardNextData';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -112,6 +113,16 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   // blank instead of standing empty beside the cellar count.
   const zoneUnset = (s as { zone_unset?: boolean } | null)?.zone_unset === true;
   const noZone = 'unknown until the time zone is set';
+  // F-1052: each figure in the currency it was paid in, so euros from an
+  // importer never read as lira. F-1055: a figure paid in two currencies is
+  // null, and its sub says each part rather than leaving a bare dash.
+  const todayIn = statsSpendOf(s, 'today');
+  const monthIn = statsSpendOf(s, 'month');
+  const apart = (w: typeof todayIn, total: number | null) => {
+    if (total != null) return undefined;
+    const said = spendPartsSaid(w.parts, 'compact');
+    return said ? `${said}, ${SPEND_KEPT_APART}` : (w.note ?? undefined);
+  };
 
   // DASH-W37: "items", never "wines" — the house holds every drink (ADR 0115,
   // ADR 0186), and the founder chose the word that still holds when food lands.
@@ -148,16 +159,16 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
           <KpiTile
             label="Paid to vendors · today"
             value={todaySpend}
-            format={(n) => formatMoney(n, 'compact')}
-            sub={zoneUnset ? noZone : (todayUnpriced ?? 'delivered purchase orders')}
+            format={(n) => spendMoney(n, todayIn.currency, 'compact')}
+            sub={zoneUnset ? noZone : (apart(todayIn, todaySpend) ?? todayUnpriced ?? 'delivered purchase orders')}
             to="/orders?station=delivered"
             loading={loading}
           />
           <KpiTile
             label="Paid to vendors · month"
             value={monthSpend}
-            format={(n) => formatMoney(n, 'compact')}
-            sub={zoneUnset ? noZone : (monthUnpriced ?? 'procurement, not sales')}
+            format={(n) => spendMoney(n, monthIn.currency, 'compact')}
+            sub={zoneUnset ? noZone : (apart(monthIn, monthSpend) ?? monthUnpriced ?? 'procurement, not sales')}
             to="/reports"
             loading={loading}
           />

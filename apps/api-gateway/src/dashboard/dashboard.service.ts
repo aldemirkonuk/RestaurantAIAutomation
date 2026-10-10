@@ -190,6 +190,8 @@ export interface CalendarDay {
    * `procurement_spend_by_currency` then carries each one.
    */
   procurement_spend: number | null;
+  /** The code `procurement_spend` is in; null for the house's when none is on record (F-1052). */
+  procurement_spend_currency?: string | null;
   procurement_spend_by_currency?: SpendInCurrency[];
   /** Bottles DELIVERED by vendors (the frozen key is a misnomer). */
   bottles_sold: number | null;
@@ -219,6 +221,7 @@ export interface CalendarMonth {
   daily: CalendarDay[];
   /** Null when the month's orders name more than one currency (F-339). */
   monthly_procurement_spend: number | null;
+  monthly_procurement_spend_currency?: string | null;
   monthly_procurement_spend_by_currency?: SpendInCurrency[];
   monthly_bottles: number | null;
   /**
@@ -278,19 +281,32 @@ export interface SpendInCurrency {
  * on a ₺12,000 + €400 day. There is no exchange-rate source to convert by, so:
  *
  *   - `byCurrency` is the spend per currency, always;
- *   - `total` is one figure only when the orders name at most one currency.
- *     An order that names none is added to it, as every order was before the
- *     column existed, and is still listed apart in `byCurrency` (null code);
- *   - two named currencies give `total: null`, which every reader already
- *     draws as "not known", never as a sum.
+ *   - an order that names no currency is in the house's (`restaurants.currency`,
+ *     `houseCurrency`), as every order was before the column existed, and is
+ *     counted under that code (F-1052). With no house currency on record it
+ *     stays apart in `byCurrency` (null code) and is added to the one named;
+ *   - `total` is one figure only when the orders come to one currency, and
+ *     `currency` names it: a single currency that is not the house's is
+ *     returned WITH its code, never as house money (F-1052);
+ *   - two currencies give `total: null`, which every reader already draws as
+ *     "not known", never as a sum.
  *
  * Same rule as the receiving queue's `totalAtRiskByCurrency`.
  */
-export function spendByCurrency(orders: any[]): {
+export function spendByCurrency(
+  orders: any[],
+  houseCurrency: string | null = null,
+): {
   total: number | null;
+  /** The code `total` is in; null for the house's money when none is on record. */
+  currency: string | null;
   byCurrency: SpendInCurrency[];
   unpricedCount: number;
 } {
+  const house =
+    typeof houseCurrency === "string" && houseCurrency.trim()
+      ? houseCurrency.trim().toUpperCase()
+      : null;
   const by = new Map<string | null, number>();
   // An order with no price is left out and counted (F-701): not $0, and not
   // one bottle's `final_price` standing in for the whole order.
@@ -304,19 +320,22 @@ export function spendByCurrency(orders: any[]): {
     const code =
       typeof o.currency === "string" && o.currency.trim()
         ? o.currency.trim().toUpperCase()
-        : null;
+        : house;
     by.set(code, cents((by.get(code) ?? 0) + spend));
   }
   const byCurrency = Array.from(by, ([currency, amount]) => ({
     currency,
     amount,
   }));
-  const named = byCurrency.filter((c) => c.currency !== null).length;
+  const named = byCurrency
+    .map((c) => c.currency)
+    .filter((c): c is string => c !== null);
   return {
     total:
-      named > 1
+      named.length > 1
         ? null
         : cents(byCurrency.reduce((sum, c) => sum + c.amount, 0)),
+    currency: named.length > 1 ? null : (named[0] ?? house),
     byCurrency,
     unpricedCount,
   };
@@ -922,95 +941,94 @@ export class DashboardService {
   ): Promise<ProcurementSpendSummaryDto> {
     const client = this.dbService.getClient();
 
-    try {
-      // Get all delivered orders for this restaurant
-      const { data: delivered, error } = await client
+    // A failed read throws (F-1056): the summary files it under `errors` and
+    // the section is null. It used to answer 0 spent, and with no error the
+    // summary called every service healthy — absence reported as health.
+    const [{ data: delivered, error }, house] = await Promise.all([
+      client
         .from("procurement_orders")
         .select(
           "final_price, total_cost, currency, bottles_total, quantity, delivered_at, created_at, status",
         )
         .eq("restaurant_id", restaurantId)
-        .in("status", ORDER_SPEND_STATUSES);
-
-      if (error) {
-        this.logger.warn(`Procurement spend query error: ${error.message}`);
-        return {
-          totalProcurementSpend: 0,
-          monthlyProcurementSpend: 0,
-          totalBottlesDelivered: 0,
-          spendByMonth: [],
-          unpricedOrders: 0,
-        };
-      }
-
-      const orders = delivered || [];
-
-      // Total paid to vendors. An order with no price is left out and counted
-      // (F-701), not added as $0 or as one bottle's `final_price`; orders in
-      // two currencies give null and each currency's part, not a sum (F-1039).
-      const paid = spendByCurrency(orders);
-      const totalBottlesDelivered = orders.reduce(
-        (sum, o) => sum + (o.bottles_total || o.quantity || 0),
-        0,
+        .in("status", ORDER_SPEND_STATUSES),
+      this.houseOrNull(client, restaurantId),
+    ]);
+    if (error) {
+      throw new Error(
+        `The delivered orders could not be read: ${error.message}`,
       );
-
-      // Paid to vendors this calendar month
-      const now = new Date();
-      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const monthPaid = spendByCurrency(
-        orders.filter((o) => {
-          const orderDate = o.delivered_at || o.created_at;
-          return orderDate && orderDate.startsWith(currentMonth);
-        }),
-      );
-
-      // Spend by month (last 12 months)
-      const monthMap = new Map<string, { orders: any[]; bottles: number }>();
-
-      for (const o of orders) {
-        const orderDate = o.delivered_at || o.created_at;
-        if (!orderDate) continue;
-        const month = orderDate.substring(0, 7); // YYYY-MM
-        const existing = monthMap.get(month) || { orders: [], bottles: 0 };
-        existing.orders.push(o);
-        existing.bottles += o.bottles_total || o.quantity || 0;
-        monthMap.set(month, existing);
-      }
-
-      // Sort by month and take last 12
-      const spendByMonth = Array.from(monthMap.entries())
-        .sort()
-        .map(([month, data]) => {
-          const m = spendByCurrency(data.orders);
-          return {
-            month,
-            spend: m.total,
-            spendByCurrency: m.byCurrency,
-            unpricedOrders: m.unpricedCount,
-            bottles: data.bottles,
-          };
-        });
-
-      return {
-        totalProcurementSpend: paid.total,
-        monthlyProcurementSpend: monthPaid.total,
-        procurementSpendByCurrency: paid.byCurrency,
-        procurementSpendNote: mixedSpendNote(paid.byCurrency),
-        totalBottlesDelivered,
-        spendByMonth: spendByMonth.slice(-12),
-        unpricedOrders: paid.unpricedCount,
-        monthlyUnpricedOrders: monthPaid.unpricedCount,
-      };
-    } catch (error) {
-      this.logger.warn(`Procurement spend fetch failed: ${error.message}`);
-      return {
-        totalProcurementSpend: 0,
-        monthlyProcurementSpend: 0,
-        totalBottlesDelivered: 0,
-        spendByMonth: [],
-        unpricedOrders: 0,
-      };
     }
+    const { zone, currency: houseCurrency } = house;
+
+    const orders = delivered || [];
+
+    // Total paid to vendors. An order with no price is left out and counted
+    // (F-701), not added as $0 or as one bottle's `final_price`; orders in
+    // two currencies give null and each currency's part, not a sum (F-1039).
+    // An order naming no currency is in the house's money (F-1052).
+    const paid = spendByCurrency(orders, houseCurrency);
+    const totalBottlesDelivered = orders.reduce(
+      (sum, o) => sum + (o.bottles_total || o.quantity || 0),
+      0,
+    );
+
+    // Months are the house's, on its clock, as `getStats` files them
+    // (F-1056): the server's UTC month put a delivery on the 1st at 01:00 in
+    // Istanbul into the month before. With no zone there is no house month,
+    // so the month figures are unknown, never a UTC guess (DASH-G2).
+    const monthOf = (o: any): string | null => {
+      const at = o.delivered_at || o.created_at;
+      return zone && at ? localDateIn(new Date(at), zone).slice(0, 7) : null;
+    };
+    const currentMonth = zone
+      ? localDateIn(new Date(), zone).slice(0, 7)
+      : null;
+    const monthPaid = zone
+      ? spendByCurrency(
+          orders.filter((o) => monthOf(o) === currentMonth),
+          houseCurrency,
+        )
+      : null;
+
+    // Spend by month (last 12 months)
+    const monthMap = new Map<string, { orders: any[]; bottles: number }>();
+
+    for (const o of orders) {
+      const month = monthOf(o);
+      if (!month) continue;
+      const existing = monthMap.get(month) || { orders: [], bottles: 0 };
+      existing.orders.push(o);
+      existing.bottles += o.bottles_total || o.quantity || 0;
+      monthMap.set(month, existing);
+    }
+
+    // Sort by month and take last 12
+    const spendByMonth = Array.from(monthMap.entries())
+      .sort()
+      .map(([month, data]) => {
+        const m = spendByCurrency(data.orders, houseCurrency);
+        return {
+          month,
+          spend: m.total,
+          spendCurrency: m.currency,
+          spendByCurrency: m.byCurrency,
+          unpricedOrders: m.unpricedCount,
+          bottles: data.bottles,
+        };
+      });
+
+    return {
+      totalProcurementSpend: paid.total,
+      procurementSpendCurrency: paid.currency,
+      monthlyProcurementSpend: monthPaid ? monthPaid.total : null,
+      procurementSpendByCurrency: paid.byCurrency,
+      procurementSpendNote: mixedSpendNote(paid.byCurrency),
+      totalBottlesDelivered,
+      spendByMonth: zone ? spendByMonth.slice(-12) : null,
+      unpricedOrders: paid.unpricedCount,
+      monthlyUnpricedOrders: monthPaid ? monthPaid.unpricedCount : null,
+    };
   }
 
   /**
@@ -1046,7 +1064,10 @@ export class DashboardService {
     const withSales = opts.withSales === true;
 
     try {
-      const zone = await this.houseZoneOrNull(client, restaurantId);
+      const [zone, houseCurrency] = await Promise.all([
+        this.houseZoneOrNull(client, restaurantId),
+        this.houseCurrencyOrNull(client, restaurantId),
+      ]);
       const now = new Date();
       const today = zone ? localDateIn(now, zone) : null;
       // With no zone there is no house "today". The server's UTC date only
@@ -1154,7 +1175,7 @@ export class DashboardService {
       const until = takings?.until ?? null;
       const daily: CalendarDay[] = dates.map((date) => {
         const s = spend.get(date);
-        const paid = spendByCurrency(s?.orders ?? []);
+        const paid = spendByCurrency(s?.orders ?? [], houseCurrency);
         const sold = takings?.days.get(date);
         // A day the register was there for: from its first check's house day
         // to its latest check's. A quiet day between them is a measured zero.
@@ -1166,6 +1187,7 @@ export class DashboardService {
         return {
           date,
           procurement_spend: paid.total,
+          procurement_spend_currency: paid.currency,
           procurement_spend_by_currency: paid.byCurrency,
           bottles_sold: s?.bottles ?? 0,
           order_count: s?.count ?? 0,
@@ -1188,6 +1210,7 @@ export class DashboardService {
       // month not yet begun states none.
       const monthSpend = spendByCurrency(
         dates.flatMap((date) => spend.get(date)?.orders ?? []),
+        houseCurrency,
       );
       const begun = daily.filter((d) => today !== null && d.date <= today);
       const known = begun.filter((d) => d.checks !== null);
@@ -1213,6 +1236,7 @@ export class DashboardService {
         // From the month's orders, not the days' figures: a day that is
         // null for mixing currencies must not drop out of the sum (F-339).
         monthly_procurement_spend: monthSpend.total,
+        monthly_procurement_spend_currency: monthSpend.currency,
         monthly_procurement_spend_by_currency: monthSpend.byCurrency,
         monthly_bottles: daily.reduce(
           (sum, d) => sum + (d.bottles_sold ?? 0),
@@ -1254,6 +1278,39 @@ export class DashboardService {
     return houseFrame(data?.[0] ?? null).zone;
   }
 
+  /**
+   * The house's stated money (`restaurants.currency`, upper-cased; null when
+   * none is on record). An order that names no currency is in the house's
+   * money (F-1052). A failed read throws.
+   */
+  private async houseCurrencyOrNull(
+    client: any,
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data, error } = await client
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .limit(1);
+    if (error) throw new Error(`restaurants read failed: ${error.message}`);
+    const code = data?.[0]?.currency;
+    return typeof code === "string" && code.trim()
+      ? code.trim().toUpperCase()
+      : null;
+  }
+
+  /** The house's zone and its money, read together (F-1052, F-1056). */
+  private async houseOrNull(
+    client: any,
+    restaurantId: string,
+  ): Promise<{ zone: string | null; currency: string | null }> {
+    const [zone, currency] = await Promise.all([
+      this.houseZoneOrNull(client, restaurantId),
+      this.houseCurrencyOrNull(client, restaurantId),
+    ]);
+    return { zone, currency };
+  }
+
   // ==========================================================================
   // STATS
   // ==========================================================================
@@ -1262,7 +1319,7 @@ export class DashboardService {
     const client = this.dbService.getClient();
 
     try {
-      const [inventoryResult, lowStockResult, ordersResult, zoneResult] =
+      const [inventoryResult, lowStockResult, ordersResult, houseResult] =
         await Promise.allSettled([
           client
             .from("restaurant_inventory")
@@ -1287,7 +1344,7 @@ export class DashboardService {
             if (after) q = q.gt("id", after);
             return q;
           }),
-          this.houseZoneOrNull(client, restaurantId),
+          this.houseOrNull(client, restaurantId),
         ]);
 
       // A failed read used to become an empty list, so a cellar that could
@@ -1299,7 +1356,7 @@ export class DashboardService {
       const inventory = rowsOrThrow(inventoryResult, "restaurant_inventory");
       const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
       const orders: any[] = valueOrThrow(ordersResult);
-      const zone = valueOrThrow(zoneResult);
+      const { zone, currency: houseCurrency } = valueOrThrow(houseResult);
       const totalWines = inventory.length;
       const totalBottles = inventory.reduce(
         (sum, i) => sum + (i.stock_live || 0),
@@ -1355,7 +1412,9 @@ export class DashboardService {
       // todaySales/weekSales/monthSales, which the web dashboard rendered as
       // "Total Revenue" — the exact opposite of what the number is. Nothing
       // here is a sale. Null when the orders were placed in more than one
-      // currency: there is no rate to add them by (F-339).
+      // currency: there is no rate to add them by (F-339). An order naming
+      // none is in the house's money, and a figure in one other currency
+      // carries its code (F-1052).
       const spendWhere = (items: any[], onDay: (day: string) => boolean) =>
         spendByCurrency(
           items.filter(
@@ -1363,7 +1422,15 @@ export class DashboardService {
               o.delivered_at &&
               onDay(localDateIn(new Date(o.delivered_at), zone)),
           ),
+          houseCurrency,
         );
+      // F-1055: each window's parts and the reason a total is null, so a
+      // two-currency day reads its parts, not a bare dash.
+      const partsOf = (w: ReturnType<typeof spendByCurrency>) => ({
+        currency: w.currency,
+        byCurrency: w.byCurrency,
+        note: mixedSpendNote(w.byCurrency),
+      });
 
       const deliveredOrders = orders.filter((o) =>
         hasStatus(o.status, ORDER_SPEND_STATUSES),
@@ -1400,6 +1467,11 @@ export class DashboardService {
         todayProcurementSpend: todaySpend.total,
         weekProcurementSpend: weekSpend.total,
         monthProcurementSpend: monthSpend.total,
+        procurementSpendParts: {
+          today: partsOf(todaySpend),
+          week: partsOf(weekSpend),
+          month: partsOf(monthSpend),
+        },
         todayProcurementUnpriced: todaySpend.unpricedCount,
         weekProcurementUnpriced: weekSpend.unpricedCount,
         monthProcurementUnpriced: monthSpend.unpricedCount,

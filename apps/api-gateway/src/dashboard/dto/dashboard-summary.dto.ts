@@ -103,6 +103,15 @@ export class CalendarSummaryDto {
  * makes. Real sales revenue would come from `pos_checks`, which this service
  * does not read.
  */
+/** One window's spend, said whole (F-1052, F-1055). */
+export interface SpendPartsDto {
+  /** The code the window's spend is in; null for the house's money when none is on record. */
+  currency: string | null;
+  byCurrency: { currency: string | null; amount: number }[];
+  /** Why the spend is null: paid in more than one currency. Null otherwise. */
+  note: string | null;
+}
+
 export class ProcurementSpendSummaryDto {
   @ApiProperty({
     description:
@@ -114,14 +123,14 @@ export class ProcurementSpendSummaryDto {
 
   @ApiProperty({
     description:
-      "Vendor spend this month; null when paid in more than one currency",
+      "Vendor spend this month, on the house's clock; null when paid in more than one currency, or when the house has no time zone",
     nullable: true,
   })
   monthlyProcurementSpend: number | null;
 
   @ApiPropertyOptional({
     description:
-      "Each currency's part of the total; a null code is an order that names none",
+      "Each currency's part of the total; an order naming none is in the house's currency (a null code only when the house states none)",
   })
   procurementSpendByCurrency?: { currency: string | null; amount: number }[];
 
@@ -131,11 +140,22 @@ export class ProcurementSpendSummaryDto {
   })
   procurementSpendNote?: string | null;
 
+  @ApiPropertyOptional({
+    description:
+      "The code totalProcurementSpend is in; null for the house's money when none is on record (F-1052)",
+    nullable: true,
+  })
+  procurementSpendCurrency?: string | null;
+
   @ApiProperty({ description: "Total bottles delivered by vendors" })
   totalBottlesDelivered: number;
 
-  @ApiProperty({ description: "Vendor spend by month [{month, spend, bottles}]" })
-  spendByMonth: any[];
+  @ApiProperty({
+    description:
+      "Vendor spend by the house's month [{month, spend, spendCurrency, bottles}]; null when the house has no time zone",
+    nullable: true,
+  })
+  spendByMonth: any[] | null;
 
   @ApiProperty({
     description:
@@ -144,9 +164,11 @@ export class ProcurementSpendSummaryDto {
   unpricedOrders: number;
 
   @ApiPropertyOptional({
-    description: "This month's delivered orders that carry no price",
+    description:
+      "This month's delivered orders that carry no price; null when the house has no time zone",
+    nullable: true,
   })
-  monthlyUnpricedOrders?: number;
+  monthlyUnpricedOrders?: number | null;
 }
 
 export class ServiceErrorDto {
@@ -222,6 +244,19 @@ export class DashboardStatsDto {
 
   @ApiProperty({ description: "Vendor spend on orders delivered this calendar month, on the house's days; null when withheld for the caller's role", nullable: true, type: Number })
   monthProcurementSpend: number | null;
+
+  // F-1052 / F-1055: what each of the three spend figures is in, each
+  // currency's part, and why a figure is null when its orders were paid in
+  // two currencies. Money: withheld with the figures for a role without it.
+  @ApiPropertyOptional({
+    description:
+      "Per window (today, week, month): the code the spend is in (null = the house's, none on record), each currency's part, and why the spend is null when paid in more than one currency",
+  })
+  procurementSpendParts?: {
+    today: SpendPartsDto;
+    week: SpendPartsDto;
+    month: SpendPartsDto;
+  };
 
   // F-701: delivered orders with no price are left out of the three spend
   // figures above and counted here, so the page can say the total is missing

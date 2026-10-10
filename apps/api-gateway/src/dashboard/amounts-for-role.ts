@@ -39,11 +39,14 @@ export function statsForRole<
     todayProcurementSpend: number | null;
     weekProcurementSpend: number | null;
     monthProcurementSpend: number | null;
+    procurementSpendParts?: unknown;
   },
 >(stats: T, role: string | null | undefined): T & { amounts: Amounts } {
   if (seesHouseAmounts(role)) return { ...stats, amounts: "shown" };
+  // Each currency's part is money too (F-1055): it leaves with the totals.
+  const { procurementSpendParts: _parts, ...rest } = stats;
   return {
-    ...stats,
+    ...(rest as T),
     todayProcurementSpend: null,
     weekProcurementSpend: null,
     monthProcurementSpend: null,

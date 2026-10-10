@@ -66,13 +66,19 @@ export function orderCurrency(o: { currency?: unknown }): string | null {
     : null;
 }
 
-/** The distinct currencies a set of orders names, sorted (F-1015). */
+/**
+ * The distinct currencies a set of orders names, sorted (F-1015). Given the
+ * house's currency, an order naming none counts as the house's (F-1052), so
+ * old no-code orders beside a euro one are two currencies, not one.
+ */
 export function namedCurrencies(
   orders: ReadonlyArray<{ currency?: unknown }>,
+  houseCurrency: string | null = null,
 ): string[] {
+  const house = orderCurrency({ currency: houseCurrency });
   const codes = new Set<string>();
   for (const o of orders) {
-    const c = orderCurrency(o);
+    const c = orderCurrency(o) ?? house;
     if (c) codes.add(c);
   }
   return Array.from(codes).sort();
@@ -89,5 +95,23 @@ export class MixedCurrencySpendError extends Error {
       `Purchase spend could not be totalled: the deliveries in this window were paid in ${currencies.join(" and ")}, and with no exchange rate on record they cannot be added into one figure.`,
     );
     this.name = "MixedCurrencySpendError";
+  }
+}
+
+/**
+ * A spend total refused because every delivery in its window was paid in one
+ * currency that is not the house's (F-1052). A goal's target is in the house's
+ * money, so a euro sum is not progress towards a lira target, and nothing
+ * converts one into the other. A `MixedCurrencySpendError`, so every reader
+ * that already refuses a two-currency total refuses this one too.
+ */
+export class ForeignCurrencySpendError extends MixedCurrencySpendError {
+  constructor(
+    readonly currency: string,
+    readonly houseCurrency: string,
+  ) {
+    super([currency]);
+    this.message = `Purchase spend could not be totalled: the deliveries in this window were paid in ${currency}, not the house's ${houseCurrency}, and with no exchange rate on record they cannot be set against a target in ${houseCurrency}.`;
+    this.name = "ForeignCurrencySpendError";
   }
 }

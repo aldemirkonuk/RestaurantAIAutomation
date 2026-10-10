@@ -11,6 +11,7 @@ import {
 } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import {
+  ForeignCurrencySpendError,
   MixedCurrencySpendError,
   UnpricedSpendError,
   namedCurrencies,
@@ -1169,9 +1170,17 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         const { unpricedCount } = sumOrderSpend(orders.map(({ row }) => row));
         if (unpricedCount > 0) throw new UnpricedSpendError(unpricedCount);
         // Orders paid in two currencies have no one total (F-1015, as COGS
-        // under F-339); an order naming none is added in.
-        const codes = namedCurrencies(orders.map(({ row }) => row));
+        // under F-339). An order naming none is in the house's money, and a
+        // window paid wholly in another currency is no progress towards a
+        // target in the house's (F-1052).
+        const house = await this.houseCurrencyOf(client, restaurantId);
+        const codes = namedCurrencies(
+          orders.map(({ row }) => row),
+          house,
+        );
         if (codes.length > 1) throw new MixedCurrencySpendError(codes);
+        if (house && codes.length === 1 && codes[0] !== house)
+          throw new ForeignCurrencySpendError(codes[0], house);
         for (const { row: o, day } of orders) add(day, Number(o.total_cost));
       } else if (metricKey === "bottles_sold") {
         // Read whole or refused (ADR 0292): an unranged select stopped at
@@ -1324,6 +1333,33 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const dailySeries = dates.map((d) => daily.get(d) || 0);
     const current = dailySeries.reduce((a, b) => a + b, 0);
     return { current, dailySeries, dailyDates: dates, rowCount, units };
+  }
+
+  /**
+   * The house's stated money (`restaurants.currency`), upper-cased; null when
+   * none is on record (F-1052). A failed read refuses as a window that could
+   * not be read whole does: `computeMetricWithSeries` lets that one through,
+   * where any other error would become a spend of nothing.
+   */
+  private async houseCurrencyOf(
+    client: any,
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data, error } = await client
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error)
+      throw new WholeReadError(
+        "The house's currency",
+        "read_failed",
+        0,
+        null,
+        error.message ?? String(error),
+      );
+    const c = data?.currency;
+    return typeof c === "string" && c.trim() ? c.trim().toUpperCase() : null;
   }
 
   // ==========================================================================

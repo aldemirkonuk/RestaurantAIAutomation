@@ -1,6 +1,8 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { DashboardService } from "./dashboard.service";
 import { DatabaseService } from "../database/database.service";
+import { mixedSpendNote, spendByCurrency } from "./dashboard.service";
+import { statsForRole } from "./amounts-for-role";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
 /**
@@ -23,7 +25,10 @@ import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
  * fans six queries out through `Promise.allSettled`, so a shared "current table"
  * would be overwritten by the last caller before any of them awaited.
  */
-function makeClient(rowsByTable: Record<string, any[]>) {
+function makeClient(
+  rowsByTable: Record<string, any[]>,
+  errorsByTable: Record<string, { message: string }> = {},
+) {
   const passthrough = [
     "select",
     "eq",
@@ -46,10 +51,11 @@ function makeClient(rowsByTable: Record<string, any[]>) {
         builder[method] = jest.fn(() => builder);
       }
       builder.then = (resolve: any, reject: any) =>
-        Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
-          resolve,
-          reject,
-        );
+        Promise.resolve(
+          errorsByTable[table]
+            ? { data: null, error: errorsByTable[table] }
+            : { data: rowsByTable[table] ?? [], error: null },
+        ).then(resolve, reject);
       return builder;
     }),
   };
@@ -134,6 +140,7 @@ describe("DashboardService — procurement spend is not revenue", () => {
     expect(result).not.toHaveProperty("revenue");
     expect(result.procurementSpend).toEqual({
       totalProcurementSpend: 1250,
+      procurementSpendCurrency: null,
       monthlyProcurementSpend: 250,
       procurementSpendByCurrency: [{ currency: null, amount: 1250 }],
       procurementSpendNote: null,
@@ -142,6 +149,7 @@ describe("DashboardService — procurement spend is not revenue", () => {
         {
           month: "2026-07",
           spend: 1000,
+          spendCurrency: null,
           spendByCurrency: [{ currency: null, amount: 1000 }],
           unpricedOrders: 0,
           bottles: 12,
@@ -149,6 +157,7 @@ describe("DashboardService — procurement spend is not revenue", () => {
         {
           month: "2026-08",
           spend: 250,
+          spendCurrency: null,
           spendByCurrency: [{ currency: null, amount: 250 }],
           unpricedOrders: 0,
           bottles: 6,
@@ -367,5 +376,192 @@ describe("DashboardService — spend in two currencies is not added (F-1039)", (
       { currency: "EUR", amount: 400 },
     ]);
     expect(august?.procurementSpendNote).toMatch(/^Paid in EUR and TRY/);
+  });
+});
+
+// F-1052: an order naming no currency is the house's (`restaurants.currency`),
+// so old no-code lira orders beside a euro one are two currencies, not one
+// figure; and a single currency that is not the house's carries its code, so
+// the page never prints euros as lira.
+describe("DashboardService — spend in the house's currency (F-1052, F-1055)", () => {
+  const order = (
+    total_cost: number,
+    currency: string | null,
+    delivered_at: string,
+  ) => ({
+    status: ProcurementOrderStatus.DELIVERED,
+    total_cost,
+    final_price: null,
+    currency,
+    bottles_total: 6,
+    quantity: 6,
+    delivered_at,
+    created_at: delivered_at,
+  });
+
+  it("counts an order naming no currency as the house's, so lira beside euros is not one sum", () => {
+    const paid = spendByCurrency(
+      [order(12000, null, "x"), order(400, "EUR", "x")],
+      "TRY",
+    );
+    expect(paid.total).toBeNull();
+    expect(paid.currency).toBeNull();
+    expect(paid.byCurrency).toEqual([
+      { currency: "TRY", amount: 12000 },
+      { currency: "EUR", amount: 400 },
+    ]);
+    expect(mixedSpendNote(paid.byCurrency)).toContain("Paid in EUR and TRY");
+  });
+
+  it("gives one other currency WITH its code, and old orders the house's", () => {
+    expect(spendByCurrency([order(1200, "eur", "x")], "try")).toMatchObject({
+      total: 1200,
+      currency: "EUR",
+    });
+    expect(spendByCurrency([order(500, null, "x")], "TRY")).toMatchObject({
+      total: 500,
+      currency: "TRY",
+      byCurrency: [{ currency: "TRY", amount: 500 }],
+    });
+  });
+
+  let service: DashboardService;
+  beforeEach(async () => {
+    // 15:00 in Istanbul on 2026-08-15.
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-15T12:00:00Z"));
+    const db = {
+      getClient: jest.fn().mockReturnValue(
+        makeClient({
+          procurement_orders: [
+            // A legacy lira order earlier this month, naming no currency.
+            order(12000, null, "2026-08-03T09:00:00Z"),
+            // Today's one delivery, from an importer, in euros.
+            order(1200, "EUR", "2026-08-15T08:00:00Z"),
+          ],
+          restaurants: [{ timezone: "Europe/Istanbul", currency: "TRY" }],
+        }),
+      ),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [DashboardService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    service = module.get<DashboardService>(DashboardService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("the stat cards say today's euros are euros, and give the month's parts and why", async () => {
+    const stats: any = await service.getStats("r1");
+
+    expect(stats.todayProcurementSpend).toBe(1200);
+    expect(stats.procurementSpendParts.today.currency).toBe("EUR");
+    expect(stats.monthProcurementSpend).toBeNull();
+    expect(stats.procurementSpendParts.month).toEqual({
+      currency: null,
+      byCurrency: [
+        { currency: "TRY", amount: 12000 },
+        { currency: "EUR", amount: 1200 },
+      ],
+      note: expect.stringContaining("Paid in EUR and TRY"),
+    });
+  });
+
+  it("a role without money gets no parts either (DASH-W22)", async () => {
+    const stats: any = statsForRole(await service.getStats("r1"), "staff");
+    expect(stats).not.toHaveProperty("procurementSpendParts");
+    expect(stats.todayProcurementSpend).toBeNull();
+  });
+
+  it("the calendar gives the day's code and the month's parts", async () => {
+    const month: any = await service.getCalendarRevenue("r1", 2026, 8);
+    const day = month.daily.find((d: any) => d.date === "2026-08-15");
+    expect(day.procurement_spend).toBe(1200);
+    expect(day.procurement_spend_currency).toBe("EUR");
+    expect(month.monthly_procurement_spend).toBeNull();
+    expect(month.monthly_procurement_spend_by_currency).toEqual([
+      { currency: "TRY", amount: 12000 },
+      { currency: "EUR", amount: 1200 },
+    ]);
+  });
+});
+
+// F-1056: GET /dashboard/summary answered 0 spent when the orders could not be
+// read, so `allServicesHealthy` said true, and it took "this month" from the
+// server's UTC clock rather than the house's.
+describe("DashboardService — the spend summary's failed read and month (F-1056)", () => {
+  const order = (total_cost: number, delivered_at: string) => ({
+    status: ProcurementOrderStatus.DELIVERED,
+    total_cost,
+    final_price: null,
+    bottles_total: 6,
+    quantity: 6,
+    delivered_at,
+    created_at: delivered_at,
+  });
+
+  const serviceOver = async (
+    rows: Record<string, any[]>,
+    errors: Record<string, { message: string }> = {},
+  ) => {
+    const db = {
+      getClient: jest.fn().mockReturnValue(makeClient(rows, errors)),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [DashboardService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    return module.get<DashboardService>(DashboardService);
+  };
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("files a failed orders read under errors, never as 0 spent", async () => {
+    const service = await serviceOver(
+      { restaurants: [{ timezone: "UTC" }] },
+      { procurement_orders: { message: "boom" } },
+    );
+    const result: any = await service.getDashboardSummary("r1");
+
+    expect(result.procurementSpend).toBeNull();
+    expect(result.errors.map((e: any) => e.service)).toContain(
+      "procurementSpend",
+    );
+    expect(result.allServicesHealthy).toBe(false);
+  });
+
+  it("takes this month on the house's clock, not the server's UTC month", async () => {
+    // 01:30 on 1 September in Istanbul; still 31 August in UTC.
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-31T22:30:00Z"));
+    const service = await serviceOver({
+      procurement_orders: [
+        order(500, "2026-08-31T20:00:00Z"), // 23:00 on 31 August, house time
+        order(300, "2026-08-31T22:00:00Z"), // 01:00 on 1 September, house time
+      ],
+      restaurants: [{ timezone: "Europe/Istanbul" }],
+    });
+    const spend: any = (await service.getDashboardSummary("r1"))
+      .procurementSpend;
+
+    expect(spend.monthlyProcurementSpend).toBe(300);
+    expect(spend.spendByMonth.map((m: any) => [m.month, m.spend])).toEqual([
+      ["2026-08", 500],
+      ["2026-09", 300],
+    ]);
+  });
+
+  it("has no month to give a house with no time zone", async () => {
+    const service = await serviceOver({
+      procurement_orders: [order(500, "2026-08-31T20:00:00Z")],
+      restaurants: [{ timezone: null }],
+    });
+    const spend: any = (await service.getDashboardSummary("r1"))
+      .procurementSpend;
+
+    expect(spend.totalProcurementSpend).toBe(500);
+    expect(spend.monthlyProcurementSpend).toBeNull();
+    expect(spend.spendByMonth).toBeNull();
   });
 });

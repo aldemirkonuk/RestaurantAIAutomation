@@ -37,8 +37,11 @@ import { animate, settle } from '@/lib/mudavym';
 import type { AlertItem } from './useDashboardNextData';
 import {
   NOT_RECORDED,
+  SPEND_KEPT_APART,
   fromChecks,
   fromDays,
+  spendMoney,
+  spendPartsSaid,
   useDayActivity,
   useDayOrders,
   useMonthLedger,
@@ -173,8 +176,12 @@ function cellFigure(
     if (day.order_count == null) return DASH;
     return day.order_count > 0 ? '' : '·';
   }
-  if (day.procurement_spend == null) return DASH;
-  return day.procurement_spend > 0 ? money(day.procurement_spend, 'compact') : '·';
+  // F-1055: a day paid in two currencies shows each part, not a bare dash;
+  // F-1052: a day paid in one other currency shows it in that currency.
+  if (day.procurement_spend == null) return spendPartsSaid(day.procurement_spend_parts, 'compact') ?? DASH;
+  return day.procurement_spend > 0
+    ? spendMoney(day.procurement_spend, day.procurement_spend_currency, 'compact')
+    : '·';
 }
 
 /** A day's net sales in words, for its label (count and say, netsales F1). */
@@ -225,11 +232,14 @@ function cellLabel(
   else {
     if (o.salesShown) parts.push(salesSaid(day));
     if (o.seesAmounts) {
+      const apart = spendPartsSaid(day.procurement_spend_parts);
       parts.push(
         day.procurement_spend == null
-          ? 'paid to vendors unknown'
+          ? apart
+            ? `${apart} paid to vendors, ${SPEND_KEPT_APART}`
+            : 'paid to vendors unknown'
           : day.procurement_spend > 0
-            ? `${money(day.procurement_spend)} paid to vendors`
+            ? `${spendMoney(day.procurement_spend, day.procurement_spend_currency)} paid to vendors`
             : 'no deliveries',
       );
     } else {
@@ -414,7 +424,9 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
             <>
               paid to vendors{' '}
               <span className="text-inkm-1" style={MONO_FIG}>
-                {money(ledger?.monthlySpend)}
+                {ledger?.monthlySpend == null && spendPartsSaid(ledger?.monthlySpendParts)
+                  ? `${spendPartsSaid(ledger?.monthlySpendParts)}, ${SPEND_KEPT_APART}`
+                  : spendMoney(ledger?.monthlySpend, ledger?.monthlySpendCurrency)}
               </span>
               {' · '}
             </>
