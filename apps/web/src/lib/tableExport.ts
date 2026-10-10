@@ -78,6 +78,42 @@ function guardFormula(cell: Cell): Cell {
   return typeof cell === 'string' && FORMULA_LEAD.test(cell) ? `'${cell}` : cell
 }
 
+/** What an uncosted figure says in a file, as in the gateway's report CSV. */
+export const WITHHELD = 'withheld'
+
+/**
+ * The unit a money header names (F-599): a bare number in a spreadsheet has no
+ * currency. A failed or unfinished read is never "not recorded" (ADR 0083).
+ */
+export function moneyUnit(
+  currency: { code: string | null; readable: boolean } | null | undefined,
+): string {
+  if (!currency || currency.readable !== true) return 'currency not read'
+  return currency.code || 'currency not recorded'
+}
+
+export const moneyHeader = (label: string, unit: string) => `${label} (${unit})`
+
+/** The day in an export's filename: the reader's own date, never UTC's (F-601). */
+export function exportDay(now: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
+}
+
+/**
+ * Write to the clipboard and say whether it took (F-600). A browser that
+ * refuses, or has no clipboard, answers false instead of throwing.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (!navigator.clipboard) return false
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /**
  * A filename from a name someone typed: letters and digits of any script stay
  * (Kavaklıdere Öküzgözü → kavaklıdere-öküzgözü), everything else is one dash.
@@ -125,13 +161,25 @@ async function embedPdfFont(doc: {
   doc.setFont(PDF_FONT)
 }
 
-function download(blob: Blob, filename: string) {
+/**
+ * How long the blob URL outlives the click, as `saveFile` in
+ * `pages/reports/next/useReportExports.ts` does. `a.click()` only STARTS a
+ * download; some Safari and Firefox versions abort it when the URL is revoked
+ * in the same tick, and a detached anchor is not clicked at all in some.
+ * Revoking later still frees the blob (F-598).
+ */
+export const REVOKE_AFTER_MS = 1000
+
+/** Hand a file to the reader: attach, click, detach, revoke after a delay. */
+export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), REVOKE_AFTER_MS)
 }
 
 function escapeCsv(value: string): string {
@@ -195,7 +243,7 @@ export async function exportTable<T>({
         .join('\n')
       // BOM so Excel opens it as UTF-8 (Turkish letters, em dashes), as the
       // gateway's report CSV does.
-      download(new Blob(['\uFEFF' + body], { type: 'text/csv;charset=utf-8' }), fullName)
+      downloadBlob(new Blob(['\uFEFF' + body], { type: 'text/csv;charset=utf-8' }), fullName)
       break
     }
 
@@ -205,7 +253,7 @@ export async function exportTable<T>({
       const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c))))]
         .map((row) => row.map(clean).join('\t'))
         .join('\n')
-      download(new Blob([body], { type: 'text/tab-separated-values;charset=utf-8' }), fullName)
+      downloadBlob(new Blob([body], { type: 'text/tab-separated-values;charset=utf-8' }), fullName)
       break
     }
 
@@ -213,7 +261,7 @@ export async function exportTable<T>({
       const objects = rows.map((row) =>
         Object.fromEntries(columns.map((col) => [col.header, col.value(row) ?? null])),
       )
-      download(
+      downloadBlob(
         new Blob([JSON.stringify(objects, null, 2)], { type: 'application/json' }),
         fullName,
       )
@@ -234,12 +282,12 @@ export async function exportTable<T>({
         `| ${headers.map(() => '---').join(' | ')} |`,
         ...matrix.map((row) => `| ${row.map(cell).join(' | ')} |`),
       ]
-      download(new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' }), fullName)
+      downloadBlob(new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' }), fullName)
       break
     }
 
     case 'html': {
-      download(
+      downloadBlob(
         new Blob([buildHtmlDocument(title, headers, matrix)], { type: 'text/html;charset=utf-8' }),
         fullName,
       )
@@ -279,7 +327,7 @@ export async function exportTable<T>({
       }
 
       const buffer = await workbook.xlsx.writeBuffer()
-      download(
+      downloadBlob(
         new Blob([buffer], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         }),
@@ -329,8 +377,10 @@ export async function exportTable<T>({
     }
 
     case 'clipboard': {
+      // Pasted into a sheet, a cell is read as a formula exactly as in a CSV,
+      // so it gets the same guard.
       const clean = (v: string) => v.replace(/[\t\r\n]+/g, ' ')
-      const body = [headers, ...matrix]
+      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c))))]
         .map((row) => row.map(clean).join('\t'))
         .join('\n')
       await navigator.clipboard.writeText(body)

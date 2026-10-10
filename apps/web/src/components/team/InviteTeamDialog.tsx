@@ -71,9 +71,16 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
   }
 
   // Copy-able invite URL: `/invite/:code` landing (sign-in or register from there)
-  const handleCopy = () => {
+  // "Copied" only once the browser has taken it (F-600): a refused write used
+  // to say copied while the clipboard held nothing.
+  const handleCopy = async () => {
     if (!invite) return
-    navigator.clipboard.writeText(invite.inviteUrl)
+    try {
+      await navigator.clipboard.writeText(invite.inviteUrl)
+    } catch {
+      toast.error('This browser would not copy the link. Select it above and copy it by hand.')
+      return
+    }
     setCopied(true)
     toast.success('Invite URL copied to clipboard!')
     setTimeout(() => setCopied(false), 2000)

@@ -807,6 +807,38 @@ describe('the one row, four columns and no fifth', () => {
     expect(container.querySelector('[data-secret]')?.textContent).toContain(ISSUED_ADDRESS);
   });
 
+  it('says Copied only once the browser took the address, and says so when it refused (F-600)', async () => {
+    const d = base();
+    d.createFeed = {
+      mutate: vi.fn(),
+      isPending: false,
+      isSuccess: true,
+      submittedAt: 3,
+      data: myLink({
+        issued: {
+          feedUrl: '/api/v1/calendar/feed/x.ics',
+          absoluteFeedUrl: ISSUED_ADDRESS,
+          webcalUrl: null,
+          originSource: 'config',
+        },
+      }),
+    };
+    mockData.current = d;
+    const writeText = vi.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValueOnce(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    try {
+      render(<ConnectionsNext />);
+      fireEvent.click(screen.getByRole('button', { name: 'Copy address' }));
+      expect(await screen.findByRole('button', { name: /Could not copy/ })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Copied' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /Could not copy/ }));
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+      expect(writeText).toHaveBeenCalledWith(ISSUED_ADDRESS);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('offers Connect, not an address, to a reader with no link — a GET never mints one (ADR 0111, 2026-09-21)', () => {
     const d = base();
     d.ical = reg(myLink({ connected: false, createdAt: null, issuedAt: null }));

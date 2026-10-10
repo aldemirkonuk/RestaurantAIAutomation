@@ -10,10 +10,11 @@ import {
 import { classifyStock } from "../../lib/inventoryStatus";
 import { foldText } from "../../lib/textFold";
 import {
-  getInventory,
+  getInventoryAcrossHouses,
   normalizeInventoryItem,
 } from "../../services/api/inventory";
 import { getWinesByIds } from "../../services/api/wines";
+import { WITHHELD } from "../../lib/tableExport";
 import type { InventoryItem as ApiInventoryItem } from "../../services/api/types";
 
 export interface InventoryItem extends Wine {
@@ -176,18 +177,56 @@ export function toInventoryItem(item: ApiInventoryItem, wine?: Wine): InventoryI
 }
 
 /**
- * Every row of one house, shaped as on screen. The page's own read goes
- * through `useInventoryData` and `useWinesByIds`; this is the same two reads
- * for a house that is not the active one.
+ * Stock value at cost in an export (F-078). A wine with no recorded cost is
+ * `withheld`, never 0.00, as in the gateway's report CSV: a spreadsheet sums a
+ * 0 into a total that looks whole. With no bottles on hand it is 0 whatever
+ * the cost.
  */
-export async function loadHouseInventory(restaurantId: string): Promise<InventoryItem[]> {
-  const items = (await getInventory(restaurantId)).map(normalizeInventoryItem);
-  const ids = Array.from(new Set(items.map((i) => i.wineId).filter(Boolean)));
+export function stockValueCell(i: InventoryItem): number | string {
+  const units = (i.liveStock ?? 0) + (i.shadowStock ?? 0);
+  const cost = i.wac ?? i.price;
+  if (cost == null || !Number.isFinite(cost)) return units === 0 ? 0 : WITHHELD;
+  return Math.round(cost * units * 100) / 100;
+}
+
+/** One house's rows for the all-locations export, shaped as on screen. */
+export interface HouseInventory {
+  name: string;
+  currency: { code: string | null; readable: boolean };
+  items: InventoryItem[];
+}
+
+/**
+ * Every house the person owns or manages, each row shaped as on screen. The
+ * page's own read goes through `useInventoryData` and `useWinesByIds`; this is
+ * the same two reads across houses. One gateway read names no house in its
+ * path (F-596: a per-house read with this house's token was refused), and
+ * houses where the person is neither owner nor manager come back by name only.
+ */
+export async function loadEveryHouseInventory(): Promise<{
+  houses: HouseInventory[];
+  notIncluded: string[];
+}> {
+  const read = await getInventoryAcrossHouses();
+  const raw = read.houses.map((h) => ({
+    ...h,
+    items: h.items.map(normalizeInventoryItem),
+  }));
+  const ids = Array.from(
+    new Set(raw.flatMap((h) => h.items.map((i) => i.wineId)).filter(Boolean)),
+  );
   const winesById = new Map<string, Wine>();
   if (ids.length > 0) {
     mapApiWinesToUiWines(await getWinesByIds(ids)).forEach((w) => winesById.set(w.id, w));
   }
-  return items.map((item) => toInventoryItem(item, winesById.get(item.wineId)));
+  return {
+    houses: raw.map((h) => ({
+      name: h.name,
+      currency: h.currency,
+      items: h.items.map((item) => toInventoryItem(item, winesById.get(item.wineId))),
+    })),
+    notIncluded: read.notIncluded.map((h) => h.name),
+  };
 }
 
 export function useInventoryPage(options: UseInventoryPageOptions = {}) {

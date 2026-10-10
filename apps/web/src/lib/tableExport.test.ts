@@ -1,6 +1,7 @@
 /**
  * The client exports a house opens in a spreadsheet or prints: what reaches
- * the file, byte for byte (wave6sim F-359, F-360, F-363, F-368, F-369).
+ * the file, byte for byte (wave6sim F-359, F-360, F-363, F-368, F-369;
+ * wave18sim F-597, F-598, F-599, F-600, F-601).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,7 +21,16 @@ const pdf = vi.hoisted(() => ({
 vi.mock('jspdf', () => ({ default: vi.fn(() => pdf.doc) }))
 vi.mock('jspdf-autotable', () => ({ default: pdf.autoTable }))
 
-import { exportTable, fileSafeName, type TableExportColumn } from './tableExport'
+import {
+  copyText,
+  exportDay,
+  exportTable,
+  fileSafeName,
+  moneyHeader,
+  moneyUnit,
+  REVOKE_AFTER_MS,
+  type TableExportColumn,
+} from './tableExport'
 
 type Row = { who: string; hours: number; cost: number | null }
 const columns: TableExportColumn<Row>[] = [
@@ -85,6 +95,41 @@ describe('CSV', () => {
   })
 })
 
+describe('Clipboard (F-597)', () => {
+  it('a pasted cell that begins like a formula is guarded as in the CSV', async () => {
+    const writeText = vi.fn(async (_text: string) => {})
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    await exportTable({
+      format: 'clipboard',
+      rows: [{ who: '=HYPERLINK("http://x")', hours: -2, cost: null }],
+      columns,
+      filename: 'x',
+    })
+    const [, row] = writeText.mock.calls[0][0].split('\n')
+    expect(row.split('\t')).toEqual(['\'=HYPERLINK("http://x")', '-2', ''])
+  })
+})
+
+describe('Download (F-598)', () => {
+  it('attaches the link while it is clicked and keeps the file alive past the click', async () => {
+    vi.useFakeTimers()
+    try {
+      let attached = false
+      vi.mocked(HTMLAnchorElement.prototype.click).mockImplementation(function (this: HTMLAnchorElement) {
+        attached = document.body.contains(this)
+      })
+      await exportTable({ format: 'csv', rows: [{ who: 'a', hours: 1, cost: 1 }], columns, filename: 'x' })
+      expect(attached).toBe(true)
+      expect(document.querySelector('a[download]')).toBeNull()
+      expect(urlApi.revokeObjectURL).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(REVOKE_AFTER_MS)
+      expect(urlApi.revokeObjectURL).toHaveBeenCalledWith('blob:x')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('Excel', () => {
   it('writes numbers as number cells, so SUM over a column is not 0 (F-368)', async () => {
     await exportTable({
@@ -139,5 +184,34 @@ describe('fileSafeName (F-363)', () => {
 
   it('falls back when nothing usable is left', () => {
     expect(fileSafeName(' / ', 'inventory-row')).toBe('inventory-row')
+  })
+})
+
+describe('moneyUnit (F-599)', () => {
+  it('names the recorded code, an unanswered one, and a read that failed, apart', () => {
+    expect(moneyHeader('Value', moneyUnit({ code: 'TRY', readable: true }))).toBe('Value (TRY)')
+    expect(moneyUnit({ code: null, readable: true })).toBe('currency not recorded')
+    expect(moneyUnit({ code: null, readable: false })).toBe('currency not read')
+    expect(moneyUnit(undefined)).toBe('currency not read')
+  })
+})
+
+describe('exportDay (F-601)', () => {
+  it('is the local date at both ends of the day, not the UTC one', () => {
+    // East of UTC the ISO prefix of 01:30 is the day before; west of it,
+    // 23:30 is the day after.
+    expect(exportDay(new Date(2026, 9, 9, 1, 30))).toBe('2026-10-09')
+    expect(exportDay(new Date(2026, 9, 9, 23, 30))).toBe('2026-10-09')
+  })
+})
+
+describe('copyText (F-600)', () => {
+  it('answers true only when the browser took it', async () => {
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn(async () => {}) } })
+    expect(await copyText('x')).toBe(true)
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn(async () => Promise.reject(new Error('no'))) } })
+    expect(await copyText('x')).toBe(false)
+    vi.stubGlobal('navigator', {})
+    expect(await copyText('x')).toBe(false)
   })
 })
