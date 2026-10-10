@@ -18,8 +18,11 @@ export type PushHoldReason = "push_off" | "quiet_hours";
  *
  * A person with no preferences row is pushed (Push defaults on, quiet hours
  * off). When the preferences cannot be read, nobody is held, as before this
- * was read, and `warn` says so; when the house has no readable time zone,
- * quiet hours are not judged but the Push switch still is.
+ * was read, and `warn` says so. A house with no time zone of its own is read
+ * on its country's clock when the country keeps just one, otherwise in UTC
+ * (F-868): the same rule Settings states and the calendar reminders keep, so
+ * a window someone set still holds. Only when the house row cannot be read
+ * are quiet hours not judged; the Push switch still is.
  */
 export async function pushHolds(
   supabase: any,
@@ -55,7 +58,7 @@ export async function pushHolds(
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    zone = houseFrame(data ?? null).zone ?? null;
+    zone = houseFrame(data ?? null).zone ?? "UTC";
   } catch (e: any) {
     warn(
       `PUSH_HOUSE_ZONE_UNREAD restaurant=${restaurantId} — ${e?.message}. Quiet hours are not judged on this push.`,

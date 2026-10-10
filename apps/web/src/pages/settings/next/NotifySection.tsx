@@ -290,7 +290,7 @@ export default function NotifySection({
               <Row
                 label="The window"
                 provenance={kept}
-                consequence="From the first time to the second, on this restaurant's clock (Settings › Time zone). Until a time zone is set, the window is read in UTC. A window that ends before it starts is read as running overnight."
+                consequence="From the first time to the second, on this restaurant's clock (Settings › Time zone). Until a time zone is set, the window is read on your country's clock when it has just one, otherwise in UTC. A window that ends before it starts is read as running overnight."
                 control={
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                     <TimeField
