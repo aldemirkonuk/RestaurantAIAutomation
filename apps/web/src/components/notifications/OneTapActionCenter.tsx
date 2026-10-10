@@ -58,6 +58,8 @@ import type { Order, OrderStatus } from '../../services/api/types'
 import { canonicalStatus } from '../../lib/mudavym/status'
 import { vendorLine } from '../../lib/mudavym/vendor'
 import { formatStatedMoney } from '../../lib/currency'
+import { formatHouseMoney } from '../../lib/houseCurrency'
+import { useHouseCurrency } from '../../hooks/useHouseCurrency'
 import { useAuthStore } from '../../stores'
 import { useWines } from '../../hooks/queries'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
@@ -501,6 +503,9 @@ function getInitialActions(wines: WineType[], lowStockItems: Array<{ wineId?: st
 }
 
 export function OneTapActionCenter() {
+  // The reorder estimate and the shadow-stock cost are the house's own
+  // prices, so they print in the house's currency (sim F-341).
+  useHouseCurrency()
   const navigate = useNavigate()
   const actionMenu = useContextMenu<ActionItem>()
   const { data: apiWines = [] } = useWines({ limit: 500 })
@@ -1410,7 +1415,7 @@ export function OneTapActionCenter() {
                               <div className="p-3 bg-white rounded-xl">
                                 <p className="text-xs text-gray-500 mb-1">Estimated Cost</p>
                                 <p className="text-2xl font-bold text-gray-900">
-                                  ${action.details.estimatedPrice.toLocaleString()}
+                                  {formatHouseMoney(action.details.estimatedPrice)}
                                 </p>
                               </div>
                               <div className="flex gap-3">
@@ -1453,7 +1458,7 @@ export function OneTapActionCenter() {
                                   </div>
                                   <div className="p-3 bg-white rounded-lg">
                                     <p className="text-xs text-gray-500 mb-1">Cost</p>
-                                    <p className="text-lg font-bold text-gray-900">${action.details.cost}</p>
+                                    <p className="text-lg font-bold text-gray-900">{formatHouseMoney(action.details.cost)}</p>
                                   </div>
                                 </div>
                               </div>
@@ -1536,11 +1541,11 @@ export function OneTapActionCenter() {
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="p-3 bg-white rounded-xl">
                                   <p className="text-xs text-gray-500 mb-1">Your Price</p>
-                                  <p className="text-xl font-bold text-gray-900">${action.details.originalPrice}</p>
+                                  <p className="text-xl font-bold text-gray-900">{formatStatedMoney(action.details.originalPrice, action.details.currency)}</p>
                                 </div>
                                 <div className="p-3 bg-white rounded-xl">
                                   <p className="text-xs text-gray-500 mb-1">Counter Offer</p>
-                                  <p className="text-xl font-bold text-amber-600">${action.details.counterPrice}</p>
+                                  <p className="text-xl font-bold text-amber-600">{formatStatedMoney(action.details.counterPrice, action.details.currency)}</p>
                                   <p className="text-xs text-amber-500">+{action.details.deviation}% deviation</p>
                                 </div>
                               </div>
@@ -1550,7 +1555,7 @@ export function OneTapActionCenter() {
                                   disabled={isProcessing}
                                   className="flex-1 py-3 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors"
                                 >
-                                  Accept ${action.details.counterPrice}
+                                  Accept {formatStatedMoney(action.details.counterPrice, action.details.currency)}
                                 </button>
                                 <button
                                   onClick={() => handleReject(action)}
@@ -1624,7 +1629,7 @@ export function OneTapActionCenter() {
                                 <div className="p-3 bg-emerald-50 rounded-xl border-2 border-emerald-200">
                                   <p className="text-xs text-emerald-600 mb-1">Offered</p>
                                   <p className="text-xl font-bold text-emerald-700">{action.details.offeredVintage}</p>
-                                  <p className="text-xs text-emerald-600">${action.details.priceChange} price diff</p>
+                                  <p className="text-xs text-emerald-600">{formatStatedMoney(action.details.priceChange, action.details.currency)} price diff</p>
                                 </div>
                               </div>
                               <div className="flex gap-3">

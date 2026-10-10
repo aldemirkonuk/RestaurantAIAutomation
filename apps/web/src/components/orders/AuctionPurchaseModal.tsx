@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, Loader2, Check, AlertCircle, Wine } from 'lucide-react'
 import axios from 'axios'
+import { formatStatedMoney } from '../../lib/currency'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -243,7 +244,7 @@ export function AuctionPurchaseModal({ isOpen, onClose, onSuccess }: AuctionPurc
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 font-medium">Est. Price</p>
-                    <p className="text-sm font-semibold text-gray-900">${wineData.estimated_price}</p>
+                    <p className="text-sm font-semibold text-gray-900">{formatStatedMoney(wineData.estimated_price, null)}</p>
                   </div>
                 </div>
               </div>
@@ -309,7 +310,7 @@ export function AuctionPurchaseModal({ isOpen, onClose, onSuccess }: AuctionPurc
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Total Cost</label>
                       <div className="px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 font-semibold text-gray-900">
-                        ${(hammerPrice + buyersPremium).toFixed(2)}
+                        {(hammerPrice + buyersPremium).toFixed(2)}
                       </div>
                     </div>
                   </div>

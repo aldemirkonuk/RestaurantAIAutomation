@@ -22,6 +22,7 @@ import {
   Lightbulb,
   Globe,
 } from 'lucide-react'
+import { formatStatedMoney } from '../../lib/currency'
 
 // Research item interface
 export interface WineResearchItem {
@@ -489,7 +490,7 @@ export function WineResearchQueue({
                           {selectedItem.results.averagePrice && (
                             <div>
                               <label className="text-xs text-gray-500 uppercase tracking-wide">Avg. Price</label>
-                              <p className="text-gray-900 font-semibold">${selectedItem.results.averagePrice}</p>
+                              <p className="text-gray-900 font-semibold">{formatStatedMoney(selectedItem.results.averagePrice, null)}</p>
                             </div>
                           )}
 

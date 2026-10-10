@@ -80,7 +80,7 @@ describe("AddWineToInventoryModal — an unknown cost is expressible", () => {
       screen.getByText(
         (_t, el) =>
           /Cost unknown/i.test(el?.textContent ?? "") &&
-          /not as \$0/i.test(el?.textContent ?? "") &&
+          /not as zero/i.test(el?.textContent ?? "") &&
           el?.tagName === "P",
       ),
     ).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe("AddWineToInventoryModal — an unknown cost is expressible", () => {
 
     // `|| ''` would have blanked the field back out and lost the answer.
     expect(cost.value).toBe("0");
-    expect(screen.getByText(/\$0\.00 is a real cost/i)).toBeInTheDocument();
+    expect(screen.getByText(/A cost of 0 is a real cost/i)).toBeInTheDocument();
   });
 
   it("offers the library reference as something to accept, not as a default", async () => {
@@ -132,7 +132,7 @@ describe("AddWineToInventoryModal — an unknown cost is expressible", () => {
     const onAddWine = renderModal();
     await user.click(await screen.findByText("Tsantali Rapsani"));
     await user.click(
-      screen.getByRole("button", { name: /Use library reference \$42\.00/i }),
+      screen.getByRole("button", { name: /^Use library reference 42\.00$/i }),
     );
     await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
 

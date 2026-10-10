@@ -42,6 +42,7 @@ import {
   writeSessionDraft,
 } from "../../hooks/useUnsavedWorkGuard";
 import { useModalDialog } from "../../hooks/useModalDialog";
+import { formatStatedMoney } from "../../lib/currency";
 
 type TabType = "search" | "photo";
 
@@ -529,7 +530,7 @@ export function AddWineToInventoryModal({
                                     </span>
                                   </div>
                                   <p className="text-xs text-gray-500 mt-2">
-                                    ${wine.price}/bottle
+                                    {formatStatedMoney(wine.price, null)}/bottle
                                   </p>
                                 </div>
                               </div>
@@ -707,7 +708,7 @@ export function AddWineToInventoryModal({
                           {costPerBottle === null ? (
                             <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                               <p className="text-xs text-gray-500">
-                                Cost unknown — recorded as unknown, not as $0.
+                                Cost unknown — recorded as unknown, not as zero.
                                 Value on hand will exclude this wine until a
                                 cost arrives on a receipt.
                               </p>
@@ -722,7 +723,7 @@ export function AddWineToInventoryModal({
                                     }
                                     className="text-xs font-semibold text-wine-700 hover:text-wine-800 underline decoration-dotted"
                                   >
-                                    Use library reference $
+                                    Use library reference{" "}
                                     {Number(selectedWine.price).toFixed(2)}
                                   </button>
                                 )}
@@ -730,7 +731,7 @@ export function AddWineToInventoryModal({
                           ) : (
                             costPerBottle === 0 && (
                               <p className="text-xs text-amber-700 mt-1.5">
-                                $0.00 is a real cost — it will count toward your
+                                A cost of 0 is a real cost — it will count toward your
                                 average cost. For a free bottle, tick "Free
                                 sample" instead; to say you don't know, clear
                                 the field.

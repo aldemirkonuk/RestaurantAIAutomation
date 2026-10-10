@@ -104,6 +104,16 @@ describe('ReceiptDepth', () => {
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument()
   })
 
+  it('prints a document\'s money in the currency the document names', async () => {
+    api.byOrder = {
+      o1: [doc({ currency: 'TRY', ties_out: false, tie_out_delta: -12.4 })],
+    }
+    render(<ReceiptDepth orders={[{ id: 'o1' }]} />, { wrapper })
+    expect(await screen.findByText(/TRY\s?412\.50|₺412\.50/)).toBeInTheDocument()
+    expect(screen.getByText(/off by (TRY\s?12\.40|₺12\.40)/)).toBeInTheDocument()
+    expect(screen.queryByText(/\$/)).not.toBeInTheDocument()
+  })
+
   it('admits an empty paper trail without claiming verification', async () => {
     api.byOrder = { o1: [] }
     render(<ReceiptDepth orders={[{ id: 'o1' }]} />, { wrapper })
