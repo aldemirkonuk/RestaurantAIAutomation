@@ -194,11 +194,11 @@ export class DashboardStatsDto {
   @ApiProperty({ description: "Vendor spend on orders delivered this calendar month, on the house's days; null when withheld for the caller's role", nullable: true, type: Number })
   monthProcurementSpend: number | null;
 
-  @ApiProperty({ description: "Orders delivered today, on the house's day" })
-  todayDeliveries: number;
+  @ApiProperty({ description: "Orders delivered today, on the house's day; null when the house has no time zone", nullable: true, type: Number })
+  todayDeliveries: number | null;
 
-  @ApiProperty({ description: "Bottles on orders delivered this calendar month, on the house's days" })
-  monthBottlesIn: number;
+  @ApiProperty({ description: "Bottles on orders delivered this calendar month, on the house's days; null when the house has no time zone", nullable: true, type: Number })
+  monthBottlesIn: number | null;
 
   @ApiProperty({ enum: ["shown", "withheld"], required: false, description: "Whether the spend figures are the house's, or withheld for the caller's role" })
   amounts?: "shown" | "withheld";
@@ -207,9 +207,16 @@ export class DashboardStatsDto {
   // they agree with the figures above instead of with the viewer's device.
   @ApiProperty({
     description:
-      "The IANA zone every figure above was bucketed in: the house's own, or UTC when none is recorded",
+      "The IANA zone every figure above was bucketed in: the house's own, else its country's only zone; null when neither is known, and then every day figure is null",
+    nullable: true,
+    type: String,
   })
-  timezone: string;
+  timezone: string | null;
+
+  // F-188: the month grid's flag (DASH-G2), so the cards can say why their
+  // day figures are unknown.
+  @ApiProperty({ required: false, description: "True when the house has no time zone, so no delivery is filed on a day" })
+  zone_unset?: boolean;
 }
 
 // ============================================================================

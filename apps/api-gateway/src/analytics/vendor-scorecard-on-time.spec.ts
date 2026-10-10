@@ -23,6 +23,13 @@ function client(tables: Record<string, Row[]>, failing = new Set<string>()) {
       const filters: ((r: Row) => boolean)[] = [];
       const q: any = {
         select: () => q,
+        // The order read pages (F-186); every window here fits one page.
+        order: () => q,
+        gt: (c: string, v: string) => (
+          filters.push((r) => String(r[c]) > v),
+          q
+        ),
+        limit: () => q,
         eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
         gte: (c: string, v: string) => (
           filters.push((r) => r[c] != null && r[c] >= v),

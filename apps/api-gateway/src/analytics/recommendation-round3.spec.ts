@@ -65,6 +65,15 @@ describe("answer 1: each firing is one card", () => {
     expect(firingGrain("month", at)).toBe("fire:month:2026-09");
   });
 
+  it("names the firing on the house's calendar when given its zone (F-384)", () => {
+    // Sunday 27 Sept, 18:00 in Los Angeles: Monday 28 Sept, ISO W40, in UTC.
+    const at = new Date("2026-09-28T01:00:00Z");
+    expect(firingGrain("day", at, "America/Los_Angeles")).toBe("fire:day:2026-09-27");
+    expect(firingGrain("week", at, "America/Los_Angeles")).toBe("fire:week:2026-W39");
+    expect(firingGrain("day", at)).toBe("fire:day:2026-09-28");
+    expect(firingGrain("week", at)).toBe("fire:week:2026-W40");
+  });
+
   it("uses ISO weeks — Monday first, the year's first Thursday in week 1", () => {
     const w = (iso: string) => isoWeekOf(new Date(iso));
     expect(w("2026-09-27T23:59:00Z")).toEqual({ year: 2026, week: 39 }); // Sunday
@@ -799,6 +808,8 @@ describe("answer 2: every house act is kept — who, when, what it lifted, its l
 // ---------------------------------------------------------------------------
 
 function feed(opts: {
+  /** The house's zone; absent, the zone read fails and keys stay UTC. */
+  zone?: string;
   dismissed?: string[];
   personal?: string[];
   personalReadable?: boolean;
@@ -825,11 +836,16 @@ function feed(opts: {
     });
   const viewers: Array<string | null> = [];
   const supabase = {
-    from: () => {
+    from: (table: string) => {
       const b: any = {};
       for (const m of ["select", "order", "limit", "insert", "eq"]) b[m] = () => b;
       b.then = (resolve: any, reject: any) =>
         Promise.resolve({ data: [], error: null }).then(resolve, reject);
+      if (table === "restaurants" && opts.zone)
+        b.maybeSingle = async () => ({
+          data: { timezone: opts.zone },
+          error: null,
+        });
       return b;
     },
   };
@@ -891,6 +907,25 @@ describe("the feed keys a subject-less rule by its firing", () => {
     const out = await svc.getRecommendations(RID);
     expect(out.recommendations.map((r) => r.ruleKey)).not.toContain(RULE);
     expect(out.suppressed).toBe(1);
+  });
+
+  // F-384: 20:00 on 30 September in Los Angeles is already October in UTC.
+  // Keyed on UTC, a card put away that afternoon came back at 17:00.
+  it("keys the firing on the house's clock, not UTC's", async () => {
+    jest.setSystemTime(Date.parse("2026-10-01T03:00:00.000Z"));
+    try {
+      const la = await feed({ zone: "America/Los_Angeles" }).svc.getRecommendations(RID);
+      expect(la.recommendations.find((r) => r.ruleKey === RULE)!.periodKey).toBe(
+        "fire:month:2026-09",
+      );
+      // No zone to read: UTC, as before.
+      const utc = await feed({}).svc.getRecommendations(RID);
+      expect(utc.recommendations.find((r) => r.ruleKey === RULE)!.periodKey).toBe(
+        "fire:month:2026-10",
+      );
+    } finally {
+      jest.setSystemTime(NOW);
+    }
   });
 
   it("a dismissal of last month's firing does not hide this month's", async () => {

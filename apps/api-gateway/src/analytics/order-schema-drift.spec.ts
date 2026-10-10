@@ -406,8 +406,10 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
     });
 
     it("logs, rather than swallows, a query that really does fail", async () => {
-      // A column that does not exist anywhere: the loader must still degrade to
-      // an empty lens (one dead query must not 500 the page) but must say so.
+      // A column that does not exist anywhere: the loader used to degrade to
+      // an empty lens, which drew $0 of buying as if measured. Since F-186
+      // (ADR 0292) the refusal propagates, and is still logged; the overview
+      // turns it into a null lens.
       const client = makeClient({ procurement_orders: ORDER_ROWS });
       const realFrom = client.from;
       client.from = jest.fn((table: string) => {
@@ -427,12 +429,10 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       const spy = jest
         .spyOn((svc as any).logger, "error")
         .mockImplementation(() => undefined);
-      const out = await svc.getCashflow(RESTAURANT);
-      expect(out.spendLast30d).toBe(0);
-      expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining("procurement_orders"),
-      );
-      expect(spy.mock.calls[0][0]).toContain("42703");
+      await expect(svc.getCashflow(RESTAURANT)).rejects.toThrow();
+      const logged = spy.mock.calls.map((c) => String(c[0]));
+      expect(logged.some((l) => l.includes("procurement_orders"))).toBe(true);
+      expect(logged.some((l) => l.includes("42703"))).toBe(true);
       spy.mockRestore();
     });
   });

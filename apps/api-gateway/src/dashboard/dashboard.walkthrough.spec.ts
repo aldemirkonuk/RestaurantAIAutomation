@@ -142,13 +142,57 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       expect(cal.monthly_procurement_spend).toBe(384);
     });
 
-    it("falls back to UTC when the house has no zone recorded", async () => {
+    // F-188 / DASH-G2: with no zone there is no house "today", so the day
+    // figures are unknown, as on the month grid. They used to file the
+    // delivery on UTC's Oct 2 and print $384 as today's spend.
+    it("withholds the day figures when the house has no zone recorded", async () => {
       db.getClient.mockReturnValue(
         makeClient({ restaurants: [], procurement_orders: [EVENING_DELIVERY] }),
       );
       const stats: any = await service.getStats("r1");
-      expect(stats.todayProcurementSpend).toBe(384); // Oct 2 in UTC is "today"
-      expect(stats.timezone).toBe("UTC");
+      expect(stats.todayProcurementSpend).toBeNull();
+      expect(stats.weekProcurementSpend).toBeNull();
+      expect(stats.monthProcurementSpend).toBeNull();
+      expect(stats.todayDeliveries).toBeNull();
+      expect(stats.monthBottlesIn).toBeNull();
+      expect(stats.timezone).toBeNull();
+      expect(stats.zone_unset).toBe(true);
+      // What needs no day still stands.
+      expect(stats.totalBottles).toBe(0);
+    });
+
+    // F-186: the order read pages. An unranged select stopped at PostgREST's
+    // 1,000 rows, so the 1,001st delivery today was never counted.
+    it("counts every order past the first thousand", async () => {
+      const many = Array.from({ length: 1001 }, (_, i) => ({
+        ...EVENING_DELIVERY,
+        id: `o-${String(i).padStart(5, "0")}`,
+        total_cost: 1,
+        final_price: 1,
+      }));
+      const client: any = makeClient({ restaurants: CHICAGO });
+      const realFrom = client.from;
+      client.from = jest.fn((table: string) => {
+        const b = realFrom(table);
+        if (table !== "procurement_orders") return b;
+        // PostgREST: at most 1,000 rows, keyset after `gt("id", …)`.
+        let after: string | null = null;
+        let lim = 1000;
+        b.gt = jest.fn((_c: string, v: string) => ((after = v), b));
+        b.limit = jest.fn((n: number) => ((lim = Math.min(n, 1000)), b));
+        b.then = (resolve: any, reject: any) =>
+          Promise.resolve({
+            data: many
+              .filter((o) => after === null || o.id > after)
+              .slice(0, lim),
+            error: null,
+          }).then(resolve, reject);
+        return b;
+      });
+      db.getClient.mockReturnValue(client);
+      const stats: any = await service.getStats("r1");
+      expect(stats.todayDeliveries).toBe(1001);
+      expect(stats.todayProcurementSpend).toBe(1001);
     });
 
     // DASH-W20: the page's "today" reads the clock the figures were bucketed in.

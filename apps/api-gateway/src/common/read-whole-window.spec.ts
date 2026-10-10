@@ -654,6 +654,9 @@ describe("AdvancedAnalyticsService — menu engineering and seasonality count ev
 
   it("getSeasonality's weekday profile sums to 8,445 units", async () => {
     const { db } = cappedDb({
+      // A house on UTC: seasonality files each line on the house's day
+      // (F-185), and a house with no zone draws no week at all.
+      restaurants: [{ id: "r1", timezone: "UTC" }],
       restaurant_inventory: inventory,
       wine_consumption_log: lines,
     });
