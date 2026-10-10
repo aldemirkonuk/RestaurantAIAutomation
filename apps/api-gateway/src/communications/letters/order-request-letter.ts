@@ -181,7 +181,8 @@ export const ORDER_REQUEST_CATALOGUE = {
   when: "An order is placed with a vendor",
   who: "The vendor on the order; drafted for the house to approve before it is sent",
   channel: "email",
-  // PR-4b's flag ORDER_REQUEST_LETTER, off until the Turkish default is approved (F3) and 4a-ii merges.
+  // PR-4b's flag ORDER_REQUEST_LETTER, off until 4a-ii merges and F3's number-word lists are answered
+  // (ADR 0313). The F3 words, English and Turkish, are locked.
   armed: false,
   kind: ORDER_REQUEST_KIND,
 } as const;
@@ -232,6 +233,7 @@ export interface OrderRequestFacts {
 
 export interface ProseRefusal {
   rule:
+    | "too_long"
     | "unknown_token"
     | "missing_required_token"
     | "numeral"
@@ -510,11 +512,45 @@ const NUMBER_WORDS_TR_RE = new RegExp(
 const COMMITMENT_RES = COMMITMENT_PATTERN_SOURCES.map((s) => new RegExp(s, "i"));
 
 /**
+ * The most characters a letter template may hold, counted on the raw text
+ * before NFKC. NFKC can lengthen a character up to eighteen times (U+FDFA
+ * becomes an 18-character phrase), so every scan after it is bounded by
+ * 18 x this. The shipped defaults are under 600 characters.
+ */
+export const ORDER_REQUEST_TEMPLATE_MAX_CHARS = 16_384;
+
+/**
+ * The most characters the AI's courtesy sentence may hold, raw and after
+ * normalising. The raw count is taken first, so an over-long sentence is
+ * dropped before NFKC or the link test reads it.
+ */
+const COURTESY_MAX_CHARS = 240;
+
+/**
  * Every reason the house's prose in `template` may not be used, empty when it
  * may. "Prose" is everything outside the tokens. Run over the default here, and
- * at save and publish in 4a-ii.
+ * at save and publish in 4a-ii. A template over
+ * ORDER_REQUEST_TEMPLATE_MAX_CHARS raw characters is refused as too_long
+ * alone, before NFKC or any pattern reads it.
  */
 export function orderRequestProseRefusals(template: string): ProseRefusal[] {
+  if (template.length > ORDER_REQUEST_TEMPLATE_MAX_CHARS) {
+    return [
+      {
+        rule: "too_long",
+        says: `This letter is ${template.length} characters long; a letter may hold at most ${ORDER_REQUEST_TEMPLATE_MAX_CHARS}.`,
+      },
+    ];
+  }
+  return orderRequestProseRefusalsUncapped(template);
+}
+
+/**
+ * orderRequestProseRefusals without the length cap. Exported only so the
+ * linear-time spec can prove the patterns themselves scan in linear time at
+ * lengths past the cap; every caller uses orderRequestProseRefusals.
+ */
+export function orderRequestProseRefusalsUncapped(template: string): ProseRefusal[] {
   const refusals: ProseRefusal[] = [];
   const found = new Set<string>();
   for (const m of template.matchAll(TOKEN_RE)) found.add(m[1]);
@@ -612,8 +648,10 @@ const DATE_WORD_RE = word([
  */
 export function courtesyLineOrNull(sentence: string | null | undefined): string | null {
   if (typeof sentence !== "string") return null;
+  // Raw length first: nothing (NFKC, the link test) reads an over-long sentence.
+  if (sentence.length > COURTESY_MAX_CHARS) return null;
   const line = normaliseProse(sentence).replace(/\s+/g, " ").trim();
-  if (!line || line.length > 240) return null;
+  if (!line || line.length > COURTESY_MAX_CHARS) return null;
   // The link test also reads the sentence before its whitespace is collapsed
   // and its format characters stripped, so a line break before a dot
   // ("evil\n.com") is folded and a format character before a scheme

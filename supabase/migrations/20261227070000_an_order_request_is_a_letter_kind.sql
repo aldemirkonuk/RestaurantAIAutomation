@@ -13,6 +13,17 @@
 -- a_house_keeps_its_own_copy_of_its_mail uses: a hand-typed list would drop
 -- any kind a peer migration appended in between.
 --
+-- EVERY LITERAL IS READ. The parse takes every quoted literal in the
+-- definition, so a kind with digits or lower case (a peer's
+-- 'ORDER_REQUEST_V2') is kept, not silently dropped; a literal that is not
+-- letters, digits and "_" stops the migration instead of being rebuilt.
+--
+-- NOT VALID, THEN VALIDATE. The new CHECK is added NOT VALID and validated by
+-- a separate statement. Limit: a migration file runs in one transaction, so
+-- the ACCESS EXCLUSIVE lock DROP/ADD takes is held until commit and VALIDATE
+-- still scans under it. The split shortens the lock only when VALIDATE runs
+-- in a transaction of its own.
+--
 -- Nothing else changes: no door change (stage_order_letter already accepts
 -- outbound_email_type and email_headers), no grant, no row.
 
@@ -33,8 +44,18 @@ BEGIN
       'chk_outbound_email_type is absent: this migration extends a constraint that must already exist (the_house_writes_its_own_mail)';
   END IF;
 
-  SELECT pg_catalog.array_agg(DISTINCT m[1]) INTO kinds
-    FROM pg_catalog.regexp_matches(existing_def, '''([A-Z_]+)''', 'g') AS m;
+  -- Every quoted literal in the definition, whatever its characters ('' is an
+  -- escaped quote inside one), so a kind with digits or lower case is kept.
+  SELECT pg_catalog.array_agg(DISTINCT pg_catalog.replace(m[1], '''''', '''')) INTO kinds
+    FROM pg_catalog.regexp_matches(existing_def, '''((?:[^'']|'''')*)''', 'g') AS m;
+
+  -- A literal that is not letters, digits and "_" is not a kind this file
+  -- knows how to rebuild: stop, never guess.
+  IF EXISTS (SELECT 1 FROM pg_catalog.unnest(kinds) AS k WHERE k !~ '^[A-Za-z0-9_]+$') THEN
+    RAISE EXCEPTION
+      'chk_outbound_email_type admits a value that is not letters, digits and "_" in "%" - refusing to rebuild it',
+      existing_def;
+  END IF;
 
   -- Eleven kinds existed after the_house_writes_its_own_mail. Fewer means the
   -- parse failed, and rebuilding from a failed parse would delete the
@@ -58,7 +79,8 @@ BEGIN
   EXECUTE 'ALTER TABLE public.procurement_conversations DROP CONSTRAINT chk_outbound_email_type';
   EXECUTE 'ALTER TABLE public.procurement_conversations ADD CONSTRAINT chk_outbound_email_type CHECK ('
        || 'outbound_email_type IS NULL OR outbound_email_type::text = ANY (ARRAY['
-       || rebuilt || ']))';
+       || rebuilt || '])) NOT VALID';
+  EXECUTE 'ALTER TABLE public.procurement_conversations VALIDATE CONSTRAINT chk_outbound_email_type';
 END
 $$;
 
@@ -86,6 +108,11 @@ BEGIN
       RAISE EXCEPTION 'chk_outbound_email_type does not admit % after the rebuild: %', k, def;
     END IF;
   END LOOP;
+  IF NOT (SELECT c.convalidated FROM pg_catalog.pg_constraint c
+           WHERE c.conrelid = 'public.procurement_conversations'::regclass
+             AND c.conname = 'chk_outbound_email_type') THEN
+    RAISE EXCEPTION 'chk_outbound_email_type was left NOT VALID';
+  END IF;
   IF pg_catalog.strpos(def, 'IS NULL') = 0 THEN
     RAISE EXCEPTION 'chk_outbound_email_type no longer admits NULL: %', def;
   END IF;

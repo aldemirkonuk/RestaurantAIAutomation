@@ -22,6 +22,9 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { GUARDS_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { Test } from "@nestjs/testing";
+import { ConfigService } from "@nestjs/config";
+import type { INestApplication } from "@nestjs/common";
 import { OrderRequestService } from "./order-request.service";
 import { OrderRequestController } from "./order-request.controller";
 import { ServiceKeyGuard } from "../../auth/guards/service-key.guard";
@@ -35,6 +38,8 @@ import {
   OrderRequestTemplateRefused,
   courtesyLineOrNull,
   orderRequestProseRefusals,
+  orderRequestProseRefusalsUncapped,
+  ORDER_REQUEST_TEMPLATE_MAX_CHARS,
   renderOrderRequest,
   type OrderRequestFacts,
 } from "./order-request-letter";
@@ -177,6 +182,16 @@ describe("optional blocks", () => {
 });
 
 describe("the courtesy line (F2)", () => {
+  it("drops a sentence over 240 raw characters before NFKC or the link test reads it (CI BLOCK 3bdd750, N5)", () => {
+    // 250 format characters normalise away, so only the raw count drops this.
+    expect(courtesyLineOrNull("\u200B".repeat(230) + "Thank you.")).toBe("Thank you.");
+    expect(courtesyLineOrNull("\u200B".repeat(240) + "Thank you.")).toBeNull();
+    // U+FDFA is the longest NFKC expansion: two million of them, unread.
+    const t0 = Date.now();
+    expect(courtesyLineOrNull("\uFDFA".repeat(2_000_000))).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(100);
+  });
+
   it.each([
     ["a digit", "We look forward to working with you for 3 more seasons."],
     ["a non-ASCII digit", "We look forward to working with you for ３ seasons."],
@@ -525,14 +540,39 @@ describe("the prose predicate", () => {
     ];
     // Quadratic was 1.4-6 s at 100 KB; linear is a few ms. The bound is loose.
     // A slow input is named in the failure, so a mutation shows which one.
+    // The uncapped scan: 100 KB is past the length cap, which is pinned below.
     const slow: string[] = [];
     for (const input of inputs) {
       const t0 = Date.now();
-      orderRequestProseRefusals(T(input));
+      orderRequestProseRefusalsUncapped(T(input));
       const ms = Date.now() - t0;
       if (ms >= 750) slow.push(`${JSON.stringify(input.slice(0, 4))}… (${input.length} chars): ${ms} ms`);
     }
     expect(slow).toEqual([]);
+  });
+
+  it("refuses a template over the raw length cap before NFKC reads it (CI BLOCK 3bdd750, N5)", () => {
+    // U+FDFA is the longest NFKC expansion (18 characters). A million of them
+    // uncapped is seconds of scanning; capped, it is refused on its length.
+    const huge = T("\uFDFA".repeat(1_000_000));
+    const t0 = Date.now();
+    const refused = orderRequestProseRefusals(huge);
+    const ms = Date.now() - t0;
+    expect(refused.map((r) => r.rule)).toEqual(["too_long"]);
+    expect(refused[0].says).toContain(String(ORDER_REQUEST_TEMPLATE_MAX_CHARS));
+    expect(ms).toBeLessThan(100);
+    // At the cap, the worst NFKC input is still scanned, and in bounded time.
+    const atCap = T("\uFDFA".repeat(ORDER_REQUEST_TEMPLATE_MAX_CHARS - T("").length));
+    expect(atCap.length).toBe(ORDER_REQUEST_TEMPLATE_MAX_CHARS);
+    const t1 = Date.now();
+    expect(rules(atCap)).not.toContain("too_long");
+    expect(Date.now() - t1).toBeLessThan(750);
+    expect(rules(atCap + "x")).toEqual(["too_long"]);
+  });
+
+  it("leaves the shipped defaults far under the length cap", () => {
+    expect(DEFAULT_ORDER_REQUEST_TEMPLATE.length).toBeLessThan(600);
+    expect(DEFAULT_ORDER_REQUEST_TEMPLATE_TR.length).toBeLessThan(600);
   });
 
   it("does not catch the stated gaps (ADR 0313:37)", () => {
@@ -598,7 +638,7 @@ const TR_LINES = [
 const tr = (over: Partial<OrderRequestFacts> = {}) =>
   facts({ locale: "tr", lines: TR_LINES.map((l) => ({ ...l, price: l.price && { ...l.price } })), ...over });
 
-describe("the Turkish letter (DRAFT words)", () => {
+describe("the Turkish letter (words locked under F3, ADR 0313)", () => {
   it("an owner's letter: Turkish blocks, decimal comma, price per unit", () => {
     const r = renderOrderRequest(tr());
     expect(r.locale).toBe("tr");
@@ -980,6 +1020,78 @@ describe("OrderRequestController — a service door, not a person's", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBe(true);
     // No class guard: a class JwtAuthGuard would refuse the service outright.
     expect(Reflect.getMetadata(GUARDS_METADATA, OrderRequestController)).toBeUndefined();
+  });
+
+  // Gate note N1 at 3bdd75025: the metadata test above proves the guard is
+  // attached, not that it denies. This drives the route over HTTP with the
+  // real ServiceKeyGuard: only the configured key reaches the service.
+  describe("over HTTP, with the real ServiceKeyGuard", () => {
+    let app: INestApplication;
+    let url: string;
+    const render = jest.fn().mockResolvedValue({ subject: "s", body: "b", staged: false });
+    const savedKey = process.env.ADMIN_API_KEY;
+    const KEY = "k-test-0123456789abcdef";
+
+    beforeAll(async () => {
+      const mod = await Test.createTestingModule({
+        controllers: [OrderRequestController],
+        providers: [
+          ServiceKeyGuard,
+          { provide: OrderRequestService, useValue: { render } },
+          // Read the env live, so each test can set or unset the key.
+          { provide: ConfigService, useValue: { get: (k: string, d?: string) => process.env[k] ?? d } },
+        ],
+      }).compile();
+      app = mod.createNestApplication({ logger: false });
+      await app.listen(0, "127.0.0.1");
+      url = `${await app.getUrl()}/internal/letters/order-request`.replace("[::1]", "127.0.0.1");
+    });
+    afterAll(async () => {
+      await app.close();
+      if (savedKey === undefined) delete process.env.ADMIN_API_KEY;
+      else process.env.ADMIN_API_KEY = savedKey;
+    });
+    beforeEach(() => {
+      render.mockClear();
+      process.env.ADMIN_API_KEY = KEY;
+    });
+
+    const post = (headers: Record<string, string> = {}) =>
+      fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ order_id: ORDER }),
+      });
+
+    it("a missing X-Admin-Key is 401 and never reaches the service", async () => {
+      expect((await post()).status).toBe(401);
+      expect(render).not.toHaveBeenCalled();
+    });
+
+    it("a wrong key is 401, of the same length or not", async () => {
+      expect((await post({ "x-admin-key": "k-test-0123456789abcdeX" })).status).toBe(401);
+      expect((await post({ "x-admin-key": "nope" })).status).toBe(401);
+      expect((await post({ "x-admin-key": "" })).status).toBe(401);
+      expect(render).not.toHaveBeenCalled();
+    });
+
+    it("an unset or blank ADMIN_API_KEY is 401 for every caller, even one sending an empty key", async () => {
+      for (const unset of [undefined, "", "   "]) {
+        if (unset === undefined) delete process.env.ADMIN_API_KEY;
+        else process.env.ADMIN_API_KEY = unset;
+        expect((await post()).status).toBe(401);
+        expect((await post({ "x-admin-key": "" })).status).toBe(401);
+        expect((await post({ "x-admin-key": KEY })).status).toBe(401);
+      }
+      expect(render).not.toHaveBeenCalled();
+    });
+
+    it("only the configured key passes, and then the service renders", async () => {
+      const res = await post({ "x-admin-key": KEY });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ success: true, staged: false });
+      expect(render).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("refuses an unknown field and a non-uuid order", async () => {
