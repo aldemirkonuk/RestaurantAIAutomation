@@ -521,6 +521,79 @@ describe("MenusService.discardMenuItem (ADR 0160 sec110 item 7)", () => {
       NotFoundException,
     );
   });
+
+  it("keeps the status the line had, and a second discard does not overwrite it (F-268)", async () => {
+    const tables: Record<string, Row[]> = {
+      menu_items: [{ id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", status: "flagged" }],
+    };
+    const service = makeService(tables);
+
+    await service.discardMenuItem("rest-1", "mi-1");
+    await service.discardMenuItem("rest-1", "mi-1");
+    expect(tables.menu_items[0]).toMatchObject({ status: "discarded", prior_status: "flagged" });
+  });
+});
+
+describe("MenusService.restoreMenuItem — a discarded line can be put back (F-268)", () => {
+  const house = () => ({
+    restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" }],
+  });
+
+  it("puts the line back at the status it had, and getMenu serves it again", async () => {
+    const tables: Record<string, Row[]> = {
+      ...house(),
+      menu_items: [
+        { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", name: "Raki", category: "Spirits", status: "flagged" },
+      ],
+    };
+    const service = makeService(tables);
+    await service.discardMenuItem("rest-1", "mi-1");
+    expect((await service.getDiscardedLines("rest-1")).items.map((r) => r.id)).toEqual(["mi-1"]);
+
+    const result = await service.restoreMenuItem("rest-1", "mi-1");
+    expect(result).toEqual({ menuItemId: "mi-1", status: "flagged" });
+    expect(tables.menu_items[0]).toMatchObject({ status: "flagged", prior_status: null });
+    expect((await service.getMenu("rest-1")).items.map((r) => r.id)).toEqual(["mi-1"]);
+    expect((await service.getDiscardedLines("rest-1")).items).toEqual([]);
+  });
+
+  it("a line discarded before its status was kept comes back in review", async () => {
+    const tables: Record<string, Row[]> = {
+      ...house(),
+      menu_items: [{ id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", status: "discarded" }],
+    };
+    const service = makeService(tables);
+
+    expect(await service.restoreMenuItem("rest-1", "mi-1")).toEqual({ menuItemId: "mi-1", status: "in_review" });
+    expect(tables.menu_items[0].status).toBe("in_review");
+  });
+
+  it("leaves a line that is not discarded as it is", async () => {
+    const tables: Record<string, Row[]> = {
+      menu_items: [{ id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", status: "approved" }],
+    };
+    const service = makeService(tables);
+
+    expect(await service.restoreMenuItem("rest-1", "mi-1")).toEqual({ menuItemId: "mi-1", status: "approved" });
+    expect(tables.menu_items[0].status).toBe("approved");
+  });
+
+  it("404s for another house's line, and writes nothing", async () => {
+    const tables: Record<string, Row[]> = {
+      menu_items: [
+        { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", status: "discarded", prior_status: "approved" },
+      ],
+    };
+    const service = makeService(tables);
+
+    await expect(service.restoreMenuItem("rest-2", "mi-1")).rejects.toBeInstanceOf(NotFoundException);
+    expect(tables.menu_items[0].status).toBe("discarded");
+  });
+
+  it("no current menu means no discarded lines", async () => {
+    const service = makeService({ restaurant_menus: [], menu_items: [] });
+    expect(await service.getDiscardedLines("rest-1")).toEqual({ items: [] });
+  });
 });
 
 /**

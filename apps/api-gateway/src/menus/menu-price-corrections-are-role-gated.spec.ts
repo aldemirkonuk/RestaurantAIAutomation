@@ -139,3 +139,31 @@ describe("PATCH /menus/:rid/items/:id/discard — owner or manager only (F-268)"
     expect(discard).not.toHaveBeenCalled();
   });
 });
+
+describe("PATCH /menus/:rid/items/:id/restore — owner or manager only (F-268)", () => {
+  function controller(role: string | null) {
+    const restore = jest.fn(async () => ({ menuItemId: "mi-1", status: "approved" }));
+    const c = new MenusController({ restoreMenuItem: restore } as any, orgs(role));
+    return { c, restore };
+  }
+
+  it.each(["owner", "manager"])("a %s may put a line back", async (role) => {
+    const { c, restore } = controller(role);
+    await c.restoreMenuItem("rest-1", "mi-1", { userId: "u-1" });
+    expect(restore).toHaveBeenCalledWith("rest-1", "mi-1");
+  });
+
+  it.each(["staff", null])("%s is refused, and nothing is put back", async (role) => {
+    const { c, restore } = controller(role as string | null);
+    await expect(c.restoreMenuItem("rest-1", "mi-1", { userId: "u-1" })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it("a session naming no one is refused", async () => {
+    const { c, restore } = controller("owner");
+    await expect(c.restoreMenuItem("rest-1", "mi-1", {})).rejects.toBeInstanceOf(ForbiddenException);
+    expect(restore).not.toHaveBeenCalled();
+  });
+});

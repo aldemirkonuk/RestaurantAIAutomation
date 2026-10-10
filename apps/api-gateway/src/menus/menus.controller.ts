@@ -154,6 +154,40 @@ export class MenusController {
     );
     return this.menusService.discardMenuItem(restaurantId, id);
   }
+
+  @Get(":restaurantId/discarded")
+  @ApiOperation({
+    summary:
+      "The lines taken off the current menu, so an owner or manager can see them and put one back (F-268)",
+  })
+  async getDiscardedLines(@Param("restaurantId") restaurantId: string) {
+    return this.menusService.getDiscardedLines(restaurantId);
+  }
+
+  @Patch(":restaurantId/items/:id/restore")
+  @ApiOperation({
+    summary:
+      "Put a discarded line back on the menu, at the status it had when it was discarded (in review when that was never kept). Owner or manager only",
+  })
+  async restoreMenuItem(
+    @Param("restaurantId") restaurantId: string,
+    @Param("id") id: string,
+    @CurrentUser() user: { userId?: string },
+  ) {
+    // Putting a line back is the same act as taking it off (F-268): an
+    // owner's or a manager's, checked before anything is written.
+    if (!user?.userId) {
+      throw new ForbiddenException(
+        "Putting a line back on the menu names the person, and this session names no one. Nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      restaurantId,
+      "put a line back on the menu",
+    );
+    return this.menusService.restoreMenuItem(restaurantId, id);
+  }
 }
 
 /**

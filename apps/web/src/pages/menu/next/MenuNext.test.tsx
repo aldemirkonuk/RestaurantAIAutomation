@@ -18,7 +18,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, addMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import {
+  getMenu,
+  discardMenuItem,
+  addMenuItem,
+  getDiscardedLines,
+  restoreMenuItem,
+  type ActiveMenu,
+  type DiscardedLine,
+  type MenuLine,
+} from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 const auth = vi.hoisted(() => ({ role: null as string | null }));
@@ -35,6 +44,8 @@ vi.mock('../../../services/api/menus', async () => {
     getMenu: vi.fn(),
     discardMenuItem: vi.fn(),
     addMenuItem: vi.fn(),
+    getDiscardedLines: vi.fn(),
+    restoreMenuItem: vi.fn(),
     // The kept-menus panel (MenuVersions.tsx, its own test file) reads on
     // mount; here it answers "none kept" so this file tests the current menu.
     listMenuVersions: vi.fn().mockResolvedValue({ current: null, lastUsed: null, versions: [] }),
@@ -76,6 +87,8 @@ vi.mock('../../../services/api/settings', async () => {
 const mockGetMenu = vi.mocked(getMenu);
 const mockDiscard = vi.mocked(discardMenuItem);
 const mockAdd = vi.mocked(addMenuItem);
+const mockDiscarded = vi.mocked(getDiscardedLines);
+const mockRestore = vi.mocked(restoreMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
 
 function line(over: Partial<MenuLine> = {}): MenuLine {
@@ -128,6 +141,9 @@ beforeEach(() => {
   mockGetMenu.mockReset();
   mockDiscard.mockReset();
   mockAdd.mockReset();
+  mockDiscarded.mockReset();
+  mockDiscarded.mockResolvedValue({ items: [] });
+  mockRestore.mockReset();
   mockCurrency.mockReset();
   mockCurrency.mockResolvedValue(currency());
 });
@@ -259,5 +275,64 @@ describe('MenuNext — discard', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
     await waitFor(() => expect(mockDiscard).toHaveBeenCalledWith('r1', 'l9'));
     expect(await screen.findByRole('alert')).toHaveTextContent('not discarded');
+  });
+});
+
+describe('MenuNext — put a discarded line back (F-268)', () => {
+  beforeEach(() => {
+    auth.role = 'manager';
+  });
+  afterEach(() => {
+    auth.role = null;
+  });
+
+  function gone(over: Partial<DiscardedLine> = {}): DiscardedLine {
+    return { ...line(), status: 'discarded', prior_status: 'approved', ...over };
+  }
+
+  it('offers the line just discarded back in place, and puts it back on click', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mockRestore.mockResolvedValue({ menuItemId: 'l9', status: 'approved' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    expect(await screen.findByTestId('menu-just-discarded')).toHaveTextContent('Raki is off the menu.');
+    fireEvent.click(screen.getByRole('button', { name: 'Put it back' }));
+    await waitFor(() => expect(mockRestore).toHaveBeenCalledWith('r1', 'l9'));
+    await waitFor(() => expect(screen.queryByTestId('menu-just-discarded')).not.toBeInTheDocument());
+  });
+
+  it('lists the lines taken off, says what each goes back as, and puts one back', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mockDiscarded.mockResolvedValue({
+      items: [gone({ id: 'd1', name: 'Raki' }), gone({ id: 'd2', name: 'Ouzo', prior_status: null })],
+    });
+    mockRestore.mockResolvedValue({ menuItemId: 'd2', status: 'in_review' });
+    mount();
+    const list = await screen.findByTestId('menu-discarded');
+    expect(list).toHaveTextContent('Taken off the menu (2)');
+    expect(list).toHaveTextContent('Goes back as approved.');
+    expect(list).toHaveTextContent('Goes back as in review — what it was before is not known.');
+    fireEvent.click(screen.getByRole('button', { name: 'Put Ouzo back on the menu' }));
+    await waitFor(() => expect(mockRestore).toHaveBeenCalledWith('r1', 'd2'));
+  });
+
+  it('staff are not shown the lines taken off, and the page does not ask for them', async () => {
+    auth.role = 'staff';
+    mockGetMenu.mockResolvedValue(menu());
+    mockDiscarded.mockResolvedValue({ items: [gone({ name: 'Raki' })] });
+    mount();
+    expect(await screen.findByText('Turkish coffee')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-discarded')).not.toBeInTheDocument();
+    expect(mockDiscarded).not.toHaveBeenCalled();
+  });
+
+  it('says so when a line could not be put back', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mockDiscarded.mockResolvedValue({ items: [gone({ id: 'd1', name: 'Raki' })] });
+    mockRestore.mockRejectedValue(new Error('the line is gone'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Put Raki back on the menu' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('not put back');
   });
 });

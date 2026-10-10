@@ -219,6 +219,34 @@ export async function discardMenuItem(
   return response.data
 }
 
+/**
+ * A line taken off the current menu. `prior_status` is what it goes back to
+ * when it is put back; null means it was taken off before that was kept, and
+ * it comes back as in review.
+ */
+export interface DiscardedLine extends Omit<MenuLine, 'status'> {
+  status: 'discarded'
+  prior_status: MenuLine['status'] | null
+}
+
+/** The lines taken off the current menu (F-268), for an owner or a manager. */
+export async function getDiscardedLines(restaurantId: string): Promise<{ items: DiscardedLine[] }> {
+  const response = await apiClient.get<{ items: DiscardedLine[] }>(`/menus/${restaurantId}/discarded`)
+  return response.data
+}
+
+/** Puts a discarded line back on the menu, at the status it had (F-268). */
+export async function restoreMenuItem(
+  restaurantId: string,
+  menuItemId: string
+): Promise<{ menuItemId: string; status: MenuLine['status'] }> {
+  const response = await apiClient.patch<{ menuItemId: string; status: MenuLine['status'] }>(
+    `/menus/${restaurantId}/items/${menuItemId}/restore`,
+    {}
+  )
+  return response.data
+}
+
 export async function getOnboardingProgress(): Promise<OnboardingProgress | null> {
   try {
     const response = await apiClient.get<OnboardingProgress>('/onboarding/progress')
