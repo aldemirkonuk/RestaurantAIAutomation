@@ -424,4 +424,42 @@ describe("F-643: a house can unplug its till", () => {
       service.setConnection("r-1", "nonsense", false, "u-1"),
     ).rejects.toThrow(/Unknown POS provider/);
   });
+  it("listConnections returns each switched provider, and throws when the read fails (F-914)", async () => {
+    const reads: Array<{ table: string; col: string; val: unknown }> = [];
+    const clientWith = (result: { data: unknown; error: unknown }) =>
+      ({
+        from: (table: string) => ({
+          select: () => ({
+            eq: async (col: string, val: unknown) => {
+              reads.push({ table, col, val });
+              return result;
+            },
+          }),
+        }),
+      }) as any;
+    const ok = new PosHubService({
+      getClient: () =>
+        clientWith({
+          data: [{ provider: "toast", enabled: false, changed_at: "2026-10-10T09:00:00Z" }],
+          error: null,
+        }),
+    } as unknown as DatabaseService);
+    await expect(ok.listConnections("r-1")).resolves.toEqual({
+      connections: [
+        {
+          provider: "toast",
+          providerName: expect.any(String),
+          enabled: false,
+          changedAt: "2026-10-10T09:00:00Z",
+        },
+      ],
+    });
+    expect(reads).toEqual([
+      { table: "pos_connections", col: "restaurant_id", val: "r-1" },
+    ]);
+    const down = new PosHubService({
+      getClient: () => clientWith({ data: null, error: { message: "down" } }),
+    } as unknown as DatabaseService);
+    await expect(down.listConnections("r-1")).rejects.toThrow(/down/);
+  });
 });

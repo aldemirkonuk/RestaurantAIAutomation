@@ -41,6 +41,7 @@ import {
  *   GET  /pos-hub/status/:restaurantId           ingestion stats by source
  *   POST /pos-hub/webhook/:provider/:restaurantId   push path (webhooks/middleware)
  *   POST /pos-hub/import/:restaurantId           batch import (canonical JSON)
+ *   GET  /pos-hub/connections/:restaurantId       owner/manager: which providers' feeds are taken or refused
  *   POST /pos-hub/connections/:restaurantId/:provider   owner/manager: take or refuse a provider's feed
  *   GET/POST /pos-hub/mappings/:restaurantId     pos_item_mappings CRUD
  *   GET  /pos-hub/mappings/:restaurantId/sale-unit-review   rows missing a unit, with evidence
@@ -181,6 +182,29 @@ export class PosHubController {
       throw new HttpException(
         error.message || "Import failed",
         HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * F-914: each provider's switch for the house, so /connections can show
+   * which feeds are refused and offer Disconnect or Reconnect. Same roles as
+   * the write below (ADR 0164). A failed read is a 503 in words, never an
+   * empty list, which would read as "every till is taken".
+   */
+  @Get("connections/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Which POS providers' checks this restaurant takes or refuses (owner or manager)",
+  })
+  async listConnections(@Param("restaurantId") restaurantId: string) {
+    try {
+      return await this.posHub.listConnections(restaurantId);
+    } catch {
+      throw new HttpException(
+        "Could not read which tills this restaurant takes checks from. Try again shortly.",
+        HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
   }

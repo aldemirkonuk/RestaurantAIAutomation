@@ -77,6 +77,17 @@ export interface PosStatusVM {
 }
 
 /**
+ * F-914: the house's switch per POS provider. Only switched providers have a
+ * row; a provider with none is taken (pos-hub.service.ts assertConnected).
+ */
+export interface PosConnectionVM {
+  provider: string;
+  providerName: string;
+  enabled: boolean;
+  changedAt: string | null;
+}
+
+/**
  * The provider's state, field-for-field as `payment-methods/dto` declares it
  * (`PaymentProviderState`, `payment-method.dto.ts:116-135`). Named against the
  * DTO rather than invented: a first draft of this file guessed a
@@ -553,6 +564,21 @@ export function useConnectionsNextData() {
     queryFn: async (): Promise<PosStatusVM> => {
       const { data } = await apiClient.get<PosStatusVM>(`/pos-hub/status/${rid}`);
       return data;
+    },
+    enabled: on,
+    staleTime: 60_000,
+  });
+
+  /* read 1b — which tills the house takes checks from (F-914). Its own read,
+     so a failure here leaves the check count standing and only takes away
+     the switch. */
+  const posConnQ = useQuery({
+    queryKey: ['connections-next-pos-connections', rid],
+    queryFn: async (): Promise<PosConnectionVM[]> => {
+      const { data } = await apiClient.get<{ connections: PosConnectionVM[] }>(
+        `/pos-hub/connections/${rid}`,
+      );
+      return data.connections ?? [];
     },
     enabled: on,
     staleTime: 60_000,
@@ -1303,6 +1329,19 @@ export function useConnectionsNextData() {
     role,
     isManager,
     pos: toRegister(posQ),
+    posConnections: toRegister(posConnQ),
+    /**
+     * Take or refuse one provider's checks (F-914), then re-read the switch
+     * and the counts: the row shows the server's state, never the click's.
+     */
+    setPosConnection: async (provider: string, enabled: boolean) => {
+      await apiClient.post(
+        `/pos-hub/connections/${rid}/${encodeURIComponent(provider)}`,
+        { enabled },
+      );
+      await qc.invalidateQueries({ queryKey: ['connections-next-pos-connections'] });
+      void qc.invalidateQueries({ queryKey: ['connections-next-pos'] });
+    },
     provider: toRegister(providerQ),
     payments: toRegister(paymentsQ),
     sender: toRegister(senderQ),
