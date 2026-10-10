@@ -23,7 +23,7 @@ import {
   ORDER_SPEND_STATUSES,
   hasStatus,
 } from "../procurement/order-status";
-import { orderSpend, sumOrderSpend } from "../procurement/order-spend";
+import { orderSpend } from "../procurement/order-spend";
 import { houseFrame } from "../common/house-frame";
 import { isCritical } from "../common/stock-status";
 import {
@@ -320,6 +320,20 @@ export function spendByCurrency(orders: any[]): {
     byCurrency,
     unpricedCount,
   };
+}
+
+/**
+ * Why a spend figure is null rather than a sum: its orders were paid in more
+ * than one currency (F-1039). Null when there is one figure to give.
+ */
+export function mixedSpendNote(byCurrency: SpendInCurrency[]): string | null {
+  const named = byCurrency
+    .map((c) => c.currency)
+    .filter((c): c is string => c !== null)
+    .sort();
+  return named.length > 1
+    ? `Paid in ${named.join(" and ")}: with no exchange rate on record these are shown apart, not added into one figure.`
+    : null;
 }
 
 /**
@@ -913,7 +927,7 @@ export class DashboardService {
       const { data: delivered, error } = await client
         .from("procurement_orders")
         .select(
-          "final_price, total_cost, bottles_total, quantity, delivered_at, created_at, status",
+          "final_price, total_cost, currency, bottles_total, quantity, delivered_at, created_at, status",
         )
         .eq("restaurant_id", restaurantId)
         .in("status", ORDER_SPEND_STATUSES);
@@ -932,9 +946,9 @@ export class DashboardService {
       const orders = delivered || [];
 
       // Total paid to vendors. An order with no price is left out and counted
-      // (F-701), not added as $0 or as one bottle's `final_price`.
-      const { total: totalProcurementSpend, unpricedCount: unpricedOrders } =
-        sumOrderSpend(orders);
+      // (F-701), not added as $0 or as one bottle's `final_price`; orders in
+      // two currencies give null and each currency's part, not a sum (F-1039).
+      const paid = spendByCurrency(orders);
       const totalBottlesDelivered = orders.reduce(
         (sum, o) => sum + (o.bottles_total || o.quantity || 0),
         0,
@@ -943,46 +957,49 @@ export class DashboardService {
       // Paid to vendors this calendar month
       const now = new Date();
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const monthlyProcurementSpend = orders
-        .filter((o) => {
+      const monthPaid = spendByCurrency(
+        orders.filter((o) => {
           const orderDate = o.delivered_at || o.created_at;
           return orderDate && orderDate.startsWith(currentMonth);
-        })
-        .reduce((sum, o) => sum + (orderSpend(o) ?? 0), 0);
+        }),
+      );
 
       // Spend by month (last 12 months)
-      const spendByMonth: {
-        month: string;
-        spend: number;
-        bottles: number;
-      }[] = [];
-      const monthMap = new Map<string, { spend: number; bottles: number }>();
+      const monthMap = new Map<string, { orders: any[]; bottles: number }>();
 
       for (const o of orders) {
         const orderDate = o.delivered_at || o.created_at;
         if (!orderDate) continue;
         const month = orderDate.substring(0, 7); // YYYY-MM
-        const existing = monthMap.get(month) || { spend: 0, bottles: 0 };
-        existing.spend += orderSpend(o) ?? 0;
+        const existing = monthMap.get(month) || { orders: [], bottles: 0 };
+        existing.orders.push(o);
         existing.bottles += o.bottles_total || o.quantity || 0;
         monthMap.set(month, existing);
       }
 
       // Sort by month and take last 12
-      for (const [month, data] of Array.from(monthMap.entries()).sort()) {
-        spendByMonth.push({
-          month,
-          spend: data.spend,
-          bottles: data.bottles,
+      const spendByMonth = Array.from(monthMap.entries())
+        .sort()
+        .map(([month, data]) => {
+          const m = spendByCurrency(data.orders);
+          return {
+            month,
+            spend: m.total,
+            spendByCurrency: m.byCurrency,
+            unpricedOrders: m.unpricedCount,
+            bottles: data.bottles,
+          };
         });
-      }
 
       return {
-        totalProcurementSpend,
-        monthlyProcurementSpend,
+        totalProcurementSpend: paid.total,
+        monthlyProcurementSpend: monthPaid.total,
+        procurementSpendByCurrency: paid.byCurrency,
+        procurementSpendNote: mixedSpendNote(paid.byCurrency),
         totalBottlesDelivered,
         spendByMonth: spendByMonth.slice(-12),
-        unpricedOrders,
+        unpricedOrders: paid.unpricedCount,
+        monthlyUnpricedOrders: monthPaid.unpricedCount,
       };
     } catch (error) {
       this.logger.warn(`Procurement spend fetch failed: ${error.message}`);
@@ -1725,7 +1742,7 @@ export class DashboardService {
         client
           .from("procurement_orders")
           .select(
-            "id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            "id, total_cost, final_price, currency, bottles_total, quantity, delivered_at, created_at, status",
           )
           .eq("restaurant_id", restaurantId)
           .in("status", ORDER_SPEND_STATUSES)
@@ -1757,17 +1774,20 @@ export class DashboardService {
 
       const buckets = new Map<
         string,
-        { procurementSpend: number; bottles: number; glasses: number }
+        { orders: any[]; bottles: number; glasses: number }
       >();
 
+      // Each bucket's spend is summed by `spendByCurrency`: an order with no
+      // price is counted, not added as 0 (F-701), and a bucket paid in two
+      // currencies is null with each one's part, not a sum (F-1039).
       for (const o of orders) {
         const dateKey = groupFn(o.delivered_at || o.created_at);
         const existing = buckets.get(dateKey) || {
-          procurementSpend: 0,
+          orders: [],
           bottles: 0,
           glasses: 0,
         };
-        existing.procurementSpend += orderSpend(o) ?? 0;
+        existing.orders.push(o);
         existing.bottles += o.bottles_total || o.quantity || 0;
         buckets.set(dateKey, existing);
       }
@@ -1775,7 +1795,7 @@ export class DashboardService {
       for (const c of consumption) {
         const dateKey = groupFn(c.created_at);
         const existing = buckets.get(dateKey) || {
-          procurementSpend: 0,
+          orders: [],
           bottles: 0,
           glasses: 0,
         };
@@ -1785,12 +1805,18 @@ export class DashboardService {
 
       return Array.from(buckets.entries())
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, data]) => ({
-          date,
-          procurementSpend: data.procurementSpend,
-          bottles: data.bottles,
-          glasses: data.glasses,
-        }));
+        .map(([date, data]) => {
+          const paid = spendByCurrency(data.orders);
+          return {
+            date,
+            procurementSpend: paid.total,
+            procurementSpendByCurrency: paid.byCurrency,
+            procurementSpendNote: mixedSpendNote(paid.byCurrency),
+            unpricedOrders: paid.unpricedCount,
+            bottles: data.bottles,
+            glasses: data.glasses,
+          };
+        });
     } catch (error) {
       this.logger.error(`Sales chart fetch failed: ${error.message}`);
       throw error;

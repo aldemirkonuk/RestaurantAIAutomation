@@ -701,10 +701,14 @@ export interface DashboardStats {
 
 /** Vendor spend summary returned by `GET /dashboard/summary/:id`. */
 export interface ProcurementSpendSummary {
-  totalProcurementSpend: number;
-  monthlyProcurementSpend: number;
+  /** Null when the orders were paid in more than one currency (F-1039). */
+  totalProcurementSpend: number | null;
+  monthlyProcurementSpend: number | null;
+  procurementSpendByCurrency?: Array<{ currency: string | null; amount: number }>;
+  /** Why the total is null, in the owner's words. */
+  procurementSpendNote?: string | null;
   totalBottlesDelivered: number;
-  spendByMonth: Array<{ month: string; spend: number; bottles: number }>;
+  spendByMonth: Array<{ month: string; spend: number | null; bottles: number }>;
 }
 
 export interface DashboardWidget {
