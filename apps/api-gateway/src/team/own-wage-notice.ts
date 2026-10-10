@@ -1,4 +1,5 @@
 import { Logger } from "@nestjs/common";
+import { money as figureOf } from "../notifications/producers/producer-copy";
 
 /**
  * A manager who set their own wage tells the owner, and the trail says so
@@ -37,6 +38,8 @@ export interface OwnWageChange {
   before: number | null;
   after: number | null;
   currency: string | null;
+  /** The house's formats tag (`readHouseMoney`); null keeps en-US. */
+  locale?: string | null;
 }
 
 export interface OwnWageReceipt {
@@ -48,10 +51,17 @@ export interface OwnWageReceipt {
   ownersFound: number | null;
 }
 
-function money(v: number | null, currency: string | null): string {
+/**
+ * `₺1.234,50` in a lira house: the figure grouped the house's way, its money
+ * where the house writes it. This printed "1234.50 TRY", ungrouped (F-888).
+ */
+function money(
+  v: number | null,
+  currency: string | null,
+  locale: string | null | undefined,
+): string {
   if (v == null) return "no wage";
-  const n = Number(v).toFixed(2);
-  return currency ? `${n} ${currency}` : n;
+  return figureOf(Number(v), currency, locale);
 }
 
 export async function recordOwnWageChange(
@@ -113,7 +123,7 @@ export async function recordOwnWageChange(
   }
 
   const title = `${who} set their own wage`;
-  const message = `${who} changed their own hourly wage on Team from ${money(change.before, change.currency)} to ${money(change.after, change.currency)}. A manager you allowed to see pay may do this; every wage change is kept with who made it.`;
+  const message = `${who} changed their own hourly wage on Team from ${money(change.before, change.currency, change.locale)} to ${money(change.after, change.currency, change.locale)}. A manager you allowed to see pay may do this; every wage change is kept with who made it.`;
   for (const ownerId of owners) {
     try {
       const { error } = await sb.from("notifications").insert({

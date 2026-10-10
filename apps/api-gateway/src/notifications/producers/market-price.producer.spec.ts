@@ -301,6 +301,25 @@ describe("MarketPriceProducer", () => {
     expect(meta.thresholdSource).toBe("env");
   });
 
+  it("[REVERT-FAILS] a lira house reads the quote in its own formats (F-888)", async () => {
+    const { db, notifications, producer } = build([
+      rankedItem({
+        currency: "TRY",
+        latest: { ...rankedItem().latest, unitPrice: 1420 },
+        average: { ...rankedItem().average, unitPrice: 1731.5 },
+      }),
+    ]);
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY", country: "TR" });
+    bought(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.title).toBe(
+      "Domaine Vacheron Sancerre 2022 is %18 below its 30-day average",
+    );
+    expect(call.message).toContain("is quoting ₺1.420,00 for");
+    expect(call.message).toContain("average of ₺1.731,50 across");
+  });
+
   it("[REVERT-FAILS] names the churn caveat the engine warns about", async () => {
     const { db, notifications, producer } = build();
     bought(db);

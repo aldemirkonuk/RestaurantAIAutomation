@@ -456,7 +456,8 @@ describe("R5 — a manager with pay access may set their own wage, and the owner
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({ user_id: OWNER, restaurant_id: RID, channels: ["in_app"], status: "unread" });
     expect(notices[0].title).toBe("Moe set their own wage");
-    expect(notices[0].message).toContain("from 30.00 TRY to 35.00 TRY");
+    // The house's money where it writes it, grouped its way (F-888).
+    expect(notices[0].message).toContain("from ₺30,00 to ₺35,00");
     expect(notices[0].metadata).toMatchObject({
       action: "team_member_own_wage_set",
       member_id: "m-manager",
@@ -783,6 +784,14 @@ describe("R5 — recordOwnWageChange says when the owner was not told", () => {
     const r = await recordOwnWageChange(sb, logger, change);
     expect(r).toEqual({ audited: true, ownersNotified: 0, ownersFound: null });
     expect(inserted.filter((i) => i.table === "notifications")).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] the figures are grouped the house's way, not \"1234.50 TRY\" (F-888)", async () => {
+    const { sb, inserted } = sbWith({ data: [{ user_id: OWNER }], error: null });
+    await recordOwnWageChange(sb, logger, { ...change, before: 1234.5, after: 1300, locale: "tr-TR" });
+    const notice = inserted.find((i) => i.table === "notifications")!.row;
+    expect(notice.message).toContain("from ₺1.234,50 to ₺1.300,00");
+    expect(notice.message).not.toContain("1234.50");
   });
 
   it("a notice the table refuses is counted as not told", async () => {

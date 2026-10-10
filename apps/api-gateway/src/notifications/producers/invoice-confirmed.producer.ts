@@ -7,6 +7,7 @@ import {
   type ProducerTally,
 } from "./producer-ledger.service";
 import { currencyCode } from "../../common/iso-4217";
+import { readHouseMoney } from "../../common/house-money";
 import { clockIn, dayIn, money } from "./producer-copy";
 
 /**
@@ -111,6 +112,9 @@ export class InvoiceConfirmedProducer {
       restaurantId,
       docs.map((d) => d.provider_id).filter(Boolean),
     );
+    // The house's number formats (F-888): the money is the document's own,
+    // but a lira house groups it its own way. Never throws; unknown is en-US.
+    const { locale } = await readHouseMoney(client, restaurantId);
 
     for (const doc of docs) {
       const verifiedAt = new Date(doc.verified_at);
@@ -159,6 +163,7 @@ export class InvoiceConfirmedProducer {
               vendor,
               total: Number.isFinite(total as number) ? (total as number) : null,
               currency,
+              locale,
               tiesOut: doc.ties_out,
               tieOutDelta:
                 doc.tie_out_delta === null || doc.tie_out_delta === undefined
@@ -210,6 +215,7 @@ export class InvoiceConfirmedProducer {
     vendor: string | null;
     total: number | null;
     currency: string | null;
+    locale: string | null;
     tiesOut: boolean | null;
     tieOutDelta: number | null;
     verifiedAt: Date;
@@ -220,7 +226,7 @@ export class InvoiceConfirmedProducer {
     parts.push(
       input.total === null
         ? `${input.label} from ${input.vendor ?? "an unnamed vendor"} carries no extracted total.`
-        : `${money(input.total, input.currency)} from ${input.vendor ?? "an unnamed vendor"}.`,
+        : `${money(input.total, input.currency, input.locale)} from ${input.vendor ?? "an unnamed vendor"}.`,
     );
 
     if (input.tiesOut === true) {
@@ -229,7 +235,7 @@ export class InvoiceConfirmedProducer {
       parts.push(
         input.tieOutDelta === null
           ? "The lines do not tie out to the stated total."
-          : `The lines do not tie out: ${money(Math.abs(input.tieOutDelta), input.currency)} apart from the stated total.`,
+          : `The lines do not tie out: ${money(Math.abs(input.tieOutDelta), input.currency, input.locale)} apart from the stated total.`,
       );
     } else {
       parts.push("The tie-out was not computed for this document.");
