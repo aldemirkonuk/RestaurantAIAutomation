@@ -38,6 +38,11 @@ import expected from "./route-access.expected.json";
  * for staff"; ADR 0145): `GET /analytics/table-performance/:restaurantId` and
  * `GET /analytics/waiters/:restaurantId` carry each table's and each server's
  * sales and tip %, so they read owner-or-manager here (sim F-203).
+ *
+ * One row changed as decided by wave 13's F-490 (2026-10-09):
+ * `POST /ask-ai/actions/:id/discard` took `@Roles("owner", "manager")`, the
+ * standing that applies a proposal, so a staff member can no longer throw away
+ * a proposal they could not have applied.
  */
 
 const ctx = (handler: object, cls: object, role: string | null) =>

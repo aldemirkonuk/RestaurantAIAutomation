@@ -18,9 +18,10 @@ import {
   AuthedRateLimitGuard,
 } from "../common/rate-limit/authed-rate-limit.guard";
 import { AskAiService } from "./ask-ai.service";
+import { roleSatisfies } from "../procurement/order-approval-gate";
 import { ConfirmDto, ProposeDto } from "./dto/ask-ai.dto";
 
-type AuthedUser = { userId: string; restaurantId: string };
+type AuthedUser = { userId: string; restaurantId: string; role?: string | null };
 
 /**
  * What the retired unsealed confirm answers, word for word, so a client still
@@ -151,10 +152,20 @@ export class AskAiController {
     return this.askAi.propose(user.restaurantId, user.userId, body.utterance);
   }
 
+  /**
+   * Owners and managers see every open proposal in the house; anyone else sees
+   * only the ones they asked for (F-490). A proposal carries the words someone
+   * typed, and only an owner or manager can apply or discard one, so a staff
+   * member has no reason to read a colleague's. `user.role` is the role in
+   * this token's house; null or unknown ranks below manager.
+   */
   @Get("actions")
   @ApiOperation({ summary: "Proposals awaiting confirmation" })
   async list(@CurrentUser() user: AuthedUser) {
-    return this.askAi.listOpen(user.restaurantId);
+    return this.askAi.listOpen(
+      user.restaurantId,
+      roleSatisfies(user.role, "manager") ? null : user.userId,
+    );
   }
 
   @Get("candidates")
@@ -266,8 +277,14 @@ export class AskAiController {
     );
   }
 
+  /**
+   * Owner or manager, the same standing that applies a proposal (F-490):
+   * saying no to an owner's proposal is a decision about it, so it takes the
+   * person who could have said yes.
+   */
   @Post("actions/:id/discard")
   @ApiOperation({ summary: "Discard a proposal without executing it" })
+  @Roles("owner", "manager")
   async discard(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     return this.askAi.discard(user.restaurantId, user.userId, id);
   }

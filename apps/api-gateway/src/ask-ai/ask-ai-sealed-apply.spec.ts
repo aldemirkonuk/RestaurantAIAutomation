@@ -530,7 +530,9 @@ describe("the unsealed confirm route is retired", () => {
 });
 
 describe("the routes take standing", () => {
-  it.each(["sealChallenge", "sealedConfirm"])(
+  // F-490 (wave 13 sim): discard carried no @Roles, so any staff member
+  // could throw away an owner's proposal they could not have applied.
+  it.each(["sealChallenge", "sealedConfirm", "discard"])(
     "%s is owner or manager only",
     (handler) => {
       const roles = Reflect.getMetadata(
@@ -544,5 +546,58 @@ describe("the routes take standing", () => {
   it("the seal names a proposal as a proposal", () => {
     expect(SEAL_SUBJECT_KINDS).toContain("ai_proposed_action");
     expect(subjectNoun("ai_proposed_action")).toBe("proposal");
+  });
+});
+
+// F-490: GET /ask-ai/actions handed every open proposal, with the words its
+// asker typed, to every role. Owners and managers still see the house's;
+// anyone else sees only their own.
+describe("who sees which open proposals", () => {
+  const listed = async (role: string | null) => {
+    const svc = { listOpen: jest.fn(async () => []) };
+    const controller = new AskAiController(svc as unknown as AskAiService);
+    await controller.list({ userId: "u1", restaurantId: "r1", role });
+    return (svc.listOpen.mock.calls[0] as unknown[]).slice();
+  };
+
+  it.each(["owner", "manager"])("%s sees the whole house", async (role) => {
+    expect(await listed(role)).toEqual(["r1", null]);
+  });
+
+  it.each(["staff", null])("%s sees only their own", async (role) => {
+    expect(await listed(role)).toEqual(["r1", "u1"]);
+  });
+
+  const serviceReading = async (askedBy: string | null) => {
+    const eqs: Array<[string, unknown]> = [];
+    const q: any = {
+      select: () => q,
+      eq: (k: string, v: unknown) => {
+        eqs.push([k, v]);
+        return q;
+      },
+      order: () => q,
+      limit: async () => ({ data: [], error: null }),
+    };
+    const db = { getClient: () => ({ from: () => q }) };
+    const svc = new AskAiService(
+      db as unknown as DatabaseService,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as unknown as ProcurementService,
+    );
+    await svc.listOpen("r1", askedBy);
+    return eqs;
+  };
+
+  it("the service narrows to the asker when one is named", async () => {
+    expect(await serviceReading("u1")).toContainEqual(["created_by", "u1"]);
+  });
+
+  it("the service reads the whole house when none is", async () => {
+    const eqs = await serviceReading(null);
+    expect(eqs.map(([k]) => k)).not.toContain("created_by");
+    expect(eqs).toContainEqual(["restaurant_id", "r1"]);
   });
 });
