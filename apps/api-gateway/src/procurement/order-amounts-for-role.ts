@@ -81,3 +81,21 @@ export function orderListForRole(
     amountsWithheld: true,
   };
 }
+
+/**
+ * An order's letters as this role may read them (F-957, the phone's order
+ * screen). Each letter carries the order's quoted price beside the thread;
+ * a non-holder gets the letter without it, marked `amountsWithheld`, as the
+ * order read itself does. The letters' own words are the vendor's and the
+ * house's, and are not cut here.
+ */
+export function conversationsForRole<T extends Record<string, unknown>>(
+  rows: T[],
+  role: string | null | undefined,
+): Array<Omit<T, "quotedPrice"> & { amountsWithheld?: true }> {
+  if (holdsHouseMoney(role)) return rows;
+  return rows.map((row) => {
+    const { quotedPrice: _price, ...rest } = row;
+    return { ...rest, amountsWithheld: true as const };
+  });
+}

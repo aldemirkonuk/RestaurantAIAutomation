@@ -63,6 +63,9 @@ export interface FeedResponse {
     alerts: number;
   };
   generatedAt: string;
+  /** Present when the caller does not hold the house's money (F-957): the
+   *  order cards carry no amount, in `amount` or in the subtitle. */
+  amountsWithheld?: true;
 }
 
 /**

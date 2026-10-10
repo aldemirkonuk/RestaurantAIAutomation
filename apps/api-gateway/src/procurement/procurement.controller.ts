@@ -24,6 +24,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { holdsHouseMoney } from "./documents/document-money-gate";
 import {
   OrderForRole,
+  conversationsForRole,
   orderForRole,
   orderListForRole,
 } from "./order-amounts-for-role";
@@ -1381,12 +1382,18 @@ export class ProcurementController {
   @ApiResponse({ status: 200 })
   async getOrderConversations(
     @Param("id") orderId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ) {
     try {
-      return await this.procurementService.getOrderConversations(
-        user.restaurantId,
-        orderId,
+      // The order's quoted price rides on every letter; staff get the
+      // letters without it (F-957), as GET /orders/:id already cuts it.
+      return conversationsForRole(
+        await this.procurementService.getOrderConversations(
+          user.restaurantId,
+          orderId,
+        ),
+        user?.role ?? null,
       );
     } catch (error: any) {
       throw new HttpException(

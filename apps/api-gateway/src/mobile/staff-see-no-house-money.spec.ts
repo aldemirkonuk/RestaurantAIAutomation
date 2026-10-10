@@ -10,10 +10,23 @@
  *
  * The third, `GET /providers/:id/orders` (F-959), is pinned beside its house
  * scoping in `providers/provider-subresources-are-house-scoped.spec.ts`.
+ *
+ * Wave 69 walked the rest of the phone's reads (F-957 wider, F-958 rest):
+ * - `GET /mobile/feed` put each order card's amount in `amount` and in the
+ *   line under its title, for every role.
+ * - `GET /procurement/orders/:id/conversations` (the phone's order screen)
+ *   carried the order's quoted price on every letter.
+ * - `GET /logs/timeline` cut only the inbound responder's moved prices from a
+ *   decision; any other agent's output reached staff whole.
+ * The cellar (`/inventory/*`), the supply lists and order read, the team week,
+ * the insights and goals, and the notifications were already cut by role.
  */
 import { MobileController } from "./mobile.controller";
 import type { TodayPulseResponse } from "./dto/mobile.dto";
+import { MobileService } from "./mobile.service";
 import { LogsTimelineService } from "../logs/logs-timeline.service";
+import { ProcurementController } from "../procurement/procurement.controller";
+import type { ProcurementService } from "../procurement/procurement.service";
 import type { DatabaseService } from "../database/database.service";
 
 const PULSE: TodayPulseResponse = {
@@ -164,6 +177,208 @@ describe("logs timeline by role (F-958)", () => {
       expect(doc.detail.total).toBe(48250);
       expect((dec.detail.output as any).order_change.agreed_price).toBe(1180);
       expect(res.amountsWithheld).toBeUndefined();
+    },
+  );
+});
+
+describe("decision feed by role (F-957)", () => {
+  const feedService = () =>
+    new MobileService(
+      {
+        supabase: {
+          from: (table: string) => {
+            const rows: Record<string, unknown[]> = {
+              providers: [{ id: "p-1", name: "Acme Wines" }],
+              restaurants: [{ currency: "TRY", locale: "tr-TR" }],
+            };
+            const b: any = {};
+            for (const m of ["select", "eq", "in", "limit", "maybeSingle"])
+              b[m] = () => b;
+            b.then = (resolve: any, reject: any) =>
+              Promise.resolve({ data: rows[table] ?? [], error: null }).then(
+                resolve,
+                reject,
+              );
+            return b;
+          },
+        },
+      } as never,
+      {
+        listPendingOrders: async () => [
+          {
+            id: "o-1",
+            orderNumber: "PO-1",
+            wineName: "Barolo",
+            providerId: "p-1",
+            quantity: 2,
+            unitType: "case",
+            totalCost: 48250,
+            requestedAt: "2026-10-10T10:00:00.000Z",
+          },
+        ],
+      } as never,
+      { getPendingConversations: async () => [] } as never,
+      { getUnreadNotifications: async () => [] } as never,
+    );
+
+  it.each(NOT_HOLDERS)(
+    "gives %p the order card with no amount",
+    async (role) => {
+      const feed = await feedService().getFeed("u-1", "r-1", role);
+
+      const card = feed.items[0];
+      expect(card.kind).toBe("order_approval");
+      expect(card.amount).toBeNull();
+      expect(card.subtitle).toBe("2 cases · Acme Wines");
+      expect(JSON.stringify(feed)).not.toMatch(/48[.,]?250/);
+      expect(feed.amountsWithheld).toBe(true);
+      expect(feed.counts.orderApprovals).toBe(1);
+    },
+  );
+
+  it.each(["owner", "manager"])("gives %s the order's amount", async (role) => {
+    const feed = await feedService().getFeed("u-1", "r-1", role);
+
+    expect(feed.items[0].amount).toBe(48250);
+    expect(feed.items[0].subtitle).toMatch(/48[.,]250/);
+    expect(feed.amountsWithheld).toBeUndefined();
+  });
+
+  it("passes the token's role from the route to the feed", async () => {
+    const service = { getFeed: jest.fn().mockResolvedValue({ items: [] }) };
+    const controller = new MobileController(service as never, {} as never);
+
+    await controller.getFeed({
+      userId: "u-1",
+      restaurantId: "r-1",
+      role: "staff",
+    });
+
+    expect(service.getFeed).toHaveBeenCalledWith("u-1", "r-1", "staff");
+  });
+});
+
+describe("an order's letters by role (F-957, the phone's order screen)", () => {
+  const LETTER = {
+    id: "c-1",
+    orderId: "o-1",
+    direction: "INBOUND",
+    orderNumber: "PO-1",
+    quantity: 2,
+    quotedPrice: 1250,
+    providerName: "Acme Wines",
+  };
+  const controller = () =>
+    new ProcurementController({
+      getOrderConversations: jest.fn().mockResolvedValue([{ ...LETTER }]),
+    } as unknown as ProcurementService);
+
+  it.each(NOT_HOLDERS)(
+    "gives %p the letters without the order's quoted price",
+    async (role) => {
+      const out = (await controller().getOrderConversations("o-1", {
+        userId: "u-1",
+        restaurantId: "r-1",
+        role,
+      })) as Record<string, unknown>[];
+
+      expect(out[0]).not.toHaveProperty("quotedPrice");
+      expect(out[0]).toMatchObject({
+        id: "c-1",
+        orderNumber: "PO-1",
+        providerName: "Acme Wines",
+        amountsWithheld: true,
+      });
+    },
+  );
+
+  it.each(["owner", "manager"])("gives %s the quoted price", async (role) => {
+    const out = (await controller().getOrderConversations("o-1", {
+      userId: "u-1",
+      restaurantId: "r-1",
+      role,
+    })) as Record<string, unknown>[];
+
+    expect(out[0]).toEqual(LETTER);
+  });
+});
+
+describe("logs timeline: every agent's decision and the event store (F-958)", () => {
+  const timeline = () =>
+    new LogsTimelineService(
+      fakeDb({
+        decision_log: [
+          {
+            id: "dl-2",
+            agent_name: "ReportingAgent",
+            decision_type: "nightly_report",
+            confidence: 0.8,
+            correlation_id: "corr-1",
+            created_at: "2026-09-20T12:00:00Z",
+            output: {
+              reasons: ["night_closed"],
+              net_sales: 98765,
+              recommended_action: "Raise the Barolo to 2400 a bottle",
+              lines: [{ wine: "Barolo", cost: 4321 }],
+            },
+          },
+        ],
+        event_store: [
+          {
+            event_id: "ev-1",
+            aggregate_type: "inventory",
+            aggregate_id: "inv-1",
+            event_type: "lot_received",
+            correlation_id: "corr-1",
+            created_at: "2026-09-20T12:01:00Z",
+            payload: { unit_cost: 5555, restaurant_id: "r1" },
+          },
+        ],
+        restaurant_inventory: [{ id: "inv-1" }],
+      }),
+    );
+
+  it.each(NOT_HOLDERS)(
+    "gives %p another agent's decision without its figures or its advice",
+    async (role) => {
+      const res = await timeline().getTimeline("r1", {
+        role,
+        correlationId: "corr-1",
+      });
+
+      const dec = res.events.find((e) => e.source === "decision_log")!;
+      expect(dec.detail.output).toEqual({ reasons: ["night_closed"] });
+      expect(dec.detail.agentName).toBe("ReportingAgent");
+      expect(JSON.stringify(res.events)).not.toMatch(/98765|4321|2400|5555/);
+    },
+  );
+
+  it("gives an owner the agent's whole output", async () => {
+    const res = await timeline().getTimeline("r1", {
+      role: "owner",
+      correlationId: "corr-1",
+    });
+
+    const dec = res.events.find((e) => e.source === "decision_log")!;
+    expect((dec.detail.output as any).net_sales).toBe(98765);
+  });
+
+  // A pin, not a fix: the event store's payload never leaves the gateway for
+  // any role; only its aggregate and event type are sent.
+  it.each(["staff", "owner"])(
+    "sends %s the event store row without its payload",
+    async (role) => {
+      const res = await timeline().getTimeline("r1", {
+        role,
+        correlationId: "corr-1",
+      });
+
+      const ev = res.events.find((e) => e.source === "event_store")!;
+      expect(ev.detail).toEqual({
+        aggregateType: "inventory",
+        aggregateId: "inv-1",
+        eventType: "lot_received",
+      });
     },
   );
 });

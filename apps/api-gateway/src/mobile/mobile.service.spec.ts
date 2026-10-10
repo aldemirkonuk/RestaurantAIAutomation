@@ -45,12 +45,12 @@ function serviceFor(currency: string | null) {
 
 describe("MobileService feed — an order's amount in the house's money", () => {
   it("prints a pound house's order in pounds", async () => {
-    const feed = await serviceFor("GBP").getFeed("u1", "r1");
+    const feed = await serviceFor("GBP").getFeed("u1", "r1", "owner");
     expect(feed.items[0].subtitle).toBe("2 cases · Acme Wines · £1,240");
   });
 
   it("prints a house with no recorded currency with no symbol, never a dollar", async () => {
-    const feed = await serviceFor(null).getFeed("u1", "r1");
+    const feed = await serviceFor(null).getFeed("u1", "r1", "manager");
     expect(feed.items[0].subtitle).toBe("2 cases · Acme Wines · 1,240");
   });
 });

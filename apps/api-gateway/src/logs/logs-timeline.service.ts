@@ -87,26 +87,59 @@ export interface TimelineResponse {
   amountsWithheld?: true;
 }
 
-/** The price fields of a decision's `order_change` (inbound-responder `OrderMove`). */
-const ORDER_CHANGE_PRICES = [
-  "negotiated_price_from",
-  "negotiated_price_to",
-  "agreed_price",
+/**
+ * What a decision's output carries to a role that does not hold the house's
+ * money (F-958). AN ALLOWLIST, NOT A STRIP LIST: `decision_log.output` is
+ * whatever each agent wrote (the Python agents write their own shapes, with
+ * prices, spend and takings among them), so a non-holder gets only the keys
+ * named here, which are flags and reason codes, and a key an agent adds later
+ * stays on the server for staff until someone decides it is not money. The
+ * model's own `recommended_action` is prose that can quote a price, so it is
+ * left out too.
+ */
+const OUTPUT_KEYS_FOR_EVERY_ROLE = [
+  "needs_approval",
+  "reasons",
+  "email_class",
+  "is_automated",
+  "requires_reply",
+  "injection_suspected",
+  "paused",
+  "autoReply",
+  "autonomyFull",
+  "orderSyncHeld",
 ] as const;
 
-/**
- * A decision's output without the order's prices (F-958). `order_change`
- * carries the price an agent moved from and to (F-492); the rest of the
- * output is reason codes and flags, which name no amount.
- */
+/** A decision's `order_change` (inbound-responder `OrderMove`) without its prices (F-492). */
+const ORDER_CHANGE_KEYS_FOR_EVERY_ROLE = [
+  "order_id",
+  "status_from",
+  "status_to",
+  "written",
+] as const;
+
+function pick(
+  from: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const key of keys) if (key in from) kept[key] = from[key];
+  return kept;
+}
+
+/** A decision's output as a non-holder may read it (F-958). */
 function outputWithoutPrices(output: unknown): unknown {
   if (!output || typeof output !== "object" || Array.isArray(output))
-    return output;
-  const move = (output as Record<string, unknown>).order_change;
-  if (!move || typeof move !== "object") return output;
-  const kept = { ...(move as Record<string, unknown>) };
-  for (const key of ORDER_CHANGE_PRICES) delete kept[key];
-  return { ...(output as Record<string, unknown>), order_change: kept };
+    return null;
+  const all = output as Record<string, unknown>;
+  const kept = pick(all, OUTPUT_KEYS_FOR_EVERY_ROLE);
+  const move = all.order_change;
+  if (move && typeof move === "object" && !Array.isArray(move))
+    kept.order_change = pick(
+      move as Record<string, unknown>,
+      ORDER_CHANGE_KEYS_FOR_EVERY_ROLE,
+    );
+  return kept;
 }
 
 /**
