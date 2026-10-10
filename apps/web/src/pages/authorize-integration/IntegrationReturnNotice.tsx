@@ -11,6 +11,8 @@ const REASONS: Record<string, string> = {
   invalid_callback: 'The provider return did not match this permission.',
   invalid_browser_origin: 'The original app address is no longer configured.',
   exchange_failed: 'The connection outcome could not be established. Check the connection below before starting again.',
+  // F-819: the return URL carries no house name, so the other house is not named here.
+  held_by_another_house: 'This account is already connected for another of your restaurants. One connection like this can serve one restaurant, so nothing was connected here. Disconnect it while working in that restaurant first, or ask someone here to connect their own.',
 }
 
 /** Query parameters trigger a status read; they are not proof of a connection. */

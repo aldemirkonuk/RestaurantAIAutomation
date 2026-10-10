@@ -248,11 +248,23 @@ describe('sw.js notificationclick reuses an open app tab (F-222)', () => {
     expect(r.opened).toBeUndefined()
   })
 
-  it('brings an app tab on another page to the order, opening nothing', async () => {
-    const tab: FakeTab = { url: 'https://mudavym.com/inventory' }
+  // F-815: navigating another app tab would throw away unsaved work in it
+  // (a half-written report draft lives only in React state).
+  it('never navigates an app tab on another page away; opens a new window', async () => {
+    const tab: FakeTab = { url: 'https://mudavym.com/reports' }
     const r = await click('view', { orderId: 'ord-9' }, [tab])
+    expect(tab.focused).toBeUndefined()
+    expect(tab.navigatedTo).toBeUndefined()
+    expect(r.opened).toBe('/orders/ord-9')
+  })
+
+  it('picks the tab on that page even when another app tab comes first', async () => {
+    const other: FakeTab = { url: 'https://mudavym.com/reports' }
+    const tab: FakeTab = { url: 'https://mudavym.com/orders/ord-9' }
+    const r = await click('view', { orderId: 'ord-9' }, [other, tab])
     expect(tab.focused).toBe(true)
-    expect(tab.navigatedTo).toBe('https://mudavym.com/orders/ord-9')
+    expect(other.focused).toBeUndefined()
+    expect(other.navigatedTo).toBeUndefined()
     expect(r.opened).toBeUndefined()
   })
 

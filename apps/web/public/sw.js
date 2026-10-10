@@ -186,25 +186,17 @@ self.addEventListener("notificationclick", (event) => {
   const target = new URL(url, self.location.origin).href
   const openNew = () => (clients.openWindow ? clients.openWindow(url) : undefined)
 
-  // Focus a tab already on that page; else bring an open app tab to the page;
-  // else open a new window.
+  // Focus a tab already on that page; else open a new window. Another open
+  // app tab is never navigated away: it may hold unsaved work, and nothing in
+  // the app asks before leaving (F-815).
   event.waitUntil(
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList) => {
-        const ours = clientList.filter(
-          (client) => new URL(client.url).origin === self.location.origin && "focus" in client
+        const same = clientList.find(
+          (client) => client.url === target && "focus" in client
         )
-        const same = ours.find((client) => client.url === target)
         if (same) return same.focus()
-        const tab = ours.find((client) => "navigate" in client)
-        if (tab) {
-          return tab
-            .focus()
-            .then((focused) => (focused || tab).navigate(target))
-            .then((navigated) => navigated || openNew())
-            .catch(openNew)
-        }
         return openNew()
       })
   )
