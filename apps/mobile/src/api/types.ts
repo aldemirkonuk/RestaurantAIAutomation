@@ -70,6 +70,11 @@ export interface TodayPulse {
    */
   currency?: string | null;
   locale?: string | null;
+  /**
+   * The house's zone, so a letter or an event is dated on the house's day
+   * (F-1029). null = not recorded; absent from an older gateway.
+   */
+  timezone?: string | null;
 }
 
 export interface InventoryItem {

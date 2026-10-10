@@ -231,6 +231,8 @@ describe("today pulse carries the house's money (F-885)", () => {
 
     expect(pulse.currency).toBe("TRY");
     expect(pulse.locale).toBe("tr-TR");
+    // The phone dates letters and events on the house's day (F-1029).
+    expect(pulse.timezone).toBe("Europe/Istanbul");
   });
 
   it("sends null, never USD, for a house with no recorded currency", async () => {
@@ -240,5 +242,14 @@ describe("today pulse carries the house's money (F-885)", () => {
     }).getTodayPulse("u-1", "r-1", NOW);
 
     expect(pulse.currency).toBeNull();
+  });
+
+  it("sends null, never the server's zone, for a house with no zone or country", async () => {
+    const pulse = await buildWithDb({
+      restaurants: [{ id: "r-1", timezone: null, country: null }],
+      pos_checks: [],
+    }).getTodayPulse("u-1", "r-1", NOW);
+
+    expect(pulse.timezone).toBeNull();
   });
 });

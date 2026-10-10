@@ -77,7 +77,7 @@ describe("readHouseMoney", () => {
         }),
         "r1",
       ),
-    ).toEqual({ currency: "TRY", locale: "tr-TR" });
+    ).toEqual({ currency: "TRY", locale: "tr-TR", zone: "Europe/Istanbul" });
     expect(
       await readHouseMoney(
         client({
@@ -88,11 +88,11 @@ describe("readHouseMoney", () => {
         }),
         "r1",
       ),
-    ).toEqual({ currency: null, locale: "tr-TR" });
+    ).toEqual({ currency: null, locale: "tr-TR", zone: "Europe/Istanbul" });
   });
 
-  it("answers both null for a failed read, a throw, or no client", async () => {
-    const none = { currency: null, locale: null };
+  it("answers all null for a failed read, a throw, or no client", async () => {
+    const none = { currency: null, locale: null, zone: null };
     expect(
       await readHouseMoney(
         client({ data: null, error: { message: "no" } }),
