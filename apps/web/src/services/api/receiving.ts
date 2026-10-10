@@ -133,6 +133,8 @@ export interface DoorReceivedSoFar {
   receivedBoxes: number | null
   /** What is left after the whole boxes, in bottles; null with `receivedBoxes`. */
   receivedLooseBottles?: number | null
+  /** The ledger's received block (ADR 0192): the door's and the desk's refusals ride here. */
+  received?: Pick<LineReceived, 'readable' | 'rejectedAtDoorBottles' | 'rejectedAtDeskBottles'> | null
 }
 
 export interface UnverifiedDelivery {

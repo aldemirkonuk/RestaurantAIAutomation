@@ -17,7 +17,9 @@ import {
   doorFacts,
   matchLine,
   normalizeDoorOrder,
+  priorFromReceived,
   readPaper,
+  stillExpectedBoxes,
   suggestOutcome,
   NOTES_MAX,
   VENDOR_NOT_NAMED,
@@ -483,6 +485,74 @@ describe('the second truck', () => {
     });
     expect(d).toContain('arrived 6 boxes, 14 of 16 boxes — two short');
     expect(d).not.toContain('ten short');
+  });
+});
+
+/**
+ * F-813: one rule for refused bottles. The staff lane (F-774) takes door and
+ * desk refusals off what a truck is still bringing; the door now does too, so
+ * the second truck of a split order with one broken bottle is not called one
+ * bottle short, and the vendor is not asked twice for the same bottle.
+ * Order: 2 boxes of 12. Truck one: a box with one bottle broken and refused.
+ */
+describe('a bottle refused on an earlier truck (F-813)', () => {
+  const order = caseOrder(2);
+  const prior = { bottles: 11, packSize: 12, refusedBottles: 1 };
+
+  it('[REVERT-FAILS] calls the second truck all there, naming the refused bottle', () => {
+    const line = matchLine(1, order, prior);
+    expect(line?.tone).toBe('even');
+    expect(line?.text).toBe(
+      '1 box + 11 bottles of 2 with the earlier 11 bottles, 1 bottle refused earlier — all there.',
+    );
+  });
+
+  it('[REVERT-FAILS] expects one box of this truck, not a box and a bottle', () => {
+    expect(stillExpectedBoxes(order!, prior)).toBe(1);
+  });
+
+  it('[REVERT-FAILS] does not put the refused bottle in the credit letter again', () => {
+    const d = creditDraft({
+      outcome: 'short',
+      reason: null,
+      counted: 0,
+      order,
+      hasPhoto: false,
+      driverName: '',
+      initials: 'AK',
+      alreadyReceived: prior,
+    });
+    expect(d).toContain(
+      'arrived 0 boxes, 11 bottles of 2 boxes, 1 bottle refused earlier — one short at the door',
+    );
+  });
+
+  it('counts a first truck refused whole as nothing still owed from it', () => {
+    expect(stillExpectedBoxes(order!, { bottles: 0, packSize: 12, refusedBottles: 12 })).toBe(1);
+  });
+
+  it('reads door and desk refusals off the received block, as the lane does', () => {
+    const r = (received: unknown, doorEventCount = 1) =>
+      priorFromReceived({
+        receivedQtyBottles: 11,
+        packSize: 12,
+        doorEventCount,
+        received: received as never,
+      });
+    expect(
+      r({ readable: true, rejectedAtDoorBottles: 1, rejectedAtDeskBottles: null }),
+    ).toEqual(prior);
+    expect(r({ readable: true, rejectedAtDoorBottles: 1, rejectedAtDeskBottles: 2 })).toEqual({
+      ...prior,
+      refusedBottles: 3,
+    });
+    // Refusals not known once a truck was counted: no shortfall is claimed.
+    expect(r({ readable: false })).toBe('unread');
+    expect(r(null)).toBe('unread');
+    expect(r({ readable: true, rejectedAtDoorBottles: null })).toBe('unread');
+    // Nothing counted yet: nothing could have been refused.
+    expect(r(null, 0)).toEqual({ bottles: 11, packSize: 12 });
+    expect(priorFromReceived({ receivedQtyBottles: 'x' })).toBe('unread');
   });
 });
 
