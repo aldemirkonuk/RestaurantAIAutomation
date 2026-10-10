@@ -442,3 +442,59 @@ describe('completing the swipe lands the seal and then a quiet loading sign', ()
  * Deleted at the ADR 0149 cutover (CUTOVER-MANIFEST-2026-09-28.md, group
  * `receipts`): `ReceiptsPage.tsx` is gone, so there is no second verify
  * path left to hold to the seal. Sections 1-3 above hold the only one. */
+
+/* ─── F-1077. A correction on screen is a correction on file, or it is gone ── */
+
+/**
+ * One correction is staged at a time. A second cell used to replace the
+ * staged one while the first cell went on showing its typed figure, and the
+ * swipe stayed open — so a reviewer could vouch for a transcription in which
+ * a number on screen was never written.
+ */
+describe('F-1077 — no unsaved figure stays on screen, and confirm waits for the seal', () => {
+  const qty = () => screen.getByLabelText('Quantity, line 1') as HTMLInputElement;
+  const price = () => screen.getByLabelText('Unit price, line 1') as HTMLInputElement;
+  const swipe = () => screen.getByRole('button', { name: /Swipe up to confirm/ });
+
+  it('[REVERT-FAILS] clears the first cell when a second correction replaces it, and says so', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await stageCorrection();
+    expect(qty().value).toBe('11');
+
+    fireEvent.change(price(), { target: { value: '19' } });
+    fireEvent.blur(price());
+    await waitFor(() => expect(qty().value).toBe('12'));
+    expect(price().value).toBe('19');
+    expect(screen.getByTestId('correction-set-aside').textContent).toContain(
+      'Your change to line 1 · quantity was set aside',
+    );
+  });
+
+  it('[REVERT-FAILS] clears the cell when its correction is discarded', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await stageCorrection();
+    fireEvent.click(screen.getByRole('button', { name: 'discard this correction' }));
+    await waitFor(() => expect(qty().value).toBe('12'));
+  });
+
+  it('[REVERT-FAILS] holds confirm while a correction waits, and says why', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await stageCorrection();
+    expect((swipe() as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('confirm-waits-correction').textContent).toContain(
+      'Seal or discard the correction above first',
+    );
+    fireEvent.keyDown(swipe(), { key: ' ' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.mintVerifySeal).not.toHaveBeenCalled();
+    expect(api.verify).not.toHaveBeenCalled();
+
+    // Sealed: the figure is on file, and confirm opens again.
+    holdToApprove(/Hold to seal this correction/);
+    await waitFor(() => expect(screen.queryByTestId('confirm-waits-correction')).toBeNull());
+    expect((swipe() as HTMLButtonElement).disabled).toBe(false);
+  });
+});

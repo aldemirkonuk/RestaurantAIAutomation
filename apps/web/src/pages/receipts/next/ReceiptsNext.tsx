@@ -456,6 +456,7 @@ function EditCell({
   nullable = true,
   group,
   format,
+  setAside = 0,
   onCommit,
 }: {
   value: number | null;
@@ -466,6 +467,13 @@ function EditCell({
   group: GroupMark | null;
   /** How a reading is printed when the figure could be read two ways. */
   format: (n: number) => string;
+  /**
+   * Bumped when this cell's staged correction is set aside — discarded, or
+   * replaced by one typed in another cell (F-1077). The typed figure goes and
+   * the cell shows what is on file again, so the screen never shows a number
+   * that will not be written.
+   */
+  setAside?: number;
   onCommit: (next: number | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -477,6 +485,11 @@ function EditCell({
   useEffect(() => {
     setDraft(null);
   }, [value]);
+  useEffect(() => {
+    setDraft(null);
+    setBad(false);
+    setWhy(null);
+  }, [setAside]);
   const commit = () => {
     if (draft === null) return;
     const parsed = parseCell(draft, group);
@@ -953,7 +966,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
    * One at a time, deliberately: a seal approves one act, and a queue of pending
    * edits behind a single gesture would be one hold standing for several
    * decisions. Typing in a second cell replaces this one, and the strip says
-   * which correction is waiting.
+   * which correction is waiting — and which one was set aside, whose cell goes
+   * back to the figure on file (F-1077). `replaced` names that one.
    */
   const [pending, setPending] = useState<{
     lineId: string;
@@ -963,7 +977,14 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     from: number | null;
     to: number | null;
     patch: Record<string, number | null>;
+    replaced: { lineNo: number; label: string } | null;
   } | null>(null);
+  /** Per cell (`lineId:field`), how many times its staged correction was set aside. */
+  const [setAside, setSetAside] = useState<Record<string, number>>({});
+  const dropPending = (p: { lineId: string; field: EditableKey }) => {
+    const k = `${p.lineId}:${p.field}`;
+    setSetAside((cur) => ({ ...cur, [k]: (cur[k] ?? 0) + 1 }));
+  };
 
   // The lines this view believes in, and the document as the DETAIL endpoint
   // returned it — the list row never carries `imageUrl`, `storage_path` or a
@@ -1046,6 +1067,9 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     const k = `${line.id}:${field}`;
     setOriginals((cur) => (k in cur ? cur : { ...cur, [k]: line[field] }));
     setEditError(null);
+    const other =
+      pending !== null && (pending.lineId !== line.id || pending.field !== field) ? pending : null;
+    if (other) dropPending(other);
     setPending({
       lineId: line.id,
       lineNo: line.line_no,
@@ -1054,6 +1078,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       from: line[field],
       to: next,
       patch: { [patchKey]: next },
+      replaced: other ? { lineNo: other.lineNo, label: other.label } : null,
     });
   };
 
@@ -1432,6 +1457,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                               nullable={f.nullable}
                               group={group}
                               format={(n) => lineFigure(n, shownDoc.currency, f.key !== 'qty', group)}
+                              setAside={setAside[k] ?? 0}
                               onCommit={(v) => {
                                 if (v === null && !f.nullable) return;
                                 commitEdit(l, f.key, f.patch, v);
@@ -1549,6 +1575,13 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                 Nothing has been written yet. The hold takes a one-time seal over this
                 line as it stands and this exact change.
               </p>
+              {pending.replaced && (
+                <p data-testid="correction-set-aside" style={{ fontSize: 10.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}>
+                  Your change to line {pending.replaced.lineNo} · {pending.replaced.label.toLowerCase()} was
+                  set aside, and that cell shows the figure on file again. One correction is sealed at a
+                  time: seal this one, then type the other again.
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-3">
                 <div style={{ minWidth: 220, flex: '1 1 220px' }}>
                   <HoldToApprove
@@ -1571,7 +1604,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                 </div>
                 <button
                   type="button"
-                  onClick={() => setPending(null)}
+                  onClick={() => {
+                    dropPending(pending);
+                    setPending(null);
+                  }}
                   style={{
                     border: 'none',
                     background: 'transparent',
@@ -1625,11 +1661,23 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                   : 'Confirm opens once the lines are read.'}
               </p>
             )}
+            {/* F-1077: confirm vouches for the figures as written. A correction
+                still waiting to be sealed is on screen and not written, so the
+                swipe would vouch for a number the record does not hold. */}
+            {lines !== undefined && pending !== null && (
+              <p
+                data-testid="confirm-waits-correction"
+                style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}
+              >
+                Seal or discard the correction above first. Confirm vouches for the figures on file,
+                and that one is not saved yet.
+              </p>
+            )}
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
-              disabled={verify.isPending || lines === undefined}
+              disabled={verify.isPending || lines === undefined || pending !== null}
               onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
               onConfirm={(challenge) => verify.mutate(challenge)}
             />
