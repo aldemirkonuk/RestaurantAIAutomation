@@ -20,7 +20,13 @@ import { apiClient } from '../services/api/client'
 // No cycle: neither outbox imports this module (they flush the shared queue
 // themselves), so a static import is safe here.
 import { flushDoorOutbox } from './doorOutbox'
-import { flushSpotCountOutbox } from './spotCountOutbox'
+import {
+  flushSpotCountOutbox,
+  isOvertakenCount,
+  parkedSpotCountsOf,
+  SPOT_COUNTS_CHANGED_EVENT,
+  type ParkedSpotCount,
+} from './spotCountOutbox'
 import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../services/api/calendar'
 import { createProvider, updateProvider } from '../services/api/providers'
 
@@ -41,6 +47,11 @@ export interface SyncStatus {
   notSentCount: number
   /** Waiting changes that have failed `STILL_TRYING_AFTER` times or more. */
   stillTryingCount: number
+  /**
+   * The refused spot counts among `notSentCount`, by item and in the house's
+   * words — the strip lists them one by one (F-831).
+   */
+  parkedCounts: ParkedSpotCount[]
   lastSyncTime: Date | null
   lastError: string | null
 }
@@ -135,6 +146,7 @@ class SyncManagerService {
   private _pendingCount: number = 0
   private _notSentCount: number = 0
   private _stillTryingCount: number = 0
+  private _parkedCounts: ParkedSpotCount[] = []
   
   private listeners: Set<SyncStatusListener> = new Set()
   private syncIntervalId: ReturnType<typeof setInterval> | null = null
@@ -165,6 +177,8 @@ class SyncManagerService {
     // Set up online/offline listeners
     window.addEventListener('online', this.handleOnline)
     window.addEventListener('offline', this.handleOffline)
+    // The spot-count queue parks and clears counts on its own flushes.
+    window.addEventListener(SPOT_COUNTS_CHANGED_EVENT, this.handleQueueChanged)
     
     // Start periodic sync check first: it re-reads the queue itself, so a
     // start-up read that fails below is retried rather than ending the loop.
@@ -212,6 +226,7 @@ class SyncManagerService {
       pendingCount: this._pendingCount,
       notSentCount: this._notSentCount,
       stillTryingCount: this._stillTryingCount,
+      parkedCounts: this._parkedCounts,
       lastSyncTime: this._lastSyncTime,
       lastError: this._lastError,
     }
@@ -464,6 +479,12 @@ class SyncManagerService {
     }, 1000)
   }
 
+  private handleQueueChanged = (): void => {
+    void this.refresh().catch(() => {
+      /* re-read on the next pass */
+    })
+  }
+
   private handleOffline = (): void => {
     console.log('[SyncManager] Offline')
     this._isOnline = false
@@ -517,6 +538,7 @@ class SyncManagerService {
     this._stillTryingCount = waiting.filter(
       (m) => m.retryCount >= STILL_TRYING_AFTER,
     ).length
+    this._parkedCounts = parkedSpotCountsOf(mutations)
   }
 
   /** This session's changes that are parked as "not sent". */
@@ -527,11 +549,14 @@ class SyncManagerService {
   /**
    * "Try again" on the not-sent strip: un-park every refused change of this
    * session, reset its backoff and send now. An `unowned` change cannot be
-   * retried — there is nobody to send it as — so it stays parked.
+   * retried — there is nobody to send it as — so it stays parked. Nor is a
+   * count refused as overtaken: the house answers it the same way every time,
+   * so it waits for a fresh count of the item or a discard (F-831).
    */
   async retryNotSent(): Promise<SyncResult> {
     for (const m of await this.getNotSent()) {
       if (m.parked?.reason !== 'refused') continue
+      if (isOvertakenCount(m)) continue
       await offlineStorage.updatePendingMutation(m.id, {
         parked: undefined,
         nextAttemptAt: undefined,
@@ -552,13 +577,27 @@ class SyncManagerService {
     return result
   }
 
-  /** "Discard" on the not-sent strip: the person gives these changes up. */
+  /**
+   * "Discard" on the not-sent strip: the person gives these changes up. The
+   * refused spot counts are listed and discarded one by one (F-831), so they
+   * are not among them.
+   */
   async discardNotSent(): Promise<number> {
-    const parked = await this.getNotSent()
+    const notSent = await this.getNotSent()
+    const listed = new Set(parkedSpotCountsOf(notSent).map((c) => c.id))
+    const parked = notSent.filter((m) => !listed.has(m.id))
     for (const m of parked) await offlineStorage.removePendingMutation(m.id)
     await this.updatePendingCount()
     this.notifyListeners()
     return parked.length
+  }
+
+  /** "Discard" on one refused count the strip names (F-831). */
+  async discardNotSentOne(id: string): Promise<void> {
+    const parked = (await this.getNotSent()).find((m) => m.id === id)
+    if (parked) await offlineStorage.removePendingMutation(parked.id)
+    await this.updatePendingCount()
+    this.notifyListeners()
   }
 
   /**
@@ -617,6 +656,7 @@ class SyncManagerService {
   destroy(): void {
     window.removeEventListener('online', this.handleOnline)
     window.removeEventListener('offline', this.handleOffline)
+    window.removeEventListener(SPOT_COUNTS_CHANGED_EVENT, this.handleQueueChanged)
     this.stopPeriodicSync()
     
     if (this.retryTimeoutId) {

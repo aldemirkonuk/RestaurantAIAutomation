@@ -56,9 +56,12 @@ const ADJUST_REASONS = [
 export function RowExpansion({
   item,
   locations,
+  startCounting = false,
 }: {
   item: InventoryItem
   locations: StorageLocation[]
+  /** Open with the spot count up (`/inventory?count=<id>`, F-831). */
+  startCounting?: boolean
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -74,7 +77,7 @@ export function RowExpansion({
 
   const [delta, setDelta] = useState(0)
   const [reason, setReason] = useState('Count correction')
-  const [showSpotCount, setShowSpotCount] = useState(false)
+  const [showSpotCount, setShowSpotCount] = useState(startCounting)
   const [pouring, setPouring] = useState(false)
 
   const { data: activity } = useQuery({

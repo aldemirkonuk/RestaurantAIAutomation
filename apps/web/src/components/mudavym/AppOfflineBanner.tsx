@@ -157,38 +157,77 @@ function HouseOfflineBanner() {
     stillTryingCount = 0,
     retryNotSent,
     discardNotSent,
+    parkedCounts = [],
+    discardNotSentOne,
   } = useSyncManager()
 
   // NOT SENT comes first (ADR 0241, OD-203 (a)): a change the server refused
   // for good is kept on this device and named here until the person decides.
   // It used to be deleted after three failures with only a console line.
+  // A refused spot count is named by its item, in the house's words (F-831):
+  // one refused as overtaken is counted again, never tried again — the house
+  // gives it the same answer every time.
   if (isOnline && notSentCount > 0) {
+    const rest = Math.max(0, notSentCount - parkedCounts.length)
     return (
       <div className="mdv-offlinebar mdv-offlinebar--failed mudavym" role="alert">
-        <span className="mdv-offlinebar__word">Not sent</span>
-        <span>
-          {' '}
-          &middot; {pluralChange(notSentCount)} could not be saved and{' '}
-          {notSentCount === 1 ? 'is' : 'are'} kept on this device.{' '}
-        </span>
-        <button
-          type="button"
-          style={ACT}
-          onClick={() => void retryNotSent?.()}
-        >
-          Try again
-        </button>{' '}
-        <button
-          type="button"
-          style={ACT}
-          onClick={() => {
-            const n = notSentCount
-            if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? ${n === 1 ? 'It is' : 'They are'} kept only on this device and the server has not accepted them — keep the paperwork for any delivery among them. This cannot be undone.`))
-              void discardNotSent?.()
-          }}
-        >
-          Discard
-        </button>
+        {parkedCounts.map((c) => (
+          <div key={c.id} data-ux-key="shell.offline.not-sent.count">
+            <span className="mdv-offlinebar__word">Count not saved</span>
+            <span>
+              {' '}
+              &middot; {c.itemLabel}: {c.message}{' '}
+            </span>
+            {c.overtaken ? (
+              // The banner sits outside the router (App.tsx), so a plain link.
+              <a style={ACT} href={`/inventory?count=${encodeURIComponent(c.itemId)}`}>
+                Count again
+              </a>
+            ) : (
+              <button type="button" style={ACT} onClick={() => void retryNotSent?.()}>
+                Try again
+              </button>
+            )}{' '}
+            <button
+              type="button"
+              style={ACT}
+              onClick={() => {
+                if (window.confirm(`Discard this count of ${c.itemLabel}? The stock stays as it is. This cannot be undone.`))
+                  void discardNotSentOne?.(c.id)
+              }}
+            >
+              Discard
+            </button>
+          </div>
+        ))}
+        {rest > 0 && (
+          <div>
+            <span className="mdv-offlinebar__word">Not sent</span>
+            <span>
+              {' '}
+              &middot; {pluralChange(rest)} could not be saved and{' '}
+              {rest === 1 ? 'is' : 'are'} kept on this device.{' '}
+            </span>
+            <button
+              type="button"
+              style={ACT}
+              onClick={() => void retryNotSent?.()}
+            >
+              Try again
+            </button>{' '}
+            <button
+              type="button"
+              style={ACT}
+              onClick={() => {
+                const n = rest
+                if (window.confirm(`Discard ${pluralChange(n)} that ${n === 1 ? 'was' : 'were'} not sent? ${n === 1 ? 'It is' : 'They are'} kept only on this device and the server has not accepted them — keep the paperwork for any delivery among them. This cannot be undone.`))
+                  void discardNotSent?.()
+              }}
+            >
+              Discard
+            </button>
+          </div>
+        )}
       </div>
     )
   }

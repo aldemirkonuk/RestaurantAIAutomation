@@ -42,7 +42,12 @@ const flushSpotCountOutbox = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ sent: 0, failed: 0, parked: 0 }),
 )
 vi.mock('./doorOutbox', () => ({ flushDoorOutbox }))
-vi.mock('./spotCountOutbox', () => ({ flushSpotCountOutbox }))
+// The real queue's predicates (which counts are overtaken, how a refused one
+// is named), with only its flush replaced.
+vi.mock('./spotCountOutbox', async (importActual) => ({
+  ...(await importActual<typeof import('./spotCountOutbox')>()),
+  flushSpotCountOutbox,
+}))
 
 import { offlineStorage } from './offline-storage'
 import { deleteCalendarEvent } from '../services/api/calendar'
@@ -386,5 +391,66 @@ describe('F-246 (audit nit): sign-out sends door receipts and spot counts before
     expect(flushSpotCountOutbox).toHaveBeenCalledTimes(1)
     const countedAt = vi.mocked(offlineStorage.countPendingMutationsOf).mock.invocationCallOrder[0]
     expect(flushSpotCountOutbox.mock.invocationCallOrder[0]).toBeLessThan(countedAt)
+  })
+})
+
+describe('F-831: a count refused as overtaken is counted again, never tried again', () => {
+  const overtaken: PendingMutation = {
+    id: 'count-1',
+    type: 'inventory.spotCount',
+    data: { itemId: 'inv-1', itemLabel: 'Barolo 2019', body: { countedQty: 3, clientCountId: 'k' } },
+    timestamp: new Date(),
+    retryCount: 0,
+    owner: { userId: U1, restaurantId: H1 },
+    lastError: 'Bottles of this item were sold, received or moved after this count was taken, so it was not applied. Count it again.',
+    parked: { reason: 'refused', status: 409, at: '2026-10-10T00:00:00.000Z' },
+  }
+  const refusedDoor: PendingMutation = {
+    ...mutation('door-1', 'receiving.door', 0),
+    parked: { reason: 'refused', status: 422, at: '2026-10-10T00:00:00.000Z' },
+  }
+
+  beforeEach(() => {
+    vi.mocked(offlineStorage.updatePendingMutation).mockClear()
+    vi.mocked(offlineStorage.removePendingMutation).mockClear()
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([overtaken, refusedDoor])
+  })
+
+  it('names the refused count by item in the status the strip reads', async () => {
+    await syncManager.refresh()
+
+    expect(syncManager.getStatus().notSentCount).toBe(2)
+    expect(syncManager.getStatus().parkedCounts).toEqual([
+      expect.objectContaining({ id: 'count-1', itemLabel: 'Barolo 2019', overtaken: true }),
+    ])
+  })
+
+  it('"Try again" leaves the overtaken count parked and still retries the rest', async () => {
+    await syncManager.retryNotSent()
+
+    const unparked = vi.mocked(offlineStorage.updatePendingMutation).mock.calls.map((c) => c[0])
+    expect(unparked).toContain('door-1')
+    expect(unparked).not.toContain('count-1')
+  })
+
+  it('"Discard" on the strip leaves the listed count to its own Discard', async () => {
+    await syncManager.discardNotSent()
+
+    expect(removedIds()).toEqual(['door-1'])
+  })
+
+  it('its own Discard removes just that count', async () => {
+    await syncManager.discardNotSentOne('count-1')
+
+    expect(removedIds()).toEqual(['count-1'])
+  })
+
+  it('re-reads when the spot-count queue says it changed', async () => {
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([])
+    await syncManager.refresh()
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([overtaken])
+
+    window.dispatchEvent(new Event('mdv:spot-counts-changed'))
+    await vi.waitFor(() => expect(syncManager.getStatus().parkedCounts).toHaveLength(1))
   })
 })
