@@ -19,7 +19,9 @@
  *    whose start_date it would overwrite; see the note in `submit`.
  *
  * Deleting is the one irreversible act on this page, so it is the one place
- * that spends the house ceremony: HoldToApprove, completing into the seal.
+ * that spends the house ceremony: HoldToApprove, completing into the seal. A
+ * repeating entry opened on a later date also offers to END the series from
+ * that date, which keeps every earlier date (F-607).
  *
  * REMINDERS MOVED SERVER-SIDE, 2026-09-03. This sheet no longer enqueues into
  * the browser's localStorage queue; it writes `reminderEnabled` /
@@ -61,6 +63,10 @@ const ENUM_TYPES = new Set([
 ]);
 
 const STATUSES: EventStatus[] = ['pending', 'approved', 'completed', 'cancelled', 'dismissed'];
+
+/** The writes a sheet can ask for; its banner speaks only for these. */
+const WRITE_KEYS = ['create', 'update', 'remove', 'endSeries', 'createType', 'deleteType'] as const;
+type WriteKey = (typeof WRITE_KEYS)[number];
 
 export type SheetTarget =
   | {
@@ -155,12 +161,13 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const saving = data.create.isPending || data.update.isPending;
   // Adding or deleting a custom type is a write too; its refusal must reach
   // the same banner (sweep 2026-09-28 row 19 — it used to vanish silently).
-  const failure =
-    data.create.error ??
-    data.update.error ??
-    data.remove.error ??
-    data.createType.error ??
-    data.deleteType.error;
+  // Only writes THIS sheet asked for: a mutation keeps its last error until it
+  // runs again, so an earlier sheet's refusal used to greet a new entry (F-201).
+  const [asked, setAsked] = useState<ReadonlySet<WriteKey>>(() => new Set());
+  const ask = (key: WriteKey) => setAsked((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  const failure = WRITE_KEYS.filter((k) => asked.has(k))
+    .map((k) => data[k].error)
+    .find((err) => err != null);
 
   /**
    * The server owns this entry's reminder from here on, so any copy the legacy
@@ -191,7 +198,16 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
     };
 
     if (editing) {
-      const patch: Partial<CalendarPayload> = { ...base };
+      // An emptied field goes as null, which the gateway writes as a cleared
+      // column; undefined would mean "leave it" and keep the old value (F-196).
+      // All day carries no clock time, so ticking it clears both times.
+      const patch: Partial<CalendarPayload> = {
+        ...base,
+        description: description.trim() || null,
+        eventTime: allDay || !startTime ? null : startTime,
+        eventTimeEnd: allDay || !endTime ? null : endTime,
+        eventDateEnd: allDay ? undefined : endDate || null,
+      };
       if (storedTypeOutside && !typeTouched) delete patch.eventType;
       if (storedStatusOutside && !statusTouched) delete patch.status;
       if (editing.isOccurrence) {
@@ -213,6 +229,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
         delete patch.eventDateEnd;
       }
       setOccurrenceRefusal(null);
+      ask('update');
       data.update.mutate(
         { id: editing.seriesId, patch },
         {
@@ -225,6 +242,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       return;
     }
 
+    ask('create');
     data.create.mutate(
       {
         ...base,
@@ -251,6 +269,10 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   /** The stored row can carry a value the gateway's own enum does not hold. */
   const storedTypeOutside = !!editing && !ENUM_TYPES.has(editing.type);
   const storedStatusOutside = !!editing && !STATUSES.includes(editing.status);
+
+  /** A later date of a series: ending from it still keeps the dates before. */
+  const canEndFrom =
+    !!editing?.isOccurrence && !!editing.seriesStart && editing.date > editing.seriesStart;
 
   const linkedProvider = editing?.providerId
     ? data.providersById?.get(editing.providerId)?.name
@@ -316,7 +338,10 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
                       type="button"
                       className="cn-chip cn-ink"
                       aria-label={`Delete the ${t.name} type`}
-                      onClick={() => data.deleteType.mutate(t.id)}
+                      onClick={() => {
+                        ask('deleteType');
+                        data.deleteType.mutate(t.id);
+                      }}
                     >
                       ×
                     </button>
@@ -363,12 +388,13 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               type="button"
               className="cn-btn cn-ink"
               disabled={!newTypeName.trim() || data.createType.isPending}
-              onClick={() =>
+              onClick={() => {
+                ask('createType');
                 data.createType.mutate(
                   { name: newTypeName.trim(), color: newTypeColor },
                   { onSuccess: () => setNewTypeName('') },
-                )
-              }
+                );
+              }}
             >
               Add
             </button>
@@ -425,6 +451,9 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               />
             </Field>
           </div>
+        )}
+        {!allDay && startTime && endTime && endTime < startTime && (
+          <p className="cn-quiet cn-tight">Ends after midnight, at {endTime} the next morning.</p>
         )}
 
         <Field label="Vendor">
@@ -541,6 +570,11 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               )}
             </div>
           )}
+          {!editing && freq === 'monthly' && Number(date.slice(8, 10)) >= 29 && (
+            <p className="cn-quiet cn-tight">
+              In a shorter month it falls on the last day of that month.
+            </p>
+          )}
         </div>
 
         {/* ── reminders ──────────────────────────────────────────────── */}
@@ -551,7 +585,11 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
           errorMessage={data.reminderJob.errorMessage}
           enabled={remindOn}
           daysBefore={remindDays}
-          alreadySent={editing?.reminderSent === true}
+          // A repeating entry is reminded date by date, so one stamp on the
+          // series row says nothing about this date (F-605).
+          alreadySent={
+            editing?.reminderSent === true && !editing.isRecurring && !editing.isOccurrence
+          }
           onChange={(next) => {
             setRemindOn(next.enabled);
             setRemindDays(next.daysBefore);
@@ -577,18 +615,42 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
           </button>
         </div>
 
+        {editing && canEndFrom && (
+          <div style={{ marginTop: 18 }}>
+            <div className="cn-rule2" />
+            <p className="cn-quiet" style={{ marginTop: 0 }}>
+              Ending the series from {longDay(editing.date)} takes that date and every later one
+              off the book. Every date before it stays.
+            </p>
+            <HoldToApprove
+              label={`Hold to end the series from ${longDay(editing.date)}`}
+              approvedLabel="Ended"
+              onApprove={() => {
+                ask('endSeries');
+                data.endSeries.mutate(
+                  { id: editing.seriesId, fromDate: editing.date },
+                  { onSuccess: onClose },
+                );
+              }}
+            />
+          </div>
+        )}
+
         {editing && (
           <div style={{ marginTop: 18 }}>
             <div className="cn-rule2" />
             <p className="cn-quiet" style={{ marginTop: 0 }}>
               {editing.isRecurring || editing.isOccurrence
-                ? 'Deleting removes the whole repeating series — every occurrence, past and future.'
+                ? `Deleting removes the whole repeating series — every occurrence, past and future.${
+                    canEndFrom ? ' To keep the earlier dates, end the series from this date above.' : ''
+                  }`
                 : 'Deleting removes this entry. It cannot be undone.'}
             </p>
             <HoldToApprove
               label={editing.isRecurring || editing.isOccurrence ? 'Hold to delete the series' : 'Hold to delete'}
               approvedLabel="Deleted"
-              onApprove={() =>
+              onApprove={() => {
+                ask('remove');
                 data.remove.mutate(
                   { id: editing.seriesId, scope: editing.isRecurring ? 'all' : undefined },
                   {
@@ -597,8 +659,8 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
                       onClose();
                     },
                   },
-                )
-              }
+                );
+              }}
             />
           </div>
         )}

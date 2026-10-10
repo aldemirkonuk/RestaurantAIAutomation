@@ -226,6 +226,9 @@ export class CreateCalendarEventDto {
 // UPDATE CALENDAR EVENT DTO
 // ============================================================================
 
+// null clears a field (the note, an end date, a time): @IsOptional lets null
+// through, and updateEvent writes it as an emptied column. An absent key
+// leaves the field alone (F-196).
 export class UpdateCalendarEventDto {
   @ApiPropertyOptional()
   @IsString()
@@ -235,7 +238,7 @@ export class UpdateCalendarEventDto {
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
-  description?: string;
+  description?: string | null;
 
   @ApiPropertyOptional({ enum: CalendarEventType })
   @IsEnum(CalendarEventType)
@@ -250,7 +253,7 @@ export class UpdateCalendarEventDto {
   @ApiPropertyOptional()
   @IsDateString()
   @IsOptional()
-  eventDateEnd?: string;
+  eventDateEnd?: string | null;
 
   @ApiPropertyOptional()
   @IsBoolean()
@@ -260,12 +263,12 @@ export class UpdateCalendarEventDto {
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
-  eventTime?: string;
+  eventTime?: string | null;
 
   @ApiPropertyOptional({ description: "Event end time (HH:MM)" })
   @IsString()
   @IsOptional()
-  eventTimeEnd?: string;
+  eventTimeEnd?: string | null;
 
   @ApiPropertyOptional({ enum: CalendarEventStatus })
   @IsEnum(CalendarEventStatus)

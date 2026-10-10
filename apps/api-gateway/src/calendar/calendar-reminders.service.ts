@@ -5,6 +5,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { ScheduledTenantsService } from "../communications/scheduled-tenants.service";
 import type { ScheduledTenant } from "../communications/scheduled-tenants.service";
 import { ConfigService } from "@nestjs/config";
+import { resolveCalendarOccurrences } from "./calendar-occurrences";
 import {
   CALENDAR_REMINDER_FLAG,
   calendarRemindersArmed,
@@ -34,7 +35,8 @@ import {
  * --------------------------------------------
  * 1. **It never sends twice.** Not by remembering, by construction: every send
  *    is preceded by an INSERT into `calendar_reminder_dispatches`, whose UNIQUE
- *    `(calendar_event_id, user_id)` index is the idempotency key. Two gateway
+ *    `(calendar_event_id, user_id, due_at)` index is the idempotency key (the
+ *    due time joined the key so a moved entry is reminded again, F-606). Two gateway
  *    instances sweeping the same tenant at the same instant cannot both win the
  *    insert, so they cannot both send. `reminder_sent` is the roll-up, not the
  *    lock — a boolean read-then-written is a race, and this table is not.
@@ -65,11 +67,18 @@ import {
  * - **No sub-day offsets.** `reminder_days_before` is an INTEGER of days
  *   (baseline:2358). "15 minutes before" is not representable in the column, so
  *   the sheet offers day-granular choices and says why (calendar.md §13).
- * - **No reminders for client-expanded occurrences.** A recurring series that
- *   was never materialised through `POST /calendar/recurrence/:ruleId/generate`
- *   exists as ONE row; the occurrences the page draws are expanded in the
- *   browser (`lib/calendar/recurrence.ts`) and have no id this job can key on.
- *   Materialised occurrences are real rows and are reminded normally.
+ *
+ * REPEATING ENTRIES (F-605, 2026-10-09)
+ * -------------------------------------
+ * A repeating entry is ONE stored row, so reading candidates by `event_date`
+ * used to remind it once, on its first date, and stamp it sent for ever. The
+ * sweep now reads the series rows separately (`readSeries`), expands each one
+ * inside the sweep window with the same resolver the calendar reads with
+ * (`calendar-occurrences.ts`), and reminds every date on its own. The claim key
+ * is (event, member, due time) since migration
+ * a_calendar_entry_keeps_what_it_was_told, so each date is claimed once, and a
+ * series row is never stamped `reminder_sent`: it has no single "sent".
+ * A date moved by an exception is its own stored row and is reminded as one.
  */
 /**
  * The schedule, as module constants.
@@ -224,15 +233,17 @@ export class CalendarRemindersService {
         );
       }
 
+      const ctx = { tenantId: tenant.id, timeZone, now, intended, prefs, tally };
       for (const row of candidates.rows) {
-        await this.processEvent(row, {
-          tenantId: tenant.id,
-          timeZone,
-          now,
-          intended,
-          prefs,
-          tally,
-        });
+        // A series row is reminded per date below, not once on its first date.
+        if (row.is_recurring === true && !row.parent_event_id) continue;
+        await this.processEvent(row, ctx);
+      }
+
+      const series = await this.readSeries(tenant.id, now);
+      if (series.truncated) tally.truncated = true;
+      for (const row of series.rows) {
+        await this.processEvent(row, ctx, false);
       }
 
       await this.closeRun(runId, tally, new Date(), null);
@@ -257,6 +268,7 @@ export class CalendarRemindersService {
       prefs: Map<string, MemberPreference>;
       tally: RunTally;
     },
+    stamp = true,
   ): Promise<void> {
     const { tenantId, timeZone, now, intended, prefs, tally } = ctx;
 
@@ -335,8 +347,9 @@ export class CalendarRemindersService {
 
     // The roll-up. Only when nobody is still waiting: a `reminder_sent = true`
     // written while two members sit inside quiet hours would strand them.
-    if (deferred === 0) {
-      await this.stampEvent(row.id, ctx.tenantId, intended);
+    // A repeating entry's date is not the row: stamping would end the series.
+    if (deferred === 0 && stamp) {
+      await this.stampEvent(row.id, ctx.tenantId, intended, when.dueAt);
     }
   }
 
@@ -366,7 +379,7 @@ export class CalendarRemindersService {
     const { data, error } = await client
       .from("calendar_reminder_dispatches")
       .upsert(rows, {
-        onConflict: "calendar_event_id,user_id",
+        onConflict: "calendar_event_id,user_id,due_at",
         ignoreDuplicates: true,
       })
       .select("id, user_id");
@@ -488,8 +501,9 @@ export class CalendarRemindersService {
   }
 
   /**
-   * Stamp `reminder_sent` once every intended member has a dispatch row whose
-   * outcome is `sent`.
+   * Stamp `reminder_sent` once every intended member has a dispatch row for
+   * THIS due time whose outcome is `sent`. A dispatch for an earlier date the
+   * entry was moved from is not this reminder (F-606).
    *
    * "Every member has a ROW" would be the cheaper predicate and it would be a
    * lie: an expired dispatch is a reminder that was never sent, and a column
@@ -506,6 +520,7 @@ export class CalendarRemindersService {
     eventId: string,
     restaurantId: string,
     intended: string[],
+    dueAt: Date,
   ): Promise<void> {
     if (intended.length === 0) {
       // Nobody wants a calendar reminder in this house. Stamping would record a
@@ -517,6 +532,7 @@ export class CalendarRemindersService {
       .from("calendar_reminder_dispatches")
       .select("user_id, outcome")
       .eq("calendar_event_id", eventId)
+      .eq("due_at", dueAt.toISOString())
       .in("user_id", intended);
 
     if (error) {
@@ -577,7 +593,7 @@ export class CalendarRemindersService {
     const { data, error } = await client
       .from("calendar_events")
       .select(
-        "id, title, event_type, status, all_day, start_date, event_date, start_time, event_time, reminder_days_before",
+        "id, title, event_type, status, all_day, start_date, event_date, start_time, event_time, reminder_days_before, is_recurring, parent_event_id",
       )
       .eq("restaurant_id", restaurantId)
       .eq("reminder_enabled", true)
@@ -602,6 +618,123 @@ export class CalendarRemindersService {
         : rows,
       truncated,
     };
+  }
+
+  /**
+   * Every date of every repeating entry that falls in the sweep window, one
+   * candidate row each, carrying the date as its `start_date`/`event_date`
+   * (F-605). Not filtered on `reminder_sent`: a series stamped by the sweep
+   * before this change still has dates ahead of it.
+   *
+   * A date with an exception is left out: `deleted` is not on the book, and
+   * `modified` is a stored row of its own that `readCandidates` reads. A series
+   * the resolver refuses is reminded on its own first date only, as before,
+   * and the log names it.
+   */
+  private async readSeries(
+    restaurantId: string,
+    now: Date,
+  ): Promise<{ rows: CandidateRow[]; truncated: boolean }> {
+    const client = this.databaseService.getClient();
+    const day = (offsetDays: number) =>
+      new Date(now.getTime() + offsetDays * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+    const from = day(-CalendarRemindersService.LOOKBACK_DAYS);
+    const to = day(CalendarRemindersService.LOOKAHEAD_DAYS);
+
+    const { data, error } = await client
+      .from("calendar_events")
+      .select(
+        "id, restaurant_id, title, event_type, status, all_day, start_date, end_date, event_date, start_time, event_time, reminder_days_before, is_recurring, parent_event_id, recurrence_rule_id",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("reminder_enabled", true)
+      .eq("is_recurring", true)
+      .is("parent_event_id", null)
+      .lte("event_date", to)
+      .order("event_date", { ascending: true })
+      .limit(CalendarRemindersService.CANDIDATE_CAP + 1);
+    if (error) {
+      throw new Error(`could not read repeating calendar entries: ${error.message}`);
+    }
+    let parents = (data ?? []) as Array<CandidateRow & Record<string, any>>;
+    const truncated = parents.length > CalendarRemindersService.CANDIDATE_CAP;
+    if (truncated) parents = parents.slice(0, CalendarRemindersService.CANDIDATE_CAP);
+    if (parents.length === 0) return { rows: [], truncated };
+
+    const { data: rules, error: rulesError } = await client
+      .from("calendar_recurrence_rules")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .in(
+        "calendar_event_id",
+        parents.map((p) => p.id),
+      );
+    if (rulesError) {
+      throw new Error(`could not read repeat rules: ${rulesError.message}`);
+    }
+    const ruleList = (rules ?? []) as any[];
+    const { data: exceptions, error: exError } = ruleList.length
+      ? await client
+          .from("calendar_recurrence_exceptions")
+          .select("recurrence_rule_id, original_date, exception_type")
+          .in(
+            "recurrence_rule_id",
+            ruleList.map((r) => r.id),
+          )
+      : { data: [], error: null };
+    if (exError) {
+      throw new Error(`could not read repeat exceptions: ${exError.message}`);
+    }
+    const skipped = new Set(
+      ((exceptions ?? []) as any[]).map(
+        (x) => `${x.recurrence_rule_id}:${x.original_date}`,
+      ),
+    );
+
+    const rows: CandidateRow[] = [];
+    for (const parent of parents) {
+      const start = parent.start_date ?? parent.event_date;
+      const ownRules = ruleList.filter((r) => r.calendar_event_id === parent.id);
+      const resolved = start
+        ? resolveCalendarOccurrences({
+            restaurantId,
+            events: [
+              {
+                id: parent.id,
+                restaurant_id: restaurantId,
+                start_date: start,
+                end_date: parent.end_date ?? null,
+                is_recurring: true,
+                recurrence_rule_id: parent.recurrence_rule_id ?? null,
+              },
+            ],
+            rules: ownRules,
+            exceptions: [],
+            from,
+            to,
+          })
+        : null;
+      if (!resolved || resolved.state !== "complete") {
+        this.logger.warn(
+          `CALENDAR_REMINDER_SERIES_UNEXPANDED restaurant=${restaurantId} event=${parent.id} — ` +
+            `${resolved ? resolved.detail : "no readable first date"} ` +
+            "Only its first date is reminded.",
+        );
+        if (start && start >= from && start <= to) rows.push(parent);
+        continue;
+      }
+      for (const occ of resolved.events) {
+        if (skipped.has(`${occ.recurrence_rule_id}:${occ.occurrence_date}`)) continue;
+        rows.push({
+          ...parent,
+          start_date: occ.start_date,
+          event_date: occ.start_date,
+        });
+      }
+    }
+    return { rows, truncated };
   }
 
   /**
@@ -914,6 +1047,8 @@ interface CandidateRow {
   start_time: string | null;
   event_time: string | null;
   reminder_days_before: number | null;
+  is_recurring?: boolean | null;
+  parent_event_id?: string | null;
 }
 
 interface ClaimedRow {

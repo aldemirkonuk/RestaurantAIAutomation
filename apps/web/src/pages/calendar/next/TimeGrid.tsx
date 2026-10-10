@@ -15,6 +15,14 @@
  * Honesty: an event the gateway sent with no `event_time` cannot be placed on
  * an hour, so it sits in the all-day strip with an em dash for its time. It is
  * never drawn at midnight and never at "09:00 by default".
+ *
+ * The ruler runs the whole day, 00–24, and opens scrolled to 06:00 (or to the
+ * earliest entry, if one starts sooner), so a 05:00 bread drop is never above
+ * reach. An end earlier than the start runs past midnight (F-197).
+ *
+ * Entries that overlap share the column side by side, one lane each, so every
+ * one of them is visible and can be opened (F-604). Two 10:00 deliveries used
+ * to be drawn one on top of the other, and only the top one could be clicked.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -33,8 +41,10 @@ import {
 import { isDelivery, type CalEvent, type CalendarData } from './useCalendarNextData';
 
 const HOUR_PX = 44;
-const START_HOUR = 6;
+const START_HOUR = 0;
 const END_HOUR = 24;
+/** Where the grid opens when nothing starts earlier. */
+const OPEN_AT_MIN = 6 * 60;
 const START_MIN = START_HOUR * 60;
 const END_MIN = END_HOUR * 60;
 const DEFAULT_MINUTES = 60;
@@ -55,15 +65,68 @@ export interface TimeGridProps {
   onCreateAt: (day: string, hour: number) => void;
 }
 
-/** Where an event sits on the hour ruler, or null when it has no recorded time. */
+/**
+ * Where an event sits on the hour ruler, or null when it has no recorded time.
+ * An end before the start is the next morning, so `end` can pass END_MIN
+ * (22:00–01:00 is 1320–1500); the block is drawn down to midnight.
+ */
 export function placed(e: CalEvent): { start: number; end: number } | null {
   if (e.allDay) return null;
   const start = toMinutes(e.startTime);
   if (start === null) return null;
   const rawEnd = toMinutes(e.endTime);
-  const end = rawEnd !== null && rawEnd > start ? rawEnd : start + DEFAULT_MINUTES;
+  const end =
+    rawEnd === null || rawEnd === start
+      ? start + DEFAULT_MINUTES
+      : rawEnd > start
+        ? rawEnd
+        : rawEnd + END_MIN;
   return { start, end };
 }
+
+/** The shortest a block is drawn, in minutes: 22px on a 44px hour. */
+const MIN_DRAWN_MIN = 30;
+
+/**
+ * Side-by-side lanes for one day's timed entries (F-604). Entries that overlap
+ * on the ruler, directly or through a chain, form a group; each takes the first
+ * lane free at its start, and the group shares the column width evenly.
+ * Overlap is read on the DRAWN block (at least MIN_DRAWN_MIN, cut at midnight),
+ * so two blocks that touch on screen never cover each other.
+ */
+export function laneLayout(entries: CalEvent[]): Map<string, { lane: number; lanes: number }> {
+  const spans = entries
+    .map((e) => ({ id: e.id, p: placed(e) }))
+    .filter((x): x is { id: string; p: { start: number; end: number } } => x.p !== null)
+    .map(({ id, p }) => ({
+      id,
+      start: p.start,
+      end: Math.max(Math.min(END_MIN, p.end), p.start + MIN_DRAWN_MIN),
+    }))
+    .sort((a, b) => a.start - b.start || b.end - a.end || a.id.localeCompare(b.id));
+  const out = new Map<string, { lane: number; lanes: number }>();
+  let group: Array<{ id: string; lane: number }> = [];
+  let laneEnds: number[] = [];
+  let groupEnd = -1;
+  const close = () => {
+    for (const g of group) out.set(g.id, { lane: g.lane, lanes: laneEnds.length });
+    group = [];
+    laneEnds = [];
+  };
+  for (const s of spans) {
+    if (s.start >= groupEnd) close();
+    let lane = laneEnds.findIndex((end) => end <= s.start);
+    if (lane === -1) lane = laneEnds.length;
+    laneEnds[lane] = s.end;
+    group.push({ id: s.id, lane });
+    groupEnd = Math.max(groupEnd, s.end);
+  }
+  close();
+  return out;
+}
+
+/** A clock time for a minute count that may run past midnight. */
+const wrapClock = (mins: number) => fromMinutes(mins > END_MIN ? mins - END_MIN : mins);
 
 export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }: TimeGridProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -89,19 +152,22 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
       const p = event ? placed(event) : null;
       if (!event || !p) return;
       if (finished.mode === 'resize') {
-        const end = Math.min(END_MIN, Math.max(p.start + 15, p.end + finished.dMin));
-        if (end === p.end) return;
-        data.update.mutate({ id: event.seriesId, patch: { eventTimeEnd: fromMinutes(end) } });
+        // The handle sits where the block is drawn, at midnight at the latest.
+        const drawnEnd = Math.min(END_MIN, p.end);
+        const end = Math.min(END_MIN, Math.max(p.start + 15, drawnEnd + finished.dMin));
+        if (end === drawnEnd) return;
+        data.move.mutate({ id: event.seriesId, patch: { eventTimeEnd: fromMinutes(end) } });
         return;
       }
       const start = Math.min(END_MIN - 15, Math.max(START_MIN, p.start + finished.dMin));
-      const end = Math.min(END_MIN, start + (p.end - p.start));
-      data.update.mutate({
+      // The length is kept, so a move can carry the end past midnight.
+      const end = start + (p.end - p.start);
+      data.move.mutate({
         id: event.seriesId,
         patch: {
           eventDate: dayKey(addDays(parseDayKey(event.date), finished.dDay)),
           eventTime: fromMinutes(start),
-          eventTimeEnd: fromMinutes(end),
+          eventTimeEnd: wrapClock(end),
         },
       });
     },
@@ -111,6 +177,28 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
   commitRef.current = commit;
 
   const dragging = drag !== null;
+
+  // Open on the working day, but never with an entry hidden above the view.
+  const earliest = keys.reduce<number | null>((min, key) => {
+    for (const e of data.byDay.get(key) ?? []) {
+      const p = placed(e);
+      if (p && (min === null || p.start < min)) min = p.start;
+    }
+    return min;
+  }, null);
+  const shownRef = useRef<string | null>(null);
+  const viewKey = `${keys[0]}:${keys.length}`;
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const top = (Math.min(OPEN_AT_MIN, earliest ?? OPEN_AT_MIN) / 60) * HOUR_PX;
+    if (shownRef.current !== viewKey) {
+      shownRef.current = viewKey;
+      body.scrollTop = top;
+    } else if (top < body.scrollTop) {
+      body.scrollTop = top;
+    }
+  }, [viewKey, earliest]);
 
   // Window-level listeners: a fast pointer leaves the block behind, and the
   // gesture must still finish (and commit) rather than sticking mid-air.
@@ -153,6 +241,8 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
     originRef.current = { x: e.clientX, y: e.clientY, colWidth: colWidth || 1 };
     setDrag({ id: event.id, mode, dMin: 0, dDay: 0 });
   };
+
+  const lanesByDay = new Map(keys.map((key) => [key, laneLayout(data.byDay.get(key) ?? [])]));
 
   return (
     <div className="cn-time">
@@ -217,14 +307,16 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
             {(data.byDay.get(key) ?? []).map((e) => {
               const p = placed(e);
               if (!p) return null;
+              const slot = lanesByDay.get(key)?.get(e.id) ?? { lane: 0, lanes: 1 };
               const d = drag && drag.id === e.id ? drag : null;
               const resizing = d?.mode === 'resize';
               const start = d && !resizing ? p.start + d.dMin : p.start;
               const end = resizing
-                ? Math.max(p.start + 15, p.end + d.dMin)
+                ? Math.max(p.start + 15, Math.min(END_MIN, p.end) + d.dMin)
                 : start + (p.end - p.start);
               const top = ((start - START_MIN) / 60) * HOUR_PX;
-              const height = Math.max(22, ((end - start) / 60) * HOUR_PX);
+              // A block running past midnight is drawn down to the day's end.
+              const height = Math.max(22, ((Math.min(END_MIN, end) - start) / 60) * HOUR_PX);
               return (
                 <div
                   key={e.id}
@@ -235,7 +327,16 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
                   style={{
                     top,
                     height,
-                    transform: d && d.dDay ? `translateX(${d.dDay * 100}%)` : undefined,
+                    // Its own lane of the column; the class's 2px/4px insets kept.
+                    left: `calc(${(slot.lane / slot.lanes) * 100}% + 2px)`,
+                    right: 'auto',
+                    width: `calc(${100 / slot.lanes}% - 6px)`,
+                    // A whole column per day moved: the lane's width plus its
+                    // insets, times the lanes sharing the column.
+                    transform:
+                      d && d.dDay
+                        ? `translateX(calc(${d.dDay * slot.lanes} * (100% + 6px)))`
+                        : undefined,
                     // tuck — the block settling back into the grid after a
                     // commit. Suppressed while the finger is down, where the
                     // motion must be un-eased.
