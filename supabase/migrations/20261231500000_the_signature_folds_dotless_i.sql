@@ -84,8 +84,10 @@ DECLARE
 BEGIN
   -- Candidates: only a field holding ı can normalize differently now. The old
   -- function turned ı into a separator, so its value is reproduced exactly as
-  -- the new function over the text with ı replaced by a space.
-  CREATE TEMP TABLE refold ON COMMIT DROP AS
+  -- the new function over the text with ı replaced by a space. No ON COMMIT
+  -- DROP: the DROP TABLE below runs on every normal exit and an error rolls the
+  -- CREATE back, and the lockdown guard cannot name a table followed by ON.
+  CREATE TEMP TABLE refold AS
   SELECT m.id,
          m.signature_hash AS stored_hash,
          public.wine_normalize_text(m.name)     AS new_nn,
