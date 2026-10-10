@@ -29,7 +29,7 @@
 import { useState } from 'react';
 import { Panel } from '@/components/mudavym';
 import { addProviderFromCatalogue } from '@/services/api/vendors';
-import { getErrorMessage } from '@/services/api/client';
+import { getErrorMessage, isUnconfirmedWrite } from '@/services/api/client';
 import type { DuplicateMatch } from '@/hooks/useDuplicateVendorCheck';
 import { SANS, SERIF, MONO } from './pv-format';
 
@@ -89,6 +89,15 @@ export function VendorTwinPanel({
       await addProviderFromCatalogue(match.vendor.id);
       onUsedCatalogue?.();
     } catch (e) {
+      // A timeout or a 5xx can land after the vendor was added (F-1083), so
+      // that one says what MAY have happened. A second try is refused in words
+      // if it did land: the gateway allows one row per catalogue vendor.
+      if (isUnconfirmedWrite(e)) {
+        setFailure(
+          `No answer came back, so ${match.vendor.name} may already be in the book. Check the vendor list before adding it again — the vendor you were typing is still here.`,
+        );
+        return;
+      }
       // Named, never a toast that disappears: the person is mid-form and has to
       // know that the vendor they chose is NOT in the book.
       setFailure(

@@ -204,6 +204,26 @@ describe('the same days asked for twice (F-1006)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Ask for/ }));
     expect(await screen.findByText(/already in a request for 2026-09-09/)).toBeTruthy();
   });
+
+  // F-1083: a timeout or a 5xx can land after the request did, so the page
+  // must not say nothing is on the manager's desk.
+  it('says the request may already be with the manager when no answer came back', async () => {
+    api.myWeek = {
+      member: { id: 'm-1', display_name: 'Sam' },
+      schedule: { id: 's1', week_start: '2026-09-07', status: 'published' },
+      acknowledged: true,
+      mine: [],
+      open: [],
+    };
+    api.createTimeOff.mockRejectedValueOnce({
+      response: { status: 500, data: { statusCode: 500, message: 'Internal server error' } },
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Ask for/ }));
+    expect(await screen.findByText(/may already be with your manager/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing is on their desk/)).toBeNull();
+    expect(screen.queryByText('Internal server error')).toBeNull();
+  });
 });
 
 describe('shift times on the house’s clock (F-1007)', () => {

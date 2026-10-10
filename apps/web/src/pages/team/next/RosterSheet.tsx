@@ -99,6 +99,7 @@ import { mayChangeAway } from '../../../services/api/areas';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 
 const EMPLOYMENT: ReadonlyArray<[string, string]> = [
   ['full_time', 'full time'],
@@ -574,6 +575,7 @@ export function MemberSheet({
   });
   const payOn = paySwitch.isSuccess ? paySwitch.data.payAccess : (member?.payAccess ?? null);
 
+  const writeKey = useDraftWriteKey('team-member');
   const save = useMutation({
     mutationFn: () => {
       // On an edit a box the user emptied is sent as `null`, which the
@@ -620,7 +622,11 @@ export function MemberSheet({
       }
       return editing
         ? updateTeamMember(member!.id, payload)
-        : createTeamMember(payload as never);
+        : createTeamMember(payload as never, undefined, writeKey.keyFor(payload));
+    },
+    // A lost answer may be a saved person (F-1083): read the roster again.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) onChanged();
     },
     onSuccess: (saved: { ownWage?: { audited: boolean; ownersNotified: number; ownersFound: number | null } } | undefined) => {
       onChanged();
@@ -700,8 +706,18 @@ export function MemberSheet({
     >
       <div className="tm-in tm-form">
         <MutationError when={save.isError}>
-          Nothing was saved, so the roster is unchanged. Your values are still here.
-          {memberSaveRefusal(save.error) ? ` ${memberSaveRefusal(save.error)}` : ''}
+          {writeOutcomeUnknown(save.error) ? (
+            editing ? (
+              'No answer came back, so your changes may already be saved. Check the roster before trying again.'
+            ) : (
+              'No answer came back, so this person may already be on the roster. Check the roster before adding them again.'
+            )
+          ) : (
+            <>
+              Nothing was saved, so the roster is unchanged. Your values are still here.
+              {memberSaveRefusal(save.error) ? ` ${memberSaveRefusal(save.error)}` : ''}
+            </>
+          )}
         </MutationError>
         <MutationError when={ownWageUntold !== null}>{ownWageUntold}</MutationError>
         <MutationError when={remove.isError}>

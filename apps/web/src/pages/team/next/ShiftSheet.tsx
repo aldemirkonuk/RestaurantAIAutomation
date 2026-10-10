@@ -37,6 +37,7 @@ import {
 } from './tm-format';
 import { MutationError, useHouseRegion } from './tm-bits';
 import { serverMessage } from './TeamOverlays';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 
 /** The gateway's `shift_type` vocabulary (`dto/team.dto.ts`), said as service. */
 const SHIFT_TYPES: ReadonlyArray<[string, string]> = [
@@ -152,14 +153,20 @@ export function ShiftSheet({
     ...(target.shift!.updated_at ? { expectUpdatedAt: target.shift!.updated_at } : {}),
   });
 
+  const writeKey = useDraftWriteKey('shift');
   const save = useMutation({
-    mutationFn: () =>
-      editing
-        ? updateShift(target.shift!.id, { ...body(), ...asOpened() })
-        : createShift({ scheduleId: scheduleId ?? undefined, ...body() }),
+    mutationFn: () => {
+      if (editing) return updateShift(target.shift!.id, { ...body(), ...asOpened() });
+      const draft = { scheduleId: scheduleId ?? undefined, ...body() };
+      return createShift(draft, undefined, writeKey.keyFor(draft));
+    },
     onSuccess: () => {
       onChanged();
       onClose();
+    },
+    // A lost answer may be a saved shift (F-1083): read the week again.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) onChanged();
     },
   });
   const remove = useMutation({
@@ -189,8 +196,12 @@ export function ShiftSheet({
       <div className="tm-in tm-form">
         <MutationError when={save.isError}>
           {/* A 409 says why — time off, inactive, a clash — and what to do. */}
-          {serverMessage(save.error) ??
-            'The shift was not saved, so the schedule is unchanged. Your values are still here — try again.'}
+          {writeOutcomeUnknown(save.error)
+            ? editing
+              ? 'No answer came back, so this change may already be saved. Check the schedule before trying again.'
+              : 'No answer came back, so this shift may already be on the schedule. Check the schedule before adding it again.'
+            : (serverMessage(save.error) ??
+              'The shift was not saved, so the schedule is unchanged. Your values are still here — try again.')}
         </MutationError>
         <MutationError when={remove.isError}>
           The shift was not removed. It is still on the schedule.

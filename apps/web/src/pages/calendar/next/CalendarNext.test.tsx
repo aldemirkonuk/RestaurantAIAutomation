@@ -1860,6 +1860,55 @@ describe('CalendarNext — an all-day entry can span days (F-198)', () => {
   });
 });
 
+// F-1083 (rehit of F-338): a timeout or a 5xx can land after the entry did,
+// so the sheet may not say "Nothing was saved", and a second try carries the
+// same key so the gateway answers with the entry it already wrote.
+describe('CalendarNext — a write whose answer was lost (F-1083)', () => {
+  function writeIn(create: ReturnType<typeof mutation>) {
+    state.current = mkData({ create });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByPlaceholderText('What is happening'), {
+      target: { value: 'Harvest festival' },
+    });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Write it in' }));
+    return sheet;
+  }
+
+  it('says the entry may already be on the calendar after a timeout', () => {
+    const create = mutation();
+    create.error = Object.assign(new Error('timeout of 30000ms exceeded'), {
+      isAxiosError: true,
+      request: {},
+      response: undefined,
+    });
+    const sheet = writeIn(create);
+    expect(within(sheet).getByText(/may already be on the calendar/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Nothing was saved/)).toBeNull();
+  });
+
+  it('keeps "Nothing was saved" for a refusal', () => {
+    const create = mutation();
+    create.error = Object.assign(new Error('x'), {
+      response: { status: 400, data: { message: 'title must be shorter' } },
+    });
+    const sheet = writeIn(create);
+    expect(within(sheet).getByText(/title must be shorter/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/Nothing was saved/)).toBeInTheDocument();
+  });
+
+  it('sends the same key when the same entry is written in again', () => {
+    const create = mutation();
+    const sheet = writeIn(create);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Write it in' }));
+    expect(create.mutate).toHaveBeenCalledTimes(2);
+    const [a, b] = create.mutate.mock.calls.map((c) => (c[0] as { writeKey?: string }).writeKey);
+    expect(a).toMatch(/^calendar-event:/);
+    expect(b).toBe(a);
+  });
+});
+
 describe('CalendarNext — an entry may not end before it starts (F-937)', () => {
   it('offers no earlier end day, says why, and sends nothing for a reversed range', () => {
     const create = mutation();

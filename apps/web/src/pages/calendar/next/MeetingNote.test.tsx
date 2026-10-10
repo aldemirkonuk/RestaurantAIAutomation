@@ -23,6 +23,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const dayNotesApi = vi.hoisted(() => ({ createDayNote: vi.fn() }));
 const existingDayNotes = vi.hoisted(() => ({ current: [] as { id: string }[] }));
+const rereadNotes = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
@@ -33,7 +34,7 @@ vi.mock('@/services/api/calendar', () => ({
 vi.mock('@/hooks/queries', () => ({
   // `existingDayNotes.current` lets one test set what "already recorded"
   // looks like; every other test leaves it empty.
-  useDayNotes: () => ({ data: existingDayNotes.current, isLoading: false }),
+  useDayNotes: () => ({ data: existingDayNotes.current, isLoading: false, refetch: rereadNotes }),
 }));
 
 import {
@@ -235,7 +236,7 @@ describe('a repeating meeting — a note is about ONE date of it', () => {
       docType: 'meeting_memo',
       eventTitle: 'Weekly call with Hasan',
       body: 'Price held.',
-    });
+    }, { idempotencyKey: expect.stringMatching(/^day-note:/) });
     // The series row itself is never touched by this panel any more: the
     // event update (the old PATCH into `description`) is not called at all.
     expect(data.update.mutateAsync).not.toHaveBeenCalled();
@@ -249,6 +250,7 @@ describe('a repeating meeting — a note is about ONE date of it', () => {
     await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalled());
     expect(dayNotesApi.createDayNote).toHaveBeenCalledWith(
       expect.objectContaining({ businessDate: '2026-09-01' }),
+      expect.anything(),
     );
   });
 });
@@ -274,7 +276,7 @@ describe('the panel', () => {
       docType: 'meeting_memo',
       eventTitle: 'Kavaklıdere tasting',
       body: 'Hasan will hold the price to the 15th.',
-    });
+    }, { idempotencyKey: expect.stringMatching(/^day-note:/) });
     expect(onSaved).toHaveBeenCalled();
   });
 
@@ -286,6 +288,7 @@ describe('the panel', () => {
     await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalled());
     expect(dayNotesApi.createDayNote).toHaveBeenCalledWith(
       expect.objectContaining({ docType: 'tasting_notes', body: 'Six wines.' }),
+      expect.anything(),
     );
   });
 
@@ -307,6 +310,60 @@ describe('the panel', () => {
       ),
     );
     expect(screen.getByTestId('note-body')).toHaveValue('Kept words.');
+  });
+
+  // F-1083 (rehit of F-338): a timeout can land after the note did, so the
+  // panel must not promise that nothing was written.
+  it('says the note may already be saved when no answer came back, and reads the day again', async () => {
+    dayNotesApi.createDayNote.mockRejectedValue(
+      Object.assign(new Error('timeout of 30000ms exceeded'), {
+        isAxiosError: true,
+        request: {},
+        response: undefined,
+      }),
+    );
+    draw();
+    fireEvent.change(screen.getByTestId('note-body'), { target: { value: 'Kept words.' } });
+    fireEvent.click(screen.getByTestId('note-save'));
+    await waitFor(() =>
+      expect(screen.getByTestId('note-failure')).toHaveTextContent(/may already be saved/),
+    );
+    expect(screen.getByTestId('note-failure')).not.toHaveTextContent(/Nothing was written/);
+    expect(rereadNotes).toHaveBeenCalled();
+    expect(screen.getByTestId('note-body')).toHaveValue('Kept words.');
+  });
+
+  it('a 5xx is not a refusal either', async () => {
+    dayNotesApi.createDayNote.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 502'), { response: { status: 502 } }),
+    );
+    draw();
+    fireEvent.change(screen.getByTestId('note-body'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByTestId('note-save'));
+    await waitFor(() =>
+      expect(screen.getByTestId('note-failure')).toHaveTextContent(/No answer came back/),
+    );
+  });
+
+  it('sends the same key when the same words are tried again, and a new one for new words', async () => {
+    dayNotesApi.createDayNote.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 503'), { response: { status: 503 } }),
+    );
+    draw();
+    fireEvent.change(screen.getByTestId('note-body'), { target: { value: 'Same words.' } });
+    fireEvent.click(screen.getByTestId('note-save'));
+    await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('note-save')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('note-save'));
+    await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId('note-save')).not.toBeDisabled());
+    fireEvent.change(screen.getByTestId('note-body'), { target: { value: 'Other words.' } });
+    fireEvent.click(screen.getByTestId('note-save'));
+    await waitFor(() => expect(dayNotesApi.createDayNote).toHaveBeenCalledTimes(3));
+    const keys = dayNotesApi.createDayNote.mock.calls.map((c) => (c[1] as { idempotencyKey: string }).idempotencyKey);
+    expect(keys[0]).toMatch(/^day-note:/);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
   });
 
   it('shows where it is filed, read from the book', () => {

@@ -575,8 +575,17 @@ export interface CreateDayNoteInput {
   body: string
 }
 
-export async function createDayNote(data: CreateDayNoteInput): Promise<CalendarDayNote> {
-  const response = await apiClient.post<CalendarDayNote>('/calendar/day-notes', data)
+export async function createDayNote(
+  data: CreateDayNoteInput,
+  options: { idempotencyKey?: string } = {},
+): Promise<CalendarDayNote> {
+  // With a key, a re-send after a lost answer gets the note already written
+  // instead of a second copy (F-1083).
+  const response = await apiClient.post<CalendarDayNote>(
+    '/calendar/day-notes',
+    data,
+    options.idempotencyKey ? { headers: { 'Idempotency-Key': options.idempotencyKey } } : undefined,
+  )
   return response.data
 }
 

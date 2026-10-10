@@ -59,6 +59,7 @@ import {
   weekDays,
 } from './tm-format';
 import { MutationError } from './tm-bits';
+import { writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import type { TimeOffRow } from './useTeamNextData';
 import './team-next.css';
 
@@ -183,6 +184,14 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
       setSentKey(rangeKey);
       void qc.invalidateQueries({ queryKey: ['team-next-my-time-off', rid] });
     },
+    // A lost answer may be a sent request (F-1083): read your requests again.
+    // A second try is refused in words if it did land (the same days are
+    // already in a request), so no key is needed here.
+    onError: (e) => {
+      if (writeOutcomeUnknown(e)) {
+        void qc.invalidateQueries({ queryKey: ['team-next-my-time-off', rid] });
+      }
+    },
   });
 
   /** Taking back a request nobody has answered yet (F-936). */
@@ -264,8 +273,10 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
           {claimTakenBy ?? serverMessage(claim.error) ?? 'The shift was not claimed. Try again.'}
         </MutationError>
         <MutationError when={askOff.isError}>
-          {serverMessage(askOff.error) ??
-            'The request did not reach your manager. Nothing is on their desk.'}
+          {writeOutcomeUnknown(askOff.error)
+            ? 'No answer came back, so the request may already be with your manager. Check your requests before asking again.'
+            : (serverMessage(askOff.error) ??
+              'The request did not reach your manager. Nothing is on their desk.')}
         </MutationError>
         <MutationError when={withdraw.isError}>
           {serverMessage(withdraw.error) ??
