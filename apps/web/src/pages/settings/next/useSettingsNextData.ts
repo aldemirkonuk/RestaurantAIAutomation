@@ -94,6 +94,11 @@ function useRemote<T>(key: string | null, fetcher: () => Promise<T>): Remote<T> 
   const [nonce, setNonce] = useState(0);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  // The key this register holds now. A save captures `set` from the render it
+  // started in; if the house changed before the answer came back, that answer
+  // belongs to the old house and is dropped (F-627).
+  const keyRef = useRef(key);
+  keyRef.current = key;
 
   useEffect(() => {
     if (!key) {
@@ -123,7 +128,13 @@ function useRemote<T>(key: string | null, fetcher: () => Promise<T>): Remote<T> 
   }, [key, nonce]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
-  const set = useCallback((value: T) => setState({ status: 'ok', data: value, error: null }), []);
+  const set = useCallback(
+    (value: T) => {
+      if (keyRef.current !== key) return;
+      setState({ status: 'ok', data: value, error: null });
+    },
+    [key],
+  );
   return { ...state, reload, set };
 }
 
@@ -552,10 +563,21 @@ export interface Writer {
   clear: () => void;
 }
 
-function useWriter(): Writer {
+/**
+ * `tenant` is the house the page is showing. A failure belongs to the house
+ * the write started in: switching houses clears it, and a failure that comes
+ * back after a switch is not shown under the new house (F-627).
+ */
+function useWriter(tenant: string | null): Writer {
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
+  const tenantRef = useRef(tenant);
+  tenantRef.current = tenant;
+  useEffect(() => {
+    setFailed(null);
+  }, [tenant]);
   const run = useCallback(async (key: string, fn: () => Promise<void>) => {
+    const startedIn = tenantRef.current;
     setBusy(key);
     setFailed(null);
     try {
@@ -564,7 +586,7 @@ function useWriter(): Writer {
     } catch (e) {
       // Nothing is assumed saved. The caller re-reads or reverts; the message
       // goes on screen rather than into a toast that scrolls away.
-      setFailed({ key, message: errText(e) });
+      if (tenantRef.current === startedIn) setFailed({ key, message: errText(e) });
       return false;
     } finally {
       setBusy(null);
@@ -763,7 +785,7 @@ export function useSettingsNextData() {
     return data;
   });
 
-  const writer = useWriter();
+  const writer = useWriter(rid);
 
   const saveFlag = useCallback(
     (key: string, value: boolean) =>

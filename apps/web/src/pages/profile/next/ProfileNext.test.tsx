@@ -69,6 +69,33 @@ vi.mock('../../../services/api/passkeys', () => ({
   checkPasskey: vi.fn(),
 }));
 
+/**
+ * F-623 — the reader's own notification row, drawn on /profile for every role.
+ */
+const notifApi = vi.hoisted(() => ({
+  fetch: vi.fn(async () => ({
+    userId: 'u1',
+    email: true,
+    push: false,
+    sms: false,
+    categories: { inventory: true, orders: true, calendar: true, system: true, ai: true },
+    updatedAt: null,
+  })),
+  update: vi.fn(async (_uid: string, partial: Record<string, unknown>) => ({
+    userId: 'u1',
+    email: true,
+    push: false,
+    sms: false,
+    categories: { inventory: true, orders: true, calendar: true, system: true, ai: true },
+    updatedAt: '2026-10-09T10:00:00.000Z',
+    ...partial,
+  })),
+}));
+vi.mock('../../../services/api/notifications', () => ({
+  fetchNotificationPreferences: notifApi.fetch,
+  updateNotificationPreferences: notifApi.update,
+}));
+
 vi.mock('./useProfileNextData', () => ({
   useProfileNextData: () => mockData.current,
 }));
@@ -1407,7 +1434,7 @@ describe('the collapse — /profile becomes personal', () => {
     collapsed();
     draw();
     expect(screen.getByText('Register V')).toBeInTheDocument();
-    expect(screen.queryByText('Register VI')).not.toBeInTheDocument();
+    expect(screen.getByText('Register VI')).toBeInTheDocument();
     expect(screen.queryByText('Register VII')).not.toBeInTheDocument();
   });
 
@@ -1738,5 +1765,22 @@ describe('ProfileNext — the Theme row is the ground, saved to the account', ()
     fireEvent.click(option('Charcoal'));
     expect(groundSpy.set).toHaveBeenCalledWith('charcoal');
     expect(groundNoteEl()).toHaveTextContent(/no one is signed in/i);
+  });
+});
+
+describe('ProfileNext — your notifications, for every role (F-623, F-625)', () => {
+  it('gives a staff member their own notification register and saves a switch for them', async () => {
+    mockData.current = base({
+      role: 'staff',
+      isManagerOrOwner: false,
+      user: { userId: 'u1', email: 'server@house.example', name: 'Deniz', role: 'staff', restaurantId: 'r1' },
+    });
+    draw();
+    expect(screen.getByRole('heading', { name: 'What reaches you' })).toBeInTheDocument();
+    // Per house, never "follows you" (F-625).
+    expect(screen.getByText(/Kept for you, in this house\. Another house you work at keeps its own/)).toBeInTheDocument();
+    const email = await screen.findByRole('switch', { name: 'Email notifications' });
+    fireEvent.click(email);
+    await waitFor(() => expect(notifApi.update).toHaveBeenCalledWith('u1', { email: false }));
   });
 });

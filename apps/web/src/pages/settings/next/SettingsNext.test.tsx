@@ -522,7 +522,10 @@ describe('SettingsNext — the editorial spine', () => {
     expect(screen.getByRole('heading', { name: 'When is it open?' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Questions and training' })).toBeInTheDocument();
     expect(screen.getByText('Should it mail a recommendations digest?')).toBeInTheDocument();
-    expect(screen.getByText(/fourteen kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
+    expect(screen.getByText(/fourteen kept for this restaurant, two on your account, one kept for you in this house, one in this browser only/i)).toBeInTheDocument();
+    // F-625: Notifications is stored per (house, person), so it says so and
+    // never claims to follow the reader to another house.
+    expect(screen.getByText(/Kept for you, in this house\. Another house you work at keeps its own/)).toBeInTheDocument();
     // The standing honesty statement (F-180): which registers record an
     // author and how many do not, derived from the register list so the two
     // counts plus "What changed here" add up to the eighteen above.

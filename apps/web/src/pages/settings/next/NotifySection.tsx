@@ -58,10 +58,18 @@
  * Turning yours off does not silence the restaurant, and the page says so.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Choice, Dead, Micro, Note, Register, Row, SaveFailure, Toggle, fieldStyle } from './SectionKit';
-import { PROVENANCE_UNKNOWN, SANS, fmtWhen } from './st-format';
-import type { SettingsNextData } from './useSettingsNextData';
+import { PROVENANCE_UNKNOWN, SANS, errText, fmtWhen, httpStatus } from './st-format';
+import type { Remote, SettingsNextData, Writer } from './useSettingsNextData';
+import {
+  useNotificationPreferences,
+  useUpdateNotificationPreferences,
+} from '@/hooks/queries/useNotificationQueries';
+import type {
+  NotificationPreferences,
+  NotificationPreferencesPatch,
+} from '@/services/api/notifications';
 
 /** "00:00" … "23:00" — the only times the low-stock digest can actually go out. */
 const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
@@ -100,13 +108,21 @@ const MODE_OPTIONS = [
   { value: 'off' as const, label: 'Off' },
 ];
 
-export default function NotifySection({ data }: { data: SettingsNextData }) {
+/**
+ * Takes only what it reads, so /profile can draw the same register from the
+ * shared notification hooks (F-623) without the whole Settings data hook.
+ */
+export default function NotifySection({
+  data,
+}: {
+  data: Pick<SettingsNextData, 'notif' | 'saveNotif' | 'writer'>;
+}) {
   const { notif, saveNotif, writer } = data;
 
   return (
     <Register remote={notif} name="your notification preferences">
       {(p) => {
-        const kept = { kept: 'account' as const, when: p.updatedAt ?? null, whenUnknown: PROVENANCE_UNKNOWN.neverWritten };
+        const kept = { kept: 'person' as const, when: p.updatedAt ?? null, whenUnknown: PROVENANCE_UNKNOWN.neverWritten };
         const low = p.lowStock ?? {
           enabled: true, instantFirstAlert: true, criticalImmediate: true, digestFrequency: 'daily' as const, digestTime: '12:00',
         };
@@ -294,7 +310,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
 
             <div style={{ margin: '20px 0 0' }}><Micro>Recorded, not enforced</Micro></div>
             <Note>
-              These are stored on your account and nothing in the product reads them. They are shown
+              These are kept for you in this house and nothing in the product reads them. They are shown
               rather than hidden, because the value is real even where the effect is not — and because a switch here
               would be a promise the product does not keep.
             </Note>
@@ -319,4 +335,63 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
       }}
     </Register>
   );
+}
+
+/**
+ * The same register, for /profile (F-623, 2026-10-09).
+ *
+ * `PATCH /notifications/preferences` takes any member's own row for their
+ * house, but the only screen that called it was Settings, which sends staff
+ * to "Ask a manager". /profile is open to every role, so it draws this. It is
+ * fed by the shared react-query hooks rather than the Settings data hook, and
+ * renders the section above unchanged, so the two pages cannot drift apart.
+ */
+export function OwnNotifySection({ userId, restaurantId }: { userId: string; restaurantId: string | null }) {
+  const query = useNotificationPreferences(userId, restaurantId);
+  const update = useUpdateNotificationPreferences();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
+  // A failure belongs to the house the write started in (F-627's rule).
+  const houseRef = useRef(restaurantId);
+  houseRef.current = restaurantId;
+
+  const notif: Remote<NotificationPreferences> = {
+    status: !userId
+      ? 'idle'
+      : query.isPending
+        ? 'loading'
+        : query.isError
+          ? httpStatus(query.error) === 403
+            ? 'denied'
+            : 'error'
+          : 'ok',
+    data: query.data ?? null,
+    error: query.isError ? errText(query.error) : null,
+    reload: () => void query.refetch(),
+    // The mutation writes the confirmed answer into its own house's cache.
+    set: () => undefined,
+  };
+
+  const run = useCallback(async (key: string, fn: () => Promise<void>) => {
+    const startedIn = houseRef.current;
+    setBusy(key);
+    setFailed(null);
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      if (houseRef.current === startedIn) setFailed({ key, message: errText(e) });
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+  const writer: Writer = { busy, failed, run, clear: () => setFailed(null) };
+
+  const saveNotif = (key: string, partial: NotificationPreferencesPatch) =>
+    run(key, async () => {
+      await update.mutateAsync({ userId, restaurantId, preferences: partial });
+    });
+
+  return <NotifySection data={{ notif, saveNotif, writer }} />;
 }

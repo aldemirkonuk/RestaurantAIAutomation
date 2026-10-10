@@ -20,7 +20,7 @@ import {
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
   type Notification,
-  type NotificationPreferences,
+  type NotificationPreferencesPatch,
 } from '../../services/api/notifications'
 import { useNotificationStore } from '../../stores'
 import { offlineStorage } from '../../lib/offline-storage'
@@ -352,7 +352,7 @@ export function useUpdateNotificationPreferences() {
       // restaurantId is cache-key-only (see useNotificationPreferences); the
       // server derives the house from the caller's token and never sees it.
       restaurantId?: string | null
-      preferences: Partial<Omit<NotificationPreferences, 'userId'>>
+      preferences: NotificationPreferencesPatch
     }) => updateNotificationPreferences(userId, preferences),
     onSuccess: (updatedPreferences, variables) => {
       // Update preferences cache

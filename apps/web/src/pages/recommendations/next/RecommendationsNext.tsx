@@ -131,6 +131,7 @@ import {
   fmtDay,
   fmtReadAt,
   heldBy,
+  mayActForTheHouse,
   ownRow,
   type StakeId,
 } from './rec-format';
@@ -890,7 +891,9 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             {/* the post — sketch 120 §2, bound into the rail where the disabled placeholder stood */}
             <DigestPost
               digest={data.digest}
-              onSaveHouse={data.setHouseDigest}
+              // F-622: the house's post is an owner's or a manager's, as on
+              // Settings (DigestRow) and on the gateway's PUT.
+              onSaveHouse={mayActForTheHouse(data.role) ? data.setHouseDigest : undefined}
               houseLastPost={
                 sub.phase === 'ready' && sub.status ? (sub.status.houseLastPost ?? null) : undefined
               }

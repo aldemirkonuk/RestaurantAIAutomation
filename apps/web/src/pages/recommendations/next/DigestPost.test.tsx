@@ -116,6 +116,19 @@ describe('DigestPost — the house’s post sheet', () => {
   });
 });
 
+describe('DigestPost — a reader who may not change the house’s post (F-622)', () => {
+  it('shows the stored post read-only, with no Store it, and says who can change it', () => {
+    render(<DigestPost digest={DIGEST} />);
+    fireEvent.click(screen.getByRole('button', { name: "The house's post" }));
+    expect(screen.queryByRole('button', { name: 'Store it' })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: "Arm the house's post" })).toBeDisabled();
+    expect(screen.getByLabelText('Digest hour')).toBeDisabled();
+    expect(
+      screen.getByText("Only an owner or a manager can change the house's post."),
+    ).toBeInTheDocument();
+  });
+});
+
 describe('DigestPost — your copy sheet', () => {
   it('reads a 404 as "not merged here yet" rather than as a broken account', async () => {
     api.get.mockRejectedValue({ response: { status: 404, data: { message: 'not found' } } });
