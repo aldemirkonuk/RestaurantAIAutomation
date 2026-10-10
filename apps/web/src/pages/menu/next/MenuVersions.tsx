@@ -240,6 +240,16 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               : ''}
             It is not the current menu, and no price has changed.
           </p>
+          {result.unreadColumns && result.unreadColumns.length > 0 ? (
+            // F-070: a column the reader does not know is dropped; say which,
+            // and how to have it read, rather than leave its prices missing.
+            <p role="status" className="cl-said" style={{ marginTop: 6 }} data-testid="menu-read-unread-columns">
+              {result.unreadColumns.length === 1 ? 'This column was' : 'These columns were'} not read:{' '}
+              {result.unreadColumns.join(', ')}. To have one read, rename its heading in the file (for example
+              by_glass for a glass price, bottle for a bottle price, category for a section) and read the file
+              again.
+            </p>
+          ) : null}
           {canManage ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button

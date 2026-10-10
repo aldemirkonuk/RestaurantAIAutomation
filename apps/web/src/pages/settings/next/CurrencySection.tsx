@@ -81,6 +81,7 @@ function CurrencyBody({
   }, [reg.code, fromCountry]);
 
   const busy = writer.busy === 'currency';
+  const theirs = fromCountry && CURRENCY_CODES.includes(fromCountry) ? fromCountry : null;
   const dirty = choice !== '' && choice !== reg.code;
 
   if (!reg.readable) {
@@ -156,11 +157,20 @@ function CurrencyBody({
                 call, run by `scripts/correct_restaurant_currency.py`.
               */}
               <option value="">Not recorded — choose one</option>
-              {CURRENCY_CODES.map((code) => (
-                <option key={code} value={code}>
-                  {currencyLabel(code)}
-                </option>
-              ))}
+              {/* The house's own country's money first (F-053), as the Time
+                  zone list puts its zones first; then every code, once. */}
+              {theirs ? (
+                <optgroup label={`${reg.country ?? 'This country'}’s currency`}>
+                  <option value={theirs}>{currencyLabel(theirs)}</option>
+                </optgroup>
+              ) : null}
+              <optgroup label="Every currency">
+                {CURRENCY_CODES.filter((code) => code !== theirs).map((code) => (
+                  <option key={code} value={code}>
+                    {currencyLabel(code)}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <Action disabled={!canManage || busy || !dirty} onClick={() => void save(choice)}>
               {busy ? 'Recording…' : 'Record'}

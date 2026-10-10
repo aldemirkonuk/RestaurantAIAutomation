@@ -190,6 +190,37 @@ describe('the day sheet — nothing is saved by opening it', () => {
     expect(hours.set).toHaveBeenCalled();
   });
 
+  it('a day opened after another takes that day\'s hours, lunch and dinner both (F-030)', async () => {
+    api.putOperatingHours.mockResolvedValue({ restaurantId: 'r1', timezone: 'Europe/Istanbul', operatingHours: null, updatedAt: null });
+    const split = [{ open: '12:00', close: '15:00' }, { open: '18:00', close: '23:30' }];
+    mount({ hours: remote(hoursData({ operatingHours: { ...EMPTY_WEEK, tue: split } })) });
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    // WEEKDAYS order: index 2 is Wednesday, closed; it opens with Tuesday's two ranges.
+    fireEvent.click(screen.getAllByLabelText('Closed')[2]);
+    await userEvent.click(screen.getByRole('button', { name: /save hours/i }));
+    await waitFor(() =>
+      expect(api.putOperatingHours).toHaveBeenCalledWith('r1', expect.objectContaining({ tue: split, wed: split, thu: [] })),
+    );
+  });
+
+  it('"Same hours every day" copies one day to the whole week, and saves nothing by itself (F-030)', async () => {
+    api.putOperatingHours.mockResolvedValue({ restaurantId: 'r1', timezone: 'Europe/Istanbul', operatingHours: null, updatedAt: null });
+    const split = [{ open: '12:00', close: '15:00' }, { open: '18:00', close: '23:30' }];
+    mount({ hours: remote(hoursData({ operatingHours: { ...EMPTY_WEEK, mon: split } })) });
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    const days = Object.keys(EMPTY_WEEK);
+    const label = screen.getAllByRole('button', { name: /hours to every other day/i });
+    expect(label).toHaveLength(1);
+    await userEvent.click(label[0]);
+    expect(api.putOperatingHours).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('button', { name: /hours to every other day/i })).toHaveLength(7);
+    // Sunday off: one tick.
+    fireEvent.click(screen.getAllByLabelText('Closed')[6]);
+    await userEvent.click(screen.getByRole('button', { name: /save hours/i }));
+    const week = Object.fromEntries(days.map((d) => [d, d === 'sun' ? [] : split]));
+    await waitFor(() => expect(api.putOperatingHours).toHaveBeenCalledWith('r1', week));
+  });
+
   it('records the hours as unknown instead — PUTs null, never an all-closed week', async () => {
     api.putOperatingHours.mockResolvedValue({
       restaurantId: 'r1',

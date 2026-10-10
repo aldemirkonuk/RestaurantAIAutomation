@@ -250,6 +250,35 @@ describe('MenuVersions', () => {
     expect(await screen.findByTestId('menu-choice-said')).toHaveTextContent('This is now the current menu: 12 lines');
   });
 
+  it('names the columns of the file that were not read, and how to have one read (F-070)', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({
+      menuId: 'm9',
+      itemsExtracted: 1,
+      submissionsCreated: 0,
+      items: [],
+      unreadColumns: ['glass', 'Notes'],
+    });
+    mount(true);
+    const file = new File(['name,glass,Notes\nOpus,14,x\n'], 'menu.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    const said = await screen.findByTestId('menu-read-unread-columns');
+    expect(said).toHaveTextContent('These columns were not read: glass, Notes.');
+    expect(said).toHaveTextContent('rename its heading in the file');
+  });
+
+  it('a file whose every column was read says nothing about columns', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', itemsExtracted: 1, submissionsCreated: 0, items: [], unreadColumns: [] });
+    mount(true);
+    const file = new File(['name,bottle\nOpus,60\n'], 'menu.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    await screen.findByTestId('menu-read-result');
+    expect(screen.queryByTestId('menu-read-unread-columns')).toBeNull();
+  });
+
   it('an untagged read sends no cadence and no date -- never a default', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
     mockImport.mockResolvedValue({ menuId: 'm9', itemsExtracted: 1, submissionsCreated: 0, items: [] });

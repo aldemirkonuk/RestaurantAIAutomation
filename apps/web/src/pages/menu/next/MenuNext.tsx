@@ -10,6 +10,10 @@
  *   PATCH /menus/:restaurantId/items/:id/discard   soft-remove one line
  *   GET   /menus/:restaurantId/discarded     the lines taken off (F-268)
  *   PATCH /menus/:restaurantId/items/:id/restore   put one back (F-268)
+ *   PATCH /menus/items/:id                     correct one field of a line
+ *                                              in place (F-065): Edit on the
+ *                                              row, owner or manager; a price
+ *                                              is the house's own price
  *   POST  /menus/items                        add one line (existing route;
  *                                              its tenant check was a real
  *                                              gap — see menus.service.ts —
@@ -48,7 +52,9 @@ import {
   getDiscardedLines,
   getMenu,
   restoreMenuItem,
+  reviewMenuItem,
   type DiscardedLine,
+  type EditableMenuItemField,
   type MenuLine,
 } from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
@@ -144,7 +150,131 @@ function useActiveMenu(restaurantId: string | null, canManage: boolean) {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
   });
 
-  return { q, discarded, discard, restore, add };
+  // One field per request: PATCH /menus/items/:id corrects one field. Sent
+  // in order and stopped at the first refusal, so the page can say which
+  // fields were saved and which was not, never "saved" for a half-saved line.
+  const edit = useMutation({
+    mutationFn: async ({ itemId, changes }: { itemId: string; changes: EditChange[] }) => {
+      const out: EditOutcome = { saved: [], notes: [], failed: null };
+      for (const c of changes) {
+        try {
+          const r = await reviewMenuItem(itemId, c.field, c.value);
+          out.saved.push(c.field);
+          const note = editPriceNote(c.field, r);
+          if (note) out.notes.push(note);
+        } catch (e) {
+          out.failed = { field: c.field, reason: e instanceof Error ? e.message : 'no reason given' };
+          break;
+        }
+      }
+      return out;
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: key }),
+  });
+
+  return { q, discarded, discard, restore, add, edit };
+}
+
+type EditChange = { field: EditableMenuItemField; value: string };
+type EditOutcome = {
+  saved: EditableMenuItemField[]
+  notes: { tone: 'alert' | 'said'; text: string }[]
+  failed: { field: EditableMenuItemField; reason: string } | null
+};
+
+/** A field of a line, in the words the page uses for it. */
+const FIELD_WORDS: Record<string, string> = {
+  name: 'Name',
+  producer: 'Producer',
+  category: 'Section',
+  vintage: 'Vintage',
+  region: 'Region',
+  grape_variety: 'Grape',
+  by_glass_price: 'Glass price',
+  bottle_price: 'Bottle price',
+};
+
+/** What a price changed in place did to the house's own price (ADR 0193). */
+function editPriceNote(
+  field: EditableMenuItemField,
+  r: Awaited<ReturnType<typeof reviewMenuItem>>,
+): { tone: 'alert' | 'said'; text: string } | null {
+  const kind = field === 'by_glass_price' ? 'glass' : 'bottle';
+  switch (r.priceSync) {
+    case 'changed':
+      return { tone: 'said', text: `The house's own ${kind} price now matches the line.` };
+    case 'locked':
+      return {
+        tone: 'said',
+        text: `The ${kind} price is locked, so the house's own price was not changed. An owner or a manager changes it under Locked prices.`,
+      };
+    case 'stale':
+      return { tone: 'said', text: `A newer ${kind} price was set after this one, so the house kept it.` };
+    case 'not_linked':
+      return {
+        tone: 'said',
+        text: `This line is not matched to anything the house stocks, so the new ${kind} price is on the menu only.`,
+      };
+    case 'failed':
+      return {
+        tone: 'alert',
+        text: `The menu shows the new ${kind} price, but the house's own price was NOT updated (${r.priceSyncError || 'no reason given'}).`,
+      };
+    default:
+      return null;
+  }
+}
+
+/** One sentence for what Edit saved, and what it did not. */
+function editSentence(o: EditOutcome): string {
+  const words = (fs: EditableMenuItemField[]) => fs.map((f) => FIELD_WORDS[f] ?? f).join(', ');
+  const saved = o.saved.length ? `Saved: ${words(o.saved)}.` : '';
+  if (!o.failed) return saved || 'Nothing had changed, so nothing was saved.';
+  return `${FIELD_WORDS[o.failed.field] ?? o.failed.field} was not saved (${o.failed.reason}).${saved ? ` ${saved}` : ' Nothing was changed.'}`;
+}
+
+/**
+ * Why a line is flagged, in plain words (F-151). The gateway writes its own
+ * note on the line ("Manually added during review", "Manager corrected
+ * by_glass_price"); a line a person added or corrected here is flagged for
+ * that reason alone, which is not a missing price.
+ */
+function flagReason(note: string | null | undefined): { hand: boolean; text: string } | null {
+  if (!note) return null;
+  if (/^Manually added/i.test(note)) return { hand: true, text: 'Added by hand.' };
+  const corrected = /^Manager corrected (\w+)/.exec(note);
+  if (corrected) return { hand: true, text: `${FIELD_WORDS[corrected[1]] ?? 'A detail'} changed by hand.` };
+  if (/^Free tier/i.test(note)) return { hand: false, text: 'Past the 25 lines a menu typed by hand holds on the free plan.' };
+  return { hand: false, text: note };
+}
+
+/** The changes between a line and what was typed for it, in the order shown. */
+function editChanges(
+  line: MenuLine,
+  typed: { name: string; category: string; glass: string; bottle: string },
+): { changes: EditChange[]; error: string | null } {
+  const changes: EditChange[] = [];
+  const name = typed.name.trim();
+  if (!name) return { changes: [], error: 'A line needs a name.' };
+  if (name !== line.name) changes.push({ field: 'name', value: name });
+  const category = typed.category.trim();
+  if (category !== (line.category ?? '')) {
+    if (!category) return { changes: [], error: 'A section cannot be cleared here; type the section it belongs to.' };
+    changes.push({ field: 'category', value: category });
+  }
+  for (const [field, raw, was] of [
+    ['by_glass_price', typed.glass.trim(), line.by_glass_price],
+    ['bottle_price', typed.bottle.trim(), line.bottle_price],
+  ] as const) {
+    if (raw === '') {
+      if (was !== null) return { changes: [], error: `${FIELD_WORDS[field]} cannot be cleared here. Discard the line to take it off.` };
+      continue;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return { changes: [], error: `${FIELD_WORDS[field]} must be a number, 0 or more.` };
+    if (n !== was) changes.push({ field, value: String(n) });
+  }
+  return { changes, error: null };
 }
 
 /** What a put-back line returns as, in the house's words. */
@@ -308,7 +438,65 @@ function AddItemForm({ onAdd, adding, error }: {
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding, canDiscard }: {
+function EditRow({ line, saving, onSave, onCancel }: {
+  line: MenuLine
+  saving: boolean
+  onSave: (changes: EditChange[]) => void
+  onCancel: () => void
+}) {
+  const [typed, setTyped] = useState({
+    name: line.name,
+    category: line.category ?? '',
+    glass: line.by_glass_price === null ? '' : String(line.by_glass_price),
+    bottle: line.bottle_price === null ? '' : String(line.bottle_price),
+  });
+  const [error, setError] = useState<string | null>(null);
+  const set = (k: keyof typeof typed) => (e: { target: { value: string } }) => {
+    setTyped((t) => ({ ...t, [k]: e.target.value }));
+    setError(null);
+  };
+  const save = () => {
+    const r = editChanges(line, typed);
+    if (r.error) return setError(r.error);
+    onSave(r.changes);
+  };
+  return (
+    <tr data-testid="menu-edit-row">
+      <td>
+        <input className="cl-field cl-focus" aria-label={`Name of ${line.name}`} value={typed.name} onChange={set('name')} />
+      </td>
+      <td>
+        <input className="cl-field cl-focus" aria-label={`Section of ${line.name}`} value={typed.category} onChange={set('category')} style={{ width: 110 }} />
+      </td>
+      <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
+      <td>
+        <input className="cl-field cl-focus cl-num" type="number" min={0} step="0.01" aria-label={`Glass price of ${line.name}`} value={typed.glass} onChange={set('glass')} style={{ width: 80 }} />
+      </td>
+      <td>
+        <input className="cl-field cl-focus cl-num" type="number" min={0} step="0.01" aria-label={`Bottle price of ${line.name}`} value={typed.bottle} onChange={set('bottle')} style={{ width: 80 }} />
+      </td>
+      <td>
+        {error ? (
+          <span role="alert" className="cl-note">
+            {error}
+          </span>
+        ) : (
+          <span className="cl-note">A price saved here is the house's own price.</span>
+        )}
+      </td>
+      <td style={{ whiteSpace: 'nowrap' }}>
+        <button type="button" className="cl-btn cl-ink cl-focus" disabled={saving} onClick={save}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>{' '}
+        <button type="button" className="cl-btn cl-focus" disabled={saving} onClick={onCancel}>
+          Cancel
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit }: {
   line: MenuLine
   currency: string | null
   onDiscard: () => void
@@ -316,7 +504,10 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard }: {
   // Taking a line off the guest menu is an owner's or a manager's (F-268);
   // the gateway refuses anyone else.
   canDiscard: boolean
+  // Edit in place (F-065): owners and managers only; null hides it.
+  onEdit: (() => void) | null
 }) {
+  const reason = line.status === 'flagged' ? flagReason(line.review_notes) : null;
   return (
     <tr data-testid="menu-row">
       <td>{line.name}</td>
@@ -326,15 +517,27 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard }: {
       <td className="cl-num">{money(line.bottle_price, currency)}</td>
       <td>
         <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
-          {line.status.replace('_', ' ')}
+          {reason?.hand ? 'by hand' : line.status.replace('_', ' ')}
         </span>
+        {reason ? (
+          <span className="cl-note" style={{ display: 'block' }} data-testid="menu-flag-reason">
+            {reason.text}
+          </span>
+        ) : null}
         {line.price_flag ? (
           <span className="cl-note" style={{ display: 'block' }} data-testid="menu-price-flag" title={line.price_flag_note ?? undefined}>
             {line.price_flag_note ?? 'A blank price kept the last known one.'}
           </span>
         ) : null}
       </td>
-      <td>
+      <td style={{ whiteSpace: 'nowrap' }}>
+        {onEdit ? (
+          <>
+            <button type="button" className="cl-btn cl-focus" onClick={onEdit} aria-label={`Edit ${line.name}`}>
+              Edit
+            </button>{' '}
+          </>
+        ) : null}
         {canDiscard ? (
           <button
             type="button"
@@ -358,7 +561,7 @@ export default function MenuNext() {
   // gateway refuses anyone else regardless of what this page offers.
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
-  const { q, discarded, discard, restore, add } = useActiveMenu(activeRestaurantId, canManage);
+  const { q, discarded, discard, restore, add, edit } = useActiveMenu(activeRestaurantId, canManage);
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -372,6 +575,8 @@ export default function MenuNext() {
       onSettled: () => setRestoringId(null),
     });
   };
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [edited, setEdited] = useState<{ name: string; outcome: EditOutcome } | null>(null);
 
   return (
     <div
@@ -408,8 +613,10 @@ export default function MenuNext() {
         ) : (
           <>
             <p className="cl-standing" style={{ fontSize: 15.5 }}>
-              {q.data.items.length} {q.data.items.length === 1 ? 'line' : 'lines'} on{' '}
-              {q.data.name ?? 'the active menu'}.
+              {/* Not the menu's stored name: every read is named by the
+                  importer ("Wine List" before F-018), never by the house,
+                  and a beer is not on a wine list (F-066). */}
+              {q.data.items.length} {q.data.items.length === 1 ? 'line' : 'lines'} on the current menu.
             </p>
 
             <div style={{ marginTop: 16 }}>
@@ -454,12 +661,39 @@ export default function MenuNext() {
                       </td>
                     </tr>
                   ) : (
-                    q.data.items.map((line) => (
+                    q.data.items.map((line) =>
+                      editingId === line.id ? (
+                        <EditRow
+                          key={line.id}
+                          line={line}
+                          saving={edit.isPending}
+                          onCancel={() => setEditingId(null)}
+                          onSave={(changes) =>
+                            edit.mutate(
+                              { itemId: line.id, changes },
+                              {
+                                onSuccess: (outcome) => {
+                                  setEdited({ name: line.name, outcome });
+                                  if (!outcome.failed) setEditingId(null);
+                                },
+                              },
+                            )
+                          }
+                        />
+                      ) : (
                       <MenuRow
                         key={line.id}
                         line={line}
                         currency={currency}
                         canDiscard={canManage}
+                        onEdit={
+                          canManage
+                            ? () => {
+                                setEdited(null);
+                                setEditingId(line.id);
+                              }
+                            : null
+                        }
                         discarding={discard.isPending && discardingId === line.id}
                         onDiscard={() => {
                           setDiscardingId(line.id);
@@ -469,11 +703,24 @@ export default function MenuNext() {
                           });
                         }}
                       />
-                    ))
+                      ),
+                    )
                   )}
                 </tbody>
               </table>
             </div>
+            {edited ? (
+              <div style={{ marginTop: 8 }} data-testid="menu-edit-said">
+                <p role={edited.outcome.failed ? 'alert' : 'status'} className="cl-said">
+                  {edited.name}: {editSentence(edited.outcome)}
+                </p>
+                {edited.outcome.notes.map((n) => (
+                  <p key={n.text} role={n.tone === 'alert' ? 'alert' : 'status'} className="cl-said" style={{ fontSize: 12 }}>
+                    {n.text}
+                  </p>
+                ))}
+              </div>
+            ) : null}
             {discard.isError ? (
               <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
                 That line was not discarded (
@@ -531,8 +778,9 @@ export default function MenuNext() {
           }}
         >
           <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
-            Discard removes a line from what guests see. What it cost and who added it is kept —
-            nothing here is a delete, and an owner or a manager can put it back.
+            Edit changes a line's name, section or prices; a price saved there is the house's own
+            price. Discard removes a line from what guests see. What it cost and who added it is
+            kept — nothing here is a delete, and an owner or a manager can put it back.
           </p>
         </footer>
       </div>

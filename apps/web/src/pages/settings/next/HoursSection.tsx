@@ -56,6 +56,20 @@ function cloneWeek(hours: OperatingHours): OperatingHours {
   }, {} as OperatingHours);
 }
 
+/**
+ * What a day opens with when its Closed box is unticked (F-030): the hours of
+ * the nearest open day before it, so a week is typed once, not seven times.
+ * With no day open yet, the plain default range.
+ */
+function hoursToOpen(draft: OperatingHours, day: Weekday): { open: string; close: string }[] {
+  const i = WEEKDAYS.indexOf(day);
+  for (let k = 1; k < WEEKDAYS.length; k++) {
+    const prev = draft[WEEKDAYS[(i - k + WEEKDAYS.length) % WEEKDAYS.length]] ?? [];
+    if (prev.length > 0) return prev.map((r) => ({ ...r }));
+  }
+  return [{ ...DEFAULT_RANGE }];
+}
+
 function summarise(hours: OperatingHours | null): string {
   if (hours === null) return EM + ' not stated';
   const openDays = WEEKDAYS.filter((d) => (hours[d] ?? []).length > 0);
@@ -162,7 +176,7 @@ function DaySheet({
                   <input
                     type="checkbox"
                     checked={closed}
-                    onChange={() => setDay(day, closed ? [{ ...DEFAULT_RANGE }] : [])}
+                    onChange={() => setDay(day, closed ? hoursToOpen(draft, day) : [])}
                   />
                   Closed
                 </label>
@@ -224,6 +238,28 @@ function DaySheet({
                     }}
                   >
                     <Plus size={11} /> range
+                  </button>
+                  {/* F-030: one day's hours to the whole week in one tap
+                      (lunch and dinner included); a day off is then one
+                      Closed tick. Nothing is saved until Save hours. */}
+                  <button
+                    type="button"
+                    aria-label={`Copy ${WEEKDAY_LABELS[day]}'s hours to every other day`}
+                    onClick={() => {
+                      setDraft((prev) =>
+                        WEEKDAYS.reduce((acc, d) => {
+                          acc[d] = d === day ? prev[d] : ranges.map((r) => ({ ...r }));
+                          return acc;
+                        }, {} as OperatingHours),
+                      );
+                      setErrors(null);
+                    }}
+                    style={{
+                      alignSelf: 'flex-start', fontFamily: SANS, fontSize: 11, color: 'var(--seal-deep)',
+                      background: 'none', border: 0, cursor: 'pointer', padding: 0,
+                    }}
+                  >
+                    Same hours every day
                   </button>
                 </div>
               )}

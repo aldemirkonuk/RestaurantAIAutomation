@@ -259,7 +259,7 @@ const VERSION_SELECT =
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
 export const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, price_flag, price_flag_note, raw_extracted_text, created_at";
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at";
 /**
  * A discarded line: the member columns (no raw line: this read does not pass
  * through lineForViewer), and what it would go back to (F-268).
@@ -440,6 +440,8 @@ export class MenusService {
     submissionsCreated: number;
     items: MenuImportReviewItem[];
     source: { kept: boolean; failure: string | null };
+    /** A CSV or workbook's header cells that were not read, as written (F-070). */
+    unreadColumns: string[];
   }> {
     const { restaurantId } = dto;
     // Checked before the billed read: a date that is not on the calendar
@@ -451,6 +453,7 @@ export class MenusService {
     let items: WineExtractItem[];
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
+    let unreadColumns: string[] = [];
     if (dto.method === "scan") {
       items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
       sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
@@ -458,10 +461,12 @@ export class MenusService {
     } else if (dto.method === "csv") {
       if (dto.data.fileBase64) {
         items = await this.csvParser.parseExcel(dto.data.fileBase64);
+        unreadColumns = await this.csvParser.unreadExcelColumns(dto.data.fileBase64);
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
         items = this.csvParser.parse(dto.data.csvContent!);
+        unreadColumns = this.csvParser.unreadColumns(dto.data.csvContent!);
         sourceBytes = Buffer.from(dto.data.csvContent!, "utf8");
         sourceMime = { mime: "text/csv", ext: "csv" };
       }
@@ -500,6 +505,7 @@ export class MenusService {
       submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
       items: reviewItems,
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+      unreadColumns,
     };
   }
 
@@ -2135,15 +2141,18 @@ export class MenusService {
       bottle === null && glass === null && knownBottle === null && knownGlass === null;
     const flag: PriceFlag | null =
       kept.length > 0 ? "blank_kept_last_known" : noPriceAnywhere ? "blank_no_house_price" : null;
+    // Kind-neutral words (F-066): a menu line is a beer, a cocktail or a tea
+    // as often as a wine. The price is set on /menu itself, Edit on the line
+    // (F-065), which also clears this note.
     // Past tense on purpose (last-call review, 2026-09-21): the note stays on
     // the line after a manager changes the price on Inventory, so it states
     // what was kept when the line was carried -- true forever -- not what the
     // house "keeps" now, which the first price change would make false.
     const flagNote =
       kept.length > 0
-        ? `The menu line shows no ${kept.map((k) => k.split(" ")[0]).join(" or ")} price, so the house kept the ${kept.join(" and ")} it already had. A manager can change it on Inventory, under Your price.`
+        ? `The menu line shows no ${kept.map((k) => k.split(" ")[0]).join(" or ")} price, so the house kept the ${kept.join(" and ")} it already had. An owner or a manager can change it here, with Edit on this line.`
         : noPriceAnywhere
-          ? "The menu line shows no price, and the house had no price for this wine either, so it stands on the menu unpriced. A manager can set one on Inventory, under Your price."
+          ? "The menu line shows no price, and the house had no price for it either, so it stands on the menu unpriced. An owner or a manager can set one here, with Edit on this line."
           : null;
     if (bottle === null && glass === null) return { outcome: "no_price", error: null, flag, flagNote, held: [] };
     try {

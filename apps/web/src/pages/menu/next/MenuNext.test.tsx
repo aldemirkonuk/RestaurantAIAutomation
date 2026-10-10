@@ -14,7 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
@@ -24,12 +24,14 @@ import {
   addMenuItem,
   getDiscardedLines,
   restoreMenuItem,
+  reviewMenuItem,
   type ActiveMenu,
   type DiscardedLine,
   type MenuLine,
 } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
+// The role is set per test: Edit is an owner's or a manager's (F-065).
 const auth = vi.hoisted(() => ({ role: null as string | null }));
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'r1', loading: false, activeRole: auth.role }),
@@ -46,6 +48,7 @@ vi.mock('../../../services/api/menus', async () => {
     addMenuItem: vi.fn(),
     getDiscardedLines: vi.fn(),
     restoreMenuItem: vi.fn(),
+    reviewMenuItem: vi.fn(),
     // The kept-menus panel (MenuVersions.tsx, its own test file) reads on
     // mount; here it answers "none kept" so this file tests the current menu.
     listMenuVersions: vi.fn().mockResolvedValue({ current: null, lastUsed: null, versions: [] }),
@@ -89,6 +92,7 @@ const mockDiscard = vi.mocked(discardMenuItem);
 const mockAdd = vi.mocked(addMenuItem);
 const mockDiscarded = vi.mocked(getDiscardedLines);
 const mockRestore = vi.mocked(restoreMenuItem);
+const mockReview = vi.mocked(reviewMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
 
 function line(over: Partial<MenuLine> = {}): MenuLine {
@@ -144,6 +148,8 @@ beforeEach(() => {
   mockDiscarded.mockReset();
   mockDiscarded.mockResolvedValue({ items: [] });
   mockRestore.mockReset();
+  mockReview.mockReset();
+  auth.role = null;
   mockCurrency.mockReset();
   mockCurrency.mockResolvedValue(currency());
 });
@@ -363,5 +369,95 @@ describe('MenuNext — put a discarded line back (F-268)', () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Put Raki back on the menu' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('not put back');
+  });
+});
+
+describe('MenuNext — kind-neutral words (F-066)', () => {
+  it('counts the lines on the current menu, never by the name the importer gave it', async () => {
+    mockGetMenu.mockResolvedValue(menu({ name: 'Wine List' }));
+    mount();
+    expect(await screen.findByText('1 line on the current menu.')).toBeInTheDocument();
+    expect(screen.queryByText(/Wine List/)).not.toBeInTheDocument();
+  });
+});
+
+describe('MenuNext — why a line is flagged (F-151)', () => {
+  it('a line added or corrected by hand says so, and is not read as a missing price', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({ id: 'a', name: 'Ayva Highball', status: 'flagged', review_notes: 'Manually added during review', by_glass_price: 16 }),
+          line({ id: 'b', name: 'Efes draft', status: 'flagged', review_notes: 'Manager corrected by_glass_price' }),
+          line({ id: 'c', name: 'Raki', status: 'flagged', review_notes: null }),
+        ],
+      }),
+    );
+    mount();
+    const rows = await screen.findAllByTestId('menu-row');
+    expect(rows[0]).toHaveTextContent('by hand');
+    expect(rows[0]).toHaveTextContent('Added by hand.');
+    expect(rows[0]).not.toHaveTextContent('flagged');
+    expect(rows[1]).toHaveTextContent('Glass price changed by hand.');
+    expect(rows[1]).not.toHaveTextContent('by_glass_price');
+    // No note: the status is all there is to say.
+    expect(rows[2]).toHaveTextContent('flagged');
+    expect(within(rows[2]).queryByTestId('menu-flag-reason')).toBeNull();
+  });
+});
+
+describe('MenuNext — edit a line in place (F-065)', () => {
+  it('staff are offered no Edit', async () => {
+    auth.role = 'staff';
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByRole('button', { name: 'Edit Turkish coffee' })).toBeNull();
+  });
+
+  it('a manager changes the name and the glass price; each changed field is saved, in order, and said', async () => {
+    auth.role = 'manager';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockResolvedValueOnce({ menuItemId: 'l1', fieldName: 'name', newValue: 'Türk kahvesi' });
+    mockReview.mockResolvedValueOnce({ menuItemId: 'l1', fieldName: 'by_glass_price', newValue: '70', priceSync: 'changed' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Name of Turkish coffee'), { target: { value: 'Türk kahvesi' } });
+    fireEvent.change(screen.getByLabelText('Glass price of Turkish coffee'), { target: { value: '70' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockReview).toHaveBeenCalledTimes(2));
+    expect(mockReview.mock.calls).toEqual([
+      ['l1', 'name', 'Türk kahvesi'],
+      ['l1', 'by_glass_price', '70'],
+    ]);
+    const said = await screen.findByTestId('menu-edit-said');
+    expect(said).toHaveTextContent('Turkish coffee: Saved: Name, Glass price.');
+    expect(said).toHaveTextContent("The house's own glass price now matches the line.");
+    expect(screen.queryByTestId('menu-edit-row')).toBeNull();
+  });
+
+  it('a refused field is named, with what was saved before it, and the form stays open', async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(menu());
+    mockReview.mockResolvedValueOnce({ menuItemId: 'l1', fieldName: 'category', newValue: 'Coffee' });
+    mockReview.mockRejectedValueOnce(new Error('the gateway refused'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Section of Turkish coffee'), { target: { value: 'Coffee' } });
+    fireEvent.change(screen.getByLabelText('Bottle price of Turkish coffee'), { target: { value: '300' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const said = await screen.findByTestId('menu-edit-said');
+    expect(said).toHaveTextContent('Bottle price was not saved (the gateway refused). Saved: Section.');
+    expect(screen.getByTestId('menu-edit-row')).toBeInTheDocument();
+  });
+
+  it('a price cannot be cleared from here, and nothing is sent', async () => {
+    auth.role = 'manager';
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    fireEvent.change(screen.getByLabelText('Glass price of Turkish coffee'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Glass price cannot be cleared here.');
+    expect(mockReview).not.toHaveBeenCalled();
   });
 });

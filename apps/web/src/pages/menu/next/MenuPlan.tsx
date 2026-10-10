@@ -23,7 +23,7 @@
  * Simple and readable for people (the founder's Wave Four / Arrival bar): one
  * sentence first, the detail after. No motion.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getMenuPlan,
@@ -216,6 +216,17 @@ export function MenuPlan({
     },
   });
 
+  // Seconds since "Make it current" was pressed (F-069). The gateway answers
+  // once, at the end, so there is no true progress to show; the count says
+  // the work is still going rather than leaving a label that looks stuck.
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!choose.isPending) return;
+    setSeconds(0);
+    const t = setInterval(() => setSeconds((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [choose.isPending]);
+
   if (q.isLoading) {
     return (
       <p className="cl-said" role="status" style={{ marginTop: 10 }}>
@@ -400,6 +411,12 @@ export function MenuPlan({
           </button>
         ) : null}
       </div>
+      {choose.isPending ? (
+        <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-plan-working">
+          Putting {plan.lines.length} {plan.lines.length === 1 ? 'line' : 'lines'} on the menu and setting their
+          prices. A long menu can take half a minute; keep this page open. {seconds}s so far.
+        </p>
+      ) : null}
       {!canManage ? (
         <p className="cl-note">An owner or a manager chooses the current menu. Every price here is read at this house only.</p>
       ) : (
