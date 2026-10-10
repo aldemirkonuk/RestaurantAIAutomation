@@ -403,6 +403,50 @@ describe("the prose predicate", () => {
     expect(courtesyLineOrNull(`Thanks, open ${text} now.`)).toBeNull();
   });
 
+  // Gate BLOCK at 6bc930396, finding 2: normaliseProse stripped format
+  // characters before the link test, so a format character (or a Hangul
+  // filler, a letter that renders as nothing) between a letter and a scheme
+  // passed. Each listed scheme behind each of the report's characters.
+  it.each(
+    [0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0xad, 0x200e, 0x061c, 0xe0001, 0x3164, 0x115f].flatMap((cp) =>
+      ["javascript:alert", "data:text", "file:secret", "ftp:x", "sms:x", "vbscript:a"].map((scheme) => [
+        `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`,
+        `x${String.fromCodePoint(cp)}${scheme}`,
+      ]),
+    ),
+  )("refuses a scheme behind a letter and %s: %s", (_cp, text) => {
+    expect(rules(T(`Open ${text} now.`))).toContain("link");
+    expect(courtesyLineOrNull(`Thanks, open ${text} now.`)).toBeNull();
+  });
+
+  // Finding 3: JS \s does not match U+0085 (NEL), so the folds name it.
+  it.each([
+    ["NEL before the dot", "evil\u0085.com"],
+    ["NEL inside brackets before the dot", "evil[\u0085.]com"],
+    ["NEL inside brackets after the dot", "evil[.\u0085]com"],
+  ])("refuses a link with %s", (_label, link) => {
+    expect(rules(T(`See ${link} for details.`))).toContain("link");
+    expect(courtesyLineOrNull(`Thanks from ${link} as ever.`)).toBeNull();
+  });
+
+  // Finding 1, named in ADR 0313:37: a scheme word split by a mark, format
+  // character or backslash that no copy shows whole with nothing joined
+  // before it. No mail client reads a split scheme as one.
+  it.each([
+    "x\u034Fjava\u034Fscript:alert",
+    "x\u034Fda\u034Fta:text",
+    "x\\java\\script:alert",
+    "xjava\u034Fscript:alert",
+    "x\u200Bjava\u200Bscript:alert",
+    "x\u200Bjava\u0301script:alert",
+  ])("does not catch a split scheme joined to a letter (named gap): %s", (text) => {
+    expect(rules(T(`Open ${text} now.`))).not.toContain("link");
+  });
+
+  it("refuses a split scheme that one copy shows whole: a mark before, a format character inside", () => {
+    expect(rules(T("Open x\u0301java\u200Bscript:alert now."))).toContain("link");
+  });
+
   // Finding 3: the defang families the report found, now folded to a dot.
   it.each([
     ["a backslash-escaped dot", "evil\\.com"],
@@ -467,6 +511,9 @@ describe("the prose predicate", () => {
       "a_".repeat(N / 2),
       " ".repeat(N) + "x",
       "\n".repeat(N) + "x",
+      "\u0085".repeat(N) + "x",
+      "(\u0085".repeat(N / 2),
+      "\u200B".repeat(N) + "x",
       " \n".repeat(N / 2) + "x",
       "(".repeat(N),
       "( ".repeat(N / 2),
@@ -476,12 +523,16 @@ describe("the prose predicate", () => {
       "\\".repeat(N),
       "a-".repeat(N / 2) + "://",
     ];
+    // Quadratic was 1.4-6 s at 100 KB; linear is a few ms. The bound is loose.
+    // A slow input is named in the failure, so a mutation shows which one.
+    const slow: string[] = [];
     for (const input of inputs) {
       const t0 = Date.now();
       orderRequestProseRefusals(T(input));
-      // Quadratic was 1.4-6 s at 100 KB; linear is a few ms. The bound is loose.
-      expect(Date.now() - t0).toBeLessThan(750);
+      const ms = Date.now() - t0;
+      if (ms >= 750) slow.push(`${JSON.stringify(input.slice(0, 4))}… (${input.length} chars): ${ms} ms`);
     }
+    expect(slow).toEqual([]);
   });
 
   it("does not catch the stated gaps (ADR 0313:37)", () => {

@@ -281,7 +281,7 @@ const CURRENCY_WORD_RE = word([
 ]);
 /**
  * A link (ADR 0313:37). `holdsLink` refuses the prose when `URL_RE` matches
- * either of the two views `linkViews` makes of it. `URL_RE` matches:
+ * any of the three views `linkViews` makes of it. `URL_RE` matches:
  *   - one ASCII letter and up to 31 more letters, digits, "+", "." or "-",
  *     followed by "//" after a colon ("https://"). Nothing is required before
  *     the letter, so "-https://x", "+http://a", ".https://x" and "…https://x"
@@ -310,7 +310,10 @@ const CURRENCY_WORD_RE = word([
  *   - a dot-like character not in `DOT_LIKE_RE`, and a bracket not in
  *     `OPEN_BRACKETS` / `CLOSE_BRACKETS`;
  *   - a scheme not in `LINK_SCHEMES` without "//" ("foo:bar"), and a "://"
- *     whose nearest ASCII letter before it is more than 31 characters back.
+ *     whose nearest ASCII letter before it is more than 31 characters back;
+ *   - a scheme word split by a mark, format character, filler or backslash
+ *     that no copy shows whole with nothing joined before it
+ *     ("x\u034Fjava\u034Fscript:alert"; see `linkViews`).
  *
  * Speed: the "://" alternative reads at most 35 characters from any start,
  * and the bare-domain alternative starts only at the first character of a
@@ -357,14 +360,20 @@ const DOT_LIKE_RE =
 const OPEN_BRACKETS = "\\[({<\u3010\u3014\u300C\u300E\u3016\u3018\u301A\u300A\u3008\u27E8\u00AB\u2039";
 const CLOSE_BRACKETS = "\\])}>\u3011\u3015\u300D\u300F\u3017\u3019\u301B\u300B\u3009\u27E9\u00BB\u203A";
 const O = `[${OPEN_BRACKETS}]`;
+/**
+ * Whitespace for the folds: JS `\s` plus U+0085 (NEL), which `\s` does not
+ * match although Unicode counts it as a line break.
+ */
+const WS = "\\s\\u0085";
 const C = `[${CLOSE_BRACKETS}]`;
 /** "&period;", the HTML entity for ".". */
 const DOT_ENTITY_RE = /&period;/giu;
 /**
- * Whitespace before a dot that holds a line break ("evil\n.com"). It starts
- * only at the first whitespace of a run, so a long run is scanned once.
+ * Whitespace (`WS`) before a dot that holds a line break ("evil\n.com",
+ * "evil\u0085.com"). It starts only at the first whitespace of a run, so a
+ * long run is scanned once.
  */
-const BREAK_BEFORE_DOT_RE = /(?<!\s)\s+(?=\.)/gu;
+const BREAK_BEFORE_DOT_RE = new RegExp(`(?<![${WS}])[${WS}]+(?=\\.)`, "gu");
 const LINE_BREAK_RE = /[\n\r\v\f\u0085\u2028\u2029]/u;
 /**
  * A defanged dot: "." or "dot" with one or more brackets before it and one
@@ -380,16 +389,16 @@ const LINE_BREAK_RE = /[\n\r\v\f\u0085\u2028\u2029]/u;
  * by a spec (ADR 0313:37).
  */
 const DEFANGED_DOT_RE = new RegExp(
-  `(?<![\\s${OPEN_BRACKETS}])[\\s${OPEN_BRACKETS}]*(?:\\.|dot)(?<=${O}\\s*(?:\\.|dot))(?=\\s*${C})[\\s${CLOSE_BRACKETS}]*`,
+  `(?<![${WS}${OPEN_BRACKETS}])[${WS}${OPEN_BRACKETS}]*(?:\\.|dot)(?<=${O}[${WS}]*(?:\\.|dot))(?=[${WS}]*${C})[${WS}${CLOSE_BRACKETS}]*`,
   "giu",
 );
 /** An unmatched opening bracket before a dot ("evil[.com", "evil[[.com"). */
 const OPEN_BEFORE_DOT_RE = new RegExp(
-  `(?<![\\s${OPEN_BRACKETS}])(\\s*)${O}[\\s${OPEN_BRACKETS}]*\\.`,
+  `(?<![${WS}${OPEN_BRACKETS}])([${WS}]*)${O}[${WS}${OPEN_BRACKETS}]*\\.`,
   "gu",
 );
 /** An unmatched closing bracket after a dot ("evil.]com"); spaces after it stay. */
-const CLOSE_AFTER_DOT_RE = new RegExp(`\\.(?=\\s*${C})[\\s${CLOSE_BRACKETS}]*`, "gu");
+const CLOSE_AFTER_DOT_RE = new RegExp(`\\.(?=[${WS}]*${C})[${WS}${CLOSE_BRACKETS}]*`, "gu");
 /** An opening bracket between a dot and a letter ("evil.(com)", left by "(.)(com)"). */
 const OPEN_AFTER_DOT_RE = new RegExp(`\\.${O}+(?=\\p{L})`, "gu");
 
@@ -401,25 +410,42 @@ function foldDots(text: string): string {
     .replace(BREAK_BEFORE_DOT_RE, (ws) => (LINE_BREAK_RE.test(ws) ? "" : ws))
     .replace(DEFANGED_DOT_RE, ".")
     .replace(OPEN_BEFORE_DOT_RE, (_m, lead: string) => `${lead}.`)
-    .replace(CLOSE_AFTER_DOT_RE, (m) => `.${m.slice(m.trimEnd().length)}`)
+    .replace(CLOSE_AFTER_DOT_RE, (m) => `.${m.slice(m.replace(/[\s\u0085]+$/u, "").length)}`)
     .replace(OPEN_AFTER_DOT_RE, ".");
 }
 /**
- * The two copies of the prose the link test reads (the courtesy line and the
- * house's words keep their own characters). Both go through `foldDots`:
+ * The three copies of the prose the link test reads (the courtesy line and
+ * the house's words keep their own characters). `holdsLink` is given the
+ * prose after NFKC only, before `normaliseProse` strips format characters.
+ * Each copy goes through `foldDots`:
  *   1. with every combining mark (`\p{M}`: U+034F, U+0301, U+0338, the
  *      variation selectors U+FE00-U+FE0F, the Mongolian U+180B-U+180D …),
  *      every format character (`\p{Cf}`) and every backslash stripped first.
  *      UTS 46 ignores or maps the marks, so "evil͏.com" reaches evil.com; here
  *      it reads "evil.com", and "evil\.com" reads "evil.com";
- *   2. with nothing stripped. Stripping can join a letter onto a scheme word
- *      ("x\u0301javascript:alert" reads "xjavascript:alert", which the
- *      scheme's lookbehind lets through), so this copy keeps the separator.
- * `holdsLink` refuses when either copy matches `URL_RE`, so anything the
- * unstripped copy refuses stays refused.
+ *   2. with only the format characters stripped;
+ *   3. with nothing stripped, and every format character and Hangul filler
+ *      (U+115F, U+1160, U+3164, U+FFA0: letters that render as nothing)
+ *      turned into a space.
+ * Stripping can join a letter onto a scheme word ("x\u0301javascript:alert"
+ * and "x\u200Bjavascript:alert" read "xjavascript:alert" in copy 1, which the
+ * scheme's lookbehind lets through); copy 2 keeps a mark or backslash as the
+ * separator, copy 3 a format character or filler. `holdsLink` refuses when
+ * any copy matches `URL_RE`.
+ * Not caught: a scheme word that is itself split by a mark, format
+ * character, filler or backslash, whenever no copy shows it whole with no
+ * letter, digit or "_" right before it. For example
+ * "x\u034Fjava\u034Fscript:alert", "x\\java\\script:alert",
+ * "x\u200Bjava\u200Bscript:alert", "x\u200Bjava\u0301script:alert" and
+ * "xjava\u034Fscript:alert". No mail client reads a split scheme as one.
+ * Pinned by a spec (ADR 0313:37).
  */
-function linkViews(text: string): [string, string] {
-  return [foldDots(text.replace(/[\p{M}\p{Cf}\\]/gu, "")), foldDots(text)];
+function linkViews(text: string): string[] {
+  return [
+    foldDots(text.replace(/[\p{M}\p{Cf}\\]/gu, "")),
+    foldDots(text.replace(/\p{Cf}/gu, "")),
+    foldDots(text.replace(/[\p{Cf}\u115F\u1160\u3164\uFFA0]/gu, " ")),
+  ];
 }
 function holdsLink(text: string): boolean {
   return linkViews(text).some((v) => URL_RE.test(v));
@@ -531,7 +557,7 @@ export function orderRequestProseRefusals(template: string): ProseRefusal[] {
       says: "Your words may not name money (a currency sign, code or word). A price, when one may be shown, comes from {{order_lines}}.",
     });
   }
-  if (holdsLink(prose)) {
+  if (holdsLink(template.replace(TOKEN_RE, " ").normalize("NFKC"))) {
     refusals.push({
       rule: "link",
       says: "Your words may not hold a link, a web address or an email address (ADR 0173 D5).",
@@ -588,9 +614,11 @@ export function courtesyLineOrNull(sentence: string | null | undefined): string 
   if (typeof sentence !== "string") return null;
   const line = normaliseProse(sentence).replace(/\s+/g, " ").trim();
   if (!line || line.length > 240) return null;
-  // The link test also reads the sentence before its whitespace is collapsed,
-  // so a line break before a dot ("evil\n.com") is folded as in house prose.
-  if (holdsLink(normaliseProse(sentence))) return null;
+  // The link test also reads the sentence before its whitespace is collapsed
+  // and its format characters stripped, so a line break before a dot
+  // ("evil\n.com") is folded and a format character before a scheme
+  // separates it, as in house prose.
+  if (holdsLink(sentence.normalize("NFKC"))) return null;
   if (/\p{N}|\p{Sc}|\[|\]|\{|\}/u.test(line)) return null;
   const lowers = [line.toLowerCase(), line.toLocaleLowerCase("tr")];
   if (lowers.some((l) => DATE_WORD_RE.test(l))) return null;
