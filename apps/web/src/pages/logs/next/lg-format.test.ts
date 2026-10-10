@@ -230,3 +230,53 @@ describe('lg-format — a day to read back from', () => {
     expect(parseDay('9999-12-30')).not.toBeNull();
   });
 });
+
+/**
+ * F-634 (2026-10-09). /logs dated every row on the device's clock. The suite
+ * runs on New York's; these read a Los Angeles house from there.
+ */
+describe('lg-format — the house’s clock', () => {
+  const LA = 'America/Los_Angeles';
+  // Friday 24 Jul 2026, 20:30 and 22:00 in Los Angeles; 23:30 Fri and 01:00 Sat in New York.
+  const late = '2026-07-25T03:30:00.000Z';
+  const later = '2026-07-25T05:00:00.000Z';
+  const row = (id: string, at: string) => ({ id, source: 'pos_checks', occurredAt: at, summary: id }) as never;
+
+  it('keeps one service on one house day, wherever it is read from', () => {
+    expect(groupByDay([row('b', later), row('a', late)]).map((g) => g.key)).toEqual(['2026-07-25', '2026-07-24']);
+    const house = groupByDay([row('b', later), row('a', late)], LA);
+    expect(house.map((g) => g.key)).toEqual(['2026-07-24']);
+    expect(house[0].heading).toMatch(/Fri/);
+    expect(house[0].heading).toMatch(/24/);
+  });
+
+  it('stamps the time of day on the house’s clock', () => {
+    expect(fmtClock(later, LA)).toMatch(/10:00:00\s*PM/);
+    expect(fmtStamp(later, LA)).toMatch(/Fri.*24.*10:00:00\s*PM/);
+    expect(dayKeyOf(later, LA)).toBe('2026-07-24');
+  });
+
+  it('a zone this browser cannot read leaves the device’s clock, never a blank', () => {
+    expect(dayKeyOf(later, 'Not/AZone')).toBe(dayKeyOf(later));
+    expect(fmtClock(later, 'Not/AZone')).toBe(fmtClock(later));
+  });
+
+  it('ends a named day where the house’s day headings end it, DST days included', () => {
+    const dayAfter = (key: string) => {
+      const [y, m, d] = key.split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+    };
+    for (const zone of [LA, 'Europe/Istanbul', 'America/Havana', 'Asia/Beirut', 'Australia/Lord_Howe']) {
+      for (const key of ['2026-07-22', '2026-03-08', '2026-11-01', '2026-03-29', '2026-10-25', '2026-12-31']) {
+        const d = parseDay(key, zone)!;
+        const end = Date.parse(d.end);
+        expect(dayKeyOf(new Date(end - 1).toISOString(), zone)).toBe(key);
+        expect(dayKeyOf(new Date(end).toISOString(), zone)).toBe(dayAfter(key));
+      }
+    }
+    // The heading is the house's name for the day.
+    expect(parseDay('2026-07-24', LA)!.heading).toMatch(/Fri/);
+    // A Los Angeles day ends at 07:00 UTC in summer, not at New York's 04:00.
+    expect(parseDay('2026-07-24', LA)!.end).toBe('2026-07-25T07:00:00.000Z');
+  });
+});

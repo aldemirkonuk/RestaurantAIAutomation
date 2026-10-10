@@ -1977,51 +1977,66 @@ export class InventoryService {
 
   /**
    * Soft-delete an inventory item (set is_active = false)
+   *
+   * F-633 (2026-10-09). The remove dialog states the rule — a wine leaves the
+   * inventory only once its stock is at zero, counted down on the ledger with
+   * a reason — but the server took the DELETE whatever the stock, so a direct
+   * call hid bottles still on the shelf with no ledger row. The rule now holds
+   * here: any bottle left (live or shadow) refuses the removal in plain words,
+   * and the write itself repeats the zero-stock filter so stock that lands
+   * between the read and the write is not hidden either.
+   *
+   * WHO AND WHEN. The removal writes one `system_audit_log` row,
+   * `inventory_item_removed`, naming the actor and the wine, which /logs
+   * already reads. `deleted_at` is NOT stamped: the re-add paths
+   * (`createInventoryItem`, the bulk add) reactivate the row with
+   * `is_active: true` and never clear it, so a stamp would outlive the wine's
+   * return. Like `discardMenuItem` (F-484), a failed audit write does not undo
+   * the removal; it is logged and the reply says `audited: false`.
    */
-  async softDeleteItem(restaurantId: string, itemId: string): Promise<void> {
+  async softDeleteItem(
+    restaurantId: string,
+    itemId: string,
+    actorUserId: string | null = null,
+  ): Promise<{ audited: boolean }> {
     const client = this.dbService.getClient();
+    const cols =
+      "id, wine_name, stock_live, shadow_stock, master_wine_library (name)";
 
     // Try by restaurant_inventory.id (PK) first
     const { data: byPk, error: pkError } = await client
       .from("restaurant_inventory")
-      .update({ is_active: false })
+      .select(cols)
       .eq("restaurant_id", restaurantId)
-      .eq("id", itemId)
-      .select("id");
+      .eq("id", itemId);
 
     if (pkError) {
       this.logger.error(`softDeleteItem (by PK) error: ${pkError.message}`);
       throw new HttpException(pkError.message, HttpStatus.BAD_REQUEST);
     }
 
-    if (byPk && byPk.length > 0) {
-      this.logger.log({
-        message: "Inventory item soft-deleted by PK",
-        restaurantId,
-        itemId,
-      });
-      return;
-    }
-
-    // Fallback: caller may have passed master_wine_id instead of restaurant_inventory.id
-    this.logger.warn(
-      `softDeleteItem: no row matched id=${itemId}; retrying by master_wine_id`,
-    );
-    const { data: byWineId, error: wineError } = await client
-      .from("restaurant_inventory")
-      .update({ is_active: false })
-      .eq("restaurant_id", restaurantId)
-      .eq("master_wine_id", itemId)
-      .select("id");
-
-    if (wineError) {
-      this.logger.error(
-        `softDeleteItem (by master_wine_id) error: ${wineError.message}`,
+    let rows: any[] = byPk || [];
+    if (rows.length === 0) {
+      // Fallback: caller may have passed master_wine_id instead of restaurant_inventory.id
+      this.logger.warn(
+        `softDeleteItem: no row matched id=${itemId}; retrying by master_wine_id`,
       );
-      throw new HttpException(wineError.message, HttpStatus.BAD_REQUEST);
+      const { data: byWineId, error: wineError } = await client
+        .from("restaurant_inventory")
+        .select(cols)
+        .eq("restaurant_id", restaurantId)
+        .eq("master_wine_id", itemId);
+
+      if (wineError) {
+        this.logger.error(
+          `softDeleteItem (by master_wine_id) error: ${wineError.message}`,
+        );
+        throw new HttpException(wineError.message, HttpStatus.BAD_REQUEST);
+      }
+      rows = byWineId || [];
     }
 
-    if (!byWineId || byWineId.length === 0) {
+    if (rows.length === 0) {
       this.logger.error(
         `softDeleteItem: item not found — id=${itemId}, restaurantId=${restaurantId}`,
       );
@@ -2031,11 +2046,102 @@ export class InventoryService {
       );
     }
 
+    const nameOf = (r: any): string =>
+      r.wine_name?.trim() || r.master_wine_library?.name?.trim() || "This wine";
+    const bottles = (r: any): number =>
+      Math.max(0, Number(r.stock_live) || 0) +
+      Math.max(0, Number(r.shadow_stock) || 0);
+
+    const held = rows.find((r) => bottles(r) > 0);
+    if (held) {
+      const n = bottles(held);
+      throw new HttpException(
+        `${nameOf(held)} still has ${n} bottle${n === 1 ? "" : "s"} on the books. Count it down to zero with a reason first, so the bottles leave on the record. Nothing was removed.`,
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // The zero-stock rule again on the write: a delivery or count that lands
+    // after the read above must not be hidden by this removal.
+    const { data: gone, error: writeError } = await client
+      .from("restaurant_inventory")
+      .update({ is_active: false })
+      .eq("restaurant_id", restaurantId)
+      .in(
+        "id",
+        rows.map((r) => r.id),
+      )
+      .lte("stock_live", 0)
+      .or("shadow_stock.is.null,shadow_stock.lte.0")
+      .select("id");
+
+    if (writeError) {
+      this.logger.error(`softDeleteItem write error: ${writeError.message}`);
+      throw new HttpException(writeError.message, HttpStatus.BAD_REQUEST);
+    }
+
+    // Every row that did go is filed, even when another one did not.
+    const goneIds = new Set((gone || []).map((g: any) => g.id));
+    let audited = true;
+    for (const r of rows.filter((x) => goneIds.has(x.id))) {
+      audited =
+        (await this.recordRemoval(restaurantId, r.id, nameOf(r), actorUserId)) &&
+        audited;
+    }
+
+    if (goneIds.size < rows.length) {
+      throw new HttpException(
+        `Stock for ${nameOf(rows[0])} arrived while it was being removed. Count it down to zero first. ${goneIds.size === 0 ? "Nothing was removed." : "Part of it was removed."}`,
+        HttpStatus.CONFLICT,
+      );
+    }
+
     this.logger.log({
-      message: "Inventory item soft-deleted by master_wine_id",
+      message: "Inventory item soft-deleted",
       restaurantId,
       itemId,
     });
+    return { audited };
+  }
+
+  /** The audit half of `softDeleteItem` (F-633). Never throws. */
+  private async recordRemoval(
+    restaurantId: string,
+    inventoryId: string,
+    wineName: string,
+    actorUserId: string | null,
+  ): Promise<boolean> {
+    try {
+      const { error } = await this.dbService
+        .getClient()
+        .from("system_audit_log")
+        .insert({
+          actor_type: actorUserId ? "user" : "system",
+          actor_id: actorUserId,
+          action: "inventory_item_removed",
+          entity_type: "inventory_item",
+          entity_id: inventoryId,
+          restaurant_id: restaurantId,
+          reason: null,
+          changes: {
+            // Read on /logs as "Name: inventory item removed — Opus One 2018".
+            subject: wineName,
+            fields: { in_inventory: { from: true, to: false } },
+          },
+        });
+      if (error) {
+        this.logger.error(
+          `inventory_item_removed happened but the audit row failed to write: ${error.message}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      this.logger.error(
+        `inventory_item_removed happened but the audit row threw: ${err?.message}`,
+      );
+      return false;
+    }
   }
 
   /**

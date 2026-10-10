@@ -35,9 +35,10 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient, getErrorMessage } from '@/services/api/client';
+import { restaurantsApi } from '@/services/api/restaurants';
 import { countBySource, type TimelineEvent, type TimelinePage, type TimelineSource } from './lg-format';
 
 /**
@@ -130,7 +131,39 @@ function unionOf(
   return known ? [...set] : null;
 }
 
-export function useLogsNextData(correlationId: string | null, from: string | null = null): LogsNextData {
+/**
+ * The house's IANA zone, so /logs dates its rows on the house's clock (F-634).
+ * Read from `GET /restaurants/:id/operating-hours`, which any member may read
+ * and which already carries `restaurants.timezone`. `undefined` while it is
+ * being read; `null` when the house has none or the read failed, and the
+ * device's clock stands in, as it did before.
+ */
+export function useLogsHouseZone(): string | null | undefined {
+  const rid = useAuth().activeRestaurantId ?? '';
+  const q = useQuery({
+    queryKey: ['logs-next', 'house-zone', rid],
+    queryFn: async () => {
+      const res = await restaurantsApi.getOperatingHours(rid);
+      return typeof res?.timezone === 'string' && res.timezone ? res.timezone : null;
+    },
+    enabled: !!rid,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  if (!rid) return null;
+  if (q.status === 'pending') return undefined;
+  return q.status === 'success' ? q.data : null;
+}
+
+/**
+ * `ready: false` holds the first read: a day jump's seed is the end of the
+ * HOUSE's day, so the page waits for the zone before it reads from one.
+ */
+export function useLogsNextData(
+  correlationId: string | null,
+  from: string | null = null,
+  ready = true,
+): LogsNextData {
   const rid = useAuth().activeRestaurantId ?? '';
 
   const q = useInfiniteQuery({
@@ -154,7 +187,7 @@ export function useLogsNextData(correlationId: string | null, from: string | nul
       last.hasMore === true && typeof last.nextCursor === 'string' && last.nextCursor !== lastParam
         ? last.nextCursor
         : undefined,
-    enabled: !!rid,
+    enabled: !!rid && ready,
     retry: false,
     staleTime: 30_000,
   });

@@ -136,32 +136,92 @@ function parse(iso: string | null | undefined): Date | null {
 /** The words for an undated or unparseable row. Never "Invalid Date". */
 export const NOT_RECORDED = 'not recorded';
 
+/*
+ * THE HOUSE'S CLOCK (F-634, 2026-10-09). Every helper below takes the house's
+ * IANA zone (`restaurants.timezone`, read by `useLogsHouseZone`) and dates a
+ * row on it, so Friday's service is one Friday heading whether the owner
+ * reads it at the bar or from abroad. With no zone, or one this browser
+ * cannot read, the device's clock stands in, as it did before.
+ */
+function usableZone(zone: string | null | undefined): string | null {
+  if (!zone) return null;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
+function inZone(opts: Intl.DateTimeFormatOptions, zone: string | null): Intl.DateTimeFormatOptions {
+  return zone ? { ...opts, timeZone: zone } : opts;
+}
+
+/** The wall clock in `zone` at instant `t`, read back as if it were UTC. */
+function wallAsUtc(t: number, zone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(t));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+}
+
+/**
+ * The first instant of calendar day (y, mo, d) in `zone`. `d` may overflow
+ * (`d + 1` is the next day). Where a zone's clocks jump AT midnight there is
+ * no 00:00, and the first instant of the day is the one after the jump.
+ */
+function startOfZoneDay(y: number, mo: number, d: number, zone: string): number {
+  const wall = Date.UTC(y, mo, d);
+  const target = new Date(wall).toISOString().slice(0, 10);
+  const first = wall - (wallAsUtc(wall, zone) - wall);
+  const second = wall - (wallAsUtc(first, zone) - first);
+  const onDay = [first, second]
+    .filter((t) => new Date(wallAsUtc(t, zone)).toISOString().slice(0, 10) === target)
+    .sort((a, b) => a - b);
+  return onDay.length ? onDay[0] : Math.max(first, second);
+}
+
 /** "14:05:31" — the time of day, to the second, for a row inside a day group. */
-export function fmtClock(iso: string | null | undefined): string {
+export function fmtClock(iso: string | null | undefined, zone?: string | null): string {
   const d = parse(iso);
   if (!d) return NOT_RECORDED;
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleTimeString(
+    undefined,
+    inZone({ hour: '2-digit', minute: '2-digit', second: '2-digit' }, usableZone(zone)),
+  );
 }
 
 /** "Thu 11 Sep 2026 · 14:05:31" — the full stamp, for the sheet and the thread. */
-export function fmtStamp(iso: string | null | undefined): string {
+export function fmtStamp(iso: string | null | undefined, zone?: string | null): string {
   const d = parse(iso);
   if (!d) return NOT_RECORDED;
-  const day = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-  return `${day} · ${fmtClock(iso)}`;
+  return `${fmtDay(iso, zone)} · ${fmtClock(iso, zone)}`;
 }
 
 /** "Thu 11 Sep 2026" — a day heading. */
-export function fmtDay(iso: string | null | undefined): string {
+export function fmtDay(iso: string | null | undefined, zone?: string | null): string {
   const d = parse(iso);
   if (!d) return 'No date recorded';
-  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString(
+    undefined,
+    inZone({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }, usableZone(zone)),
+  );
 }
 
-/** Local calendar day key, or `null` for an undated row. */
-export function dayKeyOf(iso: string | null | undefined): string | null {
+/** The house's calendar day key (the device's with no zone), or `null` for an undated row. */
+export function dayKeyOf(iso: string | null | undefined, zone?: string | null): string | null {
   const d = parse(iso);
   if (!d) return null;
+  const z = usableZone(zone);
+  if (z) return new Date(wallAsUtc(d.getTime(), z)).toISOString().slice(0, 10);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -180,11 +240,11 @@ export interface DayGroup {
  * Undated rows collect under one trailing group. Nothing is re-sorted here:
  * the gateway's order is the record's order.
  */
-export function groupByDay(events: readonly TimelineEvent[]): DayGroup[] {
+export function groupByDay(events: readonly TimelineEvent[], zone?: string | null): DayGroup[] {
   const groups: DayGroup[] = [];
   let undated: DayGroup | null = null;
   for (const e of events) {
-    const key = dayKeyOf(e.occurredAt);
+    const key = dayKeyOf(e.occurredAt, zone);
     if (key === null) {
       if (!undated) undated = { key: null, heading: fmtDay(null), events: [] };
       undated.events.push(e);
@@ -192,7 +252,7 @@ export function groupByDay(events: readonly TimelineEvent[]): DayGroup[] {
     }
     const last = groups[groups.length - 1];
     if (last && last.key === key) last.events.push(e);
-    else groups.push({ key, heading: fmtDay(e.occurredAt), events: [e] });
+    else groups.push({ key, heading: fmtDay(e.occurredAt, zone), events: [e] });
   }
   if (undated) groups.push(undated);
   return groups;
@@ -258,11 +318,12 @@ const ISO_FOUR_DIGIT_YEAR = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
  * THE ZONE IS `dayKeyOf`'s. The day ends where the day headings say it ends,
  * computed with the same local calendar, and `lg-format.test.ts` pins the
  * pair: `dayKeyOf(end - 1ms)` is the day and `dayKeyOf(end)` the next one.
- * If either side moves to another clock (the house's zone, A-056) without the
- * other, that test fails — a jump that disagreed with the headings would land
- * the reader on a page whose first heading is not the day they asked for.
+ * If either side moves to another clock without the other, that test fails —
+ * a jump that disagreed with the headings would land the reader on a page
+ * whose first heading is not the day they asked for. Both take the house's
+ * zone (F-634; A-056 named the move), and the test pins the pair in it too.
  */
-export function parseDay(raw: string | null | undefined): DayJump | null {
+export function parseDay(raw: string | null | undefined, zone?: string | null): DayJump | null {
   if (typeof raw !== 'string') return null;
   const m = DAY_SHAPE.exec(raw);
   if (!m) return null;
@@ -273,7 +334,8 @@ export function parseDay(raw: string | null | undefined): DayJump | null {
   // that day, and noon is inside every day everywhere.
   const noon = new Date(y, mo, d, 12);
   if (noon.getFullYear() !== y || noon.getMonth() !== mo || noon.getDate() !== d) return null;
-  const end = new Date(y, mo, d + 1);
+  const z = usableZone(zone);
+  const end = z ? new Date(startOfZoneDay(y, mo, d + 1, z)) : new Date(y, mo, d + 1);
   if (Number.isNaN(end.getTime())) return null;
   const endIso = end.toISOString();
   // A day whose end falls past 9999 in UTC (9999-12-31 west of Greenwich)
@@ -286,7 +348,8 @@ export function parseDay(raw: string | null | undefined): DayJump | null {
   // shape every other cursor has, and anything else is said to be unreadable
   // like any other day this page cannot read.
   if (!ISO_FOUR_DIGIT_YEAR.test(endIso)) return null;
-  return { key: raw, end: endIso, heading: fmtDay(noon.toISOString()) };
+  const midday = z ? new Date(startOfZoneDay(y, mo, d, z) + 12 * 3_600_000) : noon;
+  return { key: raw, end: endIso, heading: fmtDay(midday.toISOString(), z) };
 }
 
 /* ── counts ───────────────────────────────────────────────────────────────── */

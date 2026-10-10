@@ -17,7 +17,12 @@ import type { LogsNextData } from './useLogsNextData';
 import { parseDay, type TimelineEvent } from './lg-format';
 
 /** `calls` records what the page asked the hook for, render by render. */
-const mockData = vi.hoisted(() => ({ current: {} as Partial<LogsNextData>, calls: [] as unknown[][] }));
+const mockData = vi.hoisted(() => ({
+  current: {} as Partial<LogsNextData>,
+  calls: [] as unknown[][],
+  /** What `useLogsHouseZone` answers: `undefined` while read, `null` for none. */
+  zone: null as string | null | undefined,
+}));
 
 vi.mock('./useLogsNextData', async () => {
   const real = await vi.importActual<typeof import('./useLogsNextData')>('./useLogsNextData');
@@ -27,6 +32,7 @@ vi.mock('./useLogsNextData', async () => {
       mockData.calls.push(args);
       return mockData.current;
     },
+    useLogsHouseZone: () => mockData.zone,
   };
 });
 
@@ -123,6 +129,7 @@ beforeEach(() => {
   motion.animate.mockClear();
   mockData.current = ready();
   mockData.calls = [];
+  mockData.zone = null;
 });
 
 describe('LogsNext — states', () => {
@@ -349,7 +356,28 @@ describe('LogsNext — the window is marked', () => {
  */
 describe('LogsNext — reading back from a day', () => {
   const DAY = parseDay('2026-07-22')!;
-  const lastCall = () => mockData.calls[mockData.calls.length - 1];
+  /** What the page asked for: the thread and the seed (the third argument, `ready`, is pinned below). */
+  const lastCall = () => mockData.calls[mockData.calls.length - 1]?.slice(0, 2);
+  const lastReady = () => mockData.calls[mockData.calls.length - 1]?.[2];
+
+  it('reads a named day as the HOUSE’s day, and waits for the house’s zone before reading (F-634)', () => {
+    mockData.current = ready({ events: [ev({})], hasMore: true });
+    mockData.zone = undefined;
+    renderAt('/logs?date=2026-07-22');
+    expect(lastReady()).toBe(false);
+    mockData.zone = 'America/Los_Angeles';
+    // Any re-render reads the zone again; typing in the day field is one.
+    fireEvent.change(screen.getByLabelText('Read back from a day'), { target: { value: '2026-07-21' } });
+    expect(lastReady()).toBe(true);
+    // The end of 22 Jul in Los Angeles, not at the device's (New York) midnight.
+    expect(lastCall()).toEqual([null, '2026-07-23T07:00:00.000Z']);
+  });
+
+  it('a feed with no named day never waits for the zone', () => {
+    mockData.zone = undefined;
+    renderAt('/logs');
+    expect(lastReady()).toBe(true);
+  });
   const tokens = () => motion.animate.mock.calls.map((c) => c[2]);
   const turns = () => tokens().filter((t) => t === turn).length;
 
