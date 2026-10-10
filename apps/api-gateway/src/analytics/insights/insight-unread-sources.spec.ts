@@ -592,6 +592,33 @@ describe("the goal card keeps the goals desk's pace", () => {
     expect(xs[0].evidence.goalOnTrack).toBe(false);
     expect(xs[0].sentence).toMatch(/of the way to "The goal"/);
   });
+
+  // F-864 / F-865: the card paces a "this month" goal from the month's first
+  // house day, as the stored value counts it and the desk paces it, and
+  // through the whole deadline day. From the day it was set, 70k of 100k on
+  // the 25th read on pace here while the desk said behind.
+  it("a 'this month' goal set on the 20th is paced from the 1st, through the 31st", async () => {
+    jest.useFakeTimers({
+      now: new Date("2026-10-25T12:00:00Z"),
+      doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "queueMicrotask"],
+    });
+    try {
+      const xs = await cards({
+        metric_key: "wine_revenue",
+        period: "month",
+        created_at: "2026-10-20T09:00:00Z",
+        deadline: "2026-10-31",
+        target_value: 100000,
+        current_value: 70000,
+      });
+      expect(xs).toHaveLength(1);
+      // Expected by now: 24.5 of 31 days, ~79k.
+      expect(xs[0].evidence.goalOnTrack).toBe(false);
+      expect(xs[0].evidence.goalDaysLeft).toBe(7);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe("/recommendations says which insight read could not be made", () => {

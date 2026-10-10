@@ -27,7 +27,7 @@ import {
 import type { PriceAdvice } from "../pricing/margin-to-target";
 import { PriceLocksService, type LockReadout } from "../pricing/price-locks.service";
 import { resolveItemState, stateBookFrom } from "./insights/item-state";
-import { houseMoney, readHouseCurrency } from "../common/house-money";
+import { houseMoney, readHouseMoney } from "../common/house-money";
 import { houseDayOf } from "../common/house-day";
 import { localMidnight } from "../notifications/producers/service-day";
 
@@ -249,6 +249,12 @@ export interface Recommendation {
     scope: SuppressionScope;
     keys: Record<SuppressionScope, string>;
   };
+  /**
+   * The entry's words print the house's money: a figure, a price, or a
+   * restated insight measured in money (F-863). Staff never read such an
+   * entry (ADR 0145, `recommendationsForRole`). Absent when they do not.
+   */
+  amounts?: true;
   /** When this rule was FIRST shown, from `recommendation_impressions`. */
   firstSeenAt?: string | null;
   // ---- Manager disposition (merged from recommendation_actions) ----------
@@ -394,9 +400,10 @@ export class RecommendationsService {
             return r;
           })
         : Promise.reject(new Error("price locks are not wired into this build")),
-      // The house's own money for the figures the cards print (F-341). It
-      // never rejects: null prints a figure with no symbol, never as dollars.
-      readHouseCurrency(this.dbService?.supabase, restaurantId),
+      // The house's own money for the figures the cards print (F-341), and
+      // its formats (F-866). It never rejects: null prints a figure with no
+      // symbol, never as dollars, grouped en-US.
+      readHouseMoney(this.dbService?.supabase, restaurantId),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
@@ -469,18 +476,44 @@ export class RecommendationsService {
 
     const recs: Recommendation[] = [];
     let rulesEvaluated = 0;
+    // Whether the entry being made prints the house's money (F-863): set by
+    // `money()` and by `restated()` of an insight measured in money, and
+    // carried on the entry as `amounts: true`. The staff cut reads that, not
+    // a currency sign in the words: "TRY 12,400", a bare "12,400" in a house
+    // with no recorded currency and a price line carry no sign it can see.
+    let printsMoney = false;
     const rule = (
       key: string,
       fired: boolean | null | undefined,
       make: () => Omit<Recommendation, "ruleKey">,
     ) => {
       rulesEvaluated++;
-      if (fired) recs.push({ ...make(), ruleKey: key });
+      if (!fired) return;
+      printsMoney = false;
+      const made = make();
+      recs.push({
+        ...made,
+        ruleKey: key,
+        ...(printsMoney || made.amounts ? { amounts: true as const } : {}),
+      });
     };
 
     const pct = (v: number) => `${Math.abs(v * 100).toFixed(0)}%`;
-    const money = (v: number) =>
-      houseMoney(Math.round(v), ok(currencyRes) as string | null);
+    const house = (ok(currencyRes) ?? {}) as {
+      currency?: string | null;
+      locale?: string | null;
+    };
+    const money = (v: number) => {
+      printsMoney = true;
+      return houseMoney(Math.round(v), house.currency ?? null, {
+        locale: house.locale ?? null,
+      });
+    };
+    /** An insight's own sentence, restated: money when its figure is. */
+    const restated = (i: any): string => {
+      if (i?.evidence?.unit === "currency") printsMoney = true;
+      return i.sentence;
+    };
 
     // ---- Sales / demand rules --------------------------------------------
     // A SALES dip only (ADR 0291): `overall.purchase_spend.vs_same_weekday`
@@ -504,7 +537,7 @@ export class RecommendationsService {
       ? salesDipWhen(salesBaseline.periodKey ?? null)
       : null;
     rule("sales_below_weekday_baseline", !!salesBaseline, () => ({
-      observation: salesBaseline!.sentence,
+      observation: restated(salesBaseline),
       recommendation: salesDipAdvice(salesDip!, salesBaseline!.subject),
       rationale:
         "Same-weekday baselines remove day-of-week mix, so the gap is execution or traffic — the levers you control same-day are selling behavior and features.",
@@ -526,7 +559,7 @@ export class RecommendationsService {
         (i.effectPct ?? 0) < -0.1,
     );
     rule("weekly_demand_slide", !!demandDown, () => ({
-      observation: demandDown!.sentence,
+      observation: restated(demandDown),
       recommendation:
         "Schedule a staff tasting on the two highest-margin slow movers this week and add a pairing prompt to the specials script — attach rate is the fastest week-scale lever.",
       rationale:
@@ -678,6 +711,8 @@ export class RecommendationsService {
         category: "pricing",
         urgency: "this_week",
         score: 2.4,
+        // Each line names a price and its advised price (ADR 0193).
+        amounts: true,
         priceAdvice: adviceLines.map(({ w, a }) => ({
           inventoryId: w.inventoryId,
           wineName: w.wineName,
@@ -831,7 +866,7 @@ export class RecommendationsService {
       (i: any) => i.category === "staff" && (i.effectPct ?? 0) > 0.15,
     );
     rule("staff_spread", !!staffInsight, () => ({
-      observation: staffInsight!.sentence,
+      observation: restated(staffInsight),
       recommendation:
         "Have the top seller run a 15-minute pre-shift on their pitch, and mirror their table-visit timing with one underperformer this week.",
       rationale:
@@ -845,7 +880,7 @@ export class RecommendationsService {
       (i: any) => i.category === "basket",
     );
     rule("pairing_promotion", !!basketInsight, () => ({
-      observation: basketInsight!.sentence,
+      observation: restated(basketInsight),
       recommendation:
         "Print that pairing on the menu insert and add it to the server script — proven co-purchase is the cheapest upsell you own.",
       rationale:

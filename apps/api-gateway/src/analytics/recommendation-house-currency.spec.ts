@@ -1,3 +1,4 @@
+import { RULES_THAT_PRINT_MONEY } from "./money-for-role";
 import { RecommendationsService } from "./recommendations.service";
 
 /**
@@ -6,7 +7,10 @@ import { RecommendationsService } from "./recommendations.service";
  * a house in Istanbul. They now print the house's own currency, and no
  * symbol when none is recorded.
  */
-function serviceFor(currency: string | null) {
+function serviceFor(
+  currency: string | null,
+  house: { country?: string | null; timezone?: string | null } = {},
+) {
   const supabase = {
     from: (table: string) => {
       const b: any = {};
@@ -14,7 +18,7 @@ function serviceFor(currency: string | null) {
         b[m] = () => b;
       b.then = (resolve: any, reject: any) =>
         Promise.resolve({
-          data: table === "restaurants" ? [{ currency }] : [],
+          data: table === "restaurants" ? [{ currency, ...house }] : [],
           error: null,
         }).then(resolve, reject);
       return b;
@@ -79,5 +83,28 @@ describe("recommendation cards print the house's own money (F-341)", () => {
     expect(o.deadStock).toMatch(/^12,400 is locked/);
     expect(o.spend).toContain("(8,300)");
     expect(`${o.deadStock}${o.spend}`).not.toContain("$");
+  });
+});
+
+/**
+ * F-866: in a house whose country groups with ".", the figure is grouped so;
+ * F-863: an entry that prints the house's money says so (`amounts: true`),
+ * which is what keeps it from staff when the words carry no sign.
+ */
+describe("recommendation cards in the house's formats, tagged as money", () => {
+  it("a Turkish house reads its own sign and grouping", async () => {
+    const out = await serviceFor("TRY", { country: "TR" }).getRecommendations("r-1");
+    const dead = out.recommendations.find((r) => r.ruleKey === "dead_stock_capital");
+    expect(dead?.observation).toBe(
+      "₺12.400 is locked in inventory that has not moved in 90 days (top: Old Rioja).",
+    );
+  });
+
+  it.each([["TRY"], [null]])("currency %s: the cards that print an amount are tagged", async (code) => {
+    const out = await serviceFor(code).getRecommendations("r-1");
+    const tagged = out.recommendations.filter((r) => r.amounts === true).map((r) => r.ruleKey);
+    expect(tagged.sort()).toEqual(["dead_stock_capital", "spend_acceleration"]);
+    // The stored acts of the same cards are cut by rule; the two lists agree.
+    for (const key of tagged) expect(RULES_THAT_PRINT_MONEY.has(key)).toBe(true);
   });
 });

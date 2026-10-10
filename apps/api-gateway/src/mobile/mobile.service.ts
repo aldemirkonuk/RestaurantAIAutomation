@@ -7,7 +7,7 @@ import { DatabaseService } from "../database/database.service";
 import { ProcurementService } from "../procurement/procurement.service";
 import { ConversationsService } from "../conversations/conversations.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { houseMoney, readHouseCurrency } from "../common/house-money";
+import { houseMoney, readHouseMoney } from "../common/house-money";
 import { houseFrame } from "../common/house-frame";
 import {
   localDateIn,
@@ -61,7 +61,7 @@ export class MobileService {
         failed.push(name);
         return [] as T[];
       });
-    const [orders, conversations, notifications, currency] = await Promise.all([
+    const [orders, conversations, notifications, money] = await Promise.all([
       collect(
         "orders",
         this.procurementService.listPendingOrders(restaurantId),
@@ -78,9 +78,10 @@ export class MobileService {
           limit: 40,
         }),
       ),
-      // The house's own money for the order amounts (F-341); null prints
-      // the figure with no symbol, never as dollars.
-      readHouseCurrency(this.databaseService.supabase, restaurantId),
+      // The house's own money for the order amounts (F-341), grouped by its
+      // own mark (F-866); null prints the figure with no symbol, never as
+      // dollars.
+      readHouseMoney(this.databaseService.supabase, restaurantId),
     ]);
     if (failed.length > 0) {
       throw new ServiceUnavailableException(
@@ -109,7 +110,7 @@ export class MobileService {
           title: order.wineName
             ? `Approve order: ${order.wineName}`
             : `Approve ${order.orderNumber ?? "order"}`,
-          subtitle: this.orderSubtitle(order, providerNames, currency),
+          subtitle: this.orderSubtitle(order, providerNames, money),
           wineName: order.wineName ?? null,
           providerName: providerNames.get(order.providerId) ?? null,
           amount,
@@ -447,7 +448,7 @@ export class MobileService {
   private orderSubtitle(
     order: any,
     providerNames: Map<string, string>,
-    houseCurrency: string | null,
+    house: { currency: string | null; locale: string | null },
   ): string {
     const parts: string[] = [];
     if (order.quantity) {
@@ -463,7 +464,11 @@ export class MobileService {
       order.negotiatedPrice ??
       order.quotedPrice;
     if (amount != null)
-      parts.push(houseMoney(amount, order.currency ?? houseCurrency));
+      parts.push(
+        houseMoney(amount, order.currency ?? house.currency, {
+          locale: house.locale,
+        }),
+      );
     return parts.join(" · ") || "Awaiting your approval";
   }
 

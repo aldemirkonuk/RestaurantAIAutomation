@@ -669,9 +669,11 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     // localMidnight(Aug 1, LA) = 07:00 UTC Aug 1, less the 24 h lookback.
     expect(since).toBe("2026-07-31T07:00:00.000Z");
     expect(progress.current).toBe(1);
-    // Aug 1 00:00 LA → Sep 30 00:00 LA is 60 days; 31 d 20 h of it have run.
-    expect(progress.expectedByNow).toBeCloseTo((600 * (31 + 20 / 24)) / 60, 6);
-    expect(progress.daysLeft).toBe(29);
+    // Aug 1 00:00 LA → Oct 1 00:00 LA, the midnight that closes the Sep 30
+    // deadline day (F-865), is 61 days; 31 d 20 h of it have run.
+    expect(progress.expectedByNow).toBeCloseTo((600 * (31 + 20 / 24)) / 61, 6);
+    // Sep 1 20:00 LA: today and the 29 days through Sep 30.
+    expect(progress.daysLeft).toBe(30);
   });
 
   // F-628: one check closing at 20:00 LA on each named house day.
@@ -695,8 +697,8 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     expect(progress.current).toBe(1);
     // Aug 30 00:00 LA → Sep 6 00:00 LA is 7 days; 2 d 20 h of it have run.
     expect(progress.expectedByNow).toBeCloseTo((70 * (2 + 20 / 24)) / 7, 6);
-    // The deadline is still the deadline.
-    expect(progress.daysLeft).toBe(29);
+    // The deadline is still the deadline, counted in full (F-865).
+    expect(progress.daysLeft).toBe(30);
   });
 
   it("(j3) stops counting on the deadline's house day", async () => {
@@ -850,9 +852,9 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     const progress: any = await service.getGoalProgress("r1", "g-stock");
 
     expect(progress.paceUnread).toBeNull();
-    // 42 days of stock against "at most 30", 31 d 20 h into a 60-day schedule.
+    // 42 days of stock against "at most 30", 31 d 20 h into a 61-day schedule.
     expect(progress.onTrack).toBe(false);
-    expect(progress.daysLeft).toBe(29);
+    expect(progress.daysLeft).toBe(30);
   });
 
   it("(k3) sends no reason for a goal with no deadline: no deadline is not an unread pace", async () => {

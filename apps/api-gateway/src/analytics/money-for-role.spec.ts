@@ -160,3 +160,85 @@ describe("the analytics reads staff can call carry no house money (F-602, F-603)
     expect(out.observation).toMatch(/\$4,800/);
   });
 });
+
+/**
+ * F-863: the house's money does not always carry a sign. en-US prints a lira
+ * figure as "TRY 12,400", a German house puts the sign after ("12.400 €"),
+ * and a house with no recorded currency prints a bare "12,400". Whether an
+ * entry says money is read from the entry — the engine's `amounts` tag, the
+ * stored act's rule — not from a glyph.
+ */
+describe("staff read no house money in a lira house or one with no currency (F-863)", () => {
+  const recsIn = (deadStock: string, spend: string) => ({
+    recommendations: [
+      { ruleKey: "dead_stock_capital", amounts: true, observation: `${deadStock} is locked in inventory that has not moved in 90 days (top: Yakut).`, recommendation: "Run a by-the-glass feature.", rationale: "Cash sits still." },
+      { ruleKey: "stockout_imminent", observation: "Yakut has a 40% chance of stocking out.", recommendation: "Place the order today.", rationale: "Below its reorder point." },
+      { ruleKey: "spend_acceleration", amounts: true, observation: `Purchasing spend is up 50% vs the prior 30 days (${spend}).`, recommendation: "Check the orders.", rationale: "Spend outruns demand." },
+    ],
+    rulesEvaluated: 3,
+  });
+  const houses: Array<[string, string, string]> = [
+    ["TRY", "TRY 12,400", "TRY 8,300"],
+    ["no currency", "12,400", "8,300"],
+  ];
+
+  function over(feed: unknown, stored: unknown[]) {
+    const c = controller() as any;
+    c.recommendationsService.getRecommendations = jest.fn(async () => feed);
+    c.recommendationActions.listByStatus = jest.fn(async () => stored);
+    c.recommendationActions.listHistory = jest.fn(async () => stored);
+    return c as AnalyticsController;
+  }
+
+  it.each(houses)("%s: staff read the feed without the cards that print an amount", async (_h, dead, spend) => {
+    const out: any = await over(recsIn(dead, spend), []).getRecommendations("r1", undefined, { userId: "u1", role: "staff" });
+    expect(out.recommendations.map((r: any) => r.ruleKey)).toEqual(["stockout_imminent"]);
+    expect(out.withheldForYourRole).toBe(2);
+  });
+
+  it.each(houses)("%s: an owner reads every card", async (_h, dead, spend) => {
+    const out: any = await over(recsIn(dead, spend), []).getRecommendations("r1", undefined, { userId: "u1", role: "owner" });
+    expect(out.recommendations).toHaveLength(3);
+  });
+
+  it.each(houses)("%s: staff read the stored acts without their amounts", async (_h, dead, spend) => {
+    // Stored acts carry the words, and a key that may name the period it fired in.
+    const stored = recsIn(dead, spend).recommendations.map((r, i) => ({
+      ruleKey: i === 0 ? `${r.ruleKey}#*#p30:2026-10` : r.ruleKey,
+      ruleWide: false,
+      status: "dismissed",
+      observation: r.observation,
+      recommendation: r.recommendation,
+      category: null,
+      urgency: null,
+      updatedAt: "2026-10-09T00:00:00Z",
+    }));
+    const c = over(recsIn(dead, spend), stored);
+    for (const out of [
+      await c.listRecommendationActions("r1", "all", { userId: "u1", role: "staff" }),
+      await c.recommendationHistory("r1", { userId: "u1", role: "staff" }),
+    ] as any[]) {
+      expect(JSON.stringify(out)).not.toContain(dead);
+      expect(JSON.stringify(out)).not.toContain(spend);
+      expect(out.items[1]).toMatchObject({ observation: "Yakut has a 40% chance of stocking out." });
+      expect(out.withheldForYourRole).toBe(2);
+    }
+  });
+
+  it("staff read no insight sentence with a code or a trailing sign beside a figure, even unmarked", async () => {
+    const c = controller() as any;
+    c.insightGenerator.readStored = jest.fn(async () => ({
+      rows: [
+        { candidateKey: "old.try", sentence: "Average check was TRY 1.2k on Friday.", evidence: null },
+        { candidateKey: "old.eur", sentence: "Sales came in at 12.400 € on Friday.", evidence: null },
+        { candidateKey: "label", sentence: "Rioja DOC 2019 sold 6 bottles this week.", evidence: null },
+      ],
+      read: 3,
+      withheld: { dismissed: 0 },
+      suppressionsReadable: true,
+    }));
+    const out: any = await c.getInsights("r1", undefined, undefined, undefined, undefined, { userId: "u1", role: "staff" });
+    expect(out.insights.map((i: any) => i.candidateKey)).toEqual(["label"]);
+    expect(out.withheldForYourRole).toBe(2);
+  });
+});
