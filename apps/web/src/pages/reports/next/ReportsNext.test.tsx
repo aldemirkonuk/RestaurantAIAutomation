@@ -1200,7 +1200,7 @@ describe('ReportsNext — a house layout to start from', () => {
 });
 
 describe('ReportsNext — what a staff member is offered (F-203)', () => {
-  it('gives owners and managers every register, and staff all but the two that name a server or a table', () => {
+  it('gives owners and managers every register, and staff none of the two that name a server or a table', () => {
     expect(offeredFor('owner')).toContain('service');
     expect(offeredFor('manager')).toContain('seats');
     for (const role of ['staff', 'chef', null, undefined]) {
@@ -1208,6 +1208,14 @@ describe('ReportsNext — what a staff member is offered (F-203)', () => {
       expect(ids).not.toContain('seats');
       expect(ids).not.toContain('service');
       expect(ids).toContain('till');
+    }
+  });
+
+  it('does not offer the goals cutting to staff, whose goal reads the gateway refuses (F-795)', () => {
+    expect(offeredFor('owner')).toContain('goals');
+    expect(offeredFor('manager')).toContain('goals');
+    for (const role of ['staff', 'chef', 'admin', null, undefined]) {
+      expect(offeredFor(role)).not.toContain('goals');
     }
   });
 
@@ -1495,11 +1503,10 @@ describe('ReportsNext — the benchmark cutting', () => {
     ).toBeInTheDocument();
   });
 
-  it('names the ambiguity when both buying windows read zero', () => {
-    // Measured live on 2026-09-03: the dev tenant returns 0 and 0, and
-    // `getCashflow` sums a loader that degrades a failed query to `[]`. A pair
-    // of zeros is therefore "no delivered order came back", not "nothing was
-    // bought" — and the cutting must not present it as a measured standstill.
+  it('says what a pair of zero buying windows means', () => {
+    // Since F-186 the cashflow loader reads the whole window or refuses, so a
+    // pair of zeros that came back is "no order delivered" (F-797); a refused
+    // read is the buying lens not answering, said in its own note.
     hook.current = withRegister(
       'bench',
       ok(decode('bench', { ...BENCH, cashflow: { ...BENCH.cashflow, spendLast30d: 0, spendPrev30d: 0 } })),
@@ -1509,7 +1516,9 @@ describe('ReportsNext — the benchmark cutting', () => {
     expect(
       within(bench).getByText(/Both buying windows came back at zero/),
     ).toBeInTheDocument();
-    expect(within(bench).getByText(/not necessarily .nothing was bought./)).toBeInTheDocument();
+    expect(
+      within(bench).getByText(/no order was delivered in either window/),
+    ).toBeInTheDocument();
     // …and it draws no bars at all: two bars at zero are an empty axis.
     expect(within(bench).getByText(/no bars are drawn/)).toBeInTheDocument();
   });

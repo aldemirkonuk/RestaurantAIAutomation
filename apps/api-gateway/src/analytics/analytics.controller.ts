@@ -107,13 +107,19 @@ function parseHorizon(raw?: string): number | undefined {
  * at this house, owner or manager, so admin is refused too (ADR 0164).
  */
 function assertMayReadGoals(user?: { role?: string | null }): void {
-  const role = user?.role ? String(user.role).trim().toLowerCase() : "";
-  if (role === "owner" || role === "manager") return;
+  if (mayReadGoals(user)) return;
   throw new HttpException(
     "The house's goals and their figures are kept for its owners and managers. " +
       "Ask one of them to go through the goals with you.",
     HttpStatus.FORBIDDEN,
   );
+}
+
+/** The same rule as `assertMayReadGoals`, as a yes/no for a read that carries
+ * goals among other things and drops them rather than refusing the whole. */
+function mayReadGoals(user?: { role?: string | null }): boolean {
+  const role = user?.role ? String(user.role).trim().toLowerCase() : "";
+  return role === "owner" || role === "manager";
 }
 
 function refusedAct(error: ActRefused): HttpException {
@@ -1221,8 +1227,19 @@ export class AnalyticsController {
     description:
       "Financial + risk + inventory + menu engineering + seasonality + cashflow + insights + goals in one parallel call (API-bus pattern).",
   })
-  async getOverview(@Param("restaurantId") restaurantId: string) {
-    return this.advanced.getOverview(restaurantId);
+  async getOverview(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const overview = await this.advanced.getOverview(restaurantId);
+    // The overview carries the active goals with their baseline, current and
+    // target figures — the same money-class read the goal routes refuse to
+    // anyone but owners and managers (F-299). For any other role the key is
+    // left out, not emptied: an empty list would read as "no goal is running"
+    // (F-794).
+    if (mayReadGoals(user)) return overview;
+    const { activeGoals: _withheld, ...rest } = overview;
+    return rest;
   }
 
   @Get("recommendations/:restaurantId")
