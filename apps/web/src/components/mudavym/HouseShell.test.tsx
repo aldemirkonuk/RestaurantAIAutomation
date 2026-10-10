@@ -443,3 +443,44 @@ describe('the Ask panel in the counter slot', () => {
     expect(await screen.findByRole('dialog', { name: /Ask Mudavym/ })).toBeTruthy();
   });
 });
+
+describe('the way past the rail, and the landing after a move (F-616)', () => {
+  it('the first link in the shell skips to the page, and the page can take focus', () => {
+    mount('/orders');
+    const links = document.querySelectorAll('.mdv-shell a[href]');
+    expect(links[0]).toHaveTextContent('Skip to the page');
+    expect(links[0]).toHaveAttribute('href', '#mdv-house-main');
+    const main = screen.getByRole('main', { name: 'Orders' });
+    expect(main).toHaveAttribute('id', 'mdv-house-main');
+    expect(main).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('a move to another room puts focus on the new page, named by its room', async () => {
+    mount('/orders', 'owner', <Link to="/inventory">to inventory</Link>);
+    const link = screen.getByText('to inventory');
+    // Focus sits OUTSIDE the page, as it does after a rail link is pressed.
+    const rail = screen.getByRole('navigation', { name: 'The rooms' });
+    const railLink = rail.querySelector<HTMLElement>('a[href]')!;
+    railLink.focus();
+    fireEvent.click(link);
+    const main = await screen.findByRole('main', { name: 'Inventory' });
+    await waitFor(() => expect(document.activeElement).toBe(main));
+  });
+
+  it('never moves focus on first paint, nor over a page that focused itself', async () => {
+    function Autofocus() {
+      return <input aria-label="search" autoFocus />;
+    }
+    const view = mount('/orders', 'owner', (
+      <Routes>
+        <Route path="/orders" element={<Link to="/inventory">go</Link>} />
+        <Route path="/inventory" element={<Autofocus />} />
+      </Routes>
+    ));
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(screen.getByText('go'));
+    const input = await screen.findByLabelText('search');
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    view.unmount();
+  });
+});

@@ -22,7 +22,7 @@
  * drawing a column of nothing.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { AlertTriangle, ChevronDown, LayoutList } from 'lucide-react';
 import ColumnMenu from './ColumnMenu';
 import SeriesPanel from './SeriesPanel';
@@ -30,6 +30,13 @@ import { REGISTER_TITLE, count, type RegisterId } from './cellar-format';
 import { WHOLE_CELLAR_COLUMNS, type CellarColumn } from './cellar-columns';
 import { cellFor, sortValueFor } from './registerCells';
 import { useRowRecord, useWholeCellar, type WholeRowVM } from './useCellarNextData';
+
+/** Shift+F10 and the menu key: the keyboard's right-click (F-614). */
+function isMenuKey(e: KeyboardEvent): boolean {
+  return (e.shiftKey && e.key === 'F10') || e.key === 'ContextMenu';
+}
+
+const SERIES_COLUMNS = WHOLE_CELLAR_COLUMNS.filter((c) => c.series !== null);
 
 function valueFor(r: WholeRowVM, id: string): string | number | null {
   if (id === 'register') return REGISTER_TITLE[r.register].toLowerCase();
@@ -56,6 +63,28 @@ export default function WholeCellar({
   const [asc, setAsc] = useState(false);
   const [menu, setMenu] = useState<{ column: CellarColumn; x: number; y: number } | null>(null);
   const [series, setSeries] = useState<{ label: string; column: CellarColumn } | null>(null);
+  /** The row chosen by click, Enter or Space — what the series buttons and the column menu act on. */
+  const [picked, setPicked] = useState<string | null>(null);
+  const pickedBar = useRef<HTMLDivElement | null>(null);
+  const [focusBar, setFocusBar] = useState(false);
+
+  // Shift+F10 on a row chooses it and hands focus to its record buttons.
+  useEffect(() => {
+    if (!focusBar) return;
+    pickedBar.current?.querySelector<HTMLElement>('button')?.focus();
+    setFocusBar(false);
+  }, [focusBar]);
+
+  const openMenuAt = (column: CellarColumn, el: HTMLElement, e?: MouseEvent) => {
+    // A keyboard-made contextmenu event carries no pointer position; anchor
+    // the menu under the header instead of the page's top-left corner.
+    if (e && (e.clientX !== 0 || e.clientY !== 0)) {
+      setMenu({ column, x: e.clientX, y: e.clientY });
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    setMenu({ column, x: r.left, y: r.bottom + 4 });
+  };
 
   // The readout arrives after the first paint, so `defaultOpen` can turn true
   // one render in. Sync it ONCE, upward only: a house that qualifies opens, and
@@ -91,6 +120,8 @@ export default function WholeCellar({
       return asc ? c : -c;
     });
   }, [whole.rows, query, facet, sortKey, asc]);
+
+  const pickedRow = shown.find((r) => `${r.register}:${r.key}` === picked) ?? null;
 
   const facets = useMemo(
     () => (carried ?? []).filter((r) => r !== 'wines'),
@@ -193,7 +224,12 @@ export default function WholeCellar({
                         style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}
                         onContextMenu={(e) => {
                           e.preventDefault();
-                          setMenu({ column: c, x: e.clientX, y: e.clientY });
+                          openMenuAt(c, e.currentTarget, e);
+                        }}
+                        onKeyDown={(e) => {
+                          if (!isMenuKey(e)) return;
+                          e.preventDefault();
+                          openMenuAt(c, e.currentTarget);
                         }}
                       >
                         <span
@@ -234,10 +270,7 @@ export default function WholeCellar({
                             className="cl-caret cl-focus"
                             aria-haspopup="menu"
                             aria-label={`What ${c.label} is, and how to sort it`}
-                            onClick={(e) => {
-                              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                              setMenu({ column: c, x: r.left, y: r.bottom + 4 });
-                            }}
+                            onClick={(e) => openMenuAt(c, e.currentTarget)}
                           >
                             <ChevronDown size={11} aria-hidden />
                           </button>
@@ -247,32 +280,76 @@ export default function WholeCellar({
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((r) => (
-                    <tr key={`${r.register}:${r.key}`} tabIndex={0}>
-                      {WHOLE_CELLAR_COLUMNS.map((c) => (
-                        <td
-                          key={c.id}
-                          className={c.kind === 'figure' ? 'cl-num' : undefined}
-                          style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}
-                          data-series={c.series !== null ? 'true' : undefined}
-                          onDoubleClick={() =>
-                            c.series !== null && setSeries({ label: r.name, column: c })
-                          }
-                          onContextMenu={(e) => {
-                            if (c.series === null) return;
+                  {shown.map((r) => {
+                    const id = `${r.register}:${r.key}`;
+                    return (
+                      <tr
+                        key={id}
+                        tabIndex={0}
+                        data-selected={id === picked}
+                        onClick={() => setPicked((k) => (k === id ? null : id))}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            setSeries({ label: r.name, column: c });
-                          }}
-                        >
-                          {c.id === 'register' ? REGISTER_TITLE[r.register] : cellFor(r, c.id)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                            setPicked((k) => (k === id ? null : id));
+                          } else if (isMenuKey(e)) {
+                            e.preventDefault();
+                            setPicked(id);
+                            setFocusBar(true);
+                          }
+                        }}
+                      >
+                        {WHOLE_CELLAR_COLUMNS.map((c) => (
+                          <td
+                            key={c.id}
+                            className={c.kind === 'figure' ? 'cl-num' : undefined}
+                            style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}
+                            data-series={c.series !== null ? 'true' : undefined}
+                            onDoubleClick={() =>
+                              c.series !== null && setSeries({ label: r.name, column: c })
+                            }
+                            onContextMenu={(e) => {
+                              if (c.series === null) return;
+                              e.preventDefault();
+                              setSeries({ label: r.name, column: c });
+                            }}
+                          >
+                            {c.id === 'register' ? REGISTER_TITLE[r.register] : cellFor(r, c.id)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
+
+          {pickedRow !== null ? (
+            <div
+              ref={pickedBar}
+              role="group"
+              aria-label={`The record behind ${pickedRow.name}`}
+              className="cl-row-controls"
+              style={{ marginTop: 10 }}
+              data-testid="whole-picked"
+            >
+              <span className="cl-dim" style={{ fontSize: 12 }}>
+                {pickedRow.name} — see the record behind:
+              </span>
+              {SERIES_COLUMNS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="cl-btn cl-focus"
+                  onClick={() => setSeries({ label: pickedRow.name, column: c })}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <p className="cl-note">
             Wines are not in this list. `/wines` is served by a different read
@@ -308,7 +385,14 @@ export default function WholeCellar({
                 setAsc(dir === 'asc');
                 setMenu(null);
               }}
-              onOpenSeries={null}
+              onOpenSeries={
+                menu.column.series !== null && pickedRow !== null
+                  ? () => {
+                      setSeries({ label: pickedRow.name, column: menu.column });
+                      setMenu(null);
+                    }
+                  : null
+              }
               onHide={null}
               onClose={() => setMenu(null)}
             />

@@ -499,13 +499,14 @@ textarea.cl-field {
 /* ── the column's own menu, and the series a cell opens (fourth pass) ───── */
 
 /* The caret is right-click's reachable twin: a real button, so the column's
-   account is available to a keyboard and to a thumb, not only to a mouse. */
+   account is available to a keyboard and to a thumb, not only to a mouse.
+   24px is the smallest target WCAG 2.5.8 allows (F-615); it was 15px. */
 .cl-caret {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -516,6 +517,20 @@ textarea.cl-field {
 .cl-caret:hover {
   border-color: var(--seal-ring);
   color: var(--ink-2);
+}
+
+/* On a phone or tablet, the icon-only buttons grow to a thumb's size
+   (F-615). A mouse keeps the compact header. */
+@media (pointer: coarse) {
+  .cl-caret {
+    width: 40px;
+    height: 40px;
+  }
+  .cl-btn:has(> svg:only-child) {
+    min-width: 44px;
+    height: 44px;
+    justify-content: center;
+  }
 }
 
 .cl-menu {

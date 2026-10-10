@@ -49,7 +49,7 @@
  * Below ~1280 px (and on the phone) the same panel lies over the page.
  */
 
-import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../contexts/AuthContext';
 import { CommandProvider } from '../command/CommandProvider';
@@ -198,6 +198,20 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
     setPhoneCounter(false);
   }, [pathname]);
 
+  // F-616: a route change moves focus to the new page, so a keyboard or
+  // screen-reader user lands in the room they asked for instead of staying on
+  // the rail link. Not on first paint (the browser starts at the top anyway),
+  // and never over a page that already put focus inside itself.
+  const mainRef = useRef<HTMLElement | null>(null);
+  const firstPath = useRef(pathname);
+  useEffect(() => {
+    if (pathname === firstPath.current) return;
+    firstPath.current = '';
+    const main = mainRef.current;
+    if (!main || main.contains(document.activeElement)) return;
+    main.focus({ preventScroll: true });
+  }, [pathname]);
+
   const waiting = counter.last ? actsWaiting(counter.last.registers) : counter.failure ? null : false;
 
   const openAct = useCallback((t: CounterActTarget) => {
@@ -258,6 +272,11 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
             data-phone={phone ? 'true' : undefined}
             data-offline={counter.offline ? 'true' : undefined}
           >
+            {/* F-616: the header and the rail come before the page on every
+                room; the first Tab offers a way past them. */}
+            <a className="mdv-shell__skip mudavym" href="#mdv-house-main">
+              Skip to the page
+            </a>
             <HouseHeader shell name={roomNameFor(pathname)} ground={headerGround} trailing={toggle} />
             {counter.offline && (
               // The strip under the header (sketch 119 D, offline). It claims
@@ -286,7 +305,13 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                 <SetupNudgeBanner />
                 <PageTipStrip />
                 <GuidanceLiveRegion />
-                <main className="mdv-shell__main">
+                <main
+                  className="mdv-shell__main"
+                  id="mdv-house-main"
+                  ref={mainRef}
+                  tabIndex={-1}
+                  aria-label={roomNameFor(pathname) ?? undefined}
+                >
                   {/* Keyed on the house as well as the page: a switch mounts the
                       page afresh, so nothing a page holds for itself (the
                       dashboard's approvals and low stock, Ask's answer) is

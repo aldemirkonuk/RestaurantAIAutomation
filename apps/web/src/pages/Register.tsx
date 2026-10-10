@@ -821,6 +821,15 @@ export function Register() {
     </motion.div>
   )
 
+  // F-612: why "Create account" is dimmed, in words a screen reader hears too.
+  // Said only once the person has typed, so an empty form is not scolded.
+  const createPasswordProblem =
+    createPassword.length > 0 && createPassword.length < 8
+      ? 'Your password needs at least 8 characters.'
+      : createConfirm.length > 0 && createPassword !== createConfirm
+        ? 'The two passwords do not match yet.'
+        : null
+
   // PATH B — Step 1: Account fields — called as a function
   const pathBStep1 = () => (
     <motion.div
@@ -948,11 +957,13 @@ export function Register() {
               value={createPassword}
               onChange={(e) => setCreatePassword(e.target.value)}
               placeholder="At least 8 characters"
+              aria-describedby="create-password-hint"
+              aria-invalid={createPassword.length > 0 && createPassword.length < 8}
               className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
           <div className="mt-1 flex items-center justify-between gap-3">
-            <p className={on ? 'text-xs !text-inkm-3' : 'text-xs text-gray-400'}>Min. 8 characters</p>
+            <p id="create-password-hint" className={on ? 'text-xs !text-inkm-3' : 'text-xs text-gray-400'}>Min. 8 characters</p>
             <button
               type="button"
               aria-pressed={showPassword}
@@ -976,14 +987,24 @@ export function Register() {
               value={createConfirm}
               onChange={(e) => setCreateConfirm(e.target.value)}
               placeholder="The same password again"
+              aria-describedby="create-password-problem"
+              aria-invalid={createConfirm.length > 0 && createPassword !== createConfirm}
               className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
           </div>
+          <p
+            id="create-password-problem"
+            role="status"
+            className={on ? 'text-xs !text-red-800 mt-1' : 'text-xs text-red-600 mt-1'}
+          >
+            {createPasswordProblem}
+          </p>
         </div>
       </div>
       <Button
         type="button"
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
+        aria-describedby={createPasswordProblem ? 'create-password-problem' : undefined}
         disabled={
           !createName ||
           !createEmail ||
@@ -993,11 +1014,6 @@ export function Register() {
           createEmailCheck.checking
         }
         onClick={async () => {
-          if (createPassword !== createConfirm) {
-            setError('Passwords do not match')
-            return
-          }
-
           // If the debounced check hasn't settled, run it immediately now
           let available = createEmailCheck.available
           if (available === null && createEmail && createEmail.includes('@')) {
