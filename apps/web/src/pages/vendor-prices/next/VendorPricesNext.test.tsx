@@ -377,6 +377,27 @@ describe('VendorPricesNext', () => {
     expect(screen.getAllByText(/counted since this server last restarted/)).toHaveLength(2)
   })
 
+  it('says the price index could not be read instead of "0 of N" when its counts are unknown (F-544)', () => {
+    mock.role = 'owner'
+    mock.masthead = {
+      identity: { data: { identities: 4, candidates: { pending: 1 } }, isLoading: false, isError: false, error: null },
+      priceIndex: { data: { armed: true, sources: [{ key: 'a', rows: null }, { key: 'b', rows: null }] }, isLoading: false, isError: false, error: null },
+      siteSweep: { data: { armed: true, activeCount: 0, totalCount: 3 }, isLoading: false, isError: false, error: null },
+      shopSweep: { data: { armed: true, activeCount: 0, totalCount: 2 }, isLoading: false, isError: false, error: null },
+    }
+    const { unmount } = render(<VendorPricesNext />)
+    expect(screen.queryByText(/0 of 2 sources/)).toBeNull()
+    expect(screen.getByText(/could not be read just now/)).toBeInTheDocument()
+    unmount()
+
+    mock.masthead = {
+      ...mock.masthead,
+      priceIndex: { data: { armed: true, sources: [{ key: 'a', rows: 5 }, { key: 'b', rows: null }, { key: 'c', rows: 0 }] }, isLoading: false, isError: false, error: null },
+    }
+    render(<VendorPricesNext />)
+    expect(screen.getByText(/1 of 3 sources holding rows; 1 could not be read just now/)).toBeInTheDocument()
+  })
+
   it('shows a plain percent-with-a-word on the consensus card, with the formula behind "How this was calculated" (review finding)', () => {
     mock.ref = { kind: 'wine', id: 'wine-1' }
     mock.compare = {

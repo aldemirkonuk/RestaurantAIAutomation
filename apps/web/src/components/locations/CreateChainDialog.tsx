@@ -52,6 +52,12 @@ export function CreateChainDialog({
   /* The failure in words, on the surface that caused it — see the note in
      EditLocationChainDialog. The toast still fires; behaviour is unchanged. */
   const [failure, setFailure] = useState<string | null>(null)
+  /* What already happened on an earlier try (F-547). The chain POST and the
+     location PATCHes are separate writes, so a try can half-succeed: the chain
+     exists and some locations moved. A retry then does only what is left —
+     re-POSTing would make a second chain with the same name. */
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(null)
+  const [movedIds, setMovedIds] = useState<Set<string>>(new Set())
   const nameRef = useRef<HTMLInputElement | null>(null)
   const shell = useMudavymShell()
 
@@ -64,10 +70,18 @@ export function CreateChainDialog({
     })
   }
 
-  const handleClose = () => {
+  const reset = () => {
     setName('')
     setSelectedIds(new Set())
     setFailure(null)
+    setCreated(null)
+    setMovedIds(new Set())
+  }
+
+  const handleClose = () => {
+    // A chain made by a half-done try is real; the page must show it.
+    if (created) onCreated(created)
+    reset()
     onClose()
   }
 
@@ -76,36 +90,69 @@ export function CreateChainDialog({
     setIsSubmitting(true)
     setFailure(null)
     try {
-      // Create the chain
-      const { data: created } = await apiClient.post<{ id: string; name: string }>(
-        '/organizations/chains',
-        { name: name.trim() },
-      )
+      let chain = created
+      if (!chain) {
+        try {
+          const { data } = await apiClient.post<{ id: string; name: string }>(
+            '/organizations/chains',
+            { name: name.trim() },
+          )
+          chain = { id: data.id, name: data.name }
+          setCreated(chain)
+        } catch (e) {
+          setFailure(`Could not create chain — ${getErrorMessage(e)}`)
+          toast.error(`Could not create chain — ${getErrorMessage(e)}`)
+          return
+        }
+      }
+      const chainId = chain.id
 
-      // Assign selected locations
-      const ids = Array.from(selectedIds)
-      await Promise.all(
+      // Assign selected locations — only the ones not already moved in.
+      const ids = Array.from(selectedIds).filter((id) => !movedIds.has(id))
+      const results = await Promise.allSettled(
         ids.map((locationId) =>
-          apiClient.patch(`/organizations/locations/${locationId}`, {
-            chainId: created.id,
-          }),
+          apiClient.patch(`/organizations/locations/${locationId}`, { chainId }),
         ),
       )
+      const moved = new Set(movedIds)
+      const failedIds: string[] = []
+      let firstError: unknown = null
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') moved.add(ids[i])
+        else {
+          failedIds.push(ids[i])
+          if (firstError === null) firstError = r.reason
+        }
+      })
+      setMovedIds(moved)
+
+      if (failedIds.length > 0) {
+        const names = failedIds
+          .map((id) => standaloneLocations.find((l) => l.id === id)?.name ?? 'a location')
+          .join(', ')
+        const total = moved.size + failedIds.length
+        const message = `"${name.trim()}" was created and ${moved.size} of ${total} location${total !== 1 ? 's' : ''} moved in. ${names} did not move — ${getErrorMessage(firstError)}. Try again to move ${failedIds.length !== 1 ? 'them' : 'it'}.`
+        setFailure(message)
+        toast.error(message)
+        return
+      }
 
       toast.success(
-        ids.length > 0
-          ? `"${name.trim()}" created with ${ids.length} location${ids.length !== 1 ? 's' : ''}`
+        moved.size > 0
+          ? `"${name.trim()}" created with ${moved.size} location${moved.size !== 1 ? 's' : ''}`
           : `"${name.trim()}" created`,
       )
-      onCreated({ id: created.id, name: created.name })
-      handleClose()
-    } catch (e) {
-      setFailure(`Could not create chain — ${getErrorMessage(e)}`)
-      toast.error(`Could not create chain — ${getErrorMessage(e)}`)
+      onCreated(chain)
+      reset()
+      onClose()
     } finally {
       setIsSubmitting(false)
     }
   }
+
+  const submitLabel = isSubmitting
+    ? created ? 'Moving…' : 'Creating…'
+    : created ? 'Move the rest' : 'Create chain'
 
   /* ── the house shape ─────────────────────────────────────────────────────
      Copy is the legacy dialog's, word for word. Only the surface changes. */
@@ -131,7 +178,7 @@ export function CreateChainDialog({
         <div className="mdv-form">
           {failure ? (
             <div className="mdv-alert" role="alert">
-              <p className="mdv-alert__head">Not created</p>
+              <p className="mdv-alert__head">{created ? 'Created, not finished' : 'Not created'}</p>
               <p>{failure}</p>
             </div>
           ) : null}
@@ -145,6 +192,7 @@ export function CreateChainDialog({
               ref={nameRef}
               className="mdv-input"
               value={name}
+              readOnly={created !== null}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !isSubmitting && name.trim() && handleSubmit()}
               placeholder="e.g. The Grill Co."
@@ -192,7 +240,7 @@ export function CreateChainDialog({
               onClick={handleSubmit}
               disabled={isSubmitting || !name.trim()}
             >
-              {isSubmitting ? 'Creating…' : 'Create chain'}
+              {submitLabel}
             </button>
           </div>
         </div>
@@ -237,6 +285,7 @@ export function CreateChainDialog({
                 </label>
                 <input
                   value={name}
+                  readOnly={created !== null}
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !isSubmitting && name.trim() && handleSubmit()}
                   placeholder="e.g. The Grill Co."
@@ -304,7 +353,7 @@ export function CreateChainDialog({
                   disabled={isSubmitting || !name.trim()}
                   className="bg-wine-600 text-white hover:bg-wine-700"
                 >
-                  {isSubmitting ? 'Creating…' : 'Create chain'}
+                  {submitLabel}
                 </Button>
               </div>
             </div>
