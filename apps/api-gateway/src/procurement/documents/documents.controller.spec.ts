@@ -1,5 +1,10 @@
 import { HttpException } from "@nestjs/common";
 import { DocumentsController } from "./documents.controller";
+import {
+  DOCUMENT_LINE_MONEY_COLUMNS,
+  DOCUMENT_MONEY_COLUMNS,
+  isMoneyPath,
+} from "./document-money-gate";
 
 describe("DocumentsController.detail — signed image URL (decision E48)", () => {
   let controller: DocumentsController;
@@ -698,7 +703,7 @@ describe("DocumentsController.list — the verdict as the rule gives it now (wal
       procurement_documents: { data: [storedRow], error: null },
       procurement_document_lines: { data: [lineRow], error: null },
     });
-    const out = await controller.list({ userId: "u1", restaurantId: "rest-1" } as any, "needs_review");
+    const out = await controller.list({ userId: "u1", restaurantId: "rest-1", role: "manager" } as any, "needs_review");
     const item = out.items[0] as Record<string, unknown>;
     expect(item.ties_out).toBe(true);
     expect(item.tie_out_delta).toBe(0);
@@ -710,7 +715,7 @@ describe("DocumentsController.list — the verdict as the rule gives it now (wal
       procurement_documents: { data: [storedRow], error: null },
       procurement_document_lines: { data: null, error: { message: "boom" } },
     });
-    const out = await controller.list({ userId: "u1", restaurantId: "rest-1" } as any, "needs_review");
+    const out = await controller.list({ userId: "u1", restaurantId: "rest-1", role: "manager" } as any, "needs_review");
     const item = out.items[0] as Record<string, unknown>;
     expect(item.ties_out).toBe(false);
     expect(item.tie_out_delta).toBe(8.63);
@@ -774,5 +779,231 @@ describe("DocumentsController.list — who sent it (walk-through W8, 2026-10-01)
       "SYNTHETIC PAPER TWO",
       null,
     ]);
+  });
+});
+
+/**
+ * MONEY-POLICY M2: THE DOCUMENT READS. `GET /procurement/documents`, `GET :id`
+ * and `GET :id/canonical` gave every signed-in member each price, total and
+ * tie-out on the house's vendor paper. A non-holder now gets the same paper
+ * without its amounts and `amountsWithheld: true`; the door's counts stay.
+ */
+
+const M2_HOUSE = "11111111-1111-4111-8111-111111111111";
+const M2_DOC = "44444444-4444-4444-8444-444444444444";
+const asRole = (role: string | null) => ({
+  userId: "22222222-2222-4222-8222-222222222222",
+  restaurantId: M2_HOUSE,
+  role,
+});
+
+const m2DocRow = () => ({
+  id: M2_DOC,
+  restaurant_id: M2_HOUSE,
+  provider_id: null,
+  doc_type: "invoice",
+  doc_number: "INV-7",
+  status: "needs_review",
+  currency: "USD",
+  storage_path: null,
+  subtotal: 240,
+  freight: 12,
+  tax: 20,
+  total: 272,
+  computed_lines_total: 240,
+  tie_out_delta: 0,
+  ties_out: true,
+  notes: "Lines sum to 240.00 against a stated 272.00",
+  raw_payload: "INV-7 ... 24.00",
+  extracted: {
+    docType: "invoice",
+    docNumber: "INV-7",
+    total: 272,
+    lines: [{ lineNo: 1, qty: 10, uom: "bottle", packSize: 1, qtyBottles: 10, unitPrice: 24 }],
+  },
+});
+const m2LineRow = () => ({
+  id: "l1",
+  document_id: M2_DOC,
+  line_no: 1,
+  description: "Barolo",
+  qty: 10,
+  uom: "bottle",
+  pack_size: 1,
+  qty_bottles: 10,
+  unit_price: 24,
+  line_total: 240,
+  allowance: 0,
+  deposit: 0,
+  printed: { unitPrice: "24.00" },
+});
+
+/** A PostgREST stand-in: every chain resolves to the table's rows. */
+function m2FakeDb(tables: Record<string, unknown[]>) {
+  const builder = (table: string) => {
+    const result = { data: tables[table] ?? [], error: null };
+    const b: any = {};
+    for (const m of ["select", "eq", "in", "order", "limit", "range"])
+      b[m] = () => b;
+    b.maybeSingle = async () => ({ data: (tables[table] ?? [])[0] ?? null, error: null });
+    b.then = (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) =>
+      Promise.resolve(result).then(ok, ko);
+    return b;
+  };
+  return {
+    getClient: () => ({
+      from: builder,
+      storage: { from: () => ({ createSignedUrl: async () => ({ data: null, error: null }) }) },
+    }),
+  };
+}
+
+function m2Controller(extra: { canonical?: unknown; spine?: unknown; corrections?: unknown } = {}) {
+  const none = {} as never;
+  return new DocumentsController(
+    none,
+    m2FakeDb({
+      procurement_documents: [m2DocRow()],
+      procurement_document_lines: [m2LineRow()],
+      procurement_document_links: [{ document_id: M2_DOC, order_id: "o1" }],
+    }) as never,
+    (extra.canonical ?? none) as never,
+    (extra.spine ?? none) as never,
+    (extra.corrections ?? none) as never,
+    none,
+    none,
+    none,
+    none,
+    none,
+    none,
+  );
+}
+
+const canonicalDeps = () => ({
+  canonical: {
+    buildFromDocumentId: async () => ({
+      ok: true,
+      value: {
+        documentId: M2_DOC,
+        layer1: {
+          documentNumber: { value: "INV-7" },
+          totals: { taxInclusiveAmount: { value: 272 } },
+          allowancesCharges: [{ amount: { value: 12 } }],
+          vatBreakdown: [{ taxAmount: { value: 20 } }],
+          lines: [
+            {
+              description: { value: "Barolo" },
+              quantity: { value: 10 },
+              netPrice: { value: 24 },
+              netAmount: { value: 240 },
+              allowancesCharges: [],
+            },
+          ],
+        },
+        layer2: { lines: [] },
+        layer3: {
+          tiesOut: true,
+          tieOutDeltaCents: 0,
+          verdicts: [{ id: "BR-CO-15", expected: 272, found: 272 }],
+          lines: [{ lineIndex: 0, billed: 10, moneyAtRisk: 0 }],
+        },
+      },
+    }),
+  },
+  spine: {
+    forDocument: async () => ({
+      ok: true,
+      value: [
+        {
+          deliveryId: "d1",
+          documents: [
+            { documentId: M2_DOC, total: 272 },
+            { documentId: "slip", total: null },
+          ],
+        },
+      ],
+    }),
+  },
+  corrections: {
+    correctionLog: async () => ({
+      ok: true,
+      value: [
+        { path: "lines[0].netPrice", before: { value: 23 }, after: { value: 24 } },
+        { path: "lines[0].quantity", before: { value: 9 }, after: { value: 10 } },
+      ],
+    }),
+  },
+});
+
+describe("M2 — staff read vendor paper without its money", () => {
+  it("the list keeps each paper's name, status and the door's count, and drops every amount", async () => {
+    const out = (await m2Controller().list(asRole("staff") as never)) as any;
+    expect(out.amountsWithheld).toBe(true);
+    const row = out.items[0];
+    for (const k of DOCUMENT_MONEY_COLUMNS) expect(row).not.toHaveProperty(k);
+    expect(row).toMatchObject({ doc_number: "INV-7", status: "needs_review", ties_out: true });
+    expect(row.extracted).toEqual({
+      docType: "invoice",
+      docNumber: "INV-7",
+      lines: [{ lineNo: 1, qty: 10, uom: "bottle", packSize: 1, qtyBottles: 10 }],
+    });
+  });
+
+  it("one paper keeps its lines' quantities and drops their prices and totals", async () => {
+    const out = (await m2Controller().detail(M2_DOC, asRole("staff") as never)) as any;
+    expect(out.amountsWithheld).toBe(true);
+    expect(out.document).not.toHaveProperty("total");
+    for (const k of DOCUMENT_LINE_MONEY_COLUMNS) expect(out.lines[0]).not.toHaveProperty(k);
+    expect(out.lines[0]).toMatchObject({ qty: 10, qty_bottles: 10, description: "Barolo" });
+    expect(out.links).toHaveLength(1);
+  });
+
+  it("the canonical sheet drops prices, totals, money at risk and money corrections", async () => {
+    const out = (await m2Controller(canonicalDeps()).canonicalDocument(
+      M2_DOC,
+      asRole("staff") as never,
+    )) as any;
+    expect(out.amountsWithheld).toBe(true);
+    expect(out.canonical.amountsWithheld).toBe(true);
+    const l1 = out.canonical.layer1;
+    expect(l1).not.toHaveProperty("totals");
+    expect(l1).not.toHaveProperty("allowancesCharges");
+    expect(l1).not.toHaveProperty("vatBreakdown");
+    expect(l1.lines[0]).not.toHaveProperty("netPrice");
+    expect(l1.lines[0]).not.toHaveProperty("netAmount");
+    expect(l1.lines[0].quantity).toEqual({ value: 10 });
+    const l3 = out.canonical.layer3;
+    expect(l3).not.toHaveProperty("tieOutDeltaCents");
+    expect(l3).not.toHaveProperty("verdicts");
+    expect(l3.tiesOut).toBe(true);
+    expect(l3.lines[0]).toEqual({ lineIndex: 0, billed: 10 });
+    expect(out.deliveries[0].documents.every((d: object) => !("total" in d))).toBe(true);
+    expect(out.siblings.every((d: object) => !("total" in d))).toBe(true);
+    expect(out.corrections).toEqual([
+      { path: "lines[0].quantity", before: { value: 9 }, after: { value: 10 } },
+    ]);
+  });
+
+  it.each(["owner", "manager"])("a %s reads every amount", async (role) => {
+    const list = (await m2Controller().list(asRole(role) as never)) as any;
+    expect(list).not.toHaveProperty("amountsWithheld");
+    expect(list.items[0]).toMatchObject({ total: 272, freight: 12 });
+    const one = (await m2Controller().detail(M2_DOC, asRole(role) as never)) as any;
+    expect(one.lines[0].unit_price).toBe(24);
+    const sheet = (await m2Controller(canonicalDeps()).canonicalDocument(
+      M2_DOC,
+      asRole(role) as never,
+    )) as any;
+    expect(sheet).not.toHaveProperty("amountsWithheld");
+    expect(sheet.canonical.layer1.lines[0].netPrice).toEqual({ value: 24 });
+    expect(sheet.corrections[0].before).toEqual({ value: 23 });
+  });
+
+  it("names a money path by an allowlist", () => {
+    expect(isMoneyPath("totals.taxAmount")).toBe(true);
+    expect(isMoneyPath("lines[3].netPrice")).toBe(true);
+    expect(isMoneyPath("lines[3].quantity")).toBe(false);
+    expect(isMoneyPath("seller.name")).toBe(false);
+    expect(isMoneyPath("somethingNew")).toBe(true);
   });
 });

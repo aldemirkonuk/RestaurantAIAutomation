@@ -1241,3 +1241,57 @@ describe('CanonicalSheet — the letterhead (W45, frame A)', () => {
     expect(within(header).getByRole('img', { name: 'Mudavym' })).toBeTruthy()
   })
 })
+
+/*
+ * M2: a staff reader is sent the canonical document as the gateway's
+ * `canonicalReadWithoutMoney` cuts it — no totals, charges or VAT, no line
+ * price or amount, no tie-out delta or money at risk, and
+ * `amountsWithheld: true`. The page must neither crash on the missing amounts
+ * nor say the paper has none.
+ */
+describe('a staff reader sees the document without its money (M2)', () => {
+  const staffDoc = (): CanonicalDocument => {
+    const d = doc({ layer3: { lines: [adjudicated({ billed: 12, received: 10, verdict: 'short' })], tiesOut: false, tieOutDeltaCents: 1200, verdicts: [] } })
+    const { totals: _t, allowancesCharges: _a, vatBreakdown: _v, ...l1 } = d.layer1
+    const lines = d.layer1.lines.map(({ netPrice: _p, netAmount: _n, allowancesCharges: _c, ...rest }) => rest)
+    const { tieOutDeltaCents: _d, verdicts: _vv, ...l3 } = d.layer3
+    const l3lines = d.layer3.lines.map(({ moneyAtRisk: _m, ...rest }) => rest)
+    return {
+      ...d,
+      layer1: { ...l1, lines } as unknown as CanonicalDocument['layer1'],
+      layer3: { ...l3, lines: l3lines } as unknown as CanonicalDocument['layer3'],
+      amountsWithheld: true,
+    }
+  }
+
+  it('the sheet draws the lines and counts, no money block, and says why', () => {
+    const { queryByTestId, getByTestId, container } = render(<CanonicalSheet doc={staffDoc()} />)
+    expect(queryByTestId('money-block')).toBeNull()
+    expect(queryByTestId('no-money-note')).toBeNull()
+    expect(getByTestId('amounts-withheld-note').textContent).toMatch(/kept for owners and managers/)
+    expect(container.textContent).toContain('SYNTHETIC Öküzgözü')
+  })
+
+  it('the verdict names the short line and prints no amount', () => {
+    const { getByTestId, queryByTestId, container } = render(<VerdictBlock doc={staffDoc()} />)
+    expect(queryByTestId('money-at-risk')).toBeNull()
+    expect(getByTestId('tie-out-sentence').textContent).toBe('The lines do not add up to the stated total.')
+    expect(container.textContent).toMatch(/kept for owners and managers/)
+    expect(container.textContent).not.toMatch(/billed .*(TRY|₺|\d+[.,]\d\d)/)
+  })
+
+  it('the spine says an absent total is withheld, not that the paper has none', () => {
+    const cut = (id: string, role: string) => {
+      const { total: _t, ...rest } = spineDoc(id, role)
+      return rest as ReturnType<typeof spineDoc>
+    }
+    const { container } = render(
+      <DeliverySpine
+        deliveries={[spine([cut('doc-syn', 'invoice'), cut('doc-po', 'purchase_order'), cut('doc-dn', 'delivery_note')])]}
+        selectedDocumentId="doc-syn"
+      />,
+    )
+    expect(container.textContent).not.toContain('no money on this document')
+    expect(container.textContent).toContain('amount kept for owners and managers')
+  })
+})

@@ -60,6 +60,9 @@ import {
 import { CORRECTABLE_PATHS, splitPath } from "../canonical/correctable-paths";
 import {
   assertHoldsHouseMoney,
+  canonicalReadWithoutMoney,
+  documentLineWithoutMoney,
+  documentRowWithoutMoney,
   doorEchoOf,
   holdsHouseMoney,
 } from "./document-money-gate";
@@ -602,7 +605,7 @@ export class DocumentsController {
         )
       : null;
 
-    return {
+    const read = {
       canonical: built.value,
       // NULL means the read failed and `failedRead` says so. An empty array
       // means the reads succeeded and this document is on no delivery — the
@@ -640,6 +643,10 @@ export class DocumentsController {
       ...(built.notes?.length ? { notes: built.notes } : {}),
       ...(failedRead.length ? { failedRead } : {}),
     };
+    // The house's money stays with those who hold it (money-policy M2).
+    return holdsHouseMoney(user.role ?? null)
+      ? read
+      : canonicalReadWithoutMoney(read);
   }
 
   /**
@@ -1400,16 +1407,23 @@ export class DocumentsController {
       this.tieOutsAsRuledNow((data ?? []) as Record<string, unknown>[]),
       this.vendorNamesFor((data ?? []) as Record<string, unknown>[]),
     ]);
-    const items = (data ?? []).map((row) => ({
-      ...(row as Record<string, unknown>),
-      ...(verdicts.get((row as { id: string }).id) ?? {}),
-      vendorName: vendorNames.get((row as { id: string }).id) ?? null,
-      moneyState: documentMoneyState(
-        row as { currency?: string | null; extracted?: unknown },
-      ),
-    }));
+    // The house's money stays with those who hold it (money-policy M2): a
+    // non-holder gets each row without its amounts, and is told so.
+    const holder = holdsHouseMoney(user.role ?? null);
+    const withheld = holder ? {} : { amountsWithheld: true as const };
+    const items = (data ?? []).map((row) => {
+      const full = {
+        ...(row as Record<string, unknown>),
+        ...(verdicts.get((row as { id: string }).id) ?? {}),
+        vendorName: vendorNames.get((row as { id: string }).id) ?? null,
+        moneyState: documentMoneyState(
+          row as { currency?: string | null; extracted?: unknown },
+        ),
+      };
+      return holder ? full : documentRowWithoutMoney(full);
+    });
 
-    if (!orderId) return { items };
+    if (!orderId) return { items, ...withheld };
 
     const { data: order, error: orderError } = await this.db
       .getClient()
@@ -1424,6 +1438,7 @@ export class DocumentsController {
     if (orderError)
       return {
         items,
+        ...withheld,
         order: {
           id: orderId,
           currency: null,
@@ -1440,6 +1455,7 @@ export class DocumentsController {
     } | null;
     return {
       items,
+      ...withheld,
       order: {
         id: orderId,
         currency: orderRow?.currency ?? null,
@@ -1494,8 +1510,17 @@ export class DocumentsController {
       doc.storage_path ?? null,
     );
 
+    const document = { ...doc, imageUrl, imageUrlReason };
+    // The house's money stays with those who hold it (money-policy M2).
+    if (!holdsHouseMoney(user.role ?? null))
+      return {
+        document: documentRowWithoutMoney(document),
+        lines: (lines ?? []).map(documentLineWithoutMoney),
+        links: links ?? [],
+        amountsWithheld: true,
+      };
     return {
-      document: { ...doc, imageUrl, imageUrlReason },
+      document,
       lines: lines ?? [],
       links: links ?? [],
     };

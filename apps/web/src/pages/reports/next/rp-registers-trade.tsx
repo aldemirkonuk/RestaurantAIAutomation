@@ -29,6 +29,7 @@ import {
   weekStart,
   weekdayIndex,
 } from './rp-format';
+import { AMOUNTS_WITHHELD } from './rp-registers-house';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { Cat, Cell } from './rp-view';
 
@@ -278,6 +279,8 @@ const till = analysis<TillWindow>({
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 
 export interface PacingRegister {
+  /** Staff are sent the pace and the order count, never the spend (F-203). */
+  amountsWithheld?: boolean;
   basis?: { outflow?: string };
   spendLast30d: number | null;
   spendPrev30d: number | null;
@@ -299,6 +302,7 @@ const pacing = analysis<PacingRegister>({
   select: (raw) => {
     const d = obj(raw);
     return {
+      amountsWithheld: d.amountsWithheld === true,
       basis: d.basis as PacingRegister['basis'],
       spendLast30d: num(d.spendLast30d),
       spendPrev30d: num(d.spendPrev30d),
@@ -333,6 +337,13 @@ const pacing = analysis<PacingRegister>({
       ),
     ];
     const basis = [c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null];
+    if (c.amountsWithheld)
+      return {
+        say: `${AMOUNTS_WITHHELD} The pace and the open orders below still say whether buying runs hot or cold.`,
+        figures: figures.filter((x) => x.label !== 'Committed, not yet delivered'),
+        notes: [],
+        basis,
+      };
     // Two invisible bars are not a chart. When both windows are empty the
     // sentence is the honest rendering — and it names WHICH windows.
     if ((c.spendLast30d ?? 0) === 0 && (c.spendPrev30d ?? 0) === 0)

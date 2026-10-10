@@ -42,6 +42,7 @@
  */
 
 import { EM, countOf, figure, money, num, pct } from './rp-format';
+import { AMOUNTS_WITHHELD } from './rp-registers-house';
 import { analysis, arr, obj, str } from './rp-spec';
 
 export interface BenchGoalRow {
@@ -54,6 +55,8 @@ export interface BenchGoalRow {
 }
 
 export interface BenchRegister {
+  /** Staff are sent no spend or committed money (F-203). */
+  amountsWithheld?: boolean;
   spendLast30d: number | null;
   spendPrev30d: number | null;
   paceDeltaPct: number | null;
@@ -88,6 +91,7 @@ export const bench = analysis<BenchRegister>({
     const cfBasis = obj(cf.basis);
     const seBasis = obj(se.basis);
     return {
+      amountsWithheld: d.amountsWithheld === true,
       spendLast30d: num(cf.spendLast30d),
       spendPrev30d: num(cf.spendPrev30d),
       paceDeltaPct: num(cf.paceDeltaPct),
@@ -124,7 +128,7 @@ export const bench = analysis<BenchRegister>({
     const noPeers =
       'No other house is in this comparison. Mudavym holds only this restaurant’s books, so there is no market median to stand beside these figures — every one of them is this house against its own past. The one median the engine does publish, over this house’s own list, is drawn as the crosshair on “Margin against movement”.';
 
-    const figures = [
+    const allFigures = [
       {
         label: 'Bought, last 30 days',
         value: money(b.spendLast30d),
@@ -146,6 +150,11 @@ export const bench = analysis<BenchRegister>({
       },
       { label: 'Goals running', value: figure(b.goals.length) },
     ];
+    const withheld = b.amountsWithheld === true;
+    const spendLabels = ['Bought, last 30 days', 'Bought, the 30 before', 'Committed, not yet delivered'];
+    const figures = withheld
+      ? allFigures.filter((x) => !spendLabels.includes(x.label))
+      : allFigures;
 
     if (b.cashflowMissing && b.seasonalityMissing && b.goals.length === 0)
       return {
@@ -160,20 +169,22 @@ export const bench = analysis<BenchRegister>({
     // at least one window carries a figure; otherwise the note below says why,
     // matching what "Spend pacing" already does with the same payload.
     const bothWindows =
+      !withheld &&
       b.spendLast30d !== null &&
       b.spendPrev30d !== null &&
       (b.spendLast30d !== 0 || b.spendPrev30d !== 0);
 
     const rows: Array<{ key: string; cells: string[] }> = [];
-    rows.push({
-      key: 'buying',
-      cells: [
-        'Buying, 30 days against the 30 before',
-        money(b.spendLast30d, 'table'),
-        money(b.spendPrev30d, 'table'),
-        b.paceDeltaPct === null ? EM : pct(b.paceDeltaPct),
-      ],
-    });
+    if (!withheld)
+      rows.push({
+        key: 'buying',
+        cells: [
+          'Buying, 30 days against the 30 before',
+          money(b.spendLast30d, 'table'),
+          money(b.spendPrev30d, 'table'),
+          b.paceDeltaPct === null ? EM : pct(b.paceDeltaPct),
+        ],
+      });
     rows.push({
       key: 'week',
       cells: [
@@ -233,6 +244,7 @@ export const bench = analysis<BenchRegister>({
       figures,
       notes: [
         noPeers,
+        withheld ? AMOUNTS_WITHHELD : null,
         // Measured on the running gateway, 2026-09-03: this tenant returns
         // spendLast30d = spendPrev30d = 0. `getCashflow` sums a loader that
         // degrades a FAILED query to `[]` (`advanced-analytics.service.ts:125-146`,
@@ -242,10 +254,10 @@ export const bench = analysis<BenchRegister>({
         // (§9.2); it is NOT fixed in cashflow yet, so the cutting says so rather
         // than presenting $0 against $0 as a measured standstill. This is a
         // statement about the register, not a verdict dressed as the server's.
-        b.spendLast30d === 0 && b.spendPrev30d === 0
+        !withheld && b.spendLast30d === 0 && b.spendPrev30d === 0
           ? 'Both buying windows came back at zero, so no bars are drawn — two bars at zero would say the same thing less clearly. And the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so a pair of zeros means "no delivered order was returned", not necessarily "nothing was bought".'
           : null,
-        b.cashflowMissing
+        b.cashflowMissing && !withheld
           ? 'The buying lens did not answer inside the overview call, so its four figures are em dashes rather than zeros.'
           : null,
         b.seasonalityMissing

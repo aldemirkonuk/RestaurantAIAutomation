@@ -1,6 +1,7 @@
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { resolveUnitCost, summarizeCostBasis } from "./inventory-cost";
+import { AnalyticsController } from "./analytics.controller";
 
 /**
  * Regression guard — analytics never invents what a bottle cost.
@@ -454,5 +455,211 @@ describe("getWine360", () => {
     expect(out.unitCost).toBe(20);
     expect(out.marginPerBottle).toBe(40);
     expect(out.basis.unitCost).toContain("last_purchase_price");
+  });
+});
+
+describe("F-203 — staff read no house money on the analytics lenses", () => {
+  /**
+   * F-203: the analytics lenses sent every signed-in member the house's money.
+   * Staff now get each lens with its prices, costs, margins and spend omitted
+   * and `amountsWithheld: true`; owners and managers get it whole.
+   */
+  const menu = () => ({
+    counts: { star: 1, unclassified: 0, unmeasured: 0 },
+    medians: { velocityPerDay: 0.4, marginPerBottle: 31 },
+    items: [
+      {
+        id: "i1",
+        name: "Barolo",
+        velocityPerDay: 0.5,
+        marginPerBottle: 42,
+        marginPct: 0.61,
+        costBasis: "invoiced",
+        quadrant: "star",
+        action: "Protect",
+      },
+    ],
+  });
+  const cashflow = () => ({
+    basis: { outflow: "delivered procurement_orders" },
+    spendLast30d: 1200,
+    spendPrev30d: 900,
+    paceDeltaPct: 33,
+    projectedNext4Weeks: [300, 310, 320, 330],
+    committedOpenOrders: 640,
+    openOrderCount: 3,
+  });
+  const vendors = () => ({
+    vendors: [
+      {
+        vendorId: "v1",
+        vendorName: "Kermit",
+        orders: 4,
+        delivered: 3,
+        spend: 2100,
+        onTimeRate: 0.75,
+        unitPrice: { mean: 22, latest: 24, trendPerOrderPct: 3 },
+      },
+    ],
+    concentration: { hhi: 1, effectiveVendors: 1 },
+  });
+  const wine = () => ({
+    masterWineId: "w1",
+    onHand: 6,
+    unitPrice: 90,
+    unitCost: 38,
+    marginPerBottle: 52,
+    costBasis: "invoiced",
+    daysOfCover: 12,
+  });
+  const financial = () => ({
+    costCoverage: { total: 2, priced: 2, unpriced: 0, complete: true },
+    inventoryValue: 5400,
+    cogs: 22000,
+    revenue: 61000,
+    grossMarginDollars: 39000,
+    grossMargin: 0.64,
+    cogsRatio: 0.36,
+    primeCostRatio: null,
+    inventoryTurnover: 4.1,
+    daysInventoryOutstanding: 89,
+    gmroi: 7.2,
+    deadStockCapital: 800,
+    deadStockTop: [
+      { name: "Old Rioja", value: 800, qty: 10, costBasis: "wac" },
+    ],
+  });
+
+  function controllerWith(advanced: Record<string, unknown>, analytics = {}) {
+    const none = {} as never;
+    return new AnalyticsController(
+      analytics as never,
+      advanced as never,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+    );
+  }
+
+  const ctl = () =>
+    controllerWith(
+      {
+        getMenuEngineering: async () => menu(),
+        getCashflow: async () => cashflow(),
+        getVendorScorecard: async () => vendors(),
+        getWine360: async () => wine(),
+        getOverview: async () => ({
+          financial: financial(),
+          cashflow: cashflow(),
+          seasonality: { bestDay: "Fri" },
+          menuEngineering: { counts: menu().counts, top: menu().items },
+          inventory: {
+            reorderCount: 1,
+            reorderTop: [
+              { id: "s1", onHand: 2, unitCost: 38, inventoryValue: 76 },
+            ],
+            skuCount: 1,
+          },
+          activeGoals: [],
+        }),
+      },
+      { getFinancialSummary: async () => financial() },
+    );
+
+  const staff = { role: "staff" };
+
+  it("menu engineering keeps velocity and quadrant, drops every margin", async () => {
+    const m = (await ctl().getMenuEngineering("r1", staff)) as any;
+    expect(m.amountsWithheld).toBe(true);
+    expect(m.medians).toEqual({ velocityPerDay: 0.4 });
+    expect(m.items[0]).not.toHaveProperty("marginPerBottle");
+    expect(m.items[0]).not.toHaveProperty("marginPct");
+    expect(m.items[0]).toMatchObject({ velocityPerDay: 0.5, quadrant: "star" });
+    expect(m.counts.star).toBe(1);
+  });
+
+  it("cashflow keeps the order count and pace, drops spend and what is owed", async () => {
+    const c = (await ctl().getCashflow("r1", staff)) as any;
+    for (const k of [
+      "spendLast30d",
+      "spendPrev30d",
+      "projectedNext4Weeks",
+      "committedOpenOrders",
+    ])
+      expect(c).not.toHaveProperty(k);
+    expect(c).toMatchObject({
+      openOrderCount: 3,
+      paceDeltaPct: 33,
+      amountsWithheld: true,
+    });
+  });
+
+  it("the vendor lens keeps on-time and counts, drops spend and unit prices", async () => {
+    const v = (await ctl().getVendorScorecard("r1", staff)) as any;
+    expect(v.vendors[0]).not.toHaveProperty("spend");
+    expect(v.vendors[0]).not.toHaveProperty("unitPrice");
+    expect(v.vendors[0]).toMatchObject({ orders: 4, onTimeRate: 0.75 });
+    expect(v.amountsWithheld).toBe(true);
+  });
+
+  it("one wine keeps its menu price and cover, drops its cost and margin", async () => {
+    const w = (await ctl().getWine360("r1", "w1", staff)) as any;
+    expect(w).not.toHaveProperty("unitCost");
+    expect(w).not.toHaveProperty("marginPerBottle");
+    expect(w).toMatchObject({ unitPrice: 90, daysOfCover: 12 });
+  });
+
+  it("the financial lens keeps turns and days, drops values, margins and capital", async () => {
+    const f = (await ctl().getFinancial("r1", undefined, staff)) as any;
+    for (const k of [
+      "inventoryValue",
+      "cogs",
+      "revenue",
+      "grossMarginDollars",
+      "grossMargin",
+      "cogsRatio",
+      "gmroi",
+      "deadStockCapital",
+    ])
+      expect(f).not.toHaveProperty(k);
+    expect(f).toMatchObject({
+      inventoryTurnover: 4.1,
+      daysInventoryOutstanding: 89,
+    });
+    expect(f.deadStockTop[0]).toEqual({
+      name: "Old Rioja",
+      qty: 10,
+      costBasis: "wac",
+    });
+  });
+
+  it("the overview cuts every lens it carries the same way", async () => {
+    const o = (await ctl().getOverview("r1", staff)) as any;
+    expect(o.amountsWithheld).toBe(true);
+    expect(o.financial).not.toHaveProperty("cogs");
+    expect(o.cashflow).not.toHaveProperty("spendLast30d");
+    expect(o.menuEngineering.top[0]).not.toHaveProperty("marginPerBottle");
+    expect(o.inventory.reorderTop[0]).toEqual({ id: "s1", onHand: 2 });
+    expect(o.seasonality).toEqual({ bestDay: "Fri" });
+  });
+
+  it("a session with no role is cut too", async () => {
+    const c = (await ctl().getCashflow("r1", {})) as any;
+    expect(c).not.toHaveProperty("spendLast30d");
+  });
+
+  it.each(["owner", "manager"])("a %s gets every lens whole", async (role) => {
+    const u = { role };
+    expect(await ctl().getMenuEngineering("r1", u)).toEqual(menu());
+    expect(await ctl().getCashflow("r1", u)).toEqual(cashflow());
+    expect(await ctl().getVendorScorecard("r1", u)).toEqual(vendors());
+    expect(await ctl().getWine360("r1", "w1", u)).toEqual(wine());
+    expect(await ctl().getFinancial("r1", undefined, u)).toEqual(financial());
   });
 });

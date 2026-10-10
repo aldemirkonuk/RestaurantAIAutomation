@@ -19,7 +19,9 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { till, type TillWindow } from './rp-registers-trade';
+import { pacing, till, type TillWindow } from './rp-registers-trade';
+import { AMOUNTS_WITHHELD, ledger, quadrants } from './rp-registers-house';
+import { bench } from './rp-registers-bench';
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import type { GoalsDesk } from './useGoalsDesk';
 import { paceOf, toProgressRow } from '@/pages/recommendations/next/rec-masthead';
@@ -250,5 +252,71 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
   it('calls it "Pace unknown" in the recommendations margin, and keeps "No deadline" for a goal with none', () => {
     expect(paceOf(toProgressRow(STOCK))).toBe('Pace unknown');
     expect(paceOf(toProgressRow(NO_DEADLINE))).toBe('No deadline');
+  });
+});
+
+/*
+ * F-203: the gateway sends a staff reader each money lens with its prices,
+ * costs, margins and spend left out and `amountsWithheld: true`. These cases
+ * pin that the registers then draw no money at all — no em-dashed money
+ * figure, no bar of spend, no margin axis — and say plainly why. They sit in
+ * this file so the lane stays within its 15 files.
+ */
+describe('a staff reader sees no house money on /reports (F-203)', () => {
+  const said = (v: { say?: unknown; notes: unknown[] }) =>
+    [String(v.say ?? ''), ...v.notes.map(String)].join(' ');
+
+  it('spend pacing keeps the pace and open orders, and draws no spend', () => {
+    const c = pacing.select({ paceDeltaPct: 12, openOrderCount: 3, amountsWithheld: true });
+    const v = pacing.view(c, ctx);
+    expect(v.figures.map((f) => f.label)).toEqual(['Pace', 'Open orders']);
+    expect(v.cats).toBeUndefined();
+    expect(v.table).toBeUndefined();
+    expect(said(v)).toContain(AMOUNTS_WITHHELD);
+    expect(said(v)).not.toMatch(/Projected|No delivered purchase order/);
+  });
+
+  it('margin against movement draws no margin axis and keeps the quadrant counts', () => {
+    const q = quadrants.select({
+      amountsWithheld: true,
+      counts: { star: 2, dog: 1, unclassified: 0 },
+      medians: { velocityPerDay: 0.4 },
+      items: [{ id: 'i1', name: 'Barolo', velocityPerDay: 0.5, quadrant: 'star' }],
+    });
+    const v = quadrants.view(q, ctx);
+    expect(v.points).toBeUndefined();
+    expect(v.cats).toBeUndefined();
+    expect(String(v.say)).toContain(AMOUNTS_WITHHELD);
+    expect(String(v.say)).not.toMatch(/no margin axis|recorded cost/);
+    expect(v.figures.find((f) => f.label === 'Stars')?.value).toBe('2');
+  });
+
+  it('the books keep turns and days, and print no money figure', () => {
+    const f = ledger.select({ amountsWithheld: true, inventoryTurnover: 4.1, daysInventoryOutstanding: 89 });
+    const v = ledger.view(f, ctx);
+    expect(v.figures.map((x) => x.label)).toEqual(['Inventory turns', 'Days of inventory']);
+    expect(v.notes).toEqual([AMOUNTS_WITHHELD]);
+  });
+
+  it('against ourselves drops the buying figures, row and bars', () => {
+    const b = bench.select({
+      amountsWithheld: true,
+      cashflow: { paceDeltaPct: 12, openOrderCount: 3, basis: {} },
+      seasonality: { bestDay: 'Fri', worstDay: 'Mon', weekdayProfile: [], basis: {} },
+      activeGoals: [],
+    });
+    const v = bench.view(b, ctx);
+    expect(v.figures.map((x) => x.label)).not.toContain('Bought, last 30 days');
+    expect(v.figures.map((x) => x.label)).not.toContain('Committed, not yet delivered');
+    expect(v.cats).toBeUndefined();
+    expect(v.table?.rows.map((r) => r.key)).not.toContain('buying');
+    expect(said(v)).toContain(AMOUNTS_WITHHELD);
+  });
+
+  it('an owner still reads every figure', () => {
+    const c = pacing.select({ spendLast30d: 1200, spendPrev30d: 900, paceDeltaPct: 33, committedOpenOrders: 640, openOrderCount: 3 });
+    const v = pacing.view(c, ctx);
+    expect(v.figures.map((f) => f.label)).toEqual(['Pace', 'Committed, not yet delivered', 'Open orders']);
+    expect(v.cats).toBeDefined();
   });
 });

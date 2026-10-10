@@ -127,3 +127,144 @@ export function doorEchoOf(
     );
   return doc;
 }
+
+/*
+ * THE READS (money-policy M2). `GET /procurement/documents`, `GET :id` and
+ * `GET :id/canonical` gave every signed-in member each price, total and
+ * tie-out on the house's vendor paper, while the upload already withheld them.
+ * A reader who does not hold the house's money now gets the same paper with
+ * those keys OMITTED (never nulled, for the reason `doorEchoOf` gives) and
+ * `amountsWithheld: true`. Quantities, names, dates, status and the door's
+ * own reading stay, so the door and the receiving count still work.
+ */
+
+/**
+ * The money columns of a `procurement_documents` row. `notes` holds the
+ * parse's warnings, which print the figures they compared; `raw_payload` is
+ * the paper as it arrived. `extracted` is not listed: it is cut to the door's
+ * echo instead, which is what the receiving screen counts from.
+ */
+export const DOCUMENT_MONEY_COLUMNS = [
+  "subtotal",
+  "freight",
+  "fuel_surcharge",
+  "split_case_fee",
+  "delivery_fee",
+  "deposit_total",
+  "tax",
+  "other_charges",
+  "discount_total",
+  "total",
+  "computed_lines_total",
+  "tie_out_delta",
+  "notes",
+  "raw_payload",
+] as const;
+
+/** The money columns of a `procurement_document_lines` row; `printed` is the line as printed. */
+export const DOCUMENT_LINE_MONEY_COLUMNS = [
+  "unit_price",
+  "line_total",
+  "allowance",
+  "deposit",
+  "printed",
+] as const;
+
+function omitting(
+  row: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> {
+  const out = { ...row };
+  for (const k of keys) delete out[k];
+  return out;
+}
+
+/** One document row as a non-holder may read it. */
+export function documentRowWithoutMoney(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = omitting(row, DOCUMENT_MONEY_COLUMNS);
+  if ("extracted" in out)
+    out.extracted = doorEchoOf(out.extracted as object | null);
+  return out;
+}
+
+/** One document line as a non-holder may read it. */
+export function documentLineWithoutMoney(
+  line: Record<string, unknown>,
+): Record<string, unknown> {
+  return omitting(line, DOCUMENT_LINE_MONEY_COLUMNS);
+}
+
+/**
+ * The layer-1 paths that carry no money. A correction on any other path
+ * (`totals.*`, a line's `netPrice` or `netAmount`, an allowance, a tax rate)
+ * is left out of a non-holder's correction log whole: what it was and what
+ * it became are the amounts.
+ * AN ALLOWLIST: a path added later stays withheld until someone lists it.
+ */
+const NON_MONEY_HEADER =
+  /^(documentNumber|issueDate|typeCode|currency|paymentDueDate|paymentTerms|purchaseOrderReference|despatchAdviceReference|precedingInvoiceReference|actualDeliveryDate|deliveryLocation|(seller|buyer)\.[A-Za-z]+)$/;
+const NON_MONEY_LINE =
+  /^lines\[\d+\]\.(lineId|description|sellerItemId|quantity|unit|priceBaseQuantity|priceBaseUnit|lineKind|vintage|lot|formatMl|freeGoodsQty)$/;
+
+export function isMoneyPath(path: string): boolean {
+  return !NON_MONEY_HEADER.test(path) && !NON_MONEY_LINE.test(path);
+}
+
+const CANONICAL_LINE_MONEY = ["netPrice", "netAmount", "allowancesCharges"];
+const LAYER1_MONEY = ["totals", "allowancesCharges", "vatBreakdown"];
+
+/**
+ * `GET :id/canonical` as a non-holder may read it. Layer 1 loses its prices,
+ * line amounts, allowances, VAT breakdown and totals; layer 3 its money at
+ * risk, its tie-out delta and its invariant results (each prints the figures
+ * it compared); the delivery spine and the sibling papers their totals.
+ * `amountsWithheld` is set on the canonical document too, because that is
+ * the object the sheet is handed.
+ */
+export function canonicalReadWithoutMoney<T extends Record<string, any>>(
+  read: T,
+): T & { amountsWithheld: true } {
+  const c = read.canonical ?? {};
+  const l1 = c.layer1 ?? {};
+  const l3 = c.layer3 ?? {};
+  const spineDoc = (d: Record<string, unknown>) => omitting(d, ["total"]);
+  return {
+    ...read,
+    canonical: {
+      ...c,
+      amountsWithheld: true,
+      layer1: {
+        ...omitting(l1, LAYER1_MONEY),
+        lines: (l1.lines ?? []).map((l: Record<string, unknown>) =>
+          omitting(l, CANONICAL_LINE_MONEY),
+        ),
+      },
+      layer3: {
+        ...omitting(l3, ["tieOutDeltaCents", "verdicts"]),
+        lines: (l3.lines ?? []).map((l: Record<string, unknown>) =>
+          omitting(l, ["moneyAtRisk"]),
+        ),
+      },
+    },
+    deliveries: Array.isArray(read.deliveries)
+      ? read.deliveries.map((d: Record<string, any>) => ({
+          ...d,
+          documents: (d.documents ?? []).map(spineDoc),
+        }))
+      : read.deliveries,
+    siblings: Array.isArray(read.siblings)
+      ? read.siblings.map(spineDoc)
+      : read.siblings,
+    // A correction to a withheld field is withheld with it: its before and
+    // after ARE the amounts, and an entry without them would read as a field
+    // that held nothing.
+    corrections: Array.isArray(read.corrections)
+      ? read.corrections.filter(
+          (e: Record<string, any>) => !isMoneyPath(String(e.path ?? "")),
+        )
+      : read.corrections,
+    amountsWithheld: true,
+  };
+}

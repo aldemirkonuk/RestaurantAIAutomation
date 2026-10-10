@@ -298,7 +298,9 @@ export function CanonicalSheet({
    * to be a complete one.
    */
   const nothingRead = l1.lines.length === 0
-  const money = showsMoney(doc.docType) && !nothingRead
+  /** M2: a staff reader is sent the counts and none of the money. */
+  const withheld = doc.amountsWithheld === true
+  const money = showsMoney(doc.docType) && !nothingRead && !withheld
   const juris = doc.jurisdiction
 
   const adjudicated = new Map(doc.layer3.lines.map((l) => [l.lineIndex, l]))
@@ -336,12 +338,14 @@ export function CanonicalSheet({
    * (BR-CO-13). A correction to one of those would be overwritten by the next
    * read, so the gateway refuses them and the sheet offers no handle.
    */
-  const ladder: {
+  type Rung = {
     label: string
     envelope: FieldEnvelope<number>
     summed: boolean
     path?: string
-  }[] = [
+  }
+  // A staff read carries no totals (M2), so there is no ladder to build.
+  const ladder: Rung[] = !money ? [] : [
     {
       label: 'Lines',
       envelope: l1.totals.linesNetTotal,
@@ -899,7 +903,14 @@ export function CanonicalSheet({
             </div>
           </div>
         </div>
-      ) : nothingRead ? null : (
+      ) : nothingRead ? null : withheld ? (
+        <p
+          data-testid="amounts-withheld-note"
+          style={{ marginTop: 10, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}
+        >
+          Prices and totals on this document are kept for owners and managers.
+        </p>
+      ) : (
         <p
           data-testid="no-money-note"
           style={{ marginTop: 10, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}
