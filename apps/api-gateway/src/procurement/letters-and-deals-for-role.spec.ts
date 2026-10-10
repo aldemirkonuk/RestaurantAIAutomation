@@ -50,10 +50,54 @@ const LETTER = {
   detectedIntent: "counter_offer",
 };
 
+// The reply engine's review flags (inbound-responder computeGuardrails):
+// the reasons, and the house's target and the vendor's best price beside them.
+const FLAGS = {
+  needs_approval: true,
+  reasons: ["price_above_target"],
+  target_price: 1100,
+  best_vendor_price: 1180,
+};
+
+const PENDING = {
+  id: "c-2",
+  orderId: "o-1",
+  providerName: "Acme Wines",
+  draftContent: "Dear Acme, we accept 1180 a case for two cases.",
+  subject: "Re: 1180 a case",
+  constraintFlags: { ...FLAGS },
+  quotedPrice: 1250,
+  negotiatedPrice: 1180,
+  quantity: 2,
+};
+
+const SENT = {
+  id: "c-3",
+  orderId: "o-1",
+  direction: "OUTBOUND",
+  status: "SENT",
+  providerName: "Acme Wines",
+  draftContent: "Dear Acme, we accept 1180 a case.",
+  rollingSummary: "Vendor came down from 1250 to 1180.",
+  constraintFlags: { ...FLAGS },
+};
+
+const DRAFT = {
+  id: "c-2",
+  content: "Dear Acme, we accept 1180 a case for two cases.",
+  provider_name: "Acme Wines",
+};
+
 function controller(maySend: boolean | "unreadable") {
   const service = {
     getDealProposal: jest.fn().mockResolvedValue({ ...PROPOSAL }),
     getOrderConversations: jest.fn().mockResolvedValue([{ ...LETTER }]),
+    getActiveConversations: jest.fn().mockResolvedValue([{ ...PENDING }]),
+    getConversationHistory: jest.fn().mockResolvedValue([{ ...SENT }]),
+    getPendingDraft: jest.fn().mockResolvedValue({
+      ...DRAFT,
+      constraint_flags: { ...FLAGS },
+    }),
     sendOrAskFor: jest
       .fn()
       .mockResolvedValue(
@@ -245,5 +289,130 @@ describe("the phone feed's drafted reply by role (F-982)", () => {
 
     expect(out.items[0].draftContent).toMatch(/1180/);
     expect(procurement.sendOrAskFor).not.toHaveBeenCalled();
+  });
+});
+
+describe("the letters waiting for a send by role (F-982, one route over)", () => {
+  it.each(NOT_HOLDERS)(
+    "gives %p the queue with no figure, on the flags or beside them",
+    async (role) => {
+      const out = (await controller(false).controller.getActiveConversations({
+        ...USER,
+        role,
+      })) as Record<string, unknown>[];
+
+      expect(out[0]).not.toHaveProperty("quotedPrice");
+      expect(out[0]).not.toHaveProperty("negotiatedPrice");
+      expect(out[0].constraintFlags).toEqual({
+        needs_approval: true,
+        reasons: ["price_above_target"],
+      });
+      expect(out[0].amountsWithheld).toBe(true);
+    },
+  );
+
+  it("keeps the words a staff member edits and asks a manager to send (ADR 0175)", async () => {
+    const { controller: c, service } = controller(false);
+    const out = (await c.getActiveConversations({
+      ...USER,
+      role: "staff",
+    })) as Record<string, unknown>[];
+
+    expect(out[0].draftContent).toBe(PENDING.draftContent);
+    expect(out[0]).not.toHaveProperty("wordsWithheld");
+    expect(service.sendOrAskFor).not.toHaveBeenCalled();
+  });
+
+  it.each(["owner", "manager"])("gives %s the whole queue", async (role) => {
+    const out = await controller(false).controller.getActiveConversations({
+      ...USER,
+      role,
+    });
+    expect(out).toEqual([PENDING]);
+  });
+});
+
+describe("the sent-letter ledger by role (F-982, one route over)", () => {
+  it.each(NOT_HOLDERS)(
+    "gives %p without send authority the letters without their words",
+    async (role) => {
+      const out = (await controller(false).controller.getConversationHistory({
+        ...USER,
+        role,
+      })) as Record<string, unknown>[];
+
+      for (const key of ["draftContent", "rollingSummary", "constraintFlags"]) {
+        expect(out[0]).not.toHaveProperty(key);
+      }
+      expect(out[0]).toMatchObject({
+        id: "c-3",
+        providerName: "Acme Wines",
+        amountsWithheld: true,
+        wordsWithheld: true,
+      });
+      expect(JSON.stringify(out)).not.toMatch(/1250|1180|1100/);
+    },
+  );
+
+  it("keeps the words for staff an owner has allowed to send, without the figures", async () => {
+    const out = (await controller(true).controller.getConversationHistory({
+      ...USER,
+      role: "staff",
+    })) as Record<string, unknown>[];
+
+    expect(out[0]).toMatchObject({
+      draftContent: SENT.draftContent,
+      rollingSummary: SENT.rollingSummary,
+    });
+    expect(out[0].constraintFlags).toEqual({
+      needs_approval: true,
+      reasons: ["price_above_target"],
+    });
+    expect(out[0]).not.toHaveProperty("wordsWithheld");
+  });
+
+  it("withholds the words when whether staff may send cannot be read", async () => {
+    const out = (await controller(
+      "unreadable",
+    ).controller.getConversationHistory({
+      ...USER,
+      role: "staff",
+    })) as Record<string, unknown>[];
+    expect(out[0]).not.toHaveProperty("draftContent");
+    expect(out[0].wordsWithheld).toBe(true);
+  });
+
+  it.each(["owner", "manager"])(
+    "gives %s the whole ledger and reads no standing",
+    async (role) => {
+      const { controller: c, service } = controller(false);
+      expect(await c.getConversationHistory({ ...USER, role })).toEqual([SENT]);
+      expect(service.sendOrAskFor).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("the pending draft's review flags by role (F-982)", () => {
+  it.each(NOT_HOLDERS)(
+    "gives %p the flags without the figures",
+    async (role) => {
+      const out = await controller(false).controller.getPendingDraft("o-1", {
+        ...USER,
+        role,
+      });
+      expect(out.draft?.constraint_flags).toEqual({
+        needs_approval: true,
+        reasons: ["price_above_target"],
+      });
+      expect(out.draft?.content).toBe(DRAFT.content);
+    },
+  );
+
+  it("gives an owner the flags whole", async () => {
+    const out = await controller(false).controller.getPendingDraft("o-1", {
+      ...USER,
+      role: "owner",
+    });
+    expect(out.draft?.constraint_flags).toEqual(FLAGS);
   });
 });

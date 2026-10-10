@@ -48,6 +48,7 @@ import {
   fmtWhen,
   hardCodesOf,
   heldBecause,
+  LETTER_WORDS_WITHHELD,
   readAgainFailed,
   sendState,
   typeLabel,
@@ -340,7 +341,9 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
                   : '1px solid var(--paper-2, #EAE4D8)',
             }}
           >
-            {item.draftContent || 'No message body was recorded for this exchange.'}
+            {item.wordsWithheld
+              ? LETTER_WORDS_WITHHELD
+              : item.draftContent || 'No message body was recorded for this exchange.'}
           </p>
           {/* F-425: what the vendor attached, beside the letter it came with. */}
           {item.direction === 'INBOUND' && <CameWithIt orderId={item.orderId} conversationId={item.id} />}

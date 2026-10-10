@@ -293,6 +293,11 @@ export interface ProcurementHistoryItem {
   constraintFlags: unknown
   rollingSummary: string | null
   /**
+   * F-982: the gateway left out this letter's words, summary and flags,
+   * because they name prices and the reader may not send to vendors.
+   */
+  wordsWithheld?: boolean
+  /**
    * The relay gateway's own refusal sentence, set only when
    * `status === 'RELAY_REFUSED'` (ADR 0099, founder 2026-09-21: a 400/403/422
    * relay refusal — or a header refusal, ADR 0172 — closes the draft rather

@@ -249,6 +249,17 @@ describe('CommunicationsNext', () => {
     expect(screen.queryByText(/provider flow returned/)).toBeNull();
   });
 
+  it('says plainly when a letter\'s words were withheld, never "no body was recorded" (F-982)', () => {
+    mockData.current = {
+      ...base,
+      rows: [item({ draftContent: null, rollingSummary: null, wordsWithheld: true })],
+    };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByText(/This letter names prices, so its words are shown to owners/)).toBeInTheDocument();
+    expect(screen.queryByText(/No message body was recorded/)).toBeNull();
+  });
+
   it('keeps the row short and the prose inside the expansion', () => {
     mockData.current = { ...base, rows: [item({})] };
     render(<CommunicationsNext />);

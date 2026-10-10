@@ -96,12 +96,35 @@ export function orderListForRole(
  * letter they must read; anyone else gets the letter without them, marked
  * `wordsWithheld`, so a page can tell "withheld for your role" from "this
  * letter has no words". The exception follows the grant, not the role.
+ *
+ * The same cut runs over the approval queue (`GET /conversations/active`) and
+ * the sent-letter ledger (`GET /conversations/history`), which read the same
+ * rows one route over. The queue adds the vendor's latest figure
+ * (`negotiatedPrice`) and the subject line, which may quote the vendor; the
+ * reply engine's review flags (`constraintFlags`) carry the house's target
+ * and the vendor's best price beside its reasons. A grantee keeps the flags
+ * without those two figures (the reasons say why a letter was held); anyone
+ * else gets no flags, as the words they explain.
  */
+const LETTER_MONEY_KEYS = ["quotedPrice", "negotiatedPrice"] as const;
+
 export const LETTER_PROSE_KEYS = [
   "draftContent",
   "rollingSummary",
   "specialConditions",
+  "subject",
+  "constraintFlags",
 ] as const;
+
+const FLAG_FIGURE_KEYS = ["target_price", "best_vendor_price"] as const;
+
+/** The reply engine's review flags without the two figures they carry. */
+export function flagsWithoutFigures(flags: unknown): unknown {
+  if (!flags || typeof flags !== "object" || Array.isArray(flags)) return flags;
+  const cut: Record<string, unknown> = { ...(flags as object) };
+  for (const key of FLAG_FIGURE_KEYS) delete cut[key];
+  return cut;
+}
 
 export function conversationsForRole<T extends Record<string, unknown>>(
   rows: T[],
@@ -111,9 +134,12 @@ export function conversationsForRole<T extends Record<string, unknown>>(
   if (holdsHouseMoney(role)) return rows;
   return rows.map((row) => {
     const kept: Record<string, unknown> = { ...row };
-    delete kept.quotedPrice;
-    if (opts.readsLetters)
+    for (const key of LETTER_MONEY_KEYS) delete kept[key];
+    if (opts.readsLetters) {
+      if ("constraintFlags" in kept)
+        kept.constraintFlags = flagsWithoutFigures(kept.constraintFlags);
       return { ...(kept as Partial<T>), amountsWithheld: true as const };
+    }
     for (const key of LETTER_PROSE_KEYS) delete kept[key];
     return {
       ...(kept as Partial<T>),
