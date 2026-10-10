@@ -40,7 +40,6 @@ function serviceFor(currency: string | null) {
     } as any,
     { getPendingConversations: async () => [] } as any,
     { getUnreadNotifications: async () => [] } as any,
-    {} as any,
   );
 }
 
@@ -71,7 +70,6 @@ function feedOf(notifications: Record<string, any>[]) {
     { listPendingOrders: async () => [] } as any,
     { getPendingConversations: async () => [] } as any,
     { getUnreadNotifications: async () => notifications } as any,
-    {} as any,
   );
   return service.getFeed("user-1", "house-1");
 }

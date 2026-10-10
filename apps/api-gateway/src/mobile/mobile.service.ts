@@ -7,15 +7,32 @@ import { DatabaseService } from "../database/database.service";
 import { ProcurementService } from "../procurement/procurement.service";
 import { ConversationsService } from "../conversations/conversations.service";
 import { NotificationsService } from "../notifications/notifications.service";
-import { ToastService } from "../toast/toast.service";
 import { houseMoney, readHouseCurrency } from "../common/house-money";
+import { houseFrame } from "../common/house-frame";
+import {
+  localDateIn,
+  localMidnight,
+  shiftLocalDate,
+} from "../notifications/producers/service-day";
+import { readAll } from "../providers/vendor-menu-supply";
+import {
+  CHECK_LOOKBACK_MS,
+  netSalesByHouseDay,
+} from "../dashboard/dashboard.service";
 import {
   DecisionKind,
   FeedItem,
   FeedPriority,
   FeedResponse,
+  PulseSalesState,
   TodayPulseResponse,
 } from "./dto/mobile.dto";
+
+/** One window of the register's takings: net sales and checks, or unknown. */
+interface WindowTakings {
+  revenue: number | null;
+  checks: number;
+}
 
 /**
  * Composes the mobile decision feed and today-pulse from existing domain
@@ -31,7 +48,6 @@ export class MobileService {
     private readonly procurementService: ProcurementService,
     private readonly conversationsService: ConversationsService,
     private readonly notificationsService: NotificationsService,
-    private readonly toastService: ToastService,
   ) {}
 
   async getFeed(userId: string, restaurantId: string): Promise<FeedResponse> {
@@ -226,42 +242,42 @@ export class MobileService {
   }
 
   /**
-   * Sales snapshot for the pulse strip. The client sends its local midnight
-   * as `start` so "today" is defined by the phone in the manager's pocket,
-   * not a server timezone guess.
+   * Sales snapshot for the pulse strip (F-674). It reads the same register
+   * rows as the web dashboard — `pos_checks`, not voided, net `subtotal`,
+   * filed on the HOUSE's day in its own zone (`netSalesByHouseDay`) — so the
+   * phone's "Tonight" and the web's today are one number. The phone's own
+   * midnight is no longer used: an owner away in another zone still sees the
+   * house's night.
+   *
+   * `salesState` says why a figure is missing: `no_register` (the house's
+   * register has never sent a check), `zone_unset` (no house day to file
+   * on), `unread` (the read failed). A failed read is never "connect a POS".
    */
   async getTodayPulse(
     userId: string,
     restaurantId: string,
-    startIso?: string,
-    endIso?: string,
+    now: Date = new Date(),
   ): Promise<TodayPulseResponse> {
-    const end = this.parseDate(endIso) ?? new Date();
-    const start = this.parseDate(startIso) ?? this.utcMidnight(end);
-    const weekMs = 7 * 24 * 60 * 60 * 1000;
-    const lastWeekStart = new Date(start.getTime() - weekMs);
-    const lastWeekEnd = new Date(end.getTime() - weekMs);
-
-    const [today, lastWeek, feed] = await Promise.all([
-      this.toastService
-        .getSalesData(restaurantId, start, end)
-        .catch(() => null),
-      this.toastService
-        .getSalesData(restaurantId, lastWeekStart, lastWeekEnd)
-        .catch(() => null),
+    const [sales, feed] = await Promise.all([
+      this.readTonightSales(restaurantId, now).catch((e) => {
+        this.logger.warn(`pulse sales read failed: ${e?.message}`);
+        return null;
+      }),
       this.getFeed(userId, restaurantId).catch(() => null),
     ]);
 
-    const revenueToday = today?.totalRevenue ?? null;
-    const revenueLastWeek = lastWeek?.totalRevenue ?? null;
+    const salesState: PulseSalesState = sales?.state ?? "unread";
+    const revenueToday = sales?.today?.revenue ?? null;
+    const revenueLastWeek = sales?.lastWeek?.revenue ?? null;
     const deltaPct =
       revenueToday != null && revenueLastWeek != null && revenueLastWeek > 0
         ? Math.round(((revenueToday - revenueLastWeek) / revenueLastWeek) * 100)
         : null;
 
     return {
+      salesState,
       revenueToday,
-      checksToday: today?.total ?? null,
+      checksToday: sales?.today ? sales.today.checks : null,
       revenueLastWeek,
       deltaPct,
       // null = the feed could not be read; the strip must not say "All clear".
@@ -269,9 +285,99 @@ export class MobileService {
       criticalCount: feed
         ? feed.items.filter((i) => i.priority === "critical").length
         : null,
-      windowStart: start.toISOString(),
-      windowEnd: end.toISOString(),
+      windowStart: sales?.windowStart ?? null,
+      windowEnd: now.toISOString(),
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Tonight so far, and the same stretch of the same weekday last week, from
+   * the house's register. Throws when a read fails.
+   */
+  private async readTonightSales(
+    restaurantId: string,
+    now: Date,
+  ): Promise<{
+    state: PulseSalesState;
+    today: WindowTakings | null;
+    lastWeek: WindowTakings | null;
+    windowStart: string | null;
+  }> {
+    const client: any = this.databaseService.supabase;
+    const house = await client
+      .from("restaurants")
+      .select("timezone, country")
+      .eq("id", restaurantId)
+      .limit(1);
+    if (house.error) {
+      throw new Error(`restaurants read failed: ${house.error.message}`);
+    }
+    const zone = houseFrame(house.data?.[0] ?? null).zone;
+    if (!zone) {
+      return { state: "zone_unset", today: null, lastWeek: null, windowStart: null };
+    }
+
+    const today = localDateIn(now, zone);
+    const start = localMidnight(today, zone);
+    const lastWeekDay = shiftLocalDate(today, -7);
+    const lastWeekStart = localMidnight(lastWeekDay, zone);
+    const lastWeekEnd = new Date(
+      lastWeekStart.getTime() + (now.getTime() - start.getTime()),
+    );
+
+    const checksBetween = (what: string, from: Date, to: Date) =>
+      readAll(what, (after) => {
+        let q = client
+          .from("pos_checks")
+          .select("id, subtotal, opened_at, closed_at")
+          .eq("restaurant_id", restaurantId)
+          .eq("voided", false)
+          .gte("opened_at", new Date(from.getTime() - CHECK_LOOKBACK_MS).toISOString())
+          .lt("opened_at", to.toISOString());
+        if (after) q = q.gt("id", after);
+        return q;
+      });
+
+    const [todayRows, lastWeekRows, first] = await Promise.all([
+      checksBetween("Tonight's checks", start, now),
+      checksBetween("Last week's checks", lastWeekStart, lastWeekEnd),
+      // Has this house's register ever sent a check? Without one, a missing
+      // figure means "no register yet", not "a quiet night".
+      client
+        .from("pos_checks")
+        .select("opened_at")
+        .eq("restaurant_id", restaurantId)
+        .limit(1),
+    ]);
+    if (first.error) {
+      throw new Error(`pos_checks read failed: ${first.error.message}`);
+    }
+    if (!first.data || first.data.length === 0) {
+      return { state: "no_register", today: null, lastWeek: null, windowStart: start.toISOString() };
+    }
+
+    const takings = (
+      rows: ReadonlyArray<Record<string, unknown>>,
+      day: string,
+      until: Date,
+    ): WindowTakings => {
+      const inWindow = rows.filter((r) => {
+        const at = (r.closed_at || r.opened_at) as string | null;
+        return !!at && new Date(at).getTime() <= until.getTime();
+      });
+      const fold = netSalesByHouseDay(inWindow, zone).get(day);
+      // A day with no check is a measured zero: the register is connected.
+      return fold
+        ? { revenue: fold.net_sales, checks: fold.checks }
+        : { revenue: 0, checks: 0 };
+    };
+
+    return {
+      state: "known",
+      today: takings(todayRows, today, now),
+      lastWeek: takings(lastWeekRows, lastWeekDay, lastWeekEnd),
+      windowStart: start.toISOString(),
     };
   }
 
@@ -389,15 +495,4 @@ export class MobileService {
     return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
   }
 
-  private parseDate(iso?: string): Date | null {
-    if (!iso) return null;
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  private utcMidnight(ref: Date): Date {
-    const d = new Date(ref);
-    d.setUTCHours(0, 0, 0, 0);
-    return d;
-  }
 }

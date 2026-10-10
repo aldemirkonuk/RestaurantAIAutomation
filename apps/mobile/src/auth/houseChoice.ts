@@ -200,3 +200,23 @@ export function orderHouses(
     lastOpenedId,
   };
 }
+
+/**
+ * The house this session is in, by name, and whether the person has another
+ * one to switch to (F-675). The chooser was reachable only from a session in
+ * no house, and the sign-in hint keeps a phone that is opened daily in the
+ * same house, so an owner of two houses could never reach the second.
+ */
+export function openHouse(
+  houses: HouseSummary[] | undefined,
+  restaurantId: string | null | undefined,
+): { name: string | null; canSwitch: boolean } {
+  const list = houses ?? [];
+  const here = restaurantId
+    ? list.find((h) => h.id === restaurantId)
+    : undefined;
+  return {
+    name: here?.name ?? null,
+    canSwitch: list.some((h) => h.id !== restaurantId),
+  };
+}

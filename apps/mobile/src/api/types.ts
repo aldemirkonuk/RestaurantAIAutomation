@@ -41,7 +41,16 @@ export interface FeedResponse {
   generatedAt: string;
 }
 
+/**
+ * Why tonight's sales are or are not known (F-674), from the gateway:
+ * `known`, `no_register` (the register has never sent a check),
+ * `zone_unset` (the house has no time zone), `unread` (the read failed).
+ * Absent on a pulse saved before the field existed.
+ */
+export type PulseSalesState = "known" | "no_register" | "zone_unset" | "unread";
+
 export interface TodayPulse {
+  salesState?: PulseSalesState;
   revenueToday: number | null;
   checksToday: number | null;
   revenueLastWeek: number | null;
@@ -49,7 +58,8 @@ export interface TodayPulse {
   /** null when the decision feed could not be read — unknown, not zero. */
   pendingDecisions: number | null;
   criticalCount: number | null;
-  windowStart: string;
+  /** The house's midnight that opened tonight; null when it has no zone. */
+  windowStart: string | null;
   windowEnd: string;
   generatedAt: string;
 }
