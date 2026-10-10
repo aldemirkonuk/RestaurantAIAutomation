@@ -686,8 +686,12 @@ export class ReportExportsService {
   }
 
   /**
-   * The house's name and zone, for a file name. Read by key; an error fails
-   * the read rather than naming the file on UTC as if it were the house's day.
+   * The house's name and zone, for a file name. Read by key. The file is
+   * already written, so a failed read never blocks listing or downloading it
+   * (F-784): it falls back to the neutral name, no house name and no zone, which
+   * `exportFileStem` dates on UTC and marks `-utc` rather than passing UTC off
+   * as the house's day. Only the name falls back: writing an export (`run`)
+   * still fails it when this same row cannot be read.
    */
   private async readHouseNaming(restaurantId: string): Promise<HouseNaming> {
     const { data, error } = await this.db
@@ -696,11 +700,11 @@ export class ReportExportsService {
       .eq("id", restaurantId)
       .maybeSingle();
     if (error) {
-      this.logger.error("Failed to read the house for an export's file name", {
+      this.logger.error("Failed to read the house for an export's file name; naming it neutrally", {
         restaurantId,
         error: error.message,
       });
-      throw error;
+      return { name: null, zone: null };
     }
     const h = (data ?? null) as { name?: unknown; timezone?: string | null; country?: string | null } | null;
     return {
