@@ -216,7 +216,7 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
     const onHandLabel = await screen.findByText('On hand');
     const onHandCard = onHandLabel.closest('div')?.parentElement as HTMLElement;
     await waitFor(() => expect(within(onHandCard).getByText('6')).toBeInTheDocument());
-    expect(within(onHandCard).getByText('1 wines')).toBeInTheDocument();
+    expect(within(onHandCard).getByText('1 items')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -254,7 +254,7 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
     const onHandCard = onHandLabel.closest('div')?.parentElement as HTMLElement;
     expect(within(onHandCard).getAllByText('—').length).toBeGreaterThanOrEqual(1);
     expect(within(onHandCard).queryByText('0')).not.toBeInTheDocument();
-    expect(within(onHandCard).queryByText(/wines/)).not.toBeInTheDocument();
+    expect(within(onHandCard).queryByText(/items/)).not.toBeInTheDocument();
 
     // The page-header subtitle ("N wines, N bottles on hand") and the table
     // footer ("Showing N of N wines") both read straight off `stats`/`rows`
@@ -262,10 +262,12 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
     // of 0 wines" before this fix (found by the wave-5 isolated-mount sweep,
     // wave5/live-fix.md) — the same false "this house owns none of this
     // wine" claim as the KPI strip, just two lines the earlier pass missed.
-    expect(screen.queryByText(/0 wines, 0 bottles on hand/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/showing 0 of 0 wines/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/bottles on hand/)).toHaveTextContent('— wines, — bottles on hand');
-    expect(screen.getByText(/^Showing/)).toHaveTextContent('Showing — of — wines');
+    expect(screen.queryByText(/0 items, 0 bottles on hand/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/showing 0 of 0 items/i)).not.toBeInTheDocument();
+    // "items", not "wines": a bar's beer and spirits rows are counted here
+    // too (F-722).
+    expect(screen.getByText(/bottles on hand/)).toHaveTextContent('— items, — bottles on hand');
+    expect(screen.getByText(/^Showing/)).toHaveTextContent('Showing — of — items');
   });
 
   it('raises the banner when only the summary read fails (the wave-4 gap)', async () => {
@@ -392,7 +394,7 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
       // The figures stay the real, settled values throughout — never flash
       // back to zero/em-dash from a loop resetting the query to `pending`.
       expect(within(onHandCard).getByText('6')).toBeInTheDocument();
-      expect(within(onHandCard).getByText('1 wines')).toBeInTheDocument();
+      expect(within(onHandCard).getByText('1 items')).toBeInTheDocument();
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
@@ -432,7 +434,7 @@ describe('InventoryCommandPage — the auction-lot start is an owner\'s or a man
     who.role = role;
     routeGets();
     mount();
-    (await screen.findByRole('button', { name: /Add wine/ })).click();
+    (await screen.findByRole('button', { name: /Add stock/ })).click();
     expect(await screen.findByText('An auction lot')).toBeInTheDocument();
   });
 
@@ -440,9 +442,9 @@ describe('InventoryCommandPage — the auction-lot start is an owner\'s or a man
     who.role = 'staff';
     routeGets();
     mount();
-    (await screen.findByRole('button', { name: /Add wine/ })).click();
+    (await screen.findByRole('button', { name: /Add stock/ })).click();
     // The sheet opened (its other starts are there), without the auction one.
-    expect(await screen.findByText('Add Wine to Inventory')).toBeInTheDocument();
+    expect(await screen.findByText('Add to inventory')).toBeInTheDocument();
     expect(screen.queryByText('An auction lot')).not.toBeInTheDocument();
   });
 });

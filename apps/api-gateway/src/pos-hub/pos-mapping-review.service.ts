@@ -594,6 +594,7 @@ export class PosMappingReviewService {
     restaurantId: string,
     mappingId: string,
     saleUnit: SaleUnit,
+    saleVolumeMl?: number | null,
   ): Promise<SetSaleUnitResult> {
     const existing = await this.loadMapping(restaurantId, mappingId);
     if (!existing) {
@@ -614,8 +615,10 @@ export class PosMappingReviewService {
       sale_unit: saleUnit,
       // ADR 0281: upsertItemMapping writes sale_volume_ml from what it is
       // handed, so leaving it out wiped the volume the import reads first:
-      // answering "glass" on a 150ml button made its next sale queue.
-      sale_volume_ml: existing.sale_volume_ml ?? null,
+      // answering "glass" on a 150ml button made its next sale queue. A stated
+      // volume (a 40ml shot, a 568ml pint) replaces it: it is the number the
+      // import depletes by (F-720).
+      sale_volume_ml: saleVolumeMl ?? existing.sale_volume_ml ?? null,
     });
 
     return {
@@ -648,6 +651,7 @@ export class PosMappingReviewService {
             restaurantId,
             answer.mapping_id,
             answer.sale_unit,
+            answer.sale_volume_ml,
           ),
         );
       } catch (error: any) {

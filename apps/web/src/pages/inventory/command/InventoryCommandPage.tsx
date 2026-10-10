@@ -993,7 +993,9 @@ export function InventoryCommandPage() {
             Inventory
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            {fig(stats.total)} wines, {fig(stats.liveTotal + stats.shadowTotal)}{" "}
+            {/* "items", not "wines": a bar's book carries beer, spirits and
+                soft drinks too, and they are counted here (F-722). */}
+            {fig(stats.total)} items, {fig(stats.liveTotal + stats.shadowTotal)}{" "}
             bottles on hand
           </p>
         </div>
@@ -1062,7 +1064,7 @@ export function InventoryCommandPage() {
             onClick={() => setShowAddWineSelection(true)}
             className="flex items-center gap-1.5 h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white rounded-lg text-xs font-bold shadow-sm"
           >
-            <Plus className="w-3.5 h-3.5" /> Add wine
+            <Plus className="w-3.5 h-3.5" /> Add stock
           </button>
         </div>
       </div>
@@ -1154,7 +1156,7 @@ export function InventoryCommandPage() {
         <Kpi
           label="On hand"
           value={fig(stats.liveTotal + stats.shadowTotal)}
-          sub={figuresUnknown ? UNKNOWN : `${stats.total} wines`}
+          sub={figuresUnknown ? UNKNOWN : `${stats.total} items`}
         />
         <Kpi
           label="Live"
@@ -1285,7 +1287,7 @@ export function InventoryCommandPage() {
             ref={searchRef}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search wines, producers, grapes    ( / )"
+            placeholder="Search drinks, producers, grapes    ( / )"
             className="w-full h-9 pl-9 pr-3 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-wine-100 focus:border-wine-500"
           />
         </div>
@@ -1436,7 +1438,7 @@ export function InventoryCommandPage() {
                     />
                   </div>
                   {[
-                    "Wine",
+                    "Item",
                     "Type",
                     "Location",
                     "Stock, live / shadow",
@@ -1488,7 +1490,7 @@ export function InventoryCommandPage() {
 
                 {rows.length === 0 && (
                   <div className="p-10 text-center text-sm text-gray-400">
-                    No wines match the current filters.
+                    Nothing matches the current filters.
                   </div>
                 )}
 
@@ -1681,7 +1683,7 @@ export function InventoryCommandPage() {
           <HouseItemResearchUnread />
           <div className="flex items-center justify-between mt-2.5 text-xs text-gray-400">
             <span>
-              Showing {fig(rows.length)} of {fig(stats.total)} wines
+              Showing {fig(rows.length)} of {fig(stats.total)} items
             </span>
             {flagCounts.dead > 0 && (
               <span>
@@ -1728,7 +1730,7 @@ export function InventoryCommandPage() {
         // gateway keeps for owners and managers (F-312, roles sweep): staff
         // are not offered the start at all.
         onSelectAuction={canEditPrice ? () => setShowAuctionLot(true) : undefined}
-        title="Add Wine to Inventory"
+        title="Add to inventory"
         subtitle="One label, a whole menu, or a delivery with many lines"
       />
 

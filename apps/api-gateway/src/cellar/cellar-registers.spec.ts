@@ -54,6 +54,17 @@ describe("registersForLabel", () => {
     expect(registersForLabel("Popcorn Shrimp")).toEqual([]);
   });
 
+  it("folds accents and Turkish letters instead of dropping them (F-721)", () => {
+    // Stripping non-ASCII read "Rakı" as "rak" and "Çay" as "ay", so these
+    // sections landed on no register at all.
+    expect(registersForLabel("Rakı")).toContain("spirits");
+    expect(registersForLabel("Çay")).toContain("non_alcoholic");
+    expect(registersForLabel("Şarap")).toContain("wines");
+    expect(registersForLabel("Rosé")).toContain("wines");
+    expect(registersForLabel("Bière")).toContain("beer");
+    expect(registersForLabel("Kırmızı Şarap")).toContain("wines");
+  });
+
   it("returns nothing for an empty or missing label rather than guessing", () => {
     expect(registersForLabel(null)).toEqual([]);
     expect(registersForLabel("")).toEqual([]);
