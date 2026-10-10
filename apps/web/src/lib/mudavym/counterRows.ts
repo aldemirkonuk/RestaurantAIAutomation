@@ -123,13 +123,25 @@ function identityLine(i: CounterIdentityRow): ActLine {
   };
 }
 
-function invitationLine(i: CounterInvitationRow): ActLine {
-  return {
-    id: i.id,
-    what: `An invitation as ${i.role ?? 'a role not stated'}, not yet accepted`,
-    detail: i.expiresAt ? `expires ${shortWhen(i.expiresAt)}` : 'no expiry recorded',
-    at: shortWhen(i.createdAt),
-  };
+/**
+ * An invitation is a code, not a person — organization_invites records no
+ * name or email — so the row cannot say whom it is for. It says what the
+ * owner decides (send it again, or withdraw it) and where, and when it runs
+ * out, in words when that is within a day (F-176).
+ */
+function invitationLine(i: CounterInvitationRow, now: Date = new Date()): ActLine {
+  const role = i.role?.trim();
+  const what = role
+    ? `${/^[aeiou]/i.test(role) ? 'An' : 'A'} ${role} invitation nobody has used yet`
+    : 'An invitation (role not recorded) nobody has used yet';
+  const act = 'send it again or withdraw it on Team';
+  const ends = i.expiresAt ? new Date(i.expiresAt).getTime() : NaN;
+  let detail: string;
+  if (Number.isNaN(ends)) detail = `no end date recorded · ${act}`;
+  else if (ends <= now.getTime()) detail = `ran out ${shortWhen(i.expiresAt, now)} · withdraw it or send a new one on Team`;
+  else if (ends - now.getTime() <= 86_400_000) detail = `ends within a day (${shortWhen(i.expiresAt, now)}) · ${act}`;
+  else detail = `ends ${shortWhen(i.expiresAt, now)} · ${act}`;
+  return { id: i.id, what, detail, at: shortWhen(i.createdAt, now) };
 }
 
 function proposalLine(p: CounterProposalRow): ActLine {

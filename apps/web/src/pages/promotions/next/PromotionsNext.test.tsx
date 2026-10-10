@@ -498,7 +498,7 @@ describe('PromotionsNext — house-first filters (founder item 36, 2026-09-26)',
     expect(within(screen.getByTestId('offer-card-low')).getByText(/running low · 1 of 6 par, counted 2026-09-20/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Running low/ }));
     expect(cardIds()).toEqual(['low']);
-    expect(screen.getByText(/5 of the 18 wines you stock have a count/)).toBeInTheDocument();
+    expect(screen.getByText(/5 of the 18 drinks you stock have a count/)).toBeInTheDocument();
   });
 
   it('a bundle on the menu by one bottle is tagged "n of m on your menu"', () => {

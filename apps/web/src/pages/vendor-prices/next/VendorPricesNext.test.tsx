@@ -353,12 +353,12 @@ describe('VendorPricesNext', () => {
   it('shows the masthead and below-average box to an owner before a bottle is picked, not to staff', () => {
     mock.role = 'owner'
     const { unmount } = render(<VendorPricesNext />)
-    expect(screen.getByText(/Identity register/)).toBeInTheDocument()
+    expect(screen.getByText(/Matched wines/)).toBeInTheDocument()
     unmount()
 
     mock.role = 'staff'
     render(<VendorPricesNext />)
-    expect(screen.queryByText(/Identity register/)).toBeNull()
+    expect(screen.queryByText(/Matched wines/)).toBeNull()
   })
 
   it('describes a disarmed sweep in plain words, never the raw machinery (review finding, ADR 0160 §112: "the machinery behind it unexposed")', () => {
@@ -372,9 +372,26 @@ describe('VendorPricesNext', () => {
     render(<VendorPricesNext />)
     expect(screen.queryByText(/fetch disarmed/)).toBeNull()
     expect(screen.queryByText(/in-memory, resets on deploy/)).toBeNull()
-    // All three lines (price index, site sweep, shop sweep) say so.
-    expect(screen.getAllByText(/not yet checking automatically/)).toHaveLength(3)
-    expect(screen.getAllByText(/counted since this server last restarted/)).toHaveLength(2)
+    // All three lines (price lists, vendor sites, shops) say Mudavym is not watching yet.
+    expect(screen.getAllByText(/Mudavym is not (checking|watching) .* for you yet/)).toHaveLength(3)
+    // F-231: no count that resets at every deploy, and no table-row words.
+    expect(screen.queryByText(/since this server last restarted/)).toBeNull()
+    expect(screen.queryByText(/writing rows|holding rows/)).toBeNull()
+  })
+
+  it('says what an armed sweep does for the owner, without its restart-scoped counts (F-231)', () => {
+    mock.role = 'owner'
+    mock.masthead = {
+      identity: { data: { identities: 4, candidates: { pending: 1 } }, isLoading: false, isError: false, error: null },
+      priceIndex: { data: { armed: true, sources: [{ key: 'a', rows: 3 }, { key: 'b', rows: 0 }] }, isLoading: false, isError: false, error: null },
+      siteSweep: { data: { armed: true, activeCount: 0, totalCount: 3 }, isLoading: false, isError: false, error: null },
+      shopSweep: { data: { armed: true, activeCount: 1, totalCount: 1 }, isLoading: false, isError: false, error: null },
+    }
+    render(<VendorPricesNext />)
+    expect(screen.getByText('4 wines matched across vendors · 1 waiting for you to confirm')).toBeInTheDocument()
+    expect(screen.getByText('1 of 2 have prices on file')).toBeInTheDocument()
+    expect(screen.getByText('Mudavym checks 3 vendor sites for new prices')).toBeInTheDocument()
+    expect(screen.getByText('Mudavym checks 1 shop for shelf prices')).toBeInTheDocument()
   })
 
   it('shows a plain percent-with-a-word on the consensus card, with the formula behind "How this was calculated" (review finding)', () => {

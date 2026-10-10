@@ -197,3 +197,45 @@ describe("WebsocketGateway — a houseless or non-member socket cannot join a re
     });
   });
 });
+
+/**
+ * F-173: the gateway logged "TypeError: Cannot read properties of undefined
+ * (reading 'get')" every minute. The minute sweep read the root-Server path
+ * `server.sockets.sockets`, which is undefined on the "/ws" Namespace the
+ * gateway is actually handed (see `socketOnNamespace`). Making it "work"
+ * would have hung up on every phone, which listens and never sends `ping`
+ * (apps/mobile/src/lib/socket.ts), so the sweep is gone; socket.io's own
+ * heartbeat already drops dead connections. This pins both halves: no
+ * scheduled job throws on the Namespace shape, and none hangs up on a socket
+ * that has only been quiet.
+ */
+describe("WebsocketGateway — scheduled jobs on the /ws namespace (F-173)", () => {
+  it("runs every scheduled job without throwing and without hanging up on a quiet socket", async () => {
+    const { jwtService, configService, databaseService } = makeDeps(
+      makeSupabaseStub({ "user-1:house-A": true }),
+    );
+    jwtService.verify.mockReturnValue({ sub: "user-1", restaurantId: "house-A" });
+    const gateway = new WebsocketGateway(jwtService, configService, databaseService);
+    const socket = makeSocket("quiet-phone");
+    await gateway.handleConnection(socket);
+
+    // The Namespace shape: `sockets` is the id-to-Socket Map itself.
+    (gateway as any).server = { sockets: new Map([["quiet-phone", socket]]) };
+    // Quiet for an hour.
+    (gateway as any).clients.get("quiet-phone").lastActivity = new Date(
+      Date.now() - 60 * 60 * 1000,
+    );
+
+    const proto = WebsocketGateway.prototype as any;
+    const scheduled = Object.getOwnPropertyNames(proto).filter(
+      (name) =>
+        typeof proto[name] === "function" &&
+        Reflect.getMetadata("SCHEDULER_TYPE", proto[name]) !== undefined,
+    );
+    expect(scheduled.length).toBeGreaterThan(0);
+    for (const name of scheduled) {
+      expect(() => (gateway as any)[name]()).not.toThrow();
+    }
+    expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+});

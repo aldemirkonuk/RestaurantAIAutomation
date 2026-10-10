@@ -688,7 +688,11 @@ function ComparisonPanel({ productRef, wineId }: { productRef: ProductRef; wineI
 
 /** The masthead standing line — what the identity register, the price index
  * and (owner only) the two sweeps hold, so the page is not just a title, a
- * search box and one sentence before a bottle is picked. */
+ * search box and one sentence before a bottle is picked.
+ *
+ * Said as what the owner gets, never as counters (F-231): the sweeps' "N of M
+ * writing rows" counts reset at every deploy, so they are not a fact about the
+ * house and are not shown; whether Mudavym is watching for them is. */
 function MastheadStatus({ role }: { role: 'owner' | 'manager' | 'staff' | null }) {
   const { identity, priceIndex, siteSweep, shopSweep } = useMastheadStatus(role)
   if (role !== 'owner' && role !== 'manager') return null
@@ -703,43 +707,45 @@ function MastheadStatus({ role }: { role: 'owner' | 'manager' | 'staff' | null }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, padding: '8px 0', borderTop: '1px solid var(--paper-2, #EAE4D8)', borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
       {line(
-        'Identity register',
+        'Matched wines',
         identity.isError
           ? `could not be read (${apiErrorMessage(identity.error, 'unknown error')})`
           : identity.data
-            ? `${identity.data.identities ?? EM} confirmed identities, ${identity.data.candidates?.pending ?? EM} waiting for a person`
+            ? `${identity.data.identities ?? EM} wines matched across vendors · ${identity.data.candidates?.pending ?? EM} waiting for you to confirm`
             : 'reading…',
       )}
       {line(
-        'Price index',
+        'Published price lists',
         priceIndex.isError
           ? `could not be read (${apiErrorMessage(priceIndex.error, 'unknown error')})`
           : priceIndex.data
-            ? `${priceIndex.data.sources.filter((s) => s.rows > 0).length} of ${priceIndex.data.sources.length} sources holding rows${priceIndex.data.armed ? '' : ' — not yet checking automatically'}`
+            ? `${priceIndex.data.sources.filter((s) => s.rows > 0).length} of ${priceIndex.data.sources.length} have prices on file${priceIndex.data.armed ? '' : ' · Mudavym is not checking them for you yet'}`
             : 'reading…',
       )}
       {role === 'owner' ? (
         <>
           {line(
-            'Site sweep',
+            'Vendor sites',
             siteSweep.isError
               ? `could not be read (${apiErrorMessage(siteSweep.error, 'unknown error')})`
               : siteSweep.data
-                ? `${siteSweep.data.activeCount} of ${siteSweep.data.totalCount} vendors writing rows${siteSweep.data.armed ? '' : ' — not yet checking automatically'}, counted since this server last restarted`
+                ? siteSweep.data.armed
+                  ? `Mudavym checks ${siteSweep.data.totalCount} vendor ${siteSweep.data.totalCount === 1 ? 'site' : 'sites'} for new prices`
+                  : 'Mudavym is not watching vendor sites for you yet'
                 : 'reading…',
           )}
           {line(
-            'Shop sweep',
+            'Shops',
             shopSweep.isError
               ? `could not be read (${apiErrorMessage(shopSweep.error, 'unknown error')})`
               : shopSweep.data
-                ? `${shopSweep.data.activeCount} of ${shopSweep.data.totalCount} shops writing rows${shopSweep.data.armed ? '' : ' — not yet checking automatically'}, counted since this server last restarted`
+                ? shopSweep.data.armed
+                  ? `Mudavym checks ${shopSweep.data.totalCount} ${shopSweep.data.totalCount === 1 ? 'shop' : 'shops'} for shelf prices`
+                  : 'Mudavym is not watching shop prices for you yet'
                 : 'reading…',
           )}
         </>
-      ) : (
-        line('Site & shop sweep', 'owner only')
-      )}
+      ) : null}
     </div>
   )
 }
