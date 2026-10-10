@@ -106,9 +106,17 @@ export const SERVER_WINDOWS = {
  * "Placed with the vendor, not yet received" — the pair the legacy page
  * established the hard way (ReceivingHome.tsx:75-105): `SENT` is a
  * conversation status and asking for it 400s; `APPROVED` cannot be at the
- * door; `PARTIALLY_RECEIVED` is what the door flow writes on success.
+ * door.
+ *
+ * `PARTIALLY_RECEIVED` is what the door and a short verification write, and
+ * the second truck of a split order arrives on exactly that status (F-467).
+ * Left out, the rest of an order had no way into the door from this page. It
+ * is asked for, and only the orders whose ledger still owes bottles are kept
+ * (`stillOwed`): the door writes the same status after a truck that brought
+ * everything.
  */
-const IN_FLIGHT_STATUSES = ['CONFIRMED', 'IN_TRANSIT'] as const;
+const IN_FLIGHT_STATUSES = ['CONFIRMED', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'] as const;
+const REST_OF_ORDER_STATUS = 'PARTIALLY_RECEIVED';
 
 /** One row of `GET /procurement/orders` (OrderListResponseDto → orders[]). */
 interface OpenOrderDto {
@@ -131,6 +139,19 @@ interface OpenOrderDto {
    */
   providerName?: string | null;
   provider?: { name?: string | null } | null;
+  /** What the stock ledger booked for this order (ADR 0192), as the list route reads it. */
+  received?: { readable?: boolean; backorderBottles?: number | null } | null;
+}
+
+/**
+ * Bottles the order still owes, or null when that is not a known positive
+ * number. An unreadable ledger is not "still owed": the card would announce a
+ * remainder nobody measured.
+ */
+function stillOwed(o: OpenOrderDto): number | null {
+  if (o.received?.readable !== true) return null;
+  const owed = num(o.received.backorderBottles);
+  return owed !== null && owed > 0 ? owed : null;
 }
 
 /**
@@ -172,6 +193,11 @@ export interface DeliveryVM {
   bottlesTotal: number | null;
   /** What was ordered, in the unit it was ordered in. Never bottles unless it is. */
   orderedQty: number | null;
+  /**
+   * Bottles still owed when this card is the REST of an order an earlier truck
+   * delivered part of (F-467); null on an order nothing has arrived for.
+   */
+  restOfOrderBottles: number | null;
   unitType: string | null;
   requestedAt: string | null;
 }
@@ -223,8 +249,19 @@ export function useStaffDeliveries(): StaffLaneData {
           // says whether the 25-row page reached it. Both were previously
           // destructured away, which is what forced the rendered count to be a
           // page length dressed as a total.
+          const orders = (data?.orders ?? []) as OpenOrderDto[];
+          if (status === REST_OF_ORDER_STATUS) {
+            // Only the orders still owed something. The gateway's `total`
+            // counts every partly received order, so it is no count of these:
+            // the kept rows are, when the page held them all, and otherwise
+            // the count is not known.
+            const owed = orders.filter((o) => stillOwed(o) !== null);
+            const hasMore = data?.hasMore === true;
+            return { status, orders: owed, total: hasMore ? null : owed.length, hasMore };
+          }
           return {
-            orders: (data?.orders ?? []) as OpenOrderDto[],
+            status,
+            orders,
             total: num(data?.total),
             hasMore: data?.hasMore === true,
           };
@@ -239,9 +276,9 @@ export function useStaffDeliveries(): StaffLaneData {
   const deliveries = useMemo<DeliveryVM[]>(
     () =>
       (pages ?? [])
-        .flatMap((p) => p.orders)
-        .sort((a, b) => (b.requestedAt ?? '').localeCompare(a.requestedAt ?? ''))
-        .map((o) => ({
+        .flatMap((p) => p.orders.map((o) => ({ o, rest: p.status === REST_OF_ORDER_STATUS })))
+        .sort(({ o: a }, { o: b }) => (b.requestedAt ?? '').localeCompare(a.requestedAt ?? ''))
+        .map(({ o, rest }) => ({
           id: o.id,
           vendor: vendorOf(o),
           providerRef: o.providerId ? o.providerId.slice(0, 8) : null,
@@ -251,6 +288,7 @@ export function useStaffDeliveries(): StaffLaneData {
           // NEVER `quantity`. See DeliveryVM.bottlesTotal.
           bottlesTotal: num(o.bottlesTotal),
           orderedQty: num(o.quantity),
+          restOfOrderBottles: rest ? stillOwed(o) : null,
           unitType: o.unitType ?? null,
           requestedAt: o.requestedAt ?? null,
         })),

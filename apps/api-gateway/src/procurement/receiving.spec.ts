@@ -1,4 +1,7 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import {
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import { ReceivingService } from "./receiving.service";
 import { ReceivingController } from "./receiving.controller";
 import { DatabaseService } from "../database/database.service";
@@ -36,6 +39,8 @@ function makeDb(opts: {
   rpcError?: { message: string } | null;
   /** The order's house item, as `restaurant_inventory` answers a read by id. */
   item?: Row | null;
+  /** The order's live ledger rows, in place of the one-tap row `quantity_received` stands for. */
+  ledger?: Row[];
   /**
    * Refuse an order write, by its payload — to prove neither order write's
    * error is swallowed any more (ADR 0286).
@@ -115,7 +120,9 @@ function makeDb(opts: {
         },
         limit: () => q,
         range: async () => ({
-          data: opts.order?.quantity_received
+          data: opts.ledger
+            ? opts.ledger
+            : opts.order?.quantity_received
             ? [
                 {
                   quantity_change: opts.order.quantity_received,
@@ -126,8 +133,13 @@ function makeDb(opts: {
           error: null,
         }),
         maybeSingle: async () => {
+          // An order the door may count against unless the case says
+          // otherwise: the door now refuses a closed or unapproved one (F-647).
           if (tableName === "procurement_orders")
-            return { data: opts.order ?? null, error: null };
+            return {
+              data: opts.order ? { status: "CONFIRMED", ...opts.order } : null,
+              error: null,
+            };
           if (tableName === "restaurant_inventory")
             return { data: opts.item ?? null, error: null };
           if (tableName === "procurement_receipt_events") {
@@ -603,6 +615,41 @@ describe("recordDoorReceipt", () => {
     expect(
       shared.calls.orderUpdates.some((u: Row) => "quantity_received" in u),
     ).toBe(false);
+  });
+
+  it("[REVERT-FAILS] books the second truck in full after a phone receive closed the first (F-467)", async () => {
+    // Truck one was received on the phone: a verification (`reconciled`) and a
+    // `receipt-verify:` booking of 72, no door event. Truck two's six cases
+    // arrive at the door. Netting them against the phone's 72 booked 0.
+    const { db, calls } = makeDb({
+      order: packTwelve,
+      events: [
+        { order_id: "o1", stage: "reconciled", counted_qty_bottles: 72, rejected_qty_bottles: 0 },
+      ],
+      ledger: [{ quantity_change: 72, idempotency_key: "receipt-verify:o1:inv1" }],
+    });
+    await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 6,
+      countedUom: "case",
+      idempotencyKey: "truck-2",
+    });
+    expect(calls.rpc[0].args.p_delta).toBe(72);
+  });
+
+  it("still reconciles a first door count against an unverified one-tap booking", async () => {
+    // The one-tap "delivered" with no verification is the SAME truck the door
+    // is counting; that rule is unchanged.
+    const { db, calls } = makeDb({
+      order: packTwelve,
+      ledger: [{ quantity_change: 192, idempotency_key: "order-delivered-live:o1" }],
+    });
+    await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 15,
+      countedUom: "case",
+    });
+    expect(calls.rpc[0].args.p_delta).toBe(-12);
   });
 
   it("does not swallow a second truck that happens to bring the same count", async () => {
@@ -1511,7 +1558,7 @@ describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 028
     quantity: 16,
     bottles_total: 192,
     unit_type: "case",
-    status: "SENT",
+    status: "CONFIRMED",
     quantity_received: 0,
   };
 
@@ -1702,14 +1749,15 @@ describe("recordDoorReceipt — the delivery keeps the time it happened (ADR 028
     });
   });
 
-  it("an order whose own rules refuse the status (23514) keeps the receipt, the stock, and its old time", async () => {
+  it("an order closed between the check and the status write (23514) keeps the receipt, the stock, and its old time", async () => {
     // A permanent refusal: a 503 would make the outbox re-send it forever.
+    // The order read as open; the trigger refused because it closed since.
     const {
       db,
       calls,
       order: row,
     } = makeDb({
-      order: { ...order, status: "CANCELLED", delivered_at: null },
+      order: { ...order, status: "CONFIRMED", delivered_at: null },
       orderUpdateError: (p) =>
         "status" in p
           ? {
@@ -1761,5 +1809,94 @@ describe("ReceivingController.door — the role comes from the token (ADR 0286)"
       restaurantId: "r1",
     });
     expect(service.recordDoorReceipt.mock.calls[0][0].role).toBeNull();
+  });
+});
+
+describe("recordDoorReceipt — a closed or unapproved order takes no count (F-647)", () => {
+  const base = { restaurantId: "r1", orderId: "o1", userId: "u1" };
+  const order = {
+    id: "o1",
+    order_number: "PO-1",
+    inventory_id: "inv1",
+    quantity: 2,
+    bottles_total: 24,
+    unit_type: "case",
+  };
+
+  it.each([
+    ["CANCELLED", /already cancelled/],
+    ["COMPLETED", /already completed/],
+    ["REJECTED", /already rejected/],
+    ["PENDING", /has not been approved yet/],
+    ["APPROVAL_NEEDED", /has not been approved yet/],
+  ])(
+    "[REVERT-FAILS] a %s order is refused before anything is booked",
+    async (status, words) => {
+      const { db, calls } = makeDb({ order: { ...order, status } });
+      const attempt = new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 1,
+        countedUom: "case",
+        idempotencyKey: `k-${status}`,
+      });
+      await expect(attempt).rejects.toBeInstanceOf(UnprocessableEntityException);
+      await expect(attempt).rejects.toMatchObject({
+        response: { reason: "order_not_receivable", status, message: expect.stringMatching(words) },
+      });
+      expect(calls.eventInserts).toHaveLength(0);
+      expect(calls.rpc).toHaveLength(0);
+      expect(calls.orderWrites).toHaveLength(0);
+    },
+  );
+
+  it("an unreadable order state is refused, never read as open", async () => {
+    const { db, calls } = makeDb({ order: { ...order, status: null } });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 1,
+        countedUom: "case",
+      }),
+    ).rejects.toMatchObject({ response: { reason: "order_not_receivable" } });
+    expect(calls.rpc).toHaveLength(0);
+  });
+
+  it.each(["APPROVED", "CONFIRMED", "IN_TRANSIT", "DELIVERED", "PARTIALLY_RECEIVED"])(
+    "a %s order still takes the count",
+    async (status) => {
+      const { db, calls } = makeDb({ order: { ...order, status } });
+      const r = await new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 1,
+        countedUom: "case",
+      });
+      expect(r.stockBooked).toBe(true);
+      expect(calls.rpc).toHaveLength(1);
+    },
+  );
+
+  it("a retry of a tap that landed while the order was open still goes through, so its stock can be repaired", async () => {
+    const { db, calls } = makeDb({
+      order: { ...order, status: "COMPLETED" },
+      events: [
+        {
+          id: "evt-landed",
+          idempotency_key: "k-landed",
+          order_id: "o1",
+          counted_qty_bottles: 12,
+          occurred_at: "2026-10-01T10:00:00.000Z",
+          occurred_at_basis: "server",
+        },
+      ],
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 1,
+      countedUom: "case",
+      idempotencyKey: "k-landed",
+    });
+    expect(r.alreadyRecorded).toBe(true);
+    expect(r.eventId).toBe("evt-landed");
+    expect(calls.eventInserts).toHaveLength(1);
   });
 });

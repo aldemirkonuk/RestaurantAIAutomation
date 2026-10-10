@@ -128,6 +128,48 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     expect(r.onShelfBottles).toBe(60);
   });
 
+  it("[REVERT-FAILS] counts a phone-received first truck as earlier once the order was verified (F-467)", async () => {
+    // Truck one came in on the phone: a verification and a `receipt-verify:`
+    // booking, no door event. The door now books truck two in full, so the
+    // ledger IS the earlier trucks; the events alone said 0 earlier and the
+    // match line called a completing truck short against the whole order.
+    const svc = new ReceivingService(
+      fakeDb(
+        base({
+          inventory_transactions: [booked(72, "receipt-verify:o1:inv1")],
+          procurement_receipt_events: [
+            {
+              id: "v1",
+              restaurant_id: REST,
+              order_id: "o1",
+              stage: "reconciled",
+              counted_qty_bottles: 72,
+              rejected_qty_bottles: 0,
+              occurred_at: "2026-10-01T10:00:00Z",
+            },
+          ],
+        }),
+      ),
+    );
+    const r = await svc.doorReceivedSoFar(REST, "o1");
+    expect(r.receivedQtyBottles).toBe(72);
+    expect(r.receivedBoxes).toBe(6);
+  });
+
+  it("refuses to state earlier trucks on a verified order whose ledger cannot be read", async () => {
+    const svc = new ReceivingService(
+      fakeDb(
+        base({
+          procurement_receipt_events: [
+            { id: "v1", restaurant_id: REST, order_id: "o1", stage: "reconciled", counted_qty_bottles: 72 },
+          ],
+        }),
+        { inventory_transactions: "down" },
+      ),
+    );
+    await expect(svc.doorReceivedSoFar(REST, "o1")).rejects.toThrow(/could not be read/);
+  });
+
   it("states no boxes — null, never 0 — when the order states no pack", async () => {
     const svc = new ReceivingService(
       fakeDb(

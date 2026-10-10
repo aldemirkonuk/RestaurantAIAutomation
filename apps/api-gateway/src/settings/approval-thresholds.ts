@@ -55,6 +55,11 @@
  * judge it against) and a PRICE JUMP against what the house last paid.
  */
 
+import {
+  agreedPricePerBottleForDoor,
+  type StatedPriceUnit,
+} from "../procurement/agreed-price";
+
 export type ApprovalRule = "manager_ceiling" | "new_vendor" | "price_jump";
 
 export const APPROVAL_RULES: ApprovalRule[] = [
@@ -93,6 +98,71 @@ export interface OrderUnderTest {
    * comparison at all, and the `new_vendor` rule is the one that covers it.
    */
   pricePremiumPct: number | null;
+  /**
+   * The order's own currency and the currency the house's ceiling is in
+   * (`restaurants.currency`; `amount_limit` carries none of its own). When both
+   * are stated and differ, the ceiling cannot be tested — there is no exchange
+   * rate in this house to convert with — so the rule FIRES rather than passing
+   * a GBP 2,400 order under a US$2,500 ceiling unflagged (F-648). Either one
+   * unknown keeps the old reading: a legacy order states no currency.
+   */
+  currency?: string | null;
+  ceilingCurrency?: string | null;
+  /**
+   * Why this order's price could not be set beside the last one, when it could
+   * not (another currency, or a keg price against a bottle price). `price_jump`
+   * is then UNTESTABLE, never a premium worked out across two units (F-648).
+   */
+  priceUncomparable?: string | null;
+}
+
+/** One order's agreed price, as far as the `price_jump` rule needs it. */
+export interface PricedOrder {
+  /** `procurement_orders.final_price`, in the unit `priceUnit` names. */
+  price: number | null;
+  currency: string | null;
+  /** The order line's stated price unit (`foldOrderPriceUnit`), or null. */
+  priceUnit: StatedPriceUnit | null;
+}
+
+/**
+ * How far this order's price sits above the last one, PER BOTTLE and in ONE
+ * currency — or why the two cannot be compared.
+ *
+ * Since ADR 0119 `final_price` is stated in the line's own price unit, so the
+ * raw division read "$420 per case of 12" last month against "$38 per bottle"
+ * today as -91%, and the reverse pair as +1,000% (F-648). Both prices go
+ * through the one per-bottle conversion the receiving door already uses; an
+ * order with no stated unit keeps the historical per-bottle reading.
+ */
+export function pricePremium(
+  current: PricedOrder,
+  prior: PricedOrder | null,
+): { pct: number | null; uncomparable: string | null } {
+  const none = { pct: null, uncomparable: null };
+  if (!prior || current.price === null || current.price <= 0) return none;
+  if (prior.price === null || prior.price <= 0) return none;
+  if (current.currency && prior.currency && current.currency !== prior.currency) {
+    return {
+      pct: null,
+      uncomparable: `the last price was in ${prior.currency} and this one is in ${current.currency}`,
+    };
+  }
+  const now = agreedPricePerBottleForDoor({
+    price: current.price,
+    stated: current.priceUnit,
+  });
+  const before = agreedPricePerBottleForDoor({
+    price: prior.price,
+    stated: prior.priceUnit,
+  });
+  if (!now.ok) return { pct: null, uncomparable: now.reason };
+  if (!before.ok) return { pct: null, uncomparable: before.reason };
+  if (before.perBottle <= 0) return none;
+  return {
+    pct: ((now.perBottle - before.perBottle) / before.perBottle) * 100,
+    uncomparable: null,
+  };
 }
 
 export interface ApprovalDecision {
@@ -155,6 +225,18 @@ export function decideApproval(
         decision.untestable.push(rule);
         continue;
       }
+      if (
+        order.currency &&
+        order.ceilingCurrency &&
+        order.currency !== order.ceilingCurrency
+      ) {
+        decision.requiredRole = strongest(decision.requiredRole, row.requiredRole);
+        decision.firedBy.push(rule);
+        decision.reasons.push(
+          `in ${order.currency}, while the ${row.amountLimit} ceiling this house set for a manager is in ${order.ceilingCurrency}, and no exchange rate is kept here to compare the two`,
+        );
+        continue;
+      }
       if (order.total > row.amountLimit) {
         decision.requiredRole = strongest(decision.requiredRole, row.requiredRole);
         decision.firedBy.push(rule);
@@ -182,6 +264,10 @@ export function decideApproval(
 
     // price_jump
     if (row.percentLimit === null) continue;
+    if (order.priceUncomparable) {
+      decision.untestable.push(rule);
+      continue;
+    }
     if (order.pricePremiumPct === null) {
       // No prior price is not an untestable rule — it is a rule that correctly
       // does not apply. `new_vendor` is the one that covers a first purchase.

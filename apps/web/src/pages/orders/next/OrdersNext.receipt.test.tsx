@@ -15,6 +15,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const state = vi.hoisted(() => ({ current: null as unknown }));
 const receiptForOrder = vi.hoisted(() => vi.fn());
+const postMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/api/client')>();
+  return { ...actual, apiClient: { ...actual.apiClient, post: postMock } };
+});
 
 vi.mock('./useOrdersNextData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./useOrdersNextData')>();
@@ -53,9 +59,9 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 import OrdersNext from './OrdersNext';
-import { NO_RECEIPT_SENTENCE } from './ReceiptSheet';
+import { CLOSE_SHORT_DONE, NO_RECEIPT_SENTENCE } from './ReceiptSheet';
 import { RECURRENCE_UNREAD } from './recurrence';
-import type { OrderRowVM, OrdersNextData } from './useOrdersNextData';
+import { closeShortOwed, type OrderRowVM, type OrdersNextData } from './useOrdersNextData';
 
 function row(over: Partial<OrderRowVM> = {}): OrderRowVM {
   return {
@@ -161,5 +167,127 @@ describe('an order line opens its receipt in a right sheet', () => {
     const sheet = await screen.findByTestId('receipt-sheet');
     expect(await within(sheet).findByText(/could not be read/)).toBeInTheDocument();
     expect(within(sheet).queryByText(NO_RECEIPT_SENTENCE)).toBeNull();
+  });
+});
+
+/**
+ * F-104 — a partly received order can be closed short from its receipt, with a
+ * reason. REVERT-FAILS: before this there was no such control anywhere.
+ */
+describe('a partly received order can be closed short', () => {
+  it('offers no close on an order that fully arrived', async () => {
+    state.current = ordersData([row()]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    openReceipt();
+    const sheet = await screen.findByTestId('receipt-sheet');
+    await within(sheet).findByText(NO_RECEIPT_SENTENCE);
+    expect(within(sheet).queryByTestId('close-short')).toBeNull();
+  });
+
+  /**
+   * F-826 — a door count leaves every order partly received, full ones too,
+   * and closing one shut out its invoice check for good. REVERT-FAILS: the
+   * sheet offered the close on any partly received order.
+   */
+  it('offers no close on a partly received order with nothing still owed', async () => {
+    state.current = ordersData([row({ status: 'partially_received', closeShortOwedBottles: null })]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    openReceipt();
+    const sheet = await screen.findByTestId('receipt-sheet');
+    await within(sheet).findByText(NO_RECEIPT_SENTENCE);
+    expect(within(sheet).queryByTestId('close-short')).toBeNull();
+  });
+
+  it('says how many bottles are still to come', async () => {
+    state.current = ordersData([row({ status: 'partially_received', closeShortOwedBottles: 2 })]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    openReceipt();
+    const box = await screen.findByTestId('close-short');
+    expect(box).toHaveTextContent('2 bottles are still to come on this order.');
+  });
+
+  it('asks for a reason first, then closes with it', async () => {
+    state.current = ordersData([row({ status: 'partially_received', closeShortOwedBottles: 2 })]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    postMock.mockResolvedValue({ data: { id: 'o-1' } });
+    openReceipt();
+    const box = await screen.findByTestId('close-short');
+
+    fireEvent.click(within(box).getByRole('button', { name: 'Close short' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent(/Say why/);
+    expect(postMock).not.toHaveBeenCalled();
+
+    fireEvent.change(within(box).getByLabelText(/Why is the rest not coming/), {
+      target: { value: 'Vendor is out of the 2010' },
+    });
+    fireEvent.click(within(box).getByRole('button', { name: 'Close short' }));
+    expect(await within(box).findByText(CLOSE_SHORT_DONE)).toBeInTheDocument();
+    expect(postMock).toHaveBeenCalledWith('/procurement/orders/o-1/close-short', {
+      reason: 'Vendor is out of the 2010',
+    });
+  });
+
+  it('shows the server refusal in its own words', async () => {
+    state.current = ordersData([row({ status: 'partially_received', closeShortOwedBottles: 2 })]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    postMock.mockRejectedValue(
+      Object.assign(new Error('Request failed'), {
+        isAxiosError: true,
+        response: { status: 403, data: { message: 'Only a manager or an owner of this restaurant can close an order short.' } },
+      }),
+    );
+    openReceipt();
+    const box = await screen.findByTestId('close-short');
+    fireEvent.change(within(box).getByLabelText(/Why is the rest not coming/), {
+      target: { value: 'short shipped' },
+    });
+    fireEvent.click(within(box).getByRole('button', { name: 'Close short' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent(/Only a manager or an owner/);
+  });
+});
+
+/** F-826 — when the close is offered at all, read off the order's shelf. */
+describe('closeShortOwed', () => {
+  const shelf = {
+    readable: true,
+    why: null,
+    quantityInStockUom: 4,
+    stockUom: 'bottle',
+    packUnit: null,
+    packSize: null,
+    packs: null,
+    looseInStockUom: null,
+    words: '4 bottles',
+    rejectedAtDoorBottles: 0,
+    countedNotBookedBottles: 0,
+    rejectedAtDeskBottles: 0,
+    invoicedBottles: 4,
+    verifiedAt: '2026-10-01T12:00:00Z',
+    orderedBottles: 6,
+    backorderBottles: 2,
+  };
+
+  it('offers the bottles still owed once the invoice is checked', () => {
+    expect(closeShortOwed('partially_received', shelf)).toBe(2);
+  });
+
+  it('offers nothing when everything came', () => {
+    expect(closeShortOwed('partially_received', { ...shelf, backorderBottles: 0 })).toBeNull();
+  });
+
+  it('counts bottles sent back as delivered, not owed', () => {
+    expect(closeShortOwed('partially_received', { ...shelf, rejectedAtDoorBottles: 2 })).toBeNull();
+    expect(closeShortOwed('partially_received', { ...shelf, rejectedAtDeskBottles: 1 })).toBe(1);
+  });
+
+  it('offers nothing before the invoice check, which closing would shut out', () => {
+    expect(closeShortOwed('partially_received', { ...shelf, invoicedBottles: null })).toBeNull();
+  });
+
+  it('offers nothing on a reading that does not say, or another state', () => {
+    expect(closeShortOwed('partially_received', undefined)).toBeNull();
+    expect(closeShortOwed('partially_received', { ...shelf, readable: false })).toBeNull();
+    expect(closeShortOwed('partially_received', { ...shelf, backorderBottles: undefined })).toBeNull();
+    expect(closeShortOwed('delivered', shelf)).toBeNull();
   });
 });
