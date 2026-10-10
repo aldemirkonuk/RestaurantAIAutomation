@@ -192,6 +192,46 @@ describe("resolvePulseStripView freshness (F-676)", () => {
 });
 
 /**
+ * F-1074: the pulse names the house's zone, but "as of" and "<Weekday> night"
+ * were read on the phone's clock. A Detroit phone looking at an Istanbul house
+ * said "as of 12:30pm" for 19:30 there, and named Thursday for Friday's night.
+ */
+describe("resolvePulseStripView reads the house's clock (F-1074)", () => {
+  const phoneZone = process.env.TZ;
+  beforeAll(() => {
+    process.env.TZ = "America/Detroit";
+  });
+  afterAll(() => {
+    process.env.TZ = phoneZone;
+  });
+
+  it("says when the figures are from on the house's clock, not the phone's", () => {
+    const view = resolvePulseStripView(
+      pulse({ revenueToday: 4210, locale: "en-US", timezone: "Europe/Istanbul" }),
+      {
+        now: Date.parse("2026-10-09T16:40:00.000Z"),
+        fetchedAt: Date.parse("2026-10-09T16:30:00.000Z"),
+      },
+    );
+    expect(view.freshness).toBe("As of 7:30pm");
+  });
+
+  it("names an earlier night by the house's weekday", () => {
+    // Opened 18:30 Thu in Istanbul; its middle is 06:30 Fri there, 23:30 Thu in Detroit.
+    const view = resolvePulseStripView(
+      pulse({
+        revenueToday: 4210,
+        locale: "en-US",
+        timezone: "Europe/Istanbul",
+        windowStart: "2026-10-08T15:30:00.000Z",
+      }),
+      { now: Date.parse("2026-10-10T10:00:00.000Z") },
+    );
+    expect(view.heading).toBe("Friday night");
+  });
+});
+
+/**
  * F-677: a failed Insights read rendered as "nothing yet" or zero. A read
  * that failed with nothing saved is `failed`, never an empty `ready`.
  */

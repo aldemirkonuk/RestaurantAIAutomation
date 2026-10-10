@@ -124,3 +124,56 @@ describe("Team tab for staff (F-251)", () => {
     expect(view.kind === "error" && view.message).toBe(ROTA_DID_NOT_LOAD);
   });
 });
+
+describe("an overnight shift stays on after the house's midnight (F-1075)", () => {
+  const IST = "Europe/Istanbul";
+  // Mon 2026-10-12 01:30 in Istanbul is Sun 22:30 UTC.
+  const MON_0130_IST = new Date("2026-10-11T22:30:00Z");
+  // Mon 2026-10-12 02:30 in Istanbul.
+  const MON_0230_IST = new Date("2026-10-11T23:30:00Z");
+  const sundayLate = { id: "sun-late", shift_date: "2026-10-11", start_time: "18:00", end_time: "02:00" };
+  const sundayDay = { id: "sun-day", shift_date: "2026-10-11", start_time: "09:00", end_time: "17:00" };
+  const mondayEve = { id: "mon-eve", shift_date: "2026-10-12", start_time: "17:00", end_time: "23:00" };
+
+  it("keeps Sunday's late shift on a Monday, read from last week", () => {
+    const view = resolveTonight({
+      role: "manager",
+      week: { isLoading: false, error: null, data: { timezone: IST, shifts: [mondayEve] } },
+      weekBefore: { data: { shifts: [sundayDay, sundayLate] } },
+      mine: idle,
+      now: MON_0130_IST,
+    });
+    expect(view.kind === "shifts" && view.shifts.map((s) => s.id)).toEqual(["sun-late", "mon-eve"]);
+  });
+
+  it("lets it go once its end has passed on the house's clock", () => {
+    const view = resolveTonight({
+      role: "manager",
+      week: { isLoading: false, error: null, data: { timezone: IST, shifts: [mondayEve] } },
+      weekBefore: { data: { shifts: [sundayLate] } },
+      mine: idle,
+      now: MON_0230_IST,
+    });
+    expect(view.kind === "shifts" && view.shifts.map((s) => s.id)).toEqual(["mon-eve"]);
+  });
+
+  it("keeps a staff member's own late shift from the night before mid-week", () => {
+    // Wed 2026-10-14 00:30 in Istanbul.
+    const view = resolveTonight({
+      role: "staff",
+      week: idle,
+      mine: {
+        isLoading: false,
+        error: null,
+        data: {
+          timezone: IST,
+          schedule: { status: "published" },
+          mine: [{ id: "tue-late", shift_date: "2026-10-13", start_time: "20:00", end_time: "01:00" }],
+        },
+      },
+      now: new Date("2026-10-13T21:30:00Z"),
+    });
+    expect(view.kind).toBe("shifts");
+    expect(view.kind === "shifts" && view.shifts.map((s) => s.id)).toEqual(["tue-late"]);
+  });
+});

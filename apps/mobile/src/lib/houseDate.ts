@@ -43,3 +43,34 @@ export function mondayOfKey(dateKey: string): string {
   anchor.setUTCDate(anchor.getUTCDate() - day);
   return anchor.toISOString().slice(0, 10);
 }
+
+/** `dateKey` (YYYY-MM-DD) moved by `days`, UTC arithmetic only. */
+export function addDaysToKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * "YYYY-MM-DD HH:MM" for `now` on the house's clock (the gateway's `clockAt`),
+ * or the phone's own when the house states no zone it can read.
+ */
+export function houseClockKey(now: Date, timeZone?: string | null): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(now);
+      const get = (t: string) => parts.find((p) => p.type === t)?.value;
+      const h = get("hour");
+      const m = get("minute");
+      if (h && m) return `${houseDateKey(now, timeZone)} ${h}:${m}`;
+    } catch {
+      // An unknown zone falls through to the phone's own clock.
+    }
+  }
+  return `${houseDateKey(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}

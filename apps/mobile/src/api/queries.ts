@@ -10,7 +10,7 @@ import type {
   TodayPulse,
 } from "./types";
 import { useSession } from "@/state/session";
-import { houseDateKey, mondayOfKey } from "@/lib/houseDate";
+import { addDaysToKey, houseDateKey, mondayOfKey } from "@/lib/houseDate";
 import type { HouseSummary } from "@/auth/houseChoice";
 import { houseFrameOfPulse, type HouseMoneyFrame } from "@/lib/houseMoney";
 
@@ -194,9 +194,9 @@ export function currentWeekStart(timeZone?: string | null): string {
 }
 
 /** The full rota: owners and managers only (`assertAccess(..., "manager")`). */
-export function useTeamWeek(timeZone: string | null, allowed: boolean) {
+export function useTeamWeek(timeZone: string | null, allowed: boolean, weeksBack = 0) {
   const { enabled, restaurantId } = useAuthed();
-  const weekStart = currentWeekStart(timeZone);
+  const weekStart = addDaysToKey(currentWeekStart(timeZone), -7 * weeksBack);
   return useQuery({
     queryKey: ["team", "week", restaurantId, weekStart],
     queryFn: () =>
@@ -207,10 +207,14 @@ export function useTeamWeek(timeZone: string | null, allowed: boolean) {
   });
 }
 
-/** The caller's own shifts this week, open to every role (F-251). */
-export function useMyTeamWeek(timeZone: string | null, allowed: boolean) {
+/**
+ * The caller's own shifts this week, open to every role (F-251). `weeksBack`
+ * reads an earlier week: a Monday's "tonight" still holds Sunday's late shift
+ * (F-1075).
+ */
+export function useMyTeamWeek(timeZone: string | null, allowed: boolean, weeksBack = 0) {
   const { enabled, restaurantId } = useAuthed();
-  const weekStart = currentWeekStart(timeZone);
+  const weekStart = addDaysToKey(currentWeekStart(timeZone), -7 * weeksBack);
   return useQuery({
     queryKey: ["team", "my-week", restaurantId, weekStart],
     queryFn: () =>

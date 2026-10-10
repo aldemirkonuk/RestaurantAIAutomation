@@ -1,4 +1,4 @@
-import { houseDateKey } from "@/lib/houseDate";
+import { addDaysToKey, houseClockKey, houseDateKey } from "@/lib/houseDate";
 
 /**
  * What the Team tab's "On tonight" card says (F-251, F-252).
@@ -10,6 +10,10 @@ import { houseDateKey } from "@/lib/houseDate";
  * never worded as a missing setup.
  *
  * F-252: "tonight" is the house's date, not the phone's UTC date.
+ *
+ * F-1075: a shift that runs past midnight is still on after the house's date
+ * turns, until its end passes on the house's clock (the gateway's
+ * `shiftHasEnded` rule). On a Monday that shift is in last week's read.
  */
 
 export const FULL_ROTA_IS_FOR_MANAGERS =
@@ -39,6 +43,29 @@ export function shiftsOn(shifts: any[] | undefined, dateKey: string): any[] {
     .sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")));
 }
 
+/**
+ * Tonight's shifts: today's, plus yesterday's that ran past midnight and have
+ * not ended yet on the house's clock (F-1075). `earlier` carries the week
+ * before when yesterday was its Sunday.
+ */
+export function shiftsTonight(
+  shifts: any[] | undefined,
+  earlier: any[] | undefined,
+  now: Date,
+  timeZone?: string | null,
+): any[] {
+  const today = houseDateKey(now, timeZone);
+  const clock = houseClockKey(now, timeZone);
+  const yesterday = addDaysToKey(today, -1);
+  const stillOn = [...(shifts ?? []), ...(earlier ?? [])].filter((s) => {
+    if (String(s?.shift_date ?? "").slice(0, 10) !== yesterday) return false;
+    const start = String(s.start_time ?? "").slice(0, 5);
+    const end = String(s.end_time ?? "").slice(0, 5);
+    return !!start && !!end && end < start && `${today} ${end}` > clock;
+  });
+  return [...shiftsOn(stillOn, yesterday), ...shiftsOn(shifts, today)];
+}
+
 interface Read<T> {
   data?: T;
   isLoading: boolean;
@@ -60,6 +87,9 @@ export function resolveTonight(input: {
   role: string | null | undefined;
   week: Read<{ shifts?: any[]; timezone?: string | null }>;
   mine: Read<{ mine?: any[]; timezone?: string | null; schedule?: { status?: string } | null }>;
+  /** Last week's reads, asked for only on a Monday (F-1075). */
+  weekBefore?: { data?: { shifts?: any[] } };
+  mineBefore?: { data?: { mine?: any[] } };
   now: Date;
 }): TonightView {
   const { role, week, mine, now } = input;
@@ -69,7 +99,12 @@ export function resolveTonight(input: {
     const note = null;
     if (week.isLoading && !week.data) return { kind: "loading", caption, note };
     if (week.error || !week.data) return { kind: "error", caption, note, message: ROTA_DID_NOT_LOAD };
-    const shifts = shiftsOn(week.data.shifts, houseDateKey(now, week.data.timezone));
+    const shifts = shiftsTonight(
+      week.data.shifts,
+      input.weekBefore?.data?.shifts,
+      now,
+      week.data.timezone,
+    );
     return shifts.length === 0
       ? { kind: "none", caption, note, message: NO_SHIFTS_TONIGHT }
       : { kind: "shifts", caption, note, shifts, own: false };
@@ -79,7 +114,7 @@ export function resolveTonight(input: {
   const note = FULL_ROTA_IS_FOR_MANAGERS;
   if (mine.isLoading && !mine.data) return { kind: "loading", caption, note };
   if (mine.error || !mine.data) return { kind: "error", caption, note, message: ROTA_DID_NOT_LOAD };
-  const shifts = shiftsOn(mine.data.mine, houseDateKey(now, mine.data.timezone));
+  const shifts = shiftsTonight(mine.data.mine, input.mineBefore?.data?.mine, now, mine.data.timezone);
   // Staff are sent no shifts until the week is published (F-506), so an
   // empty list then is not "you're off" (F-884).
   const published = mine.data.schedule?.status === "published";

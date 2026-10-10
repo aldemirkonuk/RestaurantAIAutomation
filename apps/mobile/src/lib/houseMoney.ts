@@ -93,16 +93,42 @@ export function houseDecimal(
   });
 }
 
+/** `timeZone` when this device can read it, else undefined. */
+function readableZone(timeZone: string | null | undefined): string | undefined {
+  if (!timeZone) return undefined;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The 24-hour hour and minute of `at` in `timeZone`. */
+function hourMinuteIn(at: Date, timeZone: string): [number, number] {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(at);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return [get("hour"), get("minute")];
+}
+
 /**
  * A clock time the house's way (F-953). "HH:MM[:SS]" is a wall-clock time and
  * is never shifted by a zone; anything else is read as an instant. A house on
  * a 24-hour clock reads "19:00" and "07:30"; one on a 12-hour clock keeps the
  * short "7pm".
  * No locale keeps the 12-hour form, as before.
+ * An instant is read on the house's clock when `timeZone` names one this
+ * device can read (F-1074); otherwise on the phone's, as before.
  */
 export function houseClock(
   value: string | Date | null | undefined,
   locale: string | null | undefined,
+  timeZone?: string | null,
 ): string {
   if (value == null || value === "") return "";
   const hm = typeof value === "string" ? /^(\d{2}):(\d{2})/.exec(value) : null;
@@ -113,17 +139,17 @@ export function houseClock(
       : new Date(value);
   if (isNaN(at.getTime())) return "";
   const tag = usableLocale(locale);
+  const zone = hm ? "UTC" : readableZone(timeZone);
   const opts: Intl.DateTimeFormatOptions = {
     hour: "numeric",
     minute: "2-digit",
-    ...(hm ? { timeZone: "UTC" } : {}),
+    ...(zone ? { timeZone: zone } : {}),
   };
   const twelveHour = new Intl.DateTimeFormat(tag, opts)
     .formatToParts(at)
     .some((p) => p.type === "dayPeriod");
   if (!twelveHour) return at.toLocaleTimeString(tag, { ...opts, hour: "2-digit" });
-  const h = hm ? at.getUTCHours() : at.getHours();
-  const m = hm ? at.getUTCMinutes() : at.getMinutes();
+  const [h, m] = zone ? hourMinuteIn(at, zone) : [at.getHours(), at.getMinutes()];
   const suffix = h >= 12 ? "pm" : "am";
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return m === 0 ? `${hour12}${suffix}` : `${hour12}:${String(m).padStart(2, "0")}${suffix}`;
