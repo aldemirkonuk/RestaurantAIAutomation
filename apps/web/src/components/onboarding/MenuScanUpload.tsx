@@ -2,6 +2,25 @@ import { useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { CameraCapture } from '../scanner/CameraCapture'
 import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
+import { isUnconfirmedWrite } from '../../services/api/client'
+
+/**
+ * Said when a read went out and no answer came back. The gateway keeps (and
+ * pays for) the read whether or not this page is still waiting, so this is
+ * never "not read", and sending the page again would read and keep it twice
+ * (F-567, F-793). Same words as Menus kept on /menu.
+ */
+const READ_WITHOUT_ANSWER =
+  'No answer came back from the menu read. It may still be reading and keeping this menu: give it a few minutes and look for it under Menus kept before reading it again.'
+
+/**
+ * A timeout, a dropped line, or a server failure with no words of its own.
+ * Mirrors readWithoutAnswer in MenuVersions (F-567).
+ */
+function readWithoutAnswer(err: unknown): boolean {
+  const m = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message
+  return isUnconfirmedWrite(err) && !(typeof m === 'string' && m)
+}
 
 interface MenuScanUploadProps {
   onSuccess: MenuImportSuccess
@@ -12,7 +31,7 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
   const [error, setError] = useState<string | null>(null)
   // The page last sent, so "Try again" sends it again rather than only
   // clearing the message and making the owner pick the file a second time
-  // (F-014).
+  // (F-014). Cleared when the read may already be kept, so it is not read twice.
   const [lastImage, setLastImage] = useState<string | null>(null)
 
   const handleImage = async (imageBase64: string) => {
@@ -23,6 +42,11 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
       const result = await importMenu('scan', { imageBase64 })
       onSuccess(result, { image: imageBase64 })
     } catch (e: any) {
+      if (readWithoutAnswer(e)) {
+        setLastImage(null)
+        setError(READ_WITHOUT_ANSWER)
+        return
+      }
       setError(e?.response?.data?.message || e?.message || 'We could not read that menu.')
     } finally {
       setLoading(false)
@@ -34,7 +58,7 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <div className="w-12 h-12 rounded-full border-4 border-[#1A5E6B]/20 border-t-[#1A5E6B] animate-spin" />
         <p className="text-gray-600 font-medium">Reading your menu…</p>
-        <p className="text-sm text-gray-400">This usually takes 10–20 seconds</p>
+        <p className="text-sm text-gray-400">A long menu can take a few minutes</p>
       </div>
     )
   }

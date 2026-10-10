@@ -19,6 +19,7 @@ vi.mock('../scanner/CameraCapture', () => ({
   },
 }))
 
+import { AxiosError } from 'axios'
 import { MenuScanUpload } from './MenuScanUpload'
 import { MenuCsvUpload } from './MenuCsvUpload'
 
@@ -40,6 +41,45 @@ describe('MenuScanUpload', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
     expect(importMenu).toHaveBeenCalledTimes(2)
     expect(importMenu.mock.calls[1]).toEqual(['scan', { imageBase64: 'iVBORw0KGgo=' }])
+  })
+
+  it.each([
+    ['a timeout', Object.assign(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'), { request: {} })],
+    ['a server failure with no words', { response: { status: 502, data: {} } }],
+  ])('after %s, does not offer to read the page again and points to Menus kept (F-793)', async (_label, err) => {
+    importMenu.mockRejectedValueOnce(err)
+    render(<MenuScanUpload onSuccess={vi.fn()} />)
+    await act(async () => {
+      captured!('iVBORw0KGgo=')
+    })
+    expect(
+      await screen.findByText(
+        'No answer came back from the menu read. It may still be reading and keeping this menu: give it a few minutes and look for it under Menus kept before reading it again.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.queryByText(/timeout|30000/)).toBeNull()
+    expect(importMenu).toHaveBeenCalledTimes(1)
+  })
+
+  it('still offers "Try again" when the server said why it did not read (F-793)', async () => {
+    importMenu.mockRejectedValueOnce({ response: { status: 503, data: { message: 'Menu scan service temporarily unavailable' } } })
+    render(<MenuScanUpload onSuccess={vi.fn()} />)
+    await act(async () => {
+      captured!('iVBORw0KGgo=')
+    })
+    expect(await screen.findByText('Menu scan service temporarily unavailable')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+
+  it('does not promise a read time the page cannot keep (F-793)', async () => {
+    importMenu.mockReturnValueOnce(new Promise(() => {}))
+    render(<MenuScanUpload onSuccess={vi.fn()} />)
+    await act(async () => {
+      captured!('iVBORw0KGgo=')
+    })
+    expect(screen.getByText('A long menu can take a few minutes')).toBeInTheDocument()
+    expect(screen.queryByText(/10–20 seconds/)).toBeNull()
   })
 
   it('speaks of the menu, not a wine list (F-016)', () => {
