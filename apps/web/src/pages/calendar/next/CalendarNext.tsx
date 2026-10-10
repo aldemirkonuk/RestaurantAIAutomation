@@ -157,7 +157,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     const job = data.reminderJob;
     if (job.isLoading) return `Reading the reminder job${EM}`;
     if (job.isError || !job.status) return 'The reminder job could not be read.';
-    if (!job.status.armed) return 'The reminder job is built but not switched on.';
+    if (!job.status.armed) return 'Mudavym does not send reminders for these yet.';
     if (job.status.served === false) return 'No reminders are sent for this restaurant.';
     if (job.status.served === null) return 'Whether reminders are sent here is unknown.';
     if (!job.status.ledgerReadable) return 'Reminders are sent by the server; its ledger is unreadable.';

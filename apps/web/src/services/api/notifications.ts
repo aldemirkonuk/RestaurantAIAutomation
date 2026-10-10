@@ -63,6 +63,18 @@ export interface NotificationPreferences {
   updatedAt?: string;
 }
 
+/**
+ * A change to some preferences. The nested groups are partial too: the
+ * gateway writes only the fields it receives, so a toggle sends only its own
+ * key and cannot carry a stale sibling back over a change made a moment ago.
+ */
+export type NotificationPreferencesPatch = Partial<
+  Omit<NotificationPreferences, "userId" | "quietHours" | "lowStock">
+> & {
+  quietHours?: Partial<NonNullable<NotificationPreferences["quietHours"]>>;
+  lowStock?: Partial<NonNullable<NotificationPreferences["lowStock"]>>;
+};
+
 export interface CreateNotificationInput {
   userId: string;
   restaurantId: string;
@@ -237,7 +249,7 @@ export async function fetchNotificationPreferences(
  */
 export async function updateNotificationPreferences(
   userId: string,
-  preferences: Partial<Omit<NotificationPreferences, "userId">>,
+  preferences: NotificationPreferencesPatch,
 ): Promise<NotificationPreferences> {
   const response = await apiClient.patch<NotificationPreferences>(
     `/notifications/preferences?userId=${userId}`,

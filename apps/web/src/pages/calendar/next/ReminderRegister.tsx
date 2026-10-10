@@ -168,10 +168,9 @@ function JobAccount({
   if (!status.armed) {
     return (
       <p className="cn-quiet cn-tight cn-noteline" role="status">
-        <PauseCircle {...ICON} aria-hidden="true" /> <strong>The reminder job is built but not
-        switched on.</strong> It sends nothing until <code>{status.armedFlag}</code> is set on
-        the gateway, and it is off by default because it writes to every member&rsquo;s inbox
-        and phone. Turning it on is the founder&rsquo;s call.
+        <PauseCircle {...ICON} aria-hidden="true" /> <strong>Mudavym does not send reminders
+        yet.</strong> Nobody gets an email or a text for a reminder set here until reminders are
+        turned on.
       </p>
     );
   }

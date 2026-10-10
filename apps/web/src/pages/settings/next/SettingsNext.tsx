@@ -73,7 +73,7 @@ import { animate, ink, prefersReducedMotion, settle } from '@/lib/mudavym';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
 import {
   CONNECTIONS_ANCHOR, INTERVIEW_GROUPS, KEPT_NOTE, MONO, SANS, SERIF,
-  TAB_TO_ANCHOR, isCollapsedSection, isSectionId, keptTally, sectionsFor,
+  TAB_TO_ANCHOR, isCollapsedSection, isSectionId, keptTally, listed, recordSplit, sectionsFor,
   word, type SectionId, type SectionSpec,
 } from './st-format';
 import { useSettingsNextData, type SettingsNextData } from './useSettingsNextData';
@@ -202,6 +202,7 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
 
   const data = useSettingsNextData();
   const live = useMemo(() => sectionsFor(connectionsOn), [connectionsOn]);
+  const split = useMemo(() => recordSplit(connectionsOn), [connectionsOn]);
   // The tally strip's ship-now interim (see this file's own docblock above,
   // and settings.md §13.39) — computed from `data`, never the DOM.
   const tallyLine = certaintyTallyLine(data);
@@ -277,14 +278,13 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
             {capitalise(word(live.length))} registers — {keptTally(connectionsOn)}.
           </p>
           <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-4)', margin: '8px 0 0', maxWidth: 660 }}>
-            Six of these registers now record <em>who</em> changed a setting and what it was before — Features,
-            Vendor terms, Approval thresholds, Currency, Time zone and Mail reading, read back under{' '}
+            {capitalise(word(split.recorded.length))} of these record <em>who</em> changed a setting and what it was
+            before — {listed(split.recorded.map((s) => s.label))} — and you can read every change under{' '}
             <button type="button" className="st-focus" onClick={() => scrollToAnchor('a-record')}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here
-            </button>. The other {connectionsOn ? 'four' : 'eight'} write through services this pass did not touch, so their changes are still
-            anonymous; where one is dated the date is shown with the word for what it is a date of, and where nothing
-            dates it the line is an em dash naming the file it was checked against.
+            </button>. The other {word(split.notYet.length)} do not keep that record yet, so a change to one of them
+            does not say who made it; each still shows when it was last changed, where that is known.
           </p>
           {tallyLine && (
             <p

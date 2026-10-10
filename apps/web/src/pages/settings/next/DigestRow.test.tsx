@@ -56,7 +56,8 @@ const record = () => screen.getByRole('button', { name: /^record$/i });
 describe('a never-written house is unstated, not the service default dressed as an answer', () => {
   it('does not print the stored defaults as if they were chosen', () => {
     mount();
-    expect(screen.getByText(/The sender exists as of this pass/i)).toBeInTheDocument();
+    expect(screen.getByText(/Off until someone answers/i)).toBeInTheDocument();
+    expect(screen.queryByText(/this pass/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/07:00/)).not.toBeInTheDocument();
     // The urgency <select> always lists "this week or sooner" as a CHOICE —
     // that is not the bug. The bug would be it arriving pre-selected, as if
