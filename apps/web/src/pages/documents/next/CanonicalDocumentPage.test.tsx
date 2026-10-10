@@ -90,6 +90,11 @@ vi.mock('../../../services/api/deliveries', () => ({
     propose: vi.fn(),
     counter: vi.fn(),
     accept: vi.fn(),
+    // One line Agree still waits on, so the differences list is drawn (F-788).
+    differences: vi.fn(async () => [
+      { documentId: 'doc-syn', lineNo: 1, label: 'Line 1 — Tomatoes', why: 'short by 2' },
+    ]),
+    acceptAsBilled: vi.fn(),
   },
 }))
 
@@ -709,6 +714,22 @@ describe('CanonicalDocumentPage — who settles a delivery (F-317)', () => {
     expect(screen.getByTestId('delivery-settle-held').textContent).toMatch(
       /are for a manager or an owner/,
     )
+  })
+
+  it('[REVERT-FAILS] shows staff the open differences with no “Keep it as billed” (F-788)', async () => {
+    // Keeping a line as billed settles what the house pays, and the gateway
+    // refuses it to staff with a 403. The list stays readable; the act does not.
+    documentMock.mockResolvedValue(onOneDelivery())
+    mountAs('staff')
+    await waitFor(() => expect(screen.getByTestId('open-difference')).toBeTruthy())
+    expect(screen.queryByTestId('keep-as-billed')).toBeNull()
+  })
+
+  it('offers a manager “Keep it as billed” on an open difference (F-788)', async () => {
+    documentMock.mockResolvedValue(onOneDelivery())
+    mountAs('manager')
+    await waitFor(() => expect(screen.getByTestId('open-difference')).toBeTruthy())
+    expect(screen.getByTestId('keep-as-billed')).toBeTruthy()
   })
 
   it('offers a manager the gate and the thread’s acts', async () => {

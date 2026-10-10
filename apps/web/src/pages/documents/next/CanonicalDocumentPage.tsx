@@ -636,14 +636,17 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                   : undefined
               }
               differences={differencesQ.data ?? null}
-              onAcceptAsBilled={(line, reason) =>
-                deliveryWrite(() =>
-                  deliveriesApi.acceptAsBilled(soleDelivery.deliveryId, {
-                    documentId: line.documentId,
-                    lineNo: line.lineNo,
-                    reason,
-                  }),
-                )
+              onAcceptAsBilled={
+                maySettleDelivery
+                  ? (line, reason) =>
+                      deliveryWrite(() =>
+                        deliveriesApi.acceptAsBilled(soleDelivery.deliveryId, {
+                          documentId: line.documentId,
+                          lineNo: line.lineNo,
+                          reason,
+                        }),
+                      )
+                  : undefined
               }
             />
           ) : (
@@ -698,8 +701,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
           className="cd-no-print"
           style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}
         >
-          Agreeing this delivery, verifying it and answering the vendor are for a
-          manager or an owner. The door count and the paper stay yours.
+          Agreeing this delivery, keeping a line as billed, verifying it and
+          answering the vendor are for a manager or an owner. The door count and the paper stay yours.
         </p>
       )}
 
