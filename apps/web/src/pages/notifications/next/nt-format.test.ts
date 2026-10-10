@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest';
 import {
   KIND_BY_TYPE,
   KIND_ORDER,
+  actionTargetOf,
   hasEmoji,
   iconForKind,
   iconForType,
@@ -288,5 +289,24 @@ describe('the rail counts every register a line can land in', () => {
       seen.set(mark, register);
     }
     expect(seen.size).toBe(KIND_ORDER.length);
+  });
+});
+
+describe('actionTargetOf — where a row links (F-218)', () => {
+  const n = (actionUrl: string) =>
+    ({ id: 'n-1', actionUrl }) as unknown as Parameters<typeof actionTargetOf>[0];
+
+  it('opens a place outside Mudavym as it is, never as /https://…', () => {
+    expect(actionTargetOf(n('https://vendor.example/portal?x=1'))).toEqual({
+      to: 'https://vendor.example/portal?x=1',
+      label: 'Open where this happened',
+      external: true,
+    });
+    expect(actionTargetOf(n('HTTP://vendor.example'))?.external).toBe(true);
+  });
+
+  it('keeps an in-app path in the app', () => {
+    expect(actionTargetOf(n('/orders?order=o-1'))).toMatchObject({ to: '/orders?order=o-1', external: false });
+    expect(actionTargetOf(n('team'))).toMatchObject({ to: '/team', external: false });
   });
 });

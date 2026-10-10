@@ -67,6 +67,7 @@ import {
   fmtWeekRange,
   fmtWeekday,
   mondayOf,
+  weekFromLink,
   WEEKLY_REVIEW_HOURS,
 } from './tm-format';
 import { MutationError } from './tm-bits';
@@ -324,7 +325,7 @@ function TeamNextManager({
 }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  const [weekStart, setWeekStart] = useState(() => weekFromLink(window.location.search));
   const [lens, setLens] = useState<Lens>('coverage');
   const [overlay, setOverlay] = useState<Overlay | null>(null);
   const exportAnchor = useRef<HTMLButtonElement | null>(null);

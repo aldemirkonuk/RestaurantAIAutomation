@@ -328,9 +328,18 @@ export function factsFrom(n: Notification): Fact[] {
   return facts;
 }
 
-/** Where a row's own `actionUrl` points. Null when the row carries none. */
-export function actionTargetOf(n: Notification): { to: string; label: string } | null {
+/**
+ * Where a row's own `actionUrl` points. Null when the row carries none.
+ * `external` is a place outside Mudavym (an http(s) link, which a one-tap
+ * action may carry): it opens as it is, in a new tab. Prefixing it with "/"
+ * sent the owner to the in-app 404 (F-218).
+ */
+export function actionTargetOf(
+  n: Notification,
+): { to: string; label: string; external: boolean } | null {
   if (!n.actionUrl) return null;
+  const label = n.actionLabel || 'Open where this happened';
+  if (/^https?:\/\//i.test(n.actionUrl)) return { to: n.actionUrl, label, external: true };
   const to = n.actionUrl.startsWith('/') ? n.actionUrl : `/${n.actionUrl}`;
-  return { to, label: n.actionLabel || 'Open where this happened' };
+  return { to, label, external: false };
 }

@@ -189,3 +189,22 @@ describe('?add=1 deep link', () => {
     expect(screen.queryByText('Single Wine')).not.toBeInTheDocument();
   });
 });
+
+describe('?filter=low-stock deep link (F-217)', () => {
+  // The low-stock notifications, the digest email and its push all link
+  // /inventory?filter=low-stock; the page opens on "Below par" for it.
+  const pressedBelowPar = () =>
+    screen
+      .queryAllByRole('button', { pressed: true })
+      .filter((b) => /Below par/.test(b.textContent ?? ''));
+
+  it('opens on Below par', () => {
+    harness('/inventory?filter=low-stock');
+    expect(pressedBelowPar()).toHaveLength(1);
+  });
+
+  it('opens on the whole cellar without it', () => {
+    harness('/inventory');
+    expect(pressedBelowPar()).toHaveLength(0);
+  });
+});

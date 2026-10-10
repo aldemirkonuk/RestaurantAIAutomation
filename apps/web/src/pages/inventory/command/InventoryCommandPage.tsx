@@ -337,7 +337,12 @@ export function InventoryCommandPage() {
   const [sortDir, setSortDir] = useState<SortDir>(() =>
     searchParams.get("dir") === "desc" ? "desc" : "asc",
   );
+  // Deep-link: /inventory?filter=low-stock (the low-stock notifications, the
+  // digest email and its push) opens on "Below par". No page read it, so the
+  // link landed on the whole cellar (F-217). The URL mirror below turns it
+  // into this page's own `flag`.
   const [activeFlag, setActiveFlag] = useState<RowFlag | null>(() => {
+    if (searchParams.get("filter") === "low-stock") return "low";
     const v = searchParams.get("flag");
     return v && (ROW_FLAG_KEYS as readonly string[]).includes(v)
       ? (v as RowFlag)
@@ -593,6 +598,8 @@ export function InventoryCommandPage() {
     put("sort", sort, "runway");
     put("dir", sortDir, "asc");
     put("view", view, "table");
+    // F-217's `?filter=low-stock` has been read into `flag`; it does not stay.
+    next.delete("filter");
     if (next.toString() !== prev.toString()) {
       setSearchParams(next, { replace: true });
     }
