@@ -112,10 +112,21 @@ export class WinesController {
     );
   }
 
+  /**
+   * The caller's own house's submissions only (F-434). The table is shared
+   * across houses and the gateway reads it with the service role, so RLS
+   * does not filter it; before this the route returned every house's rows
+   * (wine identity, price reference, submitter) to any signed-in member.
+   * The house comes from the token, never from the query.
+   */
   @Get("submissions/list")
-  @ApiOperation({ summary: "List master wine submissions" })
-  async listSubmissions(@Query() query: SubmissionListQueryDto) {
+  @ApiOperation({ summary: "List this house's master wine submissions" })
+  async listSubmissions(
+    @Query() query: SubmissionListQueryDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
     return await this.wineSubmissionsService.listSubmissions(
+      user.restaurantId,
       query.status,
       query.limit,
     );

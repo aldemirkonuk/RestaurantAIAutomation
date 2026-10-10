@@ -22,6 +22,7 @@ import {
   type HousePriceResult,
 } from "../pricing/house-menu-price";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { assertLocationsBelongToRestaurant } from "../common/tenant/assert-location-belongs-to-restaurant";
 import {
   enqueueHouseItemResearch,
   readHouseItemResearch,
@@ -325,6 +326,15 @@ export class InventoryService {
       "transferStock",
       this.logger,
     );
+    // F-435: the zones too. The RPC files the lot under whatever zone id it
+    // is given, with no house tie, so another house's zone would be accepted.
+    await assertLocationsBelongToRestaurant(
+      client,
+      restaurantId,
+      [dto.fromLocationId, dto.toLocationId],
+      "transferStock",
+      this.logger,
+    );
     const { error } = await client.rpc("transfer_stock", {
       p_inventory_id: inventoryId,
       p_from_location_id: dto.fromLocationId ?? null,
@@ -398,6 +408,13 @@ export class InventoryService {
       client,
       restaurantId,
       inventoryId,
+      "recordPour",
+      this.logger,
+    );
+    await assertLocationsBelongToRestaurant(
+      client,
+      restaurantId,
+      [dto.locationId],
       "recordPour",
       this.logger,
     );
@@ -1018,6 +1035,15 @@ export class InventoryService {
     actorUserId: string | null = null,
   ) {
     const client = this.dbService.getClient();
+    // F-435: the item's shelf and its first lot's zone must be this house's.
+    // Checked before anything is written, re-activation included.
+    await assertLocationsBelongToRestaurant(
+      client,
+      restaurantId,
+      [dto.storageLocationId],
+      "createInventoryItem",
+      this.logger,
+    );
 
     // Look up the canonical wine name once; used in both the re-activation and INSERT paths.
     let masterWineName: string | null = null;
@@ -1284,6 +1310,15 @@ export class InventoryService {
         (line.wineId ? `wine ${line.wineId}` : "unknown");
 
       try {
+        // F-435: a line naming another house's zone fails on its own, before
+        // its wine is resolved or anything is written; the rest still land.
+        await assertLocationsBelongToRestaurant(
+          this.dbService.getClient(),
+          restaurantId,
+          [line.storageLocationId],
+          "bulkCreateInventoryItems",
+          this.logger,
+        );
         const resolved = await this.resolveBulkLineWine(line, restaurantId);
         const outcome = await this.receiveBulkLine(
           restaurantId,

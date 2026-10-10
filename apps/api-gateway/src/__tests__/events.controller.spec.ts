@@ -3,6 +3,7 @@ import { HttpException, HttpStatus } from "@nestjs/common";
 import { EventsController } from "../events/events.controller";
 import { EventsService } from "../events/events.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 
 describe("EventsController", () => {
@@ -26,6 +27,10 @@ describe("EventsController", () => {
       ],
     })
       .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      // F-437: /events/metrics takes the service key; the gate itself is
+      // pinned in events/events-metrics-gate.spec.ts.
+      .overrideGuard(ServiceKeyGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

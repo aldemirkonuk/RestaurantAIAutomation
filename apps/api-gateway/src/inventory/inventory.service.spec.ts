@@ -25,6 +25,7 @@ describe("InventoryService", () => {
     eq: jest.fn().mockReturnThis(),
     neq: jest.fn().mockReturnThis(),
     is: jest.fn().mockReturnThis(),
+    in: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     single: mockSingle,
     maybeSingle: mockMaybeSingle,
@@ -57,6 +58,8 @@ describe("InventoryService", () => {
     mockSupabaseChain.eq.mockReturnThis();
     mockSupabaseChain.neq.mockReturnThis();
     mockSupabaseChain.is.mockReturnThis();
+    mockSupabaseChain.in.mockReset();
+    mockSupabaseChain.in.mockReturnThis();
     mockSupabaseChain.order.mockReturnThis();
     // apply_stock_movement RPC resolves with no error by default
     mockRpc.mockResolvedValue({ data: null, error: null });
@@ -835,6 +838,8 @@ describe("InventoryService", () => {
       // ADR 0141, Correction: this path now checks ownership before its RPC,
       // so the item must belong to the house for the happy path to run.
       mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
+      // F-435: and the zone it moves to must be the house's own.
+      mockSupabaseChain.in.mockResolvedValueOnce({ data: [{ id: "loc-2" }], error: null });
       await service.transferStock(
         "rest-1",
         "inv-1",

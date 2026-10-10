@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
 import {
@@ -118,12 +119,23 @@ export class EventsController {
     }
   }
 
+  /**
+   * Platform-wide ingestion counters, for our own monitoring only (F-437).
+   * It was `@Public()` alone, so anyone on the internet could read every
+   * house's event volume by type and source. Now it takes the service key
+   * (`X-Admin-Key`, ADR 0099), the same as the other machine-only routes;
+   * `@Public()` stays only so the global TenantGuard lets through a caller
+   * that has no user; the key is what decides. No health check, monitor or
+   * CI job calls this route (repo-wide grep, 2026-10-09).
+   */
   @Get("metrics")
   @Public()
+  @UseGuards(ServiceKeyGuard)
   @ApiOperation({
-    summary: "Get event ingestion metrics (internal/monitoring)",
+    summary: "Get event ingestion metrics (internal/monitoring; service key)",
   })
   @ApiResponse({ status: 200, description: "Returns event metrics" })
+  @ApiResponse({ status: 401, description: "Missing or wrong X-Admin-Key" })
   async getMetrics(): Promise<Record<string, unknown>> {
     const metrics = this.eventsService.getMetrics();
     return {

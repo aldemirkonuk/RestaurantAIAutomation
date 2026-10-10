@@ -10,6 +10,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { assertLocationsBelongToRestaurant } from "../common/tenant/assert-location-belongs-to-restaurant";
 import { readRestaurantRole } from "../organizations/organizations.service";
 import { recordAccessChange } from "../team/access-audit";
 import {
@@ -220,26 +221,15 @@ export class StorageLocationsService {
     restaurantId: string,
     locationId: string,
   ): Promise<void> {
-    const { data, error } = await this.dbService.supabase
-      .from("storage_locations")
-      .select("id")
-      .eq("id", locationId)
-      .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (error) {
-      this.logger.error(`Failed to read location: ${error.message}`);
-      throw new HttpException(
-        "The location could not be read, so nothing was done.",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-    if (!data) {
-      throw new HttpException(
-        "No storage location of this house has that id.",
-        HttpStatus.NOT_FOUND,
-      );
-    }
+    // Shared with every stock write that names a zone (F-435).
+    await assertLocationsBelongToRestaurant(
+      this.dbService.supabase,
+      restaurantId,
+      [locationId],
+      "storageLocations",
+      this.logger,
+      { liveOnly: true },
+    );
   }
 
   /** 403 unless the caller may set up zones here (ADR 0238). */

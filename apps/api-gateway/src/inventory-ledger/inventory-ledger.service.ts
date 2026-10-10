@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { assertLocationsBelongToRestaurant } from "../common/tenant/assert-location-belongs-to-restaurant";
 import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
@@ -113,6 +114,15 @@ export class InventoryLedgerService {
       this.databaseService.supabase,
       restaurantId,
       dto.inventoryId,
+      "createTransaction",
+      this.logger,
+    );
+    // The zone ids are the caller's too, and `apply_stock_movement` takes the
+    // house from the item, never from the zone (F-435).
+    await assertLocationsBelongToRestaurant(
+      this.databaseService.supabase,
+      restaurantId,
+      [dto.fromLocationId, dto.toLocationId],
       "createTransaction",
       this.logger,
     );

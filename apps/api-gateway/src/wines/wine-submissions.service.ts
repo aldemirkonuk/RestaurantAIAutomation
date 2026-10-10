@@ -180,10 +180,13 @@ export class WineSubmissionsService {
     return data;
   }
 
-  async listSubmissions(status?: string, limit = 50) {
+  async listSubmissions(restaurantId: string, status?: string, limit = 50) {
+    // Fail closed: no house, no rows (a missing filter would read them all).
+    if (!restaurantId) return [];
     let query = this.dbService.supabase
       .from("master_wine_library_submissions")
       .select("*")
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(limit);
 
