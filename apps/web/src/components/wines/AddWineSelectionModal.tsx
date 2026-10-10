@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Wine as WineIcon, Camera, ScanText, ArrowRight, Truck, Lightbulb, Gavel } from 'lucide-react'
 
@@ -28,6 +29,16 @@ export function AddWineSelectionModal({
   title = 'Add Wine to Library',
   subtitle = 'Choose how to add wines',
 }: AddWineSelectionModalProps) {
+  // Escape closes the chooser, as it does every other sheet (F-208).
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isOpen, onClose])
+
   if (!isOpen) return null
 
   return (
@@ -45,7 +56,12 @@ export function AddWineSelectionModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             onClick={(e) => e.stopPropagation()}
-            className={`bg-white rounded-3xl shadow-2xl w-full overflow-hidden ${onSelectReceipt ? 'max-w-4xl' : 'max-w-2xl'}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+            // Four cards stack below md; the panel scrolls inside the screen
+            // instead of running off a phone with no way down (F-208).
+            className={`bg-white rounded-3xl shadow-2xl w-full max-h-[90dvh] overflow-y-auto ${onSelectReceipt ? 'max-w-4xl' : 'max-w-2xl'}`}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-wine-50 to-wine-100">

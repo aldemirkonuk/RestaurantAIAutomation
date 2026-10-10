@@ -5,7 +5,8 @@ import GetStarted from './GetStarted'
 import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
 
-const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider, listMenuVersions } = vi.hoisted(() => ({
+  listMenuVersions: vi.fn(),
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
@@ -81,7 +82,7 @@ vi.mock('../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../services/api/menus')>(
     '../services/api/menus',
   )
-  return { ...actual, reviewMenuItem: vi.fn().mockResolvedValue({}), addMenuItem }
+  return { ...actual, reviewMenuItem: vi.fn().mockResolvedValue({}), addMenuItem, listMenuVersions }
 })
 vi.mock('../services/api/vendors', () => ({
   addCustomProvider,
@@ -107,6 +108,7 @@ beforeEach(() => {
     needsReview: false,
   })
   addCustomProvider.mockResolvedValue({ id: 'vendor-1', name: 'Suvla' })
+  listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] })
   sessionStorage.clear()
 })
 
@@ -570,5 +572,76 @@ describe('approved arrival flow', () => {
     expect(screen.getByText(/Last invoice · kept for later — suvla-sept.pdf/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open later' }))
     expect(navigate).toHaveBeenCalledWith('/settings?tab=cellar')
+  })
+
+  function storeProof(menuId: string, items: Array<{ id: string; name: string; category: string | null }>) {
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({
+        menuId,
+        itemsExtracted: items.length,
+        submissionsCreated: 0,
+        items: items.map((item) => ({
+          menuItemId: item.id,
+          submissionId: null,
+          name: item.name,
+          producer: null,
+          category: item.category,
+          vintage: null,
+          region: null,
+          grapeVariety: null,
+          byGlassPrice: null,
+          bottlePrice: 40,
+          rawText: `${item.name} 40`,
+          matched: true,
+          needsReview: false,
+        })),
+      }),
+    )
+  }
+
+  it('leads on from the house contents page, never a dead end (F-025)', () => {
+    storeProof('menu', [{ id: 'a', name: 'Yakut', category: 'red' }])
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to the dashboard' }))
+    expect(navigate).toHaveBeenCalledWith('/')
+  })
+
+  it('says the menu just read is a draft and where to make it current (F-031)', async () => {
+    storeProof('menu', [{ id: 'a', name: 'Yakut', category: 'red' }])
+    listMenuVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] })
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText(/Kept as a draft: it is not the house's current menu yet/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Make it current on Menu' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
+  })
+
+  it('says so once the menu read is the current one, and never guesses when it cannot read (F-031)', async () => {
+    storeProof('menu', [{ id: 'a', name: 'Yakut', category: 'red' }])
+    listMenuVersions.mockResolvedValue({ current: { menuId: 'menu' }, lastUsed: null, versions: [] })
+    const view = render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText("It is the house's current menu.")).toBeInTheDocument()
+    expect(screen.queryByText(/Kept as a draft/)).toBeNull()
+    view.unmount()
+
+    listMenuVersions.mockRejectedValue(new Error('offline'))
+    render(<MemoryRouter><HouseContents /></MemoryRouter>)
+    expect(await screen.findByText(/could not be read/)).toBeInTheDocument()
+    expect(screen.queryByText(/Kept as a draft/)).toBeNull()
+  })
+
+  it('does not tell a menu of wines and soft drinks it has no wine or soft drinks (F-024)', () => {
+    storeProof('menu', [
+      { id: 'a', name: 'Yakut', category: 'red' },
+      { id: 'b', name: 'Ayran', category: 'non-alcoholic' },
+      { id: 'c', name: 'Muscat de Beaumes-de-Venise', category: 'dessert' },
+    ])
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    const footer = screen.getByText(/Not on this menu:/)
+    expect(footer).not.toHaveTextContent(/Wine/)
+    expect(footer).not.toHaveTextContent(/Soft drinks/)
+    // The dessert wine is a wine, not a kitchen line (F-022).
+    expect(screen.queryByText(/kitchen line/)).toBeNull()
+    expect(screen.getByText(/Muscat de Beaumes-de-Venise/)).toBeInTheDocument()
   })
 })

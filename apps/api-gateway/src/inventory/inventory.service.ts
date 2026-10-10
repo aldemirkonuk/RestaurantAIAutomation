@@ -37,6 +37,8 @@ import {
 } from "./dto/inventory.dto";
 
 const ML_PER_OZ = 29.5735;
+/** `restaurants.default_threshold_min`'s column default, used when the house row is unread. */
+const HOUSE_PAR_MIN_FALLBACK = 3;
 
 function roundOz(ml: number): number {
   return Math.round((ml / ML_PER_OZ) * 10) / 10;
@@ -864,6 +866,23 @@ export class InventoryService {
   /**
    * Create a new inventory item
    */
+  /**
+   * The house's default par (`restaurants.default_threshold_min`), for a new
+   * row the person gave no par for. The column's own default (3) stands in
+   * when the house row cannot be read, as it does for a menu import.
+   */
+  private async houseDefaultParMin(restaurantId: string): Promise<number> {
+    const { data } = await this.dbService
+      .getClient()
+      .from("restaurants")
+      .select("default_threshold_min")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    const value = (data as { default_threshold_min?: unknown } | null)
+      ?.default_threshold_min;
+    return typeof value === "number" ? value : HOUSE_PAR_MIN_FALLBACK;
+  }
+
   async createInventoryItem(
     restaurantId: string,
     dto: CreateInventoryItemDto,
@@ -987,7 +1006,11 @@ export class InventoryService {
       master_wine_id: dto.wineId,
       provider_id: dto.providerId || null,
       stock_live: 0, // initial stock applied as a lot via apply_stock_movement below (lots = source of truth)
-      threshold_min: dto.thresholdMin || 6,
+      // A par the person gave is kept, 0 included (`||` turned a stated 0 into
+      // 6). With none given, the house's own default par is used, the same one
+      // a menu import uses, never an invented 6 (F-209).
+      threshold_min:
+        dto.thresholdMin ?? (await this.houseDefaultParMin(restaurantId)),
       threshold_max: dto.thresholdMax || 24,
       toast_item_guid: dto.toastItemGuid || null,
       is_active: true,
@@ -1342,7 +1365,8 @@ export class InventoryService {
         master_wine_id: masterWineId,
         provider_id: line.providerId || null,
         stock_live: 0, // lots are the source of truth; booked via the RPC below
-        threshold_min: line.thresholdMin ?? 6,
+        threshold_min:
+          line.thresholdMin ?? (await this.houseDefaultParMin(restaurantId)),
         threshold_max: line.thresholdMax ?? 24,
         is_active: true,
       };
