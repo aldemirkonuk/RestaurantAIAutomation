@@ -126,6 +126,9 @@ export const SECTION_IDS = [
   // whether Jev reads its vendor mail. Appended, never inserted.
   'time-zone',
   'mail-reading',
+  // F-174: the house's address and map point, a block under "The house" like
+  // 'ask-training'. Appended, never inserted.
+  'location',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -310,6 +313,7 @@ export const TAB_TO_ANCHOR: Record<SectionId, string> = {
   // its vendor mail is a mandate the house gives the system.
   'time-zone': 'a-house',
   'mail-reading': 'a-own',
+  location: 'a-house',
 };
 
 /* ── THE COLLAPSE (founder, 2026-09-04) ──────────────────────────────────

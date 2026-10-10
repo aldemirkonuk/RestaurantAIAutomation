@@ -119,7 +119,14 @@ export type SettingsRegister =
    * The founder, 2026-10-04: *"Add it to the editor (Recommended)"* —
    * changed by owners only and recorded in the log.
    */
-  | "state-and-country";
+  | "state-and-country"
+  /**
+   * Where the house stands on the map: `restaurants.address` and the
+   * `latitude`/`longitude` pair picked with it (F-174). Its own register: the
+   * pair is the only thing the calendar's weather reads, and until this
+   * register nothing a person could reach wrote it after sign-up.
+   */
+  | "location";
 
 /**
  * Every member of `SettingsRegister`, as a record the compiler holds to the
@@ -141,6 +148,7 @@ const KNOWN_REGISTERS: Record<SettingsRegister, true> = {
   "target-margin": true,
   "ask-training": true,
   "state-and-country": true,
+  location: true,
 };
 
 /**
@@ -211,6 +219,11 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * wrote either column on a house that already existed.
    */
   "house_state_country_changed",
+  /**
+   * An owner or manager picked the house's address and map point in Settings.
+   * Added 2026-10-09 (F-174): until then only sign-up wrote either.
+   */
+  "house_location_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

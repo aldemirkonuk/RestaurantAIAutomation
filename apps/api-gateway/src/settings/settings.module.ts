@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { SettingsController } from "./settings.controller";
 import { HouseAskTrainingController } from "./house-ask-training.controller";
+import { HouseLocationController } from "./house-location.controller";
 import { SettingsService } from "./settings.service";
 import { ApprovalThresholdsService } from "./approval-thresholds.service";
 import { HouseCurrencyService } from "./house-currency.service";
@@ -9,6 +10,7 @@ import { HouseTimeZoneService } from "./house-time-zone.service";
 import { HouseToneScoringService } from "./house-tone-scoring.service";
 import { HouseDataTermsService } from "./data-terms/house-data-terms.service";
 import { HouseAskTrainingService } from "./house-ask-training.service";
+import { HouseLocationService } from "./house-location.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
@@ -47,7 +49,11 @@ import { SealModule } from "../common/seal/seal.module";
     OrganizationsModule,
     SealModule,
   ],
-  controllers: [SettingsController, HouseAskTrainingController],
+  controllers: [
+    SettingsController,
+    HouseAskTrainingController,
+    HouseLocationController,
+  ],
   providers: [
     SettingsService,
     ApprovalThresholdsService,
@@ -57,6 +63,7 @@ import { SealModule } from "../common/seal/seal.module";
     HouseToneScoringService,
     HouseDataTermsService,
     HouseAskTrainingService,
+    HouseLocationService,
   ],
   exports: [
     SettingsService,
