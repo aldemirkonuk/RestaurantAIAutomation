@@ -415,6 +415,20 @@ export class InventoryController {
     ) {
       await this.assertMayPrice(user?.userId, restaurantId);
     }
+    // And a line naming a par: on a wine already carried it overwrites that
+    // wine's low-stock line (F-1064, F-1060). A line with no par takes the
+    // house default on a new wine and leaves a carried one's alone.
+    if (
+      (dto.items ?? []).some(
+        (l) => l.thresholdMin !== undefined || l.thresholdMax !== undefined,
+      )
+    ) {
+      await this.assertMayPrice(
+        user?.userId,
+        restaurantId,
+        "change a wine's par",
+      );
+    }
     if ((dto.items ?? []).some(namesACost)) {
       await this.assertMayPrice(
         user?.userId,
