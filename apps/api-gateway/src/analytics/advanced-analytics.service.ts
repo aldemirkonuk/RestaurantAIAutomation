@@ -222,13 +222,24 @@ export class AdvancedAnalyticsService {
     });
   }
 
-  /** Wines with at least one line that carries no bottle figure. */
+  /**
+   * Wines with at least one line that carries no bottle figure, by master wine
+   * — or, with `byItem`, by house item (the ledger's key, ADR 0115), which
+   * every drink has and a rakı or a beer has no master wine for (F-1014).
+   */
   private uncountedWines(
-    consumption: Array<{ wineId: string | null; how: string }>,
+    consumption: Array<{
+      wineId: string | null;
+      inventoryId: string | null;
+      how: string;
+    }>,
+    byItem = false,
   ) {
     const out = new Set<string>();
-    for (const c of consumption)
-      if (c.wineId && c.how === "uncounted") out.add(c.wineId);
+    for (const c of consumption) {
+      const key = byItem ? c.inventoryId : c.wineId;
+      if (key && c.how === "uncounted") out.add(key);
+    }
     return out;
   }
 
@@ -343,16 +354,21 @@ export class AdvancedAnalyticsService {
     ]);
     if (house.error) this.logQueryFailure("restaurants", house.error);
     const housePourMl = confirmedPourFrom(house.row);
+    // Sales per house item, the ledger's key (ADR 0115): keyed by master
+    // wine, a drink that is not a wine read zero velocity — a Dog (F-1014).
     const soldByWine = new Map<string, number>();
     const standInWines = new Set<string>();
     for (const c of consumption) {
-      if (!c.wineId || c.qty == null) continue;
-      soldByWine.set(c.wineId, (soldByWine.get(c.wineId) || 0) + c.qty);
-      if (c.how === "stand_in") standInWines.add(c.wineId);
+      if (!c.inventoryId || c.qty == null) continue;
+      soldByWine.set(
+        c.inventoryId,
+        (soldByWine.get(c.inventoryId) || 0) + c.qty,
+      );
+      if (c.how === "stand_in") standInWines.add(c.inventoryId);
     }
     // A wine with any line that carries no bottle figure has no velocity:
     // summing the rest would report it slower than it sold (ADR 0297).
-    const unmeasuredWines = this.uncountedWines(consumption);
+    const unmeasuredWines = this.uncountedWines(consumption, true);
     const unitsCoverage = summarizeUnits(consumption);
     // The price a bottle earns: its bottle price, or, for a wine with none,
     // its glass price times the glasses a bottle pours at the CONFIRMED pour
@@ -397,10 +413,10 @@ export class AdvancedAnalyticsService {
       id: i.id,
       name: i.name,
       type: i.type,
-      velocityPerDay: unmeasuredWines.has(i.masterWineId)
+      velocityPerDay: unmeasuredWines.has(i.id)
         ? null
-        : (soldByWine.get(i.masterWineId) || 0) / sinceDays,
-      sizeStandIn: standInWines.has(i.masterWineId),
+        : (soldByWine.get(i.id) || 0) / sinceDays,
+      sizeStandIn: standInWines.has(i.id),
       priceBasis: i.priceBasis,
       marginPerBottle: i.marginPerBottle,
       costBasis: i.costBasis,
@@ -777,14 +793,14 @@ export class AdvancedAnalyticsService {
     const { data: inv, error: invError } = await client
       .from("restaurant_inventory")
       // Varietal/type lives on master_wine_library, not restaurant_inventory.
-      .select(
-        "master_wine_id, kind, master_wine_library(primary_type, beverage_kind)",
-      )
+      .select("id, kind, master_wine_library(primary_type, beverage_kind)")
       .eq("restaurant_id", restaurantId);
     if (invError) this.logQueryFailure("restaurant_inventory", invError);
+    // By house item (ADR 0115): keyed by master wine, every drink that is not
+    // a wine shared the one null key and took the last such row's kind.
     const typeByWine = new Map(
       (inv || []).map((i: any) => [
-        i.master_wine_id,
+        i.id,
         // F-742: by kind of drink, wines by colour.
         beverageCategoryOf(i.master_wine_library, i.kind),
       ]),
@@ -792,7 +808,7 @@ export class AdvancedAnalyticsService {
     const inWindow = new Set(dates);
     for (const c of consumption) {
       if (c.qty == null || !inWindow.has(c.date)) continue;
-      const t = typeByWine.get(c.wineId) || "unknown";
+      const t = typeByWine.get(c.inventoryId) || "unknown";
       const arr = byType.get(t) || [];
       arr.push({ date: c.date, value: c.qty });
       byType.set(t, arr);
