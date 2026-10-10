@@ -604,6 +604,10 @@ export function computeMatch(input: MatchInput): MatchResult {
   // What the vendor is entitled to bill for: everything that arrived except the
   // units they gave us.
   const billableReceived = Math.max(0, receivedQty - freeGoodsQty);
+  // The same, less the bottles refused at the door. A vendor who leaves the
+  // refused bottles off the bill has billed correctly (F-414): it is the
+  // usual net invoice, not an over-delivery, and nothing is owed back.
+  const keptBillable = Math.max(0, billableReceived - rejectedQty);
 
   const shippedQty = operands.shippedQty;
   const hasShip = shippedQty != null;
@@ -710,8 +714,13 @@ export function computeMatch(input: MatchInput): MatchResult {
   // --- physical vs bill: short ship / over delivery ---------------------------------------
   // The BILLING axis, so free goods come off: the vendor may not bill for what
   // they gave us. This is the one comparison billableReceived belongs in.
+  const billedNetOfRefused =
+    hasInvoice &&
+    rejectedQty > 0 &&
+    keptBillable === (invoiceQty as number);
   const physicalMatchesBill =
-    hasInvoice && billableReceived === (invoiceQty as number);
+    hasInvoice &&
+    (billableReceived === (invoiceQty as number) || billedNetOfRefused);
   checks.push({
     id: "physical_vs_bill",
     ok: hasInvoice ? physicalMatchesBill : null,
@@ -719,7 +728,9 @@ export function computeMatch(input: MatchInput): MatchResult {
     detail: !hasInvoice
       ? "No invoice recorded"
       : physicalMatchesBill
-        ? `Both ${invoiceQty}`
+        ? billedNetOfRefused
+          ? `Both ${invoiceQty}, with the ${rejectedQty} refused left off the bill`
+          : `Both ${invoiceQty}`
         : `Billed ${invoiceQty}, ${billableReceived} arrived` +
           (freeGoodsQty > 0 ? ` (plus ${freeGoodsQty} free)` : ""),
   });
@@ -752,34 +763,46 @@ export function computeMatch(input: MatchInput): MatchResult {
   if (!hasInvoice) verdict = "unmatched";
   else if (overbilledVsShip) verdict = "overbilled_vs_ship";
   else if (requiresOverride) verdict = "price_variance";
-  else if (billableReceived > (invoiceQty as number)) verdict = "qty_over";
+  // Over-billing is measured against what we kept, so an invoice anywhere from
+  // the net (refused left off) to the gross (refused billed, credit due) is
+  // never "qty_over". Refused bottles the house turned away are not missing
+  // from the order either: the delivery is partial only when fewer arrived.
+  else if (keptBillable > (invoiceQty as number)) verdict = "qty_over";
   else if (billableReceived < (invoiceQty as number)) verdict = "qty_short";
   else if (shortShipped) verdict = "short_shipped";
-  else if (rejectedQty > 0) verdict = "rejected";
+  else if (keptBillable < (invoiceQty as number)) verdict = "rejected";
   // A short delivery stays the headline even when the money differs: "All N
   // accepted" on 22 of 24 was false (F-776). The held price is still said,
   // after the headline, by the not-compared sentence below.
-  else if (!fullyFulfilled) verdict = "partial";
+  else if (receivedQty < orderedQty) verdict = "partial";
   else if (currencyDiffers) verdict = "currency_differs";
   else verdict = "matched";
 
   const creditDue =
-    rejectedQty > 0 ||
+    (!hasInvoice && rejectedQty > 0) ||
     overbilledVsShip ||
-    (hasInvoice && (invoiceQty as number) > billableReceived);
+    (hasInvoice && (invoiceQty as number) > keptBillable);
 
   // Money owed back: units billed but not usably received, at the billed price.
   const unitsOwed = hasInvoice
-    ? Math.max(0, (invoiceQty as number) - (billableReceived - rejectedQty))
+    ? Math.max(0, (invoiceQty as number) - keptBillable)
     : 0;
   const creditAmount =
     hasInvoice && invoiceUnitPrice != null && unitsOwed > 0
       ? Math.round(unitsOwed * invoiceUnitPrice * 100) / 100
       : null;
 
+  // Landed cost of the bottles we kept: what was billed LESS what is being
+  // claimed back, plus charges, over the bottles accepted (F-415). Billed total
+  // over accepted counted the claimed units twice — once as money owed back,
+  // once as a dearer bottle on the lot and in the price history. So
+  // `creditAmount + effectiveUnitCost x accepted` is the billed total plus
+  // charges, always. A claim the vendor later refuses is a lost claim on the
+  // credit ledger, not a revaluation of stock already sold.
   const effectiveUnitCost =
     hasInvoice && invoiceUnitPrice != null && acceptedQty > 0
-      ? ((invoiceQty as number) * invoiceUnitPrice + allocatedCharges) /
+      ? (((invoiceQty as number) - unitsOwed) * invoiceUnitPrice +
+          allocatedCharges) /
         acceptedQty
       : null;
 
@@ -789,6 +812,7 @@ export function computeMatch(input: MatchInput): MatchResult {
       invoiceQty,
       receivedQty,
       billableReceived,
+      keptBillable,
       acceptedQty,
       rejectedQty,
       freeGoodsQty,
@@ -825,6 +849,8 @@ function summarize(
     receivedQty: number;
     /** Physical minus free goods. Use against the invoice. */
     billableReceived: number;
+    /** Billable minus the bottles refused at the door. */
+    keptBillable: number;
     acceptedQty: number;
     rejectedQty: number;
     freeGoodsQty: number;
@@ -839,7 +865,11 @@ function summarize(
   switch (verdict) {
     case "matched":
       return (
-        `All ${f.acceptedQty} accepted at the agreed price.` +
+        (f.rejectedQty === 0
+          ? `All ${f.acceptedQty} accepted at the agreed price.`
+          : f.acceptedQty === 0
+            ? `All ${f.rejectedQty} refused at the door, and none of them are on the bill.`
+            : `${f.acceptedQty} accepted at the agreed price. The ${f.rejectedQty} refused at the door are not on the bill.`) +
         (f.freeGoodsQty > 0 ? ` Includes ${f.freeGoodsQty} free.` : "")
       );
     case "overbilled_vs_ship":
@@ -849,7 +879,9 @@ function summarize(
         f.poUnitPrice as number,
       )}.`;
     case "qty_over":
-      return `${f.billableReceived} arrived but only ${f.invoiceQty} were billed.`;
+      return f.rejectedQty > 0
+        ? `${f.keptBillable} kept but only ${f.invoiceQty} were billed.`
+        : `${f.billableReceived} arrived but only ${f.invoiceQty} were billed.`;
     case "qty_short":
       return `Billed for ${f.invoiceQty} but only ${f.billableReceived} arrived — ${
         (f.invoiceQty as number) - f.billableReceived

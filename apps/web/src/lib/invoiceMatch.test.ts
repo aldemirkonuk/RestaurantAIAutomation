@@ -136,6 +136,23 @@ describe('invoiceMatch (web mirror)', () => {
  * Only the fields the UI actually renders are compared — the backend additionally returns a
  * `checks[]` breakdown that the mirror deliberately does not carry.
  */
+describe('refused bottles and claimed-back units (web mirror)', () => {
+  it('reads a bill that leaves the refused bottles off as clean, never Over-delivered (F-414)', () => {
+    const r = computeMatch({ orderedQty: 12, poUnitPrice: 20, invoiceQty: 10, invoiceUnitPrice: 20, acceptedQty: 10, rejectedQty: 2 })
+    expect(r.verdict).toBe('matched')
+    expect(r.creditDue).toBe(false)
+    expect(r.creditAmount).toBeNull()
+    const zero = computeMatch({ orderedQty: 6, poUnitPrice: 20, invoiceQty: 0, invoiceUnitPrice: 20, acceptedQty: 0, rejectedQty: 6 })
+    expect(zero.verdict).toBe('matched')
+  })
+
+  it('never puts a claimed-back unit into the bottle cost as well (F-415)', () => {
+    const r = computeMatch({ orderedQty: 12, poUnitPrice: 20, invoiceQty: 12, invoiceUnitPrice: 20, acceptedQty: 10, rejectedQty: 2 })
+    expect(r.creditAmount).toBe(40)
+    expect(r.effectiveUnitCost).toBe(20)
+  })
+})
+
 describe('invoiceMatch parity with the API engine', () => {
   const cases: Array<[string, MatchInput]> = [
     ['exact match', base],
@@ -174,6 +191,13 @@ describe('invoiceMatch parity with the API engine', () => {
     ['another money and a short ship', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', acceptedQty: 22 }],
     ['another money and a short delivery', { ...base, poCurrency: 'EUR', invoiceCurrency: 'TRY', invoiceQty: 22, acceptedQty: 22 }],
     ['one money not recorded', { ...base, poCurrency: 'EUR', invoiceUnitPrice: 24 }],
+    // F-414: refused bottles left off the bill — net, partly net, whole case at 0, under-billed.
+    ['refused left off the bill', { orderedQty: 12, poUnitPrice: 20, invoiceQty: 10, invoiceUnitPrice: 20, acceptedQty: 10, rejectedQty: 2 }],
+    ['refused, one of them billed', { orderedQty: 12, poUnitPrice: 20, invoiceQty: 11, invoiceUnitPrice: 20, acceptedQty: 10, rejectedQty: 2 }],
+    ['whole case refused, billed 0', { orderedQty: 6, poUnitPrice: 20, invoiceQty: 0, invoiceUnitPrice: 20, acceptedQty: 0, rejectedQty: 6 }],
+    ['refused and under-billed', { orderedQty: 12, poUnitPrice: 20, invoiceQty: 8, invoiceUnitPrice: 20, acceptedQty: 10, rejectedQty: 2 }],
+    // F-415: claimed-back units with freight on top.
+    ['short with freight', { orderedQty: 12, poUnitPrice: 20, invoiceQty: 12, invoiceUnitPrice: 20, acceptedQty: 10, allocatedCharges: 30 }],
     ['free goods and a real short ship', { orderedQty: 24, poUnitPrice: 22, shippedQty: 24, invoiceQty: 21, invoiceUnitPrice: 22, acceptedQty: 22, freeGoodsQty: 1 }],
   ]
 

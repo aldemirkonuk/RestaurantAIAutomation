@@ -96,6 +96,8 @@ export function computeMatch(input: MatchInput): MatchResult {
   const receivedQty = acceptedQty + rejectedQty
   // What the vendor may bill for: everything that arrived except what they gave us.
   const billableReceived = Math.max(0, receivedQty - freeGoodsQty)
+  // Less the bottles refused at the door: a bill that leaves them off is a clean bill (F-414).
+  const keptBillable = Math.max(0, billableReceived - rejectedQty)
 
   const hasShip = input.shippedQty != null
   const shippedQty = hasShip ? Math.max(0, input.shippedQty as number) : null
@@ -115,7 +117,6 @@ export function computeMatch(input: MatchInput): MatchResult {
   const requiresOverride = priceMismatch && overrideReason.length === 0
 
   const backorderQty = Math.max(0, orderedQty - acceptedQty)
-  const fullyFulfilled = acceptedQty >= orderedQty
 
   const overbilledVsShip = hasShip && hasInvoice && (invoiceQty as number) > (shippedQty as number)
   // Physical vs physical. The slip counts bottles on the truck, free ones included, so this
@@ -127,22 +128,22 @@ export function computeMatch(input: MatchInput): MatchResult {
   if (!hasInvoice) verdict = 'unmatched'
   else if (overbilledVsShip) verdict = 'overbilled_vs_ship'
   else if (requiresOverride) verdict = 'price_variance'
-  else if (billableReceived > (invoiceQty as number)) verdict = 'qty_over'
+  else if (keptBillable > (invoiceQty as number)) verdict = 'qty_over'
   else if (billableReceived < (invoiceQty as number)) verdict = 'qty_short'
   else if (shortShipped) verdict = 'short_shipped'
-  else if (rejectedQty > 0) verdict = 'rejected'
+  else if (keptBillable < (invoiceQty as number)) verdict = 'rejected'
   // A short delivery stays the headline even when the money differs (F-776); the held price
   // is still said after it, by the not-compared sentence.
-  else if (!fullyFulfilled) verdict = 'partial'
+  else if (receivedQty < orderedQty) verdict = 'partial'
   else if (currencyDiffers) verdict = 'currency_differs'
   else verdict = 'matched'
 
   const creditDue =
-    rejectedQty > 0 || overbilledVsShip || (hasInvoice && (invoiceQty as number) > billableReceived)
+    (!hasInvoice && rejectedQty > 0) ||
+    overbilledVsShip ||
+    (hasInvoice && (invoiceQty as number) > keptBillable)
 
-  const unitsOwed = hasInvoice
-    ? Math.max(0, (invoiceQty as number) - (billableReceived - rejectedQty))
-    : 0
+  const unitsOwed = hasInvoice ? Math.max(0, (invoiceQty as number) - keptBillable) : 0
   const creditAmount =
     hasInvoice && invoiceUnitPrice != null && unitsOwed > 0
       ? Math.round(unitsOwed * invoiceUnitPrice * 100) / 100
@@ -150,14 +151,19 @@ export function computeMatch(input: MatchInput): MatchResult {
 
   const effectiveUnitCost =
     hasInvoice && invoiceUnitPrice != null && acceptedQty > 0
-      ? ((invoiceQty as number) * invoiceUnitPrice + allocatedCharges) / acceptedQty
+      ? // Billed less what is claimed back, so a claimed unit is never also a dearer bottle (F-415).
+        (((invoiceQty as number) - unitsOwed) * invoiceUnitPrice + allocatedCharges) / acceptedQty
       : null
 
   const headline = (() => {
     switch (verdict) {
       case 'matched':
         return (
-          `All ${acceptedQty} accepted at the agreed price.` +
+          (rejectedQty === 0
+            ? `All ${acceptedQty} accepted at the agreed price.`
+            : acceptedQty === 0
+              ? `All ${rejectedQty} refused at the door, and none of them are on the bill.`
+              : `${acceptedQty} accepted at the agreed price. The ${rejectedQty} refused at the door are not on the bill.`) +
           (freeGoodsQty > 0 ? ` Includes ${freeGoodsQty} free.` : '')
         )
       case 'overbilled_vs_ship':
@@ -168,7 +174,9 @@ export function computeMatch(input: MatchInput): MatchResult {
           input.poCurrency,
         )}.`
       case 'qty_over':
-        return `${billableReceived} arrived but only ${invoiceQty} were billed.`
+        return rejectedQty > 0
+          ? `${keptBillable} kept but only ${invoiceQty} were billed.`
+          : `${billableReceived} arrived but only ${invoiceQty} were billed.`
       case 'qty_short':
         return `Billed for ${invoiceQty} but only ${billableReceived} arrived — ${
           (invoiceQty as number) - billableReceived
