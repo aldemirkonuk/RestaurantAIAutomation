@@ -2294,7 +2294,9 @@ export class TeamService {
     // A last day before the first is not a request anyone can approve. The
     // page refuses it, but nothing here did, and the table has no check, so
     // any other caller stored it as sent (F-923). A past first day stays
-    // allowed: sick leave is often filed after the day.
+    // allowed, staff filing for themselves included, with no manager step
+    // before it is sent: sick leave is often filed after the day (coordinator
+    // call 2026-10-10, tech-debt.d/2026-10-10-fix-sim-w66-timeoff-rule.md).
     if (dto.endDate.slice(0, 10) < dto.startDate.slice(0, 10)) {
       throw new BadRequestException(
         "The last day off comes before the first. Nothing was sent.",

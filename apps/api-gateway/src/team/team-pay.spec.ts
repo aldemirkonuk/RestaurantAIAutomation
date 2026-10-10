@@ -693,6 +693,21 @@ describe("F-923 — a time-off request runs forward", () => {
     } as any);
     expect(req.start_date).toBe("2026-01-05");
   });
+
+  // Coordinator call 2026-10-10: a staff member still off sick files from the
+  // first missed day onward themselves; no manager step comes before it is sent.
+  it("files a range that began in the past and runs on, from the staff member", async () => {
+    const db = seed();
+    const past = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+    const ahead = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: past,
+      endDate: ahead,
+    } as any);
+    expect([req.start_date, req.end_date]).toEqual([past, ahead]);
+    expect((db.tables.time_off_requests ?? []).some((r: any) => r.start_date === past)).toBe(true);
+  });
 });
 
 // ── the rules themselves ─────────────────────────────────────────────────────
