@@ -56,8 +56,9 @@ some fonts draw blank whose category is Lo, So, Mc, Co, Cn or Cs (other
 than the five fillers it deletes).
 
 An exact match is not proof of a leak: a quantity or a date can equal the
-ceiling. That is why the replacement asks for a quote on the wine, the
-quantity and the target price (when the intent has them) and for
+ceiling. That is why the replacement asks for a quote on the intent's
+`wine_name` and `quantity`, states its `target_price` (when that is a
+positive number; there is no `target_price_per_bottle` fallback), asks for
 availability, price and the earliest delivery date, and why the drop is
 recorded in `constraint_flags.audit_trail` on the conversation row (no
 screen reads that field yet).
@@ -316,10 +317,12 @@ def _price(value: Any) -> str | None:
 def order_letter_without_ceiling(intent: Mapping[str, Any] | None) -> str:
     """The letter staged in place of a draft that stated a house-only figure.
 
-    It asks for a quote on what the order needs (the wine, the quantity and
-    the target price, when the intent has them) and is built without the
-    house-only keys. It is an inquiry, worded to stay clear of the commitment
-    phrases in core/commitment_patterns.py. It is English only and names no
+    It asks for a quote on the intent's `wine_name` and `quantity` and states
+    its `target_price` (each when present; a `target_price` that is not a
+    positive number is left out, and there is no `target_price_per_bottle`
+    fallback). It is built without the house-only keys. It is an inquiry,
+    worded to stay clear of the commitment phrases in
+    core/commitment_patterns.py. It is English only and names no
     currency, because the intent carries neither a language nor a currency.
     """
     intent = intent or {}

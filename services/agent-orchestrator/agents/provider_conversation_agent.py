@@ -2309,8 +2309,8 @@ class ProviderConversationAgent(BaseAgent):
 
             # A house-only figure in the draft (the model can still meet one in
             # memories or history) replaces the draft with a fixed order letter
-            # built from the wine, quantity and target fields, without the
-            # house-only keys (ADR 0326). The drop is recorded in
+            # built from wine_name, quantity and target_price (no per-bottle
+            # fallback), without house-only keys (ADR 0326). The drop is recorded in
             # constraint_flags.audit_trail and, under Level 4, in the
             # decision log by key name only; the model's draft is not kept.
             withheld = withheld_figures_in(draft_text, intent)
