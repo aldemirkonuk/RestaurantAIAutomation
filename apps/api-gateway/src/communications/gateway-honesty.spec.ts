@@ -126,7 +126,9 @@ describe("C2 — an SMS nobody sent reports failure", () => {
     expect(SMS_CODE).not.toContain("mock_sms_");
   });
 
-  it("still prints the message for the developer", async () => {
+  // F-702 (fix/sim-privacy-logs): the body names people and stays in the
+  // host's log store, so the developer gets its length, never its words.
+  it("still tells the developer a message was not sent, without its body", async () => {
     const service = new SmsService({ get: () => undefined } as any);
     const lines: string[] = [];
     jest
@@ -135,7 +137,8 @@ describe("C2 — an SMS nobody sent reports failure", () => {
 
     await service.sendSms({ to: "+14155551234", message: "the body" });
 
-    expect(lines.join("\n")).toContain("the body");
+    expect(lines.join("\n")).toContain("Message (8 chars)");
+    expect(lines.join("\n")).not.toContain("the body");
     expect(lines.join("\n")).toContain("SMS NOT SENT");
   });
 

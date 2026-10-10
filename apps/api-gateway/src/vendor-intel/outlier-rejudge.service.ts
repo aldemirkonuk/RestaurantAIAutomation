@@ -52,8 +52,12 @@ const REJUDGE_SELECT =
  * The window is read page by page until a short page, so every house's rows
  * are judged. One read of 2000 across every house (oldest first) used to stop
  * long before the newest rows once the 30-day pool grew past it.
+ *
+ * A page is PostgREST's max_rows (1000, supabase/config.toml) at most: a
+ * larger page comes back cut to 1000 and reads as the short last page, so the
+ * loop would stop after the first 1000 rows.
  */
-const REJUDGE_PAGE_ROWS = 2000;
+const REJUDGE_PAGE_ROWS = 1000;
 
 /**
  * The most rows one run will read. A run that reaches it judges what it read,

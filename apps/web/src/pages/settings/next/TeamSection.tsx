@@ -55,7 +55,7 @@ function RoleChange({ name, current, isSelf, onlyOwner, busy, onConfirm }: {
   const [pending, setPending] = useState<string | null>(null);
   if (onlyOwner) {
     return (
-      <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)', maxWidth: 260, textAlign: 'right' }}>
+      <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)', maxWidth: 260, textAlign: 'right' }}>
         Owner. {isSelf ? 'You are' : 'They are'} the only owner here, so make someone else an owner before changing this.
       </span>
     );

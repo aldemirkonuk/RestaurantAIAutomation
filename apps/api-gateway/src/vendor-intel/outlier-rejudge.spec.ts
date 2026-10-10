@@ -265,6 +265,8 @@ function makeService(
     failIds?: string[];
     pageRows?: number;
     maxRows?: number;
+    /** PostgREST's max_rows: the server never returns more in one read. */
+    serverMaxRows?: number;
   } = {},
 ) {
   const updates: Array<{ id: string; patch: any }> = [];
@@ -280,7 +282,7 @@ function makeService(
       limit: () => b,
       range: (lo: number, hi: number) => {
         reads.push([lo, hi]);
-        page = rows.slice(lo, hi + 1);
+        page = rows.slice(lo, Math.min(hi + 1, lo + (opts.serverMaxRows ?? Infinity)));
         return b;
       },
       // The sweep reads through `scopePriceRegisterRead` (ADR 0117 addendum),
@@ -414,6 +416,22 @@ describe("OutlierRejudgeService", () => {
     expect(summary.rowsRead).toBe(5);
     expect(summary.truncated).toBe(false);
     expect(updates).toHaveLength(5);
+  });
+
+  it("reads past the first 1000 rows when the server caps a page at 1000 (F-841)", async () => {
+    // supabase/config.toml max_rows = 1000. A page asked for larger comes back
+    // cut, reads as the short last page, and the loop stops at 1000 rows.
+    const many = Array.from({ length: 1500 }, (_, i) =>
+      rrow({ id: `o${i}`, raw_price: 20 + (i % 5) / 10 }),
+    );
+    const { svc, reads } = makeService(many, {
+      flag: "true",
+      serverMaxRows: 1000,
+    });
+    const summary = await svc.rejudge({});
+    expect(summary.rowsRead).toBe(1500);
+    expect(summary.truncated).toBe(false);
+    expect(reads.every(([lo, hi]) => hi - lo + 1 <= 1000)).toBe(true);
   });
 
   it("says so when the window is larger than one run reads (F-652)", async () => {
