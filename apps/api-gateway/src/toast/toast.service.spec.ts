@@ -6,6 +6,22 @@ import {
 } from "./dto/toast-webhook.dto";
 
 /**
+ * F-310: a by-id Toast read first asks whether the caller's house has Toast
+ * connected. These tests are about the upstream, so the house always has it.
+ */
+function toastConnectedHouse(guid: string | null = "toast-guid-1"): any {
+  const q: any = {
+    select: () => q,
+    eq: () => q,
+    maybeSingle: async () => ({
+      data: { pos_system: "toast", toast_guid: guid },
+      error: null,
+    }),
+  };
+  return { from: () => q };
+}
+
+/**
  * SimPOS testbed plan — ingress mapping resolution (decisions B21/B22) and
  * void reversal (B19): the real Toast production depletion path now reads
  * pos_item_mappings (not the retired toast_item_mappings), never infers
@@ -313,7 +329,7 @@ describe("Toast id validation (SSRF)", () => {
       invalidateByPattern: async () => 0,
     };
     const service = new ToastService(configService, cacheService, {
-      supabase: {},
+      supabase: toastConnectedHouse(),
     } as unknown as DatabaseService);
     const get = jest.fn();
     (service as any).httpClient = { get };
@@ -328,7 +344,7 @@ describe("Toast id validation (SSRF)", () => {
     "http://evil.com",
   ])("getMenu refuses %s without issuing a request", async (bad) => {
     const { service, get } = nonMockService();
-    await expect(service.getMenu(bad)).rejects.toThrow("Invalid menu id");
+    await expect(service.getMenu("r1", bad)).rejects.toThrow("Invalid menu id");
     expect(get).not.toHaveBeenCalled();
   });
 
@@ -336,7 +352,9 @@ describe("Toast id validation (SSRF)", () => {
     "getOrder refuses %s without issuing a request",
     async (bad) => {
       const { service, get } = nonMockService();
-      await expect(service.getOrder(bad)).rejects.toThrow("Invalid order id");
+      await expect(service.getOrder("r1", bad)).rejects.toThrow(
+        "Invalid order id",
+      );
       expect(get).not.toHaveBeenCalled();
     },
   );
@@ -344,7 +362,7 @@ describe("Toast id validation (SSRF)", () => {
   it("still fetches a legitimate GUID", async () => {
     const { service, get } = nonMockService();
     get.mockResolvedValue({ data: { guid: "abc" } });
-    await service.getMenu("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
+    await service.getMenu("r1", "3f2504e0-4f89-11d3-9a0c-0305e82c3301");
     expect(get.mock.calls[0][0]).toBe(
       "/api/v1/toast/menus/3f2504e0-4f89-11d3-9a0c-0305e82c3301",
     );
@@ -379,11 +397,9 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
       del: async () => undefined,
       invalidateByPattern: async () => 0,
     };
-    const service = new ToastService(
-      configService,
-      cacheService,
-      { supabase: {} } as unknown as DatabaseService,
-    );
+    const service = new ToastService(configService, cacheService, {
+      supabase: toastConnectedHouse(),
+    } as unknown as DatabaseService);
     // Proves the fallback really is TRUE — i.e. these tests exercise the
     // dangerous path and not an accidentally-safe one.
     expect((service as any).mockMode).toBe(true);
@@ -421,7 +437,7 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
 
     it("GET /toast/menus/:menuId refuses instead of returning a mock menu", async () => {
       const service = serviceWithUnsetMockMode();
-      await expect(service.getMenu("menu-wine-001")).rejects.toThrow(
+      await expect(service.getMenu("r1", "menu-wine-001")).rejects.toThrow(
         /Toast is not connected/,
       );
     });
@@ -439,7 +455,7 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
     it("GET /toast/orders/:orderId refuses instead of returning a mock order", async () => {
       const service = serviceWithUnsetMockMode();
       await expect(
-        service.getOrder("3f2504e0-4f89-11d3-9a0c-0305e82c3301"),
+        service.getOrder("r1", "3f2504e0-4f89-11d3-9a0c-0305e82c3301"),
       ).rejects.toThrow(/Toast is not connected/);
     });
 
@@ -454,8 +470,9 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
       // ADR 0020: an error must never render as emptiness. Assert the shape of
       // the refusal, not just that something was thrown.
       const service = serviceWithUnsetMockMode();
-      await expect(service.getSalesData("r1", new Date(0), new Date(1)))
-        .rejects.toMatchObject({ status: 503 });
+      await expect(
+        service.getSalesData("r1", new Date(0), new Date(1)),
+      ).rejects.toMatchObject({ status: 503 });
       await expect(service.createOrder("r1", orderDto)).rejects.toMatchObject({
         status: 503,
       });
@@ -476,13 +493,14 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
       const menus = await service.getMenus("r1");
       expect(menus.menus.length).toBeGreaterThan(0);
 
-      const menu = await service.getMenu(menus.menus[0].guid);
+      const menu = await service.getMenu("r1", menus.menus[0].guid);
       expect(menu.guid).toBe(menus.menus[0].guid);
 
       const created = await service.createOrder("r1", orderDto);
       expect(created.guid).toMatch(/^mock-order-/);
 
       const fetched = await service.getOrder(
+        "r1",
         "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
       );
       expect(fetched.guid).toBe("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
@@ -514,11 +532,9 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
         del: async () => undefined,
         invalidateByPattern: async () => 0,
       };
-      const service = new ToastService(
-        configService,
-        cacheService,
-        { supabase: {} } as unknown as DatabaseService,
-      );
+      const service = new ToastService(configService, cacheService, {
+        supabase: toastConnectedHouse(),
+      } as unknown as DatabaseService);
       (service as any).httpClient = {
         get: jest.fn().mockRejectedValue(new Error("ECONNREFUSED")),
       };
@@ -666,11 +682,9 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
       del: async () => undefined,
       invalidateByPattern: async () => 0,
     };
-    const service = new ToastService(
-      configService,
-      cacheService,
-      { supabase: {} } as unknown as DatabaseService,
-    );
+    const service = new ToastService(configService, cacheService, {
+      supabase: toastConnectedHouse(),
+    } as unknown as DatabaseService);
     // Proves the fallback really is TRUE — i.e. these tests exercise the
     // dangerous path and not an accidentally-safe one.
     expect((service as any).mockMode).toBe(true);
@@ -708,7 +722,7 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
 
     it("GET /toast/menus/:menuId refuses instead of returning a mock menu", async () => {
       const service = serviceWithUnsetMockMode();
-      await expect(service.getMenu("menu-wine-001")).rejects.toThrow(
+      await expect(service.getMenu("r1", "menu-wine-001")).rejects.toThrow(
         /Toast is not connected/,
       );
     });
@@ -726,7 +740,7 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
     it("GET /toast/orders/:orderId refuses instead of returning a mock order", async () => {
       const service = serviceWithUnsetMockMode();
       await expect(
-        service.getOrder("3f2504e0-4f89-11d3-9a0c-0305e82c3301"),
+        service.getOrder("r1", "3f2504e0-4f89-11d3-9a0c-0305e82c3301"),
       ).rejects.toThrow(/Toast is not connected/);
     });
 
@@ -741,8 +755,9 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
       // ADR 0020: an error must never render as emptiness. Assert the shape of
       // the refusal, not just that something was thrown.
       const service = serviceWithUnsetMockMode();
-      await expect(service.getSalesData("r1", new Date(0), new Date(1)))
-        .rejects.toMatchObject({ status: 503 });
+      await expect(
+        service.getSalesData("r1", new Date(0), new Date(1)),
+      ).rejects.toMatchObject({ status: 503 });
       await expect(service.createOrder("r1", orderDto)).rejects.toMatchObject({
         status: 503,
       });
@@ -763,13 +778,14 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
       const menus = await service.getMenus("r1");
       expect(menus.menus.length).toBeGreaterThan(0);
 
-      const menu = await service.getMenu(menus.menus[0].guid);
+      const menu = await service.getMenu("r1", menus.menus[0].guid);
       expect(menu.guid).toBe(menus.menus[0].guid);
 
       const created = await service.createOrder("r1", orderDto);
       expect(created.guid).toMatch(/^mock-order-/);
 
       const fetched = await service.getOrder(
+        "r1",
         "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
       );
       expect(fetched.guid).toBe("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
@@ -801,11 +817,9 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
         del: async () => undefined,
         invalidateByPattern: async () => 0,
       };
-      const service = new ToastService(
-        configService,
-        cacheService,
-        { supabase: {} } as unknown as DatabaseService,
-      );
+      const service = new ToastService(configService, cacheService, {
+        supabase: toastConnectedHouse(),
+      } as unknown as DatabaseService);
       (service as any).httpClient = {
         get: jest.fn().mockRejectedValue(new Error("ECONNREFUSED")),
       };
@@ -825,5 +839,137 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
         service.getSalesData("r1", new Date(0), new Date(3600000)),
       ).rejects.toThrow(/Failed to fetch sales data from Toast/);
     });
+  });
+});
+
+/**
+ * F-310 — A BY-ID TOAST READ IS ANSWERED ONLY FOR A HOUSE WITH TOAST.
+ *
+ * The orchestrator answers every by-id read with one Toast login. Before this,
+ * getMenu(menuId) and getOrder(orderId) took no house, so a member of house B
+ * read house A's connected Toast menus and orders by id, and a menu cached for
+ * one house was served to every house.
+ */
+describe("Toast by-id reads are scoped to the caller's house (F-310)", () => {
+  const GUID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+
+  /** House A has Toast connected; house B is on the default pos_system with no Toast login. */
+  function houses(): any {
+    const rows: Record<string, unknown> = {
+      "house-a": { pos_system: "toast", toast_guid: "toast-guid-a" },
+      "house-b": { pos_system: "toast", toast_guid: null },
+    };
+    return {
+      from: (table: string) => {
+        let id = "";
+        const q: any = {
+          select: () => q,
+          eq: (col: string, v: string) => {
+            if (table === "restaurants" && col === "id") id = v;
+            return q;
+          },
+          maybeSingle: async () => ({ data: rows[id] ?? null, error: null }),
+        };
+        return q;
+      },
+    };
+  }
+
+  function service(guid: string | null) {
+    const configService: any = {
+      get: (key: string, fallback?: any) =>
+        key === "TOAST_MOCK_MODE" ? false : fallback,
+    };
+    const store = new Map<string, unknown>();
+    const cacheService: any = {
+      get: async (k: string) => store.get(k) ?? null,
+      set: async (k: string, v: unknown) => void store.set(k, v),
+      del: async () => undefined,
+      invalidateByPattern: async () => 0,
+    };
+    const svc = new ToastService(configService, cacheService, {
+      supabase: guid === "per-house" ? houses() : toastConnectedHouse(guid),
+    } as unknown as DatabaseService);
+    const get = jest.fn().mockResolvedValue({ data: { guid: GUID } });
+    (svc as any).httpClient = { get };
+    return { svc, get, store };
+  }
+
+  it("refuses house B's menu read when house B has no Toast, without calling Toast", async () => {
+    const { svc, get } = service("per-house");
+    await expect(svc.getMenu("house-b", GUID)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("refuses house B's order read when house B has no Toast, without calling Toast", async () => {
+    const { svc, get } = service("per-house");
+    await expect(svc.getOrder("house-b", GUID)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("answers house A, which has Toast connected", async () => {
+    const { svc, get } = service("per-house");
+    await expect(svc.getOrder("house-a", GUID)).resolves.toMatchObject({
+      guid: GUID,
+    });
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a house whose POS is not Toast, even with a stored login", async () => {
+    const { svc, get } = service("x");
+    (svc as any).databaseService = {
+      supabase: {
+        from: () => {
+          const q: any = {
+            select: () => q,
+            eq: () => q,
+            maybeSingle: async () => ({
+              data: { pos_system: "square", toast_guid: "g" },
+              error: null,
+            }),
+          };
+          return q;
+        },
+      },
+    };
+    await expect(svc.getMenu("house-a", GUID)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("does not answer house B from the menu house A cached", async () => {
+    const { svc, store } = service("toast-guid-1");
+    store.set(`toast:menu:house-a:${GUID}`, { guid: "house-a-menu" });
+    const menu: any = await svc.getMenu("house-b", GUID);
+    expect(menu.guid).not.toBe("house-a-menu");
+    expect(store.has(`toast:menu:house-b:${GUID}`)).toBe(true);
+  });
+
+  it("refuses when it cannot read whether the house has Toast", async () => {
+    const { svc, get } = service("x");
+    (svc as any).databaseService = {
+      supabase: {
+        from: () => {
+          const q: any = {
+            select: () => q,
+            eq: () => q,
+            maybeSingle: async () => ({
+              data: null,
+              error: { message: "timeout" },
+            }),
+          };
+          return q;
+        },
+      },
+    };
+    await expect(svc.getMenu("house-a", GUID)).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(get).not.toHaveBeenCalled();
   });
 });

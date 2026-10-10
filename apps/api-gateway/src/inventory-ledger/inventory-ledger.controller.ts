@@ -197,6 +197,8 @@ export class InventoryLedgerController {
         query.stockType,
       );
     } catch (error) {
+      // A refusal (the item is not this house's) keeps its own status.
+      if (error instanceof HttpException) throw error;
       this.logger.error({
         message: "Get balance failed",
         inventoryId,

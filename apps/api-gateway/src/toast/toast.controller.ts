@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Public } from "../auth/decorators/public.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   ApiTags,
   ApiOperation,
@@ -208,9 +209,13 @@ export class ToastController {
   @ApiParam({ name: "menuId", description: "Menu GUID" })
   @ApiResponse({ status: 200, type: ToastMenuDto })
   @ApiResponse({ status: 404, description: "Menu not found" })
-  async getMenu(@Param("menuId") menuId: string): Promise<ToastMenuDto> {
+  async getMenu(
+    @Param("menuId") menuId: string,
+    @CurrentUser() user: { restaurantId: string },
+  ): Promise<ToastMenuDto> {
     try {
-      return await this.toastService.getMenu(menuId);
+      // F-310: the caller's own house, from the token.
+      return await this.toastService.getMenu(user.restaurantId, menuId);
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch menu",
@@ -254,9 +259,11 @@ export class ToastController {
   @ApiResponse({ status: 404, description: "Order not found" })
   async getOrder(
     @Param("orderId") orderId: string,
+    @CurrentUser() user: { restaurantId: string },
   ): Promise<ToastOrderResponseDto> {
     try {
-      return await this.toastService.getOrder(orderId);
+      // F-310: the caller's own house, from the token.
+      return await this.toastService.getOrder(user.restaurantId, orderId);
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch order",

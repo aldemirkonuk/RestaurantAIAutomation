@@ -40,7 +40,10 @@ const HOLDERS = [as("owner"), as("manager"), as("admin")];
 const NON_HOLDERS = [staff, as(null), as(undefined), as(""), as("sommelier")];
 
 /** Collaborators that record a touch and then throw, in constructor order. */
-function harness(intakeOverride?: Record<string, unknown>) {
+function harness(
+  intakeOverride?: Record<string, unknown>,
+  dbOverride?: Record<string, unknown>,
+) {
   const reached: string[] = [];
   const tripwire = (name: string) =>
     new Proxy(
@@ -54,7 +57,7 @@ function harness(intakeOverride?: Record<string, unknown>) {
     ) as never;
   const controller = new DocumentsController(
     (intakeOverride ?? tripwire("DocumentIntakeService")) as never,
-    tripwire("DatabaseService"),
+    (dbOverride ?? tripwire("DatabaseService")) as never,
     tripwire("CanonicalDocumentService"),
     tripwire("DeliverySpineService"),
     tripwire("DocumentCorrectionService"),
@@ -379,7 +382,8 @@ describe("POST /procurement/documents answers a non-holder without the money", (
       parsed: PARSE,
       vendor: VENDOR,
     }));
-    const h = harness({ ingest });
+    // The order is this house's (F-309), so the upload goes through.
+    const h = harness({ ingest }, houseDb(1).db);
     const res = (await h.controller.upload(
       { ...PHOTO, orderId: ORDER } as never,
       staff as never,
@@ -440,5 +444,104 @@ describe("doorEchoOf is an allowlist", () => {
     expect(echo.lines[0]).not.toHaveProperty("unitPrice");
     expect(echo.lines[1]).toEqual({});
     expect(doorEchoOf(null)).toBeNull();
+  });
+});
+
+/**
+ * A database whose house-scoped `{ count, head }` read answers `count`, and
+ * which records the filters it was given.
+ */
+function houseDb(count: number) {
+  const reads: { table: string; eqs: [string, unknown][] }[] = [];
+  const db = {
+    getClient: () => ({
+      from: (table: string) => {
+        const read = { table, eqs: [] as [string, unknown][] };
+        reads.push(read);
+        const q: any = {
+          select: () => q,
+          eq: (col: string, val: unknown) => {
+            read.eqs.push([col, val]);
+            return q;
+          },
+          then: (resolve: (v: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: null, count }).then(resolve),
+        };
+        return q;
+      },
+    }),
+  };
+  return { db, reads };
+}
+
+/**
+ * F-309. The upload and the door count took `providerId` and `orderId` from
+ * the body and stored them with no house check, so house A's document could
+ * carry house B's vendor or order, and A's own views then read B's vendor
+ * name, tax id and order lines by that id. Both are now refused before a
+ * single row is written; intake is a tripwire here, so reaching it fails.
+ */
+describe("a vendor or order id from another house is refused (F-309)", () => {
+  const FOREIGN = "77777777-7777-4777-8777-777777777777";
+
+  it("the upload refuses another house's order before intake", async () => {
+    const { db, reads } = houseDb(0);
+    const h = harness(undefined, db);
+    await expect(
+      h.controller.upload(
+        { ...PHOTO, orderId: FOREIGN } as never,
+        staff as never,
+      ),
+    ).rejects.toMatchObject({ status: 404, message: "Order not found" });
+    expect(reads).toEqual([
+      {
+        table: "procurement_orders",
+        eqs: [
+          ["id", FOREIGN],
+          ["restaurant_id", HOUSE],
+        ],
+      },
+    ]);
+    expect(h.reached).toEqual([]);
+  });
+
+  it("the upload refuses another house's vendor before intake", async () => {
+    const h = harness(undefined, houseDb(0).db);
+    await expect(
+      h.controller.upload(
+        { ...PHOTO, providerId: FOREIGN } as never,
+        staff as never,
+      ),
+    ).rejects.toMatchObject({ status: 404, message: "Vendor not found" });
+    expect(h.reached).toEqual([]);
+  });
+
+  it("the door count refuses another house's vendor before the count is written", async () => {
+    const h = harness(undefined, houseDb(0).db);
+    await expect(
+      h.controller.doorCount(
+        {
+          providerId: FOREIGN,
+          lines: [{ lineNo: 1, qty: 6, uom: "bottle" }],
+        } as never,
+        staff as never,
+      ),
+    ).rejects.toMatchObject({ status: 404, message: "Vendor not found" });
+    expect(h.reached).toEqual([]);
+  });
+
+  it("the door count refuses another house's order when it makes a delivery", async () => {
+    const h = harness(undefined, houseDb(0).db);
+    await expect(
+      h.controller.doorCount(
+        {
+          orderId: FOREIGN,
+          createDelivery: true,
+          lines: [{ lineNo: 1, qty: 6, uom: "bottle" }],
+        } as never,
+        staff as never,
+      ),
+    ).rejects.toMatchObject({ status: 404, message: "Order not found" });
+    expect(h.reached).toEqual([]);
   });
 });

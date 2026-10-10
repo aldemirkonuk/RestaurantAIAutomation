@@ -1,5 +1,7 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { HttpException, Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { assertOrderBelongsToRestaurant } from "../../common/tenant/assert-order-belongs-to-restaurant";
+import { assertProviderBelongsToRestaurant } from "../../common/tenant/assert-provider-belongs-to-restaurant";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { DeliveryClockService } from "./delivery-clock.service";
 import { ReadResult } from "./canonical-document.service";
@@ -268,6 +270,35 @@ export class DeliveryService {
         status: 404,
         error: `document(s) not found for this restaurant: ${owned.value.missing.join(", ")}`,
       };
+
+    // F-309. The order and the vendor come from the request body, and the
+    // insert below would store them with no house check (no FK ties them to
+    // the delivery's house). Another house's id is refused the same as an id
+    // that does not exist, so the answer never confirms it (ADR 0147).
+    try {
+      if (input.providerId)
+        await assertProviderBelongsToRestaurant(
+          this.db.getClient(),
+          restaurantId,
+          input.providerId,
+          "createDelivery",
+          "the delivery was not saved",
+          this.logger,
+        );
+      if (input.orderId)
+        await assertOrderBelongsToRestaurant(
+          this.db.getClient(),
+          restaurantId,
+          input.orderId,
+          "createDelivery",
+          "the delivery was not saved",
+          this.logger,
+        );
+    } catch (err) {
+      if (err instanceof HttpException)
+        return { ok: false, status: err.getStatus(), error: err.message };
+      throw err;
+    }
 
     const hasArrived = docs.some(
       (d) =>
