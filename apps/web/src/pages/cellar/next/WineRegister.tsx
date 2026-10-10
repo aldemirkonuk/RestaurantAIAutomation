@@ -25,7 +25,8 @@
 
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '../../../services/api/client';
 import { animate, turn } from '../../../lib/mudavym/motion';
 import { queryKeys } from '../../../lib/query-keys';
 import BottleLeaf from './BottleLeaf';
@@ -74,6 +75,26 @@ import { foldText } from '@/lib/textFold';
 const MenuScannerModal = lazy(() =>
   import('../../../components/wines/MenuScannerModal').then((m) => ({ default: m.MenuScannerModal })),
 );
+
+/**
+ * F-665. What became of the queued wines, in the house's words. A wine whose
+ * outcome is not known yet (still queued, or not readable) is "still being
+ * checked" — never counted as added.
+ */
+export function outcomeSentence(statuses: Array<string | null>, sent: number): string {
+  const count = (s: string) => statuses.filter((x) => x === s).length;
+  const added = count('accepted');
+  const matched = count('merged');
+  const review = count('pending_review');
+  const waiting = sent - added - matched - review;
+  const parts = [
+    added > 0 ? `${added} added as new` : null,
+    matched > 0 ? `${matched} matched a wine the library already holds (the library kept its own details)` : null,
+    review > 0 ? `${review} looked close to a wine already there and wait for a person to check` : null,
+    waiting > 0 ? `${waiting} still being checked against the library` : null,
+  ].filter(Boolean);
+  return `So far: ${parts.join('; ')}.`;
+}
 
 type SortKey = 'name' | 'style' | 'vintage' | 'country' | 'format' | 'house' | 'list' | 'market' | 'onhand';
 type Cellar = 'all' | 'in' | 'out' | 'par';
@@ -233,8 +254,27 @@ export default function WineRegister({ data }: { data: CellarData }) {
      not exist anywhere (see the header). The readings are asked about ONE AT A
      TIME — 'Is this the bottle?' — and each answer is its own write. */
   const [readings, setReadings] = useState<BottleReading[]>([]);
-  const [carried, setCarried] = useState(0);
+  /** The submission id of each confirmed reading (null when the gateway named none). */
+  const [sent, setSent] = useState<Array<string | null>>([]);
   const [turnedAway, setTurnedAway] = useState(0);
+  const carried = sent.length;
+
+  /* F-665. A confirm only QUEUES the wine; the library's worker decides later
+     (every five minutes) whether it matches one already there, needs a person
+     to look, or goes in new. Each one is asked after until it is decided, so
+     the tally can say what became of it instead of claiming it was added. */
+  const outcomes = useQueries({
+    queries: sent
+      .filter((id): id is string => id !== null)
+      .map((id) => ({
+        queryKey: ['wines', 'submission-outcome', id],
+        queryFn: async () =>
+          (await apiClient.get<{ id: string; status: string }>(`/wines/submissions/${id}`)).data,
+        retry: false,
+        refetchInterval: (query: { state: { data?: { status: string } } }) =>
+          query.state.data?.status === 'pending' ? 60_000 : false,
+      })),
+  });
 
   const queryClient = useQueryClient();
   const bottles = data.bottles;
@@ -500,7 +540,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
             onWinesDetected={(detected: unknown[]) => {
               const n = Array.isArray(detected) ? detected.length : 0;
               const rows = readingsFrom(detected);
-              setCarried(0);
+              setSent([]);
               setTurnedAway(0);
               setReadings(rows);
               setScanSaid(
@@ -534,16 +574,17 @@ export default function WineRegister({ data }: { data: CellarData }) {
           setTurnedAway((n) => n + 1);
           setReadings((rows) => rows.slice(1));
         }}
-        onConfirmed={() => {
-          setCarried((n) => n + 1);
+        onConfirmed={(submissionId) => {
+          setSent((ids) => [...ids, submissionId]);
           setReadings((rows) => rows.slice(1));
           void queryClient.invalidateQueries({ queryKey: queryKeys.wines.all });
         }}
       />
       {readings.length === 0 && carried + turnedAway > 0 ? (
         <p role="status" className="cl-note" data-testid="cl-reading-tally">
-          {`${carried} added to the library, ${turnedAway} turned away. A bottle in the library is ` +
+          {`${carried} queued for the library, ${turnedAway} turned away. A bottle in the library is ` +
             'not a bottle on a shelf — carrying stock is its own act.'}
+          {carried > 0 ? ` ${outcomeSentence(outcomes.map((q) => q.data?.status ?? null), carried)}` : ''}
         </p>
       ) : null}
 

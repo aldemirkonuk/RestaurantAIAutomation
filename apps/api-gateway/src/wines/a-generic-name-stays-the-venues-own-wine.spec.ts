@@ -1,6 +1,9 @@
 import { Test } from "@nestjs/testing";
 import { DatabaseService } from "../database/database.service";
-import { WineSubmissionsService } from "./wine-submissions.service";
+import {
+  autoLinksTo,
+  WineSubmissionsService,
+} from "./wine-submissions.service";
 import {
   hashProvisionalWineSignature,
   hashWineSignature,
@@ -238,7 +241,11 @@ describe("a generic name never joins the shared library", () => {
 
   it("still links a specific identity to the shared library", async () => {
     const lib = new FakeLibrary();
-    lib.candidates = [{ id: "shared-musar", library_tier: 2, confidence: 96 }];
+    // `vintage` is a column the RPC always returns; the same year on both
+    // sides is what lets 96 link (F-661).
+    lib.candidates = [
+      { id: "shared-musar", library_tier: 2, confidence: 96, vintage: 2015 },
+    ];
     const service = await makeService(lib);
 
     const result = await service.resolveOrCreateLibraryWine(
@@ -333,6 +340,72 @@ describe("a whole menu at once", () => {
     await expect(
       service.resolveLibraryWinesBatch([{ name: "House White" }], ""),
     ).rejects.toThrow(/only ever one venue's own wine/);
+  });
+});
+
+describe("F-661: a year on one side only is never linked automatically", () => {
+  // match_library_wine takes 10 off for a one-sided vintage, so an exact
+  // name and producer score 90 and clear the 85 floor.
+  const YAKUT = { name: "Yakut", producer: "Kavaklidere", country: "Turkey" };
+
+  it("a menu line with no year does not take the library's 2019", async () => {
+    const lib = new FakeLibrary();
+    lib.candidates = [
+      { id: "yakut-2019", library_tier: 1, confidence: 90, vintage: 2019 },
+    ];
+    const service = await makeService(lib);
+
+    const result = await service.resolveOrCreateLibraryWine(YAKUT, ANTALYA);
+
+    expect(result.masterWineId).not.toBe("yakut-2019");
+    expect(result.matched).toBe(false);
+    expect(lib.rows).toHaveLength(1);
+    expect(lib.rows[0].vintage).toBeNull();
+  });
+
+  it("a menu line with a year does not land on a library row that has none", async () => {
+    const lib = new FakeLibrary();
+    lib.candidates = [
+      { id: "yakut-nv", library_tier: 1, confidence: 90, vintage: null },
+    ];
+    const service = await makeService(lib);
+
+    const result = await service.resolveOrCreateLibraryWine(
+      { ...YAKUT, vintage: 2022 },
+      ANTALYA,
+    );
+
+    expect(result.masterWineId).not.toBe("yakut-nv");
+    expect(lib.rows[0].vintage).toBe(2022);
+  });
+
+  it("the whole-menu path holds the same line", async () => {
+    const lib = new FakeLibrary();
+    lib.candidates = [
+      { input_index: 0, id: "yakut-2019", library_tier: 1, confidence: 90, vintage: 2019 },
+      { input_index: 1, id: "yakut-2019", library_tier: 1, confidence: 100, vintage: 2019 },
+    ];
+    const service = await makeService(lib);
+
+    const results = await service.resolveLibraryWinesBatch(
+      [YAKUT, { ...YAKUT, vintage: "2019" }],
+      ANTALYA,
+    );
+
+    expect(results[0]?.masterWineId).not.toBe("yakut-2019");
+    expect(results[0]?.matched).toBe(false);
+    // The same year on both sides still links, as before.
+    expect(results[1]?.masterWineId).toBe("yakut-2019");
+    expect(results[1]?.matched).toBe(true);
+  });
+
+  it("the rule itself: both years, or neither", () => {
+    expect(autoLinksTo({ confidence: 90, vintage: 2019 }, null, 85)).toBe(false);
+    expect(autoLinksTo({ confidence: 90, vintage: null }, 2019, 85)).toBe(false);
+    expect(autoLinksTo({ confidence: 100, vintage: null }, null, 85)).toBe(true);
+    expect(autoLinksTo({ confidence: 96, vintage: 2015 }, 2015, 85)).toBe(true);
+    expect(autoLinksTo({ confidence: 80, vintage: 2015 }, 2015, 85)).toBe(false);
+    expect(autoLinksTo(undefined, null, 85)).toBe(false);
   });
 });
 

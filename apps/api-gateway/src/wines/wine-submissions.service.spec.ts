@@ -1,3 +1,4 @@
+import { NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash } from "crypto";
 import { DatabaseService } from "../database/database.service";
@@ -212,3 +213,52 @@ const EXPECTED_CRISTAL_HASH =
 /** Captured from local Postgres — see the Turkish-label test. */
 const EXPECTED_KALECIK_HASH =
   "3dc4395fd27ca8b670b07e591b059fc614d5692dafc710d7680b1a00dfbadc82";
+
+describe("F-665: a house reads the outcome of its own submission, and only its own", () => {
+  const ROWS = [
+    { id: "sub-1", restaurant_id: "rest-a", status: "merged", matched_master_id: "mw-9" },
+    { id: "sub-2", restaurant_id: "rest-b", status: "pending", matched_master_id: null },
+  ];
+
+  async function make() {
+    const filters: Record<string, unknown> = {};
+    const q: any = {
+      select: () => q,
+      eq: (col: string, val: unknown) => {
+        filters[col] = val;
+        return q;
+      },
+      maybeSingle: async () => ({
+        data:
+          ROWS.find((r) =>
+            Object.entries(filters).every(([k, v]) => (r as any)[k] === v),
+          ) ?? null,
+        error: null,
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        WineSubmissionsService,
+        { provide: DatabaseService, useValue: { supabase: { from: () => q } } },
+      ],
+    }).compile();
+    return { service: moduleRef.get(WineSubmissionsService), filters };
+  }
+
+  it("says what the worker decided", async () => {
+    const { service } = await make();
+    await expect(service.getOwnSubmissionOutcome("rest-a", "sub-1")).resolves.toEqual({
+      id: "sub-1",
+      status: "merged",
+      matchedMasterId: "mw-9",
+    });
+  });
+
+  it("reads another house's submission as not found", async () => {
+    const { service, filters } = await make();
+    await expect(service.getOwnSubmissionOutcome("rest-a", "sub-2")).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(filters.restaurant_id).toBe("rest-a");
+  });
+});

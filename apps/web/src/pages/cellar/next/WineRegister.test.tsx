@@ -16,12 +16,34 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import WineRegister from './WineRegister';
+import WineRegister, { outcomeSentence } from './WineRegister';
 import type { BottleVM, CellarData } from './useCellarNextData';
+
+// F-665: the gateway, as the menu-read tally meets it. A confirm queues the
+// wine (POST) and the outcome is read back per submission (GET).
+const api = vi.hoisted(() => ({
+  post: vi.fn(),
+  get: vi.fn(),
+}));
+vi.mock('../../../services/api/client', () => ({
+  apiClient: { post: (...a: unknown[]) => api.post(...a), get: (...a: unknown[]) => api.get(...a) },
+  getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
+}));
+// The scanner hands back one readable title the moment it opens.
+vi.mock('../../../components/wines/MenuScannerModal', () => ({
+  MenuScannerModal: ({ onWinesDetected }: { onWinesDetected: (d: unknown[]) => void }) => (
+    <button
+      type="button"
+      onClick={() => onWinesDetected([{ name: 'Yakut', producer: 'Kavaklıdere', type: 'red' }])}
+    >
+      fake scan done
+    </button>
+  ),
+}));
 
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
   useCreateInventoryItem: () => ({ mutate: vi.fn(), isPending: false }),
@@ -395,5 +417,31 @@ describe("WineRegister — the house's own price, and the catalogue's named for 
     ]);
     await user.click(screen.getByRole('button', { name: 'Sort by Your price' }));
     expect(screen.getAllByTestId('wine-house-price').map((c) => c.textContent)).toEqual(['$40.00', '$120.00']);
+  });
+});
+
+describe('F-665: the menu-read tally says queued, and what became of it', () => {
+  it('never says "added" for a wine that was only queued, and names the outcome once it is known', async () => {
+    api.post.mockReset().mockResolvedValue({ data: { id: 'sub-1' } });
+    api.get.mockReset().mockResolvedValue({ data: { id: 'sub-1', status: 'pending' } });
+    const user = userEvent.setup();
+    const { unmount } = mount([bottle()]);
+    await user.click(screen.getByRole('button', { name: 'Read a menu' }));
+    await user.click(await screen.findByRole('button', { name: 'fake scan done' }));
+    await user.click(screen.getByTestId('bottle-confirm'));
+
+    const tally = await screen.findByTestId('cl-reading-tally');
+    expect(tally).toHaveTextContent('1 queued for the library, 0 turned away');
+    expect(tally).not.toHaveTextContent('added to the library');
+    await waitFor(() => expect(tally).toHaveTextContent('1 still being checked against the library'));
+    expect(api.get).toHaveBeenCalledWith('/wines/submissions/sub-1');
+    unmount();
+  });
+
+  it('says a near match waits for a person, and a match kept the library’s details', () => {
+    expect(outcomeSentence(['pending_review', 'merged', 'accepted', null], 5)).toBe(
+      'So far: 1 added as new; 1 matched a wine the library already holds (the library kept its own details); ' +
+        '1 looked close to a wine already there and wait for a person to check; 2 still being checked against the library.',
+    );
   });
 });

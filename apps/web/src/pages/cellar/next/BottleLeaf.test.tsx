@@ -328,10 +328,30 @@ describe('BottleLeaf — "what the library knows"', () => {
     expect(screen.getByTestId('bottle-leaf-aromas')).toHaveTextContent('plum · clove');
   });
 
-  it('shows typical aromas alongside the plain "no notes" message too — the two facts are independent', () => {
+  it('F-663: aromas with no notes are marked as reasoned, and "nothing invented" is not said above them', () => {
     mount(bottle({ structure: structure({ primaryAromas: ['plum', 'clove'] }) }));
-    expect(screen.getByText(/The library holds no notes for this bottle/)).toBeInTheDocument();
+    expect(screen.getByText(/The library holds no written notes for this bottle/)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing has\s+been invented/)).not.toBeInTheDocument();
     expect(screen.getByTestId('bottle-leaf-aromas')).toHaveTextContent('plum · clove');
+    expect(screen.getByTestId('bottle-leaf-aromas-provenance')).toHaveTextContent('reasoned');
+  });
+
+  it('F-663: body, acidity, tannin and ageing carry the same provenance mark as the notes', () => {
+    mount(bottle({ structure: structure({ body: 'full' }) }));
+    const section = screen.getByTestId('wine-structure');
+    expect(within(section).getByTestId('wine-structure-provenance')).toHaveTextContent('reasoned');
+    expect(section).toHaveTextContent(/typical profile for the grape and the region/);
+  });
+
+  it('F-664: Format says "not stated" when the house stated no size, never a default 750 ml', () => {
+    mount(bottle({ bottleSizeMl: null }));
+    expect(screen.getByTestId('bottle-leaf-format-unstated')).toHaveTextContent('not stated');
+    expect(screen.queryByText('750ml')).not.toBeInTheDocument();
+  });
+
+  it('F-664: Format shows the size the house stated', () => {
+    mount(bottle({ bottleSizeMl: 375 }));
+    expect(screen.getByText('375ml')).toBeInTheDocument();
   });
 
   it('shows no aromas line at all when the library holds none', () => {

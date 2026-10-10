@@ -1470,6 +1470,27 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(plan.lines.find((l) => l.menuItemId === "n-2")!.returned).toBe(false);
   });
 
+  it("F-661: a year against no year is marked too; no year on either side is not", async () => {
+    const { tables, service } = setup();
+    const n1 = tables.menu_items.find((m) => m.id === "n-1")!;
+    const inv1 = tables.restaurant_inventory.find((r) => r.id === "inv-1")!;
+    const barolo = async () => (await service.planFor("rest-1", "menu-new")).lines.find((l) => l.menuItemId === "n-1")!;
+
+    // The menu prints no year; the locked wine is the 2019.
+    n1.vintage = null;
+    expect((await barolo()).vintageMismatch).toBe(true);
+    // NV reads as no year as well.
+    n1.vintage = "NV";
+    expect((await barolo()).vintageMismatch).toBe(true);
+    // The menu prints 2020; the locked wine has no year on record.
+    n1.vintage = "2020";
+    inv1.master_wine_library = { vintage: null };
+    expect((await barolo()).vintageMismatch).toBe(true);
+    // Neither side names a year: nothing to look at.
+    n1.vintage = null;
+    expect((await barolo()).vintageMismatch).toBe(false);
+  });
+
   it("L13: make-current without the plan's fingerprint is a 400, and nothing changes", async () => {
     const { calls, tables, service } = setup();
     await expect(service.makeCurrent("rest-1", "menu-new", "user-2")).rejects.toBeInstanceOf(BadRequestException);

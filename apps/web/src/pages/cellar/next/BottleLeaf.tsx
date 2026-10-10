@@ -59,6 +59,15 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** Where a piece of the library's knowledge came from: recalled, reasoned, unrecorded. */
+function ProvenanceChip({ knowledge, testId }: { knowledge: BottleVM['knowledge']; testId: string }) {
+  return (
+    <span className="cl-chip" data-seal={knowledge === 'known' ? 'true' : 'false'} data-testid={testId}>
+      {knowledgeLabel(knowledge)}
+    </span>
+  );
+}
+
 function Notes({ bottle }: { bottle: BottleVM }) {
   const blocks = [
     { id: 'description', label: 'The producer', body: bottle.description },
@@ -78,19 +87,22 @@ function Notes({ bottle }: { bottle: BottleVM }) {
   const aromas = bottle.structure?.primaryAromas ?? [];
 
   if (blocks.length === 0 && !composed) {
-    return (
+    // F-663: "nothing invented" is only true when nothing follows it. Typical
+    // aromas are the enrichment's, so they carry the same mark the notes do.
+    return aromas.length > 0 ? (
       <>
-        <p className="cl-said cl-dim">
-          The library holds no notes for this bottle — nothing has been written down, and nothing has
-          been invented to fill the space.
+        <p className="cl-said cl-dim">The library holds no written notes for this bottle.</p>
+        <p className="cl-said" style={{ marginTop: 8 }} data-testid="bottle-leaf-aromas">
+          <ProvenanceChip knowledge={bottle.knowledge} testId="bottle-leaf-aromas-provenance" />{' '}
+          <span className="cl-dim">Typical aromas: </span>
+          {aromas.join(' · ')}
         </p>
-        {aromas.length > 0 ? (
-          <p className="cl-said" style={{ marginTop: 8 }} data-testid="bottle-leaf-aromas">
-            <span className="cl-dim">Typical aromas: </span>
-            {aromas.join(' · ')}
-          </p>
-        ) : null}
       </>
+    ) : (
+      <p className="cl-said cl-dim">
+        The library holds no notes for this bottle — nothing has been written down, and nothing has
+        been invented to fill the space.
+      </p>
     );
   }
 
@@ -154,7 +166,13 @@ function StructureFact({ label, word, ticks }: { label: string; word: string | n
   );
 }
 
-function WineStructureSection({ structure }: { structure: WineStructureVM | null }) {
+function WineStructureSection({
+  structure,
+  knowledge,
+}: {
+  structure: WineStructureVM | null;
+  knowledge: BottleVM['knowledge'];
+}) {
   if (!structure) {
     return (
       <p className="cl-said cl-dim" data-testid="wine-structure-none">
@@ -165,6 +183,16 @@ function WineStructureSection({ structure }: { structure: WineStructureVM | null
   }
   return (
     <>
+      {/* F-663: the same enrichment as the notes, so the same mark. "Reasoned" means a typical
+          profile for the grape and region, not a fact about this bottle. */}
+      <p style={{ margin: '0 0 8px' }}>
+        <ProvenanceChip knowledge={knowledge} testId="wine-structure-provenance" />{' '}
+        {knowledge === 'inferred' ? (
+          <span className="cl-dim" style={{ fontSize: 11.5 }}>
+            A typical profile for the grape and the region, not a tasting of this bottle.
+          </span>
+        ) : null}
+      </p>
       <dl className="cl-facts" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
         <StructureFact label="Body" word={structure.body} ticks={bodyTicks(structure.body)} />
         <StructureFact label="Acidity" word={structure.acidity} ticks={acidityTicks(structure.acidity)} />
@@ -254,7 +282,14 @@ export default function BottleLeaf({
         </Fact>
         <Fact label="Origin">{[bottle.region, bottle.country].filter(Boolean).join(', ') || EM}</Fact>
         <Fact label="Format">
-          <span className="cl-num">{volume(bottle.bottleSizeMl)}</span>
+          {/* F-664: only the size this house stated. The library's 750 is a default, not a reading. */}
+          {bottle.bottleSizeMl === null ? (
+            <span className="cl-dim" data-testid="bottle-leaf-format-unstated">
+              {EM} not stated
+            </span>
+          ) : (
+            <span className="cl-num">{volume(bottle.bottleSizeMl)}</span>
+          )}
         </Fact>
         <Fact label="Market average">
           <span className="cl-num">{money(bottle.listPrice)}</span>
@@ -331,7 +366,7 @@ export default function BottleLeaf({
             (`docs/wine-ml-foundations`) — see this build's report. */}
         <section data-testid="wine-structure">
           <h3 className="cl-sec">The wine's own detail</h3>
-          <WineStructureSection structure={bottle.structure} />
+          <WineStructureSection structure={bottle.structure} knowledge={bottle.knowledge} />
         </section>
 
         <section>

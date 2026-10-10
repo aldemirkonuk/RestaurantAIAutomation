@@ -150,6 +150,27 @@ describe('the act — the write the question never had', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalled());
     expect((api.post.mock.calls[0][1] as Record<string, unknown>).vintage).toBe(2021);
   });
+
+  it('F-662: NV typed over the engine’s year goes in as no vintage, never as the engine’s year', async () => {
+    draw();
+    fireEvent.click(screen.getByTestId('bottle-fix'));
+    fireEvent.change(screen.getByTestId('bottle-input-vintage'), { target: { value: 'NV' } });
+    fireEvent.click(screen.getByTestId('bottle-confirm'));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect((api.post.mock.calls[0][1] as Record<string, unknown>).vintage).toBeNull();
+  });
+
+  it('F-662: a vintage that is not a year is refused in words, and nothing is sent', () => {
+    draw();
+    fireEvent.click(screen.getByTestId('bottle-fix'));
+    for (const typed of ['2019.5', 'old', '19']) {
+      fireEvent.change(screen.getByTestId('bottle-input-vintage'), { target: { value: typed } });
+      expect(screen.getByTestId('bottle-problem-vintage')).toHaveTextContent(/four-digit year .* or NV/);
+      expect(screen.getByTestId('bottle-confirm')).toBeDisabled();
+    }
+    fireEvent.click(screen.getByTestId('bottle-confirm'));
+    expect(api.post).not.toHaveBeenCalled();
+  });
 });
 
 describe('the engine’s hand stays grey', () => {
