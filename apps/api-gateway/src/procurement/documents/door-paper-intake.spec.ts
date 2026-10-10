@@ -140,7 +140,7 @@ const freshInsert = (op: Op): Answer | undefined => {
   if (op.verb === "insert") return { data: { id: "doc-new" }, error: null };
   if (op.verb === "select" && has(op, "sha256")) return { data: null, error: null };
   if (op.verb === "select" && has(op, "doc_number")) return { data: [], error: null };
-  if (op.verb === "select") return { data: { notes: null }, error: null };
+  if (op.verb === "select") return { data: { notes: null, status: "received" }, error: null };
   return undefined;
 };
 
@@ -162,6 +162,51 @@ describe("F-745 — a door photo is filed to its order only when the paper fits"
     );
     expect(note?.payload).toMatchObject({ status: "needs_review" });
     expect(String(note?.payload?.notes)).toMatch(/PO-0043/);
+  });
+
+  it.each(["verified", "rejected", "superseded"])(
+    "notes the conflict on a %s paper on file without reopening it for review",
+    async (status) => {
+      const { service, ops } = build({
+        respond: (op) => {
+          const order = orderRow(op);
+          if (order) return order;
+          if (op.table !== "procurement_documents" || op.verb !== "select")
+            return undefined;
+          if (has(op, "sha256"))
+            return {
+              data: {
+                id: "doc-first",
+                provider_id: "prov-A",
+                extracted: { docType: "invoice", poNumber: "PO-0043", lines: [] },
+              },
+              error: null,
+            };
+          return { data: { notes: null, status }, error: null };
+        },
+      });
+      const r = await service.ingest(photo());
+      expect(r).toMatchObject({ documentId: "doc-first", duplicate: true });
+      expect(r.orderLink?.linked).toBe(false);
+      expect(links(ops)).toHaveLength(0);
+      const note = ops.find(
+        (o) => o.table === "procurement_documents" && o.verb === "update",
+      );
+      expect(String(note?.payload?.notes)).toMatch(/PO-0043/);
+      expect(note?.payload).not.toHaveProperty("status");
+    },
+  );
+
+  it("moves a paper to needs_review only while it still awaits review", async () => {
+    const { service, ops } = build({
+      parsed: parse({ poNumber: "PO-0043" }),
+      respond: (op) => orderRow(op) ?? freshInsert(op),
+    });
+    await service.ingest(photo());
+    const note = ops.find(
+      (o) => o.table === "procurement_documents" && o.verb === "update",
+    )!;
+    expect(note.filters).toContainEqual(["in", "status", ["received", "needs_review"]]);
   });
 
   it("does not file a paper whose printed vendor is another vendor on file", async () => {

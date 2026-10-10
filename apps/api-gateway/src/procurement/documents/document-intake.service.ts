@@ -1496,7 +1496,13 @@ export class DocumentIntakeService {
     return null;
   }
 
-  /** Add a sentence to the document's notes and put it in front of a person. */
+  /**
+   * Add a sentence to the document's notes and, while it still awaits review,
+   * put it in front of a person. A paper already verified, rejected or
+   * superseded keeps its status: the duplicate path (F-747) reaches here for
+   * papers on file, and moving one of those back to needs_review would make a
+   * reviewed paper editable and applicable again.
+   */
   private async noteOnDocument(
     documentId: string,
     restaurantId: string,
@@ -1505,7 +1511,7 @@ export class DocumentIntakeService {
     const client = this.db.getClient();
     const { data, error } = await client
       .from("procurement_documents")
-      .select("notes")
+      .select("notes, status")
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -1515,16 +1521,22 @@ export class DocumentIntakeService {
       );
       return;
     }
-    const before = (data as { notes: string | null } | null)?.notes ?? null;
+    const row = data as { notes: string | null; status?: string | null } | null;
+    const before = row?.notes ?? null;
     if (before?.includes(sentence)) return;
-    const { error: writeErr } = await client
+    const awaiting = ["received", "needs_review"];
+    const reopenable = awaiting.includes(row?.status ?? "");
+    let write = client
       .from("procurement_documents")
       .update({
         notes: before ? `${before}\n${sentence}` : sentence,
-        status: "needs_review",
+        ...(reopenable ? { status: "needs_review" } : {}),
       })
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId);
+    // The status moves only if it is still one awaiting review at write time.
+    if (reopenable) write = write.in("status", awaiting);
+    const { error: writeErr } = await write;
     if (writeErr)
       this.logger.warn(
         `document ${documentId}: could not record "${sentence}": ${writeErr.message}`,
