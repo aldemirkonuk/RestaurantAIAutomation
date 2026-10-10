@@ -394,6 +394,69 @@ describe("ScheduleService — T7: destruction is in the contract, not a side eff
     expect(res.deleted).toBe(0);
   });
 
+  it("refuses a replace when the week no longer holds the count the person was shown (F-1030)", async () => {
+    const db = seed();
+    twoWeeks(db);
+
+    // A tab loaded while the week was empty says "all 0 shifts"; another
+    // manager has since put tgt1 there.
+    await expect(
+      service(db).copyWeek(MANAGER, RID, {
+        fromWeekStart: "2026-08-31",
+        toWeekStart: WEEK,
+        replaceTarget: true,
+        expectShifts: 0,
+      } as any),
+    ).rejects.toThrow(/now has 1 shift\(s\), not the 0 you were shown/);
+    expect(db.tables.shifts.some((s) => s.id === "tgt1")).toBe(true);
+    expect(db.tables.shifts).toHaveLength(2);
+  });
+
+  it("lands one of two copies made at once, never both (F-1030)", async () => {
+    const db = seed();
+    db.tables.schedules.push(
+      {
+        id: "s-from",
+        restaurant_id: RID,
+        week_start: "2026-08-31",
+        status: "published",
+      },
+      { id: "s-to", restaurant_id: RID, week_start: WEEK, status: "draft" },
+    );
+    db.tables.shifts.push({
+      id: "src1",
+      restaurant_id: RID,
+      schedule_id: "s-from",
+      member_id: "m-priced",
+      shift_date: "2026-08-31",
+      start_time: "09:00",
+      end_time: "17:00",
+      state: "scheduled",
+      shift_type: "am",
+      labor_cost: 160,
+      role: "line",
+    });
+    const body = {
+      fromWeekStart: "2026-08-31",
+      toWeekStart: WEEK,
+      expectShifts: 0,
+    };
+
+    const both = await Promise.allSettled([
+      service(db).copyWeek(MANAGER, RID, { ...body } as any),
+      service(db).copyWeek(MANAGER, RID, { ...body } as any),
+    ]);
+
+    expect(both.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const refused = both.find(
+      (r) => r.status === "rejected",
+    ) as PromiseRejectedResult;
+    expect(refused.reason).toBeInstanceOf(ConflictException);
+    expect(db.tables.shifts.filter((s) => s.shift_date === WEEK)).toHaveLength(
+      1,
+    );
+  });
+
   it("refuses to erase read receipts on a re-publish unless the caller said so", async () => {
     const db = seed();
     db.tables.schedules.push({
@@ -696,5 +759,100 @@ describe("ScheduleService — F-217: a shift's link names its week", () => {
     expect(payload.actionUrl).toBe(
       `/team?shift=${(res.open as any).id}&week=${WEEK}`,
     );
+  });
+});
+
+describe("ScheduleService — a shift sheet saves what the editor saw (F-1032, F-1033)", () => {
+  function oneShift(db: StubDb, over: Record<string, any> = {}) {
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "draft",
+    });
+    db.tables.shifts.push({
+      id: "sh1",
+      restaurant_id: RID,
+      schedule_id: "s1",
+      member_id: "m-priced",
+      shift_date: WEEK,
+      start_time: "09:00",
+      end_time: "17:00",
+      state: "scheduled",
+      shift_type: "am",
+      role: "line",
+      note: "Patio",
+      labor_cost: 160,
+      updated_at: "2026-09-01T10:00:00.123456+00:00",
+      ...over,
+    });
+  }
+
+  it("takes the person off and clears the role and note when they are sent as null", async () => {
+    const db = seed();
+    oneShift(db);
+
+    const res: any = await service(db).updateShift(OWNER, RID, "sh1", {
+      memberId: null,
+      role: null,
+      note: null,
+      expectMemberId: "m-priced",
+      expectUpdatedAt: "2026-09-01T10:00:00.123456+00:00",
+    } as any);
+
+    expect(res.member_id).toBeNull();
+    expect(res.role).toBeNull();
+    expect(res.note).toBeNull();
+    // Nobody on it: an open shift for the crew to claim, priced as nobody's.
+    expect(res.state).toBe("open");
+    expect(res.labor_cost).toBeNull();
+  });
+
+  it("refuses a save from a sheet opened before someone else moved the shift", async () => {
+    const db = seed();
+    // Another manager moved it from m-priced to m-unpriced after this sheet opened.
+    oneShift(db, { member_id: "m-unpriced" });
+
+    await expect(
+      service(db).updateShift(MANAGER, RID, "sh1", {
+        memberId: "m-priced",
+        endTime: "18:00",
+        expectMemberId: "m-priced",
+      } as any),
+    ).rejects.toThrow(
+      /Someone else changed or removed this shift after you opened it/,
+    );
+    const row = db.tables.shifts.find((s) => s.id === "sh1")!;
+    expect(row.member_id).toBe("m-unpriced");
+    expect(row.end_time).toBe("17:00");
+  });
+
+  it("refuses a save whose shift changed in any other way since the sheet opened", async () => {
+    const db = seed();
+    oneShift(db, { updated_at: "2026-09-02T08:00:00+00:00" });
+
+    await expect(
+      service(db).updateShift(MANAGER, RID, "sh1", {
+        endTime: "18:00",
+        expectMemberId: "m-priced",
+        expectUpdatedAt: "2026-09-01T10:00:00.123456+00:00",
+      } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(db.tables.shifts.find((s) => s.id === "sh1")!.end_time).toBe(
+      "17:00",
+    );
+  });
+
+  it("saves when the shift is as the sheet saw it, whatever the timestamp's spelling", async () => {
+    const db = seed();
+    oneShift(db);
+
+    const res: any = await service(db).updateShift(MANAGER, RID, "sh1", {
+      endTime: "18:00",
+      expectMemberId: "m-priced",
+      expectUpdatedAt: "2026-09-01T10:00:00.123Z",
+    } as any);
+    expect(res.end_time).toBe("18:00");
+    expect(res.member_id).toBe("m-priced");
   });
 });

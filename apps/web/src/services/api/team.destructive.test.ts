@@ -61,6 +61,11 @@ describe('copy-week carries the replacement consent it was given', () => {
     expect(bodyOf()).toEqual({ fromWeekStart: '2026-08-24', toWeekStart: '2026-08-31' })
     expect(bodyOf()).not.toHaveProperty('replaceTarget')
   })
+
+  it('sends the count the person was shown, zero included, so a changed week is refused (F-1030)', async () => {
+    await copyWeek('2026-08-24', '2026-08-31', { replaceTarget: false, expectShifts: 0 })
+    expect(bodyOf()).toEqual({ fromWeekStart: '2026-08-24', toWeekStart: '2026-08-31', expectShifts: 0 })
+  })
 })
 
 describe('publish only claims the receipts it was told to clear', () => {

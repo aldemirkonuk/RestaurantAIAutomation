@@ -73,19 +73,33 @@ export class CreateShiftDto {
   @IsOptional() @IsInt() @Min(0) @Max(1439) breakMinutes?: number | null;
 }
 
+/**
+ * On an edit, `null` clears a field and an absent one leaves it: `memberId:
+ * null` takes the person off (an open shift), `role` / `note: null` empty them
+ * (F-1032). `@IsOptional()` lets null through.
+ */
 export class UpdateShiftDto {
-  @IsOptional() @IsUUID() memberId?: string;
+  @IsOptional() @IsUUID() memberId?: string | null;
   @IsOptional() @IsDateString() shiftDate?: string;
   @IsOptional() @IsString() startTime?: string;
   @IsOptional() @IsString() endTime?: string;
-  @IsOptional() @IsString() role?: string;
+  @IsOptional() @IsString() role?: string | null;
   @IsOptional()
   @IsIn(["am", "pm", "double", "split", "training", "borrowed", "open"])
   shiftType?: string;
   @IsOptional()
   @IsIn(["scheduled", "callout", "covered", "open"])
   state?: string;
-  @IsOptional() @IsString() note?: string;
+  @IsOptional() @IsString() note?: string | null;
+  /**
+   * The shift as the editor saw it when the sheet opened (F-1033): the person
+   * on it (`null` = open) and its `updated_at`. Either one stale is a 409 in
+   * words and nothing is saved, so a sheet opened before another manager's
+   * change cannot quietly put the old person back. Omitted, nothing is
+   * compared (older clients).
+   */
+  @IsOptional() @IsUUID() expectMemberId?: string | null;
+  @IsOptional() @IsDateString() expectUpdatedAt?: string;
   /**
    * The break taken on this shift, in whole minutes (0 = none taken). `null`
    * clears the record, so the shift, any length, is counted with the Art. 68
@@ -120,6 +134,12 @@ export class CopyWeekDto {
    * destruction cannot happen by accident (ADR 0088 T7).
    */
   @IsOptional() @IsBoolean() replaceTarget?: boolean;
+  /**
+   * How many shifts the person was shown on the target week when they chose
+   * to copy (F-1030). A different count now means someone changed the week
+   * since the page loaded: a 409 in words, nothing deleted or copied.
+   */
+  @IsOptional() @IsInt() @Min(0) expectShifts?: number;
 }
 
 export class PublishScheduleDto {

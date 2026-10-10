@@ -118,22 +118,40 @@ export function ShiftSheet({
           : 'Nothing recorded.';
   const underMinimum = breakValid && breakUnderMinimum(preview);
 
+  /**
+   * On an edit, an emptied field is sent as `null` so the gateway clears it:
+   * "Open shift — nobody assigned" takes the person off, and an emptied role
+   * or note is emptied (F-1032). `undefined` there means "leave as it is", so
+   * the sheet used to close as saved with the person still on the shift.
+   */
+  const cleared = editing ? null : undefined;
   const body = () => ({
     // camelCase: `forbidNonWhitelisted` (main.ts:54) 400s a snake_case body.
-    scheduleId: scheduleId ?? undefined,
-    memberId: form.memberId || undefined,
+    memberId: form.memberId || cleared,
     shiftDate: form.shiftDate,
     startTime: form.startTime,
     endTime: form.endTime,
-    role: form.role.trim() || undefined,
+    role: form.role.trim() || cleared,
     shiftType: form.shiftType,
-    note: form.note.trim() || undefined,
+    note: form.note.trim() || cleared,
     ...breakForSave(),
+  });
+  /**
+   * The shift as this sheet saw it when it opened (F-1033). Another manager's
+   * change since then makes the save a 409 in words, so an old sheet cannot
+   * put the old person back. The schedule is not sent on an edit: the edit
+   * body has no such field, and the gateway refuses one it does not know.
+   */
+  const asOpened = () => ({
+    expectMemberId: target.shift!.member_id ?? null,
+    ...(target.shift!.updated_at ? { expectUpdatedAt: target.shift!.updated_at } : {}),
   });
 
   const save = useMutation({
     mutationFn: () =>
-      editing ? updateShift(target.shift!.id, body()) : createShift(body()),
+      editing
+        ? updateShift(target.shift!.id, { ...body(), ...asOpened() })
+        : createShift({ scheduleId: scheduleId ?? undefined, ...body() }),
     onSuccess: () => {
       onChanged();
       onClose();

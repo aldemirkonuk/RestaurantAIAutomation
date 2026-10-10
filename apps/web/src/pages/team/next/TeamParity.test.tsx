@@ -252,8 +252,9 @@ describe('the desk can schedule', () => {
     render(<TeamNext />, { wrapper });
     fireEvent.click(await screen.findByRole('button', { name: 'Copy last week' }));
     const panel = await screen.findByRole('dialog', { name: 'Copy last week' });
-    expect(within(panel).getByText(/all 0 shifts already on it/)).toBeInTheDocument();
-    expect(within(panel).getByText(/Hold to replace the week/)).toBeInTheDocument();
+    // An empty week is copied into, not replaced (F-1030): it says so.
+    expect(within(panel).getByText(/no shifts yet, so .* nothing is\s+deleted/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Hold to copy last week/)).toBeInTheDocument();
   });
 });
 

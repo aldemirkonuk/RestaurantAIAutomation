@@ -169,8 +169,24 @@ export function CopyWeekPanel({
   onClose: () => void;
   onDone: () => void;
 }) {
+  /**
+   * What the person agreed to (F-1030). The count they were shown goes with
+   * the copy, so a week another manager filled after this page loaded is
+   * refused in words instead of wiped. An empty week is copied into, never
+   * replaced, so the gateway's own "already has shifts" refusal stays armed.
+   * An unknown count was shown as "every shift already on it", and that is
+   * what holding the button agreed to.
+   */
+  const empty = shiftsOnTarget === 0;
   const copy = useMutation({
-    mutationFn: () => copyWeek(addDays(weekStart, -7), weekStart, { replaceTarget: true }),
+    mutationFn: () =>
+      copyWeek(
+        addDays(weekStart, -7),
+        weekStart,
+        shiftsOnTarget === null
+          ? { replaceTarget: true }
+          : { replaceTarget: !empty, expectShifts: shiftsOnTarget },
+      ),
     onSuccess: () => {
       onDone();
       onClose();
@@ -190,14 +206,22 @@ export function CopyWeekPanel({
           {serverMessage(copy.error) ??
             'Nothing was copied, and this week is exactly as it was.'}
         </MutationError>
-        <p className="tm-note">
-          Copying replaces this week first:{' '}
-          {shiftsOnTarget === null
-            ? 'every shift already on it'
-            : `all ${shiftsOnTarget} shift${shiftsOnTarget === 1 ? '' : 's'} already on it`}{' '}
-          is deleted before last week&apos;s arrive — including anything added by hand.
-          This cannot be undone.
-        </p>
+        {empty ? (
+          <p className="tm-note">
+            This week has no shifts yet, so last week&apos;s are copied in and nothing is
+            deleted. If someone adds shifts here before you finish, nothing is copied and
+            you are told.
+          </p>
+        ) : (
+          <p className="tm-note">
+            Copying replaces this week first:{' '}
+            {shiftsOnTarget === null
+              ? 'every shift already on it'
+              : `all ${shiftsOnTarget} shift${shiftsOnTarget === 1 ? '' : 's'} already on it`}{' '}
+            is deleted before last week&apos;s arrive — including anything added by hand.
+            This cannot be undone.
+          </p>
+        )}
         <p className="tm-note">
           A shift whose person is set to inactive, has approved time off that day, or
           already works then arrives as an open shift for the crew to claim.
@@ -208,8 +232,8 @@ export function CopyWeekPanel({
           </button>
           <HoldToApprove
             onApprove={() => copy.mutate()}
-            label="Hold to replace the week"
-            approvedLabel="Replaced"
+            label={empty ? 'Hold to copy last week' : 'Hold to replace the week'}
+            approvedLabel={empty ? 'Copied' : 'Replaced'}
             disabled={copy.isPending}
           />
         </div>
