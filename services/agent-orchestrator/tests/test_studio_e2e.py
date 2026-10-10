@@ -37,6 +37,21 @@ SESSION_ID = "sess-e2e-001"
 SUBMISSION_ID = "sub-e2e-001"
 
 
+@pytest.fixture(autouse=True)
+def _db_roles_match_jwt():
+    """Write endpoints re-read user_roles (F-761); here the DB agrees with each JWT."""
+    db_roles = {
+        "dev-e2e-001": ["developer"],
+        "admin-e2e-001": ["review_admin"],
+        "cc-e2e-001": ["certified_contributor"],
+    }
+    with patch(
+        "services.override_service._fetch_active_studio_roles",
+        side_effect=lambda sub: db_roles.get(sub, []),
+    ):
+        yield
+
+
 def _make_jwt(payload: dict) -> str:
     import jwt as pyjwt
 
@@ -280,7 +295,10 @@ def mock_supabase_cc():
         "actor_id": CERTIFIED_PAYLOAD["sub"],
         "session_id": CC_SESSION_ID,
     }
-    events_mock.update.return_value.eq.return_value.execute.return_value.data = [{}]
+    # decide_override's UPDATE carries .eq(id).eq(promotion_status='pending') (F-758)
+    events_mock.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"id": CC_OVERRIDE_ID, "promotion_status": "approved"}
+    ]
     # GET /queue pending count (no .single())
     events_mock.select.return_value.eq.return_value.execute.return_value.count = 1
 

@@ -196,14 +196,16 @@ export function ContributorTable({ contributors, onRevoke, onToggleEnable, canMa
                         <Copy className="w-4 h-4 text-slate-400" />
                         Copy {c.email ? 'email' : 'user id'}
                       </button>
-                      {canManage && (
-                      <button
-                        onClick={() => handleRevoke(c)}
-                        className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50 rounded-lg"
-                      >
-                        <UserX className="w-4 h-4 text-rose-500" />
-                        Revoke contributor
-                      </button>
+                      {/* A disabled contributor is already revoked; Enable access above is the way back.
+                          Revoking is a manager's act (dev-admin). */}
+                      {canManage && isActive && (
+                        <button
+                          onClick={() => handleRevoke(c)}
+                          className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50 rounded-lg"
+                        >
+                          <UserX className="w-4 h-4 text-rose-500" />
+                          Revoke contributor
+                        </button>
                       )}
                     </div>
                   )}

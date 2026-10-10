@@ -31,6 +31,28 @@ REVIEW_ADMIN_JWT_PAYLOAD = {
 }
 
 
+# Write endpoints re-read user_roles (require_live_studio_role, F-761). By default each
+# test's caller holds in the DB exactly the roles its JWT claims; TestLiveStudioRole
+# overrides this to prove the DB, not the claim, is what decides.
+from services import override_service as _override_service
+
+_REAL_FETCH_ACTIVE_ROLES = _override_service._fetch_active_studio_roles
+_DB_ROLES_BY_SUB = {
+    "user-dev-001": ["developer"],
+    "user-contrib-001": ["certified_contributor"],
+    "user-admin-001": ["review_admin"],
+}
+
+
+@pytest.fixture(autouse=True)
+def _db_roles_match_jwt():
+    with patch(
+        "services.override_service._fetch_active_studio_roles",
+        side_effect=lambda sub: _DB_ROLES_BY_SUB.get(sub, []),
+    ):
+        yield
+
+
 def _make_jwt(payload: dict, secret: str = SECRET) -> str:
     import jwt as pyjwt
 
@@ -247,7 +269,7 @@ def _make_invite_mocks(
     )
 
     user_roles_mock = MagicMock()
-    user_roles_mock.select.return_value.eq.return_value.eq.return_value.is_.return_value.execute.return_value.data = (
+    user_roles_mock.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
         existing_roles or []
     )
 
@@ -457,7 +479,7 @@ class TestPatchQueueDecision:
             "new_value": "2019",
             "actor_id": "user-contrib-001",
         }
-        override_table_mock.update.return_value.eq.return_value.execute.return_value.data = [
+        override_table_mock.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
             {"id": "ov-001", "promotion_status": "approved"}
         ]
 
@@ -538,3 +560,209 @@ class TestRequireStudioRole:
             with pytest.raises(HTTPException) as exc:
                 inner(authorization=f"Bearer {token}")
         assert exc.value.status_code == 403
+
+
+# ─── F-757: a revoked contributor can be listed, re-enabled and re-invited ───
+
+
+class TestRevokedContributorsCanReturn:
+    def test_contributor_list_includes_revoked_rows(self, test_client: TestClient):
+        """The Enable action only exists on revoked rows, so the list must carry them."""
+        sb = MagicMock()
+        roles = sb.table.return_value
+        roles.select.return_value.eq.return_value.execute.return_value.data = [
+            {"user_id": "u-1", "revoked_at": None},
+            {"user_id": "u-2", "revoked_at": "2026-10-01T00:00:00Z"},
+        ]
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb):
+            resp = test_client.get(
+                "/api/v1/studio/contributors", headers=_auth(REVIEW_ADMIN_JWT_PAYLOAD)
+            )
+        assert resp.status_code == 200, resp.text
+        assert [c["user_id"] for c in resp.json()["contributors"]] == ["u-1", "u-2"]
+        roles.select.return_value.eq.return_value.is_.assert_not_called()
+
+    def test_reinvite_restores_the_revoked_row_instead_of_inserting(
+        self, test_client: TestClient
+    ):
+        """user_roles is UNIQUE (user_id, role): a second INSERT can only fail."""
+        sb, _, user_roles_mock = _make_invite_mocks(
+            existing_roles=[
+                {"role": "certified_contributor", "revoked_at": "2026-10-01T00:00:00Z"}
+            ]
+        )
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 200, resp.text
+        assert user_roles_mock.insert.call_count == 0
+        assert user_roles_mock.update.call_count == 1
+        restored = user_roles_mock.update.call_args[0][0]
+        assert restored["revoked_at"] is None
+        assert restored["granted_by"] == "user-admin-001"
+        assert restored["promotion_policy"] == "queue"
+        assert restored["consecutive_approved_overrides"] == 0
+
+    def test_unique_violation_on_grant_reads_as_already_held(
+        self, test_client: TestClient
+    ):
+        """A racing redeem that wins the row turns into words, and the invite is released."""
+
+        class _UniqueViolation(Exception):
+            code = "23505"
+
+        sb, invite_mock, user_roles_mock = _make_invite_mocks()
+        user_roles_mock.insert.return_value.execute.side_effect = _UniqueViolation(
+            "duplicate key value violates unique constraint"
+        )
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 409, resp.text
+        assert "already hold" in resp.json()["detail"]
+        assert invite_mock.update.call_args_list[-1][0][0] == {
+            "used_at": None,
+            "used_by": None,
+        }
+
+
+# ─── F-758 / F-759: queue decisions are atomic and honest about failure ──────
+
+
+def _decide_mocks(*, update_rows, apply_fails=False):
+    events = MagicMock()
+    events.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
+        "id": "ov-001",
+        "promotion_status": "pending",
+        "submission_id": "sub-001",
+        "field_name": "vintage",
+        "new_value": "2019",
+        "actor_id": "user-contrib-001",
+    }
+    events.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+        update_rows
+    )
+    sb = MagicMock()
+    sb.table.side_effect = lambda name: (
+        events if name == "override_events" else MagicMock()
+    )
+    apply = MagicMock(side_effect=RuntimeError("boom") if apply_fails else None)
+    return sb, events, apply
+
+
+def _decide(test_client, sb, apply, trust, promote, decision="approved"):
+    with patch("config.settings.get_settings", return_value=_make_settings()), patch(
+        "api.studio_routes._get_supabase", return_value=sb
+    ), patch("api.studio_routes._apply_override_to_submission", apply), patch(
+        "api.studio_routes.check_and_update_trust", trust
+    ), patch(
+        "api.studio_routes._maybe_promote_submission", promote
+    ), patch(
+        "api.studio_routes._get_user_studio_roles",
+        return_value=[{"role": "certified_contributor"}],
+    ):
+        return test_client.patch(
+            "/api/v1/studio/queue/ov-001",
+            json={"decision": decision},
+            headers=_auth(REVIEW_ADMIN_JWT_PAYLOAD),
+        )
+
+
+class TestQueueDecisionIsAtomic:
+    def test_update_is_conditioned_on_still_pending(self, test_client: TestClient):
+        sb, events, apply = _decide_mocks(update_rows=[{"id": "ov-001"}])
+        resp = _decide(test_client, sb, apply, MagicMock(), MagicMock())
+        assert resp.status_code == 200, resp.text
+        events.update.return_value.eq.return_value.eq.assert_called_with(
+            "promotion_status", "pending"
+        )
+
+    def test_lost_race_returns_409_and_applies_nothing(self, test_client: TestClient):
+        """Both reviewers pass the read; only the write that still matches 'pending' acts."""
+        sb, _, apply = _decide_mocks(update_rows=[])
+        trust, promote = MagicMock(), MagicMock()
+        resp = _decide(test_client, sb, apply, trust, promote)
+        assert resp.status_code == 409, resp.text
+        apply.assert_not_called()
+        promote.assert_not_called()
+        trust.assert_not_called()
+
+
+class TestFailedApprovalIsNotApproved:
+    def test_failed_apply_returns_row_to_queue_and_skips_trust(
+        self, test_client: TestClient
+    ):
+        sb, events, apply = _decide_mocks(
+            update_rows=[{"id": "ov-001"}], apply_fails=True
+        )
+        trust, promote = MagicMock(), MagicMock()
+        resp = _decide(test_client, sb, apply, trust, promote)
+        assert resp.status_code == 503, resp.text
+        assert "back in the queue" in resp.json()["detail"]
+        revert = events.update.call_args_list[-1][0][0]
+        assert revert["promotion_status"] == "pending"
+        assert revert["decided_at"] is None
+        promote.assert_not_called()
+        trust.assert_not_called()
+
+
+# ─── F-761: writes trust user_roles, not the token's role claim ──────────────
+
+
+def _live_check(roles_required, payload, db_rows=None, db=True, db_raises=False):
+    from fastapi import Depends
+    from services.override_service import require_live_studio_role
+
+    sb = MagicMock()
+    chain = sb.table.return_value.select.return_value.eq.return_value.is_.return_value
+    if db_raises:
+        chain.execute.side_effect = RuntimeError("db down")
+    else:
+        chain.execute.return_value.data = db_rows or []
+    inner = Depends(require_live_studio_role(*roles_required)).dependency
+    with patch("config.settings.get_settings", return_value=_make_settings()), patch(
+        "services.override_service._fetch_active_studio_roles",
+        _REAL_FETCH_ACTIVE_ROLES,
+    ), patch(
+        "services.override_service._get_supabase", return_value=sb if db else None
+    ):
+        return inner(authorization=f"Bearer {_make_jwt(payload)}")
+
+
+class TestLiveStudioRole:
+    def test_revoked_role_in_db_beats_the_token_claim(self):
+        """The JWT still says review_admin for up to 15 minutes after a revoke."""
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            _live_check(("review_admin",), REVIEW_ADMIN_JWT_PAYLOAD, db_rows=[])
+        assert exc.value.status_code == 403
+
+    def test_role_held_in_db_passes_and_replaces_claimed_roles(self):
+        out = _live_check(
+            ("review_admin",),
+            CONTRIBUTOR_JWT_PAYLOAD,
+            db_rows=[{"role": "review_admin"}],
+        )
+        assert out["app_metadata"]["roles"] == ["review_admin"]
+
+    def test_unreadable_roles_fail_closed(self):
+        from fastapi import HTTPException
+
+        for kwargs in ({"db": False}, {"db_raises": True}):
+            with pytest.raises(HTTPException) as exc:
+                _live_check(("review_admin",), REVIEW_ADMIN_JWT_PAYLOAD, **kwargs)
+            assert exc.value.status_code == 503
+
+    def test_write_endpoint_rejects_a_revoked_admin(self, test_client: TestClient):
+        """End to end: PATCH revoke as an admin whose own row is gone → 403, no write."""
+        sb = MagicMock()
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "services.override_service._fetch_active_studio_roles", return_value=[]
+        ):
+            resp = test_client.patch(
+                "/api/v1/studio/contributors/u-9/revoke",
+                headers=_auth(REVIEW_ADMIN_JWT_PAYLOAD),
+            )
+        assert resp.status_code == 403, resp.text
+        sb.table.assert_not_called()

@@ -27,6 +27,8 @@ export default function StudioCertify() {
   })
 
   const contributors = data?.contributors ?? []
+  // The list now carries disabled contributors too (F-757), so they can be re-enabled.
+  const activeCount = contributors.filter((c) => !c.revoked_at).length
 
   // These two previously ignored `resp.ok` entirely: the request 404'd at the gateway,
   // the promise still resolved, and ContributorTable toasted "Contributor revoked" for a
@@ -53,7 +55,7 @@ export default function StudioCertify() {
             <h1 className="text-xl font-semibold text-slate-900">Certified Contributors</h1>
             {/* "0 active contributors" is what a dead endpoint used to look like. */}
             <p className={`text-sm mt-1 ${isError ? 'text-red-600' : 'text-slate-500'}`}>
-              {isError ? 'Contributor list unavailable' : `${contributors.length} active contributors`}
+              {isError ? 'Contributor list unavailable' : `${activeCount} active contributors`}
             </p>
           </div>
           {canManage && (
