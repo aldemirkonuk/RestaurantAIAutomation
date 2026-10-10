@@ -346,7 +346,7 @@ export class AnalyticsService {
         client
           .from("wine_consumption_log")
           .select(
-            "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
+            "id, inventory_id, consumption_type, quantity, volume_ml, total_revenue, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -362,6 +362,12 @@ export class AnalyticsService {
         inventoryId: c.inventory_id,
         qty: bottles,
         how,
+        // What the line sold for, as the till wrote it; null when it carried
+        // no price, which is not a free pour.
+        revenue:
+          c.total_revenue == null || Number.isNaN(Number(c.total_revenue))
+            ? null
+            : Number(c.total_revenue),
         servings: servingsOf(c),
         volumeMl: volumeMlOf(c),
         date: zone
@@ -371,13 +377,17 @@ export class AnalyticsService {
     });
   }
 
-  /** Wines with at least one line that carries no bottle figure. */
+  /**
+   * House items (inventory ids) with at least one line that carries no bottle
+   * figure. Keyed by the ledger's key, not the master wine (ADR 0115): a rakı
+   * or a beer has no master wine, and keyed that way it never counted (F-1014).
+   */
   private uncountedWines(
-    consumption: Array<{ masterWineId: string | null; how: string }>,
+    consumption: Array<{ inventoryId: string | null; how: string }>,
   ) {
     const out = new Set<string>();
     for (const c of consumption)
-      if (c.masterWineId && c.how === "uncounted") out.add(c.masterWineId);
+      if (c.inventoryId && c.how === "uncounted") out.add(c.inventoryId);
     return out;
   }
 
@@ -864,16 +874,18 @@ export class AnalyticsService {
     ]);
     const inventory = this.activeOnly(allInventory);
 
-    // Demand series per master wine.
+    // Demand series per house item — the ledger's key (ADR 0115). Keyed by
+    // master wine, every drink that is not a wine (no master) read zero
+    // demand and never reached the reorder list (F-1014).
     const demandByWine = new Map<
       string,
       Array<{ date: string; value: number }>
     >();
     for (const c of consumption) {
-      if (!c.masterWineId || c.qty == null) continue;
-      const arr = demandByWine.get(c.masterWineId) || [];
+      if (!c.inventoryId || c.qty == null) continue;
+      const arr = demandByWine.get(c.inventoryId) || [];
       arr.push({ date: c.date, value: c.qty });
-      demandByWine.set(c.masterWineId, arr);
+      demandByWine.set(c.inventoryId, arr);
     }
     // A wine with any line that carries no bottle figure has no demand to
     // reorder on: its counted lines alone would understate it (ADR 0297).
@@ -884,7 +896,7 @@ export class AnalyticsService {
       // What the shelf will hold once what is already ordered arrives. An
       // order that cannot be counted adds nothing, and says so (onOrder null).
       const position = i.qty + (i.onOrder ?? 0);
-      const rows = demandByWine.get(i.masterWineId || "") || [];
+      const rows = demandByWine.get(i.id) || [];
       const demandDays = this.daysOnList(i.listedAt, rows, sinceDays, zone);
       const { values } = this.toDailySeries(rows, demandDays, zone);
       const profile = E.inventory.demandProfile(values) || {
@@ -938,7 +950,7 @@ export class AnalyticsService {
         inventoryValue: i.inventoryValue,
         abcClass: null as "A" | "B" | "C" | null,
         demandUnknown: false,
-        ...(unknownDemand.has(i.masterWineId || "")
+        ...(unknownDemand.has(i.id)
           ? {
               avgDailyDemand: null,
               demandCv: null,
@@ -1035,12 +1047,10 @@ export class AnalyticsService {
       this.dbService.getClient(),
       restaurantId,
     );
-    const [allInventory, orders, consumption] = await Promise.all([
-      this.loadInventory(restaurantId),
+    const [orders, consumption] = await Promise.all([
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, 90, zone),
     ]);
-    const inventory = this.activeOnly(allInventory);
 
     // Vendor concentration (HHI on spend share).
     const spendByVendor = new Map<string, number>();
@@ -1054,8 +1064,25 @@ export class AnalyticsService {
     const effectiveVendors = E.finance.effectiveCount(vendorWeights);
     const cr4 = E.finance.concentrationRatio(vendorWeights, 4);
 
-    // Revenue concentration across SKUs (Gini) — sell-price valuation proxy.
-    const skuRevenue = inventory.map((i) => i.unitPrice * i.qty);
+    // Revenue concentration across drinks (Gini) — over what each house item
+    // SOLD in the window, as the till wrote it (F-1016). It was the shelf's
+    // sell-price value, so a sold-out or unpriced wine counted as a zero and
+    // "protect the top sellers" pointed at the deepest stock. A drink with a
+    // line that carries no price is left out and counted, never read as 0;
+    // a drink that sold nothing is not in the room's revenue at all.
+    const soldValue = new Map<string, number>();
+    const unpricedSales = new Set<string>();
+    for (const c of consumption) {
+      if (!c.inventoryId) continue;
+      if (c.revenue == null) unpricedSales.add(c.inventoryId);
+      else
+        soldValue.set(
+          c.inventoryId,
+          (soldValue.get(c.inventoryId) || 0) + c.revenue,
+        );
+    }
+    for (const id of unpricedSales) soldValue.delete(id);
+    const skuRevenue = Array.from(soldValue.values()).filter((v) => v > 0);
     const gini = E.risk.giniCoefficient(skuRevenue);
     const skuHhi = E.finance.herfindahlIndex(skuRevenue);
 
@@ -1086,6 +1113,7 @@ export class AnalyticsService {
     return {
       basis: {
         demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}`,
+        revenueConcentration: `over what each drink sold in the last 90d (${skuRevenue.length} drink(s) with sales)${unpricedSales.size > 0 ? `; ${unpricedSales.size} drink(s) left out because a sale carried no price` : ""}`,
       },
       vendorConcentration: {
         hhi,
@@ -1105,11 +1133,13 @@ export class AnalyticsService {
       revenueConcentration: {
         gini,
         hhi: skuHhi,
+        soldCount: skuRevenue.length,
+        unpricedLeftOut: unpricedSales.size,
         interpretation:
           gini === null
             ? "insufficient data"
             : gini > 0.6
-              ? "revenue rides on very few SKUs"
+              ? "revenue rides on very few drinks"
               : gini > 0.4
                 ? "moderate concentration"
                 : "well-distributed",
