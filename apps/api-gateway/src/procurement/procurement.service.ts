@@ -5993,6 +5993,8 @@ export class ProcurementService {
                 p_reason: "order delivered — physical receipt",
                 p_unit_cost: unitCost,
                 p_cost_provenance: costProvenance,
+                // The order also gives the lot its cost's currency: the trigger
+                // a_lot_cost_takes_its_order_currency copies the order's (F-343).
                 p_order_id: orderId,
                 p_idempotency_key: `order-delivered-live:${orderId}`,
                 // ADR 0141 — same reason as the shadow release above.

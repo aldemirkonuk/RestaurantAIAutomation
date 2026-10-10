@@ -138,12 +138,24 @@ interface HouseTerms {
   bandPct: number | null;
   /** The confirmed pour, ml; null = not confirmed, so no glass advice. */
   pourMl: number | null;
+  /**
+   * The house's stated currency (`restaurants.currency`), the money its menu
+   * prices are in; null = not stated. A cost in other money is not advised on
+   * (F-343). Optional so a caller that never read it keeps the old reading.
+   */
+  currency?: string | null;
 }
 
 const INVENTORY_SELECT =
   "id, wine_name, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, bottle_size_ml)";
 
-const ROLLUP_SELECT = "inventory_id, live_qty, wac, has_invoice_cost, wac_qty";
+// cost_currency / cost_currency_count (F-343): which money the WAC is in.
+const ROLLUP_SELECT =
+  "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count";
+
+/** The no-cost sentence, when the cost exists but in another money (F-343). */
+const OTHER_MONEY_SENTENCE =
+  "Cannot advise: this wine was bought in a different currency from your menu prices, and nothing here converts one into the other.";
 
 function n(v: unknown): number | null {
   if (v === null || v === undefined) return null;
@@ -200,7 +212,11 @@ export class MarginAdviceService {
       );
     }
 
-    const t: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
+    const t: HouseTerms = {
+      ...targetsFrom(targets.row),
+      pourMl: confirmedPourFrom(targets.row),
+      currency: targets.row?.currency ?? null,
+    };
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) {
       lots.set(String(r.inventory_id), r);
@@ -253,7 +269,13 @@ export class MarginAdviceService {
     const { unitCost, costBasis } = resolveUnitCost(
       { last_purchase_price: row.last_purchase_price },
       lot,
+      t.currency,
     );
+    // "No recorded cost" would be untrue when the cost is there in other money.
+    const said = (a: PriceAdvice): PriceAdvice =>
+      costBasis === "other_currency" && a.state === "no_cost"
+        ? { ...a, sentence: OTHER_MONEY_SENTENCE }
+        : a;
     const bottlePrice = n(row.menu_price_current);
     const glassPrice = n(row.menu_price_glass);
     const saleType = row.sale_type ?? "bottle";
@@ -279,26 +301,30 @@ export class MarginAdviceService {
       bottleCost: unitCost,
       bottle: sellsBottle
         ? {
-            ...adviseToTarget({
-              kind: "bottle",
-              price: bottlePrice,
-              unitCost,
-              targetPct: t.bottlePct,
-              bandPct: t.bandPct,
-            }),
+            ...said(
+              adviseToTarget({
+                kind: "bottle",
+                price: bottlePrice,
+                unitCost,
+                targetPct: t.bottlePct,
+                bandPct: t.bandPct,
+              }),
+            ),
             locked: mark("bottle"),
           }
         : null,
       glass: sellsGlass
         ? {
-            ...adviseToTarget({
-              kind: "glass",
-              price: glassPrice,
-              unitCost: glassCostFrom(unitCost, pourMl, bottleMl),
-              targetPct: t.glassPct,
-              bandPct: t.bandPct,
-              pourConfirmed: pourMl !== null,
-            }),
+            ...said(
+              adviseToTarget({
+                kind: "glass",
+                price: glassPrice,
+                unitCost: glassCostFrom(unitCost, pourMl, bottleMl),
+                targetPct: t.glassPct,
+                bandPct: t.bandPct,
+                pourConfirmed: pourMl !== null,
+              }),
+            ),
             locked: mark("glass"),
           }
         : null,
@@ -369,7 +395,11 @@ export class MarginAdviceService {
       throw new ConflictException(await this.lockedSentence(held.locks[0], kind));
     }
 
-    const t: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
+    const t: HouseTerms = {
+      ...targetsFrom(targets.row),
+      pourMl: confirmedPourFrom(targets.row),
+      currency: targets.row?.currency ?? null,
+    };
     const wine = this.adviseWine(
       inv.data as unknown as InventoryPriceRow,
       (rollup.data as Record<string, unknown> | null) ?? null,

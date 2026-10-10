@@ -232,7 +232,7 @@ export class PriceLocksService {
         ? Promise.resolve({ data: [], error: null } as { data: unknown[]; error: { message: string } | null })
         : client
             .from("inventory_lot_rollup")
-            .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
+            .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count")
             .eq("restaurant_id", restaurantId)
             .in("inventory_id", inventoryIds),
     ]);
@@ -241,7 +241,11 @@ export class PriceLocksService {
     if (rollup.error) missing.push(`the recorded costs could not be read (${rollup.error.message})`);
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) lots.set(String(r.inventory_id), r);
-    const terms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
+    const terms = {
+      ...targetsFrom(targets.row),
+      pourMl: confirmedPourFrom(targets.row),
+      currency: targets.row?.currency ?? null,
+    };
 
     // Who set each lock, and whether they still manage this house.
     const authors = [...new Set(locks.map((l) => l.lockedBy))];

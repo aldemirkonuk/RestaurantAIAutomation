@@ -52,6 +52,7 @@ export type CostBasis =
   | "invoice_lot_wac"
   | "invoice_lot_wac_partial"
   | "last_purchase_price"
+  | "other_currency"
   | "unknown";
 
 export interface ResolvedUnitCost {
@@ -66,6 +67,8 @@ export const COST_BASIS_LABEL: Record<CostBasis, string> = {
   invoice_lot_wac_partial:
     "invoiced lot WAC covering only part of the on-hand quantity (inventory_lot_rollup.wac)",
   last_purchase_price: "restaurant_inventory.last_purchase_price",
+  other_currency:
+    "recorded cost is in a different currency from the house's, so it is not compared with a menu price",
   unknown: "no recorded cost",
 };
 
@@ -84,6 +87,13 @@ export interface LotRollupRow {
    */
   wac_qty?: unknown;
   live_qty?: unknown;
+  /**
+   * The stated currencies among the lots `wac` averages (F-343, 2026-10-09).
+   * `cost_currency` is the one code when there is exactly one. Both optional:
+   * a lot booked before the column existed states none, and is read as before.
+   */
+  cost_currency?: unknown;
+  cost_currency_count?: unknown;
 }
 
 /**
@@ -120,13 +130,24 @@ export interface LotRollupRow {
  *    would hand every such wine a 100% margin. This matches the old
  *    expression's behaviour for that case; changing it is an OD-100 question,
  *    not a drive-by.
+ *
+ *  • A WAC in another money is **not a cost of this house's menu** (F-343).
+ *    A lot costs what its order or invoice said, in that paper's currency, and
+ *    nothing converts (20260905120000 rule 3). So a WAC that mixes two stated
+ *    currencies, or whose one currency is not the house's stated currency,
+ *    comes back null as `other_currency` — never compared with a menu price.
+ *    A lot that states no currency (booked before the column) and a house that
+ *    states none are read as before; see the lot-currency decision note.
  */
 export function resolveUnitCost(
   row: InventoryCostRow | null | undefined,
   lot: LotRollupRow | null | undefined,
+  houseCurrency?: string | null,
 ): ResolvedUnitCost {
   const rawWac = lot?.wac;
   if (lot?.has_invoice_cost && rawWac != null) {
+    if (!wacIsInHouseMoney(lot, houseCurrency))
+      return { unitCost: null, costBasis: "other_currency" };
     const wac = Number(rawWac);
     if (Number.isFinite(wac) && wac >= 0) {
       const covered = Number(lot?.wac_qty);
@@ -155,6 +176,19 @@ export function resolveUnitCost(
   return { unitCost: null, costBasis: "unknown" };
 }
 
+/** True unless the lots behind `wac` state a currency other than the house's. */
+function wacIsInHouseMoney(
+  lot: LotRollupRow,
+  houseCurrency: string | null | undefined,
+): boolean {
+  const count = Number(lot.cost_currency_count ?? 0);
+  if (Number.isFinite(count) && count > 1) return false;
+  const code =
+    typeof lot.cost_currency === "string" ? lot.cost_currency.trim().toUpperCase() : "";
+  const house = typeof houseCurrency === "string" ? houseCurrency.trim().toUpperCase() : "";
+  return !code || !house || code === house;
+}
+
 export interface CostCoverage {
   /** Rows the caller considered (e.g. on-hand rows, for a valuation). */
   total: number;
@@ -174,6 +208,7 @@ export function summarizeCostBasis(
     invoice_lot_wac: 0,
     invoice_lot_wac_partial: 0,
     last_purchase_price: 0,
+    other_currency: 0,
     unknown: 0,
   };
   let priced = 0;

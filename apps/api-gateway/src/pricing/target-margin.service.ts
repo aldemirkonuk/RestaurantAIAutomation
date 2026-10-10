@@ -84,6 +84,8 @@ interface TargetRow {
   default_pour_ml?: number | string | null;
   pour_size_confirmed_by?: string | null;
   pour_size_confirmed_at?: string | null;
+  /** The house's stated currency; its menu prices are in it (F-343). */
+  currency?: string | null;
 }
 
 /** NUMERIC arrives from PostgREST as a string; anything unparseable is "not set". */
@@ -105,7 +107,7 @@ export async function readHouseTargetMargin(
   const { data, error } = await client
     .from("restaurants")
     .select(
-      "target_margin_bottle_pct, target_margin_glass_pct, target_margin_band_pct, target_margin_set_by, target_margin_set_at, default_pour_ml, pour_size_confirmed_by, pour_size_confirmed_at",
+      "target_margin_bottle_pct, target_margin_glass_pct, target_margin_band_pct, target_margin_set_by, target_margin_set_at, default_pour_ml, pour_size_confirmed_by, pour_size_confirmed_at, currency",
     )
     .eq("id", restaurantId)
     .maybeSingle();

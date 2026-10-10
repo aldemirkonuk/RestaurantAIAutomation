@@ -330,6 +330,62 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     );
   });
 
+  describe("the settled cost says which money it is in (F-343)", () => {
+    const invoiceLine = {
+      data: [
+        {
+          document_id: "inv-1",
+          line_no: 1,
+          inventory_id: ITEM,
+          qty_bottles: 10,
+          unit_price: 20,
+          description: "Öküzgözü",
+          vendor_sku: null,
+        },
+      ],
+      error: null,
+    };
+    const stamped = () =>
+      db.writes.filter((w) => w.table === "inventory_lots" && w.verb === "update");
+
+    it("stamps the invoice's currency on the delivery's lots", async () => {
+      db.answers.procurement_document_lines = invoiceLine;
+      db.answers.procurement_documents = { data: [{ currency: "eur" }], error: null };
+      const res = await service.finaliseAtVerified(REST, DEL, USER);
+      expect(res.ok).toBe(true);
+      expect(stamped()).toEqual([
+        { table: "inventory_lots", verb: "update", payload: { unit_cost_currency: "EUR" } },
+      ]);
+    });
+
+    it("an invoice stating none takes the order's currency", async () => {
+      db.answers.deliveries = {
+        data: { id: DEL, state: "AGREED", order_id: "order-1" },
+        error: null,
+      };
+      db.answers.procurement_document_lines = invoiceLine;
+      db.answers.procurement_documents = { data: [{ currency: null }], error: null };
+      db.answers.procurement_orders = { data: { currency: "TRY" }, error: null };
+      await service.finaliseAtVerified(REST, DEL, USER);
+      expect(stamped()).toEqual([
+        { table: "inventory_lots", verb: "update", payload: { unit_cost_currency: "TRY" } },
+      ]);
+    });
+
+    it("two invoices naming two currencies stamp nothing, and the cost still posts", async () => {
+      db.answers.procurement_document_lines = invoiceLine;
+      db.answers.procurement_documents = {
+        data: [{ currency: "EUR" }, { currency: "USD" }],
+        error: null,
+      };
+      const res = await service.finaliseAtVerified(REST, DEL, USER);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.value.finalised).toHaveLength(1);
+      expect(stamped()).toEqual([]);
+    });
+  });
+
   it("an ACCEPTED proposal beats the invoice line it is about", async () => {
     db.answers.procurement_document_lines = {
       data: [

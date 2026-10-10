@@ -475,6 +475,14 @@ export class DeliveryStockService {
       });
     }
 
+    if (finalised.length)
+      await this.stampCostCurrency(
+        restaurantId,
+        deliveryId,
+        delivery.value.orderId,
+        finalised.map((f) => f.inventoryId),
+      );
+
     return { ok: true, value: { deliveryId, finalised, stillProvisional } };
   }
 
@@ -680,6 +688,84 @@ export class DeliveryStockService {
       ok: true,
       value: { state: row.state, orderId: row.order_id, orderInventoryId },
     };
+  }
+
+  /**
+   * Say which money the settled cost is in (F-343).
+   *
+   * The agreed price is off the INVOICE, so its currency is the invoice's;
+   * an invoice stating none takes the order's, as everywhere else
+   * (`providers.usual_currency` comment, 20260906170000). Two invoices on one
+   * delivery naming two codes leave the lots as they are — the order's code,
+   * from the database trigger — and the log says so; nothing converts.
+   *
+   * The cost is already posted and correct; a failure here is logged, never a
+   * refused verification.
+   */
+  private async stampCostCurrency(
+    restaurantId: string,
+    deliveryId: string,
+    orderId: string | null,
+    inventoryIds: string[],
+  ): Promise<void> {
+    const client = this.db.getClient();
+    const docs = await client
+      .from("document_deliveries")
+      .select("document_id")
+      .eq("delivery_id", deliveryId)
+      .eq("role", "invoice");
+    if (docs.error) {
+      this.logger.warn(
+        `delivery ${deliveryId}: its invoices could not be read (${docs.error.message}); its lots keep the order's currency`,
+      );
+      return;
+    }
+    const ids = ((docs.data ?? []) as { document_id: string }[]).map((d) => d.document_id);
+    const stated = new Set<string>();
+    if (ids.length) {
+      const read = await client
+        .from("procurement_documents")
+        .select("currency")
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids);
+      if (read.error) {
+        this.logger.warn(
+          `delivery ${deliveryId}: the invoice currency could not be read (${read.error.message}); its lots keep the order's`,
+        );
+        return;
+      }
+      for (const d of (read.data ?? []) as { currency: string | null }[])
+        if (typeof d.currency === "string" && d.currency.trim())
+          stated.add(d.currency.trim().toUpperCase());
+    }
+    if (stated.size > 1) {
+      this.logger.warn(
+        `delivery ${deliveryId}: its invoices name ${[...stated].join(" and ")}; its lots keep the order's currency`,
+      );
+      return;
+    }
+    let code: string | null = stated.size === 1 ? [...stated][0] : null;
+    if (!code && orderId) {
+      const order = await client
+        .from("procurement_orders")
+        .select("currency")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
+      code = (order.data as { currency?: string | null } | null)?.currency ?? null;
+    }
+    if (!code || !/^[A-Z]{3}$/.test(code)) return;
+    const write = await client
+      .from("inventory_lots")
+      .update({ unit_cost_currency: code })
+      .eq("restaurant_id", restaurantId)
+      .eq("delivery_id", deliveryId)
+      .eq("stock_state", "live")
+      .in("inventory_id", inventoryIds);
+    if (write.error)
+      this.logger.warn(
+        `delivery ${deliveryId}: the lots' cost currency (${code}) was not written (${write.error.message})`,
+      );
   }
 
   /**
