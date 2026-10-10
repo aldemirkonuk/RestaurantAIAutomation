@@ -253,6 +253,13 @@ export interface AuthContextType {
   logout: () => Promise<boolean>;
   refreshToken: () => Promise<void>;
   refreshBranches: () => Promise<void>;
+  /**
+   * Re-read `/auth/me` into `user` after the person edits their own record
+   * (/profile). Nothing else refreshes it, so a saved display name stayed the
+   * old one on the page and in the header until a reload (sim F-282).
+   * Optional only so hand-built providers (Storybook) need not stub it.
+   */
+  refreshUser?: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -679,6 +686,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user?.userId) return;
     await fetchAndSetBranches(user.restaurantId);
   }, [user, fetchAndSetBranches]);
+
+  const refreshUser = useCallback(async () => {
+    const me = await api.get("/api/v1/auth/me");
+    setUser(userFrom(me.data.user, localStorage.getItem("accessToken")));
+  }, []);
 
   // Sync restaurant context when user changes
   useEffect(() => {
@@ -1231,6 +1243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     refreshToken: refreshTokenFn,
     refreshBranches,
+    refreshUser,
     isAuthenticated: !!user,
   };
 

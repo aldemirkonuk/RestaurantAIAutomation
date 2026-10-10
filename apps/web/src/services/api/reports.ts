@@ -131,6 +131,16 @@ export async function listReportsWithTotal(
   return { reports, total: typeof data?.total === 'number' ? data.total : null }
 }
 
+/**
+ * GET /reports/:id — one report by id, for a share link to a report older
+ * than the list's window. A 404 is the gateway's single answer for absent,
+ * another house's, or never written (reports.service.ts `getReport`).
+ */
+export async function getReport(id: string): Promise<GeneratedReport> {
+  const { data } = await apiClient.get<GeneratedReport>(`/reports/${encodeURIComponent(id)}`)
+  return data
+}
+
 export const REPORT_TYPES: readonly ReportType[] = [
   'inventory_summary',
   'sales_analysis',

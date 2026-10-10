@@ -23,7 +23,9 @@ import { Wordmark } from '@/components/mudavym';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   REPORT_TYPES,
+  getReport,
   getReportCrossFile,
+  listReportsWithTotal,
   refileReport,
   type GeneratedReport,
   type ReportType,
@@ -398,7 +400,62 @@ export default function DocumentsReportsNext() {
     if (docParam) setSelectedId(docParam);
   }, [docParam]);
 
-  const selected = data.reports.find((r) => r.id === selectedId) ?? null;
+  /**
+   * Past the newest 20 (sim F-284). The drawer used to list 20 of the 100 it
+   * read and no more, so reports 21 onward could not be opened. "Show more"
+   * widens the list 20 at a time, and past the 100 already read it fetches
+   * the next page from the gateway, which takes an offset.
+   */
+  const { activeRestaurantId } = useAuth();
+  const [shown, setShown] = useState(20);
+  const [older, setOlder] = useState<GeneratedReport[]>([]);
+  const [olderState, setOlderState] = useState<'idle' | 'loading' | 'error'>('idle');
+  useEffect(() => {
+    // Another house's older pages are not this house's.
+    setShown(20);
+    setOlder([]);
+    setOlderState('idle');
+  }, [activeRestaurantId]);
+  const loaded = data.reports.concat(older.filter((o) => !data.reports.some((r) => r.id === o.id)));
+  const total = data.reportsTotal;
+  const moreToShow = total !== null ? shown < total : loaded.length > shown;
+  const showMore = async () => {
+    const want = shown + 20;
+    if (loaded.length >= want || (total !== null && loaded.length >= total)) {
+      setShown(want);
+      return;
+    }
+    setOlderState('loading');
+    try {
+      const page = await listReportsWithTotal({
+        limit: SO_SERVER_WINDOWS.REPORTS,
+        offset: loaded.length,
+      });
+      setOlder((prev) => prev.concat(page.reports));
+      setShown(want);
+      setOlderState('idle');
+    } catch {
+      setOlderState('error');
+    }
+  };
+
+  /**
+   * A share link to a report outside what the page has read is looked up by
+   * id rather than declared gone: an OLD report is not a deleted one. Only
+   * the gateway's 404 earns "no longer here".
+   */
+  const listed = loaded.find((r) => r.id === selectedId) ?? null;
+  const lookupQ = useQuery<GeneratedReport>({
+    queryKey: ['sorting-office', 'report', activeRestaurantId ?? '', selectedId],
+    queryFn: () => getReport(selectedId as string),
+    enabled: !!selectedId && data.reportsKnown && !listed,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const lookupGone =
+    lookupQ.isError &&
+    (lookupQ.error as { response?: { status?: number } } | null)?.response?.status === 404;
+  const selected = listed ?? (lookupQ.data && lookupQ.data.id === selectedId ? lookupQ.data : null);
 
   return (
     <div
@@ -598,7 +655,7 @@ export default function DocumentsReportsNext() {
                   digests · variance · sales reads
                 </span>
                 <div style={{ marginTop: 4, maxHeight: 132, overflowY: 'auto' }}>
-                  {data.reports.slice(0, 20).map((r) => (
+                  {loaded.slice(0, shown).map((r) => (
                     <button
                       key={r.id}
                       type="button"
@@ -623,7 +680,7 @@ export default function DocumentsReportsNext() {
                     </button>
                   ))}
                 </div>
-                {data.reportsTotal !== null && data.reportsTotal > 20 && (
+                {moreToShow && (
                   <p
                     style={{
                       fontSize: 11.5,
@@ -632,8 +689,27 @@ export default function DocumentsReportsNext() {
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
-                    {data.reportsTotal - Math.min(data.reports.length, 20)} more filed — the newest
-                    20 are listed
+                    {total !== null
+                      ? `${total - Math.min(loaded.length, shown)} more filed — the newest ${Math.min(loaded.length, shown)} are listed. `
+                      : ''}
+                    <button
+                      type="button"
+                      onClick={() => void showMore()}
+                      disabled={olderState === 'loading'}
+                      className="so-link"
+                      style={{
+                        background: 'none',
+                        border: 0,
+                        padding: 0,
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        color: 'var(--seal-deep, #14515C)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {olderState === 'loading' ? 'Loading older reports…' : 'Show older reports'}
+                    </button>
+                    {olderState === 'error' && ' — the older reports could not be loaded. Try again.'}
                   </p>
                 )}
               </section>
@@ -787,10 +863,19 @@ export default function DocumentsReportsNext() {
           <section aria-label="Reading pane">
             {selected ? (
               <ReadingPane key={selected.id} report={selected} onRefiled={data.refetch} />
-            ) : selectedId && data.reportsKnown ? (
+            ) : selectedId && data.reportsKnown && lookupGone ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                 That report is no longer here — it may have been deleted, or it belongs to a
                 different restaurant than the one you're in.
+              </p>
+            ) : selectedId && data.reportsKnown && lookupQ.isError ? (
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+                That report could not be opened just now. That does not mean it is gone — reload
+                the page to try again.
+              </p>
+            ) : selectedId && data.reportsKnown ? (
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
+                Opening an older report…
               </p>
             ) : data.reportsKnown && data.reports.length === 0 ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>

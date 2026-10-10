@@ -43,6 +43,8 @@ export interface ProcurementDocument {
    * fact to state, not a dollar sign to assume.
    */
   currency?: string | null
+  /** The stored original's MIME type (`procurement_documents.content_type`); null when not recorded. */
+  content_type?: string | null
   /**
    * Whether this document's money may be read, and the sentence saying why not.
    *

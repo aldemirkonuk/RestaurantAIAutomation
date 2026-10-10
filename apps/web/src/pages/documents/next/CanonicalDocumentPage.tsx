@@ -392,6 +392,38 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
 
   if (q.isLoading) return shell(<p style={{ fontSize: 12 }}>Reading the document…</p>)
 
+  /**
+   * A 404 is an answer, not a broken read: no document with this id lives in
+   * this house (a mistyped link, or one from another restaurant). It says so
+   * plainly and offers no "Try again", which would only ask the same question
+   * and get the same answer (sim F-286).
+   */
+  const notFound =
+    (q.error as { response?: { status?: number } } | null)?.response?.status === 404
+  if (q.isError && notFound)
+    return shell(
+      <section
+        role="alert"
+        data-testid="canonical-not-found"
+        style={{
+          border: '1px solid var(--paper-2, #EAE4D8)',
+          borderRadius: 10,
+          padding: '12px 14px',
+        }}
+      >
+        <h1
+          style={{ margin: 0, fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: 'inherit' }}
+        >
+          There is no document at this address.
+        </h1>
+        <p style={{ margin: '4px 0 0', fontSize: 11.5 }}>
+          Nothing in this restaurant matches this link. It may be mistyped, or it may be
+          from another restaurant you work with — switch to that restaurant and open it
+          again.
+        </p>
+      </section>,
+    )
+
   if (q.isError || !res || !doc)
     return shell(
       <section
@@ -540,9 +572,9 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
           offered — an ambiguous gate is worse than no gate. */}
       {soleDelivery && (
         <div
+          className="cd-gates"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
             gap: 10,
             marginTop: 10,
           }}
@@ -634,10 +666,16 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
         </div>
       )}
 
+      {/* The two columns live on `.cd-body` in canonical-document.css, not
+          inline: an inline template outranks every media query, so on a phone
+          it left the sheet ~57px wide beside a 260px original (sim F-281).
+          Below 640px the class stacks them; embedded is always one column. */}
       <div
+        className={embedded ? undefined : 'cd-body'}
+        data-testid="cd-body"
         style={{
           display: 'grid',
-          gridTemplateColumns: embedded ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(260px, 320px)',
+          ...(embedded ? { gridTemplateColumns: 'minmax(0, 1fr)' } : {}),
           gap: 14,
           marginTop: 10,
           alignItems: 'start',
@@ -706,7 +744,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             contentType={res.original.contentType}
             filename={res.original.filename}
             /* The route only signs a path it found, so a signed URL implies one
-               existed; `filename` is what PaperPane uses to spot a PDF. */
+               existed; PaperPane reads `contentType` first, then `filename`. */
             storagePath={res.original.imageUrl ? (res.original.filename ?? 'stored') : null}
             sourceChannel={res.intake.sourceChannel}
             fetchedAt={fetchedAt}
