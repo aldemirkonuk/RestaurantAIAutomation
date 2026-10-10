@@ -78,6 +78,7 @@ export const mockAuthValue: AuthContextType = {
   // when the call fails: the standard set, flagged `assumed`. See ADR 0024.
   resolveSignInMethods: async (email: string) => fallbackSignInMethods(email),
   logout: async () => true,
+  deleteAccountAndSignOut: async () => {},
   refreshToken: noop,
   refreshBranches: noop,
   isAuthenticated: true,
