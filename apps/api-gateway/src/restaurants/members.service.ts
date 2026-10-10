@@ -17,6 +17,7 @@ import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import { stopGrantsOnLeaving } from "../integrations/stop-grants-on-leaving";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
+import { leavesNoOwner, NO_OWNER_LEFT } from "./last-owner";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -285,6 +286,9 @@ export class MembersService {
       .eq("is_active", true);
 
     if (uraErr) {
+      // The database's own last-owner guard (F-582): two owners demoting each
+      // other at once both pass the count above; the second write is refused.
+      if (leavesNoOwner(uraErr)) throw new BadRequestException(NO_OWNER_LEFT);
       this.logger.error(
         `updateMemberRole URA update failed: ${uraErr.message}`,
       );
@@ -513,6 +517,7 @@ export class MembersService {
       .eq("restaurant_id", restaurantId);
 
     if (error) {
+      if (leavesNoOwner(error)) throw new BadRequestException(NO_OWNER_LEFT);
       this.logger.error(`removeMember delete failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to remove member");
     }

@@ -2264,6 +2264,33 @@ describe("K5 — every door out of a house releases the person's shifts (ADR 024
     expect(told.map((n) => n.message)).toEqual([expect.stringMatching(/^An owner removed you/)]);
   });
 
+  it("the Team page names an owner who removes someone as an owner, not a manager (F-578)", async () => {
+    const db = world();
+
+    await teamOf(db).deleteMember(OWNER, RID, "m-staff");
+
+    const told = db.tables.notifications.filter((n) => n.user_id === STAFF);
+    expect(told.map((n) => n.message)).toEqual([expect.stringMatching(/^An owner removed you/)]);
+  });
+
+  it("the database's last-owner refusal is answered in plain words, and access stays (F-582)", async () => {
+    // Two owners removing each other at the same moment both pass the count;
+    // the trigger user_restaurant_access_keeps_an_owner refuses the second.
+    const db = world();
+    db.errors["user_restaurant_access:delete"] = {
+      code: "23514",
+      message: "house_keeps_an_owner: this change would leave the house with no owner",
+    };
+
+    await expect(teamOf(db).deleteMember(OWNER, RID, "m-staff")).rejects.toThrow(
+      new ForbiddenException(
+        "That would leave the restaurant with no owner. Another owner may have just changed their own role. Make someone else an owner first.",
+      ),
+    );
+    expect(db.tables.user_restaurant_access.some((r) => r.user_id === STAFF)).toBe(true);
+    expect(db.tables.team_members.some((m) => m.id === "m-staff")).toBe(true);
+  });
+
   it("leaving on one's own is the same removal, and the owners and managers are told what opened", async () => {
     const db = world();
 

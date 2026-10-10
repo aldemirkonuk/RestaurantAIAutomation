@@ -30,7 +30,7 @@ export interface StubDb {
   /** Every operation the code under test performed, in order. */
   ops: RecordedOp[];
   /** Force an error: key is `"<table>:<op>"`. */
-  errors: Record<string, { message: string }>;
+  errors: Record<string, { message: string; code?: string }>;
   /**
    * Optional real column list per table, cited to its migration. A table named
    * here answers 42703 to a select naming a column it does not have, the way
@@ -98,7 +98,7 @@ function matches(row: Row, filters: Filter[]): boolean {
 
 export function makeStubDb(
   tables: Record<string, Row[]> = {},
-  errors: Record<string, { message: string }> = {},
+  errors: Record<string, { message: string; code?: string }> = {},
   schema?: Record<string, string[]>,
 ): StubDb {
   const db: StubDb = {

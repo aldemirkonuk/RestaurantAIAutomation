@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
@@ -593,6 +594,22 @@ describe("MembersService.updateMemberRole — owners hand over, and one owner al
       service(db).updateMemberRole(MANAGER, RID, MANAGER, "owner"),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(roleOf(db, MANAGER)).toBe("manager");
+  });
+
+  it("answers the database's last-owner refusal in plain words when two owners demote each other at once (F-582)", async () => {
+    // Each owner passes the gateway's checks before either write lands; the
+    // trigger user_restaurant_access_keeps_an_owner refuses the second write.
+    const db = seed();
+    db.errors["user_restaurant_access:update"] = {
+      code: "23514",
+      message: "house_keeps_an_owner: this change would leave the house with no owner",
+    };
+
+    const refused = service(db).updateMemberRole(OWNER, RID, SECOND_OWNER, "manager");
+    await expect(refused).rejects.toBeInstanceOf(BadRequestException);
+    await expect(refused).rejects.toThrow(/no owner/);
+    expect(db.tables.system_audit_log).toHaveLength(0);
+    expect(db.tables.notifications).toHaveLength(0);
   });
 
   it("lets an owner demote a co-owner, since the demoting owner remains", async () => {
