@@ -160,14 +160,18 @@ function storedTarget(row: any): {
 export const MIN_BASELINE_N = 3;
 
 /**
- * Period-over-period needs comparable windows. Two sums are only comparable
- * when they cover the same number of trading days, so the comparison is
- * withheld unless both windows carry at least this many observed days and
- * their observed-day counts differ by no more than one.
+ * Period-over-period needs comparable windows. A week is compared with the
+ * week before like for like: only weekdays open in BOTH weeks are summed
+ * (`matchedPeriodOverPeriod`), and the comparison is withheld unless at least
+ * this many such days remain. A window that is not whole weeks (the 30-day
+ * spend window) keeps the older rule — both windows carry at least this many
+ * observed days and their counts differ by no more than one — and sums only
+ * observed days, so a manager-excluded day never rides inside the total.
  *
  * Without this the running gateway emitted, on 2026-09-03:
  *   "sales fell 100% vs the previous week ($0 vs $2.4k)"
- * — from a current window with no records in it at all.
+ * — from a current window with no records in it at all; and, before F-707,
+ * "sales fell 14% vs the previous week" about one holiday closure.
  */
 export const MIN_PERIOD_OBSERVED = 4;
 export const MAX_PERIOD_OBSERVED_GAP = 1;
@@ -1290,7 +1294,7 @@ export class InsightGeneratorService {
       wine: string;
       wineId: string;
       days: string[];
-      cmp: E.PeriodComparison;
+      cmp: E.MatchedPeriodComparison;
     } | null = null;
     const namesUnread = readWasRefused(bundle, "restaurant_inventory");
     // The two weeks are compared only when the HOUSE filed records on enough
@@ -1309,13 +1313,26 @@ export class InsightGeneratorService {
       curObs >= MIN_PERIOD_OBSERVED &&
       prevObs >= MIN_PERIOD_OBSERVED &&
       Math.abs(curObs - prevObs) <= MAX_PERIOD_OBSERVED_GAP;
+    // Within those weeks, a wine's quiet day is a real zero only when the
+    // house was open: its weeks are compared over the days the house traded
+    // in both (F-707).
+    const houseOpen = new Set(dates.filter((_, i) => observed[i]));
     for (const [wineId, wineRows] of namesUnread || !weeksComparable
       ? []
       : byWine) {
       const daily = this.toDaily(wineRows, 28, bundle.zone);
-      const s = daily.values;
-      const cmp = E.periodOverPeriod(s, 7);
-      if (!cmp || cmp.deltaPct === null || cmp.previous < 2) continue;
+      const cmp = E.matchedPeriodOverPeriod(
+        daily.values,
+        daily.dates.map((d) => houseOpen.has(d)),
+        7,
+      );
+      if (
+        !cmp ||
+        cmp.matchedDays < MIN_PERIOD_OBSERVED ||
+        cmp.deltaPct === null ||
+        cmp.previous < 2
+      )
+        continue;
       if (
         !bestMove ||
         Math.abs(cmp.deltaPct) > Math.abs(bestMove.cmp.deltaPct ?? 0)
@@ -1337,6 +1354,8 @@ export class InsightGeneratorService {
         baseline: bestMove.cmp.previous,
         deltaPct: bestMove.cmp.deltaPct,
         windowLabel: "week",
+        openDays:
+          bestMove.cmp.matchedDays < 7 ? bestMove.cmp.matchedDays : undefined,
       };
       const movedId = bestMove.wineId;
       const fortnight = new Set(bestMove.days);
@@ -2262,15 +2281,31 @@ export class InsightGeneratorService {
 
     // 2. Period over period — only between comparable windows.
     const window = params.periodWindow ?? 7;
-    const obsIn = (from: number, to: number) =>
-      observed.slice(from, to).filter(Boolean).length;
-    const curObs = obsIn(values.length - window, values.length);
-    const prevObs = obsIn(values.length - 2 * window, values.length - window);
-    const comparable =
-      curObs >= MIN_PERIOD_OBSERVED &&
-      prevObs >= MIN_PERIOD_OBSERVED &&
-      Math.abs(curObs - prevObs) <= MAX_PERIOD_OBSERVED_GAP;
-    const cmp = comparable ? E.periodOverPeriod(values, window) : null;
+    let cmp: E.PeriodComparison | null = null;
+    let openDays: number | undefined;
+    if (window % 7 === 0) {
+      // Whole weeks: like for like, weekday against weekday (F-707).
+      const m = E.matchedPeriodOverPeriod(values, observed, window);
+      if (m && m.matchedDays >= MIN_PERIOD_OBSERVED) {
+        cmp = m;
+        if (m.matchedDays < window) openDays = m.matchedDays;
+      }
+    } else {
+      const obsIn = (from: number, to: number) =>
+        observed.slice(from, to).filter(Boolean).length;
+      const curObs = obsIn(values.length - window, values.length);
+      const prevObs = obsIn(values.length - 2 * window, values.length - window);
+      const comparable =
+        curObs >= MIN_PERIOD_OBSERVED &&
+        prevObs >= MIN_PERIOD_OBSERVED &&
+        Math.abs(curObs - prevObs) <= MAX_PERIOD_OBSERVED_GAP;
+      cmp = comparable
+        ? E.periodOverPeriod(
+            values.map((v, i) => (observed[i] ? v : 0)),
+            window,
+          )
+        : null;
+    }
     if (cmp && cmp.deltaPct !== null && cmp.direction !== "flat") {
       const ev: InsightEvidence = {
         measureLabel,
@@ -2280,6 +2315,7 @@ export class InsightGeneratorService {
         baseline: cmp.previous,
         deltaPct: cmp.deltaPct,
         windowLabel: params.windowLabel ?? "week",
+        openDays,
       };
       push(
         this.record(
@@ -2289,7 +2325,7 @@ export class InsightGeneratorService {
           ev,
           {
             effectPct: cmp.deltaPct,
-            n: window * 2,
+            n: (openDays ?? window) * 2,
             periodKey: windowGrain(window, dates[values.length - 1]),
           },
         ),
@@ -2297,12 +2333,16 @@ export class InsightGeneratorService {
     }
 
     // 3. Trend (last 28 days, weekly slope as % of level) — over real days.
+    //    Each open day keeps its calendar position (F-708), so the slope is
+    //    per calendar day and `* 7` is per week, not per seven open days; the
+    //    level it is a share of is the mean of an open day.
     const recent = values.slice(-28);
     const recentObs = observed.slice(-28);
     const trendSeries = recent.filter((_, i) => recentObs[i]);
+    const trendAt = recent.flatMap((_, i) => (recentObs[i] ? [i] : []));
     const trend =
       trendSeries.length >= MIN_TREND_OBSERVED
-        ? E.trendPerPeriodPct(trendSeries)
+        ? E.trendPerPeriodPct(trendSeries, trendAt)
         : null;
     if (trend !== null && Math.abs(trend * 7) >= 0.05) {
       const ev: InsightEvidence = {
@@ -2311,6 +2351,7 @@ export class InsightGeneratorService {
         currency,
         trendPctPerWeek: trend * 7,
         n: trendSeries.length,
+        spanDays: recent.length,
       };
       push(
         this.record(

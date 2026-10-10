@@ -43,6 +43,7 @@ import {
   confirmedWinePourFrom,
   readHouseTargetMargin,
 } from "../pricing/target-margin.service";
+import { DayExclusionsService } from "./insights/day-exclusions.service";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -69,6 +70,11 @@ export class AdvancedAnalyticsService {
     private readonly analyticsService: AnalyticsService,
     private readonly insightGenerator: InsightGeneratorService,
     private readonly goalsService: GoalsService,
+    // Defaulted so the specs that build this service by hand keep working;
+    // Nest injects the module's instance (analytics.module.ts).
+    private readonly dayExclusions: DayExclusionsService = new DayExclusionsService(
+      dbService,
+    ),
   ) {}
 
   // =========================================================================
@@ -710,11 +716,32 @@ export class AdvancedAnalyticsService {
       if (r.date) byDay.set(r.date, (byDay.get(r.date) || 0) + r.value);
     const values = dates.map((day) => byDay.get(day) || 0);
 
-    const weekday = E.dayOfWeekProfile(dates, values);
+    // The weekday profile reads open days only (F-709): a day with no
+    // movement on record is a closure, not a zero, and a day the manager
+    // excluded is not a trading day — the same rule the insight generator
+    // keeps. Zero-filled, a house shut on Mondays was told Monday is its
+    // weakest day and to move deliveries there.
+    const exclusions = await this.dayExclusions.load(restaurantId);
+    const openIdx = dates.flatMap((d, i) =>
+      byDay.has(d) && !exclusions.dates.has(d) ? [i] : [],
+    );
+    const weekday = E.dayOfWeekProfile(
+      openIdx.map((i) => dates[i]),
+      openIdx.map((i) => values[i]),
+    );
     // `weekday.best`/`.worst` break an exact tie by weekday order, so a week
     // with no movement reported Sunday as both the busiest and the quietest
     // night. An extreme that is shared is not an extreme (ADR 0020).
-    const extremes = E.separableExtremes(weekday.profiles);
+    // An unreadable exclusion list could leave a buyout inside a weekday, so
+    // no weekday is named over it.
+    const extremes = exclusions.readable
+      ? E.separableExtremes(weekday.profiles)
+      : { best: null, worst: null, tie: false };
+    const separated = E.weekdayExtremesSeparated(
+      weekday.profiles,
+      extremes.best,
+      extremes.worst,
+    );
     const decomposition = E.seasonalDecompose(values, 7);
     const trend28 = E.trendPerPeriodPct(values.slice(-28));
 
@@ -770,12 +797,24 @@ export class AdvancedAnalyticsService {
       worstDay: extremes.worst ? E.WEEKDAY_NAMES[extremes.worst.weekday] : null,
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
+      /**
+       * True only when the best and worst days stand apart from the rest
+       * (`weekdayExtremesSeparated`, F-709). False means "tended to be".
+       */
+      separated,
       basis: {
-        weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log, each line filed on the house's day (${zone}); a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        weekday: `mean bottles per open weekday over the last ${sinceDays} days of wine_consumption_log, each line filed on the house's day (${zone}); a day with no movement on record or excluded by the manager is left out, and a weekday with no open day is absent from weekdayProfile rather than reported as 0`,
         units: unitsBasisSentence(unitsCoverage, "series"),
-        extremes: extremes.tie
-          ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
-          : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
+        extremes: !exclusions.readable
+          ? "bestDay/worstDay are null: the manager's excluded days could not be read, so an excluded day may sit inside a weekday's mean"
+          : weekday.profiles.length === 0
+            ? "bestDay/worstDay are null: no open day with movement is on record in the window"
+            : extremes.tie
+              ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
+              : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
+        separation: separated
+          ? `bestDay and worstDay each stand apart from the next weekday by more than the two days' spreads, over at least ${E.MIN_WEEKS_TO_SEPARATE} weeks each`
+          : `bestDay/worstDay, when named, are not yet separated from the next weekday by more than the two days' spreads over at least ${E.MIN_WEEKS_TO_SEPARATE} weeks each`,
       },
       weeklySeasonalFactors: decomposition
         ? decomposition.seasonal.slice(0, 7)

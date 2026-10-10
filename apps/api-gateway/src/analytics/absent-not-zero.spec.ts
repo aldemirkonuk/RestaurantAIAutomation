@@ -279,8 +279,58 @@ describe("seasonality withholds a day it cannot separate", () => {
     const out: any = await advanced({ restaurants: UTC_HOUSE }).getSeasonality(RESTAURANT);
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
-    expect(out.tie).toBe(true);
-    expect(out.basis.extremes).toContain("arbitrary tie-break");
+    // F-709: days with no movement are closures, not zeros, so nothing is
+    // left to tie — the basis says no open day is on record.
+    expect(out.tie).toBe(false);
+    expect(out.separated).toBe(false);
+    expect(out.basis.extremes).toContain("no open day");
+  });
+
+  it("does not rank a weekday the house is shut, or a day the manager excluded (F-709)", async () => {
+    // Nine weeks, closed every Monday; one excluded buyout lifts a Sunday.
+    const rows = consumption(63, (i) => {
+      const wd = new Date(Date.now() - (62 - i) * 86400000).getUTCDay();
+      return wd === 6 ? 30 : wd === 0 ? 2 : 10;
+    }).filter((r) => new Date(r.created_at).getUTCDay() !== 1);
+    const sunday = rows.find((r) => new Date(r.created_at).getUTCDay() === 0)!;
+    sunday.quantity = 500;
+    const buyout = sunday.created_at.substring(0, 10);
+    const out: any = await advanced({
+      restaurants: UTC_HOUSE,
+      wine_consumption_log: rows,
+      analytics_day_exclusions: [{ business_date: buyout }],
+    }).getSeasonality(RESTAURANT);
+    expect(out.weekdayProfile.map((p: any) => p.day)).not.toContain("Monday");
+    expect(out.worstDay).toBe("Sunday");
+    expect(out.bestDay).toBe("Saturday");
+  });
+
+  it("calls a gap reliable only when it stands clear of the spread (F-709)", async () => {
+    // Saturday 20.1 against Friday 20.0, with a wobble of ±3 on every day.
+    const noisy = consumption(63, (i) => {
+      const wd = new Date(Date.now() - (62 - i) * 86400000).getUTCDay();
+      const base = wd === 6 ? 20.1 : wd === 5 ? 20 : wd === 0 ? 5 : 10;
+      return base + (i % 2 === 0 ? 3 : -3);
+    });
+    const close: any = await advanced({
+      restaurants: UTC_HOUSE,
+      wine_consumption_log: noisy,
+    }).getSeasonality(RESTAURANT);
+    expect(close.bestDay).toBe("Saturday");
+    expect(close.separated).toBe(false);
+
+    const clear = consumption(63, (i) => {
+      const wd = new Date(Date.now() - (62 - i) * 86400000).getUTCDay();
+      const base = wd === 6 ? 40 : wd === 0 ? 2 : 10 + wd;
+      return base + (i % 2 === 0 ? 0.5 : -0.5);
+    });
+    const apart: any = await advanced({
+      restaurants: UTC_HOUSE,
+      wine_consumption_log: clear,
+    }).getSeasonality(RESTAURANT);
+    expect(apart.bestDay).toBe("Saturday");
+    expect(apart.worstDay).toBe("Sunday");
+    expect(apart.separated).toBe(true);
   });
 
   it("does not report the same day as both busiest and quietest", async () => {

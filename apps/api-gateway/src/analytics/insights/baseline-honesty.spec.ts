@@ -481,3 +481,70 @@ describe("a dismissal the generator honours", () => {
     expect(hit.suppression.key).toBe(hit.suppression.keys.insight);
   });
 });
+
+describe("week over week compares open days like for like (F-707)", () => {
+  const flat = (rate: number, back: number[] = []) => {
+    const revenue = new Map<number, number>();
+    for (let b = 90; b >= 1; b--) if (!back.includes(b)) revenue.set(b, rate);
+    return revenue;
+  };
+  const weekOverWeek = async (s: Scenario) =>
+    (await generatorFor(s).generate("r1", { persist: false })).insights.find(
+      (i) => i.candidateKey === WEEK_OVER_WEEK,
+    );
+
+  it("one closed day is not a 14% slide", async () => {
+    const hit = await weekOverWeek({ revenue: flat(800, [3]) });
+    expect(hit).toBeUndefined();
+  });
+
+  it("a day the manager excluded leaves both weeks, not just the count", async () => {
+    // The sim's probe: one excluded 9,000 buyout against plain 1,000 days
+    // printed "sales rose 114% vs the previous week ($15.0k vs $7.0k)".
+    const revenue = flat(1000);
+    revenue.set(3, 9000);
+    const hit = await weekOverWeek({ revenue, excluded: [dayBack(3)] });
+    expect(hit).toBeUndefined();
+  });
+
+  it("a real change across a closure is measured over the days open in both", async () => {
+    const revenue = flat(1000, [3]);
+    for (let b = 1; b <= 7; b++) if (b !== 3) revenue.set(b, 1200);
+    const hit = await weekOverWeek({ revenue });
+    expect(hit?.sentence).toBe(
+      "sales rose 20% vs the previous week, counting only the 6 days open in both ($7.2k vs $6.0k).",
+    );
+  });
+
+  it("is withheld when too few days were open in both weeks", async () => {
+    const revenue = flat(1000, [1, 2, 3, 4]);
+    for (let b = 5; b <= 7; b++) revenue.set(b, 1500);
+    expect(await weekOverWeek({ revenue })).toBeUndefined();
+  });
+});
+
+describe("the trend sentence counts open days and keeps calendar time (F-708)", () => {
+  it("a house shut two days a week is not read as growing faster per week", async () => {
+    // Growth of 20 a calendar day; closed Sundays and Mondays.
+    const revenue = new Map<number, number>();
+    for (let b = 90; b >= 1; b--) {
+      const wd = weekdayOf(dayBack(b));
+      if (wd === 0 || wd === 1) continue;
+      revenue.set(b, 1000 + 20 * (90 - b));
+    }
+    const out = await generatorFor({ revenue }).generate("r1", { persist: false });
+    const hit = out.insights.find(
+      (i) => i.candidateKey === "overall.revenue.trend_direction",
+    );
+    expect(hit).toBeDefined();
+    const open = Array.from({ length: 28 }, (_, i) => 28 - i).filter((b) =>
+      revenue.has(b),
+    );
+    const level = open.reduce((a, b) => a + revenue.get(b)!, 0) / open.length;
+    // Per calendar week: 7 days × 20, as a share of an open day's level.
+    expect(hit!.evidence.trendPctPerWeek).toBeCloseTo((7 * 20) / level, 6);
+    expect(hit!.sentence).toContain(
+      `per week over the ${open.length} open days in the last 28.`,
+    );
+  });
+});

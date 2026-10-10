@@ -120,14 +120,19 @@ describe('PromotionsNext — loading / failed / empty', () => {
 
   it('a real empty table says so, with the ledger window behind it', () => {
     mockRead.current = {
-      data: { read_at: '2026-09-18T12:00:00Z', house: HOUSE, offers: [], ledger: { window_days: 540, since: '2025-03-12', paid_lines: 0, house_sightings: 0, market_sightings: 0, skipped_sightings: 0 } },
+      data: { read_at: '2026-09-18T12:00:00Z', house: HOUSE, offers: [], ledger: { window_days: 540, since: '2025-03-12', paid_lines: 0, house_sightings: 0, market_sightings: 0, skipped_sightings: 0, oldest_paid: null } },
       isLoading: false,
       isError: false,
       error: null,
     };
     renderPage();
     expect(screen.getByText(/No offers on the table/)).toBeInTheDocument();
-    expect(screen.getAllByText(/540 days/).length).toBeGreaterThan(0);
+    // F-706: no health claim, and no "history behind it" when the house has paid nothing in the window.
+    expect(screen.queryByText(/active and listening/)).not.toBeInTheDocument();
+    expect(screen.getByText(/once a vendor's email offering one is read/)).toBeInTheDocument();
+    expect(screen.queryByText(/price history behind it/)).not.toBeInTheDocument();
+    // Integ: F-175's sentence (HEAD) stands for F-706's — no prices paid are named, not a window.
+    expect(screen.getByText(/No prices paid are on file yet/)).toBeInTheDocument();
   });
 });
 

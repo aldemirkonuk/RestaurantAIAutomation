@@ -1028,7 +1028,9 @@ describe("the week's shape files each bottle on the house's day (F-185, ADR 0296
       t.setUTCHours(3, 0, 0, 0);
       return new Date(t.getTime() - d * 86400000).toISOString();
     };
-    const rows = [5, 12, 19, 26].map((d) => ({
+    // F-709 ranks only open days, so the evening's weekday is set against a
+    // quieter one (one bottle the evening before) rather than zero-filled days.
+    const rows = [5, 12, 19, 26, 5, 12, 19, 26, 6, 13, 20, 27].map((d) => ({
       ...on(1, 0, BOTTLE),
       created_at: evening(d),
     }));
@@ -1369,5 +1371,25 @@ describe("menu engineering: a wine with no bottle price", () => {
       { id: "inv-2", name: "Item 2", reason: "glass_pour_unconfirmed" },
       { id: "inv-3", name: "Item 3", reason: "no_price" },
     ]);
+  });
+});
+
+describe("the wine mover compares the days the house was open in both weeks (F-707)", () => {
+  it("a day the whole house was shut does not move a wine 14%", async () => {
+    // Two wines, steady every day, and nothing at all sold three days back.
+    const steady = (n: number) =>
+      everyDay(n, 1, 85, BOTTLE, 750, n * 2).filter(
+        (l) => l.created_at !== noonDaysAgo(3),
+      );
+    const out = await familyOver(
+      {
+        restaurant_inventory: [item(1), item(2)],
+        wine_consumption_log: [...steady(1), ...steady(2)],
+      },
+      "computeConsumptionFamily",
+    );
+    const mover = keyed(out, "wine.bottles.vs_prev_period_7d");
+    expect(mover?.evidence.deltaPct ?? 0).toBe(0);
+    for (const r of out) expect(r.sentence ?? "").not.toContain("14%");
   });
 });
