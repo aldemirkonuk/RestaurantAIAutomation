@@ -66,6 +66,7 @@ import {
   unprovenPasswordHasLapsed,
 } from "./unproven-address";
 import { normalizeEmail } from "../passkeys/sign-in-codes.service";
+import { escapeLikeWildcards } from "../distributor-discovery/distributor-query";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -2515,6 +2516,38 @@ export class AuthService {
   }
 
   /**
+   * The house's team_members row for exactly this address, case aside.
+   *
+   * This was `.ilike("email", email)`, where `%` and `_` are wildcards (and
+   * PostgREST reads `*` as `%`); @IsEmail lets all three through. So inviting
+   * `ana_x@…` took over the pending row of `ana.x@…`, and someone signed up as
+   * `%@tuzlu.com` claimed whichever row came first (F-189). The pattern now
+   * escapes `%`, `_` and `\`, turns `*` into one-character `_` (it cannot be
+   * escaped past PostgREST), and the exact comparison here decides.
+   * `team_members.email` is stored as typed, so `.eq` on a lower-cased
+   * address would miss rows written in mixed case.
+   */
+  private async findTeamMemberByEmail(
+    restaurantId: string,
+    email: string,
+    columns: string,
+  ): Promise<any | null> {
+    const wanted = email.trim().toLowerCase();
+    const { data } = await this.databaseService.supabase
+      .from("team_members")
+      .select(columns.includes("email") ? columns : `${columns}, email`)
+      .eq("restaurant_id", restaurantId)
+      .ilike("email", escapeLikeWildcards(wanted).replace(/\*/g, "_"));
+    return (
+      (data ?? []).find(
+        (row: any) =>
+          typeof row.email === "string" &&
+          row.email.trim().toLowerCase() === wanted,
+      ) ?? null
+    );
+  }
+
+  /**
    * Ensure a team_members row exists for an invite so /team can show pending
    * staff and claim can set user_id via invite_id.
    */
@@ -2532,12 +2565,11 @@ export class AuthService {
             ? "Manager"
             : "Staff";
       if (params.email) {
-        const { data: existing } = await this.databaseService.supabase
-          .from("team_members")
-          .select("id, invite_id, user_id")
-          .eq("restaurant_id", params.restaurantId)
-          .ilike("email", params.email)
-          .maybeSingle();
+        const existing = await this.findTeamMemberByEmail(
+          params.restaurantId,
+          params.email,
+          "id, invite_id, user_id",
+        );
         if (existing) {
           if (!existing.user_id) {
             await this.databaseService.supabase
@@ -2600,12 +2632,11 @@ export class AuthService {
       if (byInvite) memberId = byInvite.id;
 
       if (!memberId && params.email) {
-        const { data: byEmail } = await this.databaseService.supabase
-          .from("team_members")
-          .select("id")
-          .eq("restaurant_id", params.restaurantId)
-          .ilike("email", params.email)
-          .maybeSingle();
+        const byEmail = await this.findTeamMemberByEmail(
+          params.restaurantId,
+          params.email,
+          "id",
+        );
         if (byEmail) memberId = byEmail.id;
       }
 
