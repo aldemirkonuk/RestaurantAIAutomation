@@ -144,6 +144,17 @@ const HELD_BECAUSE: Record<string, string> = {
   'C-21': 'it holds personal details',
 };
 
+/**
+ * The hard-constraint codes on a letter, or none. `constraint_flags` is a
+ * jsonb every writer fills differently (`{}` by default, PO metadata, AI
+ * reply reasons), so only a real array of strings under `hard` counts.
+ */
+export function hardCodesOf(flags: unknown): string[] {
+  if (!flags || typeof flags !== 'object') return [];
+  const hard = (flags as { hard?: unknown }).hard;
+  return Array.isArray(hard) ? hard.filter((c): c is string => typeof c === 'string') : [];
+}
+
 export function heldBecause(codes: readonly string[]): string {
   const words = [...new Set(codes.map((c) => HELD_BECAUSE[c] ?? 'a rule this page has no words for yet'))];
   const list =
