@@ -69,7 +69,9 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
     try {
       // Orchestrator, not the gateway (studioApi.ts). studioJsonRequest throws on any
       // non-2xx, so the success toasts below are unreachable unless the write landed.
-      const data = await studioJsonRequest<{ status?: string }>(
+      // `library` is what the save did to the shared wine library: 'promoted' |
+      // 'not_specific' (named too generally to share yet) | 'not_ready' | 'failed' (F-810).
+      const data = await studioJsonRequest<{ status?: string; library?: string }>(
         '/api/v1/studio/overrides',
         'POST',
         {
@@ -85,6 +87,16 @@ export function FieldCell({ submissionId, sessionId, field, entry, onOverrideSuc
       onOverrideSuccess(field, newValue.trim())
       if (data.status === 'pending') {
         toast.info('Override queued for review', { description: 'A reviewer will approve your change.' })
+      } else if (data.library === 'promoted') {
+        toast.success('Saved and added to the library', { description: `${field} updated` })
+      } else if (data.library === 'not_specific') {
+        toast.success('Saved, kept as a draft, not in the library yet', {
+          description: 'Add the producer, or the vintage and the region, so it can join the library.',
+        })
+      } else if (data.library === 'failed') {
+        toast.warning('Saved, but the wine was not added to the library', {
+          description: 'The change is kept on this record. Use Promote to try again.',
+        })
       } else {
         toast.success('Override saved', { description: `${field} updated` })
       }

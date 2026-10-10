@@ -379,3 +379,129 @@ class TestReviewQueuePromotion:
         assert row["wine_id"].startswith("WINE_")
         assert row["price_reference"] == 120.5
         assert row["source"] == "human_reviewed"
+
+
+def _fc(**fields):
+    return {
+        k: {"value": v, "confidence": 1.0, "source": "human_override"}
+        for k, v in fields.items()
+    }
+
+
+class TestManualRecordStaysADraft:
+    """F-810: a hand-typed name alone must not join the shared library."""
+
+    def _sb(self, fc, insert_data=None):
+        subs = MagicMock()
+        subs.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
+            "id": "sub-1",
+            "status": "pending_review",
+            "field_confidence": fc,
+            "restaurant_id": "r-1",
+        }
+        queue = MagicMock()
+        queue.select.return_value.eq.return_value.eq.return_value.execute.return_value.count = (
+            0
+        )
+        lib = MagicMock()
+        lib.insert.return_value.execute.return_value.data = insert_data
+        sb = _tables(
+            master_wine_library_submissions=subs,
+            field_review_queue=queue,
+            master_wine_library=lib,
+        )
+        return sb, subs, lib
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"wine_name": "Chianti Classico"},
+            {"wine_name": "Chianti Classico", "producer": "  -- "},
+            {"wine_name": "Chianti Classico", "vintage": "2019"},
+            {"wine_name": "Chianti Classico", "region": "Tuscany"},
+            {"wine_name": "Chianti Classico", "vintage": "MMXIX", "region": "Tuscany"},
+        ],
+    )
+    def test_a_generic_identity_stays_a_submission(self, fields):
+        sb, subs, lib = self._sb(_fc(**fields))
+        assert _maybe_promote_submission(sb, "sub-1") == "not_specific"
+        lib.insert.assert_not_called()
+        subs.update.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"wine_name": "Chianti Classico", "producer": "Fontodi"},
+            {"wine_name": "Chianti Classico", "vintage": "2019", "region": "Tuscany"},
+        ],
+    )
+    def test_a_specific_identity_is_promoted_and_linked(self, fields):
+        sb, subs, lib = self._sb(_fc(**fields), insert_data=[{"id": "wine-uuid"}])
+        assert _maybe_promote_submission(sb, "sub-1") == "promoted"
+        lib.insert.assert_called_once()
+        subs.update.assert_called_once_with(
+            {"status": "approved", "matched_master_id": "wine-uuid"}
+        )
+
+
+class TestPromoteDedup:
+    """F-810: Promote neither duplicates a linked wine nor matches on a missing field."""
+
+    def _post(self, test_client, submission, lib):
+        subs = MagicMock()
+        subs.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+            submission
+        )
+        sb = _tables(master_wine_library_submissions=subs, master_wine_library=lib)
+        with patch("config.settings.get_settings", return_value=_settings()), patch(
+            "api.studio_routes._get_supabase", return_value=sb
+        ):
+            return test_client.post(
+                "/api/v1/studio/promote",
+                json={"submission_id": "sub-1"},
+                headers=_auth(["review_admin"]),
+            )
+
+    def test_a_submission_already_in_the_library_is_not_inserted_again(
+        self, test_client
+    ):
+        lib = MagicMock()
+        resp = self._post(
+            test_client,
+            {
+                "id": "sub-1",
+                "status": "approved",
+                "matched_master_id": "wine-first",
+                "payload": {},
+                "field_confidence": _fc(
+                    wine_name="Chianti Classico", producer="Fontodi", vintage="2019"
+                ),
+            },
+            lib,
+        )
+        assert resp.status_code == 409, resp.text
+        assert resp.headers["X-Existing-Wine-Id"] == "wine-first"
+        lib.insert.assert_not_called()
+
+    def test_a_missing_producer_and_vintage_match_only_rows_missing_them(
+        self, test_client
+    ):
+        lib = MagicMock()
+        q = lib.select.return_value.ilike.return_value
+        q.is_.return_value.is_.return_value.limit.return_value.execute.return_value.data = (
+            []
+        )
+        lib.insert.return_value.execute.return_value.data = [{"id": "wine-uuid"}]
+        resp = self._post(
+            test_client,
+            {
+                "id": "sub-1",
+                "status": "pending_review",
+                "payload": {},
+                "field_confidence": _fc(wine_name="Chianti Classico"),
+            },
+            lib,
+        )
+        assert resp.status_code == 200, resp.text
+        assert q.is_.call_args_list[0].args == ("vintage", "null")
+        assert q.is_.return_value.is_.call_args.args == ("producer", "null")

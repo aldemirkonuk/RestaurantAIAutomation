@@ -7,7 +7,7 @@ import { QueueItem } from './queue/QueueRow'
 import { Badge } from '../../components/ui/badge'
 import { EmptyState } from '../../components/ui/empty-state'
 import { Skeleton } from '../../components/ui/loading-skeleton'
-import { studioRequest, studioJsonRequest, studioErrorMessage } from './studioApi'
+import { studioRequest, studioJsonRequest, studioErrorMessage, studioFetch, readStudioError } from './studioApi'
 
 // Orchestrator, not the gateway — a relative /api/v1/studio/* path resolves to the
 // NestJS gateway, which has no studio module, so both of these 404'd. See studioApi.ts.
@@ -16,9 +16,30 @@ function fetchQueue(): Promise<{ queue: QueueItem[]; total: number }> {
 }
 
 // `library` is the library-promotion outcome the server tries after an approval:
-// 'promoted' | 'not_ready' | 'failed'. Absent for a rejection.
+// 'promoted' | 'not_ready' | 'not_specific' | 'failed'. Absent for a rejection.
 interface DecisionResponse {
   library?: string
+}
+
+// The approver has no record open here (records live in the ingesting person's
+// session), so the retry lives on the toast itself (F-811). Same route and role
+// (developer/review_admin) as the Promote button on the record; 409 = already there.
+async function addToLibrary(submissionId: string) {
+  try {
+    const resp = await studioFetch('/api/v1/studio/promote', {
+      method: 'POST',
+      body: JSON.stringify({ submission_id: submissionId }),
+    })
+    if (resp.status === 409) {
+      toast.success('This wine is already in the library')
+    } else if (!resp.ok) {
+      toast.error('Could not add the wine to the library', { description: (await readStudioError(resp)).slice(0, 160) })
+    } else {
+      toast.success('Added to the library')
+    }
+  } catch (err) {
+    toast.error('Could not add the wine to the library', { description: studioErrorMessage(err).slice(0, 160) })
+  }
 }
 
 function decideOverride(id: string, decision: 'approved' | 'rejected', note?: string) {
@@ -34,14 +55,23 @@ export default function StudioApprovalQueue() {
   })
 
   const mutation = useMutation({
-    mutationFn: ({ id, decision, note }: { id: string; decision: 'approved' | 'rejected'; note?: string }) =>
+    mutationFn: ({ id, decision, note }: { id: string; decision: 'approved' | 'rejected'; note?: string; submissionId?: string }) =>
       decideOverride(id, decision, note),
-    onSuccess: (result, { decision }) => {
+    onSuccess: (result, { decision, submissionId }) => {
       queryClient.invalidateQueries({ queryKey: ['studio-queue'] })
       if (decision === 'approved' && result?.library === 'failed') {
         // The change is kept on the record; only the step into the shared library failed.
         toast.warning('Override approved, but the wine was not added to the library', {
-          description: 'The change is saved on this record. Use Promote on the record to add it to the library.',
+          description: 'The change is saved on the record.',
+          ...(submissionId
+            ? { action: { label: 'Add to library', onClick: () => { void addToLibrary(submissionId) } } }
+            : {}),
+        })
+        return
+      }
+      if (decision === 'approved' && result?.library === 'not_specific') {
+        toast.success('Override approved, kept as a draft, not in the library yet', {
+          description: 'It needs the producer, or the vintage and the region, to join the library.',
         })
         return
       }
@@ -55,7 +85,8 @@ export default function StudioApprovalQueue() {
   const handleDecide = async (id: string, decision: 'approved' | 'rejected', note?: string) => {
     // Swallow the rejection after onError has toasted: QueueRow awaits this and has no
     // catch of its own, so re-throwing would only surface as an unhandled rejection.
-    await mutation.mutateAsync({ id, decision, note }).catch(() => undefined)
+    const submissionId = data?.queue.find((q) => q.id === id)?.submission_id
+    await mutation.mutateAsync({ id, decision, note, submissionId }).catch(() => undefined)
   }
 
   const pending = data?.total ?? 0
