@@ -4135,8 +4135,16 @@ export class ProcurementService {
     challenge?: string | null,
   ): Promise<OrderResponseDto> {
     await this.assertApprovalAllowed(restaurantId, orderId, userId);
+    // An order is approved once (ADR 0315, mount-line fix c). Read before the
+    // seal is spent, so an order that is already approved is told so and keeps
+    // the seal.
+    const fromStatus = await this.readApprovableStatus(restaurantId, orderId);
     await this.redeemOrderSeal(restaurantId, orderId, userId, challenge);
 
+    // Compare-and-set on the status just read. A second approve that raced
+    // this one, from another manager or a retry after an unknown outcome,
+    // matches no row instead of reserving shadow stock and asking for a
+    // vendor letter a second time.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
@@ -4146,8 +4154,9 @@ export class ProcurementService {
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
+      .eq("status", fromStatus)
       .select("*, inventory:inventory_id(wine_name)")
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error("Failed to approve procurement order", {
@@ -4156,6 +4165,11 @@ export class ProcurementService {
         error: error.message,
       });
       throw error;
+    }
+    if (!data) {
+      throw new ConflictException(
+        "This order changed while it was being approved, most likely approved by someone else a moment ago. Nothing more was reserved and no second letter was asked for. Look on Orders.",
+      );
     }
 
     const row = data as any;
@@ -4273,6 +4287,46 @@ export class ProcurementService {
       expiresAt: issued.expiresAt,
       act: issued.action,
     };
+  }
+
+  /**
+   * The order's stored status, if it may become APPROVED now; otherwise a 409
+   * that says why. APPROVED itself is refused: `canTransition` permits
+   * re-entering it, and the database trigger skips a same-state write, so
+   * nothing else stops a second approve from reserving the stock again.
+   */
+  private async readApprovableStatus(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<string> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order's state could not be read, so it was not approved: ${error.message}`,
+      );
+    }
+    const raw = (data as { status?: unknown } | null)?.status;
+    const from = readOrderStatus(raw);
+    if (from === null) {
+      throw new ConflictException(
+        refuseUnreadableStatus(ProcurementOrderStatus.APPROVED, raw),
+      );
+    }
+    if (from === ProcurementOrderStatus.APPROVED) {
+      throw new ConflictException(
+        "This order is already approved. Nothing more was reserved and no second letter was asked for.",
+      );
+    }
+    const verdict = decideTransition(raw, ProcurementOrderStatus.APPROVED);
+    if (!verdict.allowed) {
+      throw new ConflictException(verdict.sentence);
+    }
+    return raw as string;
   }
 
   /**

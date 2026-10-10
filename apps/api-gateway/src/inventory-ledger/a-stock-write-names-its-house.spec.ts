@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from "fs";
 import { join, relative, resolve } from "path";
 import { Test, TestingModule } from "@nestjs/testing";
 import {
+  ConflictException,
   ForbiddenException,
   InternalServerErrorException,
   UnprocessableEntityException,
@@ -9,10 +10,7 @@ import {
 import { InventoryLedgerService } from "./inventory-ledger.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
-import {
-  TransactionType,
-  TransactionSource,
-} from "./dto/inventory-ledger.dto";
+import { TransactionType, TransactionSource } from "./dto/inventory-ledger.dto";
 
 /**
  * ADR 0141 — A STOCK WRITE NAMES THE HOUSE IT IS FOR.
@@ -77,6 +75,10 @@ function makeDb(opts: DbOptions) {
       const q: any = {
         select: () => q,
         eq: () => q,
+        neq: () => q,
+        // The cross-house key check (ADR 0315 mount-line fix b): no other
+        // house has spent this key.
+        limit: () => Promise.resolve({ data: [], error: null }),
         maybeSingle: () =>
           Promise.resolve(
             table === "restaurant_inventory"
@@ -121,7 +123,10 @@ async function service(supabase: unknown): Promise<InventoryLedgerService> {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       InventoryLedgerService,
-      { provide: DatabaseService, useValue: { supabase, getClient: () => supabase } },
+      {
+        provide: DatabaseService,
+        useValue: { supabase, getClient: () => supabase },
+      },
       {
         provide: EventsService,
         useValue: { createEvent: async () => ({ id: "event-1" }) },
@@ -222,6 +227,11 @@ describe("createTransaction — a movement cannot reach another house", () => {
 // ---------------------------------------------------------------------------
 
 describe("createTransaction — a committed write is never reported as not found", () => {
+  // Without a key. A keyed write whose id is not visible here is a key another
+  // house spent first, and gets the key refusal instead
+  // (a-replayed-key-must-match.spec.ts).
+  const unkeyed = { ...dto(OWN_ITEM), idempotencyKey: undefined };
+
   it("calls a read that finds nothing after a returned id a CONTRADICTION", async () => {
     // apply_stock_movement returned an id, so the row exists. Not seeing it
     // under this restaurant is not "not found" — it is the two facts
@@ -236,7 +246,7 @@ describe("createTransaction — a committed write is never reported as not found
     const call = (await service(supabase)).createTransaction(
       OWN_RESTAURANT,
       USER,
-      dto(OWN_ITEM) as any,
+      unkeyed as any,
     );
 
     await expect(call).rejects.toBeInstanceOf(InternalServerErrorException);
@@ -255,9 +265,41 @@ describe("createTransaction — a committed write is never reported as not found
       (await service(supabase)).createTransaction(
         OWN_RESTAURANT,
         USER,
-        dto(OWN_ITEM) as any,
+        unkeyed as any,
       ),
     ).rejects.toThrow(/The movement stands/i);
+  });
+
+  it("names no row id when a keyed read-back fails, since that id may be another house's", async () => {
+    const { supabase } = makeDb({
+      ownership: { data: { id: OWN_ITEM }, error: null },
+      rpc: { data: "txn-9", error: null },
+      readBack: { data: null, error: { message: "statement timeout" } },
+    });
+
+    const call = (await service(supabase)).createTransaction(
+      OWN_RESTAURANT,
+      USER,
+      dto(OWN_ITEM) as any,
+    );
+    await expect(call).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(call).rejects.not.toThrow(/txn-9/);
+  });
+
+  it("answers a keyed id it cannot see with the key refusal, naming no row", async () => {
+    const { supabase } = makeDb({
+      ownership: { data: { id: OWN_ITEM }, error: null },
+      rpc: { data: "txn-9", error: null },
+      readBack: { data: null, error: null },
+    });
+
+    const call = (await service(supabase)).createTransaction(
+      OWN_RESTAURANT,
+      USER,
+      dto(OWN_ITEM) as any,
+    );
+    await expect(call).rejects.toBeInstanceOf(ConflictException);
+    await expect(call).rejects.not.toThrow(/txn-9/);
   });
 });
 
@@ -353,16 +395,16 @@ describe("apply_stock_movement stops trusting its caller", () => {
     // Twice: once before the idempotency lookup, so a replayed key cannot be
     // used to fish another house's transaction id out of the ledger, and once
     // under the row lock, which is the comparison the write depends on.
-    const refusals = body.match(
-      /does not match the item\./g,
-    );
+    const refusals = body.match(/does not match the item\./g);
     expect(refusals?.length).toBe(2);
     expect(body).toMatch(/USING ERRCODE = '42501'/);
   });
 
   it("drops the old signature so PostgREST has exactly one candidate", () => {
     const body = sql();
-    expect(body).toMatch(/DROP FUNCTION IF EXISTS public\.apply_stock_movement\(/);
+    expect(body).toMatch(
+      /DROP FUNCTION IF EXISTS public\.apply_stock_movement\(/,
+    );
     expect(body).toMatch(/expected exactly one public\.apply_stock_movement/);
   });
 
@@ -372,6 +414,8 @@ describe("apply_stock_movement stops trusting its caller", () => {
     // This assertion is the decision, pinned: if it is ever removed, that is a
     // second decision and not an accident.
     expect(sql()).toMatch(/pronargdefaults[\s\S]{0,240}<> 13/);
-    expect(sql()).toMatch(/p_restaurant_id uuid DEFAULT NULL::uuid\n\) RETURNS uuid/);
+    expect(sql()).toMatch(
+      /p_restaurant_id uuid DEFAULT NULL::uuid\n\) RETURNS uuid/,
+    );
   });
 });
