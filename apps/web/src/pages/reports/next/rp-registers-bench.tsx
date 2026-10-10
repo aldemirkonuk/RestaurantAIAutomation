@@ -73,6 +73,9 @@ export interface BenchRegister {
   /** Orders the buying and committed figures leave out for want of a price (F-701). */
   spendUnpricedCount?: number;
   committedUnpricedCount?: number;
+  /** Why the buying figures are blank: paid in two currencies (F-1042). */
+  spendNote?: string | null;
+  committedNote?: string | null;
   trendPerDayPct: number | null;
   bestDay: string | null;
   worstDay: string | null;
@@ -115,6 +118,8 @@ export const bench = analysis<BenchRegister>({
       openOrderCount: num(cf.openOrderCount),
       spendUnpricedCount: num(cf.spendUnpricedCount) ?? undefined,
       committedUnpricedCount: num(cf.committedUnpricedCount) ?? undefined,
+      spendNote: typeof cf.spendNote === 'string' ? cf.spendNote : null,
+      committedNote: typeof cf.committedNote === 'string' ? cf.committedNote : null,
       trendPerDayPct: num(se.trendPerDayPct),
       bestDay: se.bestDay == null ? null : str(se.bestDay),
       worstDay: se.worstDay == null ? null : str(se.worstDay),
@@ -300,6 +305,8 @@ export const bench = analysis<BenchRegister>({
         noPeers,
         withheld ? AMOUNTS_WITHHELD : null,
         ...(withheld ? [] : unpricedNotes(b.spendUnpricedCount, b.committedUnpricedCount)),
+        !withheld && b.spendNote ? b.spendNote : null,
+        !withheld && b.committedNote ? b.committedNote : null,
         // Since ADR 0292 / F-186 the cashflow loader reads the whole window or
         // refuses (`loadOrders`, advanced-analytics.service.ts); a refusal
         // nulls the lens, which `cashflowMissing` below says in its own words.

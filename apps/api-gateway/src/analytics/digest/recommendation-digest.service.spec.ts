@@ -19,7 +19,7 @@ import { ScheduledTenantsService } from "../../communications/scheduled-tenants.
 import { RecommendationDigestService } from "./recommendation-digest.service";
 import { FakeDb, type Row } from "./testing/digest-fake-db";
 import { AreaRoutingService } from "../../areas/area-routing.service";
-import { houseToday } from "../../common/house-day";
+import { houseToday, shiftHouseDay } from "../../common/house-day";
 
 /* ── the house ────────────────────────────────────────────────────────────── */
 
@@ -39,18 +39,42 @@ const WEEKDAY_SENTENCE =
   "Wednesday sales came in 40% lower than your average Wednesday ($600 vs $1.0k, over 12 past Wednesdays).";
 
 /**
- * A dip day `n` days before the REAL clock. The engine reads a dip's age on
- * the clock the generator dates its series by (ADR 0291), not on the sweep
- * instant these specs simulate, so a fixture that means "yesterday" has to
- * say it on that clock — a fixed date would age past "now" as the calendar
- * moves and drop the entry below the house's floor.
+ * The engine reads a dip's age on the clock (ADR 0291), not on the sweep
+ * instant these specs simulate, and counts it in the HOUSE's days. Both used
+ * to be the real clock and UTC: from 21:00Z (midnight in Istanbul, 17:00 in
+ * Detroit) a "yesterday" written on UTC was two house days old, fell to
+ * "This week" and broke the "[Now]" letter (F-1043). So the clock is pinned
+ * to the sweep instant for every case, and the fixture names its day on the
+ * house's calendar — the same day the engine counts from.
  */
+const CLOCK = DUE_PLUS_5;
+
+beforeEach(() => {
+  // Date only: the timers the sweep awaits keep running for real.
+  jest.useFakeTimers({
+    now: CLOCK,
+    doNotFake: [
+      "hrtime",
+      "nextTick",
+      "performance",
+      "queueMicrotask",
+      "setImmediate",
+      "clearImmediate",
+      "setInterval",
+      "clearInterval",
+      "setTimeout",
+      "clearTimeout",
+    ],
+  });
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+/** A dip day `n` house days before the pinned clock. */
 function dipDay(n: number): string {
-  // Counted from the HOUSE's today, as the engine counts it: from 21:00Z to
-  // midnight UTC Istanbul is already on the next day, and a UTC "yesterday"
-  // read two days old there and fell to "this week" (F-1050).
-  const today = Date.parse(`${houseToday(ZONE, new Date())}T00:00:00Z`);
-  return `d:${new Date(today - n * 86400000).toISOString().slice(0, 10)}`;
+  return `d:${shiftHouseDay(houseToday(ZONE), -n)}`;
 }
 
 function weekdayInsight(over: Row = {}) {

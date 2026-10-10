@@ -680,3 +680,110 @@ describe("no spend reader adds orders paid in two currencies", () => {
     expect(share.evidence.currency).toBe("EUR");
   });
 });
+
+// ---------------------------------------------------------------------------
+// F-1042 (F-339 family): the cashflow and vendor lenses add no lira to euros
+// ---------------------------------------------------------------------------
+
+describe("the cashflow and vendor lenses add no lira to euros", () => {
+  const EUR = { ...DELIVERED, id: "po-eur", currency: "EUR", total_cost: 400 };
+  const TRY = {
+    ...DELIVERED,
+    id: "po-try",
+    currency: "TRY",
+    total_cost: 12000,
+  };
+  const UNPRICED = { ...DELIVERED, id: "po-0", total_cost: 0, final_price: 17 };
+  const open = (o: any) => ({
+    ...o,
+    id: `${o.id}-open`,
+    status: "IN_TRANSIT",
+    delivered_at: null,
+  });
+
+  it("cashflow gives no paid-out figure across two currencies, and says why", async () => {
+    const out: any = await advanced({
+      procurement_orders: [EUR, TRY, UNPRICED],
+    }).getCashflow(RESTAURANT);
+    expect(out.spendLast30d).toBeNull();
+    expect(out.spendPrev30d).toBeNull();
+    expect(out.paceDeltaPct).toBeNull();
+    expect(out.projectedNext4Weeks).toBeNull();
+    expect(out.spendNote).toContain("EUR and TRY");
+    // The unpriced delivery is named, not read as 0.
+    expect(out.spendUnpricedCount).toBe(1);
+  });
+
+  it("cashflow gives no committed figure across two currencies, and shows each", async () => {
+    const out: any = await advanced({
+      procurement_orders: [open(EUR), open(TRY), open(UNPRICED)],
+    }).getCashflow(RESTAURANT);
+    expect(out.committedOpenOrders).toBeNull();
+    expect(out.committedByCurrency).toEqual(
+      expect.arrayContaining([
+        { currency: "EUR", amount: 400 },
+        { currency: "TRY", amount: 12000 },
+      ]),
+    );
+    expect(out.committedNote).toContain("Ordered in EUR and TRY");
+    expect(out.committedUnpricedCount).toBe(1);
+  });
+
+  it("cashflow gives no order value for uncounted orders across two currencies", async () => {
+    const approved = (o: any) => ({ ...open(o), status: "APPROVED" });
+    const out: any = await advanced({
+      procurement_orders: [approved(EUR), approved(TRY)],
+    }).getCashflow(RESTAURANT);
+    expect(out.notCounted.approved).toBe(2);
+    expect(out.notCounted.orderValue).toBeNull();
+    expect(out.notCounted.orderValueNote).toContain("EUR and TRY");
+  });
+
+  it("cashflow still sums one currency", async () => {
+    const out: any = await advanced({
+      procurement_orders: [EUR, { ...EUR, id: "po-eur-2" }, open(EUR)],
+    }).getCashflow(RESTAURANT);
+    expect(out.spendLast30d).toBe(800);
+    expect(out.spendNote).toBeNull();
+    expect(out.committedOpenOrders).toBe(400);
+    expect(out.committedNote).toBeNull();
+  });
+
+  it("the vendor scorecard gives a vendor paid in two currencies no spend or price series", async () => {
+    const out: any = await advanced({
+      procurement_orders: [EUR, TRY, UNPRICED],
+    }).getVendorScorecard(RESTAURANT);
+    const v = out.vendors[0];
+    expect(v.spend).toBeNull();
+    expect(v.spendByCurrency).toEqual(
+      expect.arrayContaining([
+        { currency: "EUR", amount: 400 },
+        { currency: "TRY", amount: 12000 },
+      ]),
+    );
+    expect(v.spendNote).toContain("EUR and TRY");
+    expect(v.unpricedCount).toBe(1);
+    expect(v.unitPrice.mean).toBeNull();
+    expect(v.unitPrice.latest).toBeNull();
+  });
+
+  it("the vendor scorecard takes no shares across vendors paid in two currencies", async () => {
+    const out: any = await advanced({
+      procurement_orders: [EUR, { ...TRY, provider_id: "prov-2" }],
+    }).getVendorScorecard(RESTAURANT);
+    expect(out.vendors.map((v: any) => v.spend).sort()).toEqual(
+      [12000, 400].sort(),
+    );
+    expect(out.concentration.hhi).toBeNull();
+    expect(out.concentration.effectiveVendors).toBeNull();
+    expect(out.concentration.note).toContain("EUR and TRY");
+  });
+
+  it("the vendor scorecard still takes shares in one currency", async () => {
+    const out: any = await advanced({
+      procurement_orders: [EUR, { ...EUR, id: "po-2", provider_id: "prov-2" }],
+    }).getVendorScorecard(RESTAURANT);
+    expect(out.concentration.hhi).toBeCloseTo(0.5);
+    expect(out.concentration.note).toBeNull();
+  });
+});

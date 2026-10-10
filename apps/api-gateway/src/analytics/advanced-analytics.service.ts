@@ -28,7 +28,15 @@ import { deadlineOf, landedVerdict } from "../procurement/delivery-deadline";
 import { overdueStanding } from "../procurement/overdue-order";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
-import { orderSpend, sumOrderSpend } from "../procurement/order-spend";
+import {
+  namedCurrencies,
+  orderSpend,
+  sumOrderSpend,
+} from "../procurement/order-spend";
+import {
+  mixedSpendNote,
+  spendByCurrency,
+} from "../dashboard/dashboard.service";
 import { HouseFrame, houseFrame } from "../common/house-frame";
 import {
   HOUSE_ZONE_UNSET,
@@ -62,6 +70,18 @@ import { DayExclusionsService } from "./insights/day-exclusions.service";
  * Same honesty contract as the base service: every payload carries a `basis`
  * label when a number is derived rather than booked.
  */
+/**
+ * Why an open orders' value is null rather than a sum (F-1042): they were
+ * placed in more than one currency. Null when there is one figure to give.
+ * Not yet paid, so "ordered in", where `mixedSpendNote` says "paid in".
+ */
+function orderedInTwoNote(orders: any[]): string | null {
+  const codes = namedCurrencies(orders.filter((o) => orderSpend(o) != null));
+  return codes.length > 1
+    ? `Ordered in ${codes.join(" and ")}: with no exchange rate on record these cannot be added into one figure.`
+    : null;
+}
+
 @Injectable()
 export class AdvancedAnalyticsService {
   private readonly logger = new Logger(AdvancedAnalyticsService.name);
@@ -290,7 +310,7 @@ export class AdvancedAnalyticsService {
         client
           .from("procurement_orders")
           .select(
-            "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+            "id, provider_id, providers(name), total_cost, currency, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -655,21 +675,28 @@ export class AdvancedAnalyticsService {
       const scored = counts.onTime + counts.late;
       // An order with no price is left out and counted (F-701): not $0, and
       // not one bottle's `final_price` standing in for the whole order.
-      const unitPrices = delivered
+      // A vendor paid in two currencies has no one price series (F-1042):
+      // a euro case beside a lira one is not a price change.
+      const priced = delivered.filter((o) => orderSpend(o) != null);
+      const unitPrices = (namedCurrencies(priced).length > 1 ? [] : delivered)
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
           const cost = orderSpend(o);
           return bottles > 0 && cost != null ? cost / bottles : null;
         })
         .filter((p): p is number => p !== null && Number.isFinite(p));
-      const { total: spend, unpricedCount } = sumOrderSpend(delivered);
+      // Summed per currency (F-1042, F-339): two named currencies give
+      // `spend: null` and say why, never lira added to euros.
+      const paid = spendByCurrency(delivered);
       return {
         vendorId,
         vendorName: os[0]?.providers?.name || vendorId,
         orders: os.length,
         delivered: delivered.length,
-        spend,
-        unpricedCount,
+        spend: paid.total,
+        spendByCurrency: paid.byCurrency,
+        spendNote: mixedSpendNote(paid.byCurrency),
+        unpricedCount: paid.unpricedCount,
         leadTimeDays: {
           mean: E.mean(leadTimes),
           median: E.median(leadTimes),
@@ -687,8 +714,18 @@ export class AdvancedAnalyticsService {
       };
     });
 
-    vendors.sort((a, b) => b.spend - a.spend);
-    const spendShare = vendors.map((v) => v.spend);
+    // A vendor with no single figure sorts last rather than as 0.
+    vendors.sort((a, b) => (b.spend ?? -1) - (a.spend ?? -1));
+    // Shares compare one money only (F-1042): across two currencies there is
+    // no exchange rate on record to put the vendors on one scale.
+    const houseCurrencies = namedCurrencies(
+      orders.filter(
+        (o: any) =>
+          hasStatus(o.status, ORDER_ARRIVED_STATUSES) && orderSpend(o) != null,
+      ),
+    );
+    const sharesComparable = houseCurrencies.length <= 1;
+    const spendShare = vendors.map((v) => v.spend ?? 0);
     return {
       vendors,
       onTimeDeadline: {
@@ -698,8 +735,13 @@ export class AdvancedAnalyticsService {
         arrivalAnswers: overdue.ok ? "read" : "could_not_read",
       },
       concentration: {
-        hhi: E.herfindahlIndex(spendShare),
-        effectiveVendors: E.effectiveCount(spendShare),
+        hhi: sharesComparable ? E.herfindahlIndex(spendShare) : null,
+        effectiveVendors: sharesComparable
+          ? E.effectiveCount(spendShare)
+          : null,
+        note: sharesComparable
+          ? null
+          : `Paid in ${houseCurrencies.join(" and ")}: with no exchange rate on record the vendors' shares cannot be compared.`,
         // Shares are of priced spend; these deliveries are not in them.
         unpricedCount: vendors.reduce((n, v) => n + v.unpricedCount, 0),
       },
@@ -884,6 +926,16 @@ export class AdvancedAnalyticsService {
       hasStatus(o.status, ORDER_SPEND_STATUSES),
     );
     const spendUnpricedCount = sumOrderSpend(delivered).unpricedCount;
+    // Days are summed in one money only (F-1042): a window holding a lira and
+    // a euro delivery has no one figure, so every spend figure built from the
+    // days is null and `spendNote` says why.
+    const paidIn = namedCurrencies(
+      delivered.filter((o: any) => orderSpend(o) != null),
+    );
+    const spendNote =
+      paidIn.length > 1
+        ? `Paid in ${paidIn.join(" and ")}: with no exchange rate on record they cannot be added into one figure, so the 30-day buying figures and the pace are left blank.`
+        : null;
     // The windows end TODAY, on the house's own date (F-130). The shared
     // `toDaily` stops at yesterday's UTC date, so every delivery taken in
     // today — and, west of Greenwich, every one after the evening's UTC
@@ -916,7 +968,10 @@ export class AdvancedAnalyticsService {
     const weekly: number[] = [];
     for (let i = 0; i < daily.length; i += 7)
       weekly.push(daily.slice(i, i + 7).reduce((a, b) => a + b, 0));
-    const holt = weekly.length >= 4 ? E.holtLinear(weekly, 0.4, 0.2, 4) : null;
+    const holt =
+      !spendNote && weekly.length >= 4
+        ? E.holtLinear(weekly, 0.4, 0.2, 4)
+        : null;
 
     // Committed outflow: orders placed but not delivered.
     //
@@ -934,8 +989,7 @@ export class AdvancedAnalyticsService {
     const open = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
-    const { total: committed, unpricedCount: committedUnpricedCount } =
-      sumOrderSpend(open);
+    const committedPaid = spendByCurrency(open);
 
     // Orders in NEITHER figure: approved but not yet with the vendor's
     // confirmation, or partly received and still open (F-130). Neither rule
@@ -951,8 +1005,7 @@ export class AdvancedAnalyticsService {
     // Their order value is summed the way the two figures are (F-1010): an
     // unpriced order is left out and counted, never read as one bottle's
     // `final_price` or as $0.
-    const { total: neitherValue, unpricedCount: neitherUnpriced } =
-      sumOrderSpend(neither);
+    const neitherPaid = spendByCurrency(neither);
     const notCounted = {
       approved: neither.filter((o: any) => o.status === "APPROVED").length,
       partlyReceived: neither.filter(
@@ -962,8 +1015,10 @@ export class AdvancedAnalyticsService {
         (o: any) =>
           o.status !== "APPROVED" && o.status !== "PARTIALLY_RECEIVED",
       ).length,
-      orderValue: neitherValue,
-      unpriced: neitherUnpriced,
+      orderValue: neitherPaid.total,
+      orderValueByCurrency: neitherPaid.byCurrency,
+      orderValueNote: orderedInTwoNote(neither),
+      unpriced: neitherPaid.unpricedCount,
     };
 
     return {
@@ -975,16 +1030,19 @@ export class AdvancedAnalyticsService {
         notCounted:
           "orders approved but not yet confirmed by the vendor, orders still being negotiated, and orders partly received and still open are in neither figure until they are confirmed or closed; they are counted here at their order value, and one with no price is left out of that value and counted",
       },
-      spendLast30d: last30,
-      spendPrev30d: prev30,
-      paceDeltaPct: pace?.deltaPct ?? null,
+      spendLast30d: spendNote ? null : last30,
+      spendPrev30d: spendNote ? null : prev30,
+      paceDeltaPct: spendNote ? null : (pace?.deltaPct ?? null),
       projectedNext4Weeks: holt?.forecast.map((v) => Math.max(0, v)) ?? null,
-      committedOpenOrders: committed,
+      spendNote,
+      committedOpenOrders: committedPaid.total,
+      committedByCurrency: committedPaid.byCurrency,
+      committedNote: orderedInTwoNote(open),
       openOrderCount: open.length,
       notCounted,
       // Orders the two figures above leave out because they carry no price.
       spendUnpricedCount,
-      committedUnpricedCount,
+      committedUnpricedCount: committedPaid.unpricedCount,
       generatedAt: new Date().toISOString(),
     };
   }
