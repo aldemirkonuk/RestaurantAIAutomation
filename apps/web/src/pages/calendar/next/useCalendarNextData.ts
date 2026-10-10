@@ -294,6 +294,11 @@ export interface CalEvent {
   seriesId: string;
   /** True when this row is a client-expanded occurrence of a recurring series. */
   isOccurrence: boolean;
+  /**
+   * The stored row's own first date. An occurrence keeps it, so the sheet can
+   * tell whether a series can be ended from this date and still keep a date.
+   */
+  seriesStart?: string;
   title: string;
   description: string | null;
   type: string;
@@ -347,6 +352,7 @@ function toCalEvent(raw: ApiEvent): CalEvent {
     id: raw.id,
     seriesId: raw.id,
     isOccurrence: false,
+    seriesStart: String(raw.eventDate).split('T')[0],
     title: raw.title,
     description: str(raw.description),
     type: raw.eventType,
@@ -706,6 +712,15 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     onSuccess: invalidate,
   });
 
+  // Ends a repeating entry from a date: the rule stops the day before, and
+  // every earlier date stays on the book (F-607).
+  const endSeries = useMutation({
+    mutationFn: async ({ id, fromDate }: { id: string; fromDate: string }) => {
+      await apiClient.delete(`/calendar/events/${id}/recurring?fromDate=${fromDate}`);
+    },
+    onSuccess: invalidate,
+  });
+
   const createType = useMutation({
     mutationFn: async (row: { name: string; color: string }) => {
       const res = await apiClient.post<EventTypeRow>('/calendar/event-types', {
@@ -812,6 +827,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     update,
     move,
     remove,
+    endSeries,
     createType,
     deleteType,
   };
