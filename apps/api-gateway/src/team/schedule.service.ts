@@ -1069,7 +1069,16 @@ export class ScheduleService {
         .eq("user_id", userId)
         .maybeSingle();
       const isOpen = shift.state === "open" || !shift.member_id;
-      if (!isOpen || !me || me.id !== dto.memberId) {
+      if (!me || me.id !== dto.memberId) {
+        throw new ForbiddenException(
+          "You can only claim open shifts for yourself",
+        );
+      }
+      // A stale screen: someone already took it. Say who, not "forbidden".
+      if (!isOpen && shift.state === "covered") {
+        throw await this.takenBy(restaurantId, shift.member_id, me.id);
+      }
+      if (!isOpen) {
         throw new ForbiddenException(
           "You can only claim open shifts for yourself",
         );
@@ -1081,7 +1090,7 @@ export class ScheduleService {
       shiftId,
       dto.memberId,
     );
-    const { data, error } = await this.sb
+    let claim = this.sb
       .from("shifts")
       .update({
         member_id: dto.memberId,
@@ -1090,14 +1099,58 @@ export class ScheduleService {
         updated_at: new Date().toISOString(),
       })
       .eq("id", shiftId)
-      .eq("restaurant_id", restaurantId)
+      .eq("restaurant_id", restaurantId);
+    // offerCover pushes the same shift to several people at once. A staff
+    // claim is a compare-and-set on what made it claimable, so of two taps in
+    // the same second one wins and the other is told who has it — the later
+    // write no longer silently replaces the first.
+    if (role === "staff") {
+      claim = shift.member_id
+        ? claim.eq("state", "open").eq("member_id", shift.member_id)
+        : claim.is("member_id", null);
+    }
+    const { data, error } = await claim
       .select("*, shift_breaks(*)")
       .maybeSingle();
-    if (error || !data)
+    if (error)
       throw new InternalServerErrorException("Failed to assign cover");
+    if (!data) {
+      if (role !== "staff")
+        throw new InternalServerErrorException("Failed to assign cover");
+      const { data: now } = await this.sb
+        .from("shifts")
+        .select("member_id")
+        .eq("id", shiftId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      throw await this.takenBy(restaurantId, now?.member_id ?? null, dto.memberId);
+    }
     // Only the owner sees labor_cost — it is the wage times the hours, so it
     // is the wage (ADR 0215). Staff never did; a manager no longer does.
     return shiftForViewer(data, viewer);
+  }
+
+  /** The 409 for a claim that lost: names who holds the shift now. */
+  private async takenBy(
+    restaurantId: string,
+    holderId: string | null,
+    myId: string,
+  ): Promise<ConflictException> {
+    if (holderId && holderId === myId)
+      return new ConflictException("This shift is already yours.");
+    let name: string | null = null;
+    if (holderId) {
+      const { data: holder } = await this.sb
+        .from("team_members")
+        .select("display_name")
+        .eq("id", holderId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      name = holder?.display_name?.trim() || null;
+    }
+    return new ConflictException(
+      `${name ?? "Someone else"} has already taken this shift.`,
+    );
   }
 
   private async recomputeCostForMember(

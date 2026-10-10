@@ -497,3 +497,105 @@ describe("ScheduleService — T8: no emoji reaches the inbox", () => {
     expect(src).toContain('priority: "critical"');
   });
 });
+
+describe("ScheduleService — F-348: two staff claiming one open shift", () => {
+  const ALI = "user-ali";
+  const BEA = "user-bea";
+
+  function withTwoStaff(): StubDb {
+    const db = seed();
+    for (const [uid, mid, name] of [
+      [ALI, "m-ali", "Ali"],
+      [BEA, "m-bea", "Bea"],
+    ]) {
+      db.tables.user_restaurant_access.push({
+        id: `a-${mid}`,
+        user_id: uid,
+        restaurant_id: RID,
+        role: "staff",
+        is_active: true,
+      });
+      db.tables.users.push({
+        user_id: uid,
+        restaurant_id: RID,
+        role: "staff",
+        email: `${name.toLowerCase()}@example.test`,
+      });
+      db.tables.team_members.push({
+        id: mid,
+        restaurant_id: RID,
+        user_id: uid,
+        display_name: name,
+        hourly_wage: 20,
+      });
+    }
+    db.tables.schedules.push({
+      id: "s1",
+      restaurant_id: RID,
+      week_start: WEEK,
+      status: "published",
+    });
+    db.tables.shifts.push({
+      id: "sh-open",
+      restaurant_id: RID,
+      schedule_id: "s1",
+      member_id: null,
+      shift_date: WEEK,
+      start_time: "09:00",
+      end_time: "17:00",
+      state: "open",
+      labor_cost: null,
+    });
+    return db;
+  }
+
+  it("the claim that loses the race gets a 409 naming who has it, and the winner keeps it", async () => {
+    const db = withTwoStaff();
+    const svc = service(db);
+    // Bea's claim lands between Ali's read of the shift and Ali's write.
+    const realFrom = db.supabase.from.bind(db.supabase);
+    let shiftCalls = 0;
+    (db.supabase as any).from = (t: string) => {
+      if (t === "shifts" && ++shiftCalls === 3) {
+        const row = db.tables.shifts.find((s) => s.id === "sh-open")!;
+        row.member_id = "m-bea";
+        row.state = "covered";
+      }
+      return realFrom(t);
+    };
+
+    const err = await svc
+      .assignCover(ALI, RID, "sh-open", { memberId: "m-ali" } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe("Bea has already taken this shift.");
+    expect(db.tables.shifts.find((s) => s.id === "sh-open")?.member_id).toBe(
+      "m-bea",
+    );
+  });
+
+  it("a stale screen claiming a covered shift is told who took it, not forbidden", async () => {
+    const db = withTwoStaff();
+    const svc = service(db);
+    await svc.assignCover(BEA, RID, "sh-open", { memberId: "m-bea" } as any);
+
+    const err = await svc
+      .assignCover(ALI, RID, "sh-open", { memberId: "m-ali" } as any)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe("Bea has already taken this shift.");
+    expect(db.tables.shifts.find((s) => s.id === "sh-open")?.member_id).toBe(
+      "m-bea",
+    );
+  });
+
+  it("a manager still assigns a covered shift to someone else", async () => {
+    const db = withTwoStaff();
+    const svc = service(db);
+    await svc.assignCover(BEA, RID, "sh-open", { memberId: "m-bea" } as any);
+    await svc.assignCover(MANAGER, RID, "sh-open", { memberId: "m-ali" } as any);
+    expect(db.tables.shifts.find((s) => s.id === "sh-open")?.member_id).toBe(
+      "m-ali",
+    );
+  });
+});

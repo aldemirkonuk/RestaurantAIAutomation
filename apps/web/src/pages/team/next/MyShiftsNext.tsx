@@ -50,6 +50,17 @@ import {
 import { MutationError } from './tm-bits';
 import './team-next.css';
 
+/**
+ * The gateway's words when a claim lost to someone else (409): it names who
+ * has the shift. Any other failure says nothing about who holds it.
+ */
+function takenByWords(e: unknown): string | null {
+  const r = (e as { response?: { status?: unknown; data?: { message?: unknown } } } | null)?.response;
+  if (r?.status !== 409) return null;
+  const m = r.data?.message;
+  return typeof m === 'string' && m.trim() ? m : 'Someone else has already taken this shift.';
+}
+
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rid = useActiveRestaurantId();
   const qc = useQueryClient();
@@ -82,8 +93,11 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const claim = useMutation({
     mutationFn: (v: { shiftId: string; memberId: string }) =>
       assignCover(v.shiftId, v.memberId),
-    onSuccess: invalidate,
+    // A failed claim refetches too: when someone else took the shift, the
+    // stale "Take it" button must go, not wait for the next poll (F-348).
+    onSettled: invalidate,
   });
+  const claimTakenBy = takenByWords(claim.error);
   /**
    * The week's notes addressed to ME. The gateway filters by the caller's own
    * roster row, so a staff member never reads a note they were not named on.
@@ -170,7 +184,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
           Your manager was not told you have seen this week. Try again.
         </MutationError>
         <MutationError when={claim.isError}>
-          The shift was not claimed — it is still open for someone else.
+          {claimTakenBy ?? 'The shift was not claimed. Try again.'}
         </MutationError>
         <MutationError when={askOff.isError}>
           The request did not reach your manager. Nothing is on their desk.
