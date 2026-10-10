@@ -71,6 +71,7 @@ import {
   orgRoleForHouseGrant,
 } from "../organizations/org-role";
 import { roleInHouse, tokenHouse } from "./house-role";
+import { isLiveMembership } from "../common/tenant/live-membership";
 import { canonicalOrigin } from "../communications/email-templates/template-config";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import {
@@ -2713,36 +2714,62 @@ export class AuthService {
       );
     }
 
-    const { data: existingAccess } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("restaurant_id", invite.restaurant_id)
-      .maybeSingle();
-
-    if (existingAccess) {
-      await this.databaseService.supabase
+    const giveInviteBack = () =>
+      this.databaseService.supabase
         .from("organization_invites")
         .update({ used_at: null, used_by_email: null })
         .eq("id", invite.id);
+
+    const { data: existingAccess, error: existingErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("id, is_active, valid_from, valid_until")
+        .eq("user_id", userId)
+        .eq("restaurant_id", invite.restaurant_id)
+        .maybeSingle();
+    if (existingErr) {
+      await giveInviteBack();
+      throw new ServiceUnavailableException(
+        "Could not check your place in this house. Nothing was done; try again.",
+      );
+    }
+
+    // Only a CURRENT membership is "already a member" (F-635). A row that is
+    // held, switched off, or past its `valid_until` used to answer the same
+    // 409, so a fresh invite could never bring that person back. Such a row is
+    // made current again, in the role THIS invite grants, by this invite.
+    if (existingAccess && isLiveMembership(existingAccess)) {
+      await giveInviteBack();
       throw new ConflictException("already_member");
     }
 
-    const { error: uraErr } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .insert({
-        user_id: userId,
-        restaurant_id: invite.restaurant_id,
-        role: invite.role,
-        invited_via: invite.id,
-        is_active: true,
-      });
+    const { error: uraErr } = existingAccess
+      ? await this.databaseService.supabase
+          .from("user_restaurant_access")
+          .update({
+            role: invite.role,
+            invited_via: invite.id,
+            is_active: true,
+            held_since: null,
+            valid_from: new Date().toISOString(),
+            valid_until: null,
+            deactivated_at: null,
+            deactivated_by: null,
+          })
+          .eq("id", existingAccess.id)
+          .eq("user_id", userId)
+      : await this.databaseService.supabase
+          .from("user_restaurant_access")
+          .insert({
+            user_id: userId,
+            restaurant_id: invite.restaurant_id,
+            role: invite.role,
+            invited_via: invite.id,
+            is_active: true,
+          });
 
     if (uraErr) {
-      await this.databaseService.supabase
-        .from("organization_invites")
-        .update({ used_at: null, used_by_email: null })
-        .eq("id", invite.id);
+      await giveInviteBack();
       throw new BadRequestException(
         "Failed to grant restaurant access: " + uraErr.message,
       );

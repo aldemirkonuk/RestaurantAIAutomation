@@ -16,6 +16,7 @@ import {
   signInWithPasskey,
 } from '../services/api/passkeys'
 import { getErrorMessage } from '../services/api/client'
+import { returnPathAfterSignIn } from '../lib/returnPath'
 import {
   canRender,
   type IdentityProviderDescriptor,
@@ -113,14 +114,44 @@ const SHOW_DECLARED_PROVIDERS = false
 export function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, error: authError, clearError, resolveSignInMethods, signInWithSession } = useAuth()
+  const {
+    login,
+    error: authError,
+    clearError,
+    resolveSignInMethods,
+    signInWithSession,
+    user,
+    loading: authLoading,
+    logout,
+  } = useAuth()
   const googleRef = useRef<GoogleSignInHandle>(null)
   const on = usePublicDesign()
 
   const searchParams = new URLSearchParams(location.search)
-  const redirectQuery = searchParams.get('redirect')
-  const from = redirectQuery || (location.state as { from?: { pathname: string } })?.from?.pathname || '/'
+  // The whole address, query and hash too, and only ever a path on this site
+  // (F-213).
+  const from = returnPathAfterSignIn(location.search, location.state)
   const prefilledEmail = searchParams.get('email') ?? ''
+
+  // Someone already signed in on this device when the page opened (F-637).
+  // Signing a second person in over that session kept the first person's
+  // reads on screen, so the page offers their way in or a real sign-out —
+  // the one that warns about unsent work and clears what was theirs — and
+  // shows the form only after it. Decided once, when the device's session is
+  // known, so this page's own sign-in never shows it.
+  const [arrivedSignedIn, setArrivedSignedIn] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (arrivedSignedIn === null && !authLoading) setArrivedSignedIn(!!user)
+  }, [arrivedSignedIn, authLoading, user])
+  const [signingOut, setSigningOut] = useState(false)
+  const signOutFirst = async () => {
+    setSigningOut(true)
+    try {
+      if (await logout()) setArrivedSignedIn(false)
+    } finally {
+      setSigningOut(false)
+    }
+  }
 
   const [email, setEmail] = useState(prefilledEmail)
   const [password, setPassword] = useState('')
@@ -679,6 +710,24 @@ export function Login() {
     </>
   )
 
+  const signedInAs = arrivedSignedIn && user ? user : null
+  const body = signedInAs ? (
+    <div role="status" className="space-y-5">
+      <p className={on ? 'text-sm !text-inkm-2' : 'text-sm text-gray-700'}>
+        You are signed in as <strong>{signedInAs.name || signedInAs.email}</strong>
+        {signedInAs.name && signedInAs.email ? ` (${signedInAs.email})` : ''}.
+      </p>
+      <Button type="button" variant="default" size="lg" className={on ? `w-full ${HOUSE_BUTTON}` : 'w-full'} onClick={() => navigate(from, { replace: true })}>
+        Continue as {signedInAs.name || signedInAs.email}
+      </Button>
+      <Button type="button" variant="outline" size="lg" className="w-full" disabled={signingOut} onClick={() => void signOutFirst()}>
+        {signingOut ? 'Signing out…' : 'Sign out to use another account'}
+      </Button>
+    </div>
+  ) : (
+    content
+  )
+
   // sketch 118 · Direction B (the endpaper), the founder's 2026-09-19 pick —
   // ADR 0149 row 35.
   return on ? (
@@ -692,11 +741,11 @@ export function Login() {
     >
       <h2 className="mdv-ep-leaf-title">Welcome back.</h2>
       <p className="mdv-ep-leaf-lede">Your house keeps its book here.</p>
-      {content}
+      {body}
     </EndpaperShell>
   ) : (
     <AuthShell title="Mudavym" subtitle="Sign in to manage your wine inventory">
-      <AuthCard>{content}</AuthCard>
+      <AuthCard>{body}</AuthCard>
     </AuthShell>
   )
 }
