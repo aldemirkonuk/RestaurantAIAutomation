@@ -2,6 +2,7 @@
  * F-568: the vendor sheet's Actions are held while one is on its way, and each
  * tap ends in a line saying what happened, including "already asked".
  * F-789: nothing contacts the vendor yet, so no line may say it started.
+ * F-804: nor may a button imply the vendor is asked.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -41,11 +42,11 @@ describe('ProviderIntelligencePanel Actions (F-568)', () => {
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByRole('button', { name: 'Actions' }))
-    await user.click(screen.getByRole('button', { name: 'Request Updated Pricing' }))
+    await user.click(screen.getByRole('button', { name: 'Record a pricing request' }))
 
-    const pricing = screen.getByRole('button', { name: 'Request Updated Pricing' })
+    const pricing = screen.getByRole('button', { name: 'Record a pricing request' })
     await waitFor(() => expect(pricing).toBeDisabled())
-    expect(screen.getByRole('button', { name: 'Start Onboarding Flow' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Record an onboarding request' })).toBeDisabled()
     await user.click(pricing)
     expect(triggerOutreach).toHaveBeenCalledTimes(1)
 
@@ -61,7 +62,7 @@ describe('ProviderIntelligencePanel Actions (F-568)', () => {
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByRole('button', { name: 'Actions' }))
-    await user.click(screen.getByRole('button', { name: 'Start Onboarding Flow' }))
+    await user.click(screen.getByRole('button', { name: 'Record an onboarding request' }))
     expect(await screen.findByTestId('vendor-action-outcome')).toHaveTextContent(
       'You already asked for this in the last 7 days. Nothing new was recorded; Mudavym does not contact the vendor about it yet.',
     )
@@ -78,7 +79,23 @@ describe('ProviderIntelligencePanel Actions (F-568)', () => {
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByRole('button', { name: 'Actions' }))
-    await user.click(screen.getByRole('button', { name: 'General Check-in' }))
+    await user.click(screen.getByRole('button', { name: 'Record a check-in request' }))
     expect(await screen.findByTestId('vendor-action-outcome')).toHaveTextContent('Not recorded: Provider not found')
+  })
+
+  it('names each action as a request it records, not one sent to the vendor (F-804)', async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+    const labels = screen
+      .getAllByRole('button')
+      .map((b) => b.textContent?.trim() ?? '')
+      .filter((t) => t !== 'Actions' && !['Digital Twin', 'Promotions', 'Conversations'].includes(t))
+    expect(labels).toEqual([
+      'Record a check-in request',
+      'Record a promotions request',
+      'Record a pricing request',
+      'Record an onboarding request',
+    ])
   })
 })

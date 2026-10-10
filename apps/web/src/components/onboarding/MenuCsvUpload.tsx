@@ -13,6 +13,7 @@ import {
   resetFileInput,
 } from '../../lib/uploadAccept'
 import { skippedMenuColumns } from '../../lib/menuColumns'
+import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../../lib/menuReadWithoutAnswer'
 
 interface MenuCsvUploadProps {
   onSuccess: MenuImportSuccess
@@ -206,7 +207,11 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           result = await importOne(await readFile(f))
         } catch (err: any) {
           failures.push(
-            `${f.name}: ${err?.response?.data?.message || err?.message || 'import failed'}`,
+            `${f.name}: ${
+              readWithoutAnswer(err)
+                ? 'no answer came back; look for it under Menus kept before reading it again'
+                : err?.response?.data?.message || err?.message || 'import failed'
+            }`,
           )
         }
       }
@@ -222,6 +227,19 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           : null
       onSuccess(result, { image })
     } catch (e: any) {
+      // A scan sent with no answer back may already be read and kept, so the
+      // file is let go: pressing Import again would read and keep it twice
+      // (F-803). Files queued behind it were never sent, and are named.
+      if (isScanFile && readWithoutAnswer(e)) {
+        const unsent = queue.length
+        resetFile()
+        setError(
+          unsent
+            ? `${READ_WITHOUT_ANSWER} The other ${unsent === 1 ? 'file was' : `${unsent} files were`} not read: choose ${unsent === 1 ? 'it' : 'them'} again.`
+            : READ_WITHOUT_ANSWER,
+        )
+        return
+      }
       setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
     } finally {
       setLoading(false)
