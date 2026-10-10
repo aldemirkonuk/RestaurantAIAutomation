@@ -1,4 +1,4 @@
-import { heldApproval } from "../heldApproval";
+import { heldApproval, OFFLINE_REFUSAL, UNCERTAIN_APPROVAL } from "../heldApproval";
 beforeEach(() => jest.useFakeTimers());
 afterEach(() => jest.useRealTimers());
 it("issues at the start, cancels on early release and never approves later", async () => {
@@ -59,4 +59,35 @@ it("accessible confirmation waits for the second explicit action", async () => {
   expect(approve).not.toHaveBeenCalled();
   await control.confirm();
   expect(approve).toHaveBeenCalledWith("proof");
+});
+
+// F-678: offline, the hold showed fetch's raw "Network request failed".
+it("says plainly that nothing was approved when the phone is offline", async () => {
+  const approve = jest.fn();
+  const state = jest.fn();
+  const control = heldApproval({
+    issue: async () => {
+      throw new TypeError("Network request failed");
+    },
+    approve,
+    state,
+  });
+  control.begin();
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(approve).not.toHaveBeenCalled();
+  expect(state).toHaveBeenLastCalledWith("idle", OFFLINE_REFUSAL);
+});
+
+it("does not claim 'not approved' when the connection drops after sending", async () => {
+  const state = jest.fn();
+  const control = heldApproval({
+    issue: async () => "proof",
+    approve: async () => {
+      throw new TypeError("Network request failed");
+    },
+    state,
+  });
+  control.begin();
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(state).toHaveBeenLastCalledWith("idle", UNCERTAIN_APPROVAL);
 });
