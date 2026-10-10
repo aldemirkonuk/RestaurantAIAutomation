@@ -144,11 +144,24 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
   const [submitting, setSubmitting] = useState(false)
   const voiceSupported = !!getSpeechRecognition()
   const shelvesHolding = (item.locations ?? []).filter((l) => l.qty > 0).length
-  // With locations, the counter says where they counted before submitting:
+  // F-945: a shelf count compares the number counted with that shelf's own
+  // lots, so it may only be offered where those lots are everything a counter
+  // standing there would see. A zone that holds other zones is not offered
+  // (its racks' bottles would be counted against the zone's books alone), and
+  // while any bottle of this wine is on the books with no shelf -- the door
+  // books stock with no place -- or on such a zone, only a count of every
+  // shelf is offered: a shelf count would book those bottles a second time.
+  const parentIds = new Set(houseLocations.map((l) => l.parentId).filter(Boolean))
+  const shelves = houseLocations.filter((l) => !parentIds.has(l.id))
+  const shelfIds = new Set(shelves.map((l) => l.id))
+  const unshelved = (item.locations ?? [])
+    .filter((l) => l.qty > 0 && !(l.locationId && shelfIds.has(l.locationId)))
+    .reduce((n, l) => n + l.qty, 0)
+  // With shelves, the counter says where they counted before submitting:
   // '' = not chosen yet, EVERY_SHELF = the whole total, else a location id.
-  const picksShelf = houseLocations.length > 0
+  const picksShelf = shelves.length > 0 && unshelved === 0
   const [where, setWhere] = useState<string>(picksShelf ? '' : EVERY_SHELF)
-  const shelf = houseLocations.find((l) => l.id === where) ?? null
+  const shelf = picksShelf ? (shelves.find((l) => l.id === where) ?? null) : null
   const shelfBook = shelf
     ? (item.locations ?? []).filter((l) => l.locationId === shelf.id).reduce((n, l) => n + l.qty, 0)
     : null
@@ -322,7 +335,7 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
               <option value="" disabled>
                 Where did you count?
               </option>
-              {houseLocations.map((l) => (
+              {shelves.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
                 </option>
@@ -338,6 +351,9 @@ export function SpotCountPanel({ item, houseLocations = [], onClose, onCommitted
                 Count every bottle of this wine in every room, then enter the total. It replaces the total for all of
                 them, so a count of one shelf would take the others off the books.
                 {shelvesHolding > 1 && ` The books have it in ${shelvesHolding} places.`}
+                {shelves.length > 0 &&
+                  unshelved > 0 &&
+                  ` ${bottles(unshelved)} ${unshelved === 1 ? 'is' : 'are'} not on any one shelf yet, so count every shelf together until they are put on one.`}
               </>
             ) : (
               'Pick the place you counted. Only that place changes.'

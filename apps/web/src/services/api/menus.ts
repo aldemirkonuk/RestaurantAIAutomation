@@ -6,6 +6,7 @@
  */
 
 import { apiClient, getActiveRestaurantId } from './client'
+import { houseGroupMark } from '../../hooks/useHouseGroupMark'
 
 export interface WineExtractItem {
   name: string
@@ -161,6 +162,9 @@ export async function importMenu(
   // global forbidNonWhitelisted ValidationPipe — omitting it 400s before the
   // import ever runs. X-Restaurant-Id header alone is not read by the DTO.
   const restaurantId = getActiveRestaurantId()
+  // F-947: a file's price like "1.250" is read by the house's mark when the
+  // file itself does not settle it. Unknown is not sent, and is then refused.
+  const groupMark = method === 'csv' ? await houseGroupMark() : null
   const response = await apiClient.post<MenuImportResult>('/menus/import', {
     method,
     data,
@@ -168,6 +172,7 @@ export async function importMenu(
     // Sent only when the person gave them: a missing tag stays missing.
     ...(labels.cadence ? { cadence: labels.cadence } : {}),
     ...(labels.menuDate ? { menuDate: labels.menuDate } : {}),
+    ...(groupMark ? { groupMark } : {}),
   }, { timeout: MENU_IMPORT_TIMEOUT_MS })
   return response.data
 }

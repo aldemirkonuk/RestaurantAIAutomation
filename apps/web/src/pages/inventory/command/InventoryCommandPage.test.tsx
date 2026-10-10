@@ -506,7 +506,7 @@ describe('InventoryCommandPage — row keys leave buttons alone', () => {
     spot.focus();
     await user.keyboard('{Enter}');
     expect(await screen.findByRole('dialog', { name: 'Count every shelf' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'View ledger' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Decrease manual adjustment' })).toBeInTheDocument();
   });
 
   it('Space on a row button presses the button, not the row checkbox', async () => {
@@ -514,7 +514,7 @@ describe('InventoryCommandPage — row keys leave buttons alone', () => {
     const user = userEvent.setup();
     await openRowByKeyboard(user);
 
-    screen.getByRole('button', { name: 'View ledger' }).focus();
+    screen.getByRole('button', { name: 'Decrease manual adjustment' }).focus();
     await user.keyboard(' ');
     expect(screen.getByRole('checkbox', { name: 'Select Produttori Barbaresco' })).not.toBeChecked();
   });

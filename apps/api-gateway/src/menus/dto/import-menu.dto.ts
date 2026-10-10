@@ -38,4 +38,14 @@ export class ImportMenuDto {
     message: "menuDate is a day (YYYY-MM-DD) or a month (YYYY-MM).",
   })
   menuDate?: string;
+
+  /**
+   * OPTIONAL (F-947): the mark the house groups thousands with, from its
+   * country ("." in Türkiye, "," in the US). A CSV or spreadsheet price like
+   * "1.250" whose own file does not settle it is read by this mark; without
+   * it, such a price is refused, never guessed.
+   */
+  @IsOptional()
+  @IsIn([".", ","])
+  groupMark?: "." | ",";
 }

@@ -78,26 +78,16 @@ describe('RowExpansion — View ledger', () => {
   })
 
   /**
-   * Regression: this button used to navigate to `/documents`, which is not a
-   * route in App.tsx, so every click hit the `*` catch-all and bounced the user
-   * to the dashboard. The documents surface is `/documents-reports`.
+   * F-948 (F-144): "View ledger" went to /documents-reports, which holds
+   * reports and mail, not this wine's movements. No per-wine ledger view
+   * exists, so the row offers no link to one.
    */
-  it('navigates to the real documents route', async () => {
+  it('offers no "View ledger" link while no per-wine ledger view exists', () => {
     renderRow()
 
-    await userEvent.click(screen.getByRole('button', { name: /view ledger/i }))
-
-    expect(navigate).toHaveBeenCalledWith('/documents-reports')
-  })
-
-  it('does not carry an inventory id the destination cannot use', async () => {
-    renderRow()
-
-    await userEvent.click(screen.getByRole('button', { name: /view ledger/i }))
-
-    const target = navigate.mock.calls[0][0] as string
-    expect(target).not.toContain('ledger=')
-    expect(target).not.toContain('inv-1')
+    expect(screen.queryByRole('button', { name: /view ledger/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /view ledger/i })).not.toBeInTheDocument()
+    expect(navigate).not.toHaveBeenCalledWith('/documents-reports')
   })
 })
 
@@ -297,6 +287,52 @@ describe('RowExpansion — the count panel', () => {
       expect.objectContaining({ countedQty: 6, locationId: 'loc-cellar' }),
       undefined,
     )
+  })
+
+  // F-945: the door books bottles with no shelf. A count of "Cellar" compared
+  // the number with Cellar's lots alone and booked the unplaced 6 again.
+  it('offers no single shelf while bottles of the wine sit on no shelf, and sends no shelf', async () => {
+    recordSpotCount.mockResolvedValue({ item: null })
+    renderRow(
+      {
+        liveStock: 6,
+        locations: [{ locationId: null, qty: 6, wac: null }],
+      } as Partial<InventoryItem>,
+      [
+        { id: 'loc-cellar', name: 'Cellar', capacity: null, currentCount: 0, color: '' },
+        { id: 'loc-bar', name: 'Bar', capacity: null, currentCount: 0, color: '' },
+      ],
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /count bottles/i }))
+    expect(screen.queryByLabelText(/where you counted/i)).not.toBeInTheDocument()
+    expect(screen.getByTestId('spot-count-scope')).toHaveTextContent(/6 bottles are not on any one shelf yet/i)
+
+    await userEvent.type(screen.getByLabelText(/bottles counted/i), '6')
+    await userEvent.click(screen.getByRole('button', { name: /submit count/i }))
+    expect(recordSpotCount).toHaveBeenCalledTimes(1)
+    expect(recordSpotCount.mock.calls[0][1]).not.toHaveProperty('locationId')
+  })
+
+  // F-945: a zone that holds racks is counted with its racks' bottles in hand,
+  // while its books hold only its own lots, so only the racks are offered.
+  it('offers only the places that hold no other place', async () => {
+    renderRow(
+      {
+        liveStock: 5,
+        locations: [{ locationId: 'loc-rack', qty: 5, wac: null }],
+      } as Partial<InventoryItem>,
+      [
+        { id: 'loc-cellar', name: 'Cellar', capacity: null, currentCount: 0, color: '' },
+        { id: 'loc-rack', name: 'Rack A', capacity: null, currentCount: 0, color: '', parentId: 'loc-cellar' },
+      ],
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /count bottles/i }))
+    const picker = screen.getByLabelText(/where you counted/i)
+    const options = Array.from(picker.querySelectorAll('option')).map((o) => o.textContent)
+    expect(options).toContain('Rack A')
+    expect(options).not.toContain('Cellar')
   })
 
   it('sends no shelf when the counter picks every shelf together', async () => {

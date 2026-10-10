@@ -118,6 +118,11 @@ const PRICE_FIELDS = new Set<keyof WineExtractItem>([
  * and anything else with digits that fits none of the above. A cell with no
  * digits at all ("MP", "—") is no price, as before. A price below zero
  * ("-45") is its own refusal (F-684): the old reader dropped the sign.
+ *
+ * F-947: `group` is the mark the file groups thousands with, when that is
+ * known (see `fileGroupMark`). With it, "1.250" in a file that groups by "."
+ * is 1250, and "1,250" in one that groups by "," is 1250; the other mark
+ * followed by three digits is still refused.
  */
 export type PriceReading =
   | { kind: "none" }
@@ -125,14 +130,16 @@ export type PriceReading =
   | { kind: "negative" }
   | { kind: "unclear" };
 
-export function readPriceCell(raw: string): PriceReading {
+export type GroupMark = "." | ",";
+
+/** Currency words and signs, and spaces (incl. no-break and thin) or apostrophes used to group thousands, carry no number. */
+const bareNumber = (raw: string) =>
+  raw.replace(/[\s\u00a0\u202f'’]/g, "").replace(/^[^0-9.,-]+|[^0-9.,]+$/g, "");
+
+export function readPriceCell(raw: string, group: GroupMark | null = null): PriceReading {
   if (!/[0-9]/.test(raw)) return { kind: "none" };
-  // Currency words and signs, and spaces (incl. no-break and thin) or
-  // apostrophes used to group thousands, carry no number.
-  const s = raw
-    .replace(/[\s\u00a0\u202f'’]/g, "")
-    .replace(/^[^0-9.,-]+|[^0-9.,]+$/g, "");
-  if (/^-[0-9.,]*[0-9]$/.test(s) && readPriceCell(s.slice(1)).kind === "price") {
+  const s = bareNumber(raw);
+  if (/^-[0-9.,]*[0-9]$/.test(s) && readPriceCell(s.slice(1), group).kind === "price") {
     return { kind: "negative" };
   }
   if (!/^[0-9][0-9.,]*$/.test(s)) return { kind: "unclear" };
@@ -161,7 +168,32 @@ export function readPriceCell(raw: string): PriceReading {
     return value(`${parts[0]}.${parts[1]}`);
   }
   if (parts.length > 2 && grouped(s, mark)) return value(parts.join(""));
+  if (mark === group && grouped(s, mark)) return value(parts.join(""));
   return { kind: "unclear" };
+}
+
+/**
+ * The mark a file's own price cells say it groups thousands with (F-947):
+ * "1.250,00" and "12,50" say "."; "1,250.00" and "12.50" say ","; "1.250.000"
+ * says ".". A cell that reads only one way is the evidence; "1.250" is none.
+ * "conflict" when two cells disagree, null when no cell says.
+ */
+export function fileGroupMark(cells: string[]): GroupMark | "conflict" | null {
+  const said = new Set<GroupMark>();
+  for (const raw of cells) {
+    if (readPriceCell(raw).kind !== "price") continue;
+    const s = bareNumber(raw);
+    const dot = s.lastIndexOf(".");
+    const comma = s.lastIndexOf(",");
+    if (dot === -1 && comma === -1) continue;
+    if (dot !== -1 && comma !== -1) said.add(dot > comma ? "," : ".");
+    else {
+      const mark: GroupMark = dot !== -1 ? "." : ",";
+      said.add(s.split(mark).length > 2 ? mark : mark === "." ? "," : ".");
+    }
+  }
+  if (said.size > 1) return "conflict";
+  return said.size === 1 ? [...said][0] : null;
 }
 
 @Injectable()
@@ -181,7 +213,7 @@ export class CsvParserService {
    * header row uses most (`,`, `;` as Turkish Excel saves, or a tab), and a
    * quoted cell may hold the delimiter or a line break (F-684).
    */
-  read(csvContent: string): MenuRead {
+  read(csvContent: string, houseGroup: GroupMark | null = null): MenuRead {
     const delimiter = sniffDelimiter(csvContent);
     const records = splitRecords(csvContent, delimiter).filter((r) =>
       r.cells.some((c) => c.trim() !== ""),
@@ -191,6 +223,8 @@ export class CsvParserService {
     }
     return this.readRows(
       records.map((r) => ({ number: r.line, cells: r.cells, raw: r.raw.trim() })),
+      [],
+      houseGroup,
     );
   }
 
@@ -200,7 +234,7 @@ export class CsvParserService {
    * the list is passed over. A formula cell is read by its saved result and a
    * rich-text cell by its text (F-683); a cell with no readable value is named.
    */
-  async readExcel(base64: string): Promise<MenuRead> {
+  async readExcel(base64: string, houseGroup: GroupMark | null = null): Promise<MenuRead> {
     const ExcelJS = await import("exceljs");
     const buffer = Buffer.from(base64, "base64");
     const workbook = new ExcelJS.Workbook();
@@ -249,15 +283,21 @@ export class CsvParserService {
         rows.push({ number: rowNumber, cells });
       });
       if (rows.length < 2) continue;
-      const result = this.readRows(rows, unreadable);
+      const result = this.readRows(rows, unreadable, houseGroup);
       if (result.items.length > 0) return result;
       first ??= result;
     }
     return first ?? this.nothing("The spreadsheet has no rows under its column names.");
   }
 
-  /** Reads rows whose header is within the first ten (a title above it is passed over). */
-  private readRows(rows: Row[], unreadable: string[] = []): MenuRead {
+  /**
+   * Reads rows whose header is within the first ten (a title above it is passed over).
+   *
+   * F-947: a price like "1.250" is read by the file's own marks when its other
+   * prices settle them, else by the house's (`houseGroup`, from its country).
+   * When the file's prices disagree with each other, neither is guessed.
+   */
+  private readRows(rows: Row[], unreadable: string[] = [], houseGroup: GroupMark | null = null): MenuRead {
     let headerAt = rows.findIndex(
       (r, i) => i < 10 && this.fieldMapFor(r.cells).includes("name"),
     );
@@ -282,12 +322,20 @@ export class CsvParserService {
     }
 
     const hasPriceColumn = fieldMap.some((f) => f && PRICE_FIELDS.has(f));
+    const said = fileGroupMark(
+      rows.slice(headerAt + 1).flatMap((r) =>
+        fieldMap.flatMap((f, i) =>
+          f && PRICE_FIELDS.has(f) && typeof r.cells[i] === "string" ? [String(r.cells[i]).trim()] : [],
+        ),
+      ),
+    );
+    const group = said === "conflict" ? null : (said ?? houseGroup);
     const items: WineExtractItem[] = [];
     const unclear: string[] = [];
     const negative: string[] = [];
     for (const row of rows.slice(headerAt + 1)) {
       if (row.cells.every((c) => String(c ?? "").trim() === "")) continue;
-      const item = this.buildItem(fieldMap, row.cells, row.number, unclear, negative);
+      const item = this.buildItem(fieldMap, row.cells, row.number, unclear, negative, group);
       if (!item) {
         notes.dropped.push({ row: row.number, reason: "no name" });
         continue;
@@ -337,6 +385,7 @@ export class CsvParserService {
     rowNumber: number,
     unclear: string[],
     negative: string[],
+    group: GroupMark | null = null,
   ): WineExtractItem | null {
     const item: Partial<WineExtractItem> = {};
     const unclearHere: string[] = [];
@@ -354,7 +403,7 @@ export class CsvParserService {
       if (!raw) return;
 
       if (PRICE_FIELDS.has(field)) {
-        const read = readPriceCell(raw);
+        const read = readPriceCell(raw, group);
         if (read.kind === "price") (item as any)[field] = read.value;
         else if (read.kind === "negative") negativeHere.push(`“${raw}”`);
         else if (read.kind === "unclear") unclearHere.push(`“${raw}”`);
