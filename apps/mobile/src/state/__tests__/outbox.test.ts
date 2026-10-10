@@ -34,6 +34,7 @@ import {
   signOutWords,
   unsentAtSignOut,
   useOutbox,
+  receiptWaitingFor,
   waitingFeedItems,
   waitingFor,
   waitingWork,
@@ -441,4 +442,25 @@ it("finds this person's waiting entry for one action in this house (F-956, F-951
     expect(waitingFor(waiting, alice, path)?.id).toBe("e");
   }
   expect(waitingFor(entries, null, path)).toBeNull();
+});
+
+it("a Today card knows its order's count already waits on this phone (F-980)", () => {
+  const receipt = "/procurement/orders/order-1/verify-receipt";
+  const alice = { id: "alice", restaurantId: "r1" };
+  const entry = (over: Record<string, unknown>) =>
+    ({ id: "e", actorUserId: "alice", restaurantId: "r1", status: "pending", path: receipt, ...over }) as any;
+  for (const status of ["holding", "pending", "inflight"]) {
+    expect(receiptWaitingFor({ orderId: "order-1" }, [entry({ status })], alice)).toBe(true);
+  }
+  // Refused, another person's, another house's, another order's, another action: the tap goes through.
+  const others = [
+    entry({ status: "failed" }),
+    entry({ actorUserId: "bob" }),
+    entry({ restaurantId: "r2" }),
+    entry({ path: "/procurement/orders/order-2/verify-receipt" }),
+    entry({ path: "/procurement/orders/order-1/deliver" }),
+  ];
+  expect(receiptWaitingFor({ orderId: "order-1" }, others, alice)).toBe(false);
+  expect(receiptWaitingFor({ orderId: null }, [entry({})], alice)).toBe(false);
+  expect(receiptWaitingFor({ orderId: "order-1" }, [entry({})], null)).toBe(false);
 });

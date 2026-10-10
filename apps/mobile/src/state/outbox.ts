@@ -9,6 +9,8 @@ import { GRACE_MS } from "@/design/motion";
 import { withoutReceiptMoney } from "@/lib/receiptMoney";
 import { outboxStorage } from "@/lib/mmkv";
 import { queryClient } from "@/lib/queryClient";
+import type { FeedItem } from "@/api/types";
+import { countsMatchRequest } from "@/components/today/countsMatchRequest";
 
 /**
  * Durable outbox — the engine under every mutation in the app.
@@ -254,6 +256,21 @@ export function waitingFor(
         e.restaurantId === user.restaurantId,
     ) ?? null
   );
+}
+
+/**
+ * True while this person's count for a Today card's order still waits on this
+ * phone (F-980), from the receive screen or an earlier tap: "Counts match"
+ * would queue a second receipt and book the same bottles twice, so the card
+ * says the count waits and takes no second one.
+ */
+export function receiptWaitingFor(
+  item: Pick<FeedItem, "orderId">,
+  entries: OutboxEntry[],
+  user: { id?: string; restaurantId?: string } | null,
+): boolean {
+  const request = countsMatchRequest(item);
+  return request != null && waitingFor(entries, user, request.path) != null;
 }
 
 /** Under an order whose delivery mark waits on this phone (F-956). */

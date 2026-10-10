@@ -39,3 +39,26 @@ describe("receive screen — a second count for one order (F-951)", () => {
     expect(SCREEN).toContain("{RECEIPT_WAITING_WORDS}");
   });
 });
+
+describe("Today card — Counts match while a count waits (F-980)", () => {
+  // Components live under src/, not app/.
+  const CARD = fs.readFileSync(
+    path.resolve(__dirname, "../../components/today/DecisionCard.tsx"),
+    "utf8",
+  );
+
+  it("reads the waiting count, shuts the button and says so", () => {
+    expect(CARD).toMatch(/receiptWaitingFor\(item, s\.entries, user\)/);
+    expect(CARD).toMatch(
+      /if \(receiptWaiting\)\s*return \{\s*label: "Saved on this phone",[\s\S]*?disabled: true,\s*note: RECEIPT_WAITING_WORDS,/,
+    );
+    expect(CARD).toContain("disabled={action.disabled}");
+    expect(CARD).toContain("{action.note}");
+  });
+
+  it("re-checks the queue at the tap before it posts a receipt", () => {
+    expect(CARD).toMatch(
+      /if \(receiptWaitingFor\(item, useOutbox\.getState\(\)\.entries, user\)\) \{\s*Alert\.alert\(RECEIPT_WAITING_WORDS\);\s*return;\s*\}\s*instantAction\(countsMatch\.path/,
+    );
+  });
+});
