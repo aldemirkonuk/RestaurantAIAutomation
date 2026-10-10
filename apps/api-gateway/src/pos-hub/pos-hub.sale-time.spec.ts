@@ -64,12 +64,37 @@ function makeDb(opts: DbOpts = {}) {
     consumption: [] as Row[],
     queued: [] as Row[],
   };
+  const booked: Array<{ fn: string; args: Row }> = [];
   const client: any = {
     from(table: string) {
       const q: any = {
         select: () => q,
         eq: () => q,
         in: async () => ({ data: [], error: null }),
+        // What earlier imports of the check moved, read back from the RPCs
+        // this mock answered (sim wave 8): the void is decided against it.
+        like: async () => ({
+          data:
+            table === "inventory_transactions"
+              ? booked
+                  .filter((c) => c.fn === "apply_stock_movement")
+                  .map((c) => ({
+                    idempotency_key: c.args.p_idempotency_key,
+                    inventory_id: c.args.p_inventory_id,
+                    quantity_change: c.args.p_delta,
+                  }))
+              : table === "pour_events"
+                ? booked
+                    .filter((c) => c.fn === "record_glass_pour")
+                    .map((c) => ({
+                      idempotency_key: c.args.p_idempotency_key,
+                      inventory_id: c.args.p_inventory_id,
+                      pours: c.args.p_pours,
+                      pour_ml: c.args.p_pour_ml,
+                    }))
+                : [],
+          error: null,
+        }),
         upsert: async (row: Row) => {
           if (table === "pos_checks") calls.checks.push(row);
           return { error: null };
@@ -102,7 +127,12 @@ function makeDb(opts: DbOpts = {}) {
     },
     rpc: async (fn: string, args: Row) => {
       calls.rpc.push({ fn, args });
-      return opts.rpc ? opts.rpc(fn, args) : { data: "tx-1", error: null };
+      const res = opts.rpc
+        ? opts.rpc(fn, args)
+        : { data: "tx-1", error: null };
+      // A refused write leaves no row for the ledger read to find.
+      if (!res.error) booked.push({ fn, args });
+      return res;
     },
   };
   return {
@@ -384,17 +414,20 @@ describe("ingest dates stock and consumption by the check (A-007 / A-009)", () =
       mappings: [BOTTLE],
       inventory: INVENTORY,
     });
+    // The sale first: a void returns only what this hub took (F-393).
+    await ingest(service, [check("c-3", CLOSED, [line(BOTTLE, 1)])]);
+    const soldConsumption = calls.consumption.length;
     await ingest(service, [
       check("c-3", CLOSED, [line(BOTTLE, 1)], { voided: true }),
     ]);
 
-    expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].args).toMatchObject({
+    expect(calls.rpc).toHaveLength(2);
+    expect(calls.rpc[1].args).toMatchObject({
       p_transaction_type: "return",
       p_delta: 1,
       p_occurred_at: AT,
     });
-    expect(calls.consumption).toHaveLength(0);
+    expect(calls.consumption).toHaveLength(soldConsumption);
   });
 });
 
@@ -843,5 +876,55 @@ describe("a closed_at the import does not read is refused, not imported (ADR 028
     ).rejects.toThrow('closed_at "03.10.2026" was not read');
     expect(calls.rpc).toHaveLength(0);
     expect(calls.consumption).toHaveLength(0);
+  });
+});
+
+describe("a voided flag the import does not read is refused, not guessed (sim F-397)", () => {
+  it("writes nothing for the check and says how to write it", async () => {
+    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const res = await ingest(service, [
+      check("c-v", "2026-07-14T21:00:00Z", [line(BOTTLE)], { voided: "maybe" }),
+    ]);
+    expect(calls.checks).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(res.upserted).toBe(0);
+    expect(res.errors).toEqual([
+      'c-v: not imported, voided not readable — write true or false (voided was "maybe")',
+    ]);
+  });
+});
+
+describe('voided: "false" from a till is a sale, not a void (sim F-397)', () => {
+  it("depletes the bottle instead of returning one", async () => {
+    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    await ingest(service, [
+      check("c-f", "2026-07-14T21:00:00Z", [line(BOTTLE)], { voided: "false" }),
+    ]);
+    expect(calls.checks[0].voided).toBe(false);
+    const deltas = calls.rpc.map((c) => c.args.p_delta).filter((d) => d !== undefined);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(deltas.every((d) => Number(d) < 0)).toBe(true);
+  });
+});
+
+describe("an amount the import does not read is refused, not stored wrong (sim F-396)", () => {
+  it("writes nothing for the check and names the field", async () => {
+    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    const res = await ingest(service, [
+      check("c-m", "2026-07-14T21:00:00Z", [line(BOTTLE)], { total: "1.350" }),
+    ]);
+    expect(calls.checks).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(res.errors).toEqual([
+      'c-m: not imported, total not readable as an amount — write it as 1250.00 (it was "1.350")',
+    ]);
+  });
+
+  it("stores a Turkish-written total as the amount it says", async () => {
+    const { service, calls } = makeDb({ mappings: [BOTTLE], inventory: INVENTORY });
+    await ingest(service, [
+      check("c-t", "2026-07-14T21:00:00Z", [line(BOTTLE)], { total: "1.350,50", tip: "100,00" }),
+    ]);
+    expect(calls.checks[0]).toMatchObject({ total: 1350.5, tip: 100 });
   });
 });
