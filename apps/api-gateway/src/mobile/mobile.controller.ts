@@ -58,10 +58,20 @@ export class MobileController {
   @Get("feed")
   @ApiOperation({ summary: "Unified ranked decision feed for the mobile app" })
   async getFeed(
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: {
+      userId: string;
+      restaurantId: string;
+      role?: string | null;
+    },
   ): Promise<FeedResponse> {
     try {
-      return await this.mobileService.getFeed(user.userId, user.restaurantId);
+      // Staff get the order cards without their amounts (F-957).
+      return await this.mobileService.getFeed(
+        user.userId,
+        user.restaurantId,
+        user.role,
+      );
     } catch (error: any) {
       throw new HttpException(
         error.message || "Failed to build feed",

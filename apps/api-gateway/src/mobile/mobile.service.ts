@@ -9,6 +9,7 @@ import { ConversationsService } from "../conversations/conversations.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { houseMoney, readHouseMoney } from "../common/house-money";
 import { houseFrame } from "../common/house-frame";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 import {
   localDateIn,
   localMidnight,
@@ -50,7 +51,15 @@ export class MobileService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  async getFeed(userId: string, restaurantId: string): Promise<FeedResponse> {
+  async getFeed(
+    userId: string,
+    restaurantId: string,
+    role?: string | null,
+  ): Promise<FeedResponse> {
+    // F-957: an order card's amount is the house's money (ADR 0145, DASH-W22).
+    // A role that does not hold it gets the card, its wine, vendor and count,
+    // and no figure, in the amount or in the line under the title.
+    const withholdMoney = !holdsHouseMoney(role ?? null);
     // F-542: a collector that fails is an unknown, never an empty list. One
     // missing source would otherwise make the feed (and the Today strip's
     // count) read as "nothing needs you" with orders still waiting.
@@ -97,12 +106,13 @@ export class MobileService {
     const items: FeedItem[] = [];
 
     for (const order of orders as any[]) {
-      const amount =
-        order.totalCost ??
-        order.finalPrice ??
-        order.negotiatedPrice ??
-        order.quotedPrice ??
-        null;
+      const amount = withholdMoney
+        ? null
+        : (order.totalCost ??
+          order.finalPrice ??
+          order.negotiatedPrice ??
+          order.quotedPrice ??
+          null);
       items.push(
         this.makeItem({
           kind: "order_approval",
@@ -110,7 +120,12 @@ export class MobileService {
           title: order.wineName
             ? `Approve order: ${order.wineName}`
             : `Approve ${order.orderNumber ?? "order"}`,
-          subtitle: this.orderSubtitle(order, providerNames, money),
+          subtitle: this.orderSubtitle(
+            order,
+            providerNames,
+            money,
+            withholdMoney,
+          ),
           wineName: order.wineName ?? null,
           providerName: providerNames.get(order.providerId) ?? null,
           amount,
@@ -239,6 +254,7 @@ export class MobileService {
         alerts: items.filter((i) => i.kind === "alert").length,
       },
       generatedAt: new Date().toISOString(),
+      ...(withholdMoney ? { amountsWithheld: true as const } : {}),
     };
   }
 
@@ -453,6 +469,7 @@ export class MobileService {
     order: any,
     providerNames: Map<string, string>,
     house: { currency: string | null; locale: string | null },
+    withholdMoney = false,
   ): string {
     const parts: string[] = [];
     if (order.quantity) {
@@ -462,11 +479,12 @@ export class MobileService {
     }
     const provider = providerNames.get(order.providerId);
     if (provider) parts.push(provider);
-    const amount =
-      order.totalCost ??
-      order.finalPrice ??
-      order.negotiatedPrice ??
-      order.quotedPrice;
+    const amount = withholdMoney
+      ? null
+      : (order.totalCost ??
+        order.finalPrice ??
+        order.negotiatedPrice ??
+        order.quotedPrice);
     if (amount != null)
       parts.push(
         houseMoney(amount, order.currency ?? house.currency, {
