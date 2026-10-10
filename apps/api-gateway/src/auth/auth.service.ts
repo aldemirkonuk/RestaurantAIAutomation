@@ -3898,7 +3898,7 @@ export class AuthService {
 
   async updateProfile(
     userId: string,
-    updates: { name?: string; phone?: string },
+    updates: { name?: string; phone?: string | null },
   ) {
     const patch: Record<string, unknown> = {};
     if (updates.name !== undefined) {
@@ -3910,8 +3910,9 @@ export class AuthService {
       }
       patch.name = trimmed;
     }
+    // undefined leaves the number alone; null or blank clears it.
     if (updates.phone !== undefined) {
-      patch.phone = updates.phone.trim() || null;
+      patch.phone = updates.phone?.trim() || null;
     }
 
     if (Object.keys(patch).length === 0) {

@@ -1019,6 +1019,19 @@ export interface RecipeLineVM {
   sort_order?: number | null;
 }
 
+/**
+ * Whether this person may price a cocktail or take one off the list — the
+ * owner or a manager of THIS house, the same people the gateway lets do it
+ * (F-270). The role read is the one in the active house; `user.role` is only
+ * the fallback while no house is active. Anything else, admin included, is
+ * treated as staff, as the gateway does. Recipe and the rest stay open.
+ */
+export function useMayPriceCocktails(): boolean {
+  const { activeRole, user } = useAuth();
+  const role = (activeRole ?? user?.role ?? '').toLowerCase();
+  return role === 'owner' || role === 'manager';
+}
+
 export function useCocktailWrites() {
   const { activeRestaurantId } = useAuth();
   const queryClient = useQueryClient();

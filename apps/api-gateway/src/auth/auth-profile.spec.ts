@@ -196,6 +196,44 @@ describe("AuthService profile APIs", () => {
     );
   });
 
+  it.each([
+    [null, null],
+    ["   ", null],
+    [" +44 20 7946 0000 ", "+44 20 7946 0000"],
+  ])("updateProfile stores phone %j as %j", async (phone, stored) => {
+    const svc = makeAuthService({
+      user_id: "u1",
+      email: "a@b.com",
+      name: "Ada",
+      phone: "+1 555 0100",
+      role: "manager",
+      password_hash: "hash",
+    });
+    const usersChain = (svc as any).databaseService.supabase.from("users");
+    const update = jest.spyOn(usersChain, "update");
+
+    await svc.updateProfile("u1", { phone });
+
+    expect(update).toHaveBeenCalledWith({ phone: stored });
+  });
+
+  it("updateProfile leaves phone alone when it is not sent", async () => {
+    const svc = makeAuthService({
+      user_id: "u1",
+      email: "a@b.com",
+      name: "Ada",
+      phone: "+1 555 0100",
+      role: "manager",
+      password_hash: "hash",
+    });
+    const usersChain = (svc as any).databaseService.supabase.from("users");
+    const update = jest.spyOn(usersChain, "update");
+
+    await svc.updateProfile("u1", { name: "Ada Lovelace" });
+
+    expect(update).toHaveBeenCalledWith({ name: "Ada Lovelace" });
+  });
+
   it("changePassword requires current password when one is set", async () => {
     const svc = makeAuthService({
       user_id: "u1",

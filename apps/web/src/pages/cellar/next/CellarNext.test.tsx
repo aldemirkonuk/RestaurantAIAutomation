@@ -53,6 +53,8 @@ const mock = vi.hoisted(() => ({
   register: { data: null, loading: false, error: null, refetch: () => {} } as Record<string, unknown>,
   recipe: { data: null, loading: false, error: null } as Record<string, unknown>,
   writes: {} as Record<string, unknown>,
+  // Owner or manager of the house (F-270); a test turns it off for staff.
+  mayPrice: true,
   rowRecord: { data: null, loading: false, error: null } as Record<string, unknown>,
   whole: { rows: [], reads: [], loading: false, partial: false } as Record<string, unknown>,
   zones: { data: null, loading: false, error: null } as Record<string, unknown>,
@@ -86,6 +88,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useRegister: () => mock.register,
   useCocktailRecipe: () => mock.recipe,
   useCocktailWrites: () => mock.writes,
+  useMayPriceCocktails: () => mock.mayPrice,
   useRowRecord: () => mock.rowRecord,
   useWholeCellar: () => mock.whole,
   useZones: () => mock.zones,
@@ -247,6 +250,7 @@ beforeEach(() => {
   mock.whole = { rows: [], reads: [], loading: false, partial: false };
   mock.zones = { data: null, loading: false, error: null };
   mock.confirmZone = { confirm: vi.fn(), saving: false, error: null };
+  mock.mayPrice = true;
 });
 
 describe('CellarNext — the parent surface', () => {
@@ -1419,6 +1423,51 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByTestId('cocktail-said')).toHaveTextContent(
       /dated, not deleted/,
     );
+  });
+
+  it('staff see no price field and no retire button; the owner or a manager do (F-270)', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    const amend = vi.fn().mockResolvedValue({});
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: amend, isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: null,
+          method: null, glass: null, garnish: null, price: 18, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: null, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+
+    mock.mayPrice = false;
+    const { unmount } = draw({ category: 'cocktails' });
+    fireEvent.click(screen.getByText('Negroni'));
+    expect(screen.queryByRole('button', { name: /Take it off the list/ })).not.toBeInTheDocument();
+    // Staff can still amend the rest; the form simply has no price to change.
+    fireEvent.click(screen.getByRole('button', { name: /Amend/ }));
+    expect(screen.queryByLabelText('Price')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cocktail-draft')).toHaveTextContent(/set by the owner or a manager/);
+    // A new cocktail from staff is recorded unpriced.
+    fireEvent.click(screen.getByRole('button', { name: /Add a cocktail/ }));
+    expect(screen.getByTestId('cocktail-draft')).toHaveTextContent(/A cocktail on this house/);
+    expect(screen.queryByLabelText('Price')).not.toBeInTheDocument();
+    unmount();
+
+    mock.mayPrice = true;
+    draw({ category: 'cocktails' });
+    fireEvent.click(screen.getByText('Negroni'));
+    expect(screen.getByRole('button', { name: /Take it off the list/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Amend/ }));
+    expect(screen.getByLabelText('Price')).toHaveValue(18);
   });
 
   it('an unknown ?register value opens the overview rather than an invented register', () => {
