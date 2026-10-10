@@ -218,3 +218,41 @@ describe('clearEntityCache: sign-out empties the read cache and nothing else', (
     expect(await storage.getAllPendingMutationsOnDevice()).toHaveLength(1)
   })
 })
+
+describe('a change is stamped with the house this tab shows (F-244)', () => {
+  const U = '11111111-1111-4111-8111-111111111111'
+  const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const jwt = (claims: Record<string, unknown>) =>
+    `h.${btoa(JSON.stringify(claims)).replace(/=+$/, '')}.s`
+
+  it('another tab moved the session to B: a change made here, on A, belongs to A', async () => {
+    const storage = await freshModule()
+    const { pinTabHouse } = await import('./queue-owner')
+    pinTabHouse(A)
+    // Tab 2 switched: the shared session now names B.
+    localStorage.setItem('accessToken', jwt({ sub: U, restaurantId: B }))
+    localStorage.setItem('activeRestaurantId', B)
+
+    await storage.addPendingMutation({ type: 't', data: {}, timestamp: past() })
+
+    const [m] = await storage.getAllPendingMutationsOnDevice()
+    expect(m.owner).toEqual({ userId: U, restaurantId: A })
+    // It is not B's to send; it waits for a session in A.
+    expect(await storage.getPendingMutations()).toHaveLength(0)
+    localStorage.setItem('accessToken', jwt({ sub: U, restaurantId: A }))
+    localStorage.setItem('activeRestaurantId', A)
+    expect(await storage.getPendingMutations()).toHaveLength(1)
+  })
+
+  it('a tab that has not named its house yet stamps the session house', async () => {
+    const storage = await freshModule()
+    localStorage.setItem('accessToken', jwt({ sub: U, restaurantId: B }))
+    localStorage.setItem('activeRestaurantId', B)
+
+    await storage.addPendingMutation({ type: 't', data: {}, timestamp: past() })
+
+    const [m] = await storage.getAllPendingMutationsOnDevice()
+    expect(m.owner).toEqual({ userId: U, restaurantId: B })
+  })
+})

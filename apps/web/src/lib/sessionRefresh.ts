@@ -23,26 +23,72 @@
  * refresh token on use, the loser of that race gets a rejected refresh token
  * and is signed out for no reason a person did. This module makes concurrent
  * callers share one in-flight request.
+ *
+ * It is also the ONLY refresh: the API client's 401 handler used to keep a
+ * second copy with its own in-flight slot (F-610), so two refreshes could
+ * race and the later answer won.
  */
 import axios from "axios";
 import {
   goToChooser,
   noteHouseEnded,
   storeSession,
+  tokenHouse,
 } from "./houseMemory";
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
 
 let inFlight: Promise<string | null> | null = null;
 
+/** The last refused refresh's answer, kept for whoever says so (F-335). */
+let refusal: { data: unknown } | null = null;
+
+/**
+ * Takes the body of the refusal that just signed this session out, once:
+ * the API client says it over the page (F-335) with the gateway's own
+ * sentence. A second caller of the same refused refresh gets `null`.
+ */
+export function takeRefusal(): { data: unknown } | null {
+  const r = refusal;
+  refusal = null;
+  return r;
+}
+
+function read(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the session moved on while this refresh was out (F-610): a house
+ * switch, a sign-in or a sign-out in this tab or another stored a new pair,
+ * or removed it. The gateway mints a refresh in the house of the refresh
+ * token it was given, so the answer to a refresh started before a switch is
+ * the LAST house's session; writing it would put every request back in that
+ * house while the page still names the new one.
+ */
+function sessionMoved(sentRefresh: string, sentHouse: string | null): boolean {
+  return (
+    read("refreshToken") !== sentRefresh ||
+    tokenHouse(read("accessToken")) !== sentHouse
+  );
+}
+
 async function performRefresh(): Promise<string | null> {
-  const refresh = localStorage.getItem("refreshToken");
+  const refresh = read("refreshToken");
   if (!refresh) return null;
+  const house = tokenHouse(read("accessToken"));
 
   try {
     const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, {
       refreshToken: refresh,
     });
+    // The newer session stands; this answer is dropped, and the caller
+    // retries with the token that is stored now.
+    if (sessionMoved(refresh, house)) return read("accessToken");
     const {
       accessToken,
       refreshToken: newRefresh,
@@ -65,10 +111,16 @@ async function performRefresh(): Promise<string | null> {
     // again" into "sign in again" (ADR 0164, item 2/3).
     const status = (err as { response?: { status?: number } })?.response
       ?.status;
+    // A refusal of the token this tab held before the session moved says
+    // nothing about the session that is stored now; it is not signed out.
+    if (sessionMoved(refresh, house)) return read("accessToken");
     if (status === 401) {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
       localStorage.removeItem("activeRestaurantId");
+      refusal = {
+        data: (err as { response?: { data?: unknown } })?.response?.data,
+      };
     }
     return null;
   }
@@ -98,4 +150,5 @@ export async function doRefresh(): Promise<string | null> {
 /** Test-only: forces the next call to start a fresh request. */
 export function __resetInFlightForTests(): void {
   inFlight = null;
+  refusal = null;
 }

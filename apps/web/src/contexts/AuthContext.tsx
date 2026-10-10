@@ -32,7 +32,11 @@ import {
 import { forgetJoin } from "../lib/joinResume";
 import { doRefresh } from "../lib/sessionRefresh";
 import { syncManager } from "../lib/sync-manager";
-import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
+import {
+  currentQueueOwner,
+  pinTabHouse,
+  signOutWarning,
+} from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
 import { ensurePersisted } from "../lib/deviceStorage";
 import { HouseMovedElsewhere } from "./HouseMovedElsewhere";
@@ -844,6 +848,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // A storage event fires only in the OTHER tabs, never in the one that wrote.
   const shownHouse = useRef<string | null>(null);
   shownHouse.current = activeRestaurantId;
+  // An offline change queued in this tab belongs to the house this tab shows.
+  useEffect(() => {
+    pinTabHouse(user ? activeRestaurantId : null);
+  }, [user, activeRestaurantId]);
   const signedIn = !!user;
   useEffect(() => {
     if (!signedIn) return;

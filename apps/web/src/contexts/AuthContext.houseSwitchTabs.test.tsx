@@ -33,6 +33,7 @@ vi.mock("../lib/error-tracking", () => ({
 }));
 
 import { AuthProvider, useAuth } from "./AuthContext";
+import { queueOwnerForNewEntry } from "../lib/queue-owner";
 
 const HOUSE_A = "11111111-1111-4111-8111-111111111111";
 const HOUSE_B = "22222222-2222-4222-8222-222222222222";
@@ -116,6 +117,16 @@ describe("a switch in another tab (F-244)", () => {
     expect(screen.getByRole("button", { name: "Open Harbor House here" })).toBeTruthy();
     // Nothing moved under the person: the tab still names the house it shows.
     expect(result.current.activeRestaurantId).toBe(HOUSE_A);
+  });
+
+  it("a change queued in this tab after the other tab moved still belongs to this tab's house", async () => {
+    await signedInAtA();
+    localStorage.setItem("accessToken", TOKEN_B);
+    localStorage.setItem("activeRestaurantId", HOUSE_B);
+    anotherTabMovedTo(HOUSE_B);
+    await screen.findByRole("alertdialog");
+
+    expect(queueOwnerForNewEntry()).toEqual({ userId: USER, restaurantId: HOUSE_A });
   });
 
   it("goes quiet again when the other tab comes back to this tab's house", async () => {
