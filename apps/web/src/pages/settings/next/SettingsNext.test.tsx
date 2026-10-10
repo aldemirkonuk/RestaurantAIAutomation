@@ -512,7 +512,10 @@ describe('SettingsNext — the editorial spine', () => {
     // counts plus "What changed here" add up to the eighteen above.
     expect(screen.getByText(/Eight of these record/i)).toBeInTheDocument();
     expect(screen.getByText(/Team, Features, Vendor terms, Approval thresholds, Currency, Carrying cost, Time zone and Mail reading/)).toBeInTheDocument();
-    expect(screen.getByText(/The other nine do not keep that record yet/i)).toBeInTheDocument();
+    // F-785: Locations records a house's state and country with a name
+    // (ADR 0289), so it is qualified, not counted among the silent ones.
+    expect(screen.getByText(/Locations records it only for a house’s state and country\./)).toBeInTheDocument();
+    expect(screen.getByText(/The other eight do not keep that record yet/i)).toBeInTheDocument();
     expect(screen.queryByText(/services this pass|naming the file/i)).not.toBeInTheDocument();
   });
 
@@ -1246,13 +1249,17 @@ describe('SettingsNext — the settings record', () => {
     // page now (e.g. "Email sign-off" is both this list's item and its own
     // register's `<h3>`), since the interview renders all sixteen together.
     const section = screen.getByTestId('st-section-ledger');
-    // F-180: counted from the register list (nine with /connections off), in
+    // F-180: counted from the register list (eight with /connections off), in
     // the owner's words, with no file names beside them.
-    expect(within(section).getByText(/Nine settings do not keep this record yet/i)).toBeInTheDocument();
+    expect(within(section).getByText(/Eight settings do not keep this record yet/i)).toBeInTheDocument();
     expect(within(section).queryByText(/this pass|\.service\.ts/i)).not.toBeInTheDocument();
-    for (const label of ['Email sign-off', 'Locations & chains', 'Cellar registers', 'Notifications', 'Measurement & recipes']) {
+    for (const label of ['Email sign-off', 'Cellar registers', 'Notifications', 'Measurement & recipes']) {
       expect(within(section).getByText(label)).toBeInTheDocument();
     }
+    // F-785: Locations is not silent — its state-and-country changes file a
+    // row with a name (ADR 0289) — so it is qualified, not listed as unrecorded.
+    expect(within(section).queryByText('Locations & chains')).not.toBeInTheDocument();
+    expect(within(section).getByText(/Locations & chains files a line here only for a house’s state and country; its other changes leave none\./)).toBeInTheDocument();
   });
 });
 
@@ -1298,10 +1305,11 @@ describe('the collapse — four connection tabs become one line', () => {
     // so this line is the only place that says so.
     expect(screen.getByText(/^Fourteen registers — /)).toBeInTheDocument();
     expect(screen.queryByText(/^18 registers/)).not.toBeInTheDocument();
-    // F-180: eight recorded + five not yet + "What changed here" = fourteen.
-    // It used to say "the other four" here, a literal that added up to ten.
+    // F-180: eight recorded + Locations in part (F-785) + four not yet +
+    // "What changed here" = fourteen. It used to say "the other four" here, a
+    // literal that added up to ten.
     expect(screen.getByText(/Eight of these record/i)).toBeInTheDocument();
-    expect(screen.getByText(/The other five do not keep that record yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/The other four do not keep that record yet/i)).toBeInTheDocument();
   });
 
   it('offers one line out, naming the four registers it replaces', () => {

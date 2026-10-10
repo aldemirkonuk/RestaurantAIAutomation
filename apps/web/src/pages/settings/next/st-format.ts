@@ -368,7 +368,9 @@ export function sectionsFor(connectionsOn: boolean): SectionSpec[] {
  * callers (`settings-audit.service.ts` SettingsRegister and READ_BACK_ACTIONS):
  * features (settings.service.ts), vendor terms, approval thresholds, currency,
  * carrying cost, time zone, mail reading (tone-scoring + data-terms), and the
- * team's role changes and removals (team/access-audit.ts).
+ * team's role changes and removals (team/access-audit.ts). The register's
+ * "state-and-country" caller covers only part of Locations, so it lives in
+ * RECORDS_WHO_PARTLY below, not here.
  */
 export const RECORDS_WHO: ReadonlySet<SectionId> = new Set<SectionId>([
   'team', 'features', 'vendor-terms', 'thresholds', 'currency',
@@ -376,15 +378,36 @@ export const RECORDS_WHO: ReadonlySet<SectionId> = new Set<SectionId>([
 ]);
 
 /**
- * The page's registers split by whether a change to them is recorded with a
- * name. "What changed here" is the record itself and sits in neither list, so
- * recorded + notYet + 1 is always the count the page opens with.
+ * Registers where only SOME changes are recorded with a name, and which ones,
+ * in the owner's words. Locations: organizations.service.ts files a house's
+ * state or country change (register "state-and-country", ADR 0289) with the
+ * person who made it; a rename, address or chain change does not (F-785).
  */
-export function recordSplit(connectionsOn: boolean): { recorded: SectionSpec[]; notYet: SectionSpec[] } {
+export const RECORDS_WHO_PARTLY: Readonly<Partial<Record<SectionId, string>>> = {
+  locations: 'a house’s state and country',
+};
+
+export interface PartlyRecorded {
+  spec: SectionSpec;
+  /** Which changes are recorded, e.g. "a house's state and country". */
+  only: string;
+}
+
+/**
+ * The page's registers split by whether a change to them is recorded with a
+ * name. "What changed here" is the record itself and sits in no list, so
+ * recorded + partly + notYet + 1 is always the count the page opens with.
+ */
+export function recordSplit(connectionsOn: boolean): { recorded: SectionSpec[]; partly: PartlyRecorded[]; notYet: SectionSpec[] } {
   const settings = sectionsFor(connectionsOn).filter((s) => s.id !== 'ledger');
+  const partlyOf = (s: SectionSpec) => (RECORDS_WHO.has(s.id) ? undefined : RECORDS_WHO_PARTLY[s.id]);
   return {
     recorded: settings.filter((s) => RECORDS_WHO.has(s.id)),
-    notYet: settings.filter((s) => !RECORDS_WHO.has(s.id)),
+    partly: settings.flatMap((s) => {
+      const only = partlyOf(s);
+      return only ? [{ spec: s, only }] : [];
+    }),
+    notYet: settings.filter((s) => !RECORDS_WHO.has(s.id) && !partlyOf(s)),
   };
 }
 
