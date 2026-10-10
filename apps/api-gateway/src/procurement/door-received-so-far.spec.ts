@@ -128,43 +128,84 @@ describe("doorReceivedSoFar — whole boxes and loose bottles, never rounded", (
     expect(r.onShelfBottles).toBe(60);
   });
 
-  it("[REVERT-FAILS] counts a phone-received first truck as earlier once the order was verified (F-467)", async () => {
+  const checked = (id: string, accepted: number | null, at: string): Row => ({
+    id,
+    restaurant_id: REST,
+    order_id: "o1",
+    stage: "reconciled",
+    counted_qty_bottles: accepted,
+    rejected_qty_bottles: 0,
+    created_at: at,
+  });
+  const doorAt = (id: string, counted: number, at: string, rejected = 0): Row => ({
+    ...doorEvent(id, counted, rejected),
+    created_at: at,
+  });
+
+  it("[REVERT-FAILS] counts a phone-received first truck from its verification event, with the ledger down (F-467, ADR 0062 D3)", async () => {
     // Truck one came in on the phone: a verification and a `receipt-verify:`
-    // booking, no door event. The door now books truck two in full, so the
-    // ledger IS the earlier trucks; the events alone said 0 earlier and the
-    // match line called a completing truck short against the whole order.
+    // booking, no door event. Summing door counts alone said 0 earlier and the
+    // match line called a completing truck short against the whole order. The
+    // verification event states the order's accepted total, so the running
+    // total stays the events' own — it needs no ledger, and a ledger that
+    // cannot be read does not stop the door (ADR 0192).
+    const svc = new ReceivingService(
+      fakeDb(
+        base({ procurement_receipt_events: [checked("v1", 72, "2026-10-01T10:00:00Z")] }),
+        { inventory_transactions: "down" },
+      ),
+    );
+    const r = await svc.doorReceivedSoFar(REST, "o1");
+    expect(r.receivedQtyBottles).toBe(72);
+    expect(r.onShelfBottles).toBeNull();
+  });
+
+  it("[REVERT-FAILS] reads the events, not the ledger, after a verification", async () => {
+    // The ledger holds a later correction the events do not describe (a stock
+    // adjustment on the order's item). The door's total is the events' 72,
+    // never the ledger's 70; the ledger's figure travels beside it.
     const svc = new ReceivingService(
       fakeDb(
         base({
-          inventory_transactions: [booked(72, "receipt-verify:o1:inv1")],
-          procurement_receipt_events: [
-            {
-              id: "v1",
-              restaurant_id: REST,
-              order_id: "o1",
-              stage: "reconciled",
-              counted_qty_bottles: 72,
-              rejected_qty_bottles: 0,
-              occurred_at: "2026-10-01T10:00:00Z",
-            },
-          ],
+          inventory_transactions: [booked(72, "receipt-verify:o1:inv1"), booked(-2, "adjust:o1")],
+          procurement_receipt_events: [checked("v1", 72, "2026-10-01T10:00:00Z")],
         }),
       ),
     );
     const r = await svc.doorReceivedSoFar(REST, "o1");
     expect(r.receivedQtyBottles).toBe(72);
-    expect(r.receivedBoxes).toBe(6);
+    expect(r.onShelfBottles).toBe(70);
   });
 
-  it("refuses to state earlier trucks on a verified order whose ledger cannot be read", async () => {
+  it("takes a verification as the total so far: door counts before it are inside it, those after are added", async () => {
+    // Door truck one (60), a desk check that accepted 58 of it, then door
+    // truck two (12). Earlier = 58 + 12 = 70, never 60 + 58 + 12.
     const svc = new ReceivingService(
       fakeDb(
         base({
           procurement_receipt_events: [
-            { id: "v1", restaurant_id: REST, order_id: "o1", stage: "reconciled", counted_qty_bottles: 72 },
+            doorAt("e2", 12, "2026-10-03T09:00:00Z"),
+            checked("v1", 58, "2026-10-02T09:00:00Z"),
+            doorAt("e1", 60, "2026-10-01T09:00:00Z"),
           ],
         }),
-        { inventory_transactions: "down" },
+      ),
+    );
+    const r = await svc.doorReceivedSoFar(REST, "o1");
+    expect(r.receivedQtyBottles).toBe(70);
+    expect(r.receivedBoxes).toBe(5);
+    expect(r.receivedLooseBottles).toBe(10);
+  });
+
+  it("refuses to state earlier trucks when the latest verification states no count in bottles", async () => {
+    const svc = new ReceivingService(
+      fakeDb(
+        base({
+          procurement_receipt_events: [
+            doorAt("e1", 60, "2026-10-01T09:00:00Z"),
+            checked("v1", null, "2026-10-02T09:00:00Z"),
+          ],
+        }),
       ),
     );
     await expect(svc.doorReceivedSoFar(REST, "o1")).rejects.toThrow(/could not be read/);

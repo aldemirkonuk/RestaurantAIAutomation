@@ -682,13 +682,16 @@ describe("recordDoorReceipt", () => {
       ],
       ledger: [{ quantity_change: 72, idempotency_key: "receipt-verify:o1:inv1" }],
     });
-    await new ReceivingService(db).recordDoorReceipt({
+    const r = await new ReceivingService(db).recordDoorReceipt({
       ...base,
       countedQty: 6,
       countedUom: "case",
       idempotencyKey: "truck-2",
     });
     expect(calls.rpc[0].args.p_delta).toBe(72);
+    // The running total is still the events' (ADR 0062 D3): the verification's
+    // 72 plus this truck's 72, not this truck alone.
+    expect(r.receivedQtyBottles).toBe(144);
   });
 
   it("still reconciles a first door count against an unverified one-tap booking", async () => {

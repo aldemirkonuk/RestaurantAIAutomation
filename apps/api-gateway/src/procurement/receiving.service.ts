@@ -820,7 +820,7 @@ export class ReceivingService {
       alreadyRecorded,
       eventId,
       countedQtyBottles: countedBottles,
-      receivedQtyBottles: totals.receivedBottles,
+      receivedQtyBottles: totals.receivedBottles ?? undefined,
       // Null, not 0. A number here is a claim about the ledger, and there is no
       // number to make when the movement did not happen (ADR 0016).
       stockDelta: stockBooked ? delta : null,
@@ -848,32 +848,52 @@ export class ReceivingService {
    * an earlier truck — a phone receive, or a check after the one-tap
    * "delivered". The door is then counting a LATER truck, never the one the
    * ledger already holds (F-467).
+   *
+   * A VERIFICATION IS A CHECKPOINT IN THE SUM (ADR 0062 D3). A `reconciled`
+   * event states what the whole order had accepted when it was checked
+   * (`counted_qty_bottles` is the desk's accepted total, or the one-tap
+   * confirmation's booked total), so the running total is the latest such
+   * event's figure plus the door counts entered after it. A phone-received
+   * first truck has no door event, and summing door counts alone left it out
+   * and called the second truck short against the whole order (F-467). Still
+   * summed from the events, never from the ledger; ordered by when each was
+   * entered, which is also what decided how the door booked it. Null — never a
+   * smaller number — when the latest verification states no count in bottles.
    */
   private async doorTotals(
     restaurantId: string,
     orderId: string,
     currentEventId: string | null,
   ): Promise<{
-    receivedBottles: number;
+    receivedBottles: number | null;
     priorEventCount: number;
     verified: boolean;
   }> {
     const { data, error } = await this.db
       .getClient()
       .from("procurement_receipt_events")
-      .select("id, stage, counted_qty_bottles, rejected_qty_bottles")
+      .select(
+        "id, stage, counted_qty_bottles, rejected_qty_bottles, occurred_at, created_at",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("order_id", orderId)
       .in("stage", ["case_count", "reconciled"]);
     if (error) throw new Error(error.message);
 
-    const rows = data ?? [];
-    let receivedBottles = 0;
+    const enteredAt = (r: { created_at?: string | null; occurred_at?: string | null }) =>
+      String(r.created_at ?? r.occurred_at ?? "");
+    const rows = [...(data ?? [])].sort((a, b) =>
+      enteredAt(a) < enteredAt(b) ? -1 : enteredAt(a) > enteredAt(b) ? 1 : 0,
+    );
+    let receivedBottles: number | null = 0;
     let priorEventCount = 0;
     let verified = false;
     for (const r of rows) {
       if (r.stage === "reconciled") {
         verified = true;
+        const checked =
+          r.counted_qty_bottles == null ? NaN : Number(r.counted_qty_bottles);
+        receivedBottles = Number.isFinite(checked) ? Math.max(0, checked) : null;
         continue;
       }
       const accepted = Math.max(
@@ -881,7 +901,7 @@ export class ReceivingService {
         Number(r.counted_qty_bottles ?? 0) -
           Number(r.rejected_qty_bottles ?? 0),
       );
-      receivedBottles += accepted;
+      if (receivedBottles !== null) receivedBottles += accepted;
       if (r.id !== currentEventId) priorEventCount += 1;
     }
     return { receivedBottles, priorEventCount, verified };
@@ -932,31 +952,20 @@ export class ReceivingService {
       restaurantId,
       order,
     );
-    // AFTER A VERIFICATION THE LEDGER IS THE EARLIER TRUCKS (F-467). The door
-    // no longer reconciles against what a verified order booked, so nothing on
-    // the shelf is "the truck being counted": a phone-received first truck is
-    // in the ledger and in no door event, and a running total of the events
-    // alone would call the second truck short against the whole order. A
-    // ledger that cannot be stated in bottles is an error here, never the
-    // events' smaller figure — the door then says it could not read it.
-    let bottles = totals.receivedBottles;
-    if (totals.verified) {
-      if (
-        !received.readable ||
-        !["bottle", "each"].includes(received.stockUom)
-      )
-        throw new ServiceUnavailableException(
-          "What earlier deliveries of this order brought could not be read in bottles.",
-        );
-      bottles = received.quantityInStockUom;
-    }
+    // A verification that states no count in bottles leaves the earlier trucks
+    // unknown: an error here, never the door counts' smaller figure (F-467).
+    if (totals.receivedBottles === null)
+      throw new ServiceUnavailableException(
+        "What earlier deliveries of this order brought could not be read in bottles.",
+      );
+    const bottles = totals.receivedBottles;
     const packSize = received.readable ? received.packSize : null;
     const split = packSize !== null ? packsAndLoose(bottles, packSize) : null;
 
     return {
       /**
-       * What the door's own events accepted, every truck, in bottles (ADR 0062
-       * D3) — or, once the order was verified, what the ledger holds (F-467).
+       * What the order's receipt events accepted, every truck, in bottles (ADR
+       * 0062 D3): the latest verification's total plus the door counts after it.
        */
       receivedQtyBottles: bottles,
       /** The stock ledger's count (ADR 0192), or null when it could not be read. */
