@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiClient } from '@/services/api/client';
+import { formatHouseMoney } from '@/lib/houseCurrency';
 import { SealedRejectDie } from '@/components/orders/SealedRejectDie';
 import { useAuth } from '../../../contexts/AuthContext';
 import { MONO, SANS } from './so-format';
@@ -107,7 +108,8 @@ function IncompleteOrderRow({ o }: { o: IncompleteOrder }) {
                 r.ok
                   ? r.result.alreadyOpen
                     ? 'A claim for this order was already open — nothing was opened twice.'
-                    : `A credit claim for this order was opened, chasing the vendor for ${r.result.claim.claimedAmount}${r.result.claim.currency ? ` ${r.result.claim.currency}` : ''}.`
+                    : // F-993: grouped, with its sign — and "currency not recorded" when none was.
+                      `A credit claim for this order was opened, chasing the vendor for ${formatHouseMoney(Number(r.result.claim.claimedAmount), r.result.claim.currency ?? null)}.`
                   : r.message,
               )
             }

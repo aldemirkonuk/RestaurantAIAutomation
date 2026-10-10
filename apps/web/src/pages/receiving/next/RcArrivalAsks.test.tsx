@@ -11,6 +11,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('../../../services/api/client', () => ({ apiClient: api }));
+const die = vi.hoisted(() => ({ claim: { id: 'c1', claimedAmount: 12400.5, currency: 'TRY' as string | null, state: 'open' } }));
+vi.mock('@/components/orders/SealedRejectDie', () => ({
+  SealedRejectDie: ({ onCreditClaimOpened }: { onCreditClaimOpened: (r: unknown) => void }) => (
+    <button type="button" onClick={() => onCreditClaimOpened({ ok: true, result: { alreadyOpen: false, claim: die.claim } })}>
+      Hold to cancel
+    </button>
+  ),
+}));
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'rest-A', user: { userId: 'u1', role: 'manager' } }),
 }));
@@ -66,6 +74,16 @@ describe('Did it arrive?', () => {
     expect(asks[1]).toHaveTextContent('Someone here said not yet on 2026-09-17 — it counts as late.');
     expect(within(asks[1]).queryByRole('button', { name: 'Not yet' })).not.toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/procurement/arrival-asks');
+  });
+
+  it('the credit-claim sentence prints the money grouped, and says when no currency was recorded (F-993)', async () => {
+    api.get.mockResolvedValue({ data: readout });
+    die.claim = { ...die.claim, claimedAmount: 12400.5, currency: null };
+    mount();
+    const [first] = await screen.findAllByTestId('arrival-ask');
+    fireEvent.click(within(first).getByRole('button', { name: 'It never arrived — cancel' }));
+    fireEvent.click(within(first).getByRole('button', { name: 'Hold to cancel' }));
+    expect(within(first).getByRole('status')).toHaveTextContent('chasing the vendor for 12,400.50 (currency not recorded).');
   });
 
   it('records Not yet through the gateway for that order', async () => {

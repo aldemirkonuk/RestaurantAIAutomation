@@ -87,6 +87,16 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     expect(within(row).queryByRole('button', { name: 'Try again' })).toBeNull();
   });
 
+  it('asked and settled are on the house’s clock, named as the file names it (F-991)', () => {
+    // 01:05 UTC: 21:05 the day before in New York (the test device), 04:05 in Istanbul.
+    const late = { ...base, requestedAt: '2026-10-10T01:05:00.000Z', finishedAt: '2026-10-10T01:05:02.000Z' };
+    render(<ExportsShelf desk={desk({ exports: [late], total: 1 })} onSheet={['ledger'] as never[]} tillDays={30} zone="Europe/Istanbul" />);
+    const line = within(screen.getAllByRole('listitem')[0]).getByText(/^Asked/).textContent ?? '';
+    expect(line).toContain('Asked Oct 10, 04:05');
+    expect(line).toContain('settled Oct 10, 04:05');
+    expect(line).toContain('house time (Europe/Istanbul)');
+  });
+
   it('an export being written offers no download — there is no file yet', () => {
     shelf(desk({ exports: [{ ...base, status: 'queued', withheldCount: null, csvBytes: null, htmlBytes: null, finishedAt: null }], total: 1 }));
     const row = screen.getAllByRole('listitem')[0];

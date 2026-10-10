@@ -47,8 +47,14 @@ const api = vi.hoisted(() => ({
   crossFileReject: false,
   crossFileHangs: false,
   refileSpy: vi.fn(() => Promise.resolve({})),
+  /** The house's zone; null lets the device's clock stand in. */
+  zone: null as string | null,
 }));
 
+vi.mock('../../../lib/houseZone', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/houseZone')>()),
+  useHouseZone: () => api.zone,
+}));
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'r1' }),
 }));
@@ -196,6 +202,7 @@ beforeEach(() => {
   api.crossFileReject = false;
   api.crossFileHangs = false;
   api.refileSpy = vi.fn(() => Promise.resolve({}));
+  api.zone = null;
 });
 
 describe('useSortingOfficeData', () => {
@@ -470,6 +477,30 @@ describe('DocumentsReportsNext', () => {
     await waitFor(() =>
       expect(screen.getByLabelText('Filed itself today').textContent).toContain('≥100 entries'),
     );
+  });
+
+  it("counts today on the house's clock, not the reader's (F-990)", async () => {
+    // 01:00 UTC: 21:00 the day before in New York (the test device), 04:00 in
+    // Istanbul. The house's today began at 21:00 UTC.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-10T01:00:00Z'));
+    try {
+      api.zone = 'Europe/Istanbul';
+      api.timeline = {
+        events: [
+          // 01:00 Istanbul on the 10th — the house's today.
+          { id: 'a', source: 'pos_checks', occurredAt: '2026-10-09T22:00:00Z', correlationId: null, summary: 's' },
+          // 18:00 Istanbul on the 9th — the device's today, the house's yesterday.
+          { id: 'b', source: 'pos_checks', occurredAt: '2026-10-09T15:00:00Z', correlationId: null, summary: 's' },
+        ],
+      };
+      renderPage();
+      await waitFor(() =>
+        expect(screen.getByLabelText('Filed itself today').textContent).toMatch(/\D1 entry —/),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a filled window whose oldest event predates today does NOT floor the routine count', async () => {

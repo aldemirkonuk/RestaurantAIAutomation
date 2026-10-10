@@ -40,6 +40,11 @@ export interface ExportsShelfProps {
   tillDays: number;
   /** A calendar month the till is set to instead (F-128), YYYY-MM. */
   tillMonth?: string | null;
+  /**
+   * The house's IANA zone (F-991): the file is named and dated on the
+   * house's clock, so its row is too. Null or still being read: the reader's.
+   */
+  zone?: string | null;
 }
 
 /**
@@ -59,12 +64,17 @@ export function pagingSummary(desk: Pick<ExportDesk, 'total' | 'page' | 'pageCou
   return `${word} ${range} of ${total} stored.${pageNote}`;
 }
 
-function when(iso: string | null): string {
+function when(iso: string | null, zone: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? '—'
-    : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  if (Number.isNaN(d.getTime())) return '—';
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+  try {
+    return d.toLocaleString(undefined, zone ? { ...opts, timeZone: zone } : opts);
+  } catch {
+    // A zone this browser cannot read: the reader's clock stands in.
+    return d.toLocaleString(undefined, opts);
+  }
 }
 
 function size(bytes: number | null): string {
@@ -72,7 +82,7 @@ function size(bytes: number | null): string {
   return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 }
 
-function Row({ exp, desk }: { exp: ReportExport; desk: ExportDesk }) {
+function Row({ exp, desk, zone }: { exp: ReportExport; desk: ExportDesk; zone: string | null }) {
   const status =
     exp.status === 'queued' ? 'Being written' : exp.status === 'ready' ? 'Ready' : 'Not written';
   return (
@@ -83,9 +93,10 @@ function Row({ exp, desk }: { exp: ReportExport; desk: ExportDesk }) {
           <span className="rp-cap"> · {exp.windowLabel}</span>
         </p>
         <p className="rp-cap">
-          Asked {when(exp.requestedAt)}
+          Asked {when(exp.requestedAt, zone)}
           {exp.attempts > 1 ? ` · attempt ${exp.attempts}` : ''}
-          {exp.status !== 'queued' ? ` · settled ${when(exp.finishedAt)}` : ''}
+          {exp.status !== 'queued' ? ` · settled ${when(exp.finishedAt, zone)}` : ''}
+          {zone ? `, house time (${zone})` : ''}
         </p>
         {exp.status === 'ready' && (
           <p className="rp-cap">
@@ -143,7 +154,7 @@ function Row({ exp, desk }: { exp: ReportExport; desk: ExportDesk }) {
   );
 }
 
-export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null }: ExportsShelfProps) {
+export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null, zone = null }: ExportsShelfProps) {
   const exportable = onSheet.filter((id) => !UNEXPORTABLE.has(id));
   const [picked, setChosen] = useState<AnalysisId | null>(null);
   // A cutting taken off the sheet is no longer on offer: the choice falls back
@@ -257,7 +268,7 @@ export default function ExportsShelf({ desk, onSheet, tillDays, tillMonth = null
           <>
             <ul className="rp-list rp-exports__list">
               {desk.exports.map((exp) => (
-                <Row key={exp.id} exp={exp} desk={desk} />
+                <Row key={exp.id} exp={exp} desk={desk} zone={zone} />
               ))}
             </ul>
             <div className="rp-row rp-exports__paging">

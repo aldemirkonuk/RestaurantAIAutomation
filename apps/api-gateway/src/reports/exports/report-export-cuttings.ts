@@ -598,12 +598,45 @@ function writeLedger(payload: unknown): ExportDoc {
   const d = obj(payload);
   const b = obj(d.basis);
   const cc = d.costCoverage == null ? null : obj(d.costCoverage);
+  const pc = d.priceCoverage == null ? null : obj(d.priceCoverage);
   const costBasis = "Needs a complete cost basis";
+  // F-989: the screen's partly costed cellar (`rp-registers-house.tsx` view):
+  // the priced wines' value under its own label, not withheld outright.
+  const unpriced = cc ? (num(cc.unpriced) ?? 0) : 0;
+  const partial =
+    num(d.inventoryValue) == null &&
+    num(d.pricedInventoryValue) != null &&
+    unpriced > 0;
+  const unpricedPrices = pc ? (num(pc.unpriced) ?? 0) : 0;
+  const unpricedOrders = num(d.cogsUnpricedCount) ?? 0;
   return doc({
     figures: [
-      f("Cellar at cost", figure(d.inventoryValue, "Not every on-hand row carries a recorded cost"), "money"),
+      partial
+        ? f(
+            "Cellar at cost (priced wines)",
+            figure(
+              d.pricedInventoryValue,
+              "No on-hand wine carries a recorded cost",
+            ),
+            "money",
+          )
+        : f(
+            "Cellar at cost",
+            figure(
+              d.inventoryValue,
+              "Not every on-hand row carries a recorded cost",
+            ),
+            "money",
+          ),
       f("Cost of goods (365d)", figure(d.cogs, "No delivered order came back for the window — which is either no buying or a read that failed"), "money"),
-      f("Sell-price valuation", figure(d.revenue, "No inventory row came back"), "money"),
+      f(
+        "Sell-price valuation",
+        figure(
+          d.revenue,
+          "No wine on hand carries a bottle price, or no inventory row came back",
+        ),
+        "money",
+      ),
       f("Gross margin", figure(d.grossMargin, costBasis), "ratio"),
       f("COGS ratio", figure(d.cogsRatio, costBasis), "ratio"),
       f("Inventory turns", figure(d.inventoryTurnover, `${costBasis} and a year of delivered orders`), "count"),
@@ -615,7 +648,16 @@ function writeLedger(payload: unknown): ExportDoc {
       cc && cc.complete === false
         ? num(cc.total) === 0
           ? "No on-hand wine carries a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from nothing."
-          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand wines carry a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from part of the cellar.`
+          : partial
+            ? `${unpriced} of ${num(cc.total) ?? 0} on-hand wines have no cost yet, so the cellar figure above counts only the ${num(cc.priced) ?? 0} that do, and the figures built on the whole cellar are withheld.`
+            : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand wines carry a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from part of the cellar.`
+        : "",
+      // F-574 / F-701, as the screen says them.
+      unpricedPrices > 0
+        ? `${nounCount(unpricedPrices, "wine on hand has", "wines on hand have")} no bottle price, so ${unpricedPrices === 1 ? "it is" : "they are"} left out of the sell-price valuation, the gross margin and the COGS ratio, rather than counted as selling for nothing.`
+        : "",
+      unpricedOrders > 0
+        ? `${unpricedOrders} delivered ${unpricedOrders === 1 ? "order carries" : "orders carry"} no price, so Cost of goods leaves ${unpricedOrders === 1 ? "it" : "them"} out and is short by what ${unpricedOrders === 1 ? "it" : "they"} cost.`
         : "",
     ],
     basis: sentences(b.revenue, b.cogs, b.inventoryValue, b.deadStock, b.costDerived),
