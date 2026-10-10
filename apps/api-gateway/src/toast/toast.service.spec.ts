@@ -944,3 +944,109 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
     });
   });
 });
+
+describe("ToastService webhook finds the house by its Toast GUID (F-318)", () => {
+  // The house's Toast GUID lives in pos_credentials->>restaurant_guid. A
+  // filter on any column the table does not have fails the whole query, the
+  // way PostgREST answers 42703, so the event would land on "system".
+  const RESTAURANT_COLUMNS = new Set(["id", "pos_system", "pos_credentials"]);
+
+  function serviceWithHouse(house: Row) {
+    const restaurantFilters: Array<[string, unknown]> = [];
+    const eventInserts: Row[] = [];
+    const client: any = {
+      from(table: string) {
+        const filters: Array<[string, unknown]> = [];
+        const q: any = {
+          select: () => q,
+          in: () => q,
+          eq(col: string, v: unknown) {
+            filters.push([col, v]);
+            if (table === "restaurants") restaurantFilters.push([col, v]);
+            return q;
+          },
+          insert(row: Row) {
+            if (table === "events") eventInserts.push(row);
+            return {
+              select: () => ({
+                single: async () => ({ data: { id: "evt-1" }, error: null }),
+              }),
+              error: null,
+            };
+          },
+          maybeSingle: async () => ({ data: null, error: null }),
+          single: async () => {
+            if (table !== "restaurants") return { data: null, error: null };
+            for (const [col] of filters) {
+              const root = col.split("->")[0];
+              if (!RESTAURANT_COLUMNS.has(root))
+                return { data: null, error: { code: "42703" } };
+            }
+            const match = filters.every(([col, v]) =>
+              col === "pos_credentials->>restaurant_guid"
+                ? house.pos_credentials?.restaurant_guid === v
+                : house[col] === v,
+            );
+            return match
+              ? { data: { id: house.id }, error: null }
+              : { data: null, error: { code: "PGRST116" } };
+          },
+        };
+        return q;
+      },
+      rpc: async () => ({ data: null, error: null }),
+    };
+    const configService: any = {
+      get: (key: string, fallback?: any) => {
+        if (key === "TOAST_MOCK_MODE") return true;
+        if (key === "TOAST_WEBHOOK_SECRET") return null;
+        return fallback;
+      },
+    };
+    const cacheService: any = {
+      invalidateByPattern: async () => 0,
+      del: async () => undefined,
+      get: async () => null,
+      set: async () => undefined,
+    };
+    const service = new ToastService(configService, cacheService, {
+      supabase: client,
+    } as unknown as DatabaseService);
+    return { service, restaurantFilters, eventInserts };
+  }
+
+  const dto = () => ({
+    ...webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+    order: { guid: "order-1", items: [] },
+  });
+
+  it("files the event under the house whose pos_credentials carry the GUID", async () => {
+    const { service, restaurantFilters, eventInserts } = serviceWithHouse({
+      id: "house-1",
+      pos_system: "toast",
+      pos_credentials: { restaurant_guid: "toast-rest-1" },
+    });
+
+    await service.processWebhook(dto() as ToastWebhookDto, "{}", null, null);
+
+    expect(restaurantFilters).toContainEqual([
+      "pos_credentials->>restaurant_guid",
+      "toast-rest-1",
+    ]);
+    expect(eventInserts).toHaveLength(1);
+    expect(eventInserts[0].restaurant_id).toBe("house-1");
+  });
+
+  it("does not hand the GUID to a house whose POS is not Toast", async () => {
+    const { service, eventInserts } = serviceWithHouse({
+      id: "house-2",
+      pos_system: "square",
+      pos_credentials: { restaurant_guid: "toast-rest-1" },
+    });
+
+    await service.processWebhook(dto() as ToastWebhookDto, "{}", null, null);
+
+    expect(eventInserts).toHaveLength(1);
+    expect(eventInserts[0].restaurant_id).toBe("system");
+  });
+});

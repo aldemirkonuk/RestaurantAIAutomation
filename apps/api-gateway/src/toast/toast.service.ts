@@ -393,14 +393,22 @@ export class ToastService {
   }
 
   /**
-   * Resolve internal restaurant ID from Toast restaurant GUID
+   * Resolve internal restaurant ID from Toast restaurant GUID.
+   *
+   * F-318. This read `restaurants.toast_restaurant_guid`, a column no
+   * migration declares, so PostgREST failed the query on every webhook and
+   * every Toast event landed on "system". The house's Toast GUID lives in
+   * `pos_credentials->>restaurant_guid`, beside `pos_system` (the same mapping
+   * pos_integration_agent.py `get_restaurant_id` reads). Only a house that has
+   * Toast as its POS can claim the GUID; two houses claiming the same one is
+   * an error from `.single()` and stays unmapped rather than picking one.
    */
   private async resolveRestaurantId(toastGuid: string): Promise<string> {
-    // Try to find restaurant by toast_restaurant_guid
     const { data, error } = await this.databaseService.supabase
       .from("restaurants")
       .select("id")
-      .eq("toast_restaurant_guid", toastGuid)
+      .eq("pos_system", "toast")
+      .eq("pos_credentials->>restaurant_guid", toastGuid)
       .single();
 
     if (error || !data) {
