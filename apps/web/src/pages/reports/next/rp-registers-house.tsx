@@ -740,6 +740,8 @@ const restock = analysis<RestockRegister>({
       figures,
       notes: [
         'A days-of-cover em dash means the wine has no measured demand — it cannot run out on a rate nobody has observed.',
+        // F-688: the two pages work a reorder out differently; each says how.
+        "A wine listed fewer than 90 days ago is averaged over the days it has been listed. Each wine's own row on Inventory works its order out from 30 days of sales, a 6-day wait and two weeks on the shelf, so the two can name different amounts.",
       ],
       basis,
     };

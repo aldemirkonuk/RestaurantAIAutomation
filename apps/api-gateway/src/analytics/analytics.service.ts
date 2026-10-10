@@ -127,7 +127,7 @@ export class AnalyticsService {
         // the reorder trigger is `threshold_min`, and the varietal/type
         // lives on master_wine_library.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, created_at, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
@@ -179,6 +179,9 @@ export class AnalyticsService {
         // is no separate reorder_point column.
         reorderPoint: i.threshold_min || 0,
         masterWineId: i.master_wine_id,
+        // When the wine was put on the list (F-687): demand is averaged over
+        // the days since, not over days it could not have sold.
+        listedAt: i.created_at ?? null,
         // A row we cannot cost has no value we can state. `qty × null` must
         // not become 0 — that is the fabrication ADR 0051 names, wearing an
         // arithmetic costume.
@@ -264,6 +267,29 @@ export class AnalyticsService {
     for (const c of consumption)
       if (c.masterWineId && c.how === "uncounted") out.add(c.masterWineId);
     return out;
+  }
+
+  /**
+   * The days a wine's demand is averaged over (F-687): the window, or fewer
+   * when the wine was listed inside it, counting the listing day as day 1 —
+   * the inventory_analytics view's rule. A sale dated before the listing
+   * (an import) moves the start back to that sale. An unknown listing date
+   * keeps the whole window, which is what every wine got before.
+   */
+  private daysOnList(
+    listedAt: string | null | undefined,
+    rows: Array<{ date: string }>,
+    sinceDays: number,
+  ): number {
+    if (!listedAt) return sinceDays;
+    let first = String(listedAt).slice(0, 10);
+    for (const r of rows) if (r.date && r.date < first) first = r.date;
+    const today = new Date().toISOString().slice(0, 10);
+    const days =
+      Math.floor((Date.parse(today) - Date.parse(first)) / 86400000) + 1;
+    return Number.isFinite(days)
+      ? Math.min(sinceDays, Math.max(1, days))
+      : sinceDays;
   }
 
   /** Aggregate rows into a dense daily series over [sinceDays, today]. */
@@ -651,7 +677,8 @@ export class AnalyticsService {
 
     const skus = inventory.map((i) => {
       const rows = demandByWine.get(i.masterWineId || "") || [];
-      const { values } = this.toDailySeries(rows, sinceDays);
+      const demandDays = this.daysOnList(i.listedAt, rows, sinceDays);
+      const { values } = this.toDailySeries(rows, demandDays);
       const profile = E.inventory.demandProfile(values) || {
         mean: 0,
         stdev: 0,
@@ -686,6 +713,7 @@ export class AnalyticsService {
         name: i.name,
         onHand: i.qty,
         avgDailyDemand: profile.mean,
+        demandDays,
         demandCv: profile.cv,
         xyzClass: E.inventory.xyzClassify(profile.cv),
         daysOfCover: doc,
@@ -751,7 +779,7 @@ export class AnalyticsService {
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
+        demand: `bottles/day over ${sinceDays}d, or over the days since the wine was listed when that is fewer (skus[].demandDays) — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:

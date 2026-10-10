@@ -18,10 +18,13 @@ import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsSt
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
-import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
+import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays, reorderAdvice, velocityLabel, ASSUMED_LEAD_DAYS } from './bits'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
+
+/** Ordered and not yet in the cellar, from awaiting approval to on the truck (F-630). */
+const NOT_YET_ARRIVED = ['PENDING', 'APPROVAL_NEEDED', 'NEGOTIATING', 'APPROVED', 'CONFIRMED', 'IN_TRANSIT']
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -84,13 +87,23 @@ export function RowExpansion({
     staleTime: 5 * 60_000,
   })
 
-  const { data: orders = [] } = useQuery({
+  const { data: itemOrders = [], isError: ordersUnread, isSuccess: ordersRead } = useQuery({
     queryKey: ['orders', 'for-item', inventoryId],
     queryFn: () => getOrders(),
     enabled: !!inventoryId,
     staleTime: 60_000,
-    select: (all) => (all || []).filter((o: any) => o.inventoryId === inventoryId).slice(0, 4),
+    select: (all) => (all || []).filter((o: any) => o.inventoryId === inventoryId),
   })
+  const orders = itemOrders.slice(0, 4)
+  // Bottles ordered and not here yet (F-630 sibling). PARTIALLY_RECEIVED is
+  // left out: its quantity still names bottles already on the shelf. null =
+  // cannot be counted: the orders could not be read, or an open order names
+  // no bottles.
+  const openOrders = itemOrders.filter((o: any) => NOT_YET_ARRIVED.includes(String(o.status)))
+  const onOrder: number | null =
+    ordersUnread || !ordersRead || openOrders.some((o: any) => !(Number(o.bottlesTotal) > 0))
+      ? null
+      : openOrders.reduce((n: number, o: any) => n + Number(o.bottlesTotal), 0)
 
   // An auction lot's own details, kept (founder, 2026-09-21) — see
   // AuctionLotStart.tsx's header for the full case.
@@ -152,10 +165,8 @@ export function RowExpansion({
   const delta$ = marketDeltaPct(item)
   const counted = daysSinceCounted(item)
   const run = runwayDays(item)
-  const velocity = item.velocityPerDay ?? 0
-  const leadDays = 6 // avg supplier lead; per-supplier value when supplier analytics land
-  const parGap = Math.max(0, item.threshold - live)
-  const suggested = Math.max(parGap, Math.ceil(velocity * (leadDays + 14)) - live, 0)
+  const velocity = item.velocityPerDay
+  const { suggested, reorderPoint } = reorderAdvice(item, onOrder)
 
   const daily = activity?.daily ?? []
   const maxDaily = Math.max(1, ...daily.map((d) => d.out))
@@ -219,15 +230,38 @@ export function RowExpansion({
 
         {/* par & reorder */}
         <Card title="Par and reorder">
-          <KV k="Suggested order" v={`${suggested} btl`} />
-          <KV k="Covers" v={run != null ? `${Math.round((live + suggested) / Math.max(velocity, 0.1))} days at current velocity` : 'n/a'} />
-          <KV k="Reorder point" v={`${Math.max(item.threshold, Math.ceil(velocity * leadDays))} btl (${leadDays}d lead + safety)`} />
+          <KV k="Par" v={item.threshold != null ? `${item.threshold} btl` : 'not set'} />
+          <KV
+            k="Selling"
+            v={
+              velocity == null
+                ? item.analyticsReadable === false ? 'could not be read' : '—'
+                : item.velocityIsNew
+                  ? `new, ${velocity.toFixed(1)} btl/day over ${item.velocityDays} day${item.velocityDays === 1 ? '' : 's'}`
+                  : velocityLabel(item)
+            }
+          />
+          <KV k="On order, not here yet" v={onOrder == null ? (ordersUnread ? 'could not be read' : '—') : `${onOrder} btl`} />
+          <KV k="Suggested order" v={suggested == null ? 'set a par to get one' : `${suggested} btl`} />
+          <KV k="Covers" v={run != null && velocity && suggested != null ? `${Math.round((live + (onOrder ?? 0) + suggested) / velocity)} days at this rate` : 'n/a'} />
+          <KV k="Reorder point" v={reorderPoint == null ? 'n/a' : `${reorderPoint} btl (${ASSUMED_LEAD_DAYS}-day delivery wait)`} />
           <KV k="Runway now" v={run == null ? 'n/a' : `${Math.round(run)} day${Math.round(run) === 1 ? '' : 's'}`} tone={run != null && run <= 5 ? 'amber' : undefined} />
+          <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+            {velocity != null ? `From the last ${item.velocityDays ?? 30} days of sales, ` : 'From par alone, '}
+            an assumed {ASSUMED_LEAD_DAYS}-day delivery wait and two more weeks on the shelf, less bottles already on order.
+            Reports, What to buy back, uses 90 days of sales, a 7-day wait and a safety margin, so its answer can differ.
+          </p>
           <button
-            onClick={() => navigate(`/orders?draft=new&inventoryId=${inventoryId}&qty=${suggested || item.threshold}`)}
+            onClick={() =>
+              navigate(
+                suggested
+                  ? `/orders?draft=new&inventoryId=${inventoryId}&qty=${suggested}`
+                  : `/orders?draft=new&inventoryId=${inventoryId}`,
+              )
+            }
             className="w-full mt-2.5 h-9 bg-wine-600 hover:bg-wine-700 text-white text-xs font-bold rounded-lg"
           >
-            Draft PO, {suggested || item.threshold} btl
+            {suggested ? `Draft order, ${suggested} btl` : 'Draft an order'}
           </button>
         </Card>
 
@@ -276,7 +310,7 @@ export function RowExpansion({
           ) : (
             <p className="text-[11px] text-gray-400">No depletion recorded yet.</p>
           )}
-          <KV k="Current velocity" v={`${velocity.toFixed(1)} btl/day`} />
+          <KV k="Current velocity" v={velocityLabel(item)} />
         </Card>
 
         {/* busy hours */}

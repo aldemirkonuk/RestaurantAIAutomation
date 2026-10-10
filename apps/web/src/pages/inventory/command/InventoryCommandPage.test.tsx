@@ -216,6 +216,22 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('an unread sales rate prints a dash and an unset par says so, never 0.0 or a par of 10 (F-689, F-391)', async () => {
+    routeGets({
+      'inventory-list': [
+        {
+          id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', stockLive: 6, shadowStock: 0,
+          thresholdMin: 0, velocityPerDay: 0, analyticsReadable: false,
+        },
+      ],
+    });
+    mount();
+    expect(await screen.findByText('no par set')).toBeInTheDocument();
+    expect(screen.getByTitle('Sales could not be read')).toHaveTextContent('—');
+    expect(screen.queryByText('/ 10 par')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^0\.0$/)).not.toBeInTheDocument();
+  });
+
   it('a price-advice answer without its shape is said on the row, and the page still renders (ADR 0193)', async () => {
     routeGets({
       'inventory-list': [

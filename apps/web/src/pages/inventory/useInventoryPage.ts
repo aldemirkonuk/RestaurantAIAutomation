@@ -5,13 +5,14 @@ import { useWinesByIds } from "../../hooks/queries";
 import { mapApiWinesToUiWines } from "../../lib/wine-library";
 import { classifyStock } from "../../lib/inventoryStatus";
 
-export interface InventoryItem extends Wine {
+export interface InventoryItem extends Omit<Wine, "threshold"> {
   inventoryId?: string;
   storageLocation?: string;
   location?: string;
   liveStock: number | null;
   shadowStock?: number;
-  threshold: number;
+  /** The house's par. null = no par set (F-391): never a stand-in number. */
+  threshold: number | null;
   lastCounted: string | null;
   isActive: boolean;
   marketPrice?: number;
@@ -21,7 +22,14 @@ export interface InventoryItem extends Wine {
   costProvenance?: "invoice" | "estimated";
   lotLocationCount?: number;
   openMl?: number;
+  /** Bottles a day. undefined = not known (no row, or the read failed). */
   velocityPerDay?: number;
+  /** The days velocityPerDay is averaged over (F-687): 30, or fewer for a new wine. */
+  velocityDays?: number;
+  /** On the list fewer than 7 days: the rate is too young to plan on. */
+  velocityIsNew?: boolean;
+  /** false = the sales figures could not be read for this list (F-689). */
+  analyticsReadable?: boolean;
   daysOfCover?: number;
   reorderSuggested?: boolean;
   abcClass?: "A" | "B" | "C";
@@ -201,7 +209,13 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         location: (item as any).location,
         liveStock: item.stockLive || 0,
         shadowStock: item.shadowStock || 0,
-        threshold: item.thresholdMin || fallback.threshold || 10,
+        // F-391: a missing or zero par is "no par set", never 10. An invented
+        // par drove Below par, the draft quantity and "Overstocked vs. par";
+        // the gateway's stock rule already calls a missing par unknown.
+        threshold:
+          typeof item.thresholdMin === "number" && item.thresholdMin > 0
+            ? item.thresholdMin
+            : null,
         // Decision E41: measures an actual spot count, not "any field edit"
         // — stays null until a genuine count exists rather than borrowing
         // updatedAt, which changes on price/threshold/sale_type edits too.
@@ -219,8 +233,20 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         costProvenance: (item as any).costProvenance ?? undefined,
         lotLocationCount: (item as any).lotLocationCount ?? undefined,
         openMl: (item as any).openMl ?? 0,
-        velocityPerDay: (item as any).velocityPerDay ?? undefined,
-        daysOfCover: (item as any).daysOfCover ?? undefined,
+        // F-689: when the sales figures could not be read, the rate and the
+        // cover are unknown, never 0 — carried as undefined so every reader
+        // prints a dash instead of "0.0 btl/day".
+        analyticsReadable: (item as any).analyticsReadable !== false,
+        velocityPerDay:
+          (item as any).analyticsReadable === false
+            ? undefined
+            : ((item as any).velocityPerDay ?? undefined),
+        velocityDays: (item as any).velocityDays ?? undefined,
+        velocityIsNew: (item as any).velocityIsNew ?? undefined,
+        daysOfCover:
+          (item as any).analyticsReadable === false
+            ? undefined
+            : ((item as any).daysOfCover ?? undefined),
         reorderSuggested: (item as any).reorderSuggested ?? false,
         abcClass: (item as any).abcClass ?? undefined,
         deadStock: (item as any).deadStock ?? false,
@@ -327,8 +353,9 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
           );
           break;
         case "threshold":
-          aVal = a.threshold;
-          bVal = b.threshold;
+          // No par sorts below every set par.
+          aVal = a.threshold ?? -1;
+          bVal = b.threshold ?? -1;
           break;
         case "bottleSizeMl":
           aVal = a.bottleSizeMl || 750;

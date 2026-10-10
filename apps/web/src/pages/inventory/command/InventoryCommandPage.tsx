@@ -71,6 +71,7 @@ import {
   TypeChip,
   rowFlags,
   runwayDays,
+  velocityLabel,
   marketDeltaPct,
   daysSinceCounted,
   fmtMoney,
@@ -488,7 +489,8 @@ export function InventoryCommandPage() {
     const cmp = (a: InventoryItem, b: InventoryItem) => {
       switch (sort) {
         case "velocity":
-          return (a.velocityPerDay ?? 0) - (b.velocityPerDay ?? 0);
+          // An unknown rate sorts below every known one, never as 0 (F-689).
+          return (a.velocityPerDay ?? -1) - (b.velocityPerDay ?? -1);
         case "value":
           return val(a) - val(b);
         case "name":
@@ -571,9 +573,11 @@ export function InventoryCommandPage() {
       notes.push(
         `Cost ${Math.abs(delta).toFixed(0)}% above market — review supplier`,
       );
+    // F-391: only against a par the house set; no par, no "overstocked".
     if (
       (item.velocityPerDay ?? 0) > 0 &&
-      (item.liveStock ?? 0) + shadow > (item.threshold || 0) * 3
+      item.threshold != null &&
+      (item.liveStock ?? 0) + shadow > item.threshold * 3
     )
       notes.push("Overstocked vs. par — tie up cash");
     return notes.join("; ");
@@ -586,10 +590,12 @@ export function InventoryCommandPage() {
       { header: "Type", value: (i) => i.type ?? "" },
       { header: "Live", value: (i) => i.liveStock ?? 0 },
       { header: "Shadow", value: (i) => i.shadowStock ?? 0 },
-      { header: "Par", value: (i) => i.threshold },
+      { header: "Par", value: (i) => i.threshold ?? "" },
       {
         header: "Velocity/day",
-        value: (i) => (i.velocityPerDay ?? 0).toFixed(2),
+        // Blank when unknown, never "0.00" (F-689).
+        value: (i) =>
+          i.velocityPerDay == null ? "" : i.velocityPerDay.toFixed(2),
       },
       {
         header: "Runway d",
@@ -637,7 +643,7 @@ export function InventoryCommandPage() {
       },
       { header: "System qty (live)", value: (i) => i.liveStock ?? 0 },
       { header: "System qty (shadow)", value: (i) => i.shadowStock ?? 0 },
-      { header: "Par", value: (i) => i.threshold },
+      { header: "Par", value: (i) => i.threshold ?? "" },
       { header: "Counted qty", value: () => "" },
       { header: "Variance", value: () => "" },
       {
@@ -649,7 +655,9 @@ export function InventoryCommandPage() {
       },
       {
         header: "Velocity/day",
-        value: (i) => (i.velocityPerDay ?? 0).toFixed(2),
+        // Blank when unknown, never "0.00" (F-689).
+        value: (i) =>
+          i.velocityPerDay == null ? "" : i.velocityPerDay.toFixed(2),
       },
       {
         header: "Runway d",
@@ -1496,10 +1504,26 @@ export function InventoryCommandPage() {
                           <StockGauge item={item} />
                         </div>
                         <div className="font-mono text-xs text-gray-700">
-                          {(item.velocityPerDay ?? 0).toFixed(1)}{" "}
-                          <span className="text-[9.5px] text-gray-400">
-                            btl/day
-                          </span>
+                          {item.velocityPerDay == null ||
+                          item.velocityIsNew ? (
+                            <span
+                              className="text-gray-400"
+                              title={
+                                item.velocityPerDay == null
+                                  ? "Sales could not be read"
+                                  : `On the list ${item.velocityDays ?? 0} day(s): too new to plan on`
+                              }
+                            >
+                              {velocityLabel(item)}
+                            </span>
+                          ) : (
+                            <>
+                              {item.velocityPerDay.toFixed(1)}{" "}
+                              <span className="text-[9.5px] text-gray-400">
+                                btl/day
+                              </span>
+                            </>
+                          )}
                         </div>
                         <div
                           className={cn(
@@ -1821,13 +1845,13 @@ export function InventoryCommandPage() {
                   setMenu(null);
                 }}
               />
+              {/* F-081: no quantity here. The row card works one out with
+                  what is already on order; par alone would disagree with it. */}
               <MenuItem
                 icon={Plus}
-                label={`Draft PO, ${item.threshold} btl`}
+                label="Draft an order"
                 onClick={() => {
-                  navigate(
-                    `/orders?draft=new&inventoryId=${menu.id}&qty=${item.threshold}`,
-                  );
+                  navigate(`/orders?draft=new&inventoryId=${menu.id}`);
                   setMenu(null);
                 }}
               />
