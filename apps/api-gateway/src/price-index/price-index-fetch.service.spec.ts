@@ -7,14 +7,21 @@ import { DatabaseService } from "../database/database.service";
  * on the dedup key and records the source's own defects; and it never claims a
  * write it did not make.
  */
-function makeDb(): { db: DatabaseService; upserts: unknown[][] } {
+function makeDb(
+  alreadyStored = 0,
+): { db: DatabaseService; upserts: unknown[][] } {
   const upserts: unknown[][] = [];
   const client = {
     from() {
       return {
-        upsert(rows: unknown[]) {
+        // `alreadyStored` rows are duplicates the database skips; the count it
+        // answers is what it took.
+        upsert(rows: unknown[], opts?: { count?: string }) {
           upserts.push(rows);
-          return Promise.resolve({ error: null });
+          return Promise.resolve({
+            error: null,
+            count: opts?.count ? Math.max(0, rows.length - alreadyStored) : null,
+          });
         },
       };
     },
@@ -51,6 +58,16 @@ describe("PriceIndexFetchService", () => {
     expect(String(first.content_hash)).toMatch(/^[0-9a-f]{64}$/);
     expect(first.issued_at).toBe("2026-09-01");
     expect(first.state).toBe("US-IA");
+  });
+
+  it("reports rows the database took, not rows sent (F-655)", async () => {
+    // A re-read of an edition already on file: 20 sent, all 20 duplicates.
+    const { db, upserts } = makeDb(20);
+    const svc = new PriceIndexFetchService(db);
+    const outcome = await svc.fetchOne("iowa-liquor-products", { offline: true, today: new Date("2026-09-04T00:00:00Z") });
+    expect(upserts[0]).toHaveLength(20);
+    expect(outcome.written).toBe(0);
+    expect(svc.lastRunFor("iowa-liquor-products")?.written).toBe(0);
   });
 
   it("records the run for the status endpoint", async () => {

@@ -51,13 +51,22 @@ export class PromotionExtractorService {
       if (!promo) return { stored: false, reason: "no promo terms extracted" };
 
       // Dedup: same provider already has an active promo with this signature?
-      const { data: dupes } = await this.databaseService.supabase
-        .from("provider_promotions")
-        .select("id")
-        .eq("provider_id", ctx.providerId)
-        .eq("is_active", true)
-        .contains("conditions", { signature: promo.signature })
-        .limit(1);
+      const { data: dupes, error: dupesError } =
+        await this.databaseService.supabase
+          .from("provider_promotions")
+          .select("id")
+          .eq("provider_id", ctx.providerId)
+          .eq("is_active", true)
+          .contains("conditions", { signature: promo.signature })
+          .limit(1);
+      // A check that could not run is not "no duplicate": skip rather than
+      // file the same offer twice.
+      if (dupesError) {
+        this.logger.warn(
+          `PromotionExtractor: duplicate check failed, promo not stored: ${dupesError.message}`,
+        );
+        return { stored: false, reason: "duplicate check failed" };
+      }
       if (dupes?.length) return { stored: false, reason: "duplicate promo" };
 
       const discount_value: Record<string, any> = {};
@@ -190,7 +199,7 @@ export class PromotionExtractorService {
   async sendDailyDigests(): Promise<void> {
     try {
       const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-      const { data } = await this.databaseService.supabase
+      const { data, error } = await this.databaseService.supabase
         .from("provider_promotions")
         .select(
           "restaurant_id, promo_type, discount_value, providers!left(name)",
@@ -198,6 +207,13 @@ export class PromotionExtractorService {
         .gte("created_at", since)
         .eq("is_active", true)
         .contains("conditions", { priority: "digest" });
+      // A failed read is not "no offers today". Say it failed; send nothing.
+      if (error) {
+        this.logger.error(
+          `sendDailyDigests: could not read today's promotions, no digest sent: ${error.message}`,
+        );
+        return;
+      }
 
       // Group the last 24h of digest-bucket promos per restaurant, keeping a few concrete
       // offer lines so the rollup is useful at a glance (not just a count).
@@ -284,11 +300,17 @@ export class PromotionExtractorService {
     text: string,
   ): Promise<string[]> {
     try {
-      const { data } = await this.databaseService.supabase
+      const { data, error } = await this.databaseService.supabase
         .from("restaurant_inventory")
         .select("wine_name")
         .eq("restaurant_id", restaurantId)
         .limit(500);
+      if (error) {
+        this.logger.warn(
+          `PromotionExtractor: inventory read failed, no wines matched to this promo: ${error.message}`,
+        );
+        return [];
+      }
       const lower = text.toLowerCase();
       const hits: string[] = [];
       for (const r of (data as any[]) || []) {
