@@ -503,11 +503,27 @@ export class WineSubmissionsService {
       // No row back means the insert was skipped: a shared row with this
       // signature already exists. Link the submission to it, untouched.
       if (!upserted?.id) {
-        const { data: existing } = await this.dbService.supabase
-          .from("master_wine_library")
-          .select("id")
-          .eq("signature_hash", signatureHash)
-          .maybeSingle();
+        const { data: existing, error: readError } =
+          await this.dbService.supabase
+            .from("master_wine_library")
+            .select("id")
+            .eq("signature_hash", signatureHash)
+            .maybeSingle();
+        // A failed read is not "no such row": it is counted as an attempt and
+        // says why, so it parks for review instead of retrying in silence.
+        if (readError) {
+          this.logger.error("Failed to read the existing master wine", {
+            error: readError.message,
+          });
+          results.push(
+            await this.retryOrPark(
+              submission,
+              `library read: ${readError.message}`,
+              signatureHash,
+            ),
+          );
+          continue;
+        }
         if (!existing?.id) {
           results.push({ id: submission.id, status: "pending" });
           continue;
