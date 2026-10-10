@@ -191,14 +191,27 @@ describe("no notification producer writes an emoji into a stored title", () => {
     // The Python agents INSERT into `notifications` directly (D-03), bypassing
     // the gateway entirely, so cleaning only the NestJS side would leave half
     // the producers writing pictures.
-    const py = walk(path.join(ORCHESTRATOR, "agents"), [".py"]).filter((f) =>
-      // The INSERT itself, not a method whose name starts with `_notify` —
-      // `procurement_agent._notify_voice_negotiation_success` publishes a bus
-      // event and writes no row, and sweeping it in would have made this file
-      // fail over text no reader of /notifications ever sees.
-      fs.readFileSync(f, "utf8").includes('table("notifications")'),
-    );
-    expect(py.length).toBeGreaterThanOrEqual(1);
+    //
+    // Since F-535 (2026-10-09) no agent INSERTs directly: they call the
+    // `core.notifications.notify_restaurant` funnel, which does the INSERT.
+    // The title is still written in the agent, so a producer is a file that
+    // either INSERTs or calls the funnel — across agents/, core/ and jobs/
+    // (jobs/research_tasks.py INSERTs too and was never scanned before).
+    const py = ["agents", "core", "jobs"]
+      .flatMap((d) => walk(path.join(ORCHESTRATOR, d), [".py"]))
+      .filter((f) => {
+        const s = fs.readFileSync(f, "utf8");
+        // The INSERT or the funnel call itself, not a method whose name starts
+        // with `_notify` — `procurement_agent._notify_voice_negotiation_success`
+        // publishes a bus event and writes no row, and sweeping it in would
+        // have made this file fail over text no reader of /notifications sees.
+        return s.includes('table("notifications")') || s.includes("notify_restaurant(");
+      });
+    const names = py.map((f) => path.relative(ORCHESTRATOR, f));
+    // The funnel and at least one agent that writes its words through it.
+    expect(names).toContain("core/notifications.py");
+    expect(names).toContain("agents/email_intel_agent.py");
+    expect(py.length).toBeGreaterThanOrEqual(3);
     expect(offences(py)).toEqual([]);
   });
 
