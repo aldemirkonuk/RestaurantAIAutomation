@@ -224,6 +224,7 @@ import {
 import { deadlineOf } from "./delivery-deadline";
 import { type BlanksAtSend, signatureSlotRe, unfilledSlotsRefusal, unfilledTemplateSlots } from "./unfilled-slots";
 import { houseFrame } from "../common/house-frame";
+import { readHouseMoney } from "../common/house-money";
 import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
   DELIVERY_REFUSED_STATE_UNREADABLE,
@@ -1236,9 +1237,15 @@ export class ProcurementService {
         ? Math.abs(callerTotal - agreedTotal.total) <= tolerance
         : Math.abs(callerTotal - agreedTotal.total) < tolerance);
     if (!totalAgrees) {
-      // Said in the order's own money, never as dollars (F-829).
-      const code = currencyCode(dto.currency);
-      const money = (n: number) => (code ? `${n.toFixed(2)} ${code}` : n.toFixed(2));
+      // Said in the order's own money, never as dollars (F-829), grouped
+      // the house's way: a lira house reads "₺30.000,00", not "30000.00 TRY"
+      // (F-889).
+      const { locale } = await readHouseMoney(
+        this.databaseService.supabase,
+        restaurantId,
+      );
+      const money = (n: number) =>
+        moneyIn(n, dto.currency, { digits: 2, unrecorded: "bare", locale });
       throw new BadRequestException({
         reason: "total_disagrees_with_price",
         message:
@@ -3795,7 +3802,7 @@ export class ProcurementService {
         await this.databaseService.supabase
           .from("procurement_orders")
           .select(
-            "status, quantity, unit_type, bottles_total, final_price, procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
+            "status, quantity, unit_type, bottles_total, final_price, currency, procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
           )
           .eq("restaurant_id", restaurantId)
           .eq("id", orderId)
@@ -3863,10 +3870,18 @@ export class ProcurementService {
         dto.totalCost != null &&
         Math.abs(dto.totalCost - agreedTotal.total) >= 0.005
       ) {
+        // In the order's own money and the house's grouping, never a
+        // literal dollar (F-889).
+        const { locale } = await readHouseMoney(
+          this.databaseService.supabase,
+          restaurantId,
+        );
+        const money = (n: number) =>
+          moneyIn(n, row.currency, { digits: 2, unrecorded: "bare", locale });
         throw new BadRequestException({
           reason: "total_disagrees_with_price",
           message:
-            `The total sent with this change ($${Number(dto.totalCost).toFixed(2)}) is not what the quantity at the agreed price comes to ($${agreedTotal.total.toFixed(2)}). ` +
+            `The total sent with this change (${money(Number(dto.totalCost))}) is not what the quantity at the agreed price comes to (${money(agreedTotal.total)}). ` +
             "Nothing was changed. Send it again without a total and it is worked out from the price.",
         });
       }

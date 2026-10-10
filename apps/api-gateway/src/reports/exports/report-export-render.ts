@@ -30,6 +30,7 @@ import {
   type Unit,
 } from "./report-export-doc";
 import { writtenLabel } from "./report-export-naming";
+import { usableLocale } from "../../common/house-money";
 
 export interface ExportHeader {
   houseName: string | null;
@@ -41,6 +42,13 @@ export interface ExportHeader {
   writtenAt: string;
   /** The house's IANA zone; "Written" is shown on its clock. Null when it has none. */
   timezone: string | null;
+  /**
+   * The house's formats tag (`houseFrame().locale`, ADR 0207). The printed
+   * file groups its figures this way — a lira house reads "1.240,50", where
+   * en-US printed "1,240.50", 1.24 by its own mark (F-889). Null or absent
+   * keeps en-US. The CSV stays bare numbers, for a spreadsheet to read.
+   */
+  locale?: string | null;
   withheldCount: number;
 }
 
@@ -221,29 +229,35 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function humanNumber(n: number, unit: Unit): string {
+function humanNumber(n: number, unit: Unit, locale: string): string {
+  const pct = (fraction: number) =>
+    new Intl.NumberFormat(locale, {
+      style: "percent",
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(fraction);
   switch (unit) {
     case "money":
-      return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     case "ratio":
-      return `${(n * 100).toFixed(1)}%`;
+      return pct(n);
     case "percent":
-      return `${n.toFixed(1)}%`;
+      return pct(n / 100);
     case "days":
-      return n.toLocaleString("en-US", { maximumFractionDigits: 1 });
+      return n.toLocaleString(locale, { maximumFractionDigits: 1 });
     default:
-      return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+      return n.toLocaleString(locale, { maximumFractionDigits: 2 });
   }
 }
 
-function htmlCell(c: Cell, unit: Unit): { html: string; numeric: boolean } {
+function htmlCell(c: Cell, unit: Unit, locale: string): { html: string; numeric: boolean } {
   if (c === null) return { html: "", numeric: false };
   if (typeof c === "number")
-    return { html: escapeHtml(humanNumber(c, unit)), numeric: true };
+    return { html: escapeHtml(humanNumber(c, unit, locale)), numeric: true };
   if (typeof c === "string") return { html: escapeHtml(c), numeric: false };
   if (isWithheld(c))
     return { html: `<span class="withheld">${WITHHELD_WORD}</span>`, numeric: false };
-  if (isTyped(c)) return { html: escapeHtml(humanNumber(c.n, c.unit)), numeric: true };
+  if (isTyped(c)) return { html: escapeHtml(humanNumber(c.n, c.unit, locale)), numeric: true };
   return { html: "", numeric: false };
 }
 
@@ -280,7 +294,7 @@ ul.reasons, ul.plain { margin: 4pt 0 0; padding-left: 14pt; font: 8.5pt ui-sans-
 footer { margin-top: 18pt; padding-top: 6pt; border-top: 0.5pt solid #cfc6b6; font: 8pt ui-sans-serif, system-ui, sans-serif; color: #6b6255; }
 `;
 
-function htmlTable(t: ExportTable, currency: string | null): string {
+function htmlTable(t: ExportTable, currency: string | null, locale: string): string {
   const numericCol = t.columns.map((c) => c.unit !== "text");
   const head = t.columns
     .map(
@@ -292,7 +306,7 @@ function htmlTable(t: ExportTable, currency: string | null): string {
     .map((row) => {
       const cells = t.columns
         .map((col, i) => {
-          const { html, numeric } = htmlCell(row[i] ?? null, col.unit);
+          const { html, numeric } = htmlCell(row[i] ?? null, col.unit, locale);
           return `<td${numeric || numericCol[i] ? ' class="num"' : ""}>${html}</td>`;
         })
         .join("");
@@ -314,6 +328,7 @@ function htmlTable(t: ExportTable, currency: string | null): string {
 export function renderHtml(doc: ExportDoc, h: ExportHeader): string {
   const house = h.houseName ?? "House name not recorded";
   const written = writtenLabel(h.writtenAt, h.timezone);
+  const locale = usableLocale(h.locale);
   const money = h.currency
     ? `Money in ${h.currency}, the house's reporting currency.`
     : "Money is shown with no currency: this house's reporting currency is not recorded.";
@@ -325,7 +340,7 @@ export function renderHtml(doc: ExportDoc, h: ExportHeader): string {
           `<section><h2>Figures</h2><dl class="figures">`,
           ...doc.figures.map((fig) => {
             const unit = isTyped(fig.value) ? fig.value.unit : fig.unit;
-            const { html } = htmlCell(fig.value, unit);
+            const { html } = htmlCell(fig.value, unit, locale);
             const suffix =
               unit === "money" && !isWithheld(fig.value) && h.currency
                 ? ` ${escapeHtml(h.currency)}`
@@ -362,7 +377,7 @@ export function renderHtml(doc: ExportDoc, h: ExportHeader): string {
 ${doc.say ? `<p class="say">${escapeHtml(doc.say)}</p>` : ""}
 </header>
 ${figures}
-${doc.tables.map((t) => htmlTable(t, h.currency)).join("\n")}
+${doc.tables.map((t) => htmlTable(t, h.currency, locale)).join("\n")}
 ${list("Notes", doc.notes)}
 ${list("Basis", doc.basis)}
 <footer>
