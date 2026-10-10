@@ -97,3 +97,45 @@ describe("GET /analytics/recommendations — goal cards only for owners and mana
     },
   );
 });
+
+/**
+ * A goal card an owner or manager dismissed, snoozed or marked done keeps its
+ * snapshot — 'Goal "Food cost" is behind its linear pace (NN% done).' — so
+ * the tabs, the history and the caller's own snoozes leave it out the same
+ * way. An insight put away by category "goals" goes with it.
+ */
+const PUT_AWAY = [
+  { ruleKey: `goal_behind_${GOAL_ID}`, category: null, status: "dismissed", observation: 'Goal "Food cost" is behind its linear pace (40% done).' },
+  { ruleKey: "overall.revenue.goal_pace", category: "goals", status: "done", observation: "Revenue goal 40% done" },
+  { ruleKey: "low_margin_items", category: "pricing", status: "snoozed", observation: "Two dishes earn little" },
+];
+
+function actionsSelf() {
+  const rows = () => PUT_AWAY.map((r) => ({ ...r }));
+  return {
+    recommendationActions: {
+      listByStatus: async () => rows(),
+      listHistory: async () => rows(),
+      listForMe: async () => rows(),
+    },
+  };
+}
+
+const READS: Array<[string, (self: any, user: any) => Promise<any>]> = [
+  ["GET recommendations/:rid/actions", (self, user) => proto.listRecommendationActions.call(self, "r1", "all", user)],
+  ["GET recommendations/:rid/history", (self, user) => proto.recommendationHistory.call(self, "r1", user)],
+  ["GET recommendations/:rid/snoozed-for-me", (self, user) => proto.listSnoozedForMe.call(self, "r1", user)],
+];
+
+describe.each(READS)("%s — put-away goal cards only for owners and managers (F-814)", (_name, read) => {
+  it.each(["owner", "manager"])("%s sees them", async (role) => {
+    const out = await read(actionsSelf(), { userId: "u1", role });
+    expect(out.items.map((r: any) => r.ruleKey)).toEqual(PUT_AWAY.map((r) => r.ruleKey));
+  });
+
+  it.each(["staff", "chef", "admin", undefined])("%s gets the rest without them", async (role) => {
+    const out = await read(actionsSelf(), { userId: "u1", role });
+    expect(out.items.map((r: any) => r.ruleKey)).toEqual(["low_margin_items"]);
+    expect(JSON.stringify(out)).not.toContain("Food cost");
+  });
+});

@@ -1430,12 +1430,17 @@ export class AnalyticsController {
   ) {
     try {
       const s = (status || "all") as RecommendationStatus | "all";
+      const items = await this.recommendationActions.listByStatus(
+        restaurantId,
+        s,
+        actorOf(user),
+      );
+      // A put-away goal card keeps the goal's name and progress in its
+      // snapshot: owners' and managers' only, like the feed (F-814).
       return {
-        items: await this.recommendationActions.listByStatus(
-          restaurantId,
-          s,
-          actorOf(user),
-        ),
+        items: mayReadGoals(user)
+          ? items
+          : items.filter((r) => !isAboutAGoal(r)),
       };
     } catch (error) {
       throw new HttpException(
@@ -1453,14 +1458,18 @@ export class AnalyticsController {
   })
   async listSnoozedForMe(
     @Param("restaurantId") restaurantId: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
+      const items = await this.recommendationActions.listForMe(
+        restaurantId,
+        actorOf(user).userId ?? "",
+      );
+      // The same goal-card rule as the feed (F-814).
       return {
-        items: await this.recommendationActions.listForMe(
-          restaurantId,
-          actorOf(user).userId ?? "",
-        ),
+        items: mayReadGoals(user)
+          ? items
+          : items.filter((r) => !isAboutAGoal(r)),
       };
     } catch (error) {
       if (error instanceof ActRefused)
@@ -1501,10 +1510,17 @@ export class AnalyticsController {
 
   @Get("recommendations/:restaurantId/history")
   @ApiOperation({ summary: "Acted/dismissed/completed history (NEW-302)" })
-  async recommendationHistory(@Param("restaurantId") restaurantId: string) {
+  async recommendationHistory(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { userId?: string; role?: string },
+  ) {
     try {
+      const items = await this.recommendationActions.listHistory(restaurantId);
+      // The same goal-card rule as the feed (F-814).
       return {
-        items: await this.recommendationActions.listHistory(restaurantId),
+        items: mayReadGoals(user)
+          ? items
+          : items.filter((r) => !isAboutAGoal(r)),
       };
     } catch (error) {
       throw new HttpException(
