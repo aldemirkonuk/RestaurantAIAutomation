@@ -171,10 +171,16 @@ export class ProcurementController {
   @ApiResponse({ status: 200, type: OrderListResponseDto })
   async listOrders(
     @Query() query: OrderFilterDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<OrderListResponseDto> {
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
+  ): Promise<OrderListResponseDto & { amountsWithheld?: true }> {
     try {
-      return await this.procurementService.listOrders(user.restaurantId, query);
+      // The ledger behind /orders, /receiving and the calendar: the same cut
+      // as the pending queue and history (F-433, F-441).
+      return orderListForRole(
+        await this.procurementService.listOrders(user.restaurantId, query),
+        user?.role ?? null,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch procurement orders",
@@ -257,10 +263,16 @@ export class ProcurementController {
   @ApiResponse({ status: 200, type: OrderResponseDto })
   async getOrder(
     @Param("id") orderId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<OrderResponseDto> {
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
+  ): Promise<OrderForRole> {
     try {
-      return await this.procurementService.getOrder(user.restaurantId, orderId);
+      // One order, the same cut (F-441): the door, the receipts pairing and
+      // the phone read this route for staff too.
+      return orderForRole(
+        await this.procurementService.getOrder(user.restaurantId, orderId),
+        user?.role ?? null,
+      );
     } catch (error) {
       // A 404 stays a 404: "not in this house" is not a server fault.
       if (error instanceof HttpException) throw error;

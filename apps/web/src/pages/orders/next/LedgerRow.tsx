@@ -26,7 +26,7 @@ import { useApproveOrder, useMarkOrderDelivered } from '@/hooks/queries/useOrder
 import { alreadyDeliveredRefusal, alreadyDeliveredWords } from '@/services/api/orders';
 import * as ordersApi from '@/services/api/orders';
 import { approveConflict } from '@/services/api/approveConflict';
-import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
+import { AMOUNTS_WITHHELD, EM, MONO, SANS, SERIF, fmtDate, fmtMoney } from './format';
 import {
   PRICE_UOM_LABEL,
   ROW_FEES_NOT_READ,
@@ -169,6 +169,9 @@ export function LedgerRow({
   // A verdict the gate actually gave. `undefined` is "not answered", which must
   // never disable the ceremony — the page is a courtesy, the gateway is the gate.
   const heldForApproval = approval ? !approval.mayApprove : false;
+  // Staff: the gateway sent no money for this order (F-441). The row prints
+  // none, and none of the "not stated" sentences about money it was not sent.
+  const withheld = row.amountsWithheld === true;
   const disagreement =
     row.listedTotal !== null &&
     row.computedTotal !== null &&
@@ -335,7 +338,7 @@ export function LedgerRow({
               textAlign: 'right',
             }}
           >
-            {fmtMoney(row.total, row.currency)}
+            {withheld ? null : fmtMoney(row.total, row.currency)}
           </span>
           {clickOpensReceipt ? (
             <span className="sr-only"> — open the receipt</span>
@@ -396,7 +399,7 @@ export function LedgerRow({
           <div className="flex flex-wrap gap-4 px-10 pb-4 pt-1" style={{ fontFamily: SANS }}>
             {/* the working — how the total is arrived at, stated in full */}
             <div style={{ flex: '1 1 16rem', minWidth: 0 }}>
-              {label('The working')}
+              {label(withheld ? 'The order' : 'The working')}
               <div
                 style={{
                   fontFamily: MONO,
@@ -407,6 +410,14 @@ export function LedgerRow({
                   lineHeight: 1.7,
                 }}
               >
+                {withheld ? (
+                  <div data-testid="amounts-withheld" style={{ color: 'var(--ink-4, #665D50)' }}>
+                    {row.quantity !== null ? row.quantity : EM}{' '}
+                    {row.unitType ? uomCountWord(row.quantity, row.unitType) : 'ordered'} ·{' '}
+                    {AMOUNTS_WITHHELD}
+                  </div>
+                ) : (
+                <>
                 {/*
                   The AGREED PRICE, with the unit it is stated in — ADR 0119.
 
@@ -530,6 +541,8 @@ export function LedgerRow({
                     what will be spent
                   </div>
                 )}
+                </>
+                )}
                 <div style={{ color: 'var(--ink-4, #665D50)' }}>
                   requested {fmtDate(row.requestedAt)} · approved {fmtDate(row.approvedAt)} · delivered{' '}
                   {fmtDate(row.deliveredAt)}
@@ -637,7 +650,7 @@ export function LedgerRow({
                     */}
                     <HoldToApprove
                       key={`die-${row.id}-${attempt}`}
-                      label={`Hold to approve · ${fmtMoney(row.total, row.currency)}`}
+                      label={withheld ? 'Hold to approve' : `Hold to approve · ${fmtMoney(row.total, row.currency)}`}
                       approvedLabel="Approved"
                       disabled={bulkRunning || approve.isPending || heldForApproval}
                       onApprove={onApprove}

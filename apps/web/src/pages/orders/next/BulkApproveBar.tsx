@@ -23,7 +23,7 @@ import { Seal } from '@/components/mudavym';
 import { animate, pour, sealTiming, stamp, tuck, useReducedMotion } from '@/lib/mudavym/motion';
 import { useApproveOrder } from '@/hooks/queries/useOrderQueries';
 import * as ordersApi from '@/services/api/orders';
-import { MONO, SANS, fmtMoney, sumByCurrency } from './format';
+import { AMOUNTS_WITHHELD, MONO, SANS, fmtMoney, sumByCurrency } from './format';
 import type { OrderRowVM } from './useOrdersNextData';
 import { approveConflict } from '@/services/api/approveConflict';
 
@@ -133,6 +133,8 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
     selectedRows.map((r) => ({ amount: r.total, currency: r.currency })),
   ).byCurrency;
   const unpriced = selectedRows.filter((r) => r.total === null).length;
+  // Staff rows carry no money (F-441): no "$0.00 known" for them.
+  const withheld = selectedRows.some((r) => r.amountsWithheld);
 
   useEffect(
     () => () => {
@@ -427,7 +429,9 @@ export function BulkApproveBar({ selectedRows, onClear, onApproved, onRunningCha
           >
             {phase === 'done' && result
               ? doneLine(result)
-              : `${knownTotals.length ? knownTotals.map((c) => fmtMoney(c.amount, c.currency)).join(' and ') : fmtMoney(0, selectedRows[0]?.currency)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
+              : withheld
+                ? AMOUNTS_WITHHELD
+                : `${knownTotals.length ? knownTotals.map((c) => fmtMoney(c.amount, c.currency)).join(' and ') : fmtMoney(0, selectedRows[0]?.currency)} known${unpriced > 0 ? ` · ${unpriced} unpriced` : ''}`}
           </span>
           {phase === 'done' && result && result.reasons.length > 0 && (
             <span

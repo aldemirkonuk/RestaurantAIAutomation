@@ -177,6 +177,12 @@ export interface OrderRowVM {
   approvedAt: string | null;
   deliveredAt: string | null;
   notes: string | null;
+  /**
+   * The reader is staff and the gateway sent no money for this order (F-441).
+   * Every figure above is then null because it was WITHHELD; the row prints no
+   * amount and no "not stated" sentence about one.
+   */
+  amountsWithheld?: boolean;
 }
 
 export interface MonthFigure {
@@ -321,6 +327,11 @@ export interface OrdersNextData {
   month: MonthFigure;
   /** The house's currency, for a figure with no order behind it (an empty month). */
   houseCurrency?: string | null;
+  /**
+   * The reader is staff: the list came with no money (F-441), so the month
+   * figure stays null and the header says so in words instead of "$0".
+   */
+  amountsWithheld?: boolean;
   /**
    * True only once the orders list has actually arrived. While false, an empty
    * `rows` means UNKNOWN (fetching, retrying, or waiting on a restaurant
@@ -503,6 +514,7 @@ export function toRow(
     approvedAt: o.approvedAt ?? null,
     deliveredAt: o.deliveredAt ?? null,
     notes: null,
+    amountsWithheld: o.amountsWithheld === true,
   };
 }
 
@@ -581,6 +593,8 @@ export function useOrdersNextData(): OrdersNextData {
     let cancelledCount: number | null = null;
     let month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
 
+    const amountsWithheld = rows.some((r) => r.amountsWithheld);
+
     if (known) {
       const oneTime = rows.filter((r) => !r.recurring);
       for (const s of STAGES) counts[s] = oneTime.filter((r) => r.stage === s).length;
@@ -598,7 +612,8 @@ export function useOrdersNextData(): OrdersNextData {
       recurrenceReadCount = rows.filter((r) => r.recurrence.read).length;
       cancelledCount = rows.filter((r) => r.stage === 'cancelled').length;
 
-      month = monthFigureOf(rows, houseZone);
+      // Withheld is not unpriced: a staff list summed to $0 here (F-441).
+      if (!amountsWithheld) month = monthFigureOf(rows, houseZone);
     }
 
 
@@ -627,6 +642,7 @@ export function useOrdersNextData(): OrdersNextData {
       recurrenceReadCount,
       cancelledCount,
       month,
+      amountsWithheld,
       hasData: known,
       dataUpdatedAt: known && ordersQuery.dataUpdatedAt ? ordersQuery.dataUpdatedAt : null,
       isLoading: ordersQuery.isLoading,

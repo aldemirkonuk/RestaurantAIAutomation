@@ -1319,6 +1319,14 @@ export class OrderResponseDto {
       "The occurrence date this child was minted for. Travels with recurrenceParentOrderId: both set or both null. A partial unique index over the pair is what stops two orders being raised for one occurrence.",
   })
   recurrenceOccurrenceOn?: string | null;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    enum: [true],
+    description:
+      "Present, and true, only when the caller's role does not hold the house's money (staff): every price, total and fee key is then OMITTED, never null or zero. Absent for an owner or a manager. On a list it sits at the root, not on each order (F-433, F-441).",
+  })
+  amountsWithheld?: true;
 }
 
 export class OrderListResponseDto {
@@ -1336,6 +1344,14 @@ export class OrderListResponseDto {
 
   @ApiProperty()
   hasMore: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    enum: [true],
+    description:
+      "True when the caller's role does not hold the house's money: no order on the page carries a price, total or fee (F-433, F-441).",
+  })
+  amountsWithheld?: true;
 }
 
 /**

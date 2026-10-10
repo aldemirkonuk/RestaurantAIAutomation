@@ -490,6 +490,12 @@ export interface Order {
   recurrenceParentOrderId?: string | null;
   /** The occurrence this child was raised for. Travels with the parent id. */
   recurrenceOccurrenceOn?: string | null;
+  /**
+   * True when the caller is staff: the gateway left out every price, total and
+   * fee (F-441), so an absent figure here is withheld, not unknown and never
+   * zero. Absent for an owner or a manager.
+   */
+  amountsWithheld?: true;
 }
 
 export interface CreateOrderRequest {

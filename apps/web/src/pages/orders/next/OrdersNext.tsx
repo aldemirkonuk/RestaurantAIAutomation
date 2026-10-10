@@ -38,7 +38,7 @@ import { ReceiptSheet } from './ReceiptSheet';
 import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
-import { EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
+import { AMOUNTS_WITHHELD, EM, MONO, SANS, SERIF, fmtMoneyWhole, fmtReadTime } from './format';
 import { emptyStationSentence } from './recurrence';
 import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -315,6 +315,16 @@ export default function OrdersNext() {
             >
               {data.month.label ?? monthName.format(now)} so far
             </span>
+            {data.amountsWithheld ? (
+              // Staff: no money came, so no figure stands here (F-441).
+              <span
+                data-testid="month-withheld"
+                style={{ display: 'block', fontSize: 12, color: 'var(--ink-4, #665D50)' }}
+              >
+                {AMOUNTS_WITHHELD}
+              </span>
+            ) : (
+              <>
             {/* One line per currency, never one sum across them (F-341). */}
             {(data.month.thisMonthByCurrency?.length ?? 0) > 1 ? (
               data.month.thisMonthByCurrency!.map((c) => (
@@ -363,6 +373,8 @@ export default function OrdersNext() {
               {data.month.unpricedThisMonth > 0 &&
                 ` · ${data.month.unpricedThisMonth} unpriced — excluded, not zeroed`}
             </span>
+              </>
+            )}
           </div>
           </div>
         </header>

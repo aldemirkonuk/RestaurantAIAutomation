@@ -7,6 +7,12 @@ import { CURRENCY_NOT_RECORDED, currencyMinorUnits } from '@/lib/currency';
 
 export const EM = '—';
 
+/**
+ * What a staff page says where an amount would stand (F-441): the gateway sent
+ * none, on purpose. Not a dash (that reads "unknown") and never a zero.
+ */
+export const AMOUNTS_WITHHELD = 'Amounts are for owners and managers.';
+
 /** A finite number or null. Guards against NaN and the API's occasional string. */
 export function num(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;

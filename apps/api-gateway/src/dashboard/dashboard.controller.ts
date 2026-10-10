@@ -32,6 +32,7 @@ import {
   statsForRole,
 } from "./amounts-for-role";
 import { policyFor } from "../ask-readings/reading-data-classes";
+import { isIsoDay } from "../areas/area-routing";
 
 /**
  * The caller as jwt.strategy.ts builds it: the role IN THE HOUSE THE TOKEN
@@ -269,9 +270,11 @@ export class DashboardController {
     @Query("limit") limitStr?: string,
     @Query("date") date?: string,
   ): Promise<ActivityItemDto[]> {
-    if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    // A real calendar day, not only its shape: 2026-13-45 passed the shape
+    // and fell over further in as a 500 (F-447).
+    if (date !== undefined && !isIsoDay(date)) {
       throw new HttpException(
-        "date must be a day written YYYY-MM-DD.",
+        "That date is not a day on the calendar. Write it as YYYY-MM-DD, for example 2026-10-09.",
         HttpStatus.BAD_REQUEST,
       );
     }

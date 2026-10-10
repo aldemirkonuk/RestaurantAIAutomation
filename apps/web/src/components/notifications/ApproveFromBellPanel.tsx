@@ -68,6 +68,8 @@ export interface BellOrder {
   providerName?: string;
   finalPrice?: number;
   totalCost?: number;
+  /** Staff: the route sent no price or total, on purpose (F-441). */
+  amountsWithheld?: true;
   status?: string;
   requestedAt?: string;
   approvedAt?: string;
@@ -253,7 +255,9 @@ export function ApproveFromBellPanel({
             ],
             [
               'Agreed',
-              order.finalPrice == null && order.totalCost == null
+              order.amountsWithheld
+                ? 'Amounts are for owners and managers.'
+                : order.finalPrice == null && order.totalCost == null
                 ? `${EM} — no price is recorded on this order`
                 : `${money(order.finalPrice, order.currency)} per ${order.unitType ?? 'unit'} · ${money(order.totalCost, order.currency)} in all`,
             ],
