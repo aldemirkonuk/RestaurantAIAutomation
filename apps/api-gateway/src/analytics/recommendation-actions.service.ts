@@ -1628,17 +1628,29 @@ export class RecommendationActionsService {
     status: RecommendationStatus | "all",
     viewer?: RecommendationActor,
   ): Promise<Array<RecommendationActionRow & { undoableByYou?: boolean | null }>> {
-    let q = this.dbService
-      .getClient()
-      .from("recommendation_actions")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("updated_at", { ascending: false });
-    if (status !== "all") q = q.eq("status", status);
-    const { data, error } = await q;
-    if (error) throw new Error(error.message);
+    // Read WHOLE, or refuse (ADR 0292, F-1011): an unranged select stopped
+    // at PostgREST's 1,000 rows, so past that many acted keys a tab showed an
+    // arbitrary 1,000 with no word, and a snooze still in force could be
+    // missing from Snoozed. Newest first is sorted here: the whole read owns
+    // the order (by id) so its cursor does not skip rows.
+    const client = this.dbService.getClient();
+    const data = await readWholeWindow<any>(
+      status === "all"
+        ? "The house's put-away recommendations"
+        : `The house's ${status} recommendations`,
+      () => {
+        const q = client
+          .from("recommendation_actions")
+          .select("*", { count: "exact" })
+          .eq("restaurant_id", restaurantId);
+        return status === "all" ? q : q.eq("status", status);
+      },
+    );
+    data.sort((a, b) =>
+      String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")),
+    );
     const now = Date.now();
-    const rows = (data || [])
+    const rows = data
       .map((d) => this.toRow(d))
       .filter((r) => {
         // Hide snoozes that have expired from the "snoozed" tab.

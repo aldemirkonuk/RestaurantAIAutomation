@@ -340,7 +340,14 @@ export interface PacingRegister {
    * Orders in neither figure (approved, in negotiation, partly received), at
    * their order value — null from a gateway that does not send it (F-130).
    */
-  notCounted: { approved: number; partlyReceived: number; other: number; orderValue: number } | null;
+  notCounted: {
+    approved: number;
+    partlyReceived: number;
+    other: number;
+    orderValue: number;
+    /** Of those, orders with no price, left out of `orderValue` (F-1010). */
+    unpriced: number;
+  } | null;
   /** Delivered orders in the 180 days with no price, left out of the sums (F-701). */
   spendUnpricedCount?: number;
   /** Open orders with no price, left out of `committedOpenOrders` (F-701). */
@@ -364,7 +371,11 @@ export function notCountedNote(n: PacingRegister['notCounted']): string | null {
   if (parts.length === 0) return null;
   const list =
     parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-  return `Not in either figure: ${list}, ${money(n.orderValue)} at order value. They count once the vendor confirms them or they close.`;
+  const unpriced =
+    n.unpriced > 0
+      ? ` ${figure(n.unpriced)} of them ${n.unpriced === 1 ? 'carries' : 'carry'} no price, so that order value leaves ${n.unpriced === 1 ? 'it' : 'them'} out.`
+      : '';
+  return `Not in either figure: ${list}, ${money(n.orderValue)} at order value.${unpriced} They count once the vendor confirms them or they close.`;
 }
 
 /**
@@ -415,7 +426,7 @@ const pacing = analysis<PacingRegister>({
         const v = num(n.orderValue);
         return a === null || p === null || o === null || v === null
           ? null
-          : { approved: a, partlyReceived: p, other: o, orderValue: v };
+          : { approved: a, partlyReceived: p, other: o, orderValue: v, unpriced: num(n.unpriced) ?? 0 };
       })(),
       spendUnpricedCount: num(d.spendUnpricedCount) ?? undefined,
       committedUnpricedCount: num(d.committedUnpricedCount) ?? undefined,

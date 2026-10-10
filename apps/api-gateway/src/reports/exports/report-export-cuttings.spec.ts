@@ -398,3 +398,79 @@ describe("an empty POS window is not an absent field (A-040)", () => {
     expect(EXPORT_CUTTINGS.service.write(PAYLOADS.service, { days: null }).say).toBeNull();
   });
 });
+
+/**
+ * F-1009 (sim 36, owner's month end). The screen's Spend pacing and Against
+ * ourselves print how many orders carry no price and which orders are in
+ * neither figure. The files left both out, under a footer that promises any
+ * figure the engine could not compute is written "withheld" — so a short
+ * buying figure was handed to the accountant as the whole one.
+ */
+describe("the buying files carry the caveats the screen prints (F-1009)", () => {
+  const unpricedPacing = {
+    ...(PAYLOADS.pacing as object),
+    spendUnpricedCount: 3,
+    committedUnpricedCount: 1,
+    notCounted: {
+      approved: 2,
+      partlyReceived: 1,
+      other: 0,
+      orderValue: 850,
+      unpriced: 1,
+    },
+    basis: {
+      outflow: "delivered procurement_orders",
+      days: "each 30-day window ends today, on the house's own date (Europe/Istanbul)",
+      notCounted:
+        "orders approved but not yet confirmed by the vendor are in neither figure",
+    },
+  };
+
+  it("spend pacing names the unpriced orders and the orders in neither figure", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write(unpricedPacing, { days: null });
+    expect(doc.notes).toContain(
+      "3 delivered orders carry no price in these 180 days, so the 30-day buying figures leave them out and may be short by what they cost.",
+    );
+    expect(doc.notes).toContain(
+      "1 open order carries no price, so Committed, not yet delivered leaves it out.",
+    );
+    expect(doc.notes).toContain(
+      "Not in either figure: 2 approved orders and 1 partly received order, written above at their order value. 1 of them carries no price, so that order value leaves it out. They count once the vendor confirms them or they close.",
+    );
+    expect(figure(doc, "Not in either figure, at order value")).toBe(850);
+    expect(doc.basis).toEqual([
+      "Outflow: delivered procurement_orders.",
+      "Days: each 30-day window ends today, on the house's own date (Europe/Istanbul).",
+      "Not in either figure: orders approved but not yet confirmed by the vendor are in neither figure.",
+    ]);
+  });
+
+  it("spend pacing with every order priced and counted adds no caveat", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write(PAYLOADS.pacing, { days: null });
+    expect(doc.notes.join(" ")).not.toMatch(/no price|Not in either figure/);
+    expect(doc.figures.map((x) => x.label)).not.toContain(
+      "Not in either figure, at order value",
+    );
+  });
+
+  it("against ourselves names the unpriced orders its buying figures leave out", () => {
+    const bench = PAYLOADS.bench as { cashflow: object };
+    const doc = EXPORT_CUTTINGS.bench.write(
+      {
+        ...bench,
+        cashflow: {
+          ...bench.cashflow,
+          spendUnpricedCount: 1,
+          committedUnpricedCount: 2,
+        },
+      },
+      { days: null },
+    );
+    expect(doc.notes).toContain(
+      "1 delivered order carries no price in these 180 days, so the 30-day buying figures leave it out and may be short by what it cost.",
+    );
+    expect(doc.notes).toContain(
+      "2 open orders carry no price, so Committed, not yet delivered leaves them out.",
+    );
+  });
+});

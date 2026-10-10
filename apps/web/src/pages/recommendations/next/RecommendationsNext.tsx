@@ -94,6 +94,7 @@ import { Wordmark, monthOf } from '@/components/mudavym';
 import { animate, tuck } from '@/lib/mudavym/motion';
 import { localDayKey } from '@/lib/localDay';
 import { useHouseZone } from '@/lib/houseZone';
+import { houseToday } from '@/lib/houseCalendar';
 import { snoozeWake, type SnoozeSpan } from '@/lib/recommendationState';
 import Entry from './Entry';
 import Ribbon from './Ribbon';
@@ -205,14 +206,18 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   /**
    * The calendar month the ribbon shows, `YYYY-MM`.
    *
-   * Today's, on arrival — the reader's day, not the UTC one. The UTC date is
-   * tomorrow for a house west of Greenwich from the evening on, which rang
-   * tomorrow as "today" and, on the 30th or 31st, opened the strip on next
-   * month. The till's days are house days, and `buildDays` files every other
-   * mark on the reader's day too, so one clock runs the whole strip.
+   * Today's, on arrival — the HOUSE's day, not the UTC one or the reader's.
+   * The UTC date is tomorrow for a house west of Greenwich from the evening
+   * on, which rang tomorrow as "today" and, on the 30th or 31st, opened the
+   * strip on next month. The till's days are house days, so `buildDays`
+   * files every other mark on the house's day too (F-1012): one clock runs
+   * the whole strip, wherever the reader sits.
    */
-  const today = localDayKey(new Date());
+  const today = localDayKey(houseToday(zone));
   const [month, setMonth] = useState<string>(() => monthOf(today));
+  /** The house's zone arrives after the first paint: open on ITS month. */
+  const todayMonth = monthOf(today);
+  useEffect(() => setMonth(todayMonth), [todayMonth]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkReasonOpen, setBulkReasonOpen] = useState(false);
@@ -257,8 +262,9 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
         // list that could not be read is not an empty one, and drawing no
         // strikes from it would claim every day is counted.
         exclusions: data.exclusions?.readable ? data.exclusions.items : null,
+        zone,
       }),
-    [month, data.entries, data.goals, data.pos, data.exclusions],
+    [month, data.entries, data.goals, data.pos, data.exclusions, zone],
   );
 
   /*
@@ -293,8 +299,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
 
   /** The book, narrowed by the ribbon. The register still cuts across it. */
   const dayScoped = useMemo(
-    () => (day ? data.entries.filter((e) => touchesDay(e, day, data.goals)) : data.entries),
-    [data.entries, day, data.goals],
+    () => (day ? data.entries.filter((e) => touchesDay(e, day, data.goals, zone)) : data.entries),
+    [data.entries, day, data.goals, zone],
   );
 
   /**

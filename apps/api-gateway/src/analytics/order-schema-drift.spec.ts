@@ -456,8 +456,61 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
         partlyReceived: 1,
         other: 0,
         orderValue: 550,
+        unpriced: 0,
       });
       expect(out.basis.notCounted).toMatch(/in neither figure/);
+    });
+
+    // F-1010: the order value of the orders in neither figure summed
+    // `total_cost || final_price || 0`, so an approved order nobody priced
+    // added one bottle's price as the whole order. It is left out and counted.
+    it("leaves an unpriced order out of the not-counted order value and counts it", async () => {
+      const client = makeClient({
+        procurement_orders: [
+          {
+            id: "n1",
+            provider_id: "p1",
+            providers: { name: "Rioja Imports" },
+            total_cost: 300,
+            final_price: 50,
+            bottles_total: 6,
+            quantity: 6,
+            created_at: day(2),
+            delivered_at: null,
+            expected_delivery_date: day(-2).substring(0, 10),
+            status: ProcurementOrderStatus.APPROVED,
+          },
+          {
+            id: "n2",
+            provider_id: "p1",
+            providers: { name: "Rioja Imports" },
+            total_cost: 0,
+            final_price: 40,
+            bottles_total: 6,
+            quantity: 6,
+            created_at: day(2),
+            delivered_at: null,
+            expected_delivery_date: day(-2).substring(0, 10),
+            status: ProcurementOrderStatus.APPROVED,
+          },
+        ],
+      });
+      const svc = new AdvancedAnalyticsService(
+        { getClient: () => client } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+      );
+
+      const out: any = await svc.getCashflow(RESTAURANT);
+      expect(client.schemaErrors).toEqual([]);
+      expect(out.notCounted).toEqual({
+        approved: 2,
+        partlyReceived: 0,
+        other: 0,
+        orderValue: 300,
+        unpriced: 1,
+      });
     });
 
     it("logs, rather than swallows, a query that really does fail", async () => {

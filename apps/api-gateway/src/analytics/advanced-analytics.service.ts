@@ -932,6 +932,11 @@ export class AdvancedAnalyticsService {
         !hasStatus(o.status, ORDER_OUTSTANDING_STATUSES) &&
         !hasStatus(o.status, ORDER_CLOSED_STATUSES),
     );
+    // Their order value is summed the way the two figures are (F-1010): an
+    // unpriced order is left out and counted, never read as one bottle's
+    // `final_price` or as $0.
+    const { total: neitherValue, unpricedCount: neitherUnpriced } =
+      sumOrderSpend(neither);
     const notCounted = {
       approved: neither.filter((o: any) => o.status === "APPROVED").length,
       partlyReceived: neither.filter(
@@ -941,10 +946,8 @@ export class AdvancedAnalyticsService {
         (o: any) =>
           o.status !== "APPROVED" && o.status !== "PARTIALLY_RECEIVED",
       ).length,
-      orderValue: neither.reduce(
-        (s: number, o: any) => s + (o.total_cost || o.final_price || 0),
-        0,
-      ),
+      orderValue: neitherValue,
+      unpriced: neitherUnpriced,
     };
 
     return {
@@ -954,7 +957,7 @@ export class AdvancedAnalyticsService {
           ? `each 30-day window ends today, on the house's own date (${zone})`
           : "each 30-day window ends today, on UTC dates, because the house has no time zone set",
         notCounted:
-          "orders approved but not yet confirmed by the vendor, orders still being negotiated, and orders partly received and still open are in neither figure until they are confirmed or closed; they are counted here at their order value",
+          "orders approved but not yet confirmed by the vendor, orders still being negotiated, and orders partly received and still open are in neither figure until they are confirmed or closed; they are counted here at their order value, and one with no price is left out of that value and counted",
       },
       spendLast30d: last30,
       spendPrev30d: prev30,

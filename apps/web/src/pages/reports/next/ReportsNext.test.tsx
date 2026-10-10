@@ -953,6 +953,29 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     ).toBeInTheDocument();
   });
 
+  // F-1010: an unpriced order in neither figure is left out of the order value
+  // and said, not read as one bottle's price.
+  it('says how many orders in neither figure carry no price', () => {
+    hook.current = withRegister(
+      'pacing',
+      ok({
+        basis: { outflow: 'delivered orders' },
+        spendLast30d: 700,
+        spendPrev30d: 400,
+        paceDeltaPct: 0.75,
+        projectedNext4Weeks: null,
+        committedOpenOrders: 0,
+        openOrderCount: 0,
+        notCounted: { approved: 2, partlyReceived: 0, other: 0, orderValue: 300, unpriced: 1 },
+      }),
+    );
+    paint();
+    const pacingRegion = screen.getByRole('region', { name: 'Spend pacing' });
+    expect(
+      within(pacingRegion).getByText(/1 of them carries no price, so that order value leaves it out\./),
+    ).toBeInTheDocument();
+  });
+
   it('withholds both weekdays when the server reports a tie, and says why', () => {
     hook.current = withRegister(
       'week',
