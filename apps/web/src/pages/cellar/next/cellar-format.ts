@@ -674,6 +674,23 @@ export function shortDate(iso: string | null | undefined): string {
   });
 }
 
+/**
+ * The day a bottle was last counted (F-1100). `lastCountedAt` is an instant,
+ * so the day it names is the HOUSE's day, in the house's own way of writing a
+ * date — not a US date read on a device somewhere else. With no zone known
+ * yet, the device's clock stands in, as everywhere else on these pages.
+ */
+export function countedDay(iso: string, zone?: string | null): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return EM;
+  return d.toLocaleDateString(getHouseLocale(), {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    ...(zone ? { timeZone: zone } : {}),
+  });
+}
+
 /** The five books, in the order the house would read them. */
 export const BOOK_ORDER = ['menu', 'invoice', 'order', 'quote', 'pos'] as const;
 export type HouseBookId = (typeof BOOK_ORDER)[number];
