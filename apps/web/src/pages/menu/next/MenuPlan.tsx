@@ -221,11 +221,18 @@ export function MenuPlan({
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [moved, setMoved] = useState(false);
+  /**
+   * The house never answered (the page stopped waiting, or the connection
+   * dropped) or answered with its own failure: the switch may have happened
+   * (F-448). The plan is read again and says which, never "nothing changed".
+   */
+  const [unsure, setUnsure] = useState(false);
   const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu', 'plan', menuId] });
 
   const choose = useMutation({
     mutationFn: (fingerprint: string) => makeMenuCurrent(menuId, fingerprint),
+    onMutate: () => setUnsure(false),
     onSuccess: (r) => {
       void queryClient.invalidateQueries({ queryKey: ['menu'] });
       void queryClient.invalidateQueries({ queryKey: ['pricing', 'locks'] });
@@ -236,6 +243,9 @@ export function MenuPlan({
       if (status === 409) {
         setMoved(true);
         refresh();
+      } else if (status === undefined || status >= 500) {
+        setUnsure(true);
+        void queryClient.invalidateQueries({ queryKey: ['menu'] });
       }
     },
   });
@@ -446,7 +456,16 @@ export function MenuPlan({
       ) : (
         <p className="cl-note">A lock holds a price at this house only.</p>
       )}
-      {choose.isError && !moved ? (
+      {choose.isError && !moved && unsure ? (
+        <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-plan-unsure">
+          {q.isFetching
+            ? 'The house did not answer in time, so it may have made this menu current. Checking…'
+            : plan.current
+              ? 'The house did not answer in time, but this menu is now current. Some of its prices may still be on their way to the house; Inventory shows the prices the house has now.'
+              : 'The house did not answer in time, and this menu is not current. Nothing has changed; you can try again.'}
+        </p>
+      ) : null}
+      {choose.isError && !moved && !unsure ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
           It was not made current: {reasonOf(choose.error)}. Nothing has changed.
         </p>

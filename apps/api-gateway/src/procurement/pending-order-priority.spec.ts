@@ -55,37 +55,61 @@ function makeDb(opts: DbOpts) {
       let cols = "";
       let op: "select" | "update" | "insert" = "select";
       let id: string | null = null;
+      let inIds: string[] = [];
       const orders: Array<[string, { ascending?: boolean } | undefined]> = [];
 
       const settle = (shape: "one" | "many") => {
-        if (table !== "procurement_orders" || op !== "select") {
-          return { data: null, error: null };
-        }
-        if (cols === "id, status, requested_at, created_at") {
+        // The facts builder's set reads (F-449): each vendor or item asked
+        // for, with the house's orders to it embedded. A vendor's orders are
+        // the earlier placed ones (F-731) and the pending rows themselves; an
+        // item's are the last price PAID (F-479), never a pending row.
+        if (table === "providers") {
           log.countReads += 1;
-          if (opts.priorOrdersToVendor === "error") {
+          const earlier = opts.priorOrdersToVendor ?? 1;
+          if (earlier === "error") {
             return { data: null, error: { message: "count failed" } };
           }
           return {
-            data: Array.from({ length: opts.priorOrdersToVendor ?? 1 }, (_, i) => ({
-              id: `prior-${i}`,
-              status: "DELIVERED",
-              requested_at: "2026-01-01T00:00:00Z",
-              created_at: "2026-01-01T00:00:00Z",
+            data: inIds.map((v) => ({
+              id: v,
+              orders: [
+                ...Array.from({ length: earlier }, (_, i): Row => ({
+                  id: `prior-${i}`,
+                  status: "DELIVERED",
+                  requested_at: "2026-01-01T00:00:00Z",
+                  created_at: "2026-01-01T00:00:00Z",
+                })),
+                ...(opts.pending ?? [])
+                  .filter((r) => r.provider_id === v)
+                  .map(({ id, status, requested_at, created_at }) => ({
+                    id,
+                    status,
+                    requested_at,
+                    created_at,
+                  })),
+              ],
             })),
             error: null,
           };
         }
-        if (cols.startsWith("final_price")) {
+        if (table === "restaurant_inventory") {
           log.priceReads += 1;
           if (opts.priorPrice === "error") {
             return { data: null, error: { message: "statement timeout" } };
           }
           return {
-            data:
-              opts.priorPrice == null ? [] : [{ final_price: opts.priorPrice }],
+            data: inIds.map((item) => ({
+              id: item,
+              orders:
+                opts.priorPrice == null
+                  ? []
+                  : [{ id: "prior", final_price: opts.priorPrice }],
+            })),
             error: null,
           };
+        }
+        if (table !== "procurement_orders" || op !== "select") {
+          return { data: null, error: null };
         }
         if (shape === "one") {
           return {
@@ -119,7 +143,10 @@ function makeDb(opts: DbOpts) {
           return q;
         },
         neq: () => q,
-        in: () => q,
+        in(col: string, v: string[]) {
+          if (col === "id") inIds = v;
+          return q;
+        },
         not: () => q,
         gte: () => q,
         lte: () => q,
@@ -518,6 +545,43 @@ describe("an unreadable read is unknown, never 'not flagged'", () => {
       ],
     });
     expect(out.map((o) => o.id)).toEqual(["c", "a", "b"]);
+  });
+});
+
+describe("the facts are read for the whole queue at once (F-449)", () => {
+  it("250 pending orders cost a bounded number of reads, not two per order", async () => {
+    const pending = Array.from({ length: 250 }, (_, i) =>
+      row(`o${String(i).padStart(3, "0")}`, 1 + (i % 28), {
+        provider_id: `prov-${i % 40}`,
+        final_price: i === 7 ? 300 : 100,
+      }),
+    );
+    const { out, log } = await list({ pending, priorPrice: 100 }, [
+      rule("price_jump"),
+      rule("new_vendor"),
+    ]);
+    expect(out).toHaveLength(250);
+    // 40 vendors in one read; 250 items in three reads of 100.
+    expect(log.countReads).toBe(1);
+    expect(log.priceReads).toBe(3);
+    // The facts still land on the right order.
+    expect(byId(out, "o007").reasons).toContain("price_jump");
+    expect(byId(out, "o008").reasons).not.toContain("price_jump");
+  });
+
+  it("only the vendor's earliest order is its first, read from the one set read (F-731)", async () => {
+    const pending = [
+      row("a", 1, { provider_id: "prov-alone" }),
+      row("b", 2, { provider_id: "prov-pair" }),
+      row("c", 3, { provider_id: "prov-pair" }),
+    ];
+    const { out, log } = await list({ pending, priorOrdersToVendor: 0 }, [
+      rule("new_vendor"),
+    ]);
+    expect(log.countReads).toBe(1);
+    expect(byId(out, "a").reasons).toContain("needs_signature");
+    expect(byId(out, "b").reasons).toContain("needs_signature");
+    expect(byId(out, "c").reasons).not.toContain("needs_signature");
   });
 });
 

@@ -373,8 +373,14 @@ export function useBellBook(open: boolean): BellBook {
   }, [open, read]);
 
   useEffect(() => {
-    const id = setInterval(() => void read(), BELL_POLL_MS);
+    // A hidden tab skips its tick and reads once when it is shown again (F-450).
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'hidden') void read();
+    }, BELL_POLL_MS);
     const onLive = () => void read();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void read();
+    };
     // The same two nudges the page and the legacy header already listen for.
     window.addEventListener('notification_sent', onLive);
     window.addEventListener('ws:dashboard-invalidate', onLive);
@@ -383,8 +389,10 @@ export function useBellBook(open: boolean): BellBook {
     window.addEventListener('focus', onLive);
     // A snooze written in another tab of this browser.
     window.addEventListener('storage', onLive);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('notification_sent', onLive);
       window.removeEventListener('ws:dashboard-invalidate', onLive);
       window.removeEventListener('focus', onLive);
