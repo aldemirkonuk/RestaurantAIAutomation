@@ -2811,6 +2811,8 @@ export class ProcurementService {
     restaurantId: string,
     providerId: string,
     inventoryId: string,
+    /** The caller does not hold the house's money (F-988). */
+    withholdAmounts = false,
   ): Promise<LastAgreement> {
     let vendorName: string | null = null;
     try {
@@ -2891,6 +2893,7 @@ export class ProcurementService {
         vendorName,
         false,
         zone,
+        withholdAmounts,
       );
     } catch (e: any) {
       this.logger.warn(

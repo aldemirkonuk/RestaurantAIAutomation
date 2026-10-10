@@ -150,6 +150,72 @@ export function conversationsForRole<T extends Record<string, unknown>>(
 }
 
 /**
+ * The same letters as the `/conversations` routes read them (F-986): raw
+ * `procurement_conversations` rows, in the table's own snake_case, with the
+ * order embedded as `procurement_orders`. The cut is the one above, by the
+ * column names: a non-holder never gets the order's figures, and keeps the
+ * letter's words only as a D10 grantee (`readsLetters`). The words here are
+ * the vendor's text or the house's draft (`message_text`, `content`), the
+ * engine's summaries and context, the review flags and the headers, which
+ * carry the subject line.
+ */
+const RAW_ORDER_MONEY_KEYS = [
+  "quoted_price",
+  "negotiated_price",
+  "final_price",
+] as const;
+
+export const RAW_LETTER_PROSE_KEYS = [
+  "message_text",
+  "content",
+  "conversation_summary",
+  "rolling_summary",
+  "conversation_context",
+  "constraint_flags",
+  "subject",
+  "email_headers",
+] as const;
+
+/** An embedded order without its figures; anything else as it came. */
+export function orderEmbedForRole(
+  order: unknown,
+  role: string | null | undefined,
+): unknown {
+  if (holdsHouseMoney(role)) return order;
+  if (!order || typeof order !== "object" || Array.isArray(order)) return order;
+  const kept: Record<string, unknown> = { ...(order as object) };
+  for (const key of RAW_ORDER_MONEY_KEYS) delete kept[key];
+  return kept;
+}
+
+export function conversationRowsForRole<T extends Record<string, unknown>>(
+  rows: T[],
+  role: string | null | undefined,
+  opts: { readsLetters?: boolean } = {},
+): Array<Partial<T> & { amountsWithheld?: true; wordsWithheld?: true }> {
+  if (holdsHouseMoney(role)) return rows;
+  return rows.map((row) => {
+    const kept: Record<string, unknown> = { ...row };
+    if ("procurement_orders" in kept)
+      kept.procurement_orders = orderEmbedForRole(
+        kept.procurement_orders,
+        role,
+      );
+    if (opts.readsLetters) {
+      if ("constraint_flags" in kept)
+        kept.constraint_flags = flagsWithoutFigures(kept.constraint_flags);
+      return { ...(kept as Partial<T>), amountsWithheld: true as const };
+    }
+    for (const key of RAW_LETTER_PROSE_KEYS) delete kept[key];
+    return {
+      ...(kept as Partial<T>),
+      amountsWithheld: true as const,
+      wordsWithheld: true as const,
+    };
+  });
+}
+
+/**
  * The open deal proposal on an order as this role may read it (F-981). The
  * proposal is the vendor's offer: the proposed and final price, the agreement
  * terms, the quoted sentence and the summary all name the house's money. A

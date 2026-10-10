@@ -12,6 +12,7 @@ import axios from "axios";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { VendorSendAuthorityService } from "../organizations/vendor-send-authority.service";
 import { draftSealArgs } from "../procurement/order-seal";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 
 /**
  * The act `POST /conversations/:id/approve` is sealed as (ADR 0175 D9,
@@ -250,6 +251,32 @@ export class ConversationsService {
       );
     }
     return { seal: this.sealChallenges, authority: this.vendorSendAuthority };
+  }
+
+  /**
+   * Whether this caller keeps the letters' words on the read routes (F-986,
+   * coordinator call S144): a holder of the house's money does, and a
+   * non-holder only when they may send to vendors (ADR 0175 D10, the same
+   * standing `/procurement/orders/:id/conversations` reads). A standing that
+   * cannot be read keeps nothing.
+   */
+  async readsLettersFor(
+    userId: string | null | undefined,
+    restaurantId: string,
+    role: string | null | undefined,
+  ): Promise<boolean> {
+    if (holdsHouseMoney(role)) return true;
+    if (!this.vendorSendAuthority || !userId) return false;
+    try {
+      const standing = await this.vendorSendAuthority.readout(
+        userId,
+        restaurantId,
+        { canAsk: true },
+      );
+      return standing.maySend === true;
+    } catch {
+      return false;
+    }
   }
 
   /**

@@ -100,9 +100,14 @@ export class HouseLettersController {
 
   @Get("queued")
   @ApiOperation({ summary: "Letters still inside their undo window" })
-  async queued(@CurrentUser() user: TokenUser) {
-    const { restaurantId } = houseActor(user);
-    return { queued: await this.letters.queued(restaurantId) };
+  async queued(
+    @CurrentUser() user: TokenUser,
+    @CurrentUser("role") role: string | null,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return {
+      queued: await this.letters.queued(restaurantId, { userId, role }),
+    };
   }
 
   @Get("drafts")

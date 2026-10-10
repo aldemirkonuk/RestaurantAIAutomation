@@ -700,8 +700,14 @@
     "owner",
     "manager"
   ],
-  "GET /providers/:id/conversation-memory (ProviderIntelligenceController.getConversationMemory)": "open",
-  "POST /providers/:id/conversation-memory/search (ProviderIntelligenceController.searchConversationMemory)": "open",
+  "GET /providers/:id/conversation-memory (ProviderIntelligenceController.getConversationMemory)": [
+    "owner",
+    "manager"
+  ],
+  "POST /providers/:id/conversation-memory/search (ProviderIntelligenceController.searchConversationMemory)": [
+    "owner",
+    "manager"
+  ],
   "GET /providers/:id/sessions (ProviderIntelligenceController.getSessions)": "open",
   "GET /providers/:id/sessions/:sessionId/summary (ProviderIntelligenceController.getSessionSummary)": "open",
   "GET /providers/:id/sentiment (ProviderIntelligenceController.getSentimentTrend)": "open",

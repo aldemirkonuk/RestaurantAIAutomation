@@ -585,14 +585,15 @@ export class ProcurementController {
   @ApiOperation({
     summary: "The last agreed price and unit for one vendor and one shelf item",
     description:
-      'Three states, kept apart: "found" (with the price, its unit pair, the currency, the date and the order it was struck on), "none" (this house has never agreed a price with this vendor for this item) and "unreadable" (the read failed). Every state carries a sentence, because an answer with no sentence is what lets a failure render as an empty field. Nothing is converted — a price whose unit was never stated is reported as unstated, never as per bottle.',
+      'Three states, kept apart: "found" (with the price, its unit pair, the currency, the date and the order it was struck on), "none" (this house has never agreed a price with this vendor for this item) and "unreadable" (the read failed). Every state carries a sentence, because an answer with no sentence is what lets a failure render as an empty field. Nothing is converted — a price whose unit was never stated is reported as unstated, never as per bottle. A member who does not hold the house\'s money gets "found" without the price, its unit pair or the figure in the sentence, marked `amountsWithheld` (F-988).',
   })
   @ApiQuery({ name: "providerId", required: true })
   @ApiQuery({ name: "inventoryId", required: true })
   @ApiResponse({ status: 200, description: "The last agreement, or why there is none" })
   @ApiResponse({ status: 400, description: "providerId and inventoryId are both required" })
   async lastAgreement(
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
     @Query("providerId") providerId?: string,
     @Query("inventoryId") inventoryId?: string,
   ) {
@@ -602,10 +603,13 @@ export class ProcurementController {
         HttpStatus.BAD_REQUEST,
       );
     }
+    // Staff learn that a price was agreed, never the figure (F-988): the
+    // same figure `orderForRole` cuts from the orders it was struck on.
     return this.procurementService.lastAgreementFor(
       user.restaurantId,
       providerId.trim(),
       inventoryId.trim(),
+      !holdsHouseMoney(user?.role ?? null),
     );
   }
 

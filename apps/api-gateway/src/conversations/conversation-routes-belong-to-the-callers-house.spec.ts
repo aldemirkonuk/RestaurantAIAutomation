@@ -721,7 +721,13 @@ describe("the thread routes withhold a credit claim's letter from staff too (ADR
     const body = JSON.stringify(res.body);
     expect(body).not.toContain("84.50");
     expect(body).not.toContain("12.00");
-    expect(body).toContain("House A asks the vendor for 12 cases");
+    // The vendor's message is there; its words are not, for staff without
+    // ADR 0175 D10 send authority (F-986, coordinator call S144).
+    expect(res.body.conversations.map((c: Row) => c.thread_key)).toEqual([
+      "T-A",
+    ]);
+    expect(body).not.toContain("House A asks the vendor for 12 cases");
+    expect(res.body.conversations[0].wordsWithheld).toBe(true);
     expect(res.body.threads.map((t: Row) => t.key)).toEqual(["T-A"]);
     expect(res.body.total).toBe(1);
     expect(rpcCalls[0].args.p_withhold_house_letters).toBe(true);
