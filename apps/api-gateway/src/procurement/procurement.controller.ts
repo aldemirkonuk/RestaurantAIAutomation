@@ -19,6 +19,11 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import {
+  OrderForRole,
+  orderForRole,
+  orderListForRole,
+} from "./order-amounts-for-role";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   CreateOrderDto,
@@ -204,10 +209,16 @@ export class ProcurementController {
   @ApiOperation({ summary: "Get pending procurement orders" })
   @ApiResponse({ status: 200, type: [OrderResponseDto] })
   async listPendingOrders(
-    @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<OrderResponseDto[]> {
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
+  ): Promise<OrderForRole[]> {
     try {
-      return await this.procurementService.listPendingOrders(user.restaurantId);
+      // Staff read the queue's counts, names and states, never its amounts
+      // (DASH-W22, F-433): cut on the server, by the token's role.
+      const orders = await this.procurementService.listPendingOrders(
+        user.restaurantId,
+      );
+      return orders.map((o) => orderForRole(o, user?.role ?? null));
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch pending orders",
@@ -221,10 +232,16 @@ export class ProcurementController {
   @ApiResponse({ status: 200, type: OrderListResponseDto })
   async listOrderHistory(
     @Query() query: OrderFilterDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<OrderListResponseDto> {
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
+  ): Promise<OrderListResponseDto & { amountsWithheld?: true }> {
     try {
-      return await this.procurementService.listOrders(user.restaurantId, query);
+      // The same cut as the pending queue (F-433): the day sheet's deliveries
+      // list reads this route for staff too.
+      return orderListForRole(
+        await this.procurementService.listOrders(user.restaurantId, query),
+        user?.role ?? null,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch order history",
