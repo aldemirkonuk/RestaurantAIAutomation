@@ -60,7 +60,6 @@ import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
 import { failureLine } from './rp-format';
 import {
-  ANALYSIS_IDS,
   DEFAULT_SLOTS,
   HOUSE_LAYOUT_CUTTINGS,
   HOUSE_LAYOUT_IDS,
@@ -155,6 +154,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   }, []);
 
   const view = draft ?? data.sheet;
+  // What this reader's role may lay on the sheet (F-203). The saved sheet
+  // arrives already trimmed; every way in to the draft below is trimmed too.
+  const offered = data.offered;
   const onSheet = useMemo(() => new Set(view.cuttings.map((c) => c.id)), [view]);
 
   const startArranging = useCallback(() => {
@@ -170,7 +172,10 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     window.setTimeout(() => setRuledOff(false), 2400);
   }, [draft, data]);
 
-  const putBack = useCallback(() => setDraft(defaultSheet()), []);
+  const putBack = useCallback(() => {
+    const d = defaultSheet();
+    setDraft({ cuttings: d.cuttings.filter((c) => offered.includes(c.id)) });
+  }, [offered]);
 
   const edit = useCallback(
     (fn: (s: SheetState) => SheetState) => setDraft((d) => (d ? fn(d) : d)),
@@ -204,14 +209,14 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
    */
   const applyHouseLayout = useCallback(
     (which: HouseLayoutId) => {
-      const ids = HOUSE_LAYOUT_CUTTINGS[which];
+      const ids = HOUSE_LAYOUT_CUTTINGS[which].filter((id) => offered.includes(id));
       const slots = packSlots(ids);
       setDraft({
         cuttings: ids.map((id) => ({ id, slot: slots[id], graph: defaultGraph(id) })),
       });
       setArranging(true);
     },
-    [],
+    [offered],
   );
 
   const onMove = useCallback(
@@ -276,8 +281,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   }, [data.reading]);
 
   const swapOptions = useMemo(
-    () => ANALYSIS_IDS.map((id) => ({ id, taken: onSheet.has(id) })),
-    [onSheet],
+    () => offered.map((id) => ({ id, taken: onSheet.has(id) })),
+    [offered, onSheet],
   );
 
   /**
@@ -288,6 +293,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
    */
   const placeProposed = useCallback(
     (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => {
+      if (!offered.includes(cut.id)) return;
       if (cut.days !== null) setTillDays(cut.days);
       setDraft((d) => {
         const base = d ?? { cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) };
@@ -305,7 +311,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       });
       setArranging(true);
     },
-    [data.sheet],
+    [data.sheet, offered],
   );
   placeRef.current = placeProposed;
 
@@ -334,7 +340,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     ),
   }));
 
-  const offSheet = ANALYSIS_IDS.filter((id) => !onSheet.has(id));
+  const offSheet = offered.filter((id) => !onSheet.has(id));
 
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
