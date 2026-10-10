@@ -6,6 +6,7 @@ import {
   alreadyDeliveredWords,
 } from "@/api/delivered-once";
 import { GRACE_MS } from "@/design/motion";
+import { withoutReceiptMoney } from "@/lib/receiptMoney";
 import { outboxStorage } from "@/lib/mmkv";
 import { queryClient } from "@/lib/queryClient";
 
@@ -47,6 +48,11 @@ export interface OutboxEntry {
    * already happened, so a screen must not head it "didn't go through".
    */
   alreadyDone?: boolean;
+  /**
+   * True once a receipt refused for carrying money was re-sent with the count
+   * alone (F-806). It is re-sent once; a second refusal parks it.
+   */
+  moneyStripped?: boolean;
   /** Query keys to invalidate after success. */
   invalidate?: unknown[][];
   /** Feed item to restore if the entry is undone or permanently fails. */
@@ -280,7 +286,27 @@ async function runDispatch() {
       err.status >= 400 &&
       err.status < 500 &&
       err.status !== 429;
-    if (isPermanent) {
+    // A RECEIPT REFUSED FOR ITS PRICE KEEPS ITS COUNT (F-806).
+    //
+    // Since F-802 the gateway answers 403 to a staff receipt that carries an
+    // invoice price, an override or charges, and nothing is written. An entry
+    // queued before the phone stopped offering staff those fields would park
+    // here with the bottles counted at the door. Send it once more with the
+    // money taken out; the count, the rejection and the note go through, and a
+    // manager checks the price.
+    const countOnly =
+      err instanceof ApiError && err.status === 403 && !next.moneyStripped
+        ? withoutReceiptMoney(next.path, next.body)
+        : null;
+    if (countOnly) {
+      mark(next.id, {
+        status: "pending",
+        body: countOnly,
+        moneyStripped: true,
+        attempts: 0,
+      });
+      scheduleDispatch(0);
+    } else if (isPermanent) {
       // ALREADY DELIVERED IS NOT "didn't go through".
       //
       // Founder, 2026-09-05 (batch 46): the refusal is a 409 so a screen can
@@ -298,9 +324,11 @@ async function runDispatch() {
         status: "failed",
         lastError: refused
           ? alreadyDeliveredWords(refused)
-          : err instanceof Error
-            ? err.message
-            : "Rejected",
+          : next.moneyStripped
+            ? `This count was sent again without the invoice price and was still refused. ${err instanceof Error ? err.message : ""}`.trim()
+            : err instanceof Error
+              ? err.message
+              : "Rejected",
         alreadyDone: refused != null,
       });
       scheduleDispatch(0);
