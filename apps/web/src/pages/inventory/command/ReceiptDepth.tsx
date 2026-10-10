@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { documentsApi, dashNull, type ProcurementDocument } from '../../../services/api/documents'
 import { cn } from '../../../lib/utils'
+import { formatMoney } from '../../../lib/currency'
 
 const TYPE_LABELS: Record<ProcurementDocument['doc_type'], string> = {
   invoice: 'Invoice',
@@ -29,8 +30,12 @@ const TYPE_LABELS: Record<ProcurementDocument['doc_type'], string> = {
   unknown: 'Document',
 }
 
-function money(v: number | null): string {
-  return v == null ? '—' : `$${v.toFixed(2)}`
+/**
+ * A figure in the money the document is in (F-341) — this printed a bare `$`
+ * until 2026-10-09. A document with no currency says so; never a guessed dollar.
+ */
+function money(v: number | null, currency: string | null | undefined): string {
+  return v == null ? '—' : formatMoney(v, currency ?? null)
 }
 
 function TieOut({ doc }: { doc: ProcurementDocument }) {
@@ -38,7 +43,7 @@ function TieOut({ doc }: { doc: ProcurementDocument }) {
   if (doc.ties_out) return <span className="font-mono font-semibold text-emerald-600">ties out</span>
   return (
     <span className="font-mono font-semibold text-amber-600">
-      off by {doc.tie_out_delta == null ? '—' : `$${Math.abs(doc.tie_out_delta).toFixed(2)}`}
+      off by {doc.tie_out_delta == null ? '—' : money(Math.abs(doc.tie_out_delta), doc.currency)}
     </span>
   )
 }
@@ -116,7 +121,7 @@ export function ReceiptDepth({
                   : '—'}
               </span>
               {orderNumber && <span className="font-mono text-[10px] text-gray-400">{orderNumber}</span>}
-              <span className="ml-auto font-mono font-semibold text-gray-700">{money(doc.total)}</span>
+              <span className="ml-auto font-mono font-semibold text-gray-700">{money(doc.total, doc.currency)}</span>
               <TieOut doc={doc} />
               <span
                 className={cn(

@@ -6482,6 +6482,9 @@ export class ProcurementService {
       orderedUom: orderUnits.unitType,
       orderedBottlesPerUnit: orderUnits.bottlesPerUnit,
       poUnitPrice,
+      // Words only (F-341): each price is said in its own money, never "$".
+      poCurrency:
+        agreedLine.currency ?? (orderRow as any).currency ?? null,
       shippedQtyInShippedUom: shippedQuantity ?? null,
       shippedUom: body.shippedUom ?? null,
       shippedBottlesPerUnit: body.shippedBottlesPerUnit ?? null,
@@ -6489,6 +6492,7 @@ export class ProcurementService {
       invoiceUom: body.invoiceUom ?? null,
       invoiceBottlesPerUnit: body.invoiceBottlesPerUnit ?? null,
       invoiceUnitPrice: body.invoiceUnitPrice ?? null,
+      invoiceCurrency: body.invoiceCurrency ?? null,
       acceptedQtyInCountedUom: acceptedQuantity ?? null,
       rejectedQtyInCountedUom: rejectedQuantity ?? 0,
       freeGoodsQtyInCountedUom: freeGoodsQuantity ?? 0,

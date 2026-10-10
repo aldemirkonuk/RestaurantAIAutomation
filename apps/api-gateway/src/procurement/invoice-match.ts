@@ -68,6 +68,7 @@
  */
 
 import { normalizeUom, Uom } from "./documents/document-types";
+import { moneyIn } from "./agreed-price";
 
 export type MatchVerdict =
   | "matched"
@@ -139,6 +140,11 @@ export interface MatchInput {
 
   /** Agreed unit price (final_price). PER BOTTLE. Null when the order never carried a price. */
   poUnitPrice?: number | null;
+  /**
+   * The money the agreed price is in (F-341): the agreement line's currency,
+   * else the order's. Words only — absent says "currency not recorded", never USD.
+   */
+  poCurrency?: string | null;
 
   // -------------------------------------------------------------------------
   // SHIPPED (packing slip, EDI 856)
@@ -170,6 +176,8 @@ export interface MatchInput {
    * hand yet.
    */
   invoiceUnitPrice?: number | null;
+  /** The money the invoice bills in (F-341). Words only, as `poCurrency`. */
+  invoiceCurrency?: string | null;
 
   // -------------------------------------------------------------------------
   // RECEIVED (physical count at the door)
@@ -293,7 +301,6 @@ export interface MatchResult {
   effectiveUnitCost: number | null;
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`;
 
 /** Compare two prices as money; avoids float noise like 22.00000000001 !== 22. */
 const priceEquals = (a: number, b: number) =>
@@ -605,6 +612,10 @@ export function computeMatch(input: MatchInput): MatchResult {
   const poUnitPrice = input.poUnitPrice ?? null;
   const invoiceUnitPrice = input.invoiceUnitPrice ?? null;
   const overrideReason = (input.priceOverrideReason ?? "").trim();
+  // Each price in its own money (F-341). This printed a bare "$" until
+  // 2026-10-09, so a euro or lira delivery was checked under a dollar sign.
+  const agreed = (n: number) => moneyIn(n, input.poCurrency);
+  const billed = (n: number) => moneyIn(n, input.invoiceCurrency);
 
   const stockedQty = operands.stockedQty ?? invoiceQty ?? orderedQty;
 
@@ -624,9 +635,9 @@ export function computeMatch(input: MatchInput): MatchResult {
     detail: !bothPriced
       ? "No price to compare"
       : priceMismatch
-        ? `Agreed ${money(poUnitPrice)} vs billed ${money(invoiceUnitPrice)}` +
+        ? `Agreed ${agreed(poUnitPrice)} vs billed ${billed(invoiceUnitPrice)}` +
           (overrideReason ? " — accepted by override" : "")
-        : `Both ${money(poUnitPrice as number)}`,
+        : `Both ${agreed(poUnitPrice as number)}`,
   });
 
   // --- bill vs PO: did they bill for what we ordered? ------------------------------------
@@ -768,6 +779,8 @@ export function computeMatch(input: MatchInput): MatchResult {
       backorderQty,
       poUnitPrice,
       invoiceUnitPrice,
+      agreed,
+      billed,
     }),
     backorderQty,
     ledgerDelta: acceptedQty - stockedQty,
@@ -796,6 +809,9 @@ function summarize(
     backorderQty: number;
     poUnitPrice: number | null;
     invoiceUnitPrice: number | null;
+    /** Each price in its own money (F-341). */
+    agreed: (n: number) => string;
+    billed: (n: number) => string;
   },
 ): string {
   switch (verdict) {
@@ -807,7 +823,7 @@ function summarize(
     case "overbilled_vs_ship":
       return `Their packing slip says ${f.shippedQty} but their invoice bills ${f.invoiceQty} — proven by their own paperwork.`;
     case "price_variance":
-      return `Billed ${money(f.invoiceUnitPrice as number)} against an agreed ${money(
+      return `Billed ${f.billed(f.invoiceUnitPrice as number)} against an agreed ${f.agreed(
         f.poUnitPrice as number,
       )}.`;
     case "qty_over":
