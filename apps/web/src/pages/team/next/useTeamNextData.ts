@@ -52,7 +52,7 @@ import {
   type WeekPayload,
 } from '../../../services/api/team';
 import { apiClient } from '../../../services/api/client';
-import { mondayOf, parsePeriod, resolveName } from './tm-format';
+import { mondayOf, parsePeriod, resolveName, shiftHours } from './tm-format';
 
 /**
  * /team's server-side windows.
@@ -379,12 +379,13 @@ export interface TeamNextData {
   refetch: () => void;
 }
 
-function hoursOf(s: Shift): number {
-  const [sh, sm] = s.start_time.split(':').map(Number);
-  const [eh, em] = s.end_time.split(':').map(Number);
-  if (![sh, sm, eh, em].every(Number.isFinite)) return 0;
-  const span = eh + em / 60 - (sh + sm / 60);
-  return span > 0 ? span : span + 24; // overnight shifts wrap
+/**
+ * The hours a shift spans, by the one rule the gateway, the grid and the
+ * calendar feed share: an end before the start is the next morning, equal
+ * times are no hours at all (never a full day).
+ */
+export function hoursOf(s: Pick<Shift, 'start_time' | 'end_time'>): number {
+  return shiftHours(s.start_time, s.end_time);
 }
 
 /**

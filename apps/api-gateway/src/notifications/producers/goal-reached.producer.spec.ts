@@ -296,6 +296,22 @@ describe("shift-window (the smallest read there was not one of)", () => {
     expect(w.end.toISOString()).toBe("2026-09-03T05:00:00.000Z");
   });
 
+  it("[REVERT-FAILS] equal start and end times are a moment that day, not 24 hours", () => {
+    const w = shiftWindow(
+      { shift_date: "2026-09-02", start_time: "10:00", end_time: "10:00" },
+      ZONE,
+    )!;
+    expect(w.start.toISOString()).toBe("2026-09-02T14:00:00.000Z");
+    expect(w.end.toISOString()).toBe("2026-09-02T14:00:00.000Z");
+    // Read as 24 hours, this row would name m1 at 23:00 that night.
+    const on = onShiftAt(
+      [{ member_id: "m1", shift_date: "2026-09-02", start_time: "10:00", end_time: "10:00", state: "scheduled" }],
+      new Date("2026-09-03T03:00:00Z"),
+      ZONE,
+    );
+    expect(on).toEqual([]);
+  });
+
   it("[REVERT-FAILS] an open or called-out shift is the absence of a person", () => {
     const rows = [
       { member_id: "m1", shift_date: "2026-09-02", start_time: "17:00", end_time: "23:59", state: "open" },

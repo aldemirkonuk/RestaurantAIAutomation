@@ -28,11 +28,12 @@ import {
  *    (baseline:5378-5392). A wall time is only an instant once you say whose
  *    wall it is; this says the restaurant's, from `ScheduledTenant.timezone`,
  *    through the same `zonedWallTimeToInstant` the calendar reminder job uses.
- * 2. A shift whose `end_time` is at or before its `start_time` crosses
- *    midnight. That is `ScheduleService.hoursBetween`'s own rule
- *    (schedule.service.ts:29-33, `if (diff < 0) diff += 24 * 60`) and this
- *    keeps it, so a close-down shift ending 02:00 is not read as a 22-hour
- *    negative.
+ * 2. A shift whose `end_time` is before its `start_time` crosses midnight;
+ *    equal times are a zero-length moment that day. That is `hoursBetween`'s
+ *    own rule (pay-rules.ts, `if (diff < 0) diff += 24 * 60`) and the calendar
+ *    feed's (ical-render.ts, `endTime < startTime`), and this keeps it, so a
+ *    close-down shift ending 02:00 is not read as a 22-hour negative and a
+ *    10:00-10:00 row is not read as a full day on the floor.
  * 3. `state` decides presence. `open` means nobody is assigned and `callout`
  *    means the assigned person is not coming — both are the ABSENCE of a
  *    person, and counting either as "on shift" would put a name against a goal
@@ -95,11 +96,11 @@ export function shiftWindow(
     timeZone,
   );
 
-  // Crosses midnight when the end is at or before the start — ScheduleService's
-  // own rule. `end === start` is read as a full 24 hours rather than as a
-  // zero-length shift, because a zero-length shift is not a thing a scheduler
-  // creates and a 24-hour one (a two-day event) is.
-  const crosses = endMin <= startMin;
+  // Crosses midnight only when the end is before the start. Equal times are a
+  // zero-length moment that day, as the pay rules and the calendar feed read
+  // them: a shift row has no end date, so it has no way to say "24 hours", and
+  // reading 10:00-10:00 as one would name a person on shift all night.
+  const crosses = endMin < startMin;
   const endDay = crosses
     ? new Date(Date.UTC(date.year, date.month - 1, date.day + 1))
     : new Date(Date.UTC(date.year, date.month - 1, date.day));
