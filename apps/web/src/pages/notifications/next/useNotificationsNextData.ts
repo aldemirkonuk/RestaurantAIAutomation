@@ -34,7 +34,15 @@ import { deleteRows, ruleOffRows } from '@/lib/mudavym/useBellBook';
 import { publishUnreadCount, useSharedUnreadCount } from '@/lib/mudavym/unreadCount';
 import { num } from './nt-format';
 import { localToday, monthOf } from '@/components/mudavym';
-import { DayCell, FoldFreshness, dayCells, daySpan, foldFreshness } from './nt-book';
+import {
+  DayCell,
+  FoldFreshness,
+  dayCells,
+  daySpan,
+  foldFreshness,
+  typeChoicesFor,
+  type TYPE_CHOICES,
+} from './nt-book';
 import {
   SnoozeRecord,
   SnoozeVerdict,
@@ -204,10 +212,12 @@ export interface NotificationsNextData {
   snooze: (id: string, ms: number) => void;
   wake: (id: string) => void;
   wakeAll: () => void;
+  /** The register filters this reader is offered (F-817). */
+  typeChoices: typeof TYPE_CHOICES;
 }
 
 export function useNotificationsNextData(): NotificationsNextData {
-  const { user, activeRestaurantId } = useAuth();
+  const { user, activeRestaurantId, activeRole } = useAuth();
   const userId = user?.userId ?? null;
 
   const [book, setBook] = useState<BookVM>({
@@ -630,6 +640,7 @@ export function useNotificationsNextData(): NotificationsNextData {
     book,
     stack,
     unread,
+    typeChoices: typeChoicesFor(activeRole),
     lastReadAt,
     refreshing,
     asleep: verdict.asleep,

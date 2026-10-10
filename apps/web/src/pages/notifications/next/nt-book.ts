@@ -252,3 +252,14 @@ export const TYPE_CHOICES: Array<{ type: string; label: string; kind: string }> 
   { type: 'constraint_triggered', label: 'Advice', kind: 'Advice' },
   { type: 'system', label: 'System', kind: 'System' },
 ];
+
+/**
+ * The choices a reader is offered. `goal_reached` lines go only to owners and
+ * managers (the gateway's `goal-readers.ts`, F-782), so any other role — or a
+ * role not yet known — is not offered a Goals filter that could never match
+ * (F-817).
+ */
+export function typeChoicesFor(role: string | null | undefined): typeof TYPE_CHOICES {
+  if (role === 'owner' || role === 'manager') return TYPE_CHOICES;
+  return TYPE_CHOICES.filter((c) => c.type !== 'goal_reached');
+}

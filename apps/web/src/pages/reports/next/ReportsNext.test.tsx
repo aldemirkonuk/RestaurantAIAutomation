@@ -337,6 +337,7 @@ const BENCH = {
   },
   activeGoals: [
     {
+      id: 'g1',
       name: 'Lift wine revenue',
       metric_key: 'wine_revenue',
       baseline_value: 1000,
@@ -1556,6 +1557,19 @@ describe('ReportsNext — the benchmark cutting', () => {
     paint();
     const bench = screen.getByRole('region', { name: 'Against ourselves' });
     expect(within(bench).queryByText(/Both buying windows came back at zero/)).toBeNull();
+  });
+
+  it('takes each goal’s “now” from the Goals register’s own read when it answered (F-816)', () => {
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).queryByText(/can trail the Goals cutting/)).toBeNull();
+  });
+
+  it('names the stored figure as stored when the Goals register has not answered (F-816)', () => {
+    hook.current = withRegister('goals', pending);
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).getByText(/can trail the Goals cutting/)).toBeInTheDocument();
   });
 
   it('withholds every figure the overview call did not return, rather than zeroing them', () => {

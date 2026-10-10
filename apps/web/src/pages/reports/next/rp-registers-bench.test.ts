@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { bench, type BenchRegister } from './rp-registers-bench';
+import { bench, goalsNowFrom, type BenchRegister } from './rp-registers-bench';
 
 const ctx = { days: 30 };
 
@@ -52,5 +52,47 @@ describe('the bench — what a pair of zeros means (F-797)', () => {
     const view = bench.view(read({ ...PAYLOAD, cashflow: null }), ctx);
     expect(text(view.notes)).toMatch(/The buying lens did not answer/);
     expect(view.figures[0].note).toBe('the buying lens did not answer');
+  });
+});
+
+describe('the bench — a goal’s "now" agrees with the Goals cutting (F-816)', () => {
+  const GOAL = {
+    id: 'g1',
+    name: 'Food cost',
+    metric_key: 'food_cost_pct',
+    baseline_value: 34,
+    current_value: 34,
+    target_value: 28,
+  };
+  const withGoal = { ...PAYLOAD, activeGoals: [GOAL] };
+  const goalRow = (view: ReturnType<typeof bench.view>) =>
+    view.table!.rows.find((r) => r.key === 'goal-g1')!;
+
+  it('prints the Goals cutting’s own reading, not the stored value', () => {
+    const goalsData = { goals: [{ id: 'g1', current: 31 }] };
+    const view = bench.view(read(withGoal), { ...ctx, goalsNow: goalsNowFrom(goalsData) });
+    expect(goalRow(view).cells[0]).toBe('Food cost — since it was set');
+    expect(goalRow(view).cells[2]).toBe('31');
+    expect(text(view.notes)).not.toMatch(/last stored/);
+  });
+
+  it('a goal the Goals cutting could not read prints a dash, as that cutting does', () => {
+    const view = bench.view(read(withGoal), {
+      ...ctx,
+      goalsNow: goalsNowFrom({ goals: [{ id: 'g1', current: null }] }),
+    });
+    expect(goalRow(view).cells[2]).toBe('—');
+  });
+
+  it('without that reading, the stored value is printed and named as stored', () => {
+    const view = bench.view(read(withGoal), ctx);
+    expect(goalRow(view).cells[0]).toMatch(/last stored/);
+    expect(goalRow(view).cells[2]).toBe('34');
+    expect(text(view.notes)).toMatch(/can trail the Goals cutting/);
+  });
+
+  it('goalsNowFrom answers nothing until the Goals register has data', () => {
+    expect(goalsNowFrom(undefined)).toBeUndefined();
+    expect(goalsNowFrom({ goals: [{ id: 'g1', current: 2 }, { id: '', current: 3 }] })).toEqual({ g1: 2 });
   });
 });

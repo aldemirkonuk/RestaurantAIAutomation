@@ -537,6 +537,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
         />
 
         <BookFilterBar
+          typeChoices={data.typeChoices}
           filters={data.filters}
           onFilters={data.setFilters}
           query={query}

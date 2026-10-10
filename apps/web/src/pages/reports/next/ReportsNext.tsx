@@ -58,6 +58,7 @@ import Cutting from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
+import { goalsNowFrom } from './rp-registers-bench';
 import { failureLine } from './rp-format';
 import {
   DEFAULT_SLOTS,
@@ -309,8 +310,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   placeRef.current = placeProposed;
 
   const ctx = useMemo(
-    () => ({ days: tillDays, goals: data.goalsDesk }),
-    [data.goalsDesk, tillDays],
+    () => ({
+      days: tillDays,
+      goals: data.goalsDesk,
+      goalsNow: goalsNowFrom(data.registers.goals?.data),
+    }),
+    [data.goalsDesk, tillDays, data.registers.goals?.data],
   );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => ({

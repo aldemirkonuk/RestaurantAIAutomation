@@ -10,7 +10,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Notification } from '@/services/api/notifications';
 import { collapseStackedNotifications } from '@/lib/notificationStack';
-import { TYPE_CHOICES, dayCells, dayKeyOf, daySpan, foldFreshness, matchesQuery } from './nt-book';
+import {
+  TYPE_CHOICES,
+  dayCells,
+  dayKeyOf,
+  daySpan,
+  foldFreshness,
+  matchesQuery,
+  typeChoicesFor,
+} from './nt-book';
 import { KIND_ORDER, kindOf } from './nt-format';
 
 function n(over: Partial<Notification>): Notification {
@@ -220,5 +228,17 @@ describe('TYPE_CHOICES', () => {
     for (const p of ['critical', 'high', 'medium', 'low']) {
       expect(asJson).not.toContain(`"${p}"`);
     }
+  });
+});
+
+describe('typeChoicesFor — the Goals filter is for those who receive goal lines (F-817)', () => {
+  it.each(['owner', 'manager'])('%s is offered Goals', (role) => {
+    expect(typeChoicesFor(role).map((c) => c.type)).toContain('goal_reached');
+  });
+
+  it.each(['staff', null, undefined])('%s is not offered Goals, and keeps every other choice', (role) => {
+    const types = typeChoicesFor(role).map((c) => c.type);
+    expect(types).not.toContain('goal_reached');
+    expect(types).toHaveLength(TYPE_CHOICES.length - 1);
   });
 });

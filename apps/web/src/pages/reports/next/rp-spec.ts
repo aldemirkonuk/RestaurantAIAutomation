@@ -25,6 +25,13 @@ export interface ViewCtx {
    * rendering that has no desk wired) the goals cutting is read-only and says so.
    */
   goals?: GoalsDesk;
+  /**
+   * Each goal's "now" as the Goals cutting read it, by goal id (F-816). The
+   * overview the bench reads carries the goal's STORED current value, which
+   * is refreshed on its own schedule; the progress read is computed when the
+   * Goals cutting asks. Absent when that read has not answered.
+   */
+  goalsNow?: Record<string, number | null>;
 }
 
 export interface AnalysisSpec {
