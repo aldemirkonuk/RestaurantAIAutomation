@@ -5,7 +5,10 @@ import {
 } from "./recommendation-actions.service";
 import { RecommendationsService, firingPeriodOf } from "./recommendations.service";
 import { AnalyticsController } from "./analytics.controller";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  InsightGeneratorService,
+  keyOnFiring,
+} from "./insights/insight-generator.service";
 import {
   buildSuppressionKey,
   dateOfGrain,
@@ -153,10 +156,15 @@ describe("the generator keys a subject-less, period-less type by its firing week
   };
 
   it("a type naming nothing is this week's item — a one-item key, not the type", () => {
-    const rec = gen().record("overall.revenue.trend_direction", "sales", "trend", trend, {
-      effectPct: 0.12,
-      n: 28,
-    });
+    // Keyed as `generate()` pushes it (F-796), here with no house zone.
+    const rec = keyOnFiring(
+      gen().record("overall.revenue.trend_direction", "sales", "trend", trend, {
+        effectPct: 0.12,
+        n: 28,
+      }),
+      new Date(),
+      null,
+    );
     expect(rec.periodKey).toBe("fire:week:2026-W39");
     expect(rec.suppression.key).toBe(
       "insight:overall.revenue.trend_direction#*#fire:week:2026-W39",
@@ -171,6 +179,7 @@ describe("the generator keys a subject-less, period-less type by its firing week
       n: 28,
       periodKey: "t28:2026-09-20",
     });
+    expect(keyOnFiring(rec, new Date(), "America/Los_Angeles")).toBe(rec);
     expect(rec.periodKey).toBe("t28:2026-09-20");
   });
 });
