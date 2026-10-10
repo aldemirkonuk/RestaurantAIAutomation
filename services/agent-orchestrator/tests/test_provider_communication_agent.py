@@ -36,7 +36,7 @@ def mock_db():
                 "profile_dynamic": {},
                 "close_relationship": False,
                 "relationship_health_score": 0.75,
-                "ai_personality_notes": "",
+                "personality_notes": "",
             }
         ]
     )

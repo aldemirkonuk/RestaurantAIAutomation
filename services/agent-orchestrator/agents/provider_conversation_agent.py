@@ -174,6 +174,11 @@ SEND_MESSAGE_MAX_AGE_SECONDS = APPROVAL_MAX_AGE_SECONDS
 #: anything, so it is treated like a missing one.
 PUBLISHED_AT_FUTURE_TOLERANCE_SECONDS = 300
 
+#: An order in one of these states gets no letter sent about it (F-521). The
+#: same three the gateway's seal and staging door refuse (F-516): cancelled,
+#: turned down, failed.
+ORDER_CLOSED_STATUSES = frozenset({"CANCELLED", "REJECTED", "FAILED"})
+
 #: The one row per restaurant that holds its switches
 #: (apps/api-gateway/src/settings/feature-flag-registry.ts, SETTINGS_ROW_FLAG_NAME).
 #: Reading any other row of restaurant_feature_flags reads a self-evolution flag.
@@ -3466,23 +3471,45 @@ class ProviderConversationAgent(BaseAgent):
             order_id = convo_data.get("order_id")
             order_data = {}
             if order_id:
-                try:
-                    order_result = (
-                        self.database.supabase.table("procurement_orders")
-                        .select("id, wine_name, quantity, target_price_per_bottle")
-                        .eq("id", order_id)
-                        .single()
-                        .execute()
-                    )
-                    order_data = order_result.data or {}
-                except Exception:
-                    pass
+                # F-537: the wine's name is on the inventory row; procurement_orders
+                # has no wine_name. A failure here is NOT swallowed: without the
+                # order the letter goes out with no subject wine and no Ref, and
+                # its status cannot be checked (F-521). The except below logs
+                # and re-raises, and nothing has been sent yet.
+                order_query = (
+                    self.database.supabase.table("procurement_orders")
+                    .select("id, quantity, status, inventory:inventory_id(wine_name)")
+                    .eq("id", order_id)
+                )
+                if restaurant_id:
+                    order_query = order_query.eq("restaurant_id", restaurant_id)
+                order_row = order_query.single().execute().data or {}
+                order_data = {
+                    "id": order_row.get("id"),
+                    "quantity": order_row.get("quantity"),
+                    "status": order_row.get("status"),
+                }
+                wine_name = (order_row.get("inventory") or {}).get("wine_name")
+                if wine_name:
+                    order_data["wine_name"] = wine_name
         except Exception as e:
             # Nothing was sent, so re-raising is safe and a retry is correct.
             self.logger.error(
                 f"Could not load approved conversation {conversation_id}: {e}"
             )
             raise
+
+        # --- F-521: no letter about an order the house already closed --------
+        # The gateway's approve path is not the only way here, and an order can
+        # be cancelled between approval and this send. Checked before the claim,
+        # so a refused letter stays unclaimed and nothing reaches the vendor.
+        order_status = (order_data.get("status") or "").upper()
+        if order_status in ORDER_CLOSED_STATUSES:
+            self.logger.warning(
+                f"Conversation {conversation_id} is about order {order_id}, which "
+                f"is {order_status}; the letter was not sent (F-521)."
+            )
+            return
 
         # --- Atomic claim, BEFORE the send ----------------------------------
         # On a RETRY the stored Message-ID is reused rather than re-minted, so
@@ -4170,7 +4197,9 @@ class ProviderConversationAgent(BaseAgent):
         if extraction.price_changes:
             parsed_price = extraction.price_changes[0].get("new_price")
             session.intent.get("target_price", 0)
-            max_acceptable = session.intent.get("max_acceptable_price", float("inf"))
+            # `or`, not a .get default: a reorder plan with no price history
+            # carries max_acceptable_price=None (F-536), same as absent.
+            max_acceptable = session.intent.get("max_acceptable_price") or float("inf")
 
             if parsed_price and parsed_price <= max_acceptable:
                 response_type = "price_acceptance"
@@ -4362,37 +4391,48 @@ class ProviderConversationAgent(BaseAgent):
             self.logger.warning(f"_get_db_context: conversations query failed: {e}")
 
         try:
-            # Open orders
+            # Open orders, this house's only (F-520). The wine's name is on the
+            # inventory row, and statuses are the uppercase vocabulary.
             orders = (
                 self.database.supabase.table("procurement_orders")
-                .select("wine_name, quantity, status, notes")
+                .select("quantity, status, inventory:inventory_id(wine_name)")
                 .eq("provider_id", provider_id)
-                .in_("status", ["pending", "approved", "ordered", "negotiating"])
+                .eq("restaurant_id", restaurant_id)
+                .in_("status", ["PENDING", "APPROVED", "CONFIRMED", "NEGOTIATING"])
                 .execute()
             )
             if orders.data:
                 parts = [
-                    f"{r['wine_name']} ×{r['quantity']} [{r['status']}]"
+                    f"{(r.get('inventory') or {}).get('wine_name') or 'wine'} "
+                    f"×{r['quantity']} [{r['status']}]"
                     for r in orders.data
                 ]
                 ctx["open_orders"] = "; ".join(parts)
         except Exception as e:
-            self.logger.warning(f"_get_db_context: orders query failed: {e}")
+            self.logger.error(
+                f"_get_db_context: open orders for provider {provider_id} could "
+                f"not be read; the prompt says none are open: {e}"
+            )
 
         try:
-            # Credit terms: negotiation_facts WHERE commitment_type='AGREEMENT' AND fact_field ILIKE '%payment%'
+            # Credit terms: this house's agreed payment fact (F-520).
             facts = (
                 self.database.supabase.table("negotiation_facts")
-                .select("fact_field, fact_value")
+                .select("fact_key, value_text, value_numeric, unit")
                 .eq("provider_id", provider_id)
+                .eq("restaurant_id", restaurant_id)
                 .eq("commitment_type", "AGREEMENT")
-                .ilike("fact_field", "%payment%")
+                .eq("status", "active")
+                .ilike("fact_key", "%payment%")
                 .limit(1)
                 .execute()
             )
             if facts.data:
                 f = facts.data[0]
-                ctx["credit_terms"] = f"{f['fact_field']}: {f['fact_value']}"
+                value = f.get("value_text")
+                if not value and f.get("value_numeric") is not None:
+                    value = f"{f['value_numeric']} {f.get('unit') or ''}".strip()
+                ctx["credit_terms"] = f"{f['fact_key']}: {value or '?'}"
             else:
                 # Fallback to providers.notes + close_relationship
                 prov = (
@@ -4410,7 +4450,10 @@ class ProviderConversationAgent(BaseAgent):
                         prov.data.get("close_relationship", False)
                     )
         except Exception as e:
-            self.logger.warning(f"_get_db_context: credit_terms query failed: {e}")
+            self.logger.error(
+                f"_get_db_context: credit terms for provider {provider_id} could "
+                f"not be read; the prompt says none are on record: {e}"
+            )
 
         # Fetch close_relationship if not already set above
         if not ctx["close_relationship"]:

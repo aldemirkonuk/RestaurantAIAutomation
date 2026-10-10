@@ -373,21 +373,29 @@ class ProcurementAgent(BaseAgent):
             "reorder_quantity", threshold_min * 3
         )
 
-        price_history = await self._get_price_history(inventory_id, primary_provider_id)
+        restaurant_id = inventory.get("restaurant_id") or payload.get("restaurant_id")
+        price_history = await self._get_price_history(
+            inventory_id, primary_provider_id, restaurant_id
+        )
         avg_price = self._calculate_avg_price(price_history)
-        target_price = manual_target_price or (avg_price * 0.95)
+        # F-536: no delivered history means no target — never an invented one.
+        target_price = manual_target_price or (
+            avg_price * 0.95 if avg_price is not None else None
+        )
 
         return {
-            "restaurant_id": inventory.get("restaurant_id")
-            or payload.get("restaurant_id"),
+            "restaurant_id": restaurant_id,
             "inventory_id": inventory_id,
             "provider_id": primary_provider_id,
             "provider_name": provider.get("name"),
             "wine_name": wine_name or inventory.get("wine_name"),
             "quantity": reorder_quantity,
             "target_price_per_bottle": target_price,
-            "max_acceptable_price": target_price
-            * (1 + self.price_tolerance_percent / 100),
+            "max_acceptable_price": (
+                target_price * (1 + self.price_tolerance_percent / 100)
+                if target_price is not None
+                else None
+            ),
             "price_tolerance_percent": self.price_tolerance_percent,
             "avg_historical_price": avg_price,
             "price_history_points": len(price_history),
@@ -475,9 +483,14 @@ class ProcurementAgent(BaseAgent):
                     "description": (
                         f"Stock is at {plan['stock_after']} (threshold "
                         f"{plan['threshold']}). Suggested: {plan['quantity']} x "
-                        f"{wine_name} from {plan['provider_name']} at a target of "
-                        f"${plan['target_price_per_bottle']:.2f}/bottle. "
-                        f"Approve to start this reorder."
+                        f"{wine_name} from {plan['provider_name']}"
+                        + (
+                            f" at a target of ${plan['target_price_per_bottle']:.2f}/bottle. "
+                            if plan["target_price_per_bottle"] is not None
+                            else ". No target price yet: nothing from this vendor "
+                            "has been delivered to go by. "
+                        )
+                        + "Approve to start this reorder."
                     ),
                     "priority": (
                         "high" if plan["urgency"] in ("high", "critical") else "medium"
@@ -984,16 +997,32 @@ class ProcurementAgent(BaseAgent):
             return []
 
     async def _get_price_history(
-        self, inventory_id: str, provider_id: str, limit: int = 10
+        self,
+        inventory_id: str,
+        provider_id: str,
+        restaurant_id: Optional[str],
+        limit: int = 10,
     ) -> List[Dict[str, Any]]:
-        """Get recent price history for this wine/provider"""
+        """Recent delivered prices for this wine from this provider, this house only.
+
+        F-536: procurement_orders has no price_per_bottle; the agreed price is
+        final_price (negotiated_price when final_price is 0), stated per the
+        order's unit_type. A failed read returns [] and says so — and [] means
+        no target price, never a made-up one.
+        """
+        if not restaurant_id:
+            self.logger.error(
+                f"No restaurant for inventory {inventory_id}; price history not read."
+            )
+            return []
         try:
             response = (
                 self.database.supabase.table("procurement_orders")
-                .select("price_per_bottle, created_at")
+                .select("final_price, negotiated_price, unit_type, created_at")
+                .eq("restaurant_id", restaurant_id)
                 .eq("inventory_id", inventory_id)
                 .eq("provider_id", provider_id)
-                .eq("status", "DELIVERED")
+                .in_("status", ["DELIVERED", "COMPLETED"])
                 .order("created_at", desc=True)
                 .limit(limit)
                 .execute()
@@ -1001,22 +1030,32 @@ class ProcurementAgent(BaseAgent):
 
             return response.data if response.data else []
         except Exception as e:
-            self.logger.error(f"Failed to get price history: {e}")
+            self.logger.error(
+                f"Price history for inventory {inventory_id} could not be read; "
+                f"the reorder carries no target price: {e}"
+            )
             return []
 
-    def _calculate_avg_price(self, price_history: List[Dict[str, Any]]) -> float:
-        """Calculate average price from history"""
-        if not price_history:
-            return 25.0  # Default fallback price
+    def _calculate_avg_price(
+        self, price_history: List[Dict[str, Any]]
+    ) -> Optional[float]:
+        """Average per-bottle price from history, or None when there is none.
 
-        prices = [
-            p.get("price_per_bottle", 0)
-            for p in price_history
-            if p.get("price_per_bottle")
-        ]
+        Only rows priced per bottle count: a case price averaged with bottle
+        prices is wrong by the pack size (ADR 0119). unit_type defaults to
+        'bottles', so NULL is read as bottles.
+        """
+        prices = []
+        for p in price_history:
+            unit = (p.get("unit_type") or "bottles").strip().lower()
+            if unit not in ("bottle", "bottles"):
+                continue
+            price = p.get("final_price") or p.get("negotiated_price")
+            if price:
+                prices.append(float(price))
 
         if not prices:
-            return 25.0
+            return None
 
         return sum(prices) / len(prices)
 

@@ -69,6 +69,16 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+def _fact_value(row: Dict[str, Any]) -> str:
+    """A negotiation_facts row's value: the text if stated, else number + unit."""
+    if row.get("value_text"):
+        return str(row["value_text"])
+    if row.get("value_numeric") is not None:
+        unit = f" {row['unit']}" if row.get("unit") else ""
+        return f"{row['value_numeric']}{unit}"
+    return "?"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Agent
 # ──────────────────────────────────────────────────────────────────────────────
@@ -274,7 +284,7 @@ class ProviderCommunicationAgent(BaseAgent):
             result = (
                 self.database.supabase.table("providers")
                 .select(
-                    "name, close_relationship, relationship_health_score, ai_personality_notes"
+                    "name, close_relationship, relationship_health_score, personality_notes"
                 )
                 .eq("id", provider_id)
                 .eq("restaurant_id", restaurant_id)
@@ -286,7 +296,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 provider_name = pd.get("name") or provider_name
                 score = pd.get("relationship_health_score")
                 close = pd.get("close_relationship")
-                notes = (pd.get("ai_personality_notes") or "")[:120]
+                notes = (pd.get("personality_notes") or "")[:120]
                 if score is not None:
                     provider_meta_lines.append(f"rel={score}/10")
                 if close:
@@ -294,7 +304,12 @@ class ProviderCommunicationAgent(BaseAgent):
                 if notes:
                     provider_meta_lines.append(f'notes="{notes}"')
         except Exception as exc:
-            self.logger.warning(f"Failed to fetch provider profile: {exc}")
+            # F-533: the letter is then drafted with no vendor name. Say so at
+            # error level; the prompt's "the provider" stand-in is the fallback.
+            self.logger.error(
+                f"Could not read provider {provider_id}'s profile; the letter is "
+                f"drafted without the vendor's name: {exc}"
+            )
 
         # ── Rolling summary (hard cap 200 chars — enough for context, not bloat) ──
         history_line = ""
@@ -320,19 +335,23 @@ class ProviderCommunicationAgent(BaseAgent):
         try:
             facts_result = (
                 self.database.supabase.table("negotiation_facts")
-                .select("fact_field, fact_value")
+                .select("fact_key, value_text, value_numeric, unit")
                 .eq("provider_id", provider_id)
                 .eq("restaurant_id", restaurant_id)
                 .eq("commitment_type", "AGREEMENT")
+                .eq("status", "active")
                 .limit(4)
                 .execute()
             )
             if facts_result.data:
                 facts_line = "agreed: " + "; ".join(
-                    f"{r['fact_field']}={r['fact_value']}" for r in facts_result.data
+                    f"{r['fact_key']}={_fact_value(r)}" for r in facts_result.data
                 )
         except Exception as exc:
-            self.logger.warning(f"Failed to fetch negotiation facts: {exc}")
+            self.logger.error(
+                f"Could not read agreed terms with provider {provider_id}; the "
+                f"letter is drafted without them: {exc}"
+            )
 
         # ── Compressed user message ──
         wine = payload.get("wine_name") or "wine"
@@ -502,23 +521,45 @@ class ProviderCommunicationAgent(BaseAgent):
             )
             return
 
-        # C-10: Duplicate order block — check for active unfulfilled order for same wine
+        # C-10: Duplicate order block — check for active unfulfilled order for same wine.
+        # "Same wine" is the same inventory row: procurement_orders has no
+        # wine_name column (F-533), so the order's own inventory_id is read first.
         duplicate_check = False
         try:
-            dup_result = (
+            this_order = (
                 self.database.supabase.table("procurement_orders")
-                .select("id")
+                .select("inventory_id")
+                .eq("id", order_id)
                 .eq("restaurant_id", restaurant_id)
-                .eq("wine_name", payload.get("wine_name", ""))
-                .in_("status", ["PENDING", "CONFIRMED", "DRAFT"])
-                .neq("id", order_id)
                 .limit(1)
                 .execute()
             )
-            if dup_result.data:
-                duplicate_check = True
-        except Exception:
-            pass
+            inventory_id = (
+                this_order.data[0].get("inventory_id") if this_order.data else None
+            )
+            if inventory_id:
+                dup_result = (
+                    self.database.supabase.table("procurement_orders")
+                    .select("id")
+                    .eq("restaurant_id", restaurant_id)
+                    .eq("inventory_id", inventory_id)
+                    .in_("status", ["PENDING", "CONFIRMED", "DRAFT"])
+                    .neq("id", order_id)
+                    .limit(1)
+                    .execute()
+                )
+                if dup_result.data:
+                    duplicate_check = True
+            else:
+                self.logger.error(
+                    f"Order {order_id} not found for restaurant {restaurant_id}; "
+                    "the duplicate-order check (C-10) did not run."
+                )
+        except Exception as exc:
+            self.logger.error(
+                f"Duplicate-order check (C-10) for order {order_id} could not run; "
+                f"drafting without it: {exc}"
+            )
 
         if duplicate_check:
             await self._notify(
@@ -1429,9 +1470,13 @@ class ProviderCommunicationAgent(BaseAgent):
         """
         try:
             # Fetch open orders for this restaurant/provider
+            # The wine's name lives on the inventory row (F-533): embedded, then
+            # flattened below for the fuzzy matcher, which reads o["wine_name"].
             orders_result = (
                 self.database.supabase.table("procurement_orders")
-                .select("id, wine_name, quantity, created_at, status")
+                .select(
+                    "id, quantity, created_at, status, inventory:inventory_id(wine_name)"
+                )
                 .eq("restaurant_id", restaurant_id)
                 .eq("provider_id", provider_id)
                 .in_("status", ["PENDING", "CONFIRMED", "DRAFT"])
@@ -1469,7 +1514,12 @@ class ProviderCommunicationAgent(BaseAgent):
             extracted_date = extracted_invoice.get("invoice_date")
 
             orders_with_names = [
-                {**o, "provider_name": provider_name} for o in orders_result.data
+                {
+                    **o,
+                    "wine_name": (o.get("inventory") or {}).get("wine_name") or "",
+                    "provider_name": provider_name,
+                }
+                for o in orders_result.data
             ]
 
             best = fm.best_order_match(
@@ -1518,4 +1568,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 },
             )
         except Exception as exc:
-            self.logger.warning(f"_handle_invoice_match failed (non-critical): {exc}")
+            self.logger.error(
+                f"Invoice from provider {provider_id} could not be matched to an "
+                f"order; the house was not told about it: {exc}"
+            )

@@ -975,6 +975,21 @@ class _Result:
         self.data = data
 
 
+# A subset of procurement_orders' real columns (baseline_from_production).
+_ORDER_COLUMNS = {
+    "id",
+    "order_number",
+    "restaurant_id",
+    "inventory_id",
+    "provider_id",
+    "quantity",
+    "unit_type",
+    "final_price",
+    "negotiated_price",
+    "status",
+}
+
+
 class _Table:
     """Just enough PostgREST for `_handle_conversation_approved`: the draft read,
     the provider and order reads, the threading history, and the status writes."""
@@ -987,8 +1002,18 @@ class _Table:
         self.is_single = False
         self.is_list = False
 
-    def select(self, *_a: Any, **_k: Any) -> "_Table":
+    def select(self, columns: str = "*", *_a: Any, **_k: Any) -> "_Table":
         self.op = "select"
+        if self.name == "procurement_orders":
+            # PostgREST answers 42703 for a column the table lacks, failing the
+            # whole read. The old fixture returned phantom columns (wine_name,
+            # target_price_per_bottle) and so hid F-537.
+            for tok in columns.split(","):
+                tok = tok.strip()
+                if tok and "(" not in tok and tok not in _ORDER_COLUMNS:
+                    raise RuntimeError(
+                        f"42703: column procurement_orders.{tok} does not exist"
+                    )
         return self
 
     def update(self, payload: Dict[str, Any]) -> "_Table":
@@ -1052,11 +1077,12 @@ class _Db:
             "name": "Vendor One",
             "primary_contact": {"name": "Ana", "email": "orders@vendor-one.example"},
         }
+        # The real shape: the wine's name arrives through the inventory embed.
         self.order = {
             "id": ORDER_A,
-            "wine_name": "Barolo 2019",
             "quantity": 12,
-            "target_price_per_bottle": 40,
+            "status": "APPROVED",
+            "inventory": {"wine_name": "Barolo 2019"},
         }
         self.history = [
             {
@@ -1219,7 +1245,8 @@ async def test_a_subject_line_break_from_database_text_is_collapsed_before_sendi
     agent = _approved_agent(_approved_conversation())
     agent.database.supabase.order = {
         "id": ORDER_A,
-        "wine_name": "Barolo\r\nBcc: someone@elsewhere.example",
+        "status": "APPROVED",
+        "inventory": {"wine_name": "Barolo\r\nBcc: someone@elsewhere.example"},
     }
 
     await agent._handle_conversation_approved({"conversation_id": CONVO_A})
@@ -1227,6 +1254,66 @@ async def test_a_subject_line_break_from_database_text_is_collapsed_before_sendi
     subject = _FakeSession.calls[0]["json"]["subject"]
     assert "\r" not in subject and "\n" not in subject
     assert subject == "Regarding Barolo Bcc: someone@elsewhere.example — Vendor One"
+
+
+@pytest.mark.asyncio
+async def test_the_approved_letter_names_its_order_and_wine(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """F-537: the order read named columns procurement_orders lacks, so the
+    letter went out as "Regarding your wines" with no order on it."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    agent = _approved_agent(_approved_conversation())
+
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    body = _FakeSession.calls[0]["json"]
+    assert body["subject"] == "Regarding Barolo 2019 — Vendor One"
+    assert body["orderId"] == ORDER_A
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("closed", ["CANCELLED", "REJECTED", "FAILED"])
+async def test_no_letter_is_sent_about_a_closed_order(
+    monkeypatch: pytest.MonkeyPatch, closed: str
+):
+    """F-521: an order cancelled after its letter was approved gets no letter,
+    and the draft is left unclaimed rather than marked sent."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    agent = _approved_agent(_approved_conversation())
+    agent.database.supabase.order["status"] = closed
+
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    assert _FakeSession.calls == []
+    assert agent.database.supabase.conversation["status"] == "PENDING_APPROVAL"
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_order_sends_nothing_and_raises(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Without the order its status cannot be checked, so nothing is sent; the
+    raise lets the bus retry, which is safe because nothing left."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    agent = _approved_agent(_approved_conversation())
+
+    def _boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("connection reset")
+
+    real_table = agent.database.supabase.table
+
+    def table(name: str) -> Any:
+        t = real_table(name)
+        if name == "procurement_orders":
+            t.execute = _boom
+        return t
+
+    agent.database.supabase.table = table
+
+    with pytest.raises(RuntimeError):
+        await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+    assert _FakeSession.calls == []
 
 
 # ---------------------------------------------------------------------------

@@ -743,6 +743,16 @@ jobs:
       - name: ...and that guard's own failure path fires
         run: ./scripts/check_read_columns_exist.py --self-test
 
+      # The same question for the Python agents (sim wave 15, 2026-10-09:
+      # F-533/F-536/F-537/F-520). Their reads caught the 42703 and carried on
+      # with an empty answer, and their mocks returned the phantom columns, so
+      # pytest was green throughout.
+      - name: Every column the Python agents read is declared by supabase/migrations
+        run: ./scripts/check_agent_columns.py
+
+      - name: ...and that guard's own failure path fires
+        run: ./scripts/check_agent_columns.py --self-test
+
       # The read side of ADR 0119 Q4 (founder, 2026-09-05): `price_history`
       # carries a STATED unit, and every comparison over it groups by unit
       # first. The NOT NULL + vocabulary CHECK added by

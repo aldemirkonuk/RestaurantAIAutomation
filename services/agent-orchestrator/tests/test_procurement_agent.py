@@ -90,6 +90,7 @@ class _TableRouter:
         chain = MagicMock(name=f"chain:{name}")
         state: Dict[str, Any] = {
             "filters": {},
+            "in": {},
             "limit": None,
             "pending_insert": None,
             "pending_update": None,
@@ -97,6 +98,7 @@ class _TableRouter:
 
         def _reset():
             state["filters"] = {}
+            state["in"] = {}
             state["limit"] = None
             state["pending_insert"] = None
             state["pending_update"] = None
@@ -106,6 +108,10 @@ class _TableRouter:
 
         def eq(col, val):
             state["filters"][col] = val
+            return chain
+
+        def in_(col, vals):
+            state["in"][col] = list(vals)
             return chain
 
         def order(*_a, **_k):
@@ -153,6 +159,7 @@ class _TableRouter:
                 r
                 for r in self.tables.get(name, [])
                 if all(r.get(c) == v for c, v in state["filters"].items())
+                and all(r.get(c) in v for c, v in state["in"].items())
             ]
             if state["limit"] is not None:
                 rows = rows[: state["limit"]]
@@ -162,6 +169,7 @@ class _TableRouter:
 
         chain.select.side_effect = select
         chain.eq.side_effect = eq
+        chain.in_.side_effect = in_
         chain.order.side_effect = order
         chain.limit.side_effect = limit
         chain.insert.side_effect = insert
@@ -331,10 +339,75 @@ class TestParCrossingCannotReachAVendor:
         payload = router.inserts["one_tap_actions"][0]["metadata"]["payload"]
         assert payload["quantity"] == 12
         assert payload["provider_name"] == "Vinos Iberia"
-        # No delivered history → _calculate_avg_price falls back to 25.0.
-        assert payload["target_price_per_bottle"] == pytest.approx(23.75)
-        assert payload["max_acceptable_price"] == pytest.approx(23.75 * 1.15)
+        # No delivered history → no target. It used to invent $25 and target
+        # $23.75 for every wine (F-536).
+        assert payload["target_price_per_bottle"] is None
+        assert payload["max_acceptable_price"] is None
         assert payload["price_tolerance_percent"] == 15
+        description = router.inserts["one_tap_actions"][0]["description"]
+        assert "No target price yet" in description
+        assert "23.75" not in description
+
+    @pytest.mark.asyncio
+    async def test_the_target_comes_from_this_houses_delivered_bottle_prices(self):
+        """F-536: the history read named procurement_orders.price_per_bottle,
+        which does not exist. It reads final_price now, for this house, this
+        wine and this vendor, delivered, priced per bottle."""
+        tables = _base_tables()
+        base = {
+            "inventory_id": INV_ID,
+            "provider_id": PROV_ID,
+            "created_at": "2026-09-01",
+        }
+        tables["procurement_orders"] = [
+            {
+                **base,
+                "restaurant_id": REST_ID,
+                "status": "DELIVERED",
+                "final_price": 30.0,
+                "unit_type": "bottles",
+            },
+            {
+                **base,
+                "restaurant_id": REST_ID,
+                "status": "COMPLETED",
+                "final_price": 0,
+                "negotiated_price": 34.0,
+                "unit_type": None,
+            },
+            # Not counted: another house, a case price, an order still open.
+            {
+                **base,
+                "restaurant_id": "other-house",
+                "status": "DELIVERED",
+                "final_price": 99.0,
+                "unit_type": "bottles",
+            },
+            {
+                **base,
+                "restaurant_id": REST_ID,
+                "status": "DELIVERED",
+                "final_price": 360.0,
+                "unit_type": "cases",
+            },
+            {
+                **base,
+                "restaurant_id": REST_ID,
+                "status": "PENDING",
+                "final_price": 10.0,
+                "unit_type": "bottles",
+            },
+        ]
+        agent, router, _, _ = _make_agent(tables=tables)
+
+        plan = await agent._build_reorder_plan(_breach()["payload"])
+
+        assert plan["avg_historical_price"] == pytest.approx(32.0)
+        assert plan["target_price_per_bottle"] == pytest.approx(32.0 * 0.95)
+        assert plan["max_acceptable_price"] == pytest.approx(32.0 * 0.95 * 1.15)
+        assert "price_per_bottle" not in str(
+            router.table("procurement_orders").select.call_args
+        )
 
     @pytest.mark.asyncio
     async def test_every_proposal_writes_a_decision_log_row(self):
@@ -545,7 +618,7 @@ class TestReorderPlanIsPure:
         assert plan is not None
         assert plan["provider_id"] == PROV_ID
         assert plan["quantity"] == 12
-        assert plan["target_price_per_bottle"] == pytest.approx(23.75)
+        assert plan["target_price_per_bottle"] is None  # no delivered history
 
         # Reading price history is the only table it touches, and it writes none.
         assert router.inserts == {}
