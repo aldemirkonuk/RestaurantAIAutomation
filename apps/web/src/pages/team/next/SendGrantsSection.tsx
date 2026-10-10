@@ -31,6 +31,8 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HoldToApprove } from '@/components/mudavym';
+import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import type { TeamMember } from '../../../services/api/team';
 
@@ -103,6 +105,15 @@ export function emptyRegisterSentence(viewer: 'owner' | 'manager' | 'other'): st
   return 'No grant names you. Only owners and managers see who else has been named.';
 }
 
+/**
+ * The largest deal a grant covers, read the way the house writes it
+ * ("1.250,00", "12,50"; F-358). Null when blank or not an amount of 0 or more.
+ */
+export function grantLimitOf(text: string, group: GroupMark | null = null): number | null {
+  const n = readOptionalAmount(text, group);
+  return n.ok ? n.value : null;
+}
+
 export function SendGrantsSection({
   restaurantId,
   members,
@@ -135,7 +146,8 @@ export function SendGrantsSection({
     [members],
   );
 
-  const amount = Number(limitAmount);
+  const group = useHouseGroupMark();
+  const amount = grantLimitOf(limitAmount, group) ?? NaN;
   const currency = limitCurrency.trim().toUpperCase();
   const formReady =
     !!granteeUserId &&

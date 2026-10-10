@@ -62,6 +62,8 @@ import {
 } from '@/services/api/vendors';
 import { useDuplicateVendorCheck } from '@/hooks/useDuplicateVendorCheck';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
+import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { readOptionalAmount, type GroupMark } from '@/lib/parseDecimal';
 import { VendorTwinPanel } from './VendorTwinPanel';
 import { EM, MONO, SANS, SERIF } from './pv-format';
 
@@ -158,7 +160,7 @@ export const EMPTY_VENDOR: VendorDraft = {
  * strictness. Returns the fields that are wrong, keyed as the form keys them,
  * so each says its own refusal beside itself rather than in one heap.
  */
-export function vendorRefusals(d: VendorDraft): Record<string, string> {
+export function vendorRefusals(d: VendorDraft, group: GroupMark | null = null): Record<string, string> {
   const out: Record<string, string> = {};
   if (!d.name.trim()) out.name = 'A vendor needs a name.';
   if (!d.contactFirstName.trim()) out.contactFirstName = 'Name the person this house deals with.';
@@ -167,10 +169,17 @@ export function vendorRefusals(d: VendorDraft): Record<string, string> {
   if (!d.email.trim()) out.email = 'An email address is required — the house writes to vendors.';
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim())) out.email = 'That is not an email address.';
   if (d.specialties.length === 0) out.specialties = 'Say what this vendor sells — at least one.';
-  if (d.minimumOrder.trim() !== '' && !Number.isFinite(Number(d.minimumOrder))) {
-    out.minimumOrder = 'A minimum order is a number, or nothing at all.';
+  // Read the way the house writes it: "1.250,00" and "12,50" are amounts (F-358).
+  if (!readOptionalAmount(d.minimumOrder, group).ok) {
+    out.minimumOrder = 'A minimum order is a number of 0 or more, or nothing at all.';
   }
   return out;
+}
+
+/** The minimum order to send: undefined when blank (or refused — save never runs then). */
+export function minimumOrderOf(d: VendorDraft, group: GroupMark | null = null): number | undefined {
+  const m = readOptionalAmount(d.minimumOrder, group);
+  return m.ok && m.value !== null ? m.value : undefined;
 }
 
 const field: React.CSSProperties = {
@@ -287,7 +296,8 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
       [key]: d[key].includes(value) ? d[key].filter((v) => v !== value) : [...d[key], value],
     }));
 
-  const refusals = useMemo(() => vendorRefusals(draft), [draft]);
+  const group = useHouseGroupMark();
+  const refusals = useMemo(() => vendorRefusals(draft, group), [draft, group]);
   const clean = Object.keys(refusals).length === 0;
 
   const takeFromCatalogue = async (row: VendorCatalogueEntry) => {
@@ -340,8 +350,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
         // Undefined, never '' — an empty string is a payment term nobody stated
         // written down as a payment term somebody stated.
         paymentTerms: draft.paymentTerms || undefined,
-        minimumOrderValue:
-          draft.minimumOrder.trim() === '' ? undefined : Number(draft.minimumOrder),
+        minimumOrderValue: minimumOrderOf(draft, group),
         notes: draft.notes.trim() || undefined,
       });
 
@@ -440,6 +449,7 @@ export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) 
     restaurantId,
     createProvider,
     draft,
+    group,
     rating,
     preferences.providerRatings,
     updatePreferences,

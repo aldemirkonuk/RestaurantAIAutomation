@@ -2270,7 +2270,7 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     expect(within(suggest).getByText('Wednesday wine revenue, after a soft Wednesday')).toBeInTheDocument();
     fireEvent.click(within(suggest).getByText('Set a goal →'));
     const sheet = screen.getByRole('group', { name: 'Make this a goal' });
-    expect(within(sheet).getByLabelText('Target in $')).toHaveValue(null);
+    expect(within(sheet).getByLabelText('Target in $')).toHaveValue('');
     expect(within(sheet).getByRole('button', { name: 'Set the goal' })).toBeDisabled();
   });
 
