@@ -139,12 +139,16 @@ export type PriorReading = PriorReceipt | 'unread' | null;
  * (useReceivingNextData.ts `stillExpected`): door refusals, plus the desk's
  * (none when never verified). A ledger that cannot be read leaves the door's
  * refusals unknown — and unknown is `'unread'`, never zero, once any truck was
- * counted. With no door count yet there is nothing that could have been refused.
+ * counted. With no door count yet AND no check of the order there is nothing
+ * that could have been refused. A truck received on the phone leaves no door
+ * count but may have had bottles refused at the desk, so a checked order — or a
+ * gateway that does not say — is `'unread'` too (F-861).
  */
 export function priorFromReceived(r: {
   receivedQtyBottles?: unknown;
   packSize?: number | null;
   doorEventCount?: unknown;
+  checked?: unknown;
   received?: {
     readable?: boolean;
     rejectedAtDoorBottles?: number | null;
@@ -156,7 +160,8 @@ export function priorFromReceived(r: {
   const base = { bottles: r.receivedQtyBottles, packSize: r.packSize ?? null };
   const fin = (v: unknown): number | null =>
     typeof v === 'number' && Number.isFinite(v) ? Math.max(0, v) : null;
-  if (r.received?.readable !== true) return r.doorEventCount === 0 ? base : 'unread';
+  if (r.received?.readable !== true)
+    return r.doorEventCount === 0 && r.checked === false ? base : 'unread';
   const atDoor = fin(r.received.rejectedAtDoorBottles);
   const atDesk = r.received.rejectedAtDeskBottles == null ? 0 : fin(r.received.rejectedAtDeskBottles);
   if (atDoor === null || atDesk === null) return 'unread';

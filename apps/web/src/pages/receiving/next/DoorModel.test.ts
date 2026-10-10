@@ -532,11 +532,12 @@ describe('a bottle refused on an earlier truck (F-813)', () => {
   });
 
   it('reads door and desk refusals off the received block, as the lane does', () => {
-    const r = (received: unknown, doorEventCount = 1) =>
+    const r = (received: unknown, doorEventCount = 1, checked = false) =>
       priorFromReceived({
         receivedQtyBottles: 11,
         packSize: 12,
         doorEventCount,
+        checked,
         received: received as never,
       });
     expect(
@@ -552,6 +553,14 @@ describe('a bottle refused on an earlier truck (F-813)', () => {
     expect(r({ readable: true, rejectedAtDoorBottles: null })).toBe('unread');
     // Nothing counted yet: nothing could have been refused.
     expect(r(null, 0)).toEqual({ bottles: 11, packSize: 12 });
+    // Received on the phone and checked at the desk: no door count, but the
+    // desk may have refused bottles the unread ledger holds (F-861).
+    expect(r(null, 0, true)).toBe('unread');
+    expect(r({ readable: false }, 0, true)).toBe('unread');
+    // A gateway that does not say whether it was checked is not guessed at.
+    expect(
+      priorFromReceived({ receivedQtyBottles: 11, packSize: 12, doorEventCount: 0 }),
+    ).toBe('unread');
     expect(priorFromReceived({ receivedQtyBottles: 'x' })).toBe('unread');
   });
 });

@@ -127,6 +127,8 @@ export interface DoorReceivedSoFar {
   /** Counted at the door and not on the shelf yet, in bottles; null when not comparable or unread. */
   countedNotBookedBottles?: number | null
   doorEventCount: number
+  /** A desk check already closed an earlier truck; its refusals are in the ledger (F-861). */
+  checked?: boolean
   /** Bottles per box, exact. Null — never a guess — when the order states no pack. */
   packSize: number | null
   /** WHOLE boxes. Null — never 0 — when the pack size is not knowable. */

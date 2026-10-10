@@ -882,8 +882,18 @@ export class ReceivingService {
 
     const enteredAt = (r: { created_at?: string | null; occurred_at?: string | null }) =>
       String(r.created_at ?? r.occurred_at ?? "");
+    // Two events stamped in the same instant fall back to their id, so the
+    // checkpoint they fold into is the same on every read (F-862).
     const rows = [...(data ?? [])].sort((a, b) =>
-      enteredAt(a) < enteredAt(b) ? -1 : enteredAt(a) > enteredAt(b) ? 1 : 0,
+      enteredAt(a) < enteredAt(b)
+        ? -1
+        : enteredAt(a) > enteredAt(b)
+          ? 1
+          : String(a.id) < String(b.id)
+            ? -1
+            : String(a.id) > String(b.id)
+              ? 1
+              : 0,
     );
     let receivedBottles: number | null = 0;
     let priorEventCount = 0;
@@ -974,6 +984,12 @@ export class ReceivingService {
         ? received.countedNotBookedBottles
         : null,
       doorEventCount: totals.priorEventCount,
+      /**
+       * A verification already checked an earlier truck (a `reconciled` event).
+       * Its refusals live in the ledger, so with the ledger unread the door
+       * cannot say none were refused even when it counted nothing (F-861).
+       */
+      checked: totals.verified,
       /** Bottles per box, exact, or null when no exact pack is known. */
       packSize,
       receivedBoxes: split ? split.packs : null,
