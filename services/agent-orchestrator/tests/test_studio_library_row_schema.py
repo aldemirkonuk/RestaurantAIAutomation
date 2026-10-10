@@ -344,3 +344,38 @@ class TestQueueIdentity:
         from api.studio_routes import _queue_identity
 
         assert _queue_identity(sub)["wine_name"] == name
+
+
+class TestReviewQueuePromotion:
+    """The quality review queue is the third path into the library (F-786)."""
+
+    def test_review_queue_promotion_names_only_real_columns(self):
+        from api.quality_routes import ReviewQueuePatchRequest, patch_review_queue
+
+        subs = MagicMock()
+        subs.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
+            "id": "sub-1",
+            "status": "pending_review",
+            "field_confidence": FULL_FC,
+            "restaurant_id": "r-1",
+            **FULL_SUBMISSION_JSONB,
+        }
+        queue = MagicMock()
+        queue.select.return_value.eq.return_value.eq.return_value.execute.return_value.count = (
+            0
+        )
+        lib = MagicMock()
+        sb = _tables(
+            master_wine_library_submissions=subs,
+            field_review_queue=queue,
+            master_wine_library=lib,
+        )
+        with patch("api.quality_routes._get_supabase", return_value=sb):
+            result = patch_review_queue("sub-1", ReviewQueuePatchRequest())
+
+        assert result["promoted_to_library"] is True
+        (row,), _ = lib.insert.call_args
+        _assert_insertable(row)
+        assert row["wine_id"].startswith("WINE_")
+        assert row["price_reference"] == 120.5
+        assert row["source"] == "human_reviewed"

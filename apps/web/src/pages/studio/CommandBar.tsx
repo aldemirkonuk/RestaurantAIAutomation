@@ -86,13 +86,16 @@ export function CommandBar() {
         // Claude returns each field as {value, confidence, source}.
         // Flatten: plain string values on the record, confidence data in field_confidence.
         // submission_id is the real Supabase UUID stamped by the backend on each wine.
-        const wines = (extractData.wines ?? []).map((w: Record<string, unknown>, i: number) => {
-          // Use the real Supabase UUID returned by the backend; fall back to a stable
-          // client-generated UUID only if the backend omitted it (e.g. Supabase unavailable).
-          const realSubmissionId = (typeof w.submission_id === 'string' && w.submission_id.length > 10)
-            ? w.submission_id
-            : crypto.randomUUID()
-          const flat: Record<string, unknown> = { id: String(i), submission_id: realSubmissionId }
+        // A wine the backend did not save (no submission_id, e.g. Supabase unavailable)
+        // has no row behind it: a client-made id left every cell save and Promote on
+        // "Submission not found" (F-787). Leave it out and say so.
+        const read = extractData.wines ?? []
+        const saved = read.filter((w) => typeof w.submission_id === 'string' && w.submission_id.length > 10)
+        if (read.length > 0 && saved.length === 0) {
+          throw new Error('The list was read, but none of its wines could be saved. Please try again in a few minutes.')
+        }
+        const wines = saved.map((w: Record<string, unknown>, i: number) => {
+          const flat: Record<string, unknown> = { id: String(i), submission_id: w.submission_id }
           const fc: Record<string, unknown> = {}
           for (const [k, v] of Object.entries(w)) {
             if (k === 'submission_id') continue  // already handled above
@@ -118,7 +121,13 @@ export function CommandBar() {
             extracted_at: new Date().toISOString(), wines,
           }))
         } catch { /* quota exceeded — non-fatal */ }
-        toast.success('Extraction complete', { description: `${extractData.total_wines ?? 0} wines extracted` })
+        toast.success('Extraction complete', { description: `${wines.length} wines extracted` })
+        if (saved.length < read.length) {
+          const lost = read.length - saved.length
+          toast.warning(`${lost} ${lost === 1 ? 'wine' : 'wines'} could not be saved`, {
+            description: 'They are left out of the table below. Add them by hand or read the list again later.',
+          })
+        }
 
       } else if (type === 'url') {
         const sessData = await studioPost<StudioSessionResponse>('/api/v1/studio/sessions', {

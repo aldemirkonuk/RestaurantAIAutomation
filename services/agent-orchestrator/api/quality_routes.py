@@ -27,6 +27,7 @@ from services.field_confidence import (
     JSONB_ENRICHMENT_KEYS,
 )
 from services.log_safety import sanitize_for_log
+from services.override_service import build_library_row
 
 logger = logging.getLogger(__name__)
 
@@ -365,39 +366,15 @@ def patch_review_queue(
     promoted = False
     if not still_blocked and remaining_pending == 0:
         try:
-            # Map field_confidence values to all master_wine_library columns (D-20)
-            promo_row: Dict[str, Any] = {
-                "restaurant_id": submission.get("restaurant_id"),
-                "submission_id": submission_id,
-                "name": _fc_value(fc, "wine_name"),
-                "producer": _fc_value(fc, "producer"),
-                "vintage": _fc_value(fc, "vintage"),
-                "region": _fc_value(fc, "region"),
-                "sub_region": _fc_value(fc, "sub_region"),
-                "appellation": _fc_value(fc, "appellation"),
-                "country": _fc_value(fc, "country"),
-                "grape_variety": _fc_value(fc, "grape_variety"),
-                "wine_type": _fc_value(fc, "primary_type"),
-                "color": _fc_value(fc, "color"),
-                "alcohol_pct": _fc_value(fc, "alcohol_pct"),
-                "sweetness_level": _fc_value(fc, "sweetness_level"),
-                "tasting_notes": _fc_value(fc, "tasting_notes"),
-                "description": _fc_value(fc, "description"),
-                "food_pairing": _fc_value(fc, "food_pairing"),
-                "producer_bio": _fc_value(fc, "producer_bio"),
-                "avg_price": _fc_value(fc, "price_bottle"),
-                "price_glass": _fc_value(fc, "price_glass"),
-                "section_name": _fc_value(fc, "section_name"),
-                "bin_number": _fc_value(fc, "bin_number"),
-                "source": "human_reviewed",
-                "ai_enriched": True,
-                "enrichment_source": "haiku",
-                "created_at": now_iso,
-            }
-            # Add 6 JSONB enrichment columns — stored as top-level columns by haiku_tasks.py
-            for jk in JSONB_ENRICHMENT_KEYS:
-                promo_row[jk] = submission.get(jk) or {}
-
+            # Only real master_wine_library columns, wine_id included
+            # (build_library_row, F-754). This path still named avg_price,
+            # wine_type, restaurant_id ... and no wine_id, so every insert failed (F-786).
+            promo_row = build_library_row(
+                lambda name: _fc_value(fc, name),
+                source="human_reviewed",
+                submission=submission,
+                audit={"submission_id": submission_id},
+            )
             supabase.table("master_wine_library").insert(promo_row).execute()
             promoted = True
         except Exception as exc:
