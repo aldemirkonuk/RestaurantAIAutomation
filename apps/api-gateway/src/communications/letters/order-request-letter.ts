@@ -312,8 +312,10 @@ const CURRENCY_WORD_RE = word([
  *     outside an unmatched bracket ("evil [.com");
  *   - a dot-like character not in `DOT_LIKE_RE`, and a bracket not in
  *     `OPEN_BRACKETS` / `CLOSE_BRACKETS`;
- *   - a scheme not in `LINK_SCHEMES` without "//" ("foo:bar"), and a "://"
- *     whose nearest ASCII letter before it is more than 31 characters back;
+ *   - a scheme not in `LINK_SCHEMES` without "//" ("foo:bar"; also "http:x",
+ *     "http:/x" and "http:\\x", which a URL parser reads as "http://x": one
+ *     slash or backslash after the colon is not two), and a "://" whose
+ *     nearest ASCII letter before it is more than 31 characters back;
  *   - a scheme word split by a mark, format or control character, filler,
  *     backslash, tab or line break that no view shows whole with no letter,
  *     digit or "_" right before it ("x\u034Fjava\u034Fscript:alert",
@@ -323,13 +325,10 @@ const CURRENCY_WORD_RE = word([
  *     carriage return, U+2028 or U+2029 between a scheme word and its colon,
  *     between the colon and "//", or between the two slashes ("http\t://x",
  *     "javascript\n:alert", "https:\t//x", "http:/\t/x") is caught by the
- *     scheme view;
- *   - a backslash among the slashes after a scheme's colon ("http:\\x",
- *     "http:/\\x", "http:\\/x", "http:\t\\//x"), which a browser's URL
- *     parser reads as "/" for http, https, ws and wss. It is caught when
- *     copy 1, which strips backslashes, reads "://" (`linkViews`:
- *     "http:\\//x"), when the host is a domain ("http:\\\\evil.xyz"), and
- *     for a scheme in `LINK_SCHEMES` ("ftp:\\\\x");
+ *     scheme view, and so is a backslash in place of either slash after the
+ *     colon of http, https, ftp, ws, wss or file with no letter right before
+ *     the scheme word once format and control characters are stripped
+ *     ("http:\\\\x", "http:/\\x", "http:\t\\//x");
  *   - a link made with a fact block: the test reads the prose with each
  *     "{{token}}" replaced by a space, so "see {{signer}}.com" is clean here
  *     and renders as "see Acme.com". The shipped templates hold each token on
@@ -454,6 +453,9 @@ const SCHEME_VIEW_STRIP_RE = new RegExp(`[\\p{Cf}${CONTROLS}]`, "gu");
 const SCHEME_VIEW_JOIN_RE = /(?<=[\p{L}\p{N}])[\t\n\r\u2028\u2029]+(?=[\p{L}\p{N}])/gu;
 const SCHEME_VIEW_COLON_JOIN_RE =
   /(?<=[\p{L}\p{N}+.-])[\t\n\r\u2028\u2029]+(?=:)/gu;
+/** A special scheme's colon and the slashes, backslashes and runs after it. */
+const SCHEME_VIEW_BACKSLASH_RE =
+  /(?<!\p{L})(?:https?|ftp|wss?|file):[\\/\t\n\r\u2028\u2029]+/giu;
 const SCHEME_VIEW_SLASH_JOIN_RE =
   /(?<=:[\t\n\r\u2028\u2029]*\/)[\t\n\r\u2028\u2029]+(?=\/)|(?<=:)[\t\n\r\u2028\u2029]+(?=\/[\t\n\r\u2028\u2029]*\/)/gu;
 /**
@@ -515,6 +517,18 @@ function linkViews(text: string): string[] {
  * and a "/" that has another "/" after it (with only such runs between
  * them); and between those two slashes. So "https:\t//x", "http:/\t/x" and
  * "http:\t/\n/x" read "https://x" / "http://x".
+ * After the join before the colon and before the two slash joins, every
+ * backslash is turned into "/" in the run of slashes, backslashes and such
+ * runs right after the colon of a WHATWG
+ * special scheme (http, https, ftp, ws, wss, file; any case) that has no
+ * letter right before it, because a URL parser reads "\\" as "/" there:
+ * "http:\\\\x", "http:/\\x" and "https:\\/x" read "http://x" /
+ * "https://x". A drive or a word that is not one of those schemes keeps its
+ * backslashes ("C:\\\\server", "D:\\path", "Not:\\ foo",
+ * "News:\\\\ see"), and so does a scheme word with a letter before it
+ * ("xhttp:\\\\x", which no URL parser reads as http). With one slash or
+ * backslash after the colon there is no "//" ("http:\\x" reads "http:/x"),
+ * so the scheme view does not refuse it (see `URL_RE`).
  * Refused although they hold no link (fail closed, pinned by a spec): a
  * scheme's shape (an ASCII letter and up to 31 more ASCII letters, digits,
  * "+", "." or "-"), then a colon, then "/" and "/", where only such runs (at
@@ -522,8 +536,8 @@ function linkViews(text: string): string[] {
  * "/", or the two slashes: "Note:\n// see below",
  * "Ek:\n/\t/", "Date:\t/\t/", "Dear team:\n\n// ok", "Note\n:// see"; and
  * such a run between a named scheme word and its colon when a non-space
- * character follows the colon ("Data\n:x"). A space anywhere in the gap, or
- * before the colon, keeps the line ("Sizes:\n/ small", "Remarque :\n// merci",
+ * character follows the colon ("Data\n:x"). A space anywhere in the gap,
+ * or before the colon, keeps the line ("Sizes:\n/ small", "Remarque :\n// merci",
  * "Note\n: see below").
  * Not caught: such a run next to any other character that is not a letter
  * or digit, as right after the colon with no "/" after it
@@ -536,6 +550,7 @@ function schemeView(text: string): string {
     .replace(SCHEME_VIEW_STRIP_RE, "")
     .replace(SCHEME_VIEW_JOIN_RE, "")
     .replace(SCHEME_VIEW_COLON_JOIN_RE, "")
+    .replace(SCHEME_VIEW_BACKSLASH_RE, (m) => m.replace(/\\/g, "/"))
     .replace(SCHEME_VIEW_SLASH_JOIN_RE, "");
 }
 function holdsLink(text: string): boolean {

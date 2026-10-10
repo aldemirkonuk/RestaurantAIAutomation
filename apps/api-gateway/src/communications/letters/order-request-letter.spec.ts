@@ -573,23 +573,44 @@ describe("the prose predicate", () => {
     expect(rules(T(text))).not.toContain("link");
   });
 
-  // Named in ADR 0313:37: a URL parser reads a backslash as "/" for http,
-  // https, ws and wss; the test looks for "//". Caught when stripping the
-  // backslash leaves "://", when the host is a domain, and for a named scheme.
+  // A URL parser reads a backslash as "/" after the colon of a special
+  // scheme (http, https, ftp, ws, wss, file). Coordinator's call after the
+  // round-8 gate at 68b52bf68: the scheme view folds it (ADR 0313:37).
   it.each([
     ["two backslashes", "http:\\\\x"],
     ["a slash and a backslash", "http:/\\x"],
     ["a backslash and a slash", "https:\\/intranet"],
     ["a tab, a backslash and //", "http:\t\\//x"],
-  ])("does not catch %s in place of // (named gap)", (_label, link) => {
-    expect(rules(T(`Open ${link} now.`))).not.toContain("link");
-  });
-  it.each([
+    ["capitals and a line feed", "HTTPS:\\\n\\intranet"],
+    ["ws and two backslashes", "ws:\\\\x"],
+    ["wss, a backslash and a slash", "wss:\\/x"],
+    ["a tab before the colon and backslashes", "http\t:\\\\x"],
+    ["a digit right before the scheme word", "1http:\\\\x"],
     ["a backslash before //", "http:\\//x"],
     ["a domain host", "http:\\\\evil.xyz"],
     ["a named scheme", "ftp:\\\\x"],
-  ])("refuses a backslash shape with %s", (_label, link) => {
+  ])("refuses a backslash in place of a slash: %s", (_label, link) => {
     expect(rules(T(`Open ${link} now.`))).toContain("link");
+    expect(courtesyLineOrNull(`Open ${link} now.`)).toBeNull();
+  });
+
+  // Only a special scheme word's backslashes are folded: a drive letter, a
+  // word that is not one of those schemes, or a scheme word with a letter
+  // before it keeps them.
+  it.each([
+    ["a drive and a share", "Copy it to C:\\\\server please."],
+    ["a drive and a path", "Saved at D:\\path as before."],
+    ["a backslash after a word", "Not:\\ foo"],
+    ["Turkish, a folder path", "Klasör: C:\\\\sunucu\\\\Siparişler"],
+    ["Turkish, a backslash after a colon", "Not:\\ lütfen arayın"],
+    ["French, a path", "Chemin : D:\\Commandes\\été"],
+    ["French, a share", "Dossier C:\\\\serveur\\\\commandes"],
+    ["a word ending in ws", "News:\\\\ see below"],
+    ["a word ending in file", "Profile:\\\\ ok"],
+    ["a scheme word with a letter before it", "xhttp:\\\\x"],
+    ["one backslash after the colon", "http:\\x"],
+  ])("keeps %s", (_label, text) => {
+    expect(rules(T(text))).not.toContain("link");
   });
 
   // Adversary note 1 at aff7c87, named in ADR 0313:37: the link test reads
