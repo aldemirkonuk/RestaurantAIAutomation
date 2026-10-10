@@ -989,6 +989,29 @@ describe("recordDoorReceipt", () => {
     expect(calls.orderWrites).toHaveLength(0);
   });
 
+  it("[REVERT-FAILS] a true retry of a fractional case count is answered as landed, not refused (F-1086)", async () => {
+    // 2.1 cases x 12 = 25.200000000000003 in JS; the numeric(12,3) column
+    // stores 25.200. The resend is the same tap and must match.
+    const { db } = makeDb({
+      order: { ...openOrder, quantity: 2 }, // pack of 12
+      events: [
+        {
+          ...landedTap,
+          counted_qty_bottles: "25.200",
+          rejected_qty_bottles: "0.000",
+        },
+      ],
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2.1,
+      countedUom: "case",
+      idempotencyKey: "tap-1",
+    });
+    expect(r.alreadyRecorded).toBe(true);
+    expect(r.eventId).toBe("evt-existing");
+  });
+
   it("[REVERT-FAILS] the same key landed on another order is refused (F-1086)", async () => {
     const { db, calls } = makeDb({
       order: openOrder,
@@ -2248,6 +2271,35 @@ describe("recordDoorReceipt — a closed or unapproved order takes no count (F-6
     expect(r.factTime.at).toBe("2026-10-01T10:00:00.000Z");
     expect(r.stockDelta).toBeNull();
     // A closed order is never written through again.
+    expect(calls.eventInserts).toHaveLength(0);
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.orderWrites).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] a true retry of a fractional case count on a closed order gets the landed receipt (F-1086)", async () => {
+    const { db, calls } = makeDb({
+      order: { ...order, status: "COMPLETED" },
+      events: [
+        {
+          id: "evt-landed",
+          idempotency_key: "k-landed",
+          order_id: "o1",
+          // 2.1 cases x 12 is 25.200000000000003 in JS; stored as 25.200.
+          counted_qty_bottles: "25.200",
+          rejected_qty_bottles: "0.000",
+          occurred_at: "2026-10-01T10:00:00.000Z",
+          occurred_at_basis: "server",
+        },
+      ],
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 2.1,
+      countedUom: "case",
+      idempotencyKey: "k-landed",
+    });
+    expect(r.alreadyRecorded).toBe(true);
+    expect(r.eventId).toBe("evt-landed");
     expect(calls.eventInserts).toHaveLength(0);
     expect(calls.rpc).toHaveLength(0);
     expect(calls.orderWrites).toHaveLength(0);

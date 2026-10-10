@@ -938,10 +938,15 @@ export class ReceivingService {
       outcome: string | null;
     },
   ): void {
+    // The columns are numeric(12,3); the sent bottles are raw floats, so a
+    // fractional count (2.1 cases x 6 = 12.600000000000001) lands as 12.600.
+    // Both sides are rounded to the column's 3 places before comparing.
+    const thou = (n: number) => Math.round(n * 1000) / 1000;
     const same =
       landed.order_id === sent.orderId &&
-      Number(landed.counted_qty_bottles) === sent.countedBottles &&
-      Number(landed.rejected_qty_bottles ?? 0) === sent.rejectedBottles &&
+      thou(Number(landed.counted_qty_bottles)) === thou(sent.countedBottles) &&
+      thou(Number(landed.rejected_qty_bottles ?? 0)) ===
+        thou(sent.rejectedBottles) &&
       (landed.outcome ?? null) === sent.outcome;
     if (same) return;
     this.logger.warn(
