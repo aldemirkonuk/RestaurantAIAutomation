@@ -43,11 +43,13 @@ interface MenuScannerFlowProps {
   restaurantId?: string
 }
 
+// Said in the owner's words: the model and engine names that stood here were
+// not even the ones called (F-015).
 const PROCESSING_STEPS = [
-  { label: 'RF-DETR region detection (live boxes)', delay: 0 },
-  { label: 'PaddleOCR text + layout (on shutter)', delay: 150 },
-  { label: 'Gemini field parsing (wine schema)', delay: 300 },
-  { label: 'Master Wine Library matching', delay: 450 },
+  { label: 'Finding the lines on the page', delay: 0 },
+  { label: 'Reading names and prices', delay: 150 },
+  { label: 'Telling each drink by its kind', delay: 300 },
+  { label: 'Matching the wines we already know', delay: 450 },
 ]
 
 export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }: MenuScannerFlowProps) {
@@ -79,8 +81,7 @@ export function MenuScannerFlow({ isOpen, onClose, onWinesAdded, restaurantId }:
     setError(null)
 
     try {
-      // Step 1: YOLO detection
-      setProcessingStepText('Detecting regions (RF-DETR target stack)...')
+      setProcessingStepText('Reading the menu…')
       
       const result = await scanMenuImage(imageBase64, restaurantId)
       
