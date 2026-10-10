@@ -2689,3 +2689,155 @@ describe("K5 — every door out of a house releases the person's shifts (ADR 024
     expect(db.tables.team_members.some((m) => m.id === "m-owner")).toBe(true);
   });
 });
+
+// ── Two tabs, one person (sim wave 37, integ8-two-tabs-races) ───────────────
+
+describe("F-1031 — a stale roster sheet never puts back what another manager set", () => {
+  it("refuses a save against an older updated_at, in words, and keeps the deactivation", async () => {
+    const db = seed();
+    const staff = db.tables.team_members.find((m) => m.id === "m-staff")!;
+    staff.status = "active";
+    staff.updated_at = "2026-10-10T09:00:00.000Z";
+    const opened = staff.updated_at;
+    // The owner deactivates Sam in one tab.
+    await teamOf(db).updateMember(OWNER, RID, "m-staff", {
+      status: "inactive",
+      expectUpdatedAt: opened,
+    } as any);
+    // The manager's sheet, opened before that, fixes only the phone.
+    const stale = teamOf(db).updateMember(MANAGER, RID, "m-staff", {
+      phone: "0555",
+      status: "active",
+      expectUpdatedAt: opened,
+    } as any);
+    await expect(stale).rejects.toBeInstanceOf(ConflictException);
+    await expect(stale).rejects.toThrow(/Someone else changed this person/);
+    expect(staff.status).toBe("inactive");
+    expect(staff.phone).toBeUndefined();
+  });
+
+  it("still saves when nobody changed the person since the sheet opened", async () => {
+    const db = seed();
+    const staff = db.tables.team_members.find((m) => m.id === "m-staff")!;
+    staff.updated_at = "2026-10-10T09:00:00.000Z";
+    await teamOf(db).updateMember(MANAGER, RID, "m-staff", {
+      phone: "0555",
+      expectUpdatedAt: staff.updated_at,
+    } as any);
+    expect(staff.phone).toBe("0555");
+  });
+
+  it("is still a 404 for a person who is not there", async () => {
+    const db = seed();
+    await expect(
+      teamOf(db).updateMember(MANAGER, RID, "m-nobody", {
+        phone: "0555",
+        expectUpdatedAt: "2026-10-10T09:00:00.000Z",
+      } as any),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe("F-1034 — a decided time-off request is not decided again from a stale row", () => {
+  it("refuses an approval sent from 'Waiting on you' after another manager denied, and tells nobody again", async () => {
+    const db = seed();
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    // The table's default (baseline time_off_requests.status DEFAULT 'pending').
+    db.tables.time_off_requests.find((r) => r.id === req.id)!.status =
+      "pending";
+    await teamOf(db).reviewTimeOff(OWNER, RID, req.id, {
+      status: "denied",
+      expectStatus: "pending",
+    } as any);
+    const stale = teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+      leaveType: "paid",
+      expectStatus: "pending",
+    } as any);
+    await expect(stale).rejects.toBeInstanceOf(ConflictException);
+    await expect(stale).rejects.toThrow(
+      /answered or taken back while you had it open/,
+    );
+    expect(
+      db.tables.time_off_requests.find((r) => r.id === req.id)?.status,
+    ).toBe("denied");
+    expect(
+      db.tables.notifications.filter((n) => n.user_id === STAFF),
+    ).toHaveLength(1);
+  });
+
+  it("does not approve a request withdrawn between the read and the write", async () => {
+    const db = seed();
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    // The table's default (baseline time_off_requests.status DEFAULT 'pending').
+    db.tables.time_off_requests.find((r) => r.id === req.id)!.status =
+      "pending";
+    // The person takes it back right after the reviewer's read.
+    const from = db.supabase.from;
+    let reads = 0;
+    db.supabase.from = (table: string) => {
+      const b = from(table);
+      if (table !== "time_off_requests") return b;
+      const sel = b.select.bind(b);
+      b.select = (...a: any[]) => {
+        const out = sel(...a);
+        if (b.op === "select" && ++reads === 1) {
+          const maybe = out.maybeSingle.bind(out);
+          out.maybeSingle = async () => {
+            const res = await maybe();
+            // A new row object: the stub hands back the stored row itself,
+            // and the reviewer's read must keep what it saw.
+            const rows = db.tables.time_off_requests;
+            const i = rows.findIndex((r) => r.id === req.id);
+            rows[i] = { ...rows[i], status: "withdrawn" };
+            return res;
+          };
+        }
+        return out;
+      };
+      return b;
+    };
+    await expect(
+      teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+        status: "approved",
+        expectStatus: "pending",
+      } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(
+      db.tables.time_off_requests.find((r) => r.id === req.id)?.status,
+    ).toBe("withdrawn");
+    expect(
+      db.tables.notifications.filter((n) => n.user_id === STAFF),
+    ).toHaveLength(0);
+  });
+
+  it("still marks an approved request paid when it is still approved", async () => {
+    const db = seed();
+    const req = await teamOf(db).createTimeOff(STAFF, RID, {
+      memberId: "m-staff",
+      startDate: WEEK,
+      endDate: WEEK,
+    } as any);
+    // The table's default (baseline time_off_requests.status DEFAULT 'pending').
+    db.tables.time_off_requests.find((r) => r.id === req.id)!.status =
+      "pending";
+    await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+      expectStatus: "pending",
+    } as any);
+    const marked = await teamOf(db).reviewTimeOff(MANAGER, RID, req.id, {
+      status: "approved",
+      leaveType: "paid",
+      expectStatus: "approved",
+    } as any);
+    expect(marked.leave_type).toBe("paid");
+  });
+});

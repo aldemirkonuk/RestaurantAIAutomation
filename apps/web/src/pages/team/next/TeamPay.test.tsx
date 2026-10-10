@@ -368,7 +368,43 @@ describe('paid leave is not a free week', () => {
     );
     expect(screen.getByText(/paid or unpaid not said/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Approve as paid' }));
-    await vi.waitFor(() => expect(api.reviewTimeOff).toHaveBeenCalledWith('t1', 'approved', 'paid'));
+    // The row says what it showed, so a request decided since is refused (F-1034).
+    await vi.waitFor(() =>
+      expect(api.reviewTimeOff).toHaveBeenCalledWith('t1', 'approved', 'paid', undefined, 'pending'),
+    );
+  });
+
+  // F-1034: another manager answered it first; the gateway's 409 is said in its
+  // own words, not a guess about withdrawal.
+  it('says in words that someone else already answered the request', async () => {
+    api.reviewTimeOff.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          message:
+            'This request was answered or taken back while you had it open, so your answer was not saved and the person was not told again. Close and open Time off to see where it stands.',
+        },
+      },
+    });
+    render(
+      <TimeOffSheet
+        requests={[
+          {
+            id: 't1', member_id: 'm1', start_date: '2026-09-07', end_date: '2026-09-08', reason: null,
+            status: 'pending', leave_type: 'unknown', reviewed_by: null, created_at: '2026-09-01',
+          },
+        ]}
+        failed={false}
+        members={[member()] as never}
+        weekStart="2026-09-07"
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+    expect(await screen.findByText(/answered or taken back while you had it open/)).toBeInTheDocument();
+    expect(api.reviewTimeOff).toHaveBeenCalledWith('t1', 'denied', undefined, undefined, 'pending');
   });
 
   // F-936: the manager's form filed the whole week on screen, and an approved
@@ -422,7 +458,9 @@ describe('paid leave is not a free week', () => {
     const turnDown = screen.getAllByRole('button', { name: 'Turn it down' });
     expect(turnDown).toHaveLength(1);
     fireEvent.click(turnDown[0]);
-    await vi.waitFor(() => expect(api.reviewTimeOff).toHaveBeenCalledWith('t-ok', 'denied', undefined));
+    await vi.waitFor(() =>
+      expect(api.reviewTimeOff).toHaveBeenCalledWith('t-ok', 'denied', undefined, undefined, 'approved'),
+    );
   });
 });
 

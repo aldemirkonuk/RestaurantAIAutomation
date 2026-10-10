@@ -124,6 +124,29 @@ describe('an edit can take a field off (F-713)', () => {
   });
 });
 
+describe('a stale sheet never puts back what another manager set (F-1031)', () => {
+  it('sends only what this sheet changed, against the row as it opened', async () => {
+    draw({ ...row, updated_at: '2026-10-10T09:00:00.000+00:00' } as never);
+    fireEvent.change(box('0532 000 00 00'), { target: { value: '0555 111 11 11' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.updateTeamMember).toHaveBeenCalled());
+    expect(api.updateTeamMember.mock.calls[0][1]).toEqual({
+      phone: '0555 111 11 11',
+      expectUpdatedAt: '2026-10-10T09:00:00.000+00:00',
+    });
+  });
+
+  it('says the gateway’s refusal when someone else changed the person first', () => {
+    const err = {
+      response: {
+        status: 409,
+        data: { message: 'Someone else changed this person while you had them open, so nothing was saved.' },
+      },
+    };
+    expect(memberSaveRefusal(err)).toMatch(/Someone else changed this person/);
+  });
+});
+
 describe('a refusal is said in words, before and after the click (F-714)', () => {
   it('refuses an address with no domain ending, as the gateway does', () => {
     expect(memberFormRefusal({ email: 'ayse@tuzlu', hourlyWage: '' })).toMatch(/not a full address/);

@@ -972,13 +972,15 @@ export class TeamService {
     for (const m of orphans) {
       const uid = byEmail.get((m.email as string).toLowerCase());
       if (!uid) continue;
+      const stamp = new Date().toISOString();
       const { error } = await this.sb
         .from("team_members")
-        .update({ user_id: uid, updated_at: new Date().toISOString() })
+        .update({ user_id: uid, updated_at: stamp })
         .eq("id", m.id)
         .eq("restaurant_id", restaurantId)
         .is("user_id", null);
-      if (!error) m.user_id = uid;
+      // The stamp travels too: the roster sheet saves against it (F-1031).
+      if (!error) Object.assign(m, { user_id: uid, updated_at: stamp });
     }
   }
 
@@ -1076,16 +1078,39 @@ export class TeamService {
     if (dto.status !== undefined) patch.status = dto.status;
     if (dto.notes !== undefined) patch.notes = dto.notes || null;
 
-    const { data, error } = await this.sb
+    // Compare-and-set on the row the sheet opened (F-1031): a sheet opened
+    // before another manager deactivated the person or changed the wage
+    // used to put the old values back on save, silently.
+    let q = this.sb
       .from("team_members")
       .update(patch)
       .eq("id", memberId)
-      .eq("restaurant_id", restaurantId)
-      .select()
-      .maybeSingle();
+      .eq("restaurant_id", restaurantId);
+    if (dto.expectUpdatedAt) q = q.eq("updated_at", dto.expectUpdatedAt);
+    const { data, error } = await q.select().maybeSingle();
     if (error) {
       this.logger.error(`updateMember failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to update team member");
+    }
+    if (!data && dto.expectUpdatedAt) {
+      // Nothing matched: the person is gone, or moved since the sheet opened.
+      const { data: still, error: stillErr } = await this.sb
+        .from("team_members")
+        .select("id")
+        .eq("id", memberId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (stillErr) {
+        this.logger.error(`updateMember recheck failed: ${stillErr.message}`);
+        throw new InternalServerErrorException(
+          "Nothing was saved, and whether someone else changed this person could not be read. Try again.",
+        );
+      }
+      if (still) {
+        throw new ConflictException(
+          "Someone else changed this person while you had them open, so nothing was saved. Close and open them again to see what is on file now.",
+        );
+      }
     }
     if (!data) throw new NotFoundException("Team member not found");
 
@@ -2401,6 +2426,13 @@ export class TeamService {
         "This request was withdrawn by the person who asked. Nothing was changed.",
       );
     }
+    // Decided by someone else since this reviewer's list was read (F-1034):
+    // a stale "Waiting on you" row no longer overturns that decision.
+    const decidedElsewhere =
+      "This request was answered or taken back while you had it open, so your answer was not saved and the person was not told again. Close and open Time off to see where it stands.";
+    if (dto.expectStatus !== undefined && cur.status !== dto.expectStatus) {
+      throw new ConflictException(decidedElsewhere);
+    }
     const before: string | undefined = cur.status;
     const leaveType: LeaveType | undefined = dto.leaveType;
     const { data, error } = await this.sb
@@ -2415,11 +2447,14 @@ export class TeamService {
       })
       .eq("id", requestId)
       .eq("restaurant_id", restaurantId)
+      // Compare-and-set on what was read, as withdrawTimeOff does: a request
+      // withdrawn or decided between the read and the write is not touched.
+      .eq("status", before)
       .select()
       .maybeSingle();
     if (error)
       throw new InternalServerErrorException("Failed to review request");
-    if (!data) throw new NotFoundException("Request not found");
+    if (!data) throw new ConflictException(decidedElsewhere);
     // The person who asked hears the answer (F-191): before this, a decision
     // reached nobody, and My Shifts said to look on the manager's desk. Only a
     // changed answer is news: marking an approved request paid or unpaid sends
