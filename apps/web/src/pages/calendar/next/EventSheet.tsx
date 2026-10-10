@@ -452,8 +452,14 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
             </Field>
           </div>
         )}
-        {!allDay && startTime && endTime && endTime < startTime && (
+        {/* One overnight rule with the grid and the feed (F-820): an end before
+            the start is the next morning unless "Ends on" names a later day;
+            equal times are a single moment. */}
+        {!allDay && startTime && endTime && endTime < startTime && (!endDate || endDate === date) && (
           <p className="cn-quiet cn-tight">Ends after midnight, at {endTime} the next morning.</p>
+        )}
+        {!allDay && startTime && endTime && endTime === startTime && (
+          <p className="cn-quiet cn-tight">Starts and ends at {startTime}, so it shows as a single moment.</p>
         )}
 
         <Field label="Vendor">

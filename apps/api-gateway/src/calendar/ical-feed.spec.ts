@@ -267,6 +267,44 @@ describe("iCal feed structure", () => {
     expect(out).toContain("DTEND:20260804T020000Z");
   });
 
+  it("ends an entry whose end date is its start date on the next morning when it ends before it starts (F-820)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "Europe/Istanbul" },
+      events: [
+        {
+          ...EVENT,
+          start_date: "2026-10-11",
+          start_time: "22:00",
+          end_date: "2026-10-11",
+          end_time: "02:00",
+        },
+      ],
+    });
+
+    expect(out).toContain("DTSTART:20261011T190000Z");
+    expect(out).toContain("DTEND:20261011T230000Z");
+  });
+
+  it("keeps an entry that ends when it starts as a zero-length moment that day (F-820)", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "UTC" },
+      events: [{ ...EVENT, start_time: "10:00", end_date: null, end_time: "10:00" }],
+    });
+
+    expect(out).toContain("DTSTART:20260803T100000Z");
+    expect(out).toContain("DTEND:20260803T100000Z");
+  });
+
+  it("keeps a later end date as written when the end time is before the start time", () => {
+    const out = feed({
+      restaurant: { id: "r1", name: "R", timezone: "UTC" },
+      events: [{ ...EVENT, start_time: "22:00", end_date: "2026-08-05", end_time: "02:00" }],
+    });
+
+    expect(out).toContain("DTSTART:20260803T220000Z");
+    expect(out).toContain("DTEND:20260805T020000Z");
+  });
+
   it("keeps a monthly entry on the 31st on the last day of shorter months (F-791)", () => {
     const out = feed({
       restaurant: { id: "r1", name: "R", timezone: "UTC" },

@@ -93,6 +93,11 @@ class FakeQuery {
     this.filters.push((r) => (r[col] ?? null) === value);
     return this;
   }
+  not(col: string, op: string, value: any) {
+    if (op !== "is") throw new Error(`fake .not supports only "is", got ${op}`);
+    this.filters.push((r) => (r[col] ?? null) !== value);
+    return this;
+  }
   in(col: string, values: any[]) {
     this.filters.push((r) => values.includes(r[col]));
     return this;
@@ -418,6 +423,64 @@ describe("CalendarRemindersService — a moved entry and a repeating entry (F-60
     await service.sweepTenant(TENANT, DUE);
 
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
+  it("(F-818) reminds a real series even behind more than a page of rule-less repeating rows", async () => {
+    const { db, service, notifications } = build();
+    // 501 recurring-order rows: marked repeating, no rule, dated long before
+    // the series, so they sort first on event_date.
+    for (let i = 0; i < 501; i++) {
+      db.tables.calendar_events.push(
+        event({
+          id: `legacy-${i}`,
+          title: "Standing order",
+          start_date: "2025-06-01",
+          event_date: "2025-06-01",
+          is_recurring: true,
+          parent_event_id: null,
+          recurrence_rule_id: null,
+        }),
+      );
+    }
+    db.tables.calendar_events.push(
+      event({
+        id: "evt-s",
+        title: "Weekly tasting",
+        start_date: "2026-01-01",
+        event_date: "2026-01-01",
+        is_recurring: true,
+        parent_event_id: null,
+        recurrence_rule_id: "rule-1",
+      }),
+    );
+    db.tables.calendar_recurrence_rules.push({
+      id: "rule-1", restaurant_id: "rest-1", calendar_event_id: "evt-s",
+      frequency: "weekly", interval_value: 1, days_of_week: null, end_type: "never",
+    });
+
+    const tally = await service.sweepTenant(TENANT, DUE);
+
+    expect(tally.truncated).toBe(false);
+    expect(tally.sent).toBe(2);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+    expect(notifications.persistForRestaurant.mock.calls[0][1].metadata.startsAt).toBe(
+      "2026-01-15T14:00:00.000Z",
+    );
+  });
+
+  it("(F-818) reminds a rule-less repeating row once, on its own date, as a dated entry", async () => {
+    const { db, service, notifications } = build();
+    db.tables.calendar_events.push(
+      event({ id: "legacy-1", is_recurring: true, parent_event_id: null, recurrence_rule_id: null }),
+    );
+
+    const first = await service.sweepTenant(TENANT, DUE);
+    expect(first.sent).toBe(2);
+    expect(db.tables.calendar_events[0].reminder_sent).toBe(true);
+
+    const again = await service.sweepTenant(TENANT, DUE);
+    expect(again.sent).toBe(0);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
   });
 });
 
