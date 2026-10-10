@@ -812,7 +812,8 @@ describe("InboundResponderService (deterministic core)", () => {
         { supabase: { from: () => chain } } as any,
         {} as any,
         {
-          emitRestaurantNotification: () => undefined,
+          // Money bells go to owners and managers only (F-538).
+          emitRoleNotification: async () => 1,
           emitConversationUpdated: () => undefined,
         } as any,
         {} as any,
