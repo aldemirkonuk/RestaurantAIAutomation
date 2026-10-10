@@ -65,6 +65,7 @@ import { readAliasedQuantity } from "./quantity-aliases";
 import { readBookedOrderBottles } from "./booked-order-quantity";
 import {
   COUNTS_CONFIRMED_OUTCOME,
+  decideCloseShort,
   readOneShelfReceived,
   readShelfReceived,
   RECEIVED_IS_NOT_TYPED_IN,
@@ -3363,7 +3364,7 @@ export class ProcurementService {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "id, status, total_cost, provider_id, inventory_id, quantity, expected_delivery_date",
+        "id, status, total_cost, provider_id, inventory_id, quantity, unit_type, bottles_total, expected_delivery_date",
       )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -3903,6 +3904,11 @@ export class ProcurementService {
    * No seal: closing moves no money and books no stock — it stops waiting for
    * goods, as the never-arrived credit claim opens a record without one. Only a
    * PARTIALLY_RECEIVED order may be closed short; any other is refused in words.
+   *
+   * And only one that is actually short (F-826): a door count leaves every
+   * order partly received, full ones too, and a closed order can no longer be
+   * checked against its invoice. `decideCloseShort` asks the shelf whether
+   * bottles are still owed and whether the invoice has been checked.
    */
   async closeOrderShort(
     restaurantId: string,
@@ -3927,7 +3933,7 @@ export class ProcurementService {
       "close an order short",
     );
 
-    const { from } = await this.assertStatusTransition(
+    const { from, row } = await this.assertStatusTransition(
       restaurantId,
       orderId,
       ProcurementOrderStatus.COMPLETED,
@@ -3938,6 +3944,15 @@ export class ProcurementService {
         message:
           `Only an order that is partly received can be closed short. This one is ` +
           `${statusInWords(from)}. Nothing was changed.`,
+      });
+    }
+    const short = decideCloseShort(
+      await readOneShelfReceived(this.databaseService.supabase, restaurantId, row as any),
+    );
+    if (!short.allowed) {
+      throw new UnprocessableEntityException({
+        reason: short.reason,
+        message: short.sentence,
       });
     }
 

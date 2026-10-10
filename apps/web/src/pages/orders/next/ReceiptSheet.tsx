@@ -31,10 +31,11 @@ export const CLOSE_SHORT_DONE =
  * Close a partly received order for good (F-104): the bottles that came stay
  * counted and the rest is no longer expected. Before this, nothing a person
  * could do moved a short delivery out of "partly received", so the order sat
- * open forever. Shown only on a partly received order; the server checks the
- * state and the role again, and its refusal is shown in its own words.
+ * open forever. Shown only when bottles are still owed and the delivery has
+ * been checked against its invoice (F-826, `closeShortOwed`); the server checks
+ * the same again with the role, and its refusal is shown in its own words.
  */
-function CloseShort({ orderId }: { orderId: string }) {
+function CloseShort({ orderId, owed }: { orderId: string; owed: number }) {
   const queryClient = useQueryClient();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -71,8 +72,9 @@ function CloseShort({ orderId }: { orderId: string }) {
       style={{ fontFamily: SANS, fontSize: 13, borderTop: '1px solid var(--paper-2, #EAE4D8)', paddingTop: 12, marginTop: 16 }}
     >
       <p style={{ color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}>
-        Only part of this order came. If the rest is not coming, close the order: the bottles
-        that came stay counted, and nothing more is expected from the vendor.
+        {owed} {owed === 1 ? 'bottle is' : 'bottles are'} still to come on this order. If they
+        are not coming, close the order: the bottles that came stay counted, and nothing more is
+        expected from the vendor.
       </p>
       {!done && (
         <>
@@ -141,7 +143,9 @@ export function ReceiptSheet({ open, onClose, row }: ReceiptSheetProps) {
             : q.data?.state === 'found'
               ? <CanonicalDocumentPage documentId={q.data.document.documentId} embedded />
               : note(NO_RECEIPT_SENTENCE, 'status')}
-        {row.status === 'partially_received' && <CloseShort orderId={row.id} />}
+        {row.closeShortOwedBottles != null && (
+          <CloseShort orderId={row.id} owed={row.closeShortOwedBottles} />
+        )}
       </div>
     </Sheet>
   );

@@ -98,6 +98,9 @@ async function build(supabaseHolder: any): Promise<ProcurementService> {
 async function makeService(
   orderSeed?: Row,
   seals: Row[] = [],
+  // Rows a list read of these tables answers with (the shelf reading's four
+  // tables). Any table not named reads as empty, as before.
+  tableRows: Record<string, Row[]> = {},
 ): Promise<Harness> {
   const audits: Row[] = [];
   const updates: Array<{ table: string; payload: Row }> = [];
@@ -192,6 +195,7 @@ async function makeService(
         is: () => q,
         order: () => q,
         limit: () => q,
+        range: () => q,
         maybeSingle: async () =>
           table === "procurement_orders"
             ? { data: { ...order }, error: null }
@@ -201,7 +205,7 @@ async function makeService(
             ? { data: { ...order }, error: null }
             : { data: null, error: null },
         then: (resolve: any, reject: any) =>
-          Promise.resolve({ data: [], error: null }).then(resolve, reject),
+          Promise.resolve({ data: tableRows[table] ?? [], error: null }).then(resolve, reject),
       };
       return q;
     },
@@ -554,9 +558,39 @@ describe("ending an order is a manager's or an owner's act", () => {
  * person could do reached PARTIALLY_RECEIVED -> COMPLETED, so a short-shipped
  * order sat open forever. REVERT-FAILS: `closeOrderShort` did not exist.
  */
+/**
+ * A six-bottle order whose door counted `counted` (refusing `refused`), and
+ * whose shelf holds what was accepted. `checked` adds the desk's verification
+ * against an invoice for what came.
+ */
+function shelfOf(counted: number, refused: number, checked: boolean): Record<string, Row[]> {
+  const accepted = counted - refused;
+  return {
+    restaurant_inventory: [{ id: "inv-1", uom: "bottle" }],
+    procurement_order_items: [{ order_id: ORDER_ID, unit_type: "bottle", bottles_per_unit: 1 }],
+    inventory_transactions: [
+      { order_id: ORDER_ID, inventory_id: "inv-1", quantity_change: accepted, idempotency_key: "door-receipt:e1" },
+    ],
+    procurement_receipt_events: [
+      { order_id: ORDER_ID, stage: "case_count", counted_qty_bottles: counted, rejected_qty_bottles: refused, occurred_at: "2026-10-01T10:00:00Z" },
+      ...(checked
+        ? [{ order_id: ORDER_ID, stage: "reconciled", outcome: null, counted_qty_bottles: accepted, rejected_qty_bottles: 0, invoice_qty_bottles: counted, occurred_at: "2026-10-01T12:00:00Z" }]
+        : []),
+    ],
+  };
+}
+
+const PARTLY = {
+  status: ProcurementOrderStatus.PARTIALLY_RECEIVED,
+  inventory_id: "inv-1",
+  quantity: 6,
+  unit_type: "bottle",
+  bottles_total: 6,
+};
+
 describe("closing a short order (F-104)", () => {
   it("closes a partly received order, with the reason on the audit row", async () => {
-    const h = await makeService({ status: ProcurementOrderStatus.PARTIALLY_RECEIVED });
+    const h = await makeService(PARTLY, [], shelfOf(4, 0, true));
     await h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "vendor is out of the 2010");
     expect(h.order.status).toBe(ProcurementOrderStatus.COMPLETED);
     const audit = h.audits.find((a) => a.action === "order_closed_short");
@@ -584,6 +618,43 @@ describe("closing a short order (F-104)", () => {
     expect(JSON.stringify(err.getResponse())).toMatch(/Only an order that is partly received/);
     expect(h.order.status).toBe(ProcurementOrderStatus.DELIVERED);
     expect(h.audits).toHaveLength(0);
+  });
+
+  /**
+   * F-826 — a door count leaves EVERY order partly received, full ones too,
+   * and closing one completed it, which shut out the invoice check for good.
+   * REVERT-FAILS: each of these closed the order.
+   */
+  it("refuses an order where everything came", async () => {
+    const h = await makeService(PARTLY, [], shelfOf(6, 0, true));
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "done"));
+    expect(err.getStatus()).toBe(422);
+    expect(err.getResponse().reason).toBe("close_short_nothing_owed");
+    expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
+    expect(h.audits).toHaveLength(0);
+  });
+
+  it("counts bottles sent back at the door as delivered, not owed", async () => {
+    const h = await makeService(PARTLY, [], shelfOf(6, 2, true));
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "done"));
+    expect(err.getResponse().reason).toBe("close_short_nothing_owed");
+    expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
+  });
+
+  it("refuses a short order not yet checked against its invoice, so the check stays open", async () => {
+    const h = await makeService(PARTLY, [], shelfOf(4, 0, false));
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "short"));
+    expect(err.getStatus()).toBe(422);
+    expect(err.getResponse().reason).toBe("close_short_invoice_unchecked");
+    expect(err.getResponse().message).toMatch(/^2 bottles still to come/);
+    expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
+  });
+
+  it("refuses when what is still owed cannot be read", async () => {
+    const h = await makeService({ ...PARTLY, inventory_id: null });
+    const err = await refusal(() => h.service.closeOrderShort(HOUSE, ORDER_ID, MANAGER, "short"));
+    expect(err.getResponse().reason).toBe("close_short_owed_unknown");
+    expect(h.order.status).toBe(ProcurementOrderStatus.PARTIALLY_RECEIVED);
   });
 
   it("is a manager's or owner's act", async () => {

@@ -664,3 +664,75 @@ export async function readOneShelfReceived(
     shelfUnreadable("What this order received could not be read.")
   );
 }
+
+/**
+ * Whether an order may be closed short, read off its shelf (F-826).
+ *
+ * A door count leaves EVERY order partly received, full ones included, and an
+ * order also stays partly received while it waits for its invoice. So the
+ * state alone says nothing about whether anything is still owed — and closing
+ * a full order short completed it, which shut out the invoice check for good.
+ *
+ * Two conditions, both on the reading:
+ *   - bottles are still owed: ordered, less what the shelf holds, less what
+ *     was sent back at the door and at the check (refused bottles were
+ *     delivered; they are a claim against the vendor, not a backorder);
+ *   - the delivery has been checked against its invoice, since a closed order
+ *     can no longer be checked.
+ * A reading that cannot say either is a refusal, never a yes.
+ */
+export type CloseShortVerdict =
+  | { allowed: true; owedBottles: number }
+  | {
+      allowed: false;
+      reason:
+        | "close_short_owed_unknown"
+        | "close_short_nothing_owed"
+        | "close_short_invoice_unchecked";
+      sentence: string;
+    };
+
+export function decideCloseShort(received: ShelfReceived): CloseShortVerdict {
+  if (!received.readable) {
+    return {
+      allowed: false,
+      reason: "close_short_owed_unknown",
+      sentence:
+        `What this order received could not be read (${received.why}), so whether anything ` +
+        "is still owed is not known. Nothing was changed.",
+    };
+  }
+  if (received.backorderBottles === null) {
+    return {
+      allowed: false,
+      reason: "close_short_owed_unknown",
+      sentence:
+        "What is still owed on this order cannot be counted in bottles, so it cannot be " +
+        "closed short. Nothing was changed.",
+    };
+  }
+  const owed =
+    received.backorderBottles -
+    received.rejectedAtDoorBottles -
+    (received.rejectedAtDeskBottles ?? 0);
+  if (owed <= 0) {
+    return {
+      allowed: false,
+      reason: "close_short_nothing_owed",
+      sentence:
+        "Everything on this order came, counting what was sent back, so there is nothing " +
+        "to close short. Check the delivery against the invoice to finish it. Nothing was changed.",
+    };
+  }
+  if (received.invoicedBottles === null) {
+    return {
+      allowed: false,
+      reason: "close_short_invoice_unchecked",
+      sentence:
+        `${owed} ${unitNoun("bottle", owed)} still to come, but this delivery has not been ` +
+        "checked against its invoice yet. Check it first: once an order is closed, its " +
+        "invoice can no longer be checked. Nothing was changed.",
+    };
+  }
+  return { allowed: true, owedBottles: owed };
+}

@@ -374,7 +374,9 @@ export class ProcurementController {
   })
   @ApiResponse({
     status: 422,
-    description: "The order is not partly received. `message` names its state.",
+    description:
+      "The order is not partly received, nothing on it is still owed, its delivery has not " +
+      "been checked against the invoice, or what is owed cannot be read. `message` says which.",
   })
   async closeOrderShort(
     @Param("id") orderId: string,
