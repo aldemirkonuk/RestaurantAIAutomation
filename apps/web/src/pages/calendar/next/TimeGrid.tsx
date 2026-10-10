@@ -68,7 +68,9 @@ export interface TimeGridProps {
 /**
  * Where an event sits on the hour ruler, or null when it has no recorded time.
  * An end before the start is the next morning, so `end` can pass END_MIN
- * (22:00–01:00 is 1320–1500); the block is drawn down to midnight.
+ * (22:00–01:00 is 1320–1500); the block is drawn down to midnight. An end equal
+ * to the start is a zero-length moment, drawn at the shortest block, as the
+ * feed and the sheet read it (F-820).
  */
 export function placed(e: CalEvent): { start: number; end: number } | null {
   if (e.allDay) return null;
@@ -76,9 +78,9 @@ export function placed(e: CalEvent): { start: number; end: number } | null {
   if (start === null) return null;
   const rawEnd = toMinutes(e.endTime);
   const end =
-    rawEnd === null || rawEnd === start
+    rawEnd === null
       ? start + DEFAULT_MINUTES
-      : rawEnd > start
+      : rawEnd >= start
         ? rawEnd
         : rawEnd + END_MIN;
   return { start, end };

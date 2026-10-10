@@ -79,6 +79,9 @@ import {
  * a_calendar_entry_keeps_what_it_was_told, so each date is claimed once, and a
  * series row is never stamped `reminder_sent`: it has no single "sent".
  * A date moved by an exception is its own stored row and is reminded as one.
+ * A row marked repeating with no rule (the recurring-order rows, F-764) is not a
+ * series: it is reminded once on its own date, and `readSeries` never reads it,
+ * so hundreds of them cannot fill the series page ahead of a real one (F-818).
  */
 /**
  * The schedule, as module constants.
@@ -236,7 +239,13 @@ export class CalendarRemindersService {
       const ctx = { tenantId: tenant.id, timeZone, now, intended, prefs, tally };
       for (const row of candidates.rows) {
         // A series row is reminded per date below, not once on its first date.
-        if (row.is_recurring === true && !row.parent_event_id) continue;
+        // A rule-less repeating row is an ordinary dated entry (F-764, F-818).
+        if (
+          row.is_recurring === true &&
+          !row.parent_event_id &&
+          row.recurrence_rule_id
+        )
+          continue;
         await this.processEvent(row, ctx);
       }
 
@@ -593,7 +602,7 @@ export class CalendarRemindersService {
     const { data, error } = await client
       .from("calendar_events")
       .select(
-        "id, title, event_type, status, all_day, start_date, event_date, start_time, event_time, reminder_days_before, is_recurring, parent_event_id",
+        "id, title, event_type, status, all_day, start_date, event_date, start_time, event_time, reminder_days_before, is_recurring, parent_event_id, recurrence_rule_id",
       )
       .eq("restaurant_id", restaurantId)
       .eq("reminder_enabled", true)
@@ -652,6 +661,9 @@ export class CalendarRemindersService {
       .eq("reminder_enabled", true)
       .eq("is_recurring", true)
       .is("parent_event_id", null)
+      // Rule-less rows are dated entries `readCandidates` reads (F-818); left
+      // in, they sort first and fill the page before any real series.
+      .not("recurrence_rule_id", "is", null)
       .lte("event_date", to)
       .order("event_date", { ascending: true })
       .limit(CalendarRemindersService.CANDIDATE_CAP + 1);
@@ -1049,6 +1061,7 @@ interface CandidateRow {
   reminder_days_before: number | null;
   is_recurring?: boolean | null;
   parent_event_id?: string | null;
+  recurrence_rule_id?: string | null;
 }
 
 interface ClaimedRow {

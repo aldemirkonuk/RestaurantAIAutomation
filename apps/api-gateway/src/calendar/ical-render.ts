@@ -190,13 +190,15 @@ export function renderFeed(input: FeedInput): string {
       end.setUTCDate(end.getUTCDate() + 1);
     } else {
       start = wallClock(startDateStr, event.start_time || "00:00", zone);
-      // An entry with no end date that ends at or before it starts runs past
-      // midnight (F-790), the same as a shift does below.
+      // An entry that ends before it starts, with no end date or one equal to
+      // its start date, runs past midnight to the next morning (F-790, F-820).
+      // Equal times are a zero-length moment that day, as the grid draws it.
+      // The sheet and the grid (EventSheet.tsx, TimeGrid.tsx) read the same.
       const overnight =
-        !event.end_date &&
+        (!event.end_date || event.end_date === startDateStr) &&
         !!event.start_time &&
         !!event.end_time &&
-        hhmm(event.end_time) <= hhmm(event.start_time);
+        hhmm(event.end_time) < hhmm(event.start_time);
       end = wallClock(
         overnight ? addDaysIso(startDateStr, 1) : endDateStr,
         event.end_time || "23:59",

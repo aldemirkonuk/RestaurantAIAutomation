@@ -635,6 +635,34 @@ describe('CalendarNext — editing clears, the whole day, refusals in place', ()
     expect(within(sheet).getByText('Ends after midnight, at 01:00 the next morning.')).toBeInTheDocument();
   });
 
+  it('says next morning only when "Ends on" is empty or the start date, and a moment for equal times (F-820)', () => {
+    draw('/calendar?openModal=true&date=2026-09-15');
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Starts'), { target: { value: '22:00' } });
+    fireEvent.change(within(sheet).getByLabelText('Ends'), { target: { value: '02:00' } });
+    const endsOn = within(sheet).getByLabelText('Ends on (optional)');
+    fireEvent.change(endsOn, { target: { value: '2026-09-15' } });
+    expect(within(sheet).getByText('Ends after midnight, at 02:00 the next morning.')).toBeInTheDocument();
+    fireEvent.change(endsOn, { target: { value: '2026-09-17' } });
+    expect(within(sheet).queryByText(/the next morning/)).toBeNull();
+    fireEvent.change(endsOn, { target: { value: '' } });
+    fireEvent.change(within(sheet).getByLabelText('Starts'), { target: { value: '10:00' } });
+    fireEvent.change(within(sheet).getByLabelText('Ends'), { target: { value: '10:00' } });
+    expect(within(sheet).queryByText(/the next morning/)).toBeNull();
+    expect(within(sheet).getByText('Starts and ends at 10:00, so it shows as a single moment.')).toBeInTheDocument();
+  });
+
+  it('draws an entry that ends when it starts as the shortest block, not an hour (F-820)', () => {
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Key handover', date: '2026-09-15', startTime: '10:00', endTime: '10:00' })],
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }));
+    const block = screen.getByText('Key handover').closest('.cn-block') as HTMLElement;
+    expect(parseFloat(block.style.top)).toBe(10 * 44);
+    expect(parseFloat(block.style.height)).toBe(22);
+  });
+
   it('says a refused move on the page, and lets it be dismissed (F-201)', () => {
     const data = mkData();
     (data.move as { error: unknown }).error = new Error('Network Error');
