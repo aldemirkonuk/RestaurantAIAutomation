@@ -43,13 +43,17 @@
  * a duplicate, not a comparison.
  */
 
-import { EM, countOf, figure, money, num, pct } from './rp-format';
+import { EM, countOf, figure, money, num, pct, ratioPct, shortDay } from './rp-format';
 import { analysis, arr, obj, str, type ViewCtx } from './rp-spec';
 
 export interface BenchGoalRow {
   id: string;
   name: string;
   metricKey: string;
+  /** The metric's unit, from the gateway: currency, percent, units, count or days. */
+  unit: string;
+  /** When `current` was last stored (the goal last opened), YYYY-MM-DD; null when not sent. */
+  readOn: string | null;
   baseline: number | null;
   current: number | null;
   target: number | null;
@@ -71,6 +75,8 @@ export interface BenchRegister {
   /** True when the gateway left the goals out — it does for any role but
    *  owner and manager (F-794) — so the cutting says nothing about them. */
   goalsWithheld: boolean;
+  /** True when the goals read failed inside the parallel call (F-573). */
+  goalsMissing: boolean;
   /** True when the whole cashflow lens failed inside the parallel call. */
   cashflowMissing: boolean;
   seasonalityMissing: boolean;
@@ -112,6 +118,8 @@ export const bench = analysis<BenchRegister>({
         id: str(g.id),
         name: str(g.name) || 'Untitled goal',
         metricKey: str(g.metric_key),
+        unit: str(g.unit) || 'count',
+        readOn: typeof g.updated_at === 'string' ? g.updated_at.slice(0, 10) : null,
         baseline: num(g.baseline_value),
         current: num(g.current_value),
         target: num(g.target_value),
@@ -121,6 +129,9 @@ export const bench = analysis<BenchRegister>({
       // `getOverview` runs its eight lenses through Promise.allSettled and
       // returns `null` for any that threw. A null lens is a read that did not
       // happen — never "this house bought nothing".
+      // A null goals lens is a read that failed, never "no goal is running" (F-573).
+      // Absent is withheld (F-794); present and null is a failed read (F-573).
+      goalsMissing: 'activeGoals' in d && d.activeGoals == null,
       cashflowMissing: d.cashflow == null,
       seasonalityMissing: d.seasonality == null,
       basis: [cfBasis.outflow, seBasis.weekday, seBasis.extremes] as Array<
@@ -152,9 +163,22 @@ export const bench = analysis<BenchRegister>({
         label: 'Trend per day, last 28 days',
         value: b.trendPerDayPct === null ? EM : pct(b.trendPerDayPct),
       },
-      ...(b.goalsWithheld ? [] : [{ label: 'Goals running', value: figure(b.goals.length) }]),
+      ...(b.goalsWithheld
+        ? []
+        : [{
+            label: 'Goals running',
+            value: b.goalsMissing ? EM : figure(b.goals.length),
+            note: b.goalsMissing ? 'the goals could not be read' : undefined,
+          }]),
     ];
 
+    if (b.cashflowMissing && b.seasonalityMissing && b.goalsMissing)
+      return {
+        say: `Nothing in the overview register answered — neither the buying lens, the weekday lens nor the goals returned. ${noPeers}`,
+        figures,
+        notes: [],
+        basis: b.basis,
+      };
     if (b.cashflowMissing && b.seasonalityMissing && b.goals.length === 0)
       return {
         say: b.goalsWithheld
@@ -209,7 +233,9 @@ export const bench = analysis<BenchRegister>({
       });
     // "Now" is the Goals cutting's own reading of the goal where it answered,
     // so the two cuttings on one sheet print one figure (F-816). Where it did
-    // not, the overview's stored value is printed and the row says so.
+    // not, the overview's stored value is printed and the row says so, with
+    // the day it was last read where the gateway sends it (F-573). Each
+    // figure in the goal's own unit (F-573).
     let storedNow = false;
     for (const g of b.goals) {
       const fresh = !!ctx.goalsNow && g.id !== '' && g.id in ctx.goalsNow;
@@ -218,10 +244,14 @@ export const bench = analysis<BenchRegister>({
       rows.push({
         key: `goal-${g.id || g.name}`,
         cells: [
-          fresh ? `${g.name} — since it was set` : `${g.name} — since it was set (now: last stored)`,
-          g.baseline === null ? EM : figure(g.baseline, 'compact'),
-          now === null ? EM : figure(now, 'compact'),
-          g.target === null ? EM : figure(g.target, 'compact'),
+          fresh
+            ? `${g.name} — since it was set`
+            : g.readOn
+              ? `${g.name} — when set, last read ${shortDay(g.readOn)}, target`
+              : `${g.name} — since it was set (now: last stored)`,
+          inUnit(g.baseline, g.unit),
+          inUnit(now, g.unit),
+          inUnit(g.target, g.unit),
         ],
       });
     }
@@ -265,12 +295,15 @@ export const bench = analysis<BenchRegister>({
         b.seasonalityMissing
           ? 'The weekday lens did not answer inside the overview call.'
           : null,
-        storedNow
-          ? 'A goal marked “last stored” shows the figure saved for it the last time it was worked out, not a fresh count, so it can trail the Goals cutting. Open the Goals cutting for where it stands right now.'
-          : null,
-        b.goals.length === 0 && !b.goalsWithheld
-          ? 'No goal is running, so there is nothing to measure against a baseline. Set one on the goals desk and it appears here.'
-          : null,
+        b.goalsMissing
+          ? 'The goals could not be read just now, so whether any goal is running is not known. The goals desk reads them on its own.'
+          : b.goals.length === 0
+            ? b.goalsWithheld
+              ? null
+              : 'No goal is running, so there is nothing to measure against a baseline. Set one on the goals desk and it appears here.'
+            : storedNow
+              ? 'A goal marked “last stored” or “last read” shows where it stood the last time it was opened on the goals desk, not a fresh count, so it can trail the Goals cutting. Open the Goals cutting for where it stands right now.'
+              : null,
       ].filter((n): n is string => n !== null),
       basis: b.basis,
     };
@@ -290,4 +323,12 @@ export function goalsNowFrom(goalsData: unknown): Record<string, number | null> 
     if (id) out[id] = typeof g.current === 'number' && Number.isFinite(g.current) ? g.current : null;
   }
   return out;
+}
+
+/** A goal figure in its own unit — a percent is not a count is not money. */
+function inUnit(v: number | null, unit: string): string {
+  if (v === null) return EM;
+  if (unit === 'percent') return ratioPct(v);
+  if (unit === 'currency') return money(v, 'compact');
+  return figure(v, 'compact');
 }

@@ -29,7 +29,11 @@ type Result = { data: unknown; error: { message: string } | null };
 function makeService(queue: Record<string, Result[]>) {
   const calls: Array<{ table: string; method: string; args: unknown[] }> = [];
   const from = jest.fn((table: string) => {
-    const next = queue[table]?.shift();
+    // An unqueued `restaurants` read is a house with no zone, the rolling
+    // window these cases were written against (F-575 reads the zone first).
+    const next =
+      queue[table]?.shift() ??
+      (table === "restaurants" ? { data: null, error: null } : undefined);
     if (!next) throw new Error(`unexpected read of ${table}`);
     const builder: Record<string, unknown> = {};
     for (const method of ["select", "eq", "gte", "order", "limit"])
@@ -83,7 +87,7 @@ describe("TableAnalyticsService — an empty POS window is not an empty feed (A-
     expect(out.dataStatus).toBe("live");
     expect(out.checksInWindow).toBe(3);
     expect(out.latestCheckAt).toBe("2026-08-30T19:00:00.000Z");
-    expect(from).toHaveBeenCalledTimes(1);
+    expect(from.mock.calls.filter(([t]) => t === "pos_checks")).toHaveLength(1);
   });
 
   it("an empty window over an older feed names the window and the latest day, and says nothing is empty", async () => {
@@ -180,6 +184,70 @@ describe("TableAnalyticsService — an empty POS window is not an empty feed (A-
   it("a failed history probe throws instead of reporting 'no check ever'", async () => {
     const { service } = makeService({
       pos_checks: [ok([]), fail("connection reset")],
+    });
+    await expect(service.getWaiterPerformance("r1", 90)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+});
+
+/**
+ * F-575: "the last 90 days" on the room and the servers is the till's 90 days.
+ *
+ * The till files each check on the house day it closed, else opened, over the
+ * last N house days (ADR 0296). These registers kept checks OPENED in the last
+ * N × 24h, so their parts could not add up to the till's "Taken".
+ */
+describe("TableAnalyticsService — the window is the till's house days (F-575)", () => {
+  const LA = { timezone: "America/Los_Angeles", country: "US" };
+  beforeEach(() => {
+    // 11:00 on 9 October in Los Angeles; the 90-day window opens 12 July.
+    jest.useFakeTimers({
+      now: new Date("2026-10-09T18:00:00Z"),
+      doNotFake: ["nextTick", "setImmediate", "setTimeout", "queueMicrotask"],
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("files each check by the house day it closed, and reads from the till's lookback", async () => {
+    const { service, calls } = makeService({
+      restaurants: [ok(LA)],
+      pos_checks: [
+        ok([
+          // Opened 11 July 10:00, closed 12 July 01:00 house time: 12 July, in.
+          check({
+            id: "late",
+            opened_at: "2026-07-11T17:00:00Z",
+            closed_at: "2026-07-12T08:00:00Z",
+          }),
+          // Opened and closed on 11 July house time: before the window, out,
+          // though it opened inside the last 90 × 24h.
+          check({
+            id: "early",
+            opened_at: "2026-07-11T19:00:00Z",
+            closed_at: "2026-07-11T21:00:00Z",
+          }),
+          check({
+            id: "today",
+            opened_at: "2026-10-09T02:00:00Z",
+            closed_at: "2026-10-09T04:00:00Z",
+          }),
+        ]),
+      ],
+    });
+    const out = await service.getWaiterPerformance("r1", 90);
+    expect(out.checksInWindow).toBe(2);
+    const gte = calls.find(
+      (c) => c.table === "pos_checks" && c.method === "gte",
+    );
+    // A day before the midnight that opens 12 July in Los Angeles.
+    expect(gte?.args).toEqual(["opened_at", "2026-07-11T07:00:00.000Z"]);
+  });
+
+  it("an unreadable zone refuses rather than guessing the days", async () => {
+    const { service } = makeService({
+      restaurants: [fail("connection reset")],
+      pos_checks: [ok([check()])],
     });
     await expect(service.getWaiterPerformance("r1", 90)).rejects.toBeInstanceOf(
       ServiceUnavailableException,

@@ -202,6 +202,8 @@ export interface LedgerRegister {
   costCoverage?: { total: number; priced: number; unpriced: number; complete: boolean };
   /** The on-hand wines with no recorded cost, by name (F-133); capped by the gateway. */
   uncosted?: Array<{ id: string; name: string }>;
+  /** On-hand wines with and without a bottle price (F-574); absent on an older gateway. */
+  priceCoverage?: { total: number; priced: number; unpriced: number };
   inventoryValue: number | null;
   cogs: number | null;
   revenue: number | null;
@@ -228,6 +230,7 @@ const ledger = analysis<LedgerRegister>({
       basis: d.basis as Record<string, string>,
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
       uncosted: arr(d.uncosted).map((u) => ({ id: str(u.id), name: str(u.name) || str(u.id) })),
+      priceCoverage: d.priceCoverage as LedgerRegister['priceCoverage'],
       inventoryValue: num(d.inventoryValue),
       cogs: num(d.cogs),
       revenue: num(d.revenue),
@@ -242,6 +245,7 @@ const ledger = analysis<LedgerRegister>({
   view: (f) => {
     const cc = f.costCoverage;
     const uncosted = f.uncosted ?? [];
+    const pc = f.priceCoverage;
     const figures = [
       {
         label: 'Cellar at cost',
@@ -251,12 +255,12 @@ const ledger = analysis<LedgerRegister>({
       {
         label: 'Cost of goods (365d)',
         value: money(f.cogs),
-        note: 'No delivered order came back for the window — which is either no buying or a read that failed',
+        note: 'No delivered order came back for the window',
       },
       {
         label: 'Sell-price valuation',
         value: money(f.revenue),
-        note: 'No inventory row came back',
+        note: 'No wine on hand carries a bottle price, or no inventory row came back',
       },
       { label: 'Gross margin', value: ratioPct(f.grossMargin), note: 'Needs a complete cost basis' },
       { label: 'COGS ratio', value: ratioPct(f.cogsRatio) },
@@ -281,8 +285,8 @@ const ledger = analysis<LedgerRegister>({
         </dl>
       ),
       figures,
-      notes:
-        cc && !cc.complete
+      notes: [
+        ...(cc && !cc.complete
           ? [
               cc.total === 0
                 ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
@@ -302,7 +306,15 @@ const ledger = analysis<LedgerRegister>({
                   ]
                 : []),
             ]
-          : [],
+          : []),
+        // F-574: a wine with no bottle price is left out of the sell-price
+        // valuation and the margin rather than counted as selling for $0.
+        ...(pc && pc.unpriced > 0
+          ? [
+              `${countOf(pc.unpriced, 'wine on hand has', 'wines on hand have')} no bottle price, so ${pc.unpriced === 1 ? 'it is' : 'they are'} left out of the sell-price valuation, the gross margin and the COGS ratio, rather than counted as selling for nothing.`,
+            ]
+          : []),
+      ],
       basis: [
         f.basis?.revenue,
         f.basis?.cogs,

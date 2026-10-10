@@ -9,6 +9,13 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
+import {
+  houseDayBounds,
+  houseDayOf,
+  houseToday,
+  readHouseZone,
+  shiftHouseDay,
+} from "../common/house-day";
 import * as E from "./engine";
 
 /** A table's id as Postgres stores it; anything else cannot be one of the house's. */
@@ -215,12 +222,40 @@ export class TableAnalyticsService {
    * `[]`, and every caller then reported the failure as an empty feed: the
    * waiter and table registers said "pos_checks is empty" over a read that
    * never answered.
+   *
+   * The window is the till's (F-575): the last `sinceDays` days on the house's
+   * clock, today included, each check filed on the house day it closed, else
+   * opened (ADR 0296, `goals.service.ts` computeMetric). It used to be the
+   * last `sinceDays × 24h` by when each check OPENED, so a check opened before
+   * the till's first midnight and closed after it, or one that fell inside one
+   * window and not the other, made the tables and the servers fail to add up
+   * to the till's "Taken" over the same 90 days. A house with no zone has no
+   * house days and the till states no figure for it, so there is nothing to
+   * reconcile with: it keeps the rolling window.
    */
   private async loadChecks(restaurantId: string, sinceDays = 90) {
-    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
     const client = this.dbService.getClient();
+    let zone: string | null;
     try {
-      return await readWholeWindow<any>("The POS checks in this window", () =>
+      zone = (await readHouseZone(client, restaurantId)).zone;
+    } catch (err: any) {
+      this.logger.warn(`loadChecks zone read failed: ${err?.message}`);
+      throw new ServiceUnavailableException(
+        "The house's time zone could not be read, so no day's checks are claimed.",
+      );
+    }
+    const to = zone ? houseToday(zone) : null;
+    const from = to ? shiftHouseDay(to, -(sinceDays - 1)) : null;
+    // A check opened up to a day before the first midnight may close on it,
+    // so the read starts at the till's own lookback and the filing below
+    // drops whatever falls before the window.
+    const since =
+      zone && from && to
+        ? houseDayBounds(from, to, zone).readFromIso
+        : new Date(Date.now() - sinceDays * 86400000).toISOString();
+    let rows: any[];
+    try {
+      rows = await readWholeWindow<any>("The POS checks in this window", () =>
         client
           .from("pos_checks")
           .select(
@@ -241,6 +276,12 @@ export class TableAnalyticsService {
         "The POS checks could not be read, so nothing about them is claimed.",
       );
     }
+    if (!zone || !from || !to) return rows;
+    const houseZone = zone;
+    return rows.filter((c) => {
+      const day = houseDayOf(c, houseZone);
+      return day !== null && day >= from && day <= to;
+    });
   }
 
   /**
