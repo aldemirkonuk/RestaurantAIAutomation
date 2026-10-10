@@ -40,6 +40,8 @@ const api = vi.hoisted(() => ({
     oldestAt: null as string | null,
     recordingSince: '2026-09-03',
   },
+  /** `GET /settings/time-zone`'s `zone`; null is a house that stated none. */
+  zone: null as string | null,
   broadcast: vi.fn(() => Promise.resolve({ audience: 'selected', recipients: { targeted: 1, notified: 1 }, notified: 1, inbox: true })),
   createShift: vi.fn(() => Promise.resolve({})),
 }));
@@ -97,7 +99,12 @@ vi.mock('../../../services/api/team', () => ({
 }));
 
 vi.mock('../../../services/api/client', () => ({
-  apiClient: { get: () => Promise.resolve({ data: api.trail }) },
+  apiClient: {
+    get: (url: string) =>
+      Promise.resolve({
+        data: url === '/settings/time-zone' ? { zone: api.zone } : api.trail,
+      }),
+  },
 }));
 
 vi.mock('../../../contexts/AuthContext', () => ({
@@ -160,6 +167,7 @@ beforeEach(() => {
   api.templates = [];
   api.timeOff = [];
   api.trail = { entries: [], readable: true, reason: null, oldestAt: null, recordingSince: '2026-09-03' };
+  api.zone = null;
   api.broadcast.mockClear();
 });
 
@@ -354,13 +362,20 @@ describe('the labour target is read against its column default', () => {
   it('reads a stored 28 with no provenance as no target at all', () => {
     const r = readLabourTarget(28, false);
     expect(r.pct).toBeNull();
-    expect(r.why).toMatch(/column's own default/);
+    expect(r.why).toMatch(/nobody here has chosen it/);
+    // Plain words for an owner: no column, type or table names (F-352).
+    expect(r.why).not.toMatch(/team_settings|numeric|DEFAULT|column/);
+  });
+
+  it('reads a 28 someone chose as a 28% target (F-352)', () => {
+    const r = readLabourTarget(28, true);
+    expect(r.pct).toBe(28);
   });
 
   it('reads a chosen figure as a target, and says nothing records who set it', () => {
     const r = readLabourTarget(31, false);
     expect(r.pct).toBe(31);
-    expect(r.why).toMatch(/No column records who set it/);
+    expect(r.why).toMatch(/Set for this restaurant in Settings → Team/);
   });
 
   it('renders "No target set" on screen for a stored 28 with no provenance', async () => {
@@ -398,11 +413,11 @@ describe('the labour target is read against its column default', () => {
     // different state and would let this test pass for the wrong reason.
     // TWO matches on purpose: the register row states it, and the labour panel
     // repeats it where the figure would otherwise have been measured against.
-    expect(await screen.findAllByText(/column's own default/)).toHaveLength(2);
+    expect(await screen.findAllByText(/nobody here has chosen it/)).toHaveLength(2);
     const section = screen.getByRole('region', { name: 'How this desk is configured' });
     expect(within(section).getByText('Labour target')).toBeInTheDocument();
     expect(within(section).getByText(/No target set/)).toBeInTheDocument();
-    expect(within(section).getByText(/column's own default/)).toBeInTheDocument();
+    expect(within(section).getByText(/nobody here has chosen it/)).toBeInTheDocument();
     // The VALUE column is an em dash, not the stored figure — nowhere in the
     // register does 28 appear as a number this house set.
     expect(within(section).queryByText('28%')).not.toBeInTheDocument();
@@ -436,12 +451,41 @@ describe('the labour target is read against its column default', () => {
       },
     });
     render(<TeamNext />, { wrapper });
-    await screen.findByText(/No column records who set it/);
+    await screen.findByText(/Set for this restaurant in Settings → Team/);
     const section = screen.getByRole('region', { name: 'How this desk is configured' });
     expect(within(section).getByText('31%')).toBeInTheDocument();
     expect(
-      within(section).getByText(/No column records who set it/),
+      within(section).getByText(/Set for this restaurant in Settings → Team/),
     ).toBeInTheDocument();
+  });
+
+  it("renders an owner's chosen 28 as 28% (F-352)", async () => {
+    api.week = weekPayload({
+      labor: {
+        enabled: true,
+        totalHours: 40,
+        totalCost: 1200,
+        costComplete: true,
+        pricedShifts: 4,
+        unpricedShifts: 0,
+        targetPct: 28,
+        overtime: [],
+        moneyVisible: true,
+      },
+      settings: {
+        restaurant_id: 'r1',
+        labor_tracking_enabled: true,
+        labor_target_pct: 28,
+        configured: true,
+        labor_target_chosen: true,
+        updated_at: '2026-09-01T08:00:00Z',
+      },
+    });
+    render(<TeamNext />, { wrapper });
+    await screen.findByText(/Set for this restaurant in Settings → Team/);
+    const section = screen.getByRole('region', { name: 'How this desk is configured' });
+    expect(within(section).getByText('28%')).toBeInTheDocument();
+    expect(screen.queryByText(/No target set/)).not.toBeInTheDocument();
   });
 
   it('renders every stated value with where it is kept and why there is no author', async () => {
@@ -453,11 +497,58 @@ describe('the labour target is read against its column default', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('says a labour setting change is recorded, not that nothing records it', async () => {
+    // `recordSettingsChange` files `team_labour_settings_changed` on every
+    // labour save that moves a value, and the trail sheet reads it back.
+    render(<TeamNext />, { wrapper });
+    const section = await screen.findByRole('region', { name: 'How this desk is configured' });
+    expect(
+      within(section).getByText(/each change is recorded with who made it/),
+    ).toBeInTheDocument();
+    expect(
+      within(section).queryByText(/nothing files an audit row when a labour setting changes/),
+    ).not.toBeInTheDocument();
+  });
+
   it('does not render an empty trail as "nothing ever happened"', async () => {
     render(<TeamNext />, { wrapper });
     fireEvent.click(await screen.findByRole('button', { name: 'What changed here' }));
     const sheet = await screen.findByRole('dialog', { name: 'What changed here' });
     expect(within(sheet).getByText(/Recording began on/)).toBeInTheDocument();
+  });
+
+  it('reads back a labour target change: who, from what to what, when on the house clock (F-375)', async () => {
+    // The row `TeamService.recordSettingsChange` files, as `GET /settings-audit`
+    // hands it back: the actor's role is not a {from, to}, so it is no field.
+    api.zone = 'America/Los_Angeles';
+    api.trail = {
+      entries: [
+        {
+          id: 'l1',
+          occurredAt: '2026-10-08T01:30:00Z',
+          action: 'team_labour_settings_changed',
+          entityType: 'team_settings',
+          entityId: 'r1',
+          subject: null,
+          actor: { userId: 'u-owner', name: 'Ayla Tuzlu', email: null },
+          fields: { labor_target_pct: { from: '28.00', to: 31 } },
+        },
+      ],
+      readable: true,
+      reason: null,
+      oldestAt: '2026-10-08T01:30:00Z',
+      recordingSince: '2026-09-03',
+    };
+    render(<TeamNext />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: 'What changed here' }));
+    const sheet = await screen.findByRole('dialog', { name: 'What changed here' });
+    expect(await within(sheet).findByText(/Ayla Tuzlu changed the labour settings/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/labour target 28% → 31%/)).toBeInTheDocument();
+    // 01:30 UTC on the 8th is 6:30 PM on the 7th in the house's zone.
+    expect(await within(sheet).findByText(/Wed, Oct 7, 6:30\sPM PDT/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Nothing about this team has been recorded/)).not.toBeInTheDocument();
+    expect(within(sheet).queryByText(/labor_target_pct/)).not.toBeInTheDocument();
+    expect(within(sheet).queryByText(/not shown in this list yet/)).not.toBeInTheDocument();
   });
 
   it('says the trail could not be read rather than showing it empty', async () => {

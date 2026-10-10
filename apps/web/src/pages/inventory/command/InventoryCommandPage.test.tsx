@@ -24,7 +24,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -415,5 +415,37 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
       expect(second).toBe(first);
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+  });
+});
+
+describe('InventoryCommandPage — an empty house is not a filtered one (F-354)', () => {
+  it('a house with nothing in it says so and offers the first bottle, not "no match"', async () => {
+    routeGets({ 'inventory-list': [] });
+    mount();
+    const empty = await screen.findByTestId('inventory-nothing-yet');
+    expect(empty).toHaveTextContent('Nothing is in your inventory yet.');
+    expect(within(empty).getByRole('button', { name: /Add the first bottle/ })).toBeInTheDocument();
+    expect(screen.queryByText(/match/i)).not.toBeInTheDocument();
+  });
+
+  it('a search that hides every row says the search hides them, with the count', async () => {
+    routeGets({
+      'inventory-list': [
+        { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', stockLive: 6, shadowStock: 0, thresholdMin: 2 },
+      ],
+    });
+    mount();
+    await screen.findByText('Produttori Barbaresco');
+    fireEvent.change(screen.getByPlaceholderText(/Search wines, producers/), { target: { value: 'zzzz' } });
+    expect(await screen.findByText(/Nothing matches your search or filters\. 1 item is hidden by them\./)).toBeInTheDocument();
+    expect(screen.queryByTestId('inventory-nothing-yet')).not.toBeInTheDocument();
+  });
+
+  it('a list that could not be read is neither empty nor filtered', async () => {
+    routeGets({ 'inventory-list': 'reject' });
+    mount();
+    await screen.findByRole('alert');
+    expect(screen.queryByTestId('inventory-nothing-yet')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nothing matches your search/)).not.toBeInTheDocument();
   });
 });

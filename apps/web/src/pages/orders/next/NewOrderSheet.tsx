@@ -46,6 +46,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Sheet } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient, getErrorMessage } from '@/services/api/client';
@@ -193,6 +194,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
 
   const inventory = useInventory();
   const providers = useProviders(restaurantId);
+  const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<OrderLine[]>([]);
@@ -280,6 +282,11 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
   const shelfError = inventory.isError
     ? `The shelf could not be read (${getErrorMessage(inventory.error)}). Nothing is listed because nothing could be read — this is not an empty shelf.`
     : null;
+  // A shelf that was READ and holds nothing (F-353): every search would say
+  // "nothing matches", and a day-one house would not be told why or where to
+  // go. Never set for a shelf that is still loading or could not be read.
+  const shelfEmpty =
+    !inventory.isLoading && !inventory.isError && inventory.data !== undefined && shelf.length === 0;
   const vendorError = providers.isError
     ? `The vendor list could not be read (${getErrorMessage(providers.error)}). Nothing is listed because nothing could be read — this is not a house with no vendors.`
     : null;
@@ -444,7 +451,37 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
             {shelfError}
           </p>
         )}
-        {search.trim() !== '' && (
+        {shelfEmpty && (
+          <div data-testid="new-order-shelf-empty" className="mt-1.5" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+            <p style={{ margin: 0 }}>
+              Nothing is on your shelf yet, so there is nothing to order. Add what you stock in the
+              cellar first — read your menu or photograph a label — then come back to order it.
+            </p>
+            <button
+              type="button"
+              data-testid="new-order-to-cellar"
+              onClick={() => {
+                onClose();
+                navigate('/cellar');
+              }}
+              style={{
+                fontFamily: SANS,
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '6px 12px',
+                marginTop: 8,
+                borderRadius: 3,
+                border: '1px solid var(--seal, #1A5E6B)',
+                background: 'var(--seal, #1A5E6B)',
+                color: 'var(--paper-0, #FBF8F1)',
+                cursor: 'pointer',
+              }}
+            >
+              Go to the cellar
+            </button>
+          </div>
+        )}
+        {search.trim() !== '' && !shelfEmpty && (
           <ul className="mt-1.5" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {matches.length === 0 && !inventory.isLoading && !shelfError && (
               <li style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
@@ -494,7 +531,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
           Lines
         </h3>
 
-        {lines.length === 0 && (
+        {lines.length === 0 && !shelfEmpty && (
           <p className="mt-1.5" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
             No lines yet. Search the register above and add what this order is for.
           </p>

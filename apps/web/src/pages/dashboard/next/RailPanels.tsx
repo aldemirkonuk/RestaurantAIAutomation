@@ -137,9 +137,16 @@ function lowStockView(it: InventoryItem) {
 
 export function LowStockPanel({
   items,
+  cellarSize,
   onRetry,
 }: {
   items: InventoryItem[] | null | undefined;
+  /**
+   * How many items the house holds, from the dashboard totals; `null` or
+   * absent when unknown. An empty low-stock list over an EMPTY cellar is not
+   * "the cellar holds" (F-355): absence is not health.
+   */
+  cellarSize?: number | null;
   /** DASH-W19: reads the list again after a failed read. */
   onRetry?: () => unknown;
 }) {
@@ -171,8 +178,23 @@ export function LowStockPanel({
           {onRetry && <TryAgain onRetry={onRetry} />}
         </EmptyLine>
       )}
-      {items != null && items.length === 0 && (
-        <EmptyLine>Nothing is running low. The cellar holds.</EmptyLine>
+      {items != null && items.length === 0 && cellarSize === 0 && (
+        <EmptyLine>
+          The cellar is empty, so nothing can run low yet.{' '}
+          <Link
+            to="/cellar"
+            className="text-inkm-1 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+          >
+            Add the first bottle
+          </Link>
+        </EmptyLine>
+      )}
+      {items != null && items.length === 0 && cellarSize !== 0 && (
+        <EmptyLine>
+          {cellarSize != null && cellarSize > 0
+            ? 'Nothing is running low. The cellar holds.'
+            : 'Nothing is running low.'}
+        </EmptyLine>
       )}
       {items != null && sorted.length > 0 && (
         <ul className="space-y-1.5">
