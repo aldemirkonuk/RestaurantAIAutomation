@@ -17,7 +17,12 @@ import { feedKey, pulseKey, useOrder } from "@/api/queries";
 import { useOutbox } from "@/state/outbox";
 import { useFeedLocal } from "@/state/feedLocal";
 import { receivingCountBasis } from "@/lib/receivingCountBasis";
-import { computeMatch, money, verdictTone } from "@/lib/invoiceMatch";
+import {
+  computeMatch,
+  differentMoney,
+  money,
+  verdictTone,
+} from "@/lib/invoiceMatch";
 
 /**
  * Receiving — the canonical WineOps invoice, phone edition.
@@ -48,6 +53,8 @@ export default function ReceivingScreen() {
     rawAgreedPrice != null && order?.pricePackSize && order?.priceUom
       ? rawAgreedPrice / order.pricePackSize
       : null;
+  // The order's own money (F-341). Null when the route or row names none.
+  const poCurrency = order?.currency ?? null;
   const stockedQty = countBasis.prefillBottles;
   const stockedNote = countBasis.note;
 
@@ -76,6 +83,10 @@ export default function ReceivingScreen() {
     (Number.isFinite(invoiceUnitPrice) && invoiceUnitPrice >= 0);
   const invoiceNeedsCurrency =
     invoiceUnitPrice != null && !/^[A-Z]{3}$/.test(invoiceCurrency);
+  // Half-typed codes ("EU") are not a money yet; only a whole code compares.
+  const statedInvoiceCurrency = /^[A-Z]{3}$/.test(invoiceCurrency)
+    ? invoiceCurrency
+    : null;
   const canCommit =
     countBasis.orderedBottles != null && priceIsValid && !invoiceNeedsCurrency;
   const [priceOverrideReason, setPriceOverrideReason] = useState("");
@@ -90,8 +101,10 @@ export default function ReceivingScreen() {
       computeMatch({
         orderedQty,
         poUnitPrice,
+        poCurrency,
         invoiceQty,
         invoiceUnitPrice,
+        invoiceCurrency: statedInvoiceCurrency,
         acceptedQty,
         rejectedQty,
         priceOverrideReason,
@@ -99,17 +112,26 @@ export default function ReceivingScreen() {
     [
       orderedQty,
       poUnitPrice,
+      poCurrency,
       invoiceQty,
       invoiceUnitPrice,
+      statedInvoiceCurrency,
       acceptedQty,
       rejectedQty,
       priceOverrideReason,
     ],
   );
   const tone = verdictTone(match.verdict);
+  // Two different moneys are never compared and never ask for an override:
+  // the gateway holds the price for the owner instead (F-341).
+  const currencyDiffers =
+    poUnitPrice != null &&
+    invoiceUnitPrice != null &&
+    differentMoney(poCurrency, statedInvoiceCurrency);
   const priceDiffers =
     poUnitPrice != null &&
     invoiceUnitPrice != null &&
+    !currencyDiffers &&
     Math.round(poUnitPrice * 100) !== Math.round(invoiceUnitPrice * 100);
   const receivedQty = acceptedQty + rejectedQty;
 
@@ -271,7 +293,9 @@ export default function ReceivingScreen() {
                     <AppText variant="footnote" tone="secondary">
                       Agreed: {orderedQty}{" "}
                       {orderedQty === 1 ? "bottle" : "bottles"}
-                      {poUnitPrice != null ? ` @ ${money(poUnitPrice)}` : ""}
+                      {poUnitPrice != null
+                        ? ` @ ${money(poUnitPrice, poCurrency)}`
+                        : ""}
                     </AppText>
                   </View>
 
@@ -586,10 +610,16 @@ export default function ReceivingScreen() {
                         <AppText variant="caption" tone="tertiary">
                           Agreed bottle price not available here
                         </AppText>
+                      ) : currencyDiffers ? (
+                        <AppText variant="caption" tone="warning">
+                          Agreed in {poCurrency}, billed in{" "}
+                          {statedInvoiceCurrency}. Not compared
+                        </AppText>
                       ) : priceDiffers ? (
                         <AppText variant="caption" tone="danger">
                           {money(
                             Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice),
+                            poCurrency ?? statedInvoiceCurrency,
                           )}
                           /btl{" "}
                           {(invoiceUnitPrice ?? 0) > poUnitPrice
@@ -716,7 +746,8 @@ export default function ReceivingScreen() {
                 </AppText>
                 {match.effectiveUnitCost != null ? (
                   <AppText variant="caption" tone="secondary">
-                    Real cost {money(match.effectiveUnitCost)}/btl
+                    Real cost{" "}
+                    {money(match.effectiveUnitCost, statedInvoiceCurrency)}/btl
                   </AppText>
                 ) : null}
               </View>

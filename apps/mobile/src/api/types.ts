@@ -137,6 +137,12 @@ export interface ProcurementOrder {
   priceUom?: string | null;
   pricePackSize?: number | null;
   /**
+   * The order's money, ISO 4217 (`procurement_orders.currency`). `null` = the
+   * row names none; absent = the route did not read it. `/procurement/orders/:id`
+   * selects `*`, so the receiving screen gets it (F-341).
+   */
+  currency?: string | null;
+  /**
    * What this order RECEIVED — ADR 0192: the stock ledger's count for the
    * order's item, in the item's stock unit (bottles for wine), never rounded,
    * with `words` ("5 cases + 5 bottles"). The block with `readable: false` is
