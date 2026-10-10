@@ -493,7 +493,7 @@ describe("MenusService.discardMenuItem (ADR 0160 sec110 item 7)", () => {
     const service = makeService(tables);
 
     const result = await service.discardMenuItem("rest-1", "mi-1");
-    expect(result).toEqual({ menuItemId: "mi-1", status: "discarded" });
+    expect(result).toEqual({ menuItemId: "mi-1", status: "discarded", audited: true });
 
     // The row stays — a soft remove, never a DELETE.
     expect(tables.menu_items).toHaveLength(1);
@@ -532,6 +532,73 @@ describe("MenusService.discardMenuItem (ADR 0160 sec110 item 7)", () => {
     await service.discardMenuItem("rest-1", "mi-1");
     await service.discardMenuItem("rest-1", "mi-1");
     expect(tables.menu_items[0]).toMatchObject({ status: "discarded", prior_status: "flagged" });
+  });
+
+  // F-484: a discard used to leave no who or when anywhere.
+  it("files who discarded the line, which line, on which menu and at what price", async () => {
+    const tables: Record<string, Row[]> = {
+      menu_items: [
+        {
+          id: "mi-1",
+          menu_id: "menu-1",
+          restaurant_id: "rest-1",
+          name: "Opus One",
+          category: "Red",
+          status: "approved",
+          bottle_price: 120,
+          by_glass_price: 18,
+        },
+      ],
+      restaurant_menus: [
+        { id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" },
+      ],
+      system_audit_log: [],
+    };
+    const service = makeService(tables);
+
+    await service.discardMenuItem("rest-1", "mi-1", "user-7");
+
+    expect(tables.system_audit_log).toHaveLength(1);
+    expect(tables.system_audit_log[0]).toMatchObject({
+      actor_type: "user",
+      actor_id: "user-7",
+      action: "menu_line_discarded",
+      entity_type: "menu_item",
+      entity_id: "mi-1",
+      restaurant_id: "rest-1",
+      changes: {
+        subject: "Opus One (bottle 120, glass 18) on Wine List",
+        fields: { status: { from: "approved", to: "discarded" } },
+        menu_id: "menu-1",
+        menu_name: "Wine List",
+        bottle_price: 120,
+        by_glass_price: 18,
+      },
+    });
+  });
+
+  it("keeps the discard and says audited: false when the audit row cannot be written", async () => {
+    const tables: Record<string, Row[]> = {
+      menu_items: [
+        { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", name: "Opus One", status: "approved" },
+      ],
+    };
+    const supabase = makeFakeSupabase(tables);
+    const realFrom = supabase.from;
+    supabase.from = (table: string) =>
+      table === "system_audit_log"
+        ? { insert: async () => ({ error: { message: "audit down" } }) }
+        : realFrom(table);
+    const service = new MenusService(
+      { supabase } as unknown as DatabaseService,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+    );
+
+    const result = await service.discardMenuItem("rest-1", "mi-1", "user-7");
+    expect(result).toEqual({ menuItemId: "mi-1", status: "discarded", audited: false });
+    expect(tables.menu_items[0].status).toBe("discarded");
   });
 });
 

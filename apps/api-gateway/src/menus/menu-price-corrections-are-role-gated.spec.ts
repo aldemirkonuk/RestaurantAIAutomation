@@ -122,7 +122,8 @@ describe("PATCH /menus/:rid/items/:id/discard — owner or manager only (F-268)"
   it.each(["owner", "manager"])("a %s may take a line off the menu", async (role) => {
     const { c, discard } = controller(role);
     await c.discardMenuItem("rest-1", "mi-1", { userId: "u-1" });
-    expect(discard).toHaveBeenCalledWith("rest-1", "mi-1");
+    // The person rides along for the audit row (F-484, fix/sim-logs-trace).
+    expect(discard).toHaveBeenCalledWith("rest-1", "mi-1", "u-1");
   });
 
   it.each(["staff", null])("%s is refused, and nothing is discarded", async (role) => {

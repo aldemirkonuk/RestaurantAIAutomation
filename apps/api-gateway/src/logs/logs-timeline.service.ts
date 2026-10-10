@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { STAFF_WITHHELD_ACTIONS } from "../settings-audit/settings-audit.service";
 
 /**
  * Correlated logs timeline (SimPOS testbed plan, cross-cutting).
@@ -128,6 +129,80 @@ function withholdsAwayActions(role: unknown): boolean {
   return r !== "owner" && r !== "manager";
 }
 
+/**
+ * F-482 (2026-10-09): /logs now names who did each thing. The ruling above
+ * stands — a staff reader still receives every row but the two Away actions —
+ * but the rows settings-audit withholds from staff because each one names a
+ * colleague (`STAFF_WITHHELD_ACTIONS`: area membership, area lead, zone set-up
+ * access) reach a staff reader UNNAMED: the act and its from → to, never who
+ * did it or whom it was about. Before F-482 no /logs row named anybody, so
+ * this keeps those rows exactly as anonymous for staff as they were; widening
+ * the withholding instead would reverse the round-4 ruling, which is the
+ * founder's call. The Away pair is left out of this list because the query
+ * already withholds those rows from staff entirely.
+ */
+export const LOGS_UNNAMED_FOR_STAFF: readonly string[] =
+  STAFF_WITHHELD_ACTIONS.filter(
+    (a) => !(LOGS_AWAY_ACTIONS_WITHHELD_FROM_STAFF as readonly string[]).includes(a),
+  );
+
+/** What a reader is shown for a person this house cannot name. */
+const NOT_OF_THIS_HOUSE = "Someone not on this house's team";
+/** What a reader is shown when the names could not be read at all. */
+const NAME_NOT_READ = "Someone (their name could not be read)";
+
+/** The name for one id, or why there is none. `names` null: the lookup failed. */
+function nameFor(names: Map<string, string> | null, id: string): string {
+  if (names === null) return NAME_NOT_READ;
+  return names.get(id) ?? NOT_OF_THIS_HOUSE;
+}
+
+/** A value inside "from → to", in words. */
+function valueWords(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "none";
+  if (v === true) return "yes";
+  if (v === false) return "no";
+  if (typeof v === "string" || typeof v === "number") return String(v);
+  return JSON.stringify(v);
+}
+
+/**
+ * The `{ from, to }` pairs inside an audit row's `changes`. Both shapes
+ * writers use are read, the same two `settings-audit.service.ts` `readFields`
+ * reads: nested under `fields`, or at the top level (`recordAccessChange`).
+ * Anything that is not a `{ from, to }` pair (`subject`, `register`, a
+ * removal's shift tally) is not a field change and is not printed as one.
+ */
+function fieldChanges(
+  changes: unknown,
+): Array<{ field: string; from: unknown; to: unknown }> {
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) return [];
+  const c = changes as Record<string, unknown>;
+  const nested = c.fields;
+  const source =
+    nested && typeof nested === "object" && !Array.isArray(nested)
+      ? (nested as Record<string, unknown>)
+      : c;
+  const out: Array<{ field: string; from: unknown; to: unknown }> = [];
+  for (const [key, value] of Object.entries(source)) {
+    if (key === "register" || key === "subject" || key === "fields") continue;
+    if (value && typeof value === "object" && !Array.isArray(value) && "to" in value) {
+      const v = value as { from?: unknown; to?: unknown };
+      out.push({ field: key, from: v.from ?? null, to: v.to ?? null });
+    }
+  }
+  return out;
+}
+
+/** "role: staff → manager; lead: no → yes" */
+function changeWords(
+  fields: Array<{ field: string; from: unknown; to: unknown }>,
+): string {
+  return fields
+    .map((f) => `${f.field.replace(/_/g, " ")}: ${valueWords(f.from)} → ${valueWords(f.to)}`)
+    .join("; ");
+}
+
 @Injectable()
 export class LogsTimelineService {
   private readonly logger = new Logger(LogsTimelineService.name);
@@ -230,7 +305,7 @@ export class LogsTimelineService {
           db
             .from("pos_checks")
             .select(
-              "id, external_check_id, source, closed_at, opened_at, correlation_id, items",
+              "id, external_check_id, source, closed_at, opened_at, correlation_id, items, voided, server_name",
             )
             .eq("restaurant_id", restaurantId),
         );
@@ -245,18 +320,28 @@ export class LogsTimelineService {
       if (closed.error) throw closed.error;
       if (open.error) throw open.error;
       const data = [...(closed.data || []), ...(open.data || [])];
-      return data.map((r: any) => ({
-        id: r.id,
-        source: "pos_checks" as const,
-        occurredAt: r.closed_at || r.opened_at || null,
-        correlationId: r.correlation_id ?? null,
-        summary: `POS check ${r.external_check_id}${r.closed_at ? " closed" : " opened"} (${r.source})`,
-        detail: {
-          externalCheckId: r.external_check_id,
-          source: r.source,
-          itemCount: Array.isArray(r.items) ? r.items.length : 0,
-        },
-      }));
+      // F-483: a voided check is stamped closed too, so `closed_at` alone
+      // printed a void as an ordinary sale and an owner looking for last
+      // night's voids could not find one. `voided` is said first. The server
+      // is the till's own name for whoever rang it up (F-482).
+      return data.map((r: any) => {
+        const state = r.voided === true ? "voided" : r.closed_at ? "closed" : "opened";
+        const server = typeof r.server_name === "string" && r.server_name.trim() ? r.server_name.trim() : null;
+        return {
+          id: r.id,
+          source: "pos_checks" as const,
+          occurredAt: r.closed_at || r.opened_at || null,
+          correlationId: r.correlation_id ?? null,
+          summary: `POS check ${r.external_check_id} ${state}${server ? ` by ${server}` : ""} (${r.source})`,
+          detail: {
+            externalCheckId: r.external_check_id,
+            source: r.source,
+            voided: r.voided === true,
+            serverName: server,
+            itemCount: Array.isArray(r.items) ? r.items.length : 0,
+          },
+        };
+      });
     });
   }
 
@@ -304,7 +389,7 @@ export class LogsTimelineService {
       let q = db
         .from("inventory_transactions")
         .select(
-          "id, inventory_id, transaction_type, source, quantity_change, reason, metadata, transaction_date",
+          "id, inventory_id, transaction_type, source, quantity_change, reason, metadata, transaction_date, performed_by",
         )
         .eq("restaurant_id", restaurantId);
       q = windowed(q, "transaction_date", cursor);
@@ -313,20 +398,36 @@ export class LogsTimelineService {
       }
       const { data, error } = await q;
       if (error) throw error;
-      return (data || []).map((r: any) => ({
-        id: r.id,
-        source: "inventory_transactions" as const,
-        occurredAt: r.transaction_date ?? null,
-        correlationId: r.metadata?.correlation_id ?? null,
-        summary: `Stock ${r.transaction_type} (${r.source}): ${r.quantity_change > 0 ? "+" : ""}${r.quantity_change}`,
-        detail: {
-          inventoryId: r.inventory_id,
-          transactionType: r.transaction_type,
-          source: r.source,
-          quantityChange: r.quantity_change,
-          reason: r.reason,
-        },
-      }));
+      const rows = data || [];
+      // F-482: who counted or adjusted. A movement with no `performed_by`
+      // was booked by the system (`apply_stock_movement` stamps
+      // performed_by_type 'system'), so it names nobody.
+      const names = await this.namesInHouse(
+        db,
+        restaurantId,
+        rows.map((r: any) => r.performed_by),
+      );
+      return rows.map((r: any) => {
+        const by = r.performed_by
+          ? nameFor(names, r.performed_by)
+          : null;
+        return {
+          id: r.id,
+          source: "inventory_transactions" as const,
+          occurredAt: r.transaction_date ?? null,
+          correlationId: r.metadata?.correlation_id ?? null,
+          summary: `Stock ${r.transaction_type} (${r.source}): ${r.quantity_change > 0 ? "+" : ""}${r.quantity_change}${by ? ` by ${by}` : ""}`,
+          detail: {
+            inventoryId: r.inventory_id,
+            transactionType: r.transaction_type,
+            source: r.source,
+            quantityChange: r.quantity_change,
+            reason: r.reason,
+            performedBy: r.performed_by ?? null,
+            performedByName: by,
+          },
+        };
+      });
     });
   }
 
@@ -375,7 +476,7 @@ export class LogsTimelineService {
       let q = db
         .from("system_audit_log")
         .select(
-          "id, actor_type, action, entity_type, entity_id, reason, correlation_id, created_at",
+          "id, actor_type, actor_id, action, entity_type, entity_id, changes, reason, correlation_id, created_at",
         )
         .eq("restaurant_id", restaurantId);
       // ADR 0218 round 4, 2026-09-22 — filtered in the QUERY, not after the
@@ -396,22 +497,108 @@ export class LogsTimelineService {
       if (correlationId) q = q.eq("correlation_id", correlationId);
       const { data, error } = await q;
       if (error) throw error;
-      return (data || []).map((r: any) => ({
-        id: r.id,
-        source: "system_audit_log" as const,
-        // NULLABLE in the baseline — see TimelineEvent.occurredAt.
-        occurredAt: r.created_at ?? null,
-        correlationId: r.correlation_id ?? null,
-        summary: `${r.actor_type} ${r.action} on ${r.entity_type}`,
-        detail: {
-          actorType: r.actor_type,
-          action: r.action,
-          entityType: r.entity_type,
-          entityId: r.entity_id,
-          reason: r.reason,
-        },
-      }));
+      const rows = data || [];
+      // F-482: "Name: act — subject (field: from → to)". The summary used to
+      // be `${actor_type} ${action} on ${entity_type}` ("user
+      // member_role_changed on restaurant_member"): who and from-what-to-what
+      // were stored on the row and never read.
+      const staff = withholdsAwayActions(role);
+      const unnamed = (action: string) =>
+        staff && LOGS_UNNAMED_FOR_STAFF.includes(action);
+      const names = await this.namesInHouse(
+        db,
+        restaurantId,
+        rows.filter((r: any) => !unnamed(r.action)).map((r: any) => r.actor_id),
+      );
+      return rows.map((r: any) => {
+        const hide = unnamed(r.action);
+        const fields = fieldChanges(r.changes);
+        const subject =
+          !hide && typeof r.changes?.subject === "string" && r.changes.subject.trim()
+            ? r.changes.subject.trim()
+            : null;
+        const actorName = hide
+          ? null
+          : r.actor_id
+            ? nameFor(names, r.actor_id)
+            : null;
+        const who = hide
+          ? "Someone"
+          : (actorName ??
+            (r.actor_type === "system"
+              ? "The system"
+              : r.actor_type === "agent"
+                ? "An agent"
+                : "Someone"));
+        const act = String(r.action ?? "").replace(/_/g, " ");
+        const moved = changeWords(fields);
+        return {
+          id: r.id,
+          source: "system_audit_log" as const,
+          // NULLABLE in the baseline — see TimelineEvent.occurredAt.
+          occurredAt: r.created_at ?? null,
+          correlationId: r.correlation_id ?? null,
+          summary: `${who}: ${act}${subject ? ` — ${subject}` : ""}${moved ? ` (${moved})` : ""}`,
+          detail: {
+            actorType: r.actor_type,
+            actorId: hide ? null : (r.actor_id ?? null),
+            actorName,
+            action: r.action,
+            entityType: r.entity_type,
+            entityId: r.entity_id,
+            subject,
+            changes: fields,
+            reason: r.reason,
+          },
+        };
+      });
     });
+  }
+
+  /**
+   * Names for the people behind a page of rows, resolved WITHIN this house
+   * only (F-482): an id is named when `public.users` says it belongs to this
+   * house or it holds (or held — a former member's acts stay theirs) a
+   * `user_restaurant_access` row for it. Any other id's name is read but
+   * dropped here, never returned to this reader, and its row reads "Someone
+   * not on this house's team". A lookup that fails returns null — said on each row as a name
+   * that could not be read, never as a stranger — and is logged; the rows
+   * still come back, because a change nobody can name still happened.
+   */
+  private async namesInHouse(
+    db: any,
+    restaurantId: string,
+    ids: unknown[],
+  ): Promise<Map<string, string> | null> {
+    const out = new Map<string, string>();
+    const unique = [
+      ...new Set(ids.filter((v): v is string => typeof v === "string" && v.length > 0)),
+    ];
+    if (unique.length === 0) return out;
+    try {
+      const [users, access] = await Promise.all([
+        db
+          .from("users")
+          .select("user_id, name, email, restaurant_id")
+          .in("user_id", unique),
+        db
+          .from("user_restaurant_access")
+          .select("user_id")
+          .eq("restaurant_id", restaurantId)
+          .in("user_id", unique),
+      ]);
+      if (users.error) throw users.error;
+      if (access.error) throw access.error;
+      const held = new Set((access.data ?? []).map((a: any) => a.user_id));
+      for (const u of users.data ?? []) {
+        if (u.restaurant_id !== restaurantId && !held.has(u.user_id)) continue;
+        out.set(u.user_id, u.name?.trim() || u.email || "A team member");
+      }
+    } catch (err: any) {
+      this.logger.warn(`/logs could not name the people on this page: ${err?.message ?? err}`);
+      return null;
+    }
+    return out;
   }
 
   /**
