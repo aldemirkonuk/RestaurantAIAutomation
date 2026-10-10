@@ -526,20 +526,6 @@ export class DashboardService {
   constructor(private readonly dbService: DatabaseService) {}
 
   /**
-   * The house's IANA zone. A house with none recorded falls back to UTC, the
-   * clock these figures always used; a failed read throws.
-   */
-  private async houseZone(client: any, restaurantId: string): Promise<string> {
-    const { data, error } = await client
-      .from("restaurants")
-      .select("timezone")
-      .eq("id", restaurantId)
-      .limit(1);
-    if (error) throw new Error(`restaurants read failed: ${error.message}`);
-    return (data && data[0]?.timezone) || "UTC";
-  }
-
-  /**
    * Get aggregated dashboard summary with parallel service calls
    * Uses Promise.allSettled for graceful degradation
    *
@@ -1181,11 +1167,18 @@ export class DashboardService {
             .from("v_low_stock_items")
             .select("id")
             .eq("restaurant_id", restaurantId),
-          client
-            .from("procurement_orders")
-            .select("id, status, total_cost, final_price, bottles_total, quantity, delivered_at")
-            .eq("restaurant_id", restaurantId),
-          this.houseZone(client, restaurantId),
+          // Every order, paged (F-186): an unranged select stopped at
+          // PostgREST's 1,000 rows, so a house past that saw the spend and
+          // the approval count of whichever thousand came back.
+          readAll("The house's orders", (after) => {
+            let q = client
+              .from("procurement_orders")
+              .select("id, status, total_cost, final_price, bottles_total, quantity, delivered_at")
+              .eq("restaurant_id", restaurantId);
+            if (after) q = q.gt("id", after);
+            return q;
+          }),
+          this.houseZoneOrNull(client, restaurantId),
         ]);
 
       // A failed read used to become an empty list, so a cellar that could
@@ -1196,7 +1189,7 @@ export class DashboardService {
       // it is gone (DASH-W8).
       const inventory = rowsOrThrow(inventoryResult, "restaurant_inventory");
       const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
-      const orders = rowsOrThrow(ordersResult, "procurement_orders");
+      const orders: any[] = valueOrThrow(ordersResult);
       const zone = valueOrThrow(zoneResult);
       const totalWines = inventory.length;
       const totalBottles = inventory.reduce(
@@ -1212,6 +1205,27 @@ export class DashboardService {
       const pendingOrders = orders.filter((o) =>
         hasStatus(o.status, ORDER_AWAITING_APPROVAL_STATUSES),
       ).length;
+
+      // A house with no zone has no "today" to file a delivery on (DASH-G2,
+      // F-188): the day figures are unknown, as the month grid says, never
+      // UTC days dressed as the house's.
+      if (!zone) {
+        return {
+          totalWines,
+          totalBottles,
+          totalVolumeMl,
+          totalVolumeOz,
+          lowStockItems,
+          pendingOrders,
+          todayProcurementSpend: null,
+          weekProcurementSpend: null,
+          monthProcurementSpend: null,
+          todayDeliveries: null,
+          monthBottlesIn: null,
+          timezone: null,
+          zone_unset: true,
+        };
+      }
 
       // Same rule as the calendar (DASH-W2): money counts on the day it was
       // DELIVERED, on the house's wall clock, and "month" is this calendar
@@ -1272,6 +1286,7 @@ export class DashboardService {
           0,
         ),
         timezone: zone,
+        zone_unset: false,
       };
     } catch (error) {
       this.logger.error(`Stats fetch failed: ${error.message}`);

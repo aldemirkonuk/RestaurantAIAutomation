@@ -5,6 +5,7 @@ import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
 import { DatabaseService } from "../database/database.service";
+import { readHouseZone } from "../common/house-day";
 import {
   RecommendationActionsService,
   RecommendationStatus,
@@ -839,7 +840,20 @@ export class RecommendationsService {
     // fired in, so a one-card dismiss or done hides this firing and the card
     // returns when the rule fires in its next period. Before, its only key
     // was the bare rule — a whole-rule act staff could not make at all.
+    // The period is the house's (F-384): keyed on UTC, a card put away in a
+    // Los Angeles afternoon came back at 17:00. A house with no zone, or a
+    // zone that cannot be read, keys on UTC as before: a key is not a figure,
+    // and a failed read must not take the whole feed down with it.
     const firedAt = new Date();
+    let zone: string | null = null;
+    try {
+      zone = (await readHouseZone(this.dbService.getClient(), restaurantId))
+        .zone;
+    } catch (err: any) {
+      this.logger.warn(
+        `house zone unread; firing periods keyed on UTC: ${err?.message ?? err}`,
+      );
+    }
     for (const r of recs) {
       const keyed = withFiring(
         {
@@ -849,6 +863,7 @@ export class RecommendationsService {
         },
         firingPeriodOf(r.urgency),
         firedAt,
+        zone,
       );
       r.periodKey = keyed.periodKey ?? null;
     }
