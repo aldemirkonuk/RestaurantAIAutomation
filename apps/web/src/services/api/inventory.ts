@@ -384,6 +384,17 @@ export async function recordPour(
 }
 
 /**
+ * What a recorded count says (ADR 0078): what the books held, what was
+ * counted, and the difference. Fields the server did not send stay null.
+ */
+export interface SpotCountRecord {
+  expectedQty: number | null;
+  countedQty: number | null;
+  varianceQty: number | null;
+  replayed?: boolean;
+}
+
+/**
  * Spot count (decisions E40-E43) — immediate reconciliation via
  * apply_stock_movement(reconciliation/mobile_count). Idempotency key is
  * client-generated as count:{inventoryId}:{clientCountId} so a retry over a
@@ -401,7 +412,7 @@ export async function recordSpotCount(
     countedAgoMs?: number;
   },
   restaurantId?: string
-): Promise<{ item: InventoryItem | null }> {
+): Promise<{ item: InventoryItem | null; count?: SpotCountRecord | null }> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
@@ -411,7 +422,7 @@ export async function recordSpotCount(
       ? crypto.randomUUID()
       : `${Date.now()}:${Math.random().toString(36).slice(2, 8)}`);
 
-  const response = await apiClient.post<{ item: InventoryItem | null }>(
+  const response = await apiClient.post<{ item: InventoryItem | null; count?: SpotCountRecord | null }>(
     `${INVENTORY_PATH}/${id}/item/${itemId}/count`,
     { ...body, clientCountId }
   );

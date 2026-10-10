@@ -20,6 +20,10 @@
  * every location. The panel says so, so nobody counts one shelf and wipes the
  * rest. The field opens empty (F-294): a count pre-filled with the book figure
  * recorded "the books were right" for anyone who tapped Submit without counting.
+ *
+ * F-645: once a count is saved the panel shows what the books said, what was
+ * counted and the difference, before it closes. A queued count has no answer
+ * yet, so it closes as before with "will sync".
  */
 import { useEffect, useId, useRef, useState } from 'react'
 import { X, Mic, Camera, Loader2, Check } from 'lucide-react'
@@ -28,6 +32,7 @@ import { estimateCountFromPhoto } from '../../../services/api/inventory'
 import { submitSpotCount, newClientCountId } from '../../../lib/spotCountOutbox'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
+import type { SpotCountRecord } from '../../../services/api/inventory'
 import { SCAN_ACCEPT, resolveMimeType } from '../../../lib/uploadAccept'
 import { useModalDialog } from '../../../hooks/useModalDialog'
 
@@ -93,6 +98,15 @@ function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition || w.webkitSpeechRecognition || null
 }
 
+const bottles = (n: number) => `${n} bottle${n === 1 ? '' : 's'}`
+
+/** The difference in the counter's words: how far off the books were. */
+export function varianceSentence(c: SpotCountRecord): string {
+  const v = c.varianceQty ?? 0
+  if (v === 0) return 'The books were right.'
+  return `${bottles(Math.abs(v))} ${v < 0 ? 'fewer' : 'more'} than the books — the books now say ${c.countedQty}.`
+}
+
 function toBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -117,6 +131,7 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
   const [listening, setListening] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoNote, setPhotoNote] = useState<string | null>(null)
+  const [result, setResult] = useState<SpotCountRecord | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const voiceSupported = !!getSpeechRecognition()
@@ -194,7 +209,7 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
     }
     setSubmitting(true)
     try {
-      const { synced } = await submitSpotCount({
+      const { synced, count } = await submitSpotCount({
         itemId: inventoryId,
         itemLabel: item.name,
         body: {
@@ -203,11 +218,15 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
           reason: 'Spot count',
         },
       })
+      onCommitted()
+      if (synced && count && count.expectedQty != null && count.countedQty != null) {
+        setResult(count)
+        return
+      }
       toast.success(
         synced ? 'Count recorded' : 'Count saved — will sync',
         synced ? `${item.name}: ${countedQty} bottles` : 'No signal right now; it will sync automatically.',
       )
-      onCommitted()
       onClose()
     } catch (e: any) {
       toast.error('Count failed', e?.response?.data?.message || e?.message)
@@ -237,6 +256,42 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
           </button>
         </div>
 
+        {result ? (
+          <div className="p-5 space-y-4" data-testid="spot-count-result">
+            <dl className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <dt className="text-[11px] text-gray-400">Books said</dt>
+                <dd className="text-2xl font-mono font-bold text-gray-900">{result.expectedQty}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-gray-400">You counted</dt>
+                <dd className="text-2xl font-mono font-bold text-gray-900">{result.countedQty}</dd>
+              </div>
+              <div>
+                <dt className="text-[11px] text-gray-400">Difference</dt>
+                <dd
+                  className={cn(
+                    'text-2xl font-mono font-bold',
+                    (result.varianceQty ?? 0) === 0 ? 'text-gray-900' : 'text-rose-600',
+                  )}
+                >
+                  {(result.varianceQty ?? 0) > 0 ? '+' : ''}
+                  {result.varianceQty ?? 0}
+                </dd>
+              </div>
+            </dl>
+            <p className="text-sm text-gray-700 text-center">
+              {result.replayed ? 'This count was already saved. ' : 'Count saved. '}
+              {varianceSentence(result)}
+            </p>
+            <button
+              onClick={onClose}
+              className="w-full h-11 bg-wine-600 hover:bg-wine-700 text-white text-sm font-bold rounded-xl"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-600 leading-relaxed" data-testid="spot-count-scope">
             Count every bottle of this wine in every room, then enter the total. It replaces the total for all of
@@ -322,6 +377,7 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
             Voice and photo only suggest a number — nothing is saved until you tap Submit.
           </p>
         </div>
+        )}
       </div>
     </div>
   )

@@ -297,9 +297,27 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     });
   });
 
+  it("F-644: one uncosted wine leaves the priced wines' value standing, and says how many it left out", async () => {
+    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
+      RESTAURANT,
+    );
+    // The whole-cellar figure stays withheld: a part is not the whole.
+    expect(out.inventoryValue).toBeNull();
+    // The priced wines are still worth what they are worth.
+    expect(out.pricedInventoryValue).toBe(100); // 5 × 20
+    expect(out.costCoverage.unpriced).toBe(1);
+    expect(out.basis.pricedInventoryValue).toContain("costCoverage.unpriced");
+  });
+
+  it("reports no priced value when no on-hand wine carries a cost", async () => {
+    const out = await build([UNPRICED]).getFinancialSummary(RESTAURANT);
+    expect(out.pricedInventoryValue).toBeNull();
+  });
+
   it("still reports real numbers when every on-hand row is costed", async () => {
     const out = await build([RECORDED]).getFinancialSummary(RESTAURANT);
     expect(out.inventoryValue).toBe(100); // 5 × 20
+    expect(out.pricedInventoryValue).toBe(100);
     expect(out.costCoverage.complete).toBe(true);
     expect(out.basis.inventoryValue).toContain(
       "every row in scope has a recorded cost",

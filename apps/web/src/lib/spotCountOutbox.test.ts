@@ -19,7 +19,7 @@ const store = vi.hoisted(() => ({
 }))
 vi.mock('./offline-storage', () => ({ offlineStorage: store }))
 
-import { flushSpotCountOutbox } from './spotCountOutbox'
+import { flushSpotCountOutbox, submitSpotCount } from './spotCountOutbox'
 
 const U1 = '11111111-1111-4111-8111-111111111111'
 const H1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -224,5 +224,36 @@ describe('F-249: a queued count says how old it is', () => {
     await flushSpotCountOutbox()
 
     expect(recordSpotCount.mock.calls[0][1]).toEqual({ countedQty: 3, clientCountId: 'legacy' })
+  })
+})
+
+describe('submitSpotCount — the count comes back (F-645)', () => {
+  it("returns what the books said, what was counted, and the difference", async () => {
+    recordSpotCount.mockResolvedValue({
+      item: null,
+      count: { expectedQty: 12, countedQty: 10, varianceQty: -2, replayed: false },
+    })
+    const res = await submitSpotCount({
+      itemId: 'i-1',
+      itemLabel: 'Yakut',
+      restaurantId: H1,
+      body: { countedQty: 10, clientCountId: 'k' },
+    })
+    expect(res).toEqual({
+      synced: true,
+      count: { expectedQty: 12, countedQty: 10, varianceQty: -2, replayed: false },
+    })
+  })
+
+  it('a queued count has no result yet', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    store.addPendingMutation.mockResolvedValue(undefined)
+    const res = await submitSpotCount({
+      itemId: 'i-1',
+      itemLabel: 'Yakut',
+      restaurantId: H1,
+      body: { countedQty: 10, clientCountId: 'k' },
+    })
+    expect(res).toEqual({ synced: false })
   })
 })

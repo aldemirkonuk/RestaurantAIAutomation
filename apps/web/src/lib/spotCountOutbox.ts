@@ -14,7 +14,7 @@
  */
 
 import { offlineStorage } from './offline-storage'
-import { recordSpotCount } from '../services/api/inventory'
+import { recordSpotCount, type SpotCountRecord } from '../services/api/inventory'
 import {
   currentQueueOwner,
   isPermanentRefusal,
@@ -66,10 +66,14 @@ export function newClientCountId(): string {
  * Returns `synced: false` when it went to the queue — the caller should tell
  * the counter it is saved, not that it failed, since from their side the tap
  * is done and their next action is moving to the next shelf.
+ *
+ * When it synced, `count` is what the server recorded — the books' figure,
+ * the counted figure and the difference (F-645: this used to be dropped, so
+ * nobody counting ever saw how far off the books were).
  */
 export async function submitSpotCount(
   entry: QueuedSpotCount,
-): Promise<{ synced: boolean }> {
+): Promise<{ synced: boolean; count?: SpotCountRecord | null }> {
   entry = { ...entry, countedAt: entry.countedAt ?? new Date().toISOString() }
   if (!navigator.onLine) {
     await queue(entry)
@@ -77,8 +81,8 @@ export async function submitSpotCount(
   }
 
   try {
-    await recordSpotCount(entry.itemId, entry.body, entry.restaurantId)
-    return { synced: true }
+    const res = await recordSpotCount(entry.itemId, entry.body, entry.restaurantId)
+    return { synced: true, count: res?.count ?? null }
   } catch (err) {
     const status = (err as { response?: { status?: number } })?.response?.status
     if (status && status >= 400 && status < 500 && status !== 408 && status !== 429)

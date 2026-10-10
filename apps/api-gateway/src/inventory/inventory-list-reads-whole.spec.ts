@@ -207,7 +207,7 @@ describe("F-292: a manual adjust is a delta on the ledger's transactions route",
 
     expect(err).toBeInstanceOf(HttpException);
     expect((err as HttpException).getStatus()).toBe(400);
-    expect((err as HttpException).message).toMatch(/more bottles than the books hold/);
+    expect((err as HttpException).message).toMatch(/more bottles than the books hold|The books show 2 bottles, so 5 can't come off/);
     expect((err as HttpException).message).not.toMatch(/stock would go negative/);
   });
 });

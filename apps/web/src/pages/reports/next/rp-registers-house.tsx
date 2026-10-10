@@ -221,6 +221,8 @@ export interface LedgerRegister {
   /** On-hand wines with and without a bottle price (F-574); absent on an older gateway. */
   priceCoverage?: { total: number; priced: number; unpriced: number };
   inventoryValue: number | null;
+  /** F-644: the priced wines' own total, beside how many it leaves out. */
+  pricedInventoryValue: number | null;
   cogs: number | null;
   revenue: number | null;
   grossMargin: number | null;
@@ -249,6 +251,7 @@ const ledger = analysis<LedgerRegister>({
       uncosted: arr(d.uncosted).map((u) => ({ id: str(u.id), name: str(u.name) || str(u.id) })),
       priceCoverage: d.priceCoverage as LedgerRegister['priceCoverage'],
       inventoryValue: num(d.inventoryValue),
+      pricedInventoryValue: num(d.pricedInventoryValue),
       cogs: num(d.cogs),
       revenue: num(d.revenue),
       grossMargin: num(d.grossMargin),
@@ -263,12 +266,19 @@ const ledger = analysis<LedgerRegister>({
     const cc = f.costCoverage;
     const uncosted = f.uncosted ?? [];
     const pc = f.priceCoverage;
+    const partial = f.inventoryValue == null && f.pricedInventoryValue != null && !!cc && cc.unpriced > 0;
     const all = [
-      {
-        label: 'Cellar at cost',
-        value: money(f.inventoryValue),
-        note: 'Not every on-hand row carries a recorded cost',
-      },
+      partial
+        ? {
+            label: 'Cellar at cost (priced wines)',
+            value: money(f.pricedInventoryValue),
+            note: `Leaves out ${figure(cc!.unpriced)} wine${cc!.unpriced === 1 ? '' : 's'} with no cost yet`,
+          }
+        : {
+            label: 'Cellar at cost',
+            value: money(f.inventoryValue),
+            note: 'Not every on-hand row carries a recorded cost',
+          },
       {
         label: 'Cost of goods (365d)',
         value: money(f.cogs),
@@ -313,7 +323,9 @@ const ledger = analysis<LedgerRegister>({
           ? [
               cc.total === 0
                 ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
-                : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
+                : partial
+                  ? `${figure(cc.unpriced)} of ${figure(cc.total)} on-hand wines have no cost yet, so the cellar figure above counts only the ${figure(cc.priced)} that do, and the figures built on the whole cellar read ${EM}.`
+                  : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
               // Which wines, and how to cost them (F-133): a wine's cost is
               // what its invoice says, so the way back is to file it.
               ...(uncosted.length > 0
