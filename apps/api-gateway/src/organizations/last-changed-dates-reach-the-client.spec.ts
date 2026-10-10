@@ -34,7 +34,7 @@ import { OrganizationsService } from "./organizations.service";
 import { DatabaseService } from "../database/database.service";
 
 interface Rows {
-  orgMembers?: { organization_id: string }[];
+  orgMembers?: { organization_id: string; role?: string }[];
   chains?: Record<string, unknown>[];
   restaurants?: Record<string, unknown>[];
   ura?: Record<string, unknown>[];
@@ -150,8 +150,9 @@ describe("chains carry their own last-changed date", () => {
   });
 
   it("stamps updated_at on a rename, because the table has no trigger", async () => {
+    // Renaming a group is an organisation owner's act (F-313, 2026-10-08).
     const { service, probe } = makeService({
-      orgMembers: ORG,
+      orgMembers: [{ organization_id: "org-1", role: "owner" }],
       chainRow: { id: "c1" },
     });
 

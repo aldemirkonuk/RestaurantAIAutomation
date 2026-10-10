@@ -253,6 +253,11 @@ describe('useRecommendationsNextData transport', () => {
  * generic one, and never claims a goal was set when it was not.
  */
 describe('useRecommendationsNextData — goals', () => {
+  // The goal reads are a manager's (F-299): staff are not sent for them.
+  beforeEach(() => {
+    role.current = 'manager';
+  });
+
   it('reads the goal list for the tenant, through apiClient, without being asked', async () => {
     // The rework made this read EAGER. It was lazy while its only use was a
     // duplicate warning inside a sheet; since `source_rule_key` a goal is a
@@ -752,6 +757,11 @@ describe('useRecommendationsNextData — round 3, the person’s own snoozes', (
 /* ── round 6 (sketch 122 direction B + Q2/Q4) ──────────────────────────────── */
 
 describe('round 6 reads and writes', () => {
+  // The goal reads are a manager's (F-299): staff are not sent for them.
+  beforeEach(() => {
+    role.current = 'manager';
+  });
+
   it('reads the goals WITH progress for the masthead, and an unread book is null, never an empty one', async () => {
     api.get.mockImplementation(async (url: string) => {
       if (url === '/analytics/goals/r1/progress?status=active')
