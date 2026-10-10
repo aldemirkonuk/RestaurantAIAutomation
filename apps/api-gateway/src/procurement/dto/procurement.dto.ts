@@ -1281,7 +1281,7 @@ export class OrderResponseDto {
     nullable: true,
     example: 1,
     description:
-      "What the rule is anchored to. Weekly/biweekly: a weekday, 0 = Monday to 6 = Sunday. Monthly/quarterly: a day of the month, 1 to 28 — 28 so that every month has one. null = no anchor stated, and the series runs from its start date.",
+      "What the rule is anchored to. Weekly/biweekly: a weekday, 0 = Monday to 6 = Sunday. Monthly/quarterly: a day of the month, 1 to 31 — 31 meaning the last day of the month. null = no anchor stated, and the series runs from its start date.",
   })
   recurrenceAnchorDay?: number | null;
 

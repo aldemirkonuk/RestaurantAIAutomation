@@ -201,6 +201,18 @@ export function monthDaySentence(startsOn: string): string {
   return 'Measured from the start date.';
 }
 
+/** The anchor that means "the last day of the month", as the gateway reads it. */
+export const LAST_DAY = 31;
+
+/** What an anchored monthly rule says about its day. */
+export function monthAnchorSentence(anchorDay: number): string {
+  if (anchorDay >= LAST_DAY) return 'On the last day of every month.';
+  if (anchorDay >= 29) {
+    return `On the ${ordinal(anchorDay)}, or the last day of a shorter month.`;
+  }
+  return `On the ${ordinal(anchorDay)} of the month.`;
+}
+
 export interface RecurrenceSheetProps {
   open: boolean;
   onClose: () => void;
@@ -416,27 +428,40 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
             )}
 
             {kind === 'monthday' && (
-              <label className="flex flex-col gap-1">
-                <span style={{ color: 'var(--ink-4, #665D50)', fontSize: 11.5 }}>
-                  On which day of the month (1 to 28, so that every month has one)
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={28}
-                  value={anchorDay ?? ''}
-                  onChange={(e) =>
-                    setAnchorDay(e.target.value === '' ? null : Number(e.target.value))
-                  }
-                  data-testid="recurrence-monthday"
-                  style={field}
-                />
+              <div className="flex flex-col gap-1">
+                <label className="flex flex-col gap-1">
+                  <span style={{ color: 'var(--ink-4, #665D50)', fontSize: 11.5 }}>
+                    On which day of the month (optional — leave it and the rule runs from the start date)
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={anchorDay ?? ''}
+                    onChange={(e) =>
+                      setAnchorDay(e.target.value === '' ? null : Number(e.target.value))
+                    }
+                    data-testid="recurrence-monthday"
+                    style={field}
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {/* 31 is "the last day" on the gateway too (F-307), so the named choice is that value. */}
+                  <button
+                    type="button"
+                    onClick={() => setAnchorDay((cur) => (cur === LAST_DAY ? null : LAST_DAY))}
+                    aria-pressed={anchorDay === LAST_DAY}
+                    data-testid="recurrence-lastday"
+                    style={chip(anchorDay === LAST_DAY)}
+                  >
+                    Last day of the month
+                  </button>
+                </div>
                 <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-                  {/* The ceiling is 28; the month end is reached by the start date (F-307). */}
-                  For the end of the month, leave this empty and start on the 29th,
-                  30th or 31st: a shorter month takes its last day.
+                  The 29th, 30th or 31st falls on the last day of a shorter month, and the
+                  month after goes back to your day.
                 </span>
-              </label>
+              </div>
             )}
 
             <label className="flex flex-col gap-1">
@@ -469,7 +494,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
                   {frequency === 'monthly' || frequency === 'quarterly'
                     ? anchorDay === null
                       ? monthDaySentence(startsOn)
-                      : `On the ${ordinal(anchorDay)} of the month.`
+                      : monthAnchorSentence(anchorDay)
                     : anchorDay === null
                       ? 'Measured from the start date.'
                       : `On ${WEEKDAYS[anchorDay]}.`}

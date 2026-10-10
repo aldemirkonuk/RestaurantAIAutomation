@@ -77,12 +77,12 @@ describe("what an anchor means for each frequency", () => {
     expect(anchorRangeFor("weekly")).toEqual({ min: 0, max: 6 });
   });
 
-  it("is a day of the month for monthly and quarterly, and stops at 28", () => {
+  it("is a day of the month for monthly and quarterly, up to 31 = the last day", () => {
     expect(anchorKindFor("monthly")).toBe("monthday");
     expect(anchorKindFor("quarterly")).toBe("monthday");
-    // 28, not 31: a rule anchored to the 30th has no February, and a date that
-    // silently moves twice a year is not a rule anybody agreed to.
-    expect(anchorRangeFor("monthly")).toEqual({ min: 1, max: 28 });
+    // 31 means "the last day of the month" (F-307); 29-31 clamp per month.
+    expect(anchorRangeFor("monthly")).toEqual({ min: 1, max: 31 });
+    expect(anchorRangeFor("quarterly")).toEqual({ min: 1, max: 31 });
   });
 
   it("is nothing at all for daily, and an anchor on a daily rule is refused", () => {
@@ -93,14 +93,22 @@ describe("what an anchor means for each frequency", () => {
     if (!refused.ok) expect(refused.reason).toBe("anchor_not_applicable");
   });
 
-  it("refuses a weekday of 7 and a month day of 29, by name", () => {
+  it("refuses a weekday of 7 and a month day of 32, by name", () => {
     const weekday = validateAnchorDay("weekly", 7);
     expect(weekday.ok).toBe(false);
     if (!weekday.ok) expect(weekday.reason).toBe("anchor_out_of_range");
 
-    const monthday = validateAnchorDay("monthly", 29);
+    const monthday = validateAnchorDay("monthly", 32);
     expect(monthday.ok).toBe(false);
     if (!monthday.ok) expect(monthday.reason).toBe("anchor_out_of_range");
+  });
+
+  it("accepts 29, 30 and 31 for a month day, and still refuses them as a weekday", () => {
+    for (const d of [29, 30, 31]) {
+      expect(validateAnchorDay("monthly", d)).toEqual({ ok: true, value: d });
+      expect(validateAnchorDay("quarterly", d)).toEqual({ ok: true, value: d });
+      expect(validateAnchorDay("weekly", d).ok).toBe(false);
+    }
   });
 
   it("refuses a fractional anchor rather than rounding it", () => {
@@ -351,6 +359,46 @@ describe("projecting a series", () => {
     }
   });
 
+  it("an anchor of 31 is the last day of every month, never carried from February (F-307)", () => {
+    const r = occurrencesFrom("2026-01-31", "monthly", 31, 6);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value).toEqual([
+        "2026-01-31",
+        "2026-02-28",
+        "2026-03-31",
+        "2026-04-30",
+        "2026-05-31",
+        "2026-06-30",
+      ]);
+    }
+    // Stepping from a stored February occurrence re-reads the anchor.
+    const fromFeb = nextOccurrenceOn("2028-02-29", "monthly", 31);
+    expect(fromFeb).toEqual({ ok: true, value: "2028-03-31" });
+    const quarterly = occurrencesFrom("2026-11-30", "quarterly", 31, 3);
+    expect(quarterly.ok && quarterly.value).toEqual([
+      "2026-11-30",
+      "2027-02-28",
+      "2027-05-31",
+    ]);
+  });
+
+  it("an anchor of 30 takes February's last day and goes back to the 30th", () => {
+    const r = occurrencesFrom("2026-01-30", "monthly", 30, 3);
+    expect(r.ok && r.value).toEqual(["2026-01-30", "2026-02-28", "2026-03-30"]);
+  });
+
+  it("the first occurrence of a last-day rule is this month's last day", () => {
+    expect(firstOccurrenceOn("2026-02-10", "monthly", 31)).toEqual({
+      ok: true,
+      value: "2026-02-28",
+    });
+    expect(firstOccurrenceOn("2026-04-30", "monthly", 31)).toEqual({
+      ok: true,
+      value: "2026-04-30",
+    });
+  });
+
   it("refuses rather than returning a short list when the rule breaks", () => {
     // A short list would read as "this rule has 1 occurrence", which is a
     // different and false statement from "this rule cannot be continued".
@@ -406,7 +454,7 @@ describe("planning a whole recurrence", () => {
     const cases: Array<[Record<string, unknown>, string]> = [
       [{ frequency: "yearly", startsOn: "2026-09-05" }, "unknown_frequency"],
       [
-        { frequency: "monthly", anchorDay: 31, startsOn: "2026-09-05" },
+        { frequency: "monthly", anchorDay: 32, startsOn: "2026-09-05" },
         "anchor_out_of_range",
       ],
       [{ frequency: "daily", anchorDay: 2, startsOn: "2026-09-05" }, "anchor_not_applicable"],
