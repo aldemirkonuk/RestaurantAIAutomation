@@ -770,4 +770,266 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(out).toContain("Supplier: We do not see any credit request");
     });
   });
+
+  // F-485: a bounce, an auto-reply, a mail that tried to instruct the AI, or
+  // one from a sender we could not verify used to write the order's price and
+  // status BEFORE any of those checks ran. Driven through the real entry
+  // point, so the ORDER of the checks is what is under test.
+  describe("analyzeAndDraftReply — a mail that cannot be trusted does not move the order (F-485)", () => {
+    const run = async (opts: {
+      subject?: string;
+      analysis?: Record<string, any>;
+      transport?: Record<string, any>;
+    }) => {
+      // A chain that answers every read the entry point makes: the order for
+      // `.single()`, an empty thread or "no draft" for anything awaited.
+      const order = {
+        id: "o-485",
+        restaurant_id: "rest-A",
+        status: "NEGOTIATING",
+        quantity: 6,
+        quoted_price: 60,
+        negotiated_price: null,
+        final_price: null,
+        ai_autonomy_paused: false,
+        providers: { name: "Vendor", contact_email: "v@vendor.test" },
+        restaurant_inventory: { wine_name: "Wine", target_price: 60 },
+      };
+      const chain: any = new Proxy(
+        {},
+        {
+          get: (_t, prop) => {
+            if (prop === "then")
+              return (res: any) => res({ data: [], error: null });
+            if (prop === "single" || prop === "maybeSingle")
+              return () => Promise.resolve({ data: order, error: null });
+            return () => chain;
+          },
+        },
+      );
+      const s = new InboundResponderService(
+        { get: () => "test-key" } as any,
+        { supabase: { from: () => chain } } as any,
+        {} as any,
+        {
+          emitRestaurantNotification: () => undefined,
+          emitConversationUpdated: () => undefined,
+        } as any,
+        {} as any,
+      ) as any;
+      // An unexpected error is swallowed by the entry point and would read as
+      // "the order was not moved" — so every case asserts there was none.
+      s.logger = { log() {}, debug() {}, warn() {}, error: jest.fn() };
+      s.isNegotiationEnabled = async () => true;
+      s.isAutonomousSendEnabled = async () => true;
+      s.persistManagerNotification = async () => undefined;
+      s.logDecision = jest.fn(async () => undefined);
+      s.runLlm = async () =>
+        baseAnalysis({
+          intent: "price_acceptance",
+          deal_kind: "offer",
+          email_class: "negotiation_reply",
+          injection_suspected: false,
+          special_conditions: [],
+          commercial_terms: null,
+          vendor_offers: [
+            {
+              price_per_bottle: 55,
+              quantity: 6,
+              unit: "bottle",
+              conditions: "",
+              quote: "",
+            },
+          ],
+          reply_body: "Thanks, I will check with my manager and follow up.",
+          ...(opts.analysis ?? {}),
+        });
+      s.syncOrderState = jest.fn(async () => undefined);
+      await s.analyzeAndDraftReply({
+        inboundConversationId: "c-485",
+        orderId: "o-485",
+        restaurantId: "rest-A",
+        providerId: "p-1",
+        inboundSubject: opts.subject ?? "Re: your order",
+        transportSignals: opts.transport,
+      });
+      expect(s.logger.error).not.toHaveBeenCalled();
+      return s;
+    };
+
+    it("a clean, verified vendor mail still moves the order (control)", async () => {
+      const s = await run({ transport: { senderVerified: true } });
+      expect(s.syncOrderState).toHaveBeenCalledTimes(1);
+    });
+
+    it("an out-of-office / bounce subject does not", async () => {
+      const s = await run({ subject: "Automatic reply: away from the office" });
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+      expect(s.logDecision.mock.calls[0][3].orderSyncHeld).toBe(
+        "automated_reply",
+      );
+    });
+
+    it("a mail the model classed as a bounce or auto-reply does not", async () => {
+      const s = await run({ analysis: { email_class: "bounce_autoreply" } });
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+    });
+
+    it("an Auto-Submitted (RFC 3834) mail does not", async () => {
+      const s = await run({
+        transport: { senderVerified: true, autoSubmitted: true },
+      });
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+    });
+
+    it("a mail flagged as trying to instruct the AI does not", async () => {
+      const s = await run({ analysis: { injection_suspected: true } });
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+      expect(s.logDecision.mock.calls[0][3].orderSyncHeld).toBe(
+        "injection_suspected",
+      );
+    });
+
+    it("a mail from a sender we could not verify does not", async () => {
+      const s = await run({ transport: { senderVerified: false } });
+      expect(s.syncOrderState).not.toHaveBeenCalled();
+      expect(s.logDecision.mock.calls[0][3].orderSyncHeld).toBe(
+        "sender_unverified",
+      );
+    });
+
+    it("a price that reads two ways holds the order; a dear price does not", () => {
+      const hold = (reasons: string[]) =>
+        svc().orderSyncHoldReason(
+          baseAnalysis({ email_class: "negotiation_reply" }),
+          { reasons },
+          false,
+          undefined,
+        );
+      expect(hold(["price_inconsistent"])).toBe("price_inconsistent");
+      expect(hold(["currency_ambiguous"])).toBe("currency_ambiguous");
+      expect(hold(["price_above_target", "qty_or_budget_change"])).toBeNull();
+    });
+  });
+
+  // F-486: the vendor's last stated price was the house's target, so a
+  // second mail at the vendor's own earlier price read as "at target".
+  describe("the house's target never takes the vendor's price (F-486)", () => {
+    it("two mails at $90 against a $60 target never reach 'accepted'", async () => {
+      const writes: Array<Record<string, any>> = [];
+      const supabase = {
+        from: () => ({
+          update: (payload: Record<string, any>) => {
+            writes.push(payload);
+            return { eq: () => Promise.resolve({ error: null }) };
+          },
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({ data: { id: "line1" }, error: null }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      };
+      const s = new InboundResponderService(
+        {} as any,
+        { supabase } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+      ) as any;
+      const order: Record<string, any> = {
+        id: "o-486",
+        status: "NEGOTIATING",
+        quantity: 6,
+        quoted_price: null,
+        negotiated_price: null,
+        final_price: null,
+        restaurant_inventory: { target_price: 60 },
+      };
+      const at90 = baseAnalysis({
+        intent: "counter_offer",
+        vendor_offers: [
+          {
+            price_per_bottle: 90,
+            quantity: 6,
+            unit: "bottle",
+            conditions: "",
+            quote: "$90/bottle",
+          },
+        ],
+      });
+
+      // Mail 1: "$90/bottle". The vendor's price is recorded…
+      await s.syncOrderState(order, at90, s.houseTargetPrice(order), 6, true);
+      expect(writes[0].negotiated_price).toBe(90);
+      Object.assign(order, writes[0]);
+
+      // …but it does not become the house's target.
+      expect(s.houseTargetPrice(order)).toBe(60);
+
+      // Mail 2: "confirming $90". Still above the house's figure.
+      await s.syncOrderState(order, at90, s.houseTargetPrice(order), 6, true);
+      expect(writes[1].status).not.toBe("APPROVED");
+      expect(
+        s.computeGuardrails(at90, s.houseTargetPrice(order), 6, 1)
+          .price_above_target,
+      ).toBe(true);
+    });
+  });
+
+  // F-493: `qtyContradicts` read its quantity off the offer that was chosen
+  // for matching ours, so it could never be true.
+  describe("syncOrderState — a confirmation for a DIFFERENT quantity (F-493)", () => {
+    it("'Confirmed, 6 bottles at 45' on a 12-bottle order stays APPROVED for a person", async () => {
+      const updates: Array<Record<string, any>> = [];
+      const supabase = {
+        from: () => ({
+          update: (payload: Record<string, any>) => {
+            updates.push(payload);
+            return { eq: () => Promise.resolve({ error: null }) };
+          },
+        }),
+      };
+      const s = new InboundResponderService(
+        {} as any,
+        { supabase } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+      ) as any;
+      await s.syncOrderState(
+        {
+          id: "o-493",
+          status: "APPROVED",
+          quantity: 12,
+          final_price: 45,
+          negotiated_price: 45,
+        },
+        baseAnalysis({
+          intent: "order_confirmation",
+          deal_kind: "verification",
+          vendor_offers: [
+            {
+              price_per_bottle: 45,
+              quantity: 6,
+              unit: "bottle",
+              conditions: "",
+              quote: "Confirmed, 6 bottles at 45",
+            },
+          ],
+        }),
+        45,
+        12,
+        false,
+      );
+      expect(updates).toHaveLength(1);
+      expect(updates[0].status).toBeUndefined();
+      expect(updates[0]).not.toHaveProperty("confirmed_at");
+    });
+  });
 });
