@@ -134,6 +134,7 @@ function bottle(over: Partial<BottleVM> = {}): BottleVM {
     style: 'orange',
     vintage: 2016,
     listPrice: 92,
+    listCurrency: 'USD',
     marketPrice: null,
     bottleSizeMl: 750,
     description: null,
@@ -592,9 +593,9 @@ describe('CellarNext — the wine register', () => {
     expect(cells.getByText('2016')).toBeInTheDocument();
     expect(cells.getByText('Friuli, Italy')).toBeInTheDocument();
     expect(cells.getByText('750ml')).toBeInTheDocument();
-    // The library keeps no currency for its reference price, so it is never
-    // given this house's sign (F-918).
-    expect(cells.getByText('92.00 (currency not recorded)')).toBeInTheDocument();
+    // The library's reference price is shown only in this house's currency
+    // (F-918): this one was recorded in dollars, in a dollar house.
+    expect(cells.getByText('$92.00')).toBeInTheDocument();
     // market price has no producer, and a bottle this house does not stock
     // has no house price (F-617): two dashes, never a number, never a zero
     expect(cells.getAllByText('—')).toHaveLength(2);

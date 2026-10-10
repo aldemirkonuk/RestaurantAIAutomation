@@ -40,6 +40,7 @@ import {
   handlingSentence,
   knowledgeLabel,
   knowledgeNote,
+  libraryHiddenWhy,
   libraryMoney,
   money,
   tanninTicks,
@@ -57,6 +58,20 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
+  );
+}
+
+/**
+ * The library's reference price, beside this house's own: shown only when it
+ * was recorded in this house's currency, else the dash and why (F-918).
+ */
+function LibraryFigure({ value, currency }: { value: number | null; currency?: string | null }) {
+  const why = libraryHiddenWhy(value, currency);
+  if (why === null) return <span className="cl-num">{libraryMoney(value, currency)}</span>;
+  return (
+    <span className="cl-dim" data-testid="bottle-leaf-library-hidden">
+      {EM} {why}
+    </span>
   );
 }
 
@@ -293,7 +308,7 @@ export default function BottleLeaf({
           )}
         </Fact>
         <Fact label="Market average">
-          <span className="cl-num">{libraryMoney(bottle.listPrice)}</span>
+          <LibraryFigure value={bottle.listPrice} currency={bottle.listCurrency} />
         </Fact>
         <Fact label="Market price">
           <span className="cl-num">{libraryMoney(bottle.marketPrice)}</span>
@@ -467,7 +482,7 @@ export default function BottleLeaf({
                   )}
                 </Fact>
                 <Fact label="Market average (bottle)">
-                  <span className="cl-num">{libraryMoney(bottle.listPrice)}</span>
+                  <LibraryFigure value={bottle.listPrice} currency={bottle.listCurrency} />
                 </Fact>
               </dl>
               {/* ADR 0193 round 3, L8: a locked price is said wherever the price is shown. */}

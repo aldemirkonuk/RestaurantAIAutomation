@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, Loader2, Plus, Sparkles } from 'lucide-react'
 import { Button } from '../ui/button'
 import { useAuth } from '../../contexts/AuthContext'
+import { useHouseCurrency } from '../../hooks/useHouseCurrency'
 import {
   addMenuItem,
   reviewMenuItem,
@@ -96,10 +97,13 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
   // shows -- what the menu would change, a Keep switch on each price -- and
   // names the plan's fingerprint. Nothing is chosen blind.
   const [planning, setPlanning] = useState(false)
+  // The house's currency, so the plan and the sentence print its money the
+  // way /menu does (F-920), not a bare number in the screen's own marks.
+  const currency = useHouseCurrency()
   const madeCurrent = (made: MakeCurrentResult) => {
     setPlanning(false)
     if (made.failed.length > 0 || made.flagged > 0 || (made.held?.length ?? 0) > 0) {
-      setMadeNote(makeCurrentSentence(made))
+      setMadeNote(makeCurrentSentence(made, currency))
       return
     }
     onConfirm(true)
@@ -307,6 +311,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
             <MenuPlan
               menuId={result.menuId}
               canManage={canChoose}
+              currency={currency}
               onCancel={() => setPlanning(false)}
               onDone={madeCurrent}
             />

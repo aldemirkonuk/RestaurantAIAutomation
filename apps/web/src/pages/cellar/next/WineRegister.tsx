@@ -38,7 +38,7 @@ import {
   type BottleVM,
   type CellarData,
 } from './useCellarNextData';
-import { EM, houseNamingFor, libraryMoney, money, volume, year } from './cellar-format';
+import { EM, houseNamingFor, libraryFigure, libraryMoney, money, volume, year } from './cellar-format';
 import IsThisTheBottlePanel, { type BottleReading } from './IsThisTheBottlePanel';
 import { readingsFrom } from './readings';
 import { foldText } from '@/lib/textFold';
@@ -670,7 +670,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                   <span className="cl-dim cl-index-row-meta">
                     <span>{[b.style, year(b.vintage)].filter(Boolean).join(' · ') || EM}</span>
                     <span className="cl-num">
-                      {b.cellar ? `${b.cellar.stockLive} on hand` : b.listPrice === null ? EM : `market average ${libraryMoney(b.listPrice)}`}
+                      {b.cellar ? `${b.cellar.stockLive} on hand` : libraryFigure(b.listPrice, b.listCurrency) === null ? EM : `market average ${libraryMoney(b.listPrice, b.listCurrency)}`}
                     </span>
                   </span>
                 </button>
@@ -725,7 +725,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                       <span title="Your price, as on Inventory">{money(b.cellar.menuPriceBottle)}</span>
                     ) : (
                       <span className="cl-dim" title="Market average — not this house’s price">
-                        {b.listPrice === null ? EM : `avg ${libraryMoney(b.listPrice)}`}
+                        {libraryFigure(b.listPrice, b.listCurrency) === null ? EM : `avg ${libraryMoney(b.listPrice, b.listCurrency)}`}
                       </span>
                     )}
                     <span>{b.cellar ? `${b.cellar.stockLive} on hand` : EM}</span>
@@ -794,7 +794,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                         )}
                       </td>
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
-                        {libraryMoney(b.listPrice)}
+                        {libraryMoney(b.listPrice, b.listCurrency)}
                       </td>
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
                         {libraryMoney(b.marketPrice)}

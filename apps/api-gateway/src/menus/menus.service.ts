@@ -1079,6 +1079,25 @@ export class MenusService {
       );
     }
 
+    // A rename also renames the house's own wine in stock. Who may rename a
+    // line at all (owner or manager) is the controller's check. The stock is
+    // renamed FIRST, and its error is read: if it fails, nothing is written
+    // and the person is told, rather than a renamed line beside a stock row
+    // that silently kept the old name (F-920).
+    const renamesStock = dto.fieldName === "name" && Boolean(menuItem.inventory_item_id);
+    if (renamesStock) {
+      const { error: renameErr } = await this.dbService.supabase
+        .from("restaurant_inventory")
+        .update({ wine_name: dto.newValue })
+        .eq("id", menuItem.inventory_item_id)
+        .eq("restaurant_id", callerRestaurantId);
+      if (renameErr) {
+        throw new InternalServerErrorException(
+          `The wine could not be renamed in your stock, so the menu line was not renamed either: ${renameErr.message}`,
+        );
+      }
+    }
+
     const { error: updateErr } = await this.dbService.supabase
       .from("menu_items")
       .update({
@@ -1093,16 +1112,11 @@ export class MenusService {
       .eq("restaurant_id", callerRestaurantId);
 
     if (updateErr) {
-      throw new Error(`Failed to update menu_item: ${updateErr.message}`);
-    }
-
-    // Keep the restaurant's own inventory display name in sync.
-    if (dto.fieldName === "name" && menuItem.inventory_item_id) {
-      await this.dbService.supabase
-        .from("restaurant_inventory")
-        .update({ wine_name: dto.newValue })
-        .eq("id", menuItem.inventory_item_id)
-        .eq("restaurant_id", callerRestaurantId);
+      throw new Error(
+        renamesStock
+          ? `The wine was renamed in your stock, but the menu line was not: ${updateErr.message}`
+          : `Failed to update menu_item: ${updateErr.message}`,
+      );
     }
 
     // A PRICE correction is a menu update, and a menu update changes the

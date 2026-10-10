@@ -199,3 +199,48 @@ describe("WinesService.mapWine — the wine's own detail on the wire", () => {
     expect(out.structure.body).toBeUndefined();
   });
 });
+
+/**
+ * F-918: the library's reference price came off US and Turkish menus alike,
+ * so the page needs the currency it was recorded in to know whether it may
+ * sit beside a house's own price. Null is "not recorded", never a default.
+ */
+describe("WinesService.mapWine — the reference price's currency on the wire", () => {
+  let service: WinesService;
+  const map = (row: Record<string, unknown>) => (service as any).mapWine(row);
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        WinesService,
+        { provide: DatabaseService, useValue: { supabase: {} } },
+      ],
+    }).compile();
+    service = moduleRef.get(WinesService);
+  });
+
+  const row = (over: Record<string, unknown>) => ({
+    id: "w1",
+    name: "Kavaklıdere Yakut",
+    producer: "Kavaklıdere",
+    vintage: null,
+    price_reference: 62,
+    primary_type: "red",
+    grape_variety: null,
+    country: "Türkiye",
+    region: null,
+    appellation: null,
+    ...over,
+  });
+
+  it("carries the recorded currency beside the price", () => {
+    const out = map(row({ price_reference_currency: "TRY" }));
+    expect(out.price).toBe(62);
+    expect(out.priceCurrency).toBe("TRY");
+  });
+
+  it("says null when the library never recorded one -- never a dollar default", () => {
+    expect(map(row({ price_reference_currency: null })).priceCurrency).toBeNull();
+    expect(map(row({})).priceCurrency).toBeNull();
+  });
+});

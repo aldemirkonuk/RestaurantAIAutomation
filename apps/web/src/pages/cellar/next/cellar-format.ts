@@ -16,7 +16,7 @@
  *    asserts nothing.
  */
 
-import { formatHouseMoney } from '../../../lib/houseCurrency';
+import { formatHouseMoney, getHouseCurrency } from '../../../lib/houseCurrency';
 
 export const EM = '—';
 
@@ -72,14 +72,31 @@ export function money(v: number | null | undefined, currency?: string | null): s
 
 /**
  * A figure from the shared wine library (its reference price, its retail
- * average). The library keeps no currency for these: most came off US and
- * Turkish menus alike (ADR 0117), so printing one in this house's currency
- * turned the same 62 into ₺62 in one house and $62 in another (F-918). It is
- * printed as a bare number that says its currency is not recorded, until the
- * library carries one per row.
+ * average), or null when it cannot sit beside this house's money. Most came
+ * off US and Turkish menus alike (ADR 0117), so printing one in this house's
+ * currency turned the same 62 into ₺62 in one house and $62 in another
+ * (F-918). The reference price now carries the currency it was recorded in
+ * (`price_reference_currency`); a figure is shown only when that is this
+ * house's currency. Not recorded (every row from before the column, and the
+ * retail average, which has none) or another currency: not shown.
  */
-export function libraryMoney(v: number | null | undefined): string {
-  return money(v, null);
+export function libraryFigure(v: number | null | undefined, currency?: string | null): number | null {
+  const n = num(v);
+  const house = houseCurrency !== undefined ? houseCurrency : getHouseCurrency();
+  if (n === null || !currency || !house) return null;
+  return currency.trim().toUpperCase() === house.trim().toUpperCase() ? n : null;
+}
+
+/** A library figure in this house's money, or the dash when it is not in this house's currency. */
+export function libraryMoney(v: number | null | undefined, currency?: string | null): string {
+  const n = libraryFigure(v, currency);
+  return n === null ? EM : money(n, currency);
+}
+
+/** Why a library figure that exists is not shown, in the owner's words; null when it is shown or there is none. */
+export function libraryHiddenWhy(v: number | null | undefined, currency?: string | null): string | null {
+  if (num(v) === null || libraryFigure(v, currency) !== null) return null;
+  return currency ? `recorded in ${currency.trim().toUpperCase()}, not your currency` : 'its currency was not recorded';
 }
 
 /**
