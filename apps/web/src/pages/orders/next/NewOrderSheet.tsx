@@ -45,13 +45,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient, getErrorMessage } from '@/services/api/client';
 import { useInventory } from '@/hooks/queries/useInventoryQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
-import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
+import { CURRENCY_CODES, currencyLabel, formatMoney } from '@/lib/currency';
+import { listVendorTerms } from '@/services/api/vendorTerms';
 import { queryKeys } from '@/lib/query-keys';
 import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
@@ -62,7 +63,7 @@ import {
 } from '@/hooks/useUnsavedWorkGuard';
 import { toast } from 'sonner';
 import { EM, MONO, SANS, SERIF } from './format';
-import { PRICE_UOMS, PRICE_UOM_LABEL, isMultiplying, type PriceUom } from './price-unit';
+import { PRICE_UOMS, PRICE_UOM_LABEL, agreementTotal, isMultiplying, type PriceUom } from './price-unit';
 
 /** What the new route answers. Four states, never collapsed into fewer. */
 export interface LastAgreementVM {
@@ -186,6 +187,94 @@ export function lineRefusal(line: OrderLine, group: GroupMark | null = null): st
   return null;
 }
 
+/**
+ * The vendors' minimum orders, as the vendor-terms register reports them
+ * (F-649). Only a minimum the house was TOLD — stated on the register, or read
+ * off the vendor's own record — counts; an inferred one is a guess about past
+ * orders, not the vendor's rule. The register states minimums in the house
+ * currency (`readout.currency.code`, which may be unrecorded).
+ */
+export type VendorMinimums =
+  | { state: 'read'; currency: string | null; byVendor: Map<string, number> }
+  | { state: 'unreadable' };
+
+export function readVendorMinimums(raw: unknown): VendorMinimums {
+  const r = raw as { vendors?: unknown; currency?: { code?: unknown } } | null;
+  if (!r || !Array.isArray(r.vendors)) return { state: 'unreadable' };
+  const byVendor = new Map<string, number>();
+  for (const v of r.vendors as Array<Record<string, any>>) {
+    const cell = v?.minimumOrder;
+    if (
+      typeof v?.providerId === 'string' &&
+      (cell?.source === 'stated' || cell?.source === 'vendor_record') &&
+      typeof cell.value === 'number' &&
+      Number.isFinite(cell.value) &&
+      cell.value > 0
+    ) {
+      byVendor.set(v.providerId, cell.value);
+    }
+  }
+  const code = r.currency?.code;
+  return { state: 'read', currency: typeof code === 'string' && code ? code : null, byVendor };
+}
+
+/**
+ * One sentence per vendor in the draft that has a stated minimum: does the
+ * draft reach it? A warning, never a block — a vendor may still take a small
+ * order, and only the person placing it knows. A line whose value cannot be
+ * worked out in the minimum's currency (no price yet, another currency, or a
+ * unit that cannot be counted) is said as unknown rather than counted as zero.
+ */
+export function minimumNotes(
+  lines: OrderLine[],
+  minimums: VendorMinimums,
+  vendorName: (providerId: string) => string,
+): string[] {
+  const vendorsInDraft = [...new Set(lines.map((l) => l.providerId).filter(Boolean))];
+  if (vendorsInDraft.length === 0) return [];
+  if (minimums.state === 'unreadable') {
+    return ["The vendors' minimum orders could not be read, so this does not say whether the order reaches them."];
+  }
+  const code = minimums.currency;
+  const out: string[] = [];
+  for (const providerId of vendorsInDraft) {
+    const minimum = minimums.byVendor.get(providerId);
+    if (minimum == null) continue;
+    let known = 0;
+    let unknown = 0;
+    for (const line of lines) {
+      if (line.providerId !== providerId) continue;
+      const price = num(line.price);
+      const value =
+        code && line.currency === code && price != null && price > 0 && line.priceUom && lineRefusal(line) == null
+          ? agreementTotal({
+              price,
+              stated: { priceUom: line.priceUom, pricePackSize: num(line.pricePackSize) ?? 1 },
+              quantity: num(line.quantity),
+              unitType: line.unitType,
+              bottlesPerUnit: num(line.bottlesPerUnit),
+            })
+          : null;
+      if (value && value.ok) known += value.goods;
+      else unknown += 1;
+    }
+    const name = vendorName(providerId);
+    const said = `${name}'s minimum order is ${formatMoney(minimum, code)}.`;
+    if (known >= minimum) {
+      out.push(`${said} These lines come to ${formatMoney(known, code)}, which meets it.`);
+    } else if (unknown > 0) {
+      out.push(
+        `${said} ${unknown === 1 ? 'One line has' : `${unknown} lines have`} no price in ${code ?? 'the house currency'} yet, so this cannot say whether the order reaches it.`,
+      );
+    } else {
+      out.push(
+        `${said} These lines come to ${formatMoney(known, code)}, ${formatMoney(Math.round((minimum - known) * 100) / 100, code)} short of it. The vendor may refuse a smaller order or charge for it. You can still place it.`,
+      );
+    }
+  }
+  return out;
+}
+
 const fieldStyle: React.CSSProperties = {
   width: '100%',
   fontFamily: SANS,
@@ -300,6 +389,18 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
     );
   }, [open, seed, shelf, inventory.isLoading, inventory.isError]);
   const vendors = useMemo(() => (providers.data ?? []) as Array<Record<string, any>>, [providers.data]);
+
+  const terms = useQuery({
+    queryKey: ['vendor-terms', restaurantId],
+    queryFn: () => listVendorTerms(),
+    enabled: open && restaurantId !== '',
+    staleTime: 60_000,
+  });
+  const minimumLines = useMemo(() => {
+    if (terms.isLoading || terms.isPending) return [];
+    const minimums: VendorMinimums = terms.isError ? { state: 'unreadable' } : readVendorMinimums(terms.data);
+    return minimumNotes(lines, minimums, (id) => String(vendors.find((v) => v.id === id)?.name ?? 'This vendor'));
+  }, [terms.isLoading, terms.isPending, terms.isError, terms.data, lines, vendors]);
 
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -849,6 +950,18 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
             );
           })}
         </ul>
+
+        {minimumLines.map((text) => (
+          <p
+            key={text}
+            role="status"
+            data-testid="new-order-minimum"
+            className="mt-3"
+            style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}
+          >
+            {text}
+          </p>
+        ))}
 
         {vendorError && (
           <p

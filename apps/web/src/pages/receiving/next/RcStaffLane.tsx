@@ -31,6 +31,10 @@ import type { DeliveryVM, StaffLaneData } from './useReceivingNextData';
  * is never guessed.
  */
 function countSentence(d: DeliveryVM): string {
+  // The rest of a split order: what is still to come, not the whole order an
+  // earlier truck already brought part of (F-467).
+  if (d.restOfOrderBottles !== null)
+    return `${fmtInt(d.restOfOrderBottles)} bottles still to come`;
   if (d.bottlesTotal !== null) return `${fmtInt(d.bottlesTotal)} bottles expected`;
   if (d.orderedQty !== null) return `${fmtUnits(d.orderedQty, d.unitType)} ordered · bottles ${EM}`;
   return `${EM} bottles`;
@@ -142,8 +146,8 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
             color: 'var(--ink-4, #665D50)',
           }}
         >
-          Nothing is out for delivery right now. When an order is confirmed or in transit, it
-          appears here.
+          Nothing is out for delivery right now. When an order is confirmed or in transit, or
+          part of one is still to come, it appears here.
         </div>
       )}
 
@@ -203,6 +207,18 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
               >
                 PO {d.po ?? EM} · {d.lineCount} line · {countSentence(d)}
               </p>
+              {d.restOfOrderBottles !== null && (
+                <p
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    color: 'var(--seal-deep, #14515C)',
+                    margin: '4px 0 0',
+                  }}
+                >
+                  The rest of this order — part of it already arrived.
+                </p>
+              )}
               <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
                 {d.vendor && d.line ? `${d.line} · ` : ''}ordered {fmtDate(d.requestedAt)}
               </p>
@@ -212,7 +228,9 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
               type="button"
               data-ux-key="receiving-next:staff-door"
               onClick={() => navigate(`/receiving/${d.id}/door`)}
-              aria-label={`Receive ${d.vendor ?? d.line ?? 'delivery'} at the door`}
+              aria-label={`Receive ${d.restOfOrderBottles !== null ? 'the rest of ' : ''}${
+                d.vendor ?? d.line ?? 'delivery'
+              } at the door`}
               style={{
                 flex: 'none',
                 width: 118,

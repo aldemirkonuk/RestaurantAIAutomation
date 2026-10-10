@@ -235,8 +235,13 @@ export class CreateOrderDto {
   @IsOptional()
   finalPrice?: number;
 
+  /**
+   * Checked, never trusted: the server works the total out from the quantity
+   * and the agreed price, and refuses one that disagrees (F-732).
+   */
   @ApiPropertyOptional()
   @IsNumber()
+  @Min(0)
   @IsOptional()
   totalCost?: number;
 

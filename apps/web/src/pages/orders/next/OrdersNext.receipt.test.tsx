@@ -15,6 +15,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const state = vi.hoisted(() => ({ current: null as unknown }));
 const receiptForOrder = vi.hoisted(() => vi.fn());
+const postMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/api/client')>();
+  return { ...actual, apiClient: { ...actual.apiClient, post: postMock } };
+});
 
 vi.mock('./useOrdersNextData', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./useOrdersNextData')>();
@@ -53,7 +59,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 import OrdersNext from './OrdersNext';
-import { NO_RECEIPT_SENTENCE } from './ReceiptSheet';
+import { CLOSE_SHORT_DONE, NO_RECEIPT_SENTENCE } from './ReceiptSheet';
 import { RECURRENCE_UNREAD } from './recurrence';
 import type { OrderRowVM, OrdersNextData } from './useOrdersNextData';
 
@@ -161,5 +167,59 @@ describe('an order line opens its receipt in a right sheet', () => {
     const sheet = await screen.findByTestId('receipt-sheet');
     expect(await within(sheet).findByText(/could not be read/)).toBeInTheDocument();
     expect(within(sheet).queryByText(NO_RECEIPT_SENTENCE)).toBeNull();
+  });
+});
+
+/**
+ * F-104 — a partly received order can be closed short from its receipt, with a
+ * reason. REVERT-FAILS: before this there was no such control anywhere.
+ */
+describe('a partly received order can be closed short', () => {
+  it('offers no close on an order that fully arrived', async () => {
+    state.current = ordersData([row()]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    openReceipt();
+    const sheet = await screen.findByTestId('receipt-sheet');
+    await within(sheet).findByText(NO_RECEIPT_SENTENCE);
+    expect(within(sheet).queryByTestId('close-short')).toBeNull();
+  });
+
+  it('asks for a reason first, then closes with it', async () => {
+    state.current = ordersData([row({ status: 'partially_received' })]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    postMock.mockResolvedValue({ data: { id: 'o-1' } });
+    openReceipt();
+    const box = await screen.findByTestId('close-short');
+
+    fireEvent.click(within(box).getByRole('button', { name: 'Close short' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent(/Say why/);
+    expect(postMock).not.toHaveBeenCalled();
+
+    fireEvent.change(within(box).getByLabelText(/Why is the rest not coming/), {
+      target: { value: 'Vendor is out of the 2010' },
+    });
+    fireEvent.click(within(box).getByRole('button', { name: 'Close short' }));
+    expect(await within(box).findByText(CLOSE_SHORT_DONE)).toBeInTheDocument();
+    expect(postMock).toHaveBeenCalledWith('/procurement/orders/o-1/close-short', {
+      reason: 'Vendor is out of the 2010',
+    });
+  });
+
+  it('shows the server refusal in its own words', async () => {
+    state.current = ordersData([row({ status: 'partially_received' })]);
+    receiptForOrder.mockResolvedValue({ state: 'none' });
+    postMock.mockRejectedValue(
+      Object.assign(new Error('Request failed'), {
+        isAxiosError: true,
+        response: { status: 403, data: { message: 'Only a manager or an owner of this restaurant can close an order short.' } },
+      }),
+    );
+    openReceipt();
+    const box = await screen.findByTestId('close-short');
+    fireEvent.change(within(box).getByLabelText(/Why is the rest not coming/), {
+      target: { value: 'short shipped' },
+    });
+    fireEvent.click(within(box).getByRole('button', { name: 'Close short' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent(/Only a manager or an owner/);
   });
 });

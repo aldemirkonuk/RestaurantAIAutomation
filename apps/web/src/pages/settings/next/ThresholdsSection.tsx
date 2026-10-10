@@ -69,7 +69,7 @@ const RULES: Array<{
     label: 'The first order to a vendor',
     description:
       'At any amount. The house has no price history to judge a first order against, which is the same reason the reply engine holds a draft from a sender it has never seen.',
-    hint: 'Fires on the first order this restaurant has placed with that vendor.',
+    hint: 'Fires on the earliest order this restaurant has with that vendor. A cancelled or turned-down order does not count. When a first order holds several items, this rule holds only the earliest one.',
     kind: 'always',
   },
   {
