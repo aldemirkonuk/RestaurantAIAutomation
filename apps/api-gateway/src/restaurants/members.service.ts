@@ -92,7 +92,14 @@ export class MembersService {
   }
 
   async getMembers(actorUserId: string, restaurantId: string): Promise<any[]> {
-    await this.assertMembership(actorUserId, restaurantId);
+    const { role: actorRole } = await this.assertMembership(
+      actorUserId,
+      restaurantId,
+    );
+    // Staff see who works here, not how to reach them or how they sign in
+    // (F-194). Owners and managers keep both, as team.service listMembers
+    // already requires. An allowlist, so an unknown legacy role sees less.
+    const seesContact = actorRole === "owner" || actorRole === "manager";
 
     const { data: rows, error } = await this.databaseService.supabase
       .from("user_restaurant_access")
@@ -130,7 +137,9 @@ export class MembersService {
     // with `users: null` -- a roster of anonymous rows that looked like data.
     const { data: users, error: usersError } = await this.databaseService.supabase
       .from("users")
-      .select("user_id, name, email, oauth_provider")
+      .select(
+        seesContact ? "user_id, name, email, oauth_provider" : "user_id, name",
+      )
       .in("user_id", userIds);
 
     if (usersError) {
@@ -605,10 +614,14 @@ export class MembersService {
       throw new ForbiddenException(refusal);
     }
 
+    // Exact match on the normalised address, as every sign-in lookup does
+    // (auth.service.ts, `normalizedEmail`). This was `.ilike`, where `%` and
+    // `_` are wildcards and class-validator's @IsEmail lets both through, so
+    // "%@gmail.com" found and added someone from another house (F-189).
     const { data: targetUser } = await this.databaseService.supabase
       .from("users")
       .select("user_id")
-      .ilike("email", email.trim())
+      .eq("email", email.trim().toLowerCase())
       .maybeSingle();
 
     if (!targetUser) {
