@@ -13,9 +13,11 @@
  *   T         → a real answer, including a real empty list
  *
  * Caveats inherited from the services (documented, not hidden):
- *  - getRecentActivity / getAlerts catch internally and return [] on failure,
- *    so for those two slices an empty list can also mean "unreachable"; the
- *    panels use neutral copy that is true in both cases.
+ *  - getRecentActivity / getAlerts reject on failure (F-752), so those two
+ *    slices follow the same rule: null is "could not be read", [] is quiet.
+ *  - getDashboardStats falls back to a stats object without the spend or the
+ *    delivery counts when its own route fails; it marks that (F-751), and
+ *    `totalsUnread` reads the mark.
  *  - getCalendarRevenue catches internally and returns { daily: [] }. A
  *    successful month always carries >= 28 day rows (the gateway fills every
  *    day), so `daily.length === 0` is decodable as "unknown".
@@ -194,8 +196,8 @@ export interface DashboardSpine {
   stats: DashboardStats | null | undefined;
   pending: Order[] | null | undefined;
   lowStock: InventoryItem[] | null | undefined;
-  activity: ActivityItem[] | undefined; // [] may mean unreachable (see header)
-  alerts: AlertItem[] | undefined; //      "
+  activity: ActivityItem[] | null | undefined;
+  alerts: AlertItem[] | null | undefined;
   refetch: () => Promise<void>;
 }
 
@@ -217,6 +219,14 @@ export function houseZoneOf(stats: DashboardStats | null | undefined): string | 
   return typeof z === "string" && z.length > 0 ? z : null;
 }
 
+/**
+ * F-751: true when the stats came from the client fallback, which has the
+ * cellar counts but not the spend, today's deliveries or this month's bottles.
+ */
+export function totalsUnread(stats: DashboardStats | null | undefined): boolean {
+  return (stats as { totalsUnread?: unknown } | null | undefined)?.totalsUnread === true;
+}
+
 export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
   const [stats, setStats] = useState<DashboardStats | null | undefined>(
     undefined,
@@ -225,10 +235,10 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
   const [lowStock, setLowStock] = useState<InventoryItem[] | null | undefined>(
     undefined,
   );
-  const [activity, setActivity] = useState<ActivityItem[] | undefined>(
+  const [activity, setActivity] = useState<ActivityItem[] | null | undefined>(
     undefined,
   );
-  const [alerts, setAlerts] = useState<AlertItem[] | undefined>(undefined);
+  const [alerts, setAlerts] = useState<AlertItem[] | null | undefined>(undefined);
   const alive = useRef(true);
 
   const refetch = useCallback(async () => {
@@ -249,8 +259,8 @@ export function useDashboardSpine(restaurantId: string | null): DashboardSpine {
     setStats(s);
     setPending(Array.isArray(p) ? p : null);
     setLowStock(Array.isArray(l) ? l : null);
-    setActivity(Array.isArray(act) ? (act as ActivityItem[]) : []);
-    setAlerts(Array.isArray(al) ? (al as AlertItem[]) : []);
+    setActivity(Array.isArray(act) ? (act as ActivityItem[]) : null);
+    setAlerts(Array.isArray(al) ? (al as AlertItem[]) : null);
   }, [restaurantId]);
 
   useEffect(() => {

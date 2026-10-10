@@ -191,8 +191,9 @@ export interface DayDetailProps {
   zone?: string | null;
   sales?: MonthSales;
   dayOrders: DayOrdersState;
-  alerts: AlertItem[] | undefined;
-  activity: ActivityItem[] | undefined;
+  /** null = the read failed (F-752); the section says so instead of "none". */
+  alerts: AlertItem[] | null | undefined;
+  activity: ActivityItem[] | null | undefined;
   onScrub: (date: string) => void;
   onClose: () => void;
   /** DASH-W22: false for a role that sees counts, not money (staff). */
@@ -414,7 +415,13 @@ export function DayDetail({
 
         <Section title="Alerts raised">
           {dayAlerts.length === 0 && (
-            <EmptyLine>{zone === null ? noZoneLine : 'No alerts carry this date.'}</EmptyLine>
+            <EmptyLine>
+              {alerts === null
+                ? 'Alerts couldn’t be read just now.'
+                : zone === null
+                  ? noZoneLine
+                  : 'No alerts carry this date.'}
+            </EmptyLine>
           )}
           {dayAlerts.map((a) => (
             <div key={a.id} className="flex items-baseline gap-2 text-[13px]">
@@ -431,7 +438,13 @@ export function DayDetail({
 
         <Section title="Activity">
           {dayActivity.length === 0 && (
-            <EmptyLine>{zone === null ? noZoneLine : 'No recorded activity for this day.'}</EmptyLine>
+            <EmptyLine>
+              {activity === null
+                ? 'Activity couldn’t be read just now.'
+                : zone === null
+                  ? noZoneLine
+                  : 'No recorded activity for this day.'}
+            </EmptyLine>
           )}
           {dayActivity.map((a) => (
             <div key={a.id} className="flex items-baseline justify-between gap-3 text-[13px]">

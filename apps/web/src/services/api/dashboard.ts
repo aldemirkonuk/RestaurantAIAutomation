@@ -7,6 +7,7 @@
 import { apiClient, getActiveRestaurantId } from './client';
 import { inventoryApi } from './inventory';
 import { ordersApi } from './orders';
+import { restaurantsApi } from './restaurants';
 import type { DashboardStats } from './types';
 
 const DASHBOARD_PATH = '/dashboard';
@@ -31,9 +32,20 @@ export async function getDashboardStats(restaurantId?: string): Promise<Dashboar
     // D) would have inherited that zero. A failed count now rejects the
     // fallback, and both callers already `settle` this read and show it as
     // not read (useDashboardNextData.ts, useDashboardData.ts).
-    const [summary, pendingOrders] = await Promise.all([
+    //
+    // F-751: the fallback carries no spend and no delivery counts, so it says
+    // so (`totalsUnread`) and the page names them as not read instead of
+    // showing two bare dashes. It also carries the house's own zone, read from
+    // the house record, so the greeting and the month stay on the house's
+    // clock rather than the device's. A zone that cannot be read is left out,
+    // as before; it is never guessed.
+    const [summary, pendingOrders, timezone] = await Promise.all([
       inventoryApi.getInventorySummary(id),
       ordersApi.getPendingOrdersCount(id),
+      restaurantsApi
+        .getOperatingHours(id)
+        .then((h) => h?.timezone ?? null)
+        .catch(() => null),
     ]);
 
     return {
@@ -43,7 +55,9 @@ export async function getDashboardStats(restaurantId?: string): Promise<Dashboar
       pendingOrders,
       totalVolumeMl: 0,
       totalVolumeOz: 0,
-    };
+      totalsUnread: true,
+      ...(timezone ? { timezone } : {}),
+    } as DashboardStats;
   }
 }
 
@@ -73,14 +87,12 @@ export async function getRecentActivity(
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  try {
-    const response = await apiClient.get(`${DASHBOARD_PATH}/activity/${id}`, {
-      params: { limit },
-    });
-    return response.data;
-  } catch {
-    return [];
-  }
+  // F-752: a failed read rejects. Catching it to [] here made the page say
+  // "Quiet." over a list it never read; the caller settles it and says so.
+  const response = await apiClient.get(`${DASHBOARD_PATH}/activity/${id}`, {
+    params: { limit },
+  });
+  return response.data;
 }
 
 /**
@@ -90,12 +102,9 @@ export async function getAlerts(restaurantId?: string): Promise<any[]> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
 
-  try {
-    const response = await apiClient.get(`${DASHBOARD_PATH}/alerts/${id}`);
-    return response.data;
-  } catch {
-    return [];
-  }
+  // F-752: rejects on a failed read, like getRecentActivity above.
+  const response = await apiClient.get(`${DASHBOARD_PATH}/alerts/${id}`);
+  return response.data;
 }
 
 /**

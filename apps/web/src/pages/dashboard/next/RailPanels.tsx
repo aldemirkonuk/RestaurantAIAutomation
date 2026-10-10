@@ -214,7 +214,14 @@ export function LowStockPanel({
 
 /* ── Activity tape ──────────────────────────────────────────────────────── */
 
-export function ActivityPanel({ items }: { items: ActivityItem[] | undefined }) {
+export function ActivityPanel({
+  items,
+  onRetry,
+}: {
+  /** null = the read failed (F-752); [] = a quiet house. */
+  items: ActivityItem[] | null | undefined;
+  onRetry?: () => unknown;
+}) {
   return (
     <Panel title="Lately">
       {items === undefined && (
@@ -222,6 +229,12 @@ export function ActivityPanel({ items }: { items: ActivityItem[] | undefined }) 
           <div className="dn-skel h-6" aria-hidden />
           <div className="dn-skel h-6 w-3/4" aria-hidden />
         </div>
+      )}
+      {items === null && (
+        <EmptyLine>
+          {DASH} Recent activity couldn’t be read just now.
+          {onRetry && <TryAgain onRetry={onRetry} />}
+        </EmptyLine>
       )}
       {items != null && items.length === 0 && (
         <EmptyLine>Quiet. Activity lands here as the day moves.</EmptyLine>
