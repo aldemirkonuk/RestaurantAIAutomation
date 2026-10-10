@@ -61,6 +61,11 @@ export interface ConversationWire {
   summaryModel?: string | null;
   /** `conversation_context.analyzed_at` — when it read it. */
   summaryAnalyzedAt?: string | null;
+  /**
+   * The gateway left out the letter's words, summary and flagged conditions
+   * because they name prices and this person may not send to vendors (F-982).
+   */
+  wordsWithheld?: boolean;
 }
 
 export interface VendorResponse {
@@ -88,6 +93,11 @@ export interface VendorResponse {
    * live order with a refusal in it and no explanation of why it is still open.
    */
   declined: boolean;
+  /**
+   * The letter's words, summary and conditions were withheld for this person
+   * (F-982). The empty fields then mean "not yours to read", never "none".
+   */
+  wordsWithheld: boolean;
   /** DKIM/DMARC verdict on the sender. Null is UNKNOWN, never "unverified". */
   senderVerified: boolean | null;
   /** The vendor's own words. Null when the row carried no body at all. */
@@ -105,6 +115,16 @@ export const NO_SUMMARY_WRITTEN =
   'No summary was written for this answer. The reading step writes one onto the ' +
   'answer it read, so an empty one means it did not run here — not that the ' +
   "answer said nothing. The vendor's own words are below, unchanged.";
+
+/**
+ * Said in place of the summary and the vendor's words when the gateway
+ * withheld them (F-982): they name prices, which are for owners, managers and
+ * the people an owner has allowed to send to vendors.
+ */
+export const LETTER_WORDS_WITHHELD =
+  "This letter names prices, so its words are shown to owners, managers and " +
+  'the people an owner has allowed to write to vendors. Who answered, when, and ' +
+  'the delivery estimate are above.';
 
 /** Said when the per-order read failed. A failed read is never an empty one. */
 export function responsesUnreadable(reason: string): string {
@@ -210,6 +230,7 @@ export function readVendorResponses(
       summaryReadAt: text(r.summaryAnalyzedAt),
       intent: text(r.detectedIntent),
       declined: isDecline(r.detectedIntent),
+      wordsWithheld: r.wordsWithheld === true,
       sentiment: text(r.detectedSentiment),
       specialConditions: Array.isArray(r.specialConditions)
         ? r.specialConditions.filter((c): c is string => typeof c === 'string' && c.trim() !== '')

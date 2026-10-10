@@ -71,6 +71,7 @@ import {
   describeStatedPrice,
 } from './price-unit';
 import {
+  LETTER_WORDS_WITHHELD,
   NO_ANSWER_YET,
   NO_DELIVERY_ESTIMATE,
   NO_SUMMARY_WRITTEN,
@@ -720,6 +721,16 @@ export function ResponsesSheet({
                   </span>
                 </Field>
 
+                {/* F-982: the gateway withheld the letter's words for this
+                    person (they name prices). One plain sentence stands where
+                    the conditions, the summary and the words would be, so the
+                    empty fields never read as "no summary" or "no body". */}
+                {current.wordsWithheld ? (
+                  <p style={said} data-testid="response-words-withheld">
+                    {LETTER_WORDS_WITHHELD}
+                  </p>
+                ) : (
+                <>
                 {current.specialConditions.length > 0 && (
                   <div>
                     {label('Conditions the reading flagged')}
@@ -802,6 +813,8 @@ export function ResponsesSheet({
                     </p>
                   )}
                 </div>
+                </>
+                )}
               </section>
             )}
           </>

@@ -140,10 +140,24 @@ export class MobileService {
 
     const pendingOrderIds = new Set(orders.map((o: any) => o.id));
 
+    // F-982 (coordinator call S144): a drafted letter's words name prices. A
+    // non-holder keeps them only while they may send to vendors (ADR 0175 D10
+    // grantee), since a letter they approve is one they must read. The
+    // standing is read only when it matters; one that cannot be read keeps
+    // nothing (the readout reports it unreadable, never "may send").
+    const withholdWords =
+      withholdMoney &&
+      conversations.length > 0 &&
+      !(await this.procurementService.sendOrAskFor(userId, restaurantId))
+        .maySend;
+
     for (const conv of conversations as any[]) {
       const providerName =
         conv.providers?.name ?? providerNames.get(conv.provider_id) ?? null;
-      const draft = typeof conv.content === "string" ? conv.content : null;
+      const draft =
+        !withholdWords && typeof conv.content === "string"
+          ? conv.content
+          : null;
       items.push(
         this.makeItem({
           kind: "draft_approval",
@@ -151,9 +165,11 @@ export class MobileService {
           title: providerName
             ? `Reply ready for ${providerName}`
             : "Vendor reply ready",
-          subtitle: draft
-            ? this.truncate(draft.replace(/\s+/g, " "), 110)
-            : "AI drafted a reply for your review.",
+          subtitle: withholdWords
+            ? "A reply is drafted. Its words name prices, so an owner or a manager reads it."
+            : draft
+              ? this.truncate(draft.replace(/\s+/g, " "), 110)
+              : "AI drafted a reply for your review.",
           providerName,
           priority: "high",
           createdAt: conv.created_at ?? new Date().toISOString(),
@@ -163,6 +179,7 @@ export class MobileService {
           meta: {
             orderNumber: conv.procurement_orders?.order_number ?? null,
             approvalStatus: conv.manager_approval_status ?? null,
+            ...(withholdWords ? { wordsWithheld: true } : {}),
           },
         }),
       );

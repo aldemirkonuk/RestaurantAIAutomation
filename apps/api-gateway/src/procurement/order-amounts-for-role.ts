@@ -86,16 +86,73 @@ export function orderListForRole(
  * An order's letters as this role may read them (F-957, the phone's order
  * screen). Each letter carries the order's quoted price beside the thread;
  * a non-holder gets the letter without it, marked `amountsWithheld`, as the
- * order read itself does. The letters' own words are the vendor's and the
- * house's, and are not cut here.
+ * order read itself does.
+ *
+ * The letters' own words name prices too (F-982, coordinator call S144): the
+ * vendor's text or the house's draft (`draftContent`), the engine's summary of
+ * the thread (`rollingSummary`) and the conditions it flagged
+ * (`specialConditions`). A non-holder who may send to vendors (ADR 0175 D10:
+ * a grantee, `readsLetters`) keeps them, because a letter they approve is a
+ * letter they must read; anyone else gets the letter without them, marked
+ * `wordsWithheld`, so a page can tell "withheld for your role" from "this
+ * letter has no words". The exception follows the grant, not the role.
  */
+export const LETTER_PROSE_KEYS = [
+  "draftContent",
+  "rollingSummary",
+  "specialConditions",
+] as const;
+
 export function conversationsForRole<T extends Record<string, unknown>>(
   rows: T[],
   role: string | null | undefined,
-): Array<Omit<T, "quotedPrice"> & { amountsWithheld?: true }> {
+  opts: { readsLetters?: boolean } = {},
+): Array<Partial<T> & { amountsWithheld?: true; wordsWithheld?: true }> {
   if (holdsHouseMoney(role)) return rows;
   return rows.map((row) => {
-    const { quotedPrice: _price, ...rest } = row;
-    return { ...rest, amountsWithheld: true as const };
+    const kept: Record<string, unknown> = { ...row };
+    delete kept.quotedPrice;
+    if (opts.readsLetters)
+      return { ...(kept as Partial<T>), amountsWithheld: true as const };
+    for (const key of LETTER_PROSE_KEYS) delete kept[key];
+    return {
+      ...(kept as Partial<T>),
+      amountsWithheld: true as const,
+      wordsWithheld: true as const,
+    };
   });
+}
+
+/**
+ * The open deal proposal on an order as this role may read it (F-981). The
+ * proposal is the vendor's offer: the proposed and final price, the agreement
+ * terms, the quoted sentence and the summary all name the house's money. A
+ * non-holder gets only the keys below (an allowlist, as `orderForRole`), and
+ * the reply says `amountsWithheld: true`. The delivery estimate stays: the
+ * /orders sheet reads it, and a date says nothing about the price.
+ */
+const DEAL_KEYS_FOR_EVERY_ROLE = [
+  "orderId",
+  "conversationId",
+  "providerName",
+  "wineName",
+  "quantity",
+  "deliveryEstimate",
+  "dealKind",
+  "urgency",
+  "confidence",
+  "timestamp",
+  "trust",
+] as const;
+
+export function dealProposalForRole(
+  proposal: Record<string, any> | null,
+  role: string | null | undefined,
+): (Record<string, any> & { amountsWithheld?: true }) | null {
+  if (proposal === null || holdsHouseMoney(role)) return proposal;
+  const kept: Record<string, any> = {};
+  for (const key of DEAL_KEYS_FOR_EVERY_ROLE) {
+    if (key in proposal) kept[key] = proposal[key];
+  }
+  return { ...kept, amountsWithheld: true };
 }

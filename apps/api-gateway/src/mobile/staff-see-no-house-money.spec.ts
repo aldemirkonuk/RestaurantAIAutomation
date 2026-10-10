@@ -271,6 +271,7 @@ describe("an order's letters by role (F-957, the phone's order screen)", () => {
   const controller = () =>
     new ProcurementController({
       getOrderConversations: jest.fn().mockResolvedValue([{ ...LETTER }]),
+      sendOrAskFor: jest.fn().mockResolvedValue({ maySend: false }),
     } as unknown as ProcurementService);
 
   it.each(NOT_HOLDERS)(

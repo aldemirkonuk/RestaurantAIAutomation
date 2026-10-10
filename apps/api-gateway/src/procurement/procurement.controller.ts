@@ -25,6 +25,7 @@ import { holdsHouseMoney } from "./documents/document-money-gate";
 import {
   OrderForRole,
   conversationsForRole,
+  dealProposalForRole,
   orderForRole,
   orderListForRole,
 } from "./order-amounts-for-role";
@@ -1130,12 +1131,18 @@ export class ProcurementController {
   @ApiResponse({ status: 200 })
   async getDealProposal(
     @Param("id") orderId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<Record<string, any> | null> {
     try {
-      return await this.procurementService.getDealProposal(
-        user.restaurantId,
-        orderId,
+      // The vendor's offer names the house's money; staff get the offer
+      // without it (F-981), as GET /orders/:id already cuts the order.
+      return dealProposalForRole(
+        await this.procurementService.getDealProposal(
+          user.restaurantId,
+          orderId,
+        ),
+        user?.role ?? null,
       );
     } catch (error: any) {
       throw new HttpException(
@@ -1387,14 +1394,24 @@ export class ProcurementController {
   ) {
     try {
       // The order's quoted price rides on every letter; staff get the
-      // letters without it (F-957), as GET /orders/:id already cuts it.
-      return conversationsForRole(
-        await this.procurementService.getOrderConversations(
-          user.restaurantId,
-          orderId,
-        ),
-        user?.role ?? null,
+      // letters without it (F-957), as GET /orders/:id already cuts it. The
+      // letters' words name prices too (F-982): only a non-holder who may
+      // send to vendors (ADR 0175 D10) keeps them. The standing is read only
+      // for a non-holder, and one that cannot be read keeps nothing.
+      const role = user?.role ?? null;
+      const rows = await this.procurementService.getOrderConversations(
+        user.restaurantId,
+        orderId,
       );
+      const readsLetters = holdsHouseMoney(role)
+        ? true
+        : (
+            await this.procurementService.sendOrAskFor(
+              user.userId,
+              user.restaurantId,
+            )
+          ).maySend;
+      return conversationsForRole(rows, role, { readsLetters });
     } catch (error: any) {
       throw new HttpException(
         error.message || "Failed to get order conversations",
