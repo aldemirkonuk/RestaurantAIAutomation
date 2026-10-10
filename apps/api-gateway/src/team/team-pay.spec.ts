@@ -108,7 +108,8 @@ function seed(): StubDb {
 function withReleaseRpc(db: StubDb): StubDb {
   let nextRest = 0;
   (db.supabase as any).rpc = async (fn: string, args: any) => {
-    if (fn === "account_delete_blockers") return defaultRpc(db, fn, args);
+    if (fn === "account_delete_blockers" || fn === "replace_week_shifts")
+      return defaultRpc(db, fn, args);
     db.ops.push({ table: `rpc:${fn}`, op: "update", filters: [], payload: args } as any);
     const forced = db.errors[`rpc:${fn}`];
     if (forced) return { data: null, error: forced };

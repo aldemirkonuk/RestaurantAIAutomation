@@ -461,6 +461,18 @@ export class ScheduleService {
     );
     const inTheWay = inTheWayIds.length;
 
+    // The count the person was shown is the count they agreed to lose
+    // (F-1030). A tab loaded before another manager filled the week says
+    // "0 shifts" and would otherwise delete everything there now.
+    if (dto.expectShifts !== undefined && dto.expectShifts !== inTheWay) {
+      throw new ConflictException(
+        `The week of ${dto.toWeekStart} now has ${inTheWay} shift(s), not the ` +
+          `${dto.expectShifts} you were shown, so someone changed it after ` +
+          "you opened the page. Nothing was copied and nothing was deleted. " +
+          "Look at the week again before you copy.",
+      );
+    }
+
     if (inTheWay > 0 && !dto.replaceTarget) {
       throw new ConflictException(
         `The week of ${dto.toWeekStart} already has ${inTheWay} shift(s). ` +
@@ -566,30 +578,45 @@ export class ScheduleService {
           : null,
       };
     });
-    let deleted = 0;
-    if (inTheWay > 0) {
-      // By id, the rows counted above: a date-range delete would also take a
-      // removed person's kept shifts in that week (ADR 0215 item 20).
-      const { error: deleteErr } = await this.sb
-        .from("shifts")
-        .delete()
-        .eq("restaurant_id", restaurantId)
-        .in("id", inTheWayIds);
-      if (deleteErr) {
-        this.logger.error(
-          `copyWeek: could not clear the target week ${dto.toWeekStart} for ` +
-            `restaurant ${restaurantId}: ${deleteErr.message}`,
-        );
-        throw new InternalServerErrorException(
-          "Could not clear the week you are copying into, so nothing was copied.",
+    if (!rows.length && inTheWay === 0) {
+      return { copied: 0, deleted: 0, schedule: target };
+    }
+    // The delete and the insert are one transaction that holds the week's
+    // schedule row (F-1030, migration replace_week_shifts): it re-reads the
+    // week under that lock and refuses when it is not the week read above, so
+    // two copies at once cannot both land and double every shift, and a copy
+    // that fails half way leaves the week as it was. The delete is by id, the
+    // rows counted above: a date-range delete would also take a removed
+    // person's kept shifts in that week (ADR 0215 item 20).
+    const { data: done, error } = await (this.sb as any).rpc(
+      "replace_week_shifts",
+      {
+        p_restaurant_id: restaurantId,
+        p_schedule_id: target.id,
+        p_week_start: dto.toWeekStart,
+        p_seen: (existing ?? []).map((s: any) => s.id),
+        p_delete: inTheWayIds,
+        p_rows: rows,
+      },
+    );
+    if (error) {
+      if (error.code === "40001") {
+        throw new ConflictException(
+          `Someone changed the week of ${dto.toWeekStart} while this copy ` +
+            "was being made. Nothing was copied and nothing was deleted. " +
+            "Look at the week again before you copy.",
         );
       }
-      deleted = inTheWay;
+      this.logger.error(
+        `copyWeek: could not replace the week ${dto.toWeekStart} for ` +
+          `restaurant ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not copy the week. Nothing was copied and nothing was deleted.",
+      );
     }
-
+    const deleted = Number(done?.deleted ?? inTheWay);
     if (!rows.length) return { copied: 0, deleted, schedule: target };
-    const { error } = await this.sb.from("shifts").insert(rows);
-    if (error) throw new InternalServerErrorException("Failed to copy week");
     return {
       copied: rows.length,
       deleted,
@@ -944,7 +971,7 @@ export class ScheduleService {
     const { data: cur, error: curErr } = await this.sb
       .from("shifts")
       .select(
-        "member_id, start_time, end_time, shift_date, recorded_break_min, shift_breaks(*)",
+        "member_id, state, updated_at, start_time, end_time, shift_date, recorded_break_min, shift_breaks(*)",
       )
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
@@ -962,6 +989,23 @@ export class ScheduleService {
     // A removed person's kept shift is owner-only history, not reachable here
     // (ADR 0215 item 20; `TeamService.assertOnTheRoster`, founder item 71).
     await this.team.assertOnTheRoster(restaurantId, cur, "Shift not found");
+    // The shift as the editor saw it (F-1033). The sheet sends back the whole
+    // form, the person included, so a sheet opened before another manager
+    // moved the shift would put the old person back without a word.
+    const staleWho =
+      dto.expectMemberId !== undefined &&
+      (dto.expectMemberId ?? null) !== (cur.member_id ?? null);
+    const staleWhen =
+      dto.expectUpdatedAt !== undefined &&
+      !sameInstant(dto.expectUpdatedAt, cur.updated_at);
+    if (staleWho || staleWhen) throw changedSinceOpened();
+    // Taking the person off makes it an open shift for the crew to claim, as
+    // a new shift with nobody on it is (F-1032); putting someone on an open
+    // one schedules it, so it is no longer offered to the crew.
+    if (dto.state === undefined && dto.memberId !== undefined) {
+      if (dto.memberId === null && cur.member_id) patch.state = "open";
+      if (dto.memberId && cur.state === "open") patch.state = "scheduled";
+    }
 
     // The break, as whoever edits the shift records it (ADR 0215): a number of
     // minutes records it (0 = no break taken); `null` clears the record, so
@@ -1065,15 +1109,19 @@ export class ScheduleService {
       );
     }
 
-    const { data, error } = await this.sb
+    // Compare-and-set on the row as read above (F-1033): a change that lands
+    // between that read and this write leaves no row matched, said as a 409.
+    let write = this.sb
       .from("shifts")
       .update(patch)
       .eq("id", shiftId)
-      .eq("restaurant_id", restaurantId)
+      .eq("restaurant_id", restaurantId);
+    if (cur.updated_at) write = write.eq("updated_at", cur.updated_at);
+    const { data, error } = await write
       .select("*, shift_breaks(*)")
       .maybeSingle();
     if (error) throw new InternalServerErrorException("Failed to update shift");
-    if (!data) throw new NotFoundException("Shift not found");
+    if (!data) throw changedSinceOpened();
     return shiftForViewer(data, viewer);
   }
 
@@ -1882,6 +1930,22 @@ export class ScheduleService {
 }
 
 // ── date helpers (UTC-explicit so server timezone never shifts the day) ──────
+/** Two timestamps naming the same moment, whatever their spelling. */
+function sameInstant(a: unknown, b: unknown): boolean {
+  const x = Date.parse(String(a ?? ""));
+  const y = Date.parse(String(b ?? ""));
+  return Number.isFinite(x) && x === y;
+}
+
+/** A shift edited from a sheet opened before someone else changed it (F-1033). */
+function changedSinceOpened(): ConflictException {
+  return new ConflictException(
+    "Someone else changed or removed this shift after you opened it, so " +
+      "nothing was saved. Close this and open the shift again to see it as " +
+      "it is now.",
+  );
+}
+
 function addDays(date: string, n: number): string {
   const d = new Date(date + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);

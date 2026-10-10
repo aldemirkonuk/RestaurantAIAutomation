@@ -131,6 +131,8 @@ export interface Shift {
    * hours is counted with the 4857 Art. 68 minimum and shown as assumed.
    */
   recorded_break_min?: number | null
+  /** When the row last changed; an edit sends it back so a stale sheet is refused (F-1033). */
+  updated_at?: string
 }
 
 export interface Schedule {
@@ -451,13 +453,14 @@ export async function createSchedule(weekStart: string, rid?: string): Promise<S
 export async function copyWeek(
   fromWeekStart: string,
   toWeekStart: string,
-  opts: { replaceTarget?: boolean } = {},
+  opts: { replaceTarget?: boolean; expectShifts?: number } = {},
   rid?: string,
 ) {
   const { data } = await apiClient.post(`${base(rid)}/schedules/copy-week`, {
     fromWeekStart,
     toWeekStart,
     ...(opts.replaceTarget ? { replaceTarget: true } : {}),
+    ...(opts.expectShifts !== undefined ? { expectShifts: opts.expectShifts } : {}),
   })
   return data
 }

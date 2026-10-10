@@ -140,7 +140,53 @@ export function defaultRpc(db: StubDb, fn: string, args: any) {
   if (fn === "account_delete_blockers") {
     return { data: db.tables.account_delete_blockers ?? [], error: null };
   }
+  if (fn === "replace_week_shifts") return replaceWeekShifts(db, args);
   throw new Error(`supabase-stub: no rpc ${fn}`);
+}
+
+/**
+ * `replace_week_shifts` (migration a_week_copy_replaces_the_week_it_read,
+ * F-1030) over the stub's tables, as the SQL does it: refused with 40001
+ * unless the week's shift ids are exactly the ones read, then the given ids
+ * deleted and the rows inserted, all or nothing. The lock itself is held by
+ * the SQL test of that migration.
+ */
+function replaceWeekShifts(db: StubDb, args: any) {
+  const shifts = (db.tables.shifts ??= []);
+  const end = new Date(args.p_week_start + "T00:00:00Z");
+  end.setUTCDate(end.getUTCDate() + 6);
+  const last = end.toISOString().slice(0, 10);
+  const now = shifts
+    .filter(
+      (r) =>
+        r.restaurant_id === args.p_restaurant_id &&
+        r.shift_date >= args.p_week_start &&
+        r.shift_date <= last,
+    )
+    .map((r) => r.id)
+    .sort();
+  const seen = [...(args.p_seen ?? [])].sort();
+  if (now.join() !== seen.join()) {
+    return {
+      data: null,
+      error: { code: "40001", message: "the week changed after it was read" },
+    };
+  }
+  const gone = new Set<string>(args.p_delete ?? []);
+  const kept = shifts.filter((r) => !gone.has(r.id));
+  shifts.splice(0, shifts.length, ...kept);
+  const rows = (args.p_rows ?? []).map((r: Row, i: number) => ({
+    id: `stub-copy-${shifts.length + i + 1}`,
+    created_at: new Date().toISOString(),
+    ...r,
+    restaurant_id: args.p_restaurant_id,
+    schedule_id: args.p_schedule_id,
+  }));
+  shifts.push(...rows);
+  return {
+    data: { deleted: gone.size, copied: rows.length },
+    error: null,
+  };
 }
 
 /**
