@@ -181,8 +181,9 @@ export interface OrderRowVM {
 
 export interface MonthFigure {
   /**
-   * Sum of known order values created this calendar month (cancelled excluded).
-   * Null = unknown, or the month's orders are in more than one currency: there
+   * Sum of known values of COMMITTED orders (approved, ordered, delivered —
+   * never a draft, a pending order or a cancelled one) requested this calendar
+   * month on the house's clock (F-230). Null = unknown, or the month's orders are in more than one currency: there
    * is no rate to add them by, and `thisMonthByCurrency` then carries each
    * (F-341, the dashboard's per-currency shape from F-339).
    */
@@ -193,6 +194,84 @@ export interface MonthFigure {
   lastMonthByCurrency?: MoneyInCurrency[];
   /** Orders inside this month whose value is unknown — stated, not silently zeroed. */
   unpricedThisMonth: number;
+  /** The month's name on the house's clock ("October"); absent before a read. */
+  label?: string;
+}
+
+/** The stages that are money the house has agreed to spend (F-230). */
+const COMMITTED: ReadonlySet<Stage | 'cancelled'> = new Set<Stage | 'cancelled'>([
+  'approved',
+  'ordered',
+  'delivered',
+]);
+
+/**
+ * Year and month (1-12) of an instant on `zone`'s clock, or null when it cannot
+ * be read. A null zone (the house has stated none, or the read failed) falls
+ * back to this browser's clock — the only clock left to ask.
+ */
+export function houseMonthOf(
+  t: string | Date | null | undefined,
+  zone: string | null,
+): { year: number; month: number } | null {
+  if (!t) return null;
+  const d = t instanceof Date ? t : new Date(t);
+  if (Number.isNaN(d.getTime())) return null;
+  const read = (timeZone: string | undefined) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+    }).formatToParts(d);
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    return { year: get('year'), month: get('month') };
+  };
+  try {
+    return read(zone ?? undefined);
+  } catch {
+    return read(undefined); // a zone name this browser cannot read
+  }
+}
+
+/**
+ * "<Month> so far" and "last month": committed orders only, filed by the
+ * house's month (F-230). Per currency, never one sum across them (F-341).
+ */
+export function monthFigureOf(
+  rows: OrderRowVM[],
+  zone: string | null,
+  now: Date = new Date(),
+): MonthFigure {
+  const here = houseMonthOf(now, zone)!;
+  const last =
+    here.month === 1
+      ? { year: here.year - 1, month: 12 }
+      : { year: here.year, month: here.month - 1 };
+  const inMonth = (iso: string | null, ref: { year: number; month: number }) => {
+    const m = houseMonthOf(iso, zone);
+    return !!m && m.year === ref.year && m.month === ref.month;
+  };
+  const committed = rows.filter((r) => COMMITTED.has(r.stage));
+  const sumKnown = (rs: OrderRowVM[]) =>
+    sumByCurrency(rs.map((r) => ({ amount: r.total, currency: r.currency })));
+  const thisRows = committed.filter((r) => inMonth(r.requestedAt, here));
+  const lastRows = committed.filter((r) => inMonth(r.requestedAt, last));
+  const thisSum = sumKnown(thisRows);
+  const lastSum = sumKnown(lastRows);
+  let label: string;
+  try {
+    label = new Intl.DateTimeFormat('en-GB', { month: 'long', timeZone: zone ?? undefined }).format(now);
+  } catch {
+    label = new Intl.DateTimeFormat('en-GB', { month: 'long' }).format(now);
+  }
+  return {
+    thisMonth: thisSum.total,
+    thisMonthByCurrency: thisSum.byCurrency,
+    lastMonth: lastSum.total,
+    lastMonthByCurrency: lastSum.byCurrency,
+    unpricedThisMonth: thisRows.filter((r) => r.total === null).length,
+    label,
+  };
 }
 
 /**
@@ -464,6 +543,20 @@ export function useOrdersNextData(): OrdersNextData {
       ? houseCurrencyQuery.data.code
       : null;
 
+  // The house's clock, for the month figure (F-230). Unstated or unread, the
+  // figure files by this browser's clock, as it did before.
+  const houseZoneQuery = useQuery({
+    queryKey: ['settings', 'time-zone', restaurantId],
+    queryFn: () => settingsApi.houseTimeZone(),
+    enabled: !!restaurantId,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const houseZone =
+    houseZoneQuery.data?.readable && houseZoneQuery.data.zone
+      ? houseZoneQuery.data.zone
+      : null;
+
   const providerNameById = useMemo(() => {
     const map = new Map<string, string>();
     (providersQuery.data ?? []).forEach((p) => {
@@ -486,7 +579,7 @@ export function useOrdersNextData(): OrdersNextData {
     let recurringCount: number | null = null;
     let recurrenceReadCount: number | null = null;
     let cancelledCount: number | null = null;
-    const month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
+    let month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
 
     if (known) {
       const oneTime = rows.filter((r) => !r.recurring);
@@ -505,26 +598,7 @@ export function useOrdersNextData(): OrdersNextData {
       recurrenceReadCount = rows.filter((r) => r.recurrence.read).length;
       cancelledCount = rows.filter((r) => r.stage === 'cancelled').length;
 
-      const now = new Date();
-      const inMonth = (iso: string | null, ref: Date) => {
-        if (!iso) return false;
-        const d = new Date(iso);
-        return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
-      };
-      const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const active = rows.filter((r) => r.stage !== 'cancelled');
-      // Per currency, never one sum across them (F-341).
-      const sumKnown = (rs: OrderRowVM[]) =>
-        sumByCurrency(rs.map((r) => ({ amount: r.total, currency: r.currency })));
-      const thisRows = active.filter((r) => inMonth(r.requestedAt, now));
-      const lastRows = active.filter((r) => inMonth(r.requestedAt, lastRef));
-      const thisSum = sumKnown(thisRows);
-      const lastSum = sumKnown(lastRows);
-      month.thisMonth = thisSum.total;
-      month.thisMonthByCurrency = thisSum.byCurrency;
-      month.lastMonth = lastSum.total;
-      month.lastMonthByCurrency = lastSum.byCurrency;
-      month.unpricedThisMonth = thisRows.filter((r) => r.total === null).length;
+      month = monthFigureOf(rows, houseZone);
     }
 
 
@@ -561,5 +635,5 @@ export function useOrdersNextData(): OrdersNextData {
       errorMessage: ordersQuery.isError ? readFailureWords(ordersQuery.error) : null,
       refetch: () => void ordersQuery.refetch(),
     };
-  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, houseCurrency, gateQuery.data, gateQuery.isError, gateQuery.error]);
+  }, [ordersQuery.data, ordersQuery.isLoading, ordersQuery.isError, ordersQuery.error, ordersQuery.refetch, ordersQuery.dataUpdatedAt, providerNameById, houseCurrency, houseZone, gateQuery.data, gateQuery.isError, gateQuery.error]);
 }
