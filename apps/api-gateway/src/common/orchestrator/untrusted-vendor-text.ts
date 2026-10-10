@@ -9,7 +9,7 @@
  */
 
 /** Zero-width and bidi-control characters a marker could be split with. */
-const INVISIBLE = /[​-‏‪-‮⁠-⁤﻿]/g;
+const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g;
 
 /**
  * Lines the prompt treats as house-authored. A vendor body that carries one is
