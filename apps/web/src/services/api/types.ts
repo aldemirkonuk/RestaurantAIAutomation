@@ -401,6 +401,11 @@ export interface Order {
   approvedAt?: string;
   deliveredAt?: string;
   completedAt?: string;
+  /**
+   * When the delivery's three-way match was checked (F-710). `null` = not
+   * checked; KEY ABSENT = this route does not read it (`/orders/:id` does).
+   */
+  matchVerifiedAt?: string | null;
   isEmergency?: boolean;
   priorityLevel?: number;
   /**

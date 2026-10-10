@@ -56,6 +56,12 @@ import { listVendorTerms } from '@/services/api/vendorTerms';
 import { queryKeys } from '@/lib/query-keys';
 import { parseDecimal, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import {
+  readSessionDraft,
+  useUnsavedWorkGuard,
+  writeSessionDraft,
+} from '@/hooks/useUnsavedWorkGuard';
+import { toast } from 'sonner';
 import { EM, MONO, SANS, SERIF } from './format';
 import { PRICE_UOMS, PRICE_UOM_LABEL, agreementTotal, isMultiplying, type PriceUom } from './price-unit';
 import { foldText } from '@/lib/textFold';
@@ -112,6 +118,39 @@ function newLine(inventoryId: string, wineName: string): OrderLine {
     asking: false,
     outcome: null,
   };
+}
+
+/**
+ * The cart, kept for this tab and this person in this house (F-712), so a
+ * refresh or a Back does not drop the lines. `inFlight` names the line whose
+ * POST had gone out when the page last wrote this down: if the page died
+ * there, nobody knows whether it was placed, and it comes back saying so.
+ */
+interface KeptCart {
+  lines: OrderLine[];
+  inFlight: string | null;
+}
+const cartKey = (scope: string) => `mdv:new-order-cart:${scope}`;
+
+function readCart(scope: string): OrderLine[] {
+  const kept = readSessionDraft<KeptCart>(cartKey(scope));
+  if (!kept || !Array.isArray(kept.lines)) return [];
+  return kept.lines.map((line) => {
+    // Keys are minted from `seq`; a restored line must not share one with
+    // the next line added.
+    const n = Number(String(line.key).replace('line-', ''));
+    if (Number.isFinite(n) && n > seq) seq = n;
+    if (line.key !== kept.inFlight || line.outcome?.ok) return { ...line, asking: false };
+    return {
+      ...line,
+      asking: false,
+      outcome: {
+        ok: false,
+        uncertain: true,
+        message: 'This line was being placed when the page closed. Check the order book before placing it again.',
+      },
+    };
+  });
 }
 
 /** Typed text as a number, the way the house writes it ("12,50"); null when blank or not one. */
@@ -301,8 +340,11 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
   const [tally, setTally] = useState<string | null>(null);
 
   // A house switch must never leave the previous house's shelf in the cart.
+  // The cart kept for THIS person in THIS house comes back (F-712).
+  const skipKeep = useRef(true);
   useEffect(() => {
-    setLines([]);
+    skipKeep.current = true;
+    setLines(readCart(scope));
     setSearch('');
     setFailure(null);
     setTally(null);
@@ -310,6 +352,25 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
     placementGeneration.current += 1;
     agreementRequests.current.clear();
   }, [scope]);
+
+  // Written on every change, except in the commit where the house changed:
+  // there `lines` still holds the previous house's cart.
+  useEffect(() => {
+    if (skipKeep.current) {
+      skipKeep.current = false;
+      return;
+    }
+    if (placing) return; // the placement loop writes its own record
+    writeSessionDraft(cartKey(scope), { lines, inFlight: null } satisfies KeptCart);
+  }, [lines, scope, placing]);
+
+  const holdingWork = lines.some((l) => !l.outcome?.ok);
+  useUnsavedWorkGuard(
+    placing || (open && holdingWork),
+    placing
+      ? 'Orders are still being placed. Leave now and the lines not yet placed stay in the cart, unplaced.'
+      : 'This cart has lines that are not placed yet. Leave anyway? They stay here on this tab.',
+  );
 
   const shelf = useMemo(() => (inventory.data ?? []) as Array<Record<string, any>>, [inventory.data]);
 
@@ -438,10 +499,31 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
     const attempted = lines.filter((l) => !l.outcome?.ok).length;
     let placed = 0;
     const survivors: OrderLine[] = [];
+    /**
+     * The sheet went away mid-placement — Back, or the page closed under it
+     * (F-712). Nothing more is placed, but the person is told what was, and
+     * the lines not yet placed are kept for when the cart is opened again.
+     * A house switch also stops the loop; that one is said by the reset.
+     */
+    const leftMidway = (rest: OrderLine[]) => {
+      if (mounted.current || currentScope.current !== scope) return;
+      writeSessionDraft(cartKey(scope), { lines: survivors.concat(rest), inFlight: null } satisfies KeptCart);
+      const notPlaced = rest.filter((l) => !l.outcome?.ok).length;
+      toast.warning(
+        `${placed} of ${attempted} ${attempted === 1 ? 'order was' : 'orders were'} placed before you left. ` +
+          (notPlaced > 0
+            ? `${notPlaced} ${notPlaced === 1 ? 'line was' : 'lines were'} not placed and ${notPlaced === 1 ? 'is' : 'are'} still in the cart.`
+            : 'Check the order book for each one.'),
+      );
+    };
 
-    for (const line of lines) {
-      if (!stillCurrent()) return;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!stillCurrent()) return leftMidway(lines.slice(i));
       if (line.outcome?.ok) { survivors.push(line); continue; }
+      // Written down BEFORE the request: if the page dies while it is out,
+      // the line comes back as "not known whether placed", never as unplaced.
+      writeSessionDraft(cartKey(scope), { lines: survivors.concat(lines.slice(i)), inFlight: line.key } satisfies KeptCart);
       try {
         const { data } = await apiClient.post<{ id?: string; orderNumber?: string }>(
           '/procurement/orders',
@@ -462,7 +544,15 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
             managerNotes: line.notes.trim() || undefined,
           },
         );
-        if (!stillCurrent()) return;
+        if (!stillCurrent()) {
+          if (data?.id || data?.orderNumber) {
+            placed += 1;
+            survivors.push({ ...line, outcome: { ok: true, orderNumber: data?.orderNumber ?? data?.id ?? EM } });
+          } else {
+            survivors.push({ ...line, outcome: { ok: false, uncertain: true, message: 'Mudavym sent back no receipt for this order. Check the order book before trying again.' } });
+          }
+          return leftMidway(lines.slice(i + 1));
+        }
         if (!data?.id && !data?.orderNumber) throw new Error('Mudavym sent back no receipt for this order. Check the order book before trying again.');
         placed += 1;
         // The placed line leaves the composer, but it leaves a RECEIPT: the
@@ -472,9 +562,14 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
           outcome: { ok: true, orderNumber: data?.orderNumber ?? data?.id ?? EM },
         });
       } catch (e) {
-        if (!stillCurrent()) return;
         const status = (e as { response?: { status?: number; data?: { reason?: string } } })
           ?.response;
+        if (!stillCurrent()) {
+          const unsure = !status?.status || status.status >= 500;
+          survivors.push({ ...line, outcome: { ok: false, uncertain: unsure, message: unsure
+            ? `Placement was not confirmed (${getErrorMessage(e)}). Check the order book before replacing this line.` : getErrorMessage(e) } });
+          return leftMidway(lines.slice(i + 1));
+        }
         if (status?.status === 403 && status?.data?.reason === 'no_vendors') {
           // The case a pre-flight read can never cover. Stop the loop — every
           // remaining line would be refused for the same reason — say what was
@@ -495,7 +590,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
       }
     }
 
-    if (!stillCurrent()) return;
+    if (!stillCurrent()) return leftMidway([]);
     setLines(survivors);
     setTally(
       placed === attempted
@@ -513,6 +608,9 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced, seed }: Ne
     <Sheet
       open={open}
       onClose={onClose}
+      /* Unplaced lines are words nobody has written yet: Esc or a click
+         outside puts the cart down, kept, instead of looking like a discard. */
+      dirty={placing || holdingWork}
       /* The contract, as the accessible name (sketch 103, 1e). */
       label="Write a new order. Placing it writes one pending order per line, for a person to approve later. Nothing is sent to a vendor and leaving writes nothing."
       eyebrow="The order book"

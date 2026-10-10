@@ -1039,6 +1039,13 @@ export class OrderResponseDto {
   @ApiPropertyOptional()
   completedAt?: string;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "When the delivery's three-way match was checked. null = not checked; absent = this route does not read it.",
+  })
+  matchVerifiedAt?: string | null;
+
   @ApiPropertyOptional()
   isEmergency?: boolean;
 

@@ -37,6 +37,8 @@ vi.mock('@/services/api/client', () => ({
 vi.mock('@/services/api/vendorTerms', () => ({
   listVendorTerms: () => terms.list(),
 }));
+const toastWarning = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { warning: toastWarning } }));
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => auth,
@@ -85,6 +87,8 @@ beforeEach(() => {
   auth.activeRestaurantId = 'rest-A';
   auth.user = { userId: 'actor-A', restaurantId: 'rest-A' };
   localStorage.clear();
+  sessionStorage.clear();
+  toastWarning.mockReset();
   api.get.mockReset();
   api.post.mockReset();
   terms.list.mockReset();
@@ -521,5 +525,88 @@ describe("the vendor's minimum order", () => {
     draw();
     await addLine(ITEM, '5');
     expect(await screen.findByTestId('new-order-minimum')).toHaveTextContent(/could not be read/);
+  });
+});
+
+describe('leaving the cart mid-flow (F-712)', () => {
+  it('[REVERT-FAILS] keeps the cart for this house across a remount (refresh, Back)', async () => {
+    const first = draw();
+    await addLine(ITEM, '5');
+    first.unmount();
+
+    draw();
+    const lines = screen.getAllByTestId('new-order-line');
+    expect(lines).toHaveLength(1);
+    expect(within(lines[0]).getByTestId('new-order-qty')).toHaveValue('5');
+  });
+
+  it('does not hand one house\'s cart to another', async () => {
+    const first = draw();
+    await addLine(ITEM, '5');
+    first.unmount();
+
+    auth.activeRestaurantId = 'rest-B';
+    auth.user = { userId: 'actor-A', restaurantId: 'rest-B' };
+    draw();
+    expect(screen.queryAllByTestId('new-order-line')).toHaveLength(0);
+  });
+
+  it('[REVERT-FAILS] marks the sheet dirty while it holds unplaced lines', async () => {
+    draw();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.closest('.mdv-ovl')).not.toHaveAttribute('data-dirty');
+    await addLine(ITEM, '5');
+    expect(dialog.closest('.mdv-ovl')).toHaveAttribute('data-dirty', 'true');
+  });
+
+  it('[REVERT-FAILS] asks the browser before a reload drops unplaced lines', async () => {
+    draw();
+    const clean = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    await addLine(ITEM, '5');
+    const dirty = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(dirty);
+    expect(dirty.defaultPrevented).toBe(true);
+  });
+
+  it('[REVERT-FAILS] says what was placed when the sheet goes away mid-placement, and keeps the rest', async () => {
+    let answer!: (v: unknown) => void;
+    api.post.mockImplementationOnce(() => new Promise((r) => { answer = r; }));
+    const view = draw();
+    await addLine(ITEM, '5');
+    await addLine(ITEM2, '2');
+    fireEvent.click(screen.getByTestId('new-order-place'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+
+    view.unmount();
+    await act(async () => { answer({ data: { orderNumber: 'PO-118' } }); });
+
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(toastWarning).toHaveBeenCalledWith(
+      expect.stringMatching(/1 of 2 orders were placed before you left\. 1 line was not placed/),
+    );
+
+    draw();
+    const outcomes = screen.getAllByTestId('new-order-line-outcome');
+    expect(outcomes[0]).toHaveTextContent('PO-118');
+    expect(screen.getAllByTestId('new-order-line')).toHaveLength(2);
+  });
+
+  it('[REVERT-FAILS] brings back a line whose placement was in flight as not known, never as unplaced', async () => {
+    api.post.mockImplementationOnce(() => new Promise(() => {}));
+    const view = draw();
+    await addLine(ITEM, '5');
+    fireEvent.click(screen.getByTestId('new-order-place'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    // The page dies with the request out: no code runs after this.
+    const kept = sessionStorage.getItem('mdv:new-order-cart:actor-A:rest-A');
+    view.unmount();
+    sessionStorage.setItem('mdv:new-order-cart:actor-A:rest-A', kept as string);
+
+    draw();
+    expect(screen.getByTestId('new-order-line')).toHaveTextContent(/being placed when the page closed/);
+    expect(screen.getByTestId('new-order-place')).toBeDisabled();
   });
 });
