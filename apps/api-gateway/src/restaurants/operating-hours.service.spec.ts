@@ -104,6 +104,34 @@ function service(db: StubDb): OperatingHoursService {
   return svc;
 }
 
+describe("OperatingHoursService — the house's clock (ADR 0207, F-838)", () => {
+  it("a house with a country of one zone and no zone of its own keeps that country's zone", async () => {
+    const res = await service(
+      seed({ timezone: null, country: "TR" }),
+    ).getOperatingHours(OWNER, RID);
+    // The dashboard reads this house in Europe/Istanbul (`houseFrame`); the
+    // day line read it in UTC, so one page kept two clocks.
+    expect(res.timezone).toBe("Europe/Istanbul");
+    expect(res.timezoneSource).toBe("country");
+  });
+
+  it("a country of many zones gives none, never UTC", async () => {
+    const res = await service(
+      seed({ timezone: null, country: "US" }),
+    ).getOperatingHours(OWNER, RID);
+    expect(res.timezone).toBeNull();
+    expect(res.timezoneSource).toBe("none");
+  });
+
+  it("the house's own zone wins over its country's", async () => {
+    const res = await service(
+      seed({ timezone: "America/Chicago", country: "TR" }),
+    ).getOperatingHours(OWNER, RID);
+    expect(res.timezone).toBe("America/Chicago");
+    expect(res.timezoneSource).toBe("house");
+  });
+});
+
 describe("OperatingHoursService — null round-trip", () => {
   it("an unset column reads back as null, not {} and not an all-closed week", async () => {
     const res = await service(seed()).getOperatingHours(OWNER, RID);

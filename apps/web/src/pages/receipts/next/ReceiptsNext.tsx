@@ -1886,8 +1886,11 @@ export default function ReceiptsNext() {
             <div style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', marginTop: 4 }}>
               {(data.deliveriesWithoutPaper ?? []).map((d) => (
                 <span key={d.orderId} style={{ marginRight: 16 }}>
-                  {/* "btl" was a wine word; the count is of whatever came in (W38). */}
-                  {d.orderNumber ?? 'an order with no number'} · {d.countedQtyBottles} counted ·{' '}
+                  {/* "btl" was a wine word; the count is of whatever came in (W38).
+                      What was accepted, not what was counted: a returned case is not
+                      waiting for paper (F-837). */}
+                  {d.orderNumber ?? 'an order with no number'} ·{' '}
+                  {d.acceptedQtyBottles ?? d.countedQtyBottles} accepted ·{' '}
                   {Math.round(d.ageHours)}h ago
                 </span>
               ))}

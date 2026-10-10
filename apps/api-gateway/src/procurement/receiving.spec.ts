@@ -1233,11 +1233,105 @@ describe("listUnverifiedCapped", () => {
     expect(capped).toBe(true);
     expect(rows).toHaveLength(500);
   });
+
+  // F-837: a truck turned away whole (F-748) books nothing and leaves the
+  // order open with the vendor, so there is nothing at the door to check.
+  it("leaves out a truck turned away whole, and says what a partial refusal kept", async () => {
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 24,
+          rejected_qty_bottles: 24,
+          outcome: "refused",
+          occurred_at: hoursAgo(2),
+        },
+        {
+          order_id: "o2",
+          stage: "case_count",
+          counted_qty_bottles: 24,
+          rejected_qty_bottles: 6,
+          outcome: "refused",
+          occurred_at: hoursAgo(3),
+        },
+      ],
+      orders: [
+        { id: "o1", order_number: "PO-1", status: "PENDING" },
+        { id: "o2", order_number: "PO-2", status: "PARTIALLY_RECEIVED" },
+      ],
+    });
+
+    const { rows } = await new ReceivingService(db).listUnverifiedCapped("r1");
+    expect(rows.map((r) => r.orderId)).toEqual(["o2"]);
+    expect(rows[0]).toMatchObject({ countedQtyBottles: 24, acceptedQtyBottles: 18 });
+  });
+
+  it("keeps an earlier truck that was accepted when a later one is turned away whole", async () => {
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 12,
+          outcome: "accepted",
+          occurred_at: hoursAgo(5),
+        },
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 12,
+          rejected_qty_bottles: 12,
+          outcome: "refused",
+          occurred_at: hoursAgo(1),
+        },
+      ],
+      orders: [{ id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" }],
+    });
+
+    const { rows } = await new ReceivingService(db).listUnverifiedCapped("r1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ acceptedQtyBottles: 12, ageHours: 5 });
+  });
 });
 
 describe("arrivedToday", () => {
   const hoursAgo = (h: number) =>
     new Date(Date.now() - h * 3_600_000).toISOString();
+
+  // F-837: the order of a truck turned away whole stays open with the vendor
+  // (F-748); "Deliveries that arrived" must not say it came.
+  it("does not count a truck turned away whole as arrived", async () => {
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 24,
+          rejected_qty_bottles: 24,
+          outcome: "refused",
+          occurred_at: hoursAgo(2),
+        },
+        {
+          order_id: "o2",
+          stage: "case_count",
+          counted_qty_bottles: 24,
+          rejected_qty_bottles: 4,
+          outcome: "refused",
+          occurred_at: hoursAgo(3),
+        },
+      ],
+      orders: [
+        { id: "o1", order_number: "PO-1", status: "PENDING" },
+        { id: "o2", order_number: "PO-2", status: "PARTIALLY_RECEIVED" },
+      ],
+    });
+
+    const start = new Date(Date.now() - 12 * 3_600_000);
+    const end = new Date(Date.now() + 12 * 3_600_000);
+    const { rows } = await new ReceivingService(db).arrivedToday("r1", start, end);
+    expect(rows.map((r) => r.orderId)).toEqual(["o2"]);
+  });
 
   it("counts a delivery counted today even after it was fully bottle-verified today", async () => {
     // This is the exact defect `listUnverified` has for "today": a delivery

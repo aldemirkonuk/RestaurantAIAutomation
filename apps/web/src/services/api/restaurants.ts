@@ -39,8 +39,13 @@ export type OperatingHours = Record<Weekday, HourRange[]>
 
 export interface OperatingHoursResponse {
   restaurantId: string
-  /** The venue's IANA zone, or null when it has none. Never defaulted here. */
+  /**
+   * The zone the house's day is read in: its own, else its country's only
+   * zone (ADR 0207), else null. Never defaulted here.
+   */
   timezone: string | null
+  /** Where `timezone` came from. Absent from an older gateway. */
+  timezoneSource?: 'house' | 'country' | 'none'
   /**
    * `null` means the hours are UNKNOWN. It is NOT an empty week and NOT a
    * venue that never opens — the editor must render it as "not set" and never

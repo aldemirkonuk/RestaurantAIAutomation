@@ -120,6 +120,12 @@ describe('the timezone — read here, set in Time zone (ADR 0207 round 3, ADR 03
     expect(screen.queryByText(/grepped 2026-09-17/)).toBeNull();
   });
 
+  it('says when the zone comes from the country, not the house (F-838)', () => {
+    mount({ hours: remote(hoursData({ timezone: 'Europe/Istanbul', timezoneSource: 'country' })) });
+    expect(screen.getByText(/the only time zone in this house's country/)).toBeInTheDocument();
+    expect(clockCert()).toBe('inferred');
+  });
+
   it('says not recorded rather than assuming one', () => {
     mount({ hours: remote(hoursData({ timezone: null })) });
     expect(screen.getByText(/Not recorded\./i)).toBeInTheDocument();
