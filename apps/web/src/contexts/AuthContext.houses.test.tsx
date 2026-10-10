@@ -177,6 +177,68 @@ function Probe({ onReady }: { onReady: (a: AuthContextType) => void }) {
   return null;
 }
 
+describe("a rate limit on /auth/me never shows sign-in to a valid session (F-172)", () => {
+  const me = {
+    data: {
+      user: { userId: U, email: "o@house.test", restaurantId: A, role: "owner", emailVerified: true },
+    },
+  };
+  // `Retry-After: 0.01` keeps the test on real timers: 10 ms per wait.
+  const limited = { response: { status: 429, headers: { "retry-after": "0.01" } } };
+
+  it("asks again after the gateway's wait and keeps the owner signed in", async () => {
+    localStorage.setItem("accessToken", jwt({ sub: U, restaurantId: A }));
+    localStorage.setItem("refreshToken", "r");
+    let meCalls = 0;
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url !== "/api/v1/auth/me") return { data: [] };
+      meCalls += 1;
+      if (meCalls <= 2) throw limited;
+      return me;
+    });
+    // Every state the page could have drawn: none may be "done loading, nobody signed in".
+    const seen: Array<{ loading: boolean; signedIn: boolean }> = [];
+    let ctx: AuthContextType | null = null;
+    render(
+      <AuthProvider>
+        <Probe
+          onReady={(a) => {
+            ctx = a;
+            seen.push({ loading: a.loading, signedIn: a.isAuthenticated });
+          }}
+        />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(ctx?.loading).toBe(false));
+
+    expect(meCalls).toBe(3);
+    expect((ctx as unknown as AuthContextType).user?.userId).toBe(U);
+    expect(seen.some((s) => !s.loading && !s.signedIn)).toBe(false);
+    expect(localStorage.getItem("accessToken")).not.toBeNull();
+    expect(localStorage.getItem("refreshToken")).toBe("r");
+  });
+
+  it("a 401 is still final: one ask, no retry", async () => {
+    localStorage.setItem("accessToken", "stale-access-token");
+    h.instance.get.mockImplementation(async (url: string) =>
+      url === "/api/v1/auth/me" ? Promise.reject({ response: { status: 401 } }) : { data: [] },
+    );
+    await mount();
+    expect(h.instance.get.mock.calls.filter(([u]) => u === "/api/v1/auth/me")).toHaveLength(1);
+  });
+
+  it("a 403 is not retried either: the token is valid, the answer is no", async () => {
+    localStorage.setItem("accessToken", "valid-access-token");
+    localStorage.setItem("refreshToken", "r");
+    h.instance.get.mockImplementation(async (url: string) =>
+      url === "/api/v1/auth/me" ? Promise.reject({ response: { status: 403 } }) : { data: [] },
+    );
+    await mount();
+    expect(h.instance.get.mock.calls.filter(([u]) => u === "/api/v1/auth/me")).toHaveLength(1);
+    expect(localStorage.getItem("accessToken")).toBe("valid-access-token");
+  });
+});
+
 async function mount() {
   let ctx: AuthContextType | null = null;
   render(

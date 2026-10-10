@@ -229,7 +229,7 @@ export class McpCredentialsService {
     const digest = McpCredentialsService.hash(secret);
     const { data, error } = await this.databaseService.supabase
       .from("mcp_server_credentials")
-      .select("id, restaurant_id, label, scopes, token_hash, revoked_at")
+      .select("id, restaurant_id, label, scopes, token_hash, revoked_at, created_by")
       .eq("token_hash", digest)
       .maybeSingle();
 
@@ -255,6 +255,7 @@ export class McpCredentialsService {
       scopes: string[] | null;
       token_hash: string;
       revoked_at: string | null;
+      created_by: string | null;
     };
 
     const a = Buffer.from(digest, "hex");
@@ -269,6 +270,9 @@ export class McpCredentialsService {
       };
     }
 
+    const minter = await this.minterStanding(row.created_by, row.restaurant_id);
+    if (minter !== "holds") return { ok: false, reason: minter };
+
     return {
       ok: true,
       credential: {
@@ -278,6 +282,46 @@ export class McpCredentialsService {
         scopes: row.scopes ?? [],
       },
     };
+  }
+
+  /**
+   * Does the person who minted this key still hold the authority it carries?
+   *
+   * The table says the minter's authority is what the key carries
+   * (`mcp_server_credentials.created_by`), and minting is owner-or-manager
+   * (`mcp-keys.controller.ts`). So a key stops working the moment its minter is
+   * removed from the house, deactivated, or moved below manager (F-388) — read
+   * at every use, from the same active `user_restaurant_access` row a session's
+   * role comes from, so no leaving path has to remember to revoke it. The key
+   * is not revoked: if the person is given the role back, it works again. A
+   * minter whose account is gone (`created_by` nulled) carries nothing.
+   *
+   * Returns "holds", or the sentence the client is refused with.
+   */
+  private async minterStanding(
+    minterId: string | null,
+    restaurantId: string,
+  ): Promise<"holds" | string> {
+    const leftReason =
+      "The person who made this key no longer runs this house as an owner or manager, " +
+      "so the key stopped working with them. An owner or manager can make a new one on /connections.";
+    if (!minterId) return leftReason;
+    const { data, error } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("role, is_active")
+      .eq("user_id", minterId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`MCP key minter lookup failed: ${error.message}`);
+      return "Could not check the credential — the house's member list did not answer. This is not a statement about the key.";
+    }
+    const access = data as { role?: string | null; is_active?: boolean | null } | null;
+    const role = String(access?.role ?? "").toLowerCase();
+    if (access?.is_active === true && (role === "owner" || role === "manager")) {
+      return "holds";
+    }
+    return leftReason;
   }
 
   /**

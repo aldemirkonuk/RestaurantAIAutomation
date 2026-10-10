@@ -18,20 +18,36 @@ import {
 
 const HOUSE = "11111111-1111-4111-8111-111111111111";
 
-/** A Supabase double whose `maybeSingle` is programmable per call. */
-function db(answer: { data: unknown; error: { message: string } | null }) {
-  const chain: Record<string, unknown> = {};
-  const self = () => chain;
-  chain.select = jest.fn(self);
-  chain.eq = jest.fn(self);
-  chain.is = jest.fn(self);
-  chain.order = jest.fn(self);
-  chain.update = jest.fn(self);
-  chain.insert = jest.fn(self);
-  chain.maybeSingle = jest.fn().mockResolvedValue(answer);
-  chain.single = jest.fn().mockResolvedValue(answer);
-  chain.then = undefined;
-  const from = jest.fn(() => chain);
+type Answer = { data: unknown; error: { message: string } | null };
+
+/** The minter's row in the house: an active manager unless a case says otherwise. */
+const MINTER = "33333333-3333-4333-8333-333333333333";
+const ACTIVE_MANAGER: Answer = { data: { role: "manager", is_active: true }, error: null };
+
+/**
+ * A Supabase double whose `maybeSingle` is programmable per table: `answer`
+ * for the key register, `access` for the minter's `user_restaurant_access`.
+ */
+function db(answer: Answer, access: Answer = ACTIVE_MANAGER) {
+  const make = (a: Answer) => {
+    const chain: Record<string, unknown> = {};
+    const self = () => chain;
+    chain.select = jest.fn(self);
+    chain.eq = jest.fn(self);
+    chain.is = jest.fn(self);
+    chain.order = jest.fn(self);
+    chain.update = jest.fn(self);
+    chain.insert = jest.fn(self);
+    chain.maybeSingle = jest.fn().mockResolvedValue(a);
+    chain.single = jest.fn().mockResolvedValue(a);
+    chain.then = undefined;
+    return chain;
+  };
+  const chain = make(answer);
+  const accessChain = make(access);
+  const from = jest.fn((table: string) =>
+    table === "user_restaurant_access" ? accessChain : chain,
+  );
   return {
     service: { supabase: { from } } as unknown as DatabaseService,
     from,
@@ -89,6 +105,7 @@ describe("McpCredentialsService.verify", () => {
         scopes: ["inventory:read", "orders:read"],
         token_hash: McpCredentialsService.hash(secret),
         revoked_at: null,
+        created_by: MINTER,
       },
       error: null,
     });
@@ -101,6 +118,63 @@ describe("McpCredentialsService.verify", () => {
       "inventory:read",
       "orders:read",
     ]);
+  });
+
+  describe("a key stops working when its minter leaves the role (F-388)", () => {
+    const secret = `${SECRET_PREFIX}minted-by-a-manager`;
+    const liveKey: Answer = {
+      data: {
+        id: "cred-3",
+        restaurant_id: HOUSE,
+        label: "Assistant",
+        scopes: ["inventory:read"],
+        token_hash: McpCredentialsService.hash(secret),
+        revoked_at: null,
+        created_by: MINTER,
+      },
+      error: null,
+    };
+    const refusedFor = async (access: Answer, key: Answer = liveKey) => {
+      const outcome = await new McpCredentialsService(db(key, access).service).verify(secret);
+      expect(outcome.ok).toBe(false);
+      return outcome.ok === false ? outcome.reason : "";
+    };
+
+    it("refuses once the minter is removed from the house", async () => {
+      expect(await refusedFor({ data: null, error: null })).toContain(
+        "no longer runs this house as an owner or manager",
+      );
+    });
+
+    it("refuses once the minter's access is switched off", async () => {
+      expect(await refusedFor({ data: { role: "manager", is_active: false }, error: null })).toContain(
+        "stopped working with them",
+      );
+    });
+
+    it("refuses once the minter is moved down to staff", async () => {
+      expect(await refusedFor({ data: { role: "staff", is_active: true }, error: null })).toContain(
+        "no longer runs this house",
+      );
+    });
+
+    it("refuses a key whose minter's account is gone", async () => {
+      const orphan: Answer = { data: { ...(liveKey.data as object), created_by: null }, error: null };
+      expect(await refusedFor(ACTIVE_MANAGER, orphan)).toContain("no longer runs this house");
+    });
+
+    it("an owner's key keeps working", async () => {
+      const outcome = await new McpCredentialsService(
+        db(liveKey, { data: { role: "owner", is_active: true }, error: null }).service,
+      ).verify(secret);
+      expect(outcome.ok).toBe(true);
+    });
+
+    it("a member list that does not answer is not reported as a dead key", async () => {
+      expect(await refusedFor({ data: null, error: { message: "timeout" } })).toContain(
+        "not a statement about the key",
+      );
+    });
   });
 
   it("does not report a failed lookup as an invalid key", async () => {

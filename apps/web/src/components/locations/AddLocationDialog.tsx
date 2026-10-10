@@ -47,6 +47,22 @@ import { Sheet } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
 import './locations-mudavym.css'
 
+const NOT_ADDED = 'The location was not added. Please try again.'
+
+/**
+ * What the person reads when the location is not added (F-242): the gateway's
+ * own sentence ("Only an owner of the organisation can open a new location."),
+ * never axios's "Request failed with status code 403". A failure that carries
+ * no sentence of its own reads as a plain retry line.
+ */
+function refusalWords(err: unknown): string {
+  const failure = err as { response?: { data?: { message?: unknown } }; request?: unknown; isAxiosError?: boolean }
+  const said = failure?.response?.data?.message
+  if (typeof said === 'string' && said.trim()) return said
+  if (failure?.response || failure?.request || failure?.isAxiosError) return NOT_ADDED
+  return err instanceof Error && err.message ? err.message : NOT_ADDED
+}
+
 interface AddLocationDialogProps {
   open: boolean
   onClose: () => void
@@ -151,8 +167,9 @@ export function AddLocationDialog({ open, onClose, onLocationAdded, anchorRef }:
         handleClose()
       }
     } catch (err: unknown) {
-      setFailure(err instanceof Error ? err.message : 'Failed to add location. Please try again.')
-      toast.error(err instanceof Error ? err.message : 'Failed to add location. Please try again.')
+      const said = refusalWords(err)
+      setFailure(said)
+      toast.error(said)
     } finally {
       setIsSubmitting(false)
     }

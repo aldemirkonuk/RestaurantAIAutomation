@@ -4920,11 +4920,17 @@ export class ProcurementService {
    * Returns quietly when the seal is allowed. Every refusal path throws with a
    * whole sentence; none of them returns a boolean, because a boolean is a
    * thing a caller can forget to check.
+   *
+   * `terms` is the deal a `confirm-deal` is about to commit (F-386): its price
+   * and amount, which may differ from the row's. The rules test the LARGER of
+   * the two totals and the confirmed unit price, so raising the quantity at
+   * confirmation cannot carry an order past a ceiling the row was under.
    */
   private async assertApprovalAllowed(
     restaurantId: string,
     orderId: string,
     userId: string,
+    terms?: { total: number | null; unitPrice: number | null },
   ): Promise<void> {
     // The gate cannot open when it cannot see. `ProcurementModule` imports both
     // modules, so this is unreachable in the running gateway — it exists so a
@@ -4966,7 +4972,7 @@ export class ProcurementService {
       );
     }
 
-    const row = orderRow as {
+    const row = { ...(orderRow as object) } as {
       total_cost: string | number | null;
       provider_id: string | null;
       inventory_id: string | null;
@@ -4977,6 +4983,13 @@ export class ProcurementService {
       currency?: string | null;
       procurement_order_items?: unknown;
     };
+    if (terms) {
+      const stored = toFiniteNumber(row.total_cost);
+      if (terms.total !== null && (stored === null || terms.total > stored)) {
+        row.total_cost = terms.total;
+      }
+      if (terms.unitPrice !== null) row.final_price = terms.unitPrice;
+    }
 
     // The same facts "Waiting on you" flags from (ADR 0256): one builder, so
     // the flag and the gate cannot learn two different answers.
@@ -10076,6 +10089,29 @@ export class ProcurementService {
     return { value, currency };
   }
 
+  /**
+   * The house's approval rules, for a deal confirmation (F-386).
+   *
+   * A confirmation writes `APPROVED` and `approved_by`, so it is an approval:
+   * it runs `assertApprovalAllowed`, the same gate as `approve` (ceiling, role,
+   * refusal filed, order parked), tested against the deal's own terms. Before
+   * this a manager refused by the owner's ceiling on `approve` could confirm
+   * the same order here, and raise its quantity while doing so.
+   */
+  private async assertDealConfirmable(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    order: any,
+    opts: { finalPrice?: number; quantity?: number },
+  ): Promise<void> {
+    const unitPrice = Number(opts.finalPrice);
+    await this.assertApprovalAllowed(restaurantId, orderId, userId, {
+      total: this.dealAmount(order, opts).value,
+      unitPrice: opts.finalPrice != null && Number.isFinite(unitPrice) ? unitPrice : null,
+    });
+  }
+
   private dealSeal(orderId: string, order: any, opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean }) {
     return dealSealArgs({
       orderId,
@@ -10105,6 +10141,8 @@ export class ProcurementService {
       amount: this.dealAmount(order, opts),
       canAsk: true,
     });
+    // Everything that would refuse the confirmation refuses the SEAL, first.
+    await this.assertDealConfirmable(restaurantId, orderId, userId, order, opts);
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
         "The seal could not be issued (the seal service is not wired into procurement), so nothing can be confirmed.",
@@ -10321,6 +10359,8 @@ export class ProcurementService {
     if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
       throw new ForbiddenException("The vendor does not belong to this house. Nothing was confirmed.");
     }
+    // Before the seal is spent: a refusal here commits nothing and mails nothing.
+    await this.assertDealConfirmable(restaurantId, orderId, userId, order, opts);
     if (!this.sealChallenges) {
       throw new InternalServerErrorException("The deal's seal cannot be checked. Nothing was confirmed.");
     }

@@ -117,6 +117,53 @@ describe('a refused write is printed on the dialog that asked for it', () => {
     expect(screen.getByRole('button', { name: 'Add Location' })).toBeTruthy();
   });
 
+  it("AddLocationDialog says the gateway's refusal in its words, never axios's status line (F-242)", async () => {
+    // Shaped like the axios error a 403 actually arrives as.
+    post.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 403'), {
+        isAxiosError: true,
+        response: {
+          status: 403,
+          data: { message: 'Only an owner of the organisation can open a new location.', code: 'NOT_ORGANISATION_OWNER' },
+        },
+      }),
+    );
+    render(<AddLocationDialog open onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/Location name/), { target: { value: 'Uptown' } });
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'United States' } });
+    fireEvent.change(screen.getByLabelText('Street Address'), { target: { value: '1 Main St' } });
+    fireEvent.change(screen.getByLabelText(/City/), { target: { value: 'Chicago' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+
+    await waitFor(() => {
+      expect(alertInDialog()).toHaveTextContent('Only an owner of the organisation can open a new location.');
+    });
+    expect(alertInDialog()).not.toHaveTextContent('status code');
+    expect(toastError).toHaveBeenCalledWith('Only an owner of the organisation can open a new location.');
+  });
+
+  it('AddLocationDialog says a plain retry line when the gateway sent no sentence', async () => {
+    post.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 500'), {
+        isAxiosError: true,
+        response: { status: 500, data: {} },
+      }),
+    );
+    render(<AddLocationDialog open onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/Location name/), { target: { value: 'Uptown' } });
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'United States' } });
+    fireEvent.change(screen.getByLabelText('Street Address'), { target: { value: '1 Main St' } });
+    fireEvent.change(screen.getByLabelText(/City/), { target: { value: 'Chicago' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+
+    await waitFor(() => {
+      expect(alertInDialog()).toHaveTextContent('The location was not added. Please try again.');
+    });
+    expect(alertInDialog()).not.toHaveTextContent('status code');
+  });
+
   it('AssignToChainDialog says why the locations were not assigned', async () => {
     patch.mockRejectedValueOnce(new Error('chain is at its location limit'));
     const onSaved = vi.fn();
