@@ -16,8 +16,14 @@ function fetchQueue(): Promise<{ queue: QueueItem[]; total: number }> {
   return studioRequest<{ queue: QueueItem[]; total: number }>('/api/v1/studio/queue')
 }
 
+// `library` is the library-promotion outcome the server tries after an approval:
+// 'promoted' | 'not_ready' | 'failed'. Absent for a rejection.
+interface DecisionResponse {
+  library?: string
+}
+
 function decideOverride(id: string, decision: 'approved' | 'rejected', note?: string) {
-  return studioJsonRequest(`/api/v1/studio/queue/${encodeURIComponent(id)}`, 'PATCH', { decision, note })
+  return studioJsonRequest<DecisionResponse>(`/api/v1/studio/queue/${encodeURIComponent(id)}`, 'PATCH', { decision, note })
 }
 
 export default function StudioApprovalQueue() {
@@ -33,8 +39,15 @@ export default function StudioApprovalQueue() {
   const mutation = useMutation({
     mutationFn: ({ id, decision, note }: { id: string; decision: 'approved' | 'rejected'; note?: string }) =>
       decideOverride(id, decision, note),
-    onSuccess: (_, { decision }) => {
+    onSuccess: (result, { decision }) => {
       queryClient.invalidateQueries({ queryKey: ['studio-queue'] })
+      if (decision === 'approved' && result?.library === 'failed') {
+        // The change is kept on the record; only the step into the shared library failed.
+        toast.warning('Override approved, but the wine was not added to the library', {
+          description: 'The change is saved on this record. Use Promote on the record to add it to the library.',
+        })
+        return
+      }
       toast.success(decision === 'approved' ? 'Override approved' : 'Override rejected')
     },
     // studioJsonRequest throws on any non-2xx, so this is the only path a failed

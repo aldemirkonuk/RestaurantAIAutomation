@@ -18,6 +18,7 @@ Security mitigations:
 """
 
 import logging
+import uuid
 from typing import Optional
 
 from fastapi import Header, HTTPException
@@ -333,7 +334,99 @@ def _fc_value(fc, field_name):
     return entry.get("value") if isinstance(entry, dict) else entry
 
 
-def _maybe_promote_submission(supabase, submission_id: str) -> bool:
+# Submission jsonb columns that exist on master_wine_library with the same name and
+# type. grape_family is jsonb on submissions but varchar(100) on the library, so it
+# is handled on its own below.
+_LIBRARY_JSONB_KEYS = (
+    "wine_structure",
+    "sensory_profile",
+    "practical_attributes",
+    "region_hierarchy",
+    "critic_scores",
+    "winemaking_details",
+)
+
+
+def _merge_jsonb(base, extra: dict):
+    merged = dict(base) if isinstance(base, dict) else {}
+    merged.update({k: v for k, v in extra.items() if v is not None})
+    return merged or None
+
+
+def build_library_row(get_field, *, source: str, submission=None, audit=None) -> dict:
+    """
+    One master_wine_library row from a studio submission (F-754).
+
+    Both promotion paths wrote columns the library does not have (price, color,
+    tasting_notes, avg_price, restaurant_id, ...) and omitted wine_id, which is NOT
+    NULL with no default — so every insert failed. Each key here is a real column
+    (tests/test_studio_library_row_schema.py reads them off the migrations):
+    price_bottle -> price_reference; free text with no column of its own goes into
+    the jsonb column it describes. House-only facts (glass price, list section, bin)
+    are not library facts; the glass price is kept under market_value, the rest is
+    dropped. alcohol_pct is not written: abv_percent holds only a strength a person
+    typed (20260906120000).
+    """
+    submission = submission or {}
+
+    def text(name):
+        value = get_field(name)
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
+
+    def number(name, cast):
+        value = get_field(name)
+        if value is None or value == "":
+            return None
+        try:
+            return cast(value)
+        except (TypeError, ValueError):
+            return None
+
+    row = {
+        # Same shape as the gateway's generateWineId (wine-submissions.service.ts:140).
+        "wine_id": f"WINE_{uuid.uuid4().hex[:15]}",
+        "name": text("wine_name"),
+        "producer": text("producer"),
+        "vintage": number("vintage", int),
+        "price_reference": number("price_bottle", float),
+        # 'unknown' is the vocabulary's "unclassified", as the gateway writes it.
+        "primary_type": text("primary_type") or text("color") or "unknown",
+        "grape_variety": text("grape_variety"),
+        "country": text("country"),
+        "region": text("region"),
+        "sub_region": text("sub_region"),
+        "appellation": text("appellation"),
+        "producer_bio": text("producer_bio"),
+        "source": source,
+    }
+    for key in _LIBRARY_JSONB_KEYS:
+        row[key] = _merge_jsonb(submission.get(key), {})
+    row["sensory_profile"] = _merge_jsonb(
+        row["sensory_profile"],
+        {"tasting_notes": text("tasting_notes"), "color": text("color")},
+    )
+    row["wine_structure"] = _merge_jsonb(
+        row["wine_structure"], {"sweetness_level": text("sweetness_level")}
+    )
+    row["practical_attributes"] = _merge_jsonb(
+        row["practical_attributes"], {"food_pairing": text("food_pairing")}
+    )
+    row["market_value"] = _merge_jsonb(
+        None, {"price_glass": number("price_glass", float)}
+    )
+    row["data_enrichment"] = _merge_jsonb(
+        None, {"description": text("description"), "studio_promotion": audit}
+    )
+    grape_family = submission.get("grape_family")
+    if isinstance(grape_family, str) and grape_family.strip():
+        row["grape_family"] = grape_family.strip()[:100]
+    return {k: v for k, v in row.items() if v is not None}
+
+
+def _maybe_promote_submission(supabase, submission_id: str) -> str:
     """
     Attempt to promote a studio-approved submission to master_wine_library.
 
@@ -344,14 +437,15 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
 
     T-14-07: Only called after require_studio_role() has already verified the actor's role.
     T-14-08: Entire function is wrapped in try/except — promotion failure is non-fatal;
-             the override response still succeeds.
+             the override response still succeeds, but carries the outcome (F-754).
     T-14-09: Promotion values come from server-side field_confidence JSONB, not user input.
 
-    Returns True if the submission was promoted, False otherwise.
+    Returns "promoted", "not_ready" (a gate is not clear yet), or "failed" (the
+    lookup or the library write raised). Callers put it in their response so a
+    failed promotion is not reported as a plain success.
     """
     try:
         from services.field_confidence import should_auto_block, JSONB_ENRICHMENT_KEYS
-        from datetime import datetime, timezone
 
         jsonb_cols = ", ".join(JSONB_ENRICHMENT_KEYS)
         resp = (
@@ -370,7 +464,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
                 "_maybe_promote_submission: submission %s not found",
                 sanitize_for_log(submission_id),
             )
-            return False
+            return "not_ready"
 
         submission = resp.data
         if submission.get("status") != "pending_review":
@@ -379,7 +473,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
                 sanitize_for_log(submission_id),
                 submission.get("status"),
             )
-            return False
+            return "not_ready"
 
         # Gate 2: no remaining pending fields
         pending_resp = (
@@ -396,7 +490,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
                 remaining_pending,
                 sanitize_for_log(submission_id),
             )
-            return False
+            return "not_ready"
 
         # Gate 3: field confidence ratio not auto-blocked
         fc = submission.get("field_confidence") or {}
@@ -405,40 +499,20 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
                 "_maybe_promote_submission: submission %s is auto_blocked",
                 sanitize_for_log(submission_id),
             )
-            return False
+            return "not_ready"
 
-        # Build promotion row — mirrors quality_routes.patch_review_queue mapping (D-20)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        promo_row = {
-            "restaurant_id": submission.get("restaurant_id"),
-            "submission_id": submission_id,
-            "name": _fc_value(fc, "wine_name"),
-            "producer": _fc_value(fc, "producer"),
-            "vintage": _fc_value(fc, "vintage"),
-            "region": _fc_value(fc, "region"),
-            "sub_region": _fc_value(fc, "sub_region"),
-            "appellation": _fc_value(fc, "appellation"),
-            "country": _fc_value(fc, "country"),
-            "grape_variety": _fc_value(fc, "grape_variety"),
-            "wine_type": _fc_value(fc, "primary_type"),
-            "color": _fc_value(fc, "color"),
-            "alcohol_pct": _fc_value(fc, "alcohol_pct"),
-            "sweetness_level": _fc_value(fc, "sweetness_level"),
-            "tasting_notes": _fc_value(fc, "tasting_notes"),
-            "description": _fc_value(fc, "description"),
-            "food_pairing": _fc_value(fc, "food_pairing"),
-            "producer_bio": _fc_value(fc, "producer_bio"),
-            "avg_price": _fc_value(fc, "price_bottle"),
-            "price_glass": _fc_value(fc, "price_glass"),
-            "section_name": _fc_value(fc, "section_name"),
-            "bin_number": _fc_value(fc, "bin_number"),
-            "source": "studio_approved",
-            "ai_enriched": True,
-            "enrichment_source": "haiku",
-            "created_at": now_iso,
-        }
-        for jk in JSONB_ENRICHMENT_KEYS:
-            promo_row[jk] = submission.get(jk) or {}
+        promo_row = build_library_row(
+            lambda name: _fc_value(fc, name),
+            source="studio_approved",
+            submission=submission,
+            audit={"submission_id": submission_id},
+        )
+        if not promo_row.get("name"):
+            logger.debug(
+                "_maybe_promote_submission: submission %s has no wine name yet",
+                sanitize_for_log(submission_id),
+            )
+            return "not_ready"
 
         supabase.table("master_wine_library").insert(promo_row).execute()
 
@@ -450,7 +524,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
             "_maybe_promote_submission: promoted submission %s → master_wine_library",
             sanitize_for_log(submission_id),
         )
-        return True
+        return "promoted"
 
     except Exception as exc:
         logger.error(
@@ -458,7 +532,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
             sanitize_for_log(submission_id),
             exc,
         )
-        return False
+        return "failed"
 
 
 def check_and_update_trust(

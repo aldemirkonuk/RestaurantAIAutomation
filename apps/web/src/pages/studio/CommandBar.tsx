@@ -13,6 +13,10 @@ interface StudioSessionResponse {
   session?: { id?: string | null } | null
 }
 
+interface ManualSubmissionResponse {
+  submission?: { id?: string | null } | null
+}
+
 interface ExtractResponse {
   wines?: Record<string, unknown>[]
   scan_session_id?: string | null
@@ -130,13 +134,21 @@ export function CommandBar() {
         })
 
       } else if (type === 'manual') {
-        const wineName = (overrideType ? '' : inputValue.trim()) || null
+        const wineName = (overrideType === 'manual' ? '' : inputValue.trim()) || null
         const sessData = await studioPost<StudioSessionResponse>('/api/v1/studio/sessions', {
           source_type: 'manual_seed', source_ref: wineName ?? 'empty',
-        }).catch(() => ({ session: { id: `local-${Date.now()}` } }) as StudioSessionResponse)
-        applySession(sessData.session?.id ?? `local-${Date.now()}`, null)
+        })
+        const sessionId = sessData.session?.id ?? null
+        // The record needs a real submission row behind it: a client-made id (or a
+        // `local-` session) left every cell save and Promote on "Submission not found".
+        const subData = await studioPost<ManualSubmissionResponse>('/api/v1/studio/submissions', {
+          session_id: sessionId, wine_name: wineName,
+        })
+        const submissionId = subData.submission?.id
+        if (!submissionId) throw new Error('The new record could not be saved. Please try again.')
+        applySession(sessionId, null)
         setRecords([{
-          id: 'new-1', submission_id: crypto.randomUUID(),
+          id: 'new-1', submission_id: submissionId,
           wine_name: wineName, vintage: null, producer: null, region: null, country: null,
           grape_variety: null, color: null, primary_type: null,
           sweetness_level: null, price_bottle: null, price_glass: null,
