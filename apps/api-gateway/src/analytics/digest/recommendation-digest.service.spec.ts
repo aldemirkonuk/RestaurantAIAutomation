@@ -19,6 +19,7 @@ import { ScheduledTenantsService } from "../../communications/scheduled-tenants.
 import { RecommendationDigestService } from "./recommendation-digest.service";
 import { FakeDb, type Row } from "./testing/digest-fake-db";
 import { AreaRoutingService } from "../../areas/area-routing.service";
+import { houseToday } from "../../common/house-day";
 
 /* ── the house ────────────────────────────────────────────────────────────── */
 
@@ -45,7 +46,11 @@ const WEEKDAY_SENTENCE =
  * moves and drop the entry below the house's floor.
  */
 function dipDay(n: number): string {
-  return `d:${new Date(Date.now() - n * 86400000).toISOString().slice(0, 10)}`;
+  // Counted from the HOUSE's today, as the engine counts it: from 21:00Z to
+  // midnight UTC Istanbul is already on the next day, and a UTC "yesterday"
+  // read two days old there and fell to "this week" (F-1050).
+  const today = Date.parse(`${houseToday(ZONE, new Date())}T00:00:00Z`);
+  return `d:${new Date(today - n * 86400000).toISOString().slice(0, 10)}`;
 }
 
 function weekdayInsight(over: Row = {}) {
