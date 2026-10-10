@@ -237,11 +237,19 @@ export class OrganizationsService {
    * The organisations this person owns: the same rule `createLocation` uses
    * (organizations/org-role.ts). Chain create, rename and delete are gated on
    * it (F-313), as the Settings page has always said they were.
+   *
+   * F-1035 (2026-10-10): and, as F-935 rules for those writes, only while
+   * the person is also an active owner of one of the organisation's houses.
+   * A founder demoted to staff kept the owner's view of every group, with
+   * the full house counts, because only the organisation row was read.
    */
   private async getOwnedOrgIds(userId: string): Promise<string[]> {
-    return (await this.getUserOrgRows(userId))
+    const orgOwned = (await this.getUserOrgRows(userId))
       .filter((m) => m.role === ORG_OWNER)
       .map((m) => m.organization_id);
+    if (orgOwned.length === 0) return [];
+    const houseOwned = await this.orgsOwnedByHouse(userId, "list the groups");
+    return orgOwned.filter((id) => houseOwned.includes(id));
   }
 
   /**
@@ -1297,11 +1305,15 @@ export class OrganizationsService {
     // touches `organization_members` — but opening a location now also
     // requires an active `user_restaurant_access` row in a house of the SAME
     // organisation being opened into.
+    //
+    // F-1035: an OWNER row, as F-935 rules for groups; a demoted founder
+    // would otherwise own the new house and win the group writes back.
     const { data: activeAccess, error: activeAccessError } =
       await this.databaseService.supabase
         .from("user_restaurant_access")
         .select("restaurant_id")
         .eq("user_id", userId)
+        .eq("role", "owner")
         .eq("is_active", true);
     if (activeAccessError) {
       this.logger.error(
@@ -1335,7 +1347,7 @@ export class OrganizationsService {
     if (!hasHouseInOrg) {
       throw new ForbiddenException({
         message:
-          "Only an organisation owner with an active house in this organisation can open a new location.",
+          "Only an owner of one of this organisation's houses can open a new location in it.",
         code: "NO_ACTIVE_HOUSE_IN_ORGANISATION",
       });
     }
