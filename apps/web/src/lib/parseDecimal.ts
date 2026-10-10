@@ -123,3 +123,40 @@ export function readOptionalAmount(
   const n = parseDecimal(raw, group)
   return n === null || n < 0 ? { ok: false } : { ok: true, value: n }
 }
+
+/**
+ * The mark the SCREEN groups thousands with — the browser's own locale, which
+ * is what `formatMoney` prints every figure in — or null when it is neither
+ * "." nor ",". `locale` is for tests; the page passes nothing.
+ */
+export function displayGroupMark(locale?: string): GroupMark | null {
+  try {
+    const part = new Intl.NumberFormat(locale).formatToParts(1234567).find((p) => p.type === 'group')
+    return part?.value === '.' || part?.value === ',' ? part.value : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The two readings of `raw` when the house's mark and the screen's mark would
+ * read it differently, or null when there is only one reading.
+ *
+ * WHY (F-799, regression sim wave 30, 2026-10-10). Rule 4 reads a lone mark by
+ * the HOUSE's locale, but the figures beside the field are printed in the
+ * BROWSER's. A Turkish house on an English browser sees "claimed ₺1,250.00",
+ * types "1,250", and rule 4 — rightly, for the house — reads 1.25. Neither
+ * reading is safe to save silently, so a money field asks instead. When the two
+ * marks agree, or the screen's is unknown, there is nothing to disagree about.
+ */
+export function readingsDisagree(
+  raw: string,
+  group: GroupMark | null,
+  display: GroupMark | null,
+): [house: number, screen: number] | null {
+  if (display === null || group === display) return null
+  const house = parseDecimal(raw, group)
+  const screen = parseDecimal(raw, display)
+  if (house === null || screen === null || house === screen) return null
+  return [house, screen]
+}

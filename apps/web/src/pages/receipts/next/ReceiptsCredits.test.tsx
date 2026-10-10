@@ -29,6 +29,16 @@ const api = vi.hoisted(() => ({
   memos: [] as ProcurementDocument[],
   list: vi.fn(),
   transition: vi.fn(),
+  houseMark: null as '.' | ',' | null,
+  screenMark: ',' as '.' | ',' | null,
+}));
+
+// F-799: the house's mark and the screen's mark are set per test, so the
+// result never depends on the locale of the machine running it.
+vi.mock('@/hooks/useHouseGroupMark', () => ({ useHouseGroupMark: () => api.houseMark }));
+vi.mock('@/lib/parseDecimal', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/parseDecimal')>()),
+  displayGroupMark: () => api.screenMark,
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -161,6 +171,8 @@ beforeEach(() => {
   api.memos = [];
   api.list.mockReset();
   api.transition.mockReset();
+  api.houseMark = null;
+  api.screenMark = ',';
 });
 
 describe('who is offered the ledger (ADR 0167)', () => {
@@ -434,6 +446,52 @@ describe('moves', () => {
         creditedAmount: 100,
         creditDocumentId: 'memo-1',
       }),
+    );
+  });
+
+  it('asks, rather than guessing, when "1,250" reads two ways — a Turkish house on an English screen (F-799)', async () => {
+    api.houseMark = '.';
+    api.screenMark = ',';
+    api.claims = [claim({ state: 'promised', claimed_amount: 1250 })];
+    api.memos = [memo()];
+    api.transition.mockResolvedValue(claim({ state: 'credited' }));
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Settle against a credit memo' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Credit memo CM-7/ }));
+
+    fireEvent.change(screen.getByPlaceholderText(/claimed/), { target: { value: '1,250' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record the settlement' }));
+    const alert = screen.getByRole('alert').textContent ?? '';
+    expect(alert).toMatch(/^“1,250” could be .*1\.25.* or .*1,250\.00.*: this house writes thousands with “\.” but this screen writes them with “,”\./);
+    expect(api.transition).not.toHaveBeenCalled();
+
+    // Typed so it reads one way, it settles.
+    fireEvent.change(screen.getByPlaceholderText(/claimed/), { target: { value: '1250' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record the settlement' }));
+    await waitFor(() =>
+      expect(api.transition).toHaveBeenCalledWith('c1', {
+        to: 'credited',
+        creditedAmount: 1250,
+        creditDocumentId: 'memo-1',
+      }),
+    );
+  });
+
+  it('settles "1.250" as 1250 without asking when the house and the screen both group with "." (F-799)', async () => {
+    api.houseMark = '.';
+    api.screenMark = '.';
+    api.claims = [claim({ state: 'promised' })];
+    api.memos = [memo()];
+    api.transition.mockResolvedValue(claim({ state: 'credited' }));
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Settle against a credit memo' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Credit memo CM-7/ }));
+    fireEvent.change(screen.getByPlaceholderText(/claimed/), { target: { value: '1.250' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record the settlement' }));
+    await waitFor(() =>
+      expect(api.transition).toHaveBeenCalledWith('c1', expect.objectContaining({ creditedAmount: 1250 })),
     );
   });
 
