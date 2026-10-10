@@ -57,13 +57,13 @@ describe("PATCH /menus/items/:id — a PRICE correction is an owner's or a manag
   });
 });
 
-describe("POST /menus/items — the caller's pricing right is resolved and passed on", () => {
+describe("POST /menus/items — whether the caller is an owner or a manager is resolved and passed on (F-698)", () => {
   it.each([
     ["owner", true],
     ["manager", true],
     ["staff", false],
     [null, false],
-  ])("%s -> may price: %s", async (role, mayPrice) => {
+  ])("%s -> manages: %s", async (role, mayPrice) => {
     const add = jest.fn(async () => ({}));
     const c = new MenusController({ addMenuItem: add } as any, orgs(role as string | null));
     await c.addMenuItem({ menuId: "m-1", name: "x" } as any, { userId: "u-1", restaurantId: "rest-1" });

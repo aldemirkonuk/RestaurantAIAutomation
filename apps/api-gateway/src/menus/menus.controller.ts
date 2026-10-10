@@ -67,7 +67,7 @@ export class MenusController {
   }
 
   @Post("items")
-  @ApiOperation({ summary: "Add one wine to a menu during the review step" })
+  @ApiOperation({ summary: "Add one wine to a menu. On the current menu, owner or manager only" })
   async addMenuItem(
     @Body() dto: AddMenuItemDto,
     @CurrentUser() user: { userId: string; restaurantId?: string },
@@ -76,8 +76,10 @@ export class MenusController {
     // WHICH menu, the caller's own restaurantId is what proves they may
     // write to it (menus.service.ts#addMenuItem, fixed 2026-09-17 alongside
     // this build; see that method's docstring for the gap this closes).
-    // Whether the caller may PRICE is resolved here and decided in the
-    // service, which alone knows whether the menu is the current one.
+    // Whether the caller is an owner or a manager is resolved here and decided
+    // in the service, which alone knows whether the menu is the current one:
+    // only they may add to the current menu (F-698); a draft is open to the
+    // house.
     const role =
       user.restaurantId && user.userId
         ? await this.organizations.resolveRestaurantRole(user.userId, user.restaurantId)

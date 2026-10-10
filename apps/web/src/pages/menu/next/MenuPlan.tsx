@@ -34,6 +34,7 @@ import {
   type PlanLine,
 } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
+import { dateIn } from '../../dashboard/next/format';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
@@ -43,8 +44,14 @@ function money(n: number | null | undefined): string {
   return n === null || n === undefined ? EM : n.toFixed(2);
 }
 
-function day(iso: string | null | undefined): string {
-  return iso ? String(iso).slice(0, 10) : 'an unknown day';
+/**
+ * The house's day for a moment (F-699). With no zone recorded for the house,
+ * the day as stored, so a reader's own clock never stands in for the house's.
+ */
+function day(iso: string | null | undefined, zone: string | null | undefined): string {
+  if (!iso) return 'an unknown day';
+  const d = new Date(iso);
+  return zone && !Number.isNaN(d.getTime()) ? dateIn(d, zone) : String(iso).slice(0, 10);
 }
 
 /** The gateway's own words for a refusal, never a bare status. */
@@ -61,9 +68,26 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/**
+ * What leaves with the menu this choice ends (F-696): the house has one current
+ * menu, so choosing this one takes the other off, every line on it included.
+ */
+export function retiringSentence(plan: Pick<Plan, 'retiring'>): string | null {
+  const off = plan.retiring ?? [];
+  if (off.length === 0) return null;
+  const each = off.map((m) => `${m.name ?? 'the current menu'} off: its ${plural(m.lines, 'line leaves', 'lines leave')} the menu`);
+  return `Choosing this menu takes ${each.join('; and ')}. A house has one current menu at a time.`;
+}
+
 /** The plan in one sentence, in the order a person reads a menu change. */
-export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'>): string {
+export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'> & Partial<Pick<Plan, 'retiring'>>): string {
   if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
+  const off = retiringSentence(plan);
+  const prices = pricesSentence(plan);
+  return off ? `${off} ${prices}` : prices;
+}
+
+function pricesSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'lines'>): string {
   const c = plan.counts;
   const parts: string[] = [];
   if (c.change > 0) parts.push(`set ${plural(c.change, 'price', 'prices')} from this menu`);
@@ -86,11 +110,11 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
 }
 
 /** Who set the price that would be replaced, in words. */
-function setWords(k: PlanKind): string {
+function setWords(k: PlanKind, zone: string | null | undefined): string {
   if (!k.lastSet) return '';
   const who = k.lastSet.by.name ?? (k.lastSet.by.userId ? 'someone whose name is not on record' : 'no person named');
   const how = k.lastSet.source === 'import' ? 'from a menu' : k.lastSet.source === 'agent_accepted' ? 'accepting advice' : 'by hand';
-  return `set ${how} by ${who} on ${day(k.lastSet.at)}${k.setAfterRead ? ', after this menu was read' : ''}`;
+  return `set ${how} by ${who} on ${day(k.lastSet.at, zone)}${k.setAfterRead ? ', after this menu was read' : ''}`;
 }
 
 /**
@@ -264,7 +288,7 @@ export function MenuPlan({
           {typedAfter > 0 ? (
             <p className="cl-said" style={{ marginTop: 6 }} data-testid="menu-plan-typed-after">
               {plural(typedAfter, 'price was', 'prices were')} set by a person after this menu was read
-              {plan.readAt ? ` (${day(plan.readAt)})` : ''}. This menu would replace {typedAfter === 1 ? 'it' : 'them'}, so{' '}
+              {plan.readAt ? ` (${day(plan.readAt, plan.timezone)})` : ''}. This menu would replace {typedAfter === 1 ? 'it' : 'them'}, so{' '}
               {typedAfter === 1 ? 'it is' : 'they are'} listed first{canManage ? ': keep one to hold it' : ''}.
             </p>
           ) : null}
@@ -293,8 +317,8 @@ export function MenuPlan({
                     <td>{money(r.k.menuPrice)}</td>
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
-                        ? `Stays ${money(r.k.lock.lockedPrice)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt)}`
-                        : `Becomes ${money(r.k.menuPrice)}${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`}
+                        ? `Stays ${money(r.k.lock.lockedPrice)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
+                        : `Becomes ${money(r.k.menuPrice)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
                     </td>
                     <td>
                       <KeepSwitch

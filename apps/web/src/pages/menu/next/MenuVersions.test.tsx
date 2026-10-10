@@ -108,6 +108,29 @@ describe('the words the panel uses', () => {
     expect(versionLabel(version({ extractedAt: null }))).toBe('a menu read before menus were kept');
   });
 
+  it("F-699: a moment is the house's day, never UTC's", () => {
+    // 18:30 in Los Angeles on 2026-09-20 is 01:30 UTC on the 21st.
+    expect(versionLabel(version({ extractedAt: '2026-09-21T01:30:00Z' }), 'America/Los_Angeles')).toBe('the menu read 2026-09-20');
+    // A menu's own date is a calendar day already; no zone moves it.
+    expect(versionLabel(version({ menuDate: '2026-10-15', menuDatePrecision: 'day' }), 'Pacific/Auckland')).toBe('the menu for 2026-10-15');
+  });
+
+  it("F-699: 'current since' and 'used until' print the house's day", async () => {
+    mockList.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      timezone: 'America/Los_Angeles',
+      versions: [
+        version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-02T01:00:00Z' }),
+        version({ menuId: 'm3', status: 'archived', retiredAt: '2026-09-02T01:00:00Z' }),
+      ],
+    });
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-version-row');
+    expect(rows[0]).toHaveTextContent('current since 2026-09-01');
+    expect(rows[1]).toHaveTextContent('used until 2026-09-01');
+  });
+
   it('says what happened to the source, including why it was not kept', () => {
     expect(sourceWords(version())).toBe('PDF kept');
     expect(sourceWords(version({ source: { kept: false, mime: null, bytes: null, failure: 'bucket unavailable' } }))).toBe(

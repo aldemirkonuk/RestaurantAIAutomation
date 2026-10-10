@@ -36,6 +36,7 @@ import {
 } from '../../../services/api/menus';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { dateIn } from '../../dashboard/next/format';
 
 const EM = '—';
 
@@ -49,18 +50,27 @@ export function reasonOf(err: unknown): string {
   return e?.message || 'no reason was given';
 }
 
-function day(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : EM;
+/**
+ * The house's day for a moment (F-699). With no zone recorded for the house,
+ * the day as stored, so a reader's own clock never stands in for the house's.
+ */
+function day(iso: string | null, zone?: string | null): string {
+  if (!iso) return EM;
+  const d = new Date(iso);
+  return zone && !Number.isNaN(d.getTime()) ? dateIn(d, zone) : iso.slice(0, 10);
 }
 
-/** How a kept menu is named in a sentence: its own date if it has one, else when it was read. */
-export function versionLabel(v: MenuVersion): string {
+/**
+ * How a kept menu is named in a sentence: its own date if it has one, else when
+ * it was read, as the house's day (`zone`, the house's IANA zone).
+ */
+export function versionLabel(v: MenuVersion, zone?: string | null): string {
   const date = v.menuDate
     ? v.menuDatePrecision === 'month'
       ? `the ${v.menuDate} menu`
       : `the menu for ${v.menuDate}`
     : v.extractedAt
-      ? `the menu read ${day(v.extractedAt)}`
+      ? `the menu read ${day(v.extractedAt, zone)}`
       : 'a menu read before menus were kept';
   return v.cadence && v.cadence !== 'none' ? `${date} (${v.cadence})` : date;
 }
@@ -263,8 +273,9 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
   );
 }
 
-function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
+function VersionRow({ v, zone, canManage, lastUsedId, planning, onPlan }: {
   v: MenuVersion
+  zone: string | null
   canManage: boolean
   lastUsedId: string | null
   planning: boolean
@@ -281,13 +292,13 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
     }
   };
   const standing = v.current
-    ? `current since ${day(v.madeCurrentAt)}${v.madeCurrentBy?.name ? `, chosen by ${v.madeCurrentBy.name}` : ''}`
+    ? `current since ${day(v.madeCurrentAt, zone)}${v.madeCurrentBy?.name ? `, chosen by ${v.madeCurrentBy.name}` : ''}`
     : v.status === 'archived'
-      ? `${v.menuId === lastUsedId ? 'last one used, ' : ''}used until ${day(v.retiredAt)}`
+      ? `${v.menuId === lastUsedId ? 'last one used, ' : ''}used until ${day(v.retiredAt, zone)}`
       : 'kept, never current';
   return (
     <tr data-testid="menu-version-row">
-      <td>{versionLabel(v)}</td>
+      <td>{versionLabel(v, zone)}</td>
       <td className="cl-dim">{standing}</td>
       <td className="cl-dim">
         {v.linesExtracted === null ? EM : `${v.linesExtracted} line${v.linesExtracted === 1 ? '' : 's'}`}
@@ -314,7 +325,7 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={`Make ${versionLabel(v)} current`}
+            aria-label={`Make ${versionLabel(v, zone)} current`}
           >
             {planning ? 'See below' : 'Make current'}
           </button>
@@ -360,8 +371,8 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
       ) : (
         <>
           <p className="cl-standing" style={{ marginTop: 12 }} data-testid="menu-versions-standing">
-            {q.data?.current ? `Current: ${versionLabel(q.data.current)}.` : 'No menu is current yet.'}{' '}
-            {q.data?.lastUsed ? `Last one used: ${versionLabel(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
+            {q.data?.current ? `Current: ${versionLabel(q.data.current, q.data.timezone)}.` : 'No menu is current yet.'}{' '}
+            {q.data?.lastUsed ? `Last one used: ${versionLabel(q.data.lastUsed, q.data.timezone)}.` : 'No earlier menu has been used.'}
           </p>
           {q.data && q.data.versions.length > 0 ? (
             <>
@@ -381,6 +392,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                     <VersionRow
                       key={v.menuId}
                       v={v}
+                      zone={q.data?.timezone ?? null}
                       canManage={canManage}
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
                       planning={planFor === v.menuId}

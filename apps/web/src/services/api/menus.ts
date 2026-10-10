@@ -311,6 +311,8 @@ export interface MenuVersions {
   /** false = who read or chose these menus could not be named (the reason says why). */
   namesReadable?: boolean
   namesReason?: string | null
+  /** The house's IANA zone: every date here is printed as the house's day (F-699). Null when unset. */
+  timezone?: string | null
 }
 
 /** A kind a price lock held, and the lock (ADR 0193 round 3). */
@@ -405,8 +407,17 @@ export interface MenuPlan {
     wineName: string | null
     active: boolean | null
   }>
+  /**
+   * The current menu this choice takes off, and how many lines leave with it
+   * (F-696): the house has one current menu, so choosing this one ends that
+   * one. Empty when this menu is already current or none is. Optional only
+   * for an older gateway.
+   */
+  retiring?: Array<{ menuId: string; name: string | null; lines: number }>
   namesReadable: boolean
   namesReason: string | null
+  /** The house's IANA zone, for printing dates as the house's day (F-699). */
+  timezone?: string | null
 }
 
 /** What choosing this menu would do. Nothing is written. A failed read throws. */

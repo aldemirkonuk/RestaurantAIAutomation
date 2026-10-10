@@ -195,6 +195,22 @@ describe('MenuNext — money states its own house currency', () => {
 });
 
 describe('MenuNext — add', () => {
+  beforeEach(() => {
+    auth.role = 'manager';
+  });
+  afterEach(() => {
+    auth.role = null;
+  });
+
+  it.each(['staff', null])('%s see no Add form: adding to the current menu is an owner\'s or a manager\'s (F-698)', async (role) => {
+    auth.role = role;
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
+    mount();
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add to menu/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('menu-add-managers-only')).toHaveTextContent('An owner or a manager adds lines to the current menu.');
+  });
+
   it('clears the form on a SUCCESSFUL add, never before', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [] }));
     mockAdd.mockResolvedValue({} as never);
@@ -243,6 +259,16 @@ describe('MenuNext — add', () => {
     expect(housePriceNote({ priceSync: 'no_price' })).toBeNull();
     expect(housePriceNote({ priceSync: 'not_linked' })).toBeNull();
     expect(housePriceNote({ priceSync: 'stale' })?.text).toMatch(/kept/);
+  });
+});
+
+describe('MenuNext — the footer says only what is true (F-697)', () => {
+  it('never promises a guest-facing effect: no guest menu exists', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mount();
+    const foot = await screen.findByText(/Discard takes a line off this house's current menu here/);
+    expect(foot).toHaveTextContent('Mudavym shows no menu to guests');
+    expect(document.body).not.toHaveTextContent(/what guests see/);
   });
 });
 

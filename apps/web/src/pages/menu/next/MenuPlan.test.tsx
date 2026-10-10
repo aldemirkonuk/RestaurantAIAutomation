@@ -119,6 +119,35 @@ describe('the plan in one sentence', () => {
   });
 });
 
+describe('F-696: the plan says the current menu it takes off, and the lines that leave with it', () => {
+  it('leads the sentence with the menu that ends and counts its lines', () => {
+    expect(planSentence(plan({ retiring: [{ menuId: 'menu-old', name: 'Wine list', lines: 42 }] }))).toBe(
+      'Choosing this menu takes Wine list off: its 42 lines leave the menu. A house has one current menu at a time. Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 1 locked price is not on this menu and stays locked.',
+    );
+    expect(planSentence(plan({ retiring: [{ menuId: 'menu-old', name: null, lines: 1 }] }))).toMatch(
+      /^Choosing this menu takes the current menu off: its 1 line leaves the menu\./,
+    );
+    // Nothing current, or this one already current: nothing is taken off.
+    expect(planSentence(plan({ retiring: [] }))).toMatch(/^Choosing this menu will set/);
+  });
+
+  it('shows it on the plan above the choice', async () => {
+    mockPlan.mockResolvedValue(plan({ retiring: [{ menuId: 'menu-old', name: 'Wine list', lines: 42 }] }));
+    mount(true);
+    expect(await screen.findByTestId('menu-plan-sentence')).toHaveTextContent('takes Wine list off: its 42 lines leave the menu');
+  });
+});
+
+describe("F-699: the plan's dates are the house's day, not UTC's", () => {
+  it('prints a price set at 18:00 in Los Angeles on that day, not the next', async () => {
+    const late = line({ bottle: { ...line().bottle, lastSet: { by: person('Deniz'), at: '2026-09-11T01:00:00Z', source: 'manual' } } });
+    mockPlan.mockResolvedValue(plan({ lines: [late], timezone: 'America/Los_Angeles' }));
+    mount(true);
+    const rows = await screen.findAllByTestId('menu-plan-row');
+    expect(rows[0]).toHaveTextContent('set by hand by Deniz on 2026-09-10');
+  });
+});
+
 describe('MenuPlan -- the section before the choice (L13)', () => {
   it('shows each price it would change with who set it, each held price with its lock, the returned wine, the vintage to check, and the dormant locks', async () => {
     mockPlan.mockResolvedValue(plan());
