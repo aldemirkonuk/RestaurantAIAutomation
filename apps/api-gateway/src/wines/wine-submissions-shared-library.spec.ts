@@ -21,7 +21,11 @@ import { hashWineSignature } from "./wine-signature";
 
 type Row = Record<string, any>;
 
-function fakeDb(library: Row[], submissions: Row[]) {
+function fakeDb(
+  library: Row[],
+  submissions: Row[],
+  readError: { message: string } | null = null,
+) {
   const submissionUpdates: Array<{ id: string; patch: Row }> = [];
   let seq = 0;
 
@@ -43,6 +47,7 @@ function fakeDb(library: Row[], submissions: Row[]) {
         library.push(row);
         return { data: { id: row.id }, error: null };
       }
+      if (readError) return { data: null, error: readError };
       const hit = eqFilter
         ? library.find((r) => r[eqFilter![0]] === eqFilter![1])
         : undefined;
@@ -176,6 +181,38 @@ describe("F-497 dedup worker keeps the shared library to specific wines, and nev
         decision_reason: "existing_shared_row",
       }),
     );
+  });
+
+  it("says why when the existing shared row cannot be read back, instead of leaving the submission pending in silence", async () => {
+    const identity = {
+      name: "Barolo Cannubi",
+      producer: "Damilano",
+      vintage: 2018,
+      country: "Italy",
+      region: "Piedmont",
+      grapeVariety: "Nebbiolo",
+    };
+    const library: Row[] = [
+      { id: "mw-shared", signature_hash: hashWineSignature(identity) },
+    ];
+    const t = fakeDb(
+      library,
+      [{ id: "sub-4", status: "pending", payload: { ...identity } }],
+      { message: "connection reset" },
+    );
+
+    const out = await service(t.db).processPendingSubmissions();
+
+    expect(out.results).toEqual([{ id: "sub-4", status: "pending" }]);
+    expect(t.submissionUpdates).toEqual([
+      {
+        id: "sub-4",
+        patch: expect.objectContaining({
+          status: "pending",
+          decision_reason: "retry 1/5: library read: connection reset",
+        }),
+      },
+    ]);
   });
 
   it("still creates a shared row for a specific wine the library does not hold", async () => {
