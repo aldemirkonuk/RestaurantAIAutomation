@@ -33,8 +33,13 @@ export function houseCurrencyCode(read: HouseCounterRead | null): string | null 
   return read?.house.currency.state === 'recorded' ? read.house.currency.code : null;
 }
 
-/** A money figure with the house's currency, or a sentence saying which is missing. */
+/**
+ * A money figure with the house's currency, or a sentence saying which is
+ * missing. A total kept from this role (staff see counts, never amounts) says
+ * so, rather than claiming the order states none.
+ */
 export function orderMoney(total: number | null, read: HouseCounterRead | null): string {
+  if (read?.amounts === 'withheld') return 'amount withheld';
   if (total === null || total === undefined) return 'total not stated';
   if (read?.house.currency.state === 'unreadable') {
     return `${total.toLocaleString('en-GB')} (currency could not be read)`;

@@ -34,6 +34,10 @@ import expected from "./route-access.expected.json";
  * therefore read "open" here; the gate they rely on is pinned by the
  * `ADR-0171-CONVERSATION-ROUTES-HOUSE-SCOPED` claim and
  * `vendor-send-authority.spec.ts`, not by `RolesGuard`.
+ * Two rows changed as decided by DASH-W22 (founder 2026-10-01, "hide amounts
+ * for staff"; ADR 0145): `GET /analytics/table-performance/:restaurantId` and
+ * `GET /analytics/waiters/:restaurantId` carry each table's and each server's
+ * sales and tip %, so they read owner-or-manager here (sim F-203).
  */
 
 const ctx = (handler: object, cls: object, role: string | null) =>

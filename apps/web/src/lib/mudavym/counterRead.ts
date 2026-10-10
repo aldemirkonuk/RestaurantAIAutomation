@@ -143,6 +143,11 @@ export interface HouseCounterRead {
     currency: { state: 'recorded' | 'not_recorded' | 'unreadable'; code: string | null };
   };
   role: string | null;
+  /**
+   * "withheld": this role does not see the house's amounts (DASH-W22), so the
+   * gateway sent every order total as null on purpose. Absent reads as shown.
+   */
+  amounts?: 'shown' | 'withheld';
   registers: CounterRegister[];
 }
 

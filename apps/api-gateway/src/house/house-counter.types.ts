@@ -71,7 +71,10 @@ export interface CounterOrderRow {
   wine: string | null;
   quantity: number | null;
   unitType: string | null;
-  /** The order's own total. Never a unit price standing in for it. */
+  /**
+   * The order's own total. Never a unit price standing in for it. Null for a
+   * role that does not see the house's amounts (`amounts: "withheld"`).
+   */
   total: number | null;
   status: string;
   requestedAt: string | null;
@@ -203,5 +206,11 @@ export interface HouseCounterResponse {
   };
   /** The role IN THIS HOUSE the token carries (ADR 0162), as read. */
   role: string | null;
+  /**
+   * Whether order totals travel to this role (DASH-W22: staff see counts,
+   * never amounts). "withheld" means every `total` is null on purpose, so a
+   * page says so rather than "not stated".
+   */
+  amounts: "shown" | "withheld";
   registers: CounterRegister[];
 }

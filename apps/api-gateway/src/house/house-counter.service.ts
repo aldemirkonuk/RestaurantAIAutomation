@@ -12,6 +12,7 @@ import { ConversationsService } from "../conversations/conversations.service";
 import { IdentityService } from "../vendor-intel/identity.service";
 import { MembersService } from "../restaurants/members.service";
 import { AskAiService } from "../ask-ai/ask-ai.service";
+import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import {
   COUNTER_REGISTERS,
   CounterAct,
@@ -159,6 +160,9 @@ export class HouseCounterService {
       throw new ForbiddenException("This session names no restaurant.");
     }
     const manager = mayManage(role);
+    // Staff see counts, never amounts (DASH-W22, ADR 0145): the order totals
+    // stay on the server rather than being hidden only on the page.
+    const showAmounts = seesHouseAmounts(role);
 
     const plans: Record<
       CounterRegisterKey,
@@ -183,7 +187,10 @@ export class HouseCounterService {
               wine: o.wineName ?? null,
               quantity: typeof o.quantity === "number" ? o.quantity : null,
               unitType: o.unitType ?? null,
-              total: typeof o.totalCost === "number" ? o.totalCost : null,
+              total:
+                showAmounts && typeof o.totalCost === "number"
+                  ? o.totalCost
+                  : null,
               status: String(o.status),
               requestedAt: o.requestedAt ?? null,
             })),
@@ -341,6 +348,7 @@ export class HouseCounterService {
       readAt: new Date().toISOString(),
       house: { id: house, currency },
       role: role ?? null,
+      amounts: showAmounts ? "shown" : "withheld",
       registers,
     };
   }
